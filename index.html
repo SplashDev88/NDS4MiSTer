@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NDS_MiSTfits core map</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%230E6E78'/%3E%3C/svg%3E">
+
+<style>
+/* ---- minimal reset (the hosted artifact wrapper supplied this; offline needs it inline) ---- */
+html{-webkit-text-size-adjust:100%}
+body{margin:0}
+img,svg{max-width:100%}
+table{border-collapse:collapse}
+button{font:inherit; color:inherit}
+
+/* ============================================================ tokens */
+:root{
+  --ground:#E8EAEE; --surface:#F6F7F9; --surface2:#FDFDFE;
+  --ink:#141A22; --ink-mid:#4C5764; --ink-dim:#6E7986;
+  --rule:#C6CCD5; --rule-soft:#D9DEE5;
+  --accent:#0E6E78; --accent-ink:#FFFFFF; --accent-soft:#D6EAEC;
+  --clk1x:#33639E; --clkmem:#6E4CB8; --clkvid:#B14970; --clknone:#78828F;
+  --clk1x-bg:#E1E9F3; --clkmem-bg:#E9E3F6; --clkvid-bg:#F7E3EA; --clknone-bg:#E6E8EC;
+  --ok:#26694A; --sim:#8A6208; --absent:#6E7986;
+  --ok-bg:#DFEFE6; --sim-bg:#F6EBD2; --absent-bg:#E6E8EC;
+  --wire:#98A3B1; --wire-hot:#0E6E78;
+  --shadow:0 1px 2px rgba(20,26,34,.07), 0 8px 24px -12px rgba(20,26,34,.18);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0D1116; --surface:#151B22; --surface2:#1B222B;
+    --ink:#E4E8EE; --ink-mid:#A6B1BF; --ink-dim:#8792A1;
+    --rule:#2A333E; --rule-soft:#222A34;
+    --accent:#3FC6D0; --accent-ink:#07171A; --accent-soft:#12333A;
+    --clk1x:#7DAEE8; --clkmem:#B197F0; --clkvid:#EE93B2; --clknone:#939EAD;
+    --clk1x-bg:#16283C; --clkmem-bg:#241C3D; --clkvid-bg:#3A1C2A; --clknone-bg:#1E242C;
+    --ok:#6BCB96; --sim:#E5B854; --absent:#939EAD;
+    --ok-bg:#123227; --sim-bg:#33280C; --absent-bg:#1E242C;
+    --wire:#4A5563; --wire-hot:#3FC6D0;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#E8EAEE; --surface:#F6F7F9; --surface2:#FDFDFE;
+  --ink:#141A22; --ink-mid:#4C5764; --ink-dim:#6E7986;
+  --rule:#C6CCD5; --rule-soft:#D9DEE5;
+  --accent:#0E6E78; --accent-ink:#FFFFFF; --accent-soft:#D6EAEC;
+  --clk1x:#33639E; --clkmem:#6E4CB8; --clkvid:#B14970; --clknone:#78828F;
+  --clk1x-bg:#E1E9F3; --clkmem-bg:#E9E3F6; --clkvid-bg:#F7E3EA; --clknone-bg:#E6E8EC;
+  --ok:#26694A; --sim:#8A6208; --absent:#6E7986;
+  --ok-bg:#DFEFE6; --sim-bg:#F6EBD2; --absent-bg:#E6E8EC;
+  --wire:#98A3B1; --wire-hot:#0E6E78;
+  --shadow:0 1px 2px rgba(20,26,34,.07), 0 8px 24px -12px rgba(20,26,34,.18);
+}
+:root[data-theme="dark"]{
+  --ground:#0D1116; --surface:#151B22; --surface2:#1B222B;
+  --ink:#E4E8EE; --ink-mid:#A6B1BF; --ink-dim:#8792A1;
+  --rule:#2A333E; --rule-soft:#222A34;
+  --accent:#3FC6D0; --accent-ink:#07171A; --accent-soft:#12333A;
+  --clk1x:#7DAEE8; --clkmem:#B197F0; --clkvid:#EE93B2; --clknone:#939EAD;
+  --clk1x-bg:#16283C; --clkmem-bg:#241C3D; --clkvid-bg:#3A1C2A; --clknone-bg:#1E242C;
+  --ok:#6BCB96; --sim:#E5B854; --absent:#939EAD;
+  --ok-bg:#123227; --sim-bg:#33280C; --absent-bg:#1E242C;
+  --wire:#4A5563; --wire-hot:#3FC6D0;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.7);
+}
+
+/* ============================================================ base */
+*{box-sizing:border-box}
+body{
+  background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+code,.mono{font-family:var(--mono); font-size:.86em; font-variant-ligatures:none}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px; border-radius:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
+
+.wrap{max-width:1360px; margin:0 auto; padding:0 20px}
+body > .wrap{padding-bottom:96px}
+.eyebrow{
+  font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-dim); margin:0 0 6px;
+}
+h1{font-size:clamp(26px,4.4vw,42px); line-height:1.08; letter-spacing:-.022em; margin:0 0 12px; text-wrap:balance; font-weight:760}
+h2{font-size:clamp(19px,2.4vw,25px); line-height:1.15; letter-spacing:-.014em; margin:0; text-wrap:balance; font-weight:700}
+h3{font-size:15px; margin:0 0 6px; font-weight:700; letter-spacing:-.005em}
+p{margin:0 0 12px; max-width:66ch}
+.lede{font-size:clamp(16px,1.9vw,18.5px); color:var(--ink-mid); max-width:64ch}
+.small{font-size:13px; color:var(--ink-mid)}
+.tiny{font-size:12px; color:var(--ink-dim)}
+
+/* ============================================================ header */
+header.top{
+  border-bottom:1px solid var(--rule);
+  background:linear-gradient(180deg,var(--surface),var(--ground));
+  padding:44px 0 30px; margin-bottom:0;
+}
+.titleblock{display:grid; gap:6px}
+.meta{display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:16px; font-size:12.5px; color:var(--ink-dim)}
+.meta b{color:var(--ink-mid); font-weight:600}
+
+.notice{
+  margin-top:22px; border:1px solid var(--rule); border-left:3px solid var(--accent);
+  background:var(--surface2); border-radius:0 6px 6px 0; padding:14px 16px; max-width:82ch;
+}
+.notice p{margin:0 0 8px; font-size:14px; color:var(--ink-mid)}
+.notice p:last-child{margin:0}
+.notice strong{color:var(--ink)}
+
+/* ============================================================ control bar */
+.bar{
+  position:sticky; top:0; z-index:40; background:var(--ground);
+  border-bottom:1px solid var(--rule);
+  padding:10px 0; margin-bottom:36px;
+}
+.bar-in{display:flex; flex-wrap:wrap; gap:10px 22px; align-items:center}
+.ctl{display:flex; align-items:center; gap:8px}
+.ctl > span.lbl{font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim)}
+.seg{display:inline-flex; border:1px solid var(--rule); border-radius:999px; overflow:hidden; background:var(--surface)}
+.seg button{
+  appearance:none; border:0; background:transparent; color:var(--ink-mid);
+  font:inherit; font-size:12.5px; font-weight:600; padding:5px 13px; cursor:pointer;
+}
+.seg button[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink)}
+.toggle{
+  appearance:none; border:1px solid var(--rule); background:var(--surface); color:var(--ink-mid);
+  font:inherit; font-size:12.5px; font-weight:600; padding:5px 13px; border-radius:999px; cursor:pointer;
+  display:inline-flex; align-items:center; gap:7px;
+}
+.toggle[aria-pressed="true"]{background:var(--accent); color:var(--accent-ink); border-color:var(--accent)}
+.toggle .dot{width:7px; height:7px; border-radius:50%; background:currentColor; opacity:.7}
+.legend{display:flex; flex-wrap:wrap; gap:6px 12px; margin-left:auto}
+.lg{display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-mid)}
+.lg i{width:11px; height:11px; border-radius:3px; display:inline-block; border:1px solid rgba(0,0,0,.12)}
+
+/* ============================================================ layout */
+.cols{display:grid; grid-template-columns:minmax(0,1fr) 304px; gap:26px; align-items:start}
+@media (max-width:1080px){.cols{grid-template-columns:minmax(0,1fr)}}
+
+section.panel{margin:0 0 44px}
+.panel-head{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; border-bottom:1px solid var(--rule); padding-bottom:10px; margin-bottom:18px}
+.panel-head .num{
+  font-family:var(--mono); font-size:12px; color:var(--accent); font-weight:700;
+  border:1px solid var(--accent); border-radius:4px; padding:1px 6px; flex:none;
+}
+.panel-head p{margin:0; font-size:13.5px; color:var(--ink-dim)}
+
+/* ============================================================ cards / blocks */
+.card{background:var(--surface); border:1px solid var(--rule-soft); border-radius:8px; padding:14px 16px}
+.grid{display:grid; gap:12px}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:760px){.g3,.g2{grid-template-columns:minmax(0,1fr)}}
+
+.blk{
+  --hue:var(--clknone); --hue-bg:var(--clknone-bg);
+  position:relative; z-index:1; text-align:left; width:100%;
+  appearance:none; font:inherit; cursor:pointer;
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--rule); border-left:3px solid var(--hue);
+  border-radius:5px; padding:8px 11px 9px;
+  transition:background .12s, border-color .12s, opacity .18s, filter .18s;
+}
+.blk:hover{background:var(--surface2); border-color:var(--hue)}
+.blk[aria-current="true"]{background:var(--hue-bg); border-color:var(--hue); box-shadow:inset 0 0 0 1px var(--hue)}
+.blk .nm{display:block; font-family:var(--mono); font-size:12.5px; font-weight:600; letter-spacing:-.01em}
+.blk .rl{display:block; font-size:11.5px; color:var(--ink-dim); margin-top:1px; line-height:1.35}
+.blk .tag{
+  display:inline-block; margin-top:5px; font-family:var(--mono); font-size:10px;
+  letter-spacing:.04em; padding:1px 5px; border-radius:3px;
+  background:var(--hue-bg); color:var(--hue); border:1px solid var(--hue);
+}
+body[data-mode="status"] .blk{--hue:var(--st); --hue-bg:var(--st-bg)}
+.blk[data-status="hw"]{--st:var(--ok); --st-bg:var(--ok-bg)}
+.blk[data-status="sim"]{--st:var(--sim); --st-bg:var(--sim-bg)}
+.blk[data-status="absent"]{--st:var(--absent); --st-bg:var(--absent-bg)}
+.blk[data-status="unknown"]{--st:var(--absent); --st-bg:var(--absent-bg)}
+.blk[data-status="unknown"]{border-left-style:dashed}
+.blk[data-clk="clk1x"]{--clkh:var(--clk1x); --clkh-bg:var(--clk1x-bg)}
+.blk[data-clk="clk2x"]{--clkh:var(--clk1x); --clkh-bg:var(--clk1x-bg)}
+.blk[data-clk="clkmem"]{--clkh:var(--clkmem); --clkh-bg:var(--clkmem-bg)}
+.blk[data-clk="clkvid"]{--clkh:var(--clkvid); --clkh-bg:var(--clkvid-bg)}
+.blk[data-clk="mixed"]{--clkh:var(--clkmem); --clkh-bg:var(--clkmem-bg)}
+.blk[data-clk="none"]{--clkh:var(--clknone); --clkh-bg:var(--clknone-bg)}
+body[data-mode="clock"] .blk{--hue:var(--clkh); --hue-bg:var(--clkh-bg)}
+body[data-mode="clock"] .blk[data-clk="clk2x"]{border-left-style:dashed}
+body[data-mode="clock"] .blk[data-clk="mixed"]{
+  border-left:3px solid transparent;
+  background-image:linear-gradient(var(--clk1x) 0 33%, var(--clkmem) 33% 100%);
+  background-repeat:no-repeat; background-size:3px 100%; background-position:left top;
+}
+body[data-rpath="on"] .blk:not([data-rpath="1"]){opacity:.3; filter:saturate(.25)}
+body[data-rpath="on"] .blk[data-rpath="1"]{box-shadow:0 0 0 1px var(--wire-hot)}
+
+/* ============================================================ clocks */
+.clkcards{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px}
+@media (max-width:820px){.clkcards{grid-template-columns:minmax(0,1fr)}}
+.clkcard{background:var(--surface); border:1px solid var(--rule-soft); border-top:3px solid var(--c); border-radius:6px; padding:14px 16px}
+.clkcard .hz{font-family:var(--mono); font-size:clamp(19px,2.6vw,24px); font-weight:700; letter-spacing:-.02em; color:var(--c); font-variant-numeric:tabular-nums}
+.clkcard .rt{font-family:var(--mono); font-size:11.5px; color:var(--ink-dim)}
+.clkcard h3{margin-top:6px}
+.clkcard p{font-size:12.5px; color:var(--ink-mid); margin:0}
+.ratio{
+  margin-top:14px; display:flex; align-items:stretch; gap:0; height:56px;
+  border:1px solid var(--rule); border-radius:6px; overflow:hidden; background:var(--surface);
+}
+.ratio div{flex:1; position:relative; border-right:1px solid var(--rule-soft)}
+.ratio div:last-child{border-right:0}
+.ratio .ph{position:absolute; inset:auto 0 6px 0; text-align:center; font-family:var(--mono); font-size:10px; color:var(--ink-dim)}
+.ratio .bar{position:absolute; left:0; right:0; height:8px; border-radius:2px}
+.ratio .b1{top:8px; background:var(--clk1x)}
+.ratio .b3{top:24px; background:var(--clkmem)}
+
+/* ============================================================ tree */
+.tree{display:grid; gap:6px}
+.tnode{display:grid; gap:6px}
+.tkids{display:grid; gap:6px; margin-left:16px; padding-left:14px; border-left:1px dashed var(--rule)}
+.tkids[hidden]{display:none}
+.trow{display:flex; align-items:stretch; gap:8px}
+.twist{
+  flex:none; width:26px; appearance:none; border:1px solid var(--rule); background:var(--surface);
+  color:var(--ink-mid); border-radius:5px; cursor:pointer; font:inherit; font-size:12px; line-height:1;
+}
+.twist:hover{border-color:var(--accent); color:var(--accent)}
+.grp{
+  font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-dim); margin:10px 0 2px;
+}
+
+/* ============================================================ wired diagram */
+.diagwrap{border:1px solid var(--rule); border-radius:8px; background:var(--surface); overflow-x:auto; overflow-y:hidden}
+.diag{position:relative; min-width:980px; padding:14px 16px 18px}
+.diag svg.wires{position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; overflow:visible}
+.diag svg.wlabels{position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; overflow:visible}
+.diag .dcols{position:relative; z-index:1; display:grid; grid-template-columns:1fr 1fr 1fr 1.06fr; gap:19px}
+.dcol{display:grid; gap:9px; align-content:start}
+.dcol > .chd{
+  font-size:10.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-dim); padding-bottom:6px; border-bottom:1px solid var(--rule); margin-bottom:2px;
+}
+.dgap{height:9px}
+.wlabel{
+  font-family:var(--mono); font-size:9.5px; fill:var(--ink-dim);
+  stroke:var(--surface); stroke-width:3px; paint-order:stroke fill; stroke-linejoin:round;
+}
+.wlabel.hot{fill:var(--wire-hot); font-weight:700}
+.diaghint{font-size:12px; color:var(--ink-dim); margin:10px 2px 0}
+
+/* ============================================================ tables */
+.tablewrap{overflow-x:auto; border:1px solid var(--rule); border-radius:8px; background:var(--surface)}
+table{width:100%; min-width:640px; font-size:13px}
+th,td{text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-soft); vertical-align:top}
+th{
+  font-size:10.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase; color:var(--ink-dim);
+  background:var(--surface2); position:sticky; top:0; border-bottom:1px solid var(--rule);
+}
+tr:last-child td{border-bottom:0}
+td.m,th.m{font-family:var(--mono); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums}
+td.w{white-space:normal; min-width:22ch}
+.src{font-family:var(--mono); font-size:11px; color:var(--ink-dim); white-space:nowrap}
+
+/* ============================================================ chain */
+.chain{display:grid; gap:0; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); border:1px solid var(--rule); border-radius:8px; overflow:hidden; background:var(--surface)}
+.stage{padding:12px 13px; border-right:1px solid var(--rule-soft); position:relative}
+.stage:last-child{border-right:0}
+.stage .ix{font-family:var(--mono); font-size:10px; color:var(--wire-hot); font-weight:700}
+.stage .nm{display:block; font-family:var(--mono); font-size:12px; font-weight:600; margin-top:3px; word-break:break-word}
+.stage .dp{display:inline-block; margin-top:6px; font-family:var(--mono); font-size:10.5px; padding:1px 5px; border-radius:3px; background:var(--accent-soft); color:var(--accent); border:1px solid var(--accent)}
+.stage .rl{display:block; font-size:11.5px; color:var(--ink-dim); margin-top:5px; line-height:1.4}
+.stage[data-dom="clkmem"]{box-shadow:inset 3px 0 0 var(--clkmem)}
+.stage[data-dom="clk1x"]{box-shadow:inset 3px 0 0 var(--clk1x)}
+.stage[data-dom="none"]{box-shadow:inset 3px 0 0 var(--clknone)}
+
+.alert{border:1px solid var(--sim); border-left:3px solid var(--sim); background:var(--sim-bg); border-radius:0 6px 6px 0; padding:13px 15px; margin-top:16px}
+.alert h3{color:var(--ink)}
+.alert p{font-size:13.5px; color:var(--ink-mid); margin:0 0 8px}
+.alert p:last-child{margin:0}
+
+/* ============================================================ detail rail */
+aside.rail{position:sticky; top:64px}
+.detail{background:var(--surface); border:1px solid var(--rule); border-radius:8px; box-shadow:var(--shadow); overflow:hidden}
+.detail-hd{padding:13px 15px; border-bottom:1px solid var(--rule); background:var(--surface2); display:flex; gap:10px; align-items:flex-start}
+.detail-hd h3{font-family:var(--mono); font-size:13.5px; margin:0; word-break:break-word; flex:1}
+.dclose{appearance:none; border:1px solid var(--rule); background:var(--surface); color:var(--ink-mid); border-radius:5px; width:26px; height:26px; cursor:pointer; font:inherit; flex:none; display:none}
+.detail-bd{padding:14px 15px; max-height:min(64vh,620px); overflow:auto}
+.detail-bd p{font-size:13.5px; color:var(--ink-mid); margin:0 0 12px}
+.drow{display:grid; grid-template-columns:80px minmax(0,1fr); gap:4px 10px; padding:7px 0; border-top:1px solid var(--rule-soft); font-size:12.5px}
+.drow:first-of-type{border-top:0}
+.drow dt{font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-dim); padding-top:2px}
+.drow dd{margin:0; color:var(--ink)}
+.srclist{display:grid; gap:4px}
+.srclist code{display:block; font-size:11.5px; color:var(--ink-mid); word-break:break-all}
+.pill{display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; letter-spacing:.03em; padding:2px 8px; border-radius:999px; border:1px solid currentColor}
+.pill.hw{color:var(--ok); background:var(--ok-bg)}
+.pill.sim{color:var(--sim); background:var(--sim-bg)}
+.pill.absent{color:var(--absent); background:var(--absent-bg)}
+.pill.unknown{color:var(--absent); background:transparent; border-style:dashed}
+.emptydetail{color:var(--ink-dim); font-size:13px}
+
+@media (max-width:1080px){
+  aside.rail{position:fixed; inset:auto 0 0 0; z-index:60; padding:0 12px 12px; transform:translateY(115%); transition:transform .22s ease}
+  aside.rail.open{transform:translateY(0)}
+  .detail{border-radius:10px 10px 0 0}
+  .dclose{display:block}
+  .detail-bd{max-height:52vh}
+  .rail .emptystate{display:none}
+}
+
+footer{border-top:1px solid var(--rule); margin-top:20px; padding-top:18px; color:var(--ink-dim); font-size:12.5px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="titleblock">
+      <p class="eyebrow">MiSTer FPGA core &middot; Nintendo DS &middot; orientation map</p>
+      <h1>What is inside NDS_MiSTfits, and how it is wired</h1>
+      <p class="lede">Every block, clock and memory channel below was read out of the RTL in this working tree, not out of the prose. Click anything for its role, its clock, and the <code>file:line</code> the numbers came from.</p>
+    </div>
+    <div class="meta">
+      <span><b>Working tree</b> 2026-07-30</span>
+      <span><b>Last commit</b> <code>a58adb5</code></span>
+      <span><b>Top</b> <code>NDS.sv:22</code> &rarr; <code>nds_port_wrap.vhd:161</code> &rarr; <code>rtl/nds_top.vhd:49</code></span>
+      <span><b>Target</b> Cyclone V 5CSEBA6U23I7 (DE10-Nano)</span>
+    </div>
+
+    <div class="notice">
+      <p><strong>Where prose and RTL disagree, this page follows the RTL.</strong> <code>docs/ARCHITECTURE.md</code>, <code>docs/MEMORY_MAP.md</code> and <code>HANDOFF.md</code> each contain statements the code no longer supports; the ones that would mislead a newcomer are listed in panel 06.</p>
+      <p><strong>This describes uncommitted work.</strong> <code>git diff --stat</code> shows ~2,500 added lines across <code>rtl/nds_vram.vhd</code>, <code>rtl/nds_drawer_text.vhd</code>, <code>rtl/nds_gpu2d.vhd</code> and <code>NDS.sv</code> &mdash; the pipelined text drawer and the renderer valid/ready rework. Those are the files panel 05 is about, and nothing in them has run on hardware yet.</p>
+    </div>
+  </div>
+</header>
+
+<div class="bar">
+  <div class="wrap bar-in">
+    <div class="ctl">
+      <span class="lbl">Colour by</span>
+      <div class="seg" role="group" aria-label="Colour blocks by">
+        <button id="mClock" aria-pressed="true">Clock domain</button>
+        <button id="mStatus" aria-pressed="false">Status</button>
+      </div>
+    </div>
+    <button class="toggle" id="rpath" aria-pressed="false"><span class="dot"></span>Renderer path only</button>
+    <button class="toggle" id="themeBtn" aria-pressed="false" title="Offline builds have no host theme toggle">Theme</button>
+    <div class="legend" id="legend"></div>
+  </div>
+</div>
+
+<div class="wrap">
+<div class="cols">
+<main>
+
+  <!-- =============================================== 01 CLOCKS -->
+  <section class="panel" id="p-clocks">
+    <div class="panel-head">
+      <span class="num">01</span>
+      <h2>One PLL, three outputs, an exact 1 : 2 : 3</h2>
+      <p>and a phase index that most of the design's subtle constraints hang off</p>
+    </div>
+
+    <div class="clkcards" id="clkcards"></div>
+
+    <div class="ratio" aria-hidden="true">
+      <div><span class="bar b1"></span><span class="bar b3"></span><span class="ph">index 0 &middot; clk1x rising</span></div>
+      <div><span class="bar b3"></span><span class="ph">index 1</span></div>
+      <div><span class="bar b3"></span><span class="ph">index 2</span></div>
+    </div>
+    <p class="tiny" style="margin-top:6px">Blue = one <code>clk1x</code> period. Violet = the three <code>clkMem</code> edges inside it. <code>clkMemIndex</code> names which one you are on.</p>
+
+    <div class="grid g2" style="margin-top:18px">
+      <div class="card">
+        <h3>The <code>clkMemIndex</code> contract</h3>
+        <p class="small"><code>clkMem</code> is exactly 3&times; <code>clk_sys</code> off the same VCO, so a <code>clk1x</code>-domain toggle re-locks a mod-3 counter on every <code>clk1x</code> edge: index 0 is the coincident edge (<code>NDS.sv:229&ndash;238</code>). These are <em>related</em> clocks, so crossings are timed paths, not synchronisers.</p>
+        <p class="small" style="margin:0">Three separate modules depend on a specific phase, and none of them would work on a different one:</p>
+        <ul class="small" style="margin:8px 0 0; padding-left:20px">
+          <li><code>nds_mainram</code> only launches an SDRAM op at index 0 &mdash; <code>rtl/nds_mainram.vhd:178</code></li>
+          <li>the renderer VRAM feed only <em>accepts</em> a held request at index 2, the edge coincident with <code>clk1x</code>, so both ends agree which edge was the transfer &mdash; <code>NDS.sv:922</code></li>
+          <li><code>done</code> pulses are raised at index 1 so they are exactly one <code>clk1x</code> period wide &mdash; <code>NDS.sv:870</code>, <code>NDS.sv:939</code></li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>The ARM9 &ldquo;island&rdquo; &mdash; a domain that is currently 1 : 1</h3>
+        <p class="small"><code>nds_top</code> still has a <code>clk2x</code> port and a full clk1x&harr;island bridge (<code>rtl/nds_top.vhd:837&ndash;1044</code>: toggle-based requests, edge-detected dones, payload latches). But <code>NDS.sv:1017</code> ties <code>clk2x</code> to <code>clk_sys</code>. The island exists in the RTL and runs at the system clock.</p>
+        <p class="small" style="margin:0">There is <strong>no <code>ISLAND</code> generic</strong> on <code>nds_top</code>. <code>ISLAND</code> is a testbench generic (<code>sim/tb_top_frame.vhd:61</code>); in hardware the ratio is whatever <code>NDS.sv</code> drives. The comment at <code>rtl/nds_top.vhd:66</code> still claims <code>clk2x</code> is &ldquo;PLL outclk_3, 50.270973&nbsp;MHz&rdquo; &mdash; the PLL declares three outputs (<code>rtl/pll/pll_0002.v:27</code>) and there is no outclk_3.</p>
+      </div>
+    </div>
+
+    <div class="grid g3" style="margin-top:12px">
+      <div class="card"><h3>Dot cadence</h3><p class="small" style="margin:0">A line is 355 dots &times; 6 = <strong>2,130</strong> <code>clk1x</code> cycles; a frame is 263 lines (192 visible + 71) = 560,190 (<code>rtl/nds_gpu_timing.vhd:80</code>, <code>:7</code>). The GPU is ce-paced 1-of-<code>GPU_CE_DIV</code>=3 (<code>rtl/nds_top.vhd:54</code>), so relative to the CPUs the frame is 3&times; long. <code>gpu_full_pace</code> on OSD <code>status[10]</code> switches it to 1-of-1 (<code>NDS.sv:1038</code>).</p></div>
+      <div class="card"><h3>Scanout</h3><p class="small" style="margin:0">256&times;384 active in a 533&times;526 frame, pixel ce = <code>CLK_VIDEO</code>/4 = 16.757&nbsp;MHz &rarr; <strong>59.77&nbsp;Hz</strong> (<code>NDS.sv:1205&ndash;1214</code>). Both screens stack vertically, single-buffered, free-running.</p></div>
+      <div class="card"><h3>DDR3 clock</h3><p class="small" style="margin:0"><code>DDRAM_CLK</code> is assigned <code>clk_sys</code> (<code>NDS.sv:542</code>), so every DDR3 pager in <code>NDS.sv</code> is plain <code>clk1x</code> logic. Only SDRAM lives on <code>clkMem</code>.</p></div>
+    </div>
+  </section>
+
+  <!-- =============================================== 02 HIERARCHY -->
+  <section class="panel" id="p-tree">
+    <div class="panel-head">
+      <span class="num">02</span>
+      <h2>Hierarchy</h2>
+      <p><code>emu</code> &rarr; port wrap &rarr; <code>nds_top</code> &rarr; subsystems. Expand either 2D engine down to its drawers.</p>
+    </div>
+    <div class="tree" id="tree"></div>
+  </section>
+
+  <!-- =============================================== 03 MEMORY -->
+  <section class="panel" id="p-mem">
+    <div class="panel-head">
+      <span class="num">03</span>
+      <h2>Memory topology</h2>
+      <p>who reaches which memory, through which channel, and where the sharing hurts</p>
+    </div>
+
+    <p>Two facts do the most work here. <strong>SDRAM <code>ch2</code> is shared</strong> &mdash; main RAM owns it and the CPU's VRAM A&ndash;D path <em>borrows</em> it through a park-and-drain handshake. <strong>SDRAM <code>ch1</code> is the renderer's</strong>, read-only, and holds exactly one request at a time. Everything else goes to DDR3 on its own channel.</p>
+
+    <div class="diagwrap">
+      <div class="diag" id="memdiag">
+        <svg class="wires" id="memwires" aria-hidden="true"></svg>
+        <div class="dcols" id="memcols"></div>
+        <svg class="wlabels" id="memlabels" aria-hidden="true"></svg>
+      </div>
+    </div>
+    <p class="diaghint">Per-CPU reach into on-chip stores is a decode question, not a channel question &mdash; see the address maps in panel 04.</p>
+
+    <h3 style="margin:26px 0 10px">Channels, exactly as declared</h3>
+    <div class="tablewrap">
+      <table id="chtable"><thead><tr>
+        <th class="m">Channel</th><th>Owner</th><th class="m">Width / addr</th><th>Arbitration</th><th class="m">Source</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+
+    <h3 style="margin:26px 0 10px">Where the bytes actually live</h3>
+    <div class="tablewrap">
+      <table id="memtable"><thead><tr>
+        <th>Store</th><th class="m">Size</th><th>Backing</th><th class="m">Geometry as declared</th><th class="m">Source</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <p class="tiny" style="margin-top:8px">Bank sizes are read off <code>BRAM_AW</code> and the <code>SyncRamDualByteEnable</code> generics (<code>ADDR_WIDTH</code> words &times; <code>BYTES</code>=4), not off the docs. <code>docs/MEMORY_MAP.md:44</code> budgets 32&nbsp;KB for the ARM9 BIOS; the instantiated ROM is 1,024 words = 4&nbsp;KB, which is the real ARM9 BIOS size.</p>
+  </section>
+
+  <!-- =============================================== 04 ADDRESS MAPS -->
+  <section class="panel" id="p-maps">
+    <div class="panel-head">
+      <span class="num">04</span>
+      <h2>The two address maps</h2>
+      <p>these decodes define what each CPU can even reach</p>
+    </div>
+    <div class="grid g2">
+      <div>
+        <p class="grp">ARM9 &mdash; <code>rtl/nds_membus9.vhd:468&ndash;494</code></p>
+        <div class="tablewrap"><table id="map9"><thead><tr><th class="m">Region</th><th class="m">Target</th><th>Goes to</th></tr></thead><tbody></tbody></table></div>
+        <p class="tiny" style="margin-top:8px">TCM hits are checked <em>before</em> the region case and win (<code>:471&ndash;474</code>); high vectors are <code>0xFFFF0000&ndash;0xFFFF7FFF</code> (<code>:475</code>). An unclaimed <code>T_IO</code> read returns 0 by wired-OR, which is what NDS9 hardware does (<code>rtl/nds_top.vhd:1026&ndash;1029</code>).</p>
+      </div>
+      <div>
+        <p class="grp">ARM7 &mdash; <code>rtl/nds_membus7.vhd:147&ndash;165</code></p>
+        <div class="tablewrap"><table id="map7"><thead><tr><th class="m">Region</th><th class="m">Target</th><th>Goes to</th></tr></thead><tbody></tbody></table></div>
+        <p class="tiny" style="margin-top:8px">The ARM7 has no palette, no OAM and no TCMs. Its VRAM window can only ever hit banks C/D in <code>MST=2</code> (<code>rtl/nds_vram.vhd:97</code>). <code>0x048xxxxx</code> (wifi) is open bus (<code>rtl/nds_membus7.vhd:164</code>).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================== 05 RENDERER -->
+  <section class="panel" id="p-chain">
+    <div class="panel-head">
+      <span class="num">05</span>
+      <h2>The renderer request chain</h2>
+      <p>one BG pixel's tile fetch, drawer to SDRAM &mdash; where current work is</p>
+    </div>
+
+    <p>Each 2D engine holds ten drawer instances, but only four BG layers: BG0&ndash;BG3 each pick one drawer by mode, so BG2/BG3 have a text, an affine <em>and</em> an extended drawer wired in parallel with the unused ones muted (<code>rtl/nds_gpu2d.vhd:999&ndash;1010</code>). The BG arbiter multiplexes <strong>only those four</strong> onto one channel. OBJ, BG ext-palette and OBJ ext-palette are three further independent channels straight into <code>nds_vram</code> (<code>rtl/nds_top.vhd:1719&ndash;1736</code>) &mdash; eight renderer channels for two engines.</p>
+
+    <div class="chain" id="chain"></div>
+
+    <div class="alert">
+      <h3>The live failure, and why simulation missed it for months</h3>
+      <p><code>NDS.sv:917</code> makes <code>vrsrv_ready</code> a real back-pressure level: silicon permits exactly <strong>one</strong> A&ndash;D renderer read in flight. Until commit <code>5cf5fe0</code> the testbench's memory model accepted a request every cycle and never connected <code>vrsrv_ready</code> at all, so no bench had ever exercised the path &mdash; <code>tb_gpu2d</code>, <code>tb_gpu2d_frame</code>, <code>tb_gpu2d_timed</code>, the drawer equivalence bench and <code>fbdiff</code> all passed against a memory that cannot say no.</p>
+      <p>With <code>VRSRV_ONE=1</code> the reported hardware white screen reproduced in minutes. The cause was a <strong>livelock, not slowness</strong>: an over-budget line was restarted from tile 0 by every following <code>drawline</code>, so it could never finish. The gate at <code>rtl/nds_gpu2d.vhd:618</code> now drops a <code>drawline</code> that lands on a busy drawer, and the request handshake became held valid/ready at both ends.</p>
+      <div class="tablewrap" style="margin:12px 0"><table><thead><tr><th><code>nds_2dk</code>, GPUCEDIV=1, steady state</th><th class="m">done lines</th><th class="m">dropped</th><th class="m">cyc/render</th></tr></thead><tbody>
+        <tr><td><code>VRSRV_ONE=1</code>, before either fix</td><td class="m">0&ndash;1</td><td class="m">191</td><td class="m">409,583</td></tr>
+        <tr><td>+ <code>drawline</code> gate</td><td class="m">95</td><td class="m">97</td><td class="m">3,010</td></tr>
+        <tr><td>+ 64-bit line &amp; per-channel cache</td><td class="m">168</td><td class="m">24</td><td class="m">2,034</td></tr>
+        <tr><td><code>VRSRV_ONE=0</code> (always-ready), after</td><td class="m">189</td><td class="m">3</td><td class="m">1,129</td></tr>
+      </tbody></table></div>
+      <p><strong style="color:var(--ink)">Beware the metric that hid this.</strong> <code>renders</code> counts <code>line_busy</code> <em>rising</em> edges, so a renderer that never goes idle reports one render per frame regardless of what it finished &mdash; and 0 when <code>line_busy</code> is still high at the frame boundary. Quote <code>done=</code> and <code>dropped=</code> instead.</p>
+      <p><strong>Status: fixed and measured under hardware-shaped back-pressure in simulation; not verified on silicon.</strong> All of it is nvc against a <em>model</em> of <code>ch1</code>, and the 64-bit path assumes <code>sd_ch1_dout[63:0]</code> is the aligned line in halfword order &mdash; read off <code>sdram.sv</code>, never observed on hardware. There is no renderer-side counter readable from the HPS yet, so a first hardware run can only say &ldquo;something / nothing on screen&rdquo;. Anything headed for silicon should be run with <code>VRSRV_ONE=1</code>.</p>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card"><h3>Why the channel is 64 bits</h3><p class="small" style="margin:0"><code>sdram.sv</code> reads four halfwords per access (<code>BURST_LENGTH=4</code>, <code>rtl/sdram.sv:74</code>) and a sequential burst wraps inside its aligned 8-byte block. Asking for the aligned <em>line</em> instead of a word makes the wrap irrelevant and doubles the yield per access (<code>rtl/nds_vram.vhd:204&ndash;210</code>).</p></div>
+      <div class="card"><h3>Why the line cache is per channel</h3><p class="small" style="margin:0">One 8-byte line each, indexed by channel &mdash; no associative search, no channel can evict another's. Measured on the mode-0 bench: <strong>76%</strong> of A&ndash;D reads removed. A single shared line measured <strong>1%</strong>, because eight channels interleaving destroy it (<code>rtl/nds_vram.vhd:413&ndash;427</code>).</p></div>
+      <div class="card"><h3><code>GPU_FAST</code> is off, and superseded</h3><p class="small" style="margin:0"><code>nds_gpu2d_fast</code> is always instantiated (<code>rtl/nds_top.vhd:1806</code>) but <code>GPU_FAST=0</code> (<code>nds_port_wrap.vhd:176</code>) elaborates the <code>gslow</code> branch, which wires straight through on <code>clk1x</code>. The <code>gfast</code> branch (<code>rtl/nds_gpu2d_fast.vhd:241</code>) runs both engines on <code>clkMem</code>; it bought 31% where the pipelined drawer bought 5.7&times;, and it still speaks the old done-based VRAM protocol, so it now stalls.</p></div>
+      <div class="card"><h3>Where the cost was</h3><p class="small" style="margin:0">Before the rework: 5,829 cycles per rendered line against 2,130, 95% of it inside <code>any_bg_busy</code>, 21.7 cycles per pixel in the text drawer (<code>rtl/nds_gpu2d_fast.vhd:8&ndash;11</code>, <code>rtl/nds_drawer_text.vhd:29</code>). The v2 drawer runs its fetch ahead of its pixels with a 4-deep tile queue and reports 1,134 cycles/line, 189/192 lines &mdash; <em>in simulation, at that bench's latency</em>.</p></div>
+    </div>
+  </section>
+
+  <!-- =============================================== 06 CORRECTIONS -->
+  <section class="panel" id="p-fix">
+    <div class="panel-head">
+      <span class="num">06</span>
+      <h2>Where the documents disagree with the RTL</h2>
+      <p>each row checked against the file it names</p>
+    </div>
+    <p>The three documents were audited against the RTL and corrected on 2026-07-30, on branch
+    <code>docs-audit-vs-rtl</code> (commit <code>f8ab7dd</code>). Rows below are kept as the record of what
+    was wrong &mdash; useful because several of these claims had already propagated into RTL comments,
+    which were <em>not</em> touched by that commit.</p>
+    <div class="tablewrap">
+      <table id="fixtable"><thead><tr>
+        <th class="w">The claim</th><th>Where</th><th class="w">What the RTL says</th><th class="m">Check</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- =============================================== 07 ABSENT -->
+  <section class="panel" id="p-absent">
+    <div class="panel-head">
+      <span class="num">07</span>
+      <h2>Not built yet</h2>
+      <p>named in the plan, absent from <code>rtl/</code> &mdash; verified by grep, not assumed</p>
+    </div>
+    <div class="grid g3" id="absent"></div>
+  </section>
+
+  <footer>
+    <p style="margin:0">Built by reading <code>NDS.sv</code>, <code>nds_port_wrap.vhd</code>, <code>rtl/nds_top.vhd</code>, <code>rtl/nds_vram.vhd</code>, <code>rtl/nds_gpu2d.vhd</code>, <code>rtl/nds_gpu2d_fast.vhd</code>, the drawers, both membuses, <code>rtl/nds_mainram.vhd</code>, <code>rtl/nds_cache9.vhd</code>, <code>rtl/sdram.sv</code>, <code>rtl/ddram.sv</code>, <code>rtl/pll/pll_0002.v</code> and <code>git log</code>. Line numbers are this working tree's; they move.</p>
+    <p style="margin:10px 0 0" class="tiny"><b>Offline build.</b> Self-contained single file: no fonts, scripts, styles or images are fetched from anywhere. Works from <code>file://</code> with no server and no network. Follows your OS light/dark setting; the <b>Theme</b> button overrides it and remembers the choice.</p>
+  </footer>
+</main>
+
+<aside class="rail" id="rail">
+  <div class="detail">
+    <div class="detail-hd">
+      <h3 id="dTitle">Select a block</h3>
+      <button class="dclose" id="dClose" aria-label="Close detail">&times;</button>
+    </div>
+    <div class="detail-bd" id="dBody">
+      <p class="emptydetail emptystate">Click any block, drawer, channel or pipeline stage. You get its role, its clock domain, its status with the evidence behind it, and the <code>file:line</code> to check.</p>
+    </div>
+  </div>
+</aside>
+</div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ============================================================ data
+   Every `src` entry is a location actually read while building this page. */
+
+var CLOCKS = [
+  {id:"clk-mem", key:"clkmem", name:"clkMem", hz:"100.541946 MHz", ratio:"3 x clk1x", css:"--clkmem",
+   role:"Memory fabric: sdram.sv and the two VRAM channel adapters in NDS.sv.",
+   detail:"PLL outclk_0. Drives sdram.sv, the vsrv borrow scheduler, the vrsrv renderer feed, and nds_mainram's issue side. Phase-locked to clk_sys off one VCO, which is what makes clkMemIndex meaningful.",
+   src:["rtl/pll/pll_0002.v:28 output_clock_frequency0","NDS.sv:219 .outclk_0(clk_mem)","NDS.sv:949 sdram .clk(clk_mem)"]},
+  {id:"clk-vid", key:"clkvid", name:"CLK_VIDEO", hz:"67.027964 MHz", ratio:"2 x clk1x", css:"--clkvid",
+   role:"Video output only. Scanout counters and the framebuffer line-buffer read side.",
+   detail:"PLL outclk_1. The ARM9 island used to share this clock, which is the only reason the island was ever 'at 67 MHz' - it was never an ARM9 requirement (NDS.sv:209-213). Pixel ce is CLK_VIDEO/4 = 16.757 MHz.",
+   src:["rtl/pll/pll_0002.v:31 output_clock_frequency1","NDS.sv:207 assign CLK_VIDEO = clk_video_67","NDS.sv:1205-1214 scanout timing"]},
+  {id:"clk-sys", key:"clk1x", name:"clk_sys / clk1x", hz:"33.513982 MHz", ratio:"1 x (NDS system clock)", css:"--clk1x",
+   role:"The console. Both CPUs, all IO, both 2D engines, DDR3 pagers, HPS transport.",
+   detail:"PLL outclk_2, the NDS system clock: 6 clocks per dot, 2,130 per line, 560,190 per frame. Also assigned to DDRAM_CLK and, currently, to clk2x - so the ARM9 island runs 1:1 with everything else.",
+   src:["rtl/pll/pll_0002.v:34 output_clock_frequency2","NDS.sv:221 .outclk_2(clk_sys)","NDS.sv:542 assign DDRAM_CLK = clk_sys","NDS.sv:1017 .clk2x(clk_sys)"]}
+];
+
+var ST = {
+  hw:"Exercised on hardware",
+  sim:"Verified in simulation",
+  absent:"Not built",
+  unknown:"Unknown"
+};
+
+function B(o){return o;}
+
+var BLOCKS = [
+  /* ---- framework ---- */
+  B({id:"emu", nm:"emu (NDS.sv)", rl:"MiSTer top: PLL, HPS transport, OSD string, SDRAM + DDR3 channel wiring, video compose", clk:"mixed", st:"hw",
+    ev:"An RBF built from this file configures and runs on a DE10-Nano; the debug mailbox returns a coherent probe decode (HANDOFF.md, 2026-07-28).",
+    src:["NDS.sv:22 module emu","NDS.sv:251 CONF_STR","NDS.sv:945 sdram","NDS.sv:716 ddram"]}),
+  B({id:"pll", nm:"pll", rl:"One PLL, 50 MHz reference, three outputs at an exact 1:2:3", clk:"mixed", st:"hw",
+    src:["NDS.sv:215 pll pll","rtl/pll/pll_0002.v:25 reference_clock_frequency","rtl/pll/pll_0002.v:27 number_of_clocks(3)"]}),
+  B({id:"hpsio", nm:"nds_hps_io_boundary", rl:"HPS transport behind a dedicated boundary; currently the framework hps_io", clk:"clk1x", st:"hw",
+    ev:"ROM, firmware and both BIOS images are loaded through it on hardware.",
+    src:["NDS.sv:312 nds_hps_io_boundary","NDS.sv:256 FS3,NDS,Load,30000000"]}),
+  B({id:"wrap", nm:"nds_port_wrap", rl:"VHDL/SV boundary. No logic: it terminates record ports and converts ranged integers", clk:"mixed", st:"hw",
+    ev:"Synthesised in every build; the only functional choice it makes is GPU_FAST => 0.",
+    src:["nds_port_wrap.vhd:16 entity","nds_port_wrap.vhd:161 nds_top instance","nds_port_wrap.vhd:176 generic map (GPU_FAST => 0)"]}),
+  B({id:"top", nm:"nds_top", rl:"The console. Every subsystem instance, the boot FSM, the island bridge, IO wired-OR trees", clk:"mixed", st:"hw",
+    src:["rtl/nds_top.vhd:49 entity","rtl/nds_top.vhd:1528-1539 io_wired_out/done trees","rtl/nds_top.vhd:757 boot_done"]}),
+
+  /* ---- ARM9 island ---- */
+  B({id:"cpu9", nm:"nds_cpu9 (ARM946E-S)", rl:"v5TE core: BLX, CLZ, saturating and SMULxy ops, LDRD/STRD, CP15 with PU regions and TCM base regs", clk:"clk2x", st:"sim",
+    ev:"M3 exit test: differential trace against melonDS over 10M instructions, zero divergence, caches off and on (docs/ROADMAP.md:22-31). Runs on hardware inside a booting core, but no cart has been played through.",
+    src:["rtl/nds_cpu9.vhd:27 entity","rtl/nds_top.vhd:1160 icpu9","sim/run_arm9_trace.sh"]}),
+  B({id:"membus9", nm:"nds_membus9", rl:"ARM9 decode: ITCM, DTCM, high-vector BIOS, main RAM, shared WRAM, IO, palette, VRAM, OAM", clk:"clk2x", st:"sim",
+    src:["rtl/nds_membus9.vhd:25 entity","rtl/nds_membus9.vhd:155 t_target","rtl/nds_membus9.vhd:468-494 region decode"]}),
+  B({id:"cache9", nm:"nds_cache9", rl:"8 KB I-cache + 4 KB write-back D-cache, both 4-way, 32-byte lines, per-set round robin", clk:"clk2x", st:"sim",
+    ev:"Self-checking exit test sim/run_arm9_cache.sh, plus the 10M-instruction trace run with caches enabled.",
+    src:["rtl/nds_cache9.vhd:2 header","rtl/nds_cache9.vhd:396 I-data ADDR_WIDTH 9 x 4 ways","rtl/nds_cache9.vhd:425 D-data ADDR_WIDTH 8 x 4 ways","rtl/nds_membus9.vhd:240 icache"]}),
+  B({id:"itcm", nm:"ITCM 32 KB", rl:"M10K, zero-wait, port A only; address presented combinationally in the accept cycle", clk:"clk2x", st:"sim",
+    src:["rtl/nds_top.vhd:1298 iitcm","rtl/nds_top.vhd:1304 ADDR_WIDTH 13 x BYTES 4"]}),
+  B({id:"dtcm", nm:"DTCM 16 KB", rl:"M10K. Port A read-only; the store moved to port B one cycle behind the accept, for timing", clk:"clk2x", st:"hw",
+    ev:"The deferred store removed 2,009 of ~3,000 violating paths and ~420 ALMs in the build that closed timing.",
+    src:["rtl/nds_top.vhd:1327 idtcm","rtl/nds_top.vhd:1333 ADDR_WIDTH 12 x BYTES 4","rtl/nds_top.vhd:1339-1349 port A read-only"]}),
+  B({id:"bios9", nm:"nds_bios9 (4 KB)", rl:"ARM9 BIOS ROM at 0xFFFF0000, hot-loadable from the OSD, HLE constants when no image", clk:"clk2x", st:"hw",
+    ev:"Clocked at clk2x deliberately: on clk1x every second fetch returned a stale word, which is what put Kirby's ARM9 into ITCM garbage (rtl/nds_top.vhd:1128-1144).",
+    src:["rtl/nds_bios9.vhd:19 entity","rtl/nds_bios9.vhd:42 t_rom 0..1023 words","rtl/nds_top.vhd:1120 ibios9"]}),
+  B({id:"bridge", nm:"island bridge", rl:"clk1x <-> clk2x: toggle requests, edge-detected dones, IO and lock payload latches", clk:"mixed", st:"hw",
+    ev:"Three separate bugs here were found on hardware, including the missing IO payload latch that made the ARM9 write IPCSYNC 59 times with a zero data nibble - the white screen at the time.",
+    src:["rtl/nds_top.vhd:837-1044","rtl/nds_top.vhd:909-916 io9_lat","rtl/nds_top.vhd:962-971 mr9_lock latch"]}),
+  B({id:"dma9", nm:"nds_dma9", rl:"4 channels: immediate, vblank, hblank, card. Masters the ARM9 membus while dma_bus_on", clk:"clk1x", st:"sim",
+    ev:"Lives outside the island, so it needs the stretched form of membus9's one-island-cycle done.",
+    src:["rtl/nds_dma9.vhd:37 entity","rtl/nds_top.vhd:1268 idma9","rtl/nds_top.vhd:983-994 pulse reconciliation"]}),
+
+  /* ---- ARM7 ---- */
+  B({id:"cpu7", nm:"gba_cpu (ARM7TDMI)", rl:"Vendored verbatim from the GBA donor; only the memory map changes", clk:"clk1x", st:"sim",
+    ev:"Proven pipeline. Under firmware boot the ARM7 BIOS matches the melonDS oracle with zero control-flow divergence over 323,826 basic blocks.",
+    src:["rtl/gba_cpu.vhd:10 entity","rtl/nds_top.vhd:1363 icpu7"]}),
+  B({id:"membus7", nm:"nds_membus7", rl:"ARM7 decode: BIOS, main RAM, private WRAM, shared WRAM, IO, VRAM (C/D only)", clk:"clk1x", st:"sim",
+    src:["rtl/nds_membus7.vhd:28 entity","rtl/nds_membus7.vhd:101 t_target","rtl/nds_membus7.vhd:147-165 decode"]}),
+  B({id:"bios7", nm:"nds_bios7 (16 KB)", rl:"ARM7 BIOS ROM, hot-loadable; HLE build covers GBATEK IRQ dispatch and the SWIs libnds uses", clk:"clk1x", st:"hw",
+    src:["rtl/nds_bios7.vhd:19 entity","rtl/nds_bios7.vhd:42 t_rom 0..4095 words","rtl/nds_top.vhd:1404 ibios7"]}),
+  B({id:"wram7", nm:"ARM7 WRAM 64 KB", rl:"M10K, ARM7-private. The loader can preload it while the CPUs are held in reset", clk:"clk1x", st:"hw",
+    ev:"Not clearing it was a real leftover-memory bug found from hardware behaviour (commit 3d45ac9).",
+    src:["rtl/nds_top.vhd:1498 iwram7","rtl/nds_top.vhd:1504 ADDR_WIDTH 14 x BYTES 4"]}),
+  B({id:"dma7", nm:"nds_dma7", rl:"4 channels: immediate, vblank, card. Timing mode 3 (wifi / GBA slot) never fires", clk:"clk1x", st:"sim",
+    src:["rtl/nds_dma7.vhd:26 entity","rtl/nds_dma7.vhd:239 timing 11 never fires","rtl/nds_top.vhd:1445 idma7"]}),
+
+  /* ---- shared / IO ---- */
+  B({id:"timers", nm:"gba_timer x2", rl:"4+4 channels, vendored from the donor with savestate buses attached", clk:"clk1x", st:"sim",
+    src:["rtl/gba_timer.vhd:9 entity","rtl/nds_top.vhd:1625 itimer9","rtl/nds_top.vhd:1638 itimer7"]}),
+  B({id:"irq", nm:"nds_irq x2", rl:"One controller per CPU. Sources wired: vblank/hblank/vcount, 4 timers, 4 DMA, 3 IPC, card, SPI (ARM7)", clk:"clk1x", st:"hw",
+    ev:"Both CPUs were confirmed taking IRQs on hardware while the screen was white, which is what eliminated 'deadlock' as the explanation (commit 0c5331b).",
+    src:["rtl/nds_irq.vhd:31 entity","rtl/nds_top.vhd:1541-1552 irq_in9 / irq_in7","rtl/nds_top.vhd:1572 iirq9"]}),
+  B({id:"ipc", nm:"nds_ipc", rl:"IPCSYNC nibbles + two 16-deep 32-bit FIFOs + 4 IRQs, both directions", clk:"clk1x", st:"hw",
+    ev:"Proven bidirectional on hardware (commit 3fd44c6). One real bug found here: the ARM9 RECV read returned the word after the one it popped.",
+    src:["rtl/nds_ipc.vhd:21 entity","rtl/nds_ipc.vhd:50 t_fifo 0..15","rtl/nds_top.vhd:1651 iipc"]}),
+  B({id:"syscnt", nm:"nds_syscnt", rl:"WRAMCNT, VRAMCNT A..I, POWCNT routing and swap, EXMEMCNT, HALTCNT", clk:"clk1x", st:"sim",
+    src:["rtl/nds_syscnt.vhd:33 entity","rtl/nds_top.vhd:1661 isyscnt"]}),
+  B({id:"rtc", nm:"nds_rtc", rl:"Bit-banged RTC at register 0x138", clk:"clk1x", st:"sim",
+    ev:"Status1 bit 7 (power-off detect) is now gated on fw_boot: under direct boot the game becomes the first reader and saw a flag hardware would never show it (commit 5cf5fe0).",
+    src:["rtl/nds_rtc.vhd:29 entity","rtl/nds_top.vhd:1590 irtc"]}),
+  B({id:"sound", nm:"nds_sound", rl:"16 uniform channels (PCM8/PCM16/ADPCM/PSG), mixer, SOUNDBIAS; fetches samples as a low-priority ARM7 bus guest", clk:"clk1x", st:"sim",
+    ev:"sim/run_sound.sh. It is the third master on the ARM7 membus, below DMA7 and the CPU.",
+    src:["rtl/nds_sound.vhd:32 entity","rtl/nds_sound.vhd:108 t_chans 0..15","rtl/nds_top.vhd:1428-1443 ARM7 bus mux"]}),
+  B({id:"spi", nm:"nds_spi", rl:"ARM7 SPI bus: power IC, firmware flash, touchscreen controller", clk:"clk1x", st:"hw",
+    ev:"The flash side serves the fw_* image port out of DDR3 and is what the ARM7 BIOS pulls the firmware over under fw_boot.",
+    src:["rtl/nds_spi.vhd:27 entity","rtl/nds_top.vhd:1616 ispi","NDS.sv:474-531 firmware pager"]}),
+  B({id:"card", nm:"nds_card", rl:"ROMCTRL/CMD state machine, AUXSPI regs, 8 KB page store, raw + KEY1 boot command sequence", clk:"clk1x", st:"sim",
+    ev:"KEY1 commands are decoded by size because the core cannot decrypt (commit e7b9191). The full raw+KEY1 negotiation completes under firmware boot in sim.",
+    src:["rtl/nds_card.vhd:71 entity","rtl/nds_card.vhd:172 t_sram 0..8191 bytes","rtl/nds_top.vhd:784 icard"]}),
+  B({id:"loader", nm:"nds_loader", rl:"HLE direct boot: parses the card header, stages both ARM binaries, zeroes memory, builds the env block", clk:"clk1x", st:"hw",
+    ev:"Its main-RAM clear is load-bearing: without it a SWP cart lock read SDRAM garbage, and simulation hid the bug by zero-filling (commit 3005214). Under fw_boot it stops after the chip ID.",
+    src:["rtl/nds_loader.vhd:39 entity","rtl/nds_top.vhd:760 iloader","rtl/nds_top.vhd:776-777 arm9/arm7_entry_eff"]}),
+  B({id:"debug", nm:"nds_debug", rl:"IS-NITRO-style mailbox: halt, release, breakpoints, register read, main-RAM peek, boot reset", clk:"clk1x", st:"hw",
+    ev:"The one channel that returns clean data when the screen is white; the deployed RBF answered it with a coherent probe decode. BOOT_HOLD => 0 in the play image.",
+    src:["rtl/nds_debug.vhd:42 entity","rtl/nds_top.vhd:1070 idebug","NDS.sv:615-616 DBG_CMD_ADDR / DBG_RSP_ADDR"]}),
+  B({id:"wram", nm:"nds_wram (32 KB shared)", rl:"WRAMCNT's four mapping modes across both CPUs; unmapped ARM9 access reads open bus", clk:"clk1x", st:"sim",
+    src:["rtl/nds_wram.vhd:24 entity","rtl/nds_wram.vhd:69-76 wramcnt cases","rtl/nds_wram.vhd:95 ADDR_WIDTH 13 x BYTES 4"]}),
+  B({id:"mainram", nm:"nds_mainram", rl:"4 MB in SDRAM behind two guest channels; arm7_priority breaks simultaneous pendings", clk:"mixed", st:"hw",
+    ev:"Issues only at clkMemIndex 0 and keeps the request bus until both queues drain, so a foreign op can never interleave between back-to-back grants.",
+    src:["rtl/nds_mainram.vhd:21 entity","rtl/nds_mainram.vhd:1-15 header","rtl/nds_mainram.vhd:178 clkMemIndex = 0","rtl/nds_top.vhd:1686 imainram"]}),
+  B({id:"vram", nm:"nds_vram", rl:"Bank stores, both CPU datapaths, and the pipelined 8-channel renderer line server", clk:"clk1x", st:"sim", rp:1,
+    ev:"tb_vram_torture and tb_vram_ls pass, but until 5cf5fe0 neither modelled A-D back-pressure. The reset clear pass is proven by pre-dirtying every bank.",
+    src:["rtl/nds_vram.vhd:75 entity","rtl/nds_vram.vhd:294 BRAM_AW","rtl/nds_vram.vhd:355 RQ_DEPTH 8","rtl/nds_vram.vhd:356 AD_DEPTH 4","rtl/nds_top.vhd:1708 ivram"]}),
+  B({id:"vrammap", nm:"nds_vram_map", rl:"VRAMCNT decode: hit bits and offsets for all nine banks, per access", clk:"none", st:"sim",
+    ev:"Unit-tested against the SDK truth table (sim/run_vram_map_tb.sh) - the oldest passing test in the repo.",
+    src:["rtl/nds_vram_map.vhd:38 entity","rtl/nds_vram.vhd:458 idec9"]}),
+  B({id:"timing", nm:"nds_gpu_timing", rl:"Dot/line/frame counters, DISPSTAT, vcount match, drawline and drawObj triggers", clk:"clk1x", st:"sim", rp:1,
+    src:["rtl/nds_gpu_timing.vhd:41 entity","rtl/nds_gpu_timing.vhd:80 LINE_CYCLES = 355*6","rtl/nds_top.vhd:1771 itiming"]}),
+  B({id:"fb", nm:"nds_fb_ddr3", rl:"Per-engine line accumulators, burst writer on ddram ch5, double-banked scanout prefetch on ch6", clk:"mixed", st:"hw",
+    ev:"Also carries twelve raw telemetry words into DDR3 where devmem can read them without depending on rendering.",
+    src:["rtl/nds_fb_ddr3.sv:25 module","NDS.sv:1172 fb_ddr3","NDS.sv:713-714 FB_HW_BASE / FB_BURST 128"]}),
+  B({id:"sdram", nm:"sdram.sv", rl:"External 16-bit SDRAM controller, 3 channels, BURST_LENGTH 4, CAS 2, self-refresh when idle", clk:"clkmem", st:"hw", rp:1,
+    src:["rtl/sdram.sv:21 module","rtl/sdram.sv:74 BURST_LENGTH = 4","rtl/sdram.sv:77 CAS_LATENCY = 2","NDS.sv:945 instance"]}),
+  B({id:"ddram", nm:"ddram.sv", rl:"HPS DDR3 bridge, 6 channels with its own round-robin and a two-channel beat cache", clk:"clk1x", st:"hw",
+    ev:"DDR3Mux.vhd is compiled into the project (rtl/nds.qip:22) but never instantiated - this module arbitrates.",
+    src:["rtl/ddram.sv:22 module","rtl/ddram.sv:35-80 ch1..ch6","rtl/ddram.sv:114 cached [2:1]","NDS.sv:716 instance"]}),
+
+  /* ---- engines ---- */
+  B({id:"gpu2dfast", nm:"nds_gpu2d_fast", rl:"Clock-domain wrapper. GPU_FAST=0 elaborates gslow and wires straight through on clk1x", clk:"clk1x", st:"hw", rp:1,
+    ev:"Always instantiated; only one generate branch is elaborated. The gfast branch is currently non-functional against the accept-based VRAM protocol.",
+    src:["rtl/nds_gpu2d_fast.vhd:92 entity","rtl/nds_gpu2d_fast.vhd:207 gslow","rtl/nds_gpu2d_fast.vhd:241 gfast","rtl/nds_top.vhd:1806 igpu2d_a"]}),
+  B({id:"gpu2d_a", nm:"nds_gpu2d (engine A)", rl:"72 register slices, 4 BG layers, OBJ, merge, master brightness, ext-palette shadow fill", clk:"clk1x", st:"sim", rp:1,
+    ev:"Renders pixel-exact against melonDS framebuffer dumps on both engines. Display modes 2 and 3 (VRAM / main-mem FIFO) are unimplemented and render like mode 1.",
+    src:["rtl/nds_gpu2d.vhd:37 entity","rtl/nds_gpu2d.vhd:127 REGCOUNT = 72","rtl/nds_gpu2d.vhd:1456 dispmode 2/3 unimplemented"]}),
+  B({id:"gpu2d_b", nm:"nds_gpu2d (engine B)", rl:"Same entity with is_engine_b='1': no 3D slot, 128 KB flat spaces, ext-pal from H/I, register window 0x1000", clk:"clk1x", st:"sim", rp:1,
+    ev:"Its bus sees Adr(12) stripped so the shared register map decodes; outside the window the address is forced unmatchable.",
+    src:["rtl/nds_top.vhd:1860 igpu2d_b","rtl/nds_top.vhd:1836-1843 io_bus9b","rtl/nds_top.vhd:1855-1856 mod 32768 wrap"]}),
+  B({id:"d-text", nm:"nds_drawer_text x4", rl:"One instance per BG layer. v2 runs a decoupled prefetch pipeline with a 4-deep tile queue", clk:"clk1x", st:"sim", rp:1,
+    ev:"Proven pixel-identical to the v1 reference by sim/run_drawer_text_equiv.sh, and 192/192 lines at the bench's latency. Uncommitted, and never run against real back-pressure on hardware.",
+    src:["rtl/nds_drawer_text.vhd:66 entity","rtl/nds_drawer_text.vhd:116 TQ_DEPTH = 4","rtl/nds_gpu2d.vhd:636 itext generate"]}),
+  B({id:"d-aff", nm:"nds_drawer_affine x2", rl:"BG2/BG3 rotate-scale. Instantiated in parallel with the other two and muted by bgtype", clk:"clk1x", st:"sim", rp:1,
+    src:["rtl/nds_drawer_affine.vhd:17 entity","rtl/nds_gpu2d.vhd:672 iaff","rtl/nds_gpu2d.vhd:626-629 drawline gating"]}),
+  B({id:"d-ext", nm:"nds_drawer_extended x2", rl:"BG2/BG3 extended: 8bpp affine and direct-colour bitmap variants, ext-palette aware", clk:"clk1x", st:"sim", rp:1,
+    src:["rtl/nds_drawer_extended.vhd:21 entity","rtl/nds_gpu2d.vhd:703 iext"]}),
+  B({id:"d-obj", nm:"nds_drawer_obj", rl:"Sprites: 1D/2D tile mapping strides, bitmap OBJs, OBJ ext-palette, hblank-free. Pre-renders the next line", clk:"clk1x", st:"sim", rp:1,
+    ev:"Cannot use the drawline drop gate the BGs use, because it runs a line ahead; its own busy is the gate.",
+    src:["rtl/nds_drawer_obj.vhd:38 entity","rtl/nds_gpu2d.vhd:742 iobj","rtl/nds_gpu2d.vhd:621 drawobj_acc"]}),
+  B({id:"d-merge", nm:"nds_drawer_merge", rl:"Four BG line buffers + OBJ buffer -> windows, priority, colour effects, 18-bit BGR666 out", clk:"clk1x", st:"sim", rp:1,
+    ev:"sim/run_gpu_merge.sh. NDS colour math is done in 6-bit space with melonDS's rounding biases.",
+    src:["rtl/nds_drawer_merge.vhd:31 entity","rtl/nds_gpu2d.vhd:1391 imerge"]}),
+  B({id:"arb", nm:"BG VRAM arbiter", rl:"Rotating priority over the four BG layers, one request per cycle, 8-deep owner FIFO", clk:"clk1x", st:"sim", rp:1,
+    ev:"v2. Answers come back in issue order, so popping the FIFO routes each to the right BG with no tag on the wire. Only the BG channels pass through here.",
+    src:["rtl/nds_gpu2d.vhd:1022 b_arb block","rtl/nds_gpu2d.vhd:1023 OS_DEPTH = 8","rtl/nds_gpu2d.vhd:1047 bgv_data capture"]}),
+  B({id:"pal", nm:"palette RAMs", rl:"1 KB standard palette, replicated: one copy per BG plus one for OBJ, so no reader shares a port", clk:"clk1x", st:"sim", rp:1,
+    ev:"Backdrop colour (entry 0) is snooped into a register on CPU writes. Writes are dropped while the owning engine is powered off, per melonDS.",
+    src:["rtl/nds_gpu2d.vhd:821 ipal_obj","rtl/nds_gpu2d.vhd:858 ipal_bg per BG","rtl/nds_top.vhd:1847-1852 half split + POWCNT gate"]}),
+  B({id:"eps", nm:"ext-palette slot RAMs", rl:"32 KB BG ext-palette as four separate 8 KB slot RAMs, refilled from VRAM during vblank", clk:"clk1x", st:"sim", rp:1,
+    src:["rtl/nds_gpu2d.vhd:318 EPSLOT_WORDS = 2048","rtl/nds_gpu2d.vhd:952 gepslot generate","rtl/nds_gpu2d.vhd:1125 shadow fill"]}),
+  B({id:"oam", nm:"OAM", rl:"1 KB sprite attribute table per engine; the CPU writes the 2 KB space, low half A, high half B", clk:"clk1x", st:"sim",
+    src:["rtl/nds_gpu2d.vhd:882 ioam","rtl/nds_top.vhd:1850-1852 oam half split"]}),
+  B({id:"lb", nm:"line buffers", rl:"One 256-entry buffer per BG plus a 512-entry OBJ buffer carrying colour and settings", clk:"clk1x", st:"sim", rp:1,
+    src:["rtl/nds_gpu2d.vhd:1223 ilb per BG","rtl/nds_gpu2d.vhd:1262 iobjbuf ADDR_WIDTH 9"]})
+];
+
+/* ---- hierarchy ---- */
+var TREE = [
+  {b:"emu", kids:[
+    {b:"pll"},{b:"hpsio"},{b:"sdram"},{b:"ddram"},{b:"fb"},
+    {b:"wrap", kids:[
+      {b:"top", open:true, kids:[
+        {grp:"ARM9 island (clk2x port, tied to clk_sys)"},
+        {b:"cpu9"},{b:"membus9", kids:[{b:"cache9"}]},{b:"itcm"},{b:"dtcm"},{b:"bios9"},{b:"bridge"},
+        {grp:"ARM7"},
+        {b:"cpu7"},{b:"membus7"},{b:"bios7"},{b:"wram7"},
+        {grp:"Per-CPU peripherals"},
+        {b:"dma9"},{b:"dma7"},{b:"timers"},{b:"irq"},
+        {grp:"Shared"},
+        {b:"ipc"},{b:"syscnt"},{b:"debug"},{b:"loader"},{b:"card"},{b:"spi"},{b:"rtc"},{b:"sound"},
+        {grp:"Memory fabric"},
+        {b:"wram"},{b:"mainram"},{b:"vram", kids:[{b:"vrammap"}]},
+        {grp:"Video"},
+        {b:"timing"},
+        {b:"gpu2dfast", kids:[
+          {b:"gpu2d_a", kids:[
+            {b:"d-text"},{b:"d-aff"},{b:"d-ext"},{b:"d-obj"},{b:"arb"},{b:"d-merge"},
+            {b:"pal"},{b:"eps"},{b:"oam"},{b:"lb"}
+          ]},
+          {b:"gpu2d_b"}
+        ]}
+      ]}
+    ]}
+  ]}
+];
+
+/* ---- memory diagram ---- */
+var MEM_NODES = {
+  A:[
+    {id:"m-arm9", nm:"ARM9 island", rl:"cache fills + uncached", clk:"clk2x", st:"sim",
+      dt:"Reaches main RAM through nds_cache9 for cacheable accesses and directly for uncached ones. Everything else in its map (TCM, BIOS, WRAM, palette, OAM, IO) never leaves the chip.",
+      src:["rtl/nds_membus9.vhd:479 T_MAIN","rtl/nds_top.vhd:1251-1252 mr_* port"]},
+    {id:"m-arm7", nm:"ARM7", rl:"uncached, no caches at all", clk:"clk1x", st:"sim",
+      src:["rtl/nds_membus7.vhd:154 T_MAIN","rtl/nds_top.vhd:1483-1484 mr7_*"]},
+    {id:"m-loader", nm:"nds_loader", rl:"boot staging + zero pass + verify", clk:"clk1x", st:"hw",
+      dt:"Borrows the ARM9 main-RAM port outright while ld_busy - the CPUs are in reset, so nothing can collide.",
+      src:["rtl/nds_top.vhd:822-831 mem9 owner mux"]},
+    {id:"m-peek", nm:"debug peek", rl:"mailbox op, second borrower", clk:"clk1x", st:"hw",
+      dt:"Borrows the same ARM9 port, below the loader and above the CPU. It cannot read IO or WRAM - only this main-RAM channel.",
+      src:["rtl/nds_top.vhd:804-833","rtl/nds_debug.vhd:42"]},
+    {id:"m-cvram", nm:"CPU VRAM ports", rl:"ARM9 + ARM7, serialised", clk:"clk1x", st:"sim",
+      dt:"Two ports into nds_vram with alternating grant, matching the single VRAM arbiter on hardware. Writes fan out to every hit bank; reads OR them; unmapped reads return 0.",
+      src:["rtl/nds_vram.vhd:12-15 port protocol","rtl/nds_vram.vhd:89-104"]},
+    {id:"m-rend", nm:"renderer, 8 channels", rl:"BG / OBJ / BG-extpal / OBJ-extpal x2 engines", clk:"clk1x", st:"sim", rp:1,
+      dt:"Read-only. Requests are accepted one per cycle and retire in issue order through a completion queue, so a channel may hold several outstanding and needs no tags.",
+      src:["rtl/nds_vram.vhd:17-31 channel list","rtl/nds_top.vhd:1719-1736 eight channels"]},
+    {id:"m-card", nm:"nds_card", rl:"512-byte page reads", clk:"clk1x", st:"sim",
+      src:["rtl/nds_card.vhd:71","NDS.sv:545 card_addr [24:0] word"]},
+    {id:"m-spi", nm:"nds_spi firmware", rl:"byte-paced sequential reads", clk:"clk1x", st:"hw",
+      src:["rtl/nds_spi.vhd:27","NDS.sv:474-479 fw_addr / fw_req"]},
+    {id:"m-mbox", nm:"debug mailbox", rl:"poll + response, ~1 read / 4096 cycles", clk:"clk1x", st:"hw",
+      src:["NDS.sv:609-700"]},
+    {id:"m-fbw", nm:"framebuffer writer", rl:"finished lines, burst 128", clk:"clk1x", st:"hw",
+      src:["rtl/nds_fb_ddr3.sv:25","NDS.sv:751-756 ch5"]},
+    {id:"m-scan", nm:"scanout prefetch", rl:"display line N+1", clk:"clkvid", st:"hw",
+      src:["NDS.sv:758-763 ch6","NDS.sv:1154-1157 pf_*"]},
+    {id:"m-hps", nm:"HPS / ioctl", rl:"stages cart, firmware, both BIOS images", clk:"clk1x", st:"hw",
+      dt:"The .nds image is written straight into DDR3 by the HPS in load-address form; there is no SDRAM copy of the ROM. Firmware goes through ddram ch1, whose writes also invalidate that channel's beat cache.",
+      src:["NDS.sv:256 FS3,NDS,Load,30000000","NDS.sv:466-471 fw staging"]}
+  ],
+  B:[
+    {id:"b-mainram", nm:"nds_mainram", rl:"two guest channels, arm7_priority, lock pairs for SWP", clk:"mixed", st:"hw",
+      dt:"Latches a request on clk1x, issues on clkMem at phase 0 when mainram_allow is high, re-registers done and read data back onto clk1x. Holds mainram_busy until both queues drain.",
+      src:["rtl/nds_mainram.vhd:1-15","rtl/nds_mainram.vhd:109-110 active/busy","rtl/nds_mainram.vhd:178"]},
+    {id:"b-vram", nm:"nds_vram", rl:"bank decode, CPU serialiser, pipelined line server", clk:"clk1x", st:"sim", rp:1,
+      dt:"Splits every access by VRAMCNT: E..I hits are BRAM port-B reads (2 cycles), A..D hits leave the chip. Completion queue is 8 deep; up to 4 A-D ops in flight; one 8-byte line cached per renderer channel.",
+      src:["rtl/nds_vram.vhd:355-356","rtl/nds_vram.vhd:413-427 line cache","rtl/nds_vram.vhd:448 AD_CACHE_EN"]},
+    {id:"b-pager", nm:"NDS.sv DDR3 pagers", rl:"one small FSM per client, all on clk1x", clk:"clk1x", st:"hw",
+      dt:"Three of them: firmware (ch1, latches a request that lands mid-write), card (ch2, plus a cache-flush op after the HPS rewrites DDR3 behind it), mailbox (ch4, the only uncached channel).",
+      src:["NDS.sv:490-537 fw","NDS.sv:559-600 card","NDS.sv:645-710 mailbox"]},
+    {id:"b-fb", nm:"nds_fb_ddr3", rl:"line accumulators + burst writer + double-banked prefetch", clk:"mixed", st:"hw",
+      src:["rtl/nds_fb_ddr3.sv:25","NDS.sv:1172"]}
+  ],
+  C:[
+    {id:"c-sd2", nm:"sdram ch2", rl:"32-bit R/W + byte enables, addr [26:1] - SHARED", clk:"clkmem", st:"hw",
+      dt:"Main RAM owns it. The CPU VRAM path borrows it: raise a pending flag, drop mainram_allow, wait at least four cycles and for mainram_busy to fall (A_DRAIN), run exactly one op, hand it back. Refresh is not gated by this - sdram.sv self-refreshes with refresh_req tied low.",
+      src:["NDS.sv:960-968","NDS.sv:805-874 vsrv arbiter","NDS.sv:849 drain_cnt >= 4"]},
+    {id:"c-sd1", nm:"sdram ch1", rl:"64-bit read-only, addr [26:1], ONE request in flight", clk:"clkmem", st:"hw", rp:1,
+      dt:"The renderer's own channel; no scheduler needed because sdram.sv serialises channels internally. ch1_rq is a single bit, so back-pressure is exported to the core as vrsrv_ready and the core holds its request until an accepting edge at clkMemIndex 2.",
+      src:["NDS.sv:953-958","NDS.sv:917 vrsrv_ready assign","NDS.sv:922 accept at index 2","rtl/sdram.sv:40-45"]},
+    {id:"c-bram", nm:"on-chip BRAM ports", rl:"M10K, dual port: A = CPU, B = renderer", clk:"mixed", st:"sim", rp:1,
+      dt:"Never leaves the chip and never contends with SDRAM. This is why banks E..I are the fast VRAM and A..D are not.",
+      src:["rtl/nds_vram.vhd:7 header","rtl/nds_vram.vhd:673 ibank generate"]},
+    {id:"c-dd1", nm:"ddram ch1", rl:"64-bit read / 16-bit write lanes, beat-cached", clk:"clk1x", st:"hw",
+      src:["NDS.sv:720-725","rtl/ddram.sv:35-40"]},
+    {id:"c-dd2", nm:"ddram ch2", rl:"32-bit read, beat-cached", clk:"clk1x", st:"hw",
+      src:["NDS.sv:727-732","rtl/ddram.sv:42-47"]},
+    {id:"c-dd4", nm:"ddram ch4", rl:"64-bit R/W with byte enables, UNCACHED", clk:"clk1x", st:"hw",
+      dt:"The only channel with no beat cache, which is exactly why the mailbox uses it: every poll must see the HPS's latest write with none of the cache-displacement dance ch1 and ch2 need.",
+      src:["NDS.sv:741-748","NDS.sv:609-613","rtl/ddram.sv:114 cached [2:1]"]},
+    {id:"c-dd5", nm:"ddram ch5", rl:"64-bit write burst, 128 beats", clk:"clk1x", st:"hw",
+      src:["NDS.sv:751-756","NDS.sv:714 FB_BURST = 128"]},
+    {id:"c-dd6", nm:"ddram ch6", rl:"64-bit read burst, 128 beats", clk:"clk1x", st:"hw",
+      src:["NDS.sv:758-763"]}
+  ],
+  D:[
+    {id:"d-sdmain", nm:"SDRAM main RAM", rl:"4 MB at byte offset 0x800000", clk:"none", st:"hw",
+      dt:"Softmap_NDS_MAINRAM_ADDR = 8388608. Both CPUs address the same window. Main RAM on real hardware is the slow path games are tuned around, so SDRAM latency lands in roughly the regime the software expects.",
+      src:["rtl/nds_top.vhd:53 generic default","NDS.sv:768-769 SDRAM map"]},
+    {id:"d-sdvram", nm:"SDRAM VRAM A-D", rl:"4 x 128 KB at 0x000000, bank * 128 KB", clk:"none", st:"hw", rp:1,
+      dt:"The fitting bet: 512 KB that will not fit in M10K alongside everything else. Reached two different ways - the renderer read-only on ch1, the CPU read/write on ch2 by borrowing it from main RAM.",
+      src:["NDS.sv:768 SDRAM map (v1)","rtl/nds_vram.vhd:281 CLR_SRV_LAST 32767 words per bank"]},
+    {id:"d-bramvram", nm:"BRAM VRAM E-I", rl:"64 + 16 + 16 + 32 + 16 = 144 KB", clk:"none", st:"sim", rp:1,
+      dt:"Sizes read straight off BRAM_AW: E 14-bit, F 12, G 12, H 13, I 12, all x 4 bytes. Only these banks can serve extended palettes - A..D never can, which is a hardware constraint, not a choice.",
+      src:["rtl/nds_vram.vhd:294 BRAM_AW","rtl/nds_vram.vhd:280 CLR_BRAM_LAST 16383"]},
+    {id:"d-bramcore", nm:"BRAM core stores", rl:"WRAM 32K, WRAM7 64K, ITCM 32K, DTCM 16K, caches 12K, BIOS 4K+16K, palettes, OAM, ext-pal 40K, line buffers, card page 8K", clk:"none", st:"sim",
+      dt:"All M10K. The docs' BRAM ledger budgets 32 KB for the ARM9 BIOS; the instantiated ROM is 4 KB, which is the real size.",
+      src:["rtl/nds_top.vhd:1304 / :1333 / :1504","rtl/nds_bios9.vhd:42","rtl/nds_gpu2d.vhd:318"]},
+    {id:"d-ddcart", nm:"DDR3 cart image", rl:"from byte 0; card_addr is a 25-bit word address = 128 MB reachable", clk:"none", st:"hw",
+      dt:"Staged by the HPS at load address 0x30000000 and paged by the card state machine. No SDRAM copy, unlike the GBA donor - NDS card timing is slow and FIFO'd, so DDR3 latency hides fine.",
+      src:["NDS.sv:253-256","NDS.sv:472 comment: cd_addr tops out at 128MB"]},
+    {id:"d-ddfw", nm:"DDR3 firmware", rl:"256 KB at byte 0x0FF00000", clk:"none", st:"hw",
+      dt:"nds_spi serves fw[addr & 0x3FFFF] - a 2 Mbit chip that mirror-wraps at 256 KB. Note nds_port_wrap.vhd:62 calls this port \"128 KB\": that comment is wrong, and the port carries 16 bits of WORD address (byte addr 17:2), which is 256 KB.",
+      src:["rtl/nds_spi.vhd:241 fw[addr & 0x3FFFF]","rtl/nds_spi.vhd:44 fw_addr 17 downto 2","NDS.sv:472 FW_HW_BASE"]},
+    {id:"d-ddfb", nm:"DDR3 framebuffer", rl:"at byte 0x0FE00000, 32bpp {14'b0, BGR666}", clk:"none", st:"hw",
+      dt:"Two 256x192 screens stacked, single-buffered, two pixels per 64-bit beat. An occasional tear is accepted; per-line atomicity makes it a horizontal seam only.",
+      src:["NDS.sv:713 FB_HW_BASE","NDS.sv:1143-1153"]},
+    {id:"d-ddmbox", nm:"DDR3 mailbox", rl:"cmd 0x0FFF0000, rsp 0x0FFF0008", clk:"none", st:"hw",
+      src:["NDS.sv:615-616"]}
+  ]
+};
+
+var MEM_EDGES = [
+  ["m-arm9","b-mainram",""],["m-arm7","b-mainram",""],["m-loader","b-mainram","borrow"],["m-peek","b-mainram","borrow"],
+  ["b-mainram","c-sd2","phase 0"],
+  ["m-cvram","b-vram",""],["m-rend","b-vram","",1],
+  ["b-vram","c-bram","E..I",1],
+  ["b-vram","c-sd2","vsrv borrow"],
+  ["b-vram","c-sd1","rsrv 64b",1],
+  ["c-sd2","d-sdmain",""],["c-sd2","d-sdvram","A..D r/w"],
+  ["c-sd1","d-sdvram","A..D read",1],
+  ["c-bram","d-bramvram","",1],["c-bram","d-bramcore",""],
+  ["m-card","b-pager",""],["m-spi","b-pager",""],["m-mbox","b-pager",""],["m-hps","b-pager","fw"],
+  ["b-pager","c-dd2","card"],["b-pager","c-dd1","fw"],["b-pager","c-dd4","mbox"],
+  ["c-dd2","d-ddcart",""],["c-dd1","d-ddfw",""],["c-dd4","d-ddmbox",""],
+  ["m-fbw","b-fb",""],["m-scan","b-fb",""],
+  ["b-fb","c-dd5",""],["b-fb","c-dd6",""],
+  ["c-dd5","d-ddfb",""],["c-dd6","d-ddfb",""],
+  ["m-hps","d-ddcart","direct"]
+];
+
+var CHANNELS = [
+  ["sdram ch1","renderer VRAM A-D reads (vrsrv)","64-bit read-only, [26:1], 8-byte line","One request in flight. vrsrv_ready is real back-pressure; the core holds its request and the transfer is the edge at clkMemIndex 2.","NDS.sv:953, :917, :922"],
+  ["sdram ch2","main RAM, borrowed by CPU VRAM A-D","32-bit R/W + 4 byte enables, [26:1]","nds_mainram owns it; vsrv parks it (mainram_allow low), drains >= 4 cycles and until mainram_busy falls, runs one op, releases.","NDS.sv:960, :805-874"],
+  ["sdram ch3","unused","-","Tied off: req 0, addr 0.","NDS.sv:970-975"],
+  ["ddram ch1","SPI firmware image + HPS firmware staging","64-bit read, 16-bit write lanes, [27:1]","Beat-cached. Writes from the download invalidate that cache, which is how download/read coherency is kept.","NDS.sv:720, :466-471"],
+  ["ddram ch2","card ROM image","32-bit read, [27:1]","Beat-cached. A dummy read at 0x1FFFFFE displaces the cache after the HPS rewrites DDR3 behind it (flush_req/flush_ack).","NDS.sv:727, :575-584"],
+  ["ddram ch3","unused","-","Tied off.","NDS.sv:734-739"],
+  ["ddram ch4","debug mailbox","64-bit R/W + byte enables","The only uncached channel - required, because every poll must see the HPS's newest write.","NDS.sv:741, :609-613"],
+  ["ddram ch5","framebuffer write","64-bit write, burst 128 beats","Per-engine line accumulators feed a drain FSM.","NDS.sv:751, :714"],
+  ["ddram ch6","scanout prefetch","64-bit read, burst 128 beats","Fetches display line N+1 into a double-banked line buffer while N shows.","NDS.sv:758"],
+  ["ARM9 main-RAM port","loader, then debug peek, then CPU","32-bit, dword address [21:2]","Strict priority mux in nds_top; the CPU's done is suppressed for both borrowed cases.","rtl/nds_top.vhd:822-833"],
+  ["ARM7 membus","DMA7, then sound fetch, then CPU","32-bit","Sound is a second, lower-priority guest: it only gets the bus when DMA7 neither holds nor wants it, and DMA7's grant is held off while a sound word is in flight.","rtl/nds_top.vhd:1428-1443"],
+  ["nds_vram CPU ports","ARM9 and ARM7","word ops with byte enables","Serialised internally with alternating grant, matching the single VRAM arbiter on hardware.","rtl/nds_vram.vhd:12-15"]
+];
+
+var MEMROWS = [
+  ["Main RAM","4 MB","SDRAM @ 0x800000","Softmap_NDS_MAINRAM_ADDR = 8388608","rtl/nds_top.vhd:53"],
+  ["VRAM A-D","4 x 128 KB","SDRAM @ 0x000000","32,768 words per bank (CLR_SRV_LAST)","rtl/nds_vram.vhd:281"],
+  ["VRAM E","64 KB","BRAM","ADDR_WIDTH 14 x 4 bytes","rtl/nds_vram.vhd:294"],
+  ["VRAM F, G, I","16 KB each","BRAM","ADDR_WIDTH 12 x 4 bytes","rtl/nds_vram.vhd:294"],
+  ["VRAM H","32 KB","BRAM","ADDR_WIDTH 13 x 4 bytes","rtl/nds_vram.vhd:294"],
+  ["Shared WRAM","32 KB","BRAM","ADDR_WIDTH 13 x 4 bytes, 4 WRAMCNT modes","rtl/nds_wram.vhd:95"],
+  ["ARM7 WRAM","64 KB","BRAM","ADDR_WIDTH 14 x 4 bytes","rtl/nds_top.vhd:1504"],
+  ["ITCM","32 KB","BRAM","ADDR_WIDTH 13 x 4 bytes","rtl/nds_top.vhd:1304"],
+  ["DTCM","16 KB","BRAM","ADDR_WIDTH 12 x 4 bytes","rtl/nds_top.vhd:1333"],
+  ["I-cache","8 KB + tags","BRAM","4 ways x 512 words; tag ADDR_WIDTH 6","rtl/nds_cache9.vhd:396"],
+  ["D-cache","4 KB + tags","BRAM","4 ways x 256 words; tag ADDR_WIDTH 5","rtl/nds_cache9.vhd:425"],
+  ["ARM9 BIOS","4 KB","BRAM","t_rom 0..1023 words - not 32 KB","rtl/nds_bios9.vhd:42"],
+  ["ARM7 BIOS","16 KB","BRAM","t_rom 0..4095 words","rtl/nds_bios7.vhd:42"],
+  ["Standard palette","1 KB, replicated","BRAM","256 words; one copy per BG + one for OBJ, per engine","rtl/nds_gpu2d.vhd:858"],
+  ["BG ext palette","4 x 8 KB","BRAM","EPSLOT_WORDS = 2048, four separate slot RAMs","rtl/nds_gpu2d.vhd:318"],
+  ["OAM","1 KB","BRAM","256 words per engine","rtl/nds_gpu2d.vhd:882"],
+  ["Line buffers","256 x 4 + 512 OBJ","BRAM","per engine","rtl/nds_gpu2d.vhd:1223, :1262"],
+  ["Card page store","8 KB","BRAM","t_sram 0..8191 bytes","rtl/nds_card.vhd:172"],
+  ["Cart image","<= 128 MB reachable","DDR3 @ 0","card_addr is a 25-bit word address","NDS.sv:545"],
+  ["Firmware NVRAM","256 KB","DDR3 @ 0x0FF00000","fw[addr & 0x3FFFF]; 16-bit word address","rtl/nds_spi.vhd:241"],
+  ["Framebuffer","2 x 256 x 192 x 32bpp","DDR3 @ 0x0FE00000","two pixels per 64-bit beat","NDS.sv:713"],
+  ["Mailbox","2 words","DDR3 @ 0x0FFF0000","cmd + rsp, uncached channel","NDS.sv:615"]
+];
+
+var MAP9 = [
+  ["ITCM hit","T_ITCM","32 KB BRAM, checked before the region case"],
+  ["DTCM hit","T_DTCM","16 KB BRAM, loses to ITCM on overlap"],
+  ["0xFFFF0000-7FFF","T_BROM","nds_bios9, 4 KB, no done handshake"],
+  ["0x02xxxxxx","T_MAIN","nds_cache9 then nds_mainram then SDRAM ch2"],
+  ["0x03xxxxxx","T_WRAMSH","nds_wram, only if WRAMCNT maps it; else open bus"],
+  ["0x04xxxxxx (A23=0)","T_IO","IO wired-OR; unclaimed reads return 0"],
+  ["0x05xxxxxx","T_PAL","palette write port, 2 KB space split by engine"],
+  ["0x06xxxxxx","T_VRAM","nds_vram CPU port 9"],
+  ["0x07xxxxxx","T_OAM","OAM write port, 2 KB space split by engine"],
+  ["anything else","T_OPEN","open bus"]
+];
+var MAP7 = [
+  ["0x00xxxxxx","T_BIOS","nds_bios7, 16 KB"],
+  ["0x02xxxxxx","T_MAIN","nds_mainram then SDRAM ch2"],
+  ["0x037xxxxx","T_WRAM7","ARM7-private WRAM, 64 KB"],
+  ["0x03xxxxxx","T_WRAMSH","nds_wram, WRAMCNT-banked"],
+  ["0x04xxxxxx","T_IO","IO wired-OR, includes IPCFIFORECV at +0x100000"],
+  ["0x048xxxxx","-","wifi: open bus"],
+  ["0x06xxxxxx","T_VRAM","nds_vram CPU port 7; only C/D in MST=2 can hit"],
+  ["anything else","T_OPEN","open bus"]
+];
+
+var CHAIN = [
+  {ix:"01", nm:"nds_drawer_text", dom:"clk1x", st:"sim", dp:"TQ_DEPTH 4", rl:"Fetch runs ahead of pixels. Map word, then char row words, several entries in flight at once.",
+   det:"v2 replaced a per-pixel state walk (CALCADDR -> WAITREAD_TILE -> CALCCOLORADDR -> WAITREAD_COLOR) that cost 21.7 cycles per pixel against a budget near 8. A small tag FIFO routes each answer to the entry and word half that asked for it.",
+   src:["rtl/nds_drawer_text.vhd:116 TQ_DEPTH = 4","rtl/nds_drawer_text.vhd:19-45 v2 header"]},
+  {ix:"02", nm:"bgtype mux", dom:"clk1x", st:"sim", dp:"", rl:"BG0/BG1 take the text drawer; BG2/BG3 select text, affine or extended by mode.",
+   det:"All three drawers for BG2/BG3 are instantiated in parallel; the unselected ones have their req and addr forced to 0 and their drawline gated off.",
+   src:["rtl/nds_gpu2d.vhd:999-1010 gen_vmux","rtl/nds_gpu2d.vhd:623-629 drawline gates"]},
+  {ix:"03", nm:"BG VRAM arbiter", dom:"clk1x", st:"sim", dp:"OS_DEPTH 8", rl:"Rotating priority over four layers, one request per cycle, owner FIFO for in-order answers.",
+   det:"Only the four BG layers pass through here. It also captures srv_bg_data on the same edge as the done it belongs to - the data line is only valid on that cycle, and with several ops in flight a drawer would otherwise read the next request's word.",
+   src:["rtl/nds_gpu2d.vhd:1023 OS_DEPTH = 8","rtl/nds_gpu2d.vhd:1047 bgv_data capture"]},
+  {ix:"04", nm:"nds_vram line server", dom:"clk1x", st:"sim", dp:"RQ_DEPTH 8", rl:"Rotating pick across all 8 renderer channels, completion queue, retire in issue order.",
+   det:"v1 was a six-state FSM serving one request at a time - five cycles even for a BRAM hit, measured busy 58-61% of every rendered line. v2 pipelines instead of shortening: head-of-line blocking costs latency, never throughput.",
+   src:["rtl/nds_vram.vhd:329-356","rtl/nds_vram.vhd:623 rdispatch"]},
+  {ix:"05", nm:"per-channel line cache", dom:"clk1x", st:"sim", dp:"8 x 8 bytes", rl:"One 8-byte line per channel. Removed 76% of A-D reads on the mode-0 bench.",
+   det:"Indexed by channel, so no associative search and no channel can evict another's line. A single shared line measured 1% - eight channels interleaving destroy it. CPU writes into A-D invalidate matching lines.",
+   src:["rtl/nds_vram.vhd:413-427","rtl/nds_vram.vhd:448 AD_CACHE_EN","rtl/nds_vram.vhd:794 invalidation"]},
+  {ix:"06", nm:"rsrv_* channel", dom:"clk1x", st:"sim", dp:"AD_DEPTH 4", rl:"64-bit, addressed by 8-byte line. Held VALID/READY - the request stays up until an accepting edge.",
+   det:"It must be a held level, not a pulse: ready cannot reflect a request that has not been presented, so a pulse is always issued on a stale ready and its safety depends on how fast ready falls. Against a model whose busy rises only once it has sampled, that dropped ops and the queue entry owed a word forever.",
+   src:["rtl/nds_vram.vhd:217-222 ports","rtl/nds_vram.vhd:179-193 why held","rtl/nds_vram.vhd:429-439 rsp staging"]},
+  {ix:"07", nm:"NDS.sv vrsrv feed", dom:"clkmem", st:"hw", dp:"1 in flight", rl:"Accepts only at clkMemIndex 2, the edge coincident with clk1x. Raises done at index 1.",
+   det:"Both ends must sample at the same edge or the channel would take a request the core goes on holding and serve it twice. This is the narrowest point in the whole chain, and the one simulation never modelled.",
+   src:["NDS.sv:876-943","NDS.sv:917 ready","NDS.sv:922 index 2"]},
+  {ix:"08", nm:"sdram.sv ch1", dom:"clkmem", st:"hw", dp:"BURST 4", rl:"Four halfwords per access = the aligned 8 bytes. CAS 2. Channels serialised internally.",
+   det:"A sequential burst wraps inside its aligned block, so an unaligned request returns the same eight bytes rotated - which is exactly why the core asks for the line and uses all of it.",
+   src:["rtl/sdram.sv:74 BURST_LENGTH = 4","rtl/sdram.sv:77 CAS_LATENCY = 2","NDS.sv:953-958"]},
+  {ix:"09", nm:"SDRAM VRAM A-D", dom:"none", st:"hw", dp:"512 KB", rl:"Bank * 128 KB at byte 0. The fitting bet the whole design rests on.",
+   det:"512 KB cannot join the 144 KB of E..I plus every other on-chip store inside 696 KB of M10K. If A-D also had to be BRAM the core would not fit, which is why this path exists at all.",
+   src:["NDS.sv:768-769","docs/MEMORY_MAP.md:50-53 ledger"]}
+];
+
+var FIXES = [
+  ["A top-level nds_wrap.vhd handles clock domains, SDRAM/DDR3 muxing and video compose.","docs/ARCHITECTURE.md:59","No such file. The boundary is nds_port_wrap.vhd and it contains no logic by design - all clocking, channel muxing and video compose live in NDS.sv.","nds_port_wrap.vhd:8"],
+  ["nds_top instantiates nds_math.vhd (div/sqrt) and nds_gx_stub.vhd (3D register facade).","docs/ARCHITECTURE.md:72-73","Neither file exists in rtl/. Grep finds no DIVCNT, SQRTCNT, GXFIFO or GXSTAT anywhere in the RTL. A game that polls the divider or GXSTAT gets an unclaimed IO read.","grep over rtl/"],
+  ["DDR3Mux arbitrates the DDR3 clients.","project inventory","DDR3Mux.vhd is compiled into the project but never instantiated. ddram.sv's own six-channel round robin arbitrates.","rtl/nds.qip:22, rtl/ddram.sv:22"],
+  ["An ISLAND generic selects the ARM9 island clock.","project inventory","No such generic on nds_top. ISLAND is a testbench generic; in hardware NDS.sv ties clk2x to clk_sys, so the island runs 1:1.","sim/tb_top_frame.vhd:61, NDS.sv:1017"],
+  ["clk2x is PLL outclk_3 at 50.270973 MHz, 1.5x clk1x.","rtl/nds_top.vhd:66-68","Stale comment. The PLL declares three outputs and there is no outclk_3. clk2x is driven from clk_sys.","rtl/pll/pll_0002.v:27, NDS.sv:1017"],
+  ["The memory clock is clk6x.","docs/MEMORY_MAP.md:98","It is 3x clk1x, not 6x - the 6x figure is inherited from the GBA donor's 16.78 MHz base. The frequency itself (100.54) is right.","rtl/pll/pll_0002.v:28"],
+  ["BIOS 9/7 need 32 + 16 KB of BRAM.","docs/MEMORY_MAP.md:44","The ARM9 BIOS ROM is 1,024 words = 4 KB, which is the real ARM9 BIOS size. Only the ARM7's 16 KB is right. The BRAM ledger is 28 KB pessimistic.","rtl/nds_bios9.vhd:42"],
+  ["Memory servers run in a clk6x domain.","docs/ARCHITECTURE.md:74","The VRAM line server is inside nds_vram on clk1x. Only sdram.sv and the two channel adapters in NDS.sv are on clkMem - which is precisely why the renderer's service rate does not scale when the engines are moved to clkMem.","rtl/nds_top.vhd:1712, rtl/nds_gpu2d_fast.vhd:24-28"],
+  ["Each engine has four BG drawers plus an OBJ drawer.","project inventory","Ten drawer instances per engine: 4 text, 2 affine, 2 extended, 1 OBJ, 1 merge. Four BG layers, but BG2/BG3 carry three alternative drawers each, selected by mode.","rtl/nds_gpu2d.vhd:635-739"],
+  ["The arbiter multiplexes the drawers onto one VRAM request channel.","project inventory","It multiplexes the four BG layers only. OBJ, BG ext-palette and OBJ ext-palette are three further independent channels per engine - eight renderer channels reach nds_vram.","rtl/nds_top.vhd:1719-1736"],
+  ["Only one of nds_gpu2d_fast's generate branches is elaborated.","project inventory","True, and worth stating precisely: the wrapper is always instantiated. GPU_FAST=0 elaborates gslow, which is bit-identical to instantiating nds_gpu2d directly on clk1x.","rtl/nds_top.vhd:1806, nds_port_wrap.vhd:176"],
+  ["Firmware boot menu = never.","docs/ARCHITECTURE.md (before 2026-07-29)","Reversed and already corrected in the doc. fw_boot is OSD-selectable on status[9]; both retail BIOSes run from their reset vectors. It still wedges at 1.588 s of DS time.","NDS.sv:1037, docs/TICKET-arm7-firmware-wedge.md"],
+  ["Per-line prefetch of VRAM A-D into MLAB/M10K line caches.","docs/MEMORY_MAP.md:35","Not what was built. There is one 8-byte line cached per renderer channel, filled on demand, plus prefetch FIFOs inside the drawers themselves.","rtl/nds_vram.vhd:413-427"],
+  ["Card ROM up to 512 MB.","docs/MEMORY_MAP.md:45","card_addr is a 25-bit word address, so 128 MB is the reachable ceiling.","NDS.sv:545, NDS.sv:472"],
+  ["The BRAM ledger totals 356 KB, of which the 2D engines take 4 (palettes + OAM).","docs/MEMORY_MAP.md:50","62 KB light. BIOS was 28 KB pessimistic, but the engines cost 88 KB for the pair: the BG ext palettes are SHADOWED inside nds_gpu2d as four 8 KB slot RAMs rather than read live out of E-I, and the standard palette is replicated per BG. Recounted off the instantiated generics: 418 KB - and the fitter counts M10K blocks, so that measured 85% of M10K.","rtl/nds_gpu2d.vhd:952, :857"],
+  ["Five SDRAM clients on one allow/active/busy arbitration pattern.","docs/MEMORY_MAP.md:102","Two channels. ch1 is read-only for the renderer and needs no scheduler; ch2 is main RAM with a CPU VRAM borrow. DMA is not a separate client - it masters a CPU membus and inherits its channel.","NDS.sv:945-976"],
+  ["The SPI firmware port is 128 KB.","nds_port_wrap.vhd:62","Wrong in the RTL comment, not in the docs - MEMORY_MAP's 256 KB is right. nds_spi serves fw[addr & 0x3FFFF] and the port carries 16 bits of word address. Comment left in place; the audit commit was prose-only.","rtl/nds_spi.vhd:241, :44"]
+];
+
+var ABSENT = [
+  {nm:"3D geometry + render", rl:"Out of scope for phase 1. Not even the register facade the plan called for: no GXFIFO, no GXSTAT anywhere in rtl/. A title that polls GXSTAT gets an unclaimed IO read returning 0.", st:"absent", src:["grep: no GXFIFO / GXSTAT in rtl/"]},
+  {nm:"Divider and square root", rl:"0x04000280-02B8. nds_math.vhd is named in the plan and does not exist; no DIVCNT or SQRTCNT decode.", st:"absent", src:["docs/ARCHITECTURE.md:72","grep: no DIVCNT in rtl/"]},
+  {nm:"Display capture (DISPCAPCNT)", rl:"No decode anywhere. Engine A's display modes 2 and 3 also render like mode 1.", st:"absent", src:["rtl/nds_gpu2d.vhd:1456"]},
+  {nm:"Wifi", rl:"0x048xxxxx is open bus in the ARM7 map; DMA7 timing mode 3 never fires. No registers, no IRQ.", st:"absent", src:["rtl/nds_membus7.vhd:164","rtl/nds_dma7.vhd:239"]},
+  {nm:"Savestates", rl:"The donor's savestate bus is plumbed through cpu9, cpu7 and both timers, but every ss_wired_out is left open. Used at boot to preset the PCs, not to save state.", st:"absent", src:["rtl/nds_top.vhd:1178-1180","rtl/nds_top.vhd:1630"]},
+  {nm:"GBA slot", rl:"Phase 2+. No cart region decode, no EXMEMCNT GBA bits consumed - exmem_gba7 is left open at the syscnt instance.", st:"absent", src:["rtl/nds_top.vhd:1670"]},
+  {nm:"Save backend (AUXSPI)", rl:"The AUXSPI registers exist in nds_card, but there is no EEPROM/Flash/FRAM device and no SD persistence path. Marked unknown rather than absent because the register side is real.", st:"unknown", src:["rtl/nds_card.vhd:111 ADR_AUXSPI"]},
+  {nm:"Touchscreen sampling", rl:"nds_spi has the TSC framing; nds_top's own header says touch and mic are not wired into it yet. Only EXTKEYIN pen-down uses the framework input.", st:"unknown", src:["rtl/nds_top.vhd:27-29","rtl/nds_top.vhd:1563 extkeyin"]},
+  {nm:"Cycle-accurate VRAM timing", rl:"A BRAM op answers in 2 cycles and an A-D op in whatever the channel takes. The accuracy pass was deferred at M1 and has not happened.", st:"unknown", src:["rtl/nds_vram.vhd:48-50"]}
+];
+
+/* ============================================================ render */
+var $ = function(s,r){return (r||document).querySelector(s);};
+var byId = {};
+BLOCKS.forEach(function(b){byId[b.id]=b;});
+["A","B","C","D"].forEach(function(k){MEM_NODES[k].forEach(function(n){byId[n.id]=n;});});
+CHAIN.forEach(function(s){byId["chain-"+s.ix]=s;});
+
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function monoize(s){return esc(s).replace(/`([^`]+)`/g,"<code>$1</code>");}
+
+var LEG = {
+  clock:[["clk1x","var(--clk1x)","clk_sys 33.514"],["clkmem","var(--clkmem)","clkMem 100.542"],["clkvid","var(--clkvid)","CLK_VIDEO 67.028"],["none","var(--clknone)","off-chip / no clock"]],
+  status:[["hw","var(--ok)","exercised on hardware"],["sim","var(--sim)","verified in simulation"],["absent","var(--absent)","not built"],["unknown","transparent","unknown"]]
+};
+function drawLegend(mode){
+  $("#legend").innerHTML = LEG[mode].map(function(l){
+    var st = l[1]==="transparent" ? "background:transparent;border-style:dashed;border-color:var(--absent)" : "background:"+l[1];
+    return '<span class="lg"><i style="'+st+'"></i>'+esc(l[2])+'</span>';
+  }).join("");
+}
+
+$("#clkcards").innerHTML = CLOCKS.map(function(c){
+  return '<div class="clkcard" style="--c:var('+c.css+')">'+
+    '<div class="hz">'+esc(c.hz)+'</div><div class="rt">'+esc(c.ratio)+'</div>'+
+    '<h3><code>'+esc(c.name)+'</code></h3><p>'+esc(c.role)+'</p>'+
+    '<button class="blk" data-clk="'+c.key+'" data-status="hw" data-detail="clk:'+c.id+'" style="margin-top:10px">'+
+      '<span class="nm">sources</span><span class="rl">'+esc(c.src[0])+'</span></button>'+
+  '</div>';
+}).join("");
+var CLKBY={};CLOCKS.forEach(function(c){CLKBY["clk:"+c.id]=c;});
+
+function blkHTML(b, extra){
+  var tag = b.dp ? '<span class="tag">'+esc(b.dp)+'</span>' : "";
+  return '<button class="blk" id="node-'+b.id+'" data-detail="'+b.id+'" data-clk="'+(b.clk||"none")+
+    '" data-status="'+(b.st||"unknown")+'"'+(b.rp?' data-rpath="1"':"")+(extra||"")+'>'+
+    '<span class="nm">'+esc(b.nm)+'</span><span class="rl">'+esc(b.rl)+'</span>'+tag+'</button>';
+}
+
+function treeHTML(nodes, depth){
+  return nodes.map(function(n){
+    if(n.grp) return '<p class="grp">'+monoize(n.grp)+'</p>';
+    var b = byId[n.b];
+    if(!b) return "";
+    var kids = n.kids && n.kids.length;
+    var open = !!n.open || depth < 3;
+    var tw = kids ? '<button class="twist" aria-expanded="'+open+'" data-tw="'+b.id+'">'+(open?"&minus;":"+")+'</button>' : '<span style="width:26px;flex:none"></span>';
+    return '<div class="tnode">'+
+      '<div class="trow">'+tw+blkHTML(b)+'</div>'+
+      (kids? '<div class="tkids" id="kids-'+b.id+'"'+(open?"":" hidden")+'>'+treeHTML(n.kids, depth+1)+'</div>' : "")+
+    '</div>';
+  }).join("");
+}
+$("#tree").innerHTML = treeHTML(TREE, 0);
+$("#tree").addEventListener("click", function(e){
+  var t = e.target.closest("[data-tw]");
+  if(!t) return;
+  var k = document.getElementById("kids-"+t.getAttribute("data-tw"));
+  var open = k.hidden;
+  k.hidden = !open;
+  t.setAttribute("aria-expanded", String(open));
+  t.innerHTML = open ? "&minus;" : "+";
+  drawWires();
+});
+
+var COLHEAD = {A:"Requester", B:"In-core arbiter", C:"Controller channel", D:"Memory"};
+$("#memcols").innerHTML = ["A","B","C","D"].map(function(k){
+  return '<div class="dcol"><div class="chd">'+COLHEAD[k]+'</div>'+
+    MEM_NODES[k].map(function(n){return blkHTML(n);}).join("")+'</div>';
+}).join("");
+
+function drawWires(){
+  var svg = $("#memwires"), lay = $("#memlabels"), host = $("#memdiag");
+  if(!svg||!lay||!host) return;
+  var hb = host.getBoundingClientRect();
+  var vb = "0 0 "+Math.max(1,hb.width)+" "+Math.max(1,hb.height);
+  svg.setAttribute("viewBox", vb); lay.setAttribute("viewBox", vb);
+  var out = [], labels = [];
+  MEM_EDGES.forEach(function(e){
+    var a = document.getElementById("node-"+e[0]), b = document.getElementById("node-"+e[1]);
+    if(!a||!b) return;
+    var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    var x1 = ra.right-hb.left, y1 = ra.top-hb.top+ra.height/2;
+    var x2 = rb.left-hb.left, y2 = rb.top-hb.top+rb.height/2;
+    var dx = Math.max(24,(x2-x1)*0.5);
+    var hot = e[3]?" hot":"";
+    out.push('<path d="M'+x1+' '+y1+' C'+(x1+dx)+' '+y1+' '+(x2-dx)+' '+y2+' '+x2+' '+y2+
+      '" fill="none" stroke="'+(e[3]?"var(--wire-hot)":"var(--wire)")+'" stroke-width="'+(e[3]?1.8:1.2)+
+      '" opacity="'+(e[3]?0.95:0.6)+'" data-hot="'+(e[3]?1:0)+'"/>');
+    out.push('<circle cx="'+x2+'" cy="'+y2+'" r="2.4" fill="'+(e[3]?"var(--wire-hot)":"var(--wire)")+'" opacity="'+(e[3]?0.95:0.6)+'"/>');
+    if(e[2]){
+      var t = 0.5;
+      var lx = x1 + (x2-x1)*t, ly = y1 + (y2-y1)*t - 5;
+      labels.push('<text class="wlabel'+hot+'" x="'+lx+'" y="'+ly+
+        '" text-anchor="middle" data-hot="'+(e[3]?1:0)+'">'+esc(e[2])+'</text>');
+    }
+  });
+  svg.innerHTML = out.join("");
+  lay.innerHTML = labels.join("");
+  if(document.body.getAttribute("data-rpath")==="on"){
+    Array.prototype.forEach.call(svg.querySelectorAll('[data-hot="0"]'), function(p){p.setAttribute("opacity","0.12");});
+    Array.prototype.forEach.call(lay.querySelectorAll('[data-hot="0"]'), function(p){p.setAttribute("opacity","0.15");});
+  }
+}
+
+function fill(sel, rows, monocols){
+  var tb = $(sel+" tbody");
+  tb.innerHTML = rows.map(function(r){
+    return "<tr>"+r.map(function(c,i){
+      var cls = monocols.indexOf(i)>=0 ? "m" : (String(c).length>44 ? "w" : "");
+      if(i===r.length-1 && monocols.indexOf(i)>=0) return '<td class="src">'+esc(c)+'</td>';
+      return '<td class="'+cls+'">'+monoize(c)+'</td>';
+    }).join("")+"</tr>";
+  }).join("");
+}
+fill("#chtable", CHANNELS, [0,2,4]);
+fill("#memtable", MEMROWS, [1,3,4]);
+fill("#map9", MAP9, [0,1]);
+fill("#map7", MAP7, [0,1]);
+fill("#fixtable", FIXES, [3]);
+
+$("#chain").innerHTML = CHAIN.map(function(s){
+  return '<button class="stage blk" data-dom="'+s.dom+'" data-clk="'+s.dom+'" data-status="'+s.st+'" data-rpath="1" data-detail="chain-'+s.ix+'" style="border:0;border-radius:0;border-right:1px solid var(--rule-soft)">'+
+    '<span class="ix">'+s.ix+'</span><span class="nm">'+esc(s.nm)+'</span>'+
+    (s.dp?'<span class="dp">'+esc(s.dp)+'</span>':"")+
+    '<span class="rl">'+esc(s.rl)+'</span></button>';
+}).join("");
+
+$("#absent").innerHTML = ABSENT.map(function(a){
+  return '<div class="card"><h3>'+esc(a.nm)+'</h3>'+
+    '<p class="small" style="margin:0 0 10px">'+esc(a.rl)+'</p>'+
+    '<span class="pill '+a.st+'">'+esc(ST[a.st])+'</span>'+
+    '<div class="srclist" style="margin-top:9px">'+a.src.map(function(s){return "<code>"+esc(s)+"</code>";}).join("")+'</div></div>';
+}).join("");
+
+/* ============================================================ detail */
+var CLKNAME = {clk1x:"clk_sys / clk1x &mdash; 33.513982 MHz", clk2x:"clk2x (ARM9 island) &mdash; tied to clk_sys, so 33.513982 MHz",
+  clkmem:"clkMem &mdash; 100.541946 MHz", clkvid:"CLK_VIDEO &mdash; 67.027964 MHz",
+  mixed:"crosses domains &mdash; see the block's own notes", none:"no clock (off-chip store or combinational decode)"};
+
+function showDetail(key){
+  var rail = $("#rail");
+  var c = CLKBY[key];
+  var b = c || byId[key];
+  if(!b) return;
+  Array.prototype.forEach.call(document.querySelectorAll(".blk[aria-current]"), function(x){x.removeAttribute("aria-current");});
+  Array.prototype.forEach.call(document.querySelectorAll('.blk[data-detail="'+key+'"]'), function(x){x.setAttribute("aria-current","true");});
+
+  var title = c ? c.name : b.nm;
+  var rows = [];
+  if(c){
+    rows.push(["Frequency","<code>"+esc(c.hz)+"</code> &middot; "+esc(c.ratio)]);
+    rows.push(["Drives", esc(c.role)]);
+  } else {
+    if(b.rl) rows.push(["Role", esc(b.rl)]);
+    rows.push(["Clock", CLKNAME[b.clk||b.dom||"none"]]);
+    if(b.dp) rows.push(["Depth","<code>"+esc(b.dp)+"</code>"]);
+    if(b.st) rows.push(["Status",'<span class="pill '+b.st+'">'+esc(ST[b.st])+"</span>"]);
+  }
+  var body = "";
+  var det = c ? c.detail : (b.dt || b.det);
+  if(det) body += "<p>"+esc(det)+"</p>";
+  if(b.ev) body += '<p><strong style="color:var(--ink)">Evidence.</strong> '+esc(b.ev)+"</p>";
+  body += "<dl style='margin:0'>"+rows.map(function(r){
+    return '<div class="drow"><dt>'+r[0]+"</dt><dd>"+r[1]+"</dd></div>";
+  }).join("")+"</dl>";
+  if(b.src && b.src.length){
+    body += '<div class="drow" style="grid-template-columns:1fr"><dt>Read it</dt><dd><div class="srclist">'+
+      b.src.map(function(s){return "<code>"+esc(s)+"</code>";}).join("")+"</div></dd></div>";
+  }
+  $("#dTitle").innerHTML = esc(title);
+  $("#dBody").innerHTML = body;
+  rail.classList.add("open");
+}
+document.addEventListener("click", function(e){
+  var t = e.target.closest("[data-detail]");
+  if(t){ showDetail(t.getAttribute("data-detail")); return; }
+  if(e.target.closest("#dClose")) $("#rail").classList.remove("open");
+});
+
+/* ============================================================ controls */
+function setMode(m){
+  document.body.setAttribute("data-mode", m);
+  $("#mClock").setAttribute("aria-pressed", String(m==="clock"));
+  $("#mStatus").setAttribute("aria-pressed", String(m==="status"));
+  drawLegend(m);
+}
+$("#mClock").addEventListener("click", function(){setMode("clock");});
+$("#mStatus").addEventListener("click", function(){setMode("status");});
+$("#rpath").addEventListener("click", function(){
+  var on = document.body.getAttribute("data-rpath")==="on";
+  document.body.setAttribute("data-rpath", on?"off":"on");
+  this.setAttribute("aria-pressed", String(!on));
+  drawWires();
+});
+setMode("clock");
+document.body.setAttribute("data-rpath","off");
+
+/* Offline builds have no host theme toggle, so provide one. Follows the OS
+   preference until clicked, then remembers the override. */
+(function(){
+  var btn = $("#themeBtn"), root = document.documentElement, KEY = "ndsmap-theme";
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch(err) { saved = null; }
+  function apply(v){
+    if(v){ root.setAttribute("data-theme", v); btn.setAttribute("aria-pressed","true"); }
+    else { root.removeAttribute("data-theme"); btn.setAttribute("aria-pressed","false"); }
+  }
+  apply(saved);
+  btn.addEventListener("click", function(){
+    var cur = root.getAttribute("data-theme");
+    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    var next = cur ? (cur === "dark" ? "light" : null) : (dark ? "light" : "dark");
+    if(next === null && dark) next = "dark";
+    apply(next);
+    try { next ? localStorage.setItem(KEY, next) : localStorage.removeItem(KEY); } catch(err) {}
+    drawWires();
+  });
+})();
+
+/* ============================================================ wires lifecycle */
+drawWires();
+window.addEventListener("resize", drawWires);
+window.addEventListener("load", drawWires);
+if(window.ResizeObserver){ new ResizeObserver(drawWires).observe($("#memdiag")); }
+setTimeout(drawWires, 60);
+setTimeout(drawWires, 300);
+})();
+</script>
+</body>
+</html>
+
