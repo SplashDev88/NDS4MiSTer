@@ -68,6 +68,7 @@ nvc -L "$WORK" --work="$WORK/work" -a --relaxed \
    sim/tb_arm9_trace.vhd \
    sim/tb_gpu_bg.vhd \
    sim/tb_gpu_obj.vhd \
+   sim/tb_gpu_obj_budget.vhd \
    sim/tb_card_chipid.vhd \
    rtl/nds_drawer_merge.vhd \
    rtl/nds_gpu2d.vhd \
@@ -106,6 +107,7 @@ nvc -H 1g -L "$WORK" --work="$WORK/work" -e tb_arm9_island
 nvc -H 1g -L "$WORK" --work="$WORK/work" -e tb_arm9_trace
 nvc -L "$WORK" --work="$WORK/work" -e tb_gpu_timing
 nvc -L "$WORK" --work="$WORK/work" -e tb_card_chipid
+nvc -H 1g -L "$WORK" --work="$WORK/work" -e tb_gpu_obj_budget
 nvc -L "$WORK" --work="$WORK/work" -e tb_shifter_equiv
 
 echo "analyze-all: OK"

@@ -431,7 +431,7 @@ begin
    iDISPCNT_VRAMBLK    : entity work.eProcReg_gba generic map (DISPCNT_VRAM_Block)         port map (clk, gb_bus, reg_wired_or(15), reg_wired_done(15), R_vramblock, R_vramblock);
    iDISPCNT_OBJBOUND   : entity work.eProcReg_gba generic map (DISPCNT_Tile_OBJ_Boundary)  port map (clk, gb_bus, reg_wired_or(16), reg_wired_done(16), R_objbound, R_objbound);
    iDISPCNT_BMPBOUND   : entity work.eProcReg_gba generic map (DISPCNT_Bitmap_OBJ_Boundary)port map (clk, gb_bus, reg_wired_or(17), reg_wired_done(17), R_bmpbound, R_bmpbound);
-   iDISPCNT_OBJHBL     : entity work.eProcReg_gba generic map (DISPCNT_OBJ_HBlank_Free)    port map (clk, gb_bus, reg_wired_or(18), reg_wired_done(18), R_objhbl, R_objhbl);
+   iDISPCNT_OBJHBL     : entity work.eProcReg_gba generic map (DISPCNT_OBJ_HBlank_Proc)    port map (clk, gb_bus, reg_wired_or(18), reg_wired_done(18), R_objhbl, R_objhbl);
    iDISPCNT_CHARBASE   : entity work.eProcReg_gba generic map (DISPCNT_Char_Base)          port map (clk, gb_bus, reg_wired_or(19), reg_wired_done(19), R_charbase, R_charbase);
    iDISPCNT_SCREENBASE : entity work.eProcReg_gba generic map (DISPCNT_Screen_Base)        port map (clk, gb_bus, reg_wired_or(20), reg_wired_done(20), R_screenbase, R_screenbase);
    iDISPCNT_BGEXTPAL   : entity work.eProcReg_gba generic map (DISPCNT_BG_ExtPal)          port map (clk, gb_bus, reg_wired_or(21), reg_wired_done(21), R_bgextpal, R_bgextpal);
@@ -832,7 +832,15 @@ begin
       bitmap_1d_boundary   => eff_bmpbound,
       obj_extpal           => R_objextpal(31),
       Mosaic_H_Size        => unsigned(R_mos_objh),
-      hblankfree           => R_objhbl(23),
+      -- DISPCNT.23 is "OBJ Processing during H-Blank" (GBATEK), the NDS
+      -- relocation of the GBA's bit 5 "H-Blank Interval Free" with the
+      -- polarity read from OBJ's side: SET = the OBJ engine gets the
+      -- HBlank interval (1210 cycles), CLEAR = 954. The drawer's hblankfree
+      -- port keeps the donor meaning (SET = CPU takes the interval = 954),
+      -- so the register bit must be inverted here. Without the inversion a
+      -- bit-23 game drew its OAM under the 954-cycle budget and lost the
+      -- tail of every sprite-heavy line - steady, per-frame sprite drops.
+      hblankfree           => not R_objhbl(23),
       pixel_we_color       => obj_we_color,
       pixeldata_color      => obj_color,
       pixel_we_settings    => obj_we_settings,

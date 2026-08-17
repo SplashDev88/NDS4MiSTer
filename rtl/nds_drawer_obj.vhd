@@ -706,13 +706,14 @@ begin
          -- not more. Same direction as the runaway guard beside it, which is
          -- the donor's 954/1210 pair scaled up.
          --
-         -- POLARITY IS UNVERIFIED for the NDS. GBATEK names the GBA's
-         -- DISPCNT.5 "H-Blank Interval Free" (set = the CPU gets H-Blank, so
-         -- OBJ loses it = 954) but the NDS's DISPCNT.23 "H-Blank OBJ
-         -- Processing" (set = enable), which reads the other way round.
-         -- melonDS models neither. Taking the donor's direction because this
-         -- register carries the GBA's name here; if a game that sets
-         -- DISPCNT.23 comes up short a few sprites, flip this first.
+         -- POLARITY, VERIFIED 2026-08-16 against GBATEK. The NDS's DISPCNT.23
+         -- is "OBJ Processing during H-Blank (was located in Bit5 on GBA)":
+         -- SET = the OBJ engine gets the HBlank interval = 1210 cycles, and
+         -- CLEAR = only the visible part = 954. That reads the other way
+         -- round from the GBA's bit 5 "H-Blank Interval Free" (SET = the CPU
+         -- takes the interval = 954), which is the meaning this port kept
+         -- from the donor - so the integration feeds `not DISPCNT.23` into
+         -- it (nds_gpu2d.vhd). melonDS models neither budget.
          if (hblankfree = '1') then
             maxpixeltime <= 6400;
             maxhwtime    <= 954;

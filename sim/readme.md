@@ -29,6 +29,10 @@ eyeball-checked.
   with `python3 sim/tests/gen_gpu_bg.py` (from `sim/tests/`) first.
 - `run_gpu_obj.sh` — M5 OBJ drawer line tests (tile/bitmap/affine sprites,
   ext palettes, priority merge) vs `gen_gpu_obj.py`; same regenerate flow.
+- `run_gpu_obj_budget.sh` — the OBJ per-line HW_TIME_LIMIT budget: proves the
+  954/1210 H-Blank switch and the non-affine walk's exact truncation boundary
+  on a 1024-hardware-cycle line (1 hw cycle per field pixel, clip elisions
+  charged at setup/walk-end). No generated vectors.
 - `run_vram_ls_tb.sh` — M5 VRAM line-server tests: the renderer BG/OBJ/
   ext-palette read channels of `nds_vram` vs the `gen_vram_ls.py` golden
   (independent GBATEK mapping model), with CPU-port differential reads and

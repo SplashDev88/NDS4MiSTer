@@ -33,7 +33,12 @@ package pReg_nds_display is
    constant DISPCNT_VRAM_Block           : regmap_type := (16#000#,  19,     18,        1,        0,   readwrite); -- display mode 2 source
    constant DISPCNT_Tile_OBJ_Boundary    : regmap_type := (16#000#,  21,     20,        1,        0,   readwrite); -- 1D tile OBJ boundary 32<<n
    constant DISPCNT_Bitmap_OBJ_Boundary  : regmap_type := (16#000#,  22,     22,        1,        0,   readwrite); -- 1D bitmap OBJ boundary 128<<n (A only)
-   constant DISPCNT_OBJ_HBlank_Free      : regmap_type := (16#000#,  23,     23,        1,        0,   readwrite);
+   -- NDS bit 23 = "OBJ Processing during H-Blank" (GBATEK), the DS relocation
+   -- of the GBA's bit 5 "H-Blank Interval Free" read from the OBJ's side:
+   -- SET = OBJ gets the HBlank interval (1210 cycles), CLEAR = 954. The
+   -- drawer's hblankfree port keeps the donor meaning and nds_gpu2d inverts
+   -- this bit before driving it.
+   constant DISPCNT_OBJ_HBlank_Proc      : regmap_type := (16#000#,  23,     23,        1,        0,   readwrite);
    constant DISPCNT_Char_Base            : regmap_type := (16#000#,  26,     24,        1,        0,   readwrite); -- 64 KB units (A only)
    constant DISPCNT_Screen_Base          : regmap_type := (16#000#,  29,     27,        1,        0,   readwrite); -- 64 KB units (A only)
    constant DISPCNT_BG_ExtPal            : regmap_type := (16#000#,  30,     30,        1,        0,   readwrite);

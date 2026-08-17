@@ -95,6 +95,20 @@ incl. bitmap OBJs, display mode [17:16] (1=normal graphics, 2=VRAM-direct from b
 3=main-mem FIFO), global char base [26:24] / screen base [29:27] (64 KB granularity, engine A
 only). BGxCNT gains ext-palette slot selection; DISPSTAT LYC is 9 bits.
 
+### OBJ per-line time budget (bit23)
+DISPCNT bit23 "OBJ Processing during H-Blank" (relocated from GBA bit5) flips the
+OBJ engine's per-line budget: **SET = it gets the H-Blank interval = 1210 cycles,
+CLEAR = visible line only = 954**. The polarity reads opposite to GBA bit5
+("H-Blank Interval Free", SET = CPU takes the interval = 954) — the NDS bit means
+what the GBA one doesn't. Verified against GBATEK 2026-08-16. Charging, per
+GBATEK and now pinned by `run_gpu_obj_budget.sh`: a normal sprite costs **1 cycle
+per field pixel** (the sprite's whole field width, even the pixels a screen clip
+keeps off-screen — hardware charges the field, not the landing), a rot/scal
+sprite **10 (setup) + 2 per field pixel**. A line over budget loses its LAST
+sprites in OAM order, i.e. the lowest priority. melonDS models neither budget,
+so generated golden models expect the no-limit behaviour on scenes that would
+exceed it (`nds_drawer_obj`'s `HW_TIME_LIMIT` generic, default on).
+
 ## Video timing (`hw/common/lcd.h`)
 - System clock 33.513982 MHz (ARM7 & bus); ARM9 CPU at 2× = 67.027964 MHz.
 - 6 clocks/dot; line = 256 + 99 = 355 dots = 2130 clk; frame = 192 + 71 = 263 lines
