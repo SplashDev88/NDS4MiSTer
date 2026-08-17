@@ -30,6 +30,14 @@ target_compile_features(melonds_fbdump PRIVATE cxx_std_17)
 target_include_directories(melonds_fbdump PRIVATE ${MELONDS_DIR}/src)
 target_link_libraries(melonds_fbdump PRIVATE core)
 
+# A9 rasterizer timing bench (sim/melonds_tracer/main_gxbench.cpp). Built for
+# armhf by build-armhf.sh and run on the DE10-Nano; builds natively too, which
+# is how the scene savestate gets captured.
+add_executable(melonds_gxbench main_gxbench.cpp Platform.cpp)
+target_compile_features(melonds_gxbench PRIVATE cxx_std_17)
+target_include_directories(melonds_gxbench PRIVATE ${MELONDS_DIR}/src)
+target_link_libraries(melonds_gxbench PRIVATE core)
+
 # default-firmware image dump for the RTL SPI flash (sim/tests/nds_firmware.hex)
 add_executable(melonds_fwdump main_fwdump.cpp Platform.cpp)
 target_compile_features(melonds_fwdump PRIVATE cxx_std_17)
