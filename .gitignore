@@ -113,3 +113,16 @@ examples/*/build/
 # nvc working dirs created when a runner is invoked from the repo root rather
 # than from sim/ - the existing rule only covers sim/nvc_work_*/
 nvc_work_*/
+
+# nvc's default library dir name, created by a run invoked from the repo root
+/work/
+
+# melonds_tracer build trees: build/ is listed individually, the native and
+# armhf variants use distinct names (build-native/, build-armhf/)
+sim/melonds_tracer/build-*/
+
+# melonDS harness output: tracer/gxbench session logs and the bench scene
+# savestate (generated from a copyrighted ROM, same class as the kirby_*.hex
+# rule above)
+/melonds_trace.log
+/scene.mln
