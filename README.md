@@ -18,12 +18,14 @@ bolts on." The blockers were never correctness; they were **resources**:
 This project starts from **GBA_MiSTfits**, a heavily resource-optimized fork of the GBA2P
 core. The optimization headroom won there is the budget we spend here.
 
-## Scope (deliberate)
+## Scope
 
-- **In:** 2D games. ARM9 + ARM7, both 2D engines, VRAM banking, IPC, DMA, timers, sound,
-  card interface, touchscreen, firmware/RTC/SPI, save memory.
-- **Out (initially):** 3D geometry/rendering engine (games requiring 3D will not run),
-  wifi (stubbed), GBA-slot compatibility mode, DSi extensions.
+- **Implemented / compatibility work:** 2D games — ARM9 + ARM7, both 2D engines, VRAM
+  banking, IPC, DMA, timers, sound, card interface, touchscreen, firmware/RTC/SPI,
+  and save memory.
+- **Now on the roadmap:** the 3D geometry and rendering engines; games requiring 3D are
+  not compatible yet.
+- **Out:** wifi (stubbed), GBA-slot compatibility mode, and DSi extensions.
 
 ## Layout
 
