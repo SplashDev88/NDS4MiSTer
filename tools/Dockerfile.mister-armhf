@@ -1,0 +1,22 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        binutils-arm-linux-gnueabihf \
+        ca-certificates \
+        cmake \
+        file \
+        g++ \
+        g++-arm-linux-gnueabihf \
+        gcc \
+        gcc-arm-linux-gnueabihf \
+        git \
+        make \
+        ninja-build \
+        python3 \
+        tar \
+        unzip \
+        zip \
+    && rm -rf /var/lib/apt/lists/*

@@ -1,0 +1,7 @@
+NDS4MISTER_SOUND_FORMAT_SUITE 2
+schema magic=NDSAUD2 version=2 header_bytes=40 record_bytes=24 endian=little
+case pcm16 id=1 trace_sha256=72758a1e581a47d0941e9b2852e3bc71febbc042b8b6e398f4ba9605cbe6466b fixture_sha256=c0dc539e90c5cd613ea99e9e8c41dd873be1ecefd27541a82e1190a864e7a23d bytes=3328 records=137 writes=9 advances=18 reads=40 audio=67 end=69632 seed_crc32=2829e80a
+case adpcm id=2 trace_sha256=09157856ef529e92098a8ac69836c6202ab7bc55f47dbd650eecf83b631d0f4d fixture_sha256=ef47376158a11de1a3c6e52a80675153b0a7392a723da40fdecf53f567471c74 bytes=2752 records=113 writes=9 advances=18 reads=16 audio=67 end=69632 seed_crc32=8e1cb8f0
+case psg id=3 trace_sha256=7afeb3fcfa2084e3ab750134d8bf32a1ef95282be1ec3504efdf4973d5ab18f9 fixture_sha256=580bd7952f3595502c8b75fe35fecae36926ec14f6bdcb643c13890575abf13c bytes=2296 records=94 writes=6 advances=18 reads=0 audio=67 end=69632 seed_crc32=00000000
+case noise id=4 trace_sha256=736ee5d339b59fdebb1a520b187b3bc309fc782ca68bb166358a014fb3b4cc02 fixture_sha256=bbf7670220350587a924b1962e63677bb5193b952a6b850be5fad3beeee6365f bytes=2296 records=94 writes=6 advances=18 reads=0 audio=67 end=69632 seed_crc32=00000000
+END cases=4

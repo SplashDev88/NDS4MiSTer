@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# r355 dependency-ordered, prune-first source closure.
+# Nitro leaves derive from d2dabe03344c0a685cd0f00e42b1a89606710dee;
+# SOURCE.md documents the three donor-path H3D/OBJ adaptations;
+# product-local derivatives replace only the explicitly documented VRAM,
+# memory-bus, GPU2D, top/wrapper, framebuffer, and shell boundaries below.
+
+# Retained shell clock and separate 1x/2x/3x console clock generator.
+set_global_assignment -name VERILOG_FILE rtl/pll/pll_0002.v
+set_global_assignment -name VERILOG_FILE rtl/pll.v
+set_global_assignment -name VERILOG_FILE rtl/nitro_pll_0002.v
+set_global_assignment -name VERILOG_FILE rtl/nitro_pll.v
+set_instance_assignment -name PLL_COMPENSATION_MODE DIRECT -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+set_instance_assignment -name PLL_CHANNEL_SPACING "0.0 KHz" -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+set_instance_assignment -name PLL_AUTO_RESET ON -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+set_instance_assignment -name PLL_BANDWIDTH_PRESET AUTO -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+
+set nitro_rtl ../../third_party/Nitro_DarkSide/d2dabe/rtl
+
+# Logical MEM library: only the two primitives referenced by the console cone.
+set_global_assignment -name VHDL_FILE $nitro_rtl/SyncFifo.vhd -library MEM
+set_global_assignment -name VHDL_FILE $nitro_rtl/SyncRamDualByteEnable.vhd -library MEM
+
+# Exact donor work-library order, matching its proven analyze-all closure.
+set_global_assignment -name VHDL_FILE $nitro_rtl/export.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/proc_bus_gba.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/reg_savestates.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/gba_cpu.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/reggba_timer.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/gba_timer_module.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/gba_timer.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_vram_map.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_vram.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_wram.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_mainram.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_irq.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_ipc.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_spi.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_membus7.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_cpu9.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_cache9.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_membus9.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_syscnt.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_loader.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_debug.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_perf.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_card.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_rtc.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_sound.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/reg_nds_display.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_text.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_affext.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_obj.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_merge.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_gpu2d.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_gpu2d_fast.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_gpu_timing.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_dma9.vhd
+set_global_assignment -name VHDL_FILE $nitro_rtl/nds_dma7.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_status.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_console_event_gate.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios7.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios9.vhd
+
+# Product top and mixed-language shim replace (do not accompany) donor top.
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
+
+# Required donor memory/video adapters only; audio/LW/donor shell are absent.
+set_global_assignment -name SYSTEMVERILOG_FILE $nitro_rtl/sdram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE $nitro_rtl/ddram.sv
+
+# Compact product boundary and retained MiSTer shell.
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_arm9_math_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_async_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_fb_ddr3.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_video_scanout.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_ddram_arbiter_4client.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_ddr_fabric.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_control_init.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_event_async_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_gx_fifo_packet_frontend.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_frame_record_cdc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_frame_packet_writer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_plane_reader.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_profile.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_bridge.sv
+set_global_assignment -name MISC_FILE nds_save_profiles.hex
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_console_island.sv
+set_global_assignment -name SYSTEMVERILOG_FILE NDS4MiSTer.sv
+set_global_assignment -name SDC_FILE NDS4MiSTer.sdc

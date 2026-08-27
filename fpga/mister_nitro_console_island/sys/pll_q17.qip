@@ -1,0 +1,7 @@
+# The alternate revision sources its two product PLLs explicitly from
+# files.qip. Do not pull the framework's project-relative main-PLL QIP here:
+# it resolves outside the alternate project's selected source closure and
+# would duplicate the product PLL.
+set_global_assignment -name QIP_FILE           [file join $::quartus(qip_path) pll_hdmi.qip ]
+set_global_assignment -name QIP_FILE           [file join $::quartus(qip_path) pll_audio.qip ]
+set_global_assignment -name QIP_FILE           [file join $::quartus(qip_path) pll_cfg.qip ]

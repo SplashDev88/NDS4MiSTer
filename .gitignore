@@ -1,0 +1,44 @@
+# Private user data and copyrighted game images.
+*.nds
+*.sav
+*.dsv
+*.duc
+
+# Generated FPGA binaries and Quartus working state.
+*.rbf
+*.sof
+*.pof
+*.qdb
+*.qws
+fpga/*/db/
+fpga/*/incremental_db/
+fpga/*/output_files/
+fpga/*/simulation/
+fpga/*/.qsys_edit/
+
+# Local builds, tooling, diagnostics, and release staging.
+build/
+build-*/
+cmake-build-*/
+.tooling/
+artifacts/
+releases/
+work/
+*.log
+
+# Personal captures and common credential containers.
+*.mov
+*.MOV
+*.heic
+*.HEIC
+*.pem
+*.key
+
+# Nested repository metadata and local editor/OS files.
+**/.git/
+**/.git-upstream/
+.DS_Store
+*.swp
+
+# Locally built helper executable.
+/nds_slot_dump

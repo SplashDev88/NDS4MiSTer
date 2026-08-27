@@ -1,0 +1,69 @@
+NDS4MiSTer expanded save beta B source - 2026-08-27
+===================================================
+
+Source checkpoint: 9b114964 plus the TV-validated Candidate L changes, the
+expanded save-profile/Flash implementation, and the save-profile CDC fix from
+feature/video-layout-menu.
+
+This curated source snapshot corresponds to the installable
+NDS4MiSTer_Public_Save_Beta_20260827B package. It retains the LG-compatible
+video path and includes the exact FPGA-side MiSTer save bridge, profile ROM,
+regular EEPROM support, and Flash support used by the tested beta.
+
+The release sound path is the GPL-licensed Nitro_DarkSide `nds_sound.vhd`
+implementation built with `SOUND_ENABLE=1`. Retired private FPGA-sound
+experiments are intentionally excluded and are not release dependencies.
+
+Release identities
+------------------
+
+FPGA core:
+  970556c381b2e08972706e2f67c62f65f7aba53c91863d4712a096bd412eba8b
+
+ARM hybrid-3D service (unchanged from the LG-safe public beta):
+  5946b1fa5b4d9ed4c1ba7793d84c0af92766b942418f17f6e858a5a8b3d6dfd4
+
+Save support
+------------
+
+* MiSTer standard save interface and /media/fat/saves/NDS location
+* 512-byte tiny EEPROM plus 8, 64, and 128 KiB regular EEPROM saves
+* 256 KiB, 512 KiB, and 1 MiB Flash saves
+* Save-device profiles generated from the vendored melonDS ROM database
+* Existing-save loading, dirty flushing, and persistence across ROM reloads
+* Safe handling of read-only and invalid-size images
+* Cartridge saves are supported; emulator save states are not
+
+The Reset menu command currently hangs and is documented as a known
+regression. Reselecting the ROM is the restart workaround.
+
+Verification
+------------
+
+The focused regression passed save-profile lookup and bundled CDC publication,
+all supported EEPROM/Flash sizes, EEPROM and Flash command behavior, dirty
+flushes, read-only and invalid-size behavior, replacement-ROM mount ordering,
+and cross-size isolation. The complete Nitro console-island host RTL gate also
+passed.
+
+Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
+successful fit used 41,199 of 41,910 ALMs (98%), 481 of 553 RAM blocks (87%),
+and 3,459,840 of 5,662,720 block-memory bits (61%). Static timing remains
+diagnostic information rather than a deployment gate for this experimental
+project; the candidate passed LG C-series display and gameplay testing.
+
+Package exclusions
+------------------
+
+No commercial ROMs, personal save files, console keys, BIOS binaries, private
+credentials, private donor trees, FPGA build outputs, host build directories,
+diagnostic captures, retired private sound experiments, absolute developer
+paths, or user data are included.
+melonDS FreeBIOS source is included; prebuilt BIOS images are not.
+
+Licensing
+---------
+
+See the license and attribution files within each vendored source tree and
+fpga/mister_nitro_console_island/LICENSE.Template_MiSTer. This package does
+not replace or alter the licensing terms of those components.
