@@ -1,0 +1,19 @@
+name: Public safety audit
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out complete history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Reject private data, ROMs, saves, binaries, and unsafe metadata
+        run: python3 tools/audit_public_repo.py --self-test --tracked --history

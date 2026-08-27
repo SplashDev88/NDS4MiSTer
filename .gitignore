@@ -3,6 +3,34 @@
 *.sav
 *.dsv
 *.duc
+*.rom
+*.3ds
+*.cia
+*.srl
+*.iso
+*.img
+*.chd
+*.wad
+*.xci
+*.nsp
+*.bios
+
+# Secrets, identity files, and local environment configuration.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+*.keystore
+*.mobileprovision
+.netrc
+credentials.json
+service-account*.json
+id_rsa*
+id_ed25519*
 
 # Generated FPGA binaries and Quartus working state.
 *.rbf
@@ -29,10 +57,23 @@ work/
 # Personal captures and common credential containers.
 *.mov
 *.MOV
+*.mp4
+*.MP4
+*.mkv
+*.avi
 *.heic
 *.HEIC
-*.pem
-*.key
+*.jpg
+*.jpeg
+*.webp
+
+# Release archives belong on the GitHub Releases page, not in source history.
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
 
 # Nested repository metadata and local editor/OS files.
 **/.git/

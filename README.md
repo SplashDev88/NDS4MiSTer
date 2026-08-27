@@ -73,6 +73,12 @@ distributed separately as the public binary package.
 - `tools`: focused build, test, generation, and service-control scripts.
 - `docs`: architecture notes and known development tickets.
 
+Public contributions and maintainer pushes must follow
+[`docs/PUBLIC_PUBLISHING.md`](docs/PUBLIC_PUBLISHING.md). The repository's
+versioned audit rejects commercial ROMs, saves, release binaries, credentials,
+personal paths, unsafe commit identities, and other private artifacts before
+they can be published.
+
 ## Credits and special thanks
 
 This work builds on the MiSTer framework, Nitro_DarkSide, melonDS, and

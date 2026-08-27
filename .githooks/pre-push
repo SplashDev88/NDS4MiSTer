@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+remote_name="${1:-}"
+remote_url="${2:-}"
+repo_root="$(git rev-parse --show-toplevel)"
+zero="0000000000000000000000000000000000000000"
+
+case "$remote_url" in
+    git@github.com:SplashDev88/NDS4MiSTer.git|https://github.com/SplashDev88/NDS4MiSTer.git)
+        ;;
+    *)
+        echo "PUBLIC SAFETY AUDIT FAILED: refusing unexpected push destination '$remote_name'." >&2
+        exit 1
+        ;;
+esac
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [[ "$local_sha" == "$zero" ]]; then
+        echo "PUBLIC SAFETY AUDIT FAILED: remote ref deletion is blocked." >&2
+        exit 1
+    fi
+    if [[ "$remote_ref" == refs/heads/* && "$remote_sha" != "$zero" ]]; then
+        if ! git merge-base --is-ancestor "$remote_sha" "$local_sha"; then
+            echo "PUBLIC SAFETY AUDIT FAILED: non-fast-forward/force push is blocked." >&2
+            exit 1
+        fi
+    fi
+done
+
+python3 "$repo_root/tools/audit_public_repo.py" --self-test --tracked --history
