@@ -2,12 +2,10 @@
 
 ## Goal
 
-H3D1 adds Nintendo DS 3D to the current FPGA console core. The FPGA keeps
-the two CPUs, DMA, VRAM, 2D engines, input, and video timing. A small HPS
-service runs only the melonDS 3D geometry and rasterizer.
-
-The working `cfeeda58` 2D image is the rollback image. H3D1 must not reduce
-its 2D speed or change its input and video paths.
+H3D1 adds Nintendo DS 3D to the FPGA console core. The FPGA keeps the two
+CPUs, timing, DMA, memory, VRAM, Engine A 2D, input, sound, saves, and video
+timing. A small HPS service runs only melonDS 3D geometry and software
+rasterization. Engine B is synthesized out of the current public beta.
 
 ## Rules
 
@@ -36,6 +34,7 @@ The MiSTer DDR bridge adds `0x30000000` to the local FPGA byte address.
 | Final framebuffer bank 0 | `0x0FE00000` | `0x3FE00000` | 512 KiB |
 | Final framebuffer bank 1 | `0x0FE80000` | `0x3FE80000` | 512 KiB |
 | Final framebuffer bank 2 | `0x0FF00000` | `0x3FF00000` | 512 KiB |
+| Final framebuffer bank 3 | `0x0FF80000` | `0x3FF80000` | 512 KiB |
 
 Each 3D frame bank stores 256 by 192 little-endian 32-bit pixels. Pixel bits
 `5:0` are R6, bits `11:6` are G6, bits `17:12` are B6, and bits `22:18` are
@@ -44,9 +43,9 @@ pixel word to this packed form before publication.
 
 Each final framebuffer bank holds the paired 256x192 top and bottom screens.
 The FPGA publishes only a completely drained, order-valid pair; video scanout
-selects that bank only at its own frame boundary. Three banks keep the next
-source frame from overwriting either the displayed frame or the complete frame
-waiting for scanout.
+selects that bank only at its own frame boundary. Four banks keep the next
+source frame from overwriting the displayed frame, an unacknowledged
+publication, or a complete frame that is still draining.
 
 ## Control header
 
@@ -146,14 +145,33 @@ Each payload record is 16 bytes:
 word 0: kind[7:0], tag[15:8], byte_enable[19:16], reserved[31:20]=0
 word 1: address or auxiliary value
 word 2: data[31:0]
-word 3: reserved=0
+word 3: data[63:32]
 ```
 
-Record kinds are normalized GX command (1), ARM9 GPU register write (2),
-virtual VRAM write (3), and VRAMCNT write (4). A GX-command tag is the command
-ID. Other tags carry access width in bits 1:0; VRAM-write tag bit 2 selects
-ARM7. VRAM writes retain their virtual address and byte enables so melonDS
-continues to own VRAM mapping and overlap behavior.
+Record kinds are:
+
+| Kind | Meaning |
+| ---: | --- |
+| 1 | Normalized GX command. The tag is the command ID. |
+| 2 | ARM9 3D/GX register write. |
+| 3 | Virtual VRAM write from ARM9 or ARM7. |
+| 4 | VRAMCNT mapping write. |
+| 5 | Engine A/B 2D register write. |
+| 6 | Palette write. |
+| 7 | OAM write. |
+| 8 | HBlank marker. |
+| 9 | Three normalized GX commands packed into one transport record. |
+
+For ordinary write records, tag bits 1:0 carry access width and VRAM-write tag
+bit 2 selects ARM7. VRAM writes retain their virtual address and byte enables
+so melonDS continues to own VRAM mapping and overlap behavior. Kinds 5 through
+8 preserve the HPS GPU/VRAM mirror's state and ordering and also support the
+diagnostic shadow path. The public service does not publish HPS-rendered 2D.
+
+Kind 9 uses tag bytes in metadata bits `15:8`, `23:16`, and `31:24`. The three
+corresponding 32-bit command values occupy words 1, 2, and 3. The normal
+byte-enable and reserved-bit interpretation therefore does not apply to a
+packed-GX record.
 
 The FPGA owns a real 256-entry normalized GX FIFO and reports its level in
 GXSTAT. Packed GXFIFO words are decoded before entering that FIFO. Accepted
@@ -177,8 +195,7 @@ architectural completion occurs only after lossless acceptance.
 
 No accepted record can be discarded. Source mutation while stalled, CDC
 failure, malformed or non-contiguous packets, session mismatch, or reuse of
-an unacknowledged slot sets a sticky fault and holds the console in reset. The
-user can then return to the `cfeeda58` image.
+an unacknowledged slot sets a sticky fault and holds the console in reset.
 
 After HPS reports Ready, FPGA also requires the HPS heartbeat to advance at
 least once per second. A dead renderer or supervisor therefore sets the sticky
@@ -224,14 +241,14 @@ out = min(63, (source6 * eva + destination6 * evb + 16) >> 5)
 
 Other effects use the existing 2D merge rules. Engine B has no 3D BG0 input.
 
-## First acceptance gate
+## Public-beta acceptance gate
 
-The first game gate is New Super Mario Bros.
+The initial public compatibility target is New Super Mario Bros.
 
 1. The service accepts one full session with zero packet faults and zero drops.
 2. The title and first playable 3D scene have stable polygons and textures.
 3. Existing 2D layers, windows, and blends stay correct over the 3D plane.
-4. The current side-by-side integer video and physical controls still pass.
+4. All selectable integer layouts and physical controls still pass.
 5. Kirby remains a 2D regression test.
 6. Missing HPS service fails closed. A slow 3D frame becomes transparent and
    does not reduce the 2D frame rate.

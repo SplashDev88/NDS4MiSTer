@@ -63,6 +63,17 @@ distributed separately as the public binary package.
 - Chrono Trigger has a separate boot failure under investigation.
 - NAND saves, save states, Wi-Fi, and microphone support are not implemented.
 
+## Issues and bug reports
+
+Use the [GitHub Issues](https://github.com/SplashDev88/NDS4MiSTer/issues) page
+for reproducible bugs and tracked development work. Include the beta name,
+FPGA-core and HPS-service SHA-256 values, game title/region/revision, exact
+reproduction steps, and any generated NDS4MiSTer crash report.
+
+Never upload or link to commercial ROMs, BIOS/firmware dumps, personal save
+files, credentials, or other private data. A ROM filename and its game-code or
+revision are sufficient for identification.
+
 ## Repository layout
 
 - `fpga/mister_nitro_console_island`: production MiSTer Quartus project.
@@ -71,7 +82,7 @@ distributed separately as the public binary package.
 - `third_party/Nitro_DarkSide`: vendored GPL Nintendo DS FPGA source.
 - `third_party/melonDS`: vendored melonDS source and license.
 - `tools`: focused build, test, generation, and service-control scripts.
-- `docs`: architecture notes and known development tickets.
+- `docs`: current architecture, ABI, lifecycle, boot, and publishing contracts.
 
 Public contributions and maintainer pushes must follow
 [`docs/PUBLIC_PUBLISHING.md`](docs/PUBLIC_PUBLISHING.md). The repository's

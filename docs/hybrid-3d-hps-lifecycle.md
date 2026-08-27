@@ -1,23 +1,25 @@
 # Hybrid 3D HPS lifecycle and beta deployment
 
-Status: offline implementation and regression coverage. Nothing in this
-document has been installed on a MiSTer yet.
+Status: deployed in Public Save Beta B, 2026-08-27. This document describes
+the current manual launcher, service ownership, and guarded update procedure.
 
 ## User-launched process contract
 
 The HPS renderer is a singleton background process for one play session. The
 user launches it before loading the NDS core; it is deliberately not installed
-as a boot-persistent `user-startup.sh`. It takes no ROM argument. Its production
-invocation is exactly:
+as a boot-persistent `user-startup.sh`. It takes no ROM argument. Users launch
+the supervisor installed as:
 
 ```text
-/media/fat/nds_hybrid_3d_service
+/media/fat/Scripts/NDS4MiSTer_H3D.sh
 ```
 
-With no arguments, the executable opens `/dev/mem` and maps exactly
-`0x180000` bytes beginning at physical `0x3fc00000`. The control/packet window
-and both plane banks all fit in that mapping. The supervisor provides no way
-to pass a different memory path, physical base, length, or ROM.
+After its hash preflight, the supervisor starts the fixed service executable at
+`/media/fat/nds_hybrid_3d_service` with no arguments. The executable opens
+`/dev/mem` and maps exactly `0x400000` bytes beginning at physical
+`0x3fc00000`. The mapping contains the control/packet window, two 3D plane
+banks, and four final-framebuffer banks. The supervisor provides no way to pass
+a different memory path, physical base, length, or ROM.
 
 The process holds `/tmp/nds-hybrid-3d-service.lock` with `flock(LOCK_EX |
 LOCK_NB)`. A second instance exits before it can become a shared-memory
@@ -102,14 +104,15 @@ If a game is misbehaving but has not automatically produced a report, run
 `/media/fat/NDS4MiSTer_crash_*.txt` together with the beta name and
 `nds_hybrid_3d_service.sha256`; no ROM is needed.
 
-The supervisor starts the service at nice level -20. MiSTer's main loop is
-normally continuously runnable on CPU1; prioritizing the bounded H3D work lets
-command replay use that CPU when needed without killing MiSTer or losing the
-normal menu, input, and core lifecycle.
+The supervisor requests the board's tested 1 GHz HPS clock and starts the
+service at nice level -20. MiSTer's main loop is normally continuously runnable
+on CPU1; prioritizing the bounded H3D work lets command replay use that CPU when
+needed without killing MiSTer or losing the normal menu, input, and core
+lifecycle. Stopping the service restores the default 800 MHz limit.
 
-## Offline staging and guarded deployment
+## Staging and guarded updates
 
-After the final ARMHF rebuild, create a new local payload directory:
+After an ARMHF rebuild, create a new local payload directory:
 
 ```sh
 tools/build_hybrid_3d_service_armhf.sh
@@ -123,22 +126,22 @@ artifacts, and an existing output directory. The output mirrors `/media/fat`
 and contains the service, its exact authorization manifest, interactive
 control script, and `SHA256SUMS`.
 
-For the first beta deployment:
+For a beta update:
 
-1. Preserve the known-good `cfeeda58` RBF, current NDS service, and current
-   core as distinct rollback files.
+1. Preserve the current known-good RBF, HPS service, and manifest as distinct
+   rollback files.
 2. Transfer every payload file under temporary names on the same FAT volume.
    Verify the payload `SHA256SUMS` on MiSTer before renaming anything live.
 3. Stop the previous helper, if any. Install the verified service and manifest
    first, then the manual control script. Do not replace an executable
    while its old inode is running.
 4. Run `NDS4MiSTer_H3D.sh preflight`, then `start`. Confirm exactly one PID and
-   `status` success while the non-H3D core is still loaded.
+   `status` success before loading the updated core.
 5. Only then load the candidate RBF. The candidate must complete
    `H3DQ -> ack -> fresh H3D1 -> Ready` before releasing the NDS console.
-6. If the candidate fails, reload the preserved 2D RBF, stop the H3D service,
-   and restore the prior service. The service and RBF are independent rollback
-   units.
+6. If the candidate fails, return to the MiSTer menu, stop the H3D service, and
+   restore the prior service and RBF. The service and RBF are independent
+   rollback units.
 
 No service, control script, or RBF should be copied to the board until all
 host regressions, the final ARM self-test/hash, Quartus fit, and assembly have
@@ -146,16 +149,17 @@ passed.
 
 ## Offline gates
 
-Run the complete lifecycle gate with:
+Run the service and supervisor lifecycle gates with:
 
 ```sh
-tools/test_h3d_hps_lifecycle.sh
+tools/test_hybrid_3d_service.sh
+python3 tools/test_h3d_hps_supervisor.py
 ```
 
-It covers exact hash preflight, zero-argument launch, start twice, status,
-bounded TERM stop, restart, corrupt and live-unrelated stale PID files, fixed
-log paths, and hash rejection. It then builds the real host renderer and runs
-it against a guarded fake memory file, covering core absent, singleton
-rejection, one-shot restart request, three `H3DQ` acknowledgements followed by
+Together they cover exact hash preflight, zero-argument launch, start twice,
+status, bounded TERM stop, restart, corrupt and live-unrelated stale PID files,
+fixed log paths, and hash rejection. They also build the real host renderer and
+run it against a guarded fake memory file, covering core absent, singleton
+rejection, one-shot restart request, `H3DQ` acknowledgement followed by
 read-only waits, fresh `H3D1` initialization, live core reconfiguration,
-process restart, TERM, and an unchanged guard beyond the 0x180000-byte window.
+process restart, TERM, and an unchanged guard beyond the 0x400000-byte window.

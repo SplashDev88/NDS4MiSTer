@@ -78,6 +78,8 @@ or effects to appear late or fail to load in some games.
 
 The Hybrid 3D ABI is named H3D1. The complete wire contract is documented in
 [`hybrid-3d-abi.md`](hybrid-3d-abi.md).
+The service ownership, launcher, and guarded-update procedure are documented
+in [`hybrid-3d-hps-lifecycle.md`](hybrid-3d-hps-lifecycle.md).
 
 ### Command transport
 

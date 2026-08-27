@@ -1,98 +1,107 @@
-# Standalone DS boot contract
+# Standalone DS boot contract (development/oracle path)
 
-This contract replaces the accidental zero-PC hardware start with the same
-direct-boot state used by the melonDS reference. It is a bring-up seam between
-MiSTer's HPS loader and FPGA logic; it must not become a Mac dependency.
+Status: descriptor version 3. This is retained for the HPS oracle and
+hardware-development tools; it is **not** the boot path used by the public
+NDS core.
+
+The public core loads the selected ROM at `0x30000000`, reads its cartridge
+header, copies both program sections, creates the direct-boot environment, and
+releases the FPGA CPUs itself. The contract below instead seeds FPGA CPU and
+memory experiments from a melonDS reference instance. Do not enable the oracle
+publication and the public ROM-loading path at the same time because both use
+the `0x30000000` aperture for different purposes.
 
 ## DDR layout
 
 | Physical address | FPGA 64-bit word address | Purpose |
-|---|---:|---|
-| `0x2c000000` | `0x05800000` | Existing 32-byte oracle mailbox |
-| `0x2c001000` | `0x05800200` | Read-only boot descriptor |
-| `0x2c100000` | `0x05820000` | 4 MiB mirrored DS main RAM |
-| `0x30000000` | `0x06000000` | Existing compact video publication |
+| --- | ---: | --- |
+| `0x2C000000` | `0x05800000` | Oracle mailbox. |
+| `0x2C001000` | `0x05800200` | Read-only boot descriptor. |
+| `0x2C010000` | `0x05802000` | 32 KiB shared WRAM mirror. |
+| `0x2C020000` | `0x05804000` | 64 KiB ARM7 WRAM mirror. |
+| `0x2C030000` | `0x05806000` | FPGA-to-HPS posted-write ring. |
+| `0x2C0C0000` | `0x05818000` | HPS-to-FPGA consumed-credit/acknowledgement ring. |
+| `0x2C100000` | `0x05820000` | 4 MiB DS main-RAM mirror. |
+| `0x30000000` | `0x06000000` | Development-only compact video/input publication. |
 
-The loader creates the reference with `NDS::Reset()` followed by
-`NDS::SetupDirectBoot(romname)`, copies exactly `0x400000` bytes of
-`NDS::MainRAM` to `0x2c100000`, writes the descriptor payload, executes a full
-memory barrier, and publishes `generation` last. The FPGA accepts only a
-supported version with matching size and checksum, latches the descriptor, and
-does not release either CPU until all savestate writes have completed.
+`HpsOracleResponder` resets melonDS, creates the reference direct-boot state,
+copies main RAM and both WRAM regions, initializes the transport rings, and
+publishes the descriptor. The FPGA accepts only a supported version with a
+matching size and descriptor checksum. It does not release either CPU until
+the descriptor is stable and all CPU-state writes have completed.
 
-The compact input publication keeps controller buttons in bits 0-11 and uses
-otherwise ignored high bits for remote bring-up telemetry: bit 31 standalone
-enable, bit 30 descriptor valid, bit 29 CPU boot-ready, bit 28 descriptor
-error, and bits 27-20 an eight-bit local CPU DDR command counter. This does not
-change the DS key conversion and avoids adding another DDR arbitration client.
+## Descriptor version 3
 
-## Descriptor version 1
+All fields are little-endian 32-bit words. The descriptor is 64 bytes.
 
-All fields are little-endian 32-bit words.
+| Word | Field | Contract |
+| ---: | --- | --- |
+| 0 | Magic | `0x4253444E` (`NDSB`). |
+| 1 | Version | `3`. |
+| 2 | Generation | Nonzero and published last. |
+| 3 | ARM9 DTCM IRQ vector | Aligned, nonzero value installed at DTCM `0x3FFC`. |
+| 4 | Main-RAM bytes | `0x00400000`. |
+| 5 | ARM9 trace trigger | Aligned main-RAM execution PC, or zero to disable capture. |
+| 6 | ARM9 entry | ROM-header `ARM9EntryAddress`. |
+| 7 | ARM7 entry | ROM-header `ARM7EntryAddress`. |
+| 8 | ARM9 current SP | `0x03002F7C`. |
+| 9 | ARM9 IRQ SP | `0x03003F80`. |
+| 10 | ARM9 saved/system SP | `0x03003FC0`. |
+| 11 | ARM7 current SP | `0x0380FD80`. |
+| 12 | ARM7 IRQ SP | `0x0380FF80`. |
+| 13 | ARM7 saved/system SP | `0x0380FFC0`. |
+| 14 | Initial CPSR | `0x000000D3`. |
+| 15 | Descriptor CRC-32 | CRC-32/ISO-HDLC over words 0 through 14. |
 
-| Word | Field | Value |
-|---:|---|---|
-| 0 | magic | `0x4253444e` (`NDSB`) |
-| 1 | version | `1` |
-| 2 | generation | Nonzero; published last |
-| 3 | flags | Bit 0: direct boot; all other bits zero |
-| 4 | main RAM bytes | `0x00400000` |
-| 5 | main RAM CRC-32 | CRC-32/ISO-HDLC over the copied bytes |
-| 6 | ARM9 entry | ROM header `ARM9EntryAddress` |
-| 7 | ARM7 entry | ROM header `ARM7EntryAddress` |
-| 8 | ARM9 current SP | `0x03002f7c` |
-| 9 | ARM9 IRQ SP | `0x03003f80` |
-| 10 | ARM9 saved/system SP | `0x03003fc0` |
-| 11 | ARM7 current SP | `0x0380fd80` |
-| 12 | ARM7 IRQ SP | `0x0380ff80` |
-| 13 | ARM7 saved/system SP | `0x0380ffc0` |
-| 14 | initial CPSR | `0x000000d3` |
-| 15 | descriptor CRC-32 | CRC over words 0-14 |
+Version 3 replaced the former flags word with the ARM9 DTCM IRQ vector and the
+former informational main-RAM CRC word with a runtime-configurable trace
+trigger. HPS verifies the copied memory directly before publication, so the
+descriptor no longer carries a main-RAM CRC.
 
-## CPU savestate sequence
+The publisher first writes generation zero, writes every other descriptor
+word, executes a full system barrier, and then publishes the real generation.
+The FPGA reads all eight 64-bit beats, validates the fixed fields and CRC, and
+re-reads the generation before accepting the descriptor. A torn publication
+is rejected and retried.
+
+## CPU state-load sequence
 
 Both `gba_cpu` instances remain in reset while their `proc_bus_gb_type`
 savestate ports are written. For each CPU:
 
 1. Address 0 receives the entry address (fetch PC).
-2. Addresses 1-12 receive zero (`r0-r11`).
+2. Addresses 1 through 12 receive zero (`r0-r11`).
 3. Address 13 receives the entry address (`r12`).
 4. Address 14 receives that CPU's current SP (`r13`).
 5. Address 15 receives the entry address (`r14`).
-6. Address 16 receives entry + 8 (`r15`, ARM pipeline-visible PC).
-7. Address 17 receives initial CPSR `0xd3`.
-8. Address 24 receives the saved/system SP used by the proven ARM9 oracle
-   fixture.
+6. Address 16 receives entry plus 8 (`r15`, ARM pipeline-visible PC).
+7. Address 17 receives initial CPSR `0xD3`.
+8. Address 24 receives the saved/system SP.
 9. Address 34 receives the IRQ SP.
-10. Address 46 receives mixed state `0x00000cc0`: ARM state, supervisor mode,
-    IRQ and FIQ masked, flags clear, not halted.
+10. Address 46 receives mixed state `0x00000CC0`: ARM state, supervisor mode,
+    IRQ and FIQ masked, flags clear, and not halted.
 
 After the final write, reset remains asserted for one additional rising edge
-so both CPU instances synchronously load the saved registers. They are then
-released on the same clock edge.
+so both CPU instances synchronously load the state. They are then released on
+the same clock edge.
 
-The reused core's ARM9 CP15 state is not part of its GBA savestate register
-map. Direct boot therefore also requires the ARM9 reset path to initialize its
-implemented CP15 control register to melonDS's `0x00052078` and derive the
-high-vector flag from bit 13. Leaving the current RTL reset value at zero would
-make an early MRC return a value different from the software reference even
-with correct general registers. TCM contents/routing remain oracle-backed for
-the first bring-up; local ITCM/DTCM replacement happens only after the seeded
-boot trace proves correct.
+The reused CPU core does not expose ARM9 CP15 through the GBA savestate map.
+The ARM9 reset path therefore initializes the implemented CP15 control register
+to melonDS's `0x00052078` and derives high-vector selection from bit 13.
 
-## Acceptance gates
+## Verification contract
 
-1. A descriptor encoder test checks all field offsets, both CRCs, publication
-   ordering, and the values extracted from at least one retail and one
-   homebrew ROM.
-2. A VHDL test checks every savestate address/value for ARM9 and ARM7 and proves
-   neither CPU issues a bus request before initialization completes.
-3. An ARM9 CP15 read immediately after release returns `0x00052078`, with high
-   exception vectors enabled; ARM7 retains its existing behavior.
-4. The existing 129-state ARM9 lockstep is rerun from the descriptor-derived
-   state rather than a duplicated testbench constant list.
-5. Hardware mailbox profiling after release must begin in `0x02xxxxxx` at the
-   actual ARM9/ARM7 ROM entries, show traffic from both CPUs, and must not
-   devolve into sequential reads across zero-filled `0x01xxxxxx`.
-6. Only after this gate passes should ITCM/DTCM, peripherals, GPU, and sound be
-   moved from the HPS oracle into FPGA logic.
+- `src/replay/StandaloneBoot.h` is the software source of truth for addresses,
+  descriptor version, layout, and defaults.
+- `rtl/nds_boot_descriptor_reader.sv` is the FPGA source of truth for atomic
+  acceptance and field validation.
+- `rtl/tb_nds_boot_descriptor_reader.sv` checks descriptor CRC, decode,
+  generation publication, and retry behavior.
+- The standalone boot and CPU-DDR testbenches must prove that neither CPU
+  issues a bus request before state initialization completes.
+- Oracle hardware traces must begin at the real ARM9 and ARM7 entries and show
+  forward progress from both CPUs.
+
+Changes to either side of this development contract must update the matching
+source, tests, and this document together. They do not change the public
+core's FPGA-owned HLE boot path described in [`architecture.md`](architecture.md).
