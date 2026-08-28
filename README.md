@@ -2,12 +2,12 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to Public Save Beta B (2026-08-27). It
-contains the LG C-series-compatible video path, selectable screen layouts,
-melonDS-derived cartridge-save profiles, 512-byte through 128 KiB EEPROM
-support, and 256 KiB through 1 MiB Flash support. See `SOURCE_PACKAGE.txt` for
-the exact binary identities, hardware verification, exclusions, and current
-limitations.
+This source snapshot corresponds to Public Touch Beta (2026-08-28). It adds
+controller-driven touchscreen input to the LG C-series-compatible video path,
+selectable screen layouts, melonDS-derived cartridge-save profiles, 512-byte
+through 128 KiB EEPROM/FRAM support, and 256 KiB through 1 MiB Flash support.
+See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
+verification, exclusions, and current limitations.
 
 No commercial ROMs, BIOS binaries, personal saves, compiled FPGA images, or
 credentials are included.

@@ -1,6 +1,6 @@
 # Architecture
 
-Status: Public Save Beta B, 2026-08-27.
+Status: Public Touch Beta, 2026-08-28.
 
 ## Goal
 
@@ -181,11 +181,11 @@ its 4:2:1 phase relationship. The HPS service requests the board's tested
 1 GHz operating point and launches at high scheduling priority while leaving
 the main MiSTer process active for menus, input, and lifecycle control.
 
-Public Save Beta B fitted in Quartus Prime 17.0.2 at:
+Public Touch Beta fitted in Quartus Prime 17.0.2 at:
 
-- 41,199 of 41,910 ALMs (98%).
+- 41,293 of 41,910 ALMs (99%).
 - 481 of 553 RAM blocks (87%).
-- 3,459,840 of 5,662,720 block-memory bits (61%).
+- 69 DSP blocks.
 
 The project is therefore strongly area-constrained. New hardware features must
 be judged by both their benefit and their effect on fitting/routing. Static
