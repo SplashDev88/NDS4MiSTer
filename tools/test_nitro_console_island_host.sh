@@ -76,7 +76,11 @@ grep -Fq '"O[6:5],Video Layout,Left/Right,Top/Bottom,Left Only,Right Only;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '"O[7],Screen Order,Main First,Touch First;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
-grep -Fq '"O[9:8],Screen Gap,None,8 Pixels,16 Pixels,24 Pixels;",' \
+grep -Fq '"O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq 'wire [1:0] video_gap_select = status[9:8] == 2'"'"'d0 ? 2'"'"'d1 :' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '        "v,1;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '"O[4],FPS Counter,Off,On;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
@@ -162,6 +166,13 @@ grep -Fq "h3d_vram9_needed_by_h3d = '0') else" \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
 grep -Fq '"J1,A,B,X,Y,L,R,Select,Start,Touch;"' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '.joystick_r_analog_0(touch_analog_0)' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+if grep -Fq '.joystick_l_analog_0(' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"; then
+    echo "FAIL: touchscreen must not consume the left analog stick" >&2
+    exit 1
+fi
 grep -Fq '.KeyA(joystick_sync[4]),.KeyB(joystick_sync[5])' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq '.KeySelect(joystick_sync[10]),.KeyStart(joystick_sync[11])' \
@@ -178,6 +189,10 @@ grep -Fq '.touch_active(joystick_sync[12])' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq '.touch_x(touch_x),.touch_y(touch_y)' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq 'wire [7:0] touch_y = touch_y_scaled[9:2];' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq 'touch_active => touch_active, touch_x => touch_x, touch_y => touch_y' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
 
 # Keep the large per-pixel telemetry cone compiled out. The seam diagnostic
 # publishes the plane reader's compact passive frame counters through FPGA

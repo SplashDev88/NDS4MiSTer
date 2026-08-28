@@ -155,8 +155,10 @@ engine and is sent through MiSTer's normal audio path. The HPS 3D service does
 not emulate or mix audio.
 
 Controller buttons are mapped through `hps_io`. A Touch button and analog
-coordinates reach the console boundary, but full touchscreen coordinate input
-is not implemented in this public beta.
+coordinates reach the console boundary. The right stick selects an absolute
+native DS coordinate and the remappable `Touch` action holds pen-down. The SPI
+touch controller returns melonDS-compatible 12-bit X/Y samples and direct boot
+installs matching calibration data.
 
 ## Cartridge saves
 
@@ -216,8 +218,9 @@ or framebuffer payloads.
 - Cartridge latency can cause missing or late objects and effects.
 - The Reset menu command can hang; reselecting the ROM is the current restart
   workaround.
-- Touchscreen coordinates, NAND saves, save states, Wi-Fi, and microphone
-  support are not implemented.
+- Basic controller touchscreen input is present, but Engine B is not displayed,
+  so precise touch-screen games remain limited. NAND saves, save states, Wi-Fi,
+  and microphone support are not implemented.
 - Chrono Trigger has a separate boot failure under investigation.
 
 The first public compatibility target is New Super Mario Bros.; this release

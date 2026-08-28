@@ -151,8 +151,7 @@ entity nds_nitro_console_top is
       KeyY             : in  std_logic;
       lid_closed       : in  std_logic;
 
-      -- touchscreen (framework analog -> TSC-style samples in nds_spi later;
-      -- for now only EXTKEYIN pen-down uses it)
+      -- touchscreen (framework analog -> TSC samples and EXTKEYIN pen-down)
       touch_active     : in  std_logic;
       touch_x          : in  std_logic_vector(7 downto 0);
       touch_y          : in  std_logic_vector(7 downto 0);
@@ -2312,6 +2311,7 @@ begin
       clk => clk1x, reset => resetCpu,
       bus7 => io_bus7, wired_out7 => spi_wired_out7, wired_done7 => spi_wired_done7,
       irq_spi => irq7_spi,
+      touch_active => touch_active, touch_x => touch_x, touch_y => touch_y,
       fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data
    );
 

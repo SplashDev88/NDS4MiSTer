@@ -59,7 +59,10 @@ distributed separately as the public binary package.
 - Cartridge-access latency can make objects or effects appear late or fail.
 - The Reset menu command currently hangs; reselecting the ROM is the restart
   workaround.
-- Touchscreen coordinate input is not implemented.
+- Basic touchscreen input uses the controller's right stick for absolute
+  position and the remappable `Touch` action for pen-down. Because Engine B is
+  not displayed yet, games that require precise interaction with touchscreen
+  graphics remain limited.
 - Chrono Trigger has a separate boot failure under investigation.
 - NAND saves, save states, Wi-Fi, and microphone support are not implemented.
 

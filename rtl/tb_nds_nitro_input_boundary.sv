@@ -89,7 +89,7 @@ module tb_nds_nitro_input_boundary;
         if (dut.joystick_sync !== joystick || dut.analog_sync !== joystick_analog)
             $fatal(1, "controller did not cross intact sync=%h/%h expected=%h/%h",
                    dut.joystick_sync, dut.analog_sync, joystick, joystick_analog);
-        if (dut.touch_x !== 8'hD5 || dut.touch_y !== 8'h23)
+        if (dut.touch_x !== 8'hD5 || dut.touch_y !== 8'h1A)
             $fatal(1, "analog conversion mismatch x=%h y=%h", dut.touch_x, dut.touch_y);
 
         // A changed report must take two destination edges: no metastable
@@ -102,7 +102,7 @@ module tb_nds_nitro_input_boundary;
         clk1x_fall();
         if (dut.joystick_sync !== joystick || dut.analog_sync !== joystick_analog)
             $fatal(1, "second controller report did not cross intact");
-        if (dut.touch_x !== 8'hFF || dut.touch_y !== 8'h92)
+        if (dut.touch_x !== 8'hFF || dut.touch_y !== 8'h6D)
             $fatal(1, "second analog conversion mismatch x=%h y=%h",
                    dut.touch_x, dut.touch_y);
 

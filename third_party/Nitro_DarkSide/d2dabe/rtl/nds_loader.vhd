@@ -478,9 +478,15 @@ begin
                         when 11            => wr_data <= x"0007FE00"; -- fw user-settings offset
                         when 12            => wr_data <= x"0000FFFF"; -- fw data/gui CRC16s
                         -- user settings: version 5, favorite color/birthday
-                        -- defaults, halfword 0x0031 at +0x64
+                        -- defaults, melonDS touchscreen calibration at
+                        -- +0x58..+0x63, halfword 0x0031 at +0x64
                         when 13            => wr_data <= x"01000005";
                         when 14            => wr_data <= x"00000001";
+                        -- ADC1=(0,0), Pixel1=(0,0),
+                        -- ADC2=(255<<4,191<<4), Pixel2=(255,191).
+                        -- +0x58 remains zero through the default arm below.
+                        when 36            => wr_data <= x"0FF00000";
+                        when 37            => wr_data <= x"BFFFF00B";
                         when 38            => wr_data <= x"00000031";
                         when others        => wr_data <= x"00000000";
                      end case;

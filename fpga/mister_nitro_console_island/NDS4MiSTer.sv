@@ -30,17 +30,22 @@ module emu
         "-;",
         "O[6:5],Video Layout,Left/Right,Top/Bottom,Left Only,Right Only;",
         "O[7],Screen Order,Main First,Touch First;",
-        "O[9:8],Screen Gap,None,8 Pixels,16 Pixels,24 Pixels;",
+        // MiSTer initializes a new config version to option value zero. Keep
+        // the user-facing default at eight pixels while retaining None.
+        "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],FPS Counter,Off,On;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
+        "v,1;",
         "V,r355 Nitro console island v",`BUILD_DATE
     };
 
     wire [1:0] buttons;
     wire [127:0] status;
     wire [31:0] joystick_0,joystick_1;
-    wire [15:0] joystick_analog_0;
+    // The right stick is the absolute DS touchscreen position. Keep the left
+    // stick free for games and future control mappings.
+    wire [15:0] touch_analog_0;
     wire forced_scandoubler;
     wire [21:0] gamma_bus;
     wire ioctl_download;
@@ -64,6 +69,11 @@ module emu
     wire video_screen_order_active;
     wire [1:0] video_gap_active;
     wire video_fps_active;
+    // Translate the menu ordering back to scanout's 0/1/2/3 =
+    // 0/8/16/24-pixel ABI.
+    wire [1:0] video_gap_select = status[9:8] == 2'd0 ? 2'd1 :
+                                  status[9:8] == 2'd1 ? 2'd0 :
+                                  status[9:8];
 
     // Request the largest exact integer multiple of the frame-boundary-latched
     // source canvas. This keeps menu changes and scaler geometry atomic.
@@ -93,7 +103,7 @@ module emu
         .clk_sys(clk_sys),.HPS_BUS(HPS_BUS),.EXT_BUS(),
         .gamma_bus(gamma_bus),
         .joystick_0(joystick_0),.joystick_1(joystick_1),
-        .joystick_l_analog_0(joystick_analog_0),
+        .joystick_r_analog_0(touch_analog_0),
         .forced_scandoubler(forced_scandoubler),
         .buttons(buttons),.status(status),
         .ioctl_download(ioctl_download),.ioctl_addr(ioctl_addr),
@@ -133,11 +143,11 @@ module emu
         .enable(console_enabled),
         .video_layout_select(status[6:5]),
         .video_screen_order_select(status[7]),
-        .video_gap_select(status[9:8]),
+        .video_gap_select(video_gap_select),
         .video_fps_select(status[4]),
         .video_layout_active,.video_screen_order_active,
         .video_gap_active,.video_fps_active,
-        .joystick(joystick_0),.joystick_analog(joystick_analog_0),
+        .joystick(joystick_0),.joystick_analog(touch_analog_0),
         .ioctl_download,.ioctl_index,.ioctl_wait,
         .save_img_mounted,.save_img_readonly,.save_img_size,
         .save_sd_lba,.save_sd_rd,.save_sd_wr,.save_sd_ack,

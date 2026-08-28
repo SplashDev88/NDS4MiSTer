@@ -10,9 +10,10 @@
 --             read-only). The 128 KB image is served through the fw_*
 --             port (sim/tests/nds_firmware.hex = melonDS's generated
 --             default firmware, dumped by melonds_fwdump).
---   device 2: touchscreen TSC (control byte -> 12-bit conversion; no
---             touch/mic inputs wired yet: X/Y read 0, mic reads 0x800,
---             temperature etc. read 0xFFF - matching headless melonDS)
+--   device 2: touchscreen TSC (control byte -> 12-bit conversion; touch
+--             coordinates match melonDS: X/Y are the held 8-bit pixel
+--             coordinates shifted left four, while release is X=0/Y=0xFFF;
+--             mic reads 0x800 and temperature etc. read 0xFFF)
 --
 -- A byte transfer takes 8*(8<<baud) clk cycles (SPI shifts one bit per
 -- 33 MHz cycle pair set by baud); busy (bit7) is set for the duration and
@@ -36,6 +37,10 @@ entity nds_spi is
       wired_done7 : out std_logic;
 
       irq_spi     : out std_logic := '0';   -- one-cycle pulse (ARM7 IRQ bit 23)
+
+      touch_active : in std_logic;
+      touch_x      : in std_logic_vector(7 downto 0);
+      touch_y      : in std_logic_vector(7 downto 0);
 
       -- firmware image read port (256 KB, word addressed). fw_req pulses
       -- one cycle with a fresh fw_addr; the backing store answers with
@@ -130,6 +135,7 @@ begin
             fw_req     <= '0';
             tsc_ctrl   <= (others => '0');
             tsc_data   <= (others => '0');
+            tsc_datapos <= (others => '0');
             tsc_conv   <= (others => '0');
          else
 
@@ -281,8 +287,18 @@ begin
                            tsc_ctrl    <= wval;
                            tsc_datapos <= "01";
                            case wval(6 downto 4) is
-                              when "001" => conv := (others => '0');      -- touch Y (no touch)
-                              when "101" => conv := (others => '0');      -- touch X (no touch)
+                              when "001" =>
+                                 if (touch_active = '1') then
+                                    conv := shift_left(resize(unsigned(touch_y), 12), 4);
+                                 else
+                                    conv := x"FFF";                       -- released Y
+                                 end if;
+                              when "101" =>
+                                 if (touch_active = '1') then
+                                    conv := shift_left(resize(unsigned(touch_x), 12), 4);
+                                 else
+                                    conv := (others => '0');              -- released X
+                                 end if;
                               when "110" => conv := x"80" & x"0";         -- mic: silence -> 0x800
                               when others => conv := x"FF" & x"F";        -- everything else: 0xFFF
                            end case;

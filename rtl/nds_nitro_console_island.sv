@@ -1790,8 +1790,15 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
     .div_busy(div_busy_unused),.sqrt_busy(sqrt_busy_unused)
 );
 
+// Convert MiSTer's signed absolute analog axes to native DS pixels. Flipping
+// the X sign bit maps -128..127 exactly to 0..255. Multiplying the equivalent
+// Y value by 3/4 maps it to 0..191 and puts a centered stick at (128,96).
 wire [7:0] touch_x = {~analog_sync[7],analog_sync[6:0]};
-wire [7:0] touch_y = {~analog_sync[15],analog_sync[14:8]};
+wire [7:0] touch_y_unscaled = {~analog_sync[15],analog_sync[14:8]};
+wire [9:0] touch_y_scaled = {2'b00,touch_y_unscaled} +
+                             {2'b00,touch_y_unscaled} +
+                             {2'b00,touch_y_unscaled};
+wire [7:0] touch_y = touch_y_scaled[9:2];
 nds_nitro_console_wrap #(
     .CLKMEM_RATIO(CLKMEM_RATIO)
 ) console (
