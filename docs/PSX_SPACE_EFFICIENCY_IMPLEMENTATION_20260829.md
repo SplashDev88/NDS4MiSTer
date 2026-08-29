@@ -22,8 +22,9 @@ The cumulative A-side Analysis & Synthesis report contains 40,368 estimated
 ALMs, 43,702 registers, and 3,460,096 block-memory bits. The first experimental
 map contained 40,707 estimated ALMs, 45,134 registers, and 3,414,016 block-
 memory bits. Its fit required 4,210 LABs on a 4,191-LAB device. The hierarchy
-comparison identified one failed mapping experiment, documented below; it has
-been removed before the next fit.
+comparison identified one failed mapping experiment, documented below. After
+removing it, the corrected map completed with 40,227 estimated ALMs, 43,725
+total registers, and 3,415,552 block-memory bits.
 
 ## Implemented commits
 
@@ -129,8 +130,8 @@ exactly; no IPC functional RTL changed.
 - Sound packed-state comparison: PASS, 103,185 cases.
 - Cache tag comparison: PASS, 1,600,384 lane reads.
 - Production cache VHDL nvc analysis: PASS. The sound analysis/elaboration
-  harness was updated for its dedicated vendor RAM boundary; no host VHDL
-  compiler was available, and Docker/Quartus were intentionally not launched.
+  harness was updated for its dedicated vendor RAM boundary.
+- ARM hybrid-3D service cross-build and built-in self-test: PASS.
 - Public repository safety audit on every staged commit: PASS.
 - Worktree is isolated from the active cumulative fit and nothing was pushed.
 
@@ -149,22 +150,33 @@ limitations and testbench synthesis warnings; all test gates finished PASS.
 
 Before the IPC correction, the entire experiment was +339 estimated ALMs and
 +1,432 registers while saving 46,080 block-memory bits. Removing the dominant
-IPC regression restores three proven 16x32 inferred RAMs. From the measured
-hierarchy delta alone this removes 495 ALUTs and 1,413 registers, comfortably
-larger than the 19-LAB fit shortfall. A new map/fit must confirm placement.
+IPC regression restored three proven 16x32 inferred RAMs. The corrected map is
+141 estimated ALMs below the cumulative baseline and uses 44,544 fewer logical
+block-memory bits. Quartus completed placement, routing, assembly, and timing
+analysis successfully. The final fit uses 41,299 of 41,910 ALMs (99%), 44,947
+registers, 3,415,552 block-memory bits, 468 of 553 M10Ks (85%), 69 DSPs, four
+PLLs, and 145 pins. This is six more fitted ALMs but 13 fewer M10Ks than the
+preceding Public Touch Beta. Router interconnect use is 42% average and 67%
+peak. Assembly checksum is 0x0FD41911.
+
+TimeQuest completed with the expected experimental timing violations. Its
+worst-case setup slack is -14.454 ns and worst-case hold slack is -0.405 ns.
+Per project policy these are diagnostic measurements, not a deployment gate;
+the exact RBF still requires real-TV and gameplay testing.
+
+Artifact identities:
+
+- FPGA RBF SHA-256:
+  `d459b7805309d01807854be6a19d241ea3bc0572b46df1176d3843abb1b82740`
+- ARM service SHA-256:
+  `e2e6770dfed93b4b30885c2707329534d88f87072adebc51d5e64c186244ee14`
+- Hardware-source commit used by Quartus: `56511bc`
 
 ## Validation still required
 
-1. Run a corrected experimental map and confirm IPC returns to 120 ALUTs, 241
-   registers, three 16x32 inferred RAMs, and 1,536 block-memory bits.
-2. Compare total and per-entity ALMs, registers, M10Ks/MLABs, DSPs, PLLs, inferred
-   RAM modes, replication, and warnings against the exact A-side snapshot.
-3. If the corrected map is favorable, run a full isolated fit only when no
-   other Quartus process is active. Treat timing as diagnostic rather than a
-   deployment gate.
-4. Direct-load TV testing: LG C3/C4 and TCL; all layouts/order/gap/FPS settings;
+1. Direct-load TV testing: LG C3/C4 and TCL; all layouts/order/gap/FPS settings;
    default 8-pixel gap; touch; sound; all save types; reset/reload.
-5. Game testing: NSMB intro, map, big castle and long play; verify no 3D speed,
+2. Game testing: NSMB intro, map, big castle and long play; verify no 3D speed,
    sound-sync, save, HDMA/BG2, or stability regression.
 
 ## Deferred stages

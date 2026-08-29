@@ -1,15 +1,15 @@
-NDS4MiSTer public touch beta source - 2026-08-28
-================================================
+NDS4MiSTer public cumulative beta candidate source - 2026-08-29
+================================================================
 
-Source checkpoint: the TV-validated Candidate L video path, expanded
-save-profile/Flash implementation, save-profile CDC fix, and controller touch
-implementation from feature/video-layout-menu.
+Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
+work, expanded save-profile/Flash implementation, save-profile CDC fix,
+controller touch, and PSX-derived FPGA space efficiencies.
 
-This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Touch_Beta_20260828 package. It retains the LG-compatible
-video path and includes the FPGA-side MiSTer save bridge, profile ROM, regular
-EEPROM/FRAM and Flash support, and controller touch path used by the tested
-beta.
+This curated source snapshot corresponds to the pending installable
+NDS4MiSTer_Public_Cumulative_Beta_20260829 package. It retains the
+LG-compatible video path and includes the FPGA-side MiSTer save bridge,
+profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
+current hybrid 3D path. Exact artifact identities are listed below.
 
 The release sound path is the GPL-licensed Nitro_DarkSide `nds_sound.vhd`
 implementation built with `SOUND_ENABLE=1`. Retired private FPGA-sound
@@ -19,10 +19,21 @@ Release identities
 ------------------
 
 FPGA core:
-  4d06b132d98310e1d4e8f6f8031ed956f40c7190fb23f227196130de0c4ab609
+  d459b7805309d01807854be6a19d241ea3bc0572b46df1176d3843abb1b82740
 
-ARM hybrid-3D service (unchanged from the LG-safe public beta):
-  5946b1fa5b4d9ed4c1ba7793d84c0af92766b942418f17f6e858a5a8b3d6dfd4
+ARM hybrid-3D service:
+  e2e6770dfed93b4b30885c2707329534d88f87072adebc51d5e64c186244ee14
+
+FPGA space efficiencies
+-----------------------
+
+* Shared ARM7 barrel-shifter datapath with unchanged instruction latency
+* Exact two-level cartridge-save profile lookup
+* Packed per-channel FPGA sound fetch state
+* Packed ARM9 instruction/data cache-tag storage
+* The attempted IPC MLAB mapping was rejected from the candidate after real
+  Quartus data showed that it expanded into logic; the known-good IPC RAM
+  implementation is retained.
 
 Save support
 ------------
@@ -61,10 +72,12 @@ cross-size isolation, right-stick touch coordinates, pen release, SPI touch,
 direct-boot calibration, and the complete Nitro console-island host RTL gate.
 
 Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
-successful fit used 41,293 of 41,910 ALMs (99%), 481 of 553 RAM blocks (87%),
-and 69 DSP blocks. Static timing remains
-diagnostic information rather than a deployment gate for this experimental
-project; the candidate passed LG C-series display and gameplay testing.
+successful fit used 41,299 of 41,910 ALMs (99%), 44,947 registers, 468 of 553
+RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with device
+checksum 0x0FD41911. Static timing remains diagnostic information rather than a
+deployment gate for this experimental project. The retained HDMI path passed
+LG C-series testing in the preceding beta; this exact artifact still requires
+direct-load TV and gameplay approval.
 
 Package exclusions
 ------------------

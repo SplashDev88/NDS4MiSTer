@@ -2,11 +2,12 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to Public Touch Beta (2026-08-28). It adds
-controller-driven touchscreen input to the LG C-series-compatible video path,
-selectable screen layouts, melonDS-derived cartridge-save profiles, 512-byte
-through 128 KiB EEPROM/FRAM support, 256 KiB through 1 MiB Flash support, the
-134.056 MHz console clock family, and bounded cartridge read-ahead.
+This source snapshot corresponds to the Public Cumulative Beta candidate
+(2026-08-29). It combines controller-driven touchscreen input with the LG
+C-series-compatible video path, selectable screen layouts, melonDS-derived
+cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
+through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
+cartridge read-ahead, and the current ARM-assisted 3D performance path.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
 verification, exclusions, and current limitations.
 
@@ -22,6 +23,9 @@ credentials are included.
 - The release sound implementation is the GPL-licensed Nitro_DarkSide engine
   in `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`. The release wrapper
   builds it with `SOUND_ENABLE=1`.
+- PSX-core-derived space work shares the ARM7 shifter datapath, compresses the
+  exact cartridge-save lookup tables, packs sound fetch state, and packs ARM9
+  cache-tag storage. Each retained change has a focused equivalence test.
 - Retired private FPGA-sound experiments are not included and are not release
   dependencies.
 

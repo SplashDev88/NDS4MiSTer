@@ -1,6 +1,6 @@
 # Architecture
 
-Status: Public Touch Beta, 2026-08-28.
+Status: Public Cumulative Beta candidate, 2026-08-29.
 
 ## Goal
 
@@ -184,11 +184,13 @@ board's tested 1 GHz operating point and launches at high scheduling priority
 while leaving the main MiSTer process active for menus, input, and lifecycle
 control.
 
-Public Touch Beta fitted in Quartus Prime 17.0.2 at:
+The 2026-08-29 PSX-efficiency candidate fitted in Quartus Prime 17.0.2 at:
 
-- 41,293 of 41,910 ALMs (99%).
-- 481 of 553 RAM blocks (87%).
+- 41,299 of 41,910 ALMs (99%).
+- 44,947 registers.
+- 468 of 553 RAM blocks (85%).
 - 69 DSP blocks.
+- Four PLLs.
 
 The project is therefore strongly area-constrained. New hardware features must
 be judged by both their benefit and their effect on fitting/routing. Static
