@@ -12,6 +12,7 @@ module tb_nds_nitro_save_bridge;
     logic backup_access_active = 0;
     logic backup_write_toggle = 0;
     logic save_ready, save_run_ready, backup_cache_ready;
+    logic [27:0] debug_status;
     logic [31:0] sd_lba;
     logic sd_rd, sd_wr, sd_ack = 0;
     logic [12:0] sd_buff_addr;

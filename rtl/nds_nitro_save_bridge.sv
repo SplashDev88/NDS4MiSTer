@@ -26,6 +26,7 @@ module nds_nitro_save_bridge #(
     output logic        save_ready,
     output logic        save_run_ready,
     output logic        backup_cache_ready,
+    output logic [27:0] debug_status,
 
     output logic [31:0] sd_lba,
     output logic        sd_rd,
@@ -93,6 +94,32 @@ module nds_nitro_save_bridge #(
     wire backup_write_event = backup_toggle_sync != backup_toggle_d;
     wire [10:0] requested_lba = backup_addr_sync[19:9];
     wire mounted_write_allowed = mounted_valid_size && !mounted_readonly;
+
+    // Read-only first-load diagnostic. It feeds only the existing slow crash
+    // telemetry rotation and therefore cannot influence save control timing.
+    always_comb begin
+        debug_status = {
+            state,
+            profile_fresh_armed,
+            backup_profile_valid,
+            backup_save_type,
+            active_save_type,
+            save_ready,
+            save_run_ready,
+            mount_pending,
+            cache_valid,
+            cache_dirty,
+            mounted_valid_size,
+            mounted_has_data,
+            img_mounted,
+            cart_download,
+            replacement_pending,
+            sd_rd,
+            sd_wr,
+            mounted_readonly,
+            backup_cache_ready
+        };
+    end
 
     function automatic logic [11:0] sectors_for_type(input logic [3:0] t);
         case (t)
