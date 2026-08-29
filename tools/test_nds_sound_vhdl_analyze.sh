@@ -10,7 +10,9 @@ run_analysis() {
     cd "$test_tmp"
     nvc --std=2008 --work=MEM -a "$repo_dir/rtl/tb_mem_sync_ram_dual_byte_enable.vhd"
     nvc --std=2008 -L . -a "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd"
+    nvc --std=2008 -L . -a "$repo_dir/rtl/tb_nds_sound_fetch_state_ram.vhd"
     nvc --std=2008 -L . -a "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd"
+    nvc --std=2008 -L . -e nds_sound
 }
 
 if command -v nvc >/dev/null 2>&1; then
@@ -25,8 +27,10 @@ else
             set -eu
             nvc --std=2008 --work=MEM -a /workspace/rtl/tb_mem_sync_ram_dual_byte_enable.vhd
             nvc --std=2008 -L . -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd
+            nvc --std=2008 -L . -a /workspace/rtl/tb_nds_sound_fetch_state_ram.vhd
             nvc --std=2008 -L . -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd
+            nvc --std=2008 -L . -e nds_sound
         '
 fi
 
-echo "PASS: packed NDS sound VHDL analyzes with the portable MEM simulation boundary"
+echo "PASS: packed NDS sound VHDL analyzes/elaborates with portable RAM boundaries"

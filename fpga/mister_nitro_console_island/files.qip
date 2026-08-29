@@ -46,6 +46,7 @@ set_global_assignment -name VHDL_FILE $nitro_rtl/nds_debug.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_perf.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_card.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_rtc.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_sound_fetch_state_ram.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_sound.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/reg_nds_display.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_text.vhd

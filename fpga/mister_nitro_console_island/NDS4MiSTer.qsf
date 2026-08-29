@@ -321,6 +321,7 @@ set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rt
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_perf.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_card.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_rtc.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_sound_fetch_state_ram.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/reg_nds_display.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_text.vhd

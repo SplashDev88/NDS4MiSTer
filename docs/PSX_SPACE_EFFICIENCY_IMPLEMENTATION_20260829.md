@@ -64,14 +64,17 @@ derived from Cyclone V width/depth granularity, not yet a measured mapper delta.
 ### `88435fb` — packed sound fetch state
 
 `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd` combines the per-channel
-25-bit fetch pointer and 24-bit remaining count into one 52-bit true-dual-port
-RAM. CPU start writes and fetch-side updates remain atomic; the one-shot clear
-retains the pointer explicitly. Assertions require pointer/count addresses and
-write-enables to remain paired.
+25-bit fetch pointer and 24-bit remaining count into one exact 49-bit
+true-dual-port RAM. A dedicated full-word interface with disconnected byte
+enables replaces the rejected four-by-13-bit prototype; this is the legal
+`WIDTH_BYTEENA=1` form because every functional update already writes both
+fields atomically. The one-shot clear retains the pointer explicitly.
+Assertions require pointer/count addresses and write-enables to remain paired.
 
-`tools/test_sound_fetch_state_packing.py` proves 100,049 boundary and deterministic
-state transitions equivalent to the retired two-RAM implementation. The actual
-production VHDL also passes nvc analysis against the portable MEM boundary.
+`tools/test_sound_fetch_state_packing.py` proves 103,185 boundary, transition-
+class, and deterministic randomized cases equivalent to the retired two-RAM
+implementation. The product VHDL analysis harness includes portable boundaries
+for both the generic MEM RAM and this dedicated packed RAM.
 
 Expected physical result: four to three true-dual-port M10Ks, a saving of 1.
 
