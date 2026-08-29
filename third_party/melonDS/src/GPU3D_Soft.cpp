@@ -2273,7 +2273,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     for (s32 y = 0; y < VisibleScanlines; y++)
     {
         ScanlineFinalPass(y);
-        if (threaded)
+        if (threaded && !FullFrameCompletion)
             Platform::Semaphore_Post(Sema_ScanlineCount);
     }
     if (Parent.StageProfileEnabled)
@@ -2309,7 +2309,7 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
             Parent.StageProfile.ThreeDFinalPassNs +=
                 renderer3DProfileElapsedNs(stageStarted);
 
-        if (threaded)
+        if (threaded && !FullFrameCompletion)
             // Notify the main thread that we're done with a scanline.
             Platform::Semaphore_Post(Sema_ScanlineCount);
     }
@@ -2320,7 +2320,7 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
         Parent.StageProfile.ThreeDFinalPassNs +=
             renderer3DProfileElapsedNs(stageStarted);
 
-    if (threaded)
+    if (threaded && !FullFrameCompletion)
         // If this renderer is threaded, notify the main thread that we're done with the frame.
         Platform::Semaphore_Post(Sema_ScanlineCount);
 }
@@ -2400,7 +2400,8 @@ void SoftRenderer3D::RenderThreadFunc()
         RenderThreadRendering = true;
         if (FrameIdentical)
         { // If no rendering is needed, just say we're done.
-            Platform::Semaphore_Post(Sema_ScanlineCount, 192);
+            if (!FullFrameCompletion)
+                Platform::Semaphore_Post(Sema_ScanlineCount, 192);
         }
         else
         {

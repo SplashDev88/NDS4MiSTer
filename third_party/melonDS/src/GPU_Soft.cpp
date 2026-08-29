@@ -134,6 +134,7 @@ void SoftRenderer::SetRenderSettings(RendererSettings& settings)
     }
     SetParallel2D(settings.Parallel2D);
     auto rend3d = dynamic_cast<SoftRenderer3D*>(Rend3D.get());
+    rend3d->SetFullFrameCompletion(settings.FullFrame3D);
     rend3d->SetThreaded(settings.Threaded);
 }
 

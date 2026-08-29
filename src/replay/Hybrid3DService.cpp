@@ -952,17 +952,19 @@ private:
             // ownership boundary for this pipelined 3D worker.
             constexpr bool Threaded3D = true;
             constexpr bool Parallel2D = false;
+            const bool FullFrame3D = !arm_video_render_shadow_;
             melonDS::RendererSettings settings {
                 1, Threaded3D, false, false,
                 arm_video_render_shadow_,
                 Parallel2D, arm_video_render_shadow_,
-                pipeline_profile_enabled_};
+                pipeline_profile_enabled_, FullFrame3D};
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
                 // SoftRenderer3D::SetThreaded() starts one render job while
-                // enabling its worker. Consume that job's completion and all
-                // 192 scanline tokens before the first real H3D frame.
+                // enabling its worker. Consume that job's complete-frame
+                // fence before the first real H3D frame. The plane-only path
+                // intentionally does not publish per-scanline tokens.
                 renderer.Finish3DRendering();
                 for (std::uint32_t y = 0; y < PlaneHeight; ++y) {
                     if (!renderer.Get3DScanline(y))

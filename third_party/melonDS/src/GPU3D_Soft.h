@@ -106,6 +106,10 @@ public:
     void Reset() override;
 
     void SetThreaded(bool threaded) noexcept;
+    void SetFullFrameCompletion(bool fullFrame) noexcept
+    {
+        FullFrameCompletion = fullFrame;
+    }
     [[nodiscard]] bool IsThreaded() const noexcept { return Threaded; }
 
     void RenderFrame() override;
@@ -885,6 +889,7 @@ private:
 
     bool Threaded = false;
     bool DualCoreRaster = false;
+    bool FullFrameCompletion = false;
     Platform::Thread* RenderThread;
     Platform::Thread* ParallelRasterThread;
     std::atomic_bool RenderThreadRunning;

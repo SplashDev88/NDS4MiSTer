@@ -892,6 +892,14 @@ struct RendererSettings
     // Collect MiSTer full-video stage timings. Ordinary melonDS frontends
     // leave this disabled, so their renderer hot path has no timing overhead.
     bool StageProfile = false;
+
+    // The MiSTer plane-only H3D service consumes a 3D frame only after the
+    // complete-frame fence. It never waits for individual scanlines while
+    // rasterization is active, so publishing 192 scanline semaphore tokens
+    // adds synchronization traffic without exposing useful parallelism.
+    // Ordinary melonDS and MiSTer's full-video shadow keep the streaming
+    // scanline contract by leaving this disabled.
+    bool FullFrame3D = false;
 };
 
 struct ExternalRendererStageProfile
