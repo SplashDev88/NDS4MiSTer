@@ -58,6 +58,13 @@ architecture arch of nds_ipc is
 
    -- fifo79: ARM7 -> ARM9 (7's send, 9's recv); fifo97 the reverse
    signal fifo79, fifo97       : t_fifo;
+   -- These 16x32 FIFOs require combinational head reads, which is a native MLAB
+   -- shape and avoids implementing 512 payload bits per direction as flops.
+   -- Do not add no_rw_check: simultaneous pop/push collision behavior remains
+   -- part of the inferred VHDL memory contract.
+   attribute ramstyle : string;
+   attribute ramstyle of fifo79 : signal is "MLAB";
+   attribute ramstyle of fifo97 : signal is "MLAB";
    signal cnt79, cnt97         : integer range 0 to 16 := 0;
    signal rd79, wr79           : integer range 0 to 15 := 0;
    signal rd97, wr97           : integer range 0 to 15 := 0;

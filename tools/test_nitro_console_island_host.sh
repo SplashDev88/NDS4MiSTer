@@ -11,6 +11,7 @@ python3 "$script_dir/test_sound_fetch_state_packing.py"
 "$script_dir/test_nds_sound_vhdl_analyze.sh"
 python3 "$script_dir/test_cache_tag_packing.py"
 "$script_dir/test_nds_cache_vhdl_analyze.sh"
+"$script_dir/test_nds_ipc_mlab_mapping.sh"
 
 "$script_dir/test_extract_melonds_freebios.sh"
 freebios7_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.vhd")"
