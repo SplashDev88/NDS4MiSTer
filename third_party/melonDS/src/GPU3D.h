@@ -115,6 +115,7 @@ public:
         {
             ExternalGeometryDiscardRequested = false;
             ExternalGeometryDiscardActive = false;
+            ExternalGeometryDiscardTainted = false;
         }
     }
     // An external owner may know before replaying a frame that its derived
@@ -124,8 +125,14 @@ public:
     void SetExternalGeometryDiscard(bool enabled) noexcept
     {
         ExternalGeometryDiscardRequested = ExternalCommandReplay && enabled;
-        if (!ExternalGeometryDiscardRequested)
-            ExternalGeometryDiscardActive = false;
+        // Do not clear an already-active discard at an external packet/frame
+        // boundary. A legal primitive list can span that boundary; only its
+        // END/FLUSH command may make it safe to resume constructing vertices.
+    }
+    bool ExternalGeometryDiscardInProgress() const noexcept
+    {
+        return ExternalGeometryDiscardActive ||
+            ExternalGeometryDiscardTainted;
     }
     // Native-resolution software rendering consumes FinalPosition only.
     // OpenGL/compute renderers additionally consume HiresPosition.
@@ -283,6 +290,7 @@ public:
     bool ExternalCommandReplay = false;
     bool ExternalGeometryDiscardRequested = false;
     bool ExternalGeometryDiscardActive = false;
+    bool ExternalGeometryDiscardTainted = false;
     bool HighResolutionCoordinatesEnabled = true;
 
     u32 DispCnt = 0;

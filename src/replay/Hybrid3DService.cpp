@@ -1558,7 +1558,12 @@ private:
 
         replay_frame_active_ = true;
         replay_active_frame_ = frame;
+        // A primitive list can cross the service's frame packets. If its head
+        // was discarded, the tail cannot legally construct polygons from
+        // missing TempVertexBuffer entries. Taint this entire frame and keep
+        // discarding until GPU3D observes the list's real END/FLUSH.
         replay_frame_discard_geometry_ =
+            nds_->GPU.GPU3D.ExternalGeometryDiscardInProgress() ||
             replay_render_deadline_missed(frame);
         nds_->GPU.GPU3D.SetExternalGeometryDiscard(
             replay_frame_discard_geometry_);
@@ -4520,6 +4525,88 @@ void run_self_test()
                     sizeof(oracle_gpu.CurVertexRAM[0])) != 0)
             self_test_fail(
                 "visible geometry diverged after obsolete-frame discard");
+
+        // Mario Kart can build one polygon buffer across multiple VBlanks and
+        // issue FLUSH later. Once any list in that buffer is discarded, the
+        // entire build remains non-renderable through its real FLUSH; mixing
+        // later visible lists into the incomplete buffer produces black areas
+        // and stray geometry.
+        auto split_oracle = make_geometry_nds();
+        auto split_discard = make_geometry_nds();
+        for (auto* nds : {split_oracle.get(), split_discard.get()}) {
+            push(*nds, 0x10, 1); // position matrix
+            push(*nds, 0x15, 0); // identity
+            push(*nds, 0x20, 0x00003def);
+            push(*nds, 0x29, 0x001f00c0);
+        }
+        split_discard->GPU.GPU3D.SetExternalGeometryDiscard(true);
+        push(*split_oracle, 0x40, 0);
+        push(*split_discard, 0x40, 0);
+        push(*split_oracle, 0x24, vertex10(-256, -256, 0));
+        push(*split_discard, 0x24, vertex10(-256, -256, 0));
+        push(*split_oracle, 0x24, vertex10(256, -256, 0));
+        push(*split_discard, 0x24, vertex10(256, -256, 0));
+        push(*split_oracle, 0x24, vertex10(0, 256, 0));
+        push(*split_discard, 0x24, vertex10(0, 256, 0));
+        push(*split_oracle, 0x41, 0);
+        push(*split_discard, 0x41, 0);
+        if (!split_discard->GPU.GPU3D
+                 .ExternalGeometryDiscardInProgress() ||
+            split_discard->GPU.GPU3D.NumVertices != 0 ||
+            split_discard->GPU.GPU3D.NumPolygons != 0)
+            self_test_fail(
+                "discarded polygon buffer lost taint before flush");
+        // The service's packet boundary toggles the external request. VBlank
+        // itself does not own this taint; the following request transition is
+        // the invariant that previously exposed the incomplete buffer.
+        split_discard->GPU.GPU3D.SetExternalGeometryDiscard(false);
+        if (!split_discard->GPU.GPU3D
+                 .ExternalGeometryDiscardInProgress())
+            self_test_fail(
+                "discarded polygon buffer lost taint at frame boundary");
+
+        // prepare_replay_frame() sees the carried taint and discards the
+        // whole continuation frame.
+        split_discard->GPU.GPU3D.SetExternalGeometryDiscard(true);
+        push(*split_oracle, 0x40, 0);
+        push(*split_discard, 0x40, 0);
+        push(*split_oracle, 0x24, vertex10(-192, -128, 0));
+        push(*split_discard, 0x24, vertex10(-192, -128, 0));
+        push(*split_oracle, 0x24, vertex10(224, -96, 0));
+        push(*split_discard, 0x24, vertex10(224, -96, 0));
+        push(*split_oracle, 0x24, vertex10(32, 224, 0));
+        push(*split_discard, 0x24, vertex10(32, 224, 0));
+        push(*split_oracle, 0x41, 0);
+        push(*split_discard, 0x41, 0);
+        push(*split_oracle, 0x50, 0);
+        push(*split_discard, 0x50, 0);
+        if (split_discard->GPU.GPU3D
+                .ExternalGeometryDiscardInProgress() ||
+            split_discard->GPU.GPU3D.NumVertices != 0 ||
+            split_discard->GPU.GPU3D.NumPolygons != 0 ||
+            split_discard->GPU.GPU3D.ExternalDiscardedVertices != 6)
+            self_test_fail(
+                "tainted polygon buffer was not discarded through flush");
+        split_oracle->GPU.GPU3D.VBlank();
+        split_discard->GPU.GPU3D.VBlank();
+        split_discard->GPU.GPU3D.SetExternalGeometryDiscard(false);
+
+        selected_frame(*split_oracle);
+        selected_frame(*split_discard);
+        const auto& split_oracle_gpu = split_oracle->GPU.GPU3D;
+        const auto& split_discard_gpu = split_discard->GPU.GPU3D;
+        if (split_oracle_gpu.NumVertices == 0 ||
+            split_oracle_gpu.NumPolygons == 0 ||
+            split_oracle_gpu.NumVertices != split_discard_gpu.NumVertices ||
+            split_oracle_gpu.NumPolygons != split_discard_gpu.NumPolygons ||
+            split_oracle_gpu.CurRAMBank != split_discard_gpu.CurRAMBank ||
+            std::memcmp(
+                split_oracle_gpu.CurVertexRAM,
+                split_discard_gpu.CurVertexRAM,
+                split_oracle_gpu.NumVertices *
+                    sizeof(split_oracle_gpu.CurVertexRAM[0])) != 0)
+            self_test_fail(
+                "visible geometry diverged after tainted-buffer discard");
     }
 
     // Production's 3D-only split combines both asynchronous workers. A

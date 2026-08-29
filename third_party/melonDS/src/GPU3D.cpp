@@ -323,6 +323,7 @@ void GPU3D::Reset() noexcept
 
     ExternalGeometryDiscardRequested = false;
     ExternalGeometryDiscardActive = false;
+    ExternalGeometryDiscardTainted = false;
     ExternalDiscardedVertices = 0;
 
     RenderXPos = 0;
@@ -2219,6 +2220,8 @@ void GPU3D::ExecuteCommand() noexcept
             // at which catch-up was requested.
             ExternalGeometryDiscardActive =
                 ExternalGeometryDiscardRequested;
+            if (ExternalGeometryDiscardActive)
+                ExternalGeometryDiscardTainted = true;
             break;
 
         case 0x41: // end polygons
@@ -2233,6 +2236,7 @@ void GPU3D::ExecuteCommand() noexcept
         case 0x50: // flush
             VertexPipelineCmdDelayed4();
             ExternalGeometryDiscardActive = false;
+            ExternalGeometryDiscardTainted = false;
             FlushRequest = 1;
             FlushAttributes = entry.Param & 0x3;
             CycleCount = 325;
