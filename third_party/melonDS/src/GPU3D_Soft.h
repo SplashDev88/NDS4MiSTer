@@ -226,6 +226,7 @@ public:
     {
         return FrameIdentical;
     }
+    void GetNativeBufferHashes(u64 hashes[3]) const noexcept;
 
     void SetupRenderThread();
     void EnableRenderThread();
@@ -903,6 +904,17 @@ private:
     static constexpr int MaxRendererPolygons = 2048;
     static constexpr int PolygonMaskWords = MaxRendererPolygons / 32;
     static constexpr int ScheduledPolygonThreshold = 8;
+    static constexpr int RasterBandLines = 32;
+    static constexpr int RasterBandCount =
+        VisibleScanlines / RasterBandLines;
+    static_assert(RasterBandCount * RasterBandLines == VisibleScanlines);
+
+    struct RasterBandResult
+    {
+        u64 RenderNs = 0;
+        u32 Jobs = 0;
+        u32 AdvancedScanlines = 0;
+    };
 
     RendererPolygon PolygonList[MaxRendererPolygons];
     u8 PolygonFirstScanline[MaxRendererPolygons];
@@ -948,6 +960,14 @@ private:
         s32 firstLine, s32 endLine, RendererPolygon* polygonList,
         u32* activePolygonMask, bool& prevIsShadowMask,
         u8* stencilBuffer);
+    void AdvanceRasterContext(
+        s32 firstLine, s32 endLine, RendererPolygon* polygonList,
+        u32* activePolygonMask, bool& prevIsShadowMask);
+    RasterBandResult RenderRasterBandJobs(
+        int initialBand, RendererPolygon* polygonList,
+        u32* activePolygonMask, bool& prevIsShadowMask,
+        u8* stencilBuffer);
+    bool RasterBandQueueSafe(int npolys) const;
     void PrepareParallelRasterBand(int npolys, s32 firstLine);
     s32 ChooseParallelRasterSplitLine(int npolys) const;
 
@@ -995,6 +1015,8 @@ private:
     bool Threaded = false;
     bool DualCoreRaster = false;
     bool AdaptiveRasterSplit = false;
+    bool RasterBandQueue = false;
+    bool RasterBandQueueTestDelayWorker = false;
     bool FullFrameCompletion = false;
     Platform::Thread* RenderThread;
     Platform::Thread* ParallelRasterThread;
@@ -1029,7 +1051,11 @@ private:
     u8 ParallelStencilBuffer[256 * 2] {};
     bool ParallelPrevIsShadowMask = false;
     std::atomic<s32> ParallelRasterSplitLine_ {112};
+    std::atomic_bool ParallelRasterBandQueueFrame_ {false};
+    std::atomic<int> ParallelRasterNextBand_ {RasterBandCount};
     std::atomic<u64> ParallelRasterNs {0};
+    std::atomic<u32> ParallelRasterJobs {0};
+    std::atomic<u32> ParallelRasterAdvancedScanlines {0};
     std::atomic<u64> ParallelRasterCompletionNs {0};
     NDS4MiSTerRasterBalanceController RasterBalance;
 };

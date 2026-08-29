@@ -944,6 +944,10 @@ struct ExternalRendererStageProfile
     u64 ThreeDAdaptiveSplitLineTotal = 0;
     u64 ThreeDAdaptiveSplitLineMin = 0;
     u64 ThreeDAdaptiveSplitLineMax = 0;
+    u64 ThreeDBandQueueFrames = 0;
+    u64 ThreeDBandQueueJobs = 0;
+    u64 ThreeDBandQueueAdvancedScanlines = 0;
+    u64 ThreeDBandQueueShadowFallbackFrames = 0;
     u64 ThreeDPolygonFrames = 0;
     u64 ThreeDPolygons = 0;
     u64 ThreeDPolygonScanlines = 0;
@@ -990,6 +994,8 @@ public:
     virtual bool GetFramebuffers(void** top, void** bottom) = 0;
     virtual u32* Get3DScanline(u32 line) { (void)line; return nullptr; }
     virtual bool Is3DFrameIdentical() const { return false; }
+    virtual bool Get3DNativeBufferHashes(u64 hashes[3]) const
+        { (void)hashes; return false; }
     virtual bool GetRenderedScanlines(u32 line, u32** top, u32** bottom)
         { (void)line; (void)top; (void)bottom; return false; }
     virtual bool GetOBJBufferHashes(u64 hashes[4]) { (void)hashes; return false; }

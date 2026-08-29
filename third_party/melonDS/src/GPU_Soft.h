@@ -73,6 +73,12 @@ public:
         return static_cast<const SoftRenderer3D*>(Rend3D.get())
             ->IsFrameIdentical();
     }
+    bool Get3DNativeBufferHashes(u64 hashes[3]) const override
+    {
+        static_cast<const SoftRenderer3D*>(Rend3D.get())
+            ->GetNativeBufferHashes(hashes);
+        return true;
+    }
     bool GetRenderedScanlines(u32 line, u32** top, u32** bottom) override
     {
         if (line >= 192) return false;

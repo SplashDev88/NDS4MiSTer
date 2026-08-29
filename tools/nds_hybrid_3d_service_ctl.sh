@@ -265,6 +265,7 @@ start_service()
         # which preserves the normal menu, input, and core lifecycle.
         NDS4MISTER_DUAL_CORE_3D=1 \
         NDS4MISTER_ADAPTIVE_RASTER_SPLIT=1 \
+        NDS4MISTER_RASTER_BAND_QUEUE=1 \
         "$start_stop_daemon" -S -b -m -N -20 \
             -p "$pidfile" -x "$service" --
     ) >>"$logfile" 2>&1; then

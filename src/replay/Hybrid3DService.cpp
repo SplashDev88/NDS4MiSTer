@@ -3293,6 +3293,14 @@ private:
                << renderer_profile.ThreeDAdaptiveSplitLineMin
                << " renderer_3d_adaptive_split_line_max="
                << renderer_profile.ThreeDAdaptiveSplitLineMax
+               << " renderer_3d_band_queue_frames="
+               << renderer_profile.ThreeDBandQueueFrames
+               << " renderer_3d_band_queue_jobs="
+               << renderer_profile.ThreeDBandQueueJobs
+               << " renderer_3d_band_queue_advanced_scanlines="
+               << renderer_profile.ThreeDBandQueueAdvancedScanlines
+               << " renderer_3d_band_queue_shadow_fallback_frames="
+               << renderer_profile.ThreeDBandQueueShadowFallbackFrames
                << " renderer_3d_polygon_frames="
                << renderer_profile.ThreeDPolygonFrames
                << " renderer_3d_polygons="
@@ -4607,6 +4615,154 @@ void run_self_test()
                     sizeof(split_oracle_gpu.CurVertexRAM[0])) != 0)
             self_test_fail(
                 "visible geometry diverged after tainted-buffer discard");
+    }
+
+    // The six-band scheduler may change only ownership of disjoint scanline
+    // rows. Render the same polygon buffer through stock single-worker
+    // melonDS and the queued dual-core path, then compare the externally
+    // visible plane plus complete native color/depth/attribute buffers.
+    {
+        const auto saved_environment = [](const char* name) {
+            const char* value = std::getenv(name);
+            return value ? std::optional<std::string>(value) : std::nullopt;
+        };
+        const auto saved_dual = saved_environment("NDS4MISTER_DUAL_CORE_3D");
+        const auto saved_adaptive =
+            saved_environment("NDS4MISTER_ADAPTIVE_RASTER_SPLIT");
+        const auto saved_bands =
+            saved_environment("NDS4MISTER_RASTER_BAND_QUEUE");
+        const auto saved_band_delay = saved_environment(
+            "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER");
+        const auto restore_environment = [](const char* name,
+                                            const auto& value) {
+            if (value)
+                setenv(name, value->c_str(), 1);
+            else
+                unsetenv(name);
+        };
+        const auto make_renderer_nds = [](bool band_queue) {
+            if (band_queue)
+            {
+                setenv("NDS4MISTER_DUAL_CORE_3D", "1", 1);
+                setenv("NDS4MISTER_ADAPTIVE_RASTER_SPLIT", "1", 1);
+                setenv("NDS4MISTER_RASTER_BAND_QUEUE", "1", 1);
+                setenv(
+                    "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER", "1", 1);
+            }
+            else
+            {
+                unsetenv("NDS4MISTER_DUAL_CORE_3D");
+                unsetenv("NDS4MISTER_ADAPTIVE_RASTER_SPLIT");
+                unsetenv("NDS4MISTER_RASTER_BAND_QUEUE");
+                unsetenv("NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER");
+            }
+            melonDS::NDSArgs args;
+            args.JIT = std::nullopt;
+            auto nds = std::make_unique<melonDS::NDS>(
+                std::move(args), nullptr);
+            nds->Reset();
+            nds->GPU.GPU3D.SetEnabled(true, true);
+            nds->GPU.GPU3D.SetExternalCommandReplay(true);
+            nds->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+            melonDS::RendererSettings settings {
+                1, true, false, false, false, false, false, true, true};
+            auto& renderer = nds->GPU.GetRenderer();
+            renderer.SetRenderSettings(settings);
+            // Enabling melonDS's threaded renderer launches one initial job.
+            renderer.Finish3DRendering();
+            for (std::uint32_t y = 0; y < PlaneHeight; ++y)
+                if (!renderer.Get3DScanline(y))
+                    self_test_fail("band-queue startup render returned null");
+            return nds;
+        };
+        auto oracle = make_renderer_nds(false);
+        auto queued = make_renderer_nds(true);
+        const auto push = [](melonDS::NDS& nds,
+                             std::uint8_t command,
+                             std::uint32_t parameter) {
+            nds.GPU.GPU3D.WriteExternalNormalizedCommand(
+                command, parameter);
+            nds.ARM9Timestamp += std::uint64_t {1} << 16;
+            nds.ARM9Target = nds.ARM9Timestamp;
+            nds.ARM7Timestamp =
+                nds.ARM9Timestamp >> nds.ARM9ClockShift;
+            nds.ARM7Target = nds.ARM7Timestamp;
+            nds.GPU.GPU3D.Run();
+        };
+        const auto vertex10 = [](std::int32_t x, std::int32_t y,
+                                 std::int32_t z) {
+            return (static_cast<std::uint32_t>(x) & 0x3ffu) |
+                ((static_cast<std::uint32_t>(y) & 0x3ffu) << 10) |
+                ((static_cast<std::uint32_t>(z) & 0x3ffu) << 20);
+        };
+        const auto build_frame = [&](melonDS::NDS& nds) {
+            push(nds, 0x10, 1); // position matrix
+            push(nds, 0x15, 0); // identity
+            push(nds, 0x20, 0x001f00c0);
+            push(nds, 0x29, 0x001f00c0);
+            for (int triangle = 0; triangle < 10; ++triangle)
+            {
+                const std::int32_t dx = (triangle % 5 - 2) * 12;
+                const std::int32_t dy = (triangle / 5) * 16;
+                push(nds, 0x40, 0); // triangles
+                push(nds, 0x24, vertex10(-256 + dx, -256 + dy, 0));
+                push(nds, 0x24, vertex10(256 + dx, -256 + dy, 0));
+                push(nds, 0x24, vertex10(dx, 256 + dy, 0));
+                push(nds, 0x41, 0);
+            }
+            push(nds, 0x50, 0); // flush
+            nds.GPU.GPU3D.VBlank();
+        };
+        build_frame(*oracle);
+        build_frame(*queued);
+        if (oracle->GPU.GPU3D.RenderNumPolygons <= 8 ||
+            oracle->GPU.GPU3D.RenderNumPolygons !=
+                queued->GPU.GPU3D.RenderNumPolygons)
+            self_test_fail("band-queue oracle polygon fixture is too small");
+
+        auto& oracle_renderer = oracle->GPU.GetRenderer();
+        auto& queued_renderer = queued->GPU.GetRenderer();
+        oracle_renderer.Start3DRendering();
+        queued_renderer.Start3DRendering();
+        oracle_renderer.Finish3DRendering();
+        queued_renderer.Finish3DRendering();
+        for (std::uint32_t y = 0; y < PlaneHeight; ++y)
+        {
+            const auto* oracle_line = oracle_renderer.Get3DScanline(y);
+            const auto* queued_line = queued_renderer.Get3DScanline(y);
+            if (!oracle_line || !queued_line ||
+                std::memcmp(
+                    oracle_line, queued_line,
+                    PlaneWidth * sizeof(std::uint32_t)) != 0)
+                self_test_fail("band-queue color plane diverged from oracle");
+        }
+        melonDS::u64 oracle_hashes[3] {};
+        melonDS::u64 queued_hashes[3] {};
+        if (!oracle_renderer.Get3DNativeBufferHashes(oracle_hashes) ||
+            !queued_renderer.Get3DNativeBufferHashes(queued_hashes) ||
+            std::memcmp(
+                oracle_hashes, queued_hashes,
+                sizeof(oracle_hashes)) != 0)
+            self_test_fail("band-queue native buffers diverged from oracle");
+        const auto queue_profile =
+            queued_renderer.GetExternalRendererStageProfile();
+        if (queue_profile.ThreeDBandQueueFrames != 1 ||
+            queue_profile.ThreeDBandQueueJobs != 6 ||
+            queue_profile.ThreeDBandQueueAdvancedScanlines < 32)
+            self_test_fail("six-band raster queue did not execute");
+        std::cout << "H3D_RASTER_BAND_ORACLE_PASS jobs="
+                  << queue_profile.ThreeDBandQueueJobs
+                  << " advanced_scanlines="
+                  << queue_profile.ThreeDBandQueueAdvancedScanlines << '\n';
+
+        queued.reset();
+        oracle.reset();
+        restore_environment("NDS4MISTER_DUAL_CORE_3D", saved_dual);
+        restore_environment(
+            "NDS4MISTER_ADAPTIVE_RASTER_SPLIT", saved_adaptive);
+        restore_environment("NDS4MISTER_RASTER_BAND_QUEUE", saved_bands);
+        restore_environment(
+            "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER", saved_band_delay);
     }
 
     // Production's 3D-only split combines both asynchronous workers. A

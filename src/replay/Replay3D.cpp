@@ -894,6 +894,14 @@ int main(int argc, char** argv) {
                       << renderer_profile.ThreeDSecondaryRasterNs
                       << "\nrenderer_3d_parallel_join_ns: "
                       << renderer_profile.ThreeDParallelJoinNs
+                      << "\nrenderer_3d_band_queue_frames: "
+                      << renderer_profile.ThreeDBandQueueFrames
+                      << "\nrenderer_3d_band_queue_jobs: "
+                      << renderer_profile.ThreeDBandQueueJobs
+                      << "\nrenderer_3d_band_queue_advanced_scanlines: "
+                      << renderer_profile.ThreeDBandQueueAdvancedScanlines
+                      << "\nrenderer_3d_band_queue_shadow_fallback_frames: "
+                      << renderer_profile.ThreeDBandQueueShadowFallbackFrames
                       << "\n";
             std::cout<<"profile_total_ms: "<<std::chrono::duration<double,std::milli>(replay_profile_end-replay_profile_start).count()
             <<"\nprofile_sprite_ms: "<<sprite_profile_ns/1000000.0<<"\nprofile_scanline_ms: "<<scanline_profile_ns/1000000.0
