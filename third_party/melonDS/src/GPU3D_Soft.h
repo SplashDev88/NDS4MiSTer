@@ -101,8 +101,13 @@ inline u32 NDS4MiSTerScalePermilleCeil(u32 value, u32 permille) noexcept
 class NDS4MiSTerRasterBalanceController
 {
 public:
-    static constexpr u32 DefaultPrimaryPermille = 600;
-    static constexpr u32 MinimumPrimaryPermille = 480;
+    // The first heavy-scene board profile measured 3.27 ms on the primary
+    // band versus 2.81 ms on the secondary band at the former 48% floor.
+    // Scaling those observed throughputs puts the balanced boundary at 44.4%.
+    // Start near the measured all-scene average and leave enough lower range
+    // for the controller to reach the heavy-scene balance point.
+    static constexpr u32 DefaultPrimaryPermille = 500;
+    static constexpr u32 MinimumPrimaryPermille = 440;
     static constexpr u32 MaximumPrimaryPermille = 800;
     static constexpr u64 MinimumSampleNs = 200000;
 
@@ -147,15 +152,15 @@ public:
             PrimaryEmaNs_ - SecondaryEmaNs_;
         const u64 slower = secondarySlower ? SecondaryEmaNs_ : PrimaryEmaNs_;
 
-        // Four-percent hysteresis prevents scheduler noise from moving the
-        // boundary. Larger imbalances converge faster, but never by more than
-        // 0.8% of estimated work in one rendered frame.
-        if (difference * 1000u <= slower * 40u)
+        // Six-percent hysteresis and a 1/16 EMA prevent scheduler noise from
+        // moving a polygon boundary back and forth. Larger imbalances still
+        // converge within a fraction of a second, but no frame can move the
+        // target by more than 0.4% of estimated work.
+        if (difference * 1000u <= slower * 60u)
             return false;
         u32 step = 1;
-        if (difference * 1000u > slower * 80u) step = 2;
-        if (difference * 1000u > slower * 120u) step = 4;
-        if (difference * 1000u > slower * 200u) step = 8;
+        if (difference * 1000u > slower * 120u) step = 2;
+        if (difference * 1000u > slower * 200u) step = 4;
 
         const u32 previous = PrimaryPermille_;
         if (secondarySlower)
@@ -175,8 +180,8 @@ private:
     static u64 Smooth(u64 current, u64 sample) noexcept
     {
         return sample >= current ?
-            current + ((sample - current) >> 3) :
-            current - ((current - sample) >> 3);
+            current + ((sample - current) >> 4) :
+            current - ((current - sample) >> 4);
     }
 
     u32 PrimaryPermille_ = DefaultPrimaryPermille;

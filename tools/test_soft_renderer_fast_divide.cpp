@@ -23,12 +23,12 @@ static bool testRasterBalanceController()
         return false;
 
     // A badly overloaded lower-band worker gives CPU0 more estimated work,
-    // but the per-frame change remains bounded.
+    // but the per-frame change remains tightly bounded.
     const auto beforeSlowSecondary = controller.PrimaryPermille();
     controller.Observe(1000000, 10000000);
     const auto afterSlowSecondary = controller.PrimaryPermille();
     if (afterSlowSecondary <= beforeSlowSecondary ||
-        afterSlowSecondary - beforeSlowSecondary > 8)
+        afterSlowSecondary - beforeSlowSecondary > 4)
         return false;
     for (unsigned i = 0; i < 1000; ++i)
         controller.Observe(1000000, 10000000);
@@ -36,14 +36,14 @@ static bool testRasterBalanceController()
         return false;
 
     // Reversing the imbalance moves back gradually and respects the lower
-    // bound. Reset restores the known-good static 60/40 starting point.
+    // bound. Reset restores the measured neutral 50/50 starting point.
     auto previous = controller.PrimaryPermille();
     bool movedDown = false;
     for (unsigned i = 0; i < 128; ++i)
     {
         controller.Observe(10000000, 1000000);
         const auto current = controller.PrimaryPermille();
-        if (current > previous + 8 || previous > current + 8)
+        if (current > previous + 4 || previous > current + 4)
             return false;
         movedDown = movedDown || current < previous;
         previous = current;
@@ -72,6 +72,8 @@ nds_test_scale_permille_ceil(std::uint32_t value, std::uint32_t permille)
 
 int main()
 {
+    using Controller = melonDS::NDS4MiSTerRasterBalanceController;
+
     if (!testRasterBalanceController())
         return 5;
 
@@ -116,7 +118,9 @@ int main()
     for (unsigned iteration = 0; iteration < 1000000; ++iteration)
     {
         const auto value = randomWord() % 100663297u;
-        const auto permille = 480u + randomWord() % 321u;
+        const auto permille = Controller::MinimumPrimaryPermille +
+            randomWord() % (Controller::MaximumPrimaryPermille -
+                Controller::MinimumPrimaryPermille + 1u);
         const auto expected = static_cast<std::uint32_t>(
             (static_cast<std::uint64_t>(value) * permille + 999u) / 1000u);
         if (nds_test_scale_permille_ceil(value, permille) != expected)
