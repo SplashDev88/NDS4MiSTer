@@ -1,12 +1,13 @@
-NDS4MiSTer public cumulative beta source - 2026-08-29
-========================================================
+NDS4MiSTer public cumulative beta v0.3.0-beta.2 source - 2026-08-29
+====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
 work, expanded save-profile/Flash implementation, save-profile CDC fix,
-controller touch, and PSX-derived FPGA space efficiencies.
+controller touch, PSX-derived FPGA space efficiencies, and DreamSTer-derived
+full-frame renderer-fence batching.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Cumulative_Beta_20260829 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.2_20260829 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -22,7 +23,22 @@ FPGA core:
   d459b7805309d01807854be6a19d241ea3bc0572b46df1176d3843abb1b82740
 
 ARM hybrid-3D service:
-  e2e6770dfed93b4b30885c2707329534d88f87072adebc51d5e64c186244ee14
+  f6c727bb35dc75fce0ebd298db9a046ed660501221198b6a609154ad2ae95f6e
+
+ARM 3D frame-fence optimization
+-------------------------------
+
+* The plane-only MiSTer H3D renderer retains its complete-frame ownership
+  fence while suppressing 192 unused scanline semaphore publications per
+  changed frame.
+* At the previously measured 57.3 published 3D FPS, this removes about 11,002
+  mutex/condition-variable publications per second from the ARM render thread.
+* The optimization does not skip frames or change pixels, polygon processing,
+  frame ordering, saves, touch, sound, HDMI timing, or FPGA logic.
+* Hardware acceptance found a large improvement in the New Super Mario Bros.
+  final castle. A passive 60-second sample reached approximately 60 published
+  3D FPS in lighter sections and 35-43 FPS in heavier sections, averaging
+  49.6 FPS with no ARM/FPGA faults or sustained transport backlog.
 
 FPGA space efficiencies
 -----------------------

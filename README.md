@@ -2,12 +2,14 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to the Public Cumulative Beta (2026-08-29).
+This source snapshot corresponds to Public Cumulative Beta v0.3.0-beta.2
+(2026-08-29).
 It combines controller-driven touchscreen input with the LG
 C-series-compatible video path, selectable screen layouts, melonDS-derived
 cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
 through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
-cartridge read-ahead, and the current ARM-assisted 3D performance path.
+cartridge read-ahead, and the current ARM-assisted 3D performance path with
+full-frame renderer-fence batching.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
 verification, exclusions, and current limitations.
 
@@ -20,6 +22,9 @@ credentials are included.
   MiSTer video/control paths.
 - The ARM/HPS service handles the current hybrid 3D-rendering path and
   publishes completed 3D data to the FPGA.
+- The plane-only MiSTer renderer uses one complete-frame ownership fence and
+  suppresses 192 unused per-scanline semaphore publications per changed frame.
+  Pixels, frame order, and scanline-capable melonDS frontends remain unchanged.
 - The release sound implementation is the GPL-licensed Nitro_DarkSide engine
   in `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`. The release wrapper
   builds it with `SOUND_ENABLE=1`.
