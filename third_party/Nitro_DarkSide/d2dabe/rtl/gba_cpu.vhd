@@ -272,18 +272,20 @@ architecture arch of gba_cpu is
    signal shiftervalue                    : unsigned(31 downto 0);
    signal shiftresult                     : unsigned(31 downto 0);
    signal shiftercarry                    : std_logic;
-                                          
-   signal shiftercarry_LSL                : std_logic;
-   signal shiftercarry_RSL                : std_logic;
-   signal shiftercarry_ARS                : std_logic;
-   signal shiftercarry_ROR                : std_logic;
-   signal shiftercarry_RRX                : std_logic;
-                                          
-   signal shiftresult_LSL                 : unsigned(31 downto 0);
-   signal shiftresult_RSL                 : unsigned(31 downto 0);
-   signal shiftresult_ARS                 : unsigned(31 downto 0);
-   signal shiftresult_ROR                 : unsigned(31 downto 0);
-   signal shiftresult_RRX                 : unsigned(31 downto 0);  
+
+   -- One shared five-stage rotator plus an edge-fill mux implements every ARM
+   -- shift mode.  Keep this structurally identical to the ARM9 implementation:
+   -- separate LSL/LSR/ASR/ROR expressions cause Quartus to build five barrel
+   -- shifters, including unreachable stages implied by the 0..255 amount type.
+   type t_shfill is (FILL_ZERO, FILL_SIGN, FILL_CARRY);
+   type t_shcsel is (CSEL_ZERO, CSEL_CARRY, CSEL_VALUE);
+   signal sh_rot                          : integer range 0 to 31;
+   signal sh_keep                         : std_logic_vector(31 downto 0);
+   signal sh_fill                         : t_shfill;
+   signal sh_cidx                         : integer range 0 to 31;
+   signal sh_csel                         : t_shcsel;
+   signal sh_rotv                         : unsigned(31 downto 0);
+   signal sh_fillb                        : std_logic;
                
    signal alu_op1                         : unsigned(31 downto 0);
    signal alu_op2                         : unsigned(31 downto 0);
@@ -1793,87 +1795,112 @@ begin
 
    end process;
    
-   -- shifter
+   -- ================= shifter =================
+   -- ARM's five apparent modes share one rotate network.  The decode stage
+   -- already normalizes register ROR amounts greater than 32 to 1..32, while
+   -- LSL/LSR/ASR retain their complete 8-bit amounts for the saturation rules.
+   -- All controls below are derived from registered decode signals, so this
+   -- removes parallel data paths without adding an architectural cycle.
    shiftervalue <= execute_op2;
-   
-   process (all) 
+
+   process (all)
+      variable n : integer range 0 to 255;
    begin
+      n := decode_shift_amount;
 
-      -- LSL
-      shiftresult_LSL <= shiftervalue;
-      if (decode_shift_amount >= 32) then
-         if (decode_shift_amount = 32) then
-            shiftercarry_LSL <= shiftervalue(0);
-         else
-            shiftercarry_LSL <= '0';
-         end if;
-         shiftresult_LSL <= (others => '0');
-      elsif (decode_shift_amount > 0) then
-         shiftercarry_LSL <= shiftervalue(32 - decode_shift_amount);
-         shiftresult_LSL <= shiftervalue sll decode_shift_amount;
-      else
-         shiftercarry_LSL <= Flag_Carry;
-      end if;
-      
-      -- RSL
-      shiftresult_RSL <= shiftervalue;
-      if (decode_shift_amount >= 32) then
-         if (decode_shift_amount = 32) then
-            shiftercarry_RSL <= shiftervalue(31);
-         else
-            shiftercarry_RSL <= '0';
-         end if;
-         shiftresult_RSL <= (others => '0');
-      elsif (decode_shift_amount > 0) then
-         shiftercarry_RSL <= shiftervalue(decode_shift_amount - 1);
-         shiftresult_RSL <= shiftervalue srl decode_shift_amount;
-      else
-         shiftercarry_RSL <= Flag_Carry;
-      end if;
-      
-      -- ARS
-      shiftresult_ARS <= shiftervalue;
-      if (decode_shift_amount >= 32) then
-         shiftercarry_ARS <= shiftervalue(31);
-         shiftresult_ARS <= unsigned(shift_right(signed(shiftervalue),31));
-      elsif (decode_shift_amount > 0)  then
-         shiftercarry_ARS <= shiftervalue(decode_shift_amount - 1);
-         shiftresult_ARS <= unsigned(shift_right(signed(shiftervalue),decode_shift_amount));
-      else
-         shiftercarry_ARS <= Flag_Carry;
-      end if;
-      
-      -- ROR
-      shiftresult_ROR <= shiftervalue;
-      if (decode_shift_amount >= 32) then -- >32 can never happen, as checked above, but this fixes simulation problems with carry index and other shifters
-         shiftercarry_ROR <= shiftervalue(31);
-      elsif (decode_shift_amount > 0) then
-         shiftercarry_ROR <= shiftervalue(decode_shift_amount - 1); -- this is the critical line that should not be called if another shifter uses >32
-         shiftresult_ROR  <= shiftervalue ror decode_shift_amount;
-      else
-         shiftercarry_ROR <= Flag_Carry;
-      end if;
-      
-      -- RRX
-      shiftercarry_RRX <= shiftervalue(0);
-      shiftresult_RRX  <= Flag_Carry & shiftervalue(31 downto 1);
+      sh_rot  <= 0;
+      sh_keep <= (others => '1');
+      sh_fill <= FILL_ZERO;
+      sh_cidx <= 0;
+      sh_csel <= CSEL_CARRY;
 
-      -- combine
       if (decode_shift_RRX = '1') then
-         shiftercarry <= shiftercarry_RRX;
-         shiftresult  <= shiftresult_RRX;
-      else
+         sh_rot  <= 1;
+         sh_keep <= (31 => '0', others => '1');
+         sh_fill <= FILL_CARRY;
+         sh_csel <= CSEL_VALUE;
+         sh_cidx <= 0;
+
+      elsif (n /= 0) then
          case (decode_shift_mode) is
-            when "00" => shiftercarry <= shiftercarry_LSL; shiftresult <= shiftresult_LSL;
-            when "01" => shiftercarry <= shiftercarry_RSL; shiftresult <= shiftresult_RSL;
-            when "10" => shiftercarry <= shiftercarry_ARS; shiftresult <= shiftresult_ARS;
-            when "11" => shiftercarry <= shiftercarry_ROR; shiftresult <= shiftresult_ROR;
-            when others => null;
+
+            when "00" =>                                  -- LSL
+               if (n < 32) then
+                  sh_rot  <= 32 - n;
+                  for i in 0 to 31 loop
+                     if (i < n) then sh_keep(i) <= '0'; end if;
+                  end loop;
+                  sh_csel <= CSEL_VALUE;
+                  sh_cidx <= 32 - n;
+               else
+                  sh_keep <= (others => '0');
+                  if (n = 32) then
+                     sh_csel <= CSEL_VALUE;
+                     sh_cidx <= 0;
+                  else
+                     sh_csel <= CSEL_ZERO;
+                  end if;
+               end if;
+
+            when "01" =>                                  -- LSR
+               if (n < 32) then
+                  sh_rot  <= n;
+                  for i in 0 to 31 loop
+                     if (i > 31 - n) then sh_keep(i) <= '0'; end if;
+                  end loop;
+                  sh_csel <= CSEL_VALUE;
+                  sh_cidx <= n - 1;
+               else
+                  sh_keep <= (others => '0');
+                  if (n = 32) then
+                     sh_csel <= CSEL_VALUE;
+                     sh_cidx <= 31;
+                  else
+                     sh_csel <= CSEL_ZERO;
+                  end if;
+               end if;
+
+            when "10" =>                                  -- ASR
+               sh_fill <= FILL_SIGN;
+               sh_csel <= CSEL_VALUE;
+               if (n < 32) then
+                  sh_rot  <= n;
+                  for i in 0 to 31 loop
+                     if (i > 31 - n) then sh_keep(i) <= '0'; end if;
+                  end loop;
+                  sh_cidx <= n - 1;
+               else
+                  sh_keep <= (others => '0');
+                  sh_cidx <= 31;
+               end if;
+
+            when others =>                                -- ROR
+               -- Decode folds an 8-bit register amount to 1..32. Immediate
+               -- ROR #0 is represented by decode_shift_RRX instead.
+               sh_csel <= CSEL_VALUE;
+               if (n < 32) then
+                  sh_rot  <= n;
+                  sh_cidx <= n - 1;
+               else
+                  sh_rot  <= 0;
+                  sh_cidx <= 31;
+               end if;
+
          end case;
       end if;
-
    end process;
-   
+
+   sh_rotv  <= shiftervalue ror sh_rot;
+   sh_fillb <= Flag_Carry       when sh_fill = FILL_CARRY else
+               shiftervalue(31) when sh_fill = FILL_SIGN  else '0';
+
+   gshiftbit : for i in 0 to 31 generate
+      shiftresult(i) <= sh_rotv(i) when sh_keep(i) = '1' else sh_fillb;
+   end generate;
+
+   shiftercarry <= Flag_Carry            when sh_csel = CSEL_CARRY else
+                   shiftervalue(sh_cidx) when sh_csel = CSEL_VALUE else '0';
+
    -- ALU
    alu_op1 <= shiftresult when (decode_switch_op = '1' and decode_alu_use_shift = '1') else
               execute_op2 when (decode_switch_op = '1' and decode_alu_use_shift = '0') else
@@ -3035,5 +3062,4 @@ begin
    
    
 end architecture;
-
 
