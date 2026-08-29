@@ -2,8 +2,8 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to the Public Cumulative Beta candidate
-(2026-08-29). It combines controller-driven touchscreen input with the LG
+This source snapshot corresponds to the Public Cumulative Beta (2026-08-29).
+It combines controller-driven touchscreen input with the LG
 C-series-compatible video path, selectable screen layouts, melonDS-derived
 cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
 through 1 MiB Flash support, the 134.056 MHz console clock family, bounded

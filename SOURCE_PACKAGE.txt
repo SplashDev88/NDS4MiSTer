@@ -1,11 +1,11 @@
-NDS4MiSTer public cumulative beta candidate source - 2026-08-29
-================================================================
+NDS4MiSTer public cumulative beta source - 2026-08-29
+========================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
 work, expanded save-profile/Flash implementation, save-profile CDC fix,
 controller touch, and PSX-derived FPGA space efficiencies.
 
-This curated source snapshot corresponds to the pending installable
+This curated source snapshot corresponds to the installable
 NDS4MiSTer_Public_Cumulative_Beta_20260829 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
@@ -75,9 +75,10 @@ Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
 successful fit used 41,299 of 41,910 ALMs (99%), 44,947 registers, 468 of 553
 RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with device
 checksum 0x0FD41911. Static timing remains diagnostic information rather than a
-deployment gate for this experimental project. The retained HDMI path passed
-LG C-series testing in the preceding beta; this exact artifact still requires
-direct-load TV and gameplay approval.
+deployment gate for this experimental project. This exact RBF was direct-
+loaded from the MiSTer menu with FPGA state `operating`, core identity `NDS`,
+and exactly one verified ARM service at 1 GHz. The maintainer approved its LG
+C-series video, cartridge-save persistence, and representative gameplay speed.
 
 Package exclusions
 ------------------

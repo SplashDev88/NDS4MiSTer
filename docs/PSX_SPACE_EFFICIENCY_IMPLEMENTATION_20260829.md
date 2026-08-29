@@ -162,7 +162,7 @@ peak. Assembly checksum is 0x0FD41911.
 TimeQuest completed with the expected experimental timing violations. Its
 worst-case setup slack is -14.454 ns and worst-case hold slack is -0.405 ns.
 Per project policy these are diagnostic measurements, not a deployment gate;
-the exact RBF still requires real-TV and gameplay testing.
+the exact RBF passed direct-load MiSTer and LG C-series testing.
 
 Artifact identities:
 
@@ -172,12 +172,15 @@ Artifact identities:
   `e2e6770dfed93b4b30885c2707329534d88f87072adebc51d5e64c186244ee14`
 - Hardware-source commit used by Quartus: `56511bc`
 
-## Validation still required
+## Hardware validation completed
 
-1. Direct-load TV testing: LG C3/C4 and TCL; all layouts/order/gap/FPS settings;
-   default 8-pixel gap; touch; sound; all save types; reset/reload.
-2. Game testing: NSMB intro, map, big castle and long play; verify no 3D speed,
-   sound-sync, save, HDMA/BG2, or stability regression.
+The exact RBF was installed with a verified SHA-256, direct-loaded from the
+MiSTer menu, and reported FPGA state `operating` with core identity `NDS`.
+Exactly one hash-verified ARM service ran at 1 GHz. The maintainer confirmed
+stable LG C-series video, working cartridge saves, and strong representative
+gameplay performance. Layout, order, default 8-pixel gap, FPS overlay, touch,
+sound, and all save types retain their automated product regressions. Broader
+game compatibility remains experimental and is not implied by this approval.
 
 ## Deferred stages
 

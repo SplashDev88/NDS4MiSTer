@@ -1,6 +1,6 @@
 # Architecture
 
-Status: Public Cumulative Beta candidate, 2026-08-29.
+Status: Public Cumulative Beta, 2026-08-29.
 
 ## Goal
 
