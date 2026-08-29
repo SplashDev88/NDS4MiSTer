@@ -111,6 +111,21 @@ public:
     void SetExternalCommandReplay(bool enabled) noexcept
     {
         ExternalCommandReplay = enabled;
+        if (!enabled)
+        {
+            ExternalGeometryDiscardRequested = false;
+            ExternalGeometryDiscardActive = false;
+        }
+    }
+    // An external owner may know before replaying a frame that its derived
+    // polygon list can never be displayed. Preserve the authoritative GX
+    // state stream while avoiding vertex transforms and clipping for that
+    // obsolete list. Ordinary melonDS callers can never enable this path.
+    void SetExternalGeometryDiscard(bool enabled) noexcept
+    {
+        ExternalGeometryDiscardRequested = ExternalCommandReplay && enabled;
+        if (!ExternalGeometryDiscardRequested)
+            ExternalGeometryDiscardActive = false;
     }
     // Native-resolution software rendering consumes FinalPosition only.
     // OpenGL/compute renderers additionally consume HiresPosition.
@@ -266,6 +281,8 @@ public:
     bool GeometryEnabled = false;
     bool RenderingEnabled = false;
     bool ExternalCommandReplay = false;
+    bool ExternalGeometryDiscardRequested = false;
+    bool ExternalGeometryDiscardActive = false;
     bool HighResolutionCoordinatesEnabled = true;
 
     u32 DispCnt = 0;
@@ -353,6 +370,7 @@ public:
 
     u32 FlushRequest = 0;
     u32 FlushAttributes = 0;
+    u64 ExternalDiscardedVertices = 0;
 };
 
 class Renderer3D

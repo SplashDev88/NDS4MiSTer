@@ -321,6 +321,10 @@ void GPU3D::Reset() noexcept
     FlushRequest = 0;
     FlushAttributes = 0;
 
+    ExternalGeometryDiscardRequested = false;
+    ExternalGeometryDiscardActive = false;
+    ExternalDiscardedVertices = 0;
+
     RenderXPos = 0;
 }
 
@@ -1429,6 +1433,56 @@ void GPU3D::SubmitPolygon() noexcept
 
 void GPU3D::SubmitVertex() noexcept
 {
+    if (ExternalGeometryDiscardActive)
+    {
+        // The frame is already obsolete, but the coordinate registers,
+        // primitive assembly counters, and GX pipeline timing remain part of
+        // the ordered command state. Track those inexpensive pieces without
+        // constructing vertex/polygon RAM that no renderer will consume.
+        VertexNum++;
+        VertexNumInPoly++;
+
+        switch (PolygonMode)
+        {
+        case 0: // triangle
+            if (VertexNumInPoly == 3)
+            {
+                VertexNumInPoly = 0;
+                NumConsecutivePolygons++;
+            }
+            break;
+
+        case 1: // quad
+            if (VertexNumInPoly == 4)
+            {
+                VertexNumInPoly = 0;
+                NumConsecutivePolygons++;
+            }
+            break;
+
+        case 2: // triangle strip
+            if (VertexNumInPoly == 3)
+            {
+                VertexNumInPoly = 2;
+                NumConsecutivePolygons++;
+            }
+            break;
+
+        case 3: // quad strip
+            if (VertexNumInPoly == 4)
+            {
+                VertexNumInPoly = 2;
+                NumConsecutivePolygons++;
+            }
+            break;
+        }
+
+        ExternalDiscardedVertices++;
+        VertexPipeline = 7;
+        AddCycles(3);
+        return;
+    }
+
     s64 vertex[4] = {(s64)CurVertex[0], (s64)CurVertex[1], (s64)CurVertex[2], 0x1000};
     Vertex* vertextrans = &TempVertexBuffer[VertexNumInPoly];
 
@@ -2159,6 +2213,12 @@ void GPU3D::ExecuteCommand() noexcept
             NumConsecutivePolygons = 0;
             LastStripPolygon = NULL;
             CurPolygonAttr = PolygonAttr;
+            // Only discard complete primitive lists that begin while the
+            // external owner has marked this frame obsolete. This avoids
+            // touching a legal primitive that happened to span the boundary
+            // at which catch-up was requested.
+            ExternalGeometryDiscardActive =
+                ExternalGeometryDiscardRequested;
             break;
 
         case 0x41: // end polygons
@@ -2167,10 +2227,12 @@ void GPU3D::ExecuteCommand() noexcept
             // it doesn't seem to have any effect whatsoever, but
             // its timing characteristics are different from those of other
             // no-op commands
+            ExternalGeometryDiscardActive = false;
             break;
 
         case 0x50: // flush
             VertexPipelineCmdDelayed4();
+            ExternalGeometryDiscardActive = false;
             FlushRequest = 1;
             FlushAttributes = entry.Param & 0x3;
             CycleCount = 325;

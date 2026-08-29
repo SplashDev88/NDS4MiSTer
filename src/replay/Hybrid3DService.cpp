@@ -1008,6 +1008,10 @@ private:
         latest_replay_frame_.store(0, std::memory_order_relaxed);
         replay_render_skip_countdown_ = 0;
         replay_render_cadence_ = 1;
+        replay_frame_active_ = false;
+        replay_frame_discard_geometry_ = false;
+        replay_active_frame_ = 0;
+        replay_geometry_discard_frames_ = 0;
         replay_stop_ = false;
         replay_packets_applied_.store(0, std::memory_order_relaxed);
         replay_slot_capacity_growths_.store(0, std::memory_order_relaxed);
@@ -1451,6 +1455,9 @@ private:
                 auto replay_started = std::chrono::steady_clock::time_point {};
                 if (pipeline_profile_enabled_)
                     replay_started = std::chrono::steady_clock::now();
+                if (!arm_video_render_shadow_ &&
+                    !prepare_replay_frame(packet_frame))
+                    return;
                 if (!apply_replay_packet(*packet)) return;
                 latest_replay_frame_.store(
                     packet_frame, std::memory_order_relaxed);
@@ -1460,7 +1467,7 @@ private:
                     if (disposition == FrameDisposition::Fault) return;
                     const bool render =
                         disposition == FrameDisposition::Render &&
-                        !replay_render_deadline_missed(packet_frame);
+                        !replay_frame_discard_geometry_;
 
                     // This is the asynchronous equivalent of poll()'s
                     // terminal-packet path. The input owner has already
@@ -1470,6 +1477,7 @@ private:
                     // has been copying N+1, then advance and launch N+1.
                     if (arm_render_pending_ && !finish_arm_render()) return;
                     if (!advance_frame_boundary(packet_frame)) return;
+                    complete_replay_frame();
                     if (render && !start_arm_render(
                             packet_frame, packet_sequence))
                         return;
@@ -1537,6 +1545,33 @@ private:
         --replay_render_skip_countdown_;
         frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
         return true;
+    }
+
+    bool prepare_replay_frame(std::uint32_t frame)
+    {
+        if (replay_frame_active_) {
+            if (replay_active_frame_ == frame) return true;
+            return fail(
+                FaultBadFrame,
+                "queued frame changed before its terminal packet");
+        }
+
+        replay_frame_active_ = true;
+        replay_active_frame_ = frame;
+        replay_frame_discard_geometry_ =
+            replay_render_deadline_missed(frame);
+        nds_->GPU.GPU3D.SetExternalGeometryDiscard(
+            replay_frame_discard_geometry_);
+        if (replay_frame_discard_geometry_)
+            ++replay_geometry_discard_frames_;
+        return true;
+    }
+
+    void complete_replay_frame() noexcept
+    {
+        nds_->GPU.GPU3D.SetExternalGeometryDiscard(false);
+        replay_frame_active_ = false;
+        replay_frame_discard_geometry_ = false;
     }
 
     void stop_replay_worker()
@@ -3280,6 +3315,10 @@ private:
                << " frame_drop_replay_budget="
                << frame_drop_replay_budget_.load(
                       std::memory_order_relaxed)
+               << " geometry_discard_frames="
+               << replay_geometry_discard_frames_
+               << " geometry_discard_vertices="
+               << nds_->GPU.GPU3D.ExternalDiscardedVertices
                << " arm_render_finishes="
                << arm_render_finishes_.load(std::memory_order_relaxed)
                << " arm_render_finish_total_ns="
@@ -3684,6 +3723,10 @@ private:
     std::atomic<std::uint32_t> latest_replay_frame_ {0};
     std::uint32_t replay_render_skip_countdown_ = 0;
     std::uint32_t replay_render_cadence_ = 1;
+    bool replay_frame_active_ = false;
+    bool replay_frame_discard_geometry_ = false;
+    std::uint32_t replay_active_frame_ = 0;
+    std::uint64_t replay_geometry_discard_frames_ = 0;
     std::atomic<std::uint64_t> replay_packets_applied_ {0};
     std::atomic<std::uint64_t> replay_slot_capacity_growths_ {0};
     std::atomic<std::uint64_t> replay_slot_reuses_ {0};
@@ -4374,6 +4417,109 @@ void run_self_test()
                 oracle.NumVertices * sizeof(oracle.VertexRAM[0])) != 0)
             self_test_fail(
                 "GX packed vertex RAM diverged from melonDS oracle");
+    }
+
+    // Catch-up may discard only the derived polygon list for an obsolete
+    // frame. Compare it with a full melonDS oracle across a subsequent visible
+    // frame: persistent matrices, lighting/texture inputs, primitive state,
+    // and the selected frame's vertex RAM must converge byte-for-byte.
+    {
+        auto make_geometry_nds = [] {
+            melonDS::NDSArgs args;
+            args.JIT = std::nullopt;
+            auto nds = std::make_unique<melonDS::NDS>(
+                std::move(args), nullptr);
+            nds->Reset();
+            nds->GPU.GPU3D.SetEnabled(true, true);
+            nds->GPU.GPU3D.SetExternalCommandReplay(true);
+            nds->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+            return nds;
+        };
+        auto oracle = make_geometry_nds();
+        auto discard = make_geometry_nds();
+        const auto push = [](melonDS::NDS& nds,
+                             std::uint8_t command,
+                             std::uint32_t parameter) {
+            nds.GPU.GPU3D.WriteExternalNormalizedCommand(
+                command, parameter);
+            nds.ARM9Timestamp += std::uint64_t {1} << 16;
+            nds.ARM9Target = nds.ARM9Timestamp;
+            nds.ARM7Timestamp =
+                nds.ARM9Timestamp >> nds.ARM9ClockShift;
+            nds.ARM7Target = nds.ARM7Timestamp;
+            nds.GPU.GPU3D.Run();
+        };
+        const auto vertex10 = [](std::int32_t x, std::int32_t y,
+                                 std::int32_t z) {
+            return (static_cast<std::uint32_t>(x) & 0x3ffu) |
+                ((static_cast<std::uint32_t>(y) & 0x3ffu) << 10) |
+                ((static_cast<std::uint32_t>(z) & 0x3ffu) << 20);
+        };
+        const auto first_frame = [&](melonDS::NDS& nds) {
+            push(nds, 0x10, 1); // position matrix
+            push(nds, 0x15, 0); // identity
+            push(nds, 0x1c, 0x100);
+            push(nds, 0x1c, 0);
+            push(nds, 0x1c, 0);
+            push(nds, 0x20, 0x00003def);
+            push(nds, 0x22, 0x00200010);
+            push(nds, 0x29, 0x001f00c0);
+            push(nds, 0x40, 0);
+            push(nds, 0x24, vertex10(-256, -256, 0));
+            push(nds, 0x24, vertex10(256, -256, 0));
+            push(nds, 0x24, vertex10(0, 256, 0));
+            push(nds, 0x41, 0);
+            push(nds, 0x50, 0);
+        };
+        const auto selected_frame = [&](melonDS::NDS& nds) {
+            push(nds, 0x40, 0);
+            push(nds, 0x24, vertex10(-192, -128, 0));
+            push(nds, 0x24, vertex10(224, -96, 0));
+            push(nds, 0x24, vertex10(32, 224, 0));
+            push(nds, 0x41, 0);
+            push(nds, 0x50, 0);
+        };
+
+        discard->GPU.GPU3D.SetExternalGeometryDiscard(true);
+        first_frame(*oracle);
+        first_frame(*discard);
+        if (oracle->GPU.GPU3D.NumVertices == 0 ||
+            oracle->GPU.GPU3D.NumPolygons == 0 ||
+            discard->GPU.GPU3D.NumVertices != 0 ||
+            discard->GPU.GPU3D.NumPolygons != 0 ||
+            discard->GPU.GPU3D.ExternalDiscardedVertices != 3)
+            self_test_fail(
+                "obsolete-frame geometry was not selectively discarded");
+        oracle->GPU.GPU3D.VBlank();
+        discard->GPU.GPU3D.VBlank();
+        discard->GPU.GPU3D.SetExternalGeometryDiscard(false);
+
+        selected_frame(*oracle);
+        selected_frame(*discard);
+        const auto& oracle_gpu = oracle->GPU.GPU3D;
+        const auto& discard_gpu = discard->GPU.GPU3D;
+        if (oracle_gpu.NumVertices == 0 || oracle_gpu.NumPolygons == 0 ||
+            oracle_gpu.NumVertices != discard_gpu.NumVertices ||
+            oracle_gpu.NumPolygons != discard_gpu.NumPolygons ||
+            oracle_gpu.CurRAMBank != discard_gpu.CurRAMBank ||
+            std::memcmp(
+                oracle_gpu.PosMatrix, discard_gpu.PosMatrix,
+                sizeof(oracle_gpu.PosMatrix)) != 0 ||
+            std::memcmp(
+                oracle_gpu.CurVertex, discard_gpu.CurVertex,
+                sizeof(oracle_gpu.CurVertex)) != 0 ||
+            std::memcmp(
+                oracle_gpu.VertexColor, discard_gpu.VertexColor,
+                sizeof(oracle_gpu.VertexColor)) != 0 ||
+            std::memcmp(
+                oracle_gpu.RawTexCoords, discard_gpu.RawTexCoords,
+                sizeof(oracle_gpu.RawTexCoords)) != 0 ||
+            std::memcmp(
+                oracle_gpu.CurVertexRAM, discard_gpu.CurVertexRAM,
+                oracle_gpu.NumVertices *
+                    sizeof(oracle_gpu.CurVertexRAM[0])) != 0)
+            self_test_fail(
+                "visible geometry diverged after obsolete-frame discard");
     }
 
     // Production's 3D-only split combines both asynchronous workers. A
