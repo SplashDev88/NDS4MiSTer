@@ -118,7 +118,11 @@ module emu
         .sd_buff_din('{save_sd_buff_din}),.sd_buff_wr(save_sd_buff_wr)
     );
 
-    wire core_reset=RESET|status[0]|buttons[1]|~shell_pll_locked;
+    // Mounted media belongs to the loaded core, not to a DS CPU reset epoch.
+    // OSD/controller Reset must reboot the console without erasing the
+    // one-shot img_mounted state held by the save bridge.
+    wire media_reset=RESET|~shell_pll_locked;
+    wire core_reset=media_reset|status[0]|buttons[1];
     // The Nitro console is the only execution path in this core. It is always
     // enabled, so the OSD no longer exposes a misleading on/off switch.
     wire console_enabled=1'b1;
@@ -140,6 +144,7 @@ module emu
         .clk1x(nitro_clk1x),.clk2x(nitro_clk2x),
         .clk_mem(nitro_clk_mem),.clk_video(clk_sys),.ddr_clk(clk_sys),
         .island_locked(nitro_pll_locked),.shell_reset(core_reset),
+        .media_reset(media_reset),
         .enable(console_enabled),
         .video_layout_select(status[6:5]),
         .video_screen_order_select(status[7]),

@@ -66,6 +66,7 @@ iverilog -g2012 -Wall -i -s tb_nds_nitro_input_boundary \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
     "$repo_dir/rtl/nds_nitro_async_fifo.sv" \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
+    "$repo_dir/rtl/nds_nitro_save_bridge.sv" \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
@@ -96,6 +97,14 @@ grep -Fq '"O[4],FPS Counter,Off,On;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq "wire console_enabled=1'b1;" \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq 'wire media_reset=RESET|~shell_pll_locked;' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq 'wire core_reset=media_reset|status[0]|buttons[1];' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '.media_reset(media_reset)' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '.reset(media_reset | ~island_locked | ~enable)' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
 if grep -Fq 'Nitro console,On,Off' \
         "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"; then
     echo "FAIL: always-on Nitro console still has an OSD toggle" >&2
@@ -307,6 +316,7 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
     "$repo_dir/rtl/nds_nitro_async_fifo.sv" \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
+    "$repo_dir/rtl/nds_nitro_save_bridge.sv" \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
@@ -320,6 +330,7 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
     "$repo_dir/rtl/nds_nitro_async_fifo.sv" \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
+    "$repo_dir/rtl/nds_nitro_save_bridge.sv" \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
     "$repo_dir/rtl/nds_ddram_arbiter_4client.sv" \
     "$repo_dir/rtl/nds_h3d_ddr_fabric.sv" \
@@ -341,6 +352,7 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
     "$repo_dir/rtl/nds_nitro_async_fifo.sv" \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
+    "$repo_dir/rtl/nds_nitro_save_bridge.sv" \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \

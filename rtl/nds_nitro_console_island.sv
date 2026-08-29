@@ -14,6 +14,9 @@ module nds_nitro_console_island (
     input  logic        ddr_clk,
     input  logic        island_locked,
     input  logic        shell_reset,
+    // Hard/core-lifecycle reset for mounted-media state. Console soft reset
+    // deliberately excludes this input so the one-shot MiSTer mount survives.
+    input  logic        media_reset,
     input  logic        enable,
     input  logic [1:0]  video_layout_select,
     input  logic        video_screen_order_select,
@@ -299,7 +302,7 @@ defparam
 
 nds_nitro_save_bridge save_bridge (
     .clk(clk_video),
-    .reset(shell_reset | ~island_locked | ~enable),
+    .reset(media_reset | ~island_locked | ~enable),
     .cart_download(cart_download_raw),
     .img_mounted(save_img_mounted),
     .img_readonly(save_img_readonly),

@@ -16,6 +16,7 @@ module tb_nds_nitro_input_boundary;
 
     logic island_locked = 1'b1;
     logic shell_reset = 1'b0;
+    logic media_reset = 1'b1;
     logic enable = 1'b1;
     logic [1:0] video_layout_select = 2'd0;
     logic video_screen_order_select = 1'b0;
@@ -68,6 +69,32 @@ module tb_nds_nitro_input_boundary;
     endtask
 
     initial begin
+        // A mounted save is media state, not CPU state. Capture MiSTer's
+        // one-shot mount pulse, then prove an OSD-style shell reset retains
+        // it while a real media reset still clears it.
+        repeat (3) @(posedge clk_video);
+        @(negedge clk_video);
+        media_reset = 1'b0;
+        save_img_size = 64'd8192;
+        save_img_mounted = 1'b1;
+        @(negedge clk_video);
+        save_img_mounted = 1'b0;
+        repeat (4) @(posedge clk_video);
+        if (!dut.save_ready)
+            $fatal(1, "one-shot save mount was not captured");
+        @(negedge clk_video);
+        shell_reset = 1'b1;
+        repeat (3) @(posedge clk_video);
+        if (!dut.save_ready)
+            $fatal(1, "console soft reset discarded mounted save state");
+        @(negedge clk_video);
+        shell_reset = 1'b0;
+        media_reset = 1'b1;
+        repeat (2) @(posedge clk_video);
+        if (dut.save_ready)
+            $fatal(1, "media reset retained stale mounted save state");
+        media_reset = 1'b0;
+
         // Isolate the input boundary from the cartridge state machine.  The
         // force models the same asynchronous reset request and local release
         // that a real cartridge epoch drives in the product.
