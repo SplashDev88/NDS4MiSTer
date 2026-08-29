@@ -129,6 +129,9 @@ module tb_nds_nitro_save_bridge;
     task automatic power_reset;
         begin
             reset <= 1;
+            // The console-side profile lookup is reset with the cartridge
+            // loader, so its valid level returns low for a fresh epoch.
+            backup_profile_valid <= 0;
             repeat (5) @(posedge clk);
             reset <= 0;
             repeat (3) @(posedge clk);
@@ -137,6 +140,9 @@ module tb_nds_nitro_save_bridge;
 
     task automatic pulse_cart_download;
         begin
+            // Cartridge download resets the console-side lookup before its
+            // replacement result is generated.
+            backup_profile_valid <= 0;
             cart_download <= 1;
             @(posedge clk);
             cart_download <= 0;
@@ -169,6 +175,9 @@ module tb_nds_nitro_save_bridge;
             @(posedge clk);
             img_mounted <= 0;
             wait (save_ready);
+            // The real loader/profile ROM produces a fresh result only after
+            // console reset has released and the game code has been read.
+            repeat (2) @(posedge clk);
             backup_save_type <= kind;
             backup_profile_valid <= 1;
             wait (save_run_ready);
@@ -236,7 +245,7 @@ module tb_nds_nitro_save_bridge;
         // coincide with the first ROM-download cycle.  Losing it leaves the
         // bridge in ST_WAIT_MOUNT and holds both CPUs in reset indefinitely.
         backup_save_type <= 4'd2;
-        backup_profile_valid <= 1;
+        backup_profile_valid <= 0;
         img_size <= 64'd8192;
         img_readonly <= 0;
         img_mounted <= 1;
@@ -244,7 +253,34 @@ module tb_nds_nitro_save_bridge;
         @(posedge clk);
         img_mounted <= 0;
         cart_download <= 0;
+        repeat (2) @(posedge clk);
+        backup_profile_valid <= 1;
         expect_run_ready(1);
+
+        // A cartridge replacement starts while the prior profile's valid
+        // level is still crossing from the console clock.  The bridge must
+        // not accept that stale type as the new cartridge's answer: this is
+        // the board ordering that made a first NSMB load use Mario Kart
+        // Demo's fallback type, while selecting NSMB a second time worked.
+        power_reset();
+        pulse_cart_download();
+        mount_profile(64'd512, 0, 4'd1);
+        img_size <= 64'd8192;
+        img_readonly <= 0;
+        img_mounted <= 1;
+        cart_download <= 1;
+        @(posedge clk);
+        img_mounted <= 0;
+        cart_download <= 0;
+        repeat (3) @(posedge clk);
+        backup_profile_valid <= 0;
+        repeat (3) @(posedge clk);
+        backup_save_type <= 4'd2;
+        backup_profile_valid <= 1;
+        expect_run_ready(3);
+        if (dut.active_save_type != 4'd2)
+            $fatal(1, "replacement accepted stale save profile type %0d",
+                   dut.active_save_type);
 
         // The normal download-then-mount ordering remains supported too.
         power_reset();
@@ -274,6 +310,11 @@ module tb_nds_nitro_save_bridge;
         backup_save_type <= 4'd3;
         @(posedge clk);
         img_mounted <= 0;
+        // The replacement loader cannot publish a profile until save_ready
+        // releases its console reset after the outgoing dirty flush.
+        wait (save_ready);
+        repeat (2) @(posedge clk);
+        backup_profile_valid <= 1;
         expect_run_ready(2);
 
         // Existing 64 KiB EEPROM uses high sectors and survives a power reset.

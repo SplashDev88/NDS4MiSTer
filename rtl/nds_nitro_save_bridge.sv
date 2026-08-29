@@ -79,6 +79,7 @@ module nds_nitro_save_bridge #(
     logic [10:0] init_sector;
     logic [10:0] init_last_sector;
     logic [QUIET_COUNTER_BITS-1:0] quiet_counter;
+    logic profile_fresh_armed;
 
     (* async_reg = "true" *) logic [19:0] backup_addr_meta;
     (* async_reg = "true" *) logic [19:0] backup_addr_sync;
@@ -151,6 +152,7 @@ module nds_nitro_save_bridge #(
             dirty_during_flush <= 1'b0;
             post_flush_load <= 1'b0;
             replacement_pending <= 1'b0;
+            profile_fresh_armed <= 1'b0;
             quiet_counter <= '0;
             save_ready <= 1'b0;
             save_run_ready <= 1'b0;
@@ -231,7 +233,15 @@ module nds_nitro_save_bridge #(
                     end
 
                     ST_WAIT_PROFILE: begin
-                        if (backup_profile_valid) begin
+                        // backup_profile_valid crosses from the console clock
+                        // and can remain high briefly with the outgoing
+                        // cartridge's type after a replacement starts.  Arm
+                        // only after observing the reset/lookup low phase, so
+                        // this epoch can consume only its own fresh result.
+                        if (!backup_profile_valid) begin
+                            profile_fresh_armed <= 1'b1;
+                        end else if (profile_fresh_armed) begin
+                            profile_fresh_armed <= 1'b0;
                             expected_sectors = sectors_for_type(backup_save_type);
                             expected_bytes = {41'd0, expected_sectors, 9'd0};
                             exact_size = mounted_size == expected_bytes;
