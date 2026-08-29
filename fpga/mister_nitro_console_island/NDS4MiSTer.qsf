@@ -367,4 +367,5 @@ set_global_assignment -name EDA_MAINTAIN_DESIGN_HIERARCHY ON -section_id eda_sim
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_profile.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_bridge.sv
-set_global_assignment -name MISC_FILE nds_save_profiles.hex
+set_global_assignment -name MISC_FILE nds_save_profile_prefix.hex
+set_global_assignment -name MISC_FILE nds_save_profile_entries.hex

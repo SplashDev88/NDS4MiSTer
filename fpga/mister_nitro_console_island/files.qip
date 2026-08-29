@@ -85,7 +85,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_frame_packet_wr
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_plane_reader.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_profile.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_bridge.sv
-set_global_assignment -name MISC_FILE nds_save_profiles.hex
+set_global_assignment -name MISC_FILE nds_save_profile_prefix.hex
+set_global_assignment -name MISC_FILE nds_save_profile_entries.hex
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_console_island.sv
 set_global_assignment -name SYSTEMVERILOG_FILE NDS4MiSTer.sv
 set_global_assignment -name SDC_FILE NDS4MiSTer.sdc

@@ -7,6 +7,7 @@ test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/nds-save-8k-64k.XXXXXX")"
 trap 'rm -rf "$test_tmp"' EXIT
 
 "$repo_dir/tools/generate_nds_save_profiles.sh" >/dev/null
+python3 "$repo_dir/tools/test_save_profile_compression.py"
 
 iverilog -g2012 -Wall -s tb_nds_nitro_save_bridge \
     -o "$test_tmp/tb_nds_nitro_save_bridge" \
