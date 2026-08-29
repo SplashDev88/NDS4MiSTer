@@ -19,9 +19,12 @@
 --     data - architecturally intended. op_busy is combinationally high from
 --     the op_ena pulse until the op retires; the CPU stalls on it.
 --
--- Storage (the M9 BRAM passes): line DATA and tags live in independent
--- per-way SyncRamDualByteEnable blocks. All four tags for a set are read in
--- parallel, then compared in an explicit lookup cycle. Valid, dirty and RR
+-- Storage (the M9 BRAM passes): line DATA lives in independent per-way
+-- SyncRamDualByteEnable blocks. Each way's I- and D-cache tags share one shallow
+-- 128-row store: I sets occupy rows 0..63 and D sets rows 64..95. The two RAM
+-- ports preserve the retired design's simultaneous I/D reads and speculative
+-- early-hit timing while using the otherwise-empty depth of each tag M10K.
+-- All four tags for both selected sets are read in parallel. Valid, dirty and RR
 -- state remain as small flop arrays so invalidate-all stays atomic. Cacheable
 -- requests and address-based maintenance gain one cycle; associativity,
 -- replacement and write-back behavior are unchanged. WB_PREP lets the first
@@ -106,16 +109,20 @@ architecture arch of nds_cache9 is
    signal ddirty  : std_logic_vector(127 downto 0) := (others => '0');
    signal drr     : t_rr5 := (others => "00");
 
-   -- per-way tag and line-data stores: port A read, port B write
+   -- One tag RAM per way, with the two cache tag spaces packed by depth.
    type t_wayq is array (0 to 3) of std_logic_vector(31 downto 0);
    signal it_raddr : integer range 0 to 63;
    signal dt_raddr : integer range 0 to 31;
+   signal it_tag_addr : integer range 0 to 127;
+   signal dt_tag_addr : integer range 0 to 127;
    signal it_q     : t_wayq;
    signal dt_q     : t_wayq;
    signal it_we    : std_logic_vector(3 downto 0);
    signal dt_we    : std_logic_vector(3 downto 0);
    signal it_waddr : integer range 0 to 63;
    signal dt_waddr : integer range 0 to 31;
+   signal it_tag_write : std_logic;
+   signal dt_tag_write : std_logic;
    signal id_raddr : integer range 0 to 511;
    signal dd_raddr : integer range 0 to 255;
    signal id_q     : t_wayq;
@@ -301,6 +308,14 @@ begin
 
    it_waddr <= to_integer(unsigned(r_addr(10 downto 5)));
    dt_waddr <= to_integer(unsigned(r_addr(9 downto 5)));
+   it_tag_write <= it_we(0) or it_we(1) or it_we(2) or it_we(3);
+   dt_tag_write <= dt_we(0) or dt_we(1) or dt_we(2) or dt_we(3);
+   -- Preserve the retired design's simultaneous I/D reads by assigning one RAM
+   -- port to each cache. A completed fill borrows that cache's own port for its
+   -- tag write; no tag output is consumed on that edge, and the other cache's
+   -- speculative read continues uninterrupted.
+   it_tag_addr <= it_waddr when it_tag_write = '1' else it_raddr;
+   dt_tag_addr <= 64 + dt_waddr when dt_tag_write = '1' else 64 + dt_raddr;
 
    process (all)
    begin
@@ -371,60 +386,34 @@ begin
 
    gways : for w in 0 to 3 generate
    begin
-      iitag : entity MEM.SyncRamDualByteEnable
+      packed_tags : entity MEM.SyncRamDualByteEnable
       generic map
       (
          is_simu     => is_simu,
          is_cyclone5 => '1',
          BYTE_WIDTH  => 8,
-         ADDR_WIDTH  => 6,
+         ADDR_WIDTH  => 7,
          BYTES       => 4
       )
       port map
       (
          clk       => clk,
          ce_a      => '1',
-         addr_a    => it_raddr,
-         datain_a0 => x"00", datain_a1 => x"00", datain_a2 => x"00", datain_a3 => x"00",
+         addr_a    => it_tag_addr,
+         datain_a0 => r_addr(18 downto 11),
+         datain_a1 => r_addr(26 downto 19),
+         datain_a2 => "000" & r_addr(31 downto 27),
+         datain_a3 => x"00",
          dataout_a => it_q(w),
-         we_a      => '0',
-         be_a      => "0000",
+         we_a      => it_we(w),
+         be_a      => "1111",
          ce_b      => '1',
-         addr_b    => it_waddr,
-         datain_b0 => r_addr(18 downto 11),
-         datain_b1 => r_addr(26 downto 19),
-         datain_b2 => "000" & r_addr(31 downto 27),
-         datain_b3 => x"00",
-         dataout_b => open,
-         we_b      => it_we(w),
-         be_b      => "1111"
-      );
-
-      idtag : entity MEM.SyncRamDualByteEnable
-      generic map
-      (
-         is_simu     => is_simu,
-         is_cyclone5 => '1',
-         BYTE_WIDTH  => 8,
-         ADDR_WIDTH  => 5,
-         BYTES       => 4
-      )
-      port map
-      (
-         clk       => clk,
-         ce_a      => '1',
-         addr_a    => dt_raddr,
-         datain_a0 => x"00", datain_a1 => x"00", datain_a2 => x"00", datain_a3 => x"00",
-         dataout_a => dt_q(w),
-         we_a      => '0',
-         be_a      => "0000",
-         ce_b      => '1',
-         addr_b    => dt_waddr,
+         addr_b    => dt_tag_addr,
          datain_b0 => r_addr(17 downto 10),
          datain_b1 => r_addr(25 downto 18),
          datain_b2 => "00" & r_addr(31 downto 26),
          datain_b3 => x"00",
-         dataout_b => open,
+         dataout_b => dt_q(w),
          we_b      => dt_we(w),
          be_b      => "1111"
       );
