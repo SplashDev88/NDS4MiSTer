@@ -16,6 +16,16 @@ verification, exclusions, and current limitations.
 No commercial ROMs, BIOS binaries, personal saves, compiled FPGA images, or
 credentials are included.
 
+## Quick start
+
+1. Unzip the release package to the root of your MiSTer SD card.
+2. Go to **Scripts → NDS_Kickstart** and let the 3D service start.
+3. Go to **Console → NDS_20260829** and launch the core.
+4. Choose your `.nds` ROM from the core menu.
+
+You must run **NDS_Kickstart** before launching the core after every MiSTer
+reboot.
+
 ## Architecture
 
 - The FPGA runs the Nintendo DS CPU, timing, cartridge, 2D, sound, save, and
