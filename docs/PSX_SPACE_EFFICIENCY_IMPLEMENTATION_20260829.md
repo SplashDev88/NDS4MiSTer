@@ -18,11 +18,12 @@ snapshot without changing that worktree. `git diff --cached --check` and
 was committed with `git commit-tree`. The experimental branch and worktree were
 then created from that synthetic commit. Nothing was pushed.
 
-The active cumulative Quartus process was not interrupted, and no second
-Quartus job was launched. Its Analysis & Synthesis report is the current A-side
-reference: 40,368 estimated ALMs, 43,702 registers, 3,460,096 block-memory bits,
-3,968 MLAB bits, 69 DSPs, and 6 synthesis-visible PLLs. A mapper-only B-side run
-remains pending until that full fit exits.
+The cumulative A-side Analysis & Synthesis report contains 40,368 estimated
+ALMs, 43,702 registers, and 3,460,096 block-memory bits. The first experimental
+map contained 40,707 estimated ALMs, 45,134 registers, and 3,414,016 block-
+memory bits. Its fit required 4,210 LABs on a 4,191-LAB device. The hierarchy
+comparison identified one failed mapping experiment, documented below; it has
+been removed before the next fit.
 
 ## Implemented commits
 
@@ -38,8 +39,8 @@ for all shift modes, immediate amounts 0..31, register amounts 0..255, carry
 inputs, zero/all-one/one-hot/inverted/alternating operands, and RRX: 158,976
 exhaustive basis cases pass.
 
-Expected result: approximately 200–350 fewer ALMs. This remains an estimate
-until the B-side map.
+Measured result: 90 fewer combinational ALUTs in `gba_cpu:icpu7`, with no
+register or block-memory change.
 
 ### `d59c72c` — exact compressed save-profile ROM
 
@@ -58,8 +59,9 @@ not in the emulation hot path.
 and proves no missing, extra, or changed entry. The SystemVerilog lookup test and
 all EEPROM/FRAM/Flash AUXSPI and host persistence tests pass.
 
-Expected physical result: approximately 18 to 12 M10Ks, a saving of 6. This is
-derived from Cyclone V width/depth granularity, not yet a measured mapper delta.
+Measured result: 47 more ALUTs and 20 more registers, while the ROM shrank from
+147,456 to 99,840 logical block-memory bits. Quartus implements the two compact
+tables in 12 M10Ks versus 18 for the original table, saving 6 M10Ks.
 
 ### `88435fb` — packed sound fetch state
 
@@ -76,7 +78,9 @@ class, and deterministic randomized cases equivalent to the retired two-RAM
 implementation. The product VHDL analysis harness includes portable boundaries
 for both the generic MEM RAM and this dedicated packed RAM.
 
-Expected physical result: four to three true-dual-port M10Ks, a saving of 1.
+Measured result: 32 more ALUTs and one fewer register in the sound hierarchy.
+Quartus implements the exact 16x49 packed state in three M10Ks; the retired
+pair required four, saving one M10K.
 
 ### `51e5c98` — packed ARM9 cache tag depth
 
@@ -95,59 +99,69 @@ no tag result is consumed.
 way, rapid I/D transitions, and 3,517 same-row read/write cycles against the
 retired banks. Production VHDL passes nvc analysis.
 
-Expected physical result: sixteen to eight true-dual-port tag M10Ks, a saving
-of 8. Valid, dirty, and replacement metadata deliberately remain flops. Folding
+Measured result: 31 fewer ALUTs, with the logical block-memory bit count rising
+3,072 because the combined rows use one padded 32-bit word. Physical geometry
+still falls from sixteen to eight true-dual-port tag M10Ks, saving eight. Valid,
+dirty, and replacement metadata deliberately remain flops. Folding
 them would either make invalidate-all non-atomic, add sweep cycles, or require
 generation-wrap machinery, so it did not meet the exact-semantics rule.
 
-### `feb7ff7` — explicit IPC MLAB mapping
+### `feb7ff7` — rejected IPC MLAB mapping
 
-The two architectural 16x32 IPC payload FIFOs now carry explicit `MLAB`
-attributes. Their asynchronous head-read and synchronous write behavior is a
-native small-memory shape. `no_rw_check` is deliberately absent so Quartus must
-preserve simultaneous pop/push collision behavior.
+The explicit `MLAB` attributes on the two architectural 16x32 IPC payload
+FIFOs were rejected after the real Quartus 17 map. Their required read-during-
+write behavior is not supported by that forced geometry, so Quartus reported
+all three replicated RAMs as uninferred and expanded them into logic.
 
-The A-side mapper inferred three replicated 16x32 simple-dual-port block RAMs
-(one FIFO needs a second read copy). Expected physical result: three fewer M10Ks
-and 1,536 additional MLAB memory bits. Production VHDL analysis passes. Exact
-mapping and any bypass-logic delta require the B-side mapper.
+Measured IPC hierarchy impact versus the cumulative source was 120 to 615
+combinational ALUTs, 241 to 1,654 registers, and 1,536 to zero block-memory
+bits: a regression of +495 ALUTs and +1,413 registers for only 1,536 bits
+saved. The attributes and their mapping-only test were therefore removed. The
+original inferred block-RAM implementation and collision behavior are restored
+exactly; no IPC functional RTL changed.
 
 ## Verification completed
 
-- Full `tools/test_nitro_console_island_host.sh`: PASS after all first-pass changes.
+- Full `tools/test_nitro_console_island_host.sh`: PASS after the first-pass changes.
 - ARM7 shifter exhaustive comparison: PASS, 158,976 cases.
 - Save-profile exact reconstruction: PASS, all 4,057 oracle entries.
 - Save lookup, EEPROM, FRAM, Flash, loader, and persistence simulations: PASS.
-- Sound packed-state comparison: PASS, 100,049 cases.
+- Sound packed-state comparison: PASS, 103,185 cases.
 - Cache tag comparison: PASS, 1,600,384 lane reads.
-- Production sound/cache/IPC VHDL nvc analysis: PASS.
+- Production cache VHDL nvc analysis: PASS. The sound analysis/elaboration
+  harness was updated for its dedicated vendor RAM boundary; no host VHDL
+  compiler was available, and Docker/Quartus were intentionally not launched.
 - Public repository safety audit on every staged commit: PASS.
 - Worktree is isolated from the active cumulative fit and nothing was pushed.
 
 Compiler warnings emitted by the broad host suite are pre-existing iverilog
 limitations and testbench synthesis warnings; all test gates finished PASS.
 
-## Resource expectation before mapper confirmation
+## Measured mapper result and corrective action
 
-| Change | Expected ALM delta | Expected M10K delta | Confidence |
+| Change | Measured hierarchy direction | Block-memory delta | Disposition |
 | --- | ---: | ---: | --- |
-| ARM7 shared shifter | -200 to -350 | 0 | Medium; based on analogous architecture |
-| Save-profile compression | small lookup overhead | -6 | High from exact RAM geometry |
-| Sound fetch packing | near neutral | -1 | High from true-dual-port width geometry |
-| ARM9 cache tag packing | small mux overhead | -8 | High from true-dual-port depth/width geometry |
-| IPC FIFO MLAB mapping | near neutral; possible bypass logic | -3, +1,536 MLAB bits | Medium until mapper |
-| **Total** | **approximately -200 to -350 plus small overheads** | **approximately -18** | **Mapper pending** |
+| ARM7 shared shifter | -90 ALUTs in `gba_cpu:icpu7` | 0 bits | Retained |
+| Save-profile compression | +47 ALUTs, +20 registers | -47,616 bits | Retained |
+| Sound fetch packing | +32 ALUTs, -1 register | included in total | Retained |
+| ARM9 cache tag packing | -31 ALUTs | +3,072 bits | Retained pending memory-mode review |
+| IPC FIFO MLAB mapping | **+495 ALUTs, +1,413 registers** | -1,536 bits | **Removed** |
 
-These are predictions, not reported as measured deltas. The B-side mapper must
-confirm RAM block selection and hierarchy before any release decision.
+Before the IPC correction, the entire experiment was +339 estimated ALMs and
++1,432 registers while saving 46,080 block-memory bits. Removing the dominant
+IPC regression restores three proven 16x32 inferred RAMs. From the measured
+hierarchy delta alone this removes 495 ALUTs and 1,413 registers, comfortably
+larger than the 19-LAB fit shortfall. A new map/fit must confirm placement.
 
 ## Validation still required
 
-1. Wait for the cumulative full fit to exit, then run only an experimental map.
+1. Run a corrected experimental map and confirm IPC returns to 120 ALUTs, 241
+   registers, three 16x32 inferred RAMs, and 1,536 block-memory bits.
 2. Compare total and per-entity ALMs, registers, M10Ks/MLABs, DSPs, PLLs, inferred
    RAM modes, replication, and warnings against the exact A-side snapshot.
-3. If the map is favorable, run a full isolated fit only when no other Quartus
-   process is active. Treat timing as diagnostic rather than a deployment gate.
+3. If the corrected map is favorable, run a full isolated fit only when no
+   other Quartus process is active. Treat timing as diagnostic rather than a
+   deployment gate.
 4. Direct-load TV testing: LG C3/C4 and TCL; all layouts/order/gap/FPS settings;
    default 8-pixel gap; touch; sound; all save types; reset/reload.
 5. Game testing: NSMB intro, map, big castle and long play; verify no 3D speed,
