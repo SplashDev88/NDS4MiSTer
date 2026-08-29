@@ -1,13 +1,14 @@
-NDS4MiSTer public cumulative beta v0.3.0-beta.2 source - 2026-08-29
+NDS4MiSTer public cumulative beta v0.3.0-beta.3 source - 2026-08-29
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
 work, expanded save-profile/Flash implementation, save-profile CDC fix,
-controller touch, PSX-derived FPGA space efficiencies, and DreamSTer-derived
-full-frame renderer-fence batching.
+controller touch, PSX-derived FPGA space efficiencies, DreamSTer-derived
+full-frame renderer-fence batching, adaptive raster balancing, and bounded
+obsolete-geometry discard.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.2_20260829 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.3_20260829 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -23,7 +24,7 @@ FPGA core:
   d459b7805309d01807854be6a19d241ea3bc0572b46df1176d3843abb1b82740
 
 ARM hybrid-3D service:
-  f6c727bb35dc75fce0ebd298db9a046ed660501221198b6a609154ad2ae95f6e
+  52b097e80839597b981775c28dd17deef9305db3e180730e40a407753edc6265
 
 ARM 3D frame-fence optimization
 -------------------------------
@@ -39,6 +40,20 @@ ARM 3D frame-fence optimization
   final castle. A passive 60-second sample reached approximately 60 published
   3D FPS in lighter sections and 35-43 FPS in heavier sections, averaging
   49.6 FPS with no ARM/FPGA faults or sustained transport backlog.
+
+ARM 3D adaptive-raster and catch-up optimization
+------------------------------------------------
+
+* Feedback-guided raster splitting balances polygon work across both Cortex-A9
+  cores while retaining exact fixed-point raster results.
+* Replay that misses its display deadline can discard obsolete geometry work
+  instead of spending ARM time rendering a frame that can no longer be shown.
+* Discard state remains attached to the incomplete polygon build buffer until
+  the command stream reaches its real GX flush. This prevents the black areas,
+  missing scenery, and stray polygons observed in the first Mario Kart test.
+* A 32.4-second Mario Kart DS kiosk-demo sample measured 59.8 input frames/s,
+  56.3 rendered 3D frames/s, and 55.9 published 3D frames/s. The replay backlog
+  recovered from 6 frames to 0, with no FPGA or ARM/HPS faults.
 
 FPGA space efficiencies
 -----------------------
