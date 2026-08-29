@@ -150,6 +150,16 @@ architecture arch of nds_sound is
    signal frem_b_dout : std_logic_vector(31 downto 0);
    signal frem_b_we   : std_logic := '0';
 
+   -- fptr and frem are always indexed together and every functional update
+   -- writes both. Pack their 25+24 bits into one 52-bit true-dual-port RAM
+   -- (four 13-bit lanes, three padding bits) instead of two padded 32-bit
+   -- memories. Cyclone V implements a true-dual-port width above 40 by banking;
+   -- 52 bits needs three M10Ks instead of the former two 32-bit banks needing
+   -- four. The logical fields and registered-read cadence are unchanged.
+   signal fetchstate_a_din  : std_logic_vector(51 downto 0);
+   signal fetchstate_b_din  : std_logic_vector(51 downto 0);
+   signal fetchstate_b_dout : std_logic_vector(51 downto 0);
+
    signal soundcnt  : std_logic_vector(15 downto 0) := (others => '0');
    signal soundbias : std_logic_vector(9 downto 0)  := (others => '0');
 
@@ -364,56 +374,42 @@ begin
                      to_signed(vol128(master_gain_latch), master_gain_in'length);
    master_product <= master_acc_in * master_gain_in;
 
-   -- port A (CPU, write-only) addressed by n, port B (fetch FSM) by fch;
-   -- both driven combinationally below from whichever process needs them
-   -- this cycle. Unused byte lanes/outputs tied off (5 spare bits/word).
-   iram_fptr : entity MEM.SyncRamDualByteEnable
-   generic map (is_simu => is_simu, is_cyclone5 => '1', ADDR_WIDTH => 4)
+   -- Port A is the CPU channel-start writer; port B is the fetch FSM. The
+   -- existing primitive supports arbitrary lane widths, so four 13-bit lanes
+   -- retain its proven Cyclone-V TDP/read-during-write implementation.
+   fetchstate_a_din <= "000" & std_logic_vector(frem_a_din) &
+                       std_logic_vector(fptr_a_din);
+   fetchstate_b_din <= "000" & std_logic_vector(frem_b_din) &
+                       std_logic_vector(fptr_b_din);
+   fptr_b_dout <= "0000000" & fetchstate_b_dout(24 downto 0);
+   frem_b_dout <= x"00" & fetchstate_b_dout(48 downto 25);
+
+   iram_fetchstate : entity MEM.SyncRamDualByteEnable
+   generic map
+   (
+      is_simu => is_simu, is_cyclone5 => '1',
+      BYTE_WIDTH => 13, BYTES => 4, ADDR_WIDTH => 4
+   )
    port map
    (
       clk       => clk,
       ce_a      => '1',
       addr_a    => fptr_a_addr,
-      datain_a0 => std_logic_vector(fptr_a_din(7 downto 0)),
-      datain_a1 => std_logic_vector(fptr_a_din(15 downto 8)),
-      datain_a2 => std_logic_vector(fptr_a_din(23 downto 16)),
-      datain_a3 => "0000000" & fptr_a_din(24),
+      datain_a0 => fetchstate_a_din(12 downto 0),
+      datain_a1 => fetchstate_a_din(25 downto 13),
+      datain_a2 => fetchstate_a_din(38 downto 26),
+      datain_a3 => fetchstate_a_din(51 downto 39),
       dataout_a => open,
-      we_a      => fptr_a_we,
+      we_a      => fptr_a_we or frem_a_we,
       be_a      => "1111",
       ce_b      => '1',
       addr_b    => fptr_b_addr,
-      datain_b0 => std_logic_vector(fptr_b_din(7 downto 0)),
-      datain_b1 => std_logic_vector(fptr_b_din(15 downto 8)),
-      datain_b2 => std_logic_vector(fptr_b_din(23 downto 16)),
-      datain_b3 => "0000000" & fptr_b_din(24),
-      dataout_b => fptr_b_dout,
-      we_b      => fptr_b_we,
-      be_b      => "1111"
-   );
-
-   iram_frem : entity MEM.SyncRamDualByteEnable
-   generic map (is_simu => is_simu, is_cyclone5 => '1', ADDR_WIDTH => 4)
-   port map
-   (
-      clk       => clk,
-      ce_a      => '1',
-      addr_a    => frem_a_addr,
-      datain_a0 => std_logic_vector(frem_a_din(7 downto 0)),
-      datain_a1 => std_logic_vector(frem_a_din(15 downto 8)),
-      datain_a2 => std_logic_vector(frem_a_din(23 downto 16)),
-      datain_a3 => x"00",
-      dataout_a => open,
-      we_a      => frem_a_we,
-      be_a      => "1111",
-      ce_b      => '1',
-      addr_b    => frem_b_addr,
-      datain_b0 => std_logic_vector(frem_b_din(7 downto 0)),
-      datain_b1 => std_logic_vector(frem_b_din(15 downto 8)),
-      datain_b2 => std_logic_vector(frem_b_din(23 downto 16)),
-      datain_b3 => x"00",
-      dataout_b => frem_b_dout,
-      we_b      => frem_b_we,
+      datain_b0 => fetchstate_b_din(12 downto 0),
+      datain_b1 => fetchstate_b_din(25 downto 13),
+      datain_b2 => fetchstate_b_din(38 downto 26),
+      datain_b3 => fetchstate_b_din(51 downto 39),
+      dataout_b => fetchstate_b_dout,
+      we_b      => fptr_b_we or frem_b_we,
       be_b      => "1111"
    );
 
@@ -422,6 +418,17 @@ begin
    -- lines up with the BRAMs' one-cycle registered-read latency exactly.
    fptr_b_addr <= fch;
    frem_b_addr <= fch;
+
+   -- synthesis translate_off
+   assert fptr_a_addr = frem_a_addr
+      report "packed sound fetch-state port A addresses diverged" severity failure;
+   assert fptr_b_addr = frem_b_addr
+      report "packed sound fetch-state port B addresses diverged" severity failure;
+   assert fptr_a_we = frem_a_we
+      report "packed sound fetch-state port A writes must update both fields" severity failure;
+   assert fptr_b_we = frem_b_we
+      report "packed sound fetch-state port B writes must update both fields" severity failure;
+   -- synthesis translate_on
 
    snd_enable <= soundcnt(15);
    gact : for i in 0 to 15 generate
@@ -833,6 +840,11 @@ begin
                            frem_b_din <= resize(unsigned(chan(fch).len), 24);
                            frem_b_we  <= '1';
                         else
+                           -- Packed fetch state writes complete words. Retain
+                           -- the unused pointer when only the remaining count
+                           -- is architecturally cleared.
+                           fptr_b_din <= unsigned(fptr_b_dout(24 downto 0));
+                           fptr_b_we  <= '1';
                            frem_b_din <= (others => '0');
                            frem_b_we  <= '1';
                         end if;
