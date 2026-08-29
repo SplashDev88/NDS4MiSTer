@@ -23,6 +23,10 @@
 #include <cstdlib>
 #include <stdio.h>
 #include <string.h>
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
 #include "NDS.h"
 #include "GPU.h"
 #include "GPU_Soft.h"
@@ -46,6 +50,20 @@ u64 renderer3DProfileElapsedNs(
     return static_cast<u64>(std::chrono::duration_cast<std::chrono::nanoseconds>(
         Renderer3DProfileClock::now() - started).count());
 }
+
+void bindParallelRasterToSecondCpu()
+{
+#if defined(__linux__)
+    cpu_set_t affinity;
+    CPU_ZERO(&affinity);
+    CPU_SET(1, &affinity);
+    // Affinity is an optimization, not a correctness requirement. Desktop
+    // tests and unusual Linux hosts may expose only one CPU; let their normal
+    // scheduler run the deterministic worker instead of failing startup.
+    (void)pthread_setaffinity_np(
+        pthread_self(), sizeof(affinity), &affinity);
+#endif
+}
 }
 
 void RenderThreadFunc();
@@ -64,12 +82,32 @@ void SoftRenderer3D::StopRenderThread()
         Platform::Thread_Free(RenderThread);
         RenderThread = nullptr;
     }
+
+    // Keep the band worker alive until the primary renderer has completed or
+    // abandoned its current frame. The primary may be waiting for this exact
+    // worker at the raster join when shutdown is requested.
+    if (ParallelRasterThreadRunning.load(std::memory_order_relaxed))
+    {
+        ParallelRasterThreadRunning = false;
+        Platform::Semaphore_Post(Sema_ParallelRasterStart);
+        Platform::Thread_Wait(ParallelRasterThread);
+        Platform::Thread_Free(ParallelRasterThread);
+        ParallelRasterThread = nullptr;
+    }
 }
 
 void SoftRenderer3D::SetupRenderThread()
 {
     if (Threaded)
     {
+        if (DualCoreRaster &&
+            !ParallelRasterThreadRunning.load(std::memory_order_relaxed))
+        {
+            ParallelRasterThreadRunning = true;
+            ParallelRasterThread = Platform::Thread_Create([this]() {
+                ParallelRasterThreadFunc();
+            });
+        }
         if (!RenderThreadRunning.load(std::memory_order_relaxed))
         { // If the render thread isn't already running...
             RenderThreadRunning = true; // "Time for work, render thread!"
@@ -101,6 +139,11 @@ void SoftRenderer3D::SetupRenderThread()
         // "I might need some of your scanlines before you finish the whole buffer,"
         // "so let me know as soon as you're done with each one."
         Platform::Semaphore_Reset(Sema_ScanlineCount);
+        if (DualCoreRaster)
+        {
+            Platform::Semaphore_Reset(Sema_ParallelRasterStart);
+            Platform::Semaphore_Reset(Sema_ParallelRasterDone);
+        }
     }
     else
     {
@@ -123,10 +166,19 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
     Sema_ScanlineCount = Platform::Semaphore_Create();
+    Sema_ParallelRasterStart = Platform::Semaphore_Create();
+    Sema_ParallelRasterDone = Platform::Semaphore_Create();
 
     RenderThreadRunning = false;
     RenderThreadRendering = false;
     RenderThread = nullptr;
+    ParallelRasterThreadRunning = false;
+    ParallelRasterThread = nullptr;
+    const char* dualCoreRaster = std::getenv("NDS4MISTER_DUAL_CORE_3D");
+    DualCoreRaster = dualCoreRaster && strcmp(dualCoreRaster, "0") != 0;
+    if (DualCoreRaster)
+        ParallelPolygonList = std::make_unique<RendererPolygon[]>(
+            MaxRendererPolygons);
     UseTextureCache = std::getenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE") == nullptr;
 }
 
@@ -139,6 +191,8 @@ SoftRenderer3D::~SoftRenderer3D()
     Platform::Semaphore_Free(Sema_RenderStart);
     Platform::Semaphore_Free(Sema_RenderDone);
     Platform::Semaphore_Free(Sema_ScanlineCount);
+    Platform::Semaphore_Free(Sema_ParallelRasterStart);
+    Platform::Semaphore_Free(Sema_ParallelRasterDone);
 }
 
 void SoftRenderer3D::Reset()
@@ -914,7 +968,9 @@ void SoftRenderer3D::SetupPolygon(SoftRenderer3D::RendererPolygon* rp, Polygon* 
     }
 }
 
-void SoftRenderer3D::RenderShadowMaskScanline(RendererPolygon* rp, s32 y)
+void SoftRenderer3D::RenderShadowMaskScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    u8* stencilBuffer)
 {
     Polygon* polygon = rp->PolyData;
 
@@ -923,10 +979,10 @@ void SoftRenderer3D::RenderShadowMaskScanline(RendererPolygon* rp, s32 y)
     const bool wireframe = rp->PixelState.Wireframe;
     const auto fnDepthTest = rp->DepthTest;
 
-    if (!PrevIsShadowMask)
-        memset(&StencilBuffer[256 * (y&0x1)], 0, 256);
+    if (!prevIsShadowMask)
+        memset(&stencilBuffer[256 * (y&0x1)], 0, 256);
 
-    PrevIsShadowMask = true;
+    prevIsShadowMask = true;
 
     if (polygon->YTop != polygon->YBottom)
     {
@@ -1067,13 +1123,13 @@ void SoftRenderer3D::RenderShadowMaskScanline(RendererPolygon* rp, s32 y)
         u32 dstattr = AttrBuffer[pixeladdr];
 
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
-            StencilBuffer[256*(y&0x1) + x] = 1;
+            stencilBuffer[256*(y&0x1) + x] = 1;
 
         if (dstattr & 0xF)
         {
             pixeladdr += BufferSize;
             if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, AttrBuffer[pixeladdr]))
-                StencilBuffer[256*(y&0x1) + x] |= 0x2;
+                stencilBuffer[256*(y&0x1) + x] |= 0x2;
         }
     }
 
@@ -1093,13 +1149,13 @@ void SoftRenderer3D::RenderShadowMaskScanline(RendererPolygon* rp, s32 y)
         u32 dstattr = AttrBuffer[pixeladdr];
 
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
-            StencilBuffer[256*(y&0x1) + x] = 1;
+            stencilBuffer[256*(y&0x1) + x] = 1;
 
         if (dstattr & 0xF)
         {
             pixeladdr += BufferSize;
             if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, AttrBuffer[pixeladdr]))
-                StencilBuffer[256*(y&0x1) + x] |= 0x2;
+                stencilBuffer[256*(y&0x1) + x] |= 0x2;
         }
     }
 
@@ -1119,13 +1175,13 @@ void SoftRenderer3D::RenderShadowMaskScanline(RendererPolygon* rp, s32 y)
         u32 dstattr = AttrBuffer[pixeladdr];
 
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
-            StencilBuffer[256*(y&0x1) + x] = 1;
+            stencilBuffer[256*(y&0x1) + x] = 1;
 
         if (dstattr & 0xF)
         {
             pixeladdr += BufferSize;
             if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, AttrBuffer[pixeladdr]))
-                StencilBuffer[256*(y&0x1) + x] |= 0x2;
+                stencilBuffer[256*(y&0x1) + x] |= 0x2;
         }
     }
 
@@ -1133,7 +1189,9 @@ void SoftRenderer3D::RenderShadowMaskScanline(RendererPolygon* rp, s32 y)
     rp->XR = rp->SlopeR.Step();
 }
 
-void SoftRenderer3D::RenderPolygonScanline(RendererPolygon* rp, s32 y)
+void SoftRenderer3D::RenderPolygonScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    u8* stencilBuffer)
 {
     Polygon* polygon = rp->PolyData;
 
@@ -1142,7 +1200,7 @@ void SoftRenderer3D::RenderPolygonScanline(RendererPolygon* rp, s32 y)
     const bool wireframe = rp->PixelState.Wireframe;
     const auto fnDepthTest = rp->DepthTest;
 
-    PrevIsShadowMask = false;
+    prevIsShadowMask = false;
 
     if (polygon->YTop != polygon->YBottom)
     {
@@ -1336,7 +1394,7 @@ void SoftRenderer3D::RenderPolygonScanline(RendererPolygon* rp, s32 y)
         // check stencil buffer for shadows
         if (polygon->IsShadow)
         {
-            u8 stencil = StencilBuffer[256*(y&0x1) + x];
+            u8 stencil = stencilBuffer[256*(y&0x1) + x];
             if (!stencil)
                 continue;
             if (!(stencil & 0x1))
@@ -1432,7 +1490,7 @@ void SoftRenderer3D::RenderPolygonScanline(RendererPolygon* rp, s32 y)
         // check stencil buffer for shadows
         if (polygon->IsShadow)
         {
-            u8 stencil = StencilBuffer[256*(y&0x1) + x];
+            u8 stencil = stencilBuffer[256*(y&0x1) + x];
             if (!stencil)
                 continue;
             if (!(stencil & 0x1))
@@ -1524,7 +1582,7 @@ void SoftRenderer3D::RenderPolygonScanline(RendererPolygon* rp, s32 y)
         // check stencil buffer for shadows
         if (polygon->IsShadow)
         {
-            u8 stencil = StencilBuffer[256*(y&0x1) + x];
+            u8 stencil = stencilBuffer[256*(y&0x1) + x];
             if (!stencil)
                 continue;
             if (!(stencil & 0x1))
@@ -1672,13 +1730,15 @@ u32 SoftRenderer3D::BuildScanlinePolygonLists(int npolys)
     return polygonScanlines;
 }
 
-void SoftRenderer3D::RenderScanline(s32 y)
+void SoftRenderer3D::RenderScanline(
+    s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
+    bool& prevIsShadowMask, u8* stencilBuffer)
 {
     if (!UseScanlinePolygonLists)
     {
         for (int i = 0; i < CurrentPolygonCount; i++)
         {
-            RendererPolygon* rp = &PolygonList[i];
+            RendererPolygon* rp = &polygonList[i];
             Polygon* polygon = rp->PolyData;
 
             if (y >= polygon->YTop &&
@@ -1686,9 +1746,11 @@ void SoftRenderer3D::RenderScanline(s32 y)
                  (y == polygon->YTop && polygon->YBottom == polygon->YTop)))
             {
                 if (polygon->IsShadowMask)
-                    RenderShadowMaskScanline(rp, y);
+                    RenderShadowMaskScanline(
+                        rp, y, prevIsShadowMask, stencilBuffer);
                 else
-                    RenderPolygonScanline(rp, y);
+                    RenderPolygonScanline(
+                        rp, y, prevIsShadowMask, stencilBuffer);
             }
         }
         return;
@@ -1697,27 +1759,31 @@ void SoftRenderer3D::RenderScanline(s32 y)
     for (u16 i = ScanlineEndOffsets[y]; i < ScanlineEndOffsets[y + 1]; i++)
     {
         const int polygonIndex = ScanlineEndPolygonIndices[i];
-        ActivePolygonMask[polygonIndex / 32] &= ~(1u << (polygonIndex % 32));
+        activePolygonMask[polygonIndex / 32] &=
+            ~(1u << (polygonIndex % 32));
     }
     for (u16 i = ScanlineStartOffsets[y]; i < ScanlineStartOffsets[y + 1]; i++)
     {
         const int polygonIndex = ScanlineStartPolygonIndices[i];
-        ActivePolygonMask[polygonIndex / 32] |= 1u << (polygonIndex % 32);
+        activePolygonMask[polygonIndex / 32] |=
+            1u << (polygonIndex % 32);
     }
 
     for (int word = 0; word < ActivePolygonMaskWords; word++)
     {
-        u32 active = ActivePolygonMask[word];
+        u32 active = activePolygonMask[word];
         while (active)
         {
             const int polygonIndex = word * 32 + __builtin_ctz(active);
-            RendererPolygon* rp = &PolygonList[polygonIndex];
+            RendererPolygon* rp = &polygonList[polygonIndex];
             Polygon* polygon = rp->PolyData;
 
             if (polygon->IsShadowMask)
-                RenderShadowMaskScanline(rp, y);
+                RenderShadowMaskScanline(
+                    rp, y, prevIsShadowMask, stencilBuffer);
             else
-                RenderPolygonScanline(rp, y);
+                RenderPolygonScanline(
+                    rp, y, prevIsShadowMask, stencilBuffer);
 
             active &= active - 1;
         }
@@ -2040,7 +2106,7 @@ void SoftRenderer3D::ClearBuffers()
     }
 }
 
-void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npolys)
+int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
 {
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
@@ -2067,10 +2133,163 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
         Parent.StageProfile.ThreeDScheduledPolygonFrames +=
             UseScanlinePolygonLists;
     }
+    return j;
+}
+
+u64 SoftRenderer3D::RenderScanlineBand(
+    s32 firstLine, s32 endLine, RendererPolygon* polygonList,
+    u32* activePolygonMask, bool& prevIsShadowMask, u8* stencilBuffer)
+{
+    const auto started = renderer3DProfileStarted(Parent.StageProfileEnabled);
+    for (s32 y = firstLine; y < endLine; y++)
+        RenderScanline(
+            y, polygonList, activePolygonMask,
+            prevIsShadowMask, stencilBuffer);
+    return Parent.StageProfileEnabled ? renderer3DProfileElapsedNs(started) : 0;
+}
+
+void SoftRenderer3D::PrepareParallelRasterBand(int npolys, s32 firstLine)
+{
+    std::copy_n(PolygonList, npolys, ParallelPolygonList.get());
+    if (UseScanlinePolygonLists)
+        std::fill_n(ParallelActivePolygonMask, ActivePolygonMaskWords, 0);
+    memset(ParallelStencilBuffer, 0, sizeof(ParallelStencilBuffer));
+    ParallelPrevIsShadowMask = false;
+
+    for (int i = 0; i < npolys; i++)
+    {
+        RendererPolygon* rp = &ParallelPolygonList[i];
+        Polygon* polygon = rp->PolyData;
+        const bool active = firstLine >= polygon->YTop &&
+            (firstLine < polygon->YBottom ||
+             (firstLine == polygon->YTop &&
+              polygon->YBottom == polygon->YTop));
+        if (!active) continue;
+
+        if (UseScanlinePolygonLists)
+            ParallelActivePolygonMask[i / 32] |= 1u << (i % 32);
+
+        // Each worker owns mutable edge/interpolator state. Rebuild only the
+        // polygons crossing the band boundary directly at that scanline;
+        // polygons beginning later retain their normal top-edge setup.
+        if (polygon->YTop != polygon->YBottom)
+        {
+            SetupPolygonLeftEdge(rp, firstLine);
+            SetupPolygonRightEdge(rp, firstLine);
+        }
+    }
+}
+
+s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
+{
+    // CPU1 also owns command replay, so give CPU0 roughly 60% of projected
+    // polygon area. A fixed split left CPU0 nearly idle whenever NSMB placed
+    // most geometry low on screen. This bounded O(vertices+P+H) estimate uses
+    // the frame's already-prepared polygons and adds no work to pixel loops.
+    s32 scanlineDelta[VisibleScanlines + 1] = {};
+    for (int i = 0; i < npolys; i++)
+    {
+        const Polygon* polygon = PolygonList[i].PolyData;
+        int first = std::clamp(polygon->YTop, 0, VisibleScanlines);
+        int end = std::clamp(polygon->YBottom, 0, VisibleScanlines);
+        if (polygon->YBottom == polygon->YTop &&
+            polygon->YTop >= 0 && polygon->YTop < VisibleScanlines)
+            end = first + 1;
+        if (first >= end) continue;
+
+        s32 left = 256;
+        s32 right = -1;
+        for (u32 vertex = 0; vertex < polygon->NumVertices; vertex++)
+        {
+            const s32 x = polygon->Vertices[vertex]->FinalPosition[0];
+            left = std::min(left, x);
+            right = std::max(right, x);
+        }
+        left = std::clamp(left, 0, 255);
+        right = std::clamp(right, 0, 255);
+        const s32 projectedWidth = std::max(1, right - left + 1);
+        scanlineDelta[first] += projectedWidth;
+        scanlineDelta[end] -= projectedWidth;
+    }
+
+    u32 lineWork[VisibleScanlines] = {};
+    u32 totalWork = 0;
+    s32 activeProjectedWidth = 0;
+    for (int y = 0; y < VisibleScanlines; y++)
+    {
+        activeProjectedWidth += scanlineDelta[y];
+        lineWork[y] = static_cast<u32>(activeProjectedWidth);
+        totalWork += lineWork[y];
+    }
+    if (totalWork == 0) return 112;
+
+    const u32 primaryTarget = (totalWork * 3u + 4u) / 5u;
+    u32 primaryWork = 0;
+    for (int y = 0; y < VisibleScanlines - 1; y++)
+    {
+        primaryWork += lineWork[y];
+        if (primaryWork >= primaryTarget) return y + 1;
+    }
+    return VisibleScanlines - 1;
+}
+
+void SoftRenderer3D::RenderPolygonsDualCore(
+    bool threaded, Polygon** polygons, int npolys)
+{
+    const int polygonsPrepared = SetupRenderPolygons(polygons, npolys);
+    const s32 SplitLine = ChooseParallelRasterSplitLine(polygonsPrepared);
+    ParallelRasterSplitLine_.store(SplitLine, std::memory_order_relaxed);
+    PrepareParallelRasterBand(polygonsPrepared, SplitLine);
+    ParallelRasterNs.store(0, std::memory_order_relaxed);
+    Platform::Semaphore_Reset(Sema_ParallelRasterDone);
+
+    const auto rasterStarted =
+        renderer3DProfileStarted(Parent.StageProfileEnabled);
+    Platform::Semaphore_Post(Sema_ParallelRasterStart);
+    const u64 primaryRasterNs = RenderScanlineBand(
+        0, SplitLine, PolygonList, ActivePolygonMask,
+        PrevIsShadowMask, StencilBuffer);
+    const auto joinStarted =
+        renderer3DProfileStarted(Parent.StageProfileEnabled);
+    Platform::Semaphore_Wait(Sema_ParallelRasterDone);
+
+    if (Parent.StageProfileEnabled)
+    {
+        ++Parent.StageProfile.ThreeDParallelFrames;
+        Parent.StageProfile.ThreeDPrimaryRasterNs += primaryRasterNs;
+        Parent.StageProfile.ThreeDSecondaryRasterNs +=
+            ParallelRasterNs.load(std::memory_order_relaxed);
+        Parent.StageProfile.ThreeDParallelJoinNs +=
+            renderer3DProfileElapsedNs(joinStarted);
+        Parent.StageProfile.ThreeDRasterNs +=
+            renderer3DProfileElapsedNs(rasterStarted);
+    }
+
+    // Edge marking reads the adjacent rasterized rows. Join both disjoint
+    // bands first, then perform the inexpensive final pass in canonical line
+    // order. This avoids a boundary race without changing any pixel result.
+    const auto finalPassStarted =
+        renderer3DProfileStarted(Parent.StageProfileEnabled);
+    for (s32 y = 0; y < VisibleScanlines; y++)
+    {
+        ScanlineFinalPass(y);
+        if (threaded)
+            Platform::Semaphore_Post(Sema_ScanlineCount);
+    }
+    if (Parent.StageProfileEnabled)
+        Parent.StageProfile.ThreeDFinalPassNs +=
+            renderer3DProfileElapsedNs(finalPassStarted);
+}
+
+void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npolys)
+{
+    SetupRenderPolygons(polygons, npolys);
 
     auto stageStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
-    RenderScanline(0);
+    RenderScanline(
+        0, PolygonList, ActivePolygonMask,
+        PrevIsShadowMask, StencilBuffer);
     if (Parent.StageProfileEnabled)
         Parent.StageProfile.ThreeDRasterNs +=
             renderer3DProfileElapsedNs(stageStarted);
@@ -2078,7 +2297,9 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
     for (s32 y = 1; y < 192; y++)
     {
         stageStarted = renderer3DProfileStarted(Parent.StageProfileEnabled);
-        RenderScanline(y);
+        RenderScanline(
+            y, PolygonList, ActivePolygonMask,
+            PrevIsShadowMask, StencilBuffer);
         if (Parent.StageProfileEnabled)
             Parent.StageProfile.ThreeDRasterNs +=
                 renderer3DProfileElapsedNs(stageStarted);
@@ -2189,7 +2410,14 @@ void SoftRenderer3D::RenderThreadFunc()
             if (Parent.StageProfileEnabled)
                 Parent.StageProfile.ThreeDClearNs +=
                     renderer3DProfileElapsedNs(clearStarted);
-            RenderPolygons(true, &GPU3D.RenderPolygonRAM[0], GPU3D.RenderNumPolygons);
+            if (DualCoreRaster)
+                RenderPolygonsDualCore(
+                    true, &GPU3D.RenderPolygonRAM[0],
+                    GPU3D.RenderNumPolygons);
+            else
+                RenderPolygons(
+                    true, &GPU3D.RenderPolygonRAM[0],
+                    GPU3D.RenderNumPolygons);
         }
 
         // Clear the in-flight state before publishing completion. The main
@@ -2198,6 +2426,26 @@ void SoftRenderer3D::RenderThreadFunc()
         // value and wait a second time on the already-consumed semaphore.
         RenderThreadRendering = false;
         Platform::Semaphore_Post(Sema_RenderDone);
+    }
+}
+
+void SoftRenderer3D::ParallelRasterThreadFunc()
+{
+    bindParallelRasterToSecondCpu();
+    for (;;)
+    {
+        Platform::Semaphore_Wait(Sema_ParallelRasterStart);
+        if (!ParallelRasterThreadRunning.load(std::memory_order_relaxed))
+            return;
+
+        const s32 SplitLine =
+            ParallelRasterSplitLine_.load(std::memory_order_relaxed);
+        const u64 elapsed = RenderScanlineBand(
+            SplitLine, VisibleScanlines, ParallelPolygonList.get(),
+            ParallelActivePolygonMask, ParallelPrevIsShadowMask,
+            ParallelStencilBuffer);
+        ParallelRasterNs.store(elapsed, std::memory_order_relaxed);
+        Platform::Semaphore_Post(Sema_ParallelRasterDone);
     }
 }
 

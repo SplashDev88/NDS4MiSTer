@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/EmulatorBackend.h"
+#include "melonds/HeadlessSaveManager.h"
 
 #include <memory>
 #include <array>
@@ -149,6 +150,7 @@ struct ExternalARM9IFW1CResult {
 class MelonDsBackend final : public IEmulatorBackend {
 public:
     MelonDsBackend();
+    explicit MelonDsBackend(std::string save_root);
     ~MelonDsBackend() override;
 
     const char* name() const override;
@@ -263,6 +265,11 @@ public:
                    std::uint32_t value,
                    std::uint32_t execution_pc = UINT32_MAX);
     bool export_direct_boot_image(DirectBootImage& image, std::string& error) const;
+    bool flush_save(std::string& error);
+    bool save_persistence_enabled() const noexcept {
+        return !save_root_.empty();
+    }
+    SavePersistenceStats save_persistence_stats() const;
 
 private:
     void close_trace_2d() noexcept;
@@ -277,6 +284,10 @@ private:
         std::string& error);
     void rollback_external_blocking_mmio_barrier() noexcept;
 
+    std::string save_root_;
+    // Declared before nds_ so reverse member destruction removes the cart and
+    // its callback pointer before the per-cart save context is released.
+    std::unique_ptr<HeadlessSaveManager> save_session_;
     std::unique_ptr<melonDS::NDS> nds_;
     std::uint8_t* internal_main_ram_ = nullptr;
     std::uint8_t* internal_shared_wram_ = nullptr;

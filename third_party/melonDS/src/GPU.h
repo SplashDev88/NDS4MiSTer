@@ -925,6 +925,10 @@ struct ExternalRendererStageProfile
     u64 ThreeDSetupNs = 0;
     u64 ThreeDRasterNs = 0;
     u64 ThreeDFinalPassNs = 0;
+    u64 ThreeDParallelFrames = 0;
+    u64 ThreeDPrimaryRasterNs = 0;
+    u64 ThreeDSecondaryRasterNs = 0;
+    u64 ThreeDParallelJoinNs = 0;
     u64 ThreeDPolygonFrames = 0;
     u64 ThreeDPolygons = 0;
     u64 ThreeDPolygonScanlines = 0;

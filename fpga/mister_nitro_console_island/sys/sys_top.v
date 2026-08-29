@@ -1336,8 +1336,12 @@ wire hdmi_tx_clk;
 `ifdef MISTER_HDMI_ONLY
 	assign hdmi_tx_clk = hdmi_clk_out;
 `elsif NDS_HDMI_SCALER_ONLY
-	// The compact shell never selects direct video, so use the same direct
-	// transmitter-clock topology as MiSTer's HDMI-only path.
+	// The NDS product deliberately exposes only the scaler HDMI path.  It
+	// never switches to the native/direct-video clock, so retaining the
+	// generic two-clock cyclonev_clkselect only makes HDMI depend on fitter
+	// placement.  A rejected LG-C3 fit reported that the selected clock block
+	// could not reach one input and produced an invalid format.  Drive the
+	// scaler PLL clock directly, matching the fixed product topology.
 	assign hdmi_tx_clk = hdmi_clk_out;
 `elsif MISTER_DEBUG_NOHDMI
 	assign hdmi_tx_clk = clk_vid;

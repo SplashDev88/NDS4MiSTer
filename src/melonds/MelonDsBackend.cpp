@@ -11,7 +11,9 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
 #if !defined(_WIN32)
 #include <fcntl.h>
@@ -22,12 +24,6 @@
 
 namespace nds4mister {
 namespace {
-
-std::string basename(const std::string& path)
-{
-    const auto slash = path.find_last_of("/\\");
-    return slash == std::string::npos ? path : path.substr(slash + 1);
-}
 
 void unmap_rom(melonDS::u8* data, melonDS::u32 size) noexcept
 {
@@ -108,17 +104,17 @@ bool read_file(const std::string& path, melonDS::NDSCart::ROMBuffer& data, melon
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
     if (!file) {
-        error = "failed to open ROM: " + path;
+        error = "failed to open ROM";
         return false;
     }
 
     const std::streamsize size = file.tellg();
     if (size <= 0) {
-        error = "ROM is empty: " + path;
+        error = "ROM is empty";
         return false;
     }
     if (size > 512LL * 1024LL * 1024LL) {
-        error = "ROM is larger than melonDS supports: " + path;
+        error = "ROM is larger than melonDS supports";
         return false;
     }
 
@@ -127,7 +123,7 @@ bool read_file(const std::string& path, melonDS::NDSCart::ROMBuffer& data, melon
 
     file.seekg(0, std::ios::beg);
     if (!file.read(reinterpret_cast<char*>(heap_data.get()), size)) {
-        error = "failed to read ROM: " + path;
+        error = "failed to read ROM";
         return false;
     }
 
@@ -222,6 +218,11 @@ const char* external_time_window_error(
 } // namespace
 
 MelonDsBackend::MelonDsBackend() = default;
+
+MelonDsBackend::MelonDsBackend(std::string save_root)
+    : save_root_(std::move(save_root))
+{}
+
 MelonDsBackend::~MelonDsBackend()
 {
     melonDS::NDS4MiSTer::SetCompositeLineSink(nullptr, nullptr);
@@ -234,6 +235,10 @@ MelonDsBackend::~MelonDsBackend()
                 internal_shared_wram_, internal_arm7_wram_);
         }
     }
+    std::string ignored;
+    if (save_session_) save_session_->shutdown(ignored);
+    nds_.reset();
+    save_session_.reset();
 }
 
 const char* MelonDsBackend::name() const
@@ -1439,21 +1444,49 @@ bool MelonDsBackend::bus_write(bool arm9, unsigned access,
 
 bool MelonDsBackend::load_rom(const std::string& path, std::string& error)
 {
+    if (nds_) {
+        if (!flush_save(error)) return false;
+        nds_.reset();
+        save_session_.reset();
+    }
+
     melonDS::NDSCart::ROMBuffer rom;
     melonDS::u32 rom_size = 0;
     if (!map_file(path, rom, rom_size, error) && !read_file(path, rom, rom_size, error)) {
         return false;
     }
 
+    std::unique_ptr<HeadlessSaveManager> pendingSave;
+    std::unique_ptr<melonDS::u8[]> savedata;
+    melonDS::u32 savedataLength = 0;
+    std::optional<melonDS::NDSCart::NDSCartArgs> cartArgs = std::nullopt;
+    if (!save_root_.empty()) {
+        const auto identity = HeadlessSaveManager::contentId(rom.get(), rom_size);
+        pendingSave = HeadlessSaveManager::create(
+            save_root_, identity, error);
+        if (!pendingSave) return false;
+        if (!pendingSave->loadExisting(savedata, savedataLength, error))
+            return false;
+        melonDS::NDSCart::NDSCartArgs loadedCartArgs;
+        loadedCartArgs.SRAM = std::move(savedata);
+        loadedCartArgs.SRAMLength = savedataLength;
+        cartArgs = std::move(loadedCartArgs);
+    }
+
     auto cart = melonDS::NDSCart::ParseROM(
-        std::move(rom),
-        rom_size,
-        nullptr,
-        std::nullopt);
+        std::move(rom), rom_size,
+        pendingSave ? static_cast<void*>(pendingSave->callback()) : nullptr,
+        std::move(cartArgs));
     if (!cart) {
-        error = "melonDS failed to parse ROM: " + path;
+        error = "melonDS failed to parse ROM";
         return false;
     }
+    if (pendingSave && !pendingSave->initialize(
+            cart->GetSaveMemory(), cart->GetSaveMemoryLength(),
+            savedataLength, error))
+        return false;
+
+    save_session_ = std::move(pendingSave);
 
     melonDS::NDSArgs args;
 #ifdef JIT_ENABLED
@@ -1466,10 +1499,22 @@ bool MelonDsBackend::load_rom(const std::string& path, std::string& error)
     nds_->GetRenderer().SetRenderSettings(rendererSettings);
     nds_->SetNDSCart(std::move(cart));
     nds_->Reset();
-    nds_->SetupDirectBoot(basename(path));
+    // OSD downloads have no pathname.  A fixed synthetic name keeps product
+    // logs and homebrew argv free of a commercial filename.
+    nds_->SetupDirectBoot("rom.nds");
     nds_->Start();
 
     return true;
+}
+
+bool MelonDsBackend::flush_save(std::string& error)
+{
+    return !save_session_ || save_session_->flush(error);
+}
+
+SavePersistenceStats MelonDsBackend::save_persistence_stats() const
+{
+    return save_session_ ? save_session_->stats() : SavePersistenceStats{};
 }
 
 bool MelonDsBackend::export_direct_boot_image(

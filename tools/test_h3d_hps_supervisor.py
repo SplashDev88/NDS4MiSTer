@@ -64,8 +64,12 @@ def main() -> int:
         runtime = test_root / "tmp"
         media.mkdir(parents=True)
         runtime.mkdir()
-        service = media / "nds_hybrid_3d_service"
-        manifest = media / "nds_hybrid_3d_service.sha256"
+        support = media / "Scripts" / "NDS_Support"
+        support.mkdir(parents=True)
+        service = support / "nds_hybrid_3d_service"
+        manifest = support / "nds_hybrid_3d_service.sha256"
+        wc_module = support / "nds_mem_wc.ko"
+        wc_manifest = support / "nds_mem_wc.ko.sha256"
         pidfile = runtime / "nds-hybrid-3d-service.pid"
         logfile = runtime / "nds-hybrid-3d-service.log"
         trace = runtime / "fake-ssd.jsonl"
@@ -93,6 +97,20 @@ def main() -> int:
         )
 
         run_control("preflight", environment)
+        wc_module.write_bytes(b"test WC module")
+        wc_manifest.write_text(
+            f"{digest(wc_module)}  {wc_module.name}\n", encoding="ascii"
+        )
+        run_control("preflight", environment)
+        wc_manifest.write_text(
+            f"{'0' * 64}  {wc_module.name}\n", encoding="ascii"
+        )
+        bad_wc_hash = run_control("preflight", environment, 1)
+        require("WC module SHA-256" in bad_wc_hash.stderr,
+                "bad WC module hash was not diagnosed")
+        wc_manifest.write_text(
+            f"{digest(wc_module)}  {wc_module.name}\n", encoding="ascii"
+        )
         authorize(value="0" * 64)
         bad_hash = run_control("preflight", environment, 1)
         require("does not match" in bad_hash.stderr, "bad hash was not diagnosed")

@@ -71,8 +71,10 @@ the direct-boot software interrupts; commercial Nintendo BIOS or firmware
 dumps are neither required nor distributed.
 
 After boot, the FPGA cartridge interface continues to read the ROM image from
-DDR. Cartridge-access latency is still a known bottleneck and can cause assets
-or effects to appear late or fail to load in some games.
+DDR. Its bounded sequential read-ahead fetches 64 words with eight DDR commands
+instead of the prior 32 in the focused host regression. Cartridge-access
+latency remains a known bottleneck and can still cause assets or effects to
+appear late or fail to load in some games.
 
 ## Hybrid 3D path
 
@@ -175,11 +177,12 @@ emulator save states are not implemented.
 
 ## Clocks and performance policy
 
-The current console clock family is 132 MHz for memory, 66 MHz for the 2x
-domain, and 33 MHz for the 1x DS domain. Moving the family together preserves
-its 4:2:1 phase relationship. The HPS service requests the board's tested
-1 GHz operating point and launches at high scheduling priority while leaving
-the main MiSTer process active for menus, input, and lifecycle control.
+The current console clock family is 134.055928 MHz for memory, 67.027964 MHz
+for the 2x domain, and 33.513982 MHz for the 1x DS domain. Moving the family
+together preserves its 4:2:1 phase relationship. The HPS service requests the
+board's tested 1 GHz operating point and launches at high scheduling priority
+while leaving the main MiSTer process active for menus, input, and lifecycle
+control.
 
 Public Touch Beta fitted in Quartus Prime 17.0.2 at:
 

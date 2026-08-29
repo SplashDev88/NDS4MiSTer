@@ -4443,13 +4443,32 @@ int main(int argc, char** argv) try {
     if (offset + mailboxRegisterBytes > pageSize)
         throw std::runtime_error("mailbox crosses mmap page");
 
-    nds4mister::MelonDsBackend backend;
+    // Save persistence is an HPS-only service.  Cartridge accesses still use
+    // melonDS's existing save-chip emulation; this only supplies the initial
+    // bytes and commits changed ranges without consuming FPGA resources.
+    std::string saveRoot;
+    if (const char* configuredSaveRoot =
+            std::getenv("NDS4MISTER_SAVE_ROOT")) {
+        if (*configuredSaveRoot &&
+            std::strcmp(configuredSaveRoot, "none") != 0)
+            saveRoot = configuredSaveRoot;
+    } else {
+        saveRoot = "/media/fat/saves/NDS";
+    }
+    nds4mister::MelonDsBackend backend(saveRoot);
     std::string error;
     if (externalTimeWindow && !backend.external_time_window_capable())
         throw std::runtime_error(
             "NDS4MISTER_EXTERNAL_TIME_WINDOW requires an explicitly "
             "external-time-window-enabled responder build");
     if (!backend.load_rom(argv[1], error)) throw std::runtime_error(error);
+    const auto initialSaveStats = backend.save_persistence_stats();
+    std::cout << "NDS4MISTER_SAVE_V1 state="
+              << (backend.save_persistence_enabled() ? "active" : "disabled")
+              << " bytes=" << initialSaveStats.saveBytes
+              << " loaded_existing="
+              << (initialSaveStats.loadedExisting ? 1 : 0)
+              << "\n" << std::flush;
     if (offlineFastBeta &&
         !backend.set_external_offline_fast_beta(true, error))
         throw std::runtime_error(error);
@@ -6375,6 +6394,9 @@ int main(int argc, char** argv) try {
         postedRing.consumerSequence(), completed, publisher.published(), true);
     reportFPGAAudioOffload("final");
     reportExternalTimeWindowProfile("final");
+    if (!backend.flush_save(error))
+        throw std::runtime_error("save flush failed: " + error);
+    const auto saveStats = backend.save_persistence_stats();
     if (timeIrqReverse) {
         backend.set_irq_set_capture(false);
         reverseProducer->stopSession();
@@ -6432,6 +6454,16 @@ int main(int argc, char** argv) try {
               << " gx_acc3=" << gxAccessHist[3]
               << " gx_writes_arm7=" << gxWritesArm7
               << " timing_only_with_payload=" << timingOnlyWithPayload
+              << " save_persistence="
+              << (backend.save_persistence_enabled() ? "enabled" : "disabled")
+              << " save_bytes=" << saveStats.saveBytes
+              << " save_loaded_existing="
+              << (saveStats.loadedExisting ? 1 : 0)
+              << " save_callbacks=" << saveStats.callbacks
+              << " save_callback_bytes=" << saveStats.callbackBytes
+              << " save_commits=" << saveStats.commits
+              << " save_failures=" << saveStats.failures
+              << " save_dirty=" << (saveStats.dirty ? 1 : 0)
               << "\n";
     if (busJsonl) std::fclose(busJsonl);
     munmap(compactMapping, kCompactMapBytes);

@@ -166,10 +166,41 @@ void CartRetail::SPIRelease()
 {
     if ((SRAMStatus & (1<<1)) && (SRAMSaveLen > 0))
     {
-        Platform::WriteNDSSave(SRAM.get(), SRAMLength,
-                               SRAMSaveAddr & (SRAMLength-1),
-                               SRAMSaveLen & (SRAMLength-1),
-                               UserData);
+        const u32 saveaddr = SRAMSaveAddr & (SRAMLength-1);
+        const u32 savelen = SRAMSaveLen & (SRAMLength-1);
+        if (SRAMType == 3 && (SRAMCmd == 0x02 || SRAMCmd == 0x0A))
+        {
+            // Flash Page Program/Page Write wrap inside their 256-byte page,
+            // not at the end of the complete chip.  Report the same physical
+            // ranges that were modified so a partial persistence callback
+            // cannot save the adjacent page instead.
+            const u32 pagebase = saveaddr & ~0xFFu;
+            const u32 pageoffset = saveaddr & 0xFFu;
+            if (SRAMSaveLen >= 0x100)
+            {
+                Platform::WriteNDSSave(
+                    SRAM.get(), SRAMLength, pagebase, 0x100, UserData);
+            }
+            else if (pageoffset + SRAMSaveLen > 0x100)
+            {
+                const u32 len1 = 0x100 - pageoffset;
+                const u32 len2 = SRAMSaveLen - len1;
+                Platform::WriteNDSSave(
+                    SRAM.get(), SRAMLength, saveaddr, len1, UserData);
+                Platform::WriteNDSSave(
+                    SRAM.get(), SRAMLength, pagebase, len2, UserData);
+            }
+            else
+            {
+                Platform::WriteNDSSave(
+                    SRAM.get(), SRAMLength, saveaddr, savelen, UserData);
+            }
+        }
+        else
+        {
+            Platform::WriteNDSSave(
+                SRAM.get(), SRAMLength, saveaddr, savelen, UserData);
+        }
 
         SRAMStatus &= ~(1<<1);
         SRAMSaveAddr = 0;
@@ -340,8 +371,6 @@ u8 CartRetail::SRAMWrite_EEPROM(u8 val)
 
 u8 CartRetail::SRAMWrite_FLASH(u8 val)
 {
-    // FLASH TODO: write support is done wrong!
-
     switch (SRAMCmd)
     {
     case 0x05: // read status register
@@ -359,8 +388,12 @@ u8 CartRetail::SRAMWrite_FLASH(u8 val)
         {
             if (SRAMStatus & (1<<1))
             {
-                // CHECKME: should it be &=~val ??
-                SRAM[SRAMAddr & (SRAMLength-1)] = 0;
+                // Page Program can only change erased 1 bits to 0.  Keep
+                // already-programmed zeroes and apply the byte clocked by the
+                // game; assigning zero here discarded the actual save data.
+                const u32 pageaddr = (SRAMSaveAddr & ~0xFFu) |
+                                     (SRAMAddr & 0xFFu);
+                SRAM[pageaddr & (SRAMLength-1)] &= val;
                 SRAMSaveLen++;
             }
             SRAMAddr++;
@@ -393,7 +426,9 @@ u8 CartRetail::SRAMWrite_FLASH(u8 val)
         {
             if (SRAMStatus & (1<<1))
             {
-                SRAM[SRAMAddr & (SRAMLength-1)] = val;
+                const u32 pageaddr = (SRAMSaveAddr & ~0xFFu) |
+                                     (SRAMAddr & 0xFFu);
+                SRAM[pageaddr & (SRAMLength-1)] = val;
                 SRAMSaveLen++;
             }
             SRAMAddr++;
@@ -434,9 +469,11 @@ u8 CartRetail::SRAMWrite_FLASH(u8 val)
         }
         if ((SRAMPos == 3) && (SRAMStatus & (1<<1)))
         {
+            SRAMAddr &= ~0xFFFFu;
+            SRAMSaveAddr = SRAMAddr;
             for (u32 i = 0; i < 0x10000; i++)
             {
-                SRAM[SRAMAddr & (SRAMLength-1)] = 0;
+                SRAM[SRAMAddr & (SRAMLength-1)] = 0xFF;
                 SRAMAddr++;
             }
             SRAMSaveLen = 0x10000;
@@ -453,9 +490,11 @@ u8 CartRetail::SRAMWrite_FLASH(u8 val)
         }
         if ((SRAMPos == 3) && (SRAMStatus & (1<<1)))
         {
+            SRAMAddr &= ~0xFFu;
+            SRAMSaveAddr = SRAMAddr;
             for (u32 i = 0; i < 0x100; i++)
             {
-                SRAM[SRAMAddr & (SRAMLength-1)] = 0;
+                SRAM[SRAMAddr & (SRAMLength-1)] = 0xFF;
                 SRAMAddr++;
             }
             SRAMSaveLen = 0x100;

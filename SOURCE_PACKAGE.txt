@@ -41,8 +41,11 @@ regression. Reselecting the ROM is the restart workaround.
 Touch support
 -------------
 
-* The controller's right stick selects an absolute DS touchscreen position.
-* The remappable Touch action controls pen-down and pen-up.
+* Move the controller's right stick to select an absolute DS touchscreen
+  position. Centered is approximately the center of the 256x192 touch canvas.
+* Hold the remappable `Touch` action to press at that position, and release it
+  to lift the stylus. MiSTer's controller-remapping menu can assign `Touch` to
+  a preferred button.
 * The SPI touchscreen returns melonDS-compatible 12-bit coordinate samples.
 * Direct boot installs matching touchscreen calibration data.
 * Engine B is not displayed yet, so precise interaction with touchscreen

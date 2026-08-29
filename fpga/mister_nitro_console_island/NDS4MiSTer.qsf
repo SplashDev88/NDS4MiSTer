@@ -47,9 +47,9 @@ set_global_assignment -name VERILOG_MACRO "NDS_FORCE_INTEGER_SCALE=1"
 set_global_assignment -name VERILOG_MACRO "NDS_HYBRID_3D=1"
 set_global_assignment -name VERILOG_MACRO "NDS_SEAM_DIAGNOSTIC=1"
 
-# Proven first-beta 132/66/33 MHz Nitro clock family. The whole family moves
-# together to preserve the exact 4:2:1 phase relationship. HDMI remains on
-# its independent shell clock.
+# Native-cadence 134.055928/67.027964/33.513982 MHz Nitro clock family. The
+# whole family moves together to preserve the exact 4:2:1 phase relationship.
+# HDMI remains on its independent shell clock.
 set_global_assignment -name VERILOG_MACRO "NDS_CLKMEM_4X=1"
 
 # Run-time and legacy framebuffer telemetry are both absent from the product.

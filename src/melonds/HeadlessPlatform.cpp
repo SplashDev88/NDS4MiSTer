@@ -1,4 +1,5 @@
 #include "Platform.h"
+#include "melonds/HeadlessSaveCallback.h"
 
 #include <chrono>
 #include <condition_variable>
@@ -330,7 +331,13 @@ u64 GetUSCount()
     return std::chrono::duration_cast<std::chrono::microseconds>(now).count();
 }
 
-void WriteNDSSave(const u8*, u32, u32, u32, void*) {}
+void WriteNDSSave(const u8* data, u32 length, u32 offset, u32 writeLength,
+    void* userdata)
+{
+    auto* callback = static_cast<nds4mister::HeadlessSaveCallback*>(userdata);
+    if (callback && callback->write)
+        callback->write(callback->opaque, data, length, offset, writeLength);
+}
 void WriteGBASave(const u8*, u32, u32, u32, void*) {}
 void WriteFirmware(const Firmware&, u32, u32, void*) {}
 void WriteDateTime(int, int, int, int, int, int, void*) {}

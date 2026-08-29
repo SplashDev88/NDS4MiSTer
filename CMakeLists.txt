@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.16)
 
 project(NDS4MiSTer LANGUAGES CXX)
 
+include(CTest)
+find_package(Threads REQUIRED)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -68,6 +71,37 @@ if(NDS4MISTER_USE_MELONDS)
         NDS4MISTER_EXTERNAL_TIME_WINDOW=$<BOOL:${NDS4MISTER_EXTERNAL_TIME_WINDOW}>)
 endif()
 
+add_library(nds_headless_save STATIC
+    src/melonds/HeadlessSaveManager.cpp)
+target_include_directories(nds_headless_save PUBLIC src)
+target_compile_options(nds_headless_save PRIVATE -Wall -Wextra -Wpedantic)
+target_link_libraries(nds_headless_save PUBLIC Threads::Threads)
+
+if(BUILD_TESTING)
+    add_executable(nds_headless_save_test
+        src/replay/HeadlessSaveManagerTest.cpp)
+    target_include_directories(nds_headless_save_test PRIVATE src)
+    target_compile_options(nds_headless_save_test PRIVATE
+        -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_headless_save_test PRIVATE nds_headless_save)
+    add_test(NAME nds_headless_save_lifecycle
+        COMMAND nds_headless_save_test)
+
+    if(NDS4MISTER_USE_MELONDS)
+        add_executable(nds_save_chip_test
+            src/replay/NdsSaveChipTest.cpp
+            src/melonds/HeadlessPlatform.cpp)
+        target_include_directories(nds_save_chip_test PRIVATE
+            src third_party/melonDS/src)
+        target_compile_options(nds_save_chip_test PRIVATE
+            -Wall -Wextra -Wpedantic)
+        target_link_libraries(nds_save_chip_test PRIVATE
+            core nds_headless_save ${CMAKE_DL_LIBS})
+        add_test(NAME nds_save_chip_semantics
+            COMMAND nds_save_chip_test)
+    endif()
+endif()
+
 add_executable(nds_bench
     src/bench/main.cpp
     src/bench/Benchmark.cpp
@@ -89,7 +123,8 @@ if(NDS4MISTER_USE_MELONDS)
         src/melonds/MelonDsBackend.cpp
     )
     target_compile_definitions(nds_bench PRIVATE NDS4MISTER_USE_MELONDS)
-    target_link_libraries(nds_bench PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_bench PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_gpu_replay
         src/replay/Replay3D.cpp
@@ -97,7 +132,8 @@ if(NDS4MISTER_USE_MELONDS)
         src/melonds/HeadlessPlatform.cpp
     )
     target_include_directories(nds_gpu_replay PRIVATE src third_party/melonDS/src)
-    target_link_libraries(nds_gpu_replay PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_gpu_replay PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_hybrid_3d_service
         src/replay/Hybrid3DService.cpp
@@ -149,37 +185,32 @@ if(NDS4MISTER_USE_MELONDS)
         src/melonds/MelonDsBackend.cpp
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_live_hgs_test PRIVATE src third_party/melonDS/src)
-    target_link_libraries(nds_live_hgs_test PRIVATE core ${CMAKE_DL_LIBS})
-
-    add_executable(nsmb_vblank_instruction_oracle
-        tools/nsmb_vblank_instruction_oracle.cpp
-        src/melonds/MelonDsBackend.cpp
-        src/melonds/HeadlessPlatform.cpp)
-    target_include_directories(nsmb_vblank_instruction_oracle PRIVATE
-        src third_party/melonDS/src)
-    target_link_libraries(nsmb_vblank_instruction_oracle PRIVATE
-        core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_live_hgs_test PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_layer_capture
         src/replay/LayerCapture.cpp
         src/melonds/MelonDsBackend.cpp
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_layer_capture PRIVATE src third_party/melonDS/src)
-    target_link_libraries(nds_layer_capture PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_layer_capture PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_live_layer_publish
         src/replay/LiveLayerPublish.cpp
         src/melonds/MelonDsBackend.cpp
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_live_layer_publish PRIVATE src third_party/melonDS/src)
-    target_link_libraries(nds_live_layer_publish PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_live_layer_publish PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_live_compact_stream
         src/replay/LiveCompactStream.cpp
         src/melonds/MelonDsBackend.cpp
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_live_compact_stream PRIVATE src third_party/melonDS/src)
-    target_link_libraries(nds_live_compact_stream PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_live_compact_stream PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_hps_oracle_responder
         src/replay/HpsOracleResponder.cpp
@@ -194,7 +225,8 @@ if(NDS4MISTER_USE_MELONDS)
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_hps_oracle_responder PRIVATE src third_party/melonDS/src)
     target_compile_options(nds_hps_oracle_responder PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_libraries(nds_hps_oracle_responder PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_hps_oracle_responder PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_boot_image_probe
         src/replay/BootImageProbe.cpp
@@ -202,7 +234,8 @@ if(NDS4MISTER_USE_MELONDS)
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_boot_image_probe PRIVATE src third_party/melonDS/src)
     target_compile_options(nds_boot_image_probe PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_libraries(nds_boot_image_probe PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_boot_image_probe PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     add_executable(nds_external_timing_test
         src/replay/ExternalTimingTest.cpp
@@ -210,7 +243,8 @@ if(NDS4MISTER_USE_MELONDS)
         src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_external_timing_test PRIVATE src third_party/melonDS/src)
     target_compile_options(nds_external_timing_test PRIVATE -Wall -Wextra -Wpedantic)
-    target_link_libraries(nds_external_timing_test PRIVATE core ${CMAKE_DL_LIBS})
+    target_link_libraries(nds_external_timing_test PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
 
     if(NDS4MISTER_EXTERNAL_TIME_WINDOW)
         add_executable(nds_external_time_window_test
@@ -222,7 +256,7 @@ if(NDS4MISTER_USE_MELONDS)
         target_compile_options(nds_external_time_window_test PRIVATE
             -Wall -Wextra -Wpedantic)
         target_link_libraries(nds_external_time_window_test PRIVATE
-            core ${CMAKE_DL_LIBS})
+            core nds_headless_save ${CMAKE_DL_LIBS})
     endif()
 
     if(NDS4MISTER_FPGA_AUDIO_OFFLOAD)

@@ -462,6 +462,31 @@ int main()
     }
 
     {
+        Fixture fixture(27);
+        fixture.header->accepted_session = 27;
+        std::vector<std::uint32_t> source(PlanePixels, 0x1f010203u);
+        std::vector<std::uint32_t> bank0(PlanePixels);
+        std::vector<std::uint32_t> bank1(PlanePixels);
+        PlanePublisher publisher(
+            *fixture.header, bank0.data(), bank1.data(), true);
+        if (!publisher.publish(27, 1, source.data()) ||
+            publisher.last_store_count() != PlanePixels)
+            die("WC publisher did not initialize its first bank");
+        fixture.header->frame_ack_sequence = 2;
+        if (!publisher.publish(27, 2, source.data()) ||
+            publisher.last_store_count() != PlanePixels)
+            die("WC publisher did not initialize its second bank");
+
+        constexpr std::size_t ChangedPixel = 1234;
+        source[ChangedPixel] ^= 1u;
+        fixture.header->frame_ack_sequence = 4;
+        if (!publisher.publish(27, 3, source.data()) ||
+            publisher.last_store_count() != 16 ||
+            bank0[ChangedPixel] != pack_melonds_pixel(source[ChangedPixel]))
+            die("WC publisher did not burst one changed cache line");
+    }
+
+    {
         Fixture fixture(29);
         fixture.header->accepted_session = 29;
         std::vector<std::uint32_t> source(PlanePixels, 0x1f010203u);

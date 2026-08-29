@@ -31,26 +31,26 @@ module nitro_pll_0002(
 		// phase indices would double-serve renderer reads, so neither is
 		// allowed to move on its own.
 		//   3x = 100.541946 MHz (default)
-		//   fast = 132.000000/66.000000/33.000000 MHz (NDS_CLKMEM_4X;
-		//          proven stable first-beta clock family).
+		//   fast = 134.055928/67.027964/33.513982 MHz (NDS_CLKMEM_4X;
+		//          native DS cadence with a 4x SDRAM clock).
 		// The whole clock family moves together to preserve its exact 4:2:1
 		// phase relationship; changing clkMem alone is not a legal PLL setup.
 `ifdef NDS_CLKMEM_4X
-		.output_clock_frequency0("132.000000 MHz"),
+		.output_clock_frequency0("134.055928 MHz"),
 `else
 		.output_clock_frequency0("100.541946 MHz"),
 `endif
 		.phase_shift0("0 ps"),
 		.duty_cycle0(50),
 `ifdef NDS_CLKMEM_4X
-		.output_clock_frequency1("66.000000 MHz"),
+		.output_clock_frequency1("67.027964 MHz"),
 `else
 		.output_clock_frequency1("67.027964 MHz"),
 `endif
 		.phase_shift1("0 ps"),
 		.duty_cycle1(50),
 `ifdef NDS_CLKMEM_4X
-		.output_clock_frequency2("33.000000 MHz"),
+		.output_clock_frequency2("33.513982 MHz"),
 `else
 		.output_clock_frequency2("33.513982 MHz"),
 `endif

@@ -28,7 +28,6 @@ module nds_nitro_console_island (
     input  logic        ioctl_download,
     input  logic [15:0] ioctl_index,
     output logic        ioctl_wait,
-
     // MiSTer mounted-save block channel (slot zero, opened automatically by
     // the FS3 ROM selector in the retained shell).
     input  logic        save_img_mounted,
@@ -441,12 +440,11 @@ logic cd_busy;
 logic cd_flush;
 logic cd_req;
 logic [24:0] cd_addr;
-// ddram ch2 retains both a current 64-bit beat and its sequential next beat.
-// Probe byte 0, then byte 16 (beat 2): once probe 0 has completed the tag is
-// beat 0, so probe 1 can match neither the current beat nor retained next_q.
-// Its ready therefore proves a real post-download DDR read reached ram_q[2].
+// ddram ch2 retains one aligned four-beat cartridge read-ahead line. Probe
+// byte 0, then byte 32 (beat 4): the probes cannot share a line, so probe 1
+// proves a real post-download DDR read displaced any stale pre-download line.
 localparam logic [24:0] FLUSH_PROBE0_WORD = 25'd0;
-localparam logic [24:0] FLUSH_PROBE1_WORD = 25'd4;
+localparam logic [24:0] FLUSH_PROBE1_WORD = 25'd8;
 logic [1:0] flush_probe_count;
 wire cd_ready;
 wire [31:0] cd_dout;

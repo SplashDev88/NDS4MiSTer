@@ -5,7 +5,8 @@ Experimental Nintendo DS support for the MiSTer FPGA platform.
 This source snapshot corresponds to Public Touch Beta (2026-08-28). It adds
 controller-driven touchscreen input to the LG C-series-compatible video path,
 selectable screen layouts, melonDS-derived cartridge-save profiles, 512-byte
-through 128 KiB EEPROM/FRAM support, and 256 KiB through 1 MiB Flash support.
+through 128 KiB EEPROM/FRAM support, 256 KiB through 1 MiB Flash support, the
+134.056 MHz console clock family, and bounded cartridge read-ahead.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
 verification, exclusions, and current limitations.
 
@@ -51,6 +52,20 @@ Build the MiSTer ARM hybrid-3D service with the provided isolated Docker build:
 The produced ARM binary must pass its built-in self-test before deployment.
 The installable beta, launcher script, compiled RBF, ARM payload, and hashes are
 distributed separately as the public binary package.
+
+## Touch controls
+
+1. Move the controller's right analog stick to position the DS stylus.
+2. Hold the remappable `Touch` action to press the screen at that position.
+3. Release `Touch` to lift the stylus.
+4. If `Touch` is not on a convenient button, assign it through MiSTer's normal
+   controller-remapping menu.
+
+The right stick uses absolute positioning: centered is approximately the
+center of the 256x192 touchscreen, and the stick edges select the screen
+edges. Engine B is not displayed yet, so games that require precise selection
+of visible touchscreen controls remain difficult even though touch input is
+delivered to the game.
 
 ## Current limitations
 

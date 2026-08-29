@@ -24,6 +24,10 @@ run_sv tb_nds_nitro_ddram_cache_flush \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
     "$repo_dir/rtl/tb_nds_nitro_ddram_cache_flush.sv"
 
+run_sv tb_nds_nitro_cart_readahead \
+    "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
+    "$repo_dir/rtl/tb_nds_nitro_cart_readahead.sv"
+
 run_sv tb_nds_nitro_async_fifo \
     "$repo_dir/rtl/nds_nitro_async_fifo.sv" \
     "$repo_dir/rtl/tb_nds_nitro_async_fifo.sv"

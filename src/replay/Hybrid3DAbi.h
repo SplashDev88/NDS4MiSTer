@@ -61,6 +61,74 @@ inline bool equal_pixel_block_16(
 #endif
 }
 
+inline void pack_melonds_pixel_block_16(
+    std::uint32_t* destination, const std::uint32_t* source) noexcept
+{
+#if defined(__ARM_NEON)
+    const auto red_mask = vdupq_n_u32(0x0000003fu);
+    const auto green_mask = vdupq_n_u32(0x00000fc0u);
+    const auto blue_mask = vdupq_n_u32(0x0003f000u);
+    const auto alpha_mask = vdupq_n_u32(0x007c0000u);
+    for (std::size_t offset = 0; offset < 16; offset += 4) {
+        const auto pixels = vld1q_u32(source + offset);
+        auto packed = vandq_u32(pixels, red_mask);
+        packed = vorrq_u32(
+            packed, vandq_u32(vshrq_n_u32(pixels, 2), green_mask));
+        packed = vorrq_u32(
+            packed, vandq_u32(vshrq_n_u32(pixels, 4), blue_mask));
+        packed = vorrq_u32(
+            packed, vandq_u32(vshrq_n_u32(pixels, 6), alpha_mask));
+        vst1q_u32(destination + offset, packed);
+    }
+#else
+    for (std::size_t offset = 0; offset < 16; ++offset) {
+        const auto pixel = source[offset];
+        destination[offset] = (pixel & 0x0000003fu) |
+            ((pixel >> 2) & 0x00000fc0u) |
+            ((pixel >> 4) & 0x0003f000u) |
+            ((pixel >> 6) & 0x007c0000u);
+    }
+#endif
+}
+
+// WC publication needs both a private copy for future dirty detection and a
+// packed shared copy for the FPGA. Load each source cache line once and emit
+// both destinations in the same NEON pass; this avoids a separate memcpy and
+// a second source read for every changed block.
+inline void pack_and_cache_melonds_pixel_block_16(
+    std::uint32_t* packed_destination,
+    std::uint32_t* source_cache,
+    const std::uint32_t* source) noexcept
+{
+#if defined(__ARM_NEON)
+    const auto red_mask = vdupq_n_u32(0x0000003fu);
+    const auto green_mask = vdupq_n_u32(0x00000fc0u);
+    const auto blue_mask = vdupq_n_u32(0x0003f000u);
+    const auto alpha_mask = vdupq_n_u32(0x007c0000u);
+    for (std::size_t offset = 0; offset < 16; offset += 4) {
+        const auto pixels = vld1q_u32(source + offset);
+        vst1q_u32(source_cache + offset, pixels);
+        auto packed = vandq_u32(pixels, red_mask);
+        packed = vorrq_u32(
+            packed, vandq_u32(vshrq_n_u32(pixels, 2), green_mask));
+        packed = vorrq_u32(
+            packed, vandq_u32(vshrq_n_u32(pixels, 4), blue_mask));
+        packed = vorrq_u32(
+            packed, vandq_u32(vshrq_n_u32(pixels, 6), alpha_mask));
+        vst1q_u32(packed_destination + offset, packed);
+    }
+#else
+    for (std::size_t offset = 0; offset < 16; ++offset) {
+        const auto pixel = source[offset];
+        source_cache[offset] = pixel;
+        packed_destination[offset] = (pixel & 0x0000003fu) |
+            ((pixel >> 2) & 0x00000fc0u) |
+            ((pixel >> 4) & 0x0003f000u) |
+            ((pixel >> 6) & 0x007c0000u);
+    }
+#endif
+}
+
 enum class ServiceState : std::uint32_t {
     Offline = 0,
     Initializing = 1,
@@ -227,6 +295,22 @@ inline void device_barrier()
 #endif
 #if defined(__arm__) || defined(__aarch64__)
     __asm__ __volatile__("dmb sy" ::: "memory");
+#else
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+#endif
+}
+
+// Normal non-cacheable/write-combined framebuffer stores may remain posted
+// after a DMB. Complete those writes before publishing the descriptor that
+// lets the FPGA consume them. Control/register ordering continues to use the
+// cheaper device_barrier(); only bulk pixel publication needs this DSB.
+inline void publication_barrier()
+{
+#if defined(NDS4MISTER_H3D_TEST_INSTRUMENTATION)
+    ++device_barrier_test_count;
+#endif
+#if defined(__arm__) || defined(__aarch64__)
+    __asm__ __volatile__("dsb sy" ::: "memory");
 #else
     std::atomic_thread_fence(std::memory_order_seq_cst);
 #endif
@@ -412,7 +496,7 @@ public:
             std::memcpy(destination, packed, PlaneBytes);
             last_store_count_ += PlanePixels;
         }
-        device_barrier();
+        publication_barrier();
 
         if (load_acquire(&header_.magic) != Magic ||
             load_acquire(&header_.fpga_session) != session ||
@@ -473,8 +557,10 @@ private:
 class PlanePublisher {
 public:
     PlanePublisher(
-        Header& header, std::uint32_t* bank0, std::uint32_t* bank1)
-        : header_(header), banks_{bank0, bank1}
+        Header& header, std::uint32_t* bank0, std::uint32_t* bank1,
+        bool write_combined = false)
+        : header_(header), banks_{bank0, bank1},
+          write_combined_(write_combined)
     {
     }
 
@@ -509,32 +595,54 @@ public:
             return false;
 
         const auto bank = next_bank_;
-        auto* shared_bank =
-            reinterpret_cast<volatile std::uint32_t*>(banks_[bank]);
+        auto* shared_bank = banks_[bank];
         auto& packed_bank = packed_banks_[bank];
         auto& source_bank = source_banks_[bank];
         const bool initialize_bank = !bank_initialized_[bank];
         constexpr std::size_t BlockPixels = 16;
         static_assert((PlanePixels % BlockPixels) == 0);
-        for (std::size_t index = 0; index < PlanePixels;
-             index += BlockPixels) {
-            if (!initialize_bank && equal_pixel_block_16(
-                    melon_pixels + index,
-                    source_bank.data() + index))
-                continue;
-            for (std::size_t lane = 0; lane < BlockPixels; ++lane) {
-                const auto pixel_index = index + lane;
-                const auto source = melon_pixels[pixel_index];
-                source_bank[pixel_index] = source;
-                const auto packed = pack_melonds_pixel(source);
-                if (initialize_bank || packed_bank[pixel_index] != packed) {
-                    shared_bank[pixel_index] = packed;
-                    packed_bank[pixel_index] = packed;
-                    ++last_store_count_;
+        if (write_combined_) {
+            // A WC mapping makes contiguous bursts cheap. Convert each
+            // changed cache line in normal cached RAM, then issue one bulk
+            // write instead of up to sixteen individually ordered stores.
+            for (std::size_t index = 0; index < PlanePixels;
+                 index += BlockPixels) {
+                if (!initialize_bank && equal_pixel_block_16(
+                        melon_pixels + index,
+                        source_bank.data() + index))
+                    continue;
+                // Source pixels use only RGB666A5 payload bits. A changed raw
+                // block therefore implies a changed packed block in normal
+                // renderer output. Write it directly to WC memory while the
+                // same source loads refresh the private dirty cache.
+                pack_and_cache_melonds_pixel_block_16(
+                    shared_bank + index, source_bank.data() + index,
+                    melon_pixels + index);
+                last_store_count_ += BlockPixels;
+            }
+        } else {
+            auto* volatile_bank =
+                reinterpret_cast<volatile std::uint32_t*>(shared_bank);
+            for (std::size_t index = 0; index < PlanePixels;
+                 index += BlockPixels) {
+                if (!initialize_bank && equal_pixel_block_16(
+                        melon_pixels + index,
+                        source_bank.data() + index))
+                    continue;
+                for (std::size_t lane = 0; lane < BlockPixels; ++lane) {
+                    const auto pixel_index = index + lane;
+                    const auto source = melon_pixels[pixel_index];
+                    source_bank[pixel_index] = source;
+                    const auto packed = pack_melonds_pixel(source);
+                    if (initialize_bank || packed_bank[pixel_index] != packed) {
+                        volatile_bank[pixel_index] = packed;
+                        packed_bank[pixel_index] = packed;
+                        ++last_store_count_;
+                    }
                 }
             }
         }
-        device_barrier();
+        publication_barrier();
 
         // The full-plane copy is deliberately interruptible only at its
         // publication boundary.  If FPGA requested quiescence while the HPS
@@ -685,6 +793,7 @@ public:
 private:
     Header& header_;
     std::uint32_t* banks_[2];
+    bool write_combined_ = false;
     std::array<std::array<std::uint32_t, PlanePixels>, 2> source_banks_ {};
     std::array<std::array<std::uint32_t, PlanePixels>, 2> packed_banks_ {};
     std::array<bool, 2> bank_initialized_ {};

@@ -19,8 +19,11 @@ if [ -n "$test_root" ]; then
     fi
 fi
 
-service=${test_root}/media/fat/nds_hybrid_3d_service
-manifest=${test_root}/media/fat/nds_hybrid_3d_service.sha256
+support_dir=${test_root}/media/fat/Scripts/NDS_Support
+service=${support_dir}/nds_hybrid_3d_service
+manifest=${support_dir}/nds_hybrid_3d_service.sha256
+wc_module=${support_dir}/nds_mem_wc.ko
+wc_manifest=${support_dir}/nds_mem_wc.ko.sha256
 pidfile=${test_root}/tmp/nds-hybrid-3d-service.pid
 logfile=${test_root}/tmp/nds-hybrid-3d-service.log
 logtmp=${test_root}/tmp/nds-hybrid-3d-service.log.trim
@@ -126,6 +129,64 @@ preflight()
     actual=${actual_line%% *}
     [ "$actual" = "$expected" ] ||
         { fail "service SHA-256 does not match manifest"; return 1; }
+
+    # The WC module is optional so older kernels retain the known-good Device
+    # mapping. If either module artifact is present, require the complete,
+    # independently hashed pair before it can ever reach insmod.
+    if [ -e "$wc_module" ] || [ -e "$wc_manifest" ] ||
+       [ -L "$wc_module" ] || [ -L "$wc_manifest" ]; then
+        reject_link "$wc_module" || return 1
+        reject_link "$wc_manifest" || return 1
+        [ -f "$wc_module" ] ||
+            { fail "missing WC module: $wc_module"; return 1; }
+        [ -f "$wc_manifest" ] ||
+            { fail "missing WC module hash: $wc_manifest"; return 1; }
+        set -f
+        wc_manifest_words=$(sed -n '1,$p' "$wc_manifest")
+        set -- $wc_manifest_words
+        set +f
+        [ "$#" -eq 2 ] ||
+            { fail "WC module hash must contain exactly one record"; return 1; }
+        wc_expected=$1
+        wc_recorded_name=${2#\*}
+        [ "${#wc_expected}" -eq 64 ] ||
+            { fail "WC module digest is not SHA-256"; return 1; }
+        case "$wc_expected" in
+            *[!0-9a-f]*) fail "WC module digest must be lowercase hexadecimal"; return 1 ;;
+        esac
+        [ "$wc_recorded_name" = nds_mem_wc.ko ] ||
+            { fail "WC manifest names the wrong module"; return 1; }
+        wc_actual_line=$($sha256_program "$wc_module") ||
+            { fail "could not hash WC module"; return 1; }
+        wc_actual=${wc_actual_line%% *}
+        [ "$wc_actual" = "$wc_expected" ] ||
+            { fail "WC module SHA-256 does not match manifest"; return 1; }
+    fi
+}
+
+load_wc_module()
+{
+    # The desktop lifecycle regression intentionally cannot modify its host
+    # kernel. Production accepts an absent/incompatible module as a safe
+    # performance fallback; service startup itself remains authoritative.
+    [ -z "$test_root" ] || return 0
+    [ -e /dev/nds_mem_wc ] && return 0
+    [ -f "$wc_module" ] || return 0
+    if ! insmod "$wc_module"; then
+        echo "H3D: WC module unavailable for this kernel; using /dev/mem" >&2
+        return 0
+    fi
+    [ -e /dev/nds_mem_wc ] || {
+        rmmod nds_mem_wc >/dev/null 2>&1 || true
+        echo "H3D: WC module created no device; using /dev/mem" >&2
+        return 0
+    }
+}
+
+unload_wc_module()
+{
+    [ -z "$test_root" ] || return 0
+    rmmod nds_mem_wc >/dev/null 2>&1 || true
 }
 
 read_pid()
@@ -191,6 +252,7 @@ start_service()
     fi
     remove_stale_pidfile || return 1
     prepare_log || return 1
+    load_wc_module || return 1
 
     # There are intentionally no arguments after '--': the resident renderer
     # has no ROM argument and therefore uses its compiled /dev/mem H3D window.
@@ -201,9 +263,11 @@ start_service()
         # MiSTer's main loop is continuously runnable on CPU1. Give the
         # bounded H3D replay/render work precedence without killing MiSTer,
         # which preserves the normal menu, input, and core lifecycle.
+        NDS4MISTER_DUAL_CORE_3D=1 \
         "$start_stop_daemon" -S -b -m -N -20 \
             -p "$pidfile" -x "$service" --
     ) >>"$logfile" 2>&1; then
+        unload_wc_module
         restore_hps_clock >/dev/null 2>&1 || true
         fail "start-stop-daemon could not launch the service"
         return 1
@@ -218,6 +282,7 @@ start_service()
         [ "$start_checks" -ge 3 ] || sleep 1
     done
     if ! status_raw; then
+        unload_wc_module
         restore_hps_clock >/dev/null 2>&1 || true
         fail "service did not remain running (see $logfile)"
         return 1
@@ -231,6 +296,7 @@ stop_service()
     if ! status_raw; then
         remove_stale_pidfile || return 1
         bound_stopped_log || return 1
+        unload_wc_module
         restore_hps_clock || {
             fail "could not restore the default 800 MHz clock"
             return 1
@@ -250,6 +316,7 @@ stop_service()
     fi
     remove_stale_pidfile || return 1
     bound_stopped_log || return 1
+    unload_wc_module
     restore_hps_clock || {
         fail "could not restore the default 800 MHz clock"
         return 1

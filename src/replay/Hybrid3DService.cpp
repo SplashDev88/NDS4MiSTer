@@ -32,7 +32,6 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <thread>
-#include <type_traits>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -80,6 +79,8 @@ constexpr std::size_t Bank0Offset = 0x100000;
 constexpr std::size_t Bank1Offset = 0x140000;
 constexpr std::size_t FramebufferOffset = 0x200000;
 constexpr off_t PhysicalBase = 0x3fc00000;
+constexpr std::size_t PublicationMappingBytes = MappingBytes - Bank0Offset;
+constexpr off_t PublicationPhysicalBase = PhysicalBase + Bank0Offset;
 constexpr const char* PlaneStatsPath = "/tmp/nds-h3d-plane-stats.log";
 constexpr const char* PipelineProfilePath =
     "/tmp/nds-h3d-pipeline-profile.log";
@@ -209,6 +210,65 @@ public:
 
 private:
     int fd_ = -1;
+    void* bytes_ = nullptr;
+};
+
+// DreamSTer avoids turning every framebuffer word into a separate ordered
+// AXI transaction by mapping only its bulk pixel window as Normal
+// Non-Cacheable/write-combined memory. Keep H3D control, packet, and ownership
+// fields on /dev/mem's Device mapping; an unavailable or incompatible helper
+// therefore degrades to the existing known-good path without changing any
+// protocol behavior.
+class WriteCombinedPublicationMapping {
+public:
+    explicit WriteCombinedPublicationMapping(bool enabled)
+    {
+        if (!enabled) return;
+        const char* device = "/dev/nds_mem_wc";
+        int fd = open(device, O_RDWR | O_SYNC | O_CLOEXEC);
+        if (fd < 0) {
+            // Also accept DreamSTer's original general-purpose helper when a
+            // user already has it installed. The NDS package ships the
+            // restricted node above and never requires unrestricted mapping.
+            device = "/dev/mem_wc";
+            fd = open(device, O_RDWR | O_SYNC | O_CLOEXEC);
+        }
+        if (fd < 0) {
+            std::cerr << "H3D: write-combined device unavailable ("
+                      << std::strerror(errno)
+                      << "); using Device-memory publication\n";
+            return;
+        }
+        void* mapped = mmap(
+            nullptr, PublicationMappingBytes, PROT_READ | PROT_WRITE,
+            MAP_SHARED, fd, PublicationPhysicalBase);
+        const int map_error = errno;
+        close(fd);
+        if (mapped == MAP_FAILED) {
+            std::cerr << "H3D: " << device << " publication map failed ("
+                      << std::strerror(map_error)
+                      << "); using Device-memory publication\n";
+            return;
+        }
+        bytes_ = mapped;
+        std::cout << "H3D: write-combined 3D publication enabled via "
+                  << device << '\n';
+    }
+
+    WriteCombinedPublicationMapping(
+        const WriteCombinedPublicationMapping&) = delete;
+    WriteCombinedPublicationMapping& operator=(
+        const WriteCombinedPublicationMapping&) = delete;
+
+    ~WriteCombinedPublicationMapping()
+    {
+        if (bytes_) munmap(bytes_, PublicationMappingBytes);
+    }
+
+    void* data() const { return bytes_; }
+    bool active() const { return bytes_ != nullptr; }
+
+private:
     void* bytes_ = nullptr;
 };
 
@@ -514,16 +574,23 @@ public:
         bool asynchronous_arm_video_replay = false,
         bool pipeline_profile_enabled = false,
         bool bind_hps_worker_cores = false,
-        nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry = nullptr)
+        nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry = nullptr,
+        void* publication_mapping = nullptr,
+        bool publication_write_combined = false)
         : mapping_(static_cast<std::byte*>(mapping)),
+          publication_mapping_(publication_mapping ?
+              static_cast<std::byte*>(publication_mapping) : mapping_),
+          separate_publication_mapping_(publication_mapping != nullptr),
           header_(*checked_header(mapping, mapping_size)),
           consumer_(
               mapping, mapping_size,
               !texture_trace_path.empty()),
           publisher_(
-              header_, plane_pointer(Bank0Offset), plane_pointer(Bank1Offset)),
+              header_, publication_pointer(Bank0Offset),
+              publication_pointer(Bank1Offset),
+              publication_write_combined),
           full_frame_publisher_(
-              header_, plane_pointer(FramebufferOffset)),
+              header_, publication_pointer(FramebufferOffset)),
           asynchronous_plane_publication_(asynchronous_plane_publication),
           plane_stats_enabled_(plane_stats_enabled),
           arm_video_render_shadow_(arm_video_render_shadow),
@@ -749,6 +816,14 @@ public:
     {
         return replay_packets_applied_.load(std::memory_order_acquire);
     }
+    std::uint64_t replay_slot_capacity_growths() const
+    {
+        return replay_slot_capacity_growths_.load(std::memory_order_relaxed);
+    }
+    std::uint64_t replay_slot_reuses() const
+    {
+        return replay_slot_reuses_.load(std::memory_order_relaxed);
+    }
     std::uint64_t publication_queue_replacements() const
     {
         return publication_queue_replacements_.load(
@@ -785,28 +860,47 @@ private:
         frame_packet::PacketHeader header {};
         std::vector<frame_packet::Record> records;
     };
-    static_assert(std::is_nothrow_move_assignable_v<ReplayPacket>);
 
     // Beta100's NSMB map transition latched the FPGA console-source overflow
     // fault while the ARM process remained healthy. The final shared state
     // had drained producer==consumer, identifying a transient admission burst
     // rather than a dead replay worker. The former 256-packet local queue can
     // stop H3B acknowledgements long enough to fill the FPGA's exact VBlank
-    // boundary queue. Doubling this private pointer/vector ring adds modest
-    // fixed bookkeeping; copied record storage grows only when the transient
-    // backlog actually uses that headroom. It keeps input ownership moving
-    // while the existing frame-lead policy catches the replay worker up.
+    // boundary queue. Doubling the logical wait queue keeps input ownership
+    // moving while the existing frame-lead policy catches the replay worker
+    // up. One additional physical slot is the worker-owned head; this
+    // preserves the original limit of 512 waiting packets plus one active
+    // packet while every vector allocation remains attached to recycled arena
+    // storage.
     static constexpr std::size_t ReplayQueueCapacity = 512;
+    static constexpr std::size_t ReplayArenaCapacity =
+        ReplayQueueCapacity + 1;
     // Keep normal all-frame rendering while replay is current. Source-frame
     // lead, rather than packet count, is the authoritative audio/video age:
     // one source frame can span many continuation packets. Catch up more
     // aggressively as age grows, but always render at least one boundary
     // between omissions so moving 3D never turns into a clustered freeze.
-    static constexpr std::uint32_t ReplayCatchupEnterFrames = 8;
-    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 16;
-    static constexpr std::uint32_t ReplayCatchupThirdFrames = 32;
-    static constexpr std::uint32_t ReplayCatchupAlternateFrames = 64;
-    static constexpr std::uint32_t ReplayCatchupMaxRenderedBetweenDrops = 7;
+    // Adaptive-v2 is the currently deployed smooth baseline. It preserves all
+    // command/state replay and reduces only derived renders when either source
+    // frame age or the private packet queue demonstrates sustained pressure.
+    // The thresholds below were recovered and verified against the deployed
+    // ARM binary before adding dual-core rasterization, so this A/B changes no
+    // catch-up policy at the same time as the renderer implementation.
+    // The dual-core renderer measured 57.3 published FPS against a 60.0 FPS
+    // source in NSMB's final castle. Waiting for the old 32-frame pressure
+    // point therefore stabilized smooth output roughly half a second late.
+    // Start the same single-obsolete-render catch-up at four frames so the
+    // small throughput deficit cannot become visible input-to-3D latency.
+    // Packet thresholds remain deliberately unchanged as the independent
+    // transport-burst safety valve.
+    static constexpr std::uint32_t ReplayCatchupHalfFrames = 4;
+    static constexpr std::uint32_t ReplayCatchupThirdFrames = 64;
+    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 128;
+    static constexpr std::uint32_t ReplayCatchupEighthFrames = 256;
+    static constexpr std::size_t ReplayCatchupHalfPackets = 64;
+    static constexpr std::size_t ReplayCatchupThirdPackets = 128;
+    static constexpr std::size_t ReplayCatchupQuarterPackets = 256;
+    static constexpr std::size_t ReplayCatchupEighthPackets = 384;
     // Diagnostic pressure valve: the old fast pipelined ARM-video run stayed
     // near the DS cadence with an 87% render-skip rate and never filled its
     // replay queue. Preserve every state transition, but derive only one
@@ -821,9 +915,15 @@ private:
         return static_cast<Header*>(mapping);
     }
 
-    std::uint32_t* plane_pointer(std::size_t offset) const
+    std::uint32_t* publication_pointer(std::size_t offset) const
     {
-        return reinterpret_cast<std::uint32_t*>(mapping_ + offset);
+        if (!separate_publication_mapping_)
+            return reinterpret_cast<std::uint32_t*>(mapping_ + offset);
+        if (offset < Bank0Offset || offset >= MappingBytes)
+            throw std::runtime_error(
+                "publication pointer is outside the mapped pixel window");
+        return reinterpret_cast<std::uint32_t*>(
+            publication_mapping_ + (offset - Bank0Offset));
     }
 
     bool reset_machine()
@@ -904,10 +1004,12 @@ private:
         replay_backlog_.store(0, std::memory_order_relaxed);
         latest_input_frame_.store(0, std::memory_order_relaxed);
         latest_replay_frame_.store(0, std::memory_order_relaxed);
-        replay_render_frames_since_drop_ =
-            ReplayCatchupMaxRenderedBetweenDrops;
+        replay_render_skip_countdown_ = 0;
+        replay_render_cadence_ = 1;
         replay_stop_ = false;
         replay_packets_applied_.store(0, std::memory_order_relaxed);
+        replay_slot_capacity_growths_.store(0, std::memory_order_relaxed);
+        replay_slot_reuses_.store(0, std::memory_order_relaxed);
         publication_active_index_ = -1;
         publication_filling_index_ = -1;
         publication_queue_read_index_ = 0;
@@ -951,7 +1053,12 @@ private:
             return PollResult::Empty;
         }
 
-        ReplayPacket packet;
+        // The producer exclusively owns the current free tail slot until it
+        // publishes queue_count below. ReplayArenaCapacity has one more slot
+        // than the bounded wait queue, so write_index cannot wrap onto the
+        // worker-owned active head.
+        auto& packet = replay_queue_[replay_write_index_];
+        const auto slot_capacity_before = packet.records.capacity();
         if (!consumer_.begin(packet_header_, packet.records)) {
             if (consumer_.local_faults())
                 return consumer_fault_result(
@@ -1049,12 +1156,17 @@ private:
         packet_pending_ = false;
         ++packets_applied_;
 
+        if (packet.records.capacity() > slot_capacity_before)
+            replay_slot_capacity_growths_.fetch_add(
+                1, std::memory_order_relaxed);
+        else
+            replay_slot_reuses_.fetch_add(1, std::memory_order_relaxed);
+
         const auto record_count = packet.records.size();
         {
             std::lock_guard<std::mutex> lock(replay_mutex_);
-            replay_queue_[replay_write_index_] = std::move(packet);
             replay_write_index_ =
-                (replay_write_index_ + 1) % ReplayQueueCapacity;
+                (replay_write_index_ + 1) % ReplayArenaCapacity;
             ++replay_queue_count_;
             if (replay_queue_count_ > replay_queue_high_water_)
                 replay_queue_high_water_ = replay_queue_count_;
@@ -1312,34 +1424,41 @@ private:
                 }
             }
             for (;;) {
-                ReplayPacket packet;
+                ReplayPacket* packet = nullptr;
                 {
                     std::unique_lock<std::mutex> lock(replay_mutex_);
                     replay_cv_.wait(lock, [this] {
                         return replay_stop_ || replay_queue_count_ != 0;
                     });
                     if (replay_stop_) return;
-                    packet = std::move(replay_queue_[replay_read_index_]);
+                    packet = &replay_queue_[replay_read_index_];
                     replay_read_index_ =
-                        (replay_read_index_ + 1) % ReplayQueueCapacity;
+                        (replay_read_index_ + 1) % ReplayArenaCapacity;
                     --replay_queue_count_;
                     replay_backlog_.store(
                         replay_queue_count_, std::memory_order_release);
                 }
                 replay_cv_.notify_one();
+                // Keep the head counted and immutable throughout replay. That
+                // is the ownership fence which prevents the producer from
+                // wrapping onto this recycled slot without copying or moving
+                // its vector allocation to a temporary packet.
+                const auto packet_frame = packet->header.frame;
+                const auto packet_flags = packet->header.flags;
+                const auto packet_sequence = packet->header.packet_sequence;
                 auto replay_started = std::chrono::steady_clock::time_point {};
                 if (pipeline_profile_enabled_)
                     replay_started = std::chrono::steady_clock::now();
-                if (!apply_replay_packet(packet)) return;
+                if (!apply_replay_packet(*packet)) return;
                 latest_replay_frame_.store(
-                    packet.header.frame, std::memory_order_relaxed);
-                if (packet.header.flags == frame_packet::FlagFrameEnd &&
+                    packet_frame, std::memory_order_relaxed);
+                if (packet_flags == frame_packet::FlagFrameEnd &&
                     !arm_video_render_shadow_) {
                     const auto disposition = frame_disposition();
                     if (disposition == FrameDisposition::Fault) return;
                     const bool render =
                         disposition == FrameDisposition::Render &&
-                        !replay_render_deadline_missed(packet.header.frame);
+                        !replay_render_deadline_missed(packet_frame);
 
                     // This is the asynchronous equivalent of poll()'s
                     // terminal-packet path. The input owner has already
@@ -1348,10 +1467,9 @@ private:
                     // is touched here. Finish frame N while the input owner
                     // has been copying N+1, then advance and launch N+1.
                     if (arm_render_pending_ && !finish_arm_render()) return;
-                    if (!advance_frame_boundary(packet.header.frame)) return;
+                    if (!advance_frame_boundary(packet_frame)) return;
                     if (render && !start_arm_render(
-                            packet.header.frame,
-                            packet.header.packet_sequence))
+                            packet_frame, packet_sequence))
                         return;
                 }
                 replay_packets_applied_.fetch_add(
@@ -1360,6 +1478,12 @@ private:
                     record_profile_sample(
                         replay_profile_packets_, replay_profile_total_ns_,
                         replay_profile_max_ns_, replay_started);
+
+                // clear() preserves the allocation for this physical slot.
+                // The 513-slot arena and 512-packet wait bound keep the active
+                // slot unreachable by the producer until this worker advances
+                // to its next head on the following iteration.
+                packet->records.clear();
 
                 // If authoritative input is caught up, collect the render
                 // immediately instead of waiting indefinitely for another
@@ -1378,26 +1502,37 @@ private:
         const auto latest =
             latest_input_frame_.load(std::memory_order_acquire);
         const auto lead = latest >= replay_frame ? latest - replay_frame : 0;
-        if (lead < ReplayCatchupEnterFrames) {
-            replay_render_frames_since_drop_ =
-                ReplayCatchupMaxRenderedBetweenDrops;
+        const auto backlog =
+            replay_backlog_.load(std::memory_order_acquire);
+
+        std::uint32_t cadence = 1;
+        if (lead >= ReplayCatchupEighthFrames ||
+            backlog >= ReplayCatchupEighthPackets)
+            cadence = 8;
+        else if (lead >= ReplayCatchupQuarterFrames ||
+                 backlog >= ReplayCatchupQuarterPackets)
+            cadence = 4;
+        else if (lead >= ReplayCatchupThirdFrames ||
+                 backlog >= ReplayCatchupThirdPackets)
+            cadence = 3;
+        else if (lead >= ReplayCatchupHalfFrames ||
+                 backlog >= ReplayCatchupHalfPackets)
+            cadence = 2;
+
+        if (cadence == 1) {
+            replay_render_skip_countdown_ = 0;
+            replay_render_cadence_ = 1;
             return false;
         }
 
-        std::uint32_t required_rendered =
-            ReplayCatchupMaxRenderedBetweenDrops;
-        if (lead >= ReplayCatchupAlternateFrames)
-            required_rendered = 1;
-        else if (lead >= ReplayCatchupThirdFrames)
-            required_rendered = 2;
-        else if (lead >= ReplayCatchupQuarterFrames)
-            required_rendered = 3;
-
-        if (replay_render_frames_since_drop_ < required_rendered) {
-            ++replay_render_frames_since_drop_;
+        if (cadence != replay_render_cadence_ ||
+            replay_render_skip_countdown_ == 0) {
+            replay_render_cadence_ = cadence;
+            replay_render_skip_countdown_ = cadence - 1;
             return false;
         }
-        replay_render_frames_since_drop_ = 0;
+
+        --replay_render_skip_countdown_;
         frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -2951,6 +3086,11 @@ private:
                << " packets_acknowledged=" << packets_applied_
                << " replay_packets_applied="
                << replay_packets_applied_.load(std::memory_order_relaxed)
+               << " replay_slot_capacity_growths="
+               << replay_slot_capacity_growths_.load(
+                      std::memory_order_relaxed)
+               << " replay_slot_reuses="
+               << replay_slot_reuses_.load(std::memory_order_relaxed)
                << " kind_gx_command=" << replay_record_kind_counts_[0]
                << " kind_gx_register=" << replay_record_kind_counts_[1]
                << " kind_vram_write=" << replay_record_kind_counts_[2]
@@ -3089,6 +3229,14 @@ private:
                << renderer_profile.ThreeDRasterNs
                << " renderer_3d_final_pass_ns="
                << renderer_profile.ThreeDFinalPassNs
+               << " renderer_3d_parallel_frames="
+               << renderer_profile.ThreeDParallelFrames
+               << " renderer_3d_primary_raster_ns="
+               << renderer_profile.ThreeDPrimaryRasterNs
+               << " renderer_3d_secondary_raster_ns="
+               << renderer_profile.ThreeDSecondaryRasterNs
+               << " renderer_3d_parallel_join_ns="
+               << renderer_profile.ThreeDParallelJoinNs
                << " renderer_3d_polygon_frames="
                << renderer_profile.ThreeDPolygonFrames
                << " renderer_3d_polygons="
@@ -3402,6 +3550,8 @@ private:
     }
 
     std::byte* mapping_ = nullptr;
+    std::byte* publication_mapping_ = nullptr;
+    bool separate_publication_mapping_ = false;
     Header& header_;
     frame_packet::Consumer consumer_;
     PlanePublisher publisher_;
@@ -3505,7 +3655,7 @@ private:
     std::uint32_t completed_trace_count_ = 0;
     std::uint32_t completed_trace_crc32c_ = 0;
     bool completed_trace_valid_ = false;
-    std::array<ReplayPacket, ReplayQueueCapacity> replay_queue_ {};
+    std::array<ReplayPacket, ReplayArenaCapacity> replay_queue_ {};
     std::size_t replay_read_index_ = 0;
     std::size_t replay_write_index_ = 0;
     std::size_t replay_queue_count_ = 0;
@@ -3516,9 +3666,11 @@ private:
     std::atomic<std::size_t> replay_backlog_ {0};
     std::atomic<std::uint32_t> latest_input_frame_ {0};
     std::atomic<std::uint32_t> latest_replay_frame_ {0};
-    std::uint32_t replay_render_frames_since_drop_ =
-        ReplayCatchupMaxRenderedBetweenDrops;
+    std::uint32_t replay_render_skip_countdown_ = 0;
+    std::uint32_t replay_render_cadence_ = 1;
     std::atomic<std::uint64_t> replay_packets_applied_ {0};
+    std::atomic<std::uint64_t> replay_slot_capacity_growths_ {0};
+    std::atomic<std::uint64_t> replay_slot_reuses_ {0};
     std::atomic<std::uint64_t> replay_queue_full_polls_ {0};
     std::atomic<std::uint64_t> replay_input_packets_ {0};
     std::atomic<std::uint64_t> replay_input_records_ {0};
@@ -4243,6 +4395,59 @@ void run_self_test()
                 "asynchronous 3D replay omitted frame rendering");
     }
 
+    // Exercise two complete turns of the private 512-slot replay queue. This
+    // reports real vector-capacity ownership behavior for the old moving
+    // packet queue and the recycled-slot implementation using the same
+    // validated frame-packet consumer and replay worker.
+    {
+        constexpr std::uint32_t PacketCount = 1024;
+        Fixture arena_fixture(Session + 31);
+        const std::vector<frame_packet::Record> arena_records {
+            packet_record(
+                frame_packet::RecordKind::Gpu2DRegister,
+                static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
+                0x04000018, 0x00000123)
+        };
+        Hybrid3DService arena_service(
+            arena_fixture.bytes.data(), arena_fixture.bytes.size(),
+            {}, false, false, false, true);
+        if (!arena_service.initialize())
+            self_test_fail("replay-slot arena fixture init failed");
+        for (std::uint32_t sequence = 1;
+             sequence <= PacketCount; ++sequence) {
+            arena_fixture.publish(
+                sequence, 1, frame_packet::FlagContinuation,
+                arena_records);
+            for (;;) {
+                const auto result = arena_service.poll();
+                if (result == PollResult::Applied) break;
+                if (result == PollResult::Fault)
+                    throw std::runtime_error(
+                        "self-test: replay-slot arena fixture faulted at " +
+                        std::to_string(sequence) + ": " +
+                        arena_service.error());
+                std::this_thread::sleep_for(
+                    std::chrono::microseconds(50));
+            }
+        }
+        for (unsigned attempt = 0;
+             attempt < 10000 &&
+                 arena_service.replay_packets_applied() != PacketCount;
+             ++attempt)
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        if (arena_service.replay_packets_applied() != PacketCount)
+            self_test_fail("replay-slot arena did not drain");
+        if (arena_service.replay_slot_capacity_growths() != 513 ||
+            arena_service.replay_slot_reuses() != 511)
+            self_test_fail(
+                "replay-slot arena did not retain one allocation per slot");
+        std::cout << "H3D_PACKET_ARENA_BENCH packets=" << PacketCount
+                  << " capacity_growths="
+                  << arena_service.replay_slot_capacity_growths()
+                  << " reused_packets="
+                  << arena_service.replay_slot_reuses() << "\n";
+    }
+
     if (service.events_applied() !=
             continuation.size() + terminal.size() ||
         service.frames_published() != 1 || service.frames_rendered() != 1)
@@ -4859,6 +5064,8 @@ try {
     if (!nds4mister::crash::install_arm_crash_handler())
         throw std::runtime_error("could not install ARM crash handlers");
     Mapping mapping(memory_path);
+    WriteCombinedPublicationMapping publication_mapping(
+        memory_path == "/dev/mem");
     SingletonLock singleton;
     auto& header = *static_cast<Header*>(mapping.data());
     CrashHeaderRegistration crash_header(header);
@@ -4930,7 +5137,9 @@ try {
                 memory_path == "/dev/mem",
                 diagnostics,
                 memory_path == "/dev/mem",
-                &runtime_telemetry);
+                &runtime_telemetry,
+                publication_mapping.data(),
+                publication_mapping.active());
             const bool initialized = candidate->initialize();
             if (memory_path == "/dev/mem")
                 bind_current_thread_to_cpu(1);

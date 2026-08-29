@@ -114,6 +114,15 @@ assign ch6_ready = ready[6];
 
 reg [63:0] next_q[2:1];
 reg [27:1] cache_addr[2:1];
+// The cartridge channel is overwhelmingly sequential.  Its former two-beat
+// fetch retained one current beat and one next beat, but then issued a new DDR
+// command for nearly every following beat.  Keep one bounded four-beat
+// (32-byte) line instead: it cuts command setup traffic without allowing an
+// unbounded prefetch to monopolize DDR ahead of video and H3D clients.
+reg [63:0] ch2_cache[0:3];
+reg  [1:0] ch2_fill_index;
+reg  [1:0] ch2_request_index;
+reg [27:1] ch2_request_addr;
 reg  [2:0] state  = 0;
 reg  [2:1] cached = 0;
 reg  [2:0] ch = 0;
@@ -181,32 +190,27 @@ always @(posedge DDRAM_CLK) begin
 						cached[2]     <= 0;
 						ready[2]      <= 1;
 					end
-					else if(cached[2] && cache_addr[2][27:3] == ch2_addr[27:3]) begin
-						// same-beat cache hit: no memory op, but the dout
-						// half-select (ram_address[2]) must follow THIS
-						// request, not the address of the original fill -
-						// sequential word0->word1 reads served the wrong
-						// word otherwise
+					else if(cached[2] && cache_addr[2][27:5] == ch2_addr[27:5]) begin
+						// Line hit.  The half-select still follows this exact
+						// request rather than the address that filled the line.
+						ram_q[2]      <= ch2_cache[ch2_addr[4:3]];
 						ram_address   <= ch2_addr;
 						ready[2]      <= 1;
-					end
-					else if(cached[2] && (cache_addr[2][27:3]+1'd1) == ch2_addr[27:3]) begin
-						ram_q[2]      <= next_q[2];
-						cache_addr[2] <= ch2_addr;
-						ram_address   <= ch2_addr + 8'd4;
-						ram_read      <= 1;
-						ram_burst     <= 1;
-						cached[2]     <= 1;
-						ready[2]      <= 1;
-						state         <= 2;
 					end
 					else begin
-						ram_address   <= ch2_addr;
-						cache_addr[2] <= ch2_addr;
+						// Refill one aligned 32-byte line.  Remember the
+						// requested beat so its response may complete as soon
+						// as that beat arrives while the bounded read-ahead
+						// continues into the remaining cache entries.
+						ram_address       <= {ch2_addr[27:5], 4'b0000};
+						cache_addr[2]     <= {ch2_addr[27:5], 4'b0000};
+						ch2_request_addr  <= ch2_addr;
+						ch2_request_index <= ch2_addr[4:3];
+						ch2_fill_index    <= 0;
 						ram_read      <= 1;
-						ram_burst     <= 2;
-						cached[2]     <= 1;
-						state         <= 1;
+						ram_burst     <= 4;
+						cached[2]     <= 0;
+						state         <= 5;
 					end
 				end
 			   else if(p3) begin
@@ -311,6 +315,20 @@ always @(posedge DDRAM_CLK) begin
 			ready[6] <= 1;
 			state    <= 0;
 		end
+	end
+
+	if(state == 3'd5 && DDRAM_DOUT_READY) begin
+		ch2_cache[ch2_fill_index] <= DDRAM_DOUT;
+		if(ch2_fill_index == ch2_request_index) begin
+			ram_q[2]    <= DDRAM_DOUT;
+			ram_address <= ch2_request_addr;
+			ready[2]    <= 1;
+		end
+		if(ch2_fill_index == 2'd3) begin
+			cached[2] <= 1;
+			state     <= 0;
+		end
+		else ch2_fill_index <= ch2_fill_index + 1'd1;
 	end
 end
 

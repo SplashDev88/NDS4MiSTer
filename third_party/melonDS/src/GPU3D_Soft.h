@@ -22,11 +22,69 @@
 #include "GPU3D.h"
 #include "GPU3D_Texcache.h"
 #include "Platform.h"
+#include <array>
 #include <thread>
 #include <atomic>
 
 namespace melonDS
 {
+
+// Native raster spans never exceed 512 steps. Cortex-A9 has no integer divide
+// instruction, so resolve the fixed-numerator edge reciprocals at compile time
+// instead of calling __aeabi_idiv/__aeabi_uidiv for every polygon edge.
+constexpr std::size_t NDS4MiSTerRasterReciprocalLimit = 512;
+
+constexpr auto NDS4MiSTerMakeRasterReciprocalTable(u32 numerator)
+{
+    std::array<u32, NDS4MiSTerRasterReciprocalLimit + 1> table {};
+    for (std::size_t divisor = 1;
+         divisor <= NDS4MiSTerRasterReciprocalLimit; ++divisor)
+        table[divisor] = numerator / static_cast<u32>(divisor);
+    return table;
+}
+
+constexpr auto NDS4MiSTerMakeRasterMagicTable()
+{
+    std::array<u32, NDS4MiSTerRasterReciprocalLimit + 1> table {};
+    for (std::size_t divisor = 2;
+         divisor <= NDS4MiSTerRasterReciprocalLimit; ++divisor)
+    {
+        const u32 d = static_cast<u32>(divisor);
+        const u32 quotient = 0xFFFFFFFFu / d;
+        const u32 remainder = 0xFFFFFFFFu - quotient * d;
+        table[divisor] = quotient + (remainder == d - 1);
+    }
+    return table;
+}
+
+inline constexpr auto NDS4MiSTerRasterReciprocal22 =
+    NDS4MiSTerMakeRasterReciprocalTable(1u << 22);
+inline constexpr auto NDS4MiSTerRasterReciprocal18 =
+    NDS4MiSTerMakeRasterReciprocalTable(1u << 18);
+inline constexpr auto NDS4MiSTerRasterMagic =
+    NDS4MiSTerMakeRasterMagicTable();
+
+inline u32 NDS4MiSTerDivideU32Exact(u32 numerator, u32 denominator) noexcept
+{
+    if (denominator == 0) return 0;
+    u32 quotient = static_cast<u32>(
+        static_cast<double>(numerator) /
+        static_cast<double>(denominator));
+    u64 product = static_cast<u64>(quotient) * denominator;
+    // Binary64 holds every u32 operand exactly and its rounded quotient is
+    // less than one integer away from truncation. One correction is therefore
+    // sufficient; avoid loop backedges in the per-span setup path.
+    if (product > numerator)
+    {
+        --quotient;
+    }
+    else if (static_cast<u64>(numerator) - product >= denominator)
+    {
+        ++quotient;
+    }
+    return quotient;
+}
+
 class SoftRenderer;
 
 class SoftTexcacheLoader
@@ -106,7 +164,12 @@ private:
 
             // calculate reciprocal for Z interpolation
             // TODO eventually: use a faster reciprocal function?
-            if (this->xdiff != 0)
+            if (this->xdiff > 0 &&
+                this->xdiff <=
+                    static_cast<s32>(NDS4MiSTerRasterReciprocalLimit))
+                this->xrecip_z = static_cast<s32>(
+                    NDS4MiSTerRasterReciprocal22[this->xdiff]);
+            else if (this->xdiff != 0)
                 this->xrecip_z = (1<<22) / this->xdiff;
             else
                 this->xrecip_z = 0;
@@ -126,11 +189,18 @@ private:
             this->linear_reciprocal = 0;
             if (this->linear && this->xdiff > 1)
             {
-                const u32 divisor = static_cast<u32>(this->xdiff);
-                const u32 quotient = 0xFFFFFFFFu / divisor;
-                const u32 remainder = 0xFFFFFFFFu - quotient * divisor;
-                this->linear_reciprocal =
-                    quotient + (remainder == divisor - 1);
+                if (this->xdiff <=
+                    static_cast<s32>(NDS4MiSTerRasterReciprocalLimit))
+                    this->linear_reciprocal =
+                        NDS4MiSTerRasterMagic[this->xdiff];
+                else
+                {
+                    const u32 divisor = static_cast<u32>(this->xdiff);
+                    const u32 quotient = 0xFFFFFFFFu / divisor;
+                    const u32 remainder = 0xFFFFFFFFu - quotient * divisor;
+                    this->linear_reciprocal =
+                        quotient + (remainder == divisor - 1);
+                }
             }
 
             if (dir)
@@ -201,7 +271,7 @@ private:
                         factor_valid = false;
                         return;
                     }
-                    yfactor = num / den;
+                    yfactor = NDS4MiSTerDivideU32Exact(num, den);
                     factor_denominator = den;
                     factor_remainder = static_cast<s32>(
                         num - yfactor * den);
@@ -505,7 +575,10 @@ private:
                 Increment = 0x40000;
             else
             {
-                s32 yrecip = (1<<18) / ylen;
+                const s32 yrecip = ylen > 0 &&
+                    ylen <= static_cast<s32>(NDS4MiSTerRasterReciprocalLimit)
+                    ? static_cast<s32>(NDS4MiSTerRasterReciprocal18[ylen])
+                    : (1<<18) / ylen;
                 Increment = (x1-x0) * yrecip;
                 if (Increment < 0) Increment = -Increment;
             }
@@ -543,11 +616,17 @@ private:
             {
                 if (xlen > 1)
                 {
-                    const u32 divisor = static_cast<u32>(xlen);
-                    const u32 quotient = 0xFFFFFFFFu / divisor;
-                    const u32 remainder = 0xFFFFFFFFu - quotient * divisor;
-                    xlen_reciprocal =
-                        quotient + (remainder == divisor - 1);
+                    if (xlen <=
+                        static_cast<s32>(NDS4MiSTerRasterReciprocalLimit))
+                        xlen_reciprocal = NDS4MiSTerRasterMagic[xlen];
+                    else
+                    {
+                        const u32 divisor = static_cast<u32>(xlen);
+                        const u32 quotient = 0xFFFFFFFFu / divisor;
+                        const u32 remainder = 0xFFFFFFFFu - quotient * divisor;
+                        xlen_reciprocal =
+                            quotient + (remainder == divisor - 1);
+                    }
                 }
                 xcov_incr = DivideByXLen(ylen << 10);
             }
@@ -740,16 +819,31 @@ private:
     void SetupPolygonLeftEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygonRightEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygon(RendererPolygon* rp, Polygon* polygon);
-    void RenderShadowMaskScanline(RendererPolygon* rp, s32 y);
-    void RenderPolygonScanline(RendererPolygon* rp, s32 y);
+    void RenderShadowMaskScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        u8* stencilBuffer);
+    void RenderPolygonScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        u8* stencilBuffer);
     u32 BuildScanlinePolygonLists(int npolys);
-    void RenderScanline(s32 y);
+    void RenderScanline(
+        s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
+        bool& prevIsShadowMask, u8* stencilBuffer);
     u32 CalculateFogDensity(u32 pixeladdr) const;
     void ScanlineFinalPass(s32 y);
     void ClearBuffers();
     void RenderPolygons(bool threaded, Polygon** polygons, int npolys);
+    void RenderPolygonsDualCore(bool threaded, Polygon** polygons, int npolys);
+    int SetupRenderPolygons(Polygon** polygons, int npolys);
+    u64 RenderScanlineBand(
+        s32 firstLine, s32 endLine, RendererPolygon* polygonList,
+        u32* activePolygonMask, bool& prevIsShadowMask,
+        u8* stencilBuffer);
+    void PrepareParallelRasterBand(int npolys, s32 firstLine);
+    s32 ChooseParallelRasterSplitLine(int npolys) const;
 
     void RenderThreadFunc();
+    void ParallelRasterThreadFunc();
 
     // buffer dimensions are 258x194 to add a offscreen 1px border
     // which simplifies edge marking tests
@@ -790,9 +884,12 @@ private:
     // threading
 
     bool Threaded = false;
+    bool DualCoreRaster = false;
     Platform::Thread* RenderThread;
+    Platform::Thread* ParallelRasterThread;
     std::atomic_bool RenderThreadRunning;
     std::atomic_bool RenderThreadRendering;
+    std::atomic_bool ParallelRasterThreadRunning;
     // Owned by the frontend thread. Once FinishRendering has consumed the
     // frame-done fence and drained the per-line tokens, completed scanlines
     // can be read without taking the same 192 semaphore locks again.
@@ -807,5 +904,20 @@ private:
     // Used to allow the main thread to read some scanlines
     // before (the 3D portion of) the entire frame is rasterized.
     Platform::Semaphore* Sema_ScanlineCount;
+
+    // The stock melonDS option pipelines one complete software-rendered
+    // frame on a single worker. MiSTer's dual-core Cortex-A9 needs the raster
+    // work itself split: CPU0 draws the upper band while CPU1 draws the lower
+    // band from an independent copy of the mutable polygon-edge state. Pixel,
+    // depth, attribute, and stencil ownership is disjoint until both bands
+    // join for the final pass, preserving deterministic polygon order.
+    Platform::Semaphore* Sema_ParallelRasterStart;
+    Platform::Semaphore* Sema_ParallelRasterDone;
+    std::unique_ptr<RendererPolygon[]> ParallelPolygonList;
+    u32 ParallelActivePolygonMask[PolygonMaskWords] {};
+    u8 ParallelStencilBuffer[256 * 2] {};
+    bool ParallelPrevIsShadowMask = false;
+    std::atomic<s32> ParallelRasterSplitLine_ {112};
+    std::atomic<u64> ParallelRasterNs {0};
 };
 }

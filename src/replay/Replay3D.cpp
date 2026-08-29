@@ -192,6 +192,22 @@ void dump_frame(GPU& gpu, u32 frame) {
         for (u32 i=0;i<256*192;i++) { const char rgb[3]={char((pixels[i]>>16)&255),char((pixels[i]>>8)&255),char(pixels[i]&255)}; out.write(rgb,3); }
     }
 }
+
+void dump_3d_frame(Renderer& renderer, u32 frame) {
+    const char* requested = std::getenv("NDS_GPU_DUMP_3D_FRAME");
+    if (!requested ||
+        frame != static_cast<u32>(std::strtoul(requested, nullptr, 10)))
+        return;
+    std::ofstream out(
+        std::string("native-3d-frame-") + std::to_string(frame) + ".bin",
+        std::ios::binary);
+    if (!out) throw std::runtime_error("cannot create native 3D frame dump");
+    for (u32 y = 0; y < 192; ++y) {
+        const u32* pixels = renderer.Get3DScanline(y);
+        out.write(
+            reinterpret_cast<const char*>(pixels), 256 * sizeof(u32));
+    }
+}
 }
 
 int main(int argc, char** argv) {
@@ -306,6 +322,16 @@ int main(int argc, char** argv) {
                 1, threaded_3d, false, false,
                 packed_output, parallel_2d, cache_apply, profile};
             nds->GPU.GetRenderer().SetRenderSettings(settings);
+            if (threaded_3d) {
+                // SetThreaded starts the reset-time placeholder render. Drain
+                // its completion and all line tokens before replaying frame
+                // zero, matching the resident H3D service's ownership fence.
+                nds->GPU.GetRenderer().Finish3DRendering();
+                for (u32 y = 0; y < 192; ++y)
+                    if (!nds->GPU.GetRenderer().Get3DScanline(y))
+                        throw std::runtime_error(
+                            "threaded 3D startup returned a null scanline");
+            }
         }
         Oracle oracle;
         u64 compared = 0, mismatches = 0, rgb_mismatches = 0, actual_zero = 0, oracle_zero = 0;
@@ -735,6 +761,7 @@ int main(int argc, char** argv) {
                 }
                 nds->GPU.GPU3D.VBlank();
                 nds->GPU.GetRenderer().Start3DRendering(); nds->GPU.GetRenderer().Finish3DRendering();
+                dump_3d_frame(nds->GPU.GetRenderer(), p.Frame);
                 if (analyze_geometry_delta) {
                     constexpr u32 BlockPixels = 16;
                     const auto bank = rendered & 1u;
@@ -835,7 +862,21 @@ int main(int argc, char** argv) {
         if(profile) {
             const auto renderer_profile =
                 nds->GPU.GetRenderer().GetExternalRendererStageProfile();
-            std::cout << "renderer_3d_polygon_frames: "
+            std::cout << "renderer_3d_frames: "
+                      << renderer_profile.ThreeDFrames
+                      << "\nrenderer_3d_identical_frames: "
+                      << renderer_profile.ThreeDIdenticalFrames
+                      << "\nrenderer_3d_coherence_ns: "
+                      << renderer_profile.ThreeDCoherenceNs
+                      << "\nrenderer_3d_clear_ns: "
+                      << renderer_profile.ThreeDClearNs
+                      << "\nrenderer_3d_setup_ns: "
+                      << renderer_profile.ThreeDSetupNs
+                      << "\nrenderer_3d_raster_ns: "
+                      << renderer_profile.ThreeDRasterNs
+                      << "\nrenderer_3d_final_pass_ns: "
+                      << renderer_profile.ThreeDFinalPassNs
+                      << "\nrenderer_3d_polygon_frames: "
                       << renderer_profile.ThreeDPolygonFrames
                       << "\nrenderer_3d_polygons: "
                       << renderer_profile.ThreeDPolygons
@@ -845,6 +886,14 @@ int main(int argc, char** argv) {
                       << renderer_profile.ThreeDMaxPolygons
                       << "\nrenderer_3d_scheduled_polygon_frames: "
                       << renderer_profile.ThreeDScheduledPolygonFrames
+                      << "\nrenderer_3d_parallel_frames: "
+                      << renderer_profile.ThreeDParallelFrames
+                      << "\nrenderer_3d_primary_raster_ns: "
+                      << renderer_profile.ThreeDPrimaryRasterNs
+                      << "\nrenderer_3d_secondary_raster_ns: "
+                      << renderer_profile.ThreeDSecondaryRasterNs
+                      << "\nrenderer_3d_parallel_join_ns: "
+                      << renderer_profile.ThreeDParallelJoinNs
                       << "\n";
             std::cout<<"profile_total_ms: "<<std::chrono::duration<double,std::milli>(replay_profile_end-replay_profile_start).count()
             <<"\nprofile_sprite_ms: "<<sprite_profile_ns/1000000.0<<"\nprofile_scanline_ms: "<<scanline_profile_ns/1000000.0

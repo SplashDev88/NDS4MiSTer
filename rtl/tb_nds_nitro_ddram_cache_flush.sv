@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Focused proof for the two-probe cartridge cache displacement used by r355.
-// The first post-download read may hit stale ch2 cache state.  A second read
-// two 64-bit beats away must perform a physical DDR read and displace it.
+// Focused proof for two-probe cartridge cache displacement. The first
+// post-download read may hit stale ch2 state. A second read in the next
+// four-beat line must perform a physical DDR read and displace it.
 `timescale 1ns/1ps
 
 module tb_nds_nitro_ddram_cache_flush;
@@ -108,6 +108,10 @@ module tb_nds_nitro_ddram_cache_flush;
         memory[1] = 64'hA3A3A3A3_A2A2A2A2;
         memory[2] = 64'hA5A5A5A5_A4A4A4A4;
         memory[3] = 64'hA7A7A7A7_A6A6A6A6;
+        memory[4] = 64'hA9A9A9A9_A8A8A8A8;
+        memory[5] = 64'hABABABAB_AAAAAAAA;
+        memory[6] = 64'hADADADAD_ACACACAC;
+        memory[7] = 64'hAFAFAFAF_AEAEAEAE;
         repeat (4) @(negedge clk);
 
         // Prime ch2's retained tag and data with the old cartridge beat 0.
@@ -120,6 +124,10 @@ module tb_nds_nitro_ddram_cache_flush;
         memory[1] = 64'hB3B3B3B3_B2B2B2B2;
         memory[2] = 64'hB5B5B5B5_B4B4B4B4;
         memory[3] = 64'hB7B7B7B7_B6B6B6B6;
+        memory[4] = 64'hB9B9B9B9_B8B8B8B8;
+        memory[5] = 64'hBBBBBBBB_BABABABA;
+        memory[6] = 64'hBDBDBDBD_BCBCBCBC;
+        memory[7] = 64'hBFBFBFBF_BEBEBEBE;
 
         // Probe 0 is deliberately the worst case: it legally returns stale
         // cached data and issues no DDR command.
@@ -127,10 +135,10 @@ module tb_nds_nitro_ddram_cache_flush;
         if (value != 32'hA0A0A0A0 || commands != 0)
             $fatal(1, "expected stale first probe value=%h commands=%0d", value, commands);
 
-        // The product's second probe is word address 4 -> byte address 16,
-        // i.e. beat 2.  It can match neither cached beat 0 nor next beat 1.
-        read_ch2({1'b0, 25'd4, 1'b0}, value, commands);
-        if (value != 32'hB4B4B4B4 || commands != 1)
+        // The product's second probe is word address 8 -> byte address 32,
+        // i.e. beat 4, which cannot share the stale four-beat line at zero.
+        read_ch2({1'b0, 25'd8, 1'b0}, value, commands);
+        if (value != 32'hB8B8B8B8 || commands != 1)
             $fatal(1, "second probe did not displace cache value=%h commands=%0d",
                    value, commands);
 
