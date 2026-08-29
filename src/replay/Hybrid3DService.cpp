@@ -3239,6 +3239,20 @@ private:
                << renderer_profile.ThreeDSecondaryRasterNs
                << " renderer_3d_parallel_join_ns="
                << renderer_profile.ThreeDParallelJoinNs
+               << " renderer_3d_adaptive_frames="
+               << renderer_profile.ThreeDAdaptiveFrames
+               << " renderer_3d_adaptive_primary_permille_total="
+               << renderer_profile.ThreeDAdaptivePrimaryPermilleTotal
+               << " renderer_3d_adaptive_primary_permille_min="
+               << renderer_profile.ThreeDAdaptivePrimaryPermilleMin
+               << " renderer_3d_adaptive_primary_permille_max="
+               << renderer_profile.ThreeDAdaptivePrimaryPermilleMax
+               << " renderer_3d_adaptive_split_line_total="
+               << renderer_profile.ThreeDAdaptiveSplitLineTotal
+               << " renderer_3d_adaptive_split_line_min="
+               << renderer_profile.ThreeDAdaptiveSplitLineMin
+               << " renderer_3d_adaptive_split_line_max="
+               << renderer_profile.ThreeDAdaptiveSplitLineMax
                << " renderer_3d_polygon_frames="
                << renderer_profile.ThreeDPolygonFrames
                << " renderer_3d_polygons="

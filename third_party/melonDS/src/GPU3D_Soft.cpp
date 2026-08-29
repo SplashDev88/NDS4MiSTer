@@ -51,6 +51,12 @@ u64 renderer3DProfileElapsedNs(
         Renderer3DProfileClock::now() - started).count());
 }
 
+u64 renderer3DClockNowNs()
+{
+    return static_cast<u64>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        Renderer3DProfileClock::now().time_since_epoch()).count());
+}
+
 void bindParallelRasterToSecondCpu()
 {
 #if defined(__linux__)
@@ -176,6 +182,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     ParallelRasterThread = nullptr;
     const char* dualCoreRaster = std::getenv("NDS4MISTER_DUAL_CORE_3D");
     DualCoreRaster = dualCoreRaster && strcmp(dualCoreRaster, "0") != 0;
+    const char* adaptiveRasterSplit =
+        std::getenv("NDS4MISTER_ADAPTIVE_RASTER_SPLIT");
+    AdaptiveRasterSplit = DualCoreRaster && adaptiveRasterSplit &&
+        strcmp(adaptiveRasterSplit, "0") != 0;
     if (DualCoreRaster)
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
@@ -206,6 +216,9 @@ void SoftRenderer3D::Reset()
     PrevIsShadowMask = false;
 
     SetupRenderThread();
+    // SetupRenderThread joins any prior job before controller state is
+    // rewritten, keeping reset free of a worker-thread data race.
+    RasterBalance.Reset();
     EnableRenderThread();
 }
 
@@ -2223,7 +2236,11 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
     }
     if (totalWork == 0) return 112;
 
-    const u32 primaryTarget = (totalWork * 3u + 4u) / 5u;
+    const u32 primaryPermille = AdaptiveRasterSplit ?
+        RasterBalance.PrimaryPermille() :
+        NDS4MiSTerRasterBalanceController::DefaultPrimaryPermille;
+    const u32 primaryTarget =
+        NDS4MiSTerScalePermilleCeil(totalWork, primaryPermille);
     u32 primaryWork = 0;
     for (int y = 0; y < VisibleScanlines - 1; y++)
     {
@@ -2237,21 +2254,40 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     bool threaded, Polygon** polygons, int npolys)
 {
     const int polygonsPrepared = SetupRenderPolygons(polygons, npolys);
+    const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();
     const s32 SplitLine = ChooseParallelRasterSplitLine(polygonsPrepared);
     ParallelRasterSplitLine_.store(SplitLine, std::memory_order_relaxed);
     PrepareParallelRasterBand(polygonsPrepared, SplitLine);
     ParallelRasterNs.store(0, std::memory_order_relaxed);
+    ParallelRasterCompletionNs.store(0, std::memory_order_relaxed);
     Platform::Semaphore_Reset(Sema_ParallelRasterDone);
 
     const auto rasterStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
+    const u64 balanceStartedNs = AdaptiveRasterSplit ?
+        renderer3DClockNowNs() : 0;
     Platform::Semaphore_Post(Sema_ParallelRasterStart);
     const u64 primaryRasterNs = RenderScanlineBand(
         0, SplitLine, PolygonList, ActivePolygonMask,
         PrevIsShadowMask, StencilBuffer);
+    const u64 primaryCompletedNs = AdaptiveRasterSplit ?
+        renderer3DClockNowNs() : 0;
     const auto joinStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     Platform::Semaphore_Wait(Sema_ParallelRasterDone);
+
+    if (AdaptiveRasterSplit)
+    {
+        const u64 secondaryCompletedNs =
+            ParallelRasterCompletionNs.load(std::memory_order_acquire);
+        if (primaryCompletedNs >= balanceStartedNs &&
+            secondaryCompletedNs >= balanceStartedNs)
+        {
+            RasterBalance.Observe(
+                primaryCompletedNs - balanceStartedNs,
+                secondaryCompletedNs - balanceStartedNs);
+        }
+    }
 
     if (Parent.StageProfileEnabled)
     {
@@ -2263,6 +2299,33 @@ void SoftRenderer3D::RenderPolygonsDualCore(
             renderer3DProfileElapsedNs(joinStarted);
         Parent.StageProfile.ThreeDRasterNs +=
             renderer3DProfileElapsedNs(rasterStarted);
+        if (AdaptiveRasterSplit)
+        {
+            auto& profile = Parent.StageProfile;
+            if (profile.ThreeDAdaptiveFrames == 0)
+            {
+                profile.ThreeDAdaptivePrimaryPermilleMin =
+                    appliedPrimaryPermille;
+                profile.ThreeDAdaptivePrimaryPermilleMax =
+                    appliedPrimaryPermille;
+                profile.ThreeDAdaptiveSplitLineMin = SplitLine;
+                profile.ThreeDAdaptiveSplitLineMax = SplitLine;
+            }
+            ++profile.ThreeDAdaptiveFrames;
+            profile.ThreeDAdaptivePrimaryPermilleTotal +=
+                appliedPrimaryPermille;
+            profile.ThreeDAdaptivePrimaryPermilleMin = std::min<u64>(
+                profile.ThreeDAdaptivePrimaryPermilleMin,
+                appliedPrimaryPermille);
+            profile.ThreeDAdaptivePrimaryPermilleMax = std::max<u64>(
+                profile.ThreeDAdaptivePrimaryPermilleMax,
+                appliedPrimaryPermille);
+            profile.ThreeDAdaptiveSplitLineTotal += SplitLine;
+            profile.ThreeDAdaptiveSplitLineMin = std::min<u64>(
+                profile.ThreeDAdaptiveSplitLineMin, SplitLine);
+            profile.ThreeDAdaptiveSplitLineMax = std::max<u64>(
+                profile.ThreeDAdaptiveSplitLineMax, SplitLine);
+        }
     }
 
     // Edge marking reads the adjacent rasterized rows. Join both disjoint
@@ -2445,6 +2508,11 @@ void SoftRenderer3D::ParallelRasterThreadFunc()
             SplitLine, VisibleScanlines, ParallelPolygonList.get(),
             ParallelActivePolygonMask, ParallelPrevIsShadowMask,
             ParallelStencilBuffer);
+        if (AdaptiveRasterSplit)
+        {
+            ParallelRasterCompletionNs.store(
+                renderer3DClockNowNs(), std::memory_order_release);
+        }
         ParallelRasterNs.store(elapsed, std::memory_order_relaxed);
         Platform::Semaphore_Post(Sema_ParallelRasterDone);
     }

@@ -85,6 +85,106 @@ inline u32 NDS4MiSTerDivideU32Exact(u32 numerator, u32 denominator) noexcept
     return quotient;
 }
 
+inline u32 NDS4MiSTerScalePermilleCeil(u32 value, u32 permille) noexcept
+{
+    // Keep the intermediate in u32 without overflowing and let the compiler
+    // lower both constant /1000 operations to multiply/shift on Cortex-A9.
+    const u32 thousands = value / 1000u;
+    const u32 remainder = value - thousands * 1000u;
+    return thousands * permille +
+        (remainder * permille + 999u) / 1000u;
+}
+
+// Slowly correct the estimated upper/lower raster split from observed wall
+// time. The controller is intentionally independent of renderer state so its
+// behavior can be regression-tested on both the host and Cortex-A9 target.
+class NDS4MiSTerRasterBalanceController
+{
+public:
+    static constexpr u32 DefaultPrimaryPermille = 600;
+    static constexpr u32 MinimumPrimaryPermille = 480;
+    static constexpr u32 MaximumPrimaryPermille = 800;
+    static constexpr u64 MinimumSampleNs = 200000;
+
+    void Reset() noexcept
+    {
+        PrimaryPermille_ = DefaultPrimaryPermille;
+        PrimaryEmaNs_ = 0;
+        SecondaryEmaNs_ = 0;
+        Samples_ = 0;
+    }
+
+    [[nodiscard]] u32 PrimaryPermille() const noexcept
+    {
+        return PrimaryPermille_;
+    }
+
+    // Completion times share the same start point, so CPU1 wake/scheduling
+    // latency is included. Return true only when the target changed.
+    bool Observe(u64 primaryCompletionNs, u64 secondaryCompletionNs) noexcept
+    {
+        const u64 slowerSample = primaryCompletionNs > secondaryCompletionNs ?
+            primaryCompletionNs : secondaryCompletionNs;
+        if (slowerSample < MinimumSampleNs)
+            return false;
+
+        if (Samples_ == 0)
+        {
+            PrimaryEmaNs_ = primaryCompletionNs;
+            SecondaryEmaNs_ = secondaryCompletionNs;
+            Samples_ = 1;
+            return false;
+        }
+
+        PrimaryEmaNs_ = Smooth(PrimaryEmaNs_, primaryCompletionNs);
+        SecondaryEmaNs_ = Smooth(SecondaryEmaNs_, secondaryCompletionNs);
+        if (Samples_ != 0xFFFFFFFFu)
+            ++Samples_;
+
+        const bool secondarySlower = SecondaryEmaNs_ > PrimaryEmaNs_;
+        const u64 difference = secondarySlower ?
+            SecondaryEmaNs_ - PrimaryEmaNs_ :
+            PrimaryEmaNs_ - SecondaryEmaNs_;
+        const u64 slower = secondarySlower ? SecondaryEmaNs_ : PrimaryEmaNs_;
+
+        // Four-percent hysteresis prevents scheduler noise from moving the
+        // boundary. Larger imbalances converge faster, but never by more than
+        // 0.8% of estimated work in one rendered frame.
+        if (difference * 1000u <= slower * 40u)
+            return false;
+        u32 step = 1;
+        if (difference * 1000u > slower * 80u) step = 2;
+        if (difference * 1000u > slower * 120u) step = 4;
+        if (difference * 1000u > slower * 200u) step = 8;
+
+        const u32 previous = PrimaryPermille_;
+        if (secondarySlower)
+        {
+            PrimaryPermille_ = PrimaryPermille_ + step < MaximumPrimaryPermille ?
+                PrimaryPermille_ + step : MaximumPrimaryPermille;
+        }
+        else
+        {
+            PrimaryPermille_ = PrimaryPermille_ > MinimumPrimaryPermille + step ?
+                PrimaryPermille_ - step : MinimumPrimaryPermille;
+        }
+        return PrimaryPermille_ != previous;
+    }
+
+private:
+    static u64 Smooth(u64 current, u64 sample) noexcept
+    {
+        return sample >= current ?
+            current + ((sample - current) >> 3) :
+            current - ((current - sample) >> 3);
+    }
+
+    u32 PrimaryPermille_ = DefaultPrimaryPermille;
+    u64 PrimaryEmaNs_ = 0;
+    u64 SecondaryEmaNs_ = 0;
+    u32 Samples_ = 0;
+};
+
 class SoftRenderer;
 
 class SoftTexcacheLoader
@@ -889,6 +989,7 @@ private:
 
     bool Threaded = false;
     bool DualCoreRaster = false;
+    bool AdaptiveRasterSplit = false;
     bool FullFrameCompletion = false;
     Platform::Thread* RenderThread;
     Platform::Thread* ParallelRasterThread;
@@ -924,5 +1025,7 @@ private:
     bool ParallelPrevIsShadowMask = false;
     std::atomic<s32> ParallelRasterSplitLine_ {112};
     std::atomic<u64> ParallelRasterNs {0};
+    std::atomic<u64> ParallelRasterCompletionNs {0};
+    NDS4MiSTerRasterBalanceController RasterBalance;
 };
 }

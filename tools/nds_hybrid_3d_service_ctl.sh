@@ -264,6 +264,7 @@ start_service()
         # bounded H3D replay/render work precedence without killing MiSTer,
         # which preserves the normal menu, input, and core lifecycle.
         NDS4MISTER_DUAL_CORE_3D=1 \
+        NDS4MISTER_ADAPTIVE_RASTER_SPLIT=1 \
         "$start_stop_daemon" -S -b -m -N -20 \
             -p "$pidfile" -x "$service" --
     ) >>"$logfile" 2>&1; then
