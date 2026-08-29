@@ -377,7 +377,7 @@ architecture arch of nds_nitro_console_top is
    component nds_nitro_save_profile is
       generic
       (
-         ENTRY_COUNT: integer := 4057
+         PREFIX_COUNT: integer := 368
       );
       port
       (
@@ -1272,7 +1272,7 @@ begin
    isaveprofile : nds_nitro_save_profile
    generic map
    (
-      ENTRY_COUNT => 4057
+      PREFIX_COUNT => 368
    )
    port map
    (

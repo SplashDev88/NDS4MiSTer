@@ -53,7 +53,10 @@ def build_tables(profiles: dict[int, int]) -> tuple[list[int], list[int]]:
         if start >= ENTRY_DEPTH or start + len(bucket) > ENTRY_DEPTH:
             raise ValueError(f"save-profile entry count exceeds {ENTRY_DEPTH}")
         # 35-bit prefix row: prefix[34:19], start[18:7], count[6:0].
-        prefixes.append((prefix << 19) | (start << 7) | len(bucket))
+        prefix_row = (prefix << 19) | (start << 7) | len(bucket)
+        if prefix_row >= 1 << 35:
+            raise AssertionError("save-profile prefix row exceeds its 35-bit payload")
+        prefixes.append(prefix_row)
         # 20-bit entry row: low game-code half[19:4], save type[3:0].
         entries.extend((low << 4) | save_type for low, save_type in bucket)
 
@@ -76,6 +79,9 @@ def write_hex(path: Path, rows: list[int], depth: int, digits: int) -> None:
 def generate(source: Path, prefix_output: Path, entry_output: Path) -> tuple[int, int, int]:
     profiles = load_profiles(source)
     prefixes, entries = build_tables(profiles)
+    # Nine hex digits are necessarily a 36-bit $readmemh token. The generated
+    # values are proven 35-bit above, so digit 9 is an explicit zero pad that
+    # matches prefix_rom[35] in the product RTL.
     write_hex(prefix_output, prefixes, PREFIX_DEPTH, 9)
     write_hex(entry_output, entries, ENTRY_DEPTH, 5)
     largest_bucket = max((row & 0x7F) for row in prefixes)

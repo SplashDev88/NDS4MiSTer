@@ -45,7 +45,8 @@ until the B-side map.
 
 The former 4096x36 direct-mapped ROM was replaced with two exact tables:
 
-- 512x35 prefix rows: game-code prefix, entry start, entry count
+- 512x36 prefix storage rows: a zero pad plus the exact 35-bit game-code
+  prefix, entry start, and entry count payload
 - 4096x20 sorted entries: low game-code half and exact save type
 
 There are 368 occupied prefixes, 4,057 oracle entries, and a largest bucket of

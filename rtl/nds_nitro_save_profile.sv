@@ -3,9 +3,12 @@
 //
 // The public melonDS ROMList is the oracle. SaveMemType 1 (512-byte tiny
 // EEPROM) is the default; the table stores explicit no-save entries and types
-// 2..7. A 35-bit prefix ROM identifies one short bucket in a 20-bit low-code
-// ROM. The largest generated bucket is 72 entries, so the exact two-level walk
-// is both smaller and faster than the former 4096x36 linear table.
+// 2..7. A 35-bit prefix payload identifies one short bucket in a 20-bit low-code
+// ROM. It is held in a 36-bit array because $readmemh treats each nine-digit hex
+// token as 36 bits; bit 35 is a generated zero pad. This avoids 512 misleading
+// Quartus truncation warnings without changing the two-M10K physical shape. The
+// largest generated bucket is 72 entries, so the exact two-level walk is both
+// smaller and faster than the former 4096x36 linear table.
 module nds_nitro_save_profile #(
     parameter integer PREFIX_COUNT = 368
 ) (
@@ -17,10 +20,10 @@ module nds_nitro_save_profile #(
     output logic        valid,
     output logic [3:0]  save_type
 );
-    (* ramstyle = "M10K" *) logic [34:0] prefix_rom [0:511];
+    (* ramstyle = "M10K" *) logic [35:0] prefix_rom [0:511];
     (* ramstyle = "M10K" *) logic [19:0] entry_rom [0:4095];
     logic [8:0] prefix_index;
-    logic [34:0] prefix_entry;
+    logic [35:0] prefix_entry;
     logic [11:0] entry_index;
     logic [19:0] entry;
     logic [6:0] bucket_remaining;
@@ -79,6 +82,8 @@ module nds_nitro_save_profile #(
                 PREFIX_FETCH: state <= PREFIX_CHECK;
 
                 PREFIX_CHECK: begin
+                    // prefix_entry[35] is the zero pad of the nine-digit hex
+                    // representation. The exact 35-bit payload remains [34:0].
                     if (prefix_entry[34:19] == target[31:16]) begin
                         entry_index <= prefix_entry[18:7];
                         bucket_remaining <= prefix_entry[6:0];

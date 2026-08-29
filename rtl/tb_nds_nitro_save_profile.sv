@@ -46,7 +46,9 @@ module tb_nds_nitro_save_profile;
         end
     end
 
-    nds_nitro_save_profile dut (.*);
+    // Explicit override keeps the SystemVerilog parameter name under HDL
+    // elaboration, complementing the VHDL mixed-language binding check.
+    nds_nitro_save_profile #(.PREFIX_COUNT(368)) dut (.*);
 
     task automatic check(input logic [31:0] code, input logic [3:0] expected);
         begin
