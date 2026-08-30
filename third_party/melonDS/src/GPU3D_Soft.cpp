@@ -245,6 +245,9 @@ void SoftRenderer3D::Reset()
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
     RasterBalance.Reset();
+    RasterBandQueueActive = false;
+    RasterBandHeavyFrames = 0;
+    RasterBandLightFrames = 0;
     EnableRenderThread();
 }
 
@@ -2388,8 +2391,57 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     bool threaded, Polygon** polygons, int npolys)
 {
     const int polygonsPrepared = SetupRenderPolygons(polygons, npolys);
+
+    // Keep beta.3's adaptive two-way split for light and transitional work.
+    // Enter the four-band scheduler only after two consecutive heavy frames,
+    // then retain it across short dips so scenes near the threshold do not
+    // alternate scheduling latency every frame. Shadow/stencil safety still
+    // selects the adaptive path for the affected frame without resetting this
+    // hysteresis. The delayed-worker oracle bypasses the production warm-up.
+    const bool bandQueueHeavy = RasterBandQueue &&
+        (RasterBandQueueTestDelayWorker ||
+         polygonsPrepared > RasterBandPolygonThreshold);
+    if (!RasterBandQueue)
+    {
+        RasterBandQueueActive = false;
+        RasterBandHeavyFrames = 0;
+        RasterBandLightFrames = 0;
+    }
+    else if (RasterBandQueueTestDelayWorker)
+    {
+        RasterBandQueueActive = true;
+        RasterBandHeavyFrames = 0;
+        RasterBandLightFrames = 0;
+    }
+    else if (bandQueueHeavy)
+    {
+        RasterBandLightFrames = 0;
+        if (!RasterBandQueueActive &&
+            ++RasterBandHeavyFrames >= RasterBandEnterFrames)
+        {
+            RasterBandQueueActive = true;
+            RasterBandHeavyFrames = 0;
+        }
+    }
+    else
+    {
+        RasterBandHeavyFrames = 0;
+        if (RasterBandQueueActive)
+        {
+            if (++RasterBandLightFrames >= RasterBandExitFrames)
+            {
+                RasterBandQueueActive = false;
+                RasterBandLightFrames = 0;
+            }
+        }
+        else
+        {
+            RasterBandLightFrames = 0;
+        }
+    }
     const bool bandQueueRequested =
-        RasterBandQueue && polygonsPrepared > ScheduledPolygonThreshold;
+        RasterBandQueueActive &&
+        polygonsPrepared > ScheduledPolygonThreshold;
     const bool bandQueueFrame =
         bandQueueRequested && RasterBandQueueSafe(polygonsPrepared);
     const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();

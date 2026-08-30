@@ -904,10 +904,16 @@ private:
     static constexpr int MaxRendererPolygons = 2048;
     static constexpr int PolygonMaskWords = MaxRendererPolygons / 32;
     static constexpr int ScheduledPolygonThreshold = 8;
-    static constexpr int RasterBandLines = 32;
+    // Four jobs leave each Cortex-A9 roughly two substantial pieces of work.
+    // The former six 32-line jobs improved peak throughput but made completion
+    // cadence visibly less even in NSMB despite a 60 FPS average.
+    static constexpr int RasterBandLines = 48;
     static constexpr int RasterBandCount =
         VisibleScanlines / RasterBandLines;
     static_assert(RasterBandCount * RasterBandLines == VisibleScanlines);
+    static constexpr int RasterBandPolygonThreshold = 24;
+    static constexpr int RasterBandEnterFrames = 2;
+    static constexpr int RasterBandExitFrames = 8;
 
     struct RasterBandResult
     {
@@ -1017,6 +1023,9 @@ private:
     bool AdaptiveRasterSplit = false;
     bool RasterBandQueue = false;
     bool RasterBandQueueTestDelayWorker = false;
+    bool RasterBandQueueActive = false;
+    u8 RasterBandHeavyFrames = 0;
+    u8 RasterBandLightFrames = 0;
     bool FullFrameCompletion = false;
     Platform::Thread* RenderThread;
     Platform::Thread* ParallelRasterThread;

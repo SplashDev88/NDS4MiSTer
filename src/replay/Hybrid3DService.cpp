@@ -889,14 +889,17 @@ private:
     // The dual-core renderer measured 57.3 published FPS against a 60.0 FPS
     // source in NSMB's final castle. Waiting for the old 32-frame pressure
     // point therefore stabilized smooth output roughly half a second late.
-    // Start the same single-obsolete-render catch-up at four frames so the
-    // small throughput deficit cannot become visible input-to-3D latency.
+    // NSMB play testing showed the remaining age as rubber-banding: a heavy
+    // on-screen interval accumulated a few derived 3D frames, then rapidly
+    // displayed them when geometry moved off screen. Scale render cadence at
+    // 2/4/8/16 frames of source lead so replay still applies every command in
+    // order but does not visibly fast-forward through obsolete render output.
     // Packet thresholds remain deliberately unchanged as the independent
     // transport-burst safety valve.
-    static constexpr std::uint32_t ReplayCatchupHalfFrames = 4;
-    static constexpr std::uint32_t ReplayCatchupThirdFrames = 64;
-    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 128;
-    static constexpr std::uint32_t ReplayCatchupEighthFrames = 256;
+    static constexpr std::uint32_t ReplayCatchupHalfFrames = 2;
+    static constexpr std::uint32_t ReplayCatchupThirdFrames = 4;
+    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 8;
+    static constexpr std::uint32_t ReplayCatchupEighthFrames = 16;
     static constexpr std::size_t ReplayCatchupHalfPackets = 64;
     static constexpr std::size_t ReplayCatchupThirdPackets = 128;
     static constexpr std::size_t ReplayCatchupQuarterPackets = 256;
@@ -4617,7 +4620,7 @@ void run_self_test()
                 "visible geometry diverged after tainted-buffer discard");
     }
 
-    // The six-band scheduler may change only ownership of disjoint scanline
+    // The four-band scheduler may change only ownership of disjoint scanline
     // rows. Render the same polygon buffer through stock single-worker
     // melonDS and the queued dual-core path, then compare the externally
     // visible plane plus complete native color/depth/attribute buffers.
@@ -4747,9 +4750,9 @@ void run_self_test()
         const auto queue_profile =
             queued_renderer.GetExternalRendererStageProfile();
         if (queue_profile.ThreeDBandQueueFrames != 1 ||
-            queue_profile.ThreeDBandQueueJobs != 6 ||
-            queue_profile.ThreeDBandQueueAdvancedScanlines < 32)
-            self_test_fail("six-band raster queue did not execute");
+            queue_profile.ThreeDBandQueueJobs != 4 ||
+            queue_profile.ThreeDBandQueueAdvancedScanlines < 48)
+            self_test_fail("four-band raster queue did not execute");
         std::cout << "H3D_RASTER_BAND_ORACLE_PASS jobs="
                   << queue_profile.ThreeDBandQueueJobs
                   << " advanced_scanlines="
