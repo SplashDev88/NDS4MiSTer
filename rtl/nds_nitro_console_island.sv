@@ -246,6 +246,8 @@ logic save_mount_queued = 1'b0;
 logic save_mount_pulse = 1'b0;
 logic save_mount_readonly = 1'b0;
 logic [63:0] save_mount_size = 64'd0;
+logic save_cart_download_queued = 1'b0;
+logic save_cart_download_pulse = 1'b0;
 
 always_ff @(posedge clk_video or posedge save_bridge_reset_request) begin
     if (save_bridge_reset_request)
@@ -257,19 +259,28 @@ wire save_bridge_reset_video = save_bridge_reset_sync_video[1];
 
 always_ff @(posedge clk_video) begin
     save_mount_pulse <= 1'b0;
+    save_cart_download_pulse <= 1'b0;
 
     if (save_img_mounted) begin
         save_mount_readonly <= save_img_readonly;
         save_mount_size <= save_img_size;
-        if (save_bridge_reset_video)
-            save_mount_queued <= 1'b1;
-        else
-            save_mount_pulse <= 1'b1;
-    end
-
-    if (!save_bridge_reset_video && save_mount_queued) begin
+        // Hold every mount until the local bridge is definitely out of reset.
+        // A reset can begin just after hps_io's pulse, so directly forwarding
+        // the pulse while reset is low is not sufficient.
+        save_mount_queued <= 1'b1;
+    end else if (!save_bridge_reset_video && save_mount_queued) begin
         save_mount_queued <= 1'b0;
         save_mount_pulse <= 1'b1;
+    end
+
+    // MiSTer's FS loader brackets the save mount with ioctl_download. During
+    // an MGL direct load that entire bracket can occur while this bridge is
+    // reset. Preserve the cartridge epoch just like the one-cycle mount.
+    if (save_bridge_reset_video && cart_download_raw) begin
+        save_cart_download_queued <= 1'b1;
+    end else if (!save_bridge_reset_video && save_cart_download_queued) begin
+        save_cart_download_queued <= 1'b0;
+        save_cart_download_pulse <= 1'b1;
     end
 end
 
@@ -342,7 +353,7 @@ defparam
 nds_nitro_save_bridge save_bridge (
     .clk(clk_video),
     .reset(save_bridge_reset_video),
-    .cart_download(cart_download_raw),
+    .cart_download(cart_download_raw | save_cart_download_pulse),
     .img_mounted(save_mount_pulse),
     .img_readonly(save_mount_readonly),
     .img_size(save_mount_size),

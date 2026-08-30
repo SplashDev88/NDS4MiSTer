@@ -75,33 +75,24 @@ module tb_nds_nitro_input_boundary;
         // ST_WAIT_MOUNT on the first ROM load.
         repeat (3) @(posedge clk_video);
         @(negedge clk_video);
+        ioctl_index = 16'h0003;
+        ioctl_download = 1'b1;
+        @(negedge clk_video);
         save_img_size = 64'd8192;
         save_img_mounted = 1'b1;
         @(negedge clk_video);
         save_img_mounted = 1'b0;
+        ioctl_download = 1'b0;
         repeat (2) @(posedge clk_video);
         if (dut.save_ready)
             $fatal(1, "save mount escaped while media reset was asserted");
+        if (!dut.save_mount_queued || !dut.save_cart_download_queued)
+            $fatal(1, "direct-load ROM/save events were not queued during reset");
         @(negedge clk_video);
         media_reset = 1'b0;
-        // The queued mount belongs to the upcoming ROM, so it must remain
-        // reserved until the cartridge download begins.
-        repeat (5) @(posedge clk_video);
-        if (dut.save_ready || !dut.save_bridge.mount_pending) begin
-            $display("mount trace queue=%b pulse=%b reset=%b pending=%b epoch=%b state=%0d",
-                     dut.save_mount_queued, dut.save_mount_pulse,
-                     dut.save_bridge_reset_video, dut.save_bridge.mount_pending,
-                     dut.save_bridge.cart_epoch_started, dut.save_bridge.state);
-            $fatal(1, "queued mount was consumed before ROM download");
-        end
-        @(negedge clk_video);
-        ioctl_index = 16'h0003;
-        ioctl_download = 1'b1;
-        @(negedge clk_video);
-        ioctl_download = 1'b0;
-        repeat (8) @(posedge clk_video);
+        repeat (10) @(posedge clk_video);
         if (!dut.save_ready)
-            $fatal(1, "mount pulse during media reset was not replayed");
+            $fatal(1, "direct-load ROM/save events were not replayed after reset");
 
         // A mounted save is media state, not CPU state. Prove an OSD-style
         // shell reset retains it while a real media reset still clears it.
