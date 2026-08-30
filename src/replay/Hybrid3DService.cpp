@@ -966,9 +966,17 @@ private:
     // Packet thresholds remain deliberately unchanged as the independent
     // transport-burst safety valve.
     static constexpr std::uint32_t ReplayCatchupHalfFrames = 2;
-    static constexpr std::uint32_t ReplayCatchupThirdFrames = 4;
-    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 8;
+    // A normal heavy NSMB scene now settles four to six frames behind while
+    // replay still retires input at 60 Hz.  Keep that bounded condition on
+    // the even cadence instead of oscillating between half- and third-rate
+    // rasterization.  Reserve the more destructive tiers for a backlog that
+    // is actually growing.
+    static constexpr std::uint32_t ReplayCatchupThirdFrames = 8;
+    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 12;
     static constexpr std::uint32_t ReplayCatchupEighthFrames = 16;
+    static_assert(ReplayCatchupHalfFrames < ReplayCatchupThirdFrames);
+    static_assert(ReplayCatchupThirdFrames < ReplayCatchupQuarterFrames);
+    static_assert(ReplayCatchupQuarterFrames < ReplayCatchupEighthFrames);
     static constexpr std::size_t ReplayCatchupHalfPackets = 64;
     static constexpr std::size_t ReplayCatchupThirdPackets = 128;
     static constexpr std::size_t ReplayCatchupQuarterPackets = 256;
