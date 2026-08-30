@@ -85,6 +85,37 @@ inline u32 NDS4MiSTerDivideU32Exact(u32 numerator, u32 denominator) noexcept
     return quotient;
 }
 
+inline constexpr bool NDS4MiSTerAdvancePerspectiveFactor(
+    u32& factor, s32& denominator, s32& remainder,
+    s32 numeratorStep, s32 denominatorStep) noexcept
+{
+    denominator += denominatorStep;
+    // A degenerate edge can bring the perspective denominator to exactly
+    // zero. Stock melonDS defines that pixel's factor as zero. Return before
+    // the quotient-correction loops: subtracting a zero denominator can never
+    // make progress and would permanently stall the ARM raster thread.
+    if (denominator == 0)
+    {
+        factor = 0;
+        remainder = 0;
+        return false;
+    }
+
+    remainder += numeratorStep -
+        static_cast<s32>(factor) * denominatorStep;
+    while (remainder >= denominator)
+    {
+        ++factor;
+        remainder -= denominator;
+    }
+    while (remainder < 0 && factor != 0)
+    {
+        --factor;
+        remainder += denominator;
+    }
+    return true;
+}
+
 inline u32 NDS4MiSTerScalePermilleCeil(u32 value, u32 permille) noexcept
 {
     // Keep the intermediate in u32 without overflowing and let the compiler
@@ -352,19 +383,12 @@ private:
             {
                 if (factor_valid && x == factor_x + 1)
                 {
-                    factor_denominator += factor_denominator_step;
-                    factor_remainder +=
-                        factor_numerator_step -
-                        static_cast<s32>(yfactor) * factor_denominator_step;
-                    while (factor_remainder >= factor_denominator)
+                    if (!NDS4MiSTerAdvancePerspectiveFactor(
+                        yfactor, factor_denominator, factor_remainder,
+                        factor_numerator_step, factor_denominator_step))
                     {
-                        ++yfactor;
-                        factor_remainder -= factor_denominator;
-                    }
-                    while (factor_remainder < 0 && yfactor != 0)
-                    {
-                        --yfactor;
-                        factor_remainder += factor_denominator;
+                        factor_valid = false;
+                        return;
                     }
                 }
                 else

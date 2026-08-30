@@ -145,6 +145,25 @@ int main()
         }
     }
 
+    // Mario 64 DS reaches a degenerate perspective edge whose incremental
+    // denominator transitions from nonzero to zero. It must use melonDS's
+    // defined zero factor instead of entering a non-progressing correction
+    // loop. Also verify an ordinary incremental step remains exact.
+    std::uint32_t factor = 10;
+    std::int32_t denominator = 5;
+    std::int32_t remainder = 3;
+    if (melonDS::NDS4MiSTerAdvancePerspectiveFactor(
+            factor, denominator, remainder, 100, -5) ||
+        factor != 0 || denominator != 0 || remainder != 0)
+        return 7;
+    factor = 10;
+    denominator = 100;
+    remainder = 0;
+    if (!melonDS::NDS4MiSTerAdvancePerspectiveFactor(
+            factor, denominator, remainder, 1000, 10) ||
+        factor != 18 || denominator != 110 || remainder != 20)
+        return 8;
+
     std::puts("PASS: exact VFP divide, raster tables, and balance controller");
     return 0;
 }
