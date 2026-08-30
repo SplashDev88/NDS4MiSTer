@@ -429,6 +429,12 @@ private:
     Generation recovered_ = 0;
 };
 
+constexpr bool catchup_should_discard_geometry(
+    std::uint32_t render_cadence) noexcept
+{
+    return render_cadence >= 3;
+}
+
 bool plane_has_alpha(const std::uint32_t* pixels)
 {
     if (!pixels) return false;
@@ -1076,6 +1082,7 @@ private:
         replay_render_cadence_ = 1;
         catchup_visibility_taint_.reset();
         replay_frame_active_ = false;
+        replay_frame_skip_render_ = false;
         replay_frame_discard_geometry_ = false;
         replay_active_frame_ = 0;
         replay_geometry_discard_frames_ = 0;
@@ -1593,7 +1600,7 @@ private:
                     if (disposition == FrameDisposition::Fault) return;
                     const bool render =
                         disposition == FrameDisposition::Render &&
-                        !replay_frame_discard_geometry_;
+                        !replay_frame_skip_render_;
 
                     // This is the asynchronous equivalent of poll()'s
                     // terminal-packet path. The input owner has already
@@ -1633,8 +1640,10 @@ private:
         });
     }
 
-    bool replay_render_deadline_missed(std::uint32_t replay_frame)
+    bool replay_render_deadline_missed(
+        std::uint32_t replay_frame, bool& discard_geometry)
     {
+        discard_geometry = false;
         const auto latest = replay_state_.latest_input_frame();
         const auto lead = latest >= replay_frame ? latest - replay_frame : 0;
         const auto backlog = replay_queue_count();
@@ -1667,6 +1676,13 @@ private:
         }
 
         --replay_render_skip_countdown_;
+        // A two-frame lead is common transient jitter. Preserve its complete
+        // GX polygon build and skip only the expensive software raster pass;
+        // the next admitted render then remains a valid moving plane. Once
+        // the lead reaches the three-way catch-up tier, discarding obsolete
+        // geometry is worth the CPU1 savings and the visibility guard keeps
+        // its derived empty result away from scanout.
+        discard_geometry = catchup_should_discard_geometry(cadence);
         frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -1686,9 +1702,14 @@ private:
         // was discarded, the tail cannot legally construct polygons from
         // missing TempVertexBuffer entries. Taint this entire frame and keep
         // discarding until GPU3D observes the list's real END/FLUSH.
+        bool discard_for_budget = false;
+        const bool skip_for_budget = replay_render_deadline_missed(
+            frame, discard_for_budget);
+        const bool carried_discard =
+            nds_->GPU.GPU3D.ExternalGeometryDiscardInProgress();
+        replay_frame_skip_render_ = carried_discard || skip_for_budget;
         replay_frame_discard_geometry_ =
-            nds_->GPU.GPU3D.ExternalGeometryDiscardInProgress() ||
-            replay_render_deadline_missed(frame);
+            carried_discard || discard_for_budget;
         nds_->GPU.GPU3D.SetExternalGeometryDiscard(
             replay_frame_discard_geometry_);
         if (replay_frame_discard_geometry_) {
@@ -1702,6 +1723,7 @@ private:
     {
         nds_->GPU.GPU3D.SetExternalGeometryDiscard(false);
         replay_frame_active_ = false;
+        replay_frame_skip_render_ = false;
         replay_frame_discard_geometry_ = false;
     }
 
@@ -3875,6 +3897,7 @@ private:
     std::uint32_t replay_render_cadence_ = 1;
     CatchupVisibilityTaint catchup_visibility_taint_;
     bool replay_frame_active_ = false;
+    bool replay_frame_skip_render_ = false;
     bool replay_frame_discard_geometry_ = false;
     std::uint32_t replay_active_frame_ = 0;
     std::uint64_t replay_geometry_discard_frames_ = 0;
@@ -4056,6 +4079,11 @@ frame_packet::Record packet_record(
 void run_self_test()
 {
     constexpr std::uint32_t Session = 0x12345678;
+    if (catchup_should_discard_geometry(1) ||
+        catchup_should_discard_geometry(2) ||
+        !catchup_should_discard_geometry(3) ||
+        !catchup_should_discard_geometry(8))
+        self_test_fail("mild catch-up discarded complete geometry");
     {
         std::array<std::uint32_t, 37> source {};
         std::array<std::uint32_t, 37> destination {};
