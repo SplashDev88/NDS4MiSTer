@@ -51,6 +51,7 @@ module nds_nitro_save_bridge #(
         ST_READY,
         ST_LOAD_REQUEST,
         ST_LOAD_WAIT,
+        ST_LOAD_COMMIT,
         ST_FLUSH_REQUEST,
         ST_FLUSH_WAIT
     } state_t;
@@ -80,6 +81,7 @@ module nds_nitro_save_bridge #(
     logic clear_for_init;
     logic [10:0] init_sector;
     logic [10:0] init_last_sector;
+    logic [8:0] load_word_count;
     logic [QUIET_COUNTER_BITS-1:0] quiet_counter;
     logic profile_fresh_armed;
 
@@ -146,7 +148,13 @@ module nds_nitro_save_bridge #(
             backup_host_write_data = 16'hffff;
             backup_host_write_enable = 1'b1;
         end else if ((state == ST_LOAD_REQUEST || state == ST_LOAD_WAIT) &&
-                     sd_buff_wr) begin
+                     sd_buff_wr && !load_word_count[8]) begin
+            // hps_io's sector-buffer address is shared state.  A delayed MGL
+            // load was observed beginning at word 19, rotating an otherwise
+            // correct 512-byte save sector by 38 bytes.  Sector payload order
+            // is still sequential, so index the private cache from the request
+            // boundary instead of trusting that shared absolute address.
+            backup_host_addr = load_word_count[7:0];
             backup_host_write_enable = 1'b1;
         end
     end
@@ -187,6 +195,7 @@ module nds_nitro_save_bridge #(
             sd_lba <= 32'd0;
             sd_rd <= 1'b0;
             sd_wr <= 1'b0;
+            load_word_count <= 9'd0;
         end
     endtask
 
@@ -222,6 +231,10 @@ module nds_nitro_save_bridge #(
             backup_toggle_meta <= backup_write_toggle;
             backup_toggle_sync <= backup_toggle_meta;
             backup_toggle_d <= backup_toggle_sync;
+
+            if ((state == ST_LOAD_REQUEST || state == ST_LOAD_WAIT) &&
+                sd_buff_wr && !load_word_count[8])
+                load_word_count <= load_word_count + 1'b1;
 
             if (img_mounted) begin
                 mount_pending <= 1'b1;
@@ -381,6 +394,7 @@ module nds_nitro_save_bridge #(
                                          {1'b0, requested_lba} < mounted_sector_count) begin
                                 sd_lba <= {21'd0, requested_lba};
                                 sd_rd <= 1'b1;
+                                load_word_count <= 9'd0;
                                 state <= ST_LOAD_REQUEST;
                             end else begin
                                 clear_addr <= '0;
@@ -410,10 +424,25 @@ module nds_nitro_save_bridge #(
 
                     ST_LOAD_WAIT: begin
                         if (!sd_ack) begin
+                            // Give the mixed-width M10K one full cache clock to
+                            // commit its last registered host-port write before
+                            // publishing the sector to the cartridge side.
+                            state <= ST_LOAD_COMMIT;
+                        end
+                    end
+
+                    ST_LOAD_COMMIT: begin
+                        if (load_word_count == 9'd256) begin
                             cache_lba <= target_lba;
                             cache_valid <= 1'b1;
                             cache_dirty <= 1'b0;
                             state <= ST_READY;
+                        end else begin
+                            // A truncated transfer must never become a valid
+                            // save sector. Retry the same LBA from word zero.
+                            load_word_count <= 9'd0;
+                            sd_rd <= 1'b1;
+                            state <= ST_LOAD_REQUEST;
                         end
                     end
 
@@ -436,6 +465,7 @@ module nds_nitro_save_bridge #(
                                     {1'b0, target_lba} < mounted_sector_count) begin
                                     sd_lba <= {21'd0, target_lba};
                                     sd_rd <= 1'b1;
+                                    load_word_count <= 9'd0;
                                     state <= ST_LOAD_REQUEST;
                                 end else begin
                                     clear_addr <= '0;

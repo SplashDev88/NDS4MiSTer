@@ -33,6 +33,7 @@ module tb_nds_nitro_save_bridge;
     logic [15:0] disk_flash_target = 16'hffff;
     logic [15:0] disk_flash_1m_last = 16'hffff;
     integer io_word = 0;
+    integer io_addr_bias = 0;
     integer io_lba = 0;
     integer io_reads = 0;
     integer io_writes = 0;
@@ -75,7 +76,13 @@ module tb_nds_nitro_save_bridge;
     endtask
 
     always_comb begin
-        sd_buff_addr = io_word[12:0];
+        // hps_io saturates its shared buffer address rather than wrapping.
+        // A nonzero bias models the stale-address first-load failure captured
+        // on hardware while keeping the delivered sector data in file order.
+        if (io_word + io_addr_bias > 255)
+            sd_buff_addr = 13'd255;
+        else
+            sd_buff_addr = io_word + io_addr_bias;
         sd_buff_dout = disk_read(io_lba, io_word);
         sd_buff_wr = sd_ack && io_read;
     end
@@ -123,6 +130,7 @@ module tb_nds_nitro_save_bridge;
             disk_flash_1m_last = 16'hffff;
             io_reads = 0;
             io_writes = 0;
+            io_addr_bias = 0;
             max_write_lba = -1;
         end
     endtask
@@ -242,6 +250,7 @@ module tb_nds_nitro_save_bridge;
     endtask
 
     integer writes_before;
+    integer cache_index;
     initial begin
         clear_disk();
         power_reset();
@@ -315,12 +324,20 @@ module tb_nds_nitro_save_bridge;
         pulse_cart_download();
         mount_profile(64'd8192, 0, 4'd2);
 
-        // Existing 8 KiB EEPROM: sector cache load, dirty flush and persistence.
+        // Hardware regression: a delayed MGL load once delivered the sector in
+        // order while hps_io's shared address started at word 19. The bridge
+        // must fill its private cache from word zero and retain all 256 words.
+        for (cache_index = 0; cache_index < 256; cache_index = cache_index + 1)
+            cache[cache_index] = 16'h0000;
         disk_8k_word = 16'hbbaa;
+        io_addr_bias = 19;
         card_select(20'h00624);
         if (cache_byte(20'h00624) != 8'haa)
-            $fatal(1, "8K cache load mismatch");
+            $fatal(1, "biased first-load sector was rotated in cache");
         card_release();
+        io_addr_bias = 0;
+
+        // Existing 8 KiB EEPROM: dirty flush and persistence.
         card_write_byte(20'h00624, 8'h5a);
         wait_flush();
         if (disk_8k_word[7:0] != 8'h5a)
