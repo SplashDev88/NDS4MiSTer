@@ -170,6 +170,10 @@ module tb_nds_nitro_save_bridge;
         input logic [3:0] kind
     );
         begin
+            // Most persistence cases model the ordinary ROM-first ordering.
+            // Tests that need mount-first ordering drive both events directly.
+            if (!dut.cart_epoch_started)
+                pulse_cart_download();
             img_size <= size;
             img_readonly <= ro;
             img_mounted <= 1;
@@ -240,6 +244,29 @@ module tb_nds_nitro_save_bridge;
     integer writes_before;
     initial begin
         clear_disk();
+        power_reset();
+
+        // Direct-load ordering regression: MiSTer can mount the save several
+        // cycles before it begins the ROM transfer.  The bridge must reserve
+        // that mount for the upcoming cartridge rather than consuming and
+        // then discarding it at cart_download_start.
+        backup_save_type <= 4'd2;
+        backup_profile_valid <= 0;
+        img_size <= 64'd8192;
+        img_readonly <= 0;
+        img_mounted <= 1;
+        @(posedge clk);
+        img_mounted <= 0;
+        repeat (6) @(posedge clk);
+        if (dut.state != dut.ST_WAIT_MOUNT || !dut.mount_pending)
+            $fatal(1, "pre-download mount was consumed before cartridge epoch");
+        cart_download <= 1;
+        @(posedge clk);
+        cart_download <= 0;
+        repeat (2) @(posedge clk);
+        backup_profile_valid <= 1;
+        expect_run_ready(1);
+
         power_reset();
 
         // Real MiSTer ordering regression: the one-cycle save mount notice can

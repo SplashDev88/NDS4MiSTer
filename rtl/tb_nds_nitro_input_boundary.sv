@@ -84,6 +84,21 @@ module tb_nds_nitro_input_boundary;
             $fatal(1, "save mount escaped while media reset was asserted");
         @(negedge clk_video);
         media_reset = 1'b0;
+        // The queued mount belongs to the upcoming ROM, so it must remain
+        // reserved until the cartridge download begins.
+        repeat (5) @(posedge clk_video);
+        if (dut.save_ready || !dut.save_bridge.mount_pending) begin
+            $display("mount trace queue=%b pulse=%b reset=%b pending=%b epoch=%b state=%0d",
+                     dut.save_mount_queued, dut.save_mount_pulse,
+                     dut.save_bridge_reset_video, dut.save_bridge.mount_pending,
+                     dut.save_bridge.cart_epoch_started, dut.save_bridge.state);
+            $fatal(1, "queued mount was consumed before ROM download");
+        end
+        @(negedge clk_video);
+        ioctl_index = 16'h0003;
+        ioctl_download = 1'b1;
+        @(negedge clk_video);
+        ioctl_download = 1'b0;
         repeat (8) @(posedge clk_video);
         if (!dut.save_ready)
             $fatal(1, "mount pulse during media reset was not replayed");

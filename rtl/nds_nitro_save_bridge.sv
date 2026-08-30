@@ -58,6 +58,7 @@ module nds_nitro_save_bridge #(
     state_t state = ST_WAIT_MOUNT;
 
     logic cart_download_d;
+    logic cart_epoch_started;
     logic mount_pending;
     logic [63:0] mounted_size;
     logic mounted_readonly;
@@ -112,7 +113,7 @@ module nds_nitro_save_bridge #(
             mounted_valid_size,
             mounted_has_data,
             img_mounted,
-            cart_download,
+            cart_epoch_started,
             replacement_pending,
             sd_rd,
             sd_wr,
@@ -197,6 +198,7 @@ module nds_nitro_save_bridge #(
 
         if (reset) begin
             cart_download_d <= 1'b0;
+            cart_epoch_started <= 1'b0;
             backup_addr_meta <= '0;
             backup_addr_sync <= '0;
             access_meta <= 1'b0;
@@ -235,6 +237,7 @@ module nds_nitro_save_bridge #(
             end
 
             if (cart_download_start) begin
+                cart_epoch_started <= 1'b1;
                 save_ready <= 1'b0;
                 save_run_ready <= 1'b0;
                 replacement_pending <= 1'b1;
@@ -251,7 +254,12 @@ module nds_nitro_save_bridge #(
             end else begin
                 case (state)
                     ST_WAIT_MOUNT: begin
-                        if (mount_pending) begin
+                        // MiSTer may announce the save image before it starts
+                        // downloading the ROM.  Keep that mount unconsumed
+                        // until the cartridge epoch begins; otherwise the
+                        // later cart_download_start reset discards the only
+                        // mount notification and the first load hangs here.
+                        if (cart_epoch_started && mount_pending) begin
                             mount_pending <= 1'b0;
                             save_ready <= 1'b1;
                             save_run_ready <= 1'b0;
