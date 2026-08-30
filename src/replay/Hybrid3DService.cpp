@@ -6,6 +6,7 @@
 #include "replay/FpgaCrashMonitor.h"
 #include "replay/Hybrid3DAbi.h"
 #include "replay/Hybrid3DFramePacket.h"
+#include "replay/ReplaySpscState.h"
 
 #include <array>
 #include <atomic>
@@ -1029,11 +1030,8 @@ private:
         completed_trace_valid_ = false;
         replay_read_index_ = 0;
         replay_write_index_ = 0;
-        replay_published_index_.store(0, std::memory_order_relaxed);
-        replay_claimed_index_.store(0, std::memory_order_relaxed);
+        replay_state_.reset();
         replay_queue_high_water_.store(0, std::memory_order_relaxed);
-        replay_backlog_.store(0, std::memory_order_relaxed);
-        latest_input_frame_.store(0, std::memory_order_relaxed);
         latest_replay_frame_.store(0, std::memory_order_relaxed);
         replay_render_skip_countdown_ = 0;
         replay_render_cadence_ = 1;
@@ -1057,18 +1055,14 @@ private:
 
     std::uint32_t replay_queue_count() const noexcept
     {
-        const auto claimed = replay_claimed_index_.load(
-            std::memory_order_acquire);
-        const auto published = replay_published_index_.load(
-            std::memory_order_acquire);
-        return published - claimed;
+        return replay_state_.count();
     }
 
     bool replay_queue_has_capacity()
     {
-        const auto published = replay_published_index_.load(
-            std::memory_order_relaxed);
-        auto claimed = replay_claimed_index_.load(std::memory_order_acquire);
+        const auto snapshot = replay_state_.consumer_snapshot();
+        const auto published = snapshot.published;
+        auto claimed = snapshot.claimed;
         if (published - claimed != ReplayQueueCapacity)
             return true;
 
@@ -1081,7 +1075,7 @@ private:
         // scheduler polling on the replay CPU.
         const timespec timeout {0, 1000000};
         (void)replay_futex_wait(
-            replay_claimed_index_, claimed, &timeout);
+            replay_state_.claimed_word(), claimed, &timeout);
 #else
         std::unique_lock<std::mutex> lock(replay_mutex_);
         replay_cv_.wait_for(
@@ -1091,7 +1085,7 @@ private:
             });
 #endif
         if ((full_polls & 31u) == 0) publish_runtime_telemetry();
-        claimed = replay_claimed_index_.load(std::memory_order_acquire);
+        claimed = replay_state_.consumer_snapshot().claimed;
         return published - claimed != ReplayQueueCapacity;
     }
 
@@ -1225,20 +1219,13 @@ private:
         // writes this cache-line-separated index; the replay worker's acquire
         // load makes every header/vector write visible without a contended
         // counter RMW or replay_mutex_ on each packet.
-        const auto claimed = replay_claimed_index_.load(
-            std::memory_order_acquire);
-        const auto published = replay_published_index_.load(
-            std::memory_order_relaxed) + 1;
-        const auto queue_count = published - claimed;
-        replay_published_index_.store(published, std::memory_order_release);
+        const auto publication = replay_state_.publish(packet_header_.frame);
+        const auto queue_count = publication.count();
         const auto high_water = replay_queue_high_water_.load(
             std::memory_order_relaxed);
         if (queue_count > high_water)
             replay_queue_high_water_.store(
                 queue_count, std::memory_order_relaxed);
-        replay_backlog_.store(queue_count, std::memory_order_release);
-        latest_input_frame_.store(
-            packet_header_.frame, std::memory_order_release);
         if (pipeline_profile_enabled_) {
             replay_input_records_.fetch_add(
                 record_count, std::memory_order_relaxed);
@@ -1248,7 +1235,7 @@ private:
         }
         if (queue_count == 1) {
 #ifdef __linux__
-            replay_futex_wake(replay_published_index_);
+            replay_futex_wake(replay_state_.published_word());
 #else
             // Serialize only the empty-to-nonempty transition with a worker
             // that may be between its predicate check and sleep. Backlogged
@@ -1499,20 +1486,20 @@ private:
             }
             for (;;) {
                 if (replay_stop_.load(std::memory_order_acquire)) return;
-                auto claimed = replay_claimed_index_.load(
-                    std::memory_order_relaxed);
-                auto published = replay_published_index_.load(
-                    std::memory_order_acquire);
+                auto snapshot = replay_state_.consumer_snapshot();
+                auto claimed = snapshot.claimed;
+                auto published = snapshot.published;
                 if (published == claimed) {
 #ifdef __linux__
                     while (!replay_stop_.load(std::memory_order_acquire) &&
                            published == claimed) {
                         const int result = replay_futex_wait(
-                            replay_published_index_, published, nullptr);
+                            replay_state_.published_word(), published, nullptr);
                         if (result != 0 && errno != EAGAIN && errno != EINTR)
                             std::this_thread::yield();
-                        published = replay_published_index_.load(
-                            std::memory_order_acquire);
+                        snapshot = replay_state_.consumer_snapshot();
+                        claimed = snapshot.claimed;
+                        published = snapshot.published;
                     }
 #else
                     std::unique_lock<std::mutex> lock(replay_mutex_);
@@ -1520,8 +1507,9 @@ private:
                         return replay_stop_.load(std::memory_order_acquire) ||
                             replay_queue_count() != 0;
                     });
-                    published = replay_published_index_.load(
-                        std::memory_order_acquire);
+                    snapshot = replay_state_.consumer_snapshot();
+                    claimed = snapshot.claimed;
+                    published = snapshot.published;
 #endif
                     if (replay_stop_.load(std::memory_order_acquire)) return;
                 }
@@ -1532,14 +1520,10 @@ private:
                 const bool was_full =
                     published - claimed == ReplayQueueCapacity;
                 ++claimed;
-                replay_claimed_index_.store(claimed, std::memory_order_release);
-                const auto remaining =
-                    replay_published_index_.load(std::memory_order_acquire) -
-                    claimed;
-                replay_backlog_.store(remaining, std::memory_order_release);
+                replay_state_.claim(claimed);
                 if (was_full) {
 #ifdef __linux__
-                    replay_futex_wake(replay_claimed_index_);
+                    replay_futex_wake(replay_state_.claimed_word());
 #else
                     // Match the producer's full-queue parking transition;
                     // ordinary dequeues remain lock-free.
@@ -1602,7 +1586,7 @@ private:
                 // terminal packet. A packet arriving just after this check is
                 // still safe; it simply loses overlap with this one render.
                 if (!arm_video_render_shadow_ && arm_render_pending_ &&
-                    replay_backlog_.load(std::memory_order_acquire) == 0 &&
+                    replay_queue_count() == 0 &&
                     !finish_arm_render())
                     return;
             }
@@ -1611,11 +1595,9 @@ private:
 
     bool replay_render_deadline_missed(std::uint32_t replay_frame)
     {
-        const auto latest =
-            latest_input_frame_.load(std::memory_order_acquire);
+        const auto latest = replay_state_.latest_input_frame();
         const auto lead = latest >= replay_frame ? latest - replay_frame : 0;
-        const auto backlog =
-            replay_backlog_.load(std::memory_order_acquire);
+        const auto backlog = replay_queue_count();
 
         std::uint32_t cadence = 1;
         if (lead >= ReplayCatchupEighthFrames ||
@@ -1686,7 +1668,7 @@ private:
         if (!replay_worker_.joinable()) return;
 #ifdef __linux__
         replay_stop_.store(true, std::memory_order_release);
-        replay_futex_wake(replay_published_index_);
+        replay_futex_wake(replay_state_.published_word());
 #else
         {
             std::lock_guard<std::mutex> lock(replay_mutex_);
@@ -1714,15 +1696,14 @@ private:
         if (!runtime_telemetry_) return;
         runtime_telemetry_->session.store(session_, std::memory_order_relaxed);
         runtime_telemetry_->replay_backlog.store(
-            static_cast<std::uint32_t>(
-                replay_backlog_.load(std::memory_order_relaxed)),
+            replay_queue_count(),
             std::memory_order_relaxed);
         runtime_telemetry_->replay_queue_high_water.store(
             static_cast<std::uint32_t>(replay_queue_high_water_.load(
                 std::memory_order_relaxed)),
             std::memory_order_relaxed);
         runtime_telemetry_->latest_input_frame.store(
-            latest_input_frame_.load(std::memory_order_relaxed),
+            replay_state_.latest_input_frame(),
             std::memory_order_relaxed);
         runtime_telemetry_->latest_replay_frame.store(
             latest_replay_frame_.load(std::memory_order_relaxed),
@@ -3836,17 +3817,11 @@ private:
     std::array<ReplayPacket, ReplayArenaCapacity> replay_queue_ {};
     std::size_t replay_read_index_ = 0;
     std::size_t replay_write_index_ = 0;
-    // DreamSTer-style SPSC ownership: each side writes only its own index.
-    // Separate cache lines prevent the Cortex-A9 cores from bouncing an
-    // otherwise unrelated producer/consumer cache line on every packet.
-    alignas(64) std::atomic<std::uint32_t> replay_published_index_ {0};
-    alignas(64) std::atomic<std::uint32_t> replay_claimed_index_ {0};
+    nds4mister::replay::ReplaySpscState replay_state_;
     std::atomic<std::uint32_t> replay_queue_high_water_ {0};
     std::mutex replay_mutex_;
     std::condition_variable replay_cv_;
     std::thread replay_worker_;
-    std::atomic<std::size_t> replay_backlog_ {0};
-    std::atomic<std::uint32_t> latest_input_frame_ {0};
     std::atomic<std::uint32_t> latest_replay_frame_ {0};
     std::uint32_t replay_render_skip_countdown_ = 0;
     std::uint32_t replay_render_cadence_ = 1;
