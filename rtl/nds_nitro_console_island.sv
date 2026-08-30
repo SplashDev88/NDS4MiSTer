@@ -225,7 +225,6 @@ wire backup_access_active;
 (* async_reg = "true" *) logic backup_profile_valid_sync_video;
 wire backup_cache_ready_video;
 wire save_run_ready_video;
-wire [27:0] save_debug_status;
 (* async_reg = "true" *) logic backup_cache_ready_meta_1x;
 (* async_reg = "true" *) logic backup_cache_ready_sync_1x;
 (* async_reg = "true" *) logic save_run_ready_meta_1x;
@@ -390,7 +389,6 @@ nds_nitro_save_bridge save_bridge (
     .save_ready(save_ready),
     .save_run_ready(save_run_ready_video),
     .backup_cache_ready(backup_cache_ready_video),
-    .debug_status(save_debug_status),
     .sd_lba(save_sd_lba),
     .sd_rd(save_sd_rd),
     .sd_wr(save_sd_wr),
@@ -1342,7 +1340,11 @@ always_comb begin
         };
         3'd6: h3d_public_crash_telemetry =
             {4'h7, h3d_fabric_debug[27:0]};
-        default: h3d_public_crash_telemetry = {4'h8, save_debug_status};
+        default: h3d_public_crash_telemetry = {
+            4'h8, h3d_line_drop_count_ddr,
+            h3d_plane_deadline_count_ddr, h3d_plane_miss_count_ddr,
+            h3d_record_ddr_fault_reason
+        };
     endcase
 end
 // The return plane is derived display data and may complete after its source
