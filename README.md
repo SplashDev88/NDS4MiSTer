@@ -10,9 +10,10 @@ cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
 through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
 cartridge read-ahead, and the current ARM-assisted 3D performance path with
 full-frame renderer-fence batching, adaptive dual-core raster balancing,
-bounded obsolete-geometry discard, and DreamSTer-style lock-free SPSC/futex
-synchronization. It also fixes first-load save-sector alignment and preserves
-the verified cartridge/save epoch across reset and direct-load transitions.
+generation-safe catch-up visibility, stabilized raster-drop pacing, and
+DreamSTer-style lock-free SPSC/futex synchronization. It also fixes first-load
+save-sector alignment and preserves the verified cartridge/save epoch across
+reset and direct-load transitions.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
 verification, exclusions, and current limitations.
 
@@ -42,6 +43,11 @@ reboot.
   falls behind, geometry that can no longer be displayed is discarded through
   the next real GX flush boundary so incomplete polygon buffers are never
   mixed into a visible frame.
+- A generation-tagged visibility guard retains the last valid 3D plane when a
+  catch-up discard produces an empty intermediate result. Mild load preserves
+  complete geometry and skips only the raster pass; aggressive discard is
+  reserved for a backlog that is actually growing. This removes recurring
+  blank-frame flashes while keeping heavy NSMB scenes evenly paced.
 - The ARM packet queue and renderer handoff use cache-separated single-
   producer/single-consumer indices with private Linux futexes. Normal queued
   work avoids mutex and kernel transitions without skipping packets, commands,

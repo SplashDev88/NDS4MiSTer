@@ -6,8 +6,9 @@ work, expanded save-profile/Flash implementation, save-profile CDC fix,
 controller touch, PSX-derived FPGA space efficiencies, DreamSTer-derived
 full-frame renderer-fence batching, adaptive raster balancing, bounded
 obsolete-geometry discard, and cache-separated SPSC/futex synchronization.
-It also fixes first-load save-sector alignment and preserves verified save
-mount state across reset and direct-load transitions.
+It also includes generation-safe empty-plane suppression and stabilized
+catch-up pacing, fixes first-load save-sector alignment, and preserves verified
+save mount state across reset and direct-load transitions.
 
 This curated source snapshot corresponds to the installable
 NDS4MiSTer_Public_Beta_v0.3.0-beta.4_20260830 package. It retains the
@@ -26,7 +27,7 @@ FPGA core:
   86a8fda84abea7aa85e0216fb76d638dcc1ebe84ecd541b9e35eb2de5656fc2c
 
 ARM hybrid-3D service:
-  015d0e0d53dceebcb023814610033a04e23074fd38c21a4ec2e284239ca8d500
+  c7961dbe435641d760ac39428e74f553f98a5e99d2e9c90e98fdf001033cd8d8
 
 ARM 3D frame-fence optimization
 -------------------------------
@@ -71,6 +72,22 @@ DreamSTer-style ARM synchronization
   seconds: 55.6 FPS, or 92.7% of the 60 FPS target, with no ARM/HPS or FPGA
   faults. Scene-to-scene variation prevents treating this as a controlled
   whole-game FPS percentage against the previous beta.
+
+Catch-up visibility and frame pacing
+------------------------------------
+
+* Catch-up discards carry a monotonically increasing visibility generation.
+  An older asynchronous render therefore cannot clear a newer discard state
+  or publish its derived empty plane over the last valid 3D result.
+* Mild catch-up preserves the complete GX geometry build and skips only the
+  expensive raster pass. More destructive third/quarter/eighth-rate tiers are
+  reserved for measured replay leads of 8/12/16 frames instead of oscillating
+  at the normal four-to-six-frame heavy-scene range.
+* In the accepted NSMB castle sample, input and replay both held 59.8 frames/s,
+  raster publication held 33.4 frames/s under sustained load, replay backlog
+  remained bounded at 2-6 frames, and FPGA/HPS fault counts stayed zero. The
+  maintainer reported substantially smoother movement with only minor residual
+  jerkiness.
 
 FPGA space efficiencies
 -----------------------
