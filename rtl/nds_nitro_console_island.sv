@@ -235,6 +235,44 @@ wire [15:0] backup_host_write_data;
 wire backup_host_write_enable;
 wire [15:0] backup_host_read_data;
 
+// hps_io can publish its one-cycle img_mounted notice while the console
+// island is still held in its power/media reset.  Queue that notice outside
+// the save bridge reset domain, then replay it for exactly one clk_video cycle
+// after reset has deasserted cleanly.  The image metadata is captured with the
+// notice so the replay cannot observe a later hps_io transaction's values.
+wire save_bridge_reset_request = media_reset | ~island_locked | ~enable;
+(* async_reg = "true" *) logic [1:0] save_bridge_reset_sync_video = 2'b11;
+logic save_mount_queued = 1'b0;
+logic save_mount_pulse = 1'b0;
+logic save_mount_readonly = 1'b0;
+logic [63:0] save_mount_size = 64'd0;
+
+always_ff @(posedge clk_video or posedge save_bridge_reset_request) begin
+    if (save_bridge_reset_request)
+        save_bridge_reset_sync_video <= 2'b11;
+    else
+        save_bridge_reset_sync_video <= {save_bridge_reset_sync_video[0], 1'b0};
+end
+wire save_bridge_reset_video = save_bridge_reset_sync_video[1];
+
+always_ff @(posedge clk_video) begin
+    save_mount_pulse <= 1'b0;
+
+    if (save_img_mounted) begin
+        save_mount_readonly <= save_img_readonly;
+        save_mount_size <= save_img_size;
+        if (save_bridge_reset_video)
+            save_mount_queued <= 1'b1;
+        else
+            save_mount_pulse <= 1'b1;
+    end
+
+    if (!save_bridge_reset_video && save_mount_queued) begin
+        save_mount_queued <= 1'b0;
+        save_mount_pulse <= 1'b1;
+    end
+end
+
 always_ff @(posedge clk_video) begin
     backup_save_type_meta_video <= backup_save_type;
     backup_save_type_sync_video <= backup_save_type_meta_video;
@@ -303,11 +341,11 @@ defparam
 
 nds_nitro_save_bridge save_bridge (
     .clk(clk_video),
-    .reset(media_reset | ~island_locked | ~enable),
+    .reset(save_bridge_reset_video),
     .cart_download(cart_download_raw),
-    .img_mounted(save_img_mounted),
-    .img_readonly(save_img_readonly),
-    .img_size(save_img_size),
+    .img_mounted(save_mount_pulse),
+    .img_readonly(save_mount_readonly),
+    .img_size(save_mount_size),
     .backup_save_type(backup_save_type_sync_video),
     .backup_profile_valid(backup_profile_valid_sync_video),
     .backup_linear_addr(backup_addr),

@@ -69,19 +69,27 @@ module tb_nds_nitro_input_boundary;
     endtask
 
     initial begin
-        // A mounted save is media state, not CPU state. Capture MiSTer's
-        // one-shot mount pulse, then prove an OSD-style shell reset retains
-        // it while a real media reset still clears it.
+        // MiSTer can publish its one-cycle mount notice while the island is
+        // still held in power/media reset.  The product boundary must queue
+        // and replay it after reset rather than leaving the save bridge in
+        // ST_WAIT_MOUNT on the first ROM load.
         repeat (3) @(posedge clk_video);
         @(negedge clk_video);
-        media_reset = 1'b0;
         save_img_size = 64'd8192;
         save_img_mounted = 1'b1;
         @(negedge clk_video);
         save_img_mounted = 1'b0;
-        repeat (4) @(posedge clk_video);
+        repeat (2) @(posedge clk_video);
+        if (dut.save_ready)
+            $fatal(1, "save mount escaped while media reset was asserted");
+        @(negedge clk_video);
+        media_reset = 1'b0;
+        repeat (8) @(posedge clk_video);
         if (!dut.save_ready)
-            $fatal(1, "one-shot save mount was not captured");
+            $fatal(1, "mount pulse during media reset was not replayed");
+
+        // A mounted save is media state, not CPU state. Prove an OSD-style
+        // shell reset retains it while a real media reset still clears it.
         @(negedge clk_video);
         shell_reset = 1'b1;
         repeat (3) @(posedge clk_video);
