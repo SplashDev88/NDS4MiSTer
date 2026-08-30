@@ -2,15 +2,17 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to Public Cumulative Beta v0.3.0-beta.3
-(2026-08-29).
+This source snapshot corresponds to Public Cumulative Beta v0.3.0-beta.4
+(2026-08-30).
 It combines controller-driven touchscreen input with the LG
 C-series-compatible video path, selectable screen layouts, melonDS-derived
 cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
 through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
 cartridge read-ahead, and the current ARM-assisted 3D performance path with
-full-frame renderer-fence batching, adaptive dual-core raster balancing, and
-bounded obsolete-geometry discard.
+full-frame renderer-fence batching, adaptive dual-core raster balancing,
+bounded obsolete-geometry discard, and DreamSTer-style lock-free SPSC/futex
+synchronization. It also fixes first-load save-sector alignment and preserves
+the verified cartridge/save epoch across reset and direct-load transitions.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
 verification, exclusions, and current limitations.
 
@@ -21,7 +23,7 @@ credentials are included.
 
 1. Unzip the release package to the root of your MiSTer SD card.
 2. Go to **Scripts → NDS_Kickstart** and let the 3D service start.
-3. Go to **Console → NDS_20260829** and launch the core.
+3. Go to **Console → NDS_20260830** and launch the core.
 4. Choose your `.nds` ROM from the core menu.
 
 You must run **NDS_Kickstart** before launching the core after every MiSTer
@@ -40,6 +42,10 @@ reboot.
   falls behind, geometry that can no longer be displayed is discarded through
   the next real GX flush boundary so incomplete polygon buffers are never
   mixed into a visible frame.
+- The ARM packet queue and renderer handoff use cache-separated single-
+  producer/single-consumer indices with private Linux futexes. Normal queued
+  work avoids mutex and kernel transitions without skipping packets, commands,
+  frames, or polygons.
 - The release sound implementation is the GPL-licensed Nitro_DarkSide engine
   in `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`. The release wrapper
   builds it with `SOUND_ENABLE=1`.
@@ -96,14 +102,20 @@ delivered to the game.
 - Engine B is not enabled; both displayed positions currently show Engine A.
 - Heavy 3D scenes can slow down, fall behind, or crash.
 - Cartridge-access latency can make objects or effects appear late or fail.
-- The Reset menu command currently hangs; reselecting the ROM is the restart
-  workaround.
+- Reset now preserves the cartridge and save mount used by the running game.
+  Reselecting the ROM remains the fallback for titles that do not reset cleanly.
 - Basic touchscreen input uses the controller's right stick for absolute
   position and the remappable `Touch` action for pen-down. Because Engine B is
   not displayed yet, games that require precise interaction with touchscreen
   graphics remain limited.
 - Chrono Trigger has a separate boot failure under investigation.
 - NAND saves, save states, Wi-Fi, and microphone support are not implemented.
+
+If a game still reports corrupted save data after upgrading, first back up and
+then delete or move that game's existing `.sav` file from
+`/media/fat/saves/NDS/`. Older experimental builds may have created an
+incorrectly sized or already-corrupted file; this core will not attempt to
+repair corrupted legacy data and the game must create a fresh save.
 
 ## Issues and bug reports
 

@@ -1,14 +1,16 @@
-NDS4MiSTer public cumulative beta v0.3.0-beta.3 source - 2026-08-29
+NDS4MiSTer public cumulative beta v0.3.0-beta.4 source - 2026-08-30
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
 work, expanded save-profile/Flash implementation, save-profile CDC fix,
 controller touch, PSX-derived FPGA space efficiencies, DreamSTer-derived
-full-frame renderer-fence batching, adaptive raster balancing, and bounded
-obsolete-geometry discard.
+full-frame renderer-fence batching, adaptive raster balancing, bounded
+obsolete-geometry discard, and cache-separated SPSC/futex synchronization.
+It also fixes first-load save-sector alignment and preserves verified save
+mount state across reset and direct-load transitions.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.3_20260829 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.4_20260830 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -21,10 +23,10 @@ Release identities
 ------------------
 
 FPGA core:
-  d459b7805309d01807854be6a19d241ea3bc0572b46df1176d3843abb1b82740
+  86a8fda84abea7aa85e0216fb76d638dcc1ebe84ecd541b9e35eb2de5656fc2c
 
 ARM hybrid-3D service:
-  52b097e80839597b981775c28dd17deef9305db3e180730e40a407753edc6265
+  015d0e0d53dceebcb023814610033a04e23074fd38c21a4ec2e284239ca8d500
 
 ARM 3D frame-fence optimization
 -------------------------------
@@ -55,6 +57,21 @@ ARM 3D adaptive-raster and catch-up optimization
   56.3 rendered 3D frames/s, and 55.9 published 3D frames/s. The replay backlog
   recovered from 6 frames to 0, with no FPGA or ARM/HPS faults.
 
+DreamSTer-style ARM synchronization
+-----------------------------------
+
+* Cache-separated SPSC producer/consumer indices replace the mutex on the
+  fixed replay arena. Private Linux futexes are used only when the queue is
+  truly empty or full.
+* The headless renderer uses the same atomic-counting/futex approach. No
+  packet, command, frame, polygon, or raster result is skipped.
+* Focused A/B measurements found 4.8% lower end-to-end packet retirement time,
+  8.0% lower renderer handoff latency, and 29.9% lower burst-handoff time.
+* A demanding live sample rendered and published 532 3D frames in 9.569
+  seconds: 55.6 FPS, or 92.7% of the 60 FPS target, with no ARM/HPS or FPGA
+  faults. Scene-to-scene variation prevents treating this as a controlled
+  whole-game FPS percentage against the previous beta.
+
 FPGA space efficiencies
 -----------------------
 
@@ -76,9 +93,19 @@ Save support
 * Existing-save loading, dirty flushing, and persistence across ROM reloads
 * Safe handling of read-only and invalid-size images
 * Cartridge saves are supported; emulator save states are not
+* First-load sector data is indexed from the private transfer word count, not
+  the shared MiSTer buffer address, preventing the measured 19-word offset.
+* Verified cartridge/save epochs survive reset and direct-load transitions.
 
-The Reset menu command currently hangs and is documented as a known
-regression. Reselecting the ROM is the restart workaround.
+Reset was verified with New Super Mario Bros. after preserving the cartridge
+and save mount. Reselecting the ROM remains the fallback for titles that do
+not reset cleanly.
+
+Older experimental builds may already have created an incorrectly sized or
+corrupted `.sav` file. If a game still reports save corruption, back up and
+then delete or move that game's existing file from `/media/fat/saves/NDS/` so
+the game can create a fresh save. This release does not attempt to repair
+corrupted legacy data.
 
 Touch support
 -------------
@@ -103,13 +130,14 @@ cross-size isolation, right-stick touch coordinates, pen release, SPI touch,
 direct-boot calibration, and the complete Nitro console-island host RTL gate.
 
 Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
-successful fit used 41,299 of 41,910 ALMs (99%), 44,947 registers, 468 of 553
+successful fit used 41,221 of 41,910 ALMs (98%), 45,033 registers, 468 of 553
 RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with device
-checksum 0x0FD41911. Static timing remains diagnostic information rather than a
+checksum 0x0FC92DB2. Static timing remains diagnostic information rather than a
 deployment gate for this experimental project. This exact RBF was direct-
 loaded from the MiSTer menu with FPGA state `operating`, core identity `NDS`,
 and exactly one verified ARM service at 1 GHz. The maintainer approved its LG
-C-series video, cartridge-save persistence, and representative gameplay speed.
+C-series video, cartridge-save persistence across a cold boot, reset behavior,
+and representative gameplay speed.
 
 Package exclusions
 ------------------
