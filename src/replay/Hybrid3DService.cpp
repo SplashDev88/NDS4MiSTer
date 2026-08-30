@@ -391,6 +391,44 @@ private:
     unsigned empty_streak_ = 0;
 };
 
+// Catch-up may deliberately discard an obsolete polygon build while keeping
+// all architectural GX state. The next renderer result can consequently be
+// transparent even though the game did not author a clear. Carry that fact
+// into PlaneVisibilityFilter's expected-alpha input until a visible render
+// proves recovery. Generations prevent completion of an older asynchronous
+// render from clearing a discard that arrived while it was running.
+class CatchupVisibilityTaint {
+public:
+    using Generation = std::uint64_t;
+
+    void reset() noexcept
+    {
+        current_ = 0;
+        recovered_ = 0;
+    }
+
+    void mark_discarded() noexcept { ++current_; }
+
+    Generation capture_for_render() const noexcept { return current_; }
+
+    bool expected_alpha(
+        Generation generation, bool native_expected_alpha) const noexcept
+    {
+        return native_expected_alpha || generation > recovered_;
+    }
+
+    void complete_render(Generation generation, bool has_alpha) noexcept
+    {
+        if (has_alpha && generation > recovered_) recovered_ = generation;
+    }
+
+    bool active() const noexcept { return current_ > recovered_; }
+
+private:
+    Generation current_ = 0;
+    Generation recovered_ = 0;
+};
+
 bool plane_has_alpha(const std::uint32_t* pixels)
 {
     if (!pixels) return false;
@@ -1012,6 +1050,7 @@ private:
         pending_external_vram_mask_ = 0;
         arm_render_pending_ = false;
         arm_render_expected_alpha_ = false;
+        arm_render_visibility_generation_ = 0;
         arm_video_phase_started_ = false;
         arm_video_renderer_started_ = false;
         arm_video_render_in_flight_ = false;
@@ -1035,6 +1074,7 @@ private:
         latest_replay_frame_.store(0, std::memory_order_relaxed);
         replay_render_skip_countdown_ = 0;
         replay_render_cadence_ = 1;
+        catchup_visibility_taint_.reset();
         replay_frame_active_ = false;
         replay_frame_discard_geometry_ = false;
         replay_active_frame_ = 0;
@@ -1651,8 +1691,10 @@ private:
             replay_render_deadline_missed(frame);
         nds_->GPU.GPU3D.SetExternalGeometryDiscard(
             replay_frame_discard_geometry_);
-        if (replay_frame_discard_geometry_)
+        if (replay_frame_discard_geometry_) {
+            catchup_visibility_taint_.mark_discarded();
             ++replay_geometry_discard_frames_;
+        }
         return true;
     }
 
@@ -2579,9 +2621,12 @@ private:
                 FaultBadFrame,
                 "derived rendering began before terminal packet acknowledgement");
         }
-        arm_render_expected_alpha_ =
+        arm_render_visibility_generation_ =
+            catchup_visibility_taint_.capture_for_render();
+        arm_render_expected_alpha_ = catchup_visibility_taint_.expected_alpha(
+            arm_render_visibility_generation_,
             nds_->GPU.GPU3D.RenderNumPolygons != 0 ||
-            ((nds_->GPU.GPU3D.RenderClearAttr1 >> 16) & 0x1fu) != 0;
+                ((nds_->GPU.GPU3D.RenderClearAttr1 >> 16) & 0x1fu) != 0);
         arm_render_sequence_ = packet_sequence;
         arm_render_polygon_count_ = nds_->GPU.GPU3D.RenderNumPolygons;
         if (asynchronous_plane_publication_) {
@@ -2775,6 +2820,8 @@ private:
                     destination_line, line, PlaneWidth);
             }
         }
+        catchup_visibility_taint_.complete_render(
+            arm_render_visibility_generation_, copied_plane_has_alpha);
         if (!identical || completed_plane_generation_ == 0)
             ++completed_plane_generation_;
         if (asynchronous_plane_publication_) {
@@ -3764,6 +3811,7 @@ private:
     std::atomic<bool> frame_publication_fence_active_ {false};
     bool arm_render_pending_ = false;
     bool arm_render_expected_alpha_ = false;
+    CatchupVisibilityTaint::Generation arm_render_visibility_generation_ = 0;
     std::uint32_t arm_render_sequence_ = 0;
     std::uint32_t arm_render_polygon_count_ = 0;
     PlaneVisibilityFilter plane_visibility_filter_;
@@ -3825,6 +3873,7 @@ private:
     std::atomic<std::uint32_t> latest_replay_frame_ {0};
     std::uint32_t replay_render_skip_countdown_ = 0;
     std::uint32_t replay_render_cadence_ = 1;
+    CatchupVisibilityTaint catchup_visibility_taint_;
     bool replay_frame_active_ = false;
     bool replay_frame_discard_geometry_ = false;
     std::uint32_t replay_active_frame_ = 0;
@@ -4024,6 +4073,7 @@ void run_self_test()
     }
     {
         PlaneVisibilityFilter filter;
+        CatchupVisibilityTaint catchup_taint;
         std::array<std::uint32_t, PlanePixels> plane {};
         if (!filter.publish(false, false) || plane_has_alpha(plane.data()))
             self_test_fail("initial transparent plane was rejected");
@@ -4049,6 +4099,43 @@ void run_self_test()
         filter.reset();
         if (!filter.publish(false, true))
             self_test_fail("transparent-plane filter reset failed");
+
+        // A catch-up discard must not turn the next derived empty raster into
+        // an authoritative clear.  Keep the last populated plane through the
+        // exact repeated-empty sequence, then remove the taint only after a
+        // genuinely populated render.  A later game-authored clear remains
+        // immediate.
+        filter.reset();
+        if (!filter.publish(true, true))
+            self_test_fail("catch-up visibility fixture rejected population");
+        const auto pre_discard_generation =
+            catchup_taint.capture_for_render();
+        catchup_taint.mark_discarded();
+        // An older asynchronous render may complete after this discard; its
+        // visible result must not clear the newer catch-up taint.
+        catchup_taint.complete_render(pre_discard_generation, true);
+        const auto recovery_generation =
+            catchup_taint.capture_for_render();
+        if (!catchup_taint.active() ||
+            filter.publish(
+                false, catchup_taint.expected_alpha(
+                    recovery_generation, false)) ||
+            filter.publish(
+                false, catchup_taint.expected_alpha(
+                    recovery_generation, false)) ||
+            filter.publish(
+                false, catchup_taint.expected_alpha(
+                    recovery_generation, false)))
+            self_test_fail("catch-up discard published a derived empty plane");
+        catchup_taint.complete_render(recovery_generation, true);
+        if (catchup_taint.active() ||
+            !filter.publish(
+                true, catchup_taint.expected_alpha(
+                    recovery_generation, true)) ||
+            !filter.publish(
+                false, catchup_taint.expected_alpha(
+                    recovery_generation, false)))
+            self_test_fail("catch-up visibility guard hid a real plane clear");
     }
     Fixture fixture(Session);
     const std::vector<frame_packet::Record> continuation {
