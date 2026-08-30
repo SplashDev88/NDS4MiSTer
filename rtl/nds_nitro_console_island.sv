@@ -246,8 +246,11 @@ logic save_mount_queued = 1'b0;
 logic save_mount_pulse = 1'b0;
 logic save_mount_readonly = 1'b0;
 logic [63:0] save_mount_size = 64'd0;
-logic save_cart_download_queued = 1'b0;
-logic save_cart_download_pulse = 1'b0;
+(* async_reg = "true" *) logic [1:0] save_cart_ready_sync_video = 2'b00;
+logic save_cart_ready_d = 1'b0;
+logic save_cart_download_d = 1'b0;
+logic save_cart_event_seen = 1'b0;
+logic save_cart_event_pulse = 1'b0;
 
 always_ff @(posedge clk_video or posedge save_bridge_reset_request) begin
     if (save_bridge_reset_request)
@@ -259,7 +262,6 @@ wire save_bridge_reset_video = save_bridge_reset_sync_video[1];
 
 always_ff @(posedge clk_video) begin
     save_mount_pulse <= 1'b0;
-    save_cart_download_pulse <= 1'b0;
 
     if (save_img_mounted) begin
         save_mount_readonly <= save_img_readonly;
@@ -272,15 +274,38 @@ always_ff @(posedge clk_video) begin
         save_mount_queued <= 1'b0;
         save_mount_pulse <= 1'b1;
     end
+end
 
-    // MiSTer's FS loader brackets the save mount with ioctl_download. During
-    // an MGL direct load that entire bracket can occur while this bridge is
-    // reset. Preserve the cartridge epoch just like the one-cycle mount.
-    if (save_bridge_reset_video && cart_download_raw) begin
-        save_cart_download_queued <= 1'b1;
-    end else if (!save_bridge_reset_video && save_cart_download_queued) begin
-        save_cart_download_queued <= 1'b0;
-        save_cart_download_pulse <= 1'b1;
+// The raw hps_io download level is the earliest cartridge-replacement notice,
+// so retain it for flushing an outgoing dirty save before MiSTer mounts the
+// next sidecar.  A direct MGL load can place the complete raw pulse inside the
+// bridge reset interval, however.  The cartridge FSM's verified-ready level
+// survives that interval and provides an authoritative fallback edge after
+// reset.  One event is emitted per reset/load epoch; a normal raw edge marks
+// the fallback as already satisfied.
+always_ff @(posedge clk_video or posedge save_bridge_reset_request) begin
+    if (save_bridge_reset_request) begin
+        save_cart_ready_sync_video <= 2'b00;
+        save_cart_ready_d <= 1'b0;
+        save_cart_download_d <= 1'b0;
+        save_cart_event_seen <= 1'b0;
+        save_cart_event_pulse <= 1'b0;
+    end else begin
+        save_cart_ready_sync_video <= {
+            save_cart_ready_sync_video[0], cart_loaded_ddr
+        };
+        save_cart_ready_d <= save_cart_ready_sync_video[1];
+        save_cart_download_d <= cart_download_raw;
+        save_cart_event_pulse <= 1'b0;
+
+        if (cart_download_raw && !save_cart_download_d) begin
+            save_cart_event_seen <= 1'b1;
+            save_cart_event_pulse <= 1'b1;
+        end else if (save_cart_ready_sync_video[1] && !save_cart_ready_d &&
+                     !save_cart_event_seen) begin
+            save_cart_event_seen <= 1'b1;
+            save_cart_event_pulse <= 1'b1;
+        end
     end
 end
 
@@ -353,7 +378,7 @@ defparam
 nds_nitro_save_bridge save_bridge (
     .clk(clk_video),
     .reset(save_bridge_reset_video),
-    .cart_download(cart_download_raw | save_cart_download_pulse),
+    .cart_download(save_cart_event_pulse),
     .img_mounted(save_mount_pulse),
     .img_readonly(save_mount_readonly),
     .img_size(save_mount_size),

@@ -49,7 +49,9 @@ module tb_nds_nitro_input_boundary;
     wire [7:0] island_ddr_burst;
     wire [28:0] island_ddr_addr;
     logic [63:0] island_ddr_dout = '0;
-    logic island_ddr_dout_ready = 1'b0;
+    // Complete the two cartridge-cache displacement probes immediately; this
+    // boundary test is concerned with the verified-ready epoch, not DDR data.
+    logic island_ddr_dout_ready = 1'b1;
     wire island_ddr_read;
     wire [63:0] island_ddr_din;
     wire [7:0] island_ddr_be;
@@ -86,13 +88,19 @@ module tb_nds_nitro_input_boundary;
         repeat (2) @(posedge clk_video);
         if (dut.save_ready)
             $fatal(1, "save mount escaped while media reset was asserted");
-        if (!dut.save_mount_queued || !dut.save_cart_download_queued)
-            $fatal(1, "direct-load ROM/save events were not queued during reset");
+        if (!dut.save_mount_queued)
+            $fatal(1, "direct-load save mount was not queued during reset");
+        if (dut.save_cart_event_seen || dut.save_cart_event_pulse)
+            $fatal(1, "cartridge event escaped while media reset was asserted");
         @(negedge clk_video);
         media_reset = 1'b0;
-        repeat (10) @(posedge clk_video);
+        repeat (200) @(posedge clk_video);
         if (!dut.save_ready)
-            $fatal(1, "direct-load ROM/save events were not replayed after reset");
+            $fatal(1,
+                "verified cartridge-ready fallback failed cart_state=%0d cart_loaded=%b ready_sync=%b event=%b/%b",
+                dut.cart_state, dut.cart_loaded_ddr,
+                dut.save_cart_ready_sync_video,
+                dut.save_cart_event_seen, dut.save_cart_event_pulse);
 
         // A mounted save is media state, not CPU state. Prove an OSD-style
         // shell reset retains it while a real media reset still clears it.
@@ -103,6 +111,16 @@ module tb_nds_nitro_input_boundary;
             $fatal(1, "console soft reset discarded mounted save state");
         @(negedge clk_video);
         shell_reset = 1'b0;
+
+        // Once the bridge is live, a normal raw replacement edge must still
+        // arrive immediately so an outgoing dirty cache can flush before the
+        // next sidecar is mounted. The verified-ready edge is fallback only.
+        ioctl_download = 1'b1;
+        @(negedge clk_video);
+        if (!dut.save_cart_event_pulse)
+            $fatal(1, "live cartridge download edge did not reach save bridge");
+        ioctl_download = 1'b0;
+
         media_reset = 1'b1;
         repeat (2) @(posedge clk_video);
         if (dut.save_ready)

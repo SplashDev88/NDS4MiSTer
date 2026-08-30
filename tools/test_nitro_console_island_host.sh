@@ -103,7 +103,15 @@ grep -Fq 'wire core_reset=media_reset|status[0]|buttons[1];' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '.media_reset(media_reset)' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
-grep -Fq '.reset(media_reset | ~island_locked | ~enable)' \
+grep -Fq 'wire save_bridge_reset_request = media_reset | ~island_locked | ~enable;' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq 'save_cart_ready_sync_video[0], cart_loaded_ddr' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.reset(save_bridge_reset_video)' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.cart_download(save_cart_event_pulse)' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.img_mounted(save_mount_pulse)' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 if grep -Fq 'Nitro console,On,Off' \
         "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"; then
