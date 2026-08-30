@@ -1,6 +1,8 @@
 #include "Platform.h"
 #include "melonds/HeadlessSaveCallback.h"
 
+#include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <condition_variable>
 #include <cstdarg>
@@ -14,6 +16,13 @@
 #include <string>
 #include <thread>
 
+#if defined(__linux__)
+#include <climits>
+#include <linux/futex.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+#endif
+
 namespace melonDS::Platform {
 
 struct FileHandle {
@@ -25,9 +34,19 @@ struct Thread {
 };
 
 struct Semaphore {
+#if defined(__linux__)
+    // NDS4MiSTer's headless renderer uses these fences between one producer
+    // and one consumer. Keep the uncontended hand-off entirely in userspace;
+    // the kernel is entered only when the consumer really has to sleep.
+    // This mirrors DreamSTer's atomic SPSC synchronization without changing
+    // melonDS's public semaphore contract or its desktop frontends.
+    std::atomic<int> count {0};
+    std::atomic<unsigned> waiters {0};
+#else
     std::mutex mutex;
     std::condition_variable cv;
     int count = 0;
+#endif
 };
 
 struct Mutex {
@@ -61,6 +80,40 @@ bool mode_no_create(FileMode mode)
 {
     return (mode & NoCreate) != 0;
 }
+
+#if defined(__linux__)
+static_assert(
+    std::atomic<int>::is_always_lock_free,
+    "the Linux headless semaphore requires lock-free 32-bit atomics");
+
+int futex_wait(
+    std::atomic<int>& value, int expected, const timespec* timeout = nullptr)
+{
+    return static_cast<int>(syscall(
+        SYS_futex, reinterpret_cast<int*>(&value), FUTEX_WAIT_PRIVATE,
+        expected, timeout, nullptr, 0));
+}
+
+void futex_wake_all(std::atomic<int>& value)
+{
+    (void)syscall(
+        SYS_futex, reinterpret_cast<int*>(&value), FUTEX_WAKE_PRIVATE,
+        INT_MAX, nullptr, nullptr, 0);
+}
+
+bool semaphore_try_consume(std::atomic<int>& count)
+{
+    auto available = count.load(std::memory_order_acquire);
+    while (available > 0) {
+        if (count.compare_exchange_weak(
+                available, available - 1,
+                std::memory_order_acquire,
+                std::memory_order_relaxed))
+            return true;
+    }
+    return false;
+}
+#endif
 
 } // namespace
 
@@ -245,17 +298,48 @@ void Semaphore_Reset(Semaphore* sema)
 {
     if (!sema)
         return;
+#if defined(__linux__)
+    sema->count.store(0, std::memory_order_release);
+#else
     std::lock_guard<std::mutex> lock(sema->mutex);
     sema->count = 0;
+#endif
 }
 
 void Semaphore_Wait(Semaphore* sema)
 {
     if (!sema)
         return;
+#if defined(__linux__)
+    for (;;) {
+        if (semaphore_try_consume(sema->count))
+            return;
+        sema->waiters.fetch_add(1, std::memory_order_acq_rel);
+        // Close the post-before-registration race before sleeping.
+        if (semaphore_try_consume(sema->count)) {
+            sema->waiters.fetch_sub(1, std::memory_order_release);
+            return;
+        }
+        // FUTEX_WAIT checks the value atomically before sleeping. A producer
+        // that posts between the failed consume and this call therefore
+        // yields EAGAIN instead of a lost wake-up.
+        for (;;) {
+            if (futex_wait(sema->count, 0) != 0 &&
+                errno != EAGAIN && errno != EINTR)
+                // Unexpected kernel errors must not turn an optional
+                // optimization into an emulation fault.
+                std::this_thread::yield();
+            if (semaphore_try_consume(sema->count)) {
+                sema->waiters.fetch_sub(1, std::memory_order_release);
+                return;
+            }
+        }
+    }
+#else
     std::unique_lock<std::mutex> lock(sema->mutex);
     sema->cv.wait(lock, [&] { return sema->count > 0; });
     --sema->count;
+#endif
 }
 
 bool Semaphore_TryWait(Semaphore* sema, int timeout_ms)
@@ -263,6 +347,47 @@ bool Semaphore_TryWait(Semaphore* sema, int timeout_ms)
     if (!sema)
         return false;
 
+#if defined(__linux__)
+    if (semaphore_try_consume(sema->count))
+        return true;
+    if (timeout_ms <= 0)
+        return false;
+
+    sema->waiters.fetch_add(1, std::memory_order_acq_rel);
+    if (semaphore_try_consume(sema->count)) {
+        sema->waiters.fetch_sub(1, std::memory_order_release);
+        return true;
+    }
+    const auto deadline =
+        std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(timeout_ms);
+    for (;;) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= deadline) {
+            sema->waiters.fetch_sub(1, std::memory_order_release);
+            return false;
+        }
+        const auto remaining = std::chrono::duration_cast<
+            std::chrono::nanoseconds>(deadline - now);
+        timespec timeout {};
+        timeout.tv_sec = static_cast<time_t>(
+            remaining.count() / 1000000000ll);
+        timeout.tv_nsec = static_cast<long>(
+            remaining.count() % 1000000000ll);
+        const int result = futex_wait(sema->count, 0, &timeout);
+        if (semaphore_try_consume(sema->count)) {
+            sema->waiters.fetch_sub(1, std::memory_order_release);
+            return true;
+        }
+        if (result != 0 && errno == ETIMEDOUT) {
+            sema->waiters.fetch_sub(1, std::memory_order_release);
+            return false;
+        }
+        if (result == 0 || errno == EAGAIN || errno == EINTR)
+            continue;
+        std::this_thread::yield();
+    }
+#else
     std::unique_lock<std::mutex> lock(sema->mutex);
     const auto ready = [&] { return sema->count > 0; };
     if (timeout_ms == 0) {
@@ -274,17 +399,26 @@ bool Semaphore_TryWait(Semaphore* sema, int timeout_ms)
 
     --sema->count;
     return true;
+#endif
 }
 
 void Semaphore_Post(Semaphore* sema, int count)
 {
-    if (!sema)
+    if (!sema || count <= 0)
         return;
+#if defined(__linux__)
+    const auto previous = sema->count.fetch_add(
+        count, std::memory_order_release);
+    if (previous == 0 &&
+        sema->waiters.load(std::memory_order_acquire) != 0)
+        futex_wake_all(sema->count);
+#else
     {
         std::lock_guard<std::mutex> lock(sema->mutex);
         sema->count += count;
     }
     sema->cv.notify_all();
+#endif
 }
 
 Mutex* Mutex_Create()
