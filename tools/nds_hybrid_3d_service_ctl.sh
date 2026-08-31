@@ -27,20 +27,173 @@ wc_manifest=${support_dir}/nds_mem_wc.ko.sha256
 pidfile=${test_root}/tmp/nds-hybrid-3d-service.pid
 logfile=${test_root}/tmp/nds-hybrid-3d-service.log
 logtmp=${test_root}/tmp/nds-hybrid-3d-service.log.trim
+mister_schedule_state=${test_root}/tmp/nds-h3d-mister-scheduling.state
+mister_schedule_tmp=${test_root}/tmp/nds-h3d-mister-scheduling.state.tmp
 hps_clock_khz=1000000
 default_hps_clock_khz=800000
 
 start_stop_daemon=start-stop-daemon
 sha256_program=sha256sum
+taskset_program=taskset
+pidof_program=pidof
+proc_root=/proc
 if [ -n "$test_root" ]; then
     start_stop_daemon=${H3D_TEST_START_STOP_DAEMON:-$start_stop_daemon}
     sha256_program=${H3D_TEST_SHA256SUM:-$sha256_program}
+    taskset_program=${H3D_TEST_TASKSET:-$taskset_program}
+    pidof_program=${H3D_TEST_PIDOF:-$pidof_program}
+    proc_root=${H3D_TEST_PROC_ROOT:-$proc_root}
 fi
 
 fail()
 {
     echo "H3D: $*" >&2
     return 1
+}
+
+read_mister_start_time()
+{
+    pid=$1
+    stat_file=${proc_root}/${pid}/stat
+    [ -r "$stat_file" ] || return 1
+    # MiSTer's comm field contains no spaces. Field 22 distinguishes a
+    # restarted frontend that happened to reuse the same numeric PID.
+    cut -d ' ' -f 22 "$stat_file" 2>/dev/null
+}
+
+read_mister_affinity()
+{
+    pid=$1
+    "$taskset_program" -pc "$pid" 2>/dev/null |
+        sed -n 's/^.*affinity list: //p' | sed -n '1p'
+}
+
+tune_mister_frontend()
+{
+    command -v "$taskset_program" >/dev/null 2>&1 || {
+        echo "H3D: taskset unavailable; leaving MiSTer scheduling unchanged" >&2
+        return 0
+    }
+    command -v "$pidof_program" >/dev/null 2>&1 || {
+        echo "H3D: pidof unavailable; leaving MiSTer scheduling unchanged" >&2
+        return 0
+    }
+
+    reject_link "$mister_schedule_state" || return 1
+    if [ -f "$mister_schedule_state" ]; then
+        set -f
+        existing_words=$(sed -n '1,$p' "$mister_schedule_state")
+        set -- $existing_words
+        set +f
+        if [ "$#" -eq 3 ]; then
+            existing_pid=$1
+            existing_start=$2
+            existing_affinity=$3
+            case "$existing_pid:$existing_start:$existing_affinity" in
+                *[!0-9:,-]*) ;;
+                *)
+                    if [ "$(read_mister_start_time "$existing_pid" || :)" = \
+                         "$existing_start" ]; then
+                        if [ "$(read_mister_affinity "$existing_pid" || :)" != 0 ]; then
+                            "$taskset_program" -pc 0 "$existing_pid" \
+                                >/dev/null 2>&1 || return 1
+                        fi
+                        return 0
+                    fi
+                    ;;
+            esac
+        fi
+        rm -f "$mister_schedule_state"
+    fi
+
+    set -f
+    mister_pids=$($pidof_program MiSTer 2>/dev/null || :)
+    # Intentional word splitting with pathname expansion disabled.
+    set -- $mister_pids
+    set +f
+    if [ "$#" -ne 1 ]; then
+        echo "H3D: expected one MiSTer frontend; scheduling unchanged" >&2
+        return 0
+    fi
+    mister_pid=$1
+    case "$mister_pid" in
+        ''|*[!0-9]*)
+            echo "H3D: invalid MiSTer PID; scheduling unchanged" >&2
+            return 0
+            ;;
+    esac
+    mister_start=$(read_mister_start_time "$mister_pid" || :)
+    mister_affinity=$(read_mister_affinity "$mister_pid" || :)
+    case "$mister_start" in
+        ''|*[!0-9]*)
+            echo "H3D: could not identify MiSTer process epoch; scheduling unchanged" >&2
+            return 0
+            ;;
+    esac
+    case "$mister_affinity" in
+        ''|*[!0-9,-]*)
+            echo "H3D: could not read MiSTer affinity; scheduling unchanged" >&2
+            return 0
+            ;;
+    esac
+
+    reject_link "$mister_schedule_tmp" || return 1
+    rm -f "$mister_schedule_tmp"
+    printf '%s %s %s\n' \
+        "$mister_pid" "$mister_start" "$mister_affinity" \
+        >"$mister_schedule_tmp" || return 1
+    chmod 600 "$mister_schedule_tmp" || return 1
+    mv -f "$mister_schedule_tmp" "$mister_schedule_state" || return 1
+
+    # The profile measured CPU1 overcommitted while CPU0 retained headroom.
+    # Move only MiSTer's continuously runnable frontend loop to CPU0. H3D's
+    # replay/publication/secondary-raster workers remain on CPU1 and its
+    # primary raster worker remains on CPU0 exactly as before.
+    if ! "$taskset_program" -pc 0 "$mister_pid" >/dev/null 2>&1; then
+        rm -f "$mister_schedule_state"
+        echo "H3D: MiSTer affinity rebalance failed; scheduling unchanged" >&2
+        return 0
+    fi
+    [ "$(read_mister_affinity "$mister_pid" || :)" = 0 ] || {
+        "$taskset_program" -pc "$mister_affinity" "$mister_pid" \
+            >/dev/null 2>&1 || true
+        rm -f "$mister_schedule_state"
+        echo "H3D: MiSTer affinity verification failed; scheduling restored" >&2
+        return 0
+    }
+    echo "H3D: moved MiSTer frontend to CPU0 (pid $mister_pid)"
+}
+
+restore_mister_frontend()
+{
+    reject_link "$mister_schedule_state" >/dev/null 2>&1 || return 1
+    [ -f "$mister_schedule_state" ] || return 0
+    set -f
+    state_words=$(sed -n '1,$p' "$mister_schedule_state")
+    set -- $state_words
+    set +f
+    if [ "$#" -ne 3 ]; then
+        rm -f "$mister_schedule_state"
+        return 1
+    fi
+    mister_pid=$1
+    recorded_start=$2
+    recorded_affinity=$3
+    case "$mister_pid:$recorded_start:$recorded_affinity" in
+        *[!0-9:,-]*)
+            rm -f "$mister_schedule_state"
+            return 1
+            ;;
+    esac
+    current_start=$(read_mister_start_time "$mister_pid" || :)
+    if [ "$current_start" = "$recorded_start" ]; then
+        "$taskset_program" -pc "$recorded_affinity" "$mister_pid" \
+            >/dev/null 2>&1 || {
+                echo "H3D: could not restore MiSTer frontend affinity" >&2
+                return 1
+            }
+    fi
+    rm -f "$mister_schedule_state"
 }
 
 set_hps_clock()
@@ -247,6 +400,7 @@ start_service()
     set_hps_clock || return 1
     if status_raw; then
         pid=$(read_pid)
+        tune_mister_frontend || return 1
         echo "H3D: already running at 1 GHz (pid $pid)"
         return 0
     fi
@@ -266,6 +420,7 @@ start_service()
         NDS4MISTER_DUAL_CORE_3D=1 \
         NDS4MISTER_ADAPTIVE_RASTER_SPLIT=1 \
         NDS4MISTER_RASTER_BAND_QUEUE=1 \
+        NDS4MISTER_DIRECT_PLANE_PUBLICATION=1 \
         "$start_stop_daemon" -S -b -m -N -20 \
             -p "$pidfile" -x "$service" --
     ) >>"$logfile" 2>&1; then
@@ -290,6 +445,15 @@ start_service()
         return 1
     fi
     pid=$(read_pid)
+    tune_mister_frontend || {
+        "$start_stop_daemon" -K -o -R TERM/5/KILL/1 \
+            -p "$pidfile" -x "$service" --remove-pidfile \
+            >/dev/null 2>&1 || true
+        unload_wc_module
+        restore_hps_clock >/dev/null 2>&1 || true
+        fail "could not safely rebalance MiSTer frontend"
+        return 1
+    }
     echo "H3D: started at 1 GHz (pid $pid)"
 }
 
@@ -298,6 +462,7 @@ stop_service()
     if ! status_raw; then
         remove_stale_pidfile || return 1
         bound_stopped_log || return 1
+        restore_mister_frontend || return 1
         unload_wc_module
         restore_hps_clock || {
             fail "could not restore the default 800 MHz clock"
@@ -318,6 +483,7 @@ stop_service()
     fi
     remove_stale_pidfile || return 1
     bound_stopped_log || return 1
+    restore_mister_frontend || return 1
     unload_wc_module
     restore_hps_clock || {
         fail "could not restore the default 800 MHz clock"

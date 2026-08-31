@@ -446,6 +446,16 @@ always_ff @(posedge clk1x or posedge console_reset_1x) begin
     end
 end
 
+// Convert the public beta's right analog stick to native DS pixels for both
+// the console and scanout pointer. Flipping X's sign bit maps -128..127 to
+// 0..255; multiplying Y by 3/4 maps it to 0..191, centered at (128,96).
+wire [7:0] touch_x = {~analog_sync[7],analog_sync[6:0]};
+wire [7:0] touch_y_unscaled = {~analog_sync[15],analog_sync[14:8]};
+wire [9:0] touch_y_scaled = {2'b00,touch_y_unscaled} +
+                             {2'b00,touch_y_unscaled} +
+                             {2'b00,touch_y_unscaled};
+wire [7:0] touch_y = touch_y_scaled[9:2];
+
 logic tgl_1x;
 logic tgl_mem;
 logic [1:0] clkMemIndex;
@@ -1046,6 +1056,7 @@ logic [8:0] lb_raddr;
 wire [35:0] lb_q;
 wire fb_published_frame_toggle;
 wire [1:0] fb_published_frame_bank;
+logic effective_3d_frame_toggle;
 wire [7:0] h3d_scanout_late_count;
 wire [9:0] h3d_fb_fault_flags;
 wire [27:0] h3d_fb_bank_diagnostic;
@@ -1412,6 +1423,28 @@ wire [7:0] h3d_line_prefetch_y = h3d_core_line_y == 8'd190 ? 8'd0 :
 (* async_reg = "true" *) logic [31:0] h3d_session_sync_1x;
 `endif
 
+// Count the 3D frames that truly reach the merge pixel domain.  The HPS
+// publication sequence may advance asynchronously and the 2D framebuffer
+// continues at the DS raster cadence, so neither is by itself an honest 3D
+// FPS source.  A local toggle per newly activated descriptor gives scanout a
+// tiny CDC-safe event stream without adding counters to the hot HPS path.
+`ifdef NDS_HYBRID_3D
+logic [31:0] effective_3d_sequence_seen;
+always_ff @(posedge clk1x or posedge console_reset_1x) begin
+    if (console_reset_1x) begin
+        effective_3d_sequence_seen <= 32'd0;
+        effective_3d_frame_toggle <= 1'b0;
+    end else if (h3d_pixel_descriptor_valid &&
+                 h3d_pixel_descriptor_sequence !=
+                    effective_3d_sequence_seen) begin
+        effective_3d_sequence_seen <= h3d_pixel_descriptor_sequence;
+        effective_3d_frame_toggle <= ~effective_3d_frame_toggle;
+    end
+end
+`else
+always_comb effective_3d_frame_toggle = fb_published_frame_toggle;
+`endif
+
 nds_nitro_fb_ddr3 #(
     .FB_HW_BASE(FB_HW_BASE), .FB_BURST(FB_BURST),
     // Keep the large per-pixel content-hash telemetry cone out of this nearly
@@ -1464,11 +1497,13 @@ nds_nitro_video_scanout scanout (
     .layout_select(video_layout_select),
     .screen_order_select(video_screen_order_select),
     .gap_select(video_gap_select),.fps_select(video_fps_select),
+    .touch_pressed(joystick_sync[12]),.touch_x,.touch_y,
     .layout_active(video_layout_active),
     .screen_order_active(video_screen_order_active),
     .gap_active(video_gap_active),.fps_active(video_fps_active),
     .published_frame_toggle(fb_published_frame_toggle),
     .published_frame_bank(fb_published_frame_bank),
+    .effective_3d_frame_toggle,
     .lb_raddr,.lb_q,.ce_pixel(video_ce),.de(video_de),
     .hsync(video_hs),.vsync(video_vs),
     .red(video_r),.green(video_g),.blue(video_b)
@@ -1865,15 +1900,6 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
     .div_busy(div_busy_unused),.sqrt_busy(sqrt_busy_unused)
 );
 
-// Convert MiSTer's signed absolute analog axes to native DS pixels. Flipping
-// the X sign bit maps -128..127 exactly to 0..255. Multiplying the equivalent
-// Y value by 3/4 maps it to 0..191 and puts a centered stick at (128,96).
-wire [7:0] touch_x = {~analog_sync[7],analog_sync[6:0]};
-wire [7:0] touch_y_unscaled = {~analog_sync[15],analog_sync[14:8]};
-wire [9:0] touch_y_scaled = {2'b00,touch_y_unscaled} +
-                             {2'b00,touch_y_unscaled} +
-                             {2'b00,touch_y_unscaled};
-wire [7:0] touch_y = touch_y_scaled[9:2];
 nds_nitro_console_wrap #(
     .CLKMEM_RATIO(CLKMEM_RATIO)
 ) console (

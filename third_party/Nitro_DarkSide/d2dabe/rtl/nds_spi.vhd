@@ -181,7 +181,14 @@ begin
                      case cnt(9 downto 8) is
                         when "00" => pm_hold <= '0';
                         when "01" => fw_hold <= '0';
-                        when others => null;   -- tsc has no hold state
+                        when others =>
+                           -- melonDS SPIDevice::Release() resets the TSC byte
+                           -- position whenever chip-select is released.  Some
+                           -- games use PENIRQ only on broad title prompts, but
+                           -- begin real coordinate conversions in a fresh SPI
+                           -- transaction.  Carrying the old position into that
+                           -- transaction shifts the X/Y result bytes.
+                           tsc_datapos <= (others => '0');
                      end case;
                   end if;
                   cnt(15 downto 14) <= bus7.Din(15 downto 14);
@@ -310,6 +317,12 @@ begin
                            if (tsc_datapos /= 3) then
                               tsc_datapos <= tsc_datapos + 1;
                            end if;
+                        end if;
+                        if (v_release = '1') then
+                           -- Match SPIHost::WriteData(): the transferred byte
+                           -- is produced first, then an unheld transaction
+                           -- releases chip-select and resets DataPos.
+                           tsc_datapos <= (others => '0');
                         end if;
 
                   end case;

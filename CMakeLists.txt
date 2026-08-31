@@ -196,6 +196,17 @@ if(NDS4MISTER_USE_MELONDS)
     target_link_libraries(nds_layer_capture PRIVATE
         core nds_headless_save ${CMAKE_DL_LIBS})
 
+    add_executable(nds_touch_oracle_probe
+        src/replay/TouchOracleProbe.cpp
+        src/melonds/MelonDsBackend.cpp
+        src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_touch_oracle_probe PRIVATE
+        src third_party/melonDS/src)
+    target_compile_options(nds_touch_oracle_probe PRIVATE
+        -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_touch_oracle_probe PRIVATE
+        core nds_headless_save ${CMAKE_DL_LIBS})
+
     add_executable(nds_live_layer_publish
         src/replay/LiveLayerPublish.cpp
         src/melonds/MelonDsBackend.cpp

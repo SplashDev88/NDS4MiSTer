@@ -110,6 +110,11 @@ public:
     // no emulated CPU or DMA channel consumes FIFO IRQ/DMA side effects.
     void SetExternalCommandReplay(bool enabled) noexcept
     {
+        if (ExternalCommandReplay != enabled)
+        {
+            ExternalBatchRead = 0;
+            ExternalBatchCount = 0;
+        }
         ExternalCommandReplay = enabled;
         if (!enabled)
         {
@@ -157,6 +162,13 @@ public:
     // A normalized external stream has already decoded the packed GXFIFO
     // command word. Enqueue it without repeating the MMIO address decoder.
     void WriteExternalNormalizedCommand(u8 command, u32 val) noexcept;
+    // H3B stores three already-validated normalized commands per packed
+    // record. Keep that compact group intact through the service/GPU boundary
+    // so the dominant vertex/texcoord stream pays one call and one geometry
+    // enable/trace decision instead of three. Execution and FIFO order remain
+    // unchanged.
+    void WriteExternalNormalizedCommandTriple(
+        u32 packedCommands, u32 val0, u32 val1, u32 val2) noexcept;
     u8 Read8(u32 addr) noexcept;
     u16 Read16(u32 addr) noexcept;
     u32 Read32(u32 addr) noexcept;
@@ -190,6 +202,9 @@ private:
     void VecTest(u32 param) noexcept;
     void CmdFIFOWrite(const CmdFIFOEntry& entry) noexcept;
     CmdFIFOEntry CmdFIFORead() noexcept;
+    void ExternalBatchWrite(const CmdFIFOEntry& entry) noexcept;
+    CmdFIFOEntry ExternalBatchPop() noexcept;
+    bool ExternalCommandsEmpty() const noexcept;
     void FinishWork(s32 cycles) noexcept;
     void VertexPipelineSubmitCmd() noexcept
     {
@@ -222,6 +237,18 @@ private:
         AddCycles(NormalPipeline + 1);
         NormalPipeline = 0;
     }
+
+    // The H3B owner already supplies a validated, normalized command stream
+    // and advances it in bounded 256-command runs.  Keep that run contiguous
+    // instead of paying the emulated four-entry pipe plus 256-entry FIFO
+    // write/refill/read machinery for commands no emulated CPU can observe.
+    // The extra room is a fail-safe for a future caller that exceeds the
+    // service's current run boundary; overflow retains exact order in the
+    // ordinary FIFO behind this batch.
+    static constexpr u32 ExternalBatchCapacity = 512;
+    CmdFIFOEntry ExternalBatch[ExternalBatchCapacity] {};
+    u32 ExternalBatchRead = 0;
+    u32 ExternalBatchCount = 0;
 
 public:
     melonDS::NDS& NDS;

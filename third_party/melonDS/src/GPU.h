@@ -953,6 +953,23 @@ struct ExternalRendererStageProfile
     u64 ThreeDPolygonScanlines = 0;
     u64 ThreeDMaxPolygons = 0;
     u64 ThreeDScheduledPolygonFrames = 0;
+    // Temporary raster-mode census. These counters are updated only when
+    // StageProfile is enabled, leaving the release hot path untouched.
+    // Mode: opaque/translucent/shadow-mask/shadow.
+    u64 ThreeDModePolygons[4] {};
+    u64 ThreeDModeScanlines[4] {};
+    u64 ThreeDTextureFormatPolygons[8] {};
+    u64 ThreeDTextureFormatScanlines[8] {};
+    u64 ThreeDBlendModePolygons[4] {};
+    u64 ThreeDBlendModeScanlines[4] {};
+    // Depth: front-facing less/back-facing less/equal-Z/equal-W.
+    u64 ThreeDDepthModePolygons[4] {};
+    u64 ThreeDDepthModeScanlines[4] {};
+    u64 ThreeDCachedModulatePolygons = 0;
+    u64 ThreeDCachedModulateScanlines = 0;
+    u64 ThreeDAntiAliasPolygons = 0;
+    u64 ThreeDEdgeMarkingPolygons = 0;
+    u64 ThreeDFogPolygons = 0;
 };
 
 class Renderer

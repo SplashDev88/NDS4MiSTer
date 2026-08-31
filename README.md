@@ -4,7 +4,7 @@ Experimental Nintendo DS support for the MiSTer FPGA platform.
 
 This source snapshot corresponds to Public Cumulative Beta v0.3.0-beta.4
 (2026-08-30).
-It combines controller-driven touchscreen input with the LG
+It combines controller- and mouse-driven touchscreen input with the LG
 C-series-compatible video path, selectable screen layouts, melonDS-derived
 cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
 through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
@@ -91,17 +91,24 @@ distributed separately as the public binary package.
 
 ## Touch controls
 
-1. Move the controller's right analog stick to position the DS stylus.
-2. Hold the remappable `Touch` action to press the screen at that position.
-3. Release `Touch` to lift the stylus.
-4. If `Touch` is not on a convenient button, assign it through MiSTer's normal
-   controller-remapping menu.
+You can control the DS stylus with either input:
+
+- Move the controller's right analog stick to position it, then hold the
+  remappable `Touch` action to press the screen.
+- Move a MiSTer mouse to position it, then hold the left mouse button to press
+  the screen.
+
+The most recently moved input takes control. The pointer is white while
+hovering and red while pressed. It remains visible while pressed and lingers
+for about half a second after movement. Because both current video positions
+show Engine A, the pointer is drawn over every visible screen copy, including
+the left copy in the side-by-side layout.
 
 The right stick uses absolute positioning: centered is approximately the
-center of the 256x192 touchscreen, and the stick edges select the screen
-edges. Engine B is not displayed yet, so games that require precise selection
-of visible touchscreen controls remain difficult even though touch input is
-delivered to the game.
+center of the 256x192 touchscreen, and the stick edges select the screen edges.
+Mouse movement is relative and saturates at the screen edges. Engine B is not
+displayed yet, so games that require precise selection of visible touchscreen
+controls remain difficult even though touch input is delivered to the game.
 
 ## Current limitations
 
@@ -110,10 +117,10 @@ delivered to the game.
 - Cartridge-access latency can make objects or effects appear late or fail.
 - Reset now preserves the cartridge and save mount used by the running game.
   Reselecting the ROM remains the fallback for titles that do not reset cleanly.
-- Basic touchscreen input uses the controller's right stick for absolute
-  position and the remappable `Touch` action for pen-down. Because Engine B is
-  not displayed yet, games that require precise interaction with touchscreen
-  graphics remain limited.
+- Touchscreen input supports the controller's right stick plus remappable
+  `Touch` action, or relative mouse movement plus the left mouse button.
+  Because Engine B is not displayed yet, games that require precise
+  interaction with touchscreen graphics remain limited.
 - Chrono Trigger has a separate boot failure under investigation.
 - NAND saves, save states, Wi-Fi, and microphone support are not implemented.
 

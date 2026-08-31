@@ -60,7 +60,13 @@ module nds_nitro_save_bridge #(
     logic cart_download_d;
     logic cart_epoch_started;
     logic mount_pending;
-    logic [63:0] mounted_size;
+    // The largest supported cartridge save is 1 MiB. Retain the exact low
+    // 21 bits needed to represent every accepted size plus one bit proving
+    // that discarded upper bits were nonzero. This preserves wrong-size
+    // rejection for arbitrary 64-bit host values without routing a 64-bit
+    // state/comparison cone through the nearly-full FPGA.
+    logic [20:0] mounted_size_low;
+    logic mounted_size_oversize;
     logic mounted_readonly;
     logic mounted_valid_size;
     logic mounted_has_data;
@@ -148,7 +154,8 @@ module nds_nitro_save_bridge #(
             state <= ST_WAIT_MOUNT;
             if (!preserve_mount) begin
                 mount_pending <= 1'b0;
-                mounted_size <= 64'd0;
+                mounted_size_low <= 21'd0;
+                mounted_size_oversize <= 1'b0;
                 mounted_readonly <= 1'b0;
             end
             mounted_valid_size <= 1'b0;
@@ -174,7 +181,7 @@ module nds_nitro_save_bridge #(
 
     always_ff @(posedge clk) begin : bridge_fsm
         logic [11:0] expected_sectors;
-        logic [63:0] expected_bytes;
+        logic [20:0] expected_bytes;
         logic exact_size;
         logic chrono_short_migration;
 
@@ -211,7 +218,8 @@ module nds_nitro_save_bridge #(
 
             if (img_mounted) begin
                 mount_pending <= 1'b1;
-                mounted_size <= img_size;
+                mounted_size_low <= img_size[20:0];
+                mounted_size_oversize <= |img_size[63:21];
                 mounted_readonly <= img_readonly;
             end
 
@@ -264,13 +272,18 @@ module nds_nitro_save_bridge #(
                         end else if (profile_fresh_armed) begin
                             profile_fresh_armed <= 1'b0;
                             expected_sectors = sectors_for_type(backup_save_type);
-                            expected_bytes = {41'd0, expected_sectors, 9'd0};
-                            exact_size = mounted_size == expected_bytes;
+                            expected_bytes = {expected_sectors, 9'd0};
+                            exact_size = !mounted_size_oversize &&
+                                         mounted_size_low == expected_bytes;
                             chrono_short_migration = backup_save_type == 4'd3 &&
-                                                     mounted_size == 64'd8192;
+                                !mounted_size_oversize &&
+                                mounted_size_low == 21'd8192;
                             active_save_type <= backup_save_type;
                             active_sector_count <= expected_sectors;
-                            mounted_valid_size <= (mounted_size == 0) || exact_size ||
+                            mounted_valid_size <=
+                                                  (!mounted_size_oversize &&
+                                                   mounted_size_low == 0) ||
+                                                  exact_size ||
                                                   chrono_short_migration;
                             mounted_has_data <= exact_size || chrono_short_migration;
                             if (exact_size)
@@ -283,7 +296,8 @@ module nds_nitro_save_bridge #(
                             cache_dirty <= 1'b0;
 
                             if (backup_save_type == 0 ||
-                                (mounted_size != 0 && !exact_size &&
+                                ((mounted_size_oversize ||
+                                  mounted_size_low != 0) && !exact_size &&
                                  !chrono_short_migration)) begin
                                 // Unsupported/no-save or a wrong-size sidecar:
                                 // boot with a blank, nonpersistent chip without
@@ -291,7 +305,8 @@ module nds_nitro_save_bridge #(
                                 save_run_ready <= 1'b1;
                                 state <= ST_READY;
                             end else if (!mounted_readonly &&
-                                         (mounted_size == 0 ||
+                                         ((!mounted_size_oversize &&
+                                           mounted_size_low == 0) ||
                                           chrono_short_migration)) begin
                                 // Materialize every missing sector as FF. The
                                 // result is an exact-size standard sidecar, not

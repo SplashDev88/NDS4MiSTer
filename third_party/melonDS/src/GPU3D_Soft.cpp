@@ -573,6 +573,11 @@ inline bool RunDepthTest(
     if (test == DepthTest_LessThan_FrontFacing)
         return z < dstz ||
             (z == dstz && (dstattr & 0x00400010) == 0x00000010);
+    // Live Mario Kart profiling found ordinary back-facing less-than spans to
+    // be the second depth mode (13.8% of polygon scanlines). Keep that exact
+    // comparison direct as well; equal-Z/equal-W retain the generic fallback.
+    if (test == DepthTest_LessThan)
+        return z < dstz;
     return test(dstz, z, dstattr);
 }
 
@@ -646,6 +651,8 @@ u32 SoftRenderer3D::RenderPixel(
         {
             const s32 width = state.TextureWidth;
             const s32 height = state.TextureHeight;
+            const s32 widthMask = state.TextureWidthMask;
+            const s32 heightMask = state.TextureHeightMask;
 
             s >>= 4;
             t >>= 4;
@@ -654,35 +661,37 @@ u32 SoftRenderer3D::RenderPixel(
             {
                 if (state.TextureWrapFlags & 0x4)
                 {
-                    if (s & width) s = (width-1) - (s & (width-1));
-                    else           s = (s & (width-1));
+                    if (s & width) s = widthMask - (s & widthMask);
+                    else           s &= widthMask;
                 }
                 else
-                    s &= width-1;
+                    s &= widthMask;
             }
             else
             {
                 if (s < 0) s = 0;
-                else if (s >= width) s = width-1;
+                else if (s >= width) s = widthMask;
             }
 
             if (state.TextureWrapFlags & 0x2)
             {
                 if (state.TextureWrapFlags & 0x8)
                 {
-                    if (t & height) t = (height-1) - (t & (height-1));
-                    else            t = (t & (height-1));
+                    if (t & height) t = heightMask - (t & heightMask);
+                    else            t &= heightMask;
                 }
                 else
-                    t &= height-1;
+                    t &= heightMask;
             }
             else
             {
                 if (t < 0) t = 0;
-                else if (t >= height) t = height-1;
+                else if (t >= height) t = heightMask;
             }
 
-            const u32 texel = state.TexturePixels[(t * width) + s];
+            const u32 texel = state.TexturePixels[
+                (static_cast<u32>(t) << state.TextureWidthShift) +
+                    static_cast<u32>(s)];
             tr = texel & 0x3F;
             tg = (texel >> 8) & 0x3F;
             tb = (texel >> 16) & 0x3F;
@@ -762,12 +771,22 @@ u32 SoftRenderer3D::RenderPixel(
     return r | (g << 8) | (b << 16) | (a << 24);
 }
 
-u32 SoftRenderer3D::RenderPixelCachedModulate(
+[[gnu::always_inline, gnu::hot]] inline u32
+SoftRenderer3D::RenderPixelCachedModulate(
     const RendererPolygon::PixelShaderState& state,
     u32 vertexColor, s16 s, s16 t)
 {
+    static_assert([] {
+        for (u32 textureAlpha = 0; textureAlpha <= 31; ++textureAlpha)
+            if ((((textureAlpha + 1) * 32 - 1) >> 5) != textureAlpha)
+                return false;
+        return true;
+    }(), "opaque polygon modulation must preserve all DS texture alphas");
+
     const s32 width = state.TextureWidth;
     const s32 height = state.TextureHeight;
+    const s32 widthMask = state.TextureWidthMask;
+    const s32 heightMask = state.TextureHeightMask;
 
     s >>= 4;
     t >>= 4;
@@ -776,35 +795,37 @@ u32 SoftRenderer3D::RenderPixelCachedModulate(
     {
         if (state.TextureWrapFlags & 0x4)
         {
-            if (s & width) s = (width-1) - (s & (width-1));
-            else           s = (s & (width-1));
+            if (s & width) s = widthMask - (s & widthMask);
+            else           s &= widthMask;
         }
         else
-            s &= width-1;
+            s &= widthMask;
     }
     else
     {
         if (s < 0) s = 0;
-        else if (s >= width) s = width-1;
+        else if (s >= width) s = widthMask;
     }
 
     if (state.TextureWrapFlags & 0x2)
     {
         if (state.TextureWrapFlags & 0x8)
         {
-            if (t & height) t = (height-1) - (t & (height-1));
-            else            t = (t & (height-1));
+            if (t & height) t = heightMask - (t & heightMask);
+            else            t &= heightMask;
         }
         else
-            t &= height-1;
+            t &= heightMask;
     }
     else
     {
         if (t < 0) t = 0;
-        else if (t >= height) t = height-1;
+        else if (t >= height) t = heightMask;
     }
 
-    const u32 texel = state.TexturePixels[(t * width) + s];
+    const u32 texel = state.TexturePixels[
+        (static_cast<u32>(t) << state.TextureWidthShift) +
+            static_cast<u32>(s)];
     const u32 tr = texel & 0x3F;
     const u32 tg = (texel >> 8) & 0x3F;
     const u32 tb = (texel >> 16) & 0x3F;
@@ -816,7 +837,13 @@ u32 SoftRenderer3D::RenderPixelCachedModulate(
     const u32 r = ((tr+1) * (vr+1) - 1) >> 6;
     const u32 g = ((tg+1) * (vg+1) - 1) >> 6;
     const u32 b = ((tb+1) * (vb+1) - 1) >> 6;
-    const u32 a = ((talpha+1) * (state.PolyAlpha+1) - 1) >> 5;
+    // 99.1% of cached-modulate polygon scanlines in the bounded Mario Kart
+    // capture used an opaque polygon alpha. The DS modulation identity for
+    // PolyAlpha=31 is exactly the texture alpha, so skip the multiply/add/shift
+    // in that measured dominant mode without assuming that the texel itself is
+    // opaque. Translucent cached polygons retain the original expression.
+    const u32 a = state.PolyAlpha == 31 ? talpha :
+        ((talpha+1) * (state.PolyAlpha+1) - 1) >> 5;
     return r | (g << 8) | (b << 16) | (a << 24);
 }
 
@@ -927,6 +954,10 @@ void SoftRenderer3D::SetupPolygon(SoftRenderer3D::RendererPolygon* rp, Polygon* 
     pixelState.TextureBase = (polygon->TexParam & 0xFFFF) << 3;
     pixelState.TextureWidth = 8 << ((polygon->TexParam >> 20) & 0x7);
     pixelState.TextureHeight = 8 << ((polygon->TexParam >> 23) & 0x7);
+    pixelState.TextureWidthMask = pixelState.TextureWidth - 1;
+    pixelState.TextureHeightMask = pixelState.TextureHeight - 1;
+    pixelState.TextureWidthShift = static_cast<u8>(
+        3 + ((polygon->TexParam >> 20) & 0x7));
     pixelState.TextureFormat = static_cast<u8>(textureFormat);
     pixelState.TextureWrapFlags =
         static_cast<u8>((polygon->TexParam >> 16) & 0xF);
@@ -965,6 +996,48 @@ void SoftRenderer3D::SetupPolygon(SoftRenderer3D::RendererPolygon* rp, Polygon* 
         rp->DepthTest = DepthTest_LessThan_FrontFacing;
     else
         rp->DepthTest = DepthTest_LessThan;
+
+    if (Parent.StageProfileEnabled)
+    {
+        const u64 visibleScanlines = static_cast<u64>(std::max(
+            0, std::min(polygon->YBottom, VisibleScanlines) -
+                std::max(polygon->YTop, 0)));
+        unsigned mode = 0;
+        if (polygon->IsShadowMask) mode = 2;
+        else if (polygon->IsShadow) mode = 3;
+        else if (pixelState.PolyAlpha < 31 || pixelState.Wireframe) mode = 1;
+        ++Parent.StageProfile.ThreeDModePolygons[mode];
+        Parent.StageProfile.ThreeDModeScanlines[mode] += visibleScanlines;
+
+        ++Parent.StageProfile.ThreeDTextureFormatPolygons[textureFormat];
+        Parent.StageProfile.ThreeDTextureFormatScanlines[textureFormat] +=
+            visibleScanlines;
+        ++Parent.StageProfile.ThreeDBlendModePolygons[pixelState.BlendMode];
+        Parent.StageProfile.ThreeDBlendModeScanlines[pixelState.BlendMode] +=
+            visibleScanlines;
+
+        unsigned depthMode = 0;
+        if (rp->DepthTest == DepthTest_LessThan) depthMode = 1;
+        else if (rp->DepthTest == DepthTest_Equal_Z) depthMode = 2;
+        else if (rp->DepthTest == DepthTest_Equal_W) depthMode = 3;
+        ++Parent.StageProfile.ThreeDDepthModePolygons[depthMode];
+        Parent.StageProfile.ThreeDDepthModeScanlines[depthMode] +=
+            visibleScanlines;
+
+        if (pixelState.CachedModulate)
+        {
+            ++Parent.StageProfile.ThreeDCachedModulatePolygons;
+            Parent.StageProfile.ThreeDCachedModulateScanlines +=
+                visibleScanlines;
+        }
+        Parent.StageProfile.ThreeDAntiAliasPolygons +=
+            (GPU3D.RenderDispCnt >> 4) & 1;
+        Parent.StageProfile.ThreeDEdgeMarkingPolygons +=
+            (GPU3D.RenderDispCnt >> 5) & 1;
+        Parent.StageProfile.ThreeDFogPolygons +=
+            ((GPU3D.RenderDispCnt >> 7) & 1) &&
+            ((polygon->Attr >> 15) & 1);
+    }
 
     rp->CurVL = vtop;
     rp->CurVR = vtop;
@@ -1231,6 +1304,77 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     rp->XR = rp->SlopeR.Step();
 }
 
+[[gnu::hot, gnu::noinline]] void
+SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    Interpolator<0>& interpX,
+    Interpolator<0>::SpanDepthInterpolator& spanDepth,
+    Interpolator<0>::SpanInterpolator& spanAttributes,
+    s32* spanValues)
+{
+    Polygon* polygon = rp->PolyData;
+    const auto& pixelState = rp->PixelState;
+    const u32 polyattr = rp->PolyAttr;
+    const u32 alphaRef = GPU3D.RenderAlphaRef;
+    const bool writeTranslucentDepth = polygon->Attr & (1<<11);
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+
+    for (s32 x = firstX; x < endX; ++x)
+    {
+        u32 pixeladdr = rowAddress + x;
+        u32 dstattr = AttrBuffer[pixeladdr];
+
+        interpX.SetXFast(x);
+        s32 z = spanDepth.Interpolate();
+
+        // This helper is selected only for front-facing less-than polygons.
+        // Inline that exact common test instead of redispatching the polygon's
+        // depth mode for every interior pixel.
+        const auto depthPass = [](s32 dstz, s32 sourceZ, u32 attr) {
+            return sourceZ < dstz ||
+                (sourceZ == dstz &&
+                 (attr & 0x00400010) == 0x00000010);
+        };
+        if (!depthPass(DepthBuffer[pixeladdr], z, dstattr))
+        {
+            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+
+            pixeladdr += BufferSize;
+            dstattr = AttrBuffer[pixeladdr];
+            if (!depthPass(DepthBuffer[pixeladdr], z, dstattr)) continue;
+        }
+
+        spanAttributes.Interpolate(spanValues);
+        const u32 vertexColor =
+            (static_cast<u32>(spanValues[0]) >> 3) |
+            ((static_cast<u32>(spanValues[1]) >> 3) << 8) |
+            ((static_cast<u32>(spanValues[2]) >> 3) << 16);
+        const u32 color = RenderPixelCachedModulate(
+            pixelState, vertexColor,
+            static_cast<s16>(spanValues[3]),
+            static_cast<s16>(spanValues[4]));
+        const u8 alpha = color >> 24;
+
+        if (alpha <= alphaRef) continue;
+
+        if (alpha == 31)
+        {
+            DepthBuffer[pixeladdr] = z;
+            ColorBuffer[pixeladdr] = color;
+            AttrBuffer[pixeladdr] = polyattr;
+        }
+        else
+        {
+            if (!writeTranslucentDepth) z = -1;
+            PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
+
+            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                PlotTranslucentPixel(
+                    pixeladdr + BufferSize, color, z, polyattr, 0);
+        }
+    }
+}
+
 void SoftRenderer3D::RenderPolygonScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
     u8* stencilBuffer)
@@ -1383,6 +1527,7 @@ void SoftRenderer3D::RenderPolygonScanline(
 
     s32 x = xstart;
     Interpolator<0> interpX(xstart, xend+1, wl, wr, polygon->WBuffer);
+    Interpolator<0>::SpanDepthInterpolator spanDepth(interpX, zl, zr);
     Interpolator<0>::SpanInterpolator spanAttributes(
         interpX, rl, rr, gl, gr, bl, br, sl, sr, tl, tr);
     s32 spanValues[5];
@@ -1399,6 +1544,10 @@ void SoftRenderer3D::RenderPolygonScanline(
         return RenderPixel(
             rp->PixelState, vr >> 3, vg >> 3, vb >> 3, s, t);
     };
+    const bool cachedOpaqueInterior = yedge == 0 &&
+        rp->PixelState.CachedModulate && polyalpha == 31 &&
+        !polygon->IsShadow &&
+        fnDepthTest == DepthTest_LessThan_FrontFacing;
 
     const s32 visibleStart = std::max<s32>(xstart, 0);
     const s32 visibleEnd = std::min<s32>(xend + 1, 256);
@@ -1447,7 +1596,7 @@ void SoftRenderer3D::RenderPolygonScanline(
 
         interpX.SetX(x);
 
-        s32 z = interpX.InterpolateZ(zl, zr);
+        s32 z = spanDepth.Interpolate();
 
         // if depth test against the topmost pixel fails, test
         // against the pixel underneath
@@ -1523,6 +1672,13 @@ void SoftRenderer3D::RenderPolygonScanline(
     if (xlimit > 256) xlimit = 256;
 
     if (wireframe && !edge) x = std::max(x, xlimit);
+    else if (cachedOpaqueInterior)
+    {
+        RenderCachedOpaqueInteriorSpan(
+            rp, y, x, xlimit, interpX, spanDepth,
+            spanAttributes, spanValues);
+        x = xlimit;
+    }
     else
     for (; x < xlimit; x++)
     {
@@ -1543,7 +1699,7 @@ void SoftRenderer3D::RenderPolygonScanline(
 
         interpX.SetX(x);
 
-        s32 z = interpX.InterpolateZ(zl, zr);
+        s32 z = spanDepth.Interpolate();
 
         // if depth test against the topmost pixel fails, test
         // against the pixel underneath
@@ -1635,7 +1791,7 @@ void SoftRenderer3D::RenderPolygonScanline(
 
         interpX.SetX(x);
 
-        s32 z = interpX.InterpolateZ(zl, zr);
+        s32 z = spanDepth.Interpolate();
 
         // if depth test against the topmost pixel fails, test
         // against the pixel underneath
@@ -2289,11 +2445,109 @@ SoftRenderer3D::RasterBandResult SoftRenderer3D::RenderRasterBandJobs(
 
 bool SoftRenderer3D::RasterBandQueueSafe(int npolys) const
 {
+    bool hasShadow = false;
     for (int index = 0; index < npolys; ++index)
     {
         const Polygon* polygon = PolygonList[index].PolyData;
-        if (polygon->IsShadowMask || polygon->IsShadow)
-            return false;
+        hasShadow |= polygon->IsShadowMask || polygon->IsShadow;
+    }
+    if (!hasShadow) return true;
+
+    // Shadow stencil storage is scanline-local but physically reused by
+    // parity. A worker that jumps over a band cannot inherit the other
+    // worker's two stencil rows, so only admit a band boundary when the
+    // canonical PrevIsShadowMask state is false and each reused parity row is
+    // cleared by a shadow mask before a shadow polygon consumes it. This is a
+    // sufficient, ordering-preserving condition; uncertain frames retain the
+    // exact adaptive two-way renderer.
+    bool boundaryPrevIsShadowMask[RasterBandCount] {};
+    u32 activePolygonMask[PolygonMaskWords] {};
+    bool canonicalPrevIsShadowMask = PrevIsShadowMask;
+    for (int y = 0; y < VisibleScanlines; ++y)
+    {
+        if ((y % RasterBandLines) == 0)
+            boundaryPrevIsShadowMask[y / RasterBandLines] =
+                canonicalPrevIsShadowMask;
+
+        for (u16 i = ScanlineEndOffsets[y];
+             i < ScanlineEndOffsets[y + 1]; ++i)
+        {
+            const int polygonIndex = ScanlineEndPolygonIndices[i];
+            activePolygonMask[polygonIndex / 32] &=
+                ~(1u << (polygonIndex % 32));
+        }
+        for (u16 i = ScanlineStartOffsets[y];
+             i < ScanlineStartOffsets[y + 1]; ++i)
+        {
+            const int polygonIndex = ScanlineStartPolygonIndices[i];
+            activePolygonMask[polygonIndex / 32] |=
+                1u << (polygonIndex % 32);
+        }
+        for (int word = 0; word < ActivePolygonMaskWords; ++word)
+        {
+            u32 active = activePolygonMask[word];
+            while (active)
+            {
+                const int polygonIndex = word * 32 + __builtin_ctz(active);
+                canonicalPrevIsShadowMask =
+                    PolygonList[polygonIndex].PolyData->IsShadowMask;
+                active &= active - 1;
+            }
+        }
+    }
+
+    std::fill_n(activePolygonMask, ActivePolygonMaskWords, 0);
+    bool workerPrevIsShadowMask = PrevIsShadowMask;
+    bool stencilParityInitialized[2] {true, true};
+    for (int y = 0; y < VisibleScanlines; ++y)
+    {
+        const int band = y / RasterBandLines;
+        if (y != 0 && (y % RasterBandLines) == 0)
+        {
+            if (boundaryPrevIsShadowMask[band]) return false;
+            workerPrevIsShadowMask = false;
+            stencilParityInitialized[0] = false;
+            stencilParityInitialized[1] = false;
+        }
+
+        for (u16 i = ScanlineEndOffsets[y];
+             i < ScanlineEndOffsets[y + 1]; ++i)
+        {
+            const int polygonIndex = ScanlineEndPolygonIndices[i];
+            activePolygonMask[polygonIndex / 32] &=
+                ~(1u << (polygonIndex % 32));
+        }
+        for (u16 i = ScanlineStartOffsets[y];
+             i < ScanlineStartOffsets[y + 1]; ++i)
+        {
+            const int polygonIndex = ScanlineStartPolygonIndices[i];
+            activePolygonMask[polygonIndex / 32] |=
+                1u << (polygonIndex % 32);
+        }
+        for (int word = 0; word < ActivePolygonMaskWords; ++word)
+        {
+            u32 active = activePolygonMask[word];
+            while (active)
+            {
+                const int polygonIndex = word * 32 + __builtin_ctz(active);
+                const Polygon* polygon =
+                    PolygonList[polygonIndex].PolyData;
+                if (polygon->IsShadowMask)
+                {
+                    if (!workerPrevIsShadowMask)
+                        stencilParityInitialized[y & 1] = true;
+                    workerPrevIsShadowMask = true;
+                }
+                else
+                {
+                    if (polygon->IsShadow &&
+                        !stencilParityInitialized[y & 1])
+                        return false;
+                    workerPrevIsShadowMask = false;
+                }
+                active &= active - 1;
+            }
+        }
     }
     return true;
 }

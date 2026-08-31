@@ -6,20 +6,28 @@ image=${IMAGE:-nds4mister-armhf:ubuntu-24.04}
 build_dir=${BUILD_DIR:-build-mister-hybrid-3d-armhf}
 parallel=${PARALLEL:-2}
 claim=/private/tmp/nds4mister-docker-exclusive-claim
+allow_concurrent_docker=${ALLOW_CONCURRENT_DOCKER:-0}
+claim_acquired=0
 
-if [[ -e "$claim" || -L "$claim" || -n "$(docker ps -q)" ]]; then
-  echo "FAIL: Docker or the global Docker claim is busy" >&2
-  exit 3
+if [[ "$allow_concurrent_docker" != 1 ]]; then
+  if [[ -e "$claim" || -L "$claim" || -n "$(docker ps -q)" ]]; then
+    echo "FAIL: Docker or the global Docker claim is busy" >&2
+    echo "Set ALLOW_CONCURRENT_DOCKER=1 for an isolated ARM build beside Quartus." >&2
+    exit 3
+  fi
+  if ! mkdir "$claim" 2>/dev/null; then
+    echo "FAIL: could not acquire the global Docker claim" >&2
+    exit 3
+  fi
+  claim_acquired=1
+  printf 'owner=hybrid_3d_service_armhf pid=%s utc=%s\n' \
+    "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$claim/owner"
 fi
-if ! mkdir "$claim" 2>/dev/null; then
-  echo "FAIL: could not acquire the global Docker claim" >&2
-  exit 3
-fi
-printf 'owner=hybrid_3d_service_armhf pid=%s utc=%s\n' \
-  "$$" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$claim/owner"
 cleanup() {
-  rm -f "$claim/owner"
-  rmdir "$claim" 2>/dev/null || true
+  if [[ "$claim_acquired" == 1 ]]; then
+    rm -f "$claim/owner"
+    rmdir "$claim" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM HUP
 

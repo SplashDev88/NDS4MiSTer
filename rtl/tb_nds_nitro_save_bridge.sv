@@ -438,6 +438,20 @@ module tb_nds_nitro_save_bridge;
         if (io_writes != writes_before)
             $fatal(1, "wrong-size sidecar was overwritten");
 
+        // A hostile or malformed host size must not alias a supported save
+        // after the compact mounted-size state discards its upper bits.
+        power_reset();
+        writes_before = io_writes;
+        mount_profile(64'h0000_0001_0010_0000, 0, 4'd7);
+        card_select(20'hffffe);
+        if (cache_byte(20'hffffe) != 8'hff)
+            $fatal(1, "oversize sidecar aliased the 1M save size");
+        card_release();
+        card_write_byte(20'hffffe, 8'h55);
+        repeat (40) @(posedge clk);
+        if (io_writes != writes_before)
+            $fatal(1, "oversize sidecar was overwritten");
+
         $display("PASS: host-backed 8K/64K EEPROM and 256K/1M flash persistence");
         $finish;
     end

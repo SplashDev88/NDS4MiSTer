@@ -33,7 +33,7 @@ module emu
         // MiSTer initializes a new config version to option value zero. Keep
         // the user-facing default at eight pixels while retaining None.
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
-        "O[4],FPS Counter,Off,On;",
+        "O[4],3D FPS Counter,Off,On;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",
@@ -46,6 +46,7 @@ module emu
     // The right stick is the absolute DS touchscreen position. Keep the left
     // stick free for games and future control mappings.
     wire [15:0] touch_analog_0;
+    wire [24:0] ps2_mouse;
     wire forced_scandoubler;
     wire [21:0] gamma_bus;
     wire ioctl_download;
@@ -104,6 +105,7 @@ module emu
         .gamma_bus(gamma_bus),
         .joystick_0(joystick_0),.joystick_1(joystick_1),
         .joystick_r_analog_0(touch_analog_0),
+        .ps2_mouse(ps2_mouse),
         .forced_scandoubler(forced_scandoubler),
         .buttons(buttons),.status(status),
         .ioctl_download(ioctl_download),.ioctl_addr(ioctl_addr),
@@ -123,6 +125,17 @@ module emu
     // one-shot img_mounted state held by the save bridge.
     wire media_reset=RESET|~shell_pll_locked;
     wire core_reset=media_reset|status[0]|buttons[1];
+    wire touch_pressed;
+    wire [15:0] touch_analog;
+    wire [31:0] joystick_touch = {
+        joystick_0[31:13],touch_pressed,joystick_0[11:0]
+    };
+    nds_nitro_touch_input touch_input (
+        .clk(clk_sys),.reset(core_reset),
+        .controller_pressed(joystick_0[12]),
+        .controller_analog(touch_analog_0),.ps2_mouse,
+        .touch_pressed,.touch_analog
+    );
     // The Nitro console is the only execution path in this core. It is always
     // enabled, so the OSD no longer exposes a misleading on/off switch.
     wire console_enabled=1'b1;
@@ -152,7 +165,7 @@ module emu
         .video_fps_select(status[4]),
         .video_layout_active,.video_screen_order_active,
         .video_gap_active,.video_fps_active,
-        .joystick(joystick_0),.joystick_analog(touch_analog_0),
+        .joystick(joystick_touch),.joystick_analog(touch_analog),
         .ioctl_download,.ioctl_index,.ioctl_wait,
         .save_img_mounted,.save_img_readonly,.save_img_size,
         .save_sd_lba,.save_sd_rd,.save_sd_wr,.save_sd_ack,

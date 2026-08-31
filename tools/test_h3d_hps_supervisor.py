@@ -74,6 +74,44 @@ def main() -> int:
         logfile = runtime / "nds-hybrid-3d-service.log"
         trace = runtime / "fake-ssd.jsonl"
         snapshot_marker = runtime / "fake-snapshot-requested"
+        fake_proc = runtime / "proc"
+        fake_mister_pid = 4242
+        fake_mister = fake_proc / str(fake_mister_pid)
+        fake_mister.mkdir(parents=True)
+        fake_mister_start = 987654
+        fake_mister.joinpath("stat").write_text(
+            f"{fake_mister_pid} (MiSTer) R "
+            + " ".join(["0"] * 18)
+            + f" {fake_mister_start} 0\n",
+            encoding="ascii",
+        )
+        fake_affinity = runtime / "fake-mister-affinity"
+        fake_affinity.write_text("1\n", encoding="ascii")
+        fake_taskset_trace = runtime / "fake-taskset.jsonl"
+        fake_taskset = runtime / "taskset"
+        fake_taskset.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            "state=$H3D_FAKE_AFFINITY_STATE\n"
+            "trace=$H3D_FAKE_TASKSET_TRACE\n"
+            "if [ \"$#\" -eq 2 ] && [ \"$1\" = -pc ]; then\n"
+            "  printf \"pid %s's current affinity list: %s\\n\" \"$2\" \"$(cat \"$state\")\"\n"
+            "elif [ \"$#\" -eq 3 ] && [ \"$1\" = -pc ]; then\n"
+            "  printf '%s\\n' \"$2\" >\"$state\"\n"
+            "  printf '[\"%s\",\"%s\"]\\n' \"$2\" \"$3\" >>\"$trace\"\n"
+            "  printf \"pid %s's current affinity list: %s\\n\" \"$3\" \"$2\"\n"
+            "else\n"
+            "  exit 2\n"
+            "fi\n",
+            encoding="ascii",
+        )
+        fake_taskset.chmod(0o755)
+        fake_pidof = runtime / "pidof"
+        fake_pidof.write_text(
+            f"#!/bin/sh\n[ \"${{1:-}}\" = MiSTer ] && echo {fake_mister_pid}\n",
+            encoding="ascii",
+        )
+        fake_pidof.chmod(0o755)
 
         # The fake daemon never executes this artifact; it only needs a real,
         # executable, hashable file at the production-relative path.
@@ -93,6 +131,11 @@ def main() -> int:
                 "H3D_TEST_START_STOP_DAEMON": str(FAKE_SSD),
                 "H3D_FAKE_SSD_TRACE": str(trace),
                 "H3D_FAKE_SNAPSHOT_MARKER": str(snapshot_marker),
+                "H3D_TEST_TASKSET": str(fake_taskset),
+                "H3D_TEST_PIDOF": str(fake_pidof),
+                "H3D_TEST_PROC_ROOT": str(fake_proc),
+                "H3D_FAKE_AFFINITY_STATE": str(fake_affinity),
+                "H3D_FAKE_TASKSET_TRACE": str(fake_taskset_trace),
             }
         )
 
@@ -134,6 +177,8 @@ def main() -> int:
                     str(pidfile), "start used a non-fixed pidfile path")
             require(first_starts[0][first_starts[0].index("-N") + 1] == "-20",
                     "start did not prioritize the H3D service")
+            require(fake_affinity.read_text(encoding="ascii").strip() == "0",
+                    "start did not move only the MiSTer frontend to CPU0")
 
             # Idempotent start must not create a second process.
             twice = run_control("start", environment)
@@ -153,6 +198,10 @@ def main() -> int:
             run_control("status", environment)
             run_control("stop", environment)
             require(not pidfile.exists(), "stop left the pidfile behind")
+            require(fake_affinity.read_text(encoding="ascii").strip() == "1",
+                    "stop did not restore MiSTer's original affinity: "
+                    f"affinity={fake_affinity.read_text(encoding='ascii')!r} "
+                    f"trace={fake_taskset_trace.read_text(encoding='ascii')!r}")
             run_control("status", environment, 3)
 
             # A stale pidfile, even one naming a live unrelated PID, must be

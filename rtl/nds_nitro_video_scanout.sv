@@ -3,6 +3,85 @@
 // Engine B remains synthesized out for the first beta, so both logical screen
 // slots intentionally read Engine A. The layout/order plumbing is kept at the
 // product boundary so Engine B can be restored without changing the OSD ABI.
+//
+// The touch pointer is deliberately a scanout-only overlay. It consumes the
+// already-mapped DS coordinates below and therefore adds no framebuffer writes
+// or DDR traffic. Since every beta screen slot aliases Engine A, the same local
+// coordinate test also places one pointer on every visible copy.
+module nds_nitro_touch_pointer #(
+    parameter integer LINGER_FRAMES = 30
+) (
+    input  logic       clk,
+    input  logic       reset,
+    input  logic       frame_boundary,
+    input  logic       touch_pressed,
+    input  logic [7:0] touch_x,
+    input  logic [7:0] touch_y,
+    input  logic       pixel_valid,
+    input  logic [7:0] pixel_x,
+    input  logic [7:0] pixel_y,
+    output logic       pointer_visible,
+    output logic       pointer_white_pixel,
+    output logic       pointer_red_pixel,
+    output logic       pointer_outline_pixel
+);
+    localparam integer LINGER_BITS = LINGER_FRAMES < 2 ? 1 :
+                                      $clog2(LINGER_FRAMES + 1);
+    localparam logic [LINGER_BITS-1:0] LINGER_RELOAD = LINGER_FRAMES;
+
+    logic [7:0] pointer_x;
+    logic [7:0] pointer_y;
+    logic [LINGER_BITS-1:0] linger_count;
+    logic signed [8:0] delta_x;
+    logic signed [8:0] delta_y;
+    logic pointer_inner;
+    logic pointer_outer;
+
+    always_ff @(posedge clk or posedge reset) begin
+        if (reset) begin
+            // Signed MiSTer stick zero maps to the DS screen center.
+            pointer_x <= 8'd128;
+            pointer_y <= 8'd96;
+            linger_count <= '0;
+        end else if (frame_boundary) begin
+            // Sampling once per display frame prevents a pointer from tearing
+            // between mirrored copies and makes the half-second hold exact.
+            if (touch_x != pointer_x || touch_y != pointer_y)
+                linger_count <= LINGER_RELOAD;
+            else if (linger_count != 0)
+                linger_count <= linger_count - 1'b1;
+            pointer_x <= touch_x;
+            pointer_y <= touch_y;
+        end
+    end
+
+    always_comb begin
+        // One signed subtract per axis is smaller than the previous absolute
+        // distance implementation, which needed a compare, two subtracts, and
+        // a mux for each coordinate. The inclusive bounds preserve the exact
+        // 11x11 crosshair footprint, including at screen edges.
+        delta_x = $signed({1'b0,pixel_x}) - $signed({1'b0,pointer_x});
+        delta_y = $signed({1'b0,pixel_y}) - $signed({1'b0,pointer_y});
+        // An 11x11 maximum footprint: a one-pixel cross with a one-pixel black
+        // surround. The native-coordinate test scales with the DS image.
+        pointer_inner =
+            (delta_x == 0 && delta_y >= -9'sd4 && delta_y <= 9'sd4) ||
+            (delta_y == 0 && delta_x >= -9'sd4 && delta_x <= 9'sd4);
+        pointer_outer =
+            (delta_x >= -9'sd1 && delta_x <= 9'sd1 &&
+             delta_y >= -9'sd5 && delta_y <= 9'sd5) ||
+            (delta_y >= -9'sd1 && delta_y <= 9'sd1 &&
+             delta_x >= -9'sd5 && delta_x <= 9'sd5);
+        pointer_visible = touch_pressed || linger_count != 0;
+        pointer_red_pixel = pixel_valid && pointer_visible && touch_pressed &&
+                            pointer_inner;
+        pointer_white_pixel = pixel_valid && pointer_visible &&
+                              !touch_pressed && pointer_inner;
+        pointer_outline_pixel = pixel_valid && pointer_visible &&
+                                pointer_outer && !pointer_inner;
+    end
+endmodule
+
 module nds_nitro_video_scanout #(
     parameter integer FPS_WINDOW_FRAMES = 60
 ) (
@@ -12,6 +91,9 @@ module nds_nitro_video_scanout #(
     input  logic        screen_order_select,
     input  logic [1:0]  gap_select,
     input  logic        fps_select,
+    input  logic        touch_pressed,
+    input  logic [7:0]  touch_x,
+    input  logic [7:0]  touch_y,
     output logic [1:0]  layout_active,
     output logic        screen_order_active,
     output logic [1:0]  gap_active,
@@ -23,6 +105,10 @@ module nds_nitro_video_scanout #(
     output logic [1:0]  pf_frame_bank,
     input  logic        published_frame_toggle,
     input  logic [1:0]  published_frame_bank,
+    // Toggles once for every distinct completed HPS 3D descriptor that has
+    // reached the FPGA pixel domain.  This is intentionally separate from
+    // the 2D framebuffer publication used for scanout bank ownership.
+    input  logic        effective_3d_frame_toggle,
     output logic [8:0]  lb_raddr,
     input  logic [35:0] lb_q,
     output logic        ce_pixel,
@@ -49,7 +135,9 @@ module nds_nitro_video_scanout #(
     (* async_reg = "true" *) logic [1:0] published_toggle_sync;
     (* async_reg = "true" *) logic [1:0] published_bank_sync_0;
     (* async_reg = "true" *) logic [1:0] published_bank_sync_1;
+    (* async_reg = "true" *) logic [1:0] effective_3d_toggle_sync;
     logic published_toggle_seen;
+    logic effective_3d_toggle_seen;
     logic pending_frame_valid;
     logic [1:0] pending_frame_bank;
     logic boundary_frame_valid;
@@ -68,6 +156,10 @@ module nds_nitro_video_scanout #(
     logic [3:0] fps_display_tens;
     logic [3:0] fps_display_ones;
     logic [5:0] fps_window_frames;
+    logic pointer_visible;
+    logic pointer_white_pixel;
+    logic pointer_red_pixel;
+    logic pointer_outline_pixel;
 
     wire [4:0] gap_pixels = {gap_active,3'b000};
     wire [9:0] screen_top = fps_active ? 10'd6 : 10'd0;
@@ -93,6 +185,8 @@ module nds_nitro_video_scanout #(
     wire [9:0] vsync_end = canvas_height + 10'd9;
     wire publication_event =
         published_toggle_sync[1] != published_toggle_seen;
+    wire effective_3d_frame_event =
+        effective_3d_toggle_sync[1] != effective_3d_toggle_seen;
     wire publication_available = publication_event || pending_frame_valid;
     wire [1:0] publication_bank = publication_event ?
         published_bank_sync_1 : pending_frame_bank;
@@ -211,6 +305,23 @@ module nds_nitro_video_scanout #(
 
     always_comb lb_raddr = {local_y[0], 1'b0, local_x[7:1]};
 
+    nds_nitro_touch_pointer touch_pointer (
+        .clk(clk_video),
+        .reset(reset),
+        .frame_boundary(pixel_divider == pixel_divider_limit &&
+                        hcount == H_TOTAL-1 && frame_end),
+        .touch_pressed,
+        .touch_x,
+        .touch_y,
+        .pixel_valid(screen_pixel),
+        .pixel_x(local_x),
+        .pixel_y(local_y),
+        .pointer_visible,
+        .pointer_white_pixel,
+        .pointer_red_pixel,
+        .pointer_outline_pixel
+    );
+
     always_ff @(posedge clk_video or posedge reset) begin
         if (reset) begin
             hcount <= 0;
@@ -225,7 +336,9 @@ module nds_nitro_video_scanout #(
             published_toggle_sync <= 0;
             published_bank_sync_0 <= 0;
             published_bank_sync_1 <= 0;
+            effective_3d_toggle_sync <= 0;
             published_toggle_seen <= 0;
+            effective_3d_toggle_seen <= 0;
             pending_frame_valid <= 0;
             pending_frame_bank <= 0;
             boundary_frame_valid <= 0;
@@ -254,10 +367,15 @@ module nds_nitro_video_scanout #(
                                       published_frame_toggle};
             published_bank_sync_0 <= published_frame_bank;
             published_bank_sync_1 <= published_bank_sync_0;
+            effective_3d_toggle_sync <= {effective_3d_toggle_sync[0],
+                                         effective_3d_frame_toggle};
             if (publication_event) begin
                 published_toggle_seen <= published_toggle_sync[1];
                 pending_frame_valid <= 1'b1;
                 pending_frame_bank <= published_bank_sync_1;
+            end
+            if (effective_3d_frame_event) begin
+                effective_3d_toggle_seen <= effective_3d_toggle_sync[1];
                 if (fps_count_ones == 4'd9) begin
                     fps_count_ones <= 0;
                     if (fps_count_tens != 4'd9)
@@ -276,6 +394,12 @@ module nds_nitro_video_scanout #(
                 de <= hcount < canvas_width && vcount < canvas_height;
                 if (fps_font_pixel) begin
                     red <= 8'hff; green <= 8'hff; blue <= 8'hff;
+                end else if (pointer_red_pixel) begin
+                    red <= 8'hff; green <= 8'h00; blue <= 8'h00;
+                end else if (pointer_white_pixel) begin
+                    red <= 8'hff; green <= 8'hff; blue <= 8'hff;
+                end else if (pointer_outline_pixel) begin
+                    red <= 8'h00; green <= 8'h00; blue <= 8'h00;
                 end else if (screen_pixel) begin
                     {blue, green, red} <= lb_half
                         ? {lb_q[35:30],lb_q[35:34],lb_q[29:24],lb_q[29:28],
@@ -317,7 +441,7 @@ module nds_nitro_video_scanout #(
                                             screen_order_select,layout_select};
                         if (fps_window_frames == FPS_WINDOW_FRAMES-1) begin
                             fps_window_frames <= 0;
-                            if (publication_event) begin
+                            if (effective_3d_frame_event) begin
                                 if (fps_count_ones == 4'd9) begin
                                     fps_display_ones <= 0;
                                     fps_display_tens <= fps_count_tens == 4'd9 ?

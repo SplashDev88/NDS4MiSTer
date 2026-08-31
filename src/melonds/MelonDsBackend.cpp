@@ -5,6 +5,7 @@
 #include "NDSCart.h"
 #include "NDS4MiSTer_2DTrace.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstring>
 #include <fstream>
@@ -300,6 +301,21 @@ void MelonDsBackend::set_output_line_sink(melonDS::NDS4MiSTer::OutputLineSink si
 void MelonDsBackend::set_key_mask(melonDS::u32 mask)
 {
     if(nds_) nds_->SetKeyMask(mask & 0xFFFu);
+}
+
+void MelonDsBackend::set_touch(bool pressed, std::uint16_t x, std::uint16_t y)
+{
+    if (!nds_) return;
+    if (pressed)
+        nds_->TouchScreen(std::min<std::uint16_t>(x, 255),
+                          std::min<std::uint16_t>(y, 191));
+    else
+        nds_->ReleaseScreen();
+}
+
+bool MelonDsBackend::screen_swap() const noexcept
+{
+    return nds_ && nds_->GPU.ScreenSwap;
 }
 
 std::uint64_t MelonDsBackend::advance_external_cycles(bool arm9, std::uint32_t cycles)

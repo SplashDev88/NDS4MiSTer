@@ -462,6 +462,43 @@ int main()
     }
 
     {
+        Fixture fixture(24);
+        fixture.header->accepted_session = 24;
+        constexpr std::size_t PaddedStride = PlaneWidth + 4;
+        std::vector<std::uint32_t> padded(
+            PaddedStride * PlaneHeight, 0xa5a5a5a5u);
+        std::array<const std::uint32_t*, PlaneHeight> lines {};
+        for (std::size_t y = 0; y < PlaneHeight; ++y) {
+            auto* line = padded.data() + y * PaddedStride + 2;
+            lines[y] = line;
+            for (std::size_t x = 0; x < PlaneWidth; ++x)
+                line[x] = static_cast<std::uint32_t>(
+                    y * PlaneWidth + x) ^ 0x1f123456u;
+        }
+        std::vector<std::uint32_t> bank0(PlanePixels);
+        std::vector<std::uint32_t> bank1(PlanePixels);
+        PlanePublisher publisher(
+            *fixture.header, bank0.data(), bank1.data(), true);
+        if (!publisher.ready(24))
+            die("direct scanline publisher was not initially ready");
+        if (!publisher.publish_scanlines(24, 9, lines) ||
+            publisher.last_store_count() != PlanePixels)
+            die("direct scanline publication failed");
+        if (publisher.ready(24))
+            die("unacknowledged direct scanline bank reported ready");
+        for (std::size_t y = 0; y < PlaneHeight; ++y) {
+            for (std::size_t x = 0; x < PlaneWidth; ++x) {
+                const auto index = y * PlaneWidth + x;
+                if (bank0[index] != pack_melonds_pixel(lines[y][x]))
+                    die("direct scanline pixel conversion is wrong");
+            }
+        }
+        fixture.header->frame_ack_sequence = 2;
+        if (!publisher.ready(24))
+            die("acknowledged direct scanline bank did not become ready");
+    }
+
+    {
         Fixture fixture(27);
         fixture.header->accepted_session = 27;
         std::vector<std::uint32_t> source(PlanePixels, 0x1f010203u);

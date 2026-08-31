@@ -36,10 +36,27 @@ begin
       fw_done => '0', fw_data => (others => '0'));
 
    process
-      procedure write_control is
+      variable value : std_logic_vector(7 downto 0);
+      procedure write_control(constant hold : boolean := true) is
+         variable control_word : std_logic_vector(31 downto 0);
+      begin
+         control_word := x"00008200"; -- enabled, touchscreen device, baud 0
+         if hold then control_word(11) := '1'; end if;
+         wait until falling_edge(clk);
+         bus7.Din <= control_word;
+         bus7.rnw <= '0';
+         bus7.ena <= '1';
+         bus7.bEna <= "0010";
+         wait until falling_edge(clk);
+         bus7.rnw <= '1';
+         bus7.ena <= '0';
+         bus7.bEna <= "0000";
+      end procedure;
+
+      procedure disable_control is
       begin
          wait until falling_edge(clk);
-         bus7.Din <= x"00008A00"; -- enabled, held, touchscreen device, baud 0
+         bus7.Din <= (others => '0');
          bus7.rnw <= '0';
          bus7.ena <= '1';
          bus7.bEna <= "0010";
@@ -108,6 +125,31 @@ begin
       touch_y <= x"BF";
       read_conversion(x"D0", x"7F", x"80");
       read_conversion(x"90", x"5F", x"80");
+
+      -- Releasing chip-select after a command resets DataPos in melonDS.
+      -- The first byte of a later held transaction must therefore be the
+      -- position-0 zero, not the stale conversion high byte.
+      write_control(false);
+      transfer(x"D0", value);
+      assert value = x"00"
+         report "unheld TSC command returned nonzero data" severity failure;
+      write_control(true);
+      transfer(x"00", value);
+      assert value = x"00"
+         report "TSC DataPos survived unheld chip-select release" severity failure;
+      transfer(x"00", value);
+      assert value = x"7F"
+         report "TSC conversion did not restart after release" severity failure;
+
+      -- Disabling SPICNT also releases the selected device.
+      transfer(x"90", value);
+      disable_control;
+      write_control(true);
+      transfer(x"00", value);
+      assert value = x"00"
+         report "TSC DataPos survived SPICNT disable" severity failure;
+      disable_control;
+      write_control(true);
 
       -- melonDS release sentinel: X=0, Y=0xFFF.
       touch_active <= '0';

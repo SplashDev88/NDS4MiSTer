@@ -144,7 +144,8 @@ Runtime video controls are:
 - Video Layout: Left/Right, Top/Bottom, Left Only, or Right Only.
 - Screen Order: Main First or Touch First.
 - Screen Gap: 0, 8, 16, or 24 pixels.
-- FPS Counter: Off or On.
+- 3D FPS Counter: Off or On. This reports distinct completed 3D frames
+  delivered to FPGA scanout, not the fixed DS/HDMI refresh rate.
 
 Because Engine B is absent, the current beta duplicates Engine A in both
 logical screen positions. The FPS counter reports completed HPS 3D frame
@@ -156,11 +157,14 @@ Sound is generated in FPGA logic by the Nitro_DarkSide Nintendo DS sound
 engine and is sent through MiSTer's normal audio path. The HPS 3D service does
 not emulate or mix audio.
 
-Controller buttons are mapped through `hps_io`. A Touch button and analog
-coordinates reach the console boundary. The right stick selects an absolute
-native DS coordinate and the remappable `Touch` action holds pen-down. The SPI
-touch controller returns melonDS-compatible 12-bit X/Y samples and direct boot
-installs matching calibration data.
+Controller buttons and MiSTer mouse packets are mapped through `hps_io`. The
+right stick selects an absolute native DS coordinate and the remappable
+`Touch` action holds pen-down. Relative mouse deltas update a saturated native
+DS coordinate and the left mouse button holds pen-down. The most recently
+active source owns the stylus. The SPI touch controller returns
+melonDS-compatible 12-bit X/Y samples and direct boot installs matching
+calibration data. A scanout-only crosshair is white while hovering and red
+while pressed; it does not modify either framebuffer or generate DDR traffic.
 
 ## Cartridge saves
 
@@ -223,9 +227,9 @@ or framebuffer payloads.
 - Cartridge latency can cause missing or late objects and effects.
 - The Reset menu command can hang; reselecting the ROM is the current restart
   workaround.
-- Basic controller touchscreen input is present, but Engine B is not displayed,
-  so precise touch-screen games remain limited. NAND saves, save states, Wi-Fi,
-  and microphone support are not implemented.
+- Controller and mouse touchscreen input are present, but Engine B is not
+  displayed, so precise touch-screen games remain limited. NAND saves, save
+  states, Wi-Fi, and microphone support are not implemented.
 - Chrono Trigger has a separate boot failure under investigation.
 
 The first public compatibility target is New Super Mario Bros.; this release

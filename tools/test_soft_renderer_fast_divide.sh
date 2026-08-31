@@ -29,6 +29,9 @@ docker run --rm --network none \
         ! sed -n "/<nds_test_scale_permille_ceil>:/,/^$/p" \
             /tmp/nds-soft-renderer-fast-divide-arm.dis |
             grep -Eq "bl.*<__aeabi_(u?idiv|uidivmod|uldivmod)>"
+        ! sed -n "/<nds_test_div_prepared_u32>:/,/^$/p" \
+            /tmp/nds-soft-renderer-fast-divide-arm.dis |
+            grep -Eq "bl.*<__aeabi_(u?idiv|uidivmod|uldivmod)>"
         grep -A80 -m1 "<nds_test_div_u32_exact>:" \
             /tmp/nds-soft-renderer-fast-divide-arm.dis |
             grep -Eq "vdiv.f64"

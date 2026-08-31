@@ -10,6 +10,9 @@ module tb_nds_nitro_video_scanout;
     logic screen_order_select = 1'b0;
     logic [1:0] gap_select = 2'd0;
     logic fps_select = 1'b0;
+    logic touch_pressed = 1'b0;
+    logic [7:0] touch_x = 8'd128;
+    logic [7:0] touch_y = 8'd96;
     wire [1:0] layout_active;
     wire screen_order_active;
     wire [1:0] gap_active;
@@ -21,6 +24,7 @@ module tb_nds_nitro_video_scanout;
     logic [35:0] lb_q = 36'h123456789;
     logic published_frame_toggle = 1'b0;
     logic [1:0] published_frame_bank = 2'd0;
+    logic effective_3d_frame_toggle = 1'b0;
     wire ce_pixel, de, hsync, vsync;
     wire [7:0] red, green, blue;
 
@@ -124,6 +128,41 @@ module tb_nds_nitro_video_scanout;
         end
     endtask
 
+    task automatic wait_pointer_pixel(
+        input integer output_x,
+        input integer output_y,
+        input logic expected_white,
+        input logic expected_red
+    );
+        begin
+            while (!(dut.hcount == output_x && dut.vcount == output_y))
+                @(negedge clk_video);
+            #1;
+            if (dut.pointer_white_pixel !== expected_white ||
+                dut.pointer_red_pixel !== expected_red)
+                $fatal(1, "pointer mismatch at output (%0d,%0d) local=(%0d,%0d) white=%0d red=%0d",
+                       output_x,output_y,dut.local_x,dut.local_y,
+                       dut.pointer_white_pixel,dut.pointer_red_pixel);
+        end
+    endtask
+
+    task automatic move_pointer_at_next_frame(
+        input logic [7:0] requested_x,
+        input logic [7:0] requested_y
+    );
+        begin
+            touch_x = requested_x;
+            touch_y = requested_y;
+            while (!(dut.frame_end && dut.hcount == 10'd639 &&
+                     dut.pixel_divider == dut.pixel_divider_limit))
+                @(negedge clk_video);
+            @(posedge clk_video);
+            #1;
+            if (!dut.pointer_visible)
+                $fatal(1, "stick movement did not make pointer visible");
+        end
+    endtask
+
     initial begin
         // Integer scaler: default, gapped side, stacked, and both single modes.
         #1;
@@ -150,20 +189,31 @@ module tb_nds_nitro_video_scanout;
         reset = 1'b0;
         check_complete_frame(512,192,261,6,192);
 
+        // Source-coordinate overlay must appear on both Engine-A aliases.
+        move_pointer_at_next_frame(8'd50,8'd60);
+        wait_pointer_pixel(50,60,1'b1,1'b0);
+        wait_pointer_pixel(306,60,1'b1,1'b0);
+
         select_layout(2'd1,1'b1,2'd3,1'b1);
+        wait_pointer_pixel(50,66,1'b1,1'b0);
+        wait_pointer_pixel(50,282,1'b1,1'b0);
         check_complete_frame(256,414,522,3,384);
 
         select_layout(2'd2,1'b0,2'd2,1'b1);
+        wait_pointer_pixel(50,66,1'b1,1'b0);
         check_complete_frame(256,198,261,6,192);
 
         select_layout(2'd3,1'b1,2'd0,1'b0);
+        wait_pointer_pixel(50,60,1'b1,1'b0);
         check_complete_frame(256,192,261,6,192);
 
         select_layout(2'd0,1'b0,2'd3,1'b1);
         check_complete_frame(536,198,261,6,192);
 
-        // Reset the shortened two-frame FPS sample window. Publish one frame
-        // during each raster and verify the BCD overlay reports 02.
+        // Reset the shortened two-frame FPS sample window. Deliver one new
+        // HPS 3D descriptor during each raster and verify the BCD overlay
+        // reports 02. Ordinary 2D framebuffer publication is deliberately
+        // independent and must not inflate the effective 3D rate.
         reset = 1'b1;
         layout_select = 2'd2;
         gap_select = 0;
@@ -172,9 +222,13 @@ module tb_nds_nitro_video_scanout;
         repeat (8) @(negedge clk_video);
         reset = 1'b0;
         repeat (2) begin
+            wait (dut.vcount == 10'd50 && dut.hcount == 10'd100);
+            published_frame_bank = published_frame_bank + 1'b1;
+            published_frame_toggle = ~published_frame_toggle;
             wait (dut.vcount == 10'd100 && dut.hcount == 10'd100);
             published_frame_bank = published_frame_bank + 1'b1;
             published_frame_toggle = ~published_frame_toggle;
+            effective_3d_frame_toggle = ~effective_3d_frame_toggle;
             wait (dut.frame_end && dut.hcount == 10'd639);
             wait (dut.vcount == 0 && dut.hcount == 0);
             @(negedge clk_video);

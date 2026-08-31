@@ -22,9 +22,13 @@
 #include "GPU3D.h"
 #include "GPU3D_Texcache.h"
 #include "Platform.h"
+#include <algorithm>
 #include <array>
 #include <thread>
 #include <atomic>
+#if defined(__arm__) && defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 namespace melonDS
 {
@@ -64,6 +68,17 @@ inline constexpr auto NDS4MiSTerRasterReciprocal18 =
 inline constexpr auto NDS4MiSTerRasterMagic =
     NDS4MiSTerMakeRasterMagicTable();
 
+inline u32 NDS4MiSTerDividePreparedU32(
+    u32 numerator, u32 denominator, u32 reciprocal) noexcept
+{
+    if (denominator == 1) return numerator;
+    u32 quotient = static_cast<u32>(
+        (static_cast<u64>(numerator) * reciprocal) >> 32);
+    const u32 remainder = numerator - quotient * denominator;
+    quotient += remainder >= denominator;
+    return quotient;
+}
+
 inline u32 NDS4MiSTerDivideU32Exact(u32 numerator, u32 denominator) noexcept
 {
     if (denominator == 0) return 0;
@@ -85,7 +100,72 @@ inline u32 NDS4MiSTerDivideU32Exact(u32 numerator, u32 denominator) noexcept
     return quotient;
 }
 
-inline constexpr bool NDS4MiSTerAdvancePerspectiveFactor(
+inline u32 NDS4MiSTerDivideFactorDeltaExact(
+    u32 numerator, u32 denominator) noexcept
+{
+    // Perspective factors have eight fractional bits, so a consecutive
+    // pixel can change the quotient by at most 256. A binary32 estimate has
+    // ample precision over that bounded quotient. On Cortex-A9, one NEON
+    // Newton refinement takes the reciprocal estimate from roughly 8 to 16
+    // useful bits, which keeps this quotient within one integer without the
+    // relatively slow VDIV. The product check then makes the result exact.
+#if defined(__arm__) && defined(__ARM_NEON)
+    const float32x2_t divisor = vdup_n_f32(
+        static_cast<float>(denominator));
+    float32x2_t reciprocal = vrecpe_f32(divisor);
+    reciprocal = vmul_f32(
+        reciprocal, vrecps_f32(divisor, reciprocal));
+    const u32 quotientEstimate = static_cast<u32>(
+        static_cast<float>(numerator) *
+        vget_lane_f32(reciprocal, 0));
+#else
+    const u32 quotientEstimate = static_cast<u32>(
+        static_cast<float>(numerator) /
+        static_cast<float>(denominator));
+#endif
+    u32 quotient = quotientEstimate;
+    // FinalW is normalized to 16 bits and a native X span is at most 256
+    // pixels, so both the exact quotient and this one-step estimate are
+    // bounded to 0..256. Their product with the <= 0x00FFFF00 denominator
+    // fits in u32; keeping it 32-bit avoids UMULL and a two-word comparison.
+    u32 product = quotient * denominator;
+    if (product > numerator)
+        --quotient;
+    else if (numerator - product >= denominator)
+        ++quotient;
+    return quotient;
+}
+
+[[gnu::hot, gnu::noinline]] inline void
+NDS4MiSTerNormalizePerspectiveFactorWide(
+    u32& factor, s32 denominator, s32& remainder) noexcept
+{
+    if (remainder >= denominator)
+    {
+        const u32 correction = NDS4MiSTerDivideFactorDeltaExact(
+            static_cast<u32>(remainder),
+            static_cast<u32>(denominator));
+        factor += correction;
+        remainder -= static_cast<s32>(
+            correction * static_cast<u32>(denominator));
+        return;
+    }
+
+    const u32 magnitude = static_cast<u32>(
+        -static_cast<s64>(remainder));
+    u32 correction = NDS4MiSTerDivideFactorDeltaExact(
+        magnitude, static_cast<u32>(denominator));
+    if (correction * static_cast<u32>(denominator) < magnitude)
+        ++correction;
+    correction = std::min(correction, factor);
+    factor -= correction;
+    remainder = static_cast<s32>(
+        static_cast<s64>(remainder) +
+        static_cast<s64>(correction) * denominator);
+}
+
+inline constexpr bool
+NDS4MiSTerAdvancePerspectiveFactor(
     u32& factor, s32& denominator, s32& remainder,
     s32 numeratorStep, s32 denominatorStep) noexcept
 {
@@ -103,6 +183,23 @@ inline constexpr bool NDS4MiSTerAdvancePerspectiveFactor(
 
     remainder += numeratorStep -
         static_cast<s32>(factor) * denominatorStep;
+
+    if (remainder >= denominator &&
+        remainder - denominator >= denominator)
+    {
+        NDS4MiSTerNormalizePerspectiveFactorWide(
+            factor, denominator, remainder);
+        return true;
+    }
+    if (remainder < 0 && factor != 0 &&
+        static_cast<u32>(-static_cast<s64>(remainder)) >
+            static_cast<u32>(denominator))
+    {
+        NDS4MiSTerNormalizePerspectiveFactorWide(
+            factor, denominator, remainder);
+        return true;
+    }
+
     while (remainder >= denominator)
     {
         ++factor;
@@ -115,6 +212,139 @@ inline constexpr bool NDS4MiSTerAdvancePerspectiveFactor(
     }
     return true;
 }
+
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerAdvancePerspectiveFactorFast(
+    u32& factor, s32& denominator, s32& remainder,
+    s32 numeratorStep, s32 denominatorStep) noexcept
+{
+    denominator += denominatorStep;
+    if (denominator == 0)
+    {
+        factor = 0;
+        remainder = 0;
+        return false;
+    }
+
+    remainder += numeratorStep -
+        static_cast<s32>(factor) * denominatorStep;
+    if (remainder >= denominator)
+    {
+        if (remainder - denominator < denominator)
+        {
+            ++factor;
+            remainder -= denominator;
+        }
+        else
+            NDS4MiSTerNormalizePerspectiveFactorWide(
+                factor, denominator, remainder);
+    }
+    else if (remainder < 0 && factor != 0)
+    {
+        const u32 magnitude = static_cast<u32>(
+            -static_cast<s64>(remainder));
+        if (magnitude <= static_cast<u32>(denominator))
+        {
+            --factor;
+            remainder += denominator;
+        }
+        else
+            NDS4MiSTerNormalizePerspectiveFactorWide(
+                factor, denominator, remainder);
+    }
+    return true;
+}
+
+// Exact recurrence for the dir=0 Z-buffer interpolation formula used by the
+// software rasterizer.  A visible span may begin after clipping or contain
+// holes from stencil rejection, so a discontinuity initializes from the
+// original 64-bit product.  Consecutive pixels advance only its quotient and
+// 13-bit remainder, avoiding one 64-bit multiply per covered pixel.
+class NDS4MiSTerZSpanInterpolator
+{
+public:
+    constexpr NDS4MiSTerZSpanInterpolator() = default;
+
+    constexpr NDS4MiSTerZSpanInterpolator(
+        s32 z0, s32 z1, s32 xdiff, s32 xrecipZ) noexcept
+    {
+        Setup(z0, z1, xdiff, xrecipZ);
+    }
+
+    constexpr void Setup(
+        s32 z0, s32 z1, s32 xdiff, s32 xrecipZ) noexcept
+    {
+        Z0 = z0;
+        Constant = xdiff == 0 || z0 == z1;
+        Ascending = z0 < z1;
+        Base = Ascending ? z0 : z1;
+        const u32 displacement = static_cast<u32>(
+            Ascending ? z1 - z0 : z0 - z1) >> 9;
+        StepNumerator = static_cast<u64>(displacement) *
+            static_cast<u32>(xrecipZ);
+        StepQuotient = static_cast<u32>(StepNumerator >> 13);
+        StepRemainder = static_cast<u32>(StepNumerator) & 0x1FFFu;
+        LastX = 0;
+        Current = Z0;
+        Remainder = 0;
+        Valid = false;
+    }
+
+    [[gnu::always_inline, gnu::hot]] constexpr inline s32
+    Interpolate(s32 x, s32 xdiff) noexcept
+    {
+        if (Constant) return Z0;
+
+        if (Valid && x == LastX + 1)
+        {
+            if (Ascending)
+            {
+                Current += static_cast<s32>(StepQuotient);
+                Remainder += StepRemainder;
+                if (Remainder >= 0x2000u)
+                {
+                    ++Current;
+                    Remainder -= 0x2000u;
+                }
+            }
+            else
+            {
+                Current -= static_cast<s32>(StepQuotient);
+                if (Remainder < StepRemainder)
+                {
+                    --Current;
+                    Remainder += 0x2000u;
+                }
+                Remainder -= StepRemainder;
+            }
+        }
+        else
+        {
+            const u32 factor = static_cast<u32>(
+                Ascending ? x : xdiff - x);
+            const u64 numerator = StepNumerator * factor;
+            Current = Base + static_cast<s32>(numerator >> 13);
+            Remainder = static_cast<u32>(numerator) & 0x1FFFu;
+        }
+
+        LastX = x;
+        Valid = true;
+        return Current;
+    }
+
+private:
+    u64 StepNumerator = 0;
+    s32 Z0 = 0;
+    s32 Base = 0;
+    s32 LastX = 0;
+    s32 Current = 0;
+    u32 StepQuotient = 0;
+    u32 StepRemainder = 0;
+    u32 Remainder = 0;
+    bool Ascending = false;
+    bool Constant = true;
+    bool Valid = false;
+};
 
 inline u32 NDS4MiSTerScalePermilleCeil(u32 value, u32 permille) noexcept
 {
@@ -140,6 +370,7 @@ public:
     static constexpr u32 DefaultPrimaryPermille = 500;
     static constexpr u32 MinimumPrimaryPermille = 440;
     static constexpr u32 MaximumPrimaryPermille = 800;
+    static constexpr u32 MaximumCorrectionPermille = 16;
     static constexpr u64 MinimumSampleNs = 200000;
 
     void Reset() noexcept
@@ -183,26 +414,46 @@ public:
             PrimaryEmaNs_ - SecondaryEmaNs_;
         const u64 slower = secondarySlower ? SecondaryEmaNs_ : PrimaryEmaNs_;
 
-        // Six-percent hysteresis and a 1/16 EMA prevent scheduler noise from
-        // moving a polygon boundary back and forth. Larger imbalances still
-        // converge within a fraction of a second, but no frame can move the
-        // target by more than 0.4% of estimated work.
-        if (difference * 1000u <= slower * 60u)
+        // Four-percent hysteresis rejects scheduler noise. For a real
+        // imbalance, estimate each core's throughput from the work share it
+        // just received and its measured completion time. The balanced share
+        // is then:
+        //
+        //   p' = p*Tsecondary /
+        //        (p*Tsecondary + (1-p)*Tprimary)
+        //
+        // This reaches a moving scene's useful split much faster than nudging
+        // by one to four permille, while the EMA and 1.6%-per-frame bound keep
+        // completion cadence stable.
+        if (difference * 1000u <= slower * 40u)
             return false;
-        u32 step = 1;
-        if (difference * 1000u > slower * 120u) step = 2;
-        if (difference * 1000u > slower * 200u) step = 4;
-
         const u32 previous = PrimaryPermille_;
-        if (secondarySlower)
+        const u64 primaryWeighted =
+            static_cast<u64>(previous) * SecondaryEmaNs_;
+        const u64 secondaryWeighted =
+            static_cast<u64>(1000u - previous) * PrimaryEmaNs_;
+        const u64 totalWeighted = primaryWeighted + secondaryWeighted;
+        if (totalWeighted == 0)
+            return false;
+        u32 target = static_cast<u32>(
+            (primaryWeighted * 1000u + totalWeighted / 2u) /
+            totalWeighted);
+        if (target < MinimumPrimaryPermille)
+            target = MinimumPrimaryPermille;
+        else if (target > MaximumPrimaryPermille)
+            target = MaximumPrimaryPermille;
+
+        if (target > previous)
         {
-            PrimaryPermille_ = PrimaryPermille_ + step < MaximumPrimaryPermille ?
-                PrimaryPermille_ + step : MaximumPrimaryPermille;
+            const u32 step = std::min(
+                target - previous, MaximumCorrectionPermille);
+            PrimaryPermille_ = previous + step;
         }
         else
         {
-            PrimaryPermille_ = PrimaryPermille_ > MinimumPrimaryPermille + step ?
-                PrimaryPermille_ - step : MinimumPrimaryPermille;
+            const u32 step = std::min(
+                previous - target, MaximumCorrectionPermille);
+            PrimaryPermille_ = previous - step;
         }
         return PrimaryPermille_ != previous;
     }
@@ -211,8 +462,8 @@ private:
     static u64 Smooth(u64 current, u64 sample) noexcept
     {
         return sample >= current ?
-            current + ((sample - current) >> 4) :
-            current - ((current - sample) >> 4);
+            current + ((sample - current) >> 2) :
+            current - ((current - sample) >> 2);
     }
 
     u32 PrimaryPermille_ = DefaultPrimaryPermille;
@@ -415,7 +666,56 @@ private:
             }
         }
 
-        constexpr s32 Interpolate(s32 y0, s32 y1) const
+        [[gnu::hot, gnu::noinline]] void SetPerspectiveXFast(s32 x)
+        {
+            if (factor_valid && x == factor_x + 1)
+            {
+                if (!NDS4MiSTerAdvancePerspectiveFactorFast(
+                    yfactor, factor_denominator, factor_remainder,
+                    factor_numerator_step, factor_denominator_step))
+                {
+                    factor_valid = false;
+                    return;
+                }
+            }
+            else
+            {
+                const u32 num = (x * w0n) << shift;
+                const u32 den = (x * w0d) + ((xdiff-x) * w1d);
+                if (den == 0)
+                {
+                    yfactor = 0;
+                    factor_valid = false;
+                    return;
+                }
+                // Along X, x is within the polygon span, so this
+                // perspective factor is mathematically bounded to 0..256.
+                // Use the exact binary32 estimate/correction path here too;
+                // the generic interpolator retains the unrestricted divide.
+                yfactor = NDS4MiSTerDivideFactorDeltaExact(num, den);
+                factor_denominator = den;
+                factor_remainder = static_cast<s32>(
+                    num - yfactor * den);
+            }
+            factor_x = x;
+            factor_valid = true;
+        }
+
+        [[gnu::always_inline, gnu::hot]] inline void SetXFast(s32 x)
+        {
+            x -= x0;
+            this->x = x;
+            if ((xdiff != 0) && ((!linear) || wbuffer))
+                SetPerspectiveXFast(x);
+        }
+
+        // RenderPolygonScanline evaluates five attributes at both polygon
+        // edges, so leaving this helper out of line costs ten calls for every
+        // polygon scanline.  Keep the exact DS interpolation math, but expose
+        // the already-prepared mode/reciprocal state to the caller so ARM can
+        // specialize those repeated edge evaluations in place.
+        [[gnu::always_inline, gnu::hot]] constexpr inline s32
+        Interpolate(s32 y0, s32 y1) const
         {
             if (xdiff == 0 || y0 == y1) return y0;
 
@@ -493,6 +793,34 @@ private:
             }
         }
 
+        class SpanDepthInterpolator
+        {
+        public:
+            constexpr SpanDepthInterpolator(
+                const Interpolator& parent, s32 z0, s32 z1) noexcept
+                : Parent(parent), Z0(z0), Z1(z1),
+                  ZRecurrence(z0, z1, parent.xdiff, parent.xrecip_z)
+            {
+            }
+
+            [[gnu::always_inline, gnu::hot]] constexpr inline s32
+            Interpolate() noexcept
+            {
+                // W-buffering follows the perspective factor maintained by
+                // SetX and remains on the existing reference path.  Native
+                // Z-buffer spans use the exact quotient/remainder recurrence.
+                if (Parent.wbuffer)
+                    return Parent.InterpolateZ(Z0, Z1);
+                return ZRecurrence.Interpolate(Parent.x, Parent.xdiff);
+            }
+
+        private:
+            const Interpolator& Parent;
+            s32 Z0;
+            s32 Z1;
+            NDS4MiSTerZSpanInterpolator ZRecurrence;
+        };
+
         class SpanInterpolator
         {
         public:
@@ -519,7 +847,7 @@ private:
                     if (Parent.linear && Parent.xdiff > 0 && Delta[i] != 0)
                     {
                         const s32 stepQuotient = static_cast<s32>(
-                            Parent.divideLinear(Delta[i], Parent.xdiff));
+                            Parent.divideSpanLinear(Delta[i]));
                         const s32 stepRemainder = static_cast<s32>(Delta[i]) -
                             stepQuotient * Parent.xdiff;
                         StepQuotient[i] = Ascending[i] ? stepQuotient :
@@ -542,14 +870,22 @@ private:
 
                 if (!Parent.linear)
                 {
+                    // The span constructor has already reduced every
+                    // attribute pair to Base/Delta/Ascending.  Rebuilding
+                    // both endpoints and re-entering generic Interpolate for
+                    // all five values repeats its equality, mode, and order
+                    // decisions for every pixel.  Select the same DS
+                    // perspective factor directly; native 16-bit attributes
+                    // keep Delta*factor well within u32.
+                    const u32 ascendingFactor = Parent.yfactor;
+                    const u32 descendingFactor =
+                        (1u << Parent.shift) - ascendingFactor;
                     for (int i = 0; i < 5; ++i)
                     {
-                        const s32 other = Ascending[i] ?
-                            Base[i] + static_cast<s32>(Delta[i]) :
-                            Base[i];
-                        const s32 first = Ascending[i] ? Base[i] :
-                            Base[i] + static_cast<s32>(Delta[i]);
-                        values[i] = Parent.Interpolate(first, other);
+                        const u32 factor = Ascending[i] ?
+                            ascendingFactor : descendingFactor;
+                        values[i] = Base[i] + static_cast<s32>(
+                            (Delta[i] * factor) >> Parent.shift);
                     }
                     return;
                 }
@@ -573,14 +909,16 @@ private:
                 {
                     for (int i = 0; i < 5; ++i)
                     {
-                        const u64 numerator =
-                            static_cast<u64>(Delta[i]) *
-                                static_cast<u32>(currentX) +
+                        // This span is clipped inside a native 256-pixel row:
+                        // Delta is a 16-bit attribute difference and currentX
+                        // is 0..xdiff, so the complete numerator fits in u32.
+                        const u32 numerator =
+                            Delta[i] * static_cast<u32>(currentX) +
                             (Ascending[i] ? 0u :
                                 static_cast<u32>(Parent.xdiff - 1));
                         const s32 progress = static_cast<s32>(
-                            Parent.divideLinear(numerator, Parent.xdiff));
-                        Remainder[i] = static_cast<u32>(numerator) -
+                            Parent.divideSpanLinear(numerator));
+                        Remainder[i] = numerator -
                             static_cast<u32>(progress) *
                                 static_cast<u32>(Parent.xdiff);
                         Current[i] = Ascending[i] ?
@@ -610,19 +948,21 @@ private:
         };
 
     private:
+        constexpr s32 divideSpanLinear(u32 numerator) const
+        {
+            return static_cast<s32>(NDS4MiSTerDividePreparedU32(
+                numerator, static_cast<u32>(xdiff), linear_reciprocal));
+        }
+
         constexpr s32 divideLinear(s64 numerator, s32 denominator) const
         {
             if (denominator == 1) return static_cast<s32>(numerator);
             if (denominator > 1 && numerator >= 0 &&
                 numerator <= 0xFFFFFFFFLL)
             {
-                const u32 dividend = static_cast<u32>(numerator);
-                u32 quotient = static_cast<u32>(
-                    (static_cast<u64>(dividend) * linear_reciprocal) >> 32);
-                const u32 remainder =
-                    dividend - quotient * static_cast<u32>(denominator);
-                quotient += remainder >= static_cast<u32>(denominator);
-                return static_cast<s32>(quotient);
+                return static_cast<s32>(NDS4MiSTerDividePreparedU32(
+                    static_cast<u32>(numerator),
+                    static_cast<u32>(denominator), linear_reciprocal));
             }
             return static_cast<s32>(numerator / denominator);
         }
@@ -900,6 +1240,9 @@ private:
             const u32* TexturePixels;
             s32 TextureWidth;
             s32 TextureHeight;
+            s32 TextureWidthMask;
+            s32 TextureHeightMask;
+            u8 TextureWidthShift;
             u8 TextureFormat;
             u8 TextureWrapFlags;
             u8 BlendMode;
@@ -963,9 +1306,16 @@ private:
                        s16 s, s16 t, u16* color, u8* alpha) const;
     u32 RenderPixel(const RendererPolygon::PixelShaderState& state,
                     u8 vr, u8 vg, u8 vb, s16 s, s16 t) const;
-    static u32 RenderPixelCachedModulate(
+    [[gnu::always_inline, gnu::hot]] static inline u32
+    RenderPixelCachedModulate(
         const RendererPolygon::PixelShaderState& state,
         u32 vertexColor, s16 s, s16 t);
+    [[gnu::hot, gnu::noinline]] void RenderCachedOpaqueInteriorSpan(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        Interpolator<0>& interpX,
+        Interpolator<0>::SpanDepthInterpolator& spanDepth,
+        Interpolator<0>::SpanInterpolator& spanAttributes,
+        s32* spanValues);
     void PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow);
     void SetupPolygonLeftEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygonRightEdge(RendererPolygon* rp, s32 y) const;

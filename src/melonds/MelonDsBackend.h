@@ -161,6 +161,9 @@ public:
     void set_composite_line_sink(melonDS::NDS4MiSTer::CompositeLineSink sink,void* userdata);
     void set_output_line_sink(melonDS::NDS4MiSTer::OutputLineSink sink,void* userdata);
     void set_key_mask(melonDS::u32 mask);
+    // Headless oracle input used by focused game-compatibility probes.
+    void set_touch(bool pressed, std::uint16_t x = 0, std::uint16_t y = 0);
+    bool screen_swap() const noexcept;
     std::uint64_t advance_external_cycles(bool arm9, std::uint32_t cycles);
     // Let a halted peer CPU stop throttling min(ARM9, ARM7).
     void set_halted_peer_advance(bool enabled);

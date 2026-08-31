@@ -325,6 +325,8 @@ void GPU3D::Reset() noexcept
     ExternalGeometryDiscardActive = false;
     ExternalGeometryDiscardTainted = false;
     ExternalDiscardedVertices = 0;
+    ExternalBatchRead = 0;
+    ExternalBatchCount = 0;
 
     RenderXPos = 0;
 }
@@ -1885,9 +1887,56 @@ GPU3D::CmdFIFOEntry GPU3D::CmdFIFORead() noexcept
     return ret;
 }
 
+void GPU3D::ExternalBatchWrite(const CmdFIFOEntry& entry) noexcept
+{
+    if (ExternalBatchCount < ExternalBatchCapacity)
+    {
+        ExternalBatch[ExternalBatchCount++] = entry;
+    }
+    else
+    {
+        // This cannot occur with H3B's proven 256-command run boundary. Keep
+        // a future oversized caller lossless and ordered behind the complete
+        // contiguous batch rather than silently dropping its command.
+        CmdFIFOWrite(entry);
+        return;
+    }
+
+    GXStat |= (1<<27);
+    if (entry.Command == 0x11 || entry.Command == 0x12)
+    {
+        GXStat |= (1<<14);
+        NumPushPopCommands++;
+    }
+    else if (entry.Command == 0x70 || entry.Command == 0x71 ||
+             entry.Command == 0x72)
+    {
+        GXStat |= (1<<0);
+        NumTestCommands++;
+    }
+}
+
+GPU3D::CmdFIFOEntry GPU3D::ExternalBatchPop() noexcept
+{
+    CmdFIFOEntry entry = ExternalBatch[ExternalBatchRead++];
+    if (ExternalBatchRead == ExternalBatchCount)
+    {
+        ExternalBatchRead = 0;
+        ExternalBatchCount = 0;
+    }
+    return entry;
+}
+
+bool GPU3D::ExternalCommandsEmpty() const noexcept
+{
+    return ExternalBatchRead == ExternalBatchCount && CmdPIPE.IsEmpty();
+}
+
 void GPU3D::ExecuteCommand() noexcept
 {
-    CmdFIFOEntry entry = CmdFIFORead();
+    CmdFIFOEntry entry = ExternalCommandReplay &&
+            ExternalBatchRead != ExternalBatchCount ?
+        ExternalBatchPop() : CmdFIFORead();
 
     //printf("FIFO: processing %02X %08X. Levels: FIFO=%d, PIPE=%d\n", entry.Command, entry.Param, CmdFIFO->Level(), CmdPIPE->Level());
 
@@ -1897,6 +1946,93 @@ void GPU3D::ExecuteCommand() noexcept
 
     NDS4MiSTerGXExecuted++;
     const u8 c = entry.Command;
+
+    // The H3B owner has already validated and normalized every external GX
+    // command before it reaches this FIFO. Mario Kart's measured stream spends
+    // 72.8% of its commands on texcoords and vertex submission. Execute those
+    // one-parameter forms (plus the exact two-word VTX_16 state machine)
+    // directly, avoiding the generic parameter-count lookup, validity tree,
+    // and large switch dispatch while preserving the same pipeline helpers and
+    // SubmitVertex implementation byte-for-byte.
+    if (ExternalCommandReplay)
+    {
+        switch (c)
+        {
+        case 0x22: // texcoord
+            VertexPipelineCmdDelayed4();
+            RawTexCoords[0] = entry.Param & 0xFFFF;
+            RawTexCoords[1] = entry.Param >> 16;
+            if ((TexParam >> 30) == 1)
+            {
+                TexCoords[0] = (RawTexCoords[0]*TexMatrix[0] + RawTexCoords[1]*TexMatrix[4] + TexMatrix[8] + TexMatrix[12]) >> 12;
+                TexCoords[1] = (RawTexCoords[0]*TexMatrix[1] + RawTexCoords[1]*TexMatrix[5] + TexMatrix[9] + TexMatrix[13]) >> 12;
+            }
+            else
+            {
+                TexCoords[0] = RawTexCoords[0];
+                TexCoords[1] = RawTexCoords[1];
+            }
+            return;
+
+        case 0x23: // 16-bit vertex, two normalized FIFO entries
+            ExecParams[ExecParamCount++] = entry.Param;
+            if (ExecParamCount == 1)
+            {
+                VertexPipelineSubmitCmd();
+            }
+            else
+            {
+                AddCycles(1);
+                ExecParamCount = 0;
+                CurVertex[0] = ExecParams[0] & 0xFFFF;
+                CurVertex[1] = ExecParams[0] >> 16;
+                CurVertex[2] = ExecParams[1] & 0xFFFF;
+                SubmitVertex();
+            }
+            return;
+
+        case 0x24: // 10-bit vertex
+            VertexPipelineSubmitCmd();
+            CurVertex[0] = (entry.Param & 0x000003FF) << 6;
+            CurVertex[1] = (entry.Param & 0x000FFC00) >> 4;
+            CurVertex[2] = (entry.Param & 0x3FF00000) >> 14;
+            SubmitVertex();
+            return;
+
+        case 0x25: // vertex XY
+            VertexPipelineSubmitCmd();
+            CurVertex[0] = entry.Param & 0xFFFF;
+            CurVertex[1] = entry.Param >> 16;
+            SubmitVertex();
+            return;
+
+        case 0x26: // vertex XZ
+            VertexPipelineSubmitCmd();
+            CurVertex[0] = entry.Param & 0xFFFF;
+            CurVertex[2] = entry.Param >> 16;
+            SubmitVertex();
+            return;
+
+        case 0x27: // vertex YZ
+            VertexPipelineSubmitCmd();
+            CurVertex[1] = entry.Param & 0xFFFF;
+            CurVertex[2] = entry.Param >> 16;
+            SubmitVertex();
+            return;
+
+        case 0x28: // 10-bit delta vertex
+            VertexPipelineSubmitCmd();
+            CurVertex[0] += (s16)((entry.Param & 0x000003FF) << 6) >> 6;
+            CurVertex[1] += (s16)((entry.Param & 0x000FFC00) >> 4) >> 6;
+            CurVertex[2] += (s16)((entry.Param & 0x3FF00000) >> 14) >> 6;
+            SubmitVertex();
+            return;
+
+        default:
+            break;
+        }
+    }
+
     const bool valid =
         c == 0x00 ||
         (c >= 0x10 && c <= 0x1C) ||
@@ -2533,8 +2669,12 @@ void GPU3D::FinishWork(s32 cycles) noexcept
 
 void GPU3D::Run() noexcept
 {
+    const auto commandsEmpty = [this]() noexcept {
+        return ExternalCommandReplay ?
+            ExternalCommandsEmpty() : CmdPIPE.IsEmpty();
+    };
     if (!GeometryEnabled || FlushRequest ||
-        (CmdPIPE.IsEmpty() && !(GXStat & (1<<27))))
+        (commandsEmpty() && !(GXStat & (1<<27))))
     {
         Timestamp = NDS.ARM9Timestamp >> NDS.ARM9ClockShift;
         return;
@@ -2546,7 +2686,7 @@ void GPU3D::Run() noexcept
 
     if (CycleCount <= 0)
     {
-        while (CycleCount <= 0 && !CmdPIPE.IsEmpty())
+        while (CycleCount <= 0 && !commandsEmpty())
         {
             if (NumPushPopCommands == 0) GXStat &= ~(1<<14);
             if (NumTestCommands == 0)    GXStat &= ~(1<<0);
@@ -2555,7 +2695,7 @@ void GPU3D::Run() noexcept
         }
     }
 
-    if (CycleCount <= 0 && CmdPIPE.IsEmpty())
+    if (CycleCount <= 0 && commandsEmpty())
     {
         if (GXStat & (1<<27)) FinishWork(-CycleCount);
         else                  CycleCount = 0;
@@ -2785,7 +2925,40 @@ void GPU3D::WriteExternalNormalizedCommand(u8 command, u32 val) noexcept
     if (NDS4MiSTer::Trace2DEnabled())
         NDS4MiSTer::EmitTrace3DCommand(
             NDS.NumFrames, NDS.ARM9Timestamp, entry.Command, entry.Param);
-    CmdFIFOWrite(entry);
+    if (ExternalCommandReplay) ExternalBatchWrite(entry);
+    else                       CmdFIFOWrite(entry);
+}
+
+void GPU3D::WriteExternalNormalizedCommandTriple(
+    u32 packedCommands, u32 val0, u32 val1, u32 val2) noexcept
+{
+    if (!GeometryEnabled) return;
+    CmdFIFOEntry entries[3];
+    entries[0].Command = packedCommands & 0xFF;
+    entries[0].Param = val0;
+    entries[1].Command = (packedCommands >> 8) & 0xFF;
+    entries[1].Param = val1;
+    entries[2].Command = (packedCommands >> 16) & 0xFF;
+    entries[2].Param = val2;
+    if (NDS4MiSTer::Trace2DEnabled())
+    {
+        for (const auto& entry : entries)
+            NDS4MiSTer::EmitTrace3DCommand(
+                NDS.NumFrames, NDS.ARM9Timestamp,
+                entry.Command, entry.Param);
+    }
+    if (ExternalCommandReplay)
+    {
+        ExternalBatchWrite(entries[0]);
+        ExternalBatchWrite(entries[1]);
+        ExternalBatchWrite(entries[2]);
+    }
+    else
+    {
+        CmdFIFOWrite(entries[0]);
+        CmdFIFOWrite(entries[1]);
+        CmdFIFOWrite(entries[2]);
+    }
 }
 
 u8 GPU3D::Read8(u32 addr) noexcept

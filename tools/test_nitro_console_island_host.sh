@@ -42,6 +42,14 @@ run_sv tb_nds_nitro_video_scanout \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
     "$repo_dir/rtl/tb_nds_nitro_video_scanout.sv"
 
+run_sv tb_nds_nitro_touch_input \
+    "$repo_dir/rtl/nds_nitro_touch_input.sv" \
+    "$repo_dir/rtl/tb_nds_nitro_touch_input.sv"
+
+run_sv tb_nds_nitro_touch_pointer \
+    "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
+    "$repo_dir/rtl/tb_nds_nitro_touch_pointer.sv"
+
 run_sv tb_nds_nitro_fb_side_by_side \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
     "$repo_dir/rtl/tb_nds_nitro_fb_side_by_side.sv"
@@ -93,7 +101,7 @@ grep -Fq 'wire [1:0] video_gap_select = status[9:8] == 2'"'"'d0 ? 2'"'"'d1 :' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '        "v,1;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
-grep -Fq '"O[4],FPS Counter,Off,On;",' \
+grep -Fq '"O[4],3D FPS Counter,Off,On;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq "wire console_enabled=1'b1;" \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
@@ -195,6 +203,10 @@ grep -Fq '"J1,A,B,X,Y,L,R,Select,Start,Touch;"' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '.joystick_r_analog_0(touch_analog_0)' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '.ps2_mouse(ps2_mouse)' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '.joystick(joystick_touch),.joystick_analog(touch_analog)' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 if grep -Fq '.joystick_l_analog_0(' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"; then
     echo "FAIL: touchscreen must not consume the left analog stick" >&2
@@ -214,6 +226,10 @@ grep -Fq '.KeyX(joystick_sync[6]),.KeyY(joystick_sync[7])' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq '.touch_active(joystick_sync[12])' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.touch_pressed(joystick_sync[12]),.touch_x,.touch_y' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq 'parameter integer LINGER_FRAMES = 30' \
+    "$repo_dir/rtl/nds_nitro_video_scanout.sv"
 grep -Fq '.touch_x(touch_x),.touch_y(touch_y)' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq 'wire [7:0] touch_y = touch_y_scaled[9:2];' \

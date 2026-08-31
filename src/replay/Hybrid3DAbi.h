@@ -569,8 +569,66 @@ public:
         const std::uint32_t* melon_pixels,
         std::atomic<bool>* publication_fence_active = nullptr)
     {
+        if (!melon_pixels) return false;
+        return publish_lines_impl(
+            session, frame,
+            [melon_pixels](std::size_t line) {
+                return melon_pixels + line * PlaneWidth;
+            },
+            publication_fence_active);
+    }
+
+    bool publish_scanlines(
+        std::uint32_t session, std::uint32_t frame,
+        const std::array<const std::uint32_t*, PlaneHeight>& scanlines,
+        std::atomic<bool>* publication_fence_active = nullptr)
+    {
+        for (const auto* line : scanlines) {
+            if (!line) return false;
+        }
+        return publish_lines_impl(
+            session, frame,
+            [&scanlines](std::size_t line) { return scanlines[line]; },
+            publication_fence_active);
+    }
+
+    // A direct scanline caller may use this while serializing all calls into
+    // this publisher. Busy is not a fault: it only means the currently
+    // displayed shared bank must remain immutable until FPGA acknowledgement.
+    bool ready(std::uint32_t session) const
+    {
+        if (!banks_[0] || !banks_[1]) return false;
+        const auto quiesce = load_acquire(&header_.quiesce_request);
+        if (load_acquire(&header_.magic) != Magic ||
+            load_acquire(&header_.fpga_session) != session ||
+            load_acquire(&header_.accepted_session) != session ||
+            load_acquire(&header_.quiesce_request_reserved) != 0 ||
+            load_acquire(&header_.quiesce_ack_reserved) != 0 ||
+            load_acquire(&header_.quiesce_ack) != quiesce)
+            return false;
+
+        std::uint32_t published = 0;
+        std::uint32_t acknowledged = 0;
+        if (!load_counter(
+                &header_.frame_publish_sequence,
+                &header_.frame_publish_sequence_reserved, published) ||
+            !load_counter(
+                &header_.frame_ack_sequence,
+                &header_.frame_ack_sequence_reserved, acknowledged))
+            return false;
+        return (published & 1u) == 0 && acknowledged == published &&
+            published <= std::numeric_limits<std::uint32_t>::max() - 2;
+    }
+
+private:
+    template<typename LineSource>
+    bool publish_lines_impl(
+        std::uint32_t session, std::uint32_t frame,
+        LineSource source_line,
+        std::atomic<bool>* publication_fence_active)
+    {
         last_store_count_ = 0;
-        if (!melon_pixels || !banks_[0] || !banks_[1]) return false;
+        if (!banks_[0] || !banks_[1]) return false;
         const auto quiesce = load_acquire(&header_.quiesce_request);
         if (load_acquire(&header_.magic) != Magic ||
             load_acquire(&header_.fpga_session) != session ||
@@ -605,39 +663,50 @@ public:
             // A WC mapping makes contiguous bursts cheap. Convert each
             // changed cache line in normal cached RAM, then issue one bulk
             // write instead of up to sixteen individually ordered stores.
-            for (std::size_t index = 0; index < PlanePixels;
-                 index += BlockPixels) {
-                if (!initialize_bank && equal_pixel_block_16(
-                        melon_pixels + index,
-                        source_bank.data() + index))
-                    continue;
-                // Source pixels use only RGB666A5 payload bits. A changed raw
-                // block therefore implies a changed packed block in normal
-                // renderer output. Write it directly to WC memory while the
-                // same source loads refresh the private dirty cache.
-                pack_and_cache_melonds_pixel_block_16(
-                    shared_bank + index, source_bank.data() + index,
-                    melon_pixels + index);
-                last_store_count_ += BlockPixels;
+            for (std::size_t y = 0; y < PlaneHeight; ++y) {
+                const auto* line = source_line(y);
+                if (!line) return false;
+                const auto base = y * PlaneWidth;
+                for (std::size_t x = 0; x < PlaneWidth;
+                     x += BlockPixels) {
+                    const auto index = base + x;
+                    if (!initialize_bank && equal_pixel_block_16(
+                            line + x, source_bank.data() + index))
+                        continue;
+                    // Source pixels use only RGB666A5 payload bits. A changed
+                    // raw block therefore implies a changed packed block in
+                    // normal renderer output. Write it directly to WC memory
+                    // while the same loads refresh the private dirty cache.
+                    pack_and_cache_melonds_pixel_block_16(
+                        shared_bank + index, source_bank.data() + index,
+                        line + x);
+                    last_store_count_ += BlockPixels;
+                }
             }
         } else {
             auto* volatile_bank =
                 reinterpret_cast<volatile std::uint32_t*>(shared_bank);
-            for (std::size_t index = 0; index < PlanePixels;
-                 index += BlockPixels) {
-                if (!initialize_bank && equal_pixel_block_16(
-                        melon_pixels + index,
-                        source_bank.data() + index))
-                    continue;
-                for (std::size_t lane = 0; lane < BlockPixels; ++lane) {
-                    const auto pixel_index = index + lane;
-                    const auto source = melon_pixels[pixel_index];
-                    source_bank[pixel_index] = source;
-                    const auto packed = pack_melonds_pixel(source);
-                    if (initialize_bank || packed_bank[pixel_index] != packed) {
-                        volatile_bank[pixel_index] = packed;
-                        packed_bank[pixel_index] = packed;
-                        ++last_store_count_;
+            for (std::size_t y = 0; y < PlaneHeight; ++y) {
+                const auto* line = source_line(y);
+                if (!line) return false;
+                const auto base = y * PlaneWidth;
+                for (std::size_t x = 0; x < PlaneWidth;
+                     x += BlockPixels) {
+                    const auto index = base + x;
+                    if (!initialize_bank && equal_pixel_block_16(
+                            line + x, source_bank.data() + index))
+                        continue;
+                    for (std::size_t lane = 0; lane < BlockPixels; ++lane) {
+                        const auto pixel_index = index + lane;
+                        const auto source = line[x + lane];
+                        source_bank[pixel_index] = source;
+                        const auto packed = pack_melonds_pixel(source);
+                        if (initialize_bank ||
+                            packed_bank[pixel_index] != packed) {
+                            volatile_bank[pixel_index] = packed;
+                            packed_bank[pixel_index] = packed;
+                            ++last_store_count_;
+                        }
                     }
                 }
             }
@@ -704,6 +773,7 @@ public:
         return true;
     }
 
+public:
     // Publish a new architectural frame descriptor without rescanning or
     // rewriting pixels when the renderer proved its completed plane is
     // identical to the last plane already accepted by the FPGA. Reusing the
@@ -785,6 +855,7 @@ public:
         return true;
     }
 
+public:
     std::size_t last_store_count() const
     {
         return last_store_count_;

@@ -429,10 +429,44 @@ private:
     Generation recovered_ = 0;
 };
 
+class SmoothCatchupPacer {
+public:
+    static constexpr std::uint32_t Denominator = 12;
+
+    void reset() noexcept { phase_ = 0; }
+
+    bool should_skip(std::uint32_t numerator) noexcept
+    {
+        if (numerator == 0) {
+            reset();
+            return false;
+        }
+        if (numerator >= Denominator) return true;
+        phase_ += numerator;
+        if (phase_ < Denominator) return false;
+        phase_ -= Denominator;
+        return true;
+    }
+
+private:
+    std::uint32_t phase_ = 0;
+};
+
 constexpr bool catchup_should_discard_geometry(
-    std::uint32_t render_cadence) noexcept
+    std::uint32_t skip_numerator, std::size_t packet_backlog,
+    std::size_t severe_packet_threshold) noexcept
 {
-    return render_cadence >= 3;
+    // Frame lead and packet pressure are derived-output problems, never
+    // permission to destroy the authoritative polygon build.  A debugger-
+    // induced Mario Kart queue spike reached the former emergency watermark
+    // and proved that even the last-resort discard can expose a partial plane:
+    // one racer keeps alpha nonzero while other racers disappear.  Preserve
+    // every geometry command at every pressure tier.  Severe pressure is
+    // handled by omitting raster work and repeating the last complete plane.
+    (void)skip_numerator;
+    (void)packet_backlog;
+    (void)severe_packet_threshold;
+    return false;
 }
 
 bool plane_has_alpha(const std::uint32_t* pixels)
@@ -487,6 +521,27 @@ bool copy_plane_row_and_has_alpha(
         destination[index] = pixel;
         pixel_or |= pixel;
     }
+#endif
+    return (pixel_or & 0x1f000000u) != 0;
+}
+
+bool plane_row_has_alpha(
+    const std::uint32_t* source, std::size_t pixel_count)
+{
+    if (!source) return false;
+    std::uint32_t pixel_or = 0;
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+    auto vector_or = vdupq_n_u32(0);
+    std::size_t index = 0;
+    for (; index + 4 <= pixel_count; index += 4)
+        vector_or = vorrq_u32(vector_or, vld1q_u32(source + index));
+    alignas(16) std::uint32_t lanes[4];
+    vst1q_u32(lanes, vector_or);
+    pixel_or = lanes[0] | lanes[1] | lanes[2] | lanes[3];
+    for (; index < pixel_count; ++index) pixel_or |= source[index];
+#else
+    for (std::size_t index = 0; index < pixel_count; ++index)
+        pixel_or |= source[index];
 #endif
     return (pixel_or & 0x1f000000u) != 0;
 }
@@ -645,7 +700,8 @@ public:
         bool bind_hps_worker_cores = false,
         nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry = nullptr,
         void* publication_mapping = nullptr,
-        bool publication_write_combined = false)
+        bool publication_write_combined = false,
+        bool direct_plane_publication = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -666,6 +722,7 @@ public:
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           bind_hps_worker_cores_(bind_hps_worker_cores),
+          direct_plane_publication_(direct_plane_publication),
           runtime_telemetry_(runtime_telemetry),
           texture_trace_path_(std::move(texture_trace_path))
     {
@@ -958,29 +1015,25 @@ private:
     // The dual-core renderer measured 57.3 published FPS against a 60.0 FPS
     // source in NSMB's final castle. Waiting for the old 32-frame pressure
     // point therefore stabilized smooth output roughly half a second late.
-    // NSMB play testing showed the remaining age as rubber-banding: a heavy
-    // on-screen interval accumulated a few derived 3D frames, then rapidly
-    // displayed them when geometry moved off screen. Scale render cadence at
-    // 2/4/8/16 frames of source lead so replay still applies every command in
-    // order but does not visibly fast-forward through obsolete render output.
-    // Packet thresholds remain deliberately unchanged as the independent
-    // transport-burst safety valve.
-    static constexpr std::uint32_t ReplayCatchupHalfFrames = 2;
-    // A normal heavy NSMB scene now settles four to six frames behind while
-    // replay still retires input at 60 Hz.  Keep that bounded condition on
-    // the even cadence instead of oscillating between half- and third-rate
-    // rasterization.  Reserve the more destructive tiers for a backlog that
-    // is actually growing.
-    static constexpr std::uint32_t ReplayCatchupThirdFrames = 8;
-    static constexpr std::uint32_t ReplayCatchupQuarterFrames = 12;
-    static constexpr std::uint32_t ReplayCatchupEighthFrames = 16;
-    static_assert(ReplayCatchupHalfFrames < ReplayCatchupThirdFrames);
-    static_assert(ReplayCatchupThirdFrames < ReplayCatchupQuarterFrames);
-    static_assert(ReplayCatchupQuarterFrames < ReplayCatchupEighthFrames);
-    static constexpr std::size_t ReplayCatchupHalfPackets = 64;
-    static constexpr std::size_t ReplayCatchupThirdPackets = 128;
-    static constexpr std::size_t ReplayCatchupQuarterPackets = 256;
-    static constexpr std::size_t ReplayCatchupEighthPackets = 384;
+    // Live Mario Kart telemetry showed why the integer cadence tiers still
+    // felt jerky: at only five to seven source frames of lead, the old
+    // cadence=2 tier clustered 22.9 skipped renders per second and reduced a
+    // 60 Hz input stream to 37 visible 3D frames per second. The measured raw
+    // throughput deficit is much smaller. A fixed-denominator phase
+    // accumulator spaces omissions evenly and starts with only one skip per
+    // twelve source frames (55 unique renders/second at a 60 Hz source).
+    // Stronger fractions are reserved for lead that continues to grow.
+    static constexpr std::uint32_t ReplayCatchupMildFrames = 2;
+    static constexpr std::uint32_t ReplayCatchupMediumFrames = 8;
+    static constexpr std::uint32_t ReplayCatchupHeavyFrames = 12;
+    static constexpr std::uint32_t ReplayCatchupSevereFrames = 16;
+    static_assert(ReplayCatchupMildFrames < ReplayCatchupMediumFrames);
+    static_assert(ReplayCatchupMediumFrames < ReplayCatchupHeavyFrames);
+    static_assert(ReplayCatchupHeavyFrames < ReplayCatchupSevereFrames);
+    static constexpr std::size_t ReplayCatchupMildPackets = 64;
+    static constexpr std::size_t ReplayCatchupMediumPackets = 128;
+    static constexpr std::size_t ReplayCatchupHeavyPackets = 256;
+    static constexpr std::size_t ReplayCatchupSeverePackets = 384;
     // Diagnostic pressure valve: the old fast pipelined ARM-video run stayed
     // near the DS cadence with an 87% render-skip rate and never filled its
     // replay queue. Preserve every state transition, but derive only one
@@ -1086,8 +1139,7 @@ private:
         replay_state_.reset();
         replay_queue_high_water_.store(0, std::memory_order_relaxed);
         latest_replay_frame_.store(0, std::memory_order_relaxed);
-        replay_render_skip_countdown_ = 0;
-        replay_render_cadence_ = 1;
+        replay_catchup_pacer_.reset();
         catchup_visibility_taint_.reset();
         replay_frame_active_ = false;
         replay_frame_skip_render_ = false;
@@ -1390,6 +1442,30 @@ private:
                 flush_pending_geometry();
         };
 
+        const auto enqueue_packed = [this, step](
+                                        const frame_packet::Record& record) {
+            const auto tag0 = frame_packet::packed_gx_tag(record, 0);
+            const auto tag1 = frame_packet::packed_gx_tag(record, 1);
+            const auto tag2 = frame_packet::packed_gx_tag(record, 2);
+            if (tag0 == 0x50 || tag1 == 0x50 || tag2 == 0x50)
+                packet_saw_swap_ = true;
+            const std::uint32_t packed_commands =
+                static_cast<std::uint32_t>(tag0) |
+                (static_cast<std::uint32_t>(tag1) << 8) |
+                (static_cast<std::uint32_t>(tag2) << 16);
+            nds_->GPU.GPU3D.WriteExternalNormalizedCommandTriple(
+                packed_commands,
+                frame_packet::packed_gx_data(record, 0),
+                frame_packet::packed_gx_data(record, 1),
+                frame_packet::packed_gx_data(record, 2));
+            packet_timestamp_ += step * 3;
+            pending_geometry_commands_ += 3;
+            last_timestamp_ = packet_timestamp_;
+            have_timestamp_ = true;
+            if (pending_geometry_commands_ == GeometryRunBatch)
+                flush_pending_geometry();
+        };
+
         for (std::size_t record_index = 0;
              record_index < count; ++record_index) {
             const auto& record = records[record_index];
@@ -1398,6 +1474,14 @@ private:
                 enqueue(
                     frame_packet::record_tag(record),
                     static_cast<std::uint32_t>(record.data));
+                continue;
+            }
+            // Preserve the proven 256-command flush. A complete packed record
+            // can stay compact whenever all three commands fit on the current
+            // side of that boundary; only the two possible straddling offsets
+            // fall back to the scalar path below.
+            if (pending_geometry_commands_ <= GeometryRunBatch - 3) {
+                enqueue_packed(record);
                 continue;
             }
             for (std::size_t command_index = 0;
@@ -1656,41 +1740,31 @@ private:
         const auto lead = latest >= replay_frame ? latest - replay_frame : 0;
         const auto backlog = replay_queue_count();
 
-        std::uint32_t cadence = 1;
-        if (lead >= ReplayCatchupEighthFrames ||
-            backlog >= ReplayCatchupEighthPackets)
-            cadence = 8;
-        else if (lead >= ReplayCatchupQuarterFrames ||
-                 backlog >= ReplayCatchupQuarterPackets)
-            cadence = 4;
-        else if (lead >= ReplayCatchupThirdFrames ||
-                 backlog >= ReplayCatchupThirdPackets)
-            cadence = 3;
-        else if (lead >= ReplayCatchupHalfFrames ||
-                 backlog >= ReplayCatchupHalfPackets)
-            cadence = 2;
+        std::uint32_t skip_numerator = 0;
+        // The contiguous GX executor can sustain the source rate once it is
+        // current, but Mario Kart's startup burst reached 343 queued packets
+        // before the former gentle controller recovered.  Bound latency
+        // instead of letting old complete frames remain seconds behind sound:
+        // progressively spend the raster budget on draining authoritative
+        // replay, and at severe pressure hold the last complete plane until
+        // state is current.  The phase accumulator still spaces every partial
+        // tier evenly, avoiding clustered visible judder.
+        if (backlog >= ReplayCatchupHeavyPackets ||
+            lead >= ReplayCatchupSevereFrames)
+            skip_numerator = SmoothCatchupPacer::Denominator;
+        else if (backlog >= ReplayCatchupMediumPackets ||
+                 lead >= ReplayCatchupHeavyFrames)
+            skip_numerator = 9; // retain one render in four
+        else if (backlog >= ReplayCatchupMildPackets ||
+                 lead >= ReplayCatchupMediumFrames)
+            skip_numerator = 6; // retain one render in two
+        else if (lead >= ReplayCatchupMildFrames)
+            skip_numerator = 2; // retain five renders in six
 
-        if (cadence == 1) {
-            replay_render_skip_countdown_ = 0;
-            replay_render_cadence_ = 1;
-            return false;
-        }
+        if (!replay_catchup_pacer_.should_skip(skip_numerator)) return false;
 
-        if (cadence != replay_render_cadence_ ||
-            replay_render_skip_countdown_ == 0) {
-            replay_render_cadence_ = cadence;
-            replay_render_skip_countdown_ = cadence - 1;
-            return false;
-        }
-
-        --replay_render_skip_countdown_;
-        // A two-frame lead is common transient jitter. Preserve its complete
-        // GX polygon build and skip only the expensive software raster pass;
-        // the next admitted render then remains a valid moving plane. Once
-        // the lead reaches the three-way catch-up tier, discarding obsolete
-        // geometry is worth the CPU1 savings and the visibility guard keeps
-        // its derived empty result away from scanout.
-        discard_geometry = catchup_should_discard_geometry(cadence);
+        discard_geometry = catchup_should_discard_geometry(
+            skip_numerator, backlog, ReplayCatchupSeverePackets);
         frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
         return true;
     }
@@ -2788,6 +2862,8 @@ private:
         if (pipeline_profile_enabled_)
             copy_started = std::chrono::steady_clock::now();
         bool copied_plane_has_alpha = false;
+        bool render_accounted = false;
+        bool visibility_preapproved = false;
         std::uint32_t* destination = native_frame_.data();
         int destination_index = -1;
         const bool identical = renderer.Is3DFrameIdentical();
@@ -2797,6 +2873,71 @@ private:
             completed_generation != 0 &&
             published_plane_generation_.load(std::memory_order_acquire) ==
                 completed_generation;
+        // The native renderer needs padded borders and cannot use the compact
+        // shared plane as its working ColorBuffer. Once rasterization is
+        // complete, however, its visible scanlines can be packed straight
+        // into a free WC bank. This path is opportunistic: if either the FPGA
+        // or publication worker owns the bank, retain the proven private FIFO
+        // instead of waiting, dropping, or overwriting displayed pixels.
+        if (direct_plane_publication_ && asynchronous_plane_publication_ &&
+            !identical &&
+            !plane_stats_enabled_) {
+            std::unique_lock<std::mutex> publisher_lock(
+                publisher_call_mutex_, std::try_to_lock);
+            bool private_publication_idle = false;
+            if (publisher_lock.owns_lock()) {
+                std::lock_guard<std::mutex> queue_lock(publication_mutex_);
+                private_publication_idle =
+                    publication_active_index_ < 0 &&
+                    publication_queue_count_ == 0;
+            }
+            if (publisher_lock.owns_lock() && private_publication_idle &&
+                publisher_.ready(session_)) {
+                std::array<const std::uint32_t*, PlaneHeight> scanlines {};
+                bool plane_alpha = false;
+                for (std::size_t y = 0; y < PlaneHeight; ++y) {
+                    scanlines[y] = renderer.Get3DScanline(y);
+                    if (!scanlines[y])
+                        return fail(
+                            FaultBadFrame,
+                            "melonDS returned a null direct 3D line");
+                    if (!plane_alpha)
+                        plane_alpha = plane_row_has_alpha(
+                            scanlines[y], PlaneWidth);
+                }
+                catchup_visibility_taint_.complete_render(
+                    arm_render_visibility_generation_, plane_alpha);
+                ++completed_plane_generation_;
+                ++frames_rendered_;
+                render_accounted = true;
+                if (!plane_visibility_filter_.publish(
+                        plane_alpha, arm_render_expected_alpha_))
+                    return true;
+                visibility_preapproved = true;
+
+                const auto direct_started =
+                    std::chrono::steady_clock::now();
+                if (publisher_.publish_scanlines(
+                        session_, frame, scanlines,
+                        &frame_publication_fence_active_)) {
+                    record_profile_sample(
+                        direct_plane_publications_,
+                        direct_plane_publication_total_ns_,
+                        direct_plane_publication_max_ns_, direct_started);
+                    frames_published_.fetch_add(1, std::memory_order_relaxed);
+                    published_plane_generation_.store(
+                        completed_plane_generation_,
+                        std::memory_order_release);
+                    return true;
+                }
+                // FPGA acknowledgement can change after ready() and before
+                // the serialized publish call. That ownership race is normal:
+                // retain this completed frame through the proven private
+                // publication queue instead of faulting the whole service.
+            }
+            direct_plane_publication_fallbacks_.fetch_add(
+                1, std::memory_order_relaxed);
+        }
         if (asynchronous_plane_publication_) {
             std::lock_guard<std::mutex> lock(publication_mutex_);
             destination_index = reserve_publication_buffer_locked();
@@ -2814,6 +2955,8 @@ private:
                 publication_frame_reuses_plane_[destination_index] = true;
                 publication_frame_generations_[destination_index] =
                     completed_generation;
+                publication_frame_visibility_preapproved_[
+                    destination_index] = false;
                 publication_filling_index_ = -1;
                 if (!enqueue_publication_buffer_locked(destination_index))
                     return fail(
@@ -2850,10 +2993,12 @@ private:
                     destination_line, line, PlaneWidth);
             }
         }
-        catchup_visibility_taint_.complete_render(
-            arm_render_visibility_generation_, copied_plane_has_alpha);
-        if (!identical || completed_plane_generation_ == 0)
-            ++completed_plane_generation_;
+        if (!render_accounted) {
+            catchup_visibility_taint_.complete_render(
+                arm_render_visibility_generation_, copied_plane_has_alpha);
+            if (!identical || completed_plane_generation_ == 0)
+                ++completed_plane_generation_;
+        }
         if (asynchronous_plane_publication_) {
             {
                 std::lock_guard<std::mutex> lock(publication_mutex_);
@@ -2861,6 +3006,8 @@ private:
                 publication_frame_reuses_plane_[destination_index] = false;
                 publication_frame_generations_[destination_index] =
                     completed_plane_generation_;
+                publication_frame_visibility_preapproved_[
+                    destination_index] = visibility_preapproved;
                 const bool sample_plane =
                     plane_stats_enabled_ &&
                     !plane_samples_dumped_.load(std::memory_order_acquire);
@@ -2883,7 +3030,7 @@ private:
                         "completed 3D publication buffer could not be queued");
             }
             publication_cv_.notify_one();
-            ++frames_rendered_;
+            if (!render_accounted) ++frames_rendered_;
             if (pipeline_profile_enabled_)
                 record_profile_sample(
                     arm_render_copies_, arm_render_copy_total_ns_,
@@ -3094,7 +3241,9 @@ private:
 
             const bool reuses_plane =
                 publication_frame_reuses_plane_[index];
-            if (!reuses_plane && !plane_visibility_filter_.publish(
+            if (!reuses_plane &&
+                !publication_frame_visibility_preapproved_[index] &&
+                !plane_visibility_filter_.publish(
                     publication_frame_has_alpha_[index],
                     publication_frame_expected_alpha_[index])) {
                 std::lock_guard<std::mutex> lock(publication_mutex_);
@@ -3142,13 +3291,19 @@ private:
                     std::chrono::steady_clock::time_point {};
                 if (pipeline_profile_enabled_)
                     publication_started = std::chrono::steady_clock::now();
-                const bool publication_ok = reuses_plane ?
-                    publisher_.republish_last(
-                        session_, frame,
-                        &frame_publication_fence_active_) :
-                    publisher_.publish(
-                        session_, frame, publication_frames_[index].data(),
-                        &frame_publication_fence_active_);
+                bool publication_ok = false;
+                {
+                    std::lock_guard<std::mutex> publisher_lock(
+                        publisher_call_mutex_);
+                    publication_ok = reuses_plane ?
+                        publisher_.republish_last(
+                            session_, frame,
+                            &frame_publication_fence_active_) :
+                        publisher_.publish(
+                            session_, frame,
+                            publication_frames_[index].data(),
+                            &frame_publication_fence_active_);
+                }
                 if (!publication_ok) {
                     publication_fail("asynchronous 3D plane publication failed");
                     return;
@@ -3478,7 +3633,39 @@ private:
                << " renderer_3d_max_polygons="
                << renderer_profile.ThreeDMaxPolygons
                << " renderer_3d_scheduled_polygon_frames="
-               << renderer_profile.ThreeDScheduledPolygonFrames
+               << renderer_profile.ThreeDScheduledPolygonFrames;
+        for (std::size_t mode = 0; mode < 4; ++mode) {
+            output << " renderer_3d_mode_" << mode << "_polygons="
+                   << renderer_profile.ThreeDModePolygons[mode]
+                   << " renderer_3d_mode_" << mode << "_scanlines="
+                   << renderer_profile.ThreeDModeScanlines[mode];
+        }
+        for (std::size_t format = 0; format < 8; ++format) {
+            output << " renderer_3d_texture_" << format << "_polygons="
+                   << renderer_profile.ThreeDTextureFormatPolygons[format]
+                   << " renderer_3d_texture_" << format << "_scanlines="
+                   << renderer_profile.ThreeDTextureFormatScanlines[format];
+        }
+        for (std::size_t mode = 0; mode < 4; ++mode) {
+            output << " renderer_3d_blend_" << mode << "_polygons="
+                   << renderer_profile.ThreeDBlendModePolygons[mode]
+                   << " renderer_3d_blend_" << mode << "_scanlines="
+                   << renderer_profile.ThreeDBlendModeScanlines[mode]
+                   << " renderer_3d_depth_" << mode << "_polygons="
+                   << renderer_profile.ThreeDDepthModePolygons[mode]
+                   << " renderer_3d_depth_" << mode << "_scanlines="
+                   << renderer_profile.ThreeDDepthModeScanlines[mode];
+        }
+        output << " renderer_3d_cached_modulate_polygons="
+               << renderer_profile.ThreeDCachedModulatePolygons
+               << " renderer_3d_cached_modulate_scanlines="
+               << renderer_profile.ThreeDCachedModulateScanlines
+               << " renderer_3d_antialias_polygons="
+               << renderer_profile.ThreeDAntiAliasPolygons
+               << " renderer_3d_edge_marking_polygons="
+               << renderer_profile.ThreeDEdgeMarkingPolygons
+               << " renderer_3d_fog_polygons="
+               << renderer_profile.ThreeDFogPolygons
                << " render_skips="
                << replay_render_skips_.load(std::memory_order_relaxed)
                << " frame_render_admissions="
@@ -3538,6 +3725,18 @@ private:
                       std::memory_order_relaxed)
                << " plane_publication_wait_polls="
                << plane_publication_wait_polls_.load(
+                      std::memory_order_relaxed)
+               << " direct_plane_publications="
+               << direct_plane_publications_.load(
+                      std::memory_order_relaxed)
+               << " direct_plane_publication_total_ns="
+               << direct_plane_publication_total_ns_.load(
+                      std::memory_order_relaxed)
+               << " direct_plane_publication_max_ns="
+               << direct_plane_publication_max_ns_.load(
+                      std::memory_order_relaxed)
+               << " direct_plane_publication_fallbacks="
+               << direct_plane_publication_fallbacks_.load(
                       std::memory_order_relaxed)
                << " frames_rendered="
                << frames_rendered_.load(std::memory_order_relaxed)
@@ -3805,12 +4004,15 @@ private:
     std::array<bool, PublicationBufferCount>
         publication_frame_expected_alpha_ {};
     std::array<bool, PublicationBufferCount>
+        publication_frame_visibility_preapproved_ {};
+    std::array<bool, PublicationBufferCount>
         publication_frame_reuses_plane_ {};
     std::array<std::uint64_t, PublicationBufferCount>
         publication_frame_generations_ {};
     std::array<PlaneSample, PublicationBufferCount>
         publication_frame_samples_ {};
     mutable std::mutex publication_mutex_;
+    std::mutex publisher_call_mutex_;
     std::condition_variable publication_cv_;
     std::thread publication_worker_;
     std::atomic<bool> publication_worker_fault_ {false};
@@ -3829,6 +4031,7 @@ private:
     bool asynchronous_arm_video_replay_ = false;
     bool pipeline_profile_enabled_ = false;
     bool bind_hps_worker_cores_ = false;
+    bool direct_plane_publication_ = false;
     nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry_ = nullptr;
     bool arm_video_phase_started_ = false;
     bool arm_video_renderer_started_ = false;
@@ -3901,8 +4104,7 @@ private:
     std::condition_variable replay_cv_;
     std::thread replay_worker_;
     std::atomic<std::uint32_t> latest_replay_frame_ {0};
-    std::uint32_t replay_render_skip_countdown_ = 0;
-    std::uint32_t replay_render_cadence_ = 1;
+    SmoothCatchupPacer replay_catchup_pacer_;
     CatchupVisibilityTaint catchup_visibility_taint_;
     bool replay_frame_active_ = false;
     bool replay_frame_skip_render_ = false;
@@ -3943,6 +4145,10 @@ private:
     std::atomic<std::uint64_t> plane_publication_ack_wait_total_ns_ {0};
     std::atomic<std::uint64_t> plane_publication_ack_wait_max_ns_ {0};
     std::atomic<std::uint64_t> plane_publication_wait_polls_ {0};
+    std::atomic<std::uint64_t> direct_plane_publications_ {0};
+    std::atomic<std::uint64_t> direct_plane_publication_total_ns_ {0};
+    std::atomic<std::uint64_t> direct_plane_publication_max_ns_ {0};
+    std::atomic<std::uint64_t> direct_plane_publication_fallbacks_ {0};
     std::array<std::uint64_t, 9> replay_record_kind_counts_ {};
     std::array<std::uint64_t, 256> replay_gx_command_counts_ {};
     std::array<std::uint64_t, 9> replay_kind_runs_ {};
@@ -4087,11 +4293,42 @@ frame_packet::Record packet_record(
 void run_self_test()
 {
     constexpr std::uint32_t Session = 0x12345678;
-    if (catchup_should_discard_geometry(1) ||
-        catchup_should_discard_geometry(2) ||
-        !catchup_should_discard_geometry(3) ||
-        !catchup_should_discard_geometry(8))
-        self_test_fail("mild catch-up discarded complete geometry");
+    constexpr std::size_t SeverePacketThreshold = 384;
+    if (catchup_should_discard_geometry(
+            0, SeverePacketThreshold, SeverePacketThreshold) ||
+        catchup_should_discard_geometry(
+            1, SeverePacketThreshold, SeverePacketThreshold) ||
+        catchup_should_discard_geometry(
+            2, SeverePacketThreshold, SeverePacketThreshold) ||
+        catchup_should_discard_geometry(
+            4, SeverePacketThreshold - 1, SeverePacketThreshold) ||
+        catchup_should_discard_geometry(
+            9, 20, SeverePacketThreshold) ||
+        catchup_should_discard_geometry(
+            SmoothCatchupPacer::Denominator,
+            SeverePacketThreshold, SeverePacketThreshold))
+        self_test_fail("catch-up discarded authoritative geometry");
+    {
+        SmoothCatchupPacer pacer;
+        const auto count_skips = [&](std::uint32_t numerator) {
+            unsigned skips = 0;
+            for (unsigned frame = 0; frame < 120; ++frame)
+                if (pacer.should_skip(numerator)) ++skips;
+            return skips;
+        };
+        if (count_skips(1) != 10 || count_skips(2) != 20 ||
+            count_skips(4) != 40 || count_skips(6) != 60 ||
+            count_skips(9) != 90 ||
+            count_skips(SmoothCatchupPacer::Denominator) != 120)
+            self_test_fail("smooth catch-up ratios are not deterministic");
+        pacer.reset();
+        for (unsigned frame = 0; frame < 11; ++frame)
+            if (pacer.should_skip(1))
+                self_test_fail("mild catch-up skipped before frame twelve");
+        if (!pacer.should_skip(1) || pacer.should_skip(0) ||
+            pacer.should_skip(1))
+            self_test_fail("smooth catch-up phase did not reset cleanly");
+    }
     {
         std::array<std::uint32_t, 37> source {};
         std::array<std::uint32_t, 37> destination {};
@@ -4523,6 +4760,19 @@ void run_self_test()
                 frame_packet::RecordKind::GxCommand, 0x23, 0, 0,
                 vertex * 4u));
         }
+        // The measured stream also uses every compact vertex form. Append an
+        // exact state-transition check for each while the original VTX_16
+        // triangle stream above continues to guarantee nonempty vertex RAM.
+        records.push_back(packet_record(
+            frame_packet::RecordKind::GxCommand, 0x24, 0, 0, 0x00300801u));
+        records.push_back(packet_record(
+            frame_packet::RecordKind::GxCommand, 0x25, 0, 0, 0x00300020u));
+        records.push_back(packet_record(
+            frame_packet::RecordKind::GxCommand, 0x26, 0, 0, 0x00400030u));
+        records.push_back(packet_record(
+            frame_packet::RecordKind::GxCommand, 0x27, 0, 0, 0x00500040u));
+        records.push_back(packet_record(
+            frame_packet::RecordKind::GxCommand, 0x28, 0, 0, 0x00100401u));
         records.push_back(packet_record(
             frame_packet::RecordKind::GxCommand, 0x41, 0, 0, 0));
 
@@ -4634,9 +4884,49 @@ void run_self_test()
                 oracle.Normal, packed.Normal, sizeof(oracle.Normal)) != 0 ||
             std::memcmp(
                 oracle.VertexRAM, run.VertexRAM,
-                oracle.NumVertices * sizeof(oracle.VertexRAM[0])) != 0)
+                oracle.NumVertices * sizeof(oracle.VertexRAM[0])) != 0) {
+            std::fprintf(
+                stderr,
+                "H3D_GX_ORACLE_MISMATCH vertices=%u/%u/%u polygons=%u/%u/%u "
+                "exec=%u/%u/%u cur=%d,%d,%d/%d,%d,%d/%d,%d,%d "
+                "ts7=%llu/%llu/%llu ts9=%llu/%llu/%llu "
+                "queue_empty=%d/%d/%d color_eq=%d/%d tex_eq=%d/%d "
+                "normal_eq=%d/%d\n",
+                oracle.NumVertices, run.NumVertices, packed.NumVertices,
+                oracle.NumPolygons, run.NumPolygons, packed.NumPolygons,
+                oracle.ExecParamCount, run.ExecParamCount,
+                packed.ExecParamCount,
+                oracle.CurVertex[0], oracle.CurVertex[1], oracle.CurVertex[2],
+                run.CurVertex[0], run.CurVertex[1], run.CurVertex[2],
+                packed.CurVertex[0], packed.CurVertex[1],
+                packed.CurVertex[2],
+                static_cast<unsigned long long>(oracle_nds.ARM7Timestamp),
+                static_cast<unsigned long long>(run_nds.ARM7Timestamp),
+                static_cast<unsigned long long>(packed_nds.ARM7Timestamp),
+                static_cast<unsigned long long>(oracle_nds.ARM9Timestamp),
+                static_cast<unsigned long long>(run_nds.ARM9Timestamp),
+                static_cast<unsigned long long>(packed_nds.ARM9Timestamp),
+                oracle.CmdPIPE.IsEmpty() && oracle.CmdFIFO.IsEmpty() &&
+                    oracle.CmdStallQueue.IsEmpty(),
+                run.CmdPIPE.IsEmpty() && run.CmdFIFO.IsEmpty() &&
+                    run.CmdStallQueue.IsEmpty(),
+                packed.CmdPIPE.IsEmpty() && packed.CmdFIFO.IsEmpty() &&
+                    packed.CmdStallQueue.IsEmpty(),
+                std::memcmp(oracle.VertexColor, run.VertexColor,
+                    sizeof(oracle.VertexColor)) == 0,
+                std::memcmp(oracle.VertexColor, packed.VertexColor,
+                    sizeof(oracle.VertexColor)) == 0,
+                std::memcmp(oracle.RawTexCoords, run.RawTexCoords,
+                    sizeof(oracle.RawTexCoords)) == 0,
+                std::memcmp(oracle.RawTexCoords, packed.RawTexCoords,
+                    sizeof(oracle.RawTexCoords)) == 0,
+                std::memcmp(oracle.Normal, run.Normal,
+                    sizeof(oracle.Normal)) == 0,
+                std::memcmp(oracle.Normal, packed.Normal,
+                    sizeof(oracle.Normal)) == 0);
             self_test_fail(
                 "GX packed replay diverged from melonDS oracle");
+        }
         if (std::memcmp(
                 oracle.VertexRAM, packed.VertexRAM,
                 oracle.NumVertices * sizeof(oracle.VertexRAM[0])) != 0)
@@ -4958,15 +5248,165 @@ void run_self_test()
             self_test_fail("band-queue native buffers diverged from oracle");
         const auto queue_profile =
             queued_renderer.GetExternalRendererStageProfile();
+        const auto oracle_profile =
+            oracle_renderer.GetExternalRendererStageProfile();
         if (queue_profile.ThreeDBandQueueFrames != 1 ||
             queue_profile.ThreeDBandQueueJobs != 4 ||
             queue_profile.ThreeDBandQueueAdvancedScanlines < 48)
             self_test_fail("four-band raster queue did not execute");
+        if (queue_profile.ThreeDModePolygons[0] != 10 ||
+            queue_profile.ThreeDTextureFormatPolygons[0] != 10 ||
+            queue_profile.ThreeDBlendModePolygons[0] != 10 ||
+            std::memcmp(
+                oracle_profile.ThreeDModePolygons,
+                queue_profile.ThreeDModePolygons,
+                sizeof(queue_profile.ThreeDModePolygons)) != 0 ||
+            std::memcmp(
+                oracle_profile.ThreeDModeScanlines,
+                queue_profile.ThreeDModeScanlines,
+                sizeof(queue_profile.ThreeDModeScanlines)) != 0 ||
+            std::memcmp(
+                oracle_profile.ThreeDDepthModePolygons,
+                queue_profile.ThreeDDepthModePolygons,
+                sizeof(queue_profile.ThreeDDepthModePolygons)) != 0)
+            self_test_fail("raster-mode census diverged from oracle");
         std::cout << "H3D_RASTER_BAND_ORACLE_PASS jobs="
                   << queue_profile.ThreeDBandQueueJobs
                   << " advanced_scanlines="
                   << queue_profile.ThreeDBandQueueAdvancedScanlines << '\n';
 
+        // Shadow masks carry ordered scanline-local stencil state. Prove that
+        // requesting the four-band scheduler retains the correctness gate and
+        // renders the frame through the exact adaptive two-worker fallback.
+        // This fixture intentionally marks polygons after geometry assembly so
+        // it exercises the renderer decision directly and deterministically.
+        auto shadow_oracle = make_renderer_nds(false);
+        auto shadow_queued = make_renderer_nds(true);
+        build_frame(*shadow_oracle);
+        build_frame(*shadow_queued);
+        for (auto* nds : {shadow_oracle.get(), shadow_queued.get()})
+        {
+            auto& gpu3d = nds->GPU.GPU3D;
+            if (gpu3d.RenderNumPolygons <= 8)
+                self_test_fail("shadow fallback fixture is too small");
+            auto* base = gpu3d.RenderPolygonRAM[0];
+            auto* mask = gpu3d.RenderPolygonRAM[1];
+            auto* shadow = gpu3d.RenderPolygonRAM[2];
+            base->Attr = (base->Attr & ~0x3f000030u) | 0x01000000u;
+            base->IsShadowMask = false;
+            base->IsShadow = false;
+            mask->Attr &= ~0x3f000000u;
+            mask->Attr = (mask->Attr & ~0x30u) | 0x30u;
+            mask->IsShadowMask = true;
+            mask->IsShadow = false;
+            shadow->Attr = (shadow->Attr & ~0x3f000030u) |
+                0x01000030u;
+            shadow->IsShadowMask = false;
+            shadow->IsShadow = true;
+            for (std::uint32_t vertex = 0;
+                 vertex < base->NumVertices; ++vertex)
+                base->FinalZ[vertex] = 0x00100000;
+            for (std::uint32_t vertex = 0;
+                 vertex < mask->NumVertices; ++vertex)
+                mask->FinalZ[vertex] = 0x00200000;
+            for (std::uint32_t vertex = 0;
+                 vertex < shadow->NumVertices; ++vertex)
+                shadow->FinalZ[vertex] = 0x00100000;
+        }
+
+        auto& shadow_oracle_renderer = shadow_oracle->GPU.GetRenderer();
+        auto& shadow_queued_renderer = shadow_queued->GPU.GetRenderer();
+        shadow_oracle_renderer.Start3DRendering();
+        shadow_queued_renderer.Start3DRendering();
+        shadow_oracle_renderer.Finish3DRendering();
+        shadow_queued_renderer.Finish3DRendering();
+        for (std::uint32_t y = 0; y < PlaneHeight; ++y)
+        {
+            const auto* oracle_line = shadow_oracle_renderer.Get3DScanline(y);
+            const auto* queued_line = shadow_queued_renderer.Get3DScanline(y);
+            if (!oracle_line || !queued_line ||
+                std::memcmp(
+                    oracle_line, queued_line,
+                    PlaneWidth * sizeof(std::uint32_t)) != 0)
+                self_test_fail(
+                    "shadow fallback color plane diverged from oracle");
+        }
+        melonDS::u64 shadow_oracle_hashes[3] {};
+        melonDS::u64 shadow_queued_hashes[3] {};
+        if (!shadow_oracle_renderer.Get3DNativeBufferHashes(
+                shadow_oracle_hashes) ||
+            !shadow_queued_renderer.Get3DNativeBufferHashes(
+                shadow_queued_hashes) ||
+            std::memcmp(
+                shadow_oracle_hashes, shadow_queued_hashes,
+                sizeof(shadow_oracle_hashes)) != 0)
+            self_test_fail("shadow fallback native buffers diverged from oracle");
+        if (std::memcmp(
+                shadow_oracle_hashes, oracle_hashes,
+                sizeof(shadow_oracle_hashes)) == 0)
+            self_test_fail("shadow oracle fixture had no raster effect");
+        const auto shadow_profile =
+            shadow_queued_renderer.GetExternalRendererStageProfile();
+        if (shadow_profile.ThreeDBandQueueFrames != 1 ||
+            shadow_profile.ThreeDBandQueueShadowFallbackFrames != 0)
+            self_test_fail("unsafe shadow ordering did not exercise raster queue");
+        std::cout << "H3D_RASTER_SHADOW_BAND_ORACLE_PASS jobs="
+                  << shadow_profile.ThreeDBandQueueJobs << '\n';
+
+        // A mask-only ordering can carry PrevIsShadowMask and parity-stencil
+        // contents across a band boundary. It must remain on the established
+        // adaptive path rather than guessing at state owned by the peer.
+        auto rejected_shadow_oracle = make_renderer_nds(false);
+        auto rejected_shadow_queued = make_renderer_nds(true);
+        build_frame(*rejected_shadow_oracle);
+        build_frame(*rejected_shadow_queued);
+        for (auto* nds : {
+                 rejected_shadow_oracle.get(),
+                 rejected_shadow_queued.get()})
+        {
+            auto& gpu3d = nds->GPU.GPU3D;
+            for (std::uint32_t index = 0;
+                 index < gpu3d.RenderNumPolygons; ++index)
+            {
+                auto* polygon = gpu3d.RenderPolygonRAM[index];
+                polygon->Attr &= ~0x3f000000u;
+                polygon->Attr = (polygon->Attr & ~0x30u) | 0x30u;
+                polygon->IsShadowMask = true;
+                polygon->IsShadow = false;
+            }
+        }
+        auto& rejected_oracle_renderer =
+            rejected_shadow_oracle->GPU.GetRenderer();
+        auto& rejected_queued_renderer =
+            rejected_shadow_queued->GPU.GetRenderer();
+        rejected_oracle_renderer.Start3DRendering();
+        rejected_queued_renderer.Start3DRendering();
+        rejected_oracle_renderer.Finish3DRendering();
+        rejected_queued_renderer.Finish3DRendering();
+        melonDS::u64 rejected_oracle_hashes[3] {};
+        melonDS::u64 rejected_queued_hashes[3] {};
+        if (!rejected_oracle_renderer.Get3DNativeBufferHashes(
+                rejected_oracle_hashes) ||
+            !rejected_queued_renderer.Get3DNativeBufferHashes(
+                rejected_queued_hashes) ||
+            std::memcmp(
+                rejected_oracle_hashes, rejected_queued_hashes,
+                sizeof(rejected_oracle_hashes)) != 0)
+            self_test_fail("rejected shadow frame diverged from oracle");
+        const auto rejected_shadow_profile =
+            rejected_queued_renderer.GetExternalRendererStageProfile();
+        if (rejected_shadow_profile.ThreeDBandQueueFrames != 0 ||
+            rejected_shadow_profile.ThreeDBandQueueShadowFallbackFrames != 1)
+            self_test_fail("unsafe shadow ordering bypassed raster gate");
+        std::cout << "H3D_RASTER_SHADOW_GATE_ORACLE_PASS fallbacks="
+                  << rejected_shadow_profile
+                         .ThreeDBandQueueShadowFallbackFrames << '\n';
+
+        rejected_shadow_queued.reset();
+        rejected_shadow_oracle.reset();
+
+        shadow_queued.reset();
+        shadow_oracle.reset();
         queued.reset();
         oracle.reset();
         restore_environment("NDS4MISTER_DUAL_CORE_3D", saved_dual);
@@ -5738,9 +6178,14 @@ try {
                 std::getenv("NDS4MISTER_H3D_TEXTURE_TRACE");
             const char* diagnostics_requested =
                 std::getenv("NDS4MISTER_H3D_DIAGNOSTICS");
+            const char* direct_publication_requested =
+                std::getenv("NDS4MISTER_DIRECT_PLANE_PUBLICATION");
             const bool diagnostics =
                 memory_path == "/dev/mem" && diagnostics_requested &&
                 std::strcmp(diagnostics_requested, "0") != 0;
+            const bool direct_publication =
+                memory_path == "/dev/mem" && direct_publication_requested &&
+                std::strcmp(direct_publication_requested, "0") != 0;
             // Construct melonDS on CPU0 so its software renderer and display
             // publisher inherit that affinity. Replay and intake are the
             // ordered transport side and run on CPU1 at the supervisor's
@@ -5763,7 +6208,8 @@ try {
                 memory_path == "/dev/mem",
                 &runtime_telemetry,
                 publication_mapping.data(),
-                publication_mapping.active());
+                publication_mapping.active(),
+                direct_publication);
             const bool initialized = candidate->initialize();
             if (memory_path == "/dev/mem")
                 bind_current_thread_to_cpu(1);
