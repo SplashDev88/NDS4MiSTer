@@ -572,7 +572,9 @@ begin
       variable eva_eff            : integer range 0 to 32;
       variable evb_eff            : integer range 0 to 32;
       variable blend_bias         : integer range 0 to 16;
-      variable blend_divisor      : integer range 16 to 32;
+      variable alpha_blue_sum     : unsigned(10 downto 0);
+      variable alpha_green_sum    : unsigned(10 downto 0);
+      variable alpha_red_sum      : unsigned(10 downto 0);
    begin
       if rising_edge(clk) then
 
@@ -660,24 +662,43 @@ begin
             eva_eff       := to_integer(unsigned(pixeldata_h3d_cycle3(22 downto 18))) + 1;
             evb_eff       := 32 - eva_eff;
             blend_bias    := 16;
-            blend_divisor := 32;
          elsif (pixeldata_obj_cycle3(OBJBITMAP) = '1' and firstprio_cycle3(4 downto 0) = "10000") then
             eva_eff := to_integer(unsigned(pixeldata_obj_cycle3(OBJBMPA_HI downto OBJBMPA_LO))) + 1;
             evb_eff := 16 - eva_eff;
             blend_bias    := 8;
-            blend_divisor := 16;
          else
             eva_eff := EVA_MAXED;
             evb_eff := EVB_MAXED;
             blend_bias    := 8;
-            blend_divisor := 16;
          end if;
 
          -- NDS effect math is 6-bit per channel: expand 555 -> 666 (c << 1),
-         -- blend with the hardware rounding biases (see header)
-         alpha_blue    <= (to_integer(unsigned(firstpixel_cycle3(17 downto 12))) * eva_eff + to_integer(unsigned(secondpixel(17 downto 12))) * evb_eff + blend_bias) / blend_divisor;
-         alpha_green   <= (to_integer(unsigned(firstpixel_cycle3(11 downto  6))) * eva_eff + to_integer(unsigned(secondpixel(11 downto  6))) * evb_eff + blend_bias) / blend_divisor;
-         alpha_red     <= (to_integer(unsigned(firstpixel_cycle3( 5 downto  0))) * eva_eff + to_integer(unsigned(secondpixel( 5 downto  0))) * evb_eff + blend_bias) / blend_divisor;
+         -- blend with the hardware rounding biases (see header).  The only
+         -- legal divisors are powers of two: intrinsic 3D alpha uses 32 and
+         -- every 2D/OBJ blend uses 16.  Select fixed bit slices explicitly so
+         -- Quartus cannot infer three general-purpose lpm_divide blocks.
+         alpha_blue_sum := to_unsigned(
+            to_integer(unsigned(firstpixel_cycle3(17 downto 12))) * eva_eff +
+            to_integer(unsigned(secondpixel(17 downto 12))) * evb_eff + blend_bias,
+            alpha_blue_sum'length);
+         alpha_green_sum := to_unsigned(
+            to_integer(unsigned(firstpixel_cycle3(11 downto 6))) * eva_eff +
+            to_integer(unsigned(secondpixel(11 downto 6))) * evb_eff + blend_bias,
+            alpha_green_sum'length);
+         alpha_red_sum := to_unsigned(
+            to_integer(unsigned(firstpixel_cycle3(5 downto 0))) * eva_eff +
+            to_integer(unsigned(secondpixel(5 downto 0))) * evb_eff + blend_bias,
+            alpha_red_sum'length);
+
+         if (top_h3d_cycle3 = '1' and secondprio_cycle3 /= "000000") then
+            alpha_blue  <= to_integer(alpha_blue_sum(10 downto 5));
+            alpha_green <= to_integer(alpha_green_sum(10 downto 5));
+            alpha_red   <= to_integer(alpha_red_sum(10 downto 5));
+         else
+            alpha_blue  <= to_integer(alpha_blue_sum(10 downto 4));
+            alpha_green <= to_integer(alpha_green_sum(10 downto 4));
+            alpha_red   <= to_integer(alpha_red_sum(10 downto 4));
+         end if;
 
          whiter_blue   <= to_integer(unsigned(firstpixel_cycle3(17 downto 12))) + (((63 - to_integer(unsigned(firstpixel_cycle3(17 downto 12)))) * BLDY_MAXED + 8) / 16);
          whiter_green  <= to_integer(unsigned(firstpixel_cycle3(11 downto  6))) + (((63 - to_integer(unsigned(firstpixel_cycle3(11 downto  6)))) * BLDY_MAXED + 8) / 16);
