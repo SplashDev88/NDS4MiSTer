@@ -2,16 +2,17 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to Public Cumulative Beta v0.3.0-beta.4
-(2026-08-30).
+This source snapshot corresponds to Public Beta v0.3.0-beta.5
+(2026-08-31).
 It combines controller- and mouse-driven touchscreen input with the LG
 C-series-compatible video path, selectable screen layouts, melonDS-derived
 cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
 through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
 cartridge read-ahead, and the current ARM-assisted 3D performance path with
 full-frame renderer-fence batching, adaptive dual-core raster balancing,
-generation-safe catch-up visibility, stabilized raster-drop pacing, and
-DreamSTer-style lock-free SPSC/futex synchronization. It also fixes first-load
+generation-safe catch-up visibility, stabilized raster-drop pacing,
+DreamSTer-style lock-free SPSC/futex synchronization, direct completed-plane
+publication, and a shadow-safe four-band raster path. It also fixes first-load
 save-sector alignment and preserves the verified cartridge/save epoch across
 reset and direct-load transitions.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
@@ -24,7 +25,7 @@ credentials are included.
 
 1. Unzip the release package to the root of your MiSTer SD card.
 2. Go to **Scripts → NDS_Kickstart** and let the 3D service start.
-3. Go to **Console → NDS_20260830** and launch the core.
+3. Go to **Console → NDS_20260831** and launch the core.
 4. Choose your `.nds` ROM from the core menu.
 
 You must run **NDS_Kickstart** before launching the core after every MiSTer
@@ -52,6 +53,9 @@ reboot.
   producer/single-consumer indices with private Linux futexes. Normal queued
   work avoids mutex and kernel transitions without skipping packets, commands,
   frames, or polygons.
+- Completed ARM planes can be published directly from their immutable buffer,
+  avoiding an extra full-frame copy. The four-band raster path admits completed
+  shadow work only after its ordering gate is satisfied.
 - The release sound implementation is the GPL-licensed Nitro_DarkSide engine
   in `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`. The release wrapper
   builds it with `SOUND_ENABLE=1`.
@@ -123,6 +127,9 @@ controls remain difficult even though touch input is delivered to the game.
   interaction with touchscreen graphics remain limited.
 - Chrono Trigger has a separate boot failure under investigation.
 - NAND saves, save states, Wi-Fi, and microphone support are not implemented.
+- The current FPS overlay counts completed 3D publications. A repeated plane
+  can therefore still be counted as a new frame, so the number may read 60 FPS
+  while visibly distinct 3D motion is slower.
 
 If a game still reports corrupted save data after upgrading, first back up and
 then delete or move that game's existing `.sav` file from

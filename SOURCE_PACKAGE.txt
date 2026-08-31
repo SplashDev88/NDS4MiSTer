@@ -1,17 +1,19 @@
-NDS4MiSTer public cumulative beta v0.3.0-beta.4 source - 2026-08-30
+NDS4MiSTer public beta v0.3.0-beta.5 source - 2026-08-31
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
 work, expanded save-profile/Flash implementation, save-profile CDC fix,
 controller touch, PSX-derived FPGA space efficiencies, DreamSTer-derived
 full-frame renderer-fence batching, adaptive raster balancing, bounded
-obsolete-geometry discard, and cache-separated SPSC/futex synchronization.
-It also includes generation-safe empty-plane suppression and stabilized
-catch-up pacing, fixes first-load save-sector alignment, and preserves verified
-save mount state across reset and direct-load transitions.
+obsolete-geometry discard, cache-separated SPSC/futex synchronization, direct
+completed-plane publication, and shadow-safe four-band raster work. It also
+includes generation-safe empty-plane suppression and stabilized catch-up
+pacing, fixes first-load save-sector alignment, preserves verified save mount
+state across reset and direct-load transitions, and adds controller/mouse touch
+input with a visible pointer.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.4_20260830 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.5_20260831 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -24,10 +26,28 @@ Release identities
 ------------------
 
 FPGA core:
-  86a8fda84abea7aa85e0216fb76d638dcc1ebe84ecd541b9e35eb2de5656fc2c
+  3a9a0c563431f45046312b76953a53573a59fe28f388e9bfe9f680a0ff8539de
 
 ARM hybrid-3D service:
-  c7961dbe435641d760ac39428e74f553f98a5e99d2e9c90e98fdf001033cd8d8
+  d53eb890192f5662cfd8507a0181b41c436d0b6501ee82dc0214e33ecfe9694b
+
+Direct-plane and raster specialization update
+---------------------------------------------
+
+* Completed immutable 3D planes are published directly instead of being copied
+  through an additional full-frame staging buffer.
+* GX replay uses contiguous batches and specializations for the dominant packed
+  vertex, cached texture, depth, opaque, and shadow paths. Bounded raster spans
+  avoid software integer division while preserving exact fixed-point results.
+* The four-band renderer accepts shadow work only after its ordering dependency
+  is complete, retaining the faster parallel path without publishing partially
+  ordered shadow results.
+* A clean 25-second NSMB sample held the DS/game stream at 60.52 frames/s and
+  published completed 3D descriptors at 60.48 frames/s with queue growth of
+  only two packets, zero acknowledgement lag, and zero FPGA/HPS faults.
+  Content sampling found about 34 visibly distinct 3D changes/s in that scene,
+  confirming that the current on-screen counter can overstate unique motion
+  when an identical plane is republished.
 
 ARM 3D frame-fence optimization
 -------------------------------
@@ -134,6 +154,10 @@ Touch support
   a preferred button.
 * The SPI touchscreen returns melonDS-compatible 12-bit coordinate samples.
 * Direct boot installs matching touchscreen calibration data.
+* Relative MiSTer mouse motion controls the stylus, and the left mouse button
+  presses it. The most recently moved mouse or right stick owns the pointer.
+* The pointer is white while hovering, red while pressed, stays visible during
+  a press, and lingers for about half a second after movement.
 * Engine B is not displayed yet, so precise interaction with touchscreen
   graphics remains limited.
 
@@ -147,9 +171,9 @@ cross-size isolation, right-stick touch coordinates, pen release, SPI touch,
 direct-boot calibration, and the complete Nitro console-island host RTL gate.
 
 Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
-successful fit used 41,221 of 41,910 ALMs (98%), 45,033 registers, 468 of 553
-RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with device
-checksum 0x0FC92DB2. Static timing remains diagnostic information rather than a
+successful seed-2 fit used 41,181 of 41,910 ALMs (98%), 45,130 registers, 468
+of 553 RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with
+device checksum 0x0FD647F1. Static timing remains diagnostic information rather than a
 deployment gate for this experimental project. This exact RBF was direct-
 loaded from the MiSTer menu with FPGA state `operating`, core identity `NDS`,
 and exactly one verified ARM service at 1 GHz. The maintainer approved its LG
