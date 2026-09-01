@@ -1,4 +1,4 @@
-NDS4MiSTer public beta v0.3.0-beta.5 source - 2026-08-31
+NDS4MiSTer public beta v0.3.0-beta.6 source - 2026-08-31
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
@@ -10,10 +10,11 @@ completed-plane publication, and shadow-safe four-band raster work. It also
 includes generation-safe empty-plane suppression and stabilized catch-up
 pacing, fixes first-load save-sector alignment, preserves verified save mount
 state across reset and direct-load transitions, and adds controller/mouse touch
-input with a visible pointer.
+input with a visible pointer. Beta.6 adds the accepted perspective-coordinate,
+NEON vertex-transform, COLOR/NORMAL replay, and exact FPGA blend-shift work.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.5_20260831 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.6_20260831 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -26,10 +27,30 @@ Release identities
 ------------------
 
 FPGA core:
-  3a9a0c563431f45046312b76953a53573a59fe28f388e9bfe9f680a0ff8539de
+  ec48df52104af4726a0e29f56b1984c962a2cbb8b77b6931b09b2a595171aaa3
 
 ARM hybrid-3D service:
-  d53eb890192f5662cfd8507a0181b41c436d0b6501ee82dc0214e33ecfe9694b
+  bc7971606f958799a855b043757e3989aec3046ceafea34fb07f6ba70a92631a
+
+Incremental beta.6 3D and FPGA update
+--------------------------------------
+
+* Perspective texture coordinates are evaluated in exact four-pixel batches,
+  and the dominant GX vertex-transform block uses a bit-exact Cortex-A9 NEON
+  path. More than one million randomized host and ARM checks matched the scalar
+  reference.
+* COLOR and NORMAL commands bypass unnecessary general replay setup while
+  preserving the normal matrix, lighting, and fixed-point behavior.
+* Focused measurements found roughly 3.6% lower GX processing cost and 5.6%
+  lower geometry-flush cost across the retained ARM changes. The isolated
+  vertex-transform block improved by 18.8%; that figure is not a whole-game or
+  whole-renderer FPS claim. A conservative summary is about 5% lower ARM 3D
+  processing cost, with the visible gain remaining scene-dependent.
+* The FPGA blend path now expresses its exact divide-by-16 and divide-by-32
+  operations as fixed shifts. The accepted fit saves 87 ALMs and 26 registers
+  without changing DSP or RAM use.
+* The FPS overlay now advances only when the FPGA accepts a changed 3D plane,
+  instead of counting identical plane republications as fresh 3D motion.
 
 Direct-plane and raster specialization update
 ---------------------------------------------
@@ -46,8 +67,8 @@ Direct-plane and raster specialization update
   published completed 3D descriptors at 60.48 frames/s with queue growth of
   only two packets, zero acknowledgement lag, and zero FPGA/HPS faults.
   Content sampling found about 34 visibly distinct 3D changes/s in that scene,
-  confirming that the current on-screen counter can overstate unique motion
-  when an identical plane is republished.
+  confirming why the beta.5 on-screen counter could overstate unique motion
+  when an identical plane was republished. Beta.6 corrects that counter.
 
 ARM 3D frame-fence optimization
 -------------------------------
@@ -171,9 +192,9 @@ cross-size isolation, right-stick touch coordinates, pen release, SPI touch,
 direct-boot calibration, and the complete Nitro console-island host RTL gate.
 
 Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
-successful seed-2 fit used 41,181 of 41,910 ALMs (98%), 45,130 registers, 468
+successful fit used 41,094 of 41,910 ALMs (98%), 45,104 registers, 468
 of 553 RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with
-device checksum 0x0FD647F1. Static timing remains diagnostic information rather than a
+device checksum 0x0FDF9935. Static timing remains diagnostic information rather than a
 deployment gate for this experimental project. This exact RBF was direct-
 loaded from the MiSTer menu with FPGA state `operating`, core identity `NDS`,
 and exactly one verified ARM service at 1 GHz. The maintainer approved its LG

@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to Public Beta v0.3.0-beta.5
+This source snapshot corresponds to Public Beta v0.3.0-beta.6
 (2026-08-31).
 It combines controller- and mouse-driven touchscreen input with the LG
 C-series-compatible video path, selectable screen layouts, melonDS-derived
@@ -14,7 +14,10 @@ generation-safe catch-up visibility, stabilized raster-drop pacing,
 DreamSTer-style lock-free SPSC/futex synchronization, direct completed-plane
 publication, and a shadow-safe four-band raster path. It also fixes first-load
 save-sector alignment and preserves the verified cartridge/save epoch across
-reset and direct-load transitions.
+reset and direct-load transitions. Beta.6 additionally batches perspective
+texture-coordinate work, vectorizes the dominant GX vertex transforms, and
+fast-paths COLOR and NORMAL commands. The matching FPGA fit replaces the
+remaining power-of-two blend divisions with exact bit shifts.
 See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
 verification, exclusions, and current limitations.
 
@@ -127,9 +130,8 @@ controls remain difficult even though touch input is delivered to the game.
   interaction with touchscreen graphics remain limited.
 - Chrono Trigger has a separate boot failure under investigation.
 - NAND saves, save states, Wi-Fi, and microphone support are not implemented.
-- The current FPS overlay counts completed 3D publications. A repeated plane
-  can therefore still be counted as a new frame, so the number may read 60 FPS
-  while visibly distinct 3D motion is slower.
+- The FPS overlay counts changed 3D planes accepted for display. It does not
+  report total emulation speed, HDMI refresh rate, or 2D-engine performance.
 
 If a game still reports corrupted save data after upgrading, first back up and
 then delete or move that game's existing `.sav` file from
