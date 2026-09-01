@@ -2,181 +2,258 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-This source snapshot corresponds to Public Beta v0.3.0-beta.6
-(2026-08-31).
-It combines controller- and mouse-driven touchscreen input with the LG
-C-series-compatible video path, selectable screen layouts, melonDS-derived
-cartridge-save profiles, 512-byte through 128 KiB EEPROM/FRAM support, 256 KiB
-through 1 MiB Flash support, the 134.056 MHz console clock family, bounded
-cartridge read-ahead, and the current ARM-assisted 3D performance path with
-full-frame renderer-fence batching, adaptive dual-core raster balancing,
-generation-safe catch-up visibility, stabilized raster-drop pacing,
-DreamSTer-style lock-free SPSC/futex synchronization, direct completed-plane
-publication, and a shadow-safe four-band raster path. It also fixes first-load
-save-sector alignment and preserves the verified cartridge/save epoch across
-reset and direct-load transitions. Beta.6 additionally batches perspective
-texture-coordinate work, vectorizes the dominant GX vertex transforms, and
-fast-paths COLOR and NORMAL commands. The matching FPGA fit replaces the
-remaining power-of-two blend divisions with exact bit shifts.
-See `SOURCE_PACKAGE.txt` for the exact binary identities, hardware
-verification, exclusions, and current limitations.
+**Public Beta v0.3.0-beta.6 — released 2026-08-31**
 
-No commercial ROMs, BIOS binaries, personal saves, compiled FPGA images, or
-credentials are included.
+> **Read this first:** This is an early beta, not a finished core. Some games
+> boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
+> is not displayed yet, so both visible screen positions show Engine A. Treat
+> this release as something to experiment with, not as a reliable way to play
+> your entire library.
 
-## Quick start
+No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
+artifacts, or credentials are included in this source repository.
 
-1. Unzip the release package to the root of your MiSTer SD card.
-2. Go to **Scripts → NDS_Kickstart** and let the 3D service start.
+## What works today
+
+- Some 2D and lighter 3D games boot and run.
+- FPGA-generated sound.
+- Persistent cartridge saves:
+  - 512-byte tiny EEPROM.
+  - 8 KiB, 64 KiB, and 128 KiB EEPROM/FRAM profiles.
+  - 256 KiB, 512 KiB, and 1 MiB Flash profiles.
+- Touch input using either the controller's right analog stick or a MiSTer
+  mouse.
+- Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
+- Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
+
+## Current limitations
+
+- **Only Engine A is displayed.** A Nintendo DS has two 2D engines, but Engine
+  B is currently synthesized out to fit the FPGA. Both visible screen positions
+  therefore show the same Engine A image. Touch input still reaches the game,
+  but games that require precise interaction with unseen touchscreen graphics
+  remain difficult to use.
+- **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
+  the most active area of development.
+- **Cartridge-access latency remains a bottleneck.** Some objects or effects
+  may appear late or fail to load.
+- **Not implemented:** NAND saves, save states, Wi-Fi, and microphone support.
+- **Reset is improved, but not universal.** It preserves the current cartridge
+  and save mount. If a game does not reset cleanly, reselect its ROM from the
+  core menu.
+- The first public compatibility target is *New Super Mario Bros.* Broad game
+  compatibility is not yet claimed.
+
+## Getting started
+
+You supply your own legally obtained `.nds` files. No games, commercial BIOS
+or firmware files, or saves are included, and none should be posted to this
+repository.
+
+1. Extract
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.6_20260831.zip` directly into the root
+   of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
+   `Scripts` folders.
+2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
+   the 3D service to start.
 3. Go to **Console → NDS_20260831** and launch the core.
-4. Choose your `.nds` ROM from the core menu.
+4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
-You must run **NDS_Kickstart** before launching the core after every MiSTer
-reboot.
+> **Run NDS_Kickstart once after every MiSTer reboot, before launching the
+> core.** The DS 3D renderer is a helper program on the MiSTer's ARM/HPS. The
+> launcher verifies that helper, requests the tested 1 GHz HPS clock, and
+> starts exactly one non-persistent renderer process. Games will not run
+> correctly if the helper is not running.
 
-## Architecture
+## Touch controls
 
-- The FPGA runs the Nintendo DS CPU, timing, cartridge, 2D, sound, save, and
-  MiSTer video/control paths.
-- The ARM/HPS service handles the current hybrid 3D-rendering path and
-  publishes completed 3D data to the FPGA.
-- The plane-only MiSTer renderer uses one complete-frame ownership fence and
-  suppresses 192 unused per-scanline semaphore publications per changed frame.
-  Pixels, frame order, and scanline-capable melonDS frontends remain unchanged.
-- Heavy scenes use feedback-guided dual-core raster splitting. When replay
-  falls behind, geometry that can no longer be displayed is discarded through
-  the next real GX flush boundary so incomplete polygon buffers are never
-  mixed into a visible frame.
-- A generation-tagged visibility guard retains the last valid 3D plane when a
-  catch-up discard produces an empty intermediate result. Mild load preserves
-  complete geometry and skips only the raster pass; aggressive discard is
-  reserved for a backlog that is actually growing. This removes recurring
-  blank-frame flashes while keeping heavy NSMB scenes evenly paced.
-- The ARM packet queue and renderer handoff use cache-separated single-
-  producer/single-consumer indices with private Linux futexes. Normal queued
-  work avoids mutex and kernel transitions without skipping packets, commands,
-  frames, or polygons.
-- Completed ARM planes can be published directly from their immutable buffer,
-  avoiding an extra full-frame copy. The four-band raster path admits completed
-  shadow work only after its ordering gate is satisfied.
-- The release sound implementation is the GPL-licensed Nitro_DarkSide engine
-  in `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`. The release wrapper
-  builds it with `SOUND_ENABLE=1`.
-- PSX-core-derived space work shares the ARM7 shifter datapath, compresses the
-  exact cartridge-save lookup tables, packs sound fetch state, and packs ARM9
-  cache-tag storage. Each retained change has a focused equivalence test.
-- Retired private FPGA-sound experiments are not included and are not release
+The most recently active touch input takes control.
+
+### Right analog stick
+
+The right stick uses absolute positioning. Centering it selects approximately
+the middle of the 256×192 touchscreen; moving it to an edge selects that edge.
+Hold the remappable `Touch` action to press the stylus and release it to lift
+the stylus.
+
+### Mouse
+
+Mouse movement is relative, like a desktop cursor, and stops at the touchscreen
+edges. Hold the left mouse button to press the stylus.
+
+The on-screen pointer is **white while hovering** and **red while pressed**. It
+remains visible while pressed and lingers for about half a second after
+movement. In beta.6, both displayed positions duplicate Engine A, so the
+pointer is drawn over every visible copy of that image.
+
+Touch coordinates are delivered to the DS touchscreen even though Engine B is
+not displayed. Games that require you to tap a specific bottom-screen control
+are therefore still effectively blind.
+
+## Saves
+
+Cartridge saves are stored in MiSTer's standard directory:
+
+```text
+/media/fat/saves/NDS/
+```
+
+This is battery-backed cartridge-save support, not emulator save states. Save
+profiles are selected from the vendored melonDS ROM database. NAND save
+cartridges and unknown save hardware are not supported.
+
+> **If a game reports corrupted save data after an upgrade:** Back up its
+> `.sav` file, then delete or move that file out of `/media/fat/saves/NDS/` and
+> let the game create a fresh save. Older experimental builds sometimes
+> created incorrectly sized or already-corrupted saves; beta.6 does not try to
+> repair them.
+
+## Reading the FPS counter
+
+The optional overlay counts changed 3D planes accepted by the FPGA for
+display. It does **not** report total emulation speed, HDMI refresh rate,
+ARM9/ARM7 speed, or 2D-engine performance. A displayed value of 60 does not by
+itself prove that every part of a game is running at full speed.
+
+## Reporting bugs
+
+Use [GitHub Issues](https://github.com/SplashDev88/NDS4MiSTer/issues). A useful
+report includes:
+
+- The beta version.
+- The SHA-256 values of the FPGA core and ARM/HPS service.
+- The game title, region, and revision.
+- Exact steps to reproduce the problem.
+- Any NDS4MiSTer crash report that was generated.
+
+Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
+files, credentials, or other private data. A ROM filename plus its game code or
+revision is enough to identify it.
+
+## What's new in beta.6
+
+Beta.6 focuses on 3D performance, pacing, and FPGA space use while retaining
+the saves, reset behavior, touch preview, sound, layouts, and 134 MHz clock
+family from beta.5.
+
+- Batches exact perspective texture-coordinate work four pixels at a time.
+- Uses a bit-exact Cortex-A9 NEON path for the dominant GX vertex transform.
+- Fast-paths COLOR and NORMAL GX commands without bypassing lighting, normal
+  matrix, or fixed-point behavior.
+- Replaces exact FPGA divide-by-16 and divide-by-32 blend operations with fixed
+  shifts, saving 87 ALMs and 26 registers.
+- Counts changed 3D planes in the FPS overlay instead of identical plane
+  republications.
+- Retains direct completed-plane publication, feedback-guided dual-core raster
+  splitting, bounded catch-up, and lock-free SPSC/futex handoffs from the
+  preceding performance work.
+- Fixes first-load save-sector alignment and preserves the verified
+  cartridge/save pairing across reset and direct-load transitions.
+
+Focused measurements found about 3.6% lower GX processing cost and 5.6% lower
+geometry-flush cost across the retained ARM changes. The conservative summary
+is about 5% lower ARM 3D processing cost than beta.5; this is not a whole-game
+FPS claim, and visible results remain scene-dependent.
+
+## For developers
+
+<details>
+<summary>Architecture</summary>
+
+- The **FPGA** runs the ARM9 and ARM7 CPUs, system timing, DMA, cartridge,
+  memory and VRAM mapping, Engine A 2D graphics, sound, saves, and MiSTer
+  video/control paths.
+- The **ARM/HPS service** replays ordered graphics events into melonDS's 3D
+  engine and publishes completed 256×192 3D planes to the FPGA.
+- The FPGA composes the published 3D plane into Engine A using DS priority,
+  window, blending, and brightness rules. The HPS service does not render a
+  shadow copy of the FPGA 2D engine in beta.6.
+- The plane-only renderer uses one complete-frame ownership fence, avoiding
+  192 unused per-scanline semaphore publications per changed frame without
+  changing scanline-capable melonDS frontends.
+- Heavy scenes use feedback-guided dual-core raster splitting. If replay falls
+  behind, work that can no longer be displayed is discarded only through a
+  real GX flush boundary so incomplete polygon buffers are not published.
+- A generation-tagged visibility guard keeps the last valid 3D plane when
+  catch-up produces an empty intermediate result. Mild load skips only an
+  obsolete raster pass; aggressive discard is reserved for a growing backlog.
+- Packet and renderer handoffs use cache-separated SPSC indices with private
+  Linux futexes, avoiding mutex and kernel transitions on the normal queued
+  path.
+- Completed immutable ARM planes publish directly, avoiding an extra
+  full-frame copy. The four-band raster path admits shadow work only after its
+  ordering dependency is satisfied.
+- Sound is the GPL-licensed Nitro_DarkSide engine at
+  `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`, built by the release
+  wrapper with `SOUND_ENABLE=1`.
+- PSX-core-derived space savings share the ARM7 shifter datapath, compress the
+  cartridge-save lookup tables, and pack sound-fetch state and ARM9 cache tags.
+  Each retained change has a focused equivalence test.
+- Retired private FPGA-sound experiments are excluded and are not release
   dependencies.
 
-## Building and testing
+</details>
 
-The release FPGA project is:
+<details>
+<summary>Building and testing</summary>
+
+The release FPGA project is built and fitted with Quartus Prime 17.0.2:
 
 ```text
 fpga/mister_nitro_console_island/NDS4MiSTer.qpf
 ```
 
-It was built and fitted with Quartus Prime 17.0.2. Generated Quartus databases,
-RBF/SOF files, and other build outputs are intentionally excluded from this
-source archive.
+Generated Quartus databases, RBF/SOF files, and other build outputs are
+intentionally excluded from the source repository.
 
-Run the production console-island host regression with:
+Run the production console-island host regression:
 
 ```sh
 ./tools/test_nitro_console_island_host.sh
 ```
 
-Build the MiSTer ARM hybrid-3D service with the provided isolated Docker build:
+Build the ARM hybrid-3D service with the isolated Docker build:
 
 ```sh
 ./tools/build_hybrid_3d_service_armhf.sh
 ```
 
-The produced ARM binary must pass its built-in self-test before deployment.
-The installable beta, launcher script, compiled RBF, ARM payload, and hashes are
-distributed separately as the public binary package.
+The resulting ARM binary must pass its built-in self-test before deployment.
+The installable ZIP, launcher, compiled RBF, ARM payload, and hashes are
+distributed separately on the GitHub Releases page.
 
-## Touch controls
+</details>
 
-You can control the DS stylus with either input:
+<details>
+<summary>Repository layout</summary>
 
-- Move the controller's right analog stick to position it, then hold the
-  remappable `Touch` action to press the screen.
-- Move a MiSTer mouse to position it, then hold the left mouse button to press
-  the screen.
+| Path | Contents |
+| --- | --- |
+| `fpga/mister_nitro_console_island` | Production MiSTer Quartus project |
+| `rtl` | FPGA integration, video, 3D transport, cartridge-save, and test RTL |
+| `src` | ARM/HPS services, melonDS integration, and host utilities |
+| `third_party/Nitro_DarkSide` | Vendored GPL Nintendo DS FPGA source |
+| `third_party/melonDS` | Vendored melonDS source and license |
+| `tools` | Build, test, generation, and service-control scripts |
+| `docs` | Architecture, ABI, lifecycle, boot, and publishing contracts |
 
-The most recently moved input takes control. The pointer is white while
-hovering and red while pressed. It remains visible while pressed and lingers
-for about half a second after movement. Because both current video positions
-show Engine A, the pointer is drawn over every visible screen copy, including
-the left copy in the side-by-side layout.
+Contributions and maintainer pushes must follow
+[`docs/PUBLIC_PUBLISHING.md`](docs/PUBLIC_PUBLISHING.md). The versioned audit
+rejects commercial ROMs, saves, release binaries, credentials, personal paths,
+unsafe commit identities, and other private artifacts before publication.
 
-The right stick uses absolute positioning: centered is approximately the
-center of the 256x192 touchscreen, and the stick edges select the screen edges.
-Mouse movement is relative and saturates at the screen edges. Engine B is not
-displayed yet, so games that require precise selection of visible touchscreen
-controls remain difficult even though touch input is delivered to the game.
+</details>
 
-## Current limitations
+## Credits
 
-- Engine B is not enabled; both displayed positions currently show Engine A.
-- Heavy 3D scenes can slow down, fall behind, or crash.
-- Cartridge-access latency can make objects or effects appear late or fail.
-- Reset now preserves the cartridge and save mount used by the running game.
-  Reselecting the ROM remains the fallback for titles that do not reset cleanly.
-- Touchscreen input supports the controller's right stick plus remappable
-  `Touch` action, or relative mouse movement plus the left mouse button.
-  Because Engine B is not displayed yet, games that require precise
-  interaction with touchscreen graphics remain limited.
-- Chrono Trigger has a separate boot failure under investigation.
-- NAND saves, save states, Wi-Fi, and microphone support are not implemented.
-- The FPS overlay counts changed 3D planes accepted for display. It does not
-  report total emulation speed, HDMI refresh rate, or 2D-engine performance.
+Built on the MiSTer framework, Nitro_DarkSide, melonDS, and FPGAzumSpass's GBA
+ARM7 CPU implementation, which was used as the basis for the ARM9 work.
+Component licenses and source notices remain in their vendored trees.
 
-If a game still reports corrupted save data after upgrading, first back up and
-then delete or move that game's existing `.sav` file from
-`/media/fat/saves/NDS/`. Older experimental builds may have created an
-incorrectly sized or already-corrupted file; this core will not attempt to
-repair corrupted legacy data and the game must create a fresh save.
-
-## Issues and bug reports
-
-Use the [GitHub Issues](https://github.com/SplashDev88/NDS4MiSTer/issues) page
-for reproducible bugs and tracked development work. Include the beta name,
-FPGA-core and HPS-service SHA-256 values, game title/region/revision, exact
-reproduction steps, and any generated NDS4MiSTer crash report.
-
-Never upload or link to commercial ROMs, BIOS/firmware dumps, personal save
-files, credentials, or other private data. A ROM filename and its game-code or
-revision are sufficient for identification.
-
-## Repository layout
-
-- `fpga/mister_nitro_console_island`: production MiSTer Quartus project.
-- `rtl`: FPGA integration, video, 3D transport, cartridge-save, and test RTL.
-- `src`: ARM/HPS services, melonDS integration, and host utilities.
-- `third_party/Nitro_DarkSide`: vendored GPL Nintendo DS FPGA source.
-- `third_party/melonDS`: vendored melonDS source and license.
-- `tools`: focused build, test, generation, and service-control scripts.
-- `docs`: current architecture, ABI, lifecycle, boot, and publishing contracts.
-
-Public contributions and maintainer pushes must follow
-[`docs/PUBLIC_PUBLISHING.md`](docs/PUBLIC_PUBLISHING.md). The repository's
-versioned audit rejects commercial ROMs, saves, release binaries, credentials,
-personal paths, unsafe commit identities, and other private artifacts before
-they can be published.
-
-## Credits and special thanks
-
-This work builds on the MiSTer framework, Nitro_DarkSide, melonDS, and
-FPGAzumSpass's GBA ARM7 CPU implementation, which was used as the basis for the
-ARM9 work. Component licenses and source notices remain in their respective
-vendored trees.
-
-Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, and heni for
-technical advice, testing, and development guidance.
+Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, heni, and the
+wider MiSTer community for technical advice, testing, and development guidance.
 
 ## License
 
 NDS4MiSTer is distributed under GPLv3; see `LICENSE.txt`. Vendored components
-retain their own license and attribution files.
+retain their own licenses and attribution files.
