@@ -1423,24 +1423,13 @@ wire [7:0] h3d_line_prefetch_y = h3d_core_line_y == 8'd190 ? 8'd0 :
 (* async_reg = "true" *) logic [31:0] h3d_session_sync_1x;
 `endif
 
-// Count the 3D frames that truly reach the merge pixel domain.  The HPS
-// publication sequence may advance asynchronously and the 2D framebuffer
-// continues at the DS raster cadence, so neither is by itself an honest 3D
-// FPS source.  A local toggle per newly activated descriptor gives scanout a
-// tiny CDC-safe event stream without adding counters to the hot HPS path.
+// Count only changed 3D planes that reach the merge pixel domain. The HPS
+// republishes an already-acknowledged bank when a completed frame is pixel-
+// identical, while every changed plane alternates the existing ping-pong
+// bank. The displayed bank is therefore already the exact content toggle;
+// wiring it directly adds no state or comparison logic to this full device.
 `ifdef NDS_HYBRID_3D
-logic [31:0] effective_3d_sequence_seen;
-always_ff @(posedge clk1x or posedge console_reset_1x) begin
-    if (console_reset_1x) begin
-        effective_3d_sequence_seen <= 32'd0;
-        effective_3d_frame_toggle <= 1'b0;
-    end else if (h3d_pixel_descriptor_valid &&
-                 h3d_pixel_descriptor_sequence !=
-                    effective_3d_sequence_seen) begin
-        effective_3d_sequence_seen <= h3d_pixel_descriptor_sequence;
-        effective_3d_frame_toggle <= ~effective_3d_frame_toggle;
-    end
-end
+always_comb effective_3d_frame_toggle = h3d_pixel_descriptor_bank;
 `else
 always_comb effective_3d_frame_toggle = fb_published_frame_toggle;
 `endif

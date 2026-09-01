@@ -28,6 +28,7 @@
 #include "GPU3D.h"
 #include "NDS4MiSTer_2DTrace.h"
 #include "NDS4MiSTer_GXClipMath.h"
+#include "NDS4MiSTer_GXVertexTransform.h"
 
 namespace melonDS
 {
@@ -1486,14 +1487,12 @@ void GPU3D::SubmitVertex() noexcept
         return;
     }
 
-    s64 vertex[4] = {(s64)CurVertex[0], (s64)CurVertex[1], (s64)CurVertex[2], 0x1000};
+    s32 vertex[4] = {CurVertex[0], CurVertex[1], CurVertex[2], 0x1000};
     Vertex* vertextrans = &TempVertexBuffer[VertexNumInPoly];
 
     UpdateClipMatrix();
-    vertextrans->Position[0] = (vertex[0]*ClipMatrix[0] + vertex[1]*ClipMatrix[4] + vertex[2]*ClipMatrix[8] + vertex[3]*ClipMatrix[12]) >> 12;
-    vertextrans->Position[1] = (vertex[0]*ClipMatrix[1] + vertex[1]*ClipMatrix[5] + vertex[2]*ClipMatrix[9] + vertex[3]*ClipMatrix[13]) >> 12;
-    vertextrans->Position[2] = (vertex[0]*ClipMatrix[2] + vertex[1]*ClipMatrix[6] + vertex[2]*ClipMatrix[10] + vertex[3]*ClipMatrix[14]) >> 12;
-    vertextrans->Position[3] = (vertex[0]*ClipMatrix[3] + vertex[1]*ClipMatrix[7] + vertex[2]*ClipMatrix[11] + vertex[3]*ClipMatrix[15]) >> 12;
+    NDS4MiSTerGXTransformVertex4(
+        vertex, ClipMatrix, vertextrans->Position);
 
     // this probably shouldn't be.
     // the way color is handled during clipping needs investigation. TODO
@@ -1503,8 +1502,8 @@ void GPU3D::SubmitVertex() noexcept
 
     if ((TexParam >> 30) == 3)
     {
-        vertextrans->TexCoords[0] = ((vertex[0]*TexMatrix[0] + vertex[1]*TexMatrix[4] + vertex[2]*TexMatrix[8]) >> 24) + RawTexCoords[0];
-        vertextrans->TexCoords[1] = ((vertex[0]*TexMatrix[1] + vertex[1]*TexMatrix[5] + vertex[2]*TexMatrix[9]) >> 24) + RawTexCoords[1];
+        vertextrans->TexCoords[0] = (((s64)vertex[0]*TexMatrix[0] + (s64)vertex[1]*TexMatrix[4] + (s64)vertex[2]*TexMatrix[8]) >> 24) + RawTexCoords[0];
+        vertextrans->TexCoords[1] = (((s64)vertex[0]*TexMatrix[1] + (s64)vertex[1]*TexMatrix[5] + (s64)vertex[2]*TexMatrix[9]) >> 24) + RawTexCoords[1];
     }
     else
     {
@@ -1958,6 +1957,24 @@ void GPU3D::ExecuteCommand() noexcept
     {
         switch (c)
         {
+        case 0x20: // vertex color
+            VertexPipelineCmdDelayed6();
+            {
+                const u32 color = entry.Param;
+                VertexColor[0] = color & 0x1F;
+                VertexColor[1] = (color >> 5) & 0x1F;
+                VertexColor[2] = (color >> 10) & 0x1F;
+            }
+            return;
+
+        case 0x21: // normal
+            VertexPipelineCmdDelayed4();
+            Normal[0] = (s16)((entry.Param & 0x000003FF) << 6) >> 6;
+            Normal[1] = (s16)((entry.Param & 0x000FFC00) >> 4) >> 6;
+            Normal[2] = (s16)((entry.Param & 0x3FF00000) >> 14) >> 6;
+            CalculateLighting();
+            return;
+
         case 0x22: // texcoord
             VertexPipelineCmdDelayed4();
             RawTexCoords[0] = entry.Param & 0xFFFF;

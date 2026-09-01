@@ -948,6 +948,9 @@ struct ExternalRendererStageProfile
     u64 ThreeDBandQueueJobs = 0;
     u64 ThreeDBandQueueAdvancedScanlines = 0;
     u64 ThreeDBandQueueShadowFallbackFrames = 0;
+    u64 ThreeDRasterCancelRequests = 0;
+    u64 ThreeDRasterCanceledFrames = 0;
+    u64 ThreeDRasterRecoveryFrames = 0;
     u64 ThreeDPolygonFrames = 0;
     u64 ThreeDPolygons = 0;
     u64 ThreeDPolygonScanlines = 0;
@@ -999,6 +1002,8 @@ public:
     virtual void Start3DRendering() { Rend3D->RenderFrame(); }
     virtual void Finish3DRendering() { Rend3D->FinishRendering(); }
     virtual void Restart3DRendering() { Rend3D->RestartFrame(); }
+    virtual bool Request3DRenderingCancellation() { return false; }
+    virtual bool Was3DRenderingCanceled() const { return false; }
 
     virtual void VBlank() = 0;
     virtual void VBlankEnd() = 0;

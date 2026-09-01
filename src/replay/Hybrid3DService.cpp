@@ -469,6 +469,23 @@ constexpr bool catchup_should_discard_geometry(
     return false;
 }
 
+constexpr bool obsolete_raster_should_cancel(
+    std::uint32_t rendering_frame, std::uint32_t completed_successor_frame,
+    std::uint32_t latest_input_frame, bool completion_cooldown,
+    std::uint32_t minimum_lead) noexcept
+{
+    // A single successor arriving while raster N is finishing is ordinary
+    // pipelining, not wasted work. Cancel only when authoritative input has
+    // reached at least N+2 and a complete successor is already at the replay
+    // boundary. After a real cancellation, force one admitted render through
+    // completion so a sustained overload cannot starve visible 3D forever.
+    if (completion_cooldown || minimum_lead < 2 ||
+        completed_successor_frame <= rendering_frame ||
+        latest_input_frame < rendering_frame)
+        return false;
+    return latest_input_frame - rendering_frame >= minimum_lead;
+}
+
 bool plane_has_alpha(const std::uint32_t* pixels)
 {
     if (!pixels) return false;
@@ -1116,6 +1133,7 @@ private:
         pending_geometry_commands_ = 0;
         pending_external_vram_mask_ = 0;
         arm_render_pending_ = false;
+        arm_render_cancel_cooldown_ = false;
         arm_render_expected_alpha_ = false;
         arm_render_visibility_generation_ = 0;
         arm_video_phase_started_ = false;
@@ -1146,6 +1164,8 @@ private:
         replay_frame_discard_geometry_ = false;
         replay_active_frame_ = 0;
         replay_geometry_discard_frames_ = 0;
+        arm_render_cancel_requests_.store(0, std::memory_order_relaxed);
+        arm_render_cancellations_.store(0, std::memory_order_relaxed);
         replay_stop_.store(false, std::memory_order_relaxed);
         replay_packets_applied_.store(0, std::memory_order_relaxed);
         replay_slot_capacity_growths_.store(0, std::memory_order_relaxed);
@@ -1395,9 +1415,10 @@ private:
     }
 
     bool apply_replay_geometry_run(
-        const frame_packet::Record* records, std::size_t count)
+        const frame_packet::Record* records, std::size_t count,
+        std::size_t command_count)
     {
-        if (!records || count == 0)
+        if (!records || count == 0 || command_count == 0)
             return fail(FaultBadEvent, "empty mixed GX command run");
 
         // A preceding VRAM run must publish its texture-cache revision before
@@ -1415,18 +1436,6 @@ private:
         if (step == 0 || packet_timestamp_ > limit)
             return fail(FaultBadEvent, "mixed GX run initial timestamp overflow");
 
-        std::size_t command_count = 0;
-        for (std::size_t index = 0; index < count; ++index) {
-            const auto kind = frame_packet::record_kind(records[index]);
-            if (!geometry_record_kind(kind))
-                return fail(FaultBadEvent, "non-GX record in mixed GX run");
-            const std::size_t added =
-                kind == frame_packet::RecordKind::GxPacked ? 3 : 1;
-            if (command_count >
-                std::numeric_limits<std::size_t>::max() - added)
-                return fail(FaultBadEvent, "mixed GX command count overflow");
-            command_count += added;
-        }
         if (command_count > (limit - packet_timestamp_) / step)
             return fail(FaultBadEvent, "mixed GX run timestamp overflow");
 
@@ -1504,11 +1513,24 @@ private:
             const auto kind_index =
                 static_cast<std::uint32_t>(kind) - 1u;
             std::size_t run_end = index + 1;
+            std::size_t geometry_command_count = 0;
             if (geometry_record_kind(kind)) {
-                while (run_end != packet.records.size() &&
-                       geometry_record_kind(frame_packet::record_kind(
-                           packet.records[run_end])))
+                geometry_command_count =
+                    kind == frame_packet::RecordKind::GxPacked ? 3 : 1;
+                while (run_end != packet.records.size()) {
+                    const auto run_kind = frame_packet::record_kind(
+                        packet.records[run_end]);
+                    if (!geometry_record_kind(run_kind)) break;
+                    const std::size_t added =
+                        run_kind == frame_packet::RecordKind::GxPacked ? 3 : 1;
+                    if (geometry_command_count >
+                        std::numeric_limits<std::size_t>::max() - added)
+                        return fail(
+                            FaultBadEvent,
+                            "mixed GX command count overflow");
+                    geometry_command_count += added;
                     ++run_end;
+                }
             } else {
                 while (run_end != packet.records.size() &&
                        frame_packet::record_kind(packet.records[run_end]) ==
@@ -1552,7 +1574,8 @@ private:
 
             if (geometry_record_kind(kind)) {
                 if (!apply_replay_geometry_run(
-                        packet.records.data() + index, run_end - index))
+                        packet.records.data() + index, run_end - index,
+                        geometry_command_count))
                     return false;
             } else {
                 for (std::size_t record_index = index;
@@ -1700,6 +1723,8 @@ private:
                     // can enter replay_queue_, so only private melonDS state
                     // is touched here. Finish frame N while the input owner
                     // has been copying N+1, then advance and launch N+1.
+                    if (arm_render_pending_)
+                        request_obsolete_arm_render_cancel(packet_frame);
                     if (arm_render_pending_ && !finish_arm_render()) return;
                     if (!advance_frame_boundary(packet_frame)) return;
                     complete_replay_frame();
@@ -1767,6 +1792,20 @@ private:
             skip_numerator, backlog, ReplayCatchupSeverePackets);
         frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
         return true;
+    }
+
+    void request_obsolete_arm_render_cancel(
+        std::uint32_t completed_successor_frame)
+    {
+        if (!arm_render_pending_ || arm_render_cancel_cooldown_) return;
+        const auto latest_input = replay_state_.latest_input_frame();
+        if (!obsolete_raster_should_cancel(
+                arm_render_frame_, completed_successor_frame, latest_input,
+                arm_render_cancel_cooldown_, ReplayCatchupMildFrames))
+            return;
+        if (!nds_->GPU.GetRenderer().Request3DRenderingCancellation())
+            return;
+        arm_render_cancel_requests_.fetch_add(1, std::memory_order_relaxed);
     }
 
     bool prepare_replay_frame(std::uint32_t frame)
@@ -2761,7 +2800,15 @@ private:
                 arm_render_finishes_, arm_render_finish_total_ns_,
                 arm_render_finish_max_ns_, wait_started);
         const auto frame = arm_render_frame_;
+        const bool canceled = renderer.Was3DRenderingCanceled();
         arm_render_pending_ = false;
+        if (canceled) {
+            arm_render_cancel_cooldown_ = true;
+            arm_render_cancellations_.fetch_add(
+                1, std::memory_order_relaxed);
+            return true;
+        }
+        arm_render_cancel_cooldown_ = false;
         return copy_rendered_frame(frame, renderer);
     }
 
@@ -3624,6 +3671,12 @@ private:
                << renderer_profile.ThreeDBandQueueAdvancedScanlines
                << " renderer_3d_band_queue_shadow_fallback_frames="
                << renderer_profile.ThreeDBandQueueShadowFallbackFrames
+               << " renderer_3d_raster_cancel_requests="
+               << renderer_profile.ThreeDRasterCancelRequests
+               << " renderer_3d_raster_canceled_frames="
+               << renderer_profile.ThreeDRasterCanceledFrames
+               << " renderer_3d_raster_recovery_frames="
+               << renderer_profile.ThreeDRasterRecoveryFrames
                << " renderer_3d_polygon_frames="
                << renderer_profile.ThreeDPolygonFrames
                << " renderer_3d_polygons="
@@ -3693,6 +3746,12 @@ private:
                << arm_render_finish_total_ns_.load(std::memory_order_relaxed)
                << " arm_render_finish_max_ns="
                << arm_render_finish_max_ns_.load(std::memory_order_relaxed)
+               << " arm_render_cancel_requests="
+               << arm_render_cancel_requests_.load(
+                      std::memory_order_relaxed)
+               << " arm_render_cancellations="
+               << arm_render_cancellations_.load(
+                      std::memory_order_relaxed)
                << " arm_render_copies="
                << arm_render_copies_.load(std::memory_order_relaxed)
                << " arm_render_copy_total_ns="
@@ -4043,6 +4102,7 @@ private:
     int arm_video_completed_index_ = -1;
     std::atomic<bool> frame_publication_fence_active_ {false};
     bool arm_render_pending_ = false;
+    bool arm_render_cancel_cooldown_ = false;
     bool arm_render_expected_alpha_ = false;
     CatchupVisibilityTaint::Generation arm_render_visibility_generation_ = 0;
     std::uint32_t arm_render_sequence_ = 0;
@@ -4132,6 +4192,8 @@ private:
     std::atomic<std::uint64_t> arm_render_finishes_ {0};
     std::atomic<std::uint64_t> arm_render_finish_total_ns_ {0};
     std::atomic<std::uint64_t> arm_render_finish_max_ns_ {0};
+    std::atomic<std::uint64_t> arm_render_cancel_requests_ {0};
+    std::atomic<std::uint64_t> arm_render_cancellations_ {0};
     std::atomic<std::uint64_t> arm_render_copies_ {0};
     std::atomic<std::uint64_t> arm_render_copy_total_ns_ {0};
     std::atomic<std::uint64_t> arm_render_copy_max_ns_ {0};
@@ -4308,6 +4370,13 @@ void run_self_test()
             SmoothCatchupPacer::Denominator,
             SeverePacketThreshold, SeverePacketThreshold))
         self_test_fail("catch-up discarded authoritative geometry");
+    if (obsolete_raster_should_cancel(10, 11, 11, false, 2) ||
+        !obsolete_raster_should_cancel(10, 11, 12, false, 2) ||
+        obsolete_raster_should_cancel(10, 11, 12, true, 2) ||
+        obsolete_raster_should_cancel(10, 10, 12, false, 2) ||
+        obsolete_raster_should_cancel(10, 11, 9, false, 2) ||
+        obsolete_raster_should_cancel(10, 11, 12, false, 1))
+        self_test_fail("obsolete-raster cancellation policy is unsafe");
     {
         SmoothCatchupPacer pacer;
         const auto count_skips = [&](std::uint32_t numerator) {
@@ -5274,6 +5343,57 @@ void run_self_test()
                   << queue_profile.ThreeDBandQueueJobs
                   << " advanced_scanlines="
                   << queue_profile.ThreeDBandQueueAdvancedScanlines << '\n';
+
+        // A canceled raster is derived output only: the complete GX build and
+        // renderer state must remain valid for the next admitted frame. The
+        // delayed band worker makes the cancellation observation
+        // deterministic, then a second render is compared byte-for-byte with
+        // a clean melonDS oracle to prove recovery.
+        auto cancel_queued = make_renderer_nds(true);
+        build_frame(*cancel_queued);
+        auto& cancel_renderer = cancel_queued->GPU.GetRenderer();
+        cancel_renderer.Start3DRendering();
+        if (!cancel_renderer.Request3DRenderingCancellation())
+            self_test_fail("obsolete raster did not accept cancellation");
+        cancel_renderer.Finish3DRendering();
+        if (!cancel_renderer.Was3DRenderingCanceled())
+            self_test_fail("obsolete raster ran to completion");
+        auto cancel_profile =
+            cancel_renderer.GetExternalRendererStageProfile();
+        if (cancel_profile.ThreeDRasterCancelRequests != 1 ||
+            cancel_profile.ThreeDRasterCanceledFrames != 1 ||
+            cancel_profile.ThreeDRasterRecoveryFrames != 0)
+            self_test_fail("obsolete-raster telemetry diverged");
+
+        auto cancel_oracle = make_renderer_nds(false);
+        build_frame(*cancel_oracle);
+        build_frame(*cancel_queued);
+        auto& cancel_oracle_renderer = cancel_oracle->GPU.GetRenderer();
+        cancel_oracle_renderer.Start3DRendering();
+        cancel_renderer.Start3DRendering();
+        cancel_oracle_renderer.Finish3DRendering();
+        cancel_renderer.Finish3DRendering();
+        if (cancel_renderer.Was3DRenderingCanceled())
+            self_test_fail("raster cancellation leaked into the next frame");
+        cancel_profile = cancel_renderer.GetExternalRendererStageProfile();
+        if (cancel_profile.ThreeDRasterRecoveryFrames != 1)
+            self_test_fail("canceled raster did not force one recovery frame");
+        for (std::uint32_t y = 0; y < PlaneHeight; ++y)
+        {
+            const auto* oracle_line =
+                cancel_oracle_renderer.Get3DScanline(y);
+            const auto* recovered_line = cancel_renderer.Get3DScanline(y);
+            if (!oracle_line || !recovered_line ||
+                std::memcmp(
+                    oracle_line, recovered_line,
+                    PlaneWidth * sizeof(std::uint32_t)) != 0)
+                self_test_fail(
+                    "post-cancellation raster diverged from oracle");
+        }
+        std::cout << "H3D_OBSOLETE_RASTER_CANCEL_ORACLE_PASS requests="
+                  << cancel_profile.ThreeDRasterCancelRequests
+                  << " canceled="
+                  << cancel_profile.ThreeDRasterCanceledFrames << '\n';
 
         // Shadow masks carry ordered scanline-local stencil state. Prove that
         // requesting the four-band scheduler retains the correctness gate and

@@ -18,6 +18,7 @@ docker run --rm --network none \
         set -eu
         binary=/tmp/nds-soft-renderer-fast-divide-arm
         arm-linux-gnueabihf-g++ -std=c++17 -O3 -static \
+            -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard \
             -Ithird_party/melonDS/src \
             tools/test_soft_renderer_fast_divide.cpp -o "$binary"
         "$binary"
@@ -32,9 +33,15 @@ docker run --rm --network none \
         ! sed -n "/<nds_test_div_prepared_u32>:/,/^$/p" \
             /tmp/nds-soft-renderer-fast-divide-arm.dis |
             grep -Eq "bl.*<__aeabi_(u?idiv|uidivmod|uldivmod)>"
+        ! sed -n "/<nds_test_div_factor_delta_exact>:/,/^$/p" \
+            /tmp/nds-soft-renderer-fast-divide-arm.dis |
+            grep -Eq "(vrecpe|vrecps|vdiv|bl.*<__aeabi_(u?idiv|uidivmod|uldivmod)>)"
         grep -A80 -m1 "<nds_test_div_u32_exact>:" \
             /tmp/nds-soft-renderer-fast-divide-arm.dis |
             grep -Eq "vdiv.f64"
+        sed -n "/<nds_test_texture_indices4>:/,/^$/p" \
+            /tmp/nds-soft-renderer-fast-divide-arm.dis |
+            grep -q "vshl.u32"
     '
 
 echo "PASS: host/ARM soft-renderer fast-divide regression"

@@ -61,17 +61,49 @@ constexpr auto NDS4MiSTerMakeRasterMagicTable()
     return table;
 }
 
+constexpr std::size_t NDS4MiSTerPerspectiveMagicBase = 512;
+constexpr std::size_t NDS4MiSTerPerspectiveMagicLimit = 1023;
+
+constexpr auto NDS4MiSTerMakePerspectiveMagicTable()
+{
+    std::array<u32,
+        NDS4MiSTerPerspectiveMagicLimit -
+        NDS4MiSTerPerspectiveMagicBase + 1> table {};
+    for (std::size_t divisor = NDS4MiSTerPerspectiveMagicBase;
+         divisor <= NDS4MiSTerPerspectiveMagicLimit; ++divisor)
+    {
+        const u32 d = static_cast<u32>(divisor);
+        const u32 quotient = 0xFFFFFFFFu / d;
+        const u32 remainder = 0xFFFFFFFFu - quotient * d;
+        table[divisor - NDS4MiSTerPerspectiveMagicBase] =
+            quotient + (remainder == d - 1);
+    }
+    return table;
+}
+
 inline constexpr auto NDS4MiSTerRasterReciprocal22 =
     NDS4MiSTerMakeRasterReciprocalTable(1u << 22);
 inline constexpr auto NDS4MiSTerRasterReciprocal18 =
     NDS4MiSTerMakeRasterReciprocalTable(1u << 18);
 inline constexpr auto NDS4MiSTerRasterMagic =
     NDS4MiSTerMakeRasterMagicTable();
+inline constexpr auto NDS4MiSTerPerspectiveMagic =
+    NDS4MiSTerMakePerspectiveMagicTable();
 
 inline u32 NDS4MiSTerDividePreparedU32(
     u32 numerator, u32 denominator, u32 reciprocal) noexcept
 {
     if (denominator == 1) return numerator;
+    u32 quotient = static_cast<u32>(
+        (static_cast<u64>(numerator) * reciprocal) >> 32);
+    const u32 remainder = numerator - quotient * denominator;
+    quotient += remainder >= denominator;
+    return quotient;
+}
+
+inline u32 NDS4MiSTerDividePreparedNonUnitU32(
+    u32 numerator, u32 denominator, u32 reciprocal) noexcept
+{
     u32 quotient = static_cast<u32>(
         (static_cast<u64>(numerator) * reciprocal) >> 32);
     const u32 remainder = numerator - quotient * denominator;
@@ -103,36 +135,38 @@ inline u32 NDS4MiSTerDivideU32Exact(u32 numerator, u32 denominator) noexcept
 inline u32 NDS4MiSTerDivideFactorDeltaExact(
     u32 numerator, u32 denominator) noexcept
 {
-    // Perspective factors have eight fractional bits, so a consecutive
-    // pixel can change the quotient by at most 256. A binary32 estimate has
-    // ample precision over that bounded quotient. On Cortex-A9, one NEON
-    // Newton refinement takes the reciprocal estimate from roughly 8 to 16
-    // useful bits, which keeps this quotient within one integer without the
-    // relatively slow VDIV. The product check then makes the result exact.
-#if defined(__arm__) && defined(__ARM_NEON)
-    const float32x2_t divisor = vdup_n_f32(
-        static_cast<float>(denominator));
-    float32x2_t reciprocal = vrecpe_f32(divisor);
-    reciprocal = vmul_f32(
-        reciprocal, vrecps_f32(divisor, reciprocal));
-    const u32 quotientEstimate = static_cast<u32>(
-        static_cast<float>(numerator) *
-        vget_lane_f32(reciprocal, 0));
-#else
-    const u32 quotientEstimate = static_cast<u32>(
-        static_cast<float>(numerator) /
-        static_cast<float>(denominator));
-#endif
-    u32 quotient = quotientEstimate;
+    // Perspective correction quotients are bounded to 0..256. Normalize a
+    // wide divisor to its leading ten bits and divide by that 512..1023 value
+    // with a compile-time magic multiplier. If
+    //
+    //   denominator = normalized * 2^shift + low
+    //
+    // then floor((numerator >> shift) / normalized) can exceed the exact
+    // quotient by at most one: normalized is at least 512 while the quotient
+    // is at most 256. One product comparison therefore restores the exact
+    // result. This replaces Cortex-A9's VRECPE/VRECPS plus scalar/NEON domain
+    // transfers in the hottest measured Mario Kart rasterizer function with
+    // CLZ, one cached table load, UMULL, and a single bounded correction.
+    if (denominator <= NDS4MiSTerRasterReciprocalLimit)
+        return denominator == 1 ? numerator :
+            NDS4MiSTerDividePreparedNonUnitU32(
+                numerator, denominator,
+                NDS4MiSTerRasterMagic[denominator]);
+
+    const u32 highestBit = 31u - static_cast<u32>(
+        __builtin_clz(denominator));
+    const u32 shift = highestBit - 9u;
+    const u32 normalizedDenominator = denominator >> shift;
+    const u32 normalizedNumerator = numerator >> shift;
+    u32 quotient = NDS4MiSTerDividePreparedNonUnitU32(
+        normalizedNumerator, normalizedDenominator,
+        NDS4MiSTerPerspectiveMagic[
+            normalizedDenominator - NDS4MiSTerPerspectiveMagicBase]);
+
     // FinalW is normalized to 16 bits and a native X span is at most 256
-    // pixels, so both the exact quotient and this one-step estimate are
-    // bounded to 0..256. Their product with the <= 0x00FFFF00 denominator
-    // fits in u32; keeping it 32-bit avoids UMULL and a two-word comparison.
-    u32 product = quotient * denominator;
-    if (product > numerator)
-        --quotient;
-    else if (numerator - product >= denominator)
-        ++quotient;
+    // pixels, so quotient*denominator fits in u32 for the supported
+    // <=0x00FFFF00 denominator range.
+    quotient -= quotient * denominator > numerator;
     return quotient;
 }
 
@@ -356,6 +390,101 @@ inline u32 NDS4MiSTerScalePermilleCeil(u32 value, u32 permille) noexcept
         (remainder * permille + 999u) / 1000u;
 }
 
+[[gnu::always_inline, gnu::hot]] inline u32
+NDS4MiSTerModulateCachedOpaquePixel(
+    u32 texel, u32 vertexColor) noexcept
+{
+    const u32 tr = texel & 0x3F;
+    const u32 tg = (texel >> 8) & 0x3F;
+    const u32 tb = (texel >> 16) & 0x3F;
+    const u32 vr = vertexColor & 0x3F;
+    const u32 vg = (vertexColor >> 8) & 0x3F;
+    const u32 vb = (vertexColor >> 16) & 0x3F;
+    const u32 r = ((tr + 1) * (vr + 1) - 1) >> 6;
+    const u32 g = ((tg + 1) * (vg + 1) - 1) >> 6;
+    const u32 b = ((tb + 1) * (vb + 1) - 1) >> 6;
+    return r | (g << 8) | (b << 16) | (texel & 0xFF000000u);
+}
+
+// Normalize four interpolated texture coordinates with one branch decision
+// per polygon dimension rather than one per pixel. Texture fetches remain
+// scalar because Cortex-A9 NEON has no gather operation.
+[[gnu::always_inline, gnu::hot]] inline void
+NDS4MiSTerTextureIndices4(
+    const s16* textureS, const s16* textureT,
+    s32 width, s32 height, s32 widthMask, s32 heightMask,
+    u32 wrapFlags, u32 widthShift, u32* indices) noexcept
+{
+#if defined(__arm__) && defined(__ARM_NEON)
+    const auto normalize = [](int16x4_t coordinates, s32 size, s32 mask,
+                              bool wrap, bool flip) {
+        const int16x4_t shifted = vshr_n_s16(coordinates, 4);
+        if (!wrap)
+        {
+            return vreinterpret_u16_s16(vmin_s16(
+                vmax_s16(shifted, vdup_n_s16(0)),
+                vdup_n_s16(static_cast<s16>(mask))));
+        }
+
+        const uint16x4_t unsignedCoordinates =
+            vreinterpret_u16_s16(shifted);
+        const uint16x4_t maskVector =
+            vdup_n_u16(static_cast<u16>(mask));
+        const uint16x4_t base = vand_u16(
+            unsignedCoordinates, maskVector);
+        if (!flip)
+            return base;
+
+        const uint16x4_t flipLanes = vtst_u16(
+            unsignedCoordinates, vdup_n_u16(static_cast<u16>(size)));
+        return vbsl_u16(
+            flipLanes, vsub_u16(maskVector, base), base);
+    };
+
+    const uint16x4_t normalizedS = normalize(
+        vld1_s16(textureS), width, widthMask,
+        wrapFlags & 0x1u, wrapFlags & 0x4u);
+    const uint16x4_t normalizedT = normalize(
+        vld1_s16(textureT), height, heightMask,
+        wrapFlags & 0x2u, wrapFlags & 0x8u);
+    const uint32x4_t offsets = vaddq_u32(
+        vmovl_u16(normalizedS),
+        vshlq_u32(vmovl_u16(normalizedT),
+                  vdupq_n_s32(static_cast<s32>(widthShift))));
+    vst1q_u32(indices, offsets);
+#else
+    for (unsigned lane = 0; lane < 4; ++lane)
+    {
+        s32 s = textureS[lane] >> 4;
+        s32 t = textureT[lane] >> 4;
+        if (wrapFlags & 0x1u)
+        {
+            if (wrapFlags & 0x4u)
+                s = (s & width) ? widthMask - (s & widthMask) :
+                    (s & widthMask);
+            else
+                s &= widthMask;
+        }
+        else
+            s = std::min(std::max(s, 0), widthMask);
+
+        if (wrapFlags & 0x2u)
+        {
+            if (wrapFlags & 0x8u)
+                t = (t & height) ? heightMask - (t & heightMask) :
+                    (t & heightMask);
+            else
+                t &= heightMask;
+        }
+        else
+            t = std::min(std::max(t, 0), heightMask);
+
+        indices[lane] =
+            (static_cast<u32>(t) << widthShift) + static_cast<u32>(s);
+    }
+#endif
+}
+
 // Slowly correct the estimated upper/lower raster split from observed wall
 // time. The controller is intentionally independent of renderer state so its
 // behavior can be regression-tested on both the host and Cortex-A9 target.
@@ -498,6 +627,13 @@ public:
         FullFrameCompletion = fullFrame;
     }
     [[nodiscard]] bool IsThreaded() const noexcept { return Threaded; }
+    bool RequestFrameCancellation() noexcept;
+    [[nodiscard]] bool WasFrameCanceled() const noexcept
+    {
+        // Sema_RenderDone is the completion fence; this atomic carries only
+        // a control bit and needs no additional ARM memory barrier.
+        return RenderFrameCanceled.load(std::memory_order_relaxed);
+    }
 
     void RenderFrame() override;
     void FinishRendering() override;
@@ -666,37 +802,28 @@ private:
             }
         }
 
-        [[gnu::hot, gnu::noinline]] void SetPerspectiveXFast(s32 x)
+        // A clipped span or a stencil hole occasionally resumes at a
+        // nonconsecutive pixel. Keep that exact setup out of the interior
+        // pixel loop: its bounded divide is substantially larger than the
+        // ordinary one-pixel recurrence and inlining both paths raises ARM32
+        // register pressure enough to risk spilling the live span state.
+        [[gnu::noinline]] void SetPerspectiveXResync(s32 x)
         {
-            if (factor_valid && x == factor_x + 1)
+            const u32 num = (x * w0n) << shift;
+            const u32 den = (x * w0d) + ((xdiff-x) * w1d);
+            if (den == 0)
             {
-                if (!NDS4MiSTerAdvancePerspectiveFactorFast(
-                    yfactor, factor_denominator, factor_remainder,
-                    factor_numerator_step, factor_denominator_step))
-                {
-                    factor_valid = false;
-                    return;
-                }
+                yfactor = 0;
+                factor_valid = false;
+                return;
             }
-            else
-            {
-                const u32 num = (x * w0n) << shift;
-                const u32 den = (x * w0d) + ((xdiff-x) * w1d);
-                if (den == 0)
-                {
-                    yfactor = 0;
-                    factor_valid = false;
-                    return;
-                }
-                // Along X, x is within the polygon span, so this
-                // perspective factor is mathematically bounded to 0..256.
-                // Use the exact binary32 estimate/correction path here too;
-                // the generic interpolator retains the unrestricted divide.
-                yfactor = NDS4MiSTerDivideFactorDeltaExact(num, den);
-                factor_denominator = den;
-                factor_remainder = static_cast<s32>(
-                    num - yfactor * den);
-            }
+            // Along X, x is within the polygon span, so this perspective
+            // factor is mathematically bounded to 0..256. Use the exact
+            // binary32 estimate/correction path here too; the generic
+            // interpolator retains the unrestricted divide.
+            yfactor = NDS4MiSTerDivideFactorDeltaExact(num, den);
+            factor_denominator = den;
+            factor_remainder = static_cast<s32>(num - yfactor * den);
             factor_x = x;
             factor_valid = true;
         }
@@ -705,8 +832,33 @@ private:
         {
             x -= x0;
             this->x = x;
-            if ((xdiff != 0) && ((!linear) || wbuffer))
-                SetPerspectiveXFast(x);
+            if (xdiff == 0 || (linear && !wbuffer)) return;
+
+            // Interior pixels overwhelmingly advance by one X coordinate.
+            // Expose that small exact recurrence directly to the raster loop
+            // while leaving the uncommon resynchronization divide out of
+            // line. NDS4MiSTerNormalizePerspectiveFactorWide remains
+            // separately noinline for corrections larger than one step.
+            if (__builtin_expect(factor_valid && x == factor_x + 1, 1))
+            {
+                if (!NDS4MiSTerAdvancePerspectiveFactorFast(
+                    yfactor, factor_denominator, factor_remainder,
+                    factor_numerator_step, factor_denominator_step))
+                {
+                    factor_valid = false;
+                    return;
+                }
+                factor_x = x;
+                return;
+            }
+
+            SetPerspectiveXResync(x);
+        }
+
+        [[gnu::always_inline, gnu::hot]] inline u32
+        PerspectiveFactor() const noexcept
+        {
+            return yfactor;
         }
 
         // RenderPolygonScanline evaluates five attributes at both polygon
@@ -859,6 +1011,46 @@ private:
                 Valid = false;
             }
 
+            [[gnu::always_inline, gnu::hot]] inline bool
+            IsPerspective() const noexcept
+            {
+                return Parent.xdiff > 0 && !Parent.linear;
+            }
+
+#if defined(__arm__) && defined(__ARM_NEON)
+            [[gnu::always_inline, gnu::hot]] inline void
+            InterpolatePerspectiveBatch4(
+                const u32* factors, u32* vertexColors,
+                s16* textureS, s16* textureT) const noexcept
+            {
+                const uint32x4_t ascendingFactors = vld1q_u32(factors);
+                const uint32x4_t descendingFactors = vsubq_u32(
+                    vdupq_n_u32(1u << Parent.shift), ascendingFactors);
+
+                const int32x4_t red = InterpolatePerspectiveAttribute4(
+                    0, ascendingFactors, descendingFactors);
+                const int32x4_t green = InterpolatePerspectiveAttribute4(
+                    1, ascendingFactors, descendingFactors);
+                const int32x4_t blue = InterpolatePerspectiveAttribute4(
+                    2, ascendingFactors, descendingFactors);
+                const int32x4_t texS = InterpolatePerspectiveAttribute4(
+                    3, ascendingFactors, descendingFactors);
+                const int32x4_t texT = InterpolatePerspectiveAttribute4(
+                    4, ascendingFactors, descendingFactors);
+
+                const uint32x4_t packedColor = vorrq_u32(
+                    vshrq_n_u32(vreinterpretq_u32_s32(red), 3),
+                    vorrq_u32(
+                        vshlq_n_u32(vshrq_n_u32(
+                            vreinterpretq_u32_s32(green), 3), 8),
+                        vshlq_n_u32(vshrq_n_u32(
+                            vreinterpretq_u32_s32(blue), 3), 16)));
+                vst1q_u32(vertexColors, packedColor);
+                vst1_s16(textureS, vmovn_s32(texS));
+                vst1_s16(textureT, vmovn_s32(texT));
+            }
+#endif
+
             constexpr void Interpolate(s32* values)
             {
                 if (Parent.xdiff == 0)
@@ -934,6 +1126,22 @@ private:
             }
 
         private:
+#if defined(__arm__) && defined(__ARM_NEON)
+            [[gnu::always_inline, gnu::hot]] inline int32x4_t
+            InterpolatePerspectiveAttribute4(
+                int index, uint32x4_t ascendingFactors,
+                uint32x4_t descendingFactors) const noexcept
+            {
+                const uint32x4_t factors = Ascending[index] ?
+                    ascendingFactors : descendingFactors;
+                const uint32x4_t progress = vshrq_n_u32(
+                    vmulq_u32(factors, vdupq_n_u32(Delta[index])), 8);
+                return vaddq_s32(
+                    vdupq_n_s32(Base[index]),
+                    vreinterpretq_s32_u32(progress));
+            }
+#endif
+
             const Interpolator& Parent;
             s32 Base[5];
             u32 Delta[5];
@@ -1310,12 +1518,26 @@ private:
     RenderPixelCachedModulate(
         const RendererPolygon::PixelShaderState& state,
         u32 vertexColor, s16 s, s16 t);
+#if defined(__arm__) && defined(__ARM_NEON)
+    [[gnu::always_inline, gnu::hot]] static inline void
+    LookupCachedTexels4(
+        const RendererPolygon::PixelShaderState& state,
+        const s16* textureS, const s16* textureT, u32* texels);
+#endif
     [[gnu::hot, gnu::noinline]] void RenderCachedOpaqueInteriorSpan(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes,
         s32* spanValues);
+#if defined(__arm__) && defined(__ARM_NEON)
+    [[gnu::hot, gnu::noinline]] s32
+    RenderCachedOpaquePerspectiveInteriorBatch4(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        Interpolator<0>& interpX,
+        Interpolator<0>::SpanDepthInterpolator& spanDepth,
+        Interpolator<0>::SpanInterpolator& spanAttributes);
+#endif
     void PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow);
     void SetupPolygonLeftEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygonRightEdge(RendererPolygon* rp, s32 y) const;
@@ -1353,6 +1575,7 @@ private:
 
     void RenderThreadFunc();
     void ParallelRasterThreadFunc();
+    bool CancelRasterIfRequested() noexcept;
 
     // buffer dimensions are 258x194 to add a offscreen 1px border
     // which simplifies edge marking tests
@@ -1405,6 +1628,9 @@ private:
     Platform::Thread* ParallelRasterThread;
     std::atomic_bool RenderThreadRunning;
     std::atomic_bool RenderThreadRendering;
+    std::atomic_bool RenderCancelRequested {false};
+    std::atomic_bool RenderFrameCanceled {false};
+    std::atomic_bool RenderForceNextFrame {false};
     std::atomic_bool ParallelRasterThreadRunning;
     // Owned by the frontend thread. Once FinishRendering has consumed the
     // frame-done fence and drained the per-line tokens, completed scanlines

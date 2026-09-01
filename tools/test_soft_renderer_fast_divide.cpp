@@ -3,6 +3,88 @@
 #include <cstdint>
 #include <cstdio>
 
+extern "C" __attribute__((noinline)) void
+nds_test_texture_indices4(
+    const std::int16_t* textureS, const std::int16_t* textureT,
+    std::int32_t width, std::int32_t height,
+    std::uint32_t wrapFlags, std::uint32_t* indices)
+{
+    melonDS::NDS4MiSTerTextureIndices4(
+        textureS, textureT, width, height, width - 1, height - 1,
+        wrapFlags, static_cast<std::uint32_t>(__builtin_ctz(width)),
+        indices);
+}
+
+static std::uint32_t referenceTextureIndex(
+    std::int16_t sourceS, std::int16_t sourceT,
+    std::int32_t width, std::int32_t height, std::uint32_t wrapFlags)
+{
+    const std::int32_t widthMask = width - 1;
+    const std::int32_t heightMask = height - 1;
+    std::int32_t s = sourceS >> 4;
+    std::int32_t t = sourceT >> 4;
+    if (wrapFlags & 0x1u)
+    {
+        if (wrapFlags & 0x4u)
+            s = (s & width) ? widthMask - (s & widthMask) :
+                (s & widthMask);
+        else
+            s &= widthMask;
+    }
+    else
+        s = std::min(std::max(s, 0), widthMask);
+
+    if (wrapFlags & 0x2u)
+    {
+        if (wrapFlags & 0x8u)
+            t = (t & height) ? heightMask - (t & heightMask) :
+                (t & heightMask);
+        else
+            t &= heightMask;
+    }
+    else
+        t = std::min(std::max(t, 0), heightMask);
+
+    return (static_cast<std::uint32_t>(t) *
+            static_cast<std::uint32_t>(width)) +
+        static_cast<std::uint32_t>(s);
+}
+
+static bool testTextureIndices4()
+{
+    std::uint32_t randomState = 0x243f6a88u;
+    const auto randomWord = [&randomState]() {
+        randomState ^= randomState << 13;
+        randomState ^= randomState >> 17;
+        randomState ^= randomState << 5;
+        return randomState;
+    };
+
+    for (unsigned iteration = 0; iteration < 200000; ++iteration)
+    {
+        const std::int32_t width = 1 << (3 + randomWord() % 8);
+        const std::int32_t height = 1 << (3 + randomWord() % 8);
+        const std::uint32_t wrapFlags = randomWord() & 0xFu;
+        alignas(16) std::int16_t textureS[4];
+        alignas(16) std::int16_t textureT[4];
+        alignas(16) std::uint32_t actual[4];
+        for (unsigned lane = 0; lane < 4; ++lane)
+        {
+            textureS[lane] = static_cast<std::int16_t>(randomWord());
+            textureT[lane] = static_cast<std::int16_t>(randomWord());
+        }
+
+        nds_test_texture_indices4(
+            textureS, textureT, width, height, wrapFlags, actual);
+        for (unsigned lane = 0; lane < 4; ++lane)
+            if (actual[lane] != referenceTextureIndex(
+                    textureS[lane], textureT[lane],
+                    width, height, wrapFlags))
+                return false;
+    }
+    return true;
+}
+
 static bool testRasterBalanceController()
 {
     using Controller = melonDS::NDS4MiSTerRasterBalanceController;
@@ -200,6 +282,14 @@ nds_test_div_prepared_u32(
             melonDS::NDS4MiSTerRasterMagic[denominator]);
 }
 
+extern "C" __attribute__((noinline)) std::uint32_t
+nds_test_div_factor_delta_exact(
+    std::uint32_t numerator, std::uint32_t denominator)
+{
+    return melonDS::NDS4MiSTerDivideFactorDeltaExact(
+        numerator, denominator);
+}
+
 int main()
 {
     using Controller = melonDS::NDS4MiSTerRasterBalanceController;
@@ -208,6 +298,8 @@ int main()
         return 5;
     if (!testZSpanInterpolator())
         return 9;
+    if (!testTextureIndices4())
+        return 16;
 
     constexpr std::uint32_t edgeCases[][2] = {
         {0u, 1u},
@@ -312,6 +404,18 @@ int main()
             if (melonDS::NDS4MiSTerRasterMagic[divisor] != expected)
                 return 3;
         }
+    }
+
+    for (std::uint32_t divisor =
+             melonDS::NDS4MiSTerPerspectiveMagicBase;
+         divisor <= melonDS::NDS4MiSTerPerspectiveMagicLimit; ++divisor)
+    {
+        const auto quotient = 0xFFFFFFFFu / divisor;
+        const auto remainder = 0xFFFFFFFFu - quotient * divisor;
+        const auto expected = quotient + (remainder == divisor - 1);
+        if (melonDS::NDS4MiSTerPerspectiveMagic[
+                divisor - melonDS::NDS4MiSTerPerspectiveMagicBase] != expected)
+            return 15;
     }
 
     // Mario 64 DS reaches a degenerate perspective edge whose incremental

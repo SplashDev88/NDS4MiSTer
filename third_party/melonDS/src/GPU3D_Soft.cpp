@@ -248,7 +248,37 @@ void SoftRenderer3D::Reset()
     RasterBandQueueActive = false;
     RasterBandHeavyFrames = 0;
     RasterBandLightFrames = 0;
+    RenderCancelRequested.store(false, std::memory_order_relaxed);
+    RenderFrameCanceled.store(false, std::memory_order_relaxed);
+    RenderForceNextFrame.store(false, std::memory_order_relaxed);
     EnableRenderThread();
+}
+
+bool SoftRenderer3D::RequestFrameCancellation() noexcept
+{
+    // The hybrid service consumes only complete 3D planes. Ordinary melonDS
+    // scanline consumers cannot abandon a frame because they may already be
+    // waiting on its per-line semaphore tokens.
+    if (!FullFrameCompletion ||
+        !RenderThreadRunning.load(std::memory_order_acquire) ||
+        RenderFrameFinished)
+        return false;
+
+    RenderCancelRequested.store(true, std::memory_order_relaxed);
+    if (Parent.StageProfileEnabled)
+        ++Parent.StageProfile.ThreeDRasterCancelRequests;
+    return true;
+}
+
+bool SoftRenderer3D::CancelRasterIfRequested() noexcept
+{
+    if (!RenderCancelRequested.load(std::memory_order_relaxed)) return false;
+    RenderFrameCanceled.store(true, std::memory_order_relaxed);
+    // GPU3D may classify the successor as identical to this architectural
+    // frame. Because this frame's pixels will not be published, one complete
+    // recovery raster is mandatory before identical-plane reuse is safe.
+    RenderForceNextFrame.store(true, std::memory_order_relaxed);
+    return true;
 }
 
 u32* SoftTexcacheLoader::GenerateTexture(
@@ -826,6 +856,9 @@ SoftRenderer3D::RenderPixelCachedModulate(
     const u32 texel = state.TexturePixels[
         (static_cast<u32>(t) << state.TextureWidthShift) +
             static_cast<u32>(s)];
+    if (state.PolyAlpha == 31)
+        return NDS4MiSTerModulateCachedOpaquePixel(texel, vertexColor);
+
     const u32 tr = texel & 0x3F;
     const u32 tg = (texel >> 8) & 0x3F;
     const u32 tb = (texel >> 16) & 0x3F;
@@ -837,15 +870,26 @@ SoftRenderer3D::RenderPixelCachedModulate(
     const u32 r = ((tr+1) * (vr+1) - 1) >> 6;
     const u32 g = ((tg+1) * (vg+1) - 1) >> 6;
     const u32 b = ((tb+1) * (vb+1) - 1) >> 6;
-    // 99.1% of cached-modulate polygon scanlines in the bounded Mario Kart
-    // capture used an opaque polygon alpha. The DS modulation identity for
-    // PolyAlpha=31 is exactly the texture alpha, so skip the multiply/add/shift
-    // in that measured dominant mode without assuming that the texel itself is
-    // opaque. Translucent cached polygons retain the original expression.
-    const u32 a = state.PolyAlpha == 31 ? talpha :
-        ((talpha+1) * (state.PolyAlpha+1) - 1) >> 5;
+    const u32 a = ((talpha+1) * (state.PolyAlpha+1) - 1) >> 5;
     return r | (g << 8) | (b << 16) | (a << 24);
 }
+
+#if defined(__arm__) && defined(__ARM_NEON)
+[[gnu::always_inline, gnu::hot]] inline void
+SoftRenderer3D::LookupCachedTexels4(
+    const RendererPolygon::PixelShaderState& state,
+    const s16* textureS, const s16* textureT, u32* texels)
+{
+    alignas(16) u32 indices[4];
+    NDS4MiSTerTextureIndices4(
+        textureS, textureT,
+        state.TextureWidth, state.TextureHeight,
+        state.TextureWidthMask, state.TextureHeightMask,
+        state.TextureWrapFlags, state.TextureWidthShift, indices);
+    for (u32 lane = 0; lane < 4; ++lane)
+        texels[lane] = state.TexturePixels[indices[lane]];
+}
+#endif
 
 void SoftRenderer3D::PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow)
 {
@@ -1304,6 +1348,120 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     rp->XR = rp->SlopeR.Step();
 }
 
+#if defined(__arm__) && defined(__ARM_NEON)
+// Perspective factor and Z recurrences remain scalar and exact. Grouping four
+// consecutive interior pixels here lets the five attribute interpolations use
+// five four-lane multiplies rather than twenty scalar multiplies. Rendering and
+// writes still occur in X order, preserving texture and framebuffer behavior.
+[[gnu::hot, gnu::noinline]] s32
+SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    Interpolator<0>& interpX,
+    Interpolator<0>::SpanDepthInterpolator& spanDepth,
+    Interpolator<0>::SpanInterpolator& spanAttributes)
+{
+    Polygon* polygon = rp->PolyData;
+    const auto& pixelState = rp->PixelState;
+    const u32 polyattr = rp->PolyAttr;
+    const u32 alphaRef = GPU3D.RenderAlphaRef;
+    const bool writeTranslucentDepth = polygon->Attr & (1<<11);
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+
+    for (; firstX + 3 < endX; firstX += 4)
+    {
+        alignas(16) u32 factors[4];
+        u32 pixelAddresses[4];
+        s32 depths[4];
+        u32 passingPixels = 0;
+
+        for (u32 lane = 0; lane < 4; ++lane)
+        {
+            const s32 x = firstX + static_cast<s32>(lane);
+            u32 pixeladdr = rowAddress + x;
+            u32 dstattr = AttrBuffer[pixeladdr];
+
+            interpX.SetXFast(x);
+            const s32 z = spanDepth.Interpolate();
+            factors[lane] = interpX.PerspectiveFactor();
+
+            const auto depthPass = [](s32 dstz, s32 sourceZ, u32 attr) {
+                return sourceZ < dstz ||
+                    (sourceZ == dstz &&
+                     (attr & 0x00400010) == 0x00000010);
+            };
+            if (!depthPass(DepthBuffer[pixeladdr], z, dstattr))
+            {
+                if (!(dstattr & 0xF) || pixeladdr >= BufferSize)
+                    continue;
+
+                pixeladdr += BufferSize;
+                dstattr = AttrBuffer[pixeladdr];
+                if (!depthPass(DepthBuffer[pixeladdr], z, dstattr))
+                    continue;
+            }
+
+            pixelAddresses[lane] = pixeladdr;
+            depths[lane] = z;
+            passingPixels |= 1u << lane;
+        }
+
+        if (passingPixels == 0)
+            continue;
+
+        alignas(16) u32 vertexColors[4];
+        s16 textureS[4];
+        s16 textureT[4];
+        spanAttributes.InterpolatePerspectiveBatch4(
+            factors, vertexColors, textureS, textureT);
+
+        const bool fullDepthPass = passingPixels == 0xFu;
+        alignas(16) u32 texels[4];
+        if (fullDepthPass)
+            LookupCachedTexels4(
+                pixelState, textureS, textureT, texels);
+
+        for (u32 lane = 0; lane < 4; ++lane)
+        {
+            if (!(passingPixels & (1u << lane)))
+                continue;
+
+            const u32 pixeladdr = pixelAddresses[lane];
+            const u32 dstattr = AttrBuffer[pixeladdr];
+            s32 z = depths[lane];
+            const u32 color = fullDepthPass ?
+                NDS4MiSTerModulateCachedOpaquePixel(
+                    texels[lane], vertexColors[lane]) :
+                RenderPixelCachedModulate(
+                    pixelState, vertexColors[lane],
+                    textureS[lane], textureT[lane]);
+            const u8 alpha = color >> 24;
+
+            if (alpha <= alphaRef)
+                continue;
+
+            if (alpha == 31)
+            {
+                DepthBuffer[pixeladdr] = z;
+                ColorBuffer[pixeladdr] = color;
+                AttrBuffer[pixeladdr] = polyattr;
+            }
+            else
+            {
+                if (!writeTranslucentDepth)
+                    z = -1;
+                PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
+
+                if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                    PlotTranslucentPixel(
+                        pixeladdr + BufferSize, color, z, polyattr, 0);
+            }
+        }
+    }
+
+    return firstX;
+}
+#endif
+
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -1312,6 +1470,12 @@ SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
     Interpolator<0>::SpanInterpolator& spanAttributes,
     s32* spanValues)
 {
+#if defined(__arm__) && defined(__ARM_NEON)
+    if (spanAttributes.IsPerspective())
+        firstX = RenderCachedOpaquePerspectiveInteriorBatch4(
+            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+#endif
+
     Polygon* polygon = rp->PolyData;
     const auto& pixelState = rp->PixelState;
     const u32 polyattr = rp->PolyAttr;
@@ -2340,9 +2504,12 @@ u64 SoftRenderer3D::RenderScanlineBand(
 {
     const auto started = renderer3DProfileStarted(Parent.StageProfileEnabled);
     for (s32 y = firstLine; y < endLine; y++)
+    {
+        if (CancelRasterIfRequested()) break;
         RenderScanline(
             y, polygonList, activePolygonMask,
             prevIsShadowMask, stencilBuffer);
+    }
     return Parent.StageProfileEnabled ? renderer3DProfileElapsedNs(started) : 0;
 }
 
@@ -2423,6 +2590,7 @@ SoftRenderer3D::RasterBandResult SoftRenderer3D::RenderRasterBandJobs(
     s32 contextLine = band * RasterBandLines;
     while (band < RasterBandCount)
     {
+        if (CancelRasterIfRequested()) break;
         const s32 firstLine = band * RasterBandLines;
         const s32 endLine = firstLine + RasterBandLines;
         if (contextLine < firstLine)
@@ -2645,6 +2813,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     bool threaded, Polygon** polygons, int npolys)
 {
     const int polygonsPrepared = SetupRenderPolygons(polygons, npolys);
+    if (CancelRasterIfRequested()) return;
 
     // Keep beta.3's adaptive two-way split for light and transitional work.
     // Enter the four-band scheduler only after two consecutive heavy frames,
@@ -2739,6 +2908,8 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     Platform::Semaphore_Wait(Sema_ParallelRasterDone);
 
+    if (RenderFrameCanceled.load(std::memory_order_relaxed)) return;
+
     if (AdaptiveRasterSplit && !bandQueueFrame)
     {
         const u64 secondaryCompletedNs =
@@ -2813,6 +2984,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     for (s32 y = 0; y < VisibleScanlines; y++)
     {
+        if (CancelRasterIfRequested()) return;
         ScanlineFinalPass(y);
         if (threaded && !FullFrameCompletion)
             Platform::Semaphore_Post(Sema_ScanlineCount);
@@ -2826,6 +2998,8 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
 {
     SetupRenderPolygons(polygons, npolys);
 
+    if (CancelRasterIfRequested()) return;
+
     auto stageStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     RenderScanline(
@@ -2837,6 +3011,7 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
 
     for (s32 y = 1; y < 192; y++)
     {
+        if (CancelRasterIfRequested()) return;
         stageStarted = renderer3DProfileStarted(Parent.StageProfileEnabled);
         RenderScanline(
             y, PolygonList, ActivePolygonMask,
@@ -2855,6 +3030,7 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
             Platform::Semaphore_Post(Sema_ScanlineCount);
     }
 
+    if (CancelRasterIfRequested()) return;
     stageStarted = renderer3DProfileStarted(Parent.StageProfileEnabled);
     ScanlineFinalPass(191);
     if (Parent.StageProfileEnabled)
@@ -2879,6 +3055,8 @@ void SoftRenderer3D::FinishRendering()
 void SoftRenderer3D::RenderFrame()
 {
     RenderFrameFinished = false;
+    RenderCancelRequested.store(false, std::memory_order_relaxed);
+    RenderFrameCanceled.store(false, std::memory_order_relaxed);
     const auto coherenceStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     bool textureChanged;
@@ -2897,11 +3075,15 @@ void SoftRenderer3D::RenderFrame()
         textureChanged |= GPU.MakeVRAMFlat_TexPalCoherent(texPalDirty);
     }
 
-    FrameIdentical = !textureChanged && GPU3D.RenderFrameIdentical;
+    const bool forceRecovery =
+        RenderForceNextFrame.exchange(false, std::memory_order_relaxed);
+    FrameIdentical =
+        !forceRecovery && !textureChanged && GPU3D.RenderFrameIdentical;
     if (Parent.StageProfileEnabled)
     {
         ++Parent.StageProfile.ThreeDFrames;
         Parent.StageProfile.ThreeDIdenticalFrames += FrameIdentical;
+        Parent.StageProfile.ThreeDRasterRecoveryFrames += forceRecovery;
         Parent.StageProfile.ThreeDCoherenceNs +=
             renderer3DProfileElapsedNs(coherenceStarted);
     }
@@ -2948,19 +3130,27 @@ void SoftRenderer3D::RenderThreadFunc()
         {
             const auto clearStarted =
                 renderer3DProfileStarted(Parent.StageProfileEnabled);
-            ClearBuffers();
+            const bool canceledBeforeClear = CancelRasterIfRequested();
+            if (!canceledBeforeClear) ClearBuffers();
             if (Parent.StageProfileEnabled)
                 Parent.StageProfile.ThreeDClearNs +=
                     renderer3DProfileElapsedNs(clearStarted);
-            if (DualCoreRaster)
-                RenderPolygonsDualCore(
-                    true, &GPU3D.RenderPolygonRAM[0],
-                    GPU3D.RenderNumPolygons);
-            else
-                RenderPolygons(
-                    true, &GPU3D.RenderPolygonRAM[0],
-                    GPU3D.RenderNumPolygons);
+            if (!canceledBeforeClear && !CancelRasterIfRequested())
+            {
+                if (DualCoreRaster)
+                    RenderPolygonsDualCore(
+                        true, &GPU3D.RenderPolygonRAM[0],
+                        GPU3D.RenderNumPolygons);
+                else
+                    RenderPolygons(
+                        true, &GPU3D.RenderPolygonRAM[0],
+                        GPU3D.RenderNumPolygons);
+            }
         }
+
+        if (Parent.StageProfileEnabled &&
+            RenderFrameCanceled.load(std::memory_order_relaxed))
+            ++Parent.StageProfile.ThreeDRasterCanceledFrames;
 
         // Clear the in-flight state before publishing completion. The main
         // thread may consume Sema_RenderDone and immediately prepare the next

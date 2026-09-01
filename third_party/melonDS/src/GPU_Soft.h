@@ -73,6 +73,16 @@ public:
         return static_cast<const SoftRenderer3D*>(Rend3D.get())
             ->IsFrameIdentical();
     }
+    bool Request3DRenderingCancellation() override
+    {
+        return static_cast<SoftRenderer3D*>(Rend3D.get())
+            ->RequestFrameCancellation();
+    }
+    bool Was3DRenderingCanceled() const override
+    {
+        return static_cast<const SoftRenderer3D*>(Rend3D.get())
+            ->WasFrameCanceled();
+    }
     bool Get3DNativeBufferHashes(u64 hashes[3]) const override
     {
         static_cast<const SoftRenderer3D*>(Rend3D.get())
