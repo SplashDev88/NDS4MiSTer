@@ -261,6 +261,6 @@ wider MiSTer community for technical advice, testing, and development guidance.
 
 ## License
 
-NDS4MiSTer is distributed under GPLv3; see `LICENSE.txt`. The historical
-Nitro_DarkSide `LICENSE` is retained alongside it for provenance. Vendored
-components retain their own licenses and attribution files.
+NDS4MiSTer is distributed under GPLv3; see `LICENSE`. Vendored components
+retain their own licenses and attribution files. The history of the root
+license files from both parent projects remains available through Git.

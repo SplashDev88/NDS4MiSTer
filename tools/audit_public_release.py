@@ -12,7 +12,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 
-ROOT_FILES = {"LICENSE.txt", "README.txt", "SHA256SUMS"}
+ROOT_FILES = {"LICENSE", "README.txt", "SHA256SUMS"}
 SUPPORT_FILES = {
     "Scripts/NDS_Kickstart.sh",
     "Scripts/NDS_Support/nds_hybrid_3d_service",
