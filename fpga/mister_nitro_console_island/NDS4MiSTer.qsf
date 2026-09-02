@@ -1,0 +1,380 @@
+set_global_assignment -name TOP_LEVEL_ENTITY sys_top
+set_global_assignment -name LAST_QUARTUS_VERSION "17.0.2 Lite Edition"
+set_global_assignment -name GENERATE_RBF_FILE ON
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+# Quartus 17's parallel RTL helper can deadlock under the Apple/Rosetta build
+# host.  One mapper worker is deterministic and avoids producing a silently
+# stale RBF; fitter effort and the synthesized hardware are unchanged.
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 1
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP "-40"
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
+set_global_assignment -name FITTER_EFFORT "STANDARD FIT"
+set_global_assignment -name OPTIMIZATION_MODE "AGGRESSIVE AREA"
+set_global_assignment -name OPTIMIZATION_TECHNIQUE AREA
+set_global_assignment -name SYNTH_TIMING_DRIVEN_SYNTHESIS OFF
+set_global_assignment -name PHYSICAL_SYNTHESIS_COMBO_LOGIC OFF
+set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION OFF
+set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING OFF
+set_global_assignment -name PLACEMENT_EFFORT_MULTIPLIER 2.0
+set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
+# Remove equivalent redundant logic before placement. Unlike the rejected
+# seed-2 experiment, normal routing and hold repair remain enabled for a
+# hardware-safe image. Mux restructuring and pre-mapping resynthesis were
+# measured together and rejected because they enlarged this design.
+set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
+set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
+set_global_assignment -name OPTIMIZE_HOLD_TIMING "ALL PATHS"
+set_global_assignment -name SEED 2
+set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
+
+# The FPGA console sound engine drives the normal MiSTer audio cone. Keep the
+# unrelated HPS ALSA reader and optional filter disabled.
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
+set_global_assignment -name VERILOG_MACRO "NDS_NO_AUDIO_FILTER=1"
+
+# Use the standard scaled HDMI path because the native NDS raster is not a
+# display-compatible HDMI mode. Keep analog/direct-video presentation out of
+# the first alpha while retaining the OSD and controller-driven ROM picker.
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_SHADOWMASK=1"
+# Keep the compact scaler-only shell and its standard MiSTer scaler/OSD path.
+# Like MiSTer's HDMI-only topology, the dedicated sys_top branch wires the
+# selected HDMI PLL clock directly to the transmitter because direct video is
+# fixed off. This removes an unused clock selector from the timing-critical
+# HDMI domain. Sound remains on.
+set_global_assignment -name VERILOG_MACRO "NDS_HDMI_SCALER_ONLY=1"
+set_global_assignment -name VERILOG_MACRO "NDS_DISABLE_HDMI_LOW_LATENCY=1"
+
+# Composite/S-video and adaptive/downscale filters are not first-alpha
+# requirements.
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_YC=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"
+set_global_assignment -name VERILOG_MACRO "MISTER_DOWNSCALE_NN=1"
+set_global_assignment -name VERILOG_MACRO "NDS_FORCE_NEAREST=1"
+set_global_assignment -name VERILOG_MACRO "NDS_FORCE_INTEGER_SCALE=1"
+set_global_assignment -name VERILOG_MACRO "NDS_HYBRID_3D=1"
+set_global_assignment -name VERILOG_MACRO "NDS_SEAM_DIAGNOSTIC=1"
+
+# Native-cadence 134.055928/67.027964/33.513982 MHz Nitro clock family. The
+# whole family moves together to preserve the exact 4:2:1 phase relationship.
+# HDMI remains on its independent shell clock.
+set_global_assignment -name VERILOG_MACRO "NDS_CLKMEM_4X=1"
+
+# Run-time and legacy framebuffer telemetry are both absent from the product.
+# Frame-rate validation uses the external read-only DDR sampler.
+source sys/sys.tcl
+source sys/sys_analog.tcl
+source files.qip
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+
+# The release is globally area-optimized so the 98% design remains routable.
+# The two small, measured 148.5 MHz display blocks are the exception: give
+# synthesis permission to favor their HDMI timing without bloating the console
+# and sound logic.
+set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to hdmi_osd
+set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to ascal
+
+# The alpha prioritizes a routable RBF over final timing closure. Use three
+# spare global networks for the measured high-fanout reset controls.
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "*|nds_nitro_console_top:inds|resetCpu"
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_1x[1]}
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_ddr[1]}
+
+set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
+set_location_assignment PIN_U9 -to ADC_CONVST
+set_location_assignment PIN_V10 -to ADC_SCK
+set_location_assignment PIN_AC4 -to ADC_SDI
+set_location_assignment PIN_AD4 -to ADC_SDO
+set_location_assignment PIN_AC24 -to AUDIO_L
+set_location_assignment PIN_AE25 -to AUDIO_R
+set_location_assignment PIN_AG26 -to AUDIO_SPDIF
+set_location_assignment PIN_AG25 -to BTN_OSD
+set_location_assignment PIN_AG23 -to BTN_RESET
+set_location_assignment PIN_AH24 -to BTN_USER
+set_location_assignment PIN_V11 -to FPGA_CLK1_50
+set_location_assignment PIN_Y13 -to FPGA_CLK2_50
+set_location_assignment PIN_E11 -to FPGA_CLK3_50
+set_location_assignment PIN_U10 -to HDMI_I2C_SCL
+set_location_assignment PIN_AA4 -to HDMI_I2C_SDA
+set_location_assignment PIN_T13 -to HDMI_I2S
+set_location_assignment PIN_T11 -to HDMI_LRCLK
+set_location_assignment PIN_U11 -to HDMI_MCLK
+set_location_assignment PIN_T12 -to HDMI_SCLK
+set_location_assignment PIN_AG5 -to HDMI_TX_CLK
+set_location_assignment PIN_AD19 -to HDMI_TX_DE
+set_location_assignment PIN_AD12 -to HDMI_TX_D[0]
+set_location_assignment PIN_AE9 -to HDMI_TX_D[10]
+set_location_assignment PIN_AB4 -to HDMI_TX_D[11]
+set_location_assignment PIN_AE7 -to HDMI_TX_D[12]
+set_location_assignment PIN_AF6 -to HDMI_TX_D[13]
+set_location_assignment PIN_AF8 -to HDMI_TX_D[14]
+set_location_assignment PIN_AF5 -to HDMI_TX_D[15]
+set_location_assignment PIN_AE4 -to HDMI_TX_D[16]
+set_location_assignment PIN_AH2 -to HDMI_TX_D[17]
+set_location_assignment PIN_AH4 -to HDMI_TX_D[18]
+set_location_assignment PIN_AH5 -to HDMI_TX_D[19]
+set_location_assignment PIN_AE12 -to HDMI_TX_D[1]
+set_location_assignment PIN_AH6 -to HDMI_TX_D[20]
+set_location_assignment PIN_AG6 -to HDMI_TX_D[21]
+set_location_assignment PIN_AF9 -to HDMI_TX_D[22]
+set_location_assignment PIN_AE8 -to HDMI_TX_D[23]
+set_location_assignment PIN_W8 -to HDMI_TX_D[2]
+set_location_assignment PIN_Y8 -to HDMI_TX_D[3]
+set_location_assignment PIN_AD11 -to HDMI_TX_D[4]
+set_location_assignment PIN_AD10 -to HDMI_TX_D[5]
+set_location_assignment PIN_AE11 -to HDMI_TX_D[6]
+set_location_assignment PIN_Y5 -to HDMI_TX_D[7]
+set_location_assignment PIN_AF10 -to HDMI_TX_D[8]
+set_location_assignment PIN_Y4 -to HDMI_TX_D[9]
+set_location_assignment PIN_T8 -to HDMI_TX_HS
+set_location_assignment PIN_AF11 -to HDMI_TX_INT
+set_location_assignment PIN_V13 -to HDMI_TX_VS
+set_location_assignment PIN_U14 -to IO_SCL
+set_location_assignment PIN_AG9 -to IO_SDA
+set_location_assignment PIN_AH17 -to KEY[0]
+set_location_assignment PIN_AH16 -to KEY[1]
+set_location_assignment PIN_W15 -to LED[0]
+set_location_assignment PIN_AA24 -to LED[1]
+set_location_assignment PIN_V16 -to LED[2]
+set_location_assignment PIN_V15 -to LED[3]
+set_location_assignment PIN_AF26 -to LED[4]
+set_location_assignment PIN_AE26 -to LED[5]
+set_location_assignment PIN_Y16 -to LED[6]
+set_location_assignment PIN_AA23 -to LED[7]
+set_location_assignment PIN_AA15 -to LED_HDD
+set_location_assignment PIN_AG28 -to LED_POWER
+set_location_assignment PIN_Y15 -to LED_USER
+set_location_assignment PIN_AH7 -to SDCD_SPDIF
+set_location_assignment PIN_AH26 -to SDIO_CLK
+set_location_assignment PIN_AF27 -to SDIO_CMD
+set_location_assignment PIN_AF25 -to SDIO_DAT[0]
+set_location_assignment PIN_AF23 -to SDIO_DAT[1]
+set_location_assignment PIN_AD26 -to SDIO_DAT[2]
+set_location_assignment PIN_AF28 -to SDIO_DAT[3]
+set_location_assignment PIN_Y11 -to SDRAM_A[0]
+set_location_assignment PIN_AB26 -to SDRAM_A[10]
+set_location_assignment PIN_AD17 -to SDRAM_A[11]
+set_location_assignment PIN_D12 -to SDRAM_A[12]
+set_location_assignment PIN_AA26 -to SDRAM_A[1]
+set_location_assignment PIN_AA13 -to SDRAM_A[2]
+set_location_assignment PIN_AA11 -to SDRAM_A[3]
+set_location_assignment PIN_W11 -to SDRAM_A[4]
+set_location_assignment PIN_Y19 -to SDRAM_A[5]
+set_location_assignment PIN_AB23 -to SDRAM_A[6]
+set_location_assignment PIN_AC23 -to SDRAM_A[7]
+set_location_assignment PIN_AC22 -to SDRAM_A[8]
+set_location_assignment PIN_C12 -to SDRAM_A[9]
+set_location_assignment PIN_Y17 -to SDRAM_BA[0]
+set_location_assignment PIN_AB25 -to SDRAM_BA[1]
+set_location_assignment PIN_AG10 -to SDRAM_CKE
+set_location_assignment PIN_AD20 -to SDRAM_CLK
+set_location_assignment PIN_AF13 -to SDRAM_DQMH
+set_location_assignment PIN_AG13 -to SDRAM_DQML
+set_location_assignment PIN_V12 -to SDRAM_DQ[0]
+set_location_assignment PIN_AE6 -to SDRAM_DQ[10]
+set_location_assignment PIN_AE23 -to SDRAM_DQ[11]
+set_location_assignment PIN_AG14 -to SDRAM_DQ[12]
+set_location_assignment PIN_AD5 -to SDRAM_DQ[13]
+set_location_assignment PIN_AF4 -to SDRAM_DQ[14]
+set_location_assignment PIN_AH3 -to SDRAM_DQ[15]
+set_location_assignment PIN_E8 -to SDRAM_DQ[1]
+set_location_assignment PIN_D11 -to SDRAM_DQ[2]
+set_location_assignment PIN_W12 -to SDRAM_DQ[3]
+set_location_assignment PIN_AH13 -to SDRAM_DQ[4]
+set_location_assignment PIN_D8 -to SDRAM_DQ[5]
+set_location_assignment PIN_AH14 -to SDRAM_DQ[6]
+set_location_assignment PIN_AF7 -to SDRAM_DQ[7]
+set_location_assignment PIN_AE24 -to SDRAM_DQ[8]
+set_location_assignment PIN_AD23 -to SDRAM_DQ[9]
+set_location_assignment PIN_AA18 -to SDRAM_nCAS
+set_location_assignment PIN_Y18 -to SDRAM_nCS
+set_location_assignment PIN_W14 -to SDRAM_nRAS
+set_location_assignment PIN_AA19 -to SDRAM_nWE
+set_location_assignment PIN_AG8 -to SD_SPI_CLK
+set_location_assignment PIN_AE15 -to SD_SPI_CS
+set_location_assignment PIN_AH8 -to SD_SPI_MISO
+set_location_assignment PIN_U13 -to SD_SPI_MOSI
+set_location_assignment PIN_Y24 -to SW[0]
+set_location_assignment PIN_W24 -to SW[1]
+set_location_assignment PIN_W21 -to SW[2]
+set_location_assignment PIN_W20 -to SW[3]
+set_location_assignment PIN_AG11 -to USER_IO[0]
+set_location_assignment PIN_AH9 -to USER_IO[1]
+set_location_assignment PIN_AH12 -to USER_IO[2]
+set_location_assignment PIN_AH11 -to USER_IO[3]
+set_location_assignment PIN_AG16 -to USER_IO[4]
+set_location_assignment PIN_AF15 -to USER_IO[5]
+set_location_assignment PIN_AF17 -to USER_IO[6]
+set_location_assignment PIN_AG21 -to VGA_B[0]
+set_location_assignment PIN_AA20 -to VGA_B[1]
+set_location_assignment PIN_AE22 -to VGA_B[2]
+set_location_assignment PIN_AF22 -to VGA_B[3]
+set_location_assignment PIN_AH23 -to VGA_B[4]
+set_location_assignment PIN_AH21 -to VGA_B[5]
+set_location_assignment PIN_AH27 -to VGA_EN
+set_location_assignment PIN_AE19 -to VGA_G[0]
+set_location_assignment PIN_AG15 -to VGA_G[1]
+set_location_assignment PIN_AF18 -to VGA_G[2]
+set_location_assignment PIN_AG18 -to VGA_G[3]
+set_location_assignment PIN_AG19 -to VGA_G[4]
+set_location_assignment PIN_AG20 -to VGA_G[5]
+set_location_assignment PIN_AH22 -to VGA_HS
+set_location_assignment PIN_AE17 -to VGA_R[0]
+set_location_assignment PIN_AE20 -to VGA_R[1]
+set_location_assignment PIN_AF20 -to VGA_R[2]
+set_location_assignment PIN_AH18 -to VGA_R[3]
+set_location_assignment PIN_AH19 -to VGA_R[4]
+set_location_assignment PIN_AF21 -to VGA_R[5]
+set_location_assignment PIN_AG24 -to VGA_VS
+set_global_assignment -name DEVICE_FILTER_PACKAGE UFBGA
+set_global_assignment -name DEVICE_FILTER_PIN_COUNT 672
+set_global_assignment -name DEVICE_FILTER_SPEED_GRADE 7
+set_global_assignment -name DEVICE 5CSEBA6U23I7
+set_global_assignment -name FAMILY "Cyclone V"
+set_global_assignment -name CDF_FILE jtag.cdf
+set_instance_assignment -name FAST_INPUT_REGISTER ON -to SDRAM_DQ[*]
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to HDMI_TX_CLK
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to HDMI_TX_DE
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to HDMI_TX_D[*]
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to HDMI_TX_HS
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to HDMI_TX_VS
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to SDRAM_*
+set_instance_assignment -name FAST_OUTPUT_ENABLE_REGISTER ON -to SDRAM_DQ[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to AUDIO_*
+set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to IO_S*
+set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to SDCD_SPDIF
+set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to SDIO_*
+set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to SDRAM_*
+set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to SD_SPI*
+set_instance_assignment -name CURRENT_STRENGTH_NEW "MAXIMUM CURRENT" -to USER_IO[*]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to VGA_*
+set_hps_location_assignment HPSINTERFACEPERIPHERALI2C_X52_Y60_N111 -to hdmi_i2c
+set_hps_location_assignment HPSINTERFACEPERIPHERALSPIMASTER_X52_Y72_N111 -to spi
+set_hps_location_assignment HPSINTERFACEPERIPHERALUART_X52_Y67_N111 -to uart
+set_instance_assignment -name ALLOW_SYNCH_CTRL_USAGE OFF -to *|SDRAM_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ADC_CONVST
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ADC_SCK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ADC_SDI
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to ADC_SDO
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to AUDIO_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to BTN_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to FPGA_CLK1_50
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to FPGA_CLK2_50
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to FPGA_CLK3_50
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HDMI_I2C_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HDMI_I2S
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HDMI_LRCLK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HDMI_MCLK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HDMI_SCLK
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to HDMI_TX_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to IO_S*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KEY[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KEY[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[7]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SDCD_SPDIF
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SDIO_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SDRAM_*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SD_SPI*
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SW[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SW[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SW[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SW[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to USER_IO[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to VGA_*
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to BTN_*
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to IO_S*
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to SDCD_SPDIF
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to SDIO_CMD
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to SDIO_DAT[*]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to SD_SPI*
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to USER_IO[*]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to VGA_EN
+
+set_global_assignment -name QIP_FILE sys/sys.qip
+set_global_assignment -name VERILOG_FILE rtl/pll/pll_0002.v
+set_global_assignment -name VERILOG_FILE rtl/pll.v
+set_global_assignment -name VERILOG_FILE rtl/nitro_pll_0002.v
+set_global_assignment -name VERILOG_FILE rtl/nitro_pll.v
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/SyncFifo.vhd -library MEM
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/SyncRamDualByteEnable.vhd -library MEM
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/export.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/reg_savestates.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/gba_cpu.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/reggba_timer.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/gba_timer_module.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/gba_timer.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_vram_map.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_vram.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_wram.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_mainram.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_irq.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_ipc.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_spi.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_membus7.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_cpu9.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_cache9.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_membus9.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_syscnt.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_loader.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_debug.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_perf.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_card.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_rtc.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_sound_fetch_state_ram.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/reg_nds_display.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_text.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_affext.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_obj.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_merge.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_gpu2d.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_gpu2d_fast.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_gpu_timing.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd
+set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma7.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_status.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_console_event_gate.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios7.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios9.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_arm9_math_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_async_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_fb_ddr3.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_touch_input.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_video_scanout.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_ddram_arbiter_4client.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_ddr_fabric.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_control_init.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_event_async_fifo.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_gx_fifo_packet_frontend.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_frame_record_cdc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_frame_packet_writer.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_plane_reader.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_console_island.sv
+set_global_assignment -name SYSTEMVERILOG_FILE NDS4MiSTer.sv
+set_global_assignment -name SDC_FILE NDS4MiSTer.sdc
+set_instance_assignment -name PLL_BANDWIDTH_PRESET AUTO -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+set_instance_assignment -name PLL_CHANNEL_SPACING "0 kHz" -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+set_instance_assignment -name PLL_COMPENSATION_MODE DIRECT -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+set_instance_assignment -name PLL_AUTO_RESET ON -to "*pll_0002*|altera_pll:altera_pll_i*|*"
+
+set_global_assignment -name EDA_SIMULATION_TOOL "ModelSim (Verilog)"
+set_global_assignment -name EDA_NETLIST_WRITER_OUTPUT_DIR "/workspace/.beta95-postfit" -section_id eda_simulation
+set_global_assignment -name EDA_OUTPUT_DATA_FORMAT "VERILOG HDL" -section_id eda_simulation
+set_global_assignment -name EDA_MAINTAIN_DESIGN_HIERARCHY ON -section_id eda_simulation
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_profile.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_bridge.sv
+set_global_assignment -name MISC_FILE nds_save_profile_prefix.hex
+set_global_assignment -name MISC_FILE nds_save_profile_entries.hex

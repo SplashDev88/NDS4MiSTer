@@ -1,0 +1,218 @@
+NDS4MiSTer public beta v0.3.0-beta.6 source - 2026-08-31
+====================================================================
+
+Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
+work, expanded save-profile/Flash implementation, save-profile CDC fix,
+controller touch, PSX-derived FPGA space efficiencies, DreamSTer-derived
+full-frame renderer-fence batching, adaptive raster balancing, bounded
+obsolete-geometry discard, cache-separated SPSC/futex synchronization, direct
+completed-plane publication, and shadow-safe four-band raster work. It also
+includes generation-safe empty-plane suppression and stabilized catch-up
+pacing, fixes first-load save-sector alignment, preserves verified save mount
+state across reset and direct-load transitions, and adds controller/mouse touch
+input with a visible pointer. Beta.6 adds the accepted perspective-coordinate,
+NEON vertex-transform, COLOR/NORMAL replay, and exact FPGA blend-shift work.
+
+This curated source snapshot corresponds to the installable
+NDS4MiSTer_Public_Beta_v0.3.0-beta.6_20260831 package. It retains the
+LG-compatible video path and includes the FPGA-side MiSTer save bridge,
+profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
+current hybrid 3D path. Exact artifact identities are listed below.
+
+The release sound path is the GPL-licensed Nitro_DarkSide `nds_sound.vhd`
+implementation built with `SOUND_ENABLE=1`. Retired private FPGA-sound
+experiments are intentionally excluded and are not release dependencies.
+
+Release identities
+------------------
+
+FPGA core:
+  ec48df52104af4726a0e29f56b1984c962a2cbb8b77b6931b09b2a595171aaa3
+
+ARM hybrid-3D service:
+  bc7971606f958799a855b043757e3989aec3046ceafea34fb07f6ba70a92631a
+
+Incremental beta.6 3D and FPGA update
+--------------------------------------
+
+* Perspective texture coordinates are evaluated in exact four-pixel batches,
+  and the dominant GX vertex-transform block uses a bit-exact Cortex-A9 NEON
+  path. More than one million randomized host and ARM checks matched the scalar
+  reference.
+* COLOR and NORMAL commands bypass unnecessary general replay setup while
+  preserving the normal matrix, lighting, and fixed-point behavior.
+* Focused measurements found roughly 3.6% lower GX processing cost and 5.6%
+  lower geometry-flush cost across the retained ARM changes. The isolated
+  vertex-transform block improved by 18.8%; that figure is not a whole-game or
+  whole-renderer FPS claim. A conservative summary is about 5% lower ARM 3D
+  processing cost, with the visible gain remaining scene-dependent.
+* The FPGA blend path now expresses its exact divide-by-16 and divide-by-32
+  operations as fixed shifts. The accepted fit saves 87 ALMs and 26 registers
+  without changing DSP or RAM use.
+* The FPS overlay now advances only when the FPGA accepts a changed 3D plane,
+  instead of counting identical plane republications as fresh 3D motion.
+
+Direct-plane and raster specialization update
+---------------------------------------------
+
+* Completed immutable 3D planes are published directly instead of being copied
+  through an additional full-frame staging buffer.
+* GX replay uses contiguous batches and specializations for the dominant packed
+  vertex, cached texture, depth, opaque, and shadow paths. Bounded raster spans
+  avoid software integer division while preserving exact fixed-point results.
+* The four-band renderer accepts shadow work only after its ordering dependency
+  is complete, retaining the faster parallel path without publishing partially
+  ordered shadow results.
+* A clean 25-second NSMB sample held the DS/game stream at 60.52 frames/s and
+  published completed 3D descriptors at 60.48 frames/s with queue growth of
+  only two packets, zero acknowledgement lag, and zero FPGA/HPS faults.
+  Content sampling found about 34 visibly distinct 3D changes/s in that scene,
+  confirming why the beta.5 on-screen counter could overstate unique motion
+  when an identical plane was republished. Beta.6 corrects that counter.
+
+ARM 3D frame-fence optimization
+-------------------------------
+
+* The plane-only MiSTer H3D renderer retains its complete-frame ownership
+  fence while suppressing 192 unused scanline semaphore publications per
+  changed frame.
+* At the previously measured 57.3 published 3D FPS, this removes about 11,002
+  mutex/condition-variable publications per second from the ARM render thread.
+* The optimization does not skip frames or change pixels, polygon processing,
+  frame ordering, saves, touch, sound, HDMI timing, or FPGA logic.
+* Hardware acceptance found a large improvement in the New Super Mario Bros.
+  final castle. A passive 60-second sample reached approximately 60 published
+  3D FPS in lighter sections and 35-43 FPS in heavier sections, averaging
+  49.6 FPS with no ARM/FPGA faults or sustained transport backlog.
+
+ARM 3D adaptive-raster and catch-up optimization
+------------------------------------------------
+
+* Feedback-guided raster splitting balances polygon work across both Cortex-A9
+  cores while retaining exact fixed-point raster results.
+* Replay that misses its display deadline can discard obsolete geometry work
+  instead of spending ARM time rendering a frame that can no longer be shown.
+* Discard state remains attached to the incomplete polygon build buffer until
+  the command stream reaches its real GX flush. This prevents the black areas,
+  missing scenery, and stray polygons observed in the first Mario Kart test.
+* A 32.4-second Mario Kart DS kiosk-demo sample measured 59.8 input frames/s,
+  56.3 rendered 3D frames/s, and 55.9 published 3D frames/s. The replay backlog
+  recovered from 6 frames to 0, with no FPGA or ARM/HPS faults.
+
+DreamSTer-style ARM synchronization
+-----------------------------------
+
+* Cache-separated SPSC producer/consumer indices replace the mutex on the
+  fixed replay arena. Private Linux futexes are used only when the queue is
+  truly empty or full.
+* The headless renderer uses the same atomic-counting/futex approach. No
+  packet, command, frame, polygon, or raster result is skipped.
+* Focused A/B measurements found 4.8% lower end-to-end packet retirement time,
+  8.0% lower renderer handoff latency, and 29.9% lower burst-handoff time.
+* A demanding live sample rendered and published 532 3D frames in 9.569
+  seconds: 55.6 FPS, or 92.7% of the 60 FPS target, with no ARM/HPS or FPGA
+  faults. Scene-to-scene variation prevents treating this as a controlled
+  whole-game FPS percentage against the previous beta.
+
+Catch-up visibility and frame pacing
+------------------------------------
+
+* Catch-up discards carry a monotonically increasing visibility generation.
+  An older asynchronous render therefore cannot clear a newer discard state
+  or publish its derived empty plane over the last valid 3D result.
+* Mild catch-up preserves the complete GX geometry build and skips only the
+  expensive raster pass. More destructive third/quarter/eighth-rate tiers are
+  reserved for measured replay leads of 8/12/16 frames instead of oscillating
+  at the normal four-to-six-frame heavy-scene range.
+* In the accepted NSMB castle sample, input and replay both held 59.8 frames/s,
+  raster publication held 33.4 frames/s under sustained load, replay backlog
+  remained bounded at 2-6 frames, and FPGA/HPS fault counts stayed zero. The
+  maintainer reported substantially smoother movement with only minor residual
+  jerkiness.
+
+FPGA space efficiencies
+-----------------------
+
+* Shared ARM7 barrel-shifter datapath with unchanged instruction latency
+* Exact two-level cartridge-save profile lookup
+* Packed per-channel FPGA sound fetch state
+* Packed ARM9 instruction/data cache-tag storage
+* The attempted IPC MLAB mapping was rejected from the candidate after real
+  Quartus data showed that it expanded into logic; the known-good IPC RAM
+  implementation is retained.
+
+Save support
+------------
+
+* MiSTer standard save interface and /media/fat/saves/NDS location
+* 512-byte tiny EEPROM plus 8, 64, and 128 KiB regular EEPROM saves
+* 256 KiB, 512 KiB, and 1 MiB Flash saves
+* Save-device profiles generated from the vendored melonDS ROM database
+* Existing-save loading, dirty flushing, and persistence across ROM reloads
+* Safe handling of read-only and invalid-size images
+* Cartridge saves are supported; emulator save states are not
+* First-load sector data is indexed from the private transfer word count, not
+  the shared MiSTer buffer address, preventing the measured 19-word offset.
+* Verified cartridge/save epochs survive reset and direct-load transitions.
+
+Reset was verified with New Super Mario Bros. after preserving the cartridge
+and save mount. Reselecting the ROM remains the fallback for titles that do
+not reset cleanly.
+
+Older experimental builds may already have created an incorrectly sized or
+corrupted `.sav` file. If a game still reports save corruption, back up and
+then delete or move that game's existing file from `/media/fat/saves/NDS/` so
+the game can create a fresh save. This release does not attempt to repair
+corrupted legacy data.
+
+Touch support
+-------------
+
+* Move the controller's right stick to select an absolute DS touchscreen
+  position. Centered is approximately the center of the 256x192 touch canvas.
+* Hold the remappable `Touch` action to press at that position, and release it
+  to lift the stylus. MiSTer's controller-remapping menu can assign `Touch` to
+  a preferred button.
+* The SPI touchscreen returns melonDS-compatible 12-bit coordinate samples.
+* Direct boot installs matching touchscreen calibration data.
+* Relative MiSTer mouse motion controls the stylus, and the left mouse button
+  presses it. The most recently moved mouse or right stick owns the pointer.
+* The pointer is white while hovering, red while pressed, stays visible during
+  a press, and lingers for about half a second after movement.
+* Engine B is not displayed yet, so precise interaction with touchscreen
+  graphics remains limited.
+
+Verification
+------------
+
+The focused regression passed save-profile lookup and bundled CDC publication,
+all supported EEPROM/Flash sizes, EEPROM and Flash command behavior, dirty
+flushes, read-only and invalid-size behavior, replacement-ROM mount ordering,
+cross-size isolation, right-stick touch coordinates, pen release, SPI touch,
+direct-boot calibration, and the complete Nitro console-island host RTL gate.
+
+Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
+successful fit used 41,094 of 41,910 ALMs (98%), 45,104 registers, 468
+of 553 RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with
+device checksum 0x0FDF9935. Static timing remains diagnostic information rather than a
+deployment gate for this experimental project. This exact RBF was direct-
+loaded from the MiSTer menu with FPGA state `operating`, core identity `NDS`,
+and exactly one verified ARM service at 1 GHz. The maintainer approved its LG
+C-series video, cartridge-save persistence across a cold boot, reset behavior,
+and representative gameplay speed.
+
+Package exclusions
+------------------
+
+No commercial ROMs, personal save files, console keys, BIOS binaries, private
+credentials, private donor trees, FPGA build outputs, host build directories,
+diagnostic captures, retired private sound experiments, absolute developer
+paths, or user data are included.
+melonDS FreeBIOS source is included; prebuilt BIOS images are not.
+
+Licensing
+---------
+
+See the license and attribution files within each vendored source tree and
+fpga/mister_nitro_console_island/LICENSE.Template_MiSTer. This package does
+not replace or alter the licensing terms of those components.

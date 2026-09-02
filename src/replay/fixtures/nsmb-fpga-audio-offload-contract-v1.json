@@ -1,0 +1,33 @@
+{
+  "schema": "NDS4MISTER_NSMAUDIO_OFFLOAD_CONTRACT_V1",
+  "game_code": "A2DE",
+  "source_trace": {
+    "name": "nds-r208-native-sound-20260730a.arm7.jsonl",
+    "sha256": "1a54bdfb8e3cd4c2abea447d40eaaa86be8fa9b4e789a34d510afe6d5a585ad3",
+    "bus_records": 470348,
+    "first_sequence": 0,
+    "last_sequence": 470347,
+    "sound_reads": 16672,
+    "sound_writes": 186
+  },
+  "capture_proxy_activation": {
+    "soundcnt_high_sequence": 68370,
+    "soundcnt": "B97F",
+    "soundcap_sequence": 68376,
+    "soundcap": "8080"
+  },
+  "post_activation_status_reads": {
+    "04000413": {"A8": 827},
+    "04000433": {"A8": 827},
+    "04000483": {"00": 2, "63": 809, "E3": 34},
+    "04000493": {"00": 18, "63": 610, "E3": 400},
+    "04000508": {"80": 827},
+    "04000509": {"80": 827}
+  },
+  "capture_buffers": [
+    {"name": "capture0", "start": "022884A0", "end": "02288CA0",
+     "cpu_reads": 0, "cpu_writes": 0},
+    {"name": "capture1", "start": "02288CA0", "end": "022894A0",
+     "cpu_reads": 0, "cpu_writes": 0}
+  ]
+}

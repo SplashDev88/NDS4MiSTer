@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+configured_name="$(git config --local --get user.name || true)"
+configured_email="$(git config --local --get user.email || true)"
+
+if [[ "$configured_name" != "SplashDev88" ]]; then
+    echo "PUBLIC SAFETY AUDIT FAILED: local Git name must be SplashDev88." >&2
+    exit 1
+fi
+
+if [[ ! "$configured_email" =~ ^[0-9]+\+SplashDev88@users\.noreply\.github\.com$ ]]; then
+    echo "PUBLIC SAFETY AUDIT FAILED: local Git email must be the SplashDev88 GitHub noreply address." >&2
+    exit 1
+fi
+
+python3 "$repo_root/tools/audit_public_repo.py" --self-test --staged

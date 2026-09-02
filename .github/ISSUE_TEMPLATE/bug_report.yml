@@ -1,0 +1,106 @@
+name: Bug report
+description: Report a reproducible NDS4MiSTer problem without sharing copyrighted or private data
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing NDS4MiSTer. Do not upload or link to commercial
+        ROMs, BIOS/firmware dumps, personal save files, credentials, or other
+        private data. A game title, region, revision, and game code are enough.
+
+  - type: input
+    id: beta
+    attributes:
+      label: Beta or build
+      description: Enter the public beta name or source commit.
+      placeholder: Public Save Beta B (2026-08-27)
+    validations:
+      required: true
+
+  - type: input
+    id: core_hash
+    attributes:
+      label: FPGA core SHA-256
+      description: Enter the SHA-256 of the dated NDS RBF.
+    validations:
+      required: true
+
+  - type: input
+    id: service_hash
+    attributes:
+      label: HPS service SHA-256
+      description: Enter the SHA-256 from nds_hybrid_3d_service.sha256.
+    validations:
+      required: true
+
+  - type: input
+    id: game
+    attributes:
+      label: Game identification
+      description: Give the title, region, revision, and game code when known. Do not attach the ROM.
+      placeholder: New Super Mario Bros. (USA), revision 1, game code A2DE
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: List the shortest reliable sequence from a fresh core load.
+      placeholder: |
+        1. Start the H3D service.
+        2. Load the NDS core and select the game.
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Reproduction frequency
+      options:
+        - Every time
+        - Often
+        - Sometimes
+        - Once
+    validations:
+      required: true
+
+  - type: input
+    id: display
+    attributes:
+      label: Display and video mode
+      description: Include the TV/monitor model and MiSTer output mode for video problems.
+      placeholder: LG C3, 1080p60
+
+  - type: textarea
+    id: crash_report
+    attributes:
+      label: Crash report or diagnostic output
+      description: Paste or attach the generated NDS4MiSTer crash text report. Review it before uploading. Do not attach ROMs or saves.
+      render: text
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Public-data confirmation
+      options:
+        - label: I have not attached or linked to ROMs, BIOS/firmware dumps, saves, credentials, or private data.
+          required: true
