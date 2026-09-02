@@ -259,7 +259,8 @@ ARM7 CPU implementation, which was used as the basis for the ARM9 work.
 Component licenses and source notices remain in their vendored trees.
 
 Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, heni, and the
-wider MiSTer community for technical advice, testing, and development guidance.
+wider MiSTer community for technical advice, testing, and development guidance;
+and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware fix.
 
 ## License
 

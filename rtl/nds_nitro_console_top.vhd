@@ -188,6 +188,15 @@ entity nds_nitro_console_top is
       fw_req           : out std_logic;
       fw_done          : in  std_logic;
       fw_data          : in  std_logic_vector(31 downto 0);
+      -- SPI firmware write-back. Pokemon Pearl page-programs the flash during
+      -- boot (0x06/0x0A/0x04) and hangs if the write is discarded, so the
+      -- backing store has to be writable, not a ROM.
+      -- No separate write address: the 0x0A path drives fw_addr above, so the
+      -- store reuses one decode. A second one costs ~163 ALMs and will not
+      -- route on this 98%-full device.
+      fw_wr            : out std_logic;
+      fw_wlane         : out unsigned(1 downto 0);
+      fw_wdata         : out std_logic_vector(7 downto 0);
 
       -- Legacy hot-BIOS boundary retained for entity compatibility. The
       -- compact product instantiates built-in FreeBIOS ROMs and ignores these
@@ -2305,14 +2314,17 @@ begin
       sound_out_right <= (others => '0');
    end generate;
 
-   ispi : entity work.nds_spi
+   -- Product-local derivative: adds the firmware write-back path the donor
+   -- lacks (its image is a read-only fixture). See rtl/nds_nitro_spi.vhd.
+   ispi : entity work.nds_nitro_spi
    port map
    (
       clk => clk1x, reset => resetCpu,
       bus7 => io_bus7, wired_out7 => spi_wired_out7, wired_done7 => spi_wired_done7,
       irq_spi => irq7_spi,
       touch_active => touch_active, touch_x => touch_x, touch_y => touch_y,
-      fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data
+      fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data,
+      fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata
    );
 
    itimer9 : entity work.gba_timer

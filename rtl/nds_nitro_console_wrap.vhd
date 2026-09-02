@@ -91,6 +91,12 @@ entity nds_nitro_console_wrap is
       fw_req           : out std_logic;
       fw_done          : in  std_logic;
       fw_data          : in  std_logic_vector(31 downto 0);
+      -- Firmware write-back. Like every port here these are plain zero-based
+      -- vectors: the island is SystemVerilog, so the console's unsigned ranges
+      -- are converted on this side of the mixed-language boundary.
+      fw_wr            : out std_logic;
+      fw_wlane         : out std_logic_vector(1 downto 0);
+      fw_wdata         : out std_logic_vector(7 downto 0);
 
       -- hot-loadable ARM7/ARM9 BIOS RAM write ports
       bios7_load_addr  : in std_logic_vector(13 downto 2);
@@ -250,6 +256,7 @@ architecture arch of nds_nitro_console_wrap is
    signal h3d_merge_x_i      : integer range 0 to 255;
    signal h3d_merge_y_i      : integer range 0 to 191;
    signal fw_addr_u          : unsigned(17 downto 2);
+   signal fw_wlane_u         : unsigned(1 downto 0);
    signal vsrv_addr_u        : unsigned(16 downto 2);
    signal vrsrv_addr_u       : unsigned(16 downto 3);
 
@@ -263,6 +270,7 @@ begin
    h3d_merge_pixel_x <= std_logic_vector(to_unsigned(h3d_merge_x_i, 8));
    h3d_merge_pixel_y <= std_logic_vector(to_unsigned(h3d_merge_y_i, 8));
    fw_addr      <= std_logic_vector(fw_addr_u);
+   fw_wlane     <= std_logic_vector(fw_wlane_u);
    vsrv_addr    <= std_logic_vector(vsrv_addr_u);
    vrsrv_addr   <= std_logic_vector(vrsrv_addr_u);
 
@@ -369,6 +377,9 @@ begin
       backup_run_ready    => backup_run_ready,
 
       fw_addr          => fw_addr_u,
+      fw_wr            => fw_wr,
+      fw_wlane         => fw_wlane_u,
+      fw_wdata         => fw_wdata,
       fw_req           => fw_req,
       fw_done          => fw_done,
       fw_data          => fw_data,

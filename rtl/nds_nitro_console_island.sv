@@ -602,22 +602,36 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
     end
 end
 
-// Direct HLE boot still probes SPI firmware.  The first beta intentionally has
-// no RTC/firmware service; acknowledge a zero word one clk1x later, matching
-// the inert fixture used by the focused donor simulation.
-wire [15:0] fw_addr_unused;
+// Direct HLE boot still probes SPI firmware.  This used to acknowledge every
+// fetch with a zero word, which the ARM7 reads as an all-zero flash.  Measured
+// against melonDS with the same stub applied: Pokemon Pearl then renders one
+// flat colour forever while New Super Mario Bros. is completely unaffected --
+// the exact split observed on hardware.  Pearl fetches the wifi AP-config and
+// user-settings pages, which are CRC16 protected, and will not proceed without
+// them.  nds_nitro_firmware stores just the two regions games actually read
+// (2 KB of the 128 KB image) in block RAM, which is the resource this nearly
+// ALM-full design has spare.
+// It is a writable store, not a ROM: Pearl page-programs the flash during boot
+// and hangs if those writes are discarded -- indistinguishably from the zero
+// stub, which is exactly how the first read-only attempt failed.
+// Writable-firmware fix contributed by InsaneFriend (GitHub: saneFriend).
+wire [15:0] fw_addr;
 wire fw_req;
-logic fw_done;
-logic [31:0] fw_data;
-always_ff @(posedge clk1x or posedge console_reset_1x) begin
-    if (console_reset_1x) begin
-        fw_done <= 1'b0;
-        fw_data <= 32'd0;
-    end else begin
-        fw_done <= fw_req;
-        fw_data <= 32'd0;
-    end
-end
+wire fw_done;
+wire [31:0] fw_data;
+wire fw_wr;
+wire [1:0] fw_wlane;
+wire [7:0] fw_wdata;
+nds_nitro_firmware firmware (
+    .clk(clk1x),
+    .fw_addr(fw_addr),
+    .fw_req(fw_req),
+    .fw_done(fw_done),
+    .fw_data(fw_data),
+    .fw_wr(fw_wr),
+    .fw_wlane(fw_wlane),
+    .fw_wdata(fw_wdata)
+);
 
 ////////////////////////////  SDRAM  ////////////////////////////////////
 
@@ -1918,8 +1932,9 @@ nds_nitro_console_wrap #(
     .backup_access_active(backup_access_active),
     .backup_cache_ready(backup_cache_ready_sync_1x),
     .backup_run_ready(save_run_ready_sync_1x),
-    .fw_addr(fw_addr_unused),.fw_req(fw_req),
+    .fw_addr(fw_addr),.fw_req(fw_req),
     .fw_done(fw_done),.fw_data(fw_data),
+    .fw_wr(fw_wr),.fw_wlane(fw_wlane),.fw_wdata(fw_wdata),
     .bios7_load_addr(12'd0),.bios7_load_data(32'd0),
     .bios7_load_be(4'd0),.bios7_load_we(1'b0),.bios7_load_done(1'b0),
     .bios9_load_addr(10'd0),.bios9_load_data(32'd0),
