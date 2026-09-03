@@ -17,6 +17,11 @@ set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION OFF
 set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING OFF
 set_global_assignment -name PLACEMENT_EFFORT_MULTIPLIER 2.0
 set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
+# At this density Quartus's automatic hold repair inserted roughly 3000 ns of
+# delay and exhausted routing after successful placement. Route the functional
+# design first, then report the exposed hold paths in TimeQuest and validate the
+# seed-2 image on hardware.
+set_global_assignment -name OPTIMIZE_HOLD_TIMING OFF
 # Match the fitter policy of the earlier successfully routed Engine-B image.
 # The newer redundant-logic/router overrides repeatedly placed but terminated
 # after more than forty minutes of hold-delay congestion. The sparse timing
@@ -71,11 +76,11 @@ set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_
 set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to hdmi_osd
 set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to ascal
 
-# The alpha prioritizes a routable RBF over final timing closure. Use three
-# spare global networks for the measured high-fanout reset controls.
+# The alpha prioritizes a routable RBF over final timing closure. Keep the
+# measured high-fanout CPU reset on a global network. Two additional reset
+# assignments in the supplied snapshot were invalid no-ops; activating them
+# displaced FPGA_CLK2_50 onto non-dedicated routing, so omit them.
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "*|nds_nitro_console_top:inds|resetCpu"
-set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_1x[1]}
-set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_ddr[1]}
 
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
 set_location_assignment PIN_U9 -to ADC_CONVST
