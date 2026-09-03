@@ -509,7 +509,11 @@ bool Consumer::validate_record(const Record& record) const
 {
     const auto kind = record_kind(record);
     if (kind == RecordKind::GxPacked) return true;
-    if ((record.metadata & 0xfff00000u) != 0) return false;
+    if ((record.metadata & 0xc0000000u) != 0 ||
+        (!record_has_scanline(record) &&
+         (record.metadata & RecordScanlineMask) != 0) ||
+        (record_has_scanline(record) && record_scanline(record) >= 263))
+        return false;
     if (kind != RecordKind::GxCommand &&
         kind != RecordKind::GxRegister &&
         kind != RecordKind::VramWrite &&

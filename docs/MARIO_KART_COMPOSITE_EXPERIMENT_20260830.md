@@ -67,4 +67,19 @@ already avoids the entire copy when the renderer proves a frame unchanged.
 - Controlled full-copy versus changed-tile-copy live measurement.
 - Existing service, save-profile, supervisor, and HPS lifecycle host tests.
 
+## Follow-up: pre-race track-preview flashing
+
+Mario Kart DS otherwise plays well on public beta.6, but the track-preview
+sequence immediately before a race shows heavy flashing. Do not classify this
+as ordinary renderer slowdown until the display behavior is measured. The
+sequence may use alternating screen ownership or display capture at an
+effective 30 FPS, or it may expose genuine missing/blank 3D publications.
+
+Reproduce the preview in both this core and melonDS, then correlate each flash
+with `POWCNT1`, `DISPCAPCNT`, VRAM capture-bank routing, GX flush completion,
+produced and accepted 3D-plane generations, and the final plane selected for
+display. Verify whether the two native DS screens intentionally alternate and
+whether enabling real Engine B changes the symptom before adjusting frame-drop
+or pacing policy.
+
 No ROM, save, private path, or captured binary is stored in this branch.

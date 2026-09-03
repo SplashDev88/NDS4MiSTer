@@ -188,6 +188,15 @@ entity nds_nitro_console_top is
       fw_req           : out std_logic;
       fw_done          : in  std_logic;
       fw_data          : in  std_logic_vector(31 downto 0);
+      -- SPI firmware write-back. Pokemon Pearl page-programs the flash during
+      -- boot (0x06/0x0A/0x04) and hangs if the write is discarded, so the
+      -- backing store has to be writable, not a ROM.
+      -- No separate write address: the 0x0A path drives fw_addr above, so the
+      -- store reuses one decode. A second one costs ~163 ALMs and will not
+      -- route on this 98%-full device.
+      fw_wr            : out std_logic;
+      fw_wlane         : out unsigned(1 downto 0);
+      fw_wdata         : out std_logic_vector(7 downto 0);
 
       -- Legacy hot-BIOS boundary retained for entity compatibility. The
       -- compact product instantiates built-in FreeBIOS ROMs and ignores these
@@ -374,6 +383,16 @@ end entity;
 
 architecture arch of nds_nitro_console_top is
 
+   -- Hardware boot-bisect for the combined Engine-B + writable-firmware
+   -- candidate.  Pearl and Animal Crossing boot with the writable-firmware
+   -- reference RBF, but remain in the BIOS wait loop when palette/OAM writes
+   -- are made lossless H3D transactions in the 99%-full Engine-B fit.  Keep
+   -- every other Engine-B path active while restoring the legacy immediate
+   -- palette/OAM completion.  This constant is intentionally local and must
+   -- be removed (or proven true-safe) after the hardware A/B identifies the
+   -- failing path.
+   constant H3D_PALETTE_OAM_REPLAY : boolean := false;
+
    component nds_nitro_save_profile is
       generic
       (
@@ -503,7 +522,7 @@ architecture arch of nds_nitro_console_top is
       be      : std_logic_vector(3 downto 0)) return boolean is
       variable low, lane : integer;
    begin
-      if (address(27 downto 12) /= x"0000") then
+      if (address(27 downto 13) /= "000000000000000") then
          return false;
       end if;
       case be is
@@ -512,8 +531,11 @@ architecture arch of nds_nitro_console_top is
          when "1000"          => lane := 3;
          when others          => lane := 0;
       end case;
-      low := to_integer(unsigned(address(11 downto 2))) * 4 + lane;
-      return (low >= 16#060# and low <= 16#063#) or
+      low := to_integer(unsigned(address(12 downto 2))) * 4 + lane;
+      return (low >= 16#000# and low <= 16#05F#) or
+             (low >= 16#060# and low <= 16#063#) or
+             (low >= 16#064# and low <= 16#06F#) or
+             (low >= 16#1000# and low <= 16#106F#) or
              (low >= 16#240# and low <= 16#249#) or
              (low >= 16#304# and low <= 16#307#) or
              (low >= 16#320# and low <= 16#3BF#) or
@@ -979,16 +1001,38 @@ begin
    -- CPU IO requests are one-cycle pulses; DMA GXFIFO valid is deliberately
    -- independent of its acceptance enable.  dma_bus_on makes the sources
    -- mutually exclusive, and both buses hold their payload until completion.
-   -- The ARM service owns only 3D. Palette/OAM and 2D registers remain local
-   -- to the FPGA renderer and therefore cannot inherit HPS backpressure.
-   h3d_gpu_source_is_cpu <= not dma_bus_on;
-   h3d_gpu_source_valid <= dma_gx_write_valid when dma_bus_on = '1' else
+   -- Geometry, both 2D register banks, and palette/OAM writes share the one
+   -- lossless GPU source. Palette/OAM are mutually exclusive with IO on the
+   -- ARM9 membus, so this adds no second arbitration queue. Their address is
+   -- encoded as an offset from 0x04000000; the record CDC restores the full
+   -- 0x05/0x07 architectural aperture before publishing it to the HPS.
+   -- Only the dedicated DMA GXFIFO fast lane retires through source_ready.
+   -- Palette/OAM and ordinary IO still traverse membus9's W_IO_RESP state
+   -- even while DMA owns that bus, so they require the completion toggle.
+   h3d_gpu_source_is_cpu <= '0'
+      when dma_bus_on = '1' and dma_gx_write_valid = '1' else '1';
+   h3d_gpu_source_valid <= dma_gx_write_valid when dma_bus_on = '1' and
+                                                  dma_gx_write_valid = '1' else
+      pal_we when H3D_PALETTE_OAM_REPLAY and pal_we = '1' else
+      oam_we when H3D_PALETTE_OAM_REPLAY and oam_we = '1' else
       '1' when (io9_ena = '1' and io9_lat_1x.rnw = '0' and
                 h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna)) else '0';
-   h3d_gpu_source_address <= io_bus9.Adr;
-   h3d_gpu_source_access <= io_bus9.acc;
-   h3d_gpu_source_be <= io_bus9.bEna;
-   h3d_gpu_source_data <= io_bus9.Din;
+   h3d_gpu_source_address <=
+      std_logic_vector(to_unsigned(16#1000000# + pal_addr * 4, 28))
+         when H3D_PALETTE_OAM_REPLAY and pal_we = '1' else
+      std_logic_vector(to_unsigned(16#3000000# + oam_addr * 4, 28))
+         when H3D_PALETTE_OAM_REPLAY and oam_we = '1' else
+      io_bus9.Adr;
+   h3d_gpu_source_access <= h3d_access_from_be(pal_be)
+      when H3D_PALETTE_OAM_REPLAY and pal_we = '1' else
+      h3d_access_from_be(oam_be)
+         when H3D_PALETTE_OAM_REPLAY and oam_we = '1' else io_bus9.acc;
+   h3d_gpu_source_be <= pal_be
+      when H3D_PALETTE_OAM_REPLAY and pal_we = '1' else
+      oam_be when H3D_PALETTE_OAM_REPLAY and oam_we = '1' else io_bus9.bEna;
+   h3d_gpu_source_data <= pal_din
+      when H3D_PALETTE_OAM_REPLAY and pal_we = '1' else
+      oam_din when H3D_PALETTE_OAM_REPLAY and oam_we = '1' else io_bus9.Din;
 
    h3d_vram9_source_address <=
       x"06" & std_logic_vector(dma_vr_addr) & "00" when dma_bus_on = '1' else
@@ -996,11 +1040,12 @@ begin
    h3d_vram9_source_be <= dma_vr_be when dma_bus_on = '1' else vram9_be;
    h3d_vram9_source_data <= dma_vr_din when dma_bus_on = '1' else vram9_din;
    h3d_vram9_source_access <= h3d_access_from_be(h3d_vram9_source_be);
-   -- The HPS 3D model needs uploads through the LCDC aperture while a
-   -- texture/palette bank is CPU-visible. BG/OBJ writes are consumed by the
-   -- FPGA 2D engines and stay off the HPS event stream.
+   -- The Engine-B shadow needs the complete 0x06 VRAM view, not only the LCDC
+   -- texture aperture used by the earlier 3D-only service. Preserve the same
+   -- held/accepted write as the local VRAM path so the two mirrors cannot
+   -- diverge under backpressure.
    h3d_vram9_needed_by_h3d <= '1'
-      when h3d_vram9_source_address(27 downto 20) = x"68" else '0';
+      when h3d_vram9_source_address(27 downto 24) = x"6" else '0';
    -- A posted DMA write becomes an event source only when nds_vram can accept
    -- it on the same edge.  `vram_write_valid` remains held independently, so
    -- a full local write queue cannot deadlock valid behind event ready; wok is
@@ -1019,6 +1064,10 @@ begin
       h3d_vram7_issue;
 
    ih3d_events : entity work.nds_h3d_console_event_gate
+   generic map
+   (
+      SPARSE_HBLANK => true
+   )
    port map
    (
       clk => clk1x,
@@ -1077,8 +1126,10 @@ begin
       vram7_event_frame => h3d_vram7_write_frame,
       vram7_event_timestamp => h3d_vram7_write_timestamp,
 
-      -- HBlank is an FPGA-local 2D/HDMA deadline in 3D-plane mode.
-      hblank_pulse => '0',
+      -- Engine A still consumes HBlank locally. The hybrid transport takes a
+      -- sparse, nonblocking timing copy from the same pre-HDMA drawline edge
+      -- so the ARM can reconstruct only the missing Engine B screen.
+      hblank_pulse => drawline,
       hblank_line => std_logic_vector(vcount_out),
       hblank_event_valid => h3d_hblank_valid,
       hblank_event_ready => h3d_hblank_ready,
@@ -1578,12 +1629,20 @@ begin
    -- source gate. The peripheral consumed io9_ena on its original edge; the
    -- held event never reasserts the local enable, so a stalled write cannot be
    -- executed twice.
-   -- Palette/OAM stay local to the FPGA 2D engine and retain legacy timing.
+   -- Palette/OAM still update the local FPGA engine on their request edge,
+   -- but with Engine-B replay active the ARM9 transaction retires only after
+   -- the same payload is durably posted to H3D. The membus holds the request
+   -- fields until this completion, preventing a following write from replacing
+   -- a palette/OAM event while the source gate is full.
    process (clk1x)
    begin
       if rising_edge(clk1x) then
          if (pal_we = '1' or oam_we = '1') then
-            cdc_io_cpl <= not cdc_io_cpl;
+            if (not H3D_PALETTE_OAM_REPLAY or
+                h3d_service_ready = '0' or
+                h3d_gpu_cpu_complete = '1') then
+               cdc_io_cpl <= not cdc_io_cpl;
+            end if;
          elsif (io9_ena = '1') then
             if (h3d_service_ready = '1' and io9_lat_1x.rnw = '0' and
                 h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna)) then
@@ -2305,14 +2364,17 @@ begin
       sound_out_right <= (others => '0');
    end generate;
 
-   ispi : entity work.nds_spi
+   -- Product-local derivative: adds the firmware write-back path the donor
+   -- lacks (its image is a read-only fixture). See rtl/nds_nitro_spi.vhd.
+   ispi : entity work.nds_nitro_spi
    port map
    (
       clk => clk1x, reset => resetCpu,
       bus7 => io_bus7, wired_out7 => spi_wired_out7, wired_done7 => spi_wired_done7,
       irq_spi => irq7_spi,
       touch_active => touch_active, touch_x => touch_x, touch_y => touch_y,
-      fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data
+      fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data,
+      fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata
    );
 
    itimer9 : entity work.gba_timer
@@ -2711,8 +2773,12 @@ begin
    -- visibly useful without introducing a second video transport mode.
    g_no_gpu2d_b : if GPU2D_B_ENABLE = 0 generate
    begin
-      g2db_wired_out <= (others => '0');
-      g2db_wired_done <= '0';
+      igpu2d_b_register_shadow : entity work.nds_gpu2d_register_shadow
+      port map
+      (
+         clk => clk1x, reset => resetCpu, gb_bus => io_bus9b,
+         wired_out => g2db_wired_out, wired_done => g2db_wired_done
+      );
       line_busy_b <= '0';
       epfill_busy_b <= '0';
       pclr_busy_b <= '0';

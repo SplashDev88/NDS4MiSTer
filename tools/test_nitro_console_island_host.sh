@@ -11,6 +11,8 @@ python3 "$script_dir/test_sound_fetch_state_packing.py"
 "$script_dir/test_nds_sound_vhdl_analyze.sh"
 python3 "$script_dir/test_cache_tag_packing.py"
 "$script_dir/test_nds_cache_vhdl_analyze.sh"
+"$script_dir/test_nds_gpu2d_register_shadow.sh"
+"$script_dir/test_nitro_firmware_vhdl.sh"
 
 "$script_dir/test_extract_melonds_freebios.sh"
 freebios7_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.vhd")"
@@ -60,6 +62,16 @@ run_sv tb_nds_nitro_fb_side_by_side \
 run_sv tb_nds_nitro_fb_telemetry \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
     "$repo_dir/rtl/tb_nds_nitro_fb_telemetry.sv"
+
+run_sv tb_nds_h3d_plane_reader \
+    "$repo_dir/rtl/nds_h3d_plane_reader.sv" \
+    "$repo_dir/rtl/tb_nds_h3d_plane_reader.sv"
+
+run_sv tb_nds_h3d_sparse_phase_cdc \
+    "$repo_dir/rtl/nds_h3d_event_async_fifo.sv" \
+    "$repo_dir/rtl/nds_gx_fifo_packet_frontend.sv" \
+    "$repo_dir/rtl/nds_h3d_frame_record_cdc.sv" \
+    "$repo_dir/rtl/tb_nds_h3d_sparse_phase_cdc.sv"
 
 run_sv tb_nds_nitro_arm9_math_unit \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
@@ -191,9 +203,15 @@ grep -Fq 'ibios7 : entity work.nds_nitro_freebios7' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
 grep -Fq 'ibios9 : entity work.nds_nitro_freebios9' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
-# In 3D-plane mode BG/OBJ traffic remains local to the FPGA; only LCDC texture
-# uploads cross to HPS. Pin that filter and the local-write acceptance seam.
-grep -Fq 'h3d_vram9_source_address(27 downto 20) = x"68"' \
+# Engine-B replay mirrors the complete VRAM aperture plus both 2D register
+# banks and palette/OAM. Pin those source filters and the local-write seam.
+grep -Fq 'h3d_vram9_source_address(27 downto 24) = x"6"' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq '(low >= 16#1000# and low <= 16#106F#)' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq '16#1000000# + pal_addr * 4' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq '16#3000000# + oam_addr * 4' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
 grep -Fq 'vram9_ena and not vram9_rnw and h3d_vram9_needed_by_h3d;' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
@@ -286,10 +304,16 @@ grep -Fq 'wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : 
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq 'h3d_control_release, h3d_record_source_active, h3d_console_release,' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
-grep -Fq 'h3d_gpu_source_address <= io_bus9.Adr;' \
+grep -Fq 'h3d_gpu_source_address <=' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
-grep -Fq "hblank_pulse => '0'" \
+grep -Fq '      io_bus9.Adr;' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq 'hblank_pulse => drawline' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq '.SPARSE_HBLANK(1' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.SCANLINE_TAGS(1' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq ".external_frame_mode(1'b0), .external_frame_publish(1'b0)" \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 # The measured one-engine fit diagnostic keeps timing-critical engine A in

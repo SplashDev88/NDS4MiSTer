@@ -20,6 +20,7 @@ module tb_nds_nitro_fb_telemetry;
     logic [31:0] telemetry_session = 32'd1;
     logic pf_tgl = 0, pf_scr = 0, pf_bank = 0;
     logic [1:0] pf_frame_bank = 0;
+    logic pf_external = 0;
     logic [7:0] pf_line = 0;
     logic [8:0] lb_raddr = 0;
     wire [35:0] lb_q;
@@ -46,6 +47,7 @@ module tb_nds_nitro_fb_telemetry;
         .dbg4(18'd0), .dbg5(18'd0), .dbg6(18'd0), .dbg7(18'd0),
         .dbg8(18'd0), .dbg9(18'd0), .dbg10(18'd0), .dbg11(18'd0),
         .pf_tgl, .pf_scr, .pf_line, .pf_bank, .pf_frame_bank,
+        .pf_external,
         .published_frame_toggle, .published_frame_bank, .lb_raddr, .lb_q,
         .fb5_addr, .fb5_din, .fb5_req, .fb5_next, .fb5_ready,
         .fb6_addr, .fb6_req, .fb6_dout(64'd0),

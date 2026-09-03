@@ -34,6 +34,8 @@ constexpr std::uint32_t DiagnosticMagic = 0x31563348u; // H3V1
 constexpr std::uint16_t DiagnosticVersion = 1;
 constexpr std::uint16_t DiagnosticSize = DiagnosticEntryBytes;
 constexpr std::uint32_t DiagnosticCrcInitial = 0xffffffffu;
+constexpr std::uint32_t RecordScanlineValid = 1u << 29;
+constexpr std::uint32_t RecordScanlineMask = 0x1ffu << 20;
 
 enum PacketFlag : std::uint32_t {
     FlagContinuation = 1u << 0,
@@ -141,6 +143,17 @@ constexpr std::uint8_t record_tag(const Record& record)
 constexpr std::uint8_t record_byte_enable(const Record& record)
 {
     return static_cast<std::uint8_t>((record.metadata >> 16) & 0x0fu);
+}
+
+constexpr bool record_has_scanline(const Record& record)
+{
+    return (record.metadata & RecordScanlineValid) != 0;
+}
+
+constexpr std::uint16_t record_scanline(const Record& record)
+{
+    return static_cast<std::uint16_t>(
+        (record.metadata & RecordScanlineMask) >> 20);
 }
 
 constexpr std::uint32_t make_record_metadata(

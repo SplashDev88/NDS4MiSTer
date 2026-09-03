@@ -553,6 +553,63 @@ int main()
             die("changed plane overwrote the cached live bank");
     }
 
+    {
+        Fixture fixture(31);
+        fixture.header->accepted_session = 31;
+        std::vector<std::uint32_t> plane(PlanePixels, 0x1f010203u);
+        std::vector<std::uint32_t> screen(PlanePixels);
+        std::vector<std::uint32_t> bank0(PlanePixels);
+        std::vector<std::uint32_t> bank1(PlanePixels);
+        std::vector<std::uint32_t> engine_b(
+            EngineBBankCount * (EngineBBankStride / 4), 0xfeedfaceu);
+        for (std::size_t index = 0; index < screen.size(); ++index)
+            screen[index] = 0x1f000000u |
+                static_cast<std::uint32_t>(index & 0x003f3f3fu);
+
+        PlanePublisher publisher(
+            *fixture.header, bank0.data(), bank1.data(), false,
+            engine_b.data());
+        if (!publisher.publish(
+                31, 1, plane.data(), nullptr, screen.data(), true))
+            die("composite Engine-B publication failed");
+        if (publisher.last_store_count() != PlanePixels * 2)
+            die("composite publication did not initialize both planes");
+        if (fixture.header->frame.format != PixelFormatRgb666A5EngineB ||
+            fixture.header->frame.bank != 6)
+            die("composite descriptor did not encode plane/B bank/screen");
+        const auto engine_b_bank1 = EngineBBankStride / 4;
+        for (std::size_t index = 0; index < screen.size(); ++index) {
+            if (engine_b[engine_b_bank1 + index] !=
+                    (pack_melonds_pixel(screen[index]) & 0x0003ffffu))
+                die("Engine-B screen pixel conversion is wrong");
+        }
+
+        fixture.header->frame_ack_sequence = 2;
+        if (!publisher.publish(
+                31, 2, plane.data(), nullptr, screen.data(), false) ||
+            fixture.header->frame.bank != 1 ||
+            publisher.last_store_count() != PlanePixels * 2)
+            die("composite publisher did not alternate both banks");
+
+        fixture.header->frame_ack_sequence = 4;
+        if (!publisher.publish(
+                31, 3, plane.data(), nullptr, screen.data(), true) ||
+            fixture.header->frame.bank != 6 ||
+            publisher.last_store_count() != 0)
+            die("unchanged composite frame rewrote shared memory");
+
+        constexpr std::size_t ChangedScreenPixel = 5678;
+        screen[ChangedScreenPixel] ^= 1u;
+        fixture.header->frame_ack_sequence = 6;
+        if (!publisher.publish(
+                31, 4, plane.data(), nullptr, screen.data(), false) ||
+            publisher.last_store_count() != 16 ||
+            engine_b[ChangedScreenPixel] !=
+                (pack_melonds_pixel(screen[ChangedScreenPixel]) &
+                 0x0003ffffu))
+            die("dirty Engine-B cache line was not updated independently");
+    }
+
     std::cout << "H3D_ABI_TEST_PASS\n";
     return 0;
 }

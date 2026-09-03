@@ -602,22 +602,36 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
     end
 end
 
-// Direct HLE boot still probes SPI firmware.  The first beta intentionally has
-// no RTC/firmware service; acknowledge a zero word one clk1x later, matching
-// the inert fixture used by the focused donor simulation.
-wire [15:0] fw_addr_unused;
+// Direct HLE boot still probes SPI firmware.  This used to acknowledge every
+// fetch with a zero word, which the ARM7 reads as an all-zero flash.  Measured
+// against melonDS with the same stub applied: Pokemon Pearl then renders one
+// flat colour forever while New Super Mario Bros. is completely unaffected --
+// the exact split observed on hardware.  Pearl fetches the wifi AP-config and
+// user-settings pages, which are CRC16 protected, and will not proceed without
+// them.  nds_nitro_firmware stores just the two regions games actually read
+// (2 KB of the 128 KB image) in block RAM, which is the resource this nearly
+// ALM-full design has spare.
+// It is a writable store, not a ROM: Pearl page-programs the flash during boot
+// and hangs if those writes are discarded -- indistinguishably from the zero
+// stub, which is exactly how the first read-only attempt failed.
+// Writable-firmware fix contributed by InsaneFriend (GitHub: saneFriend).
+wire [15:0] fw_addr;
 wire fw_req;
-logic fw_done;
-logic [31:0] fw_data;
-always_ff @(posedge clk1x or posedge console_reset_1x) begin
-    if (console_reset_1x) begin
-        fw_done <= 1'b0;
-        fw_data <= 32'd0;
-    end else begin
-        fw_done <= fw_req;
-        fw_data <= 32'd0;
-    end
-end
+wire fw_done;
+wire [31:0] fw_data;
+wire fw_wr;
+wire [1:0] fw_wlane;
+wire [7:0] fw_wdata;
+nds_nitro_firmware firmware (
+    .clk(clk1x),
+    .fw_addr(fw_addr),
+    .fw_req(fw_req),
+    .fw_done(fw_done),
+    .fw_data(fw_data),
+    .fw_wr(fw_wr),
+    .fw_wlane(fw_wlane),
+    .fw_wdata(fw_wdata)
+);
 
 ////////////////////////////  SDRAM  ////////////////////////////////////
 
@@ -1049,7 +1063,7 @@ wire [27:1] fb5_addr, fb6_addr;
 wire [63:0] fb5_din, fb6_dout;
 wire fb5_req, fb5_next, fb5_ready;
 wire fb6_req, fb6_valid, fb6_ready;
-logic pf_tgl, pf_scr, pf_bank;
+logic pf_tgl, pf_scr, pf_bank, pf_external;
 logic [1:0] pf_frame_bank;
 logic [7:0] pf_line;
 logic [8:0] lb_raddr;
@@ -1057,6 +1071,10 @@ wire [35:0] lb_q;
 wire fb_published_frame_toggle;
 wire [1:0] fb_published_frame_bank;
 logic effective_3d_frame_toggle;
+logic h3d_external_screen_toggle;
+wire [1:0] h3d_full_frame_bank;
+wire h3d_full_frame_screen;
+wire h3d_external_screen_adopted_toggle;
 wire [7:0] h3d_scanout_late_count;
 wire [9:0] h3d_fb_fault_flags;
 wire [27:0] h3d_fb_bank_diagnostic;
@@ -1168,8 +1186,9 @@ wire h3d_pixel_descriptor_valid, h3d_pixel_descriptor_pending;
 wire [31:0] h3d_pixel_descriptor_sequence, h3d_pixel_descriptor_frame;
 wire h3d_pixel_descriptor_bank;
 wire h3d_full_frame_publish;
-wire [1:0] h3d_full_frame_bank;
-wire h3d_full_frame_adopted;
+logic h3d_full_frame_adopted;
+logic [1:0] h3d_external_adopt_sync;
+logic h3d_external_adopt_seen;
 
 wire h3d_legacy_busy, h3d_legacy_command_accepted;
 wire [63:0] h3d_legacy_dout;
@@ -1221,7 +1240,6 @@ wire [1:0] h3d_vram7_write_access;
 wire [3:0] h3d_vram7_write_byte_enable;
 wire [63:0] h3d_vram7_write_timestamp;
 wire h3d_hblank_valid, h3d_hblank_ready;
-wire h3d_hblank_ready_unused;
 wire [8:0] h3d_hblank_line;
 wire [31:0] h3d_hblank_frame;
 wire [63:0] h3d_hblank_timestamp;
@@ -1470,7 +1488,7 @@ nds_nitro_fb_ddr3 #(
     .dbg4(18'd0),.dbg5(18'd0),.dbg6(18'd0),.dbg7(18'd0),
     .dbg8(18'd0),.dbg9(18'd0),.dbg10(18'd0),.dbg11(18'd0),
 `endif
-    .pf_tgl,.pf_scr,.pf_line,.pf_bank,.pf_frame_bank,
+    .pf_tgl,.pf_scr,.pf_line,.pf_bank,.pf_frame_bank,.pf_external,
     .published_frame_toggle(fb_published_frame_toggle),
     .published_frame_bank(fb_published_frame_bank),
     .scanout_late_count(h3d_scanout_late_count),
@@ -1482,7 +1500,7 @@ nds_nitro_fb_ddr3 #(
 );
 nds_nitro_video_scanout scanout (
     .clk_video,.reset(video_output_reset),.pf_tgl,.pf_scr,.pf_line,.pf_bank,
-    .pf_frame_bank,
+    .pf_frame_bank,.pf_external,
     .layout_select(video_layout_select),
     .screen_order_select(video_screen_order_select),
     .gap_select(video_gap_select),.fps_select(video_fps_select),
@@ -1492,11 +1510,44 @@ nds_nitro_video_scanout scanout (
     .gap_active(video_gap_active),.fps_active(video_fps_active),
     .published_frame_toggle(fb_published_frame_toggle),
     .published_frame_bank(fb_published_frame_bank),
+    .external_screen_toggle(h3d_external_screen_toggle),
+    .external_screen_bank(h3d_full_frame_bank),
+    .external_screen_select(h3d_full_frame_screen),
+    .external_screen_adopted_toggle(h3d_external_screen_adopted_toggle),
     .effective_3d_frame_toggle,
     .lb_raddr,.lb_q,.ce_pixel(video_ce),.de(video_de),
     .hsync(video_hs),.vsync(video_vs),
     .red(video_r),.green(video_g),.blue(video_b)
 );
+
+// The composite descriptor owns one ARM-rendered physical screen until the
+// video clock adopts it at a frame boundary. Convert the reader's DDR pulse
+// to a stable cross-domain toggle, then return one DDR-domain adoption pulse
+// so the descriptor/DDR bank cannot be recycled early.
+`ifdef NDS_HYBRID_3D
+always_ff @(posedge ddr_clk) begin
+    if (bridge_reset_ddr) begin
+        h3d_external_screen_toggle <= 1'b0;
+        h3d_external_adopt_sync <= 2'b00;
+        h3d_external_adopt_seen <= 1'b0;
+        h3d_full_frame_adopted <= 1'b0;
+    end else begin
+        if (h3d_full_frame_publish)
+            h3d_external_screen_toggle <= ~h3d_external_screen_toggle;
+        h3d_external_adopt_sync <=
+            {h3d_external_adopt_sync[0],
+             h3d_external_screen_adopted_toggle};
+        h3d_full_frame_adopted <=
+            h3d_external_adopt_sync[1] != h3d_external_adopt_seen;
+        if (h3d_external_adopt_sync[1] != h3d_external_adopt_seen)
+            h3d_external_adopt_seen <= h3d_external_adopt_sync[1];
+    end
+end
+`else
+always_comb h3d_external_screen_toggle = 1'b0;
+assign h3d_full_frame_bank = 2'd0;
+assign h3d_full_frame_screen = 1'b0;
+`endif
 
 `ifdef NDS_HYBRID_3D
 // -------------------------------------------------------------------------
@@ -1532,7 +1583,9 @@ nds_h3d_control_init #(
 // Normalize the held clk1x GPU/VRAM streams, retain their architectural
 // order, and cross complete frame records and boundary tokens into DDR.
 nds_h3d_frame_record_cdc #(
-    .ASYNC_LGDEPTH(4)
+    .ASYNC_LGDEPTH(4),
+    .SPARSE_HBLANK(1'b1),
+    .SCANLINE_TAGS(1'b1)
 ) h3d_record_cdc (
     .source_clk(clk1x), .ddr_clk(ddr_clk),
     .reset(bridge_reset_ddr), .session_flush(~h3d_control_release),
@@ -1556,16 +1609,13 @@ nds_h3d_frame_record_cdc #(
     .arm7_vram_byte_enable(h3d_vram7_write_byte_enable),
     .arm7_vram_data(h3d_vram7_write_data),
     .arm7_vram_timestamp(h3d_vram7_write_timestamp),
-    // The released hybrid keeps both timing-sensitive 2D engines in FPGA
-    // logic and publishes only the 3D plane from HPS.  HBlank records were
-    // required by the retired full-ARM-video shadow, but production consumed
-    // them only as continuity markers.  A complex NSMB map scene proved that
-    // their 263-per-frame queue can overflow during a transient packet stall
-    // and fail-stop the otherwise healthy console.  Retire every marker at
-    // its source and omit it from the HPS stream; native FPGA HDMA timing is
-    // unchanged, while the redundant 512-entry MLAB queue synthesizes away.
-    .hblank_valid(1'b0),
-    .hblank_ready(h3d_hblank_ready_unused),
+    // Engine B needs LCD timing, but the former 263-record-per-frame stream
+    // could overflow during an HPS stall. Sparse mode accepts the source on
+    // every line, forwards only frame-start/visible-end markers through a
+    // two-entry skid queue, and tags intervening state writes with their
+    // scanline. Native FPGA HDMA remains authoritative for Engine A.
+    .hblank_valid(h3d_hblank_valid),
+    .hblank_ready(h3d_hblank_ready),
     .hblank_line(h3d_hblank_line),
     .hblank_frame(h3d_hblank_frame),
     .hblank_timestamp(h3d_hblank_timestamp),
@@ -1589,8 +1639,6 @@ nds_h3d_frame_record_cdc #(
     .boundary_ready(h3d_boundary_ready),
     .boundary_frame(h3d_boundary_frame)
 );
-
-assign h3d_hblank_ready = 1'b1;
 
 nds_h3d_frame_packet_writer #(
     .CONTROL_BASE_WORD(H3D_CONTROL_WORD),
@@ -1758,6 +1806,7 @@ nds_h3d_plane_reader #(
     .pixel_descriptor_bank(h3d_pixel_descriptor_bank),
     .full_frame_publish(h3d_full_frame_publish),
     .full_frame_bank(h3d_full_frame_bank),
+    .full_frame_screen(h3d_full_frame_screen),
     .full_frame_adopted(h3d_full_frame_adopted),
     .ddram_active(h3d_plane_ddr_active),
     .ddram_read(h3d_plane_read), .ddram_write(h3d_plane_write),
@@ -1918,8 +1967,9 @@ nds_nitro_console_wrap #(
     .backup_access_active(backup_access_active),
     .backup_cache_ready(backup_cache_ready_sync_1x),
     .backup_run_ready(save_run_ready_sync_1x),
-    .fw_addr(fw_addr_unused),.fw_req(fw_req),
+    .fw_addr(fw_addr),.fw_req(fw_req),
     .fw_done(fw_done),.fw_data(fw_data),
+    .fw_wr(fw_wr),.fw_wlane(fw_wlane),.fw_wdata(fw_wdata),
     .bios7_load_addr(12'd0),.bios7_load_data(32'd0),
     .bios7_load_be(4'd0),.bios7_load_we(1'b0),.bios7_load_done(1'b0),
     .bios9_load_addr(10'd0),.bios9_load_data(32'd0),

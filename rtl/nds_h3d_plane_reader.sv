@@ -112,6 +112,7 @@ module nds_h3d_plane_reader #(
     // it adopted this publication, so HPS cannot recycle the live bank.
     output logic        full_frame_publish,
     output logic [1:0]  full_frame_bank,
+    output logic        full_frame_screen,
     input  logic        full_frame_adopted,
 
     // MiSTer DDR client port.  command_accepted means that the command has
@@ -134,6 +135,7 @@ module nds_h3d_plane_reader #(
     localparam logic [31:0] EXPECTED_WIDTH_HEIGHT = 32'h00c00100;
     localparam logic [31:0] EXPECTED_STRIDE = 32'd1024;
     localparam logic [31:0] FULL_FRAME_PIXEL_FORMAT = 32'd2;
+    localparam logic [31:0] COMPOSITE_ENGINE_B_PIXEL_FORMAT = 32'd3;
     localparam logic [7:0] LINE_BURST_WORDS = 8'd128;
     localparam integer REQUEST_WIDTH = 89;
 
@@ -316,7 +318,9 @@ module nds_h3d_plane_reader #(
     logic [31:0] descriptor_meta_frame_ddr;
     logic descriptor_meta_bank_ddr;
     logic descriptor_meta_full_frame_ddr;
+    logic descriptor_meta_composite_ddr;
     logic [1:0] descriptor_meta_full_bank_ddr;
+    logic descriptor_meta_full_screen_ddr;
     logic descriptor_activation_pending_ddr;
     logic descriptor_ready_toggle_ddr;
     logic descriptor_active_toggle_ddr;
@@ -379,11 +383,15 @@ module nds_h3d_plane_reader #(
     wire candidate_is_full_frame =
         descriptor_word2[31:0] <= 32'd3 &&
         descriptor_word2[63:32] == FULL_FRAME_PIXEL_FORMAT;
+    wire candidate_is_composite =
+        descriptor_word2[31:0] <= 32'd7 &&
+        descriptor_word2[63:32] == COMPOSITE_ENGINE_B_PIXEL_FORMAT;
     wire candidate_fields_valid =
         descriptor_word0[31:0] == candidate_sequence &&
         descriptor_word0[63:32] == 32'd0 &&
         descriptor_word1[31:0] == ddr_session &&
-        (candidate_is_plane || candidate_is_full_frame) &&
+        (candidate_is_plane || candidate_is_full_frame ||
+         candidate_is_composite) &&
         descriptor_word3[31:0] == EXPECTED_WIDTH_HEIGHT &&
         descriptor_word3[63:32] == EXPECTED_STRIDE;
 
@@ -529,6 +537,7 @@ module nds_h3d_plane_reader #(
             full_ack_pending <= 1'b0;
             full_frame_publish <= 1'b0;
             full_frame_bank <= 2'd0;
+            full_frame_screen <= 1'b0;
             active_descriptor_valid <= 1'b0;
             active_descriptor_sequence <= 32'd0;
             active_descriptor_frame <= 32'd0;
@@ -542,7 +551,9 @@ module nds_h3d_plane_reader #(
             descriptor_meta_frame_ddr <= 32'd0;
             descriptor_meta_bank_ddr <= 1'b0;
             descriptor_meta_full_frame_ddr <= 1'b0;
+            descriptor_meta_composite_ddr <= 1'b0;
             descriptor_meta_full_bank_ddr <= 2'd0;
+            descriptor_meta_full_screen_ddr <= 1'b0;
             descriptor_activation_pending_ddr <= 1'b0;
             descriptor_ready_toggle_ddr <= 1'b0;
             descriptor_active_toggle_ddr <= 1'b0;
@@ -606,7 +617,9 @@ module nds_h3d_plane_reader #(
                             descriptor_meta_frame_ddr <= 32'd0;
                             descriptor_meta_bank_ddr <= 1'b0;
                             descriptor_meta_full_frame_ddr <= 1'b0;
+                            descriptor_meta_composite_ddr <= 1'b0;
                             descriptor_meta_full_bank_ddr <= 2'd0;
+                            descriptor_meta_full_screen_ddr <= 1'b0;
                             descriptor_ready_toggle_ddr <=
                                 !descriptor_ready_toggle_ddr;
                             session_invalidate_pending <= 1'b0;
@@ -632,9 +645,12 @@ module nds_h3d_plane_reader #(
                         // banks remain mutually coherent in both domains.
                         descriptor_active_toggle_ddr <=
                             !descriptor_active_toggle_ddr;
-                        if (descriptor_meta_full_frame_ddr) begin
+                        if (descriptor_meta_full_frame_ddr ||
+                            descriptor_meta_composite_ddr) begin
                             full_frame_publish <= 1'b1;
                             full_frame_bank <= descriptor_meta_full_bank_ddr;
+                            full_frame_screen <=
+                                descriptor_meta_full_screen_ddr;
                             full_ack_pending <= 1'b1;
                             state <= IDLE;
                         end else begin
@@ -780,8 +796,15 @@ module nds_h3d_plane_reader #(
                                     descriptor_word2[0];
                                 descriptor_meta_full_frame_ddr <=
                                     candidate_is_full_frame;
+                                descriptor_meta_composite_ddr <=
+                                    candidate_is_composite;
                                 descriptor_meta_full_bank_ddr <=
-                                    descriptor_word2[1:0];
+                                    candidate_is_composite ?
+                                        {1'b0,descriptor_word2[1]} :
+                                        descriptor_word2[1:0];
+                                descriptor_meta_full_screen_ddr <=
+                                    candidate_is_composite &&
+                                    descriptor_word2[2];
                                 descriptor_ready_toggle_ddr <=
                                     !descriptor_ready_toggle_ddr;
                                 descriptor_activation_pending_ddr <= 1'b1;
@@ -817,8 +840,15 @@ module nds_h3d_plane_reader #(
                                 descriptor_word2[0];
                             descriptor_meta_full_frame_ddr <=
                                 candidate_is_full_frame;
+                            descriptor_meta_composite_ddr <=
+                                candidate_is_composite;
                             descriptor_meta_full_bank_ddr <=
-                                descriptor_word2[1:0];
+                                candidate_is_composite ?
+                                    {1'b0,descriptor_word2[1]} :
+                                    descriptor_word2[1:0];
+                            descriptor_meta_full_screen_ddr <=
+                                candidate_is_composite &&
+                                descriptor_word2[2];
                             descriptor_ready_toggle_ddr <=
                                 !descriptor_ready_toggle_ddr;
                             descriptor_activation_pending_ddr <= 1'b1;

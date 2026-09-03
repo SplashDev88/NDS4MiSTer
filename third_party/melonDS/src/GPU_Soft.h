@@ -110,6 +110,7 @@ private:
     u32* Framebuffer[2][2];
     bool PackedOutput = false;
     bool LineCache = false;
+    bool EngineBOnly = false;
     bool StageProfileEnabled = false;
     ExternalRendererStageProfile StageProfile {};
 
