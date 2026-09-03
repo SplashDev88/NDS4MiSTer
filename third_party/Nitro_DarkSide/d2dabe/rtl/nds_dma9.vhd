@@ -61,15 +61,19 @@ entity nds_dma9 is
       -- a rising edge, or arming a channel while it is high, creates a request.
       -- Keeping it high lets the current transfer cross 112-word boundaries,
       -- but does not make a repeat channel restart after total completion.
-      -- gx_write_ready is the
-      -- lossless transport credit for the word currently presented to GXFIFO;
-      -- deasserting it suppresses io_fast_ena and holds the exact write.
+      -- gx_write_ready is the lossless hybrid transport credit for the word
+      -- currently presented by the DMA IO fast lane.  The name is retained
+      -- for source compatibility with the original GXFIFO-only path, but the
+      -- handshake now covers every DMA IO write: the downstream recorder
+      -- filters ordinary IO and retains GXFIFO plus the 2D/VRAM-map display
+      -- state needed by the ARM renderer.  Deasserting it suppresses
+      -- io_fast_ena and holds the exact write.
       gx_supported   : in std_logic := '0';
       trig_gx        : in std_logic := '0';
       gx_write_ready : in std_logic := '1';
-      -- Held request, independent of gx_write_ready.  The product event gate
-      -- uses this as ready/valid `valid`; io_fast_ena below remains the actual
-      -- peripheral accept and is therefore qualified by gx_write_ready.
+      -- Held DMA IO-write request, independent of gx_write_ready.  The product
+      -- event gate uses this as ready/valid `valid`; io_fast_ena below remains
+      -- the actual peripheral accept and is qualified by gx_write_ready.
       gx_write_valid : out std_logic := '0';
 
       -- membus grant: dma_on pauses the CPU, the bus is ours once idle
@@ -224,15 +228,6 @@ architecture arch of nds_dma9 is
       return a(27 downto 24) = 6;
    end function;
 
-   -- ARM9 GXFIFO is the 0x04000400..0x0400043F write aperture. Mode-7
-   -- software normally uses 0x04000400 with destination control fixed; keep
-   -- the complete architectural aperture backpressured so no DMA variant can
-   -- outrun the hybrid event queue.
-   function is_gxfifo(a : unsigned(27 downto 0)) return boolean is
-   begin
-      return a >= unsigned'(x"4000400") and a < unsigned'(x"4000440");
-   end function;
-
    -- byte enables for an access of this size at this address, matching the
    -- decode nds_membus9 applies on the slow path
    function be_of(a : unsigned(27 downto 0); w32 : std_logic) return std_logic_vector is
@@ -299,8 +294,13 @@ begin
    -- channel register -> active mux -> nds_top's dma_bus_on mux -> the target's
    -- decode -> back here to be captured. That is the shape of a single-cycle bus
    -- and it is the thing to watch in the fit, not a functional risk.
+   -- All DMA IO writes share the existing held GXFIFO request lane.  The
+   -- downstream H3D recorder rejects unrelated IO addresses immediately, so
+   -- this adds no second queue or qualifier cone to the already-full FPGA.
+   -- Most importantly, HDMA writes to BGx scroll/control registers can no
+   -- longer bypass the Engine-B shadow while their local FPGA effects retire.
    gx_write_valid_s <= '1' when state = WR and
-                               is_gxfifo(ch(active).cur_dst) else '0';
+                               is_io(ch(active).cur_dst) else '0';
    gx_write_valid <= gx_write_valid_s;
    io_fast_ena <= '1' when (state = RD and is_io(ch(active).cur_src)) or
                            (state = WR and is_io(ch(active).cur_dst) and
@@ -699,8 +699,7 @@ begin
 
                when WR =>
                   if (is_io(ch(active).cur_dst)) then
-                     if (is_gxfifo(ch(active).cur_dst) and
-                         gx_write_ready = '0') then
+                     if (gx_write_ready = '0') then
                         -- io_fast_ena is suppressed too, so the sink cannot
                         -- sample this payload twice while transport is full.
                         null;

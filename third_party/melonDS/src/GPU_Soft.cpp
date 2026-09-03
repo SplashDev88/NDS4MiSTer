@@ -123,6 +123,7 @@ void SoftRenderer::PostSavestate()
 void SoftRenderer::SetRenderSettings(RendererSettings& settings)
 {
     PackedOutput = settings.PackedOutput;
+    EngineBOnly = settings.EngineBOnly;
     StageProfileEnabled = settings.StageProfile;
     if (LineCache != settings.LineCache)
     {
@@ -385,6 +386,35 @@ void SoftRenderer::DrawScanline(u32 line)
         dstB = &Framebuffer[BackBuffer][0][dstoffset];
     }
 
+    // The split-video renderer supplies only the missing GPU2D-B screen.
+    // Keep its physical top/bottom routing through the ordinary ScreenSwap
+    // mapping above, but do not touch engine A or the independent 3D worker.
+    if (EngineBOnly)
+    {
+        line = GPU.VCount;
+        if (line < 192)
+        {
+            const auto engineBStarted = profileStarted(StageProfileEnabled);
+            Rend2D_B->DrawScanline(line);
+            if (StageProfileEnabled)
+                StageProfile.EngineBNs += profileElapsedNs(engineBStarted);
+            const auto compositeBStarted =
+                profileStarted(StageProfileEnabled);
+            DrawScanlineB(line, dstB);
+            if (StageProfileEnabled)
+                StageProfile.CompositeBNs +=
+                    profileElapsedNs(compositeBStarted);
+            if (!GPU.ScreensEnabled)
+                memset(dstB, 0, 256 * sizeof(u32));
+        }
+        if (StageProfileEnabled)
+        {
+            ++StageProfile.Scanlines;
+            StageProfile.ScanlineTotalNs += profileElapsedNs(scanlineStarted);
+        }
+        return;
+    }
+
     // the position used for drawing operations is based on VCOUNT
     line = GPU.VCount;
     if (line < 192)
@@ -636,6 +666,11 @@ void SoftRenderer::DrawScanline(u32 line)
 
 void SoftRenderer::DrawSprites(u32 line)
 {
+    if (EngineBOnly)
+    {
+        Rend2D_B->DrawSprites(line);
+        return;
+    }
     SpriteCacheLine = ~0u;
     PreparedLineStateLine = ~0u;
     SpriteDrawSkipped[0] = false;

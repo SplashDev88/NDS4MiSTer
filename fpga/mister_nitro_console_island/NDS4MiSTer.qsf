@@ -17,13 +17,11 @@ set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION OFF
 set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING OFF
 set_global_assignment -name PLACEMENT_EFFORT_MULTIPLIER 2.0
 set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
-# Remove equivalent redundant logic before placement. Unlike the rejected
-# seed-2 experiment, normal routing and hold repair remain enabled for a
-# hardware-safe image. Mux restructuring and pre-mapping resynthesis were
-# measured together and rejected because they enlarged this design.
-set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
-set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
-set_global_assignment -name OPTIMIZE_HOLD_TIMING "ALL PATHS"
+# Match the fitter policy of the earlier successfully routed Engine-B image.
+# The newer redundant-logic/router overrides repeatedly placed but terminated
+# after more than forty minutes of hold-delay congestion. The sparse timing
+# transport already removes the obsolete 512-line queue, so those overrides
+# are neither needed for capacity nor worth the routing regression here.
 set_global_assignment -name SEED 2
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
@@ -337,6 +335,7 @@ set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rt
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_merge.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_gpu2d.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_gpu2d_fast.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_gpu2d_register_shadow.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_gpu_timing.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma7.vhd

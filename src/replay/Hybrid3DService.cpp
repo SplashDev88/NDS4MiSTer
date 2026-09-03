@@ -80,6 +80,7 @@ namespace frame_packet = nds4mister::h3d::frame_packet;
 constexpr std::size_t MappingBytes = 0x400000;
 constexpr std::size_t Bank0Offset = 0x100000;
 constexpr std::size_t Bank1Offset = 0x140000;
+constexpr std::size_t EngineBFramebufferOffset = 0x180000;
 constexpr std::size_t FramebufferOffset = 0x200000;
 constexpr off_t PhysicalBase = 0x3fc00000;
 constexpr std::size_t PublicationMappingBytes = MappingBytes - Bank0Offset;
@@ -167,6 +168,10 @@ void prioritize_current_thread_for_publication()
 
 static_assert(Bank0Offset + PlaneBytes <= Bank1Offset);
 static_assert(Bank1Offset + PlaneBytes <= MappingBytes);
+static_assert(
+    EngineBFramebufferOffset +
+        nds4mister::h3d::EngineBBankCount *
+            nds4mister::h3d::EngineBBankStride <= FramebufferOffset);
 static_assert(
     FramebufferOffset +
         nds4mister::h3d::FullFrameBankCount *
@@ -718,7 +723,8 @@ public:
         nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry = nullptr,
         void* publication_mapping = nullptr,
         bool publication_write_combined = false,
-        bool direct_plane_publication = false)
+        bool direct_plane_publication = false,
+        bool arm_video_engine_b_only = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -730,7 +736,8 @@ public:
           publisher_(
               header_, publication_pointer(Bank0Offset),
               publication_pointer(Bank1Offset),
-              publication_write_combined),
+              publication_write_combined,
+              publication_pointer(EngineBFramebufferOffset)),
           full_frame_publisher_(
               header_, publication_pointer(FramebufferOffset)),
           asynchronous_plane_publication_(asynchronous_plane_publication),
@@ -740,6 +747,7 @@ public:
           pipeline_profile_enabled_(pipeline_profile_enabled),
           bind_hps_worker_cores_(bind_hps_worker_cores),
           direct_plane_publication_(direct_plane_publication),
+          arm_video_engine_b_only_(arm_video_engine_b_only),
           runtime_telemetry_(runtime_telemetry),
           texture_trace_path_(std::move(texture_trace_path))
     {
@@ -988,6 +996,15 @@ public:
     std::uint32_t arm_video_frame() const noexcept {
         return arm_video_frame_;
     }
+    bool engine_b_frame_ready_for_test() const noexcept {
+        return engine_b_latest_ready_;
+    }
+    std::uint32_t engine_b_frame_for_test() const noexcept {
+        return engine_b_latest_frame_number_;
+    }
+    int engine_b_last_line_for_test() const noexcept {
+        return arm_video_sparse_last_line_;
+    }
     std::uint32_t arm_video_pixel(
         std::size_t screen, std::size_t x, std::size_t y) const
     {
@@ -998,7 +1015,243 @@ public:
             [y * PlaneWidth + x];
     }
 
+    void dump_video_snapshot() noexcept
+    {
+        try {
+            auto engine_b_latest = std::make_unique<PlaneBuffer>();
+            auto plane_source = std::make_unique<PlaneBuffer>();
+            auto plane_ddr = std::make_unique<PlaneBuffer>();
+            auto engine_b_source = std::make_unique<PlaneBuffer>();
+            auto engine_b_ddr = std::make_unique<PlaneBuffer>();
+
+            bool engine_b_latest_valid = false;
+            bool engine_b_latest_screen = false;
+            std::uint32_t engine_b_latest_frame = 0;
+            {
+                std::lock_guard<std::mutex> lock(engine_b_mutex_);
+                engine_b_latest_valid = engine_b_latest_ready_;
+                if (engine_b_latest_valid) {
+                    std::memcpy(
+                        engine_b_latest->data(),
+                        engine_b_latest_frame_->data(), PlaneBytes);
+                    engine_b_latest_screen = engine_b_latest_screen_;
+                    engine_b_latest_frame = engine_b_latest_frame_number_;
+                }
+            }
+
+            std::uint32_t descriptor_sequence = 0;
+            std::uint32_t descriptor_frame = 0;
+            std::uint32_t descriptor_bank_word = 0;
+            std::uint32_t descriptor_format = 0;
+            std::uint32_t descriptor_width_height = 0;
+            std::uint32_t descriptor_stride = 0;
+            bool plane_source_valid = false;
+            bool engine_b_source_valid = false;
+            {
+                std::lock_guard<std::mutex> lock(publisher_call_mutex_);
+                nds4mister::h3d::device_barrier();
+                descriptor_sequence = header_.frame.sequence;
+                descriptor_frame = header_.frame.frame;
+                descriptor_bank_word = header_.frame.bank;
+                descriptor_format = header_.frame.format;
+                descriptor_width_height = header_.frame.width_height;
+                descriptor_stride = header_.frame.stride;
+                const auto plane_bank = descriptor_bank_word & 1u;
+                const auto engine_b_bank =
+                    (descriptor_bank_word >> 1) & 1u;
+                plane_source_valid = publisher_.diagnostic_copy_plane_source(
+                    plane_bank, plane_source->data());
+                engine_b_source_valid =
+                    publisher_.diagnostic_copy_engine_b_source(
+                        engine_b_bank, engine_b_source->data());
+                std::memcpy(
+                    plane_ddr->data(),
+                    mapping_ + (plane_bank ? Bank1Offset : Bank0Offset),
+                    PlaneBytes);
+                std::memcpy(
+                    engine_b_ddr->data(),
+                    mapping_ + EngineBFramebufferOffset +
+                        engine_b_bank *
+                            nds4mister::h3d::EngineBBankStride,
+                    PlaneBytes);
+                nds4mister::h3d::device_barrier();
+            }
+
+            const auto snapshot_index = ++video_snapshot_sequence_;
+            char stem[384];
+            const int stem_length = std::snprintf(
+                stem, sizeof(stem),
+                "/media/fat/NDS4MiSTer_video_%ld_s%u_f%u_%u",
+                static_cast<long>(getpid()), session_, descriptor_frame,
+                snapshot_index);
+            if (stem_length <= 0 ||
+                static_cast<std::size_t>(stem_length) >= sizeof(stem))
+                return;
+
+            const auto write_stage = [&](const char* suffix,
+                                         const PlaneBuffer& pixels,
+                                         bool valid) {
+                if (!valid) return false;
+                char path[448];
+                const int length = std::snprintf(
+                    path, sizeof(path), "%s_%s.raw32", stem, suffix);
+                if (length <= 0 ||
+                    static_cast<std::size_t>(length) >= sizeof(path))
+                    return false;
+                const int fd = open(
+                    path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+                if (fd < 0) return false;
+                bool ok = write_all(
+                    fd, reinterpret_cast<const std::byte*>(pixels.data()),
+                    PlaneBytes);
+                if (ok) ok = fsync(fd) == 0;
+                if (close(fd) != 0) ok = false;
+                if (!ok) unlink(path);
+                return ok;
+            };
+
+            const bool latest_written = write_stage(
+                "engine_b_latest", *engine_b_latest,
+                engine_b_latest_valid);
+            const bool plane_source_written = write_stage(
+                "plane_source", *plane_source, plane_source_valid);
+            const bool plane_ddr_written = write_stage(
+                "plane_ddr", *plane_ddr, true);
+            const bool engine_b_source_written = write_stage(
+                "engine_b_source", *engine_b_source,
+                engine_b_source_valid);
+            const bool engine_b_ddr_written = write_stage(
+                "engine_b_ddr", *engine_b_ddr, true);
+
+            std::ostringstream report;
+            report << "NDS4MISTER_VIDEO_SNAPSHOT_V1\n"
+                   << "session=" << session_ << '\n'
+                   << "descriptor_sequence=" << descriptor_sequence << '\n'
+                   << "descriptor_frame=" << descriptor_frame << '\n'
+                   << "descriptor_bank_word=" << descriptor_bank_word << '\n'
+                   << "descriptor_plane_bank="
+                   << (descriptor_bank_word & 1u) << '\n'
+                   << "descriptor_engine_b_bank="
+                   << ((descriptor_bank_word >> 1) & 1u) << '\n'
+                   << "descriptor_engine_b_screen="
+                   << ((descriptor_bank_word >> 2) & 1u) << '\n'
+                   << "descriptor_format=" << descriptor_format << '\n'
+                   << "descriptor_width_height="
+                   << descriptor_width_height << '\n'
+                   << "descriptor_stride=" << descriptor_stride << '\n'
+                   << "engine_b_latest_valid="
+                   << (engine_b_latest_valid ? 1 : 0) << '\n'
+                   << "engine_b_latest_frame=" << engine_b_latest_frame
+                   << '\n'
+                   << "engine_b_latest_screen="
+                   << (engine_b_latest_screen ? 1 : 0) << '\n'
+                   << "plane_source_valid="
+                   << (plane_source_valid ? 1 : 0) << '\n'
+                   << "engine_b_source_valid="
+                   << (engine_b_source_valid ? 1 : 0) << '\n'
+                   << "files_written=" << latest_written << ','
+                   << plane_source_written << ',' << plane_ddr_written << ','
+                   << engine_b_source_written << ','
+                   << engine_b_ddr_written << '\n';
+
+            append_video_crc_report(
+                report, "engine_b_latest", engine_b_latest->data(),
+                engine_b_latest_valid, false, nullptr);
+            append_video_crc_report(
+                report, "plane_source", plane_source->data(),
+                plane_source_valid, true, plane_ddr->data());
+            append_video_crc_report(
+                report, "plane_ddr", plane_ddr->data(), true, false,
+                nullptr);
+            append_video_crc_report(
+                report, "engine_b_source", engine_b_source->data(),
+                engine_b_source_valid, true, engine_b_ddr->data());
+            append_video_crc_report(
+                report, "engine_b_ddr", engine_b_ddr->data(), true, false,
+                nullptr);
+
+            char report_path[448];
+            const int report_length = std::snprintf(
+                report_path, sizeof(report_path), "%s.txt", stem);
+            if (report_length <= 0 ||
+                static_cast<std::size_t>(report_length) >=
+                    sizeof(report_path))
+                return;
+            const auto contents = report.str();
+            const int fd = open(
+                report_path,
+                O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+            if (fd < 0) return;
+            bool ok = write_all(
+                fd, reinterpret_cast<const std::byte*>(contents.data()),
+                contents.size());
+            if (ok) ok = fsync(fd) == 0;
+            if (close(fd) != 0) ok = false;
+            if (!ok) {
+                unlink(report_path);
+                return;
+            }
+            std::cerr << "NDS4MISTER_VIDEO_SNAPSHOT " << report_path
+                      << '\n';
+        } catch (...) {
+            // An optional manual snapshot must never disturb emulation.
+        }
+    }
+
 private:
+    static std::uint32_t video_crc32(
+        const std::uint32_t* pixels, std::size_t count,
+        bool pack_source) noexcept
+    {
+        std::uint32_t crc = 0xffffffffu;
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto word = pack_source ?
+                nds4mister::h3d::pack_melonds_pixel(pixels[index]) :
+                pixels[index];
+            for (unsigned byte = 0; byte < 4; ++byte) {
+                crc ^= (word >> (byte * 8)) & 0xffu;
+                for (unsigned bit = 0; bit < 8; ++bit)
+                    crc = (crc >> 1) ^
+                        (0xedb88320u & (0u - (crc & 1u)));
+            }
+        }
+        return ~crc;
+    }
+
+    static void append_video_crc_report(
+        std::ostringstream& report, const char* name,
+        const std::uint32_t* pixels, bool valid, bool pack_source,
+        const std::uint32_t* comparison)
+    {
+        if (!valid) {
+            report << name << "_valid=0\n";
+            return;
+        }
+        report << name << "_valid=1\n"
+               << name << "_crc32=0x" << std::hex
+               << video_crc32(pixels, PlanePixels, pack_source)
+               << std::dec << '\n';
+        std::size_t mismatches = 0;
+        if (comparison) {
+            for (std::size_t index = 0; index < PlanePixels; ++index) {
+                const auto expected = pack_source ?
+                    nds4mister::h3d::pack_melonds_pixel(pixels[index]) :
+                    pixels[index];
+                mismatches += expected != comparison[index];
+            }
+            report << name << "_comparison_mismatches=" << mismatches
+                   << '\n';
+        }
+        for (std::size_t line = 0; line < PlaneHeight; ++line) {
+            report << name << "_line_" << line << "_crc32=0x"
+                   << std::hex
+                   << video_crc32(
+                          pixels + line * PlaneWidth, PlaneWidth,
+                          pack_source)
+                   << std::dec << '\n';
+        }
+    }
+
     struct ReplayPacket {
         frame_packet::PacketHeader header {};
         std::vector<frame_packet::Record> records;
@@ -1093,7 +1346,8 @@ private:
         // vertex on the Cortex-A9.
         nds_->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
         arm_video_shadow_ = nds4mister::ArmVideoShadow {};
-        if (asynchronous_plane_publication_ || arm_video_render_shadow_) {
+        if (asynchronous_plane_publication_ || arm_video_render_shadow_ ||
+            arm_video_engine_b_only_) {
             // Restore the measured fast ARM-video split: CPU0 rasterizes the
             // preceding 3D frame while CPU1 replays commands and draws 2D.
             // Do not also start the engine-B helper on CPU0; two renderer
@@ -1105,9 +1359,10 @@ private:
             const bool FullFrame3D = !arm_video_render_shadow_;
             melonDS::RendererSettings settings {
                 1, Threaded3D, false, false,
-                arm_video_render_shadow_,
+                arm_video_render_shadow_ || arm_video_engine_b_only_,
                 Parallel2D, arm_video_render_shadow_,
-                pipeline_profile_enabled_, FullFrame3D};
+                pipeline_profile_enabled_, FullFrame3D,
+                arm_video_engine_b_only_};
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
@@ -1144,6 +1399,11 @@ private:
         arm_video_frame_ready_ = false;
         arm_video_frame_ = 0;
         arm_video_completed_index_ = -1;
+        arm_video_sparse_frame_ = 0;
+        arm_video_sparse_last_line_ = -1;
+        engine_b_latest_ready_ = false;
+        engine_b_latest_screen_ = false;
+        engine_b_latest_frame_number_ = 0;
         pending_frame_expected_alpha_ = false;
         plane_visibility_filter_.reset();
         completed_plane_generation_ = 0;
@@ -2253,7 +2513,8 @@ private:
         // every register/palette/OAM mutation that melonDS applies below.
         // Retain its inexpensive HBlank continuity check, and retain the full
         // reconstruction for the synchronous self-test/diagnostic path.
-        if ((!asynchronous_arm_video_replay_ ||
+        if (!arm_video_engine_b_only_ &&
+            (!asynchronous_arm_video_replay_ ||
              kind == frame_packet::RecordKind::HBlank) &&
             !arm_video_shadow_.apply_compact_record(
                 record, asynchronous_arm_video_replay_ ?
@@ -2280,6 +2541,43 @@ private:
         if (!access)
             return fail(FaultBadEvent, "invalid ARM video byte enable");
 
+        // Keep the Engine B display-control diagnostic at the architectural
+        // write boundary.  The live failure can otherwise only tell us that
+        // melonDS ended with display mode zero; these counters distinguish a
+        // missing upper-half transport event from a replay/masking problem.
+        constexpr std::uint32_t EngineBDispCnt = 0x04001000u;
+        const auto access_last = access->address + access->bytes - 1u;
+        if (access->address <= EngineBDispCnt + 3u &&
+            access_last >= EngineBDispCnt) {
+            arm_video_engine_b_dispcnt_writes_.fetch_add(
+                1, std::memory_order_relaxed);
+            if (access->address <= EngineBDispCnt + 1u &&
+                access_last >= EngineBDispCnt)
+                arm_video_engine_b_dispcnt_low_writes_.fetch_add(
+                    1, std::memory_order_relaxed);
+            if (access->address <= EngineBDispCnt + 3u &&
+                access_last >= EngineBDispCnt + 2u)
+                arm_video_engine_b_dispcnt_high_writes_.fetch_add(
+                    1, std::memory_order_relaxed);
+            if (access->address == EngineBDispCnt && access->bytes == 4)
+                arm_video_engine_b_dispcnt_word_writes_.fetch_add(
+                    1, std::memory_order_relaxed);
+            if (access->value != 0)
+                arm_video_engine_b_dispcnt_nonzero_writes_.fetch_add(
+                    1, std::memory_order_relaxed);
+            if ((access->value & 0x00030000u) != 0)
+                arm_video_engine_b_display_mode_writes_.fetch_add(
+                    1, std::memory_order_relaxed);
+            arm_video_engine_b_dispcnt_value_or_.fetch_or(
+                access->value, std::memory_order_relaxed);
+            arm_video_engine_b_dispcnt_last_address_.store(
+                access->address, std::memory_order_relaxed);
+            arm_video_engine_b_dispcnt_last_value_.store(
+                access->value, std::memory_order_relaxed);
+            arm_video_engine_b_dispcnt_last_bytes_.store(
+                access->bytes, std::memory_order_relaxed);
+        }
+
         // These records describe writes that the FPGA has already accepted.
         // Feed them through melonDS's normal ARM9 memory API so GPU2D register
         // masks, palette/OAM power rules, dirty tracking, and mapped VRAM
@@ -2293,6 +2591,33 @@ private:
                 access->address, static_cast<melonDS::u16>(access->value));
         else
             nds_->ARM9Write32(access->address, access->value);
+        if (access->address <= EngineBDispCnt + 3u &&
+            access_last >= EngineBDispCnt) {
+            const auto effective = nds_->GPU.GPU2D_B.DispCnt;
+            if (!arm_video_engine_b_dispcnt_seen_ ||
+                effective != arm_video_engine_b_dispcnt_effective_) {
+                arm_video_engine_b_dispcnt_seen_ = true;
+                arm_video_engine_b_dispcnt_effective_ = effective;
+                if (arm_video_engine_b_dispcnt_transition_count_ <
+                    ArmVideoTransitionLimit) {
+                    const auto index =
+                        arm_video_engine_b_dispcnt_transition_count_++;
+                    arm_video_engine_b_dispcnt_transition_values_[index] =
+                        effective;
+                    arm_video_engine_b_dispcnt_transition_frames_[index] =
+                        replay_packet_frame_;
+                    arm_video_engine_b_dispcnt_transition_lines_[index] =
+                        frame_packet::record_has_scanline(record) ?
+                            frame_packet::record_scanline(record) : 0x1ffu;
+                    arm_video_engine_b_dispcnt_transition_addresses_[index] =
+                        access->address;
+                    arm_video_engine_b_dispcnt_transition_write_values_[index] =
+                        access->value;
+                    arm_video_engine_b_dispcnt_transition_bytes_[index] =
+                        access->bytes;
+                }
+            }
+        }
         if (access->address >= 0x05000000u &&
             access->address < 0x05000800u)
             nds_->GPU.MarkExternalRenderPalette(
@@ -2306,7 +2631,61 @@ private:
 
     bool apply_arm_video_phase(const frame_packet::Record& record)
     {
-        if (!arm_video_render_shadow_) return true;
+        if (!arm_video_engine_b_only_)
+            return apply_arm_video_phase_line(record);
+
+        auto target_line = record.address_or_aux;
+        const auto display_frame = static_cast<std::uint32_t>(record.data);
+        if (target_line >= 263)
+            return fail(FaultBadFrame, "invalid sparse LCD phase line");
+
+        if (target_line == 0) {
+            // A new line-0 marker is the only legal sparse frame restart.
+            // If an earlier visible-end marker was lost under a long HPS
+            // stall, abandon that incomplete private image and repeat the
+            // last complete Engine-B bank rather than publishing a mixture.
+            arm_video_sparse_frame_ = display_frame;
+            arm_video_sparse_last_line_ = -1;
+        } else if (!arm_video_phase_started_ ||
+                   display_frame != arm_video_sparse_frame_) {
+            return true;
+        }
+
+        // VBlank state changes do not produce pixels. Line 192 is retained
+        // because melonDS uses it to close the visible frame lifecycle.
+        target_line = std::min<std::uint32_t>(target_line, PlaneHeight);
+        if (static_cast<int>(target_line) <= arm_video_sparse_last_line_)
+            return true;
+
+        for (auto line = arm_video_sparse_last_line_ + 1;
+             line <= static_cast<int>(target_line); ++line) {
+            auto phase = record;
+            phase.address_or_aux = static_cast<std::uint32_t>(line);
+            phase.data = arm_video_sparse_frame_;
+            if (!apply_arm_video_phase_line(phase)) return false;
+            arm_video_sparse_last_line_ = line;
+        }
+        return true;
+    }
+
+    bool advance_engine_b_before_write(
+        const frame_packet::Record& record)
+    {
+        if (!arm_video_engine_b_only_ || !arm_video_phase_started_ ||
+            !frame_packet::record_has_scanline(record))
+            return true;
+        auto phase = nds4mister::arm_video::make_record(
+            nds4mister::arm_video::RecordKind::HBlank, 0, 0,
+            std::min<std::uint32_t>(
+                frame_packet::record_scanline(record), PlaneHeight),
+            arm_video_sparse_frame_);
+        return apply_arm_video_phase(phase);
+    }
+
+    bool apply_arm_video_phase_line(const frame_packet::Record& record)
+    {
+        if (!arm_video_render_shadow_ && !arm_video_engine_b_only_)
+            return true;
 
         const auto line = record.address_or_aux;
         const auto display_frame = static_cast<std::uint32_t>(record.data);
@@ -2319,7 +2698,7 @@ private:
             // state transition, but derive the first complete frame and then
             // exactly one frame per cadence. Publication swaps only completed
             // banks, so omitted frames repeat the previous valid image.
-            arm_video_render_this_frame_ =
+            arm_video_render_this_frame_ = arm_video_engine_b_only_ ||
                 !asynchronous_arm_video_replay_ ||
                 !arm_video_frame_ready_ ||
                 arm_video_skipped_frames_ >= ReplayRenderCadence - 1;
@@ -2330,7 +2709,8 @@ private:
                 replay_render_skips_.fetch_add(1, std::memory_order_relaxed);
             }
             arm_video_phase_started_ = true;
-            if (arm_video_render_this_frame_) {
+            if (arm_video_render_this_frame_ &&
+                arm_video_render_shadow_) {
                 int destination_index = 0;
                 if (asynchronous_plane_publication_) {
                     std::lock_guard<std::mutex> lock(publication_mutex_);
@@ -2347,13 +2727,15 @@ private:
         }
 
         const auto vblank = line >= 192 && line < 262 ? 1u : 0u;
-        if (line == 192) nds_->GPU.GPU3D.Run();
+        if (line == 192 && !arm_video_engine_b_only_)
+            nds_->GPU.GPU3D.Run();
         // A skipped frame still performs the architectural VBlank below.
         // That is the first point that can replace RenderPolygonRAM and make
         // the just-finished input bank writable again. Keep CPU0 rasterizing
         // in parallel through the preceding 192 lines, then fence at this
         // exact lifetime boundary rather than blocking replay at line 0.
-        if (line == 192 && !arm_video_render_this_frame_ &&
+        if (arm_video_render_shadow_ && line == 192 &&
+            !arm_video_render_this_frame_ &&
             arm_video_render_in_flight_) {
             auto fence_started = std::chrono::steady_clock::time_point {};
             if (pipeline_profile_enabled_)
@@ -2376,7 +2758,7 @@ private:
         if (!nds_->GPU.ApplyExternalRendererPhase(
                 start_kind, line, line, vblank, vblank,
                 display_frame, arm_video_render_this_frame_,
-                renderer_resync))
+                renderer_resync, arm_video_engine_b_only_))
             return fail(FaultBadFrame, "melonDS rejected LCD start phase");
         if (renderer_resync)
             arm_video_render_in_flight_ = true;
@@ -2384,7 +2766,8 @@ private:
             arm_video_renderer_started_ = true;
         if (!nds_->GPU.ApplyExternalRendererPhase(
                 1, line, line, vblank | 2u, vblank | 2u,
-                display_frame, arm_video_render_this_frame_, false))
+                display_frame, arm_video_render_this_frame_, false,
+                arm_video_engine_b_only_))
             return fail(FaultBadFrame, "melonDS rejected LCD HBlank phase");
         if (pipeline_profile_enabled_ && arm_video_render_this_frame_ &&
             line < PlaneHeight) {
@@ -2411,9 +2794,11 @@ private:
                     arm_video_skip_phases_, arm_video_skip_phase_total_ns_,
                     arm_video_skip_phase_max_ns_, phase_started);
         }
-        if (arm_video_render_this_frame_ && line == 192)
+        if (arm_video_render_shadow_ && arm_video_render_this_frame_ &&
+            line == 192)
             arm_video_render_in_flight_ = false;
-        else if (arm_video_render_this_frame_ && line == 215)
+        else if (arm_video_render_shadow_ && arm_video_render_this_frame_ &&
+                 line == 215)
             arm_video_render_in_flight_ = true;
 
         if (!arm_video_render_this_frame_) return true;
@@ -2429,6 +2814,21 @@ private:
                 return fail(
                     FaultBadFrame,
                     "melonDS returned no full-video scanline");
+            if (arm_video_engine_b_only_) {
+                const bool physical_screen = nds_->GPU.ScreenSwap;
+                const auto* engine_b = physical_screen ? bottom : top;
+                std::memcpy(
+                    engine_b_render_frame_->data() + line * PlaneWidth,
+                    engine_b, PlaneWidth * sizeof(std::uint32_t));
+                if (line == PlaneHeight - 1) {
+                    std::lock_guard<std::mutex> lock(engine_b_mutex_);
+                    engine_b_render_frame_.swap(engine_b_latest_frame_);
+                    engine_b_latest_frame_number_ = display_frame;
+                    engine_b_latest_screen_ = physical_screen;
+                    engine_b_latest_ready_ = true;
+                }
+                return true;
+            }
             const auto destination_index = publication_filling_index_;
             if (destination_index < 0 ||
                 destination_index >=
@@ -2495,6 +2895,16 @@ private:
             return fail(FaultBadEvent, "record timestamp overflow");
         const auto timestamp = packet_timestamp_;
         const auto kind = frame_packet::record_kind(record);
+        const bool scanline_ordered_write =
+            kind == frame_packet::RecordKind::GxRegister ||
+            kind == frame_packet::RecordKind::VramWrite ||
+            kind == frame_packet::RecordKind::VramMap ||
+            kind == frame_packet::RecordKind::Gpu2DRegister ||
+            kind == frame_packet::RecordKind::PaletteWrite ||
+            kind == frame_packet::RecordKind::OamWrite;
+        if (scanline_ordered_write &&
+            !advance_engine_b_before_write(record))
+            return false;
         if (kind != frame_packet::RecordKind::GxCommand &&
             kind != frame_packet::RecordKind::GxPacked)
             flush_pending_geometry();
@@ -2917,9 +3327,25 @@ private:
         const auto completed_generation = completed_plane_generation_;
         const bool reuse_published_plane =
             asynchronous_plane_publication_ && identical &&
+            !arm_video_engine_b_only_ &&
             completed_generation != 0 &&
             published_plane_generation_.load(std::memory_order_acquire) ==
                 completed_generation;
+        bool has_engine_b = false;
+        bool engine_b_screen = false;
+        std::uint32_t engine_b_frame_number = 0;
+        if (arm_video_engine_b_only_) {
+            std::lock_guard<std::mutex> lock(engine_b_mutex_);
+            has_engine_b = engine_b_latest_ready_ &&
+                engine_b_latest_frame_number_ <= frame;
+            if (has_engine_b) {
+                std::memcpy(
+                    engine_b_publication_snapshot_->data(),
+                    engine_b_latest_frame_->data(), PlaneBytes);
+                engine_b_screen = engine_b_latest_screen_;
+                engine_b_frame_number = engine_b_latest_frame_number_;
+            }
+        }
         // The native renderer needs padded borders and cannot use the compact
         // shared plane as its working ColorBuffer. Once rasterization is
         // complete, however, its visible scanlines can be packed straight
@@ -2966,7 +3392,10 @@ private:
                     std::chrono::steady_clock::now();
                 if (publisher_.publish_scanlines(
                         session_, frame, scanlines,
-                        &frame_publication_fence_active_)) {
+                        &frame_publication_fence_active_,
+                        has_engine_b ?
+                            engine_b_publication_snapshot_->data() : nullptr,
+                        engine_b_screen)) {
                     record_profile_sample(
                         direct_plane_publications_,
                         direct_plane_publication_total_ns_,
@@ -2994,6 +3423,18 @@ private:
                     "no safe private 3D publication buffer is available");
             publication_filling_index_ = destination_index;
             destination = publication_frames_[destination_index].data();
+        }
+        if (arm_video_engine_b_only_ && destination_index >= 0) {
+            publication_frame_has_engine_b_[destination_index] =
+                has_engine_b;
+            publication_frame_engine_b_screen_[destination_index] =
+                engine_b_screen;
+            publication_frame_engine_b_number_[destination_index] =
+                engine_b_frame_number;
+            if (has_engine_b)
+                std::memcpy(
+                    publication_engine_b_frames_[destination_index].data(),
+                    engine_b_publication_snapshot_->data(), PlaneBytes);
         }
         if (reuse_published_plane) {
             {
@@ -3349,7 +3790,11 @@ private:
                         publisher_.publish(
                             session_, frame,
                             publication_frames_[index].data(),
-                            &frame_publication_fence_active_);
+                            &frame_publication_fence_active_,
+                            publication_frame_has_engine_b_[index] ?
+                                publication_engine_b_frames_[index].data() :
+                                nullptr,
+                            publication_frame_engine_b_screen_[index]);
                 }
                 if (!publication_ok) {
                     publication_fail("asynchronous 3D plane publication failed");
@@ -3797,6 +4242,48 @@ private:
                << " direct_plane_publication_fallbacks="
                << direct_plane_publication_fallbacks_.load(
                       std::memory_order_relaxed)
+               << " power_control9=" << nds_->PowerControl9
+               << " screen_swap=" << (nds_->GPU.ScreenSwap ? 1 : 0)
+               << " gpu2d_a_enabled="
+               << (nds_->GPU.GPU2D_A.Enabled ? 1 : 0)
+               << " gpu2d_a_forced_blank="
+               << static_cast<unsigned>(nds_->GPU.GPU2D_A.ForcedBlank)
+               << " gpu2d_a_dispcnt=" << nds_->GPU.GPU2D_A.DispCnt
+               << " gpu2d_b_enabled="
+               << (nds_->GPU.GPU2D_B.Enabled ? 1 : 0)
+               << " gpu2d_b_forced_blank="
+               << static_cast<unsigned>(nds_->GPU.GPU2D_B.ForcedBlank)
+               << " gpu2d_b_dispcnt=" << nds_->GPU.GPU2D_B.DispCnt
+               << " gpu2d_b_dispcnt_writes="
+               << arm_video_engine_b_dispcnt_writes_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_low_writes="
+               << arm_video_engine_b_dispcnt_low_writes_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_high_writes="
+               << arm_video_engine_b_dispcnt_high_writes_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_word_writes="
+               << arm_video_engine_b_dispcnt_word_writes_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_nonzero_writes="
+               << arm_video_engine_b_dispcnt_nonzero_writes_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_display_mode_writes="
+               << arm_video_engine_b_display_mode_writes_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_value_or="
+               << arm_video_engine_b_dispcnt_value_or_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_last_address="
+               << arm_video_engine_b_dispcnt_last_address_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_last_value="
+               << arm_video_engine_b_dispcnt_last_value_.load(
+                      std::memory_order_relaxed)
+               << " gpu2d_b_dispcnt_last_bytes="
+               << arm_video_engine_b_dispcnt_last_bytes_.load(
+                      std::memory_order_relaxed)
                << " frames_rendered="
                << frames_rendered_.load(std::memory_order_relaxed)
                << " frames_published="
@@ -3806,6 +4293,21 @@ private:
             if (replay_gx_command_counts_[command] == 0) continue;
             output << " gx_command_" << command << '='
                    << replay_gx_command_counts_[command];
+        }
+        for (std::size_t index = 0;
+             index < arm_video_engine_b_dispcnt_transition_count_; ++index) {
+            output << " gpu2d_b_dispcnt_transition_" << index << '='
+                   << arm_video_engine_b_dispcnt_transition_values_[index]
+                   << ':'
+                   << arm_video_engine_b_dispcnt_transition_frames_[index]
+                   << ':'
+                   << arm_video_engine_b_dispcnt_transition_lines_[index]
+                   << ':'
+                   << arm_video_engine_b_dispcnt_transition_addresses_[index]
+                   << ':'
+                   << arm_video_engine_b_dispcnt_transition_write_values_[index]
+                   << ':'
+                   << arm_video_engine_b_dispcnt_transition_bytes_[index];
         }
         output << '\n';
         const auto contents = output.str();
@@ -4057,6 +4559,10 @@ private:
         new FullVideoBuffer[ArmVideoBufferCount] {}};
     std::unique_ptr<PlaneBuffer[]> publication_frames_ {
         new PlaneBuffer[PublicationBufferCount] {}};
+    std::unique_ptr<PlaneBuffer[]> publication_engine_b_frames_ {
+        new PlaneBuffer[PublicationBufferCount] {}};
+    std::unique_ptr<PlaneBuffer> engine_b_publication_snapshot_ {
+        new PlaneBuffer {}};
     std::array<std::uint32_t, PublicationBufferCount>
         publication_frame_numbers_ {};
     std::array<bool, PublicationBufferCount> publication_frame_has_alpha_ {};
@@ -4066,6 +4572,12 @@ private:
         publication_frame_visibility_preapproved_ {};
     std::array<bool, PublicationBufferCount>
         publication_frame_reuses_plane_ {};
+    std::array<bool, PublicationBufferCount>
+        publication_frame_has_engine_b_ {};
+    std::array<bool, PublicationBufferCount>
+        publication_frame_engine_b_screen_ {};
+    std::array<std::uint32_t, PublicationBufferCount>
+        publication_frame_engine_b_number_ {};
     std::array<std::uint64_t, PublicationBufferCount>
         publication_frame_generations_ {};
     std::array<PlaneSample, PublicationBufferCount>
@@ -4076,6 +4588,7 @@ private:
     std::thread publication_worker_;
     std::atomic<bool> publication_worker_fault_ {false};
     std::atomic<std::uint64_t> frames_published_ {0};
+    std::uint32_t video_snapshot_sequence_ = 0;
     std::string publication_worker_error_;
     int publication_active_index_ = -1;
     int publication_filling_index_ = -1;
@@ -4091,6 +4604,7 @@ private:
     bool pipeline_profile_enabled_ = false;
     bool bind_hps_worker_cores_ = false;
     bool direct_plane_publication_ = false;
+    bool arm_video_engine_b_only_ = false;
     nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry_ = nullptr;
     bool arm_video_phase_started_ = false;
     bool arm_video_renderer_started_ = false;
@@ -4100,6 +4614,16 @@ private:
     bool arm_video_frame_ready_ = false;
     std::uint32_t arm_video_frame_ = 0;
     int arm_video_completed_index_ = -1;
+    std::uint32_t arm_video_sparse_frame_ = 0;
+    int arm_video_sparse_last_line_ = -1;
+    std::mutex engine_b_mutex_;
+    std::unique_ptr<PlaneBuffer> engine_b_render_frame_ {
+        new PlaneBuffer {}};
+    std::unique_ptr<PlaneBuffer> engine_b_latest_frame_ {
+        new PlaneBuffer {}};
+    bool engine_b_latest_ready_ = false;
+    bool engine_b_latest_screen_ = false;
+    std::uint32_t engine_b_latest_frame_number_ = 0;
     std::atomic<bool> frame_publication_fence_active_ {false};
     bool arm_render_pending_ = false;
     bool arm_render_cancel_cooldown_ = false;
@@ -4211,6 +4735,32 @@ private:
     std::atomic<std::uint64_t> direct_plane_publication_total_ns_ {0};
     std::atomic<std::uint64_t> direct_plane_publication_max_ns_ {0};
     std::atomic<std::uint64_t> direct_plane_publication_fallbacks_ {0};
+    std::atomic<std::uint64_t> arm_video_engine_b_dispcnt_writes_ {0};
+    std::atomic<std::uint64_t> arm_video_engine_b_dispcnt_low_writes_ {0};
+    std::atomic<std::uint64_t> arm_video_engine_b_dispcnt_high_writes_ {0};
+    std::atomic<std::uint64_t> arm_video_engine_b_dispcnt_word_writes_ {0};
+    std::atomic<std::uint64_t> arm_video_engine_b_dispcnt_nonzero_writes_ {0};
+    std::atomic<std::uint64_t> arm_video_engine_b_display_mode_writes_ {0};
+    std::atomic<std::uint32_t> arm_video_engine_b_dispcnt_value_or_ {0};
+    std::atomic<std::uint32_t> arm_video_engine_b_dispcnt_last_address_ {0};
+    std::atomic<std::uint32_t> arm_video_engine_b_dispcnt_last_value_ {0};
+    std::atomic<std::uint32_t> arm_video_engine_b_dispcnt_last_bytes_ {0};
+    static constexpr std::size_t ArmVideoTransitionLimit = 64;
+    bool arm_video_engine_b_dispcnt_seen_ = false;
+    std::uint32_t arm_video_engine_b_dispcnt_effective_ = 0;
+    std::size_t arm_video_engine_b_dispcnt_transition_count_ = 0;
+    std::array<std::uint32_t, ArmVideoTransitionLimit>
+        arm_video_engine_b_dispcnt_transition_values_ {};
+    std::array<std::uint32_t, ArmVideoTransitionLimit>
+        arm_video_engine_b_dispcnt_transition_frames_ {};
+    std::array<std::uint16_t, ArmVideoTransitionLimit>
+        arm_video_engine_b_dispcnt_transition_lines_ {};
+    std::array<std::uint32_t, ArmVideoTransitionLimit>
+        arm_video_engine_b_dispcnt_transition_addresses_ {};
+    std::array<std::uint32_t, ArmVideoTransitionLimit>
+        arm_video_engine_b_dispcnt_transition_write_values_ {};
+    std::array<std::uint32_t, ArmVideoTransitionLimit>
+        arm_video_engine_b_dispcnt_transition_bytes_ {};
     std::array<std::uint64_t, 9> replay_record_kind_counts_ {};
     std::array<std::uint64_t, 256> replay_gx_command_counts_ {};
     std::array<std::uint64_t, 9> replay_kind_runs_ {};
@@ -4355,6 +4905,31 @@ frame_packet::Record packet_record(
 void run_self_test()
 {
     constexpr std::uint32_t Session = 0x12345678;
+
+    // The auxiliary renderer must execute only the missing 2D engine. It may
+    // not enter Engine A or the independent 3D worker, which preserves the
+    // public beta's measured 3D throughput while restoring the touch panel.
+    {
+        melonDS::NDSArgs args;
+        args.JIT = std::nullopt;
+        auto nds = std::make_unique<melonDS::NDS>(
+            std::move(args), nullptr);
+        nds->Reset();
+        melonDS::RendererSettings settings {
+            1, false, false, false, true, false, false, true, true, true};
+        auto& renderer = nds->GPU.GetRenderer();
+        renderer.SetRenderSettings(settings);
+        if (!nds->GPU.ApplyExternalRendererPhase(
+                0, 0, 0, 0, 0, 1, true, true, true) ||
+            !nds->GPU.ApplyExternalRendererPhase(
+                1, 0, 0, 2, 2, 1, true, false, true))
+            self_test_fail("Engine-B-only renderer rejected a scanline");
+        const auto profile = renderer.GetExternalRendererStageProfile();
+        if (profile.Scanlines != 1 || profile.EngineANs != 0 ||
+            profile.Output3DNs != 0 || profile.CompositeANs != 0 ||
+            profile.ThreeDFrames != 0)
+            self_test_fail("Engine-B-only renderer entered another engine");
+    }
     constexpr std::size_t SeverePacketThreshold = 384;
     if (catchup_should_discard_geometry(
             0, SeverePacketThreshold, SeverePacketThreshold) ||
@@ -4479,6 +5054,131 @@ void run_self_test()
                     recovery_generation, false)))
             self_test_fail("catch-up visibility guard hid a real plane clear");
     }
+    // Production no longer transports 263 HBlank records per frame. Prove
+    // that line 0 plus line 192, with one tagged mid-frame write, expands to
+    // a complete Engine-B image and publishes the composite descriptor.
+    {
+        Fixture sparse_fixture(Session + 0x40u);
+        auto tagged_write = packet_record(
+            frame_packet::RecordKind::Gpu2DRegister,
+            static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
+            0x04001018, 0x00000123);
+        tagged_write.metadata |= frame_packet::RecordScanlineValid |
+            (47u << 20);
+        const std::vector<frame_packet::Record> sparse_frame {
+            packet_record(
+                frame_packet::RecordKind::GxRegister,
+                static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
+                0x04000304, 0x0000820f),
+            packet_record(
+                frame_packet::RecordKind::Gpu2DRegister,
+                static_cast<std::uint8_t>(AccessWidth::Word), 0x0f,
+                0x04001000, 0x00010000),
+            packet_record(
+                frame_packet::RecordKind::PaletteWrite,
+                static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
+                0x05000400, 0x0000001f),
+            packet_record(
+                frame_packet::RecordKind::HBlank, 0, 0, 0, 1),
+            tagged_write,
+            packet_record(
+                frame_packet::RecordKind::HBlank, 0, 0, 192, 1),
+            packet_record(
+                frame_packet::RecordKind::GxCommand, 0x50, 0, 0, 0),
+        };
+        sparse_fixture.publish(
+            1, 1, frame_packet::FlagFrameEnd, sparse_frame);
+        Hybrid3DService sparse_service(
+            sparse_fixture.bytes.data(), sparse_fixture.bytes.size(),
+            {}, true, false, false, false, false, false, nullptr,
+            nullptr, false, false, true);
+        if (!sparse_service.initialize())
+            self_test_fail("sparse Engine-B service initialization failed");
+        bool sparse_applied = false;
+        for (unsigned attempt = 0; attempt < 1000 &&
+             load_acquire(
+                 &sparse_fixture.header->frame_publish_sequence) == 0;
+             ++attempt) {
+            const auto result = sparse_service.poll();
+            if (result == PollResult::Fault) {
+                const auto message =
+                    std::string("sparse Engine-B service faulted: ") +
+                    sparse_service.error();
+                self_test_fail(message.c_str());
+            }
+            sparse_applied |= result == PollResult::Applied;
+            std::this_thread::yield();
+        }
+        std::uint64_t sparse_publish = 0;
+        std::uint32_t sparse_format = 0;
+        std::uint32_t sparse_frame_number = 0;
+        std::uint32_t sparse_bank = 0;
+        std::uint32_t sparse_engine_b_pixel = 0;
+        for (unsigned attempt = 0; attempt < 20000; ++attempt) {
+            std::uint32_t sequence_before = 0;
+            if (!nds4mister::h3d::load_counter(
+                    &sparse_fixture.header->frame_publish_sequence,
+                    &sparse_fixture.header->frame_publish_sequence_reserved,
+                    sequence_before) || sequence_before == 0 ||
+                (sequence_before & 1u) != 0) {
+                std::this_thread::sleep_for(HpsQueuePollInterval);
+                continue;
+            }
+            const auto format = sparse_fixture.header->frame.format;
+            const auto frame = sparse_fixture.header->frame.frame;
+            const auto bank = sparse_fixture.header->frame.bank;
+            std::uint32_t sequence_after = 0;
+            if (!nds4mister::h3d::load_counter(
+                    &sparse_fixture.header->frame_publish_sequence,
+                    &sparse_fixture.header->frame_publish_sequence_reserved,
+                    sequence_after) || sequence_before != sequence_after ||
+                sparse_fixture.header->frame.sequence != sequence_after) {
+                std::this_thread::sleep_for(HpsQueuePollInterval);
+                continue;
+            }
+            sparse_publish = sequence_after;
+            sparse_format = format;
+            sparse_frame_number = frame;
+            sparse_bank = bank;
+            const auto engine_b_bank = (bank >> 1) & 1u;
+            const auto* engine_b_pixels =
+                reinterpret_cast<const std::uint32_t*>(
+                    sparse_fixture.bytes.data() +
+                    EngineBFramebufferOffset +
+                    engine_b_bank * nds4mister::h3d::EngineBBankStride);
+            sparse_engine_b_pixel = engine_b_pixels[0];
+            break;
+        }
+        if (!sparse_applied ||
+            sparse_fixture.header->consumer_sequence != 1 ||
+            sparse_publish == 0 ||
+            sparse_format != nds4mister::h3d::PixelFormatRgb666A5EngineB ||
+            sparse_frame_number != 1 ||
+            (sparse_bank & 0x02u) == 0 ||
+            sparse_engine_b_pixel != 0x0000003eu) {
+            std::cerr << "H3D_SPARSE_ENGINE_B_DIAG consumer="
+                      << sparse_fixture.header->consumer_sequence
+                      << " applied=" << sparse_applied
+                      << " publish="
+                      << sparse_publish
+                      << " format=" << sparse_format
+                      << " frame=" << sparse_frame_number
+                      << " bank=" << sparse_bank
+                      << " engine_b_pixel=" << sparse_engine_b_pixel
+                      << " service_frames="
+                      << sparse_service.frames_published()
+                      << " engine_b_ready="
+                      << sparse_service.engine_b_frame_ready_for_test()
+                      << " engine_b_frame="
+                      << sparse_service.engine_b_frame_for_test()
+                      << " sparse_last_line="
+                      << sparse_service.engine_b_last_line_for_test()
+                      << " service_error=" << sparse_service.error() << '\n';
+            self_test_fail(
+                "sparse Engine-B frame did not publish a composite descriptor");
+        }
+    }
+
     Fixture fixture(Session);
     const std::vector<frame_packet::Record> continuation {
         packet_record(
@@ -6113,28 +6813,58 @@ void run_self_test()
             if (sequence == 1)
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-        if (burst_service.poll() != PollResult::Applied ||
-            burst_service.frames_rendered() != BurstFrames ||
-            burst_service.frames_published() != 0 ||
-            burst_service.publication_queue_replacements() !=
-                BurstFrames - 1 - Hybrid3DService::PendingPublicationLimit ||
-            burst_service.publication_queue_high_water() !=
-                Hybrid3DService::PendingPublicationLimit)
-            self_test_fail("publication burst did not bound smoothing queue");
-
+        // Rendering is asynchronous in this fixture. Native Cortex-A9 can
+        // retire the ten input packets before the final render worker has
+        // handed its private buffer back, while QEMU commonly finishes it
+        // during the loop above. Wait for that documented local handoff
+        // instead of making host scheduling part of the queue invariant.
         for (unsigned attempt = 0;
              attempt < 1000 &&
-                 burst_service.frames_published() !=
-                    1 + Hybrid3DService::PendingPublicationLimit;
+                 burst_service.frames_rendered() != BurstFrames;
+             ++attempt) {
+            if (burst_service.poll() == PollResult::Fault)
+                self_test_fail("publication burst render worker faulted");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        const auto burst_replacements =
+            burst_service.publication_queue_replacements();
+        const auto minimum_replacements = BurstFrames - 1 -
+            Hybrid3DService::PendingPublicationLimit;
+        const auto maximum_replacements = BurstFrames -
+            Hybrid3DService::PendingPublicationLimit;
+        if (burst_service.frames_rendered() != BurstFrames ||
+            burst_service.frames_published() != 0 ||
+            burst_replacements < minimum_replacements ||
+            burst_replacements > maximum_replacements ||
+            burst_service.publication_queue_high_water() !=
+                Hybrid3DService::PendingPublicationLimit) {
+            std::cerr << "H3D_PUBLICATION_BURST_DIAG rendered="
+                      << burst_service.frames_rendered()
+                      << " published=" << burst_service.frames_published()
+                      << " replacements="
+                      << burst_service.publication_queue_replacements()
+                      << " high_water="
+                      << burst_service.publication_queue_high_water() << '\n';
+            self_test_fail("publication burst did not bound smoothing queue");
+        }
+
+        // If the worker claimed the first buffer before the burst, one active
+        // immutable frame plus one pending newest frame remain. If Linux did
+        // not schedule it yet, only the newest pending frame remains. Both
+        // states are valid; the replacement count tells us how many complete
+        // buffers must publish once the FPGA ownership fence opens.
+        const auto retained_publications = BurstFrames - burst_replacements;
+        for (unsigned attempt = 0;
+             attempt < 1000 &&
+                 burst_service.frames_published() != retained_publications;
              ++attempt) {
             publication_burst.header->frame_ack_sequence =
                 publication_burst.header->frame_publish_sequence;
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
-        if (burst_service.frames_published() !=
-                1 + Hybrid3DService::PendingPublicationLimit ||
+        if (burst_service.frames_published() != retained_publications ||
             burst_service.publication_queue_replacements() !=
-                BurstFrames - 1 - Hybrid3DService::PendingPublicationLimit ||
+                burst_replacements ||
             publication_burst.header->frame.frame != 1100 + BurstFrames)
             self_test_fail("publication burst did not publish shallow FIFO");
     }
@@ -6156,7 +6886,7 @@ void run_self_test()
             open(PipelineProfilePath, O_RDONLY | O_CLOEXEC);
         if (profile_fd < 0)
             self_test_fail("pipeline profile was not materialized");
-        std::array<char, 2048> profile_bytes{};
+        std::array<char, 16384> profile_bytes{};
         const auto profile_size =
             read(profile_fd, profile_bytes.data(), profile_bytes.size());
         close(profile_fd);
@@ -6170,7 +6900,13 @@ void run_self_test()
             profile.find("queue_high_water=0") == std::string::npos ||
             profile.find("input_packets=0") == std::string::npos ||
             profile.find("replay_packets=0") == std::string::npos ||
-            profile.find("publications=0") == std::string::npos)
+            profile.find("publications=0") == std::string::npos ||
+            profile.find("power_control9=0") == std::string::npos ||
+            profile.find("gpu2d_b_enabled=0") == std::string::npos ||
+            profile.find("gpu2d_b_dispcnt=0") == std::string::npos ||
+            profile.find("gpu2d_b_dispcnt_writes=0") == std::string::npos ||
+            profile.find("gpu2d_b_dispcnt_high_writes=0") ==
+                std::string::npos)
             self_test_fail("pipeline profile schema is incomplete");
     }
 
@@ -6264,6 +7000,8 @@ try {
     std::signal(SIGTERM, request_stop);
     while (!stop_requested && (!max_events || total_events < max_events)) {
         if (service) {
+            if (nds4mister::crash::consume_manual_video_snapshot_request())
+                service->dump_video_snapshot();
             const auto before_events = service->events_applied();
             const auto before_frames = service->frames_published();
             const auto result = service->poll();
@@ -6329,7 +7067,8 @@ try {
                 &runtime_telemetry,
                 publication_mapping.data(),
                 publication_mapping.active(),
-                direct_publication);
+                direct_publication,
+                true);
             const bool initialized = candidate->initialize();
             if (memory_path == "/dev/mem")
                 bind_current_thread_to_cpu(1);

@@ -257,7 +257,8 @@ performance, packaging, and public release line. The histories are joined at
 the repository's provenance graft; see [`PROVENANCE.md`](PROVENANCE.md).
 
 Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, heni, and the
-wider MiSTer community for technical advice, testing, and development guidance.
+wider MiSTer community for technical advice, testing, and development guidance;
+and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware fix.
 
 ## License
 

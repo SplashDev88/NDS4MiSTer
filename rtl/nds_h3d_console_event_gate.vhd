@@ -12,6 +12,14 @@ use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 entity nds_h3d_console_event_gate is
+   generic
+   (
+      -- Production Engine-B replay needs only visible-frame start/end. The
+      -- downstream sparse CDC is permanently ready and tags every state write
+      -- with its exact scanline, so elaborating the legacy 512-line queue
+      -- would waste scarce LABs without adding safety.
+      SPARSE_HBLANK : boolean := false
+   );
    port
    (
       clk           : in  std_logic;
@@ -287,20 +295,37 @@ begin
    vram7_event_timestamp <= vram7_pending_time when vram7_pending = '1' else
                             std_logic_vector(timestamp_counter);
 
-   hblank_valid_i <= '1' when service_ready = '1' and
-                              (hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) or
-                               hblank_pulse = '1') else '0';
    hblank_event_valid <= hblank_valid_i;
-   hblank_queue_read <= hblank_queue(to_integer(hblank_read_pointer));
-   hblank_event_line <= hblank_queue_read(104 downto 96)
-                         when hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) else
-                         hblank_line;
-   hblank_event_frame <= hblank_queue_read(95 downto 64)
-                          when hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) else
-                          std_logic_vector(hblank_frame_counter);
-   hblank_event_timestamp <= hblank_queue_read(63 downto 0)
-                              when hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) else
-                              std_logic_vector(timestamp_counter);
+   sparse_hblank_output : if SPARSE_HBLANK generate
+      hblank_valid_i <= '1' when service_ready = '1' and
+         hblank_pulse = '1' and
+         (unsigned(hblank_line) = to_unsigned(0, hblank_line'length) or
+          unsigned(hblank_line) = to_unsigned(192, hblank_line'length))
+         else '0';
+      hblank_queue_read <= (others => '0');
+      hblank_event_line <= hblank_line;
+      hblank_event_frame <= std_logic_vector(hblank_frame_counter);
+      hblank_event_timestamp <= std_logic_vector(timestamp_counter);
+   end generate;
+
+   queued_hblank_output : if not SPARSE_HBLANK generate
+      hblank_valid_i <= '1' when service_ready = '1' and
+         (hblank_pending_count /=
+             to_unsigned(0, hblank_pending_count'length) or
+          hblank_pulse = '1') else '0';
+      hblank_queue_read <= hblank_queue(to_integer(hblank_read_pointer));
+      hblank_event_line <= hblank_queue_read(104 downto 96)
+         when hblank_pending_count /=
+            to_unsigned(0, hblank_pending_count'length) else hblank_line;
+      hblank_event_frame <= hblank_queue_read(95 downto 64)
+         when hblank_pending_count /=
+            to_unsigned(0, hblank_pending_count'length) else
+         std_logic_vector(hblank_frame_counter);
+      hblank_event_timestamp <= hblank_queue_read(63 downto 0)
+         when hblank_pending_count /=
+            to_unsigned(0, hblank_pending_count'length) else
+         std_logic_vector(timestamp_counter);
+   end generate;
 
    frame_valid_i <= '1' when service_ready = '1' and
                              (frame_pending_count /=
@@ -422,7 +447,15 @@ begin
                   vram7_pending_time <= std_logic_vector(timestamp_counter);
                end if;
 
-               if (hblank_pending_count = to_unsigned(0, hblank_pending_count'length)) then
+               if SPARSE_HBLANK then
+                  -- The downstream sparse CDC acknowledges every timing pulse.
+                  -- State writes carry exact scanline tags, so a marker that
+                  -- meets a full transport repeats the last complete frame
+                  -- rather than growing a console-side timing backlog.
+                  hblank_pending_count <= (others => '0');
+                  hblank_read_pointer <= (others => '0');
+                  hblank_write_pointer <= (others => '0');
+               elsif (hblank_pending_count = to_unsigned(0, hblank_pending_count'length)) then
                   if (hblank_pulse = '1' and hblank_event_ready = '0') then
                      hblank_queue(to_integer(hblank_write_pointer)) <=
                         hblank_line & std_logic_vector(hblank_frame_counter) &

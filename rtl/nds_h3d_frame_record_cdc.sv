@@ -6,7 +6,14 @@
 // converted directly to the shared 128-bit record ABI. A 162-bit asynchronous
 // FIFO transports {boundary, frame_end, logical_frame, record} to DDR.
 module nds_h3d_frame_record_cdc #(
-    parameter integer ASYNC_LGDEPTH = 4
+    parameter integer ASYNC_LGDEPTH = 4,
+    // Production Engine-B scanout needs LCD phase information, but sending
+    // all 263 HBlank markers per frame can fill the old source queue during a
+    // transient HPS stall. Sparse mode admits only line 0 and line 192 on a
+    // best-effort basis; per-record scanline tags recover exact ordering once
+    // transport resumes, so timing pulses never backpressure the console.
+    parameter bit SPARSE_HBLANK = 0,
+    parameter bit SCANLINE_TAGS = 0
 ) (
     input  logic         source_clk,
     input  logic         ddr_clk,
@@ -68,7 +75,10 @@ module nds_h3d_frame_record_cdc #(
     input  logic         boundary_ready,
     output logic [31:0]  boundary_frame
 );
-    localparam integer CDC_WIDTH = 162;
+    // {boundary, frame_end, logical_frame, scanline_valid, scanline, record}.
+    // Keep scanline metadata outside the record proper so the common GX
+    // structural checks and 128-bit record mux stay identical to beta.6.
+    localparam integer CDC_WIDTH = 172;
     localparam logic [7:0] KIND_GX_COMMAND = 8'd1;
     localparam logic [7:0] KIND_GX_REGISTER = 8'd2;
     localparam logic [7:0] KIND_VRAM_WRITE = 8'd3;
@@ -152,8 +162,6 @@ module nds_h3d_frame_record_cdc #(
         KIND_VRAM_WRITE, {5'd0, 1'b1, arm7_vram_access},
         arm7_vram_byte_enable, {4'd0, arm7_vram_address},
         arm7_vram_data);
-    wire [127:0] hblank_record = pack_record(
-        KIND_HBLANK, 8'd0, 4'd0, {23'd0, hblank_line}, hblank_frame);
     // The ARM video receiver owns a complete mirror of mapped VRAM. Reject
     // malformed non-VRAM source addresses, but retain every architectural
     // 0x06 write including BG/OBJ apertures that the old 3D-only path skipped.
@@ -257,6 +265,34 @@ module nds_h3d_frame_record_cdc #(
     logic async_read_ready;
     logic [CDC_WIDTH-1:0] async_read_data;
 
+    // Sparse mode still has to deliver a line-0 marker before Engine B can
+    // start a complete frame.  The former "advisory" path acknowledged the
+    // LCD pulse even when ordered GPU/VRAM traffic was present, so a busy game
+    // could lose every line-0 and line-192 marker forever.  Retain one exact
+    // boundary locally and give it normal timestamp arbitration.  A prolonged
+    // downstream stall may coalesce later timing-only markers, but it can no
+    // longer starve the renderer's first complete-frame anchor.
+    wire phase_input_valid = SPARSE_HBLANK ?
+        (hblank_valid && (hblank_line == 9'd0 || hblank_line == 9'd192)) :
+        hblank_valid;
+    logic sparse_phase_pending;
+    logic sparse_phase_visible_end;
+    logic [31:0] sparse_phase_frame;
+    wire phase_valid = SPARSE_HBLANK ?
+        (sparse_phase_pending || phase_input_valid) : phase_input_valid;
+    wire [8:0] phase_line =
+        SPARSE_HBLANK && sparse_phase_pending ?
+            (sparse_phase_visible_end ? 9'd192 : 9'd0) : hblank_line;
+    wire [31:0] phase_frame =
+        SPARSE_HBLANK && sparse_phase_pending ?
+            sparse_phase_frame : hblank_frame;
+    // Sparse markers are only two fixed lines and always win arbitration.
+    // Their timestamp therefore needs no retained 64-bit payload; this keeps
+    // the full FPGA cost to one line bit plus the display-frame number.
+    wire [63:0] phase_timestamp = hblank_timestamp;
+    wire [127:0] hblank_record = pack_record(
+        KIND_HBLANK, 8'd0, 4'd0, {23'd0, phase_line}, phase_frame);
+
     logic select_gpu;
     logic select_arm9;
     logic select_arm7;
@@ -271,6 +307,18 @@ module nds_h3d_frame_record_cdc #(
     wire arm7_fire = arm7_vram_valid && arm7_vram_ready;
     wire frame_fire = frame_valid && frame_ready;
     wire gx_record_fire = gx_record_valid && gx_record_ready;
+    // Sparse phase markers use their retained timestamp and therefore can
+    // precede a same-edge HDMA write exactly like the full diagnostic mode.
+    // Selecting them here costs no wide comparator: the boundary is only two
+    // records per display frame and the held marker simply arbitrates before
+    // raw state until accepted. The state sources already provide lossless
+    // backpressure.
+    wire phase_precedes_raw = SPARSE_HBLANK ?
+        1'b1 :
+        ((!gpu_valid || phase_timestamp <= gpu_timestamp) &&
+         (!arm9_vram_valid || phase_timestamp <= arm9_vram_timestamp) &&
+         (!arm7_vram_valid || phase_timestamp <= arm7_vram_timestamp) &&
+         (!frame_valid || phase_timestamp <= frame_timestamp));
 
     always_comb begin
         select_gpu = 0;
@@ -284,16 +332,10 @@ module nds_h3d_frame_record_cdc #(
         // Oldest held source wins. HBlank wins an equal timestamp so the ARM
         // shadow snapshots the pre-HDMA line before a same-edge register or
         // memory update takes effect for the following line.
-        if (hblank_valid &&
-            (!gpu_valid || hblank_timestamp <= gpu_timestamp) &&
-            (!arm9_vram_valid ||
-             hblank_timestamp <= arm9_vram_timestamp) &&
-            (!arm7_vram_valid ||
-             hblank_timestamp <= arm7_vram_timestamp) &&
-            (!frame_valid || hblank_timestamp <= frame_timestamp)) begin
+        if (phase_valid && phase_precedes_raw) begin
             select_hblank = 1;
             selected_raw_valid = 1;
-            selected_raw_timestamp = hblank_timestamp;
+            selected_raw_timestamp = phase_timestamp;
         end else if (gpu_valid &&
             (!arm9_vram_valid ||
              gpu_timestamp <= arm9_vram_timestamp) &&
@@ -328,6 +370,7 @@ module nds_h3d_frame_record_cdc #(
         // its original source timestamp. GX wins ties. A geometry raw write
         // may simultaneously enter the independent 256-entry GX FIFO.
         select_gx_head = gx_record_valid &&
+            !(SPARSE_HBLANK && select_hblank) &&
             (!selected_raw_valid ||
              gx_record_timestamp < selected_raw_timestamp ||
              (gx_record_timestamp == selected_raw_timestamp &&
@@ -348,7 +391,7 @@ module nds_h3d_frame_record_cdc #(
         gpu_ready = 0;
         arm9_vram_ready = 0;
         arm7_vram_ready = 0;
-        hblank_ready = 0;
+        hblank_ready = SPARSE_HBLANK ? 1'b1 : 1'b0;
         frame_ready = 0;
         gx_write_valid = 0;
         gx_record_ready = 0;
@@ -372,6 +415,7 @@ module nds_h3d_frame_record_cdc #(
                         1'b0,
                         gx_record[15:8] == 8'h50,
                         logical_frame,
+                        10'd0,
                         gx_record
                     };
                     gx_record_ready = async_write_ready;
@@ -385,17 +429,21 @@ module nds_h3d_frame_record_cdc #(
                     gpu_ready = gx_write_ready;
                 end else if (!select_gx_head) begin
                     if (select_hblank) begin
-                        async_write_valid = hblank_valid;
+                        async_write_valid = phase_valid;
                         async_write_data = {
-                            1'b0, 1'b0, logical_frame, hblank_record};
-                        hblank_ready = async_write_ready;
+                            1'b0, 1'b0, logical_frame, 10'd0,
+                            hblank_record};
+                        if (!SPARSE_HBLANK)
+                            hblank_ready = async_write_ready;
                     end else if (select_gpu) begin
                         if (!gpu_qualified) begin
                             gpu_ready = 1;
                         end else begin
                             async_write_valid = gpu_valid;
-                            async_write_data = {1'b0, 1'b0, logical_frame,
-                                                gpu_direct_record};
+                            async_write_data = {
+                                1'b0, 1'b0, logical_frame,
+                                SCANLINE_TAGS, hblank_line,
+                                gpu_direct_record};
                             gpu_ready = async_write_ready;
                         end
                     end else if (select_arm9) begin
@@ -404,22 +452,52 @@ module nds_h3d_frame_record_cdc #(
                         end else begin
                             async_write_valid = arm9_vram_valid;
                             async_write_data = {
-                                1'b0, 1'b0, logical_frame, arm9_record};
+                                1'b0, 1'b0, logical_frame,
+                                SCANLINE_TAGS, hblank_line, arm9_record};
                             arm9_vram_ready = async_write_ready;
                         end
                     end else if (select_arm7) begin
                         async_write_valid = arm7_vram_valid;
                         async_write_data = {
-                            1'b0, 1'b0, logical_frame, arm7_record};
+                            1'b0, 1'b0, logical_frame,
+                            SCANLINE_TAGS, hblank_line, arm7_record};
                         arm7_vram_ready = async_write_ready;
                     end else if (select_frame) begin
                         async_write_valid = frame_valid;
                         async_write_data = {
-                            1'b1, 1'b0, frame_number, 128'd0};
+                            1'b1, 1'b0, frame_number, 10'd0, 128'd0};
                         frame_ready = async_write_ready;
                     end
                 end
             end
+        end
+    end
+
+    wire sparse_phase_fire = SPARSE_HBLANK && select_hblank &&
+        async_write_valid && async_write_ready;
+    always_ff @(posedge source_clk or posedge source_reset_local) begin
+        if (source_reset_local) begin
+            sparse_phase_pending <= 1'b0;
+            sparse_phase_visible_end <= 1'b0;
+            sparse_phase_frame <= '0;
+        end else if (SPARSE_HBLANK) begin
+            if (sparse_phase_pending) begin
+                if (sparse_phase_fire) begin
+                    if (phase_input_valid) begin
+                        sparse_phase_pending <= 1'b1;
+                        sparse_phase_visible_end <= hblank_line == 9'd192;
+                        sparse_phase_frame <= hblank_frame;
+                    end else begin
+                        sparse_phase_pending <= 1'b0;
+                    end
+                end
+            end else if (phase_input_valid && !sparse_phase_fire) begin
+                sparse_phase_pending <= 1'b1;
+                sparse_phase_visible_end <= hblank_line == 9'd192;
+                sparse_phase_frame <= hblank_frame;
+            end
+        end else begin
+            sparse_phase_pending <= 1'b0;
         end
     end
 
@@ -620,14 +698,14 @@ module nds_h3d_frame_record_cdc #(
     logic pack_emit_three;
     logic pack_flush_one;
 
-    wire async_head_boundary = async_read_data[161];
+    wire async_head_boundary = async_read_data[171];
     wire async_head_structural_gx = !async_head_boundary &&
         async_read_data[7:0] == KIND_GX_COMMAND &&
         async_read_data[31:16] == 16'd0 &&
         async_read_data[63:32] == 32'd0 &&
         async_read_data[127:96] == 32'd0;
     wire async_head_same_frame =
-        async_read_data[159:128] == gx_pack_frame;
+        async_read_data[169:138] == gx_pack_frame;
 
     always_comb begin
         record_valid = 1'b0;
@@ -646,25 +724,28 @@ module nds_h3d_frame_record_cdc #(
             if (gx_pack_count == 0) begin
                 if (async_read_valid && async_head_boundary) begin
                     boundary_valid = 1'b1;
-                    boundary_frame = async_read_data[159:128];
+                    boundary_frame = async_read_data[169:138];
                     async_read_ready = boundary_ready;
                 end else if (async_read_valid &&
                              async_head_structural_gx &&
-                             !async_read_data[160]) begin
+                             !async_read_data[170]) begin
                     // Private buffering is the completed CDC handshake.
                     async_read_ready = 1'b1;
                     pack_capture_first = 1'b1;
                 end else if (async_read_valid) begin
                     record_valid = 1'b1;
                     record = async_read_data[127:0];
-                    record_frame = async_read_data[159:128];
-                    record_frame_end = async_read_data[160];
+                    if (async_read_data[137])
+                        record[29:20] = {
+                            1'b1, async_read_data[136:128]};
+                    record_frame = async_read_data[169:138];
+                    record_frame_end = async_read_data[170];
                     async_read_ready = record_ready;
                 end
             end else if (async_read_valid &&
                          async_head_structural_gx &&
                          async_head_same_frame) begin
-                if (gx_pack_count == 1 && !async_read_data[160]) begin
+                if (gx_pack_count == 1 && !async_read_data[170]) begin
                     async_read_ready = 1'b1;
                     pack_capture_second = 1'b1;
                 end else if (gx_pack_count == 2) begin
@@ -679,7 +760,7 @@ module nds_h3d_frame_record_cdc #(
                         KIND_GX_PACKED
                     };
                     record_frame = gx_pack_frame;
-                    record_frame_end = async_read_data[160];
+                    record_frame_end = async_read_data[170];
                     async_read_ready = record_ready;
                     pack_emit_three = record_ready;
                 end else begin
@@ -710,7 +791,7 @@ module nds_h3d_frame_record_cdc #(
         end else begin
             if (pack_capture_first) begin
                 gx_pack_first <= async_read_data[127:0];
-                gx_pack_frame <= async_read_data[159:128];
+                gx_pack_frame <= async_read_data[169:138];
                 gx_pack_count <= 1;
             end else if (pack_capture_second) begin
                 gx_pack_second <= async_read_data[127:0];

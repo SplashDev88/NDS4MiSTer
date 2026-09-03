@@ -595,7 +595,8 @@ public:
     // performs no scheduling, IRQ, DMA, or display-FIFO callback.
     bool ApplyExternalRendererPhase(
         u32 kind, u32 line, u32 vcount, u32 dispstat9, u32 dispstat7,
-        u32 frameSequence, bool render, bool resync) noexcept;
+        u32 frameSequence, bool render, bool resync,
+        bool renderer2DOnly = false) noexcept;
 
     void Restart3DFrame() noexcept;
 
@@ -900,6 +901,12 @@ struct RendererSettings
     // Ordinary melonDS and MiSTer's full-video shadow keep the streaming
     // scanline contract by leaving this disabled.
     bool FullFrame3D = false;
+
+    // Render only GPU2D engine B. MiSTer's split-video path keeps engine A
+    // and the 3D merge in FPGA while reconstructing the missing touch-screen
+    // engine on ARM. Skipping engine A also prevents this auxiliary scanline
+    // pass from waiting on or restarting the independent 3D raster worker.
+    bool EngineBOnly = false;
 };
 
 struct ExternalRendererStageProfile
