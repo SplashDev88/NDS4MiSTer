@@ -29,11 +29,17 @@ module emu
         "FS3,NDS,Load NDS (max 128 MiB),30000000;",
         "-;",
         "O[6:5],Video Layout,Left/Right,Top/Bottom,Left Only,Right Only;",
-        "O[7],Screen Order,Main First,Touch First;",
+        "O[7],Screen Order,Top First,Bottom First;",
         // MiSTer initializes a new config version to option value zero. Keep
         // the user-facing default at eight pixels while retaining None.
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],3D FPS Counter,Off,On;",
+        "P4,Credits;",
+        "P4-;",
+        "P4-,Heni: ARM9 and FPGA 2D;",
+        "P4-,SplashDev88: HPS 3D/integration;",
+        "P4-,Robert Peip: upstream foundation;",
+        "P4-,MiSTer/melonDS contributors;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",

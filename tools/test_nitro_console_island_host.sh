@@ -105,7 +105,7 @@ grep -Fq 'nds_nitro_integer_scale integer_scale (' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '"O[6:5],Video Layout,Left/Right,Top/Bottom,Left Only,Right Only;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
-grep -Fq '"O[7],Screen Order,Main First,Touch First;",' \
+grep -Fq '"O[7],Screen Order,Top First,Bottom First;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '"O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
@@ -114,6 +114,14 @@ grep -Fq 'wire [1:0] video_gap_select = status[9:8] == 2'"'"'d0 ? 2'"'"'d1 :' \
 grep -Fq '        "v,1;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq '"O[4],3D FPS Counter,Off,On;",' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '"P4,Credits;",' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '"P4-,Heni: ARM9 and FPGA 2D;",' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '"P4-,SplashDev88: HPS 3D/integration;",' \
+    "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
+grep -Fq '"P4-,Robert Peip: upstream foundation;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq "wire console_enabled=1'b1;" \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"

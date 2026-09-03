@@ -2,13 +2,15 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**Public Beta v0.3.0-beta.6 — released 2026-08-31**
+**Unreleased HPS Engine B development branch, based on Public Beta
+v0.3.0-beta.6 (2026-08-31)**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
-> boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
-> is not displayed yet, so both visible screen positions show Engine A. Treat
-> this release as something to experiment with, not as a reliable way to play
-> your entire library.
+> boot and play well; others slow down, glitch, fail to boot, or crash. This
+> branch reconstructs Engine B on the HPS and restores independent physical
+> top and bottom screen paths. Host regressions cover the path, but it still
+> needs a new Quartus build and real-hardware acceptance. Treat it as something
+> to develop and test, not as a reliable way to play your entire library.
 
 No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
 artifacts, or credentials are included in this source repository.
@@ -17,6 +19,8 @@ artifacts, or credentials are included in this source repository.
 
 - Some 2D and lighter 3D games boot and run.
 - FPGA-generated sound.
+- Experimental HPS-rendered Engine B with independent physical top and bottom
+  screen publication.
 - Persistent cartridge saves:
   - 512-byte tiny EEPROM.
   - 8 KiB, 64 KiB, and 128 KiB EEPROM/FRAM profiles.
@@ -28,11 +32,13 @@ artifacts, or credentials are included in this source repository.
 
 ## Current limitations
 
-- **Only Engine A is displayed.** A Nintendo DS has two 2D engines, but Engine
-  B is currently synthesized out to fit the FPGA. Both visible screen positions
-  therefore show the same Engine A image. Touch input still reaches the game,
-  but games that require precise interaction with unseen touchscreen graphics
-  remain difficult to use.
+- **The HPS Engine B path is experimental.** It mirrors ordered GPU registers,
+  palette, OAM, VRAM, and LCD phases into melonDS, then publishes Engine B as
+  the physical screen selected by the DS power-control swap. Host tests pass;
+  hardware stability, performance, and game coverage are not yet established.
+- **Dual-screen 3D display capture remains research work.** A focused oracle
+  covers the capture modes and screen swap, but production still needs live
+  register/VRAM traces and hardware acceptance before this is claimed fixed.
 - **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
   the most active area of development.
 - **Cartridge-access latency remains a bottleneck.** Some objects or effects
@@ -59,6 +65,9 @@ repository.
 3. Go to **Console → NDS_20260831** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
+These steps install the published beta.6 release. This development branch is
+not packaged as a release; developers must build its FPGA and HPS artifacts.
+
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
 > core.** The DS 3D renderer is a helper program on the MiSTer's ARM/HPS. The
 > launcher verifies that helper, requests the tested 1 GHz HPS clock, and
@@ -83,12 +92,8 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In beta.6, both displayed positions duplicate Engine A, so the
-pointer is drawn over every visible copy of that image.
-
-Touch coordinates are delivered to the DS touchscreen even though Engine B is
-not displayed. Games that require you to tap a specific bottom-screen control
-are therefore still effectively blind.
+movement. The pointer is drawn only over the physical bottom touchscreen; it
+follows that screen through screen-order and single-screen layout changes.
 
 ## Saves
 
@@ -164,10 +169,11 @@ FPS claim, and visible results remain scene-dependent.
   memory and VRAM mapping, Engine A 2D graphics, sound, saves, and MiSTer
   video/control paths.
 - The **ARM/HPS service** replays ordered graphics events into melonDS's 3D
-  engine and publishes completed 256×192 3D planes to the FPGA.
+  engine and GPU2D-B. It publishes completed 256×192 3D planes plus the missing
+  Engine B physical screen; it does not shadow FPGA Engine A.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
-  window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in beta.6.
+  window, blending, and brightness rules, then pairs that output atomically
+  with the HPS Engine B screen for scanout.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.
@@ -212,7 +218,7 @@ Run the production console-island host regression:
 ./tools/test_nitro_console_island_host.sh
 ```
 
-Build the ARM hybrid-3D service with the isolated Docker build:
+Build the ARM hybrid-3D/Engine-B service with the isolated Docker build:
 
 ```sh
 ./tools/build_hybrid_3d_service_armhf.sh
@@ -246,8 +252,9 @@ unsafe commit identities, and other private artifacts before publication.
 
 ## Credits
 
-Built on the MiSTer framework, Nitro_DarkSide, melonDS, and FPGAzumSpass's GBA
-ARM7 CPU implementation, which was used as the basis for the ARM9 work.
+Built on the MiSTer framework, Nitro_DarkSide, melonDS, and Robert Peip's
+(FPGAzumSpass) GBA ARM7 CPU implementation, which was used as the basis for the
+ARM9 work.
 Component licenses and source notices remain in their vendored trees.
 
 The original Nitro_DarkSide work by Heni includes the ARM9 CPU, FPGA 2D

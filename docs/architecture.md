@@ -1,16 +1,18 @@
 # Architecture
 
-Status: Public Cumulative Beta, 2026-08-29.
+Status: Unreleased HPS Engine B development branch based on Public Beta
+v0.3.0-beta.6.
 
 ## Goal
 
 NDS4MiSTer is an experimental Nintendo DS implementation for the MiSTer
 DE10-Nano. The current design keeps the timing-sensitive console in FPGA logic
-and uses the HPS only for the part that has proved too expensive to fit and run
-well in the fabric: Nintendo DS 3D geometry and software rasterization.
+and uses the HPS for the parts that have proved too expensive to fit and run
+well in the fabric: Nintendo DS 3D geometry/software rasterization and the
+second 2D engine.
 
 This replaces the project's original HPS-first benchmark architecture. The
-shipping beta does **not** run the two DS CPUs, DMA, 2D engines, sound, or
+current branch does **not** run the two DS CPUs, DMA, Engine A, sound, or
 cartridge emulation in a headless melonDS instance.
 
 ## Current hardware/software split
@@ -21,9 +23,9 @@ cartridge emulation in a headless melonDS instance.
 | System timing, interrupts, IPC, timers, and DMA | FPGA | The FPGA remains the time authority. |
 | Main memory, cartridge, VRAM mapping, palette, and OAM | FPGA | ROM data lives in MiSTer DDR; architectural memory behavior remains in the core. |
 | Engine A 2D and HBlank/HDMA effects | FPGA | Includes the per-scanline effects used by games such as New Super Mario Bros. |
-| Engine B 2D | Not in this beta | It is synthesized out to fit the device; both logical screen positions currently show Engine A. |
+| Engine B 2D | HPS | The service reconstructs it from ordered FPGA register, palette, OAM, VRAM, and LCD-phase events. |
 | 3D geometry and rasterization | HPS | A small service replays ordered FPGA events into melonDS's 3D engine and publishes completed 3D planes. |
-| 2D/3D composition and final frame publication | FPGA | The 3D plane enters Engine A as BG0 and is merged using DS priority, window, and blend rules. |
+| 2D/3D composition and final frame publication | FPGA plus HPS | FPGA merges 3D into Engine A; HPS publishes Engine B; FPGA atomically selects the physical top/bottom pair for scanout. |
 | Sound | FPGA | GPL-licensed Nitro_DarkSide sound engine, built with `SOUND_ENABLE=1`. |
 | Cartridge saves | FPGA plus MiSTer file interface | Profiles are generated from the vendored melonDS ROM database. |
 | Input, OSD, scaling, and HDMI | FPGA/MiSTer framework | The current path is designed for reliable scaled HDMI output, including LG C-series TVs. |
@@ -33,12 +35,11 @@ cartridge emulation in a headless melonDS instance.
 ```text
                      MiSTer HPS/Linux
                +-------------------------+
-               | hybrid 3D service       |
-               | melonDS GPU3D + software|
-               | rasterizer only         |
+               | hybrid video service    |
+               | melonDS GPU3D + GPU2D-B |
                +------------+------------+
                             ^ |
-            ordered GPU/VRAM| |complete 3D planes
+            ordered GPU/VRAM| |3D plane + Engine B screen
                       packets| v
                     +--------+--------+
                     | shared DDR/H3D1 |
@@ -48,7 +49,7 @@ cartridge emulation in a headless melonDS instance.
 +----------------------------+-----------------------------+
 | FPGA Nintendo DS console                                 |
 | ARM9/ARM7 -> memory/DMA/cart -> Engine A 2D + 3D merge   |
-|                         -> sound -> saves -> video/input  |
+|                         -> sound -> saves -> pair/scanout |
 +----------------------------------------------------------+
                              |
                              v
@@ -90,16 +91,18 @@ in [`hybrid-3d-hps-lifecycle.md`](hybrid-3d-hps-lifecycle.md).
 2. Events are merged in DS-clock order and placed into committed packets. The
    transport cannot legally drop, duplicate, or reorder an accepted event.
 3. The HPS service applies each packet to a ROM-less melonDS GPU/VRAM mirror.
+   Sparse LCD markers and scanline-tagged writes preserve Engine B timing.
 4. At the terminal packet for a frame, melonDS runs geometry and the software
    rasterizer for a complete 256x192 3D plane.
-5. HPS writes an inactive plane bank, performs cache maintenance and a release
-   barrier, then publishes its descriptor last.
-6. FPGA adopts only a complete descriptor, prefetches tagged lines, and feeds
-   valid pixels into Engine A as BG0.
+5. HPS also renders GPU2D-B scanlines and routes them to the physical top or
+   bottom screen selected by the DS screen-swap state.
+6. HPS writes inactive 3D and Engine B banks, performs cache maintenance and a
+   release barrier, then publishes one composite descriptor last.
+7. FPGA adopts only a complete descriptor, feeds tagged 3D pixels into Engine
+   A as BG0, and pairs the complete Engine B screen at a scanout boundary.
 
-The production service does not render a shadow copy of the FPGA 2D engines.
-That keeps the high-volume 2D and HDMA work in hardware and limits the HPS
-workload to 3D.
+The service renders only the missing Engine B path. Engine A and its native
+HDMA remain in FPGA logic, avoiding a redundant full 2D shadow.
 
 ### Shared DDR layout
 
@@ -109,6 +112,8 @@ workload to 3D.
 | Four packet slots | `0x3FC10000..0x3FC4FFFF` | Four 64 KiB ordered event packets. |
 | 3D plane bank 0 | `0x3FD00000` | 256 KiB inactive/active 3D image bank. |
 | 3D plane bank 1 | `0x3FD40000` | 256 KiB inactive/active 3D image bank. |
+| Engine B screen bank 0 | `0x3FD80000` | 256 KiB inactive/active physical-screen image bank. |
+| Engine B screen bank 1 | `0x3FDC0000` | 256 KiB inactive/active physical-screen image bank. |
 | Final framebuffer banks | `0x3FE00000..0x3FFFFFFF` | Four 512 KiB banks for complete paired-screen frames. |
 
 The four packet slots provide frame-scale slack. Backpressure propagates to the
@@ -130,9 +135,11 @@ fall behind.
 
 ## Frame publication and video
 
-The FPGA drains a completed screen pair into one of four final-framebuffer
-banks. Scanout changes banks only at a video frame boundary, so HPS or FPGA
-writers cannot overwrite the displayed frame.
+The FPGA drains Engine A into the normal final-framebuffer path. A composite
+HPS descriptor supplies the complete Engine B physical screen from a separate
+double buffer. Scanout adopts both only at a video frame boundary and stages a
+full DDR line before promotion, so a late read cannot expose a partially
+fetched line.
 
 The release uses MiSTer's scaled HDMI path with nearest-neighbor integer
 scaling and a compact scaler-only shell. The HDMI clock is independent from
@@ -142,14 +149,14 @@ on LG C-series displays as well as other TVs.
 Runtime video controls are:
 
 - Video Layout: Left/Right, Top/Bottom, Left Only, or Right Only.
-- Screen Order: Main First or Touch First.
+- Screen Order: Top First or Bottom First.
 - Screen Gap: 0, 8, 16, or 24 pixels.
 - 3D FPS Counter: Off or On. This reports distinct completed 3D frames
   delivered to FPGA scanout, not the fixed DS/HDMI refresh rate.
 
-Because Engine B is absent, the current beta duplicates Engine A in both
-logical screen positions. The FPS counter reports completed HPS 3D frame
-publications; it is not the ARM9 instruction rate or the HDMI refresh rate.
+The FPS counter reports completed HPS 3D frame publications; it is not the
+ARM9 instruction rate or the HDMI refresh rate. The touch cursor is a
+scanout-only overlay on the physical bottom screen.
 
 ## Sound and input
 
@@ -188,7 +195,8 @@ board's tested 1 GHz operating point and launches at high scheduling priority
 while leaving the main MiSTer process active for menus, input, and lifecycle
 control.
 
-The 2026-08-29 PSX-efficiency candidate fitted in Quartus Prime 17.0.2 at:
+For historical context, the 2026-08-29 beta.6 PSX-efficiency candidate fitted
+in Quartus Prime 17.0.2 at:
 
 - 41,299 of 41,910 ALMs (99%).
 - 44,947 registers.
@@ -222,14 +230,16 @@ or framebuffer payloads.
 
 ## Current limitations
 
-- Engine B is disabled, so both displayed screen positions show Engine A.
+- HPS Engine B is host-tested but has not yet passed a new real-hardware
+  stability and compatibility run.
+- Display-capture behavior, including games that alternate 3D between physical
+  screens, has a focused software oracle but still needs live trace and
+  hardware acceptance.
 - Heavy 3D scenes can slow down, fall behind, lose geometry, or crash.
 - Cartridge latency can cause missing or late objects and effects.
 - The Reset menu command can hang; reselecting the ROM is the current restart
   workaround.
-- Controller and mouse touchscreen input are present, but Engine B is not
-  displayed, so precise touch-screen games remain limited. NAND saves, save
-  states, Wi-Fi, and microphone support are not implemented.
+- NAND saves, save states, Wi-Fi, and microphone support are not implemented.
 - Chrono Trigger has a separate boot failure under investigation.
 
 The first public compatibility target is New Super Mario Bros.; this release

@@ -14,6 +14,13 @@ The post-graft working tree follows the NDS4MiSTer layout and current public
 tip. Git history remains authoritative for individual changes and authorship;
 the graft does not reassign copyright or authorship from either parent.
 
+The later `af82e7e` donor commit preserves SplashDev88's uncommitted
+2026-09-02 HPS Engine B development snapshot as a child of the published tip.
+Its bundled `SHA256SUMS` still describes beta.6 and does not authenticate the
+54 files modified afterward; the commit records the supplied working tree and
+its authorship without presenting it as a verified release artifact. Merge
+commit `f4697fc` joins that donor line to the shared provenance branch.
+
 ## Licensing
 
 The combined work is distributed under GNU GPL version 3. The root `LICENSE`
