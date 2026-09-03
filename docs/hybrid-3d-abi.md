@@ -2,10 +2,10 @@
 
 ## Goal
 
-H3D1 adds Nintendo DS 3D to the FPGA console core. The FPGA keeps the two
-CPUs, timing, DMA, memory, VRAM, Engine A 2D, input, sound, saves, and video
-timing. A small HPS service runs only melonDS 3D geometry and software
-rasterization. Engine B is synthesized out of the current public beta.
+H3D1 adds Nintendo DS 3D and the missing Engine B display path to the FPGA
+console core. The FPGA keeps the two CPUs, timing, DMA, memory, VRAM, Engine A
+2D, input, sound, saves, and video timing. A small HPS service runs melonDS 3D
+geometry/software rasterization plus GPU2D-B only.
 
 ## Rules
 
@@ -14,11 +14,14 @@ rasterization. Engine B is synthesized out of the current public beta.
    records. Register and virtual-VRAM records preserve address, width, byte
    enables, source CPU, and data.
 3. The packet link must not drop, repeat, or reorder an accepted record.
-4. HPS publishes a complete 3D frame before FPGA can use it.
+4. HPS publishes a complete 3D frame and, when present, a complete Engine B
+   physical screen before FPGA can use either one.
 5. A late or invalid 3D line is transparent. It must not stop the 2D engine.
 6. The 3D plane enters engine A as BG0 before priority, window, blend, and
    master-brightness operations.
-7. High-volume per-pixel telemetry stays off. Public crash telemetry may only
+7. Screen order changes placement only; DS power control determines which
+   physical panel receives Engine B, and touch remains on the bottom panel.
+8. High-volume per-pixel telemetry stays off. Public crash telemetry may only
    reuse an existing control-header transaction and must not touch the CPU,
    GPU, DMA, audio, cartridge, renderer, or display fast paths.
 
@@ -31,6 +34,8 @@ The MiSTer DDR bridge adds `0x30000000` to the local FPGA byte address.
 | H3D1 control and packet mailbox | `0x0FC00000` | `0x3FC00000` | 320 KiB used |
 | 3D frame bank 0 | `0x0FD00000` | `0x3FD00000` | 256 KiB |
 | 3D frame bank 1 | `0x0FD40000` | `0x3FD40000` | 256 KiB |
+| Engine B screen bank 0 | `0x0FD80000` | `0x3FD80000` | 256 KiB |
+| Engine B screen bank 1 | `0x0FDC0000` | `0x3FDC0000` | 256 KiB |
 | Final framebuffer bank 0 | `0x0FE00000` | `0x3FE00000` | 512 KiB |
 | Final framebuffer bank 1 | `0x0FE80000` | `0x3FE80000` | 512 KiB |
 | Final framebuffer bank 2 | `0x0FF00000` | `0x3FF00000` | 512 KiB |
@@ -40,6 +45,10 @@ Each 3D frame bank stores 256 by 192 little-endian 32-bit pixels. Pixel bits
 `5:0` are R6, bits `11:6` are G6, bits `17:12` are B6, and bits `22:18` are
 A5. Other bits are zero. The HPS service converts melonDS's sparse native
 pixel word to this packed form before publication.
+
+Each Engine B bank stores one complete physical screen using packed RGB666.
+Descriptor bank bit 1 selects that bank and bit 2 identifies its physical
+screen. Pixel format 3 marks the composite 3D-plus-Engine-B publication.
 
 Each final framebuffer bank holds the paired 256x192 top and bottom screens.
 The FPGA publishes only a completely drained, order-valid pair; video scanout
@@ -165,8 +174,9 @@ Record kinds are:
 For ordinary write records, tag bits 1:0 carry access width and VRAM-write tag
 bit 2 selects ARM7. VRAM writes retain their virtual address and byte enables
 so melonDS continues to own VRAM mapping and overlap behavior. Kinds 5 through
-8 preserve the HPS GPU/VRAM mirror's state and ordering and also support the
-diagnostic shadow path. The public service does not publish HPS-rendered 2D.
+8 preserve the HPS GPU/VRAM mirror's state and ordering. The service uses
+scanline-tagged writes and sparse HBlank markers to reconstruct Engine B
+without shadowing FPGA Engine A.
 
 Kind 9 uses tag bytes in metadata bits `15:8`, `23:16`, and `31:24`. The three
 corresponding 32-bit command values occupy words 1, 2, and 3. The normal
@@ -218,12 +228,14 @@ session. Later publications compare against that bank's packed HPS shadow and
 write only changed 32-bit words; the descriptor is still published every
 frame, including an unchanged frame.
 
-FPGA latches a new complete descriptor at VBlank. It acknowledges the
-descriptor before HPS can reuse the old bank.
+FPGA latches a new complete descriptor at VBlank. Composite format descriptors
+atomically select the 3D plane bank, Engine B bank, and Engine B physical
+screen. FPGA acknowledges adoption before HPS can reuse the old bank.
 
-FPGA fetches one 256-pixel line into one of two ping-pong line RAMs. A line
-record carries session, frame, bank, and Y tags. A tag mismatch or a missed
-deadline makes every pixel in that line transparent.
+FPGA fetches each 256-pixel line into an inactive line-RAM slot and promotes it
+only after the complete line arrives. A 3D line record carries session, frame,
+bank, and Y tags; a tag mismatch or missed deadline makes that plane line
+transparent without exposing a partially fetched screen line.
 
 ## Engine-A blend contract
 
@@ -239,7 +251,9 @@ evb = 32 - eva
 out = min(63, (source6 * eva + destination6 * evb + 16) >> 5)
 ```
 
-Other effects use the existing 2D merge rules. Engine B has no 3D BG0 input.
+Other effects use the existing 2D merge rules. Engine B has no direct 3D BG0
+input. Dual-screen 3D display capture remains outside the accepted production
+claim until live traces and hardware tests accompany the software oracle.
 
 ## Public-beta acceptance gate
 

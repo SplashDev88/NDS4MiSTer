@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Native integer-layout scanout derived from Nitro_DarkSide NDS.sv d2dabe.
-// Engine B remains synthesized out for the first beta, so both logical screen
-// slots intentionally read Engine A. The layout/order plumbing is kept at the
-// product boundary so Engine B can be restored without changing the OSD ABI.
+// Engine A/3D and the ARM-rendered Engine B plane are selected per physical
+// DS panel. Layout and screen order affect placement only; panel one remains
+// the physical touchscreen even when POWCNT1 swaps the two GPU engines.
 //
 // The touch pointer is deliberately a scanout-only overlay. It consumes the
 // already-mapped DS coordinates below and therefore adds no framebuffer writes
-// or DDR traffic. Since every beta screen slot aliases Engine A, the same local
-// coordinate test also places one pointer on every visible copy.
+// or DDR traffic. It is enabled only over physical panel one, so it follows
+// screen-order and single-screen layout choices without appearing on the top
+// non-touch display.
 module nds_nitro_touch_pointer #(
     parameter integer LINGER_FRAMES = 30
 ) (
@@ -103,8 +104,13 @@ module nds_nitro_video_scanout #(
     output logic [7:0]  pf_line,
     output logic        pf_bank,
     output logic [1:0]  pf_frame_bank,
+    output logic        pf_external,
     input  logic        published_frame_toggle,
     input  logic [1:0]  published_frame_bank,
+    input  logic        external_screen_toggle,
+    input  logic [1:0]  external_screen_bank,
+    input  logic        external_screen_select,
+    output logic        external_screen_adopted_toggle,
     // Toggles once for every distinct completed HPS 3D descriptor that has
     // reached the FPGA pixel domain.  This is intentionally separate from
     // the 2D framebuffer publication used for scanout bank ownership.
@@ -136,20 +142,34 @@ module nds_nitro_video_scanout #(
     (* async_reg = "true" *) logic [1:0] published_bank_sync_0;
     (* async_reg = "true" *) logic [1:0] published_bank_sync_1;
     (* async_reg = "true" *) logic [1:0] effective_3d_toggle_sync;
+    (* async_reg = "true" *) logic [1:0] external_toggle_sync;
+    (* async_reg = "true" *) logic [1:0] external_bank_sync_0;
+    (* async_reg = "true" *) logic [1:0] external_bank_sync_1;
+    (* async_reg = "true" *) logic [1:0] external_screen_sync;
     logic published_toggle_seen;
     logic effective_3d_toggle_seen;
+    logic external_toggle_seen;
     logic pending_frame_valid;
     logic [1:0] pending_frame_bank;
-    logic boundary_frame_valid;
-    logic [1:0] boundary_frame_bank;
-    logic [1:0] active_frame_bank;
+    logic pending_external_valid;
+    logic [1:0] pending_external_bank;
+    logic pending_external_screen;
+    logic [1:0] active_normal_bank;
+    logic [1:0] active_screen_bank [0:1];
+    logic active_screen_external [0:1];
+    logic active_external_valid;
+    logic active_external_screen;
     logic lb_half;
 
     logic screen_pixel;
     logic [7:0] local_x;
     logic [7:0] local_y;
+    logic local_screen;
     logic next_screen_line;
     logic [7:0] next_local_y;
+    logic next_local_screen;
+    logic next_second_screen_line;
+    logic next_second_local_screen;
     logic fps_font_pixel;
     logic [3:0] fps_count_tens;
     logic [3:0] fps_count_ones;
@@ -190,6 +210,48 @@ module nds_nitro_video_scanout #(
     wire publication_available = publication_event || pending_frame_valid;
     wire [1:0] publication_bank = publication_event ?
         published_bank_sync_1 : pending_frame_bank;
+    wire external_event =
+        external_toggle_sync[1] != external_toggle_seen;
+    wire external_available = external_event || pending_external_valid;
+    wire [1:0] external_bank_for_boundary = external_event ?
+        external_bank_sync_1 : pending_external_bank;
+    wire external_screen_for_boundary = external_event ?
+        external_screen_sync[1] : pending_external_screen;
+    wire first_screen = screen_order_active;
+    wire second_screen = !screen_order_active;
+
+    function automatic logic [1:0] request_frame_bank(
+        input logic requested_screen
+    );
+        logic [1:0] normal_bank;
+        begin
+            normal_bank = publication_available ?
+                publication_bank : active_normal_bank;
+            if (frame_end && external_available)
+                request_frame_bank =
+                    requested_screen == external_screen_for_boundary ?
+                        external_bank_for_boundary : normal_bank;
+            else if (frame_end && publication_available &&
+                     (!active_external_valid ||
+                      requested_screen != active_external_screen))
+                request_frame_bank = normal_bank;
+            else
+                request_frame_bank = active_screen_bank[requested_screen];
+        end
+    endfunction
+
+    function automatic logic request_is_external(
+        input logic requested_screen
+    );
+        begin
+            if (frame_end && external_available)
+                request_is_external =
+                    requested_screen == external_screen_for_boundary;
+            else
+                request_is_external =
+                    active_screen_external[requested_screen];
+        end
+    endfunction
 
     function automatic logic [6:0] digit_segments(input logic [3:0] digit);
         case (digit)
@@ -221,12 +283,12 @@ module nds_nitro_video_scanout #(
             (segments[0] && y == 2);
     endfunction
 
-    // Map the current output dot into one of the logical screen slots. Both
-    // slots currently alias physical Engine A (line-buffer screen bit zero).
+    // Map the current output dot into one of the two physical DS screens.
     always_comb begin
         screen_pixel = 1'b0;
         local_x = 8'd0;
         local_y = 8'd0;
+        local_screen = first_screen;
         case (layout_active)
             LAYOUT_SIDE: begin
                 if (vcount >= screen_top && vcount < screen_top + 10'd192) begin
@@ -234,10 +296,12 @@ module nds_nitro_video_scanout #(
                     if (hcount < 10'd256) begin
                         screen_pixel = 1'b1;
                         local_x = hcount[7:0];
+                        local_screen = first_screen;
                     end else if (hcount >= second_x &&
                                  hcount < second_x + 10'd256) begin
                         screen_pixel = 1'b1;
                         local_x = hcount - second_x;
+                        local_screen = second_screen;
                     end
                 end
             end
@@ -248,10 +312,12 @@ module nds_nitro_video_scanout #(
                         vcount < screen_top + 10'd192) begin
                         screen_pixel = 1'b1;
                         local_y = vcount - screen_top;
+                        local_screen = first_screen;
                     end else if (vcount >= second_y &&
                                  vcount < second_y + 10'd192) begin
                         screen_pixel = 1'b1;
                         local_y = vcount - second_y;
+                        local_screen = second_screen;
                     end
                 end
             end
@@ -261,29 +327,44 @@ module nds_nitro_video_scanout #(
                     screen_pixel = 1'b1;
                     local_x = hcount[7:0];
                     local_y = vcount - screen_top;
+                    local_screen = layout_active == LAYOUT_RIGHT ?
+                        second_screen : first_screen;
                 end
             end
         endcase
     end
 
-    // Schedule the line needed by the next raster row. A stacked layout reads
-    // the aliased frame twice; side-by-side still performs only one DDR fetch.
+    // Schedule the line(s) needed by the next raster row. Side-by-side fetches
+    // both independent screens; stacked and single layouts fetch only the
+    // screen visible on that output row.
     always_comb begin
         next_screen_line = 1'b0;
         next_local_y = 8'd0;
+        next_local_screen = first_screen;
+        next_second_screen_line = 1'b0;
+        next_second_local_screen = second_screen;
         if (layout_active == LAYOUT_STACK) begin
             if (vnext >= screen_top && vnext < screen_top + 10'd192) begin
                 next_screen_line = 1'b1;
                 next_local_y = vnext - screen_top;
+                next_local_screen = first_screen;
             end else if (vnext >= second_y &&
                          vnext < second_y + 10'd192) begin
                 next_screen_line = 1'b1;
                 next_local_y = vnext - second_y;
+                next_local_screen = second_screen;
             end
         end else if (vnext >= screen_top &&
                      vnext < screen_top + 10'd192) begin
             next_screen_line = 1'b1;
             next_local_y = vnext - screen_top;
+            if (layout_active == LAYOUT_SIDE) begin
+                next_local_screen = first_screen;
+                next_second_screen_line = 1'b1;
+            end else begin
+                next_local_screen = layout_active == LAYOUT_RIGHT ?
+                    second_screen : first_screen;
+            end
         end
     end
 
@@ -303,7 +384,7 @@ module nds_nitro_video_scanout #(
         end
     end
 
-    always_comb lb_raddr = {local_y[0], 1'b0, local_x[7:1]};
+    always_comb lb_raddr = {local_y[0], local_screen, local_x[7:1]};
 
     nds_nitro_touch_pointer touch_pointer (
         .clk(clk_video),
@@ -313,7 +394,7 @@ module nds_nitro_video_scanout #(
         .touch_pressed,
         .touch_x,
         .touch_y,
-        .pixel_valid(screen_pixel),
+        .pixel_valid(screen_pixel && local_screen == 1'b1),
         .pixel_x(local_x),
         .pixel_y(local_y),
         .pointer_visible,
@@ -337,13 +418,26 @@ module nds_nitro_video_scanout #(
             published_bank_sync_0 <= 0;
             published_bank_sync_1 <= 0;
             effective_3d_toggle_sync <= 0;
+            external_toggle_sync <= 0;
+            external_bank_sync_0 <= 0;
+            external_bank_sync_1 <= 0;
+            external_screen_sync <= 0;
             published_toggle_seen <= 0;
             effective_3d_toggle_seen <= 0;
+            external_toggle_seen <= 0;
             pending_frame_valid <= 0;
             pending_frame_bank <= 0;
-            boundary_frame_valid <= 0;
-            boundary_frame_bank <= 0;
-            active_frame_bank <= 0;
+            pending_external_valid <= 0;
+            pending_external_bank <= 0;
+            pending_external_screen <= 0;
+            active_normal_bank <= 0;
+            active_screen_bank[0] <= 0;
+            active_screen_bank[1] <= 0;
+            active_screen_external[0] <= 0;
+            active_screen_external[1] <= 0;
+            active_external_valid <= 0;
+            active_external_screen <= 0;
+            external_screen_adopted_toggle <= 0;
             fps_count_tens <= 0;
             fps_count_ones <= 0;
             fps_display_tens <= 0;
@@ -362,6 +456,7 @@ module nds_nitro_video_scanout #(
             pf_line <= 0;
             pf_bank <= 0;
             pf_frame_bank <= 0;
+            pf_external <= 0;
         end else begin
             published_toggle_sync <= {published_toggle_sync[0],
                                       published_frame_toggle};
@@ -369,6 +464,12 @@ module nds_nitro_video_scanout #(
             published_bank_sync_1 <= published_bank_sync_0;
             effective_3d_toggle_sync <= {effective_3d_toggle_sync[0],
                                          effective_3d_frame_toggle};
+            external_toggle_sync <= {external_toggle_sync[0],
+                                     external_screen_toggle};
+            external_bank_sync_0 <= external_screen_bank;
+            external_bank_sync_1 <= external_bank_sync_0;
+            external_screen_sync <= {external_screen_sync[0],
+                                     external_screen_select};
             if (publication_event) begin
                 published_toggle_seen <= published_toggle_sync[1];
                 pending_frame_valid <= 1'b1;
@@ -383,6 +484,12 @@ module nds_nitro_video_scanout #(
                 end else begin
                     fps_count_ones <= fps_count_ones + 1'b1;
                 end
+            end
+            if (external_event) begin
+                external_toggle_seen <= external_toggle_sync[1];
+                pending_external_valid <= 1'b1;
+                pending_external_bank <= external_bank_sync_1;
+                pending_external_screen <= external_screen_sync[1];
             end
 
             lb_half <= local_x[0];
@@ -411,19 +518,52 @@ module nds_nitro_video_scanout #(
                 end
 
                 if (hcount == 0 && frame_end) begin
-                    boundary_frame_valid <= publication_available;
-                    boundary_frame_bank <= publication_available ?
-                                           publication_bank : active_frame_bank;
-                    if (publication_available)
+                    if (publication_available) begin
+                        active_normal_bank <= publication_bank;
                         pending_frame_valid <= 1'b0;
+                    end
+                    if (external_available) begin
+                        active_screen_bank[external_screen_for_boundary] <=
+                            external_bank_for_boundary;
+                        active_screen_bank[!external_screen_for_boundary] <=
+                            publication_available ? publication_bank :
+                                active_normal_bank;
+                        active_screen_external[
+                            external_screen_for_boundary] <= 1'b1;
+                        active_screen_external[
+                            !external_screen_for_boundary] <= 1'b0;
+                        active_external_valid <= 1'b1;
+                        active_external_screen <=
+                            external_screen_for_boundary;
+                        pending_external_valid <= 1'b0;
+                        external_screen_adopted_toggle <=
+                            ~external_screen_adopted_toggle;
+                    end else if (publication_available) begin
+                        if (active_external_valid)
+                            active_screen_bank[!active_external_screen] <=
+                                publication_bank;
+                        else begin
+                            active_screen_bank[0] <= publication_bank;
+                            active_screen_bank[1] <= publication_bank;
+                        end
+                    end
                 end
                 if (hcount == 0 && next_screen_line) begin
-                    // Both logical slots intentionally alias physical A.
-                    pf_scr <= 1'b0;
+                    pf_scr <= next_local_screen;
                     pf_line <= next_local_y;
                     pf_bank <= next_local_y[0];
-                    pf_frame_bank <= frame_end && publication_available ?
-                                     publication_bank : active_frame_bank;
+                    pf_frame_bank <= request_frame_bank(next_local_screen);
+                    pf_external <= request_is_external(next_local_screen);
+                    pf_tgl <= ~pf_tgl;
+                end else if (hcount == 64 &&
+                             next_second_screen_line) begin
+                    pf_scr <= next_second_local_screen;
+                    pf_line <= next_local_y;
+                    pf_bank <= next_local_y[0];
+                    pf_frame_bank <=
+                        request_frame_bank(next_second_local_screen);
+                    pf_external <=
+                        request_is_external(next_second_local_screen);
                     pf_tgl <= ~pf_tgl;
                 end
 
@@ -431,9 +571,6 @@ module nds_nitro_video_scanout #(
                     hcount <= 0;
                     vcount <= vnext;
                     if (frame_end) begin
-                        if (boundary_frame_valid)
-                            active_frame_bank <= boundary_frame_bank;
-                        boundary_frame_valid <= 1'b0;
                         // hps_io and this scanout both run on clk_sys; the OSD
                         // controls therefore need no redundant CDC pipeline.
                         {fps_active,gap_active,screen_order_active,

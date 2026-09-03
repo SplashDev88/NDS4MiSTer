@@ -196,6 +196,20 @@ if(NDS4MISTER_USE_MELONDS)
     target_link_libraries(nds_layer_capture PRIVATE
         core nds_headless_save ${CMAKE_DL_LIBS})
 
+    add_executable(nds_display_capture_oracle_test
+        src/replay/DisplayCaptureOracleTest.cpp
+        src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_display_capture_oracle_test PRIVATE
+        src third_party/melonDS/src)
+    target_compile_options(nds_display_capture_oracle_test PRIVATE
+        -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_display_capture_oracle_test PRIVATE
+        core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_display_capture_oracle
+            COMMAND nds_display_capture_oracle_test)
+    endif()
+
     add_executable(nds_touch_oracle_probe
         src/replay/TouchOracleProbe.cpp
         src/melonds/MelonDsBackend.cpp

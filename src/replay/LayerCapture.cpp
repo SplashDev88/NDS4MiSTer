@@ -10,20 +10,42 @@
 
 namespace {
 struct Capture {
+    struct ModeTransition {
+        std::uint32_t frame{};
+        std::uint16_t line{};
+        std::uint8_t engine{};
+        std::uint8_t mode{};
+        bool screenSwap{};
+    };
     std::uint32_t target{};
     std::vector<nds4mister::LayerRecord> records=std::vector<nds4mister::LayerRecord>(512*192);
     std::array<bool,384> lines{};
     std::array<bool,384> fallback{};
     std::array<std::uint8_t,384> physicalScreen{};
+    std::array<std::array<std::uint32_t,4>,2> displayModes{};
+    std::array<std::array<std::uint32_t,2>,2> screenSwapCounts{};
+    std::array<std::uint8_t,2> lastMode{0xff,0xff};
+    std::array<bool,2> lastScreenSwap{};
+    std::vector<ModeTransition> modeTransitions{};
     static void receive(melonDS::u32 frame,melonDS::u16 line,melonDS::u8 engine,
         bool screenSwap,const melonDS::u32* top,const melonDS::u32* second,
         const melonDS::u8* windowMask,melonDS::u16 blendCnt,melonDS::u8 eva,
         melonDS::u8 evb,melonDS::u8 evy,melonDS::u8 displayMode,
         melonDS::u16 masterBrightness,void* userdata) {
         auto& self=*static_cast<Capture*>(userdata);
-        if(frame!=self.target||line>=192||engine>=2)return;
+        if(line>=192||engine>=2)return;
+        const auto mode=static_cast<std::uint8_t>(displayMode&3);
+        if(self.lastMode[engine]!=mode||
+           self.lastScreenSwap[engine]!=screenSwap) {
+            self.modeTransitions.push_back({frame,line,engine,mode,screenSwap});
+            self.lastMode[engine]=mode;
+            self.lastScreenSwap[engine]=screenSwap;
+        }
+        if(frame!=self.target)return;
         const unsigned state=line*2+engine;
         self.lines[state]=true;
+        ++self.displayModes[engine][mode];
+        ++self.screenSwapCounts[engine][screenSwap?1:0];
         const unsigned screen=engine^(screenSwap?0u:1u);
         self.physicalScreen[state]=static_cast<std::uint8_t>(screen);
         self.fallback[state]=displayMode!=1||((masterBrightness>>14)&3)!=0;
@@ -139,5 +161,18 @@ int main(int argc,char** argv) {
     const double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     std::cout<<"NDS layer capture\nframe: "<<capture.target<<"\nengine_lines: "<<lines
              <<"\nrecords: "<<capture.records.size()<<"\nbytes: "<<capture.records.size()*sizeof(capture.records[0])
+             <<"\nengine_a_modes: "<<capture.displayModes[0][0]<<','<<capture.displayModes[0][1]<<','
+             <<capture.displayModes[0][2]<<','<<capture.displayModes[0][3]
+             <<"\nengine_b_modes: "<<capture.displayModes[1][0]<<','<<capture.displayModes[1][1]<<','
+             <<capture.displayModes[1][2]<<','<<capture.displayModes[1][3]
+             <<"\nengine_a_swap: "<<capture.screenSwapCounts[0][0]<<','<<capture.screenSwapCounts[0][1]
+             <<"\nengine_b_swap: "<<capture.screenSwapCounts[1][0]<<','<<capture.screenSwapCounts[1][1]
+             <<"\nmode_transitions:";
+    for(const auto& transition:capture.modeTransitions)
+        std::cout<<' '<<static_cast<unsigned>(transition.engine)<<':'
+                 <<static_cast<unsigned>(transition.mode)<<':'
+                 <<transition.frame<<':'<<transition.line<<':'
+                 <<(transition.screenSwap?1:0);
+    std::cout
              <<"\nseconds: "<<seconds<<"\neffective_fps: "<<frames/seconds<<"\n";
 }

@@ -27,6 +27,7 @@ char dump_path[DumpPathBytes] {};
 volatile h3d::Header* volatile shared_header = nullptr;
 volatile std::sig_atomic_t handling_crash = 0;
 volatile std::sig_atomic_t manual_fpga_snapshot_requested = 0;
+volatile std::sig_atomic_t manual_video_snapshot_requested = 0;
 
 void write_all(int fd, const void* data, std::size_t size)
 {
@@ -281,6 +282,11 @@ void manual_fpga_snapshot_handler(int)
     manual_fpga_snapshot_requested = 1;
 }
 
+void manual_video_snapshot_handler(int)
+{
+    manual_video_snapshot_requested = 1;
+}
+
 } // namespace
 
 bool install_arm_crash_handler()
@@ -309,6 +315,8 @@ bool install_arm_crash_handler()
     sigemptyset(&manual_action.sa_mask);
     manual_action.sa_handler = manual_fpga_snapshot_handler;
     if (sigaction(SIGUSR1, &manual_action, nullptr) != 0) return false;
+    manual_action.sa_handler = manual_video_snapshot_handler;
+    if (sigaction(SIGUSR2, &manual_action, nullptr) != 0) return false;
     return true;
 }
 
@@ -316,6 +324,13 @@ bool consume_manual_fpga_snapshot_request()
 {
     if (!manual_fpga_snapshot_requested) return false;
     manual_fpga_snapshot_requested = 0;
+    return true;
+}
+
+bool consume_manual_video_snapshot_request()
+{
+    if (!manual_video_snapshot_requested) return false;
+    manual_video_snapshot_requested = 0;
     return true;
 }
 

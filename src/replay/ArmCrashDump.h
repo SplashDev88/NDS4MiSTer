@@ -15,6 +15,11 @@ bool install_arm_crash_handler();
 // sets a flag; the normal monitor thread performs all I/O and optional hold.
 bool consume_manual_fpga_snapshot_request();
 
+// SIGUSR2 requests a behavior-neutral video-pipeline snapshot. As with the
+// FPGA snapshot, the signal handler only sets a flag; the service performs
+// the comparatively expensive buffer copies and file I/O from normal code.
+bool consume_manual_video_snapshot_request();
+
 // Makes the live transport state available to the handler after /dev/mem has
 // been mapped. Pass nullptr before the mapping is released.
 void set_arm_crash_shared_header(volatile h3d::Header* header);

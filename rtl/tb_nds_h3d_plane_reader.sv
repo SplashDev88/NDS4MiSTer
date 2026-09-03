@@ -62,6 +62,7 @@ module tb_nds_h3d_plane_reader;
     logic pixel_descriptor_bank;
     logic full_frame_publish;
     logic [1:0] full_frame_bank;
+    logic full_frame_screen;
     logic full_frame_adopted = 1'b0;
     logic [31:0] console_logical_frame = 32'd0;
     logic scanline_tick = 1'b0;
@@ -203,11 +204,13 @@ module tb_nds_h3d_plane_reader;
     logic [7:0] last_ack_be = 8'd0;
     integer full_frame_publish_count = 0;
     logic [1:0] last_full_frame_bank = 0;
+    logic last_full_frame_screen = 0;
 
     always @(posedge ddr_clk) begin
         if (!ddr_reset && full_frame_publish) begin
             full_frame_publish_count <= full_frame_publish_count + 1;
             last_full_frame_bank <= full_frame_bank;
+            last_full_frame_screen <= full_frame_screen;
         end
     end
 
@@ -1100,6 +1103,35 @@ module tb_nds_h3d_plane_reader;
         @(negedge ddr_clk);
         full_frame_adopted = 1'b0;
         wait_descriptor_ack(32'd14);
+
+        // Format 3 atomically carries a normal 3D plane plus one independent
+        // Engine-B scanout bank. The plane activates immediately at VBlank,
+        // but HPS ownership still waits for the screen-bank adoption fence.
+        publish_sequence = 32'd16;
+        descriptor_sequence = 32'd16;
+        descriptor_frame = 32'd105;
+        descriptor_bank = 32'd7; // plane 1, B bank 1, physical screen 1
+        descriptor_format = 32'd3;
+        descriptor_transaction(1'b1);
+        activate_pending_descriptor();
+        wait_pixel_descriptor(32'd16, 32'd105, 1'b1);
+        timeout = 0;
+        while (full_frame_publish_count < 2 && timeout < 2000) begin
+            @(posedge ddr_clk);
+            timeout = timeout + 1;
+        end
+        if (timeout >= 2000 || last_full_frame_bank != 2'd1 ||
+            last_full_frame_screen != 1'b1 || last_ack != 32'd14)
+            $fatal(1, "composite Engine-B descriptor metadata/ACK is wrong");
+        line_transaction(32'd105, 8'd32, 1'b1);
+        wait_line_available(32'd105, 8'd32);
+        scan_line(32'd105, 8'd32, 1'b1, 1'b1);
+        wait_banks_free();
+        @(negedge ddr_clk);
+        full_frame_adopted = 1'b1;
+        @(negedge ddr_clk);
+        full_frame_adopted = 1'b0;
+        wait_descriptor_ack(32'd16);
 
         if (accepted_commands < 20 || accepted_line_reads < 10 ||
             busy_stall_cycles < 20 || response_gap_cycles < 100 ||
