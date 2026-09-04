@@ -1884,8 +1884,13 @@ nds_h3d_ddr_fabric h3d_ddr_fabric (
 
 
 wire [15:0] sound_left, sound_right;
-assign audio_left = sound_left;
-assign audio_right = sound_right;
+wire signed [15:0] sound_headroom_left, sound_headroom_right;
+nds_audio_headroom #(.SHIFT(1)) sound_output_headroom (
+    .input_left(sound_left),.input_right(sound_right),
+    .output_left(sound_headroom_left),.output_right(sound_headroom_right)
+);
+assign audio_left = sound_headroom_left;
+assign audio_right = sound_headroom_right;
 wire [31:0] math_address;
 wire [31:0] math_write_data;
 wire [31:0] math_read_data;

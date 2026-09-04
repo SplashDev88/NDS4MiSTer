@@ -80,6 +80,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE $nitro_rtl/ddram.sv
 
 # Compact product boundary and retained MiSTer shell.
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_arm9_math_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_audio_headroom.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_async_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_fb_ddr3.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_video_scanout.sv
