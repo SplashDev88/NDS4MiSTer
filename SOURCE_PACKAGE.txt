@@ -1,4 +1,4 @@
-NDS4MiSTer public beta v0.3.0-beta.6 source - 2026-08-31
+NDS4MiSTer public beta v0.3.0-beta.7 source - 2026-09-04
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
@@ -12,9 +12,12 @@ pacing, fixes first-load save-sector alignment, preserves verified save mount
 state across reset and direct-load transitions, and adds controller/mouse touch
 input with a visible pointer. Beta.6 adds the accepted perspective-coordinate,
 NEON vertex-transform, COLOR/NORMAL replay, and exact FPGA blend-shift work.
+Beta.7 adds the compact writable boot-firmware subset, ARM7 Wi-Fi boot memory,
+and cartridge-IR AUXSPI compatibility work contributed by InsaneFriend
+(GitHub: saneFriend).
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.6_20260831 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.7_20260904 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -27,10 +30,28 @@ Release identities
 ------------------
 
 FPGA core:
-  ec48df52104af4726a0e29f56b1984c962a2cbb8b77b6931b09b2a595171aaa3
+  d7af1df13279881ec4967fa37b350844e640121227d55cd6dc21379ee8cc0fe6
 
 ARM hybrid-3D service:
   bc7971606f958799a855b043757e3989aec3046ceafea34fb07f6ba70a92631a
+
+Incremental beta.7 compatibility update
+-----------------------------------------
+
+* A compact 2 KiB writable firmware store implements the header, Wi-Fi, and
+  user-settings pages used during boot, including SPI page-program writes.
+  This is a source-defined behavioral model, not a console firmware dump.
+* The ARM7 Wi-Fi aperture now provides its 8 KiB RAM and the boot-time
+  register/baseband subset required by additional games. It does not implement
+  wireless multiplayer or network connectivity.
+* I-prefixed cartridges receive their retail IR transceiver AUXSPI command
+  prefix before save-device traffic. Non-IR cartridge save behavior is
+  unchanged.
+* Hardware testing successfully ran Pokemon Platinum, Pokemon SoulSilver
+  (including Continue without the earlier communication error), the full
+  Mario Kart DS release, and the New Super Mario Bros. World 2-6 transition.
+* The included 6.02 dB output attenuation only makes the existing audio
+  distortion quieter. It is experimental and is not claimed as a sound fix.
 
 Incremental beta.6 3D and FPGA update
 --------------------------------------
@@ -189,17 +210,19 @@ The focused regression passed save-profile lookup and bundled CDC publication,
 all supported EEPROM/Flash sizes, EEPROM and Flash command behavior, dirty
 flushes, read-only and invalid-size behavior, replacement-ROM mount ordering,
 cross-size isolation, right-stick touch coordinates, pen release, SPI touch,
-direct-boot calibration, and the complete Nitro console-island host RTL gate.
+direct-boot calibration, writable firmware SPI behavior, all 4096 Wi-Fi RAM
+halfwords through the tested driver patterns, cartridge-IR AUXSPI behavior,
+and the complete Nitro console-island host RTL gate.
 
 Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
-successful fit used 41,094 of 41,910 ALMs (98%), 45,104 registers, 468
-of 553 RAM blocks (85%), 69 DSP blocks, and four PLLs. Assembly completed with
-device checksum 0x0FDF9935. Static timing remains diagnostic information rather than a
+successful Seed-2 fit used 41,281 of 41,910 ALMs (98%), 45,467 registers,
+3,508,257 of 5,662,720 block-memory bits (62%), 484 of 553 RAM blocks (88%),
+69 DSP blocks, and four PLLs. Assembly completed with device checksum
+0x10313EB0. Static timing remains diagnostic information rather than a
 deployment gate for this experimental project. This exact RBF was direct-
-loaded from the MiSTer menu with FPGA state `operating`, core identity `NDS`,
-and exactly one verified ARM service at 1 GHz. The maintainer approved its LG
-C-series video, cartridge-save persistence across a cold boot, reset behavior,
-and representative gameplay speed.
+loaded with FPGA state `operating`, core identity `NDS`, and exactly one
+verified ARM service at 1 GHz. The maintainer approved the compatibility tests
+listed in the beta.7 update above after verifying the exact release hashes.
 
 Package exclusions
 ------------------

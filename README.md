@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**Public Beta v0.3.0-beta.6 — released 2026-08-31**
+**Public Beta v0.3.0-beta.7 — released 2026-09-04**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -24,7 +24,7 @@ artifacts, or credentials are included in this source repository.
 - Touch input using either the controller's right analog stick or a MiSTer
   mouse.
 - Remappable keyboard controls through MiSTer's standard controller mapping,
-  hardware-tested with beta.6.
+  hardware-tested with beta.7.
 - Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
 - Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
 
@@ -39,6 +39,8 @@ artifacts, or credentials are included in this source repository.
   the most active area of development.
 - **Cartridge-access latency remains a bottleneck.** Some objects or effects
   may appear late or fail to load.
+- **Audio can sound overdriven or distorted.** Beta.7 lowers the output level,
+  but hardware testing confirmed that the underlying distortion remains.
 - **Not implemented:** NAND saves, save states, Wi-Fi, and microphone support.
 - **Reset is improved, but not universal.** It preserves the current cartridge
   and save mount. If a game does not reset cleanly, reselect its ROM from the
@@ -53,12 +55,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.6_20260831.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.7_20260904.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Go to **Console → NDS_20260831** and launch the core.
+3. Go to **Console → NDS_20260903** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -71,7 +73,7 @@ repository.
 
 Nintendo DS buttons can be mapped to keyboard keys through MiSTer's standard
 controller-mapping menu. Keyboard control was verified on real MiSTer hardware
-with beta.6.
+with beta.7.
 
 ## Touch controls
 
@@ -91,7 +93,7 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In beta.6, both displayed positions duplicate Engine A, so the
+movement. In beta.7, both displayed positions duplicate Engine A, so the
 pointer is drawn over every visible copy of that image.
 
 Touch coordinates are delivered to the DS touchscreen even though Engine B is
@@ -113,7 +115,7 @@ cartridges and unknown save hardware are not supported.
 > **If a game reports corrupted save data after an upgrade:** Back up its
 > `.sav` file, then delete or move that file out of `/media/fat/saves/NDS/` and
 > let the game create a fresh save. Older experimental builds sometimes
-> created incorrectly sized or already-corrupted saves; beta.6 does not try to
+> created incorrectly sized or already-corrupted saves; beta.7 does not try to
 > repair them.
 
 ## Reading the FPS counter
@@ -138,30 +140,32 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.6
+## What's new in beta.7
 
-Beta.6 focuses on 3D performance, pacing, and FPGA space use while retaining
-the saves, reset behavior, touch preview, sound, layouts, and 134 MHz clock
-family from beta.5.
+Beta.7 focuses on game compatibility while retaining beta.6's tested 3D
+renderer, saves, reset behavior, touch preview, layouts, and 134 MHz clock
+family.
 
-- Batches exact perspective texture-coordinate work four pixels at a time.
-- Uses a bit-exact Cortex-A9 NEON path for the dominant GX vertex transform.
-- Fast-paths COLOR and NORMAL GX commands without bypassing lighting, normal
-  matrix, or fixed-point behavior.
-- Replaces exact FPGA divide-by-16 and divide-by-32 blend operations with fixed
-  shifts, saving 87 ALMs and 26 registers.
-- Counts changed 3D planes in the FPS overlay instead of identical plane
-  republications.
-- Retains direct completed-plane publication, feedback-guided dual-core raster
-  splitting, bounded catch-up, and lock-free SPSC/futex handoffs from the
-  preceding performance work.
-- Fixes first-load save-sector alignment and preserves the verified
-  cartridge/save pairing across reset and direct-load transitions.
+- Replaces the all-zero firmware stub with a compact writable implementation
+  of the header, Wi-Fi, and user-settings pages used during boot.
+- Adds the 8 KiB ARM7 Wi-Fi RAM aperture and the small boot-time register and
+  baseband subset required by additional games. This does **not** add wireless
+  multiplayer or network connectivity.
+- Adds cartridge IR AUXSPI command handling for I-prefixed cartridges while
+  preserving the legacy save-device path for non-IR games.
+- Retains beta.6's approximately 5% lower ARM 3D processing cost versus beta.5;
+  beta.7 makes no additional 3D-performance claim.
 
-Focused measurements found about 3.6% lower GX processing cost and 5.6% lower
-geometry-flush cost across the retained ARM changes. The conservative summary
-is about 5% lower ARM 3D processing cost than beta.5; this is not a whole-game
-FPS claim, and visible results remain scene-dependent.
+Hardware testing successfully booted and ran *Pokemon Platinum*, *Pokemon
+SoulSilver* (including continuing an existing save without the earlier
+communication error), the full version of *Mario Kart DS*, and *New Super
+Mario Bros.* through the previously questioned World 2-6 transition. These
+results are compatibility observations, not a claim that every scene or game
+is fully supported.
+
+Beta.7 also contains an experimental 6.02 dB output attenuation. Testing found
+that it makes the existing audio distortion quieter but does not fix it, so it
+is intentionally not presented as a sound fix.
 
 ## For developers
 
@@ -175,7 +179,7 @@ FPS claim, and visible results remain scene-dependent.
   engine and publishes completed 256×192 3D planes to the FPGA.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
   window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in beta.6.
+  shadow copy of the FPGA 2D engine in beta.7.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.
@@ -260,7 +264,8 @@ Component licenses and source notices remain in their vendored trees.
 
 Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, heni, and the
 wider MiSTer community for technical advice, testing, and development guidance;
-and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware fix.
+and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware, ARM7
+Wi-Fi boot-memory, and cartridge-IR compatibility work in beta.7.
 
 ## License
 
