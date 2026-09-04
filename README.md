@@ -23,6 +23,8 @@ artifacts, or credentials are included in this source repository.
   - 256 KiB, 512 KiB, and 1 MiB Flash profiles.
 - Touch input using either the controller's right analog stick or a MiSTer
   mouse.
+- Remappable keyboard controls through MiSTer's standard controller mapping,
+  hardware-tested with beta.6.
 - Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
 - Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
 
@@ -64,6 +66,12 @@ repository.
 > launcher verifies that helper, requests the tested 1 GHz HPS clock, and
 > starts exactly one non-persistent renderer process. Games will not run
 > correctly if the helper is not running.
+
+## Controller and keyboard mapping
+
+Nintendo DS buttons can be mapped to keyboard keys through MiSTer's standard
+controller-mapping menu. Keyboard control was verified on real MiSTer hardware
+with beta.6.
 
 ## Touch controls
 
