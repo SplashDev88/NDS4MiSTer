@@ -32,6 +32,13 @@ run_nvc_tests() {
     nvc --std=2008 -r tb_nds_card_eeprom_sizes --stop-time=2ms
 
     rm -rf "$test_tmp/work"
+    nvc --std=2008 -a "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd"
+    nvc --std=2008 -a "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/nds_card.vhd"
+    nvc --std=2008 -a "$repo_dir/rtl/tb_nds_card_ir.vhd"
+    nvc --std=2008 -e tb_nds_card_ir
+    nvc --std=2008 -r tb_nds_card_ir --stop-time=1ms
+
+    rm -rf "$test_tmp/work"
     nvc --std=2008 -a "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/nds_loader.vhd"
     nvc --std=2008 -a "$repo_dir/rtl/tb_nds_loader_save_size.vhd"
     nvc --std=2008 -e tb_nds_loader_save_size
@@ -54,11 +61,28 @@ else
             nvc --std=2008 -e tb_nds_card_eeprom_sizes
             nvc --std=2008 -r tb_nds_card_eeprom_sizes --stop-time=2ms
             rm -rf work
+            nvc --std=2008 -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd
+            nvc --std=2008 -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_card.vhd
+            nvc --std=2008 -a /workspace/rtl/tb_nds_card_ir.vhd
+            nvc --std=2008 -e tb_nds_card_ir
+            nvc --std=2008 -r tb_nds_card_ir --stop-time=1ms
+            rm -rf work
             nvc --std=2008 -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_loader.vhd
             nvc --std=2008 -a /workspace/rtl/tb_nds_loader_save_size.vhd
             nvc --std=2008 -e tb_nds_loader_save_size
             nvc --std=2008 -r tb_nds_loader_save_size --stop-time=100us
         '
 fi
+
+# Pin the product integration to the same loader pulse, byte order, reset, and
+# card input exercised by tb_nds_loader_save_size and tb_nds_card_ir.
+grep -Fq 'backup_ir_enable => save_ir_enable_s,' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq "if (reset_boot = '1') then" \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq "elsif (ld_save_gamecode_valid = '1') then" \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
+grep -Fq 'if (ld_save_gamecode(7 downto 0) = x"49") then' \
+    "$repo_dir/rtl/nds_nitro_console_top.vhd"
 
 echo "PASS: Nitro EEPROM/FRAM/flash save regression"

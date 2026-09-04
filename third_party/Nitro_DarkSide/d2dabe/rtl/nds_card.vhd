@@ -149,6 +149,12 @@ entity nds_card is
       backup_save_type    : in  std_logic_vector(3 downto 0) := "0010";
       backup_access_active: out std_logic := '0';
       backup_cache_ready  : in  std_logic := '1';
+      -- Cartridge IR transceiver (melonDS CartRetailIR).  Carts whose game
+      -- code starts with 'I' (Pokemon HG/SS, B/W, B2/W2, Active Health) put an
+      -- IR chip on the AUXSPI bus ahead of the save chip, so every transfer
+      -- carries one extra leading command byte: 0x00 passes through to the
+      -- flash, 0x08 reads back the transceiver ID 0xAA.
+      backup_ir_enable    : in  std_logic := '0';
 
       -- staged card image read port (shared with nds_loader, muxed in nds_top)
       card_ena     : out std_logic := '0';
@@ -260,6 +266,7 @@ architecture arch of nds_card is
    signal spi_pos     : unsigned(15 downto 0) := (others => '0');
    signal spi_busy    : unsigned(9 downto 0) := (others => '0');          -- busy countdown, bit7 readback
    signal sram_cmd    : std_logic_vector(7 downto 0) := (others => '0');
+   signal ir_cmd      : std_logic_vector(7 downto 0) := (others => '0');  -- IR passthrough selector
    signal sram_addr   : unsigned(19 downto 0) := (others => '0');
    signal sram_status : std_logic_vector(7 downto 0) := (others => '0');  -- bit1 = WEL
    signal backup_access_r : std_logic := '0';
@@ -376,6 +383,8 @@ begin
       variable v_spipos  : unsigned(15 downto 0);
       variable v_spilast : std_logic;
       variable v_addrbytes : integer range 1 to 3;
+      variable v_eff_pos : unsigned(15 downto 0);
+      variable v_flash   : boolean;
       variable v_next_sram_addr : unsigned(19 downto 0);
    begin
       if rising_edge(clk) then
@@ -418,6 +427,7 @@ begin
             spi_pos     <= (others => '0');
             spi_busy    <= (others => '0');
             sram_cmd    <= (others => '0');
+            ir_cmd      <= (others => '0');
             sram_addr   <= (others => '0');
             sram_status <= (others => '0');
             backup_access_r <= '0';
@@ -518,7 +528,30 @@ begin
                      -- the real 1->0 / FF semantics where melonDS marks its own
                      -- implementation TODO.
                      spi_data <= (others => '0');
-                     if (v_spipos = 0) then
+                     -- ---- cartridge IR transceiver stage (melonDS CartRetailIR)
+                     -- On an IR cart the first byte of every AUXSPI transfer is
+                     -- consumed by the transceiver, not the flash chip, so the
+                     -- save state machine below runs one byte position later.
+                     v_flash   := true;
+                     v_eff_pos := v_spipos;
+                     if (backup_ir_enable = '1') then
+                        if (v_spipos = 0) then
+                           ir_cmd <= v_spival;
+                           backup_access_r <= '0';
+                           v_flash := false;          -- melonDS returns 0 here
+                        else
+                           v_eff_pos := v_spipos - 1;
+                           if (ir_cmd /= x"00") then  -- 0x00 = pass through
+                              v_flash := false;
+                              if (ir_cmd = x"08") then
+                                 spi_data <= x"AA";   -- transceiver ID
+                              end if;
+                           end if;
+                        end if;
+                     end if;
+
+                     if (v_flash) then
+                     if (v_eff_pos = 0) then
                         backup_access_r <= '0';
                         if (v_spival = x"04") then
                            sram_status(1) <= '0';                -- write disable
@@ -537,13 +570,13 @@ begin
                            -- address bit and one following byte supplies A7..A0.
                            case sram_cmd is
                               when x"01" =>
-                                 if (v_spipos = 1) then
+                                 if (v_eff_pos = 1) then
                                     sram_status <= (sram_status and x"01") or
                                                    (v_spival and x"0C");
                                  end if;
                               when x"05" => spi_data <= sram_status or x"F0";
                               when x"02" | x"0A" | x"03" | x"0B" =>
-                                 if (v_spipos = 1) then
+                                 if (v_eff_pos = 1) then
                                     v_next_sram_addr := (others => '0');
                                     v_next_sram_addr(7 downto 0) := unsigned(v_spival);
                                     if (sram_cmd = x"0A" or sram_cmd = x"0B") then
@@ -574,7 +607,7 @@ begin
                         else
                            case sram_cmd is
                               when x"01" =>
-                                 if (v_spipos = 1 and
+                                 if (v_eff_pos = 1 and
                                      unsigned(backup_save_type) <= 4) then
                                     sram_status <= (sram_status and x"01") or
                                                    (v_spival and x"0C");
@@ -582,12 +615,12 @@ begin
                               when x"05" => spi_data <= sram_status;
 
                               when x"02" | x"0A" =>
-                                 if (v_spipos <= v_addrbytes) then
+                                 if (v_eff_pos <= v_addrbytes) then
                                     v_next_sram_addr := shift_left(sram_addr, 8);
                                     v_next_sram_addr(7 downto 0) := unsigned(v_spival);
                                     sram_addr <= masked_save_addr(v_next_sram_addr,
                                                                   backup_save_type);
-                                    if (v_spipos = v_addrbytes) then
+                                    if (v_eff_pos = v_addrbytes) then
                                        backup_access_r <= '1';
                                     end if;
                                  elsif (sram_cmd = x"02" or
@@ -612,17 +645,17 @@ begin
                                  end if;
 
                               when x"03" | x"0B" =>
-                                 if (v_spipos <= v_addrbytes) then
+                                 if (v_eff_pos <= v_addrbytes) then
                                     v_next_sram_addr := shift_left(sram_addr, 8);
                                     v_next_sram_addr(7 downto 0) := unsigned(v_spival);
                                     sram_addr <= masked_save_addr(v_next_sram_addr,
                                                                   backup_save_type);
-                                    if (v_spipos = v_addrbytes) then
+                                    if (v_eff_pos = v_addrbytes) then
                                        backup_access_r <= '1';
                                     end if;
                                  elsif (sram_cmd = x"0B" and
                                         unsigned(backup_save_type) >= 5 and
-                                        v_spipos = v_addrbytes + 1) then
+                                        v_eff_pos = v_addrbytes + 1) then
                                     spi_data <= (others => '0'); -- fast-read dummy
                                  else
                                     spi_data <= backup_read_data;
@@ -632,12 +665,12 @@ begin
 
                               when x"D8" | x"DB" =>
                                  if (unsigned(backup_save_type) >= 5 and
-                                     v_spipos <= 3) then
+                                     v_eff_pos <= 3) then
                                     v_next_sram_addr := shift_left(sram_addr, 8);
                                     v_next_sram_addr(7 downto 0) := unsigned(v_spival);
                                     sram_addr <= masked_save_addr(v_next_sram_addr,
                                                                   backup_save_type);
-                                    if (v_spipos = 3 and sram_status(1) = '1') then
+                                    if (v_eff_pos = 3 and sram_status(1) = '1') then
                                        if (sram_cmd = x"D8") then
                                           erase_addr <= masked_save_addr(
                                              v_next_sram_addr and x"F0000",
@@ -665,6 +698,7 @@ begin
                            backup_access_r <= '0';
                         end if;
                      end if;
+                     end if;  -- v_flash
                   end if;
 
                elsif (owner_bus.Adr = ADR_ROMCTRL) then

@@ -537,6 +537,7 @@ architecture arch of nds_nitro_console_top is
    signal save_profile_busy : std_logic;
    signal save_profile_valid_s : std_logic;
    signal save_profile_type_s : std_logic_vector(3 downto 0);
+   signal save_ir_enable_s : std_logic := '0';
    -- on-FPGA debug unit (nds_debug): CPU hold/release, register read-back and
    -- a main-RAM peek muxed onto the ARM9 channel the same way the loader is
    signal pc9_s, pc7_s         : std_logic_vector(31 downto 0);
@@ -1326,11 +1327,31 @@ begin
       backup_read_data => backup_read_data,
       backup_write_toggle => backup_write_toggle,
       backup_save_type => save_profile_type_s,
+      backup_ir_enable => save_ir_enable_s,
       backup_access_active => backup_access_active,
       backup_cache_ready => backup_cache_ready,
       card_ena => cardm_ena, card_addr => cardm_addr,
       card_din => card_din, card_done => card_done
    );
+
+   -- Cartridge IR transceiver: present when the game code's first character
+   -- is 'I' (melonDS NDSCart.cpp -- (gamecode & 0xFF) == 'I' selects
+   -- CartRetailIR).  ld_save_gamecode is little-endian, so that character is
+   -- bits 7..0.  Latched because ld_save_gamecode_valid is a single pulse.
+   process (clk1x)
+   begin
+      if rising_edge(clk1x) then
+         if (reset_boot = '1') then
+            save_ir_enable_s <= '0';
+         elsif (ld_save_gamecode_valid = '1') then
+            if (ld_save_gamecode(7 downto 0) = x"49") then
+               save_ir_enable_s <= '1';
+            else
+               save_ir_enable_s <= '0';
+            end if;
+         end if;
+      end if;
+   end process;
 
    backup_is_64k <= '1' when save_profile_type_s = "0011" else '0';
    backup_save_type <= save_profile_type_s;

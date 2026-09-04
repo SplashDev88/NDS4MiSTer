@@ -17,6 +17,7 @@ architecture sim of tb_nds_loader_save_size is
    signal save_gamecode : std_logic_vector(31 downto 0);
    signal save_gamecode_valid : std_logic;
    signal save_code_seen : std_logic := '0';
+   signal ir_cart_latched : std_logic := '0';
    signal card_ena, card_done : std_logic := '0';
    signal card_addr : std_logic_vector(26 downto 2);
    signal card_rdata : std_logic_vector(31 downto 0) := (others => '0');
@@ -48,8 +49,14 @@ begin
       if rising_edge(clk) then
          if reset = '1' then
             save_code_seen <= '0';
+            ir_cart_latched <= '0';
          elsif save_gamecode_valid = '1' then
             save_code_seen <= '1';
+            if save_gamecode(7 downto 0) = x"49" then
+               ir_cart_latched <= '1';
+            else
+               ir_cart_latched <= '0';
+            end if;
          end if;
          card_done <= card_ena;
          if card_ena = '1' then
@@ -65,7 +72,9 @@ begin
    end process;
 
    process
-      procedure launch_and_check(constant expected_64k : std_logic) is
+      procedure launch_and_check(
+         constant expected_64k : std_logic;
+         constant expected_ir  : std_logic) is
       begin
          wait until falling_edge(clk);
          start <= '1';
@@ -78,21 +87,41 @@ begin
             report "loader save-size hint mismatch" severity failure;
          assert save_code_seen = '1' and save_gamecode = game_code
             report "loader game-code profile trigger mismatch" severity failure;
+         assert ir_cart_latched = expected_ir
+            report "little-endian IR game-code latch mismatch" severity failure;
       end procedure;
    begin
       wait for 30 ns;
       wait until falling_edge(clk);
       reset <= '0';
-      launch_and_check('1');
+      launch_and_check('1', '0');
+
+      -- The low byte is the first game-code character.  An I-prefixed retail
+      -- code selects the cartridge IR wrapper and the selection must persist
+      -- after the loader's one-cycle valid pulse.
+      wait until falling_edge(clk);
+      reset <= '1';
+      game_code <= x"45475049"; -- IPGE, first/little-endian byte is 'I'
+      wait until falling_edge(clk);
+      reset <= '0';
+      launch_and_check('0', '1');
+      for n in 0 to 3 loop wait until rising_edge(clk); end loop;
+      assert ir_cart_latched = '1'
+         report "IR game-code selection did not remain latched" severity failure;
 
       wait until falling_edge(clk);
       reset <= '1';
+      wait until rising_edge(clk);
+      wait for 1 ns;
+      assert ir_cart_latched = '0'
+         report "reset did not clear IR game-code latch" severity failure;
+      wait until falling_edge(clk);
       game_code <= x"454d414e"; -- non-YQUE
       wait until falling_edge(clk);
       reset <= '0';
-      launch_and_check('0');
+      launch_and_check('0', '0');
 
-      report "PASS: loader selects 64 KiB only for YQUE";
+      report "PASS: loader save-size hint and resettable I-prefix IR latch";
       stop;
       wait;
    end process;
