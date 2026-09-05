@@ -5,7 +5,7 @@
 proc generateBuildID_Verilog {} {
 
 	# Get the timestamp (see: http://www.altera.com/support/examples/tcl/tcl-date-time-stamp.html)
-	set buildDate "`define BUILD_DATE \"260903-B7RC134\""
+	set buildDate "`define BUILD_DATE \"260905-TSAUDS2\""
 
 	# Create a Verilog file for output
 	set outputFileName "build_id.v"
