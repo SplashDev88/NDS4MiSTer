@@ -59,6 +59,45 @@ EXPECTED_SYNTHETIC_SHA256 = (
     "0e90daacb49fd05bd57f958f7bd98e44da21c707254c8b4d6d09ff76c4337670"
 )
 
+# Firmware(0) constructs a valid synthetic image, then FirmwareMem::Reset()
+# applies the touchscreen calibration below to BOTH redundant user-setting
+# copies and updates their CRCs before either direct boot or SPI firmware reads
+# can observe them. Encoding the pre-Reset image leaves a valid-CRC but
+# zero-span calibration in SPI flash: pen-down still works, while software that
+# consumes the flash copy cannot turn raw ADC samples into screen coordinates.
+USER_SETTINGS_OFFSETS = (0x1FE00, 0x1FF00)
+TOUCH_CALIBRATION_OFFSET = 0x58
+TOUCH_CALIBRATION = bytes((
+    0x00, 0x00,  # ADC1 X = 0
+    0x00, 0x00,  # ADC1 Y = 0
+    0x00, 0x00,  # Pixel1 = (0, 0)
+    0xF0, 0x0F,  # ADC2 X = 255 << 4
+    0xF0, 0x0B,  # ADC2 Y = 191 << 4
+    0xFF, 0xBF,  # Pixel2 = (255, 191)
+))
+
+
+def crc16(data: bytes | bytearray, start: int) -> int:
+    """Match melonDS CRC16() / DS firmware's reflected 0xA001 CRC."""
+    value = start
+    for byte in data:
+        value ^= byte
+        for _ in range(8):
+            value = (value >> 1) ^ (0xA001 if value & 1 else 0)
+    return value & 0xFFFF
+
+
+def apply_melonds_runtime_defaults(source: bytes) -> bytes:
+    """Return the exact user calibration image exposed after melonDS Reset."""
+    image = bytearray(source)
+    for base in USER_SETTINGS_OFFSETS:
+        start = base + TOUCH_CALIBRATION_OFFSET
+        image[start:start + len(TOUCH_CALIBRATION)] = TOUCH_CALIBRATION
+        checksum = crc16(image[base:base + 0x70], 0xFFFF)
+        image[base + 0x72] = checksum & 0xFF
+        image[base + 0x73] = checksum >> 8
+    return bytes(image)
+
 
 def render(image: bytes) -> str:
     # The two served regions have DISJOINT low-9 address bits:
@@ -198,6 +237,7 @@ def main() -> int:
             "refusing firmware input that is not the pinned synthetic "
             f"melonDS Firmware(0) image (sha256 {digest})")
     print("source sha256:", digest)
+    image = apply_melonds_runtime_defaults(image)
 
     repo = pathlib.Path(__file__).resolve().parents[1]
     output = repo / "rtl" / "nds_nitro_firmware.vhd"

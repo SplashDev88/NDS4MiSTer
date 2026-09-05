@@ -183,12 +183,14 @@ architecture rtl of nds_nitro_firmware is
       386 => x"65",
       387 => x"6F",
       388 => x"44",
+      408 => x"F0",
       409 => x"31",
       448 => x"05",
       449 => x"01",
       450 => x"65",
       451 => x"6F",
       452 => x"44",
+      472 => x"F0",
       473 => x"31",
       others => (others => '0')
    );
@@ -320,6 +322,8 @@ architecture rtl of nds_nitro_firmware is
       381 => x"FF",
       382 => x"FF",
       383 => x"FF",
+      408 => x"0B",
+      472 => x"0B",
       others => (others => '0')
    );
    signal LANE2 : t_lane := (
@@ -461,13 +465,17 @@ architecture rtl of nds_nitro_firmware is
       387 => x"6E",
       388 => x"53",
       390 => x"07",
-      412 => x"65",
+      407 => x"F0",
+      408 => x"FF",
+      412 => x"39",
       449 => x"6D",
       450 => x"6C",
       451 => x"6E",
       452 => x"53",
       454 => x"07",
-      476 => x"65",
+      471 => x"F0",
+      472 => x"FF",
+      476 => x"39",
       others => (others => '0')
    );
    signal LANE3 : t_lane := (
@@ -607,9 +615,13 @@ architecture rtl of nds_nitro_firmware is
       382 => x"FF",
       383 => x"FF",
       384 => x"01",
-      412 => x"95",
+      407 => x"0F",
+      408 => x"BF",
+      412 => x"D7",
       448 => x"01",
-      476 => x"95",
+      471 => x"0F",
+      472 => x"BF",
+      476 => x"D7",
       others => (others => '0')
    );
    signal index  : integer range 0 to t_lane'high := 0;

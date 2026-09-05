@@ -46,6 +46,22 @@ architecture sim of tb_nds_spi_firmware_read is
    signal fw_addr_slv  : std_logic_vector(15 downto 0);
    signal fw_wlane_slv : std_logic_vector(1 downto 0);
    signal errors  : integer := 0;
+
+   subtype crc16_t is unsigned(15 downto 0);
+   function crc16_byte(
+      constant crc_in : crc16_t;
+      constant data   : std_logic_vector(7 downto 0)) return crc16_t is
+      variable crc : crc16_t := crc_in xor resize(unsigned(data), 16);
+   begin
+      for bit_index in 0 to 7 loop
+         if crc(0) = '1' then
+            crc := shift_right(crc, 1) xor to_unsigned(16#A001#, 16);
+         else
+            crc := shift_right(crc, 1);
+         end if;
+      end loop;
+      return crc;
+   end function;
 begin
    clk <= not clk after 5 ns;
    fw_addr_slv  <= std_logic_vector(fw_addr);
@@ -149,6 +165,36 @@ begin
          end if;
       end procedure;
 
+      -- Read a complete production user-settings copy over the ARM7 SPI path,
+      -- then independently verify its stored little-endian CRC16.
+      procedure validate_user_crc(constant a : integer;
+                                  constant name : string) is
+         variable v : std_logic_vector(7 downto 0);
+         variable crc : crc16_t := x"FFFF";
+         variable stored : crc16_t;
+      begin
+         select_firmware(true);
+         transfer(x"03", v);
+         send_addr(a);
+         for byte_index in 0 to 16#6F# loop
+            transfer(x"00", v);
+            crc := crc16_byte(crc, v);
+         end loop;
+         -- Update counter at +0x70..+0x71 is outside the CRC span.
+         transfer(x"00", v);
+         transfer(x"00", v);
+         transfer(x"00", v); stored(7 downto 0) := unsigned(v);
+         transfer(x"00", v); stored(15 downto 8) := unsigned(v);
+         deselect;
+         assert stored = crc
+            report name & " CRC MISMATCH"
+            severity error;
+         assert stored = to_unsigned(16#D739#, 16)
+            report name & " does not contain the melonDS Reset CRC"
+            severity error;
+         report name & " calibration CRC OK" severity note;
+      end procedure;
+
       -- What Pearl does: WREN, page program one byte, WRDI.
       procedure program_byte(constant a : integer;
                              constant d : std_logic_vector(7 downto 0)) is
@@ -175,6 +221,18 @@ begin
       -- Initial image contents.
       read_at(16#1FE00#, x"05", x"00", x"00", x"01", "read user settings @0x1FE00");
       read_at(16#0001D#, x"20", x"00", x"00", x"C0", "read header @0x0001D");
+
+      -- FirmwareMem::Reset() in the pinned melonDS oracle writes the same
+      -- endpoint calibration into both redundant settings copies. Check the
+      -- actual bytes through nds_nitro_spi, not an isolated helper model.
+      read_at(16#1FE58#, x"00", x"00", x"00", x"00", "user0 ADC1");
+      read_at(16#1FE5C#, x"00", x"00", x"F0", x"0F", "user0 pixel1/ADC2-X");
+      read_at(16#1FE60#, x"F0", x"0B", x"FF", x"BF", "user0 ADC2-Y/pixel2");
+      read_at(16#1FF58#, x"00", x"00", x"00", x"00", "user1 ADC1");
+      read_at(16#1FF5C#, x"00", x"00", x"F0", x"0F", "user1 pixel1/ADC2-X");
+      read_at(16#1FF60#, x"F0", x"0B", x"FF", x"BF", "user1 ADC2-Y/pixel2");
+      validate_user_crc(16#1FE00#, "user0");
+      validate_user_crc(16#1FF00#, "user1");
 
       -- THE CASE THAT MATTERS: program a byte and read it back through SPI.
       program_byte(16#1FE00#, x"A5");
