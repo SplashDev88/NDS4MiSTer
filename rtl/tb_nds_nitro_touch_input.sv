@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// Focused source selection, mouse sign, saturation, and button proof.
+// Focused source selection, controller range, mouse sign/saturation, and
+// button proof.
 `timescale 1ns/1ps
 
 module tb_nds_nitro_touch_input;
@@ -11,8 +12,33 @@ module tb_nds_nitro_touch_input;
     logic [24:0] ps2_mouse = 25'd0;
     wire touch_pressed;
     wire [15:0] touch_analog;
+    integer axis_value;
+    integer previous_x;
+    integer previous_y;
+    integer current_x;
+    integer current_y;
 
     nds_nitro_touch_input dut (.*);
+
+    function automatic integer native_x(input logic [7:0] axis);
+        native_x = {~axis[7],axis[6:0]};
+    endfunction
+
+    function automatic integer native_y(input logic [7:0] axis);
+        native_y = (3 * {~axis[7],axis[6:0]}) >> 2;
+    endfunction
+
+    task automatic controller_position(
+        input logic signed [7:0] x,
+        input logic signed [7:0] y
+    );
+        begin
+            @(negedge clk);
+            controller_analog = {y,x};
+            @(negedge clk);
+            #1;
+        end
+    endtask
 
     task automatic mouse_packet(
         input logic [7:0] buttons,
@@ -41,6 +67,60 @@ module tb_nds_nitro_touch_input;
         #1;
         if (touch_analog !== 16'hA355)
             $fatal(1, "right-stick movement did not own touch position");
+
+        // hps_io's documented controller range is -127..+127. The native
+        // sign-bit conversion expects -128..+127. Normalize only negative
+        // full-deflection X; Y's 3/4 scale already reaches zero. Center and
+        // nearby values stay untouched, and both axes remain monotonic.
+        controller_position(-8'sd127,-8'sd127);
+        if (touch_analog !== 16'h8180 ||
+            native_x(touch_analog[7:0]) != 0 ||
+            native_y(touch_analog[15:8]) != 0)
+            $fatal(1, "negative full deflection missed native origin analog=%h x=%0d y=%0d",
+                   touch_analog,native_x(touch_analog[7:0]),
+                   native_y(touch_analog[15:8]));
+
+        controller_position(8'sd0,8'sd0);
+        if (touch_analog !== 16'h0000 ||
+            native_x(touch_analog[7:0]) != 128 ||
+            native_y(touch_analog[15:8]) != 96)
+            $fatal(1, "controller center changed analog=%h x=%0d y=%0d",
+                   touch_analog,native_x(touch_analog[7:0]),
+                   native_y(touch_analog[15:8]));
+
+        controller_position(8'sd127,8'sd127);
+        if (touch_analog !== 16'h7F7F ||
+            native_x(touch_analog[7:0]) != 255 ||
+            native_y(touch_analog[15:8]) != 191)
+            $fatal(1, "positive full deflection missed far edges analog=%h x=%0d y=%0d",
+                   touch_analog,native_x(touch_analog[7:0]),
+                   native_y(touch_analog[15:8]));
+
+        previous_x = -1;
+        previous_y = -1;
+        for (axis_value = -127; axis_value <= 127; axis_value = axis_value + 1) begin
+            controller_position(axis_value[7:0],axis_value[7:0]);
+            current_x = native_x(touch_analog[7:0]);
+            current_y = native_y(touch_analog[15:8]);
+            if (current_x < previous_x || current_y < previous_y)
+                $fatal(1, "controller mapping is not monotonic at raw=%0d: (%0d,%0d) after (%0d,%0d)",
+                       axis_value,current_x,current_y,previous_x,previous_y);
+            previous_x = current_x;
+            previous_y = current_y;
+        end
+
+        // Values around the existing MiSTer deadzone/center are identity
+        // mapped; this range extension must not introduce a new deadzone.
+        controller_position(-8'sd1,-8'sd1);
+        if (touch_analog !== 16'hFFFF)
+            $fatal(1, "negative center neighbor changed %h",touch_analog);
+        controller_position(8'sd1,8'sd1);
+        if (touch_analog !== 16'h0101)
+            $fatal(1, "positive center neighbor changed %h",touch_analog);
+        controller_position(8'h55,8'hA3);
+        if (touch_analog !== 16'hA355)
+            $fatal(1, "controller test position was not restored %h",
+                   touch_analog);
 
         // +X moves right; PS/2 +Y is up and therefore lowers native DS Y.
         mouse_packet(8'h00,8'sd10,8'sd5);
@@ -72,8 +152,12 @@ module tb_nds_nitro_touch_input;
         repeat (3) mouse_packet(8'h00,-8'sd128,8'sd127);
         if (touch_analog !== 16'h8080)
             $fatal(1, "negative mouse saturation mismatch %h",touch_analog);
+        mouse_packet(8'h00,8'sd1,-8'sd1);
+        if (touch_analog !== 16'h8181)
+            $fatal(1, "controller endpoint normalization altered mouse pixels %h",
+                   touch_analog);
 
-        $display("PASS: right-stick/mouse arbitration, button, sign, and saturation");
+        $display("PASS: right-stick range/monotonicity and mouse arbitration/saturation");
         $finish;
     end
 endmodule

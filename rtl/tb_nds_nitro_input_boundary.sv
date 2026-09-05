@@ -27,7 +27,16 @@ module tb_nds_nitro_input_boundary;
     wire [1:0] video_gap_active;
     wire video_fps_active;
     logic [31:0] joystick = '0;
-    logic [15:0] joystick_analog = '0;
+    logic [15:0] joystick_analog_direct = '0;
+    logic use_touch_arbiter = 1'b0;
+    logic touch_input_reset = 1'b1;
+    logic controller_pressed = 1'b0;
+    logic [15:0] controller_analog = '0;
+    logic [24:0] ps2_mouse = '0;
+    wire touch_pressed;
+    wire [15:0] touch_analog;
+    wire [15:0] joystick_analog = use_touch_arbiter
+        ? touch_analog : joystick_analog_direct;
     logic ioctl_download = 1'b0;
     logic [15:0] ioctl_index = '0;
     wire ioctl_wait;
@@ -64,6 +73,11 @@ module tb_nds_nitro_input_boundary;
     wire SDRAM_DQML, SDRAM_DQMH;
     wire SDRAM_nCS, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nWE;
 
+    nds_nitro_touch_input touch_input (
+        .clk(clk1x),.reset(touch_input_reset),
+        .controller_pressed,.controller_analog,.ps2_mouse,
+        .touch_pressed,.touch_analog
+    );
     nds_nitro_console_island dut (.*);
 
     task automatic clk1x_fall;
@@ -136,7 +150,7 @@ module tb_nds_nitro_input_boundary;
             $fatal(1, "input state was not cleared during console reset");
 
         joystick = 32'h0000_1491; // right, A, Y, Select, Touch
-        joystick_analog = 16'hA355;
+        joystick_analog_direct = 16'hA355;
         force dut.console_reset_request = 1'b0;
 
         // Reset deasserts through two flops, then the controller level crosses
@@ -154,7 +168,7 @@ module tb_nds_nitro_input_boundary;
         // A changed report must take two destination edges: no metastable
         // first-stage value may become architectural input on the first edge.
         joystick = 32'h0000_0B6E; // left/down, B, X, L/R, Start
-        joystick_analog = 16'h127F;
+        joystick_analog_direct = 16'h127F;
         clk1x_fall();
         if (dut.joystick_sync === joystick || dut.analog_sync === joystick_analog)
             $fatal(1, "controller update bypassed the second synchronizer stage");
@@ -165,6 +179,28 @@ module tb_nds_nitro_input_boundary;
             $fatal(1, "second analog conversion mismatch x=%h y=%h",
                    dut.touch_x, dut.touch_y);
 
+        // Prove the complete right-stick path, rather than just the shell
+        // arbiter or the island conversion in isolation. hps_io publishes
+        // signed -127..+127 values; full deflection must reach every native
+        // DS edge after arbitration, CDC, and coordinate conversion.
+        touch_input_reset = 1'b0;
+        use_touch_arbiter = 1'b1;
+        controller_analog = 16'h8181;
+        repeat (2) clk1x_fall();
+        if (dut.touch_x !== 8'd0 || dut.touch_y !== 8'd0)
+            $fatal(1, "negative controller edge missed DS origin x=%0d y=%0d analog=%h",
+                   dut.touch_x,dut.touch_y,touch_analog);
+        controller_analog = 16'h0000;
+        repeat (2) clk1x_fall();
+        if (dut.touch_x !== 8'd128 || dut.touch_y !== 8'd96)
+            $fatal(1, "controller center changed x=%0d y=%0d",
+                   dut.touch_x,dut.touch_y);
+        controller_analog = 16'h7F7F;
+        repeat (2) clk1x_fall();
+        if (dut.touch_x !== 8'd255 || dut.touch_y !== 8'd191)
+            $fatal(1, "positive controller edge missed DS far corner x=%0d y=%0d",
+                   dut.touch_x,dut.touch_y);
+
         // A replacement ROM/reset epoch must clear held input immediately and
         // must not leak the old report when the new epoch eventually releases.
         force dut.console_reset_request = 1'b1;
@@ -172,7 +208,7 @@ module tb_nds_nitro_input_boundary;
         if (dut.joystick_sync !== 32'd0 || dut.analog_sync !== 16'd0)
             $fatal(1, "cartridge epoch did not clear held controller state");
 
-        $display("PASS: Nitro controller CDC, epoch reset, and touch conversion");
+        $display("PASS: Nitro controller CDC, epoch reset, and full-range touch conversion");
         $finish;
     end
 endmodule

@@ -74,6 +74,7 @@ run_sv tb_nds_nitro_save_bridge \
 
 iverilog -g2012 -Wall -i -s tb_nds_nitro_input_boundary \
     -o "$test_tmp/tb_nds_nitro_input_boundary" \
+    "$repo_dir/rtl/nds_nitro_touch_input.sv" \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
     "$repo_dir/rtl/nds_nitro_async_fifo.sv" \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
