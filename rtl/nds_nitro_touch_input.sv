@@ -45,21 +45,6 @@ module nds_nitro_touch_input (
             clamp_unsigned_byte = value[7:0];
     endfunction
 
-    // MiSTer's hps_io contract is signed -127..+127 for controller axes.
-    // The shared native-coordinate conversion uses sign-bit inversion, whose
-    // complete 0..255 X domain requires -128 at the negative endpoint. Y's
-    // later 3/4 scale already maps both -127 and -128 to zero, so only X needs
-    // logic. This leaves center/deadzone values untouched and does not
-    // collapse mouse coordinate 1 into 0.
-    function automatic logic [7:0] expand_controller_axis(
-        input logic [7:0] value
-    );
-        if (value == 8'h81)
-            expand_controller_axis = 8'h80;
-        else
-            expand_controller_axis = value;
-    endfunction
-
     always_ff @(posedge clk or posedge reset) begin
         if (reset) begin
             mouse_toggle_d <= 1'b0;
@@ -91,11 +76,6 @@ module nds_nitro_touch_input (
         ~mouse_y_unsigned[7],mouse_y_unsigned[6:0],
         ~mouse_x_unsigned[7],mouse_x_unsigned[6:0]
     };
-    wire [15:0] controller_analog_full_range = {
-        controller_analog[15:8],
-        expand_controller_axis(controller_analog[7:0])
-    };
-    assign touch_analog = use_mouse
-        ? mouse_analog : controller_analog_full_range;
+    assign touch_analog = use_mouse ? mouse_analog : controller_analog;
     assign touch_pressed = use_mouse ? ps2_mouse[0] : controller_pressed;
 endmodule

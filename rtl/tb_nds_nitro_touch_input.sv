@@ -68,15 +68,14 @@ module tb_nds_nitro_touch_input;
         if (touch_analog !== 16'hA355)
             $fatal(1, "right-stick movement did not own touch position");
 
-        // hps_io's documented controller range is -127..+127. The native
-        // sign-bit conversion expects -128..+127. Normalize only negative
-        // full-deflection X; Y's 3/4 scale already reaches zero. Center and
-        // nearby values stay untouched, and both axes remain monotonic.
+        // The arbiter preserves the controller's documented -127..+127 byte
+        // values. Full-edge normalization happens once, after source
+        // arbitration, in the console-island native-coordinate conversion.
         controller_position(-8'sd127,-8'sd127);
-        if (touch_analog !== 16'h8180 ||
-            native_x(touch_analog[7:0]) != 0 ||
+        if (touch_analog !== 16'h8181 ||
+            native_x(touch_analog[7:0]) != 1 ||
             native_y(touch_analog[15:8]) != 0)
-            $fatal(1, "negative full deflection missed native origin analog=%h x=%0d y=%0d",
+            $fatal(1, "controller raw negative endpoint changed analog=%h x=%0d y=%0d",
                    touch_analog,native_x(touch_analog[7:0]),
                    native_y(touch_analog[15:8]));
 
@@ -100,6 +99,9 @@ module tb_nds_nitro_touch_input;
         previous_y = -1;
         for (axis_value = -127; axis_value <= 127; axis_value = axis_value + 1) begin
             controller_position(axis_value[7:0],axis_value[7:0]);
+            if (touch_analog[7:0] !== axis_value[7:0])
+                $fatal(1, "controller arbiter changed X raw=%h got=%h",
+                       axis_value[7:0],touch_analog[7:0]);
             current_x = native_x(touch_analog[7:0]);
             current_y = native_y(touch_analog[15:8]);
             if (current_x < previous_x || current_y < previous_y)
@@ -157,7 +159,7 @@ module tb_nds_nitro_touch_input;
             $fatal(1, "controller endpoint normalization altered mouse pixels %h",
                    touch_analog);
 
-        $display("PASS: right-stick range/monotonicity and mouse arbitration/saturation");
+        $display("PASS: right-stick identity/monotonicity and mouse arbitration/saturation");
         $finish;
     end
 endmodule

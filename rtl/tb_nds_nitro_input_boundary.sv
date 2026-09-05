@@ -72,6 +72,9 @@ module tb_nds_nitro_input_boundary;
     tri [15:0] SDRAM_DQ;
     wire SDRAM_DQML, SDRAM_DQMH;
     wire SDRAM_nCS, SDRAM_nCAS, SDRAM_nRAS, SDRAM_nWE;
+    integer axis_value;
+    integer previous_touch_x;
+    integer expected_touch_x;
 
     nds_nitro_touch_input touch_input (
         .clk(clk1x),.reset(touch_input_reset),
@@ -200,6 +203,38 @@ module tb_nds_nitro_input_boundary;
         if (dut.touch_x !== 8'd255 || dut.touch_y !== 8'd191)
             $fatal(1, "positive controller edge missed DS far corner x=%0d y=%0d",
                    dut.touch_x,dut.touch_y);
+
+        previous_touch_x = 0;
+        for (axis_value = -127; axis_value <= 127; axis_value = axis_value + 1) begin
+            controller_analog = {8'h00,axis_value[7:0]};
+            repeat (2) clk1x_fall();
+            expected_touch_x = axis_value + 128;
+            if (expected_touch_x == 1)
+                expected_touch_x = 0;
+            if (dut.touch_x !== expected_touch_x[7:0])
+                $fatal(1, "DS-visible X mismatch raw=%0d got=%0d expected=%0d",
+                       axis_value,dut.touch_x,expected_touch_x);
+            if (dut.touch_x < previous_touch_x)
+                $fatal(1, "DS-visible X is not monotonic raw=%0d got=%0d previous=%0d",
+                       axis_value,dut.touch_x,previous_touch_x);
+            previous_touch_x = dut.touch_x;
+        end
+
+        // The shared one-bit endpoint decode deliberately coalesces mouse
+        // native X=1 into X=0 as well. Cursor and ADC coordinates use this
+        // same value, X=2 and every later pixel remain exact, and clamping is
+        // still owned by the mouse arbiter.
+        ps2_mouse = {~ps2_mouse[24],8'h00,8'h81,8'h00}; // 128 - 127 = 1
+        repeat (3) clk1x_fall();
+        if (touch_analog[7:0] !== 8'h81 || dut.touch_x_raw !== 8'd1 ||
+            dut.touch_x !== 8'd0)
+            $fatal(1, "mouse X=1 endpoint coalescing mismatch analog=%h raw=%0d visible=%0d",
+                   touch_analog[7:0],dut.touch_x_raw,dut.touch_x);
+        ps2_mouse = {~ps2_mouse[24],8'h00,8'h01,8'h00}; // 1 + 1 = 2
+        repeat (3) clk1x_fall();
+        if (dut.touch_x_raw !== 8'd2 || dut.touch_x !== 8'd2)
+            $fatal(1, "mouse X=2 must remain exact raw=%0d visible=%0d",
+                   dut.touch_x_raw,dut.touch_x);
 
         // A replacement ROM/reset epoch must clear held input immediately and
         // must not leak the old report when the new epoch eventually releases.

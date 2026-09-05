@@ -447,9 +447,16 @@ always_ff @(posedge clk1x or posedge console_reset_1x) begin
 end
 
 // Convert the public beta's right analog stick to native DS pixels for both
-// the console and scanout pointer. Flipping X's sign bit maps -128..127 to
-// 0..255; multiplying Y by 3/4 maps it to 0..191, centered at (128,96).
-wire [7:0] touch_x = {~analog_sync[7],analog_sync[6:0]};
+// the console and scanout pointer. MiSTer's controller range is -127..127, so
+// sign-bit inversion naturally produces X=1..255. Coalesce only native X=1
+// into X=0 after mouse/controller arbitration. This reaches the left edge
+// with a shared one-bit decode; the explicit tradeoff is that mouse X=1 also
+// displays/reports as X=0. Every other mouse pixel remains exact.
+wire [7:0] touch_x_raw = {~analog_sync[7],analog_sync[6:0]};
+wire [7:0] touch_x = {
+    touch_x_raw[7:1],
+    touch_x_raw[0] & (|touch_x_raw[7:1])
+};
 wire [7:0] touch_y_unscaled = {~analog_sync[15],analog_sync[14:8]};
 wire [9:0] touch_y_scaled = {2'b00,touch_y_unscaled} +
                              {2'b00,touch_y_unscaled} +
