@@ -1,4 +1,4 @@
-NDS4MiSTer public beta v0.3.0-beta.7 source - 2026-09-04
+NDS4MiSTer public beta v0.3.0-beta.8 source - 2026-09-05
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
@@ -15,9 +15,12 @@ NEON vertex-transform, COLOR/NORMAL replay, and exact FPGA blend-shift work.
 Beta.7 adds the compact writable boot-firmware subset, ARM7 Wi-Fi boot memory,
 and cartridge-IR AUXSPI compatibility work contributed by InsaneFriend
 (GitHub: saneFriend).
+Beta.8 corrects direct-boot touchscreen calibration, applies valid calibration
+to both synthetic firmware settings copies, and makes full right-stick travel
+reach every native touchscreen edge.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.7_20260904 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.8_20260905 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -30,10 +33,23 @@ Release identities
 ------------------
 
 FPGA core:
-  d7af1df13279881ec4967fa37b350844e640121227d55cd6dc21379ee8cc0fe6
+  33fe9f8fb91d8ae768abcbb9552d611078382474b861af0651dbb3c7d275130e
 
 ARM hybrid-3D service:
   bc7971606f958799a855b043757e3989aec3046ceafea34fb07f6ba70a92631a
+
+Incremental beta.8 touch update
+--------------------------------
+
+* Direct boot now stores the touchscreen Y endpoint in the byte order read by
+  DS software.
+* Both redundant synthetic SPI-firmware user-settings copies contain the full
+  melonDS-compatible calibration endpoints and valid updated CRCs.
+* Full right-stick travel reaches native coordinates (0,0) through (255,191)
+  while retaining monotonic movement and the existing center behavior.
+* Relative mouse touch and the visible pointer are unchanged.
+* The exact packaged core passed the focused host regressions and real MiSTer
+  touchscreen testing. The beta.7 ARM service is unchanged.
 
 Incremental beta.7 compatibility update
 -----------------------------------------
@@ -215,14 +231,14 @@ halfwords through the tested driver patterns, cartridge-IR AUXSPI behavior,
 and the complete Nitro console-island host RTL gate.
 
 Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
-successful Seed-2 fit used 41,281 of 41,910 ALMs (98%), 45,467 registers,
-3,508,257 of 5,662,720 block-memory bits (62%), 484 of 553 RAM blocks (88%),
-69 DSP blocks, and four PLLs. Assembly completed with device checksum
-0x10313EB0. Static timing remains diagnostic information rather than a
-deployment gate for this experimental project. This exact RBF was direct-
-loaded with FPGA state `operating`, core identity `NDS`, and exactly one
-verified ARM service at 1 GHz. The maintainer approved the compatibility tests
-listed in the beta.7 update above after verifying the exact release hashes.
+successful Seed-2 fit used 41,268 of 41,910 ALMs (98%), 45,379 registers,
+484 of 553 RAM blocks (88%), 69 DSP blocks, and four PLLs. Static timing remains
+diagnostic information rather than a deployment gate for this experimental
+project. This exact RBF was direct-loaded with FPGA state `operating`, core
+identity `NDS`, and exactly one verified ARM service at 1 GHz. The maintainer
+confirmed the beta.8 touchscreen fix on real MiSTer hardware. The beta.7
+compatibility results remain applicable because beta.8 changes only the FPGA
+touch-calibration path and retains the exact beta.7 ARM service.
 
 Package exclusions
 ------------------

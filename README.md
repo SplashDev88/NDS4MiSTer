@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**Public Beta v0.3.0-beta.7 — released 2026-09-04**
+**Public Beta v0.3.0-beta.8 — released 2026-09-05**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -39,8 +39,8 @@ artifacts, or credentials are included in this source repository.
   the most active area of development.
 - **Cartridge-access latency remains a bottleneck.** Some objects or effects
   may appear late or fail to load.
-- **Audio can sound overdriven or distorted.** Beta.7 lowers the output level,
-  but hardware testing confirmed that the underlying distortion remains.
+- **Audio can sound overdriven or distorted.** Audio behavior is unchanged from
+  beta.7; beta.8 is a touch-only update and makes no audio claim.
 - **Not implemented:** NAND saves, save states, Wi-Fi, and microphone support.
 - **Reset is improved, but not universal.** It preserves the current cartridge
   and save mount. If a game does not reset cleanly, reselect its ROM from the
@@ -55,12 +55,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.7_20260904.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.8_20260905.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Go to **Console → NDS_20260903** and launch the core.
+3. Go to **Console → NDS_20260905** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -93,7 +93,7 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In beta.7, both displayed positions duplicate Engine A, so the
+movement. In beta.8, both displayed positions duplicate Engine A, so the
 pointer is drawn over every visible copy of that image.
 
 Touch coordinates are delivered to the DS touchscreen even though Engine B is
@@ -115,7 +115,7 @@ cartridges and unknown save hardware are not supported.
 > **If a game reports corrupted save data after an upgrade:** Back up its
 > `.sav` file, then delete or move that file out of `/media/fat/saves/NDS/` and
 > let the game create a fresh save. Older experimental builds sometimes
-> created incorrectly sized or already-corrupted saves; beta.7 does not try to
+> created incorrectly sized or already-corrupted saves; beta.8 does not try to
 > repair them.
 
 ## Reading the FPS counter
@@ -140,32 +140,43 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.7
+## What's new in beta.8
 
-Beta.7 focuses on game compatibility while retaining beta.6's tested 3D
-renderer, saves, reset behavior, touch preview, layouts, and 134 MHz clock
-family.
+Beta.8 is a focused touch-correction release built on beta.7. It retains
+beta.7's game-compatibility work, ARM 3D service, saves, layouts, reset behavior,
+and 134 MHz clock family.
 
-- Replaces the all-zero firmware stub with a compact writable implementation
-  of the header, Wi-Fi, and user-settings pages used during boot.
-- Adds the 8 KiB ARM7 Wi-Fi RAM aperture and the small boot-time register and
-  baseband subset required by additional games. This does **not** add wireless
-  multiplayer or network connectivity.
-- Adds cartridge IR AUXSPI command handling for I-prefixed cartridges while
-  preserving the legacy save-device path for non-IR games.
-- Retains beta.6's approximately 5% lower ARM 3D processing cost versus beta.5;
-  beta.7 makes no additional 3D-performance claim.
+- Corrects the touchscreen Y-axis calibration byte order placed in direct-boot
+  RAM, so software sees the intended 191×16 raw endpoint.
+- Applies the same complete calibration to both synthetic SPI-firmware user
+  settings copies and updates their checksums.
+- Makes full right-stick travel reach all native DS touchscreen edges from
+  (0,0) through (255,191), while preserving center and monotonic movement.
+- Keeps mouse touch relative and bounded; controller and mouse coordinates
+  continue through the same DS touch path.
 
-Hardware testing successfully booted and ran *Pokemon Platinum*, *Pokemon
-SoulSilver* (including continuing an existing save without the earlier
-communication error), the full version of *Mario Kart DS*, and *New Super
-Mario Bros.* through the previously questioned World 2-6 transition. These
-results are compatibility observations, not a claim that every scene or game
-is fully supported.
+The exact packaged core was confirmed on MiSTer hardware for the touch fix.
+Touch delivery still works independently of display layout, but Engine B is not
+yet visible, so interactions that depend on unseen bottom-screen graphics can
+still be difficult.
 
-Beta.7 also contains an experimental 6.02 dB output attenuation. Testing found
-that it makes the existing audio distortion quieter but does not fix it, so it
-is intentionally not presented as a sound fix.
+## Verification
+
+| | |
+| --- | --- |
+| Core file | `_Console/NDS_20260905.rbf` |
+| Build identity | `260903-B7RC134` |
+| Quartus seed | 2 |
+| ALMs | 41,268 / 41,910 |
+| Registers | 45,379 |
+| RAM blocks | 484 / 553 |
+| DSP blocks | 69 / 112 |
+| FPGA SHA-256 | `33fe9f8fb91d8ae768abcbb9552d611078382474b861af0651dbb3c7d275130e` |
+| ARM SHA-256 | `bc7971606f958799a855b043757e3989aec3046ceafea34fb07f6ba70a92631a` |
+
+Quartus fit and assembly completed successfully. Static timing remains
+diagnostic rather than a release gate; this exact core passed MiSTer touch
+testing.
 
 ## For developers
 
@@ -179,7 +190,7 @@ is intentionally not presented as a sound fix.
   engine and publishes completed 256×192 3D planes to the FPGA.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
   window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in beta.7.
+  shadow copy of the FPGA 2D engine in beta.8.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.
