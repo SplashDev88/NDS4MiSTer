@@ -18,9 +18,14 @@ python3 "$script_dir/test_cache_tag_packing.py"
 "$script_dir/test_extract_melonds_freebios.sh"
 freebios7_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.vhd")"
 freebios9_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios9.vhd")"
+freebios7_mif_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.mif")"
+freebios9_mif_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios9.mif")"
 python3 "$script_dir/generate_nitro_freebios_vhdl.py" >/dev/null
 test "$freebios7_before" = "$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.vhd")"
 test "$freebios9_before" = "$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios9.vhd")"
+test "$freebios7_mif_before" = "$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.mif")"
+test "$freebios9_mif_before" = "$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios9.mif")"
+"$script_dir/test_nitro_freebios_m10k.sh"
 
 run_sv() {
     local top="$1"

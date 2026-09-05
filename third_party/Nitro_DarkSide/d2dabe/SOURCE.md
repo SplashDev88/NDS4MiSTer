@@ -130,9 +130,10 @@ FreeBIOS arrays in `third_party/melonDS/src/FreeBIOS_Data.h`. They provide the
 direct-boot SWIs needed by the initial compatibility target without Nintendo
 BIOS data; they are not full retail-BIOS equivalents. Corresponding source is
 retained in `third_party/melonDS/freebios`, and the BSD-2-Clause notice is
-`third_party/melonDS/freebios/drastic_bios_readme.txt`. Regenerate the VHDL
-with `tools/generate_nitro_freebios_vhdl.py`; that script pins and verifies the
-vendored header and both padded image hashes.
+`third_party/melonDS/freebios/drastic_bios_readme.txt`. Regenerate the VHDL and
+MIF artifacts with `tools/generate_nitro_freebios_vhdl.py`; that script pins and
+verifies the vendored header and both padded image hashes. The product uses six
+explicit M10Ks: four for the compact ARM7 image and two for the ARM9 image.
 
 The donor `NDS.sv` was used only as an integration reference and is not
 vendored or sourced by the product. Donor PLLs, HPS/LW shell logic, audio DDR

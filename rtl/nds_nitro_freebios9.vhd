@@ -2,11 +2,20 @@
 -- Generated from melonDS FreeBIOS_Data.h by tools/generate_nitro_freebios_vhdl.py.
 -- The full FreeBIOS copyright/license notice is in
 -- third_party/melonDS/freebios/drastic_bios_readme.txt.
+-- The synthesis path is an explicit Cyclone-V M10K ROM.  Its input
+-- address register plus unregistered output preserves the one-cycle contract.
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
+library altera_mf;
+use altera_mf.altera_mf_components.all;
+
 entity nds_nitro_freebios9 is
+   generic
+   (
+      is_simu : std_logic := '0'
+   );
    port
    (
       clk : in std_logic;
@@ -16,8 +25,9 @@ entity nds_nitro_freebios9 is
 end entity;
 
 architecture rtl of nds_nitro_freebios9 is
-   type t_rom is array (0 to 468) of std_logic_vector(31 downto 0);
-   constant ROM : t_rom := (
+   constant ZERO_ROW : natural := 469;
+   type t_sim_rom is array (0 to 469) of std_logic_vector(31 downto 0);
+   constant SIM_ROM : t_sim_rom := (
       0 => x"EA00003E",
       1 => x"EA00003E",
       2 => x"EA00003E",
@@ -432,15 +442,70 @@ architecture rtl of nds_nitro_freebios9 is
       468 => x"E1B0F00E",
       others => (others => '0')
    );
+   signal rom_addr : std_logic_vector(8 downto 0);
+   signal rom_valid : std_logic;
+   signal rom_valid_q : std_logic;
+   signal rom_data : std_logic_vector(31 downto 0);
 begin
+   rom_valid <= '1' when (brom_addr >= to_unsigned(0, brom_addr'length) and brom_addr <= to_unsigned(468, brom_addr'length)) else '0';
+
+   process (brom_addr)
+   begin
+      rom_addr <= std_logic_vector(to_unsigned(ZERO_ROW, rom_addr'length));
+      if brom_addr >= to_unsigned(0, brom_addr'length) and brom_addr <= to_unsigned(468, brom_addr'length) then
+         rom_addr <= std_logic_vector(resize(brom_addr, rom_addr'length));
+      end if;
+   end process;
+
+   -- Validity follows the same input register edge as the M10K address.
    process (clk)
    begin
       if rising_edge(clk) then
-         if to_integer(brom_addr) <= t_rom'high then
-            brom_data <= ROM(to_integer(brom_addr));
-         else
-            brom_data <= (others => '0');
-         end if;
+         rom_valid_q <= rom_valid;
       end if;
    end process;
+
+   g_sim : if is_simu = '1' generate
+      signal sim_addr_q : std_logic_vector(8 downto 0) := (others => '0');
+   begin
+      process (clk)
+      begin
+         if rising_edge(clk) then
+            sim_addr_q <= rom_addr;
+         end if;
+      end process;
+      rom_data <= SIM_ROM(to_integer(unsigned(sim_addr_q)));
+   end generate;
+
+   g_m10k : if is_simu = '0' generate
+   begin
+      irom : altsyncram
+      generic map
+      (
+         address_reg_a => "CLOCK0",
+         clock_enable_input_a => "BYPASS",
+         clock_enable_output_a => "BYPASS",
+         init_file => "../../rtl/nds_nitro_freebios9.mif",
+         intended_device_family => "Cyclone V",
+         lpm_hint => "ENABLE_RUNTIME_MOD=NO",
+         lpm_type => "altsyncram",
+         numwords_a => 470,
+         operation_mode => "ROM",
+         outdata_aclr_a => "NONE",
+         outdata_reg_a => "UNREGISTERED",
+         power_up_uninitialized => "FALSE",
+         ram_block_type => "M10K",
+         widthad_a => 9,
+         width_a => 32,
+         width_byteena_a => 1
+      )
+      port map
+      (
+         address_a => rom_addr,
+         clock0 => clk,
+         q_a => rom_data
+      );
+   end generate;
+
+   brom_data <= rom_data when rom_valid_q = '1' else (others => '0');
 end architecture;

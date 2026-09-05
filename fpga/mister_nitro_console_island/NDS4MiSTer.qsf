@@ -344,6 +344,8 @@ set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_status.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_console_event_gate.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios7.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios9.vhd
+set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios7.mif
+set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios9.mif
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv
