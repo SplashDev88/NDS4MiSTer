@@ -139,7 +139,6 @@ def check_vhdl(path: pathlib.Path, spec: Spec) -> None:
         f"constant ZERO_ROW : natural := {spec.zero_row};",
         f"numwords_a => {spec.depth},",
         f"widthad_a => {spec.address_width},",
-        'address_reg_a => "CLOCK0",',
         'outdata_reg_a => "UNREGISTERED",',
         'operation_mode => "ROM",',
         'ram_block_type => "M10K",',
@@ -147,10 +146,13 @@ def check_vhdl(path: pathlib.Path, spec: Spec) -> None:
         "rom_valid_q <= rom_valid;",
         f"{spec.data_name} <= rom_data when rom_valid_q = '1' else (others => '0');",
         "rom_addr <= std_logic_vector(to_unsigned(ZERO_ROW, rom_addr'length));",
+        "clock0 => clk,",
     )
     for fragment in required:
         if fragment not in text:
             fail(f"{path.name} lacks contract fragment: {fragment}")
+    if "address_reg_a" in text:
+        fail(f"{path.name} uses the nonexistent Quartus-17 address_reg_a generic")
     if re.search(rf"{spec.data_name}\s*<=.*", text[text.find("process (clk)") : text.find("end process;")]):
         fail(f"{path.name} added an output register")
 
@@ -186,7 +188,6 @@ package altera_mf_components is
    component altsyncram is
       generic
       (
-         address_reg_a : string := "CLOCK0";
          clock_enable_input_a : string := "BYPASS";
          clock_enable_output_a : string := "BYPASS";
          init_file : string := " ";

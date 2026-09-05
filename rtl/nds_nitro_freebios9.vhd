@@ -2,8 +2,9 @@
 -- Generated from melonDS FreeBIOS_Data.h by tools/generate_nitro_freebios_vhdl.py.
 -- The full FreeBIOS copyright/license notice is in
 -- third_party/melonDS/freebios/drastic_bios_readme.txt.
--- The synthesis path is an explicit Cyclone-V M10K ROM.  Its input
--- address register plus unregistered output preserves the one-cycle contract.
+-- The synthesis path is an explicit Cyclone-V M10K ROM. Quartus 17's
+-- altsyncram port-A address is inherently clocked by clock0; keeping its
+-- output unregistered preserves the one-cycle contract without a second flop.
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
@@ -482,7 +483,6 @@ begin
       irom : altsyncram
       generic map
       (
-         address_reg_a => "CLOCK0",
          clock_enable_input_a => "BYPASS",
          clock_enable_output_a => "BYPASS",
          init_file => "../../rtl/nds_nitro_freebios9.mif",
