@@ -13,6 +13,9 @@ run_analysis() {
     nvc --std=2008 -L . -a "$repo_dir/rtl/tb_nds_sound_fetch_state_ram.vhd"
     nvc --std=2008 -L . -a "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd"
     nvc --std=2008 -L . -e nds_sound
+    nvc --std=2008 -L . -a "$repo_dir/rtl/tb_nds_sound_direct_boot_bias.vhd"
+    nvc --std=2008 -L . -e tb_nds_sound_direct_boot_bias
+    nvc --std=2008 -L . -r tb_nds_sound_direct_boot_bias --exit-severity=failure
 }
 
 if command -v nvc >/dev/null 2>&1; then
@@ -30,7 +33,10 @@ else
             nvc --std=2008 -L . -a /workspace/rtl/tb_nds_sound_fetch_state_ram.vhd
             nvc --std=2008 -L . -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd
             nvc --std=2008 -L . -e nds_sound
+            nvc --std=2008 -L . -a /workspace/rtl/tb_nds_sound_direct_boot_bias.vhd
+            nvc --std=2008 -L . -e tb_nds_sound_direct_boot_bias
+            nvc --std=2008 -L . -r tb_nds_sound_direct_boot_bias --exit-severity=failure
         '
 fi
 
-echo "PASS: packed NDS sound VHDL analyzes/elaborates with portable RAM boundaries"
+echo "PASS: NDS sound VHDL and direct-boot bias regression"

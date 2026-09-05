@@ -160,8 +160,16 @@ architecture arch of nds_sound is
    signal fetchstate_b_din  : std_logic_vector(48 downto 0);
    signal fetchstate_b_dout : std_logic_vector(48 downto 0);
 
+   -- NDS4MiSTer enters games through direct boot rather than running the
+   -- firmware. Firmware/direct-boot setup leaves SOUNDBIAS at its 0x200
+   -- midpoint before game code starts; many games never write it themselves.
+   -- Without this preset the final mixer adds -32768 and clips before the
+   -- signed MiSTer output stage can remove the DC offset.
+   constant SOUNDBIAS_DIRECT_BOOT_VALUE : std_logic_vector(9 downto 0) :=
+      "1000000000";
    signal soundcnt  : std_logic_vector(15 downto 0) := (others => '0');
-   signal soundbias : std_logic_vector(9 downto 0)  := (others => '0');
+   signal soundbias : std_logic_vector(9 downto 0)  :=
+      SOUNDBIAS_DIRECT_BOOT_VALUE;
 
    type t_cap is record
       cnt : std_logic_vector(7 downto 0);
@@ -479,7 +487,7 @@ begin
          if (reset = '1') then
 
             soundcnt  <= (others => '0');
-            soundbias <= (others => '0');
+            soundbias <= SOUNDBIAS_DIRECT_BOOT_VALUE;
             -- zero everything: the read mux ORs into the shared IO bus, a
             -- single 'U' field would poison every ARM7 IO read
             for i in 0 to 15 loop
