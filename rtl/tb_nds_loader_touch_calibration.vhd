@@ -71,8 +71,15 @@ begin
                   severity failure;
                saw_adc1_pixels_adc2x <= '1';
             elsif wr_addr = x"02FFFCE0" then
-               assert wr_data = x"BFFFF00B"
+               assert wr_data = x"BFFF0BF0"
                   report "direct-boot ADC2-Y/Pixel2 calibration mismatch"
+                  severity failure;
+               assert unsigned(wr_data(15 downto 0)) = to_unsigned(191 * 16, 16)
+                  report "direct-boot ADC2-Y endpoint is not 191<<4"
+                  severity failure;
+               assert unsigned(wr_data(23 downto 16)) = to_unsigned(255, 8) and
+                      unsigned(wr_data(31 downto 24)) = to_unsigned(191, 8)
+                  report "direct-boot Pixel2 endpoint is not (255,191)"
                   severity failure;
                saw_adc2y_pixels2 <= '1';
             end if;

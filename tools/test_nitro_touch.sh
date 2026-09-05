@@ -50,7 +50,7 @@ grep -Fq 'touch_active => touch_active, touch_x => touch_x, touch_y => touch_y' 
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
 grep -Fq 'when 36            => wr_data <= x"0FF00000";' \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/nds_loader.vhd"
-grep -Fq 'when 37            => wr_data <= x"BFFFF00B";' \
+grep -Fq 'when 37            => wr_data <= x"BFFF0BF0";' \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/nds_loader.vhd"
 
 echo "PASS: Nitro controller touch regression"

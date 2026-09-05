@@ -484,9 +484,11 @@ begin
                         when 14            => wr_data <= x"00000001";
                         -- ADC1=(0,0), Pixel1=(0,0),
                         -- ADC2=(255<<4,191<<4), Pixel2=(255,191).
+                        -- Words are written little-endian: +0x60 must contain
+                        -- bytes F0 0B FF BF, not 0B F0 FF BF.
                         -- +0x58 remains zero through the default arm below.
                         when 36            => wr_data <= x"0FF00000";
-                        when 37            => wr_data <= x"BFFFF00B";
+                        when 37            => wr_data <= x"BFFF0BF0";
                         when 38            => wr_data <= x"00000031";
                         when others        => wr_data <= x"00000000";
                      end case;
