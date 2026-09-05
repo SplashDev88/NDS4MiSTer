@@ -1204,8 +1204,19 @@ void GPU3D::SubmitPolygon() noexcept
             }
 
             den <<= 1;
+#if defined(__arm__)
+            const auto viewportQuotients =
+                NDS4MiSTerGXDivideViewportPair(
+                    posX * Viewport[4], posY * Viewport[5], den);
+            posX = viewportQuotients.X + Viewport[0];
+            posY = viewportQuotients.Y + Viewport[3];
+#else
+            // Desktop targets have hardware integer division; keep upstream's
+            // shorter native path there. The paired reciprocal is specifically
+            // for Cortex-A9, where both operations call a software divider.
             posX = ((posX * Viewport[4]) / den) + Viewport[0];
             posY = ((posY * Viewport[5]) / den) + Viewport[3];
+#endif
         }
 
         vtx->FinalPosition[0] = posX & 0x1FF;
