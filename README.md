@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**Public Beta v0.3.0-beta.8 — released 2026-09-05**
+**Public Beta v0.3.0-beta.9 — released 2026-09-06**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -16,7 +16,7 @@ artifacts, or credentials are included in this source repository.
 ## What works today
 
 - Some 2D and lighter 3D games boot and run.
-- FPGA-generated sound.
+- FPGA-generated sound with corrected DS sound-bias initialization.
 - Persistent cartridge saves:
   - 512-byte tiny EEPROM.
   - 8 KiB, 64 KiB, and 128 KiB EEPROM/FRAM profiles.
@@ -39,8 +39,9 @@ artifacts, or credentials are included in this source repository.
   the most active area of development.
 - **Cartridge-access latency remains a bottleneck.** Some objects or effects
   may appear late or fail to load.
-- **Audio can sound overdriven or distorted.** Audio behavior is unchanged from
-  beta.7; beta.8 is a touch-only update and makes no audio claim.
+- **Audio remains experimental.** The incorrect startup bias that caused the
+  broadly overdriven output is fixed, but individual games may still expose
+  unsupported or inaccurate sound behavior.
 - **Not implemented:** NAND saves, save states, Wi-Fi, and microphone support.
 - **Reset is improved, but not universal.** It preserves the current cartridge
   and save mount. If a game does not reset cleanly, reselect its ROM from the
@@ -55,12 +56,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.8_20260905.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.9_20260906.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Go to **Console → NDS_20260905** and launch the core.
+3. Go to **Console → NDS_20260906** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -93,7 +94,7 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In beta.8, both displayed positions duplicate Engine A, so the
+movement. In beta.9, both displayed positions duplicate Engine A, so the
 pointer is drawn over every visible copy of that image.
 
 Touch coordinates are delivered to the DS touchscreen even though Engine B is
@@ -115,7 +116,7 @@ cartridges and unknown save hardware are not supported.
 > **If a game reports corrupted save data after an upgrade:** Back up its
 > `.sav` file, then delete or move that file out of `/media/fat/saves/NDS/` and
 > let the game create a fresh save. Older experimental builds sometimes
-> created incorrectly sized or already-corrupted saves; beta.8 does not try to
+> created incorrectly sized or already-corrupted saves; beta.9 does not try to
 > repair them.
 
 ## Reading the FPS counter
@@ -140,43 +141,44 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.8
+## What's new in beta.9
 
-Beta.8 is a focused touch-correction release built on beta.7. It retains
-beta.7's game-compatibility work, ARM 3D service, saves, layouts, reset behavior,
-and 134 MHz clock family.
+Beta.9 combines the beta.8 touchscreen correction with a sound fix and a
+bit-exact ARM 3D geometry optimization. It retains beta.7's compatibility work,
+saves, layouts, reset behavior, and the 134 MHz clock family.
 
-- Corrects the touchscreen Y-axis calibration byte order placed in direct-boot
-  RAM, so software sees the intended 191×16 raw endpoint.
-- Applies the same complete calibration to both synthetic SPI-firmware user
-  settings copies and updates their checksums.
-- Makes full right-stick travel reach all native DS touchscreen edges from
-  (0,0) through (255,191), while preserving center and monotonic movement.
-- Keeps mouse touch relative and bounded; controller and mouse coordinates
-  continue through the same DS touch path.
+- Initializes the DS sound-bias register to its hardware midpoint during direct
+  boot. This fixes the broadly blown-out, overdriven sound heard in earlier
+  betas; guest writes to the register remain fully supported.
+- Prepares a shared viewport divisor once and reuses the fast setup for both
+  point coordinates. The targeted operation is 3.329 times faster in the ARM
+  benchmark, with identical results to the previous exact math path.
+- Retains beta.8's corrected touchscreen Y calibration, valid redundant
+  firmware settings copies, full native edge coverage, right-stick control,
+  USB mouse control, and visible pointer.
 
-The exact packaged core was confirmed on MiSTer hardware for the touch fix.
-Touch delivery still works independently of display layout, but Engine B is not
-yet visible, so interactions that depend on unseen bottom-screen graphics can
-still be difficult.
+In a 9.7-second Mario Kart DS kiosk-demo hardware sample, the DS stream ran at
+59.8 FPS and 39.2 changed 3D planes per second were accepted for display. The
+queue stayed at a small 1–3-item backlog, never filled, and reported no faults.
+This is a scene sample rather than a whole-game 60 FPS claim.
 
 ## Verification
 
 | | |
 | --- | --- |
-| Core file | `_Console/NDS_20260905.rbf` |
-| Build identity | `260903-B7RC134` |
+| Core file | `_Console/NDS_20260906.rbf` |
+| Build identity | `260905-TSAUDS2` |
 | Quartus seed | 2 |
-| ALMs | 41,268 / 41,910 |
-| Registers | 45,379 |
-| RAM blocks | 484 / 553 |
+| ALMs | 40,812 / 41,910 |
+| Registers | 45,284 |
+| RAM blocks | 489 / 553 |
 | DSP blocks | 69 / 112 |
-| FPGA SHA-256 | `33fe9f8fb91d8ae768abcbb9552d611078382474b861af0651dbb3c7d275130e` |
-| ARM SHA-256 | `bc7971606f958799a855b043757e3989aec3046ceafea34fb07f6ba70a92631a` |
+| FPGA SHA-256 | `ff1b1d5352690420d875dc508448817eb8edbebda9062d75b31683be0b2325ee` |
+| ARM SHA-256 | `9629ec9beba9ed4e26ea155f3286ec1bf1e2350e2f468128bcb3a435eaba2a2e` |
 
 Quartus fit and assembly completed successfully. Static timing remains
-diagnostic rather than a release gate; this exact core passed MiSTer touch
-testing.
+diagnostic rather than a release gate; this exact FPGA/ARM pair passed MiSTer
+sound, touch, save, and gameplay testing.
 
 ## For developers
 
@@ -190,7 +192,7 @@ testing.
   engine and publishes completed 256×192 3D planes to the FPGA.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
   window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in beta.8.
+  shadow copy of the FPGA 2D engine in beta.9.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.
