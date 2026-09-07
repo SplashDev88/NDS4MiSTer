@@ -1,6 +1,7 @@
 #include "replay/Hybrid3DFramePacket.h"
 
 #include <array>
+#include <chrono>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -135,6 +136,55 @@ Record make_record(RecordKind kind, std::uint32_t ordinal)
     record.address_or_aux = 0x06000000u + ordinal * 4;
     record.data = 0x1234000000000000ull | ordinal;
     return record;
+}
+
+std::vector<Record> make_copy_oracle_records(std::size_t count)
+{
+    std::vector<Record> records(count);
+    for (std::size_t index = 0; index < records.size(); ++index) {
+        auto& record = records[index];
+        record.metadata = make_record_metadata(
+            RecordKind::GxCommand,
+            static_cast<std::uint8_t>((index * 37u + 11u) & 0xffu), 0);
+        record.address_or_aux =
+            0x89abcdefu ^ static_cast<std::uint32_t>(index * 0x10204081u);
+        record.data = 0x0123456789abcdefull ^
+            (static_cast<std::uint64_t>(index) * 0x0101010101010101ull);
+    }
+    return records;
+}
+
+std::vector<Record> make_captured_264_record_packet()
+{
+    // The retained four-slot H3B1 board snapshot contains this exact record
+    // distribution in every slot: 263 HBlank markers and one VRAM write.
+    std::vector<Record> records(264);
+    for (std::size_t index = 0; index + 1 < records.size(); ++index) {
+        records[index] = Record{
+            make_record_metadata(RecordKind::HBlank, 0, 0),
+            static_cast<std::uint32_t>(index),
+            static_cast<std::uint32_t>(index * 7u + 3u)};
+    }
+    records.back() = make_record(RecordKind::VramWrite, 263);
+    return records;
+}
+
+std::vector<Record> make_busy_1799_record_packet()
+{
+    // This is the measured frame-903 failure shape retained by the service
+    // self-test: 1,799 contiguous halfword VRAM writes in one terminal packet.
+    std::vector<Record> records(1799);
+    for (std::size_t index = 0; index < records.size(); ++index) {
+        const bool upper_half = (index & 1u) != 0;
+        auto& record = records[index];
+        record.metadata = make_record_metadata(
+            RecordKind::VramWrite, 1, upper_half ? 0x0c : 0x03);
+        record.address_or_aux =
+            0x0600c000u + static_cast<std::uint32_t>(index * 2);
+        record.data = static_cast<std::uint32_t>(index) <<
+            (upper_half ? 16 : 0);
+    }
+    return records;
 }
 
 void test_known_rtl_crc()
@@ -296,6 +346,79 @@ void test_direct_packet_copy()
         (torn.local_faults() & FaultTornHeader) == 0 ||
         torn_fixture.word(ControlAcknowledgeOffset) != 0)
         die("direct-copy torn packet exposed or acknowledged");
+}
+
+void test_payload_copy_sizes()
+{
+    // Exercise every four-record remainder plus the two retained real packet
+    // sizes and the protocol maximum. The byte comparison is the copy oracle.
+    constexpr std::array<std::size_t, 13> counts{
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 264, 1799, MaxRecordCount};
+    for (const auto count : counts) {
+        Fixture fixture;
+        const auto records = make_copy_oracle_records(count);
+        fixture.publish(1, 24, FlagFrameEnd, records);
+        Consumer consumer(fixture.bytes, MappingBytes);
+        if (!consumer.initialize(fixture.session))
+            die("payload-size copy init failed");
+        PacketHeader header{};
+        std::vector<Record> copied;
+        if (!consumer.begin(header, copied) || copied.size() != records.size() ||
+            (!records.empty() &&
+             std::memcmp(copied.data(), records.data(),
+                         records.size() * sizeof(Record)) != 0))
+            die("payload-size copy oracle mismatch");
+        if (!consumer.accept_all_records() || !consumer.acknowledge())
+            die("payload-size copy acknowledgement failed");
+    }
+}
+
+void benchmark_payload_case(
+    const char* name, const std::vector<Record>& records,
+    std::uint32_t measured_iterations)
+{
+    constexpr std::uint32_t warmup_iterations = 16;
+    Fixture fixture;
+    Consumer consumer(fixture.bytes, MappingBytes, false);
+    if (!consumer.initialize(fixture.session))
+        die("payload benchmark init failed");
+    PacketHeader header{};
+    std::vector<Record> copied;
+    std::chrono::nanoseconds elapsed{};
+    const auto iterations = warmup_iterations + measured_iterations;
+    for (std::uint32_t iteration = 0; iteration < iterations; ++iteration) {
+        const auto sequence = iteration + 1;
+        fixture.publish(sequence, sequence, FlagFrameEnd, records);
+        const auto start = std::chrono::steady_clock::now();
+        const bool accepted = consumer.begin(header, copied);
+        const auto stop = std::chrono::steady_clock::now();
+        if (!accepted || copied.size() != records.size() ||
+            (!records.empty() &&
+             std::memcmp(copied.data(), records.data(),
+                         records.size() * sizeof(Record)) != 0))
+            die("payload benchmark copy mismatch");
+        if (iteration >= warmup_iterations) elapsed += stop - start;
+        if (!consumer.accept_all_records() || !consumer.acknowledge())
+            die("payload benchmark acknowledgement failed");
+    }
+    const auto nanoseconds = elapsed.count();
+    const auto records_copied =
+        static_cast<std::uint64_t>(records.size()) * measured_iterations;
+    std::cout << "payload_benchmark " << name
+              << " records=" << records.size()
+              << " iterations=" << measured_iterations
+              << " ns_per_packet=" << nanoseconds / measured_iterations
+              << " ps_per_record=" <<
+                     (nanoseconds * 1000) / records_copied
+              << '\n';
+}
+
+void run_payload_benchmark()
+{
+    benchmark_payload_case(
+        "captured_hblank_vram", make_captured_264_record_packet(), 5000);
+    benchmark_payload_case(
+        "frame903_vram_burst", make_busy_1799_record_packet(), 1000);
 }
 
 void test_misaligned_mapping()
@@ -532,12 +655,13 @@ void test_full_four_slot_order()
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     test_known_rtl_crc();
     test_packed_gx_record();
     test_one_frame();
     test_direct_packet_copy();
+    test_payload_copy_sizes();
     test_misaligned_mapping();
     test_continuation_chain();
     test_bad_diagnostic();
@@ -552,6 +676,7 @@ int main()
         "packed_gx_record: passed\n"
         "one_frame: passed\n"
         "direct_packet_copy: passed\n"
+        "payload_copy_sizes: passed\n"
         "misaligned_mapping: passed\n"
         "continuation_chain: passed\n"
         "diagnostic_match_torn_continuation: passed\n"
@@ -560,4 +685,9 @@ int main()
         "session_change_before_ack: passed\n"
         "malformed_length_kind_reserved: passed\n"
         "full_four_slot_order: passed\n";
+    if (argc == 2 && std::strcmp(argv[1], "--benchmark") == 0) {
+        run_payload_benchmark();
+    } else if (argc != 1) {
+        die("usage: Hybrid3DFramePacketTest [--benchmark]");
+    }
 }

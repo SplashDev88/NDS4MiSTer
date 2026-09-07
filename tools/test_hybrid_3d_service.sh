@@ -65,6 +65,20 @@ fi
 
 "${CXX:-c++}" \
     -std=c++17 -O2 -fwrapv -Wall -Wextra -Werror -pedantic \
+    -DNDS4MISTER_H3D_FRAME_PACKET_TEST_INSTRUMENTATION \
+    -I"$repo_dir/src" \
+    "$repo_dir/src/replay/Hybrid3DFramePacketTest.cpp" \
+    "$repo_dir/src/replay/Hybrid3DFramePacket.cpp" \
+    -o "$tmp_dir/h3d_frame_packet_test"
+
+if [[ ${H3D_FRAME_PACKET_BENCHMARK:-0} == 1 ]]; then
+    "$tmp_dir/h3d_frame_packet_test" --benchmark
+else
+    "$tmp_dir/h3d_frame_packet_test"
+fi
+
+"${CXX:-c++}" \
+    -std=c++17 -O2 -fwrapv -Wall -Wextra -Werror -pedantic \
     -DNDS4MISTER_CORE_TIMING=0 \
     -DNDS4MISTER_NO_2D_RENDER=0 \
     -DNDS4MISTER_NO_3D_RENDER=0 \

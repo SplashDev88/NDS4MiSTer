@@ -108,7 +108,12 @@ The supervisor requests the board's tested 1 GHz HPS clock and starts the
 service at nice level -20. MiSTer's main loop is normally continuously runnable
 on CPU1; prioritizing the bounded H3D work lets command replay use that CPU when
 needed without killing MiSTer or losing the normal menu, input, and core
-lifecycle. Stopping the service restores the default 800 MHz limit.
+lifecycle. A one-shot, at-most-1 Hz watcher waits up to five minutes for one
+stable replacement MiSTer process epoch and exact `/tmp/CORENAME` value `NDS`,
+then pins only that frontend to CPU0. The saved original affinity is restored
+on stop only while the same PID/start-time epoch still exists. The watcher and
+Stop serialize the mutation; a stale operation lock fails closed and is cleared
+by reboot. Stopping the service also restores the default 800 MHz limit.
 
 ## Staging and guarded updates
 

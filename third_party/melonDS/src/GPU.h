@@ -948,6 +948,10 @@ struct ExternalRendererStageProfile
     u64 ThreeDBandQueueJobs = 0;
     u64 ThreeDBandQueueAdvancedScanlines = 0;
     u64 ThreeDBandQueueShadowFallbackFrames = 0;
+    u64 ThreeDXPartitionFrames = 0;
+    u64 ThreeDXPartitionSplitTotal = 0;
+    u64 ThreeDXPartitionSplitMin = 0;
+    u64 ThreeDXPartitionSplitMax = 0;
     u64 ThreeDRasterCancelRequests = 0;
     u64 ThreeDRasterCanceledFrames = 0;
     u64 ThreeDRasterRecoveryFrames = 0;

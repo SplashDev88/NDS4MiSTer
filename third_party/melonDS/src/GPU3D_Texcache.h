@@ -31,6 +31,26 @@ enum
     outputFmt_BGRA8
 };
 
+// Palette-indexed 4bpp textures account for almost all of the measured
+// texture-miss decode time in the MiSTer software renderer.  Keep the packed
+// word expansion separate from palette conversion so the miss path can
+// convert its sixteen RGB555 entries once, then reuse the compact RGB6A5
+// table for every texel in the texture.
+template <int colorBits>
+[[gnu::always_inline, gnu::hot]] inline void
+NDS4MiSTerDecodeNColorWordRGB6A5(
+    u16 packed, const u32* expandedPalette, u32* output) noexcept
+{
+    static_assert(colorBits > 0 && colorBits <= 8);
+    constexpr u32 mask = (1u << colorBits) - 1u;
+    constexpr int pixels = 16 / colorBits;
+    for (int i = 0; i < pixels; ++i)
+    {
+        output[i] = expandedPalette[packed & mask];
+        packed >>= colorBits;
+    }
+}
+
 template <int outputFmt>
 void ConvertBitmapTexture(u32 width, u32 height, u32* output, u32 addr, GPU& gpu);
 template <int outputFmt>
@@ -39,6 +59,9 @@ template <int outputFmt, int X, int Y>
 void ConvertAXIYTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, GPU& gpu);
 template <int outputFmt, int colorBits>
 void ConvertNColorsTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, bool color0Transparent, GPU& gpu);
+
+void NDS4MiSTerConvertNColors4TextureRGB6A5(
+    u32 texParam, u32* output, u32 palAddr, GPU& gpu);
 
 template <typename TexLoaderT, typename TexHandleT>
 class Texcache
@@ -254,7 +277,8 @@ public:
             case 1: ConvertAXIYTexture<outputFmt_RGB6A5, 3, 5>(width, height, DecodingBuffer, addr, palAddr, GPU); break;
             case 6: ConvertAXIYTexture<outputFmt_RGB6A5, 5, 3>(width, height, DecodingBuffer, addr, palAddr, GPU); break;
             case 2: ConvertNColorsTexture<outputFmt_RGB6A5, 2>(width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU); break;
-            case 3: ConvertNColorsTexture<outputFmt_RGB6A5, 4>(width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU); break;
+            case 3: NDS4MiSTerConvertNColors4TextureRGB6A5(
+                texParam, DecodingBuffer, palAddr, GPU); break;
             case 4: ConvertNColorsTexture<outputFmt_RGB6A5, 8>(width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU); break;
             }
         }

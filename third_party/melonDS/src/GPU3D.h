@@ -192,6 +192,7 @@ private:
     void UpdateClipMatrix() noexcept;
     void ResetRenderingState() noexcept;
     void AddCycles(s32 num) noexcept;
+    [[gnu::noinline]] void AdvancePipelines(s32 num) noexcept;
     void NextVertexSlot() noexcept;
     void StallPolygonPipeline(s32 delay, s32 nonstalldelay) noexcept;
     void SubmitPolygon() noexcept;

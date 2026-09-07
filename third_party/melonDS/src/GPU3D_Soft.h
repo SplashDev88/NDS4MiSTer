@@ -33,6 +33,128 @@
 namespace melonDS
 {
 
+// Final-pass antialiasing touches only pixels whose raster attributes retain
+// an edge flag.  Inspect four consecutive attributes together so the common
+// edge-free interior can bypass four coverage tests and all color traffic.
+// Keep this scalar: the Cortex-A9 can satisfy these cached loads in its core
+// register bank without paying a NEON-to-core reduction transfer.
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerAntiAliasBlockHasEdge(const u32* attributes) noexcept
+{
+    return ((attributes[0] | attributes[1] |
+             attributes[2] | attributes[3]) & 0xFu) != 0;
+}
+
+[[gnu::noinline, gnu::hot]] inline void
+NDS4MiSTerApplyAntiAliasPixel(
+    u32* top, const u32* bottom, u32 attr) noexcept
+{
+    if (!(attr & 0xFu)) return;
+
+    u32 coverage = (attr >> 8) & 0x1Fu;
+    if (coverage == 0x1Fu) return;
+    if (coverage == 0)
+    {
+        *top = *bottom;
+        return;
+    }
+
+    const u32 topcolor = *top;
+    u32 topR = topcolor & 0x3Fu;
+    u32 topG = (topcolor >> 8) & 0x3Fu;
+    u32 topB = (topcolor >> 16) & 0x3Fu;
+    u32 topA = (topcolor >> 24) & 0x1Fu;
+
+    const u32 botcolor = *bottom;
+    const u32 botR = botcolor & 0x3Fu;
+    const u32 botG = (botcolor >> 8) & 0x3Fu;
+    const u32 botB = (botcolor >> 16) & 0x3Fu;
+    const u32 botA = (botcolor >> 24) & 0x1Fu;
+
+    ++coverage;
+    const u32 inverseCoverage = 32 - coverage;
+    if (botA > 0)
+    {
+        topR = ((topR * coverage) +
+                (botR * inverseCoverage)) >> 5;
+        topG = ((topG * coverage) +
+                (botG * inverseCoverage)) >> 5;
+        topB = ((topB * coverage) +
+                (botB * inverseCoverage)) >> 5;
+    }
+    topA = ((topA * coverage) +
+            (botA * inverseCoverage)) >> 5;
+
+    *top = topR | (topG << 8) | (topB << 16) | (topA << 24);
+}
+
+// Edge marking and fog make the final pass depend on neighboring attributes
+// or depth.  When antialiasing is the only enabled effect, the pass is just
+// the independent scan below and can stay out of the much larger general
+// final-pass function on instruction-cache constrained ARM cores.
+[[gnu::always_inline]] inline bool
+NDS4MiSTerUseAntiAliasOnlyFinalPass(u32 dispCnt) noexcept
+{
+    constexpr u32 AntiAlias = 1u << 4;
+    constexpr u32 EdgeMarking = 1u << 5;
+    constexpr u32 Fog = 1u << 7;
+    return (dispCnt & (AntiAlias | EdgeMarking | Fog)) == AntiAlias;
+}
+
+[[gnu::always_inline, gnu::hot]] inline void
+NDS4MiSTerApplyAntiAliasScanline(
+    u32* top, const u32* bottom, const u32* attributes,
+    int count) noexcept
+{
+    while (count >= 4)
+    {
+        if (NDS4MiSTerAntiAliasBlockHasEdge(attributes))
+        {
+            NDS4MiSTerApplyAntiAliasPixel(
+                top, bottom, attributes[0]);
+            NDS4MiSTerApplyAntiAliasPixel(
+                top + 1, bottom + 1, attributes[1]);
+            NDS4MiSTerApplyAntiAliasPixel(
+                top + 2, bottom + 2, attributes[2]);
+            NDS4MiSTerApplyAntiAliasPixel(
+                top + 3, bottom + 3, attributes[3]);
+        }
+        top += 4;
+        bottom += 4;
+        attributes += 4;
+        count -= 4;
+    }
+    while (count-- > 0)
+    {
+        NDS4MiSTerApplyAntiAliasPixel(top, bottom, *attributes);
+        ++top;
+        ++bottom;
+        ++attributes;
+    }
+}
+
+// SetupPolygon guarantees that highlight mode is only active for blend mode
+// 2.  With texturing disabled, every other blend mode reaches RenderPixel's
+// short path unchanged: preserve the interpolated vertex color and select
+// either the polygon alpha or the DS wireframe alpha.  Keeping this tiny,
+// exact operation visible at the raster call site avoids entering the large
+// generic texture/toon shader for an untextured pixel.
+inline constexpr bool NDS4MiSTerUsePlainUntexturedPixel(
+    bool textureEnabled, u32 blendMode) noexcept
+{
+    return !textureEnabled && blendMode != 2;
+}
+
+inline constexpr u32 NDS4MiSTerRenderPlainUntexturedPixel(
+    u8 vr, u8 vg, u8 vb, u8 polyAlpha, bool wireframe) noexcept
+{
+    const u32 alpha = wireframe ? 31u : polyAlpha;
+    return static_cast<u32>(vr) |
+        (static_cast<u32>(vg) << 8) |
+        (static_cast<u32>(vb) << 16) |
+        (alpha << 24);
+}
+
 [[gnu::hot, gnu::noinline]] inline void
 NDS4MiSTerNormalizePerspectiveFactorWide(
     u32& factor, s32 denominator, s32& remainder) noexcept
@@ -253,6 +375,27 @@ inline u32 NDS4MiSTerScalePermilleCeil(u32 value, u32 permille) noexcept
         (remainder * permille + 999u) / 1000u;
 }
 
+// Compose the destination-dependent attribute written by a translucent
+// polygon. The low halfword takes disjoint fields from the polygon and the
+// existing pixel, so applying their XOR delta is exactly the original pair of
+// masked operands with fewer Cortex-A9 instructions.
+[[gnu::always_inline, gnu::hot]] inline u32
+NDS4MiSTerComposeTranslucentAttr(u32 polyattr, u32 dstattr) noexcept
+{
+    const u32 lowattrdelta = (polyattr ^ dstattr) & 0xE0F0u;
+    u32 attr = dstattr ^ lowattrdelta;
+    const u32 polygonbyte = polyattr >> 24;
+#if defined(__arm__) && (__ARM_ARCH >= 7)
+    // BFI replaces bits 16..23 directly. Expressing the same operation with
+    // masks costs three instructions in the production Thumb-2 build.
+    __asm__("bfi %0, %1, #16, #8" : "+r"(attr) : "r"(polygonbyte));
+#else
+    attr = (attr & 0xFF00FFFFu) | (polygonbyte << 16);
+#endif
+    attr |= (1u << 22);
+    return attr;
+}
+
 [[gnu::always_inline, gnu::hot]] inline u32
 NDS4MiSTerModulateCachedOpaquePixel(
     u32 texel, u32 vertexColor) noexcept
@@ -267,6 +410,231 @@ NDS4MiSTerModulateCachedOpaquePixel(
     const u32 g = ((tg + 1) * (vg + 1) - 1) >> 6;
     const u32 b = ((tb + 1) * (vb + 1) - 1) >> 6;
     return r | (g << 8) | (b << 16) | (texel & 0xFF000000u);
+}
+
+// Exact cached-texture implementation of the DS modulate equation.  Keeping
+// this independent of renderer state lets the exhaustive host/ARM oracle
+// prove every texture-alpha/polygon-alpha combination used by translucent
+// interior spans.
+[[gnu::always_inline, gnu::hot]] inline u32
+NDS4MiSTerModulateCachedPixel(
+    u32 texel, u32 vertexColor, u32 polyAlpha) noexcept
+{
+    if (polyAlpha == 31)
+        return NDS4MiSTerModulateCachedOpaquePixel(texel, vertexColor);
+
+    const u32 tr = texel & 0x3F;
+    const u32 tg = (texel >> 8) & 0x3F;
+    const u32 tb = (texel >> 16) & 0x3F;
+    const u32 textureAlpha = texel >> 24;
+    const u32 vr = vertexColor & 0x3F;
+    const u32 vg = (vertexColor >> 8) & 0x3F;
+    const u32 vb = (vertexColor >> 16) & 0x3F;
+    const u32 r = ((tr + 1) * (vr + 1) - 1) >> 6;
+    const u32 g = ((tg + 1) * (vg + 1) - 1) >> 6;
+    const u32 b = ((tb + 1) * (vb + 1) - 1) >> 6;
+    const u32 alpha =
+        ((textureAlpha + 1) * (polyAlpha + 1) - 1) >> 5;
+    return r | (g << 8) | (b << 16) | (alpha << 24);
+}
+
+// The alpha test discards the RGB result for rejected pixels.  Resolve alpha
+// first so transparent cached texels do not pay for the three channel
+// multiplies.  A passing pixel is assembled with the identical integer
+// equations used by NDS4MiSTerModulateCachedPixel above.
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerModulateVisibleCachedPixel(
+    u32 texel, u32 vertexColor, u32 polyAlpha, u32 alphaRef,
+    u32& color) noexcept
+{
+    const u32 textureAlpha = texel >> 24;
+    const u32 alpha = polyAlpha == 31 ? textureAlpha :
+        ((textureAlpha + 1) * (polyAlpha + 1) - 1) >> 5;
+    if (alpha <= alphaRef)
+        return false;
+
+    const u32 tr = texel & 0x3F;
+    const u32 tg = (texel >> 8) & 0x3F;
+    const u32 tb = (texel >> 16) & 0x3F;
+    const u32 vr = vertexColor & 0x3F;
+    const u32 vg = (vertexColor >> 8) & 0x3F;
+    const u32 vb = (vertexColor >> 16) & 0x3F;
+    const u32 r = ((tr + 1) * (vr + 1) - 1) >> 6;
+    const u32 g = ((tg + 1) * (vg + 1) - 1) >> 6;
+    const u32 b = ((tb + 1) * (vb + 1) - 1) >> 6;
+    color = r | (g << 8) | (b << 16) | (alpha << 24);
+    return true;
+}
+
+inline constexpr bool NDS4MiSTerUseCachedModulateInterior(
+    int yEdge, bool cachedModulate, u32 polyAlpha,
+    bool isShadow, bool isShadowMask,
+    bool frontFacingLessThan) noexcept
+{
+    return yEdge == 0 && cachedModulate &&
+        polyAlpha >= 1 && polyAlpha <= 31 &&
+        !isShadow && !isShadowMask && frontFacingLessThan;
+}
+
+// A texture-cache lookup is entered only for enabled, nonzero formats.  That
+// makes TexParam nonzero, while the frame-local binding starts with a zero
+// TexParam.  Every installed binding comes from GetTexture(), whose new[]
+// allocation either returns a non-null pixel plane or throws.  The raw keys
+// are therefore the complete validity test; rechecking the cached pointer on
+// every polygon only adds a hot Cortex-A9 compare.
+[[gnu::always_inline, gnu::hot]] inline constexpr bool
+NDS4MiSTerTextureBindingMatches(
+    u32 cachedTexParam, u32 cachedTexPalette,
+    u32 texParam, u32 texPalette) noexcept
+{
+    return (cachedTexParam == texParam) &
+        (cachedTexPalette == texPalette);
+}
+
+// Resolve the exact front-facing less-than depth rule used by cached
+// modulation spans. A strictly nearer source passes without consulting the
+// destination attributes; only equal/farther depths need them for the DS's
+// equal-Z back-face exception and lower-layer fallback. Keeping that ordering
+// explicit avoids one AttrBuffer load for the overwhelmingly common nearer
+// path while preserving both framebuffer layers exactly.
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerSelectCachedDepthPixel(
+    const u32* depthBuffer, const u32* attrBuffer, u32 bufferSize,
+    s32 sourceZ, u32& pixelAddress) noexcept
+{
+    const s32 destinationZ = static_cast<s32>(depthBuffer[pixelAddress]);
+    if (sourceZ < destinationZ)
+        return true;
+
+    const u32 destinationAttr = attrBuffer[pixelAddress];
+    if (sourceZ == destinationZ &&
+        (destinationAttr & 0x00400010u) == 0x00000010u)
+        return true;
+
+    if (!(destinationAttr & 0xFu) || pixelAddress >= bufferSize)
+        return false;
+
+    pixelAddress += bufferSize;
+    const s32 lowerZ = static_cast<s32>(depthBuffer[pixelAddress]);
+    if (sourceZ < lowerZ)
+        return true;
+
+    const u32 lowerAttr = attrBuffer[pixelAddress];
+    return sourceZ == lowerZ &&
+        (lowerAttr & 0x00400010u) == 0x00000010u;
+}
+
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerCachedPixelHasLowerLayer(
+    const u32* attrBuffer, u32 bufferSize, u32 pixelAddress) noexcept
+{
+    return pixelAddress < bufferSize &&
+        (attrBuffer[pixelAddress] & 0xFu) != 0;
+}
+
+// Exact channel form of
+//   (source * alpha + destination * (32 - alpha)) >> 5
+// for the DS renderer's 6-bit channels and 1..32 blend factor.  Expressing
+// the weighted sum around destination removes one dependent multiply per
+// channel on Cortex-A9 while preserving floor rounding for negative deltas.
+[[gnu::always_inline, gnu::hot]] inline u32 NDS4MiSTerAlphaBlendChannel(
+    u32 source, u32 destination, u32 alpha) noexcept
+{
+    const s32 delta = static_cast<s32>(source) -
+        static_cast<s32>(destination);
+    return static_cast<u32>(
+        static_cast<s32>(destination) +
+        ((delta * static_cast<s32>(alpha)) >> 5));
+}
+
+[[gnu::always_inline, gnu::hot]] inline void
+NDS4MiSTerPackCachedSpanValues(
+    const s32* values, u32& vertexColor,
+    s16& textureS, s16& textureT) noexcept
+{
+    vertexColor =
+        (static_cast<u32>(values[0]) >> 3) |
+        ((static_cast<u32>(values[1]) >> 3) << 8) |
+        ((static_cast<u32>(values[2]) >> 3) << 16);
+    textureS = static_cast<s16>(values[3]);
+    textureT = static_cast<s16>(values[4]);
+}
+
+// Return the cached-texture offset for one interpolated DS texture
+// coordinate pair. A concrete mode removes all wrap-mode decisions from a
+// span-specialized pixel loop; 0xFF retains the exact generic behavior for
+// mixed and flip modes.
+template<u8 WrapMode>
+[[gnu::always_inline, gnu::hot]] inline u32
+NDS4MiSTerCachedTextureIndexForMode(
+    s16 textureS, s16 textureT,
+    s32 width, s32 height, s32 widthMask, s32 heightMask,
+    u8 wrapFlags, u32 widthShift) noexcept
+{
+    static_assert(WrapMode == 0x0u || WrapMode == 0x3u ||
+        WrapMode == 0xFFu);
+
+    s32 s = textureS >> 4;
+    s32 t = textureT >> 4;
+
+    if constexpr (WrapMode == 0x3u)
+    {
+        s &= widthMask;
+        t &= heightMask;
+    }
+    else if constexpr (WrapMode == 0x0u)
+    {
+        s = std::min(std::max(s, 0), widthMask);
+        t = std::min(std::max(t, 0), heightMask);
+    }
+    else
+    {
+        const u32 mode = wrapFlags;
+        if (mode & 0x1u)
+        {
+            if (mode & 0x4u)
+                s = (s & width) ? widthMask - (s & widthMask) :
+                    (s & widthMask);
+            else
+                s &= widthMask;
+        }
+        else
+            s = std::min(std::max(s, 0), widthMask);
+
+        if (mode & 0x2u)
+        {
+            if (mode & 0x8u)
+                t = (t & height) ? heightMask - (t & heightMask) :
+                    (t & heightMask);
+            else
+                t &= heightMask;
+        }
+        else
+            t = std::min(std::max(t, 0), heightMask);
+    }
+
+    return (static_cast<u32>(t) << widthShift) + static_cast<u32>(s);
+}
+
+// Edge and fallback callers do not dispatch at span granularity. Preserve
+// their compact call site while still recognizing the two dominant modes.
+[[gnu::always_inline, gnu::hot]] inline u32
+NDS4MiSTerCachedTextureIndex(
+    s16 textureS, s16 textureT,
+    s32 width, s32 height, s32 widthMask, s32 heightMask,
+    u8 wrapFlags, u32 widthShift) noexcept
+{
+    if (wrapFlags == 0x3u)
+        return NDS4MiSTerCachedTextureIndexForMode<0x3u>(
+            textureS, textureT, width, height, widthMask, heightMask,
+            wrapFlags, widthShift);
+    if (wrapFlags == 0x0u)
+        return NDS4MiSTerCachedTextureIndexForMode<0x0u>(
+            textureS, textureT, width, height, widthMask, heightMask,
+            wrapFlags, widthShift);
+    return NDS4MiSTerCachedTextureIndexForMode<0xFFu>(
+        textureS, textureT, width, height, widthMask, heightMask,
+        wrapFlags, widthShift);
 }
 
 // Normalize four interpolated texture coordinates with one branch decision
@@ -988,6 +1356,21 @@ private:
                     values[i] = Current[i];
             }
 
+            // The cached raster path consumes the five interpolated values
+            // immediately. Give its compiler-visible local temporary a
+            // non-aliasing lifetime so LTO can keep the values in registers
+            // instead of copying them through the caller-owned spanValues
+            // array and loading them back for packing.
+            [[gnu::always_inline, gnu::hot]] inline void
+            InterpolateCachedPixel(
+                u32& vertexColor, s16& textureS, s16& textureT)
+            {
+                s32 values[5];
+                Interpolate(values);
+                NDS4MiSTerPackCachedSpanValues(
+                    values, vertexColor, textureS, textureT);
+            }
+
         private:
 #if defined(__arm__) && defined(__ARM_NEON)
             [[gnu::always_inline, gnu::hot]] inline int32x4_t
@@ -1338,6 +1721,13 @@ private:
 
     };
 
+    struct TextureBindingCache
+    {
+        const u32* Pixels = nullptr;
+        u32 TexParam = 0;
+        u32 TexPalette = 0;
+    };
+
     static constexpr int VisibleScanlines = 192;
     static constexpr int MaxRendererPolygons = 2048;
     static constexpr int PolygonMaskWords = MaxRendererPolygons / 32;
@@ -1369,14 +1759,45 @@ private:
     u16 ScanlineEndPolygonIndices[MaxRendererPolygons];
     u16 FinalPassMinX[VisibleScanlines];
     u16 FinalPassMaxX[VisibleScanlines];
+    // A constant clear leaves every pixel outside the rendered spans at the
+    // same clear value.  Preserve that invariant across frames so the next
+    // clear only has to restore spans which the previous raster/final pass
+    // could have changed.  Clear-image mode and any clear-state transition
+    // deliberately fall back to the original full-buffer path.
+    bool SparseClearEnabled = true;
+    bool SparseClearStateValid = false;
+    u32 SparseClearAttr1 = 0;
+    u32 SparseClearAttr2 = 0;
     u32 ActivePolygonMask[PolygonMaskWords];
     int ActivePolygonMaskWords;
     int CurrentPolygonCount;
     bool UseScanlinePolygonLists;
     void TextureLookup(const RendererPolygon::PixelShaderState& state,
                        s16 s, s16 t, u16* color, u8* alpha) const;
-    u32 RenderPixel(const RendererPolygon::PixelShaderState& state,
+    [[gnu::always_inline, gnu::hot]] inline u32
+    RenderPixel(const RendererPolygon::PixelShaderState& state,
+                u8 vr, u8 vg, u8 vb, s16 s, s16 t) const
+    {
+        if (__builtin_expect(NDS4MiSTerUsePlainUntexturedPixel(
+                state.TextureEnabled, state.BlendMode), 1))
+        {
+            // SetupPolygon derives Wireframe from PolyAlpha == 0.  Reuse the
+            // alpha byte already needed for the result instead of loading the
+            // redundant boolean in this per-pixel path.
+            const u8 polyAlpha = state.PolyAlpha;
+            return NDS4MiSTerRenderPlainUntexturedPixel(
+                vr, vg, vb, polyAlpha, polyAlpha == 0);
+        }
+
+        return RenderPixelSlow(state, vr, vg, vb, s, t);
+    }
+    [[gnu::hot, gnu::noinline]] u32
+    RenderPixelSlow(const RendererPolygon::PixelShaderState& state,
                     u8 vr, u8 vg, u8 vb, s16 s, s16 t) const;
+    [[gnu::always_inline, gnu::hot]] static inline u32
+    LookupCachedTexel(
+        const RendererPolygon::PixelShaderState& state,
+        s16 s, s16 t);
     [[gnu::always_inline, gnu::hot]] static inline u32
     RenderPixelCachedModulate(
         const RendererPolygon::PixelShaderState& state,
@@ -1387,12 +1808,18 @@ private:
         const RendererPolygon::PixelShaderState& state,
         const s16* textureS, const s16* textureT, u32* texels);
 #endif
-    [[gnu::hot, gnu::noinline]] void RenderCachedOpaqueInteriorSpan(
+    [[gnu::hot, gnu::noinline]] void RenderCachedModulateInteriorSpan(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
-        Interpolator<0>::SpanInterpolator& spanAttributes,
-        s32* spanValues);
+        Interpolator<0>::SpanInterpolator& spanAttributes);
+    template<u8 WrapMode>
+    [[gnu::hot, gnu::noinline]] void
+    RenderCachedModulateInteriorSpanMode(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        Interpolator<0>& interpX,
+        Interpolator<0>::SpanDepthInterpolator& spanDepth,
+        Interpolator<0>::SpanInterpolator& spanAttributes);
 #if defined(__arm__) && defined(__ARM_NEON)
     [[gnu::hot, gnu::noinline]] s32
     RenderCachedOpaquePerspectiveInteriorBatch4(
@@ -1404,18 +1831,25 @@ private:
     void PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow);
     void SetupPolygonLeftEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygonRightEdge(RendererPolygon* rp, s32 y) const;
-    void SetupPolygon(RendererPolygon* rp, Polygon* polygon);
+    void SetupPolygon(
+        RendererPolygon* rp, Polygon* polygon,
+        TextureBindingCache& textureBinding);
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
-        u8* stencilBuffer);
+        u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
     void RenderPolygonScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
-        u8* stencilBuffer);
+        u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     u32 BuildScanlinePolygonLists(int npolys);
     void RenderScanline(
         s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
-        bool& prevIsShadowMask, u8* stencilBuffer);
+        bool& prevIsShadowMask, u8* stencilBuffer,
+        s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     u32 CalculateFogDensity(u32 pixeladdr) const;
+    [[gnu::always_inline, gnu::hot]] inline void
+    ScanlineFinalPassAntiAlias(s32 y);
     void ScanlineFinalPass(s32 y);
     void ClearBuffers();
     void RenderPolygons(bool threaded, Polygon** polygons, int npolys);
@@ -1424,17 +1858,20 @@ private:
     u64 RenderScanlineBand(
         s32 firstLine, s32 endLine, RendererPolygon* polygonList,
         u32* activePolygonMask, bool& prevIsShadowMask,
-        u8* stencilBuffer);
-    void AdvanceRasterContext(
-        s32 firstLine, s32 endLine, RendererPolygon* polygonList,
-        u32* activePolygonMask, bool& prevIsShadowMask);
+        u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     RasterBandResult RenderRasterBandJobs(
         int initialBand, RendererPolygon* polygonList,
         u32* activePolygonMask, bool& prevIsShadowMask,
         u8* stencilBuffer);
     bool RasterBandQueueSafe(int npolys) const;
-    void PrepareParallelRasterBand(int npolys, s32 firstLine);
+    void RebaseRasterContext(
+        s32 firstLine, RendererPolygon* polygonList,
+        u32* activePolygonMask, bool& prevIsShadowMask);
+    void PrepareParallelRasterBand(
+        int npolys, s32 firstLine, bool preserveShadowState);
     s32 ChooseParallelRasterSplitLine(int npolys) const;
+    s32 ChooseParallelRasterSplitX(int npolys) const;
 
     void RenderThreadFunc();
     void ParallelRasterThreadFunc();
@@ -1482,6 +1919,7 @@ private:
     bool DualCoreRaster = false;
     bool AdaptiveRasterSplit = false;
     bool RasterBandQueue = false;
+    bool RasterXPartition = false;
     bool RasterBandQueueTestDelayWorker = false;
     bool RasterBandQueueActive = false;
     u8 RasterBandHeavyFrames = 0;
@@ -1522,8 +1960,12 @@ private:
     u32 ParallelActivePolygonMask[PolygonMaskWords] {};
     u8 ParallelStencilBuffer[256 * 2] {};
     bool ParallelPrevIsShadowMask = false;
+    u16 ParallelFinalPassMinX[VisibleScanlines] {};
+    u16 ParallelFinalPassMaxX[VisibleScanlines] {};
     std::atomic<s32> ParallelRasterSplitLine_ {112};
+    std::atomic<s32> ParallelRasterSplitX_ {128};
     std::atomic_bool ParallelRasterBandQueueFrame_ {false};
+    std::atomic_bool ParallelRasterXPartitionFrame_ {false};
     std::atomic<int> ParallelRasterNextBand_ {RasterBandCount};
     std::atomic<u64> ParallelRasterNs {0};
     std::atomic<u32> ParallelRasterJobs {0};

@@ -3671,6 +3671,14 @@ private:
                << renderer_profile.ThreeDBandQueueAdvancedScanlines
                << " renderer_3d_band_queue_shadow_fallback_frames="
                << renderer_profile.ThreeDBandQueueShadowFallbackFrames
+               << " renderer_3d_x_partition_frames="
+               << renderer_profile.ThreeDXPartitionFrames
+               << " renderer_3d_x_partition_split_total="
+               << renderer_profile.ThreeDXPartitionSplitTotal
+               << " renderer_3d_x_partition_split_min="
+               << renderer_profile.ThreeDXPartitionSplitMin
+               << " renderer_3d_x_partition_split_max="
+               << renderer_profile.ThreeDXPartitionSplitMax
                << " renderer_3d_raster_cancel_requests="
                << renderer_profile.ThreeDRasterCancelRequests
                << " renderer_3d_raster_canceled_frames="
@@ -5204,6 +5212,10 @@ void run_self_test()
             saved_environment("NDS4MISTER_RASTER_BAND_QUEUE");
         const auto saved_band_delay = saved_environment(
             "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER");
+        const auto saved_sparse_clear = saved_environment(
+            "NDS4MISTER_DISABLE_SPARSE_3D_CLEAR");
+        const auto saved_texture_cache = saved_environment(
+            "NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE");
         const auto restore_environment = [](const char* name,
                                             const auto& value) {
             if (value)
@@ -5211,7 +5223,17 @@ void run_self_test()
             else
                 unsetenv(name);
         };
-        const auto make_renderer_nds = [](bool band_queue) {
+        const auto make_renderer_nds = [](bool band_queue,
+                                          bool sparse_clear = true,
+                                          bool texture_cache = true) {
+            if (sparse_clear)
+                unsetenv("NDS4MISTER_DISABLE_SPARSE_3D_CLEAR");
+            else
+                setenv("NDS4MISTER_DISABLE_SPARSE_3D_CLEAR", "1", 1);
+            if (texture_cache)
+                unsetenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE");
+            else
+                setenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE", "1", 1);
             if (band_queue)
             {
                 setenv("NDS4MISTER_DUAL_CORE_3D", "1", 1);
@@ -5246,8 +5268,8 @@ void run_self_test()
                     self_test_fail("band-queue startup render returned null");
             return nds;
         };
-        auto oracle = make_renderer_nds(false);
-        auto queued = make_renderer_nds(true);
+        auto oracle = make_renderer_nds(false, false);
+        auto queued = make_renderer_nds(true, true);
         const auto push = [](melonDS::NDS& nds,
                              std::uint8_t command,
                              std::uint32_t parameter) {
@@ -5283,6 +5305,53 @@ void run_self_test()
             }
             push(nds, 0x50, 0); // flush
             nds.GPU.GPU3D.VBlank();
+        };
+        const auto build_sparse_frame = [&](melonDS::NDS& nds) {
+            push(nds, 0x10, 1); // position matrix
+            push(nds, 0x15, 0); // identity
+            push(nds, 0x20, 0x001f00c0);
+            push(nds, 0x29, 0x001f00c0);
+            push(nds, 0x40, 0); // one small, centered triangle
+            push(nds, 0x24, vertex10(-48, -48, 0));
+            push(nds, 0x24, vertex10(48, -48, 0));
+            push(nds, 0x24, vertex10(0, 48, 0));
+            push(nds, 0x41, 0);
+            push(nds, 0x50, 0); // flush
+            nds.GPU.GPU3D.VBlank();
+        };
+        const auto render_and_compare = [](
+            melonDS::NDS& reference, melonDS::NDS& candidate,
+            const char* failure) {
+            auto& reference_renderer = reference.GPU.GetRenderer();
+            auto& candidate_renderer = candidate.GPU.GetRenderer();
+            reference.GPU.GPU3D.RenderFrameIdentical = false;
+            candidate.GPU.GPU3D.RenderFrameIdentical = false;
+            reference_renderer.Start3DRendering();
+            candidate_renderer.Start3DRendering();
+            reference_renderer.Finish3DRendering();
+            candidate_renderer.Finish3DRendering();
+            for (std::uint32_t y = 0; y < PlaneHeight; ++y)
+            {
+                const auto* reference_line =
+                    reference_renderer.Get3DScanline(y);
+                const auto* candidate_line =
+                    candidate_renderer.Get3DScanline(y);
+                if (!reference_line || !candidate_line ||
+                    std::memcmp(
+                        reference_line, candidate_line,
+                        PlaneWidth * sizeof(std::uint32_t)) != 0)
+                    self_test_fail(failure);
+            }
+            melonDS::u64 reference_hashes[3] {};
+            melonDS::u64 candidate_hashes[3] {};
+            if (!reference_renderer.Get3DNativeBufferHashes(
+                    reference_hashes) ||
+                !candidate_renderer.Get3DNativeBufferHashes(
+                    candidate_hashes) ||
+                std::memcmp(
+                    reference_hashes, candidate_hashes,
+                    sizeof(reference_hashes)) != 0)
+                self_test_fail(failure);
         };
         build_frame(*oracle);
         build_frame(*queued);
@@ -5344,12 +5413,323 @@ void run_self_test()
                   << " advanced_scanlines="
                   << queue_profile.ThreeDBandQueueAdvancedScanlines << '\n';
 
+        // A constant clear should restore only pixels touched by the prior
+        // frame. Keep the original full-buffer clear enabled in the oracle
+        // and compare complete color/depth/attribute buffers after sparse,
+        // dense, empty, state-transition, fog, AA, and clear-image sequences.
+        auto sparse_oracle = make_renderer_nds(false, false);
+        auto sparse_candidate = make_renderer_nds(false, true);
+        melonDS::u64 sparse_empty_hashes[3] {};
+        if (!sparse_oracle->GPU.GetRenderer().Get3DNativeBufferHashes(
+                sparse_empty_hashes))
+            self_test_fail("sparse-clear startup hash unavailable");
+        build_sparse_frame(*sparse_oracle);
+        build_sparse_frame(*sparse_candidate);
+        if (sparse_oracle->GPU.GPU3D.RenderNumPolygons != 1 ||
+            sparse_candidate->GPU.GPU3D.RenderNumPolygons != 1)
+            self_test_fail("sparse-clear polygon fixture is not sparse");
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear sparse frame diverged from full-clear oracle");
+        melonDS::u64 sparse_drawn_hashes[3] {};
+        if (!sparse_oracle->GPU.GetRenderer().Get3DNativeBufferHashes(
+                sparse_drawn_hashes) ||
+            std::memcmp(
+                sparse_empty_hashes, sparse_drawn_hashes,
+                sizeof(sparse_empty_hashes)) == 0)
+            self_test_fail("sparse-clear polygon fixture had no raster effect");
+
+        sparse_oracle->GPU.GPU3D.RenderNumPolygons = 0;
+        sparse_candidate->GPU.GPU3D.RenderNumPolygons = 0;
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear empty frame diverged from full-clear oracle");
+        melonDS::u64 sparse_restored_hashes[3] {};
+        if (!sparse_oracle->GPU.GetRenderer().Get3DNativeBufferHashes(
+                sparse_restored_hashes) ||
+            std::memcmp(
+                sparse_drawn_hashes, sparse_restored_hashes,
+                sizeof(sparse_drawn_hashes)) == 0)
+            self_test_fail("sparse-clear empty frame did not restore damage");
+
+        build_frame(*sparse_oracle);
+        build_frame(*sparse_candidate);
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear dense frame diverged from full-clear oracle");
+        sparse_oracle->GPU.GPU3D.RenderNumPolygons = 0;
+        sparse_candidate->GPU.GPU3D.RenderNumPolygons = 0;
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear post-dense clear diverged from oracle");
+
+        for (auto* nds : {sparse_oracle.get(), sparse_candidate.get()})
+        {
+            nds->GPU.GPU3D.RenderClearAttr1 = 0x1f123456;
+            nds->GPU.GPU3D.RenderClearAttr2 = 0x00004210;
+        }
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear state transition diverged from oracle");
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear repeated empty frame diverged from oracle");
+
+        for (auto* nds : {sparse_oracle.get(), sparse_candidate.get()})
+        {
+            auto& gpu3d = nds->GPU.GPU3D;
+            gpu3d.RenderDispCnt |= (1u << 7);
+            gpu3d.RenderClearAttr1 |= (1u << 15);
+            gpu3d.RenderFogColor = 0x100c4210;
+            gpu3d.RenderFogOffset = 0;
+            gpu3d.RenderFogShift = 0;
+            std::fill_n(gpu3d.RenderFogDensityTable, 34, 0x40);
+        }
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear fog frame diverged from full-clear oracle");
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear repeated fog frame diverged from oracle");
+
+        for (auto* nds : {sparse_oracle.get(), sparse_candidate.get()})
+        {
+            auto& gpu3d = nds->GPU.GPU3D;
+            gpu3d.RenderDispCnt &= ~(1u << 7);
+            gpu3d.RenderDispCnt |= (1u << 4);
+            gpu3d.RenderClearAttr1 &= ~(1u << 15);
+        }
+        build_sparse_frame(*sparse_oracle);
+        build_sparse_frame(*sparse_candidate);
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear antialias frame diverged from oracle");
+        build_sparse_frame(*sparse_oracle);
+        build_sparse_frame(*sparse_candidate);
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear repeated antialias frame diverged from oracle");
+
+        for (auto* nds : {sparse_oracle.get(), sparse_candidate.get()})
+        {
+            auto& gpu3d = nds->GPU.GPU3D;
+            gpu3d.RenderNumPolygons = 0;
+            gpu3d.RenderDispCnt = (1u << 14);
+            gpu3d.RenderClearAttr1 = 0;
+            gpu3d.RenderClearAttr2 = 0;
+        }
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear clear-image frame diverged from oracle");
+        for (auto* nds : {sparse_oracle.get(), sparse_candidate.get()})
+        {
+            nds->GPU.GPU3D.RenderDispCnt = 0;
+            nds->GPU.GPU3D.RenderClearAttr1 = 0x1f001084;
+            nds->GPU.GPU3D.RenderClearAttr2 = 0x00001000;
+        }
+        render_and_compare(
+            *sparse_oracle, *sparse_candidate,
+            "sparse-clear image-to-constant transition diverged from oracle");
+
+        const auto oracle_clear_before =
+            sparse_oracle->GPU.GetRenderer()
+                .GetExternalRendererStageProfile().ThreeDClearNs;
+        const auto sparse_clear_before =
+            sparse_candidate->GPU.GetRenderer()
+                .GetExternalRendererStageProfile().ThreeDClearNs;
+        for (int iteration = 0; iteration < 64; ++iteration)
+            render_and_compare(
+                *sparse_oracle, *sparse_candidate,
+                "sparse-clear empty benchmark diverged from oracle");
+        const auto oracle_clear_after =
+            sparse_oracle->GPU.GetRenderer()
+                .GetExternalRendererStageProfile().ThreeDClearNs;
+        const auto sparse_clear_after =
+            sparse_candidate->GPU.GetRenderer()
+                .GetExternalRendererStageProfile().ThreeDClearNs;
+        std::cout << "H3D_SPARSE_CLEAR_ORACLE_PASS full_clear_ns="
+                  << oracle_clear_after - oracle_clear_before
+                  << " sparse_clear_ns="
+                  << sparse_clear_after - sparse_clear_before << '\n';
+
+        // The cached-modulate interior helper used to be selected only when
+        // polygon alpha was 31.  Compare its widened translucent path against
+        // melonDS's uncached generic texture renderer.  Both instances consume
+        // identical geometry, texture/palette bytes, depth, fog, AA, and clear
+        // state; the final color/depth/attribute buffers include both the top
+        // pixel and the antialias/fallback pixel underneath it.
+        auto translucent_oracle = make_renderer_nds(false, false, false);
+        auto translucent_candidate = make_renderer_nds(false, false, true);
+        const auto configure_texture_memory = [](melonDS::NDS& nds) {
+            auto& gpu = nds.GPU;
+            gpu.MapVRAM_AB(0, 0x83); // bank A, texture slot 0
+            gpu.MapVRAM_E(4, 0x83);  // bank E, texture palette
+            for (std::uint32_t texel = 0; texel < 64; ++texel)
+                gpu.VRAM_A[texel] = static_cast<std::uint8_t>(
+                    ((texel & 31) << 3) | (texel & 7)); // A5I3
+            for (std::uint32_t entry = 0; entry < 8; ++entry)
+            {
+                const std::uint16_t color = static_cast<std::uint16_t>(
+                    ((entry * 3 + 1) & 31) |
+                    (((entry * 5 + 7) & 31) << 5) |
+                    (((entry * 7 + 11) & 31) << 10));
+                std::memcpy(&gpu.VRAM_E[entry * 2], &color, sizeof(color));
+            }
+            std::memset(
+                gpu.VRAMDirty[0].Data, 0xff,
+                sizeof(gpu.VRAMDirty[0].Data));
+            std::memset(
+                gpu.VRAMDirty[4].Data, 0xff,
+                sizeof(gpu.VRAMDirty[4].Data));
+        };
+        configure_texture_memory(*translucent_oracle);
+        configure_texture_memory(*translucent_candidate);
+
+        struct TranslucentScenario
+        {
+            std::uint8_t AlphaRef;
+            std::uint8_t WrapFlags;
+            bool Perspective;
+            bool AlphaBlend;
+            bool WriteDepth;
+            bool Fog;
+            bool ClearFog;
+            bool AntiAlias;
+            bool EdgeMarking;
+            bool DuplicateIds;
+            bool DepthLayers;
+            bool ClipLeft;
+        };
+        constexpr TranslucentScenario translucent_scenarios[] {
+            {0,  0x0, false, false, false, false, false, false, false, false, false, false},
+            {1,  0x3, false, true,  false, false, false, false, false, false, false, false},
+            {15, 0xf, false, true,  true,  false, false, false, false, true,  true,  false},
+            {30, 0x5, true,  true,  false, false, false, false, false, false, false, false},
+            {31, 0xa, true,  true,  true,  false, false, false, false, false, true,  false},
+            {7,  0x1, false, true,  true,  true,  true,  false, false, true,  true,  false},
+            {12, 0x2, true,  true,  false, true,  false, false, false, false, false, false},
+            {3,  0xc, false, true,  true,  false, false, true,  true,  false, true,  false},
+            {20, 0x9, true,  true,  false, true,  true,  true,  true,  true,  true,  true },
+        };
+        const auto configure_translucent_frame = [](
+            melonDS::NDS& nds, const TranslucentScenario& scenario,
+            std::uint32_t scenario_index) {
+            auto& gpu3d = nds.GPU.GPU3D;
+            gpu3d.RenderDispCnt = 1u |
+                (static_cast<std::uint32_t>(scenario.AlphaBlend) << 3) |
+                (static_cast<std::uint32_t>(scenario.AntiAlias) << 4) |
+                (static_cast<std::uint32_t>(scenario.EdgeMarking) << 5) |
+                (static_cast<std::uint32_t>(scenario.Fog) << 7);
+            gpu3d.RenderAlphaRef = scenario.AlphaRef;
+            gpu3d.RenderClearAttr1 = 0x0712254au |
+                (static_cast<std::uint32_t>(scenario.ClearFog) << 15);
+            gpu3d.RenderClearAttr2 = 0x00007fffu;
+            gpu3d.RenderFogColor = 0x13004d2bu;
+            gpu3d.RenderFogOffset = 0x00080000u;
+            gpu3d.RenderFogShift = 1;
+            for (std::uint32_t index = 0; index < 34; ++index)
+                gpu3d.RenderFogDensityTable[index] =
+                    static_cast<std::uint8_t>((index * 13 + 5) & 0x7f);
+            for (std::uint32_t index = 0;
+                 index < gpu3d.RenderNumPolygons; ++index)
+            {
+                auto* polygon = gpu3d.RenderPolygonRAM[index];
+                // Keep one opaque foreground polygon in the AA/depth-layer
+                // cases. Its edge creates a lower-pixel fallback target for
+                // the following translucent interiors.
+                const std::uint32_t alpha =
+                    scenario.DepthLayers && index == 0 ? 31u :
+                    1u + ((scenario_index * 11u + index * 7u) % 30u);
+                const std::uint32_t polygon_id =
+                    scenario.DuplicateIds && index >= 1 && index <= 3 ?
+                        9u : (index + 17u) & 0x3fu;
+                polygon->Attr = 0x000000c0u |
+                    (polygon_id << 24) | (alpha << 16) |
+                    (static_cast<std::uint32_t>(scenario.WriteDepth) << 11) |
+                    (static_cast<std::uint32_t>(scenario.Fog && (index & 1))
+                        << 15);
+                polygon->TexParam = (6u << 26) |
+                    (static_cast<std::uint32_t>(scenario.WrapFlags) << 16);
+                polygon->TexPalette = 0;
+                polygon->FacingView = true;
+                polygon->Translucent = alpha < 31;
+                polygon->IsShadowMask = false;
+                polygon->IsShadow = false;
+                polygon->WBuffer = scenario.Perspective;
+                const std::int32_t depth = scenario.DepthLayers ?
+                    (index == 0 ? 0x00100000 :
+                     index < 5 ? 0x00200000 : 0x00080000) :
+                    0x00100000 + static_cast<std::int32_t>(index * 0x1000);
+                for (std::uint32_t vertex = 0;
+                     vertex < polygon->NumVertices; ++vertex)
+                {
+                    polygon->FinalZ[vertex] = depth;
+                    polygon->FinalW[vertex] = scenario.Perspective ?
+                        0x0800 + static_cast<std::int32_t>(
+                            vertex * 0x500 + index * 0x40) : 0x1000;
+                    polygon->Vertices[vertex]->FinalColor[0] =
+                        static_cast<std::int32_t>(
+                            ((index * 5 + vertex * 17 + 3) & 63) << 3);
+                    polygon->Vertices[vertex]->FinalColor[1] =
+                        static_cast<std::int32_t>(
+                            ((index * 9 + vertex * 11 + 7) & 63) << 3);
+                    polygon->Vertices[vertex]->FinalColor[2] =
+                        static_cast<std::int32_t>(
+                            ((index * 13 + vertex * 7 + 19) & 63) << 3);
+                    polygon->Vertices[vertex]->TexCoords[0] =
+                        static_cast<std::int16_t>(
+                            (static_cast<std::int32_t>(vertex) * 93) - 41);
+                    polygon->Vertices[vertex]->TexCoords[1] =
+                        static_cast<std::int16_t>(
+                            151 - static_cast<std::int32_t>(vertex) * 77);
+                    if (scenario.ClipLeft && index == 1)
+                        polygon->Vertices[vertex]->FinalPosition[0] -= 192;
+                }
+            }
+        };
+
+        for (std::uint32_t scenario_index = 0;
+             scenario_index < std::size(translucent_scenarios);
+             ++scenario_index)
+        {
+            build_frame(*translucent_oracle);
+            build_frame(*translucent_candidate);
+            configure_translucent_frame(
+                *translucent_oracle,
+                translucent_scenarios[scenario_index], scenario_index);
+            configure_translucent_frame(
+                *translucent_candidate,
+                translucent_scenarios[scenario_index], scenario_index);
+            render_and_compare(
+                *translucent_oracle, *translucent_candidate,
+                "cached translucent interior diverged from generic renderer");
+        }
+        const auto translucent_oracle_profile =
+            translucent_oracle->GPU.GetRenderer()
+                .GetExternalRendererStageProfile();
+        const auto translucent_candidate_profile =
+            translucent_candidate->GPU.GetRenderer()
+                .GetExternalRendererStageProfile();
+        if (translucent_oracle_profile.ThreeDCachedModulatePolygons != 0 ||
+            translucent_candidate_profile.ThreeDCachedModulatePolygons == 0 ||
+            translucent_candidate_profile.ThreeDModePolygons[1] == 0 ||
+            translucent_candidate_profile.ThreeDTextureFormatPolygons[6] == 0)
+            self_test_fail(
+                "cached translucent framebuffer oracle missed target path");
+        std::cout << "H3D_CACHED_TRANSLUCENT_ORACLE_PASS scenarios="
+                  << std::size(translucent_scenarios)
+                  << " cached_polygons="
+                  << translucent_candidate_profile
+                         .ThreeDCachedModulatePolygons << '\n';
+        translucent_candidate.reset();
+        translucent_oracle.reset();
+
         // A canceled raster is derived output only: the complete GX build and
         // renderer state must remain valid for the next admitted frame. The
         // delayed band worker makes the cancellation observation
         // deterministic, then a second render is compared byte-for-byte with
         // a clean melonDS oracle to prove recovery.
-        auto cancel_queued = make_renderer_nds(true);
+        auto cancel_queued = make_renderer_nds(true, true);
         build_frame(*cancel_queued);
         auto& cancel_renderer = cancel_queued->GPU.GetRenderer();
         cancel_renderer.Start3DRendering();
@@ -5365,7 +5745,7 @@ void run_self_test()
             cancel_profile.ThreeDRasterRecoveryFrames != 0)
             self_test_fail("obsolete-raster telemetry diverged");
 
-        auto cancel_oracle = make_renderer_nds(false);
+        auto cancel_oracle = make_renderer_nds(false, false);
         build_frame(*cancel_oracle);
         build_frame(*cancel_queued);
         auto& cancel_oracle_renderer = cancel_oracle->GPU.GetRenderer();
@@ -5390,6 +5770,17 @@ void run_self_test()
                 self_test_fail(
                     "post-cancellation raster diverged from oracle");
         }
+        melonDS::u64 cancel_oracle_hashes[3] {};
+        melonDS::u64 cancel_recovered_hashes[3] {};
+        if (!cancel_oracle_renderer.Get3DNativeBufferHashes(
+                cancel_oracle_hashes) ||
+            !cancel_renderer.Get3DNativeBufferHashes(
+                cancel_recovered_hashes) ||
+            std::memcmp(
+                cancel_oracle_hashes, cancel_recovered_hashes,
+                sizeof(cancel_oracle_hashes)) != 0)
+            self_test_fail(
+                "post-cancellation native buffers diverged from oracle");
         std::cout << "H3D_OBSOLETE_RASTER_CANCEL_ORACLE_PASS requests="
                   << cancel_profile.ThreeDRasterCancelRequests
                   << " canceled="
@@ -5400,8 +5791,8 @@ void run_self_test()
         // renders the frame through the exact adaptive two-worker fallback.
         // This fixture intentionally marks polygons after geometry assembly so
         // it exercises the renderer decision directly and deterministically.
-        auto shadow_oracle = make_renderer_nds(false);
-        auto shadow_queued = make_renderer_nds(true);
+        auto shadow_oracle = make_renderer_nds(false, false);
+        auto shadow_queued = make_renderer_nds(true, true);
         build_frame(*shadow_oracle);
         build_frame(*shadow_queued);
         for (auto* nds : {shadow_oracle.get(), shadow_queued.get()})
@@ -5476,8 +5867,8 @@ void run_self_test()
         // A mask-only ordering can carry PrevIsShadowMask and parity-stencil
         // contents across a band boundary. It must remain on the established
         // adaptive path rather than guessing at state owned by the peer.
-        auto rejected_shadow_oracle = make_renderer_nds(false);
-        auto rejected_shadow_queued = make_renderer_nds(true);
+        auto rejected_shadow_oracle = make_renderer_nds(false, false);
+        auto rejected_shadow_queued = make_renderer_nds(true, true);
         build_frame(*rejected_shadow_oracle);
         build_frame(*rejected_shadow_queued);
         for (auto* nds : {
@@ -5525,6 +5916,8 @@ void run_self_test()
         rejected_shadow_queued.reset();
         rejected_shadow_oracle.reset();
 
+        sparse_candidate.reset();
+        sparse_oracle.reset();
         shadow_queued.reset();
         shadow_oracle.reset();
         queued.reset();
@@ -5535,6 +5928,10 @@ void run_self_test()
         restore_environment("NDS4MISTER_RASTER_BAND_QUEUE", saved_bands);
         restore_environment(
             "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER", saved_band_delay);
+        restore_environment(
+            "NDS4MISTER_DISABLE_SPARSE_3D_CLEAR", saved_sparse_clear);
+        restore_environment(
+            "NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE", saved_texture_cache);
     }
 
     // Production's 3D-only split combines both asynchronous workers. A

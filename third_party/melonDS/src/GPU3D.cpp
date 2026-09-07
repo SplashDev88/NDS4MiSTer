@@ -26,6 +26,7 @@
 #include "GPU3D_Soft.h"
 #include "Platform.h"
 #include "GPU3D.h"
+#include "NDS4MiSTer_GXClipFastPath.h"
 #include "NDS4MiSTer_2DTrace.h"
 #include "NDS4MiSTer_GXClipMath.h"
 #include "NDS4MiSTer_GXVertexTransform.h"
@@ -726,6 +727,29 @@ void GPU3D::AddCycles(s32 num) noexcept
 {
     CycleCount += num;
 
+    // The exact 600-frame NSMB replay reaches this fully idle state on
+    // 151,960 / 166,884 calls (91.1%). Test both pipeline counters once so
+    // the dominant path returns without entering the pipeline state machine.
+    u32 pipelinesActive;
+#if defined(__arm__)
+    // Keep the two loads in caller-saved registers. GCC otherwise preserves
+    // r4 around this tiny leaf, adding a stack store/load to its dominant path.
+    asm volatile(
+        "ldr %[active], %[vertex]\n\t"
+        "ldr r12, %[polygon]\n\t"
+        "orrs %[active], %[active], r12"
+        : [active] "=&r" (pipelinesActive)
+        : [vertex] "m" (VertexPipeline),
+          [polygon] "m" (PolygonPipeline)
+        : "r12", "cc");
+#else
+    pipelinesActive = VertexPipeline | PolygonPipeline;
+#endif
+    if (pipelinesActive != 0) AdvancePipelines(num);
+}
+
+void GPU3D::AdvancePipelines(s32 num) noexcept
+{
     if (VertexPipeline > 0)
     {
         if (VertexPipeline > num) VertexPipeline -= num;
@@ -999,6 +1023,15 @@ int ClipPolygon(GPU3D& gpu, Vertex* vertices, int nverts, int clipstart)
     // TODO: the hardware seems to use a different algorithm. it reacts differently to vertices with W=0
     // some vertices that should get Y=-0x1000 get Y=0x1000 for some reason on hardware. it doesn't make sense.
     // clipping seems to process the Y plane before the X plane.
+
+    if constexpr (attribs)
+    {
+        if (__builtin_expect(
+                NDS4MiSTerGXClipPolygonIsUnchanged(
+                    vertices, nverts, clipstart),
+                true))
+            return nverts;
+    }
 
     // Z clipping
     nverts = ClipAgainstPlane<2, attribs>(gpu, vertices, nverts, clipstart);
@@ -1386,8 +1419,7 @@ void GPU3D::SubmitPolygon() noexcept
         u32 w = (u32)vtx->Position[3];
         if (w == 0) poly->Degenerate = true;
 
-        while ((w >> wsize) && (wsize < 32))
-            wsize += 4;
+        wsize = std::max(wsize, NDS4MiSTerGXNormalizedWSize(w));
     }
 
     poly->VTop = vtop; poly->VBottom = vbot;

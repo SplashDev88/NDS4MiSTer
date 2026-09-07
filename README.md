@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**Public Beta v0.3.0-beta.9 — released 2026-09-06**
+**Public Beta v0.3.0-beta.10 — release candidate 2026-09-06**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -56,19 +56,21 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.9_20260906.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.10_20260906.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Go to **Console → NDS_20260906** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260906** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
 > core.** The DS 3D renderer is a helper program on the MiSTer's ARM/HPS. The
 > launcher verifies that helper, requests the tested 1 GHz HPS clock, and
 > starts exactly one non-persistent renderer process. Games will not run
-> correctly if the helper is not running.
+> correctly if the helper is not running. Kickstart also watches for that one
+> core launch and moves its replacement MiSTer frontend to CPU0; rerun
+> Kickstart before a later NDS re-entry or if five minutes elapsed.
 
 ## Controller and keyboard mapping
 
@@ -94,7 +96,7 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In beta.9, both displayed positions duplicate Engine A, so the
+movement. In this release, both displayed positions duplicate Engine A, so the
 pointer is drawn over every visible copy of that image.
 
 Touch coordinates are delivered to the DS touchscreen even though Engine B is
@@ -116,7 +118,7 @@ cartridges and unknown save hardware are not supported.
 > **If a game reports corrupted save data after an upgrade:** Back up its
 > `.sav` file, then delete or move that file out of `/media/fat/saves/NDS/` and
 > let the game create a fresh save. Older experimental builds sometimes
-> created incorrectly sized or already-corrupted saves; beta.9 does not try to
+> created incorrectly sized or already-corrupted saves; beta.10 does not try to
 > repair them.
 
 ## Reading the FPS counter
@@ -141,31 +143,41 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.9
+## What's new in beta.10
 
-Beta.9 combines the beta.8 touchscreen correction with a sound fix and a
-bit-exact ARM 3D geometry optimization. It retains beta.7's compatibility work,
-saves, layouts, reset behavior, and the 134 MHz clock family.
+Beta.10 keeps the accepted beta.9 seed-2 FPGA core, updates the ARM 3D service
+with two exact renderer optimizations, and carries the tested MiSTer CPU0
+placement across one NDS core launch:
 
-- Initializes the DS sound-bias register to its hardware midpoint during direct
-  boot. This fixes the broadly blown-out, overdriven sound heard in earlier
-  betas; guest writes to the register remain fully supported.
-- Prepares a shared viewport divisor once and reuses the fast setup for both
-  point coordinates. The targeted operation is 3.329 times faster in the ARM
-  benchmark, with identical results to the previous exact math path.
-- Retains beta.8's corrected touchscreen Y calibration, valid redundant
-  firmware settings copies, full native edge coverage, right-stick control,
-  USB mouse control, and visible pointer.
+- Shadow/stencil frames that cannot use the existing horizontal-band split can
+  use a safe disjoint-X partition instead of falling back to one raster worker.
+  A deliberately shadow-heavy physical Cortex-A9 fixture measured 48.16% less
+  raster-stage time (1.929x). This is a stage-specific result, not a whole-game
+  speedup; one Mario Kart coverage run used the path on only 10 of 2,999
+  polygon frames.
+- When antialiasing is enabled without edge marking or fog, the renderer uses a
+  smaller exact final pass and skips four-pixel blocks with no edge pixels.
+  Eight physical A/B blocks measured 10.19% less final-pass-stage time
+  (1.114x). The corresponding whole-replay median was noisy and 0.32% slower,
+  so this does not establish a whole-service or FPS improvement.
+- A bounded, one-shot Kickstart watcher recognizes the exact `NDS` core and a
+  stable replacement MiSTer process epoch, pins that frontend to CPU0, and
+  exits. This reduces contention with CPU1-led 3D work without renicing MiSTer
+  or applying real-time scheduling. Adjacent, non-normalized 20-second Mario
+  Kart scene windows displayed 616 unpinned and 622 pinned changed 3D frames
+  (+0.974%); that modest indication is scene-dependent, not a guaranteed
+  speedup.
 
-In a 9.7-second Mario Kart DS kiosk-demo hardware sample, the DS stream ran at
-59.8 FPS and 39.2 changed 3D planes per second were accepted for display. The
-queue stayed at a small 1–3-item backlog, never filled, and reported no faults.
-This is a scene sample rather than a whole-game 60 FPS claim.
+The current-tree audit confirms that beta.10 changes no FPGA, touch, sound,
+save, or compatibility source relative to the beta.9 image. Those beta.9 paths
+are retained, but are not claimed as newly retested across every game. No PGO
+build or rejected experiment is included.
 
 ## Verification
 
 | | |
 | --- | --- |
+| Accepted source commit | `2e477c3de4cd0deaaa5ca0fb070e6924205eff56` |
 | Core file | `_Console/NDS_20260906.rbf` |
 | Build identity | `260905-TSAUDS2` |
 | Quartus seed | 2 |
@@ -174,11 +186,17 @@ This is a scene sample rather than a whole-game 60 FPS claim.
 | RAM blocks | 489 / 553 |
 | DSP blocks | 69 / 112 |
 | FPGA SHA-256 | `ff1b1d5352690420d875dc508448817eb8edbebda9062d75b31683be0b2325ee` |
-| ARM SHA-256 | `9629ec9beba9ed4e26ea155f3286ec1bf1e2350e2f468128bcb3a435eaba2a2e` |
+| ARM SHA-256 | `a3dbb5eba4816dc50ad9f2d993c32d8c7b7c7680effaf37e8cfa420feebd8e57` |
+| Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-Quartus fit and assembly completed successfully. Static timing remains
-diagnostic rather than a release gate; this exact FPGA/ARM pair passed MiSTer
-sound, touch, save, and gameplay testing.
+Quartus fit and assembly for the unchanged FPGA image completed successfully.
+Static timing remains diagnostic rather than a release gate. The exact ARM
+service passed its built-in self-test and was accepted in visual gameplay with
+the unchanged core; the retained beta.9 touch, sound, save, and compatibility
+paths are established by the unchanged FPGA/package audit rather than a new
+full-game beta.10 validation sweep. Repeated supervisor stress, independent
+review, and physical post-load verification passed for the bounded affinity
+watcher.
 
 ## For developers
 
@@ -192,7 +210,7 @@ sound, touch, save, and gameplay testing.
   engine and publishes completed 256×192 3D planes to the FPGA.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
   window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in beta.9.
+  shadow copy of the FPGA 2D engine in this release.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.

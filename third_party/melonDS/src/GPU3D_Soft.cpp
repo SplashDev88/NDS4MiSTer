@@ -19,6 +19,7 @@
 #include "GPU3D_Soft.h"
 
 #include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <cstdlib>
 #include <stdio.h>
@@ -191,6 +192,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         std::getenv("NDS4MISTER_RASTER_BAND_QUEUE");
     RasterBandQueue = DualCoreRaster && rasterBandQueue &&
         strcmp(rasterBandQueue, "0") != 0;
+    const char* rasterXPartition =
+        std::getenv("NDS4MISTER_RASTER_X_PARTITION");
+    RasterXPartition = DualCoreRaster &&
+        rasterXPartition && strcmp(rasterXPartition, "0") != 0;
     const char* rasterBandQueueTestDelay =
         std::getenv("NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER");
     RasterBandQueueTestDelayWorker = RasterBandQueue &&
@@ -200,6 +205,8 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
     UseTextureCache = std::getenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE") == nullptr;
+    SparseClearEnabled =
+        std::getenv("NDS4MISTER_DISABLE_SPARSE_3D_CLEAR") == nullptr;
 }
 
 void SoftRenderer3D::GetNativeBufferHashes(u64 hashes[3]) const noexcept
@@ -238,6 +245,8 @@ void SoftRenderer3D::Reset()
     memset(ColorBuffer, 0, BufferSize * 2 * 4);
     memset(DepthBuffer, 0, BufferSize * 2 * 4);
     memset(AttrBuffer, 0, BufferSize * 2 * 4);
+
+    SparseClearStateValid = false;
 
     PrevIsShadowMask = false;
 
@@ -629,9 +638,9 @@ u32 SoftRenderer3D::AlphaBlend(u32 srccolor, u32 dstcolor, u32 alpha) const noex
         u32 dstB = (dstcolor >> 16) & 0x3F;
 
         alpha++;
-        srcR = ((srcR * alpha) + (dstR * (32-alpha))) >> 5;
-        srcG = ((srcG * alpha) + (dstG * (32-alpha))) >> 5;
-        srcB = ((srcB * alpha) + (dstB * (32-alpha))) >> 5;
+        srcR = NDS4MiSTerAlphaBlendChannel(srcR, dstR, alpha);
+        srcG = NDS4MiSTerAlphaBlendChannel(srcG, dstG, alpha);
+        srcB = NDS4MiSTerAlphaBlendChannel(srcB, dstB, alpha);
         alpha--;
     }
 
@@ -641,7 +650,7 @@ u32 SoftRenderer3D::AlphaBlend(u32 srccolor, u32 dstcolor, u32 alpha) const noex
     return srcR | (srcG << 8) | (srcB << 16) | (dstalpha << 24);
 }
 
-u32 SoftRenderer3D::RenderPixel(
+u32 SoftRenderer3D::RenderPixelSlow(
     const RendererPolygon::PixelShaderState& state,
     u8 vr, u8 vg, u8 vb, s16 s, s16 t) const
 {
@@ -802,6 +811,17 @@ u32 SoftRenderer3D::RenderPixel(
 }
 
 [[gnu::always_inline, gnu::hot]] inline u32
+SoftRenderer3D::LookupCachedTexel(
+    const RendererPolygon::PixelShaderState& state,
+    s16 s, s16 t)
+{
+    return state.TexturePixels[NDS4MiSTerCachedTextureIndex(
+        s, t, state.TextureWidth, state.TextureHeight,
+        state.TextureWidthMask, state.TextureHeightMask,
+        state.TextureWrapFlags, state.TextureWidthShift)];
+}
+
+[[gnu::always_inline, gnu::hot]] inline u32
 SoftRenderer3D::RenderPixelCachedModulate(
     const RendererPolygon::PixelShaderState& state,
     u32 vertexColor, s16 s, s16 t)
@@ -813,65 +833,9 @@ SoftRenderer3D::RenderPixelCachedModulate(
         return true;
     }(), "opaque polygon modulation must preserve all DS texture alphas");
 
-    const s32 width = state.TextureWidth;
-    const s32 height = state.TextureHeight;
-    const s32 widthMask = state.TextureWidthMask;
-    const s32 heightMask = state.TextureHeightMask;
-
-    s >>= 4;
-    t >>= 4;
-
-    if (state.TextureWrapFlags & 0x1)
-    {
-        if (state.TextureWrapFlags & 0x4)
-        {
-            if (s & width) s = widthMask - (s & widthMask);
-            else           s &= widthMask;
-        }
-        else
-            s &= widthMask;
-    }
-    else
-    {
-        if (s < 0) s = 0;
-        else if (s >= width) s = widthMask;
-    }
-
-    if (state.TextureWrapFlags & 0x2)
-    {
-        if (state.TextureWrapFlags & 0x8)
-        {
-            if (t & height) t = heightMask - (t & heightMask);
-            else            t &= heightMask;
-        }
-        else
-            t &= heightMask;
-    }
-    else
-    {
-        if (t < 0) t = 0;
-        else if (t >= height) t = heightMask;
-    }
-
-    const u32 texel = state.TexturePixels[
-        (static_cast<u32>(t) << state.TextureWidthShift) +
-            static_cast<u32>(s)];
-    if (state.PolyAlpha == 31)
-        return NDS4MiSTerModulateCachedOpaquePixel(texel, vertexColor);
-
-    const u32 tr = texel & 0x3F;
-    const u32 tg = (texel >> 8) & 0x3F;
-    const u32 tb = (texel >> 16) & 0x3F;
-    const u32 talpha = texel >> 24;
-    const u32 vr = vertexColor & 0x3F;
-    const u32 vg = (vertexColor >> 8) & 0x3F;
-    const u32 vb = (vertexColor >> 16) & 0x3F;
-
-    const u32 r = ((tr+1) * (vr+1) - 1) >> 6;
-    const u32 g = ((tg+1) * (vg+1) - 1) >> 6;
-    const u32 b = ((tb+1) * (vb+1) - 1) >> 6;
-    const u32 a = ((talpha+1) * (state.PolyAlpha+1) - 1) >> 5;
-    return r | (g << 8) | (b << 16) | (a << 24);
+    const u32 texel = LookupCachedTexel(state, s, t);
+    return NDS4MiSTerModulateCachedPixel(
+        texel, vertexColor, state.PolyAlpha);
 }
 
 #if defined(__arm__) && defined(__ARM_NEON)
@@ -894,7 +858,7 @@ SoftRenderer3D::LookupCachedTexels4(
 void SoftRenderer3D::PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow)
 {
     u32 dstattr = AttrBuffer[pixeladdr];
-    u32 attr = (polyattr & 0xE0F0) | ((polyattr >> 8) & 0xFF0000) | (1<<22) | (dstattr & 0xFF001F0F);
+    u32 attr = NDS4MiSTerComposeTranslucentAttr(polyattr, dstattr);
 
     if (shadow)
     {
@@ -984,7 +948,9 @@ void SoftRenderer3D::SetupPolygonRightEdge(SoftRenderer3D::RendererPolygon* rp, 
                               polygon->FinalW[rp->CurVR], polygon->FinalW[rp->NextVR], y, polygon->WBuffer);
 }
 
-void SoftRenderer3D::SetupPolygon(SoftRenderer3D::RendererPolygon* rp, Polygon* polygon)
+void SoftRenderer3D::SetupPolygon(
+    SoftRenderer3D::RendererPolygon* rp, Polygon* polygon,
+    TextureBindingCache& textureBinding)
 {
     u32 nverts = polygon->NumVertices;
 
@@ -1015,15 +981,31 @@ void SoftRenderer3D::SetupPolygon(SoftRenderer3D::RendererPolygon* rp, Polygon* 
     pixelState.TexturePixels = nullptr;
     if (pixelState.TextureEnabled && UseTextureCache)
     {
-        u32* textureArray;
-        u32 textureLayer;
-        u32* textureHelper;
-        TextureCache.GetTexture(
-            polygon->TexParam, polygon->TexPalette,
-            textureArray, textureLayer, textureHelper);
-        pixelState.TexturePixels = textureArray +
-            static_cast<size_t>(textureLayer) *
-                pixelState.TextureWidth * pixelState.TextureHeight;
+        const u32* cachedPixels = textureBinding.Pixels;
+        // These side-effect-free terms are intentionally evaluated together
+        // so ARM can overlap both key-word loads before their comparisons.
+        const bool bindingMatches = NDS4MiSTerTextureBindingMatches(
+            textureBinding.TexParam, textureBinding.TexPalette,
+            polygon->TexParam, polygon->TexPalette);
+        if (__builtin_expect(bindingMatches, 1))
+        {
+            pixelState.TexturePixels = cachedPixels;
+        }
+        else
+        {
+            u32* textureArray;
+            u32 textureLayer;
+            u32* textureHelper;
+            TextureCache.GetTexture(
+                polygon->TexParam, polygon->TexPalette,
+                textureArray, textureLayer, textureHelper);
+            pixelState.TexturePixels = textureArray +
+                static_cast<size_t>(textureLayer) *
+                    pixelState.TextureWidth * pixelState.TextureHeight;
+            textureBinding.Pixels = pixelState.TexturePixels;
+            textureBinding.TexParam = polygon->TexParam;
+            textureBinding.TexPalette = polygon->TexPalette;
+        }
     }
     pixelState.Highlight =
         pixelState.BlendMode == 2 && (GPU3D.RenderDispCnt & (1<<1));
@@ -1129,7 +1111,7 @@ void SoftRenderer3D::SetupPolygon(SoftRenderer3D::RendererPolygon* rp, Polygon* 
 
 void SoftRenderer3D::RenderShadowMaskScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
-    u8* stencilBuffer)
+    u8* stencilBuffer, s32 clipStartX, s32 clipEndX)
 {
     Polygon* polygon = rp->PolyData;
 
@@ -1258,7 +1240,7 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     s32 x = xstart;
     Interpolator<0> interpX(xstart, xend+1, wl, wr, polygon->WBuffer);
 
-    if (x < 0) x = 0;
+    if (x < clipStartX) x = clipStartX;
     s32 xlimit;
 
     // for shadow masks: set stencil bits where the depth test fails.
@@ -1268,7 +1250,8 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     edge = yedge | 0x1;
     xlimit = xstart+l_edgelen;
     if (xlimit > xend+1) xlimit = xend+1;
-    if (xlimit > 256) xlimit = 256;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
 
     if (!l_filledge) x = xlimit;
     else
@@ -1296,7 +1279,8 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     edge = yedge;
     xlimit = xend-r_edgelen+1;
     if (xlimit > xend+1) xlimit = xend+1;
-    if (xlimit > 256) xlimit = 256;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
     if (wireframe && !edge) x = std::max(x, xlimit);
     else for (; x < xlimit; x++)
     {
@@ -1321,7 +1305,8 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     // part 3: right edge
     edge = yedge | 0x2;
     xlimit = xend+1;
-    if (xlimit > 256) xlimit = 256;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
 
     if (r_filledge)
     for (; x < xlimit; x++)
@@ -1360,6 +1345,7 @@ SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
     Interpolator<0>::SpanDepthInterpolator& spanDepth,
     Interpolator<0>::SpanInterpolator& spanAttributes)
 {
+    assert(rp->PixelState.PolyAlpha == 31);
     Polygon* polygon = rp->PolyData;
     const auto& pixelState = rp->PixelState;
     const u32 polyattr = rp->PolyAttr;
@@ -1463,22 +1449,51 @@ SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
 #endif
 
 [[gnu::hot, gnu::noinline]] void
-SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
+SoftRenderer3D::RenderCachedModulateInteriorSpan(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
     Interpolator<0>& interpX,
     Interpolator<0>::SpanDepthInterpolator& spanDepth,
-    Interpolator<0>::SpanInterpolator& spanAttributes,
-    s32* spanValues)
+    Interpolator<0>::SpanInterpolator& spanAttributes)
 {
 #if defined(__arm__) && defined(__ARM_NEON)
-    if (spanAttributes.IsPerspective())
+    // The four-pixel perspective batch uses the opaque-only modulation
+    // kernel.  A translucent polygon must retain the per-pixel path below so
+    // its texture alpha is combined with PolyAlpha before the alpha test and
+    // framebuffer blend.
+    if (rp->PixelState.PolyAlpha == 31 && spanAttributes.IsPerspective())
         firstX = RenderCachedOpaquePerspectiveInteriorBatch4(
             rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
 #endif
 
+    switch (rp->PixelState.TextureWrapFlags)
+    {
+    case 0x0u:
+        RenderCachedModulateInteriorSpanMode<0x0u>(
+            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        return;
+    case 0x3u:
+        RenderCachedModulateInteriorSpanMode<0x3u>(
+            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        return;
+    default:
+        RenderCachedModulateInteriorSpanMode<0xFFu>(
+            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        return;
+    }
+}
+
+template<u8 WrapMode>
+[[gnu::hot, gnu::noinline]] void
+SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    Interpolator<0>& interpX,
+    Interpolator<0>::SpanDepthInterpolator& spanDepth,
+    Interpolator<0>::SpanInterpolator& spanAttributes)
+{
     Polygon* polygon = rp->PolyData;
     const auto& pixelState = rp->PixelState;
     const u32 polyattr = rp->PolyAttr;
+    const u32 polyAlpha = pixelState.PolyAlpha;
     const u32 alphaRef = GPU3D.RenderAlphaRef;
     const bool writeTranslucentDepth = polygon->Attr & (1<<11);
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
@@ -1486,40 +1501,31 @@ SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
     for (s32 x = firstX; x < endX; ++x)
     {
         u32 pixeladdr = rowAddress + x;
-        u32 dstattr = AttrBuffer[pixeladdr];
 
         interpX.SetXFast(x);
         s32 z = spanDepth.Interpolate();
 
-        // This helper is selected only for front-facing less-than polygons.
-        // Inline that exact common test instead of redispatching the polygon's
-        // depth mode for every interior pixel.
-        const auto depthPass = [](s32 dstz, s32 sourceZ, u32 attr) {
-            return sourceZ < dstz ||
-                (sourceZ == dstz &&
-                 (attr & 0x00400010) == 0x00000010);
-        };
-        if (!depthPass(DepthBuffer[pixeladdr], z, dstattr))
-        {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+        if (!NDS4MiSTerSelectCachedDepthPixel(
+                DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+            continue;
 
-            pixeladdr += BufferSize;
-            dstattr = AttrBuffer[pixeladdr];
-            if (!depthPass(DepthBuffer[pixeladdr], z, dstattr)) continue;
-        }
-
-        spanAttributes.Interpolate(spanValues);
-        const u32 vertexColor =
-            (static_cast<u32>(spanValues[0]) >> 3) |
-            ((static_cast<u32>(spanValues[1]) >> 3) << 8) |
-            ((static_cast<u32>(spanValues[2]) >> 3) << 16);
-        const u32 color = RenderPixelCachedModulate(
-            pixelState, vertexColor,
-            static_cast<s16>(spanValues[3]),
-            static_cast<s16>(spanValues[4]));
+        u32 vertexColor;
+        s16 textureS;
+        s16 textureT;
+        spanAttributes.InterpolateCachedPixel(
+            vertexColor, textureS, textureT);
+        const u32 texel = pixelState.TexturePixels[
+            NDS4MiSTerCachedTextureIndexForMode<WrapMode>(
+                textureS, textureT,
+                pixelState.TextureWidth, pixelState.TextureHeight,
+                pixelState.TextureWidthMask, pixelState.TextureHeightMask,
+                pixelState.TextureWrapFlags,
+                pixelState.TextureWidthShift)];
+        u32 color;
+        if (!NDS4MiSTerModulateVisibleCachedPixel(
+                texel, vertexColor, polyAlpha, alphaRef, color))
+            continue;
         const u8 alpha = color >> 24;
-
-        if (alpha <= alphaRef) continue;
 
         if (alpha == 31)
         {
@@ -1532,7 +1538,8 @@ SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
             if (!writeTranslucentDepth) z = -1;
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if (NDS4MiSTerCachedPixelHasLowerLayer(
+                    AttrBuffer, BufferSize, pixeladdr))
                 PlotTranslucentPixel(
                     pixeladdr + BufferSize, color, z, polyattr, 0);
         }
@@ -1541,7 +1548,8 @@ SoftRenderer3D::RenderCachedOpaqueInteriorSpan(
 
 void SoftRenderer3D::RenderPolygonScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
-    u8* stencilBuffer)
+    u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
 {
     Polygon* polygon = rp->PolyData;
 
@@ -1708,22 +1716,23 @@ void SoftRenderer3D::RenderPolygonScanline(
         return RenderPixel(
             rp->PixelState, vr >> 3, vg >> 3, vb >> 3, s, t);
     };
-    const bool cachedOpaqueInterior = yedge == 0 &&
-        rp->PixelState.CachedModulate && polyalpha == 31 &&
-        !polygon->IsShadow &&
-        fnDepthTest == DepthTest_LessThan_FrontFacing;
+    const bool cachedModulateInterior =
+        NDS4MiSTerUseCachedModulateInterior(
+            yedge, rp->PixelState.CachedModulate, polyalpha,
+            polygon->IsShadow, polygon->IsShadowMask,
+            fnDepthTest == DepthTest_LessThan_FrontFacing);
 
     const s32 visibleStart = std::max<s32>(xstart, 0);
     const s32 visibleEnd = std::min<s32>(xend + 1, 256);
     if (visibleStart < visibleEnd)
     {
-        FinalPassMinX[y] = std::min<u16>(
-            FinalPassMinX[y], static_cast<u16>(visibleStart));
-        FinalPassMaxX[y] = std::max<u16>(
-            FinalPassMaxX[y], static_cast<u16>(visibleEnd));
+        finalPassMinX[y] = std::min<u16>(
+            finalPassMinX[y], static_cast<u16>(visibleStart));
+        finalPassMaxX[y] = std::max<u16>(
+            finalPassMaxX[y], static_cast<u16>(visibleEnd));
     }
 
-    if (x < 0) x = 0;
+    if (x < clipStartX) x = clipStartX;
     s32 xlimit;
 
     s32 xcov = 0;
@@ -1732,7 +1741,8 @@ void SoftRenderer3D::RenderPolygonScanline(
     edge = yedge | 0x1;
     xlimit = xstart+l_edgelen;
     if (xlimit > xend+1) xlimit = xend+1;
-    if (xlimit > 256) xlimit = 256;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
     if (l_edgecov & (1<<31))
     {
         xcov = (l_edgecov >> 12) & 0x3FF;
@@ -1833,14 +1843,15 @@ void SoftRenderer3D::RenderPolygonScanline(
     edge = yedge;
     xlimit = xend-r_edgelen+1;
     if (xlimit > xend+1) xlimit = xend+1;
-    if (xlimit > 256) xlimit = 256;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
 
     if (wireframe && !edge) x = std::max(x, xlimit);
-    else if (cachedOpaqueInterior)
+    else if (cachedModulateInterior)
     {
-        RenderCachedOpaqueInteriorSpan(
+        RenderCachedModulateInteriorSpan(
             rp, y, x, xlimit, interpX, spanDepth,
-            spanAttributes, spanValues);
+            spanAttributes);
         x = xlimit;
     }
     else
@@ -1928,7 +1939,8 @@ void SoftRenderer3D::RenderPolygonScanline(
     // part 3: right edge
     edge = yedge | 0x2;
     xlimit = xend+1;
-    if (xlimit > 256) xlimit = 256;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
     if (r_edgecov & (1<<31))
     {
         xcov = (r_edgecov >> 12) & 0x3FF;
@@ -2094,7 +2106,9 @@ u32 SoftRenderer3D::BuildScanlinePolygonLists(int npolys)
 
 void SoftRenderer3D::RenderScanline(
     s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
-    bool& prevIsShadowMask, u8* stencilBuffer)
+    bool& prevIsShadowMask, u8* stencilBuffer,
+    s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
 {
     if (!UseScanlinePolygonLists)
     {
@@ -2109,10 +2123,13 @@ void SoftRenderer3D::RenderScanline(
             {
                 if (polygon->IsShadowMask)
                     RenderShadowMaskScanline(
-                        rp, y, prevIsShadowMask, stencilBuffer);
+                        rp, y, prevIsShadowMask, stencilBuffer,
+                        clipStartX, clipEndX);
                 else
                     RenderPolygonScanline(
-                        rp, y, prevIsShadowMask, stencilBuffer);
+                        rp, y, prevIsShadowMask, stencilBuffer,
+                        clipStartX, clipEndX,
+                        finalPassMinX, finalPassMaxX);
             }
         }
         return;
@@ -2142,10 +2159,13 @@ void SoftRenderer3D::RenderScanline(
 
             if (polygon->IsShadowMask)
                 RenderShadowMaskScanline(
-                    rp, y, prevIsShadowMask, stencilBuffer);
+                    rp, y, prevIsShadowMask, stencilBuffer,
+                    clipStartX, clipEndX);
             else
                 RenderPolygonScanline(
-                    rp, y, prevIsShadowMask, stencilBuffer);
+                    rp, y, prevIsShadowMask, stencilBuffer,
+                    clipStartX, clipEndX,
+                    finalPassMinX, finalPassMaxX);
 
             active &= active - 1;
         }
@@ -2191,6 +2211,21 @@ u32 SoftRenderer3D::CalculateFogDensity(u32 pixeladdr) const
     return density;
 }
 
+[[gnu::always_inline, gnu::hot]] inline void
+SoftRenderer3D::ScanlineFinalPassAntiAlias(s32 y)
+{
+    const int xStart = FinalPassMinX[y];
+    const int xEnd = FinalPassMaxX[y];
+    if (xStart >= xEnd) return;
+
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+    u32* top = &ColorBuffer[rowAddress + xStart];
+    const u32* bottom = top + BufferSize;
+    const u32* attributes = &AttrBuffer[rowAddress + xStart];
+    NDS4MiSTerApplyAntiAliasScanline(
+        top, bottom, attributes, xEnd - xStart);
+}
+
 void SoftRenderer3D::ScanlineFinalPass(s32 y)
 {
     // to consider:
@@ -2205,6 +2240,10 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
     {
         xStart = 0;
         xEnd = 256;
+        // Fog can modify clear pixels outside every polygon.  Keep the
+        // damage bounds complete so a later sparse clear restores them.
+        FinalPassMinX[y] = 0;
+        FinalPassMaxX[y] = 256;
     }
 
     if (xStart >= xEnd) return;
@@ -2327,49 +2366,14 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
         // edges were flagged and their coverages calculated during rendering
         // this is where such edge pixels are blended with the pixels underneath
 
-        for (int x = xStart; x < xEnd; x++)
-        {
-            u32 pixeladdr = FirstPixelOffset + (y*ScanlineWidth) + x;
+        const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+        u32* top = &ColorBuffer[rowAddress + xStart];
+        const u32* bottom = top + BufferSize;
+        const u32* attributes = &AttrBuffer[rowAddress + xStart];
+        int remaining = xEnd - xStart;
 
-            u32 attr = AttrBuffer[pixeladdr];
-            if (!(attr & 0xF)) continue;
-
-            u32 coverage = (attr >> 8) & 0x1F;
-            if (coverage == 0x1F) continue;
-
-            if (coverage == 0)
-            {
-                ColorBuffer[pixeladdr] = ColorBuffer[pixeladdr+BufferSize];
-                continue;
-            }
-
-            u32 topcolor = ColorBuffer[pixeladdr];
-            u32 topR = topcolor & 0x3F;
-            u32 topG = (topcolor >> 8) & 0x3F;
-            u32 topB = (topcolor >> 16) & 0x3F;
-            u32 topA = (topcolor >> 24) & 0x1F;
-
-            u32 botcolor = ColorBuffer[pixeladdr+BufferSize];
-            u32 botR = botcolor & 0x3F;
-            u32 botG = (botcolor >> 8) & 0x3F;
-            u32 botB = (botcolor >> 16) & 0x3F;
-            u32 botA = (botcolor >> 24) & 0x1F;
-
-            coverage++;
-
-            // only blend color if the bottom pixel isn't fully transparent
-            if (botA > 0)
-            {
-                topR = ((topR * coverage) + (botR * (32-coverage))) >> 5;
-                topG = ((topG * coverage) + (botG * (32-coverage))) >> 5;
-                topB = ((topB * coverage) + (botB * (32-coverage))) >> 5;
-            }
-
-            // alpha is always blended
-            topA = ((topA * coverage) + (botA * (32-coverage))) >> 5;
-
-            ColorBuffer[pixeladdr] = topR | (topG << 8) | (topB << 16) | (topA << 24);
-        }
+        NDS4MiSTerApplyAntiAliasScanline(
+            top, bottom, attributes, remaining);
     }
 }
 
@@ -2377,6 +2381,45 @@ void SoftRenderer3D::ClearBuffers()
 {
     u32 clearz = ((GPU3D.RenderClearAttr2 & 0x7FFF) * 0x200) + 0x1FF;
     u32 polyid = GPU3D.RenderClearAttr1 & 0x3F000000; // this sets the opaque polygonID
+
+    const bool clearImage = GPU3D.RenderDispCnt & (1<<14);
+    const bool reuseConstantClear = SparseClearEnabled &&
+        SparseClearStateValid && !clearImage &&
+        SparseClearAttr1 == GPU3D.RenderClearAttr1 &&
+        SparseClearAttr2 == GPU3D.RenderClearAttr2;
+
+    if (reuseConstantClear)
+    {
+        // RenderPolygonScanline expands these bounds before any possible
+        // color/depth/attribute write. ScanlineFinalPass also expands them
+        // for the only full-row write case (fogging the clear background).
+        // Dual-core workers own disjoint rows, and cancellation joins them
+        // before another frame starts, so the completed bounds are stable.
+        u32 r = (GPU3D.RenderClearAttr1 << 1) & 0x3E; if (r) r++;
+        u32 g = (GPU3D.RenderClearAttr1 >> 4) & 0x3E; if (g) g++;
+        u32 b = (GPU3D.RenderClearAttr1 >> 9) & 0x3E; if (b) b++;
+        u32 a = (GPU3D.RenderClearAttr1 >> 16) & 0x1F;
+        const u32 color = r | (g << 8) | (b << 16) | (a << 24);
+        polyid |= (GPU3D.RenderClearAttr1 & 0x8000);
+
+        for (int y = 0; y < VisibleScanlines; y++)
+        {
+            const int start = FinalPassMinX[y];
+            const int end = FinalPassMaxX[y];
+            if (start < end)
+            {
+                const u32 pixeladdr = FirstPixelOffset +
+                    y * ScanlineWidth + start;
+                const int count = end - start;
+                std::fill_n(&ColorBuffer[pixeladdr], count, color);
+                std::fill_n(&DepthBuffer[pixeladdr], count, clearz);
+                std::fill_n(&AttrBuffer[pixeladdr], count, polyid);
+            }
+            FinalPassMinX[y] = 256;
+            FinalPassMaxX[y] = 0;
+        }
+        return;
+    }
 
     for (int y = 0; y < VisibleScanlines; y++)
     {
@@ -2412,7 +2455,7 @@ void SoftRenderer3D::ClearBuffers()
 
     // clear the screen
 
-    if (GPU3D.RenderDispCnt & (1<<14))
+    if (clearImage)
     {
         u8 xoff = (GPU3D.RenderClearAttr2 >> 16) & 0xFF;
         u8 yoff = (GPU3D.RenderClearAttr2 >> 24) & 0xFF;
@@ -2443,6 +2486,7 @@ void SoftRenderer3D::ClearBuffers()
 
             yoff++;
         }
+        SparseClearStateValid = false;
     }
     else
     {
@@ -2465,6 +2509,9 @@ void SoftRenderer3D::ClearBuffers()
                 AttrBuffer[pixeladdr] = polyid;
             }
         }
+        SparseClearStateValid = SparseClearEnabled;
+        SparseClearAttr1 = GPU3D.RenderClearAttr1;
+        SparseClearAttr2 = GPU3D.RenderClearAttr2;
     }
 }
 
@@ -2472,11 +2519,12 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
 {
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
+    TextureBindingCache textureBinding;
     int j = 0;
     for (int i = 0; i < npolys; i++)
     {
         if (polygons[i]->Degenerate) continue;
-        SetupPolygon(&PolygonList[j++], polygons[i]);
+        SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
     }
     CurrentPolygonCount = j;
     UseScanlinePolygonLists = j > ScheduledPolygonThreshold;
@@ -2500,7 +2548,9 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
 
 u64 SoftRenderer3D::RenderScanlineBand(
     s32 firstLine, s32 endLine, RendererPolygon* polygonList,
-    u32* activePolygonMask, bool& prevIsShadowMask, u8* stencilBuffer)
+    u32* activePolygonMask, bool& prevIsShadowMask, u8* stencilBuffer,
+    s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
 {
     const auto started = renderer3DProfileStarted(Parent.StageProfileEnabled);
     for (s32 y = firstLine; y < endLine; y++)
@@ -2508,77 +2558,11 @@ u64 SoftRenderer3D::RenderScanlineBand(
         if (CancelRasterIfRequested()) break;
         RenderScanline(
             y, polygonList, activePolygonMask,
-            prevIsShadowMask, stencilBuffer);
+            prevIsShadowMask, stencilBuffer,
+            clipStartX, clipEndX,
+            finalPassMinX, finalPassMaxX);
     }
     return Parent.StageProfileEnabled ? renderer3DProfileElapsedNs(started) : 0;
-}
-
-void SoftRenderer3D::AdvanceRasterContext(
-    s32 firstLine, s32 endLine, RendererPolygon* polygonList,
-    u32* activePolygonMask, bool& prevIsShadowMask)
-{
-    // A worker that wins a later band must bring only its private mutable
-    // edge cursors forward. Pixel, depth, attribute, and final-pass bounds
-    // for skipped rows are owned by the worker that rendered those rows.
-    // Band-queue frames exclude shadow/stencil polygons, so no hidden
-    // scanline-local buffer state needs reconstruction here.
-    const auto advancePolygon = [this](RendererPolygon* rp, s32 y) {
-        Polygon* polygon = rp->PolyData;
-        if (polygon->YTop != polygon->YBottom)
-        {
-            if (y >= polygon->Vertices[rp->NextVL]->FinalPosition[1] &&
-                rp->CurVL != polygon->VBottom)
-                SetupPolygonLeftEdge(rp, y);
-            if (y >= polygon->Vertices[rp->NextVR]->FinalPosition[1] &&
-                rp->CurVR != polygon->VBottom)
-                SetupPolygonRightEdge(rp, y);
-        }
-        rp->XL = rp->SlopeL.Step();
-        rp->XR = rp->SlopeR.Step();
-    };
-
-    for (s32 y = firstLine; y < endLine; ++y)
-    {
-        if (!UseScanlinePolygonLists)
-        {
-            for (int index = 0; index < CurrentPolygonCount; ++index)
-            {
-                Polygon* polygon = polygonList[index].PolyData;
-                if (y >= polygon->YTop &&
-                    (y < polygon->YBottom ||
-                     (y == polygon->YTop &&
-                      polygon->YBottom == polygon->YTop)))
-                    advancePolygon(&polygonList[index], y);
-            }
-            continue;
-        }
-
-        for (u16 index = ScanlineEndOffsets[y];
-             index < ScanlineEndOffsets[y + 1]; ++index)
-        {
-            const int polygonIndex = ScanlineEndPolygonIndices[index];
-            activePolygonMask[polygonIndex / 32] &=
-                ~(1u << (polygonIndex % 32));
-        }
-        for (u16 index = ScanlineStartOffsets[y];
-             index < ScanlineStartOffsets[y + 1]; ++index)
-        {
-            const int polygonIndex = ScanlineStartPolygonIndices[index];
-            activePolygonMask[polygonIndex / 32] |=
-                1u << (polygonIndex % 32);
-        }
-        for (int word = 0; word < ActivePolygonMaskWords; ++word)
-        {
-            u32 active = activePolygonMask[word];
-            while (active)
-            {
-                const int polygonIndex = word * 32 + __builtin_ctz(active);
-                advancePolygon(&polygonList[polygonIndex], y);
-                active &= active - 1;
-            }
-        }
-    }
-    prevIsShadowMask = false;
 }
 
 SoftRenderer3D::RasterBandResult SoftRenderer3D::RenderRasterBandJobs(
@@ -2595,20 +2579,55 @@ SoftRenderer3D::RasterBandResult SoftRenderer3D::RenderRasterBandJobs(
         const s32 endLine = firstLine + RasterBandLines;
         if (contextLine < firstLine)
         {
-            AdvanceRasterContext(
-                contextLine, firstLine, polygonList, activePolygonMask,
+            RebaseRasterContext(
+                firstLine, polygonList, activePolygonMask,
                 prevIsShadowMask);
             result.AdvancedScanlines += firstLine - contextLine;
         }
         result.RenderNs += RenderScanlineBand(
             firstLine, endLine, polygonList, activePolygonMask,
-            prevIsShadowMask, stencilBuffer);
+            prevIsShadowMask, stencilBuffer, 0, 256,
+            FinalPassMinX, FinalPassMaxX);
         ++result.Jobs;
         contextLine = endLine;
         band = ParallelRasterNextBand_.fetch_add(
             1, std::memory_order_relaxed);
     }
     return result;
+}
+
+void SoftRenderer3D::RebaseRasterContext(
+    s32 firstLine, RendererPolygon* polygonList,
+    u32* activePolygonMask, bool& prevIsShadowMask)
+{
+    // A stolen band is disjoint from the preceding band rendered by this
+    // worker. Replaying every skipped scanline advances the same private edge
+    // state but wastes work proportional to the gap. Reconstruct the active
+    // set and every crossing edge directly at the new boundary instead.
+    // RasterBandQueueSafe() remains the gate for shadow/stencil state, so this
+    // changes only private cursor preparation, never pixel ownership/order.
+    if (UseScanlinePolygonLists)
+        std::fill_n(activePolygonMask, ActivePolygonMaskWords, 0);
+
+    for (int index = 0; index < CurrentPolygonCount; ++index)
+    {
+        RendererPolygon* rp = &polygonList[index];
+        Polygon* polygon = rp->PolyData;
+        const bool active = firstLine >= polygon->YTop &&
+            (firstLine < polygon->YBottom ||
+             (firstLine == polygon->YTop &&
+              polygon->YBottom == polygon->YTop));
+        if (!active) continue;
+
+        if (UseScanlinePolygonLists)
+            activePolygonMask[index / 32] |= 1u << (index % 32);
+        if (polygon->YTop != polygon->YBottom)
+        {
+            SetupPolygonLeftEdge(rp, firstLine);
+            SetupPolygonRightEdge(rp, firstLine);
+        }
+    }
+    prevIsShadowMask = false;
 }
 
 bool SoftRenderer3D::RasterBandQueueSafe(int npolys) const
@@ -2720,13 +2739,28 @@ bool SoftRenderer3D::RasterBandQueueSafe(int npolys) const
     return true;
 }
 
-void SoftRenderer3D::PrepareParallelRasterBand(int npolys, s32 firstLine)
+void SoftRenderer3D::PrepareParallelRasterBand(
+    int npolys, s32 firstLine, bool preserveShadowState)
 {
     std::copy_n(PolygonList, npolys, ParallelPolygonList.get());
     if (UseScanlinePolygonLists)
         std::fill_n(ParallelActivePolygonMask, ActivePolygonMaskWords, 0);
-    memset(ParallelStencilBuffer, 0, sizeof(ParallelStencilBuffer));
-    ParallelPrevIsShadowMask = false;
+    if (preserveShadowState)
+    {
+        std::copy_n(
+            StencilBuffer, sizeof(StencilBuffer), ParallelStencilBuffer);
+        ParallelPrevIsShadowMask = PrevIsShadowMask;
+    }
+    else
+    {
+        memset(ParallelStencilBuffer, 0, sizeof(ParallelStencilBuffer));
+        ParallelPrevIsShadowMask = false;
+    }
+    if (preserveShadowState)
+    {
+        std::fill_n(ParallelFinalPassMinX, VisibleScanlines, 256);
+        std::fill_n(ParallelFinalPassMaxX, VisibleScanlines, 0);
+    }
 
     for (int i = 0; i < npolys; i++)
     {
@@ -2809,10 +2843,74 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
     return VisibleScanlines - 1;
 }
 
+s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
+{
+    // Shadow/stencil ordering prevents an arbitrary worker from starting at
+    // a later scanline. Both workers can instead walk every scanline and
+    // polygon in canonical order while owning disjoint X intervals. Estimate
+    // the pixel work in each column from the prepared polygon bounds and give
+    // CPU0 the same feedback-guided share used by the established Y split.
+    s32 columnDelta[257] {};
+    for (int index = 0; index < npolys; ++index)
+    {
+        const Polygon* polygon = PolygonList[index].PolyData;
+        s32 left = 256;
+        s32 right = -1;
+        for (u32 vertex = 0; vertex < polygon->NumVertices; ++vertex)
+        {
+            const s32 x = polygon->Vertices[vertex]->FinalPosition[0];
+            left = std::min(left, x);
+            right = std::max(right, x);
+        }
+        left = std::clamp(left, 0, 255);
+        right = std::clamp(right, 0, 255);
+        if (left > right) continue;
+
+        const s32 firstLine = std::clamp(
+            polygon->YTop, 0, VisibleScanlines);
+        s32 endLine = std::clamp(
+            polygon->YBottom, 0, VisibleScanlines);
+        if (polygon->YBottom == polygon->YTop &&
+            polygon->YTop >= 0 && polygon->YTop < VisibleScanlines)
+            endLine = firstLine + 1;
+        const s32 height = std::max(0, endLine - firstLine);
+        if (height == 0) continue;
+        columnDelta[left] += height;
+        columnDelta[right + 1] -= height;
+    }
+
+    u32 columnWork[256] {};
+    u64 totalWork = 0;
+    s32 activeHeight = 0;
+    for (s32 x = 0; x < 256; ++x)
+    {
+        activeHeight += columnDelta[x];
+        columnWork[x] = static_cast<u32>(activeHeight);
+        totalWork += columnWork[x];
+    }
+    if (totalWork == 0) return 128;
+
+    const u32 primaryPermille = AdaptiveRasterSplit ?
+        RasterBalance.PrimaryPermille() :
+        NDS4MiSTerRasterBalanceController::DefaultPrimaryPermille;
+    const u64 primaryTarget =
+        (totalWork * primaryPermille + 999) / 1000;
+    u64 primaryWork = 0;
+    for (s32 x = 0; x < 255; ++x)
+    {
+        primaryWork += columnWork[x];
+        if (primaryWork >= primaryTarget)
+            return std::clamp<s32>(x + 1, 32, 224);
+    }
+    return 224;
+}
+
 void SoftRenderer3D::RenderPolygonsDualCore(
     bool threaded, Polygon** polygons, int npolys)
 {
     const int polygonsPrepared = SetupRenderPolygons(polygons, npolys);
+    const bool antiAliasOnlyFinalPass =
+        NDS4MiSTerUseAntiAliasOnlyFinalPass(GPU3D.RenderDispCnt);
     if (CancelRasterIfRequested()) return;
 
     // Keep beta.3's adaptive two-way split for light and transitional work.
@@ -2865,15 +2963,38 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     const bool bandQueueRequested =
         RasterBandQueueActive &&
         polygonsPrepared > ScheduledPolygonThreshold;
-    const bool bandQueueFrame =
+    bool frameHasShadow = false;
+    if (RasterXPartition)
+    {
+        for (int index = 0; index < polygonsPrepared; ++index)
+        {
+            const Polygon* polygon = PolygonList[index].PolyData;
+            if (polygon->IsShadowMask || polygon->IsShadow)
+            {
+                frameHasShadow = true;
+                break;
+            }
+        }
+    }
+    const bool bandQueueSafe =
         bandQueueRequested && RasterBandQueueSafe(polygonsPrepared);
+    const bool bandQueueFrame = bandQueueSafe;
+    const bool xPartitionFrame =
+        frameHasShadow && !bandQueueFrame;
     const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();
     const s32 SplitLine = bandQueueFrame ? RasterBandLines :
-        ChooseParallelRasterSplitLine(polygonsPrepared);
+        (xPartitionFrame ? 0 :
+         ChooseParallelRasterSplitLine(polygonsPrepared));
+    const s32 SplitX = xPartitionFrame ?
+        ChooseParallelRasterSplitX(polygonsPrepared) : 128;
     ParallelRasterSplitLine_.store(SplitLine, std::memory_order_relaxed);
+    ParallelRasterSplitX_.store(SplitX, std::memory_order_relaxed);
     ParallelRasterBandQueueFrame_.store(
         bandQueueFrame, std::memory_order_relaxed);
-    PrepareParallelRasterBand(polygonsPrepared, SplitLine);
+    ParallelRasterXPartitionFrame_.store(
+        xPartitionFrame, std::memory_order_relaxed);
+    PrepareParallelRasterBand(
+        polygonsPrepared, SplitLine, xPartitionFrame);
     ParallelRasterNs.store(0, std::memory_order_relaxed);
     ParallelRasterJobs.store(0, std::memory_order_relaxed);
     ParallelRasterAdvancedScanlines.store(0, std::memory_order_relaxed);
@@ -2895,11 +3016,20 @@ void SoftRenderer3D::RenderPolygonsDualCore(
             0, PolygonList, ActivePolygonMask,
             PrevIsShadowMask, StencilBuffer);
     }
+    else if (xPartitionFrame)
+    {
+        primaryResult.RenderNs = RenderScanlineBand(
+            0, VisibleScanlines, PolygonList, ActivePolygonMask,
+            PrevIsShadowMask, StencilBuffer, 0, SplitX,
+            FinalPassMinX, FinalPassMaxX);
+        primaryResult.Jobs = 1;
+    }
     else
     {
         primaryResult.RenderNs = RenderScanlineBand(
             0, SplitLine, PolygonList, ActivePolygonMask,
-            PrevIsShadowMask, StencilBuffer);
+            PrevIsShadowMask, StencilBuffer, 0, 256,
+            FinalPassMinX, FinalPassMaxX);
         primaryResult.Jobs = 1;
     }
     const u64 primaryCompletedNs = AdaptiveRasterSplit && !bandQueueFrame ?
@@ -2909,6 +3039,20 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     Platform::Semaphore_Wait(Sema_ParallelRasterDone);
 
     if (RenderFrameCanceled.load(std::memory_order_relaxed)) return;
+
+    if (xPartitionFrame)
+    {
+        // Both workers execute the same polygon sequence for every row, so
+        // the carry flag must be identical. Their parity-stencil buffers hold
+        // authoritative disjoint columns; merge CPU1's half only after the
+        // raster completion fence.
+        assert(PrevIsShadowMask == ParallelPrevIsShadowMask);
+        for (s32 parity = 0; parity < 2; ++parity)
+            std::copy_n(
+                &ParallelStencilBuffer[parity * 256 + SplitX],
+                256 - SplitX,
+                &StencilBuffer[parity * 256 + SplitX]);
+    }
 
     if (AdaptiveRasterSplit && !bandQueueFrame)
     {
@@ -2944,11 +3088,26 @@ void SoftRenderer3D::RenderPolygonsDualCore(
                 ParallelRasterAdvancedScanlines.load(
                     std::memory_order_relaxed);
         }
+        else if (xPartitionFrame)
+        {
+            auto& profile = Parent.StageProfile;
+            if (profile.ThreeDXPartitionFrames == 0)
+            {
+                profile.ThreeDXPartitionSplitMin = SplitX;
+                profile.ThreeDXPartitionSplitMax = SplitX;
+            }
+            ++profile.ThreeDXPartitionFrames;
+            profile.ThreeDXPartitionSplitTotal += SplitX;
+            profile.ThreeDXPartitionSplitMin = std::min<u64>(
+                profile.ThreeDXPartitionSplitMin, SplitX);
+            profile.ThreeDXPartitionSplitMax = std::max<u64>(
+                profile.ThreeDXPartitionSplitMax, SplitX);
+        }
         else if (bandQueueRequested)
         {
             ++Parent.StageProfile.ThreeDBandQueueShadowFallbackFrames;
         }
-        if (AdaptiveRasterSplit && !bandQueueFrame)
+        if (AdaptiveRasterSplit && !bandQueueFrame && !xPartitionFrame)
         {
             auto& profile = Parent.StageProfile;
             if (profile.ThreeDAdaptiveFrames == 0)
@@ -2982,12 +3141,25 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     // order. This avoids a boundary race without changing any pixel result.
     const auto finalPassStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
-    for (s32 y = 0; y < VisibleScanlines; y++)
+    if (antiAliasOnlyFinalPass)
     {
-        if (CancelRasterIfRequested()) return;
-        ScanlineFinalPass(y);
-        if (threaded && !FullFrameCompletion)
-            Platform::Semaphore_Post(Sema_ScanlineCount);
+        for (s32 y = 0; y < VisibleScanlines; y++)
+        {
+            if (CancelRasterIfRequested()) return;
+            ScanlineFinalPassAntiAlias(y);
+            if (threaded && !FullFrameCompletion)
+                Platform::Semaphore_Post(Sema_ScanlineCount);
+        }
+    }
+    else
+    {
+        for (s32 y = 0; y < VisibleScanlines; y++)
+        {
+            if (CancelRasterIfRequested()) return;
+            ScanlineFinalPass(y);
+            if (threaded && !FullFrameCompletion)
+                Platform::Semaphore_Post(Sema_ScanlineCount);
+        }
     }
     if (Parent.StageProfileEnabled)
         Parent.StageProfile.ThreeDFinalPassNs +=
@@ -3004,7 +3176,8 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     RenderScanline(
         0, PolygonList, ActivePolygonMask,
-        PrevIsShadowMask, StencilBuffer);
+        PrevIsShadowMask, StencilBuffer, 0, 256,
+        FinalPassMinX, FinalPassMaxX);
     if (Parent.StageProfileEnabled)
         Parent.StageProfile.ThreeDRasterNs +=
             renderer3DProfileElapsedNs(stageStarted);
@@ -3015,7 +3188,8 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
         stageStarted = renderer3DProfileStarted(Parent.StageProfileEnabled);
         RenderScanline(
             y, PolygonList, ActivePolygonMask,
-            PrevIsShadowMask, StencilBuffer);
+            PrevIsShadowMask, StencilBuffer, 0, 256,
+            FinalPassMinX, FinalPassMaxX);
         if (Parent.StageProfileEnabled)
             Parent.StageProfile.ThreeDRasterNs +=
                 renderer3DProfileElapsedNs(stageStarted);
@@ -3172,26 +3346,41 @@ void SoftRenderer3D::ParallelRasterThreadFunc()
 
         const s32 SplitLine =
             ParallelRasterSplitLine_.load(std::memory_order_relaxed);
+        const s32 SplitX =
+            ParallelRasterSplitX_.load(std::memory_order_relaxed);
         RasterBandResult result;
         const bool bandQueueFrame = ParallelRasterBandQueueFrame_.load(
             std::memory_order_relaxed);
+        const bool xPartitionFrame =
+            ParallelRasterXPartitionFrame_.load(std::memory_order_relaxed);
+        if (RasterBandQueueTestDelayWorker &&
+            (bandQueueFrame || xPartitionFrame))
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (bandQueueFrame)
         {
             // Self-test-only scheduling perturbation. It proves that a worker
             // can advance its private edge state over a row range rendered by
             // its peer; production never sets this environment switch.
-            if (RasterBandQueueTestDelayWorker)
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             result = RenderRasterBandJobs(
                 1, ParallelPolygonList.get(), ParallelActivePolygonMask,
                 ParallelPrevIsShadowMask, ParallelStencilBuffer);
+        }
+        else if (xPartitionFrame)
+        {
+            result.RenderNs = RenderScanlineBand(
+                0, VisibleScanlines, ParallelPolygonList.get(),
+                ParallelActivePolygonMask, ParallelPrevIsShadowMask,
+                ParallelStencilBuffer, SplitX, 256,
+                ParallelFinalPassMinX, ParallelFinalPassMaxX);
+            result.Jobs = 1;
         }
         else
         {
             result.RenderNs = RenderScanlineBand(
                 SplitLine, VisibleScanlines, ParallelPolygonList.get(),
                 ParallelActivePolygonMask, ParallelPrevIsShadowMask,
-                ParallelStencilBuffer);
+                ParallelStencilBuffer, 0, 256,
+                FinalPassMinX, FinalPassMaxX);
             result.Jobs = 1;
         }
         if (AdaptiveRasterSplit && !bandQueueFrame)

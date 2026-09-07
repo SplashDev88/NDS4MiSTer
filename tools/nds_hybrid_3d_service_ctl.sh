@@ -29,6 +29,9 @@ logfile=${test_root}/tmp/nds-hybrid-3d-service.log
 logtmp=${test_root}/tmp/nds-hybrid-3d-service.log.trim
 mister_schedule_state=${test_root}/tmp/nds-h3d-mister-scheduling.state
 mister_schedule_tmp=${test_root}/tmp/nds-h3d-mister-scheduling.state.tmp
+mister_schedule_lock=${test_root}/tmp/nds-h3d-mister-scheduling.lock
+mister_watch_lock=${test_root}/tmp/nds-h3d-mister-watch.lock
+core_name_file=${test_root}/tmp/CORENAME
 hps_clock_khz=1000000
 default_hps_clock_khz=800000
 
@@ -37,12 +40,20 @@ sha256_program=sha256sum
 taskset_program=taskset
 pidof_program=pidof
 proc_root=/proc
+mister_watch_interval=1
+mister_watch_limit=300
+test_stop_lock_marker=
+test_stop_lock_release=
 if [ -n "$test_root" ]; then
     start_stop_daemon=${H3D_TEST_START_STOP_DAEMON:-$start_stop_daemon}
     sha256_program=${H3D_TEST_SHA256SUM:-$sha256_program}
     taskset_program=${H3D_TEST_TASKSET:-$taskset_program}
     pidof_program=${H3D_TEST_PIDOF:-$pidof_program}
     proc_root=${H3D_TEST_PROC_ROOT:-$proc_root}
+    mister_watch_interval=${H3D_TEST_MISTER_WATCH_INTERVAL:-0.05}
+    mister_watch_limit=${H3D_TEST_MISTER_WATCH_LIMIT:-40}
+    test_stop_lock_marker=${H3D_TEST_STOP_LOCK_MARKER:-}
+    test_stop_lock_release=${H3D_TEST_STOP_LOCK_RELEASE:-}
 fi
 
 fail()
@@ -58,142 +69,258 @@ read_mister_start_time()
     [ -r "$stat_file" ] || return 1
     # MiSTer's comm field contains no spaces. Field 22 distinguishes a
     # restarted frontend that happened to reuse the same numeric PID.
-    cut -d ' ' -f 22 "$stat_file" 2>/dev/null
+    stat_line=$(sed -n '1p' "$stat_file" 2>/dev/null) || return 1
+    case "$stat_line" in
+        "$pid (MiSTer) "*) ;;
+        *) return 1 ;;
+    esac
+    printf '%s\n' "$stat_line" | cut -d ' ' -f 22
+}
+
+read_process_start_time()
+{
+    pid=$1
+    [ -r "${proc_root}/${pid}/stat" ] || return 1
+    cut -d ' ' -f 22 "${proc_root}/${pid}/stat" 2>/dev/null
 }
 
 read_mister_affinity()
 {
-    pid=$1
-    "$taskset_program" -pc "$pid" 2>/dev/null |
+    "$taskset_program" -pc "$1" 2>/dev/null |
         sed -n 's/^.*affinity list: //p' | sed -n '1p'
 }
 
-tune_mister_frontend()
+single_mister_epoch()
 {
-    command -v "$taskset_program" >/dev/null 2>&1 || {
-        echo "H3D: taskset unavailable; leaving MiSTer scheduling unchanged" >&2
-        return 0
-    }
-    command -v "$pidof_program" >/dev/null 2>&1 || {
-        echo "H3D: pidof unavailable; leaving MiSTer scheduling unchanged" >&2
-        return 0
-    }
-
-    reject_link "$mister_schedule_state" || return 1
-    if [ -f "$mister_schedule_state" ]; then
-        set -f
-        existing_words=$(sed -n '1,$p' "$mister_schedule_state")
-        set -- $existing_words
-        set +f
-        if [ "$#" -eq 3 ]; then
-            existing_pid=$1
-            existing_start=$2
-            existing_affinity=$3
-            case "$existing_pid:$existing_start:$existing_affinity" in
-                *[!0-9:,-]*) ;;
-                *)
-                    if [ "$(read_mister_start_time "$existing_pid" || :)" = \
-                         "$existing_start" ]; then
-                        if [ "$(read_mister_affinity "$existing_pid" || :)" != 0 ]; then
-                            "$taskset_program" -pc 0 "$existing_pid" \
-                                >/dev/null 2>&1 || return 1
-                        fi
-                        return 0
-                    fi
-                    ;;
-            esac
-        fi
-        rm -f "$mister_schedule_state"
-    fi
-
     set -f
     mister_pids=$($pidof_program MiSTer 2>/dev/null || :)
-    # Intentional word splitting with pathname expansion disabled.
     set -- $mister_pids
     set +f
-    if [ "$#" -ne 1 ]; then
-        echo "H3D: expected one MiSTer frontend; scheduling unchanged" >&2
-        return 0
-    fi
+    [ "$#" -eq 1 ] || return 1
     mister_pid=$1
     case "$mister_pid" in
-        ''|*[!0-9]*)
-            echo "H3D: invalid MiSTer PID; scheduling unchanged" >&2
-            return 0
-            ;;
+        ''|*[!0-9]*) return 1 ;;
     esac
+    [ "$mister_pid" -gt 1 ] 2>/dev/null || return 1
     mister_start=$(read_mister_start_time "$mister_pid" || :)
-    mister_affinity=$(read_mister_affinity "$mister_pid" || :)
     case "$mister_start" in
-        ''|*[!0-9]*)
-            echo "H3D: could not identify MiSTer process epoch; scheduling unchanged" >&2
-            return 0
-            ;;
+        ''|*[!0-9]*) return 1 ;;
     esac
-    case "$mister_affinity" in
-        ''|*[!0-9,-]*)
-            echo "H3D: could not read MiSTer affinity; scheduling unchanged" >&2
-            return 0
-            ;;
-    esac
-
-    reject_link "$mister_schedule_tmp" || return 1
-    rm -f "$mister_schedule_tmp"
-    printf '%s %s %s\n' \
-        "$mister_pid" "$mister_start" "$mister_affinity" \
-        >"$mister_schedule_tmp" || return 1
-    chmod 600 "$mister_schedule_tmp" || return 1
-    mv -f "$mister_schedule_tmp" "$mister_schedule_state" || return 1
-
-    # The profile measured CPU1 overcommitted while CPU0 retained headroom.
-    # Move only MiSTer's continuously runnable frontend loop to CPU0. H3D's
-    # replay/publication/secondary-raster workers remain on CPU1 and its
-    # primary raster worker remains on CPU0 exactly as before.
-    if ! "$taskset_program" -pc 0 "$mister_pid" >/dev/null 2>&1; then
-        rm -f "$mister_schedule_state"
-        echo "H3D: MiSTer affinity rebalance failed; scheduling unchanged" >&2
-        return 0
-    fi
-    [ "$(read_mister_affinity "$mister_pid" || :)" = 0 ] || {
-        "$taskset_program" -pc "$mister_affinity" "$mister_pid" \
-            >/dev/null 2>&1 || true
-        rm -f "$mister_schedule_state"
-        echo "H3D: MiSTer affinity verification failed; scheduling restored" >&2
-        return 0
-    }
-    echo "H3D: moved MiSTer frontend to CPU0 (pid $mister_pid)"
+    printf '%s %s\n' "$mister_pid" "$mister_start"
 }
 
-restore_mister_frontend()
+write_mister_schedule_state()
+{
+    reject_link "$mister_schedule_state" || return 1
+    reject_link "$mister_schedule_tmp" || return 1
+    rm -f "$mister_schedule_tmp"
+    printf '%s %s %s\n' "$1" "$2" "$3" >"$mister_schedule_tmp"
+    chmod 600 "$mister_schedule_tmp" || return 1
+    mv -f "$mister_schedule_tmp" "$mister_schedule_state" || return 1
+}
+
+read_mister_schedule_state()
 {
     reject_link "$mister_schedule_state" >/dev/null 2>&1 || return 1
-    [ -f "$mister_schedule_state" ] || return 0
+    [ -f "$mister_schedule_state" ] || return 1
     set -f
     state_words=$(sed -n '1,$p' "$mister_schedule_state")
     set -- $state_words
     set +f
-    if [ "$#" -ne 3 ]; then
-        rm -f "$mister_schedule_state"
-        return 1
-    fi
-    mister_pid=$1
-    recorded_start=$2
-    recorded_affinity=$3
-    case "$mister_pid:$recorded_start:$recorded_affinity" in
-        *[!0-9:,-]*)
-            rm -f "$mister_schedule_state"
-            return 1
-            ;;
+    [ "$#" -eq 3 ] || return 1
+    schedule_mister_pid=$1
+    schedule_mister_start=$2
+    schedule_affinity=$3
+    case "$schedule_mister_pid:$schedule_mister_start" in
+        ''|*[!0-9:]*) return 1 ;;
     esac
-    current_start=$(read_mister_start_time "$mister_pid" || :)
-    if [ "$current_start" = "$recorded_start" ]; then
-        "$taskset_program" -pc "$recorded_affinity" "$mister_pid" \
-            >/dev/null 2>&1 || {
-                echo "H3D: could not restore MiSTer frontend affinity" >&2
-                return 1
-            }
+    case "$schedule_affinity" in
+        0|1|0,1|0-1) ;;
+        *) return 1 ;;
+    esac
+}
+
+remove_mister_schedule_state()
+{
+    reject_link "$mister_schedule_state" >/dev/null 2>&1 || return 1
+    reject_link "$mister_schedule_tmp" >/dev/null 2>&1 || return 1
+    rm -f "$mister_schedule_state" "$mister_schedule_tmp"
+}
+
+restore_mister_frontend()
+{
+    [ -f "$mister_schedule_state" ] || return 0
+    read_mister_schedule_state || return 1
+    current_start=$(read_mister_start_time "$schedule_mister_pid" || :)
+    if [ "$current_start" != "$schedule_mister_start" ]; then
+        remove_mister_schedule_state
+        return 0
     fi
-    rm -f "$mister_schedule_state"
+    current_affinity=$(read_mister_affinity "$schedule_mister_pid" || :)
+    if [ "$current_affinity" = "$schedule_affinity" ]; then
+        remove_mister_schedule_state
+        return 0
+    fi
+    [ "$(read_mister_start_time "$schedule_mister_pid" || :)" = \
+      "$schedule_mister_start" ] || return 1
+    "$taskset_program" -pc "$schedule_affinity" "$schedule_mister_pid" \
+        >/dev/null 2>&1 || return 1
+    [ "$(read_mister_start_time "$schedule_mister_pid" || :)" = \
+      "$schedule_mister_start" ] &&
+    [ "$(read_mister_affinity "$schedule_mister_pid" || :)" = \
+      "$schedule_affinity" ] || return 1
+    remove_mister_schedule_state
+}
+
+service_epoch_alive()
+{
+    [ "$(read_process_start_time "$1" || :)" = "$2" ]
+}
+
+nds_core_active()
+{
+    reject_link "$core_name_file" >/dev/null 2>&1 &&
+    [ -f "$core_name_file" ] &&
+    [ "$(cat "$core_name_file" 2>/dev/null || :)" = NDS ]
+}
+
+acquire_schedule_lock()
+{
+    reject_link "$mister_schedule_lock" >/dev/null 2>&1 || return 1
+    lock_checks=0
+    while ! mkdir "$mister_schedule_lock" 2>/dev/null; do
+        lock_checks=$((lock_checks + 1))
+        [ "$lock_checks" -lt 4 ] || return 1
+        sleep "$mister_watch_interval"
+    done
+}
+
+release_schedule_lock()
+{
+    rmdir "$mister_schedule_lock" 2>/dev/null
+}
+
+finish_mister_watch()
+{
+    trap - 0 HUP INT TERM
+    if [ "${watch_schedule_locked:-0}" = 1 ]; then
+        release_schedule_lock >/dev/null 2>&1 || true
+    fi
+    rmdir "$mister_watch_lock" 2>/dev/null || true
+}
+
+pin_mister_epoch()
+{
+    pin_service_pid=$1
+    pin_service_start=$2
+    pin_epoch=$3
+    status_raw && [ "$(read_pid || :)" = "$pin_service_pid" ] &&
+    service_epoch_alive "$pin_service_pid" "$pin_service_start" &&
+    nds_core_active &&
+    [ "$(single_mister_epoch || :)" = "$pin_epoch" ] || return 2
+    set -- $pin_epoch
+    pin_pid=$1
+    pin_start=$2
+    pin_affinity=$(read_mister_affinity "$pin_pid" || :)
+    case "$pin_affinity" in 0|1|0,1|0-1) ;; *) return 2 ;; esac
+    write_mister_schedule_state "$pin_pid" "$pin_start" "$pin_affinity" || return 1
+    status_raw && [ "$(read_pid || :)" = "$pin_service_pid" ] &&
+    service_epoch_alive "$pin_service_pid" "$pin_service_start" &&
+    nds_core_active &&
+    [ "$(single_mister_epoch || :)" = "$pin_epoch" ] || {
+        remove_mister_schedule_state
+        return 2
+    }
+    [ "$pin_affinity" = 0 ] ||
+        "$taskset_program" -pc 0 "$pin_pid" >/dev/null 2>&1 || true
+    after_start=$(read_mister_start_time "$pin_pid" || :)
+    after_affinity=$(read_mister_affinity "$pin_pid" || :)
+    if [ "$after_start" = "$pin_start" ] && [ "$after_affinity" = 0 ]; then
+        return 0
+    fi
+    if [ "$after_start" != "$pin_start" ] ||
+       [ "$after_affinity" = "$pin_affinity" ]; then
+        remove_mister_schedule_state
+        return 0
+    fi
+    restore_mister_frontend
+}
+
+mister_watch_loop()
+{
+    watch_service_pid=$1
+    watch_service_start=$2
+    baseline="$3 $4"
+    case "$watch_service_pid:$watch_service_start:${3}:${4}" in
+        ''|*[!0-9:]*) return 2 ;;
+    esac
+    watch_lock_checks=0
+    while ! mkdir "$mister_watch_lock" 2>/dev/null; do
+        watch_lock_checks=$((watch_lock_checks + 1))
+        [ "$watch_lock_checks" -lt 3 ] || return 0
+        sleep "$mister_watch_interval"
+    done
+    trap finish_mister_watch 0
+    trap '' HUP
+    trap 'exit 0' INT TERM
+    watch_schedule_locked=0
+    service_epoch_alive "$watch_service_pid" "$watch_service_start" || return 0
+    candidate=
+    watch_checks=0
+    while [ "$watch_checks" -lt "$mister_watch_limit" ] &&
+          service_epoch_alive "$watch_service_pid" "$watch_service_start"; do
+        watch_checks=$((watch_checks + 1))
+        epoch=$(single_mister_epoch || :)
+        if [ -n "$epoch" ] && [ "$epoch" != "$baseline" ]; then
+            if [ "$epoch" = "$candidate" ]; then
+                acquire_schedule_lock || return 1
+                watch_schedule_locked=1
+                trap '' INT TERM
+                pin_result=0
+                pin_mister_epoch "$watch_service_pid" \
+                    "$watch_service_start" "$epoch" || pin_result=$?
+                release_schedule_lock || return 1
+                watch_schedule_locked=0
+                trap 'exit 0' INT TERM
+                [ "$pin_result" -eq 2 ] || return "$pin_result"
+                candidate=
+            fi
+            candidate=$epoch
+        else
+            candidate=
+        fi
+        sleep "$mister_watch_interval"
+    done
+}
+
+start_mister_watch()
+{
+    command -v "$taskset_program" >/dev/null 2>&1 &&
+    command -v "$pidof_program" >/dev/null 2>&1 || {
+        echo "H3D: taskset/pidof unavailable; MiSTer affinity unchanged" >&2
+        return 0
+    }
+    service_pid=$(read_pid) || return 1
+    service_start=$(read_process_start_time "$service_pid" || :)
+    case "$service_start" in ''|*[!0-9]*) return 1 ;; esac
+    if [ -f "$mister_schedule_state" ]; then
+        read_mister_schedule_state || return 1
+        if [ "$(read_mister_start_time "$schedule_mister_pid" || :)" = \
+             "$schedule_mister_start" ]; then
+            return 0
+        fi
+        restore_mister_frontend || return 1
+    fi
+    baseline=$(single_mister_epoch || :)
+    [ -n "$baseline" ] || {
+        echo "H3D: expected one MiSTer frontend; affinity watcher not started" >&2
+        return 0
+    }
+    set -- $baseline
+    (trap '' HUP; exec "$0" __mister_watch \
+        "$service_pid" "$service_start" "$1" "$2") \
+        </dev/null >>"$logfile" 2>&1 &
+    return 0
 }
 
 set_hps_clock()
@@ -400,7 +527,8 @@ start_service()
     set_hps_clock || return 1
     if status_raw; then
         pid=$(read_pid)
-        tune_mister_frontend || return 1
+        start_mister_watch ||
+            echo "H3D: MiSTer affinity watcher unavailable" >&2
         echo "H3D: already running at 1 GHz (pid $pid)"
         return 0
     fi
@@ -420,6 +548,7 @@ start_service()
         NDS4MISTER_DUAL_CORE_3D=1 \
         NDS4MISTER_ADAPTIVE_RASTER_SPLIT=1 \
         NDS4MISTER_RASTER_BAND_QUEUE=1 \
+        NDS4MISTER_RASTER_X_PARTITION=1 \
         NDS4MISTER_DIRECT_PLANE_PUBLICATION=1 \
         "$start_stop_daemon" -S -b -m -N -20 \
             -p "$pidfile" -x "$service" --
@@ -445,30 +574,16 @@ start_service()
         return 1
     fi
     pid=$(read_pid)
-    tune_mister_frontend || {
-        "$start_stop_daemon" -K -o -R TERM/5/KILL/1 \
-            -p "$pidfile" -x "$service" --remove-pidfile \
-            >/dev/null 2>&1 || true
-        unload_wc_module
-        restore_hps_clock >/dev/null 2>&1 || true
-        fail "could not safely rebalance MiSTer frontend"
-        return 1
-    }
+    start_mister_watch ||
+        echo "H3D: MiSTer affinity watcher unavailable" >&2
     echo "H3D: started at 1 GHz (pid $pid)"
 }
 
-stop_service()
+stop_service_mutation()
 {
     if ! status_raw; then
         remove_stale_pidfile || return 1
-        bound_stopped_log || return 1
         restore_mister_frontend || return 1
-        unload_wc_module
-        restore_hps_clock || {
-            fail "could not restore the default 800 MHz clock"
-            return 1
-        }
-        echo "H3D: stopped"
         return 0
     fi
 
@@ -482,8 +597,40 @@ stop_service()
         return 1
     fi
     remove_stale_pidfile || return 1
-    bound_stopped_log || return 1
     restore_mister_frontend || return 1
+}
+
+finish_stop_schedule_lock()
+{
+    if [ "${stop_schedule_locked:-0}" = 1 ]; then
+        stop_schedule_locked=0
+        release_schedule_lock >/dev/null 2>&1 || true
+    fi
+}
+
+stop_service()
+{
+    acquire_schedule_lock || {
+        fail "could not serialize MiSTer affinity shutdown"
+        return 1
+    }
+    stop_schedule_locked=1
+    trap finish_stop_schedule_lock 0
+    trap 'exit 1' HUP INT TERM
+    if [ -n "$test_stop_lock_marker" ]; then
+        : >"$test_stop_lock_marker"
+        while [ ! -f "$test_stop_lock_release" ]; do
+            sleep "$mister_watch_interval"
+        done
+    fi
+    stop_result=0
+    stop_service_mutation || stop_result=$?
+    trap '' HUP INT TERM
+    release_schedule_lock || return 1
+    stop_schedule_locked=0
+    trap - 0 HUP INT TERM
+    [ "$stop_result" -eq 0 ] || return "$stop_result"
+    bound_stopped_log || return 1
     unload_wc_module
     restore_hps_clock || {
         fail "could not restore the default 800 MHz clock"
@@ -507,6 +654,10 @@ dump_service()
 }
 
 case "${1:-start}" in
+    __mister_watch)
+        [ "$#" -eq 5 ] || exit 2
+        mister_watch_loop "$2" "$3" "$4" "$5"
+        ;;
     preflight)
         preflight
         echo "H3D: executable and SHA-256 preflight passed"

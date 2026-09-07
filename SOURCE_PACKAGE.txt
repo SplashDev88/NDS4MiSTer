@@ -1,4 +1,4 @@
-NDS4MiSTer public beta v0.3.0-beta.9 source - 2026-09-06
+NDS4MiSTer public beta v0.3.0-beta.10 source candidate - 2026-09-06
 ====================================================================
 
 Source checkpoint: the LG-safe video path, current ARM-assisted 3D performance
@@ -21,9 +21,15 @@ reach every native touchscreen edge.
 Beta.9 corrects direct-boot sound-bias initialization, moves the generated
 FreeBIOS images into dedicated FPGA memory blocks, and reuses one prepared
 viewport divisor across both point coordinates in the ARM 3D renderer.
+Beta.10 retains the exact beta.9 seed-2 FPGA image, adds two accepted ARM
+renderer changes, and adds a bounded Kickstart watcher that keeps MiSTer's
+frontend on CPU0 after the NDS core replaces the frontend process. The renderer
+changes are a disjoint-X fast path for ordered shadow/stencil work and a smaller
+exact final pass when antialiasing is enabled without edge marking or fog. No
+PGO build or rejected experiment is included.
 
 This curated source snapshot corresponds to the installable
-NDS4MiSTer_Public_Beta_v0.3.0-beta.9_20260906 package. It retains the
+NDS4MiSTer_Public_Beta_v0.3.0-beta.10_20260906 package. It retains the
 LG-compatible video path and includes the FPGA-side MiSTer save bridge,
 profile ROM, regular EEPROM/FRAM and Flash support, controller touch, and the
 current hybrid 3D path. Exact artifact identities are listed below.
@@ -39,7 +45,43 @@ FPGA core:
   ff1b1d5352690420d875dc508448817eb8edbebda9062d75b31683be0b2325ee
 
 ARM hybrid-3D service:
-  9629ec9beba9ed4e26ea155f3286ec1bf1e2350e2f468128bcb3a435eaba2a2e
+  a3dbb5eba4816dc50ad9f2d993c32d8c7b7c7680effaf37e8cfa420feebd8e57
+
+Accepted source commit:
+  2e477c3de4cd0deaaa5ca0fb070e6924205eff56
+
+Kickstart launcher:
+  4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc
+
+Incremental beta.10 exact 3D update
+-----------------------------------
+
+* Shadow/stencil frames that cannot use the existing horizontal-band split can
+  use a safe disjoint-X partition rather than falling back to one raster
+  worker. A 384-frame deliberately shadow-heavy Cortex-A9 fixture measured a
+  48.16% raster-stage reduction, or 1.929x, with exact color, depth,
+  attributes, stencil, and shadow carry. This is not a whole-game speed claim.
+* When antialiasing is the only enabled final-pass effect, a smaller exact scan
+  avoids the larger edge-marking/fog path and skips four-pixel blocks with no
+  edge pixels. Eight physical Cortex-A9 A/B blocks measured a 10.19%
+  final-pass-stage reduction, or 1.114x. The whole-replay median was noisy and
+  0.32% slower for the candidate, so no whole-service or FPS gain is claimed.
+* The seed-2 FPGA image is byte-for-byte identical to beta.9. The source diff
+  changes no FPGA, touch, sound, save, or compatibility implementation, so the
+  beta.9 paths are retained without claiming a new exhaustive beta.10 game
+  validation sweep.
+* The combined service was accepted by visual gameplay testing with the
+  unchanged core. Workload-specific Mario Kart and Castlevania health windows
+  recorded no FPGA/HPS faults, but were not controlled A/B FPS benchmarks.
+* Kickstart now starts a bounded, one-shot watcher that keeps MiSTer's frontend
+  on CPU0 after an NDS launch replaces the frontend process, reducing
+  contention with CPU1-led 3D work. The watcher uses exact core, PID, and
+  process-start checks, applies no MiSTer priority or real-time scheduling
+  change, and exits after success or a five-minute window. In adjacent live
+  20-second windows from one continuing Mario Kart kiosk session, different
+  scene segments displayed 616 unpinned and 622 pinned 3D frames (+0.974%).
+  This was not a normalized or deterministic benchmark; the benefit is modest
+  and scene-dependent, not a guaranteed game-FPS increase.
 
 Incremental beta.9 sound and 3D update
 --------------------------------------
@@ -252,11 +294,12 @@ Quartus Prime 17.0.2 completed map, fit, assembly, and timing analysis. The
 successful Seed-2 fit used 40,812 of 41,910 ALMs (97%), 45,284 registers,
 489 of 553 RAM blocks (88%), 69 DSP blocks, and four PLLs. Static timing remains
 diagnostic information rather than a deployment gate for this experimental
-project. This exact RBF was direct-loaded with FPGA state `operating`, core
-identity `NDS`, and exactly one verified ARM service at 1 GHz. The maintainer
-confirmed sound, touch, saves, and gameplay with this exact beta.9 FPGA/ARM
-pair on real MiSTer hardware. The beta.7 compatibility and beta.8 touchscreen
-results remain included.
+project. This exact RBF was direct-loaded with FPGA state `operating` and core
+identity `NDS`. The accepted beta.10 service passed its static ARMHF self-test
+and ran as exactly one verified service at 1 GHz beside that unchanged core.
+The beta.9 FPGA/package source paths for sound, touch, saves, and compatibility
+are retained; the beta.10 statement does not claim a new exhaustive game or
+subsystem validation sweep.
 
 Package exclusions
 ------------------

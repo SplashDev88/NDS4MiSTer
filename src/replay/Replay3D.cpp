@@ -236,6 +236,8 @@ int main(int argc, char** argv) {
             std::getenv("NDS_GPU_PACKED_OUTPUT") != nullptr;
         const bool threaded_3d =
             std::getenv("NDS_GPU_THREADED_3D") != nullptr;
+        const bool full_frame_3d =
+            std::getenv("NDS_GPU_FULL_FRAME_3D") != nullptr;
         const bool disable_engine_a =
             std::getenv("NDS_GPU_DISABLE_ENGINE_A") != nullptr;
         const bool disable_engine_b =
@@ -320,7 +322,8 @@ int main(int argc, char** argv) {
         if (parallel_2d || packed_output || threaded_3d || profile) {
             melonDS::RendererSettings settings {
                 1, threaded_3d, false, false,
-                packed_output, parallel_2d, cache_apply, profile};
+                packed_output, parallel_2d, cache_apply, profile,
+                full_frame_3d};
             nds->GPU.GetRenderer().SetRenderSettings(settings);
             if (threaded_3d) {
                 // SetThreaded starts the reset-time placeholder render. Drain
@@ -902,6 +905,14 @@ int main(int argc, char** argv) {
                       << renderer_profile.ThreeDBandQueueAdvancedScanlines
                       << "\nrenderer_3d_band_queue_shadow_fallback_frames: "
                       << renderer_profile.ThreeDBandQueueShadowFallbackFrames
+                      << "\nrenderer_3d_x_partition_frames: "
+                      << renderer_profile.ThreeDXPartitionFrames
+                      << "\nrenderer_3d_x_partition_split_total: "
+                      << renderer_profile.ThreeDXPartitionSplitTotal
+                      << "\nrenderer_3d_x_partition_split_min: "
+                      << renderer_profile.ThreeDXPartitionSplitMin
+                      << "\nrenderer_3d_x_partition_split_max: "
+                      << renderer_profile.ThreeDXPartitionSplitMax
                       << "\n";
             std::cout<<"profile_total_ms: "<<std::chrono::duration<double,std::milli>(replay_profile_end-replay_profile_start).count()
             <<"\nprofile_sprite_ms: "<<sprite_profile_ns/1000000.0<<"\nprofile_scanline_ms: "<<scanline_profile_ns/1000000.0

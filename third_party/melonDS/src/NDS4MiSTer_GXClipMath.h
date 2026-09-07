@@ -13,6 +13,19 @@ struct NDS4MiSTerGXViewportQuotients
     std::uint32_t Y;
 };
 
+// Polygon W normalization rounds the widest vertex W up to a four-bit
+// boundary.  The original loop advanced one nibble at a time and compiled to
+// a variable shift plus several conditionals per step on Cortex-A9.  CLZ gives
+// the same bit width directly; the zero case is kept separate because CLZ(0)
+// is undefined.
+inline std::uint32_t NDS4MiSTerGXNormalizedWSize(
+    std::uint32_t w) noexcept
+{
+    if (w == 0) return 0;
+    const auto bitWidth = 32u - static_cast<std::uint32_t>(__builtin_clz(w));
+    return (bitWidth + 3u) & ~3u;
+}
+
 // A native viewport transform divides two screen-coordinate numerators by the
 // same positive W denominator. Post-clipping coordinates guarantee both
 // quotients are in 0..511. Normalize the denominator once, reuse one cached
@@ -77,9 +90,11 @@ NDS4MiSTerGXDivideViewportPair(
 // Accepted clip-space vertices satisfy -W <= Z <= W.  The native depth
 // transform needs trunc((Z * 2^14) / W), but spelling that expression with a
 // 64-bit numerator calls the very expensive ARM EABI long-division helper on
-// Cortex-A9.  Generate the same fourteen fractional quotient bits with the
-// restoring divider used by hardware: each step is only shift, compare and
-// subtract, and the result remains bit-exact for both signs.
+// Cortex-A9.  Every 24-bit input is represented exactly by binary32, and the
+// scaled quotient is bounded below 2^14, so the rounded estimate is far closer
+// than one integer to the exact result.  Correct that estimate against the
+// original integer numerator so the result remains bit-exact for both signs
+// without fourteen restoring-divider steps.
 constexpr std::int32_t NDS4MiSTerGXDivideZ(
     std::int32_t z, std::uint32_t w) noexcept
 {
@@ -101,17 +116,20 @@ constexpr std::int32_t NDS4MiSTerGXDivideZ(
 
     if (magnitude == w) return negative ? -0x4000 : 0x4000;
 
-    std::uint32_t remainder = magnitude;
-    std::uint32_t quotient = 0;
-    for (unsigned bit = 0; bit < 14; ++bit)
+    const std::uint64_t numerator =
+        static_cast<std::uint64_t>(magnitude) << 14;
+    std::uint32_t quotient = static_cast<std::uint32_t>(
+        (static_cast<float>(magnitude) * 16384.0f) /
+        static_cast<float>(w));
+    const std::uint64_t product =
+        static_cast<std::uint64_t>(quotient) * w;
+    if (product > numerator)
     {
-        remainder <<= 1;
-        quotient <<= 1;
-        if (remainder >= w)
-        {
-            remainder -= w;
-            quotient |= 1;
-        }
+        --quotient;
+    }
+    else if (numerator - product >= w)
+    {
+        ++quotient;
     }
 
     return negative

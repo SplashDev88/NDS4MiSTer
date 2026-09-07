@@ -230,6 +230,44 @@ void ConvertAXIYTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAdd
 template void ConvertAXIYTexture<outputFmt_RGB6A5, 5, 3>(u32, u32, u32*, u32, u32, GPU&);
 template void ConvertAXIYTexture<outputFmt_RGB6A5, 3, 5>(u32, u32, u32*, u32, u32, GPU&);
 
+[[gnu::hot, gnu::noinline, gnu::optimize("no-tree-vectorize")]] void
+NDS4MiSTerConvertNColors4TextureRGB6A5(
+    u32 texParam, u32* output, u32 palAddr, GPU& gpu)
+{
+    // A 4bpp texture can reference only sixteen palette entries.  The
+    // previous loop fetched and expanded RGB555 for every texel.  Stage the
+    // exact RGB6A5 results in two Cortex-A9 cache lines instead, then make the
+    // hot texture loop four indexed loads and four stores per packed word.
+    // Keeping this miss-only decoder outside SetupRenderPolygons also avoids
+    // carrying its palette and loop state through that already-large LTO
+    // function's register set.
+    const u32 width = TextureWidth(texParam);
+    const u32 height = TextureHeight(texParam);
+    const u32 addr = (texParam & 0xFFFF) * 8;
+    const bool color0Transparent = texParam & (1u << 29);
+
+    alignas(32) u32 expandedPalette[16];
+    for (u32 index = 0; index < 16; ++index)
+    {
+        const u16 color = gpu.ReadVRAMFlat_TexPal<u16>(palAddr + index * 2);
+        const bool transparent = color0Transparent && index == 0;
+        expandedPalette[index] = ConvertRGB5ToRGB6(color) |
+            (transparent ? 0 : 0x1F000000);
+    }
+
+    const u32 packedWordsPerRow = width / 4;
+    for (u32 y = 0; y < height; ++y)
+    {
+        for (u32 x = 0; x < packedWordsPerRow; ++x)
+        {
+            const u16 packed = gpu.ReadVRAMFlat_Texture<u16>(
+                addr + 2 * (x + y * packedWordsPerRow));
+            NDS4MiSTerDecodeNColorWordRGB6A5<4>(
+                packed, expandedPalette, output + y * width + x * 4);
+        }
+    }
+}
+
 template <int outputFmt, int colorBits>
 void ConvertNColorsTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, bool color0Transparent, GPU& gpu)
 {

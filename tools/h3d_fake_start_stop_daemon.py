@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import shutil
 import subprocess
 import sys
 import time
@@ -143,6 +144,19 @@ def main(argv: list[str]) -> int:
             start_new_session=True,
             env=environment,
         )
+        proc_root_text = os.environ.get("H3D_FAKE_PROC_ROOT")
+        if proc_root_text:
+            proc_dir = Path(proc_root_text) / str(child.pid)
+            proc_dir.mkdir(parents=True, exist_ok=True)
+            start_state = Path(os.environ["H3D_FAKE_SERVICE_START_STATE"])
+            start_time = int(start_state.read_text(encoding="ascii")) + 1
+            start_state.write_text(f"{start_time}\n", encoding="ascii")
+            proc_dir.joinpath("stat").write_text(
+                f"{child.pid} (h3d-service) S "
+                + " ".join(["0"] * 18)
+                + f" {start_time} 0\n",
+                encoding="ascii",
+            )
         pidfile.write_text(f"{child.pid}\n", encoding="ascii")
         execfile.write_text(str(parsed["executable"]), encoding="utf-8")
         return 0
@@ -160,6 +174,9 @@ def main(argv: list[str]) -> int:
     if alive(pid) and marker.exists():
         os.kill(pid, signal.SIGKILL)
     if parsed["remove"]:
+        proc_root_text = os.environ.get("H3D_FAKE_PROC_ROOT")
+        if proc_root_text and pid is not None:
+            shutil.rmtree(Path(proc_root_text) / str(pid), ignore_errors=True)
         pidfile.unlink(missing_ok=True)
         execfile.unlink(missing_ok=True)
         marker.unlink(missing_ok=True)
