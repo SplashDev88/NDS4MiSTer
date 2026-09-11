@@ -118,6 +118,15 @@ target_compile_options(nds_bench PRIVATE
 )
 
 if(NDS4MISTER_USE_MELONDS)
+    # Focused ROM-free raster oracle/timer; explicitly built when benchmarking.
+    add_executable(nds_raster_batch_bench EXCLUDE_FROM_ALL
+        tools/benchmark_raster_batch.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_raster_batch_bench PRIVATE
+        src third_party/melonDS/src)
+    target_link_libraries(nds_raster_batch_bench PRIVATE core ${CMAKE_DL_LIBS})
+    set_property(TARGET nds_raster_batch_bench PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+
     target_sources(nds_bench PRIVATE
         src/melonds/HeadlessPlatform.cpp
         src/melonds/MelonDsBackend.cpp

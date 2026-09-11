@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**Public Beta v0.3.0-beta.10 — release candidate 2026-09-06**
+**v0.3.0-beta.11 — fast single-screen release**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -35,6 +35,8 @@ artifacts, or credentials are included in this source repository.
   therefore show the same Engine A image. Touch input still reaches the game,
   but games that require precise interaction with unseen touchscreen graphics
   remain difficult to use.
+- **Pokémon graphics using GX readback can remain missing.** The experimental
+  correction is deferred because of slowdown; see issue #16 below.
 - **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
   the most active area of development.
 - **Cartridge-access latency remains a bottleneck.** Some objects or effects
@@ -56,12 +58,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.10_20260906.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.11_20260910.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260906** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260910** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -96,7 +98,7 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In this release, both displayed positions duplicate Engine A, so the
+movement. In this single-screen build, both displayed positions duplicate Engine A, so the
 pointer is drawn over every visible copy of that image.
 
 Touch coordinates are delivered to the DS touchscreen even though Engine B is
@@ -115,18 +117,17 @@ This is battery-backed cartridge-save support, not emulator save states. Save
 profiles are selected from the vendored melonDS ROM database. NAND save
 cartridges and unknown save hardware are not supported.
 
-> **If a game reports corrupted save data after an upgrade:** Back up its
-> `.sav` file, then delete or move that file out of `/media/fat/saves/NDS/` and
-> let the game create a fresh save. Older experimental builds sometimes
-> created incorrectly sized or already-corrupted saves; beta.10 does not try to
-> repair them.
+Back up existing saves before upgrading or troubleshooting. Older experimental
+builds could create incorrectly sized or corrupted files; this build does not
+automatically repair them. Preserve the original save while checking the game
+and save profile instead of replacing progress with an older backup.
 
 ## Reading the FPS counter
 
-The optional overlay counts changed 3D planes accepted by the FPGA for
-display. It does **not** report total emulation speed, HDMI refresh rate,
-ARM9/ARM7 speed, or 2D-engine performance. A displayed value of 60 does not by
-itself prove that every part of a game is running at full speed.
+The overlay reports 3D publication activity; counters may include reused
+planes. It does not establish distinct displayed frames, total emulation speed,
+input latency, or 2D-engine performance. A displayed value of 60 is not proof of
+full-speed gameplay. See [issue #11](https://github.com/SplashDev88/NDS4MiSTer/issues/11).
 
 ## Reporting bugs
 
@@ -143,60 +144,58 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.10
+## What's new in beta.11
 
-Beta.10 keeps the accepted beta.9 seed-2 FPGA core, updates the ARM 3D service
-with two exact renderer optimizations, and carries the tested MiSTer CPU0
-placement across one NDS core launch:
+This release freezes the fast single-screen development lane after
+beta.10. It keeps the latest accepted ARM renderer optimizations, including
+constant-color span/depth reuse, translucent shading work, adaptive catch-up,
+and the replay worker wakeup correction. Existing parallel shadow/stencil
+rendering, specialized antialias final pass, and frontend CPU0 pinning remain.
 
-- Shadow/stencil frames that cannot use the existing horizontal-band split can
-  use a safe disjoint-X partition instead of falling back to one raster worker.
-  A deliberately shadow-heavy physical Cortex-A9 fixture measured 48.16% less
-  raster-stage time (1.929x). This is a stage-specific result, not a whole-game
-  speedup; one Mario Kart coverage run used the path on only 10 of 2,999
-  polygon frames.
-- When antialiasing is enabled without edge marking or fog, the renderer uses a
-  smaller exact final pass and skips four-pixel blocks with no edge pixels.
-  Eight physical A/B blocks measured 10.19% less final-pass-stage time
-  (1.114x). The corresponding whole-replay median was noisy and 0.32% slower,
-  so this does not establish a whole-service or FPS improvement.
-- A bounded, one-shot Kickstart watcher recognizes the exact `NDS` core and a
-  stable replacement MiSTer process epoch, pins that frontend to CPU0, and
-  exits. This reduces contention with CPU1-led 3D work without renicing MiSTer
-  or applying real-time scheduling. Adjacent, non-normalized 20-second Mario
-  Kart scene windows displayed 616 unpinned and 622 pinned changed 3D frames
-  (+0.974%); that modest indication is scene-dependent, not a guaranteed
-  speedup.
+- Kirby graphics fixes cover extended-palette refill after VRAM remaps,
+  local ARM9 VRAM write retirement, and register readback for disabled Engine B.
+- Standard-palette readback restores fade/text-color behavior without adding
+  GX queries to the ARM service.
+- The isolated ARM9 halt/IRQ fix preserves the pending return instruction when
+  an IRQ arrives on the halt wake edge.
+- Existing touch calibration, sound-bias correction, cartridge saves, and
+  InsaneFriend's boot-compatibility work are retained.
 
-The current-tree audit confirms that beta.10 changes no FPGA, touch, sound,
-save, or compatibility source relative to the beta.9 image. Those beta.9 paths
-are retained, but are not claimed as newly retested across every game. No PGO
-build or rejected experiment is included.
+The experimental GX readback correction is deferred: it supplies the matrix
+and BOX_TEST results needed by missing Pokémon player/furniture graphics, but
+its experimental pairing causes substantial gameplay slowdown. Those objects
+can remain missing in this fast build. See
+[issue #16](https://github.com/SplashDev88/NDS4MiSTer/issues/16).
+
+**Beta.12 is planned for Engine B with an On/Off option**, default Off and
+applied on Reset or ROM load. Beta.11 retains the single-screen configuration.
+**Up to about 30% faster 3D rendering in targeted tests.** This measures the
+latest transparency optimization against its preceding accepted build; gains
+vary by game. It is not a whole-game FPS comparison against public beta.10.
 
 ## Verification
 
-| | |
+| Item | Release identity |
 | --- | --- |
-| Accepted source commit | `2e477c3de4cd0deaaa5ca0fb070e6924205eff56` |
-| Core file | `_Console/NDS_20260906.rbf` |
-| Build identity | `260905-TSAUDS2` |
+| Core file | `_Console/NDS_20260910.rbf` |
+| Build identity | `260910-FASTIRQ2` |
+| FPGA SHA-256 | `d8e43c125dde46a54bcb764e06694391b8400cca14d030cc8015668dc5456019` |
 | Quartus seed | 2 |
-| ALMs | 40,812 / 41,910 |
-| Registers | 45,284 |
-| RAM blocks | 489 / 553 |
-| DSP blocks | 69 / 112 |
-| FPGA SHA-256 | `ff1b1d5352690420d875dc508448817eb8edbebda9062d75b31683be0b2325ee` |
-| ARM SHA-256 | `a3dbb5eba4816dc50ad9f2d993c32d8c7b7c7680effaf37e8cfa420feebd8e57` |
+| ARM clocks | 1 GHz |
+| ARM SHA-256 | `b815045a40a117aacd429f4f52d827a4276bf0f24f55ac2d430e43104c4d00e7` |
 | Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-Quartus fit and assembly for the unchanged FPGA image completed successfully.
-Static timing remains diagnostic rather than a release gate. The exact ARM
-service passed its built-in self-test and was accepted in visual gameplay with
-the unchanged core; the retained beta.9 touch, sound, save, and compatibility
-paths are established by the unchanged FPGA/package audit rather than a new
-full-game beta.10 validation sweep. Repeated supervisor stress, independent
-review, and physical post-load verification passed for the bounded affinity
-watcher.
+The production ARM9 WFI regression passes 130 combinations of memory latency,
+wake timing, and IRQ masking. The old palette baseline reproduces the skipped
+return in the negative control. The standard-palette regression also passes.
+The seed-2 IRQ FPGA completed map, fit, assembly, and timing analysis. The
+maintainer tested this exact FPGA/ARM pair in Castlevania: Dawn of Sorrow and
+New Super Mario Bros. and confirmed that both worked well with the accepted
+fast responsiveness. Castlevania also reported Ready status and zero FPGA/HPS
+faults during the hardware smoke check.
+Static timing reports setup/recovery violations and hold violations;
+timing closure is not claimed. Fit: 40,850 ALMs, 491 RAM blocks, 69 DSP blocks.
+Simulation and publication counters are not gameplay FPS measurements.
 
 ## For developers
 
@@ -210,7 +209,7 @@ watcher.
   engine and publishes completed 256×192 3D planes to the FPGA.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
   window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in this release.
+  shadow copy of the FPGA 2D engine in this build.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.

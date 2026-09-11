@@ -2208,7 +2208,9 @@ begin
                   -- clobber it (the GBA core takes fetch_PC here, which makes
                   -- the IRQ return skip the first instruction after a
                   -- wait-for-interrupt).
-                  if (decode_unhalt = '1') then
+                  -- IRQ may be selected on the edge that clears decode_halt,
+                  -- before decode_unhalt is visible. Preserve that pending PC.
+                  if (decode_halt = '1' or decode_unhalt = '1') then
                      if (decode_ready = '0') then
                         decode_PC <= fetch_PC;
                      end if;

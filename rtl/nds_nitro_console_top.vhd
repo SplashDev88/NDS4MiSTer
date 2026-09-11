@@ -571,6 +571,9 @@ architecture arch of nds_nitro_console_top is
    signal vclr_busy   : std_logic;
    signal pclr_busy_a : std_logic;
    signal pclr_busy_b : std_logic;
+   signal pal_read_data : std_logic_vector(31 downto 0);
+   signal pal_read_busy : std_logic;
+   signal pal_read_busy_meta, pal_read_busy_1x : std_logic := '1';
 
    -- ARM9 clk2x island <-> clk1x world bridge (see the process block below)
    signal cdc_req_wsh, cdc_req_vram, cdc_req_mr   : std_logic := '0';
@@ -686,6 +689,7 @@ architecture arch of nds_nitro_console_top is
    signal h3d_vram9_source_valid, h3d_vram9_source_ready : std_logic;
    signal h3d_vram9_needed_by_h3d : std_logic;
    signal h3d_vram9_issue : std_logic;
+   signal h3d_vram9_unposted_pending : std_logic := '0';
    signal h3d_vram9_source_address : std_logic_vector(31 downto 0);
    signal h3d_vram9_source_access : std_logic_vector(1 downto 0);
    signal h3d_vram9_source_be : std_logic_vector(3 downto 0);
@@ -1016,10 +1020,29 @@ begin
    -- a full local write queue cannot deadlock valid behind event ready; wok is
    -- local architectural credit and does not depend on the H3D queue.
    h3d_vram9_source_valid <=
+      '1' when h3d_vram9_unposted_pending = '1' else
       dma_vram_write_valid and ((not vr9_welig) or vr9_wok) and
          h3d_vram9_needed_by_h3d
          when dma_bus_on = '1' else
       vram9_ena and not vram9_rnw and h3d_vram9_needed_by_h3d;
+
+   -- CPU and non-postable DMA requests are pulses, unlike posted DMA valid.
+   -- Their source fields stay held until local VRAM returns done. Retain only
+   -- the request when the event skid is full; accept the local write and the
+   -- event copy together once it has room. No second payload copy is needed.
+   p_vram9_unposted_hold : process (clk1x)
+   begin
+      if rising_edge(clk1x) then
+         if reset_boot = '1' or h3d_service_ready = '0' then
+            h3d_vram9_unposted_pending <= '0';
+         elsif h3d_vram9_source_ready = '1' then
+            h3d_vram9_unposted_pending <= '0';
+         elsif vr9_src_ena = '1' and vr9_rnw = '0' and
+               h3d_vram9_needed_by_h3d = '1' then
+            h3d_vram9_unposted_pending <= '1';
+         end if;
+      end if;
+   end process;
 
    h3d_vram7_source_address <= x"06" & std_logic_vector(vram7_addr) & "00";
    h3d_vram7_source_access <= h3d_access_from_be(vram7_be);
@@ -1149,6 +1172,7 @@ begin
                      boot_state <= B_ERROR;
                   elsif (ld_done = '1' and ld_busy = '0' and
                          vclr_busy = '0' and pclr_busy_a = '0' and pclr_busy_b = '0' and
+                         pal_read_busy_1x = '0' and
                          backup_run_ready = '1') then
                      boot_state  <= B_S9RST;
                      boot_cnt    <= 0;
@@ -1897,6 +1921,7 @@ begin
       vram_ena => i9_vram_ena, vram_rnw => vram9_rnw, vram_addr => vram9_addr, vram_be => vram9_be,
       vram_din => vram9_din, vram_dout => vram9_dout, vram_done => i9_vram_done,
       pal_we => i9_pal_we, pal_addr => pal_addr, pal_din => pal_din, pal_be => pal_be,
+      pal_readdata => pal_read_data,
       oam_we => i9_oam_we, oam_addr => oam_addr, oam_din => oam_din, oam_be => oam_be,
       mr_ena => i9_mr_ena, mr_rnw => mr9_rnw, mr_addr => mr9_addr, mr_be => mr9_be,
       mr_writedata => mr9_writedata, mr_done => i9_mr_done, mr_readdata => mr9_readdata,
@@ -2440,26 +2465,20 @@ begin
    -- makes. That also satisfies nds_vram's "cpu9 request overrun" assert: only
    -- one of the two sides can ever have an op outstanding.
    vr9_src_ena <= dma_vr_ena when dma_bus_on = '1' else vram9_ena;
-   -- Reads and FPGA-only BG/OBJ writes retain the legacy request pulse. LCDC
-   -- texture uploads are presented when their H3D event is accepted.
+   -- Commit VRAM locally on the SAME edge that copies its payload into the
+   -- H3D event skid. Waiting for that skid's later output is incorrect for
+   -- posted DMA: it has already retired and may now be driving a read. That
+   -- used to discard 15 of 16 writes in the focused RAM-to-VRAM regression.
+   -- Credit is computed from these live fields independently of cpu9_ena,
+   -- so this introduces no combinational loop through the event sink.
    vr9_ena  <= vr9_src_ena
       when (vr9_rnw = '1' or h3d_service_ready = '0' or
             h3d_vram9_needed_by_h3d = '0') else
-      h3d_vram9_issue;
+      h3d_vram9_source_valid and h3d_vram9_source_ready;
    vr9_rnw  <= dma_vr_rnw  when dma_bus_on = '1' else vram9_rnw;
-   -- When H3D backpressures a write, the event gate owns an atomic copy of
-   -- its complete payload. Feed that same accepted payload to local VRAM so
-   -- the FPGA and melonDS observe one identical architectural write even if
-   -- the shared source bus has already moved on.
-   vr9_addr <= unsigned(h3d_vram9_write_address(23 downto 2))
-      when (h3d_service_ready = '1' and h3d_vram9_issue = '1') else
-      dma_vr_addr when dma_bus_on = '1' else vram9_addr;
-   vr9_be <= h3d_vram9_write_byte_enable
-      when (h3d_service_ready = '1' and h3d_vram9_issue = '1') else
-      dma_vr_be when dma_bus_on = '1' else vram9_be;
-   vr9_din <= h3d_vram9_write_data
-      when (h3d_service_ready = '1' and h3d_vram9_issue = '1') else
-      dma_vr_din when dma_bus_on = '1' else vram9_din;
+   vr9_addr <= dma_vr_addr when dma_bus_on = '1' else vram9_addr;
+   vr9_be <= dma_vr_be when dma_bus_on = '1' else vram9_be;
+   vr9_din <= dma_vr_din when dma_bus_on = '1' else vram9_din;
    vr7_addr <= unsigned(h3d_vram7_write_address(23 downto 2))
       when (h3d_service_ready = '1' and vram7_rnw = '0') else vram7_addr;
    vr7_be <= h3d_vram7_write_byte_enable
@@ -2577,6 +2596,7 @@ begin
          linecounter_obj => linecounter_obj, drawObj => drawObj,
          line_trigger => line_trigger, hblank_trigger => hblank_trigger,
          vblank_trigger => gpu_vblank, refpoint_update => refpoint_update,
+         extpal_config => vramcnt(55 downto 32),
          line_busy => line_busy, epfill_busy => epfill_busy, clr_busy => pclr_busy_a,
          pal_we => pal_we_a, pal_addr => pal_addr_lo, pal_din => pal_din, pal_be => pal_be,
          oam_we => oam_we_a, oam_addr => oam_addr_lo, oam_din => oam_din, oam_be => oam_be,
@@ -2695,6 +2715,22 @@ begin
 
    -- palette/OAM 2 KB mirrors: low half engine A, high half engine B;
    -- writes are dropped while the owning engine is powered off (melonDS)
+   -- Readback stays in the ARM9 island. IO completion already serializes the
+   -- POWCNT write before the next CPU/DMA palette access; use the same power
+   -- qualification as the actual GPU palette stores. No additional HPS events.
+   palette_readback : entity work.nds_palette_readback
+      generic map (is_simu => is_simu)
+      port map (clk => clk2x, reset => resetCpu, power_a => pow_2da, power_b => pow_2db,
+                addr => pal_addr, we => i9_pal_we, be => pal_be, data => pal_din,
+                q => pal_read_data, clear_busy => pal_read_busy);
+   process (clk1x)
+   begin
+      if rising_edge(clk1x) then
+         pal_read_busy_meta <= pal_read_busy;
+         pal_read_busy_1x <= pal_read_busy_meta;
+      end if;
+   end process;
+
    pal_we_a    <= pal_we when (pal_addr < 256 and pow_2da = '1') else '0';
    pal_we_b    <= pal_we when (pal_addr >= 256 and pow_2db = '1') else '0';
    pal_addr_lo <= pal_addr mod 256;
@@ -2739,13 +2775,18 @@ begin
       );
    end generate;
 
-   -- One-engine diagnostic: remove the complete engine-B register/drawer/
-   -- merge cone and its VRAM clients.  Mirroring A keeps both HDMI panels
-   -- visibly useful without introducing a second video transport mode.
+   -- One-engine output keeps Engine B's drawers and VRAM clients removed.
+   -- Retain control readbacks because games calculate upload addresses from
+   -- them even when Engine B is not displayed. Both panels still mirror A;
+   -- this does not enable ARM-side Engine B rendering or its transport.
    g_no_gpu2d_b : if GPU2D_B_ENABLE = 0 generate
    begin
-      g2db_wired_out <= (others => '0');
-      g2db_wired_done <= '0';
+      igpu2d_b_register_shadow : entity work.nds_gpu2d_register_shadow
+      port map
+      (
+         clk => clk1x, reset => resetCpu, gb_bus => io_bus9b,
+         wired_out => g2db_wired_out, wired_done => g2db_wired_done
+      );
       line_busy_b <= '0';
       epfill_busy_b <= '0';
       pclr_busy_b <= '0';

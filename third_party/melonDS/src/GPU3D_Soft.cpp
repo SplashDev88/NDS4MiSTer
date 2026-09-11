@@ -839,10 +839,10 @@ SoftRenderer3D::RenderPixelCachedModulate(
 }
 
 #if defined(__arm__) && defined(__ARM_NEON)
-[[gnu::always_inline, gnu::hot]] inline void
+[[gnu::always_inline, gnu::hot]] inline uint32x4_t
 SoftRenderer3D::LookupCachedTexels4(
     const RendererPolygon::PixelShaderState& state,
-    const s16* textureS, const s16* textureT, u32* texels)
+    const s16* textureS, const s16* textureT)
 {
     alignas(16) u32 indices[4];
     NDS4MiSTerTextureIndices4(
@@ -850,8 +850,7 @@ SoftRenderer3D::LookupCachedTexels4(
         state.TextureWidth, state.TextureHeight,
         state.TextureWidthMask, state.TextureHeightMask,
         state.TextureWrapFlags, state.TextureWidthShift, indices);
-    for (u32 lane = 0; lane < 4; ++lane)
-        texels[lane] = state.TexturePixels[indices[lane]];
+    return NDS4MiSTerGatherCachedTexels4(state.TexturePixels, indices);
 }
 #endif
 
@@ -1334,24 +1333,32 @@ void SoftRenderer3D::RenderShadowMaskScanline(
 }
 
 #if defined(__arm__) && defined(__ARM_NEON)
-// Perspective factor and Z recurrences remain scalar and exact. Grouping four
-// consecutive interior pixels here lets the five attribute interpolations use
-// five four-lane multiplies rather than twenty scalar multiplies. Rendering and
-// writes still occur in X order, preserving texture and framebuffer behavior.
+// Perspective factors remain scalar and exact. W-depth and attributes can
+// batch four pixels. Select W-depth specialization once per span so Z-buffer
+// pixels retain the original loop without a runtime batching-mode branch.
+// Rendering and writes remain in X order.
+template<bool BatchWDepth, bool OpaquePolygon>
 [[gnu::hot, gnu::noinline]] s32
-SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
+SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
     Interpolator<0>& interpX,
     Interpolator<0>::SpanDepthInterpolator& spanDepth,
     Interpolator<0>::SpanInterpolator& spanAttributes)
 {
-    assert(rp->PixelState.PolyAlpha == 31);
+    assert(OpaquePolygon ? rp->PixelState.PolyAlpha == 31 :
+        rp->PixelState.PolyAlpha >= 1 && rp->PixelState.PolyAlpha < 31);
     Polygon* polygon = rp->PolyData;
     const auto& pixelState = rp->PixelState;
     const u32 polyattr = rp->PolyAttr;
     const u32 alphaRef = GPU3D.RenderAlphaRef;
     const bool writeTranslucentDepth = polygon->Attr & (1<<11);
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+    // Classify and pack once per span, not once per lane. Only S/T need
+    // perspective interpolation when all three color endpoints agree.
+    u32 packedSpanColor = 0;
+    const bool constantColor =
+        spanAttributes.GetConstantColor(packedSpanColor);
+    const auto coefficients = spanAttributes.PreparePerspectiveBatch();
 
     for (; firstX + 3 < endX; firstX += 4)
     {
@@ -1359,32 +1366,45 @@ SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
         u32 pixelAddresses[4];
         s32 depths[4];
         u32 passingPixels = 0;
+        bool allFront = true;
+
+        if constexpr (BatchWDepth)
+        {
+            for (unsigned lane = 0; lane < 4; ++lane)
+            {
+                interpX.SetXFast<true>(firstX + lane);
+                factors[lane] = interpX.PerspectiveFactor();
+            }
+            spanDepth.InterpolatePerspectiveDepthBatch4(factors, depths);
+        }
 
         for (u32 lane = 0; lane < 4; ++lane)
         {
             const s32 x = firstX + static_cast<s32>(lane);
-            u32 pixeladdr = rowAddress + x;
-            u32 dstattr = AttrBuffer[pixeladdr];
+            const u32 frontAddress = rowAddress + x;
+            u32 pixeladdr = frontAddress;
 
-            interpX.SetXFast(x);
-            const s32 z = spanDepth.Interpolate();
-            factors[lane] = interpX.PerspectiveFactor();
-
-            const auto depthPass = [](s32 dstz, s32 sourceZ, u32 attr) {
-                return sourceZ < dstz ||
-                    (sourceZ == dstz &&
-                     (attr & 0x00400010) == 0x00000010);
-            };
-            if (!depthPass(DepthBuffer[pixeladdr], z, dstattr))
+            s32 z;
+            if constexpr (BatchWDepth)
+                z = depths[lane];
+            else
             {
-                if (!(dstattr & 0xF) || pixeladdr >= BufferSize)
-                    continue;
-
-                pixeladdr += BufferSize;
-                dstattr = AttrBuffer[pixeladdr];
-                if (!depthPass(DepthBuffer[pixeladdr], z, dstattr))
-                    continue;
+                interpX.SetXFast<true>(x);
+                z = spanDepth.Interpolate();
+                factors[lane] = interpX.PerspectiveFactor();
             }
+
+            // A strictly nearer pixel does not depend on destination
+            // attributes. Share the scalar path's exact lazy selection;
+            // equal depth and lower-layer fallback still consult them.
+            if (!NDS4MiSTerSelectCachedDepthPixel(
+                    DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+            {
+                allFront = false;
+                continue;
+            }
+            if (pixeladdr != frontAddress)
+                allFront = false;
 
             pixelAddresses[lane] = pixeladdr;
             depths[lane] = z;
@@ -1398,13 +1418,38 @@ SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
         s16 textureS[4];
         s16 textureT[4];
         spanAttributes.InterpolatePerspectiveBatch4(
-            factors, vertexColors, textureS, textureT);
+            factors, vertexColors, textureS, textureT,
+            constantColor, packedSpanColor, coefficients);
 
         const bool fullDepthPass = passingPixels == 0xFu;
         alignas(16) u32 texels[4];
         if (fullDepthPass)
-            LookupCachedTexels4(
-                pixelState, textureS, textureT, texels);
+        {
+            const uint32x4_t sourceVector =
+                LookupCachedTexels4(pixelState, textureS, textureT);
+            uint32x4_t colorVector;
+            if constexpr (OpaquePolygon)
+                colorVector = NDS4MiSTerModulateCachedOpaqueVector4(
+                    sourceVector, vld1q_u32(vertexColors));
+            else
+                colorVector = NDS4MiSTerModulateCachedTranslucentVector4(
+                    sourceVector, vld1q_u32(vertexColors), pixelState.PolyAlpha);
+            // Four fully opaque adjacent front-layer pixels have no blend
+            // dependencies. Preserve exactly the scalar color/depth/attr
+            // writes, but commit each plane as one unaligned-safe vector.
+            if (OpaquePolygon && allFront && alphaRef < 31 &&
+                NDS4MiSTerAllCachedTexelsOpaque4(colorVector))
+            {
+                const u32 address = rowAddress + firstX;
+                vst1q_u32(DepthBuffer + address,
+                    vreinterpretq_u32_s32(vld1q_s32(depths)));
+                vst1q_u32(ColorBuffer + address, colorVector);
+                vst1q_u32(AttrBuffer + address, vdupq_n_u32(polyattr));
+                continue;
+            }
+            // Only the scalar alpha/blend fallback needs an addressable array.
+            vst1q_u32(texels, colorVector);
+        }
 
         for (u32 lane = 0; lane < 4; ++lane)
         {
@@ -1412,11 +1457,9 @@ SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
                 continue;
 
             const u32 pixeladdr = pixelAddresses[lane];
-            const u32 dstattr = AttrBuffer[pixeladdr];
             s32 z = depths[lane];
             const u32 color = fullDepthPass ?
-                NDS4MiSTerModulateCachedOpaquePixel(
-                    texels[lane], vertexColors[lane]) :
+                texels[lane] :
                 RenderPixelCachedModulate(
                     pixelState, vertexColors[lane],
                     textureS[lane], textureT[lane]);
@@ -1433,6 +1476,9 @@ SoftRenderer3D::RenderCachedOpaquePerspectiveInteriorBatch4(
             }
             else
             {
+                // Preserve the pre-blend value: PlotTranslucentPixel may
+                // update it. Rejected and opaque pixels never need this load.
+                const u32 dstattr = AttrBuffer[pixeladdr];
                 if (!writeTranslucentDepth)
                     z = -1;
                 PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
@@ -1456,39 +1502,85 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     Interpolator<0>::SpanInterpolator& spanAttributes)
 {
 #if defined(__arm__) && defined(__ARM_NEON)
-    // The four-pixel perspective batch uses the opaque-only modulation
-    // kernel.  A translucent polygon must retain the per-pixel path below so
-    // its texture alpha is combined with PolyAlpha before the alpha test and
-    // framebuffer blend.
+    // Batch independent depth/attributes and shade work. Translucent polygons
+    // use the exact polygon*texture alpha kernel; alpha test and framebuffer
+    // blending still run in the same X order, including lower-layer writes.
     if (rp->PixelState.PolyAlpha == 31 && spanAttributes.IsPerspective())
-        firstX = RenderCachedOpaquePerspectiveInteriorBatch4(
-            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+    {
+        if (spanDepth.CanBatchPerspectiveDepth4())
+            firstX = RenderCachedModulatePerspectiveInteriorBatch4<true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        else
+            firstX = RenderCachedModulatePerspectiveInteriorBatch4<false>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+    }
+    else if (spanAttributes.IsPerspective())
+    {
+        if (spanDepth.CanBatchPerspectiveDepth4())
+            firstX = RenderCachedModulatePerspectiveInteriorBatch4<true, false>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        else
+            firstX = RenderCachedModulatePerspectiveInteriorBatch4<false, false>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+    }
 #endif
 
+    // Select once per scalar span, never once per pixel. Equal RGB endpoints
+    // imply invariant exact DS color in both linear and perspective modes.
+    u32 packedSpanColor = 0;
+    const bool constantColor = spanAttributes.GetConstantColor(packedSpanColor);
+    s32 constantSpanDepth = 0;
+    const bool constantLinearDepth = constantColor &&
+        spanDepth.GetLinearConstantDepth(constantSpanDepth);
     switch (rp->PixelState.TextureWrapFlags)
     {
     case 0x0u:
-        RenderCachedModulateInteriorSpanMode<0x0u>(
-            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        if (constantLinearDepth)
+            RenderCachedModulateInteriorSpanMode<0x0u, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantColor)
+            RenderCachedModulateInteriorSpanMode<0x0u, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes, packedSpanColor);
+        else
+            RenderCachedModulateInteriorSpanMode<0x0u>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     case 0x3u:
-        RenderCachedModulateInteriorSpanMode<0x3u>(
-            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        if (constantLinearDepth)
+            RenderCachedModulateInteriorSpanMode<0x3u, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantColor)
+            RenderCachedModulateInteriorSpanMode<0x3u, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes, packedSpanColor);
+        else
+            RenderCachedModulateInteriorSpanMode<0x3u>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     default:
-        RenderCachedModulateInteriorSpanMode<0xFFu>(
-            rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        if (constantLinearDepth)
+            RenderCachedModulateInteriorSpanMode<0xFFu, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantColor)
+            RenderCachedModulateInteriorSpanMode<0xFFu, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes, packedSpanColor);
+        else
+            RenderCachedModulateInteriorSpanMode<0xFFu>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     }
 }
 
-template<u8 WrapMode>
+template<u8 WrapMode, bool ConstantColor, bool ConstantLinearDepth>
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
     Interpolator<0>& interpX,
     Interpolator<0>::SpanDepthInterpolator& spanDepth,
-    Interpolator<0>::SpanInterpolator& spanAttributes)
+    Interpolator<0>::SpanInterpolator& spanAttributes,
+    u32 packedSpanColor, s32 constantSpanDepth)
 {
     Polygon* polygon = rp->PolyData;
     const auto& pixelState = rp->PixelState;
@@ -1502,8 +1594,17 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
     {
         u32 pixeladdr = rowAddress + x;
 
-        interpX.SetXFast(x);
-        s32 z = spanDepth.Interpolate();
+        s32 z;
+        if constexpr (ConstantLinearDepth)
+        {
+            interpX.SetLinearX(x);
+            z = constantSpanDepth;
+        }
+        else
+        {
+            interpX.SetXFast(x);
+            z = spanDepth.Interpolate();
+        }
 
         if (!NDS4MiSTerSelectCachedDepthPixel(
                 DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
@@ -1512,8 +1613,8 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
         u32 vertexColor;
         s16 textureS;
         s16 textureT;
-        spanAttributes.InterpolateCachedPixel(
-            vertexColor, textureS, textureT);
+        spanAttributes.InterpolateCachedPixel<ConstantColor>(
+            vertexColor, textureS, textureT, packedSpanColor);
         const u32 texel = pixelState.TexturePixels[
             NDS4MiSTerCachedTextureIndexForMode<WrapMode>(
                 textureS, textureT,

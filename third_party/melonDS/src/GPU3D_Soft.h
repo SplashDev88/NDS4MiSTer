@@ -254,6 +254,15 @@ NDS4MiSTerAdvancePerspectiveFactorFast(
             ++factor;
             remainder -= denominator;
         }
+        else if (remainder - denominator - denominator < denominator)
+        {
+            // The measured synthetic raster census is dominated by positive
+            // two-step corrections. Both subtractions are nonnegative here;
+            // preserve the exact quotient/remainder without the wide helper.
+            factor += 2;
+            remainder -= denominator;
+            remainder -= denominator;
+        }
         else
             NDS4MiSTerNormalizePerspectiveFactorWide(
                 factor, denominator, remainder);
@@ -273,6 +282,52 @@ NDS4MiSTerAdvancePerspectiveFactorFast(
     }
     return true;
 }
+
+#if defined(__arm__) && defined(__ARM_NEON)
+// Four independent native-X perspective factors, using only integer SIMD.
+// Preconditions: 0 <= firstX <= firstX+3 <= width <= 256; W is unsigned16.
+// Normalize each nonzero denominator to [512,1023]. For small denominators
+// normalization is a lossless left shift; for larger ones the existing
+// ceil-magic proof bounds the quotient overestimate to at most one. Every
+// lane receives the same exact product correction as the scalar divider.
+[[gnu::always_inline, gnu::hot]] inline void
+NDS4MiSTerPerspectiveFactors4(
+    u32 firstX, u32 width, u32 w0, u32 w1, u32* output) noexcept
+{
+    assert(firstX + 3 <= width && width <= 256 && w0 <= 65535 && w1 <= 65535);
+    alignas(16) static const u32 laneOffsets[4] = {0, 1, 2, 3};
+    const uint32x4_t x = vaddq_u32(vdupq_n_u32(firstX), vld1q_u32(laneOffsets));
+    const uint32x4_t left = vmulq_n_u32(x, w0);
+    const uint32x4_t den = vmlaq_n_u32(
+        left, vsubq_u32(vdupq_n_u32(width), x), w1);
+    const uint32x4_t num = vshlq_n_u32(left, 8);
+    const uint32x4_t safeDen = vmaxq_u32(den, vdupq_n_u32(1));
+    const int32x4_t shift = vsubq_s32(
+        vreinterpretq_s32_u32(vclzq_u32(safeDen)), vdupq_n_s32(22));
+    const uint32x4_t normalizedDen = vshlq_u32(safeDen, shift);
+    const uint32x4_t normalizedNum = vshlq_u32(num, shift);
+    u32 indices[4];
+    vst1q_u32(indices, vsubq_u32(normalizedDen, vdupq_n_u32(512)));
+    // Load table data directly into NEON lanes. The temporary scalar array
+    // compiled into two additional stack copies per batch on Cortex-A9.
+    // Indices still cross to core registers for addressing; table values do
+    // not need to round-trip through core registers and a second stack array.
+    uint32x2_t magicLow = vdup_n_u32(0), magicHigh = vdup_n_u32(0);
+    magicLow = vld1_lane_u32(&NDS4MiSTerPerspectiveCeilMagic[indices[0]], magicLow, 0);
+    magicLow = vld1_lane_u32(&NDS4MiSTerPerspectiveCeilMagic[indices[1]], magicLow, 1);
+    magicHigh = vld1_lane_u32(&NDS4MiSTerPerspectiveCeilMagic[indices[2]], magicHigh, 0);
+    magicHigh = vld1_lane_u32(&NDS4MiSTerPerspectiveCeilMagic[indices[3]], magicHigh, 1);
+    const uint32x4_t magic = vcombine_u32(magicLow, magicHigh);
+    const uint32x4_t estimate = vcombine_u32(
+        vshrn_n_u64(vmull_u32(vget_low_u32(normalizedNum), vget_low_u32(magic)), 32),
+        vshrn_n_u64(vmull_u32(vget_high_u32(normalizedNum), vget_high_u32(magic)), 32));
+    // Both the exact quotient and normalized estimate are <=256. Thus
+    // estimate*den fits u32: den<=256*65535 and 256*den<=0xFFFF0000.
+    const uint32x4_t correction = vandq_u32(
+        vcgtq_u32(vmulq_u32(estimate, den), num), vdupq_n_u32(1));
+    vst1q_u32(output, vsubq_u32(estimate, correction));
+}
+#endif
 
 // Exact recurrence for the dir=0 Z-buffer interpolation formula used by the
 // software rasterizer.  A visible span may begin after clipping or contain
@@ -410,6 +465,94 @@ NDS4MiSTerModulateCachedOpaquePixel(
     const u32 g = ((tg + 1) * (vg + 1) - 1) >> 6;
     const u32 b = ((tb + 1) * (vb + 1) - 1) >> 6;
     return r | (g << 8) | (b << 16) | (texel & 0xFF000000u);
+}
+
+#if defined(__arm__) && defined(__ARM_NEON)
+// Keep decoded texels in the vector register bank between gather, modulation
+// and final publication. Each address is the same scalar texture lookup.
+[[gnu::always_inline, gnu::hot]] inline uint32x4_t
+NDS4MiSTerGatherCachedTexels4(const u32* texture, const u32* indices) noexcept
+{
+    uint32x4_t texels = vdupq_n_u32(0);
+    texels = vld1q_lane_u32(texture + indices[0], texels, 0);
+    texels = vld1q_lane_u32(texture + indices[1], texels, 1);
+    texels = vld1q_lane_u32(texture + indices[2], texels, 2);
+    return vld1q_lane_u32(texture + indices[3], texels, 3);
+}
+
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerAllCachedTexelsOpaque4(uint32x4_t texels) noexcept
+{
+    const uint32x4_t difference = veorq_u32(texels, vdupq_n_u32(0x1f000000u));
+    uint32x2_t any = vorr_u32(vget_low_u32(difference), vget_high_u32(difference));
+    any = vorr_u32(any, vrev64_u32(any));
+    return !(vget_lane_u32(any, 0) & 0xff000000u);
+}
+
+[[gnu::always_inline, gnu::hot]] inline uint32x4_t
+NDS4MiSTerModulateCachedOpaqueVector4(
+    uint32x4_t original, uint32x4_t vertices) noexcept
+{
+    const uint8x16_t mask = vdupq_n_u8(63);
+    const uint8x16_t one = vdupq_n_u8(1);
+    const uint8x16_t t = vaddq_u8(
+        vandq_u8(vreinterpretq_u8_u32(original), mask), one);
+    const uint8x16_t v = vaddq_u8(
+        vandq_u8(vreinterpretq_u8_u32(vertices), mask), one);
+    const uint16x8_t low = vsubq_u16(
+        vmull_u8(vget_low_u8(t), vget_low_u8(v)), vdupq_n_u16(1));
+    const uint16x8_t high = vsubq_u16(
+        vmull_u8(vget_high_u8(t), vget_high_u8(v)), vdupq_n_u16(1));
+    const uint32x4_t rgb = vreinterpretq_u32_u8(vcombine_u8(
+        vshrn_n_u16(low, 6), vshrn_n_u16(high, 6)));
+    return vbslq_u32(vdupq_n_u32(0xff000000u), original, rgb);
+}
+
+// Native texture alpha is0..31. Encode twice the polygon-alpha factor in
+// its byte so RGB's /64 kernel also gives the exact DS /32 alpha result:
+// floor((2*n-1)/64) == floor((n-1)/32), for integer n>=1.
+// Blending is still performed in original pixel order by the caller.
+[[gnu::always_inline, gnu::hot]] inline uint32x4_t
+NDS4MiSTerModulateCachedTranslucentVector4(
+    uint32x4_t original, uint32x4_t vertices, u32 polyAlpha) noexcept
+{
+    assert(polyAlpha <= 30);
+    const uint8x16_t mask = vdupq_n_u8(63);
+    const uint8x16_t one = vdupq_n_u8(1);
+    const uint8x16_t t = vaddq_u8(
+        vandq_u8(vreinterpretq_u8_u32(original), mask), one);
+    vertices = vbslq_u32(vdupq_n_u32(0xff000000u),
+        vdupq_n_u32((polyAlpha * 2 + 1) << 24), vertices);
+    const uint8x16_t v = vaddq_u8(
+        vandq_u8(vreinterpretq_u8_u32(vertices), mask), one);
+    const uint16x8_t low = vsubq_u16(
+        vmull_u8(vget_low_u8(t), vget_low_u8(v)), vdupq_n_u16(1));
+    const uint16x8_t high = vsubq_u16(
+        vmull_u8(vget_high_u8(t), vget_high_u8(v)), vdupq_n_u16(1));
+    return vreinterpretq_u32_u8(vcombine_u8(
+        vshrn_n_u16(low, 6), vshrn_n_u16(high, 6)));
+}
+#endif
+
+// Four independent opaque-polygon pixels. Native RGB components occupy the
+// low six bits of each byte. Widened byte products hold 64*64 exactly; subtract
+// before truncating to preserve the DS equation. Alpha is copied unchanged.
+// Inputs are loaded before output, so in-place texel output is supported.
+[[gnu::always_inline, gnu::hot]] inline void
+NDS4MiSTerModulateCachedOpaquePixels4(
+    const u32* texels, const u32* vertexColors, u32* colors) noexcept
+{
+#if defined(__arm__) && defined(__ARM_NEON)
+    vst1q_u32(colors, NDS4MiSTerModulateCachedOpaqueVector4(
+        vld1q_u32(texels), vld1q_u32(vertexColors)));
+#else
+    const u32 result[4] = {
+        NDS4MiSTerModulateCachedOpaquePixel(texels[0], vertexColors[0]),
+        NDS4MiSTerModulateCachedOpaquePixel(texels[1], vertexColors[1]),
+        NDS4MiSTerModulateCachedOpaquePixel(texels[2], vertexColors[2]),
+        NDS4MiSTerModulateCachedOpaquePixel(texels[3], vertexColors[3])};
+    for (unsigned i=0; i<4; ++i) colors[i]=result[i];
+#endif
 }
 
 // Exact cached-texture implementation of the DS modulate equation.  Keeping
@@ -993,6 +1136,16 @@ private:
             this->factor_valid = false;
         }
 
+        // Only for a linear span whose depth is invariant. Neither its
+        // attributes nor its depth consumes yfactor. Invalidate the cached
+        // factor so a later generic edge pixel resynchronizes normally.
+        [[gnu::always_inline]] inline void SetLinearX(s32 x)
+        {
+            assert(linear);
+            this->x = x - x0;
+            factor_valid = false;
+        }
+
         constexpr void SetX(s32 x)
         {
             x -= x0;
@@ -1059,11 +1212,22 @@ private:
             factor_valid = true;
         }
 
+        template<bool KnownPerspective = false>
         [[gnu::always_inline, gnu::hot]] inline void SetXFast(s32 x)
         {
             x -= x0;
             this->x = x;
-            if (xdiff == 0 || (linear && !wbuffer)) return;
+            // The opaque batch is entered only after IsPerspective(). Its
+            // noinline boundary otherwise hides that invariant from ARM's
+            // optimizer, leaving mode loads/branches in every pixel lane.
+            if constexpr (!KnownPerspective)
+            {
+                if (xdiff == 0 || (linear && !wbuffer)) return;
+            }
+            else
+            {
+                assert(xdiff > 0 && !linear);
+            }
 
             // Interior pixels overwhelmingly advance by one X coordinate.
             // Expose that small exact recurrence directly to the raster loop
@@ -1091,6 +1255,43 @@ private:
         {
             return yfactor;
         }
+
+#if defined(__arm__) && defined(__ARM_NEON)
+        inline bool CanBatchPerspectiveFactors(s32 firstX, s32 endX) const noexcept
+        {
+            static_assert(dir == 0);
+            return xdiff >= 3 && xdiff <= 256 && !linear &&
+                firstX >= x0 && endX <= x1 + 1 &&
+                u32(w0n) <= 65535 && u32(w1d) <= 65535;
+        }
+
+        [[gnu::always_inline, gnu::hot]] inline void
+        GetPerspectiveFactors4(s32 firstX, u32* factors) const noexcept
+        {
+            static_assert(dir == 0);
+            NDS4MiSTerPerspectiveFactors4(firstX - x0, xdiff, w0n, w1d, factors);
+        }
+
+        [[gnu::always_inline, gnu::hot]] inline void
+        SetPerspectiveBatchX(s32 x, u32 factor) noexcept
+        {
+            this->x = x - x0;
+            yfactor = factor;
+        }
+
+        inline void FinishPerspectiveBatch() noexcept
+        {
+            // Rebuild the exact recurrence state once at the batch's end so
+            // scalar tail pixels continue without a new divide. No caller
+            // reads this state between SetPerspectiveBatchX and this fence.
+            const u32 numerator = static_cast<u32>(x * w0n) << shift;
+            const u32 denominator = x * w0d + (xdiff - x) * w1d;
+            factor_denominator = denominator;
+            factor_remainder = numerator - yfactor * denominator;
+            factor_x = x;
+            factor_valid = denominator != 0;
+        }
+#endif
 
         // RenderPolygonScanline evaluates five attributes at both polygon
         // edges, so leaving this helper out of line costs ten calls for every
@@ -1186,6 +1387,15 @@ private:
             {
             }
 
+            [[gnu::always_inline]] inline bool
+            GetLinearConstantDepth(s32& depth) const noexcept
+            {
+                if (!Parent.linear || Parent.xdiff <= 0 || Z0 != Z1)
+                    return false;
+                depth = Z0;
+                return true;
+            }
+
             [[gnu::always_inline, gnu::hot]] constexpr inline s32
             Interpolate() noexcept
             {
@@ -1196,6 +1406,32 @@ private:
                     return Parent.InterpolateZ(Z0, Z1);
                 return ZRecurrence.Interpolate(Parent.x, Parent.xdiff);
             }
+
+#if defined(__arm__) && defined(__ARM_NEON)
+            inline bool CanBatchPerspectiveDepth4() const noexcept
+            {
+                return Parent.wbuffer && Parent.xdiff > 0 && !Parent.linear &&
+                    Parent.shift == 8 && (u32(Z0) | u32(Z1)) <= 0xFFFFFFu;
+            }
+
+            [[gnu::always_inline, gnu::hot]] inline void
+            InterpolatePerspectiveDepthBatch4(const u32* factors, s32* depths) const noexcept
+            {
+                assert(CanBatchPerspectiveDepth4());
+                const bool ascending = Z0 < Z1;
+                const u32 base = ascending ? Z0 : Z1;
+                const u32 delta = ascending ? Z1 - Z0 : Z0 - Z1;
+                uint32x4_t selected = vld1q_u32(factors);
+                if (!ascending)
+                    selected = vsubq_u32(vdupq_n_u32(256), selected);
+                // Factors<=256 and depth endpoints<=0xFFFFFF: the product
+                // fits unsigned32 exactly, including the maximum boundary.
+                // This is the existing s64 W-depth formula, four lanes at once.
+                const uint32x4_t z = vaddq_u32(vdupq_n_u32(base),
+                    vshrq_n_u32(vmulq_n_u32(selected, delta), 8));
+                vst1q_s32(depths, vreinterpretq_s32_u32(z));
+            }
+#endif
 
         private:
             const Interpolator& Parent;
@@ -1222,20 +1458,29 @@ private:
                     Delta[i] = static_cast<u32>(
                         Ascending[i] ? second[i] - first[i] :
                             first[i] - second[i]);
-                    StepQuotient[i] = 0;
-                    StepRemainder[i] = 0;
-                    StepSign[i] = Ascending[i] ? 1 : -1;
-                    Current[i] = Base[i];
-                    Remainder[i] = 0;
-                    if (Parent.linear && Parent.xdiff > 0 && Delta[i] != 0)
+                }
+                // SetX changes position/factor, never the parent's mode.
+                // Perspective spans only read Base/Delta/Ascending. Avoid
+                // constructing five unused linear quotient/remainder states.
+                if (Parent.linear)
+                {
+                    for (int i = 0; i < 5; ++i)
                     {
-                        const s32 stepQuotient = static_cast<s32>(
-                            Parent.divideSpanLinear(Delta[i]));
-                        const s32 stepRemainder = static_cast<s32>(Delta[i]) -
-                            stepQuotient * Parent.xdiff;
-                        StepQuotient[i] = Ascending[i] ? stepQuotient :
-                            -stepQuotient;
-                        StepRemainder[i] = static_cast<u32>(stepRemainder);
+                        StepQuotient[i] = 0;
+                        StepRemainder[i] = 0;
+                        StepSign[i] = Ascending[i] ? 1 : -1;
+                        Current[i] = Base[i];
+                        Remainder[i] = 0;
+                        if (Parent.xdiff > 0 && Delta[i] != 0)
+                        {
+                            const s32 stepQuotient = static_cast<s32>(
+                                Parent.divideSpanLinear(Delta[i]));
+                            const s32 stepRemainder = static_cast<s32>(Delta[i]) -
+                                stepQuotient * Parent.xdiff;
+                            StepQuotient[i] = Ascending[i] ? stepQuotient :
+                                -stepQuotient;
+                            StepRemainder[i] = static_cast<u32>(stepRemainder);
+                        }
                     }
                 }
                 LastX = 0;
@@ -1248,45 +1493,90 @@ private:
                 return Parent.xdiff > 0 && !Parent.linear;
             }
 
+            struct PerspectiveBatchCoefficients
+            {
+                s32 Origin256[5];
+                s32 SignedDelta[5];
+            };
+
+            [[gnu::always_inline]] inline PerspectiveBatchCoefficients
+            PreparePerspectiveBatch() const noexcept
+            {
+                assert(Parent.shift == 8);
+                PerspectiveBatchCoefficients result;
+                for (int i = 0; i < 5; ++i)
+                {
+                    const s32 delta = static_cast<s32>(Delta[i]);
+                    const s32 origin = Base[i] + (Ascending[i] ? 0 : delta);
+                    result.Origin256[i] = origin * 256;
+                    result.SignedDelta[i] = Ascending[i] ? delta : -delta;
+                }
+                return result;
+            }
+
+            [[gnu::always_inline]] inline bool
+            GetConstantColor(u32& packedColor) const noexcept
+            {
+                if (Delta[0] | Delta[1] | Delta[2])
+                    return false;
+                packedColor = (static_cast<u32>(Base[0]) >> 3) |
+                    ((static_cast<u32>(Base[1]) >> 3) << 8) |
+                    ((static_cast<u32>(Base[2]) >> 3) << 16);
+                return true;
+            }
+
 #if defined(__arm__) && defined(__ARM_NEON)
             [[gnu::always_inline, gnu::hot]] inline void
             InterpolatePerspectiveBatch4(
                 const u32* factors, u32* vertexColors,
-                s16* textureS, s16* textureT) const noexcept
+                s16* textureS, s16* textureT,
+                bool constantColor, u32 packedSpanColor,
+                const PerspectiveBatchCoefficients& coefficients) const noexcept
             {
-                const uint32x4_t ascendingFactors = vld1q_u32(factors);
-                const uint32x4_t descendingFactors = vsubq_u32(
-                    vdupq_n_u32(1u << Parent.shift), ascendingFactors);
+                const int32x4_t ascendingFactors =
+                    vreinterpretq_s32_u32(vld1q_u32(factors));
 
-                const int32x4_t red = InterpolatePerspectiveAttribute4(
-                    0, ascendingFactors, descendingFactors);
-                const int32x4_t green = InterpolatePerspectiveAttribute4(
-                    1, ascendingFactors, descendingFactors);
-                const int32x4_t blue = InterpolatePerspectiveAttribute4(
-                    2, ascendingFactors, descendingFactors);
+                uint32x4_t packedColor;
+                if (constantColor)
+                    packedColor = vdupq_n_u32(packedSpanColor);
+                else
+                {
+                    const int32x4_t red = InterpolatePerspectiveAttribute4(
+                        0, ascendingFactors, coefficients);
+                    const int32x4_t green = InterpolatePerspectiveAttribute4(
+                        1, ascendingFactors, coefficients);
+                    const int32x4_t blue = InterpolatePerspectiveAttribute4(
+                        2, ascendingFactors, coefficients);
+                    packedColor = vorrq_u32(
+                        vshrq_n_u32(vreinterpretq_u32_s32(red), 3),
+                        vorrq_u32(
+                            vshlq_n_u32(vshrq_n_u32(
+                                vreinterpretq_u32_s32(green), 3), 8),
+                            vshlq_n_u32(vshrq_n_u32(
+                                vreinterpretq_u32_s32(blue), 3), 16)));
+                }
                 const int32x4_t texS = InterpolatePerspectiveAttribute4(
-                    3, ascendingFactors, descendingFactors);
+                    3, ascendingFactors, coefficients);
                 const int32x4_t texT = InterpolatePerspectiveAttribute4(
-                    4, ascendingFactors, descendingFactors);
+                    4, ascendingFactors, coefficients);
 
-                const uint32x4_t packedColor = vorrq_u32(
-                    vshrq_n_u32(vreinterpretq_u32_s32(red), 3),
-                    vorrq_u32(
-                        vshlq_n_u32(vshrq_n_u32(
-                            vreinterpretq_u32_s32(green), 3), 8),
-                        vshlq_n_u32(vshrq_n_u32(
-                            vreinterpretq_u32_s32(blue), 3), 16)));
                 vst1q_u32(vertexColors, packedColor);
                 vst1_s16(textureS, vmovn_s32(texS));
                 vst1_s16(textureT, vmovn_s32(texT));
             }
 #endif
 
+            template<int FirstAttribute = 0>
             constexpr void Interpolate(s32* values)
             {
+                static_assert(FirstAttribute == 0 || FirstAttribute == 3);
+                // FirstAttribute=3 is only used after exact RGB equality was
+                // established for the whole span. Its RGB Current state is
+                // invariant (Base), so sharing LastX with a later generic
+                // edge pixel is safe even when depth rejection skipped pixels.
                 if (Parent.xdiff == 0)
                 {
-                    for (int i = 0; i < 5; ++i)
+                    for (int i = FirstAttribute; i < 5; ++i)
                         values[i] = Base[i];
                     return;
                 }
@@ -1303,7 +1593,7 @@ private:
                     const u32 ascendingFactor = Parent.yfactor;
                     const u32 descendingFactor =
                         (1u << Parent.shift) - ascendingFactor;
-                    for (int i = 0; i < 5; ++i)
+                    for (int i = FirstAttribute; i < 5; ++i)
                     {
                         const u32 factor = Ascending[i] ?
                             ascendingFactor : descendingFactor;
@@ -1316,7 +1606,7 @@ private:
                 const s32 currentX = Parent.x;
                 if (Valid && currentX == LastX + 1)
                 {
-                    for (int i = 0; i < 5; ++i)
+                    for (int i = FirstAttribute; i < 5; ++i)
                     {
                         Current[i] += StepQuotient[i];
                         Remainder[i] += StepRemainder[i];
@@ -1330,7 +1620,7 @@ private:
                 }
                 else
                 {
-                    for (int i = 0; i < 5; ++i)
+                    for (int i = FirstAttribute; i < 5; ++i)
                     {
                         // This span is clipped inside a native 256-pixel row:
                         // Delta is a 16-bit attribute difference and currentX
@@ -1352,7 +1642,7 @@ private:
 
                 LastX = currentX;
                 Valid = true;
-                for (int i = 0; i < 5; ++i)
+                for (int i = FirstAttribute; i < 5; ++i)
                     values[i] = Current[i];
             }
 
@@ -1361,30 +1651,44 @@ private:
             // non-aliasing lifetime so LTO can keep the values in registers
             // instead of copying them through the caller-owned spanValues
             // array and loading them back for packing.
+            template<bool ConstantColor = false>
             [[gnu::always_inline, gnu::hot]] inline void
             InterpolateCachedPixel(
-                u32& vertexColor, s16& textureS, s16& textureT)
+                u32& vertexColor, s16& textureS, s16& textureT,
+                u32 packedSpanColor = 0)
             {
                 s32 values[5];
-                Interpolate(values);
-                NDS4MiSTerPackCachedSpanValues(
-                    values, vertexColor, textureS, textureT);
+                if constexpr (ConstantColor)
+                {
+                    assert((Delta[0] | Delta[1] | Delta[2]) == 0);
+                    Interpolate<3>(values);
+                    vertexColor = packedSpanColor;
+                    textureS = static_cast<s16>(values[3]);
+                    textureT = static_cast<s16>(values[4]);
+                }
+                else
+                {
+                    Interpolate(values);
+                    NDS4MiSTerPackCachedSpanValues(
+                        values, vertexColor, textureS, textureT);
+                }
             }
 
         private:
 #if defined(__arm__) && defined(__ARM_NEON)
             [[gnu::always_inline, gnu::hot]] inline int32x4_t
             InterpolatePerspectiveAttribute4(
-                int index, uint32x4_t ascendingFactors,
-                uint32x4_t descendingFactors) const noexcept
+                int index, int32x4_t factors,
+                const PerspectiveBatchCoefficients& coefficients) const noexcept
             {
-                const uint32x4_t factors = Ascending[index] ?
-                    ascendingFactors : descendingFactors;
-                const uint32x4_t progress = vshrq_n_u32(
-                    vmulq_u32(factors, vdupq_n_u32(Delta[index])), 8);
-                return vaddq_s32(
-                    vdupq_n_s32(Base[index]),
-                    vreinterpretq_s32_u32(progress));
+                // floor((a*256 + (b-a)*f)/256) is exactly the existing
+                // lower-endpoint formula for either direction, including
+                // descending negative texture coordinates. Native signed16
+                // attributes and f in [0,256] keep every intermediate in s32.
+                // Prepare origin/direction once per span, not per four pixels.
+                return vshrq_n_s32(vmlaq_n_s32(
+                    vdupq_n_s32(coefficients.Origin256[index]), factors,
+                    coefficients.SignedDelta[index]), 8);
             }
 #endif
 
@@ -1803,26 +2107,28 @@ private:
         const RendererPolygon::PixelShaderState& state,
         u32 vertexColor, s16 s, s16 t);
 #if defined(__arm__) && defined(__ARM_NEON)
-    [[gnu::always_inline, gnu::hot]] static inline void
+    [[gnu::always_inline, gnu::hot]] static inline uint32x4_t
     LookupCachedTexels4(
         const RendererPolygon::PixelShaderState& state,
-        const s16* textureS, const s16* textureT, u32* texels);
+        const s16* textureS, const s16* textureT);
 #endif
     [[gnu::hot, gnu::noinline]] void RenderCachedModulateInteriorSpan(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes);
-    template<u8 WrapMode>
+    template<u8 WrapMode, bool ConstantColor = false, bool ConstantLinearDepth = false>
     [[gnu::hot, gnu::noinline]] void
     RenderCachedModulateInteriorSpanMode(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
-        Interpolator<0>::SpanInterpolator& spanAttributes);
+        Interpolator<0>::SpanInterpolator& spanAttributes,
+        u32 packedSpanColor = 0, s32 constantSpanDepth = 0);
 #if defined(__arm__) && defined(__ARM_NEON)
+    template<bool BatchWDepth, bool OpaquePolygon = true>
     [[gnu::hot, gnu::noinline]] s32
-    RenderCachedOpaquePerspectiveInteriorBatch4(
+    RenderCachedModulatePerspectiveInteriorBatch4(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,

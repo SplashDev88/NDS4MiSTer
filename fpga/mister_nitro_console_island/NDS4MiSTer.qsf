@@ -322,6 +322,7 @@ set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rt
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_cpu9.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_cache9.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_membus9.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_palette_readback.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_syscnt.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_loader.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_debug.vhd
@@ -336,6 +337,7 @@ set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rt
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_obj.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_merge.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_gpu2d.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_gpu2d_register_shadow.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_gpu2d_fast.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_gpu_timing.vhd
 set_global_assignment -name VHDL_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd
@@ -380,3 +382,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_profile.
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_save_bridge.sv
 set_global_assignment -name MISC_FILE nds_save_profile_prefix.hex
 set_global_assignment -name MISC_FILE nds_save_profile_entries.hex
+
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_firmware.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_spi.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_audio_headroom.sv

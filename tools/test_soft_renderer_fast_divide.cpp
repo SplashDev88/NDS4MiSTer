@@ -81,6 +81,7 @@ static bool testTextureIndices4()
                     textureS[lane], textureT[lane],
                     width, height, wrapFlags))
                 return false;
+
     }
     return true;
 }
@@ -452,6 +453,28 @@ int main()
         return 10;
 
     std::uint32_t perspectiveRandom = 0x9e3779b9u;
+    // Exact boundaries around the one/two/wide positive correction paths,
+    // including denominators where 2*d or 3*d would overflow signed 32-bit.
+    for (std::int32_t divisor : {1, 2, 127, 65535, 1000000, 0x15555555, 0x3fffffff})
+    for (unsigned quotient = 0; quotient <= 3; ++quotient)
+    for (std::int32_t offset : {-1, 0, 1})
+    {
+        const std::int64_t target = std::int64_t(divisor) * quotient + offset;
+        if (target < 0 || target > 0x7fffffff) continue;
+        std::uint32_t expectedFactor = 3, actualFactor = 3;
+        std::int32_t expectedDenominator = divisor, actualDenominator = divisor;
+        std::int32_t expectedRemainder = 0, actualRemainder = 0;
+        const bool expected = referenceAdvancePerspectiveFactor(
+            expectedFactor, expectedDenominator, expectedRemainder,
+            static_cast<std::int32_t>(target), 0);
+        const bool actual = melonDS::NDS4MiSTerAdvancePerspectiveFactorFast(
+            actualFactor, actualDenominator, actualRemainder,
+            static_cast<std::int32_t>(target), 0);
+        if (expected != actual || expectedFactor != actualFactor ||
+            expectedDenominator != actualDenominator ||
+            expectedRemainder != actualRemainder)
+            return 12;
+    }
     const auto nextPerspectiveRandom = [&perspectiveRandom]() {
         perspectiveRandom ^= perspectiveRandom << 13;
         perspectiveRandom ^= perspectiveRandom >> 17;

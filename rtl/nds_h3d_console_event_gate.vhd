@@ -43,9 +43,11 @@ entity nds_h3d_console_event_gate is
       gpu_event_frame     : out std_logic_vector(31 downto 0);
       gpu_event_timestamp : out std_logic_vector(63 downto 0);
 
-      -- Virtual-VRAM write sources. *_issue is the only enable that may be
-      -- presented to nds_vram while H3D is active.  With H3D off it is the
-      -- unmodified source pulse, preserving the proven 2D-only path.
+      -- Virtual-VRAM write sources. *_issue marks output acceptance. ARM9's
+      -- posted DMA integration commits local VRAM at SOURCE acceptance, on
+      -- the same edge that stores this event copy; it must not wait for the
+      -- later output while borrowing the DMA's live operation type. ARM7
+      -- keeps its held, non-posted local write on *_issue.
       vram9_source_valid   : in  std_logic;
       vram9_source_address : in  std_logic_vector(31 downto 0);
       vram9_source_access  : in  std_logic_vector(1 downto 0);

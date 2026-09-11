@@ -5,6 +5,40 @@
 
 namespace nds4mister::replay {
 
+// Event generation and waiter registration share one atomic modification order.
+// A queue-depth snapshot cannot safely decide whether a consumer is asleep:
+// the consumer can drain it between that snapshot and publication.
+class ReplayWakeEvent {
+public:
+    void reset() noexcept { event_.store(0, std::memory_order_relaxed); }
+
+    std::uint32_t prepare_wait() noexcept
+    {
+        // Acquire any notification preceding registration, then recheck the
+        // queue/stop predicate before entering the kernel.
+        return event_.fetch_or(1u, std::memory_order_acquire) | 1u;
+    }
+
+    void cancel_wait() noexcept
+    {
+        event_.fetch_and(~1u, std::memory_order_relaxed);
+    }
+
+    bool notify() noexcept
+    {
+        // Publication/stop precedes this release. If registration came first,
+        // the changed generation makes FUTEX_WAIT fail or the wake releases
+        // its sleeper. If notification came first, prepare_wait acquires it.
+        // Backlogged work does not enter the kernel without a registered waiter.
+        return (event_.fetch_add(2u, std::memory_order_release) & 1u) != 0;
+    }
+
+    std::atomic<std::uint32_t>& word() noexcept { return event_; }
+
+private:
+    alignas(64) std::atomic<std::uint32_t> event_ {0};
+};
+
 // One producer publishes immutable replay slots and one consumer claims them.
 // The two monotonic indices are the only queue-depth authority: mirroring the
 // depth in another atomic would give that value two writers and permit an old

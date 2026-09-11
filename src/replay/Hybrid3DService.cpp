@@ -1,6 +1,7 @@
 #include "Args.h"
 #include "GPU.h"
 #include "NDS.h"
+#include "replay/AdaptiveCatchup.h"
 #include "replay/ArmCrashDump.h"
 #include "replay/ArmVideoShadow.h"
 #include "replay/FpgaCrashMonitor.h"
@@ -429,28 +430,8 @@ private:
     Generation recovered_ = 0;
 };
 
-class SmoothCatchupPacer {
-public:
-    static constexpr std::uint32_t Denominator = 12;
-
-    void reset() noexcept { phase_ = 0; }
-
-    bool should_skip(std::uint32_t numerator) noexcept
-    {
-        if (numerator == 0) {
-            reset();
-            return false;
-        }
-        if (numerator >= Denominator) return true;
-        phase_ += numerator;
-        if (phase_ < Denominator) return false;
-        phase_ -= Denominator;
-        return true;
-    }
-
-private:
-    std::uint32_t phase_ = 0;
-};
+using nds4mister::h3d::AdaptiveCatchupBudget;
+using nds4mister::h3d::SmoothCatchupPacer;
 
 constexpr bool catchup_should_discard_geometry(
     std::uint32_t skip_numerator, std::size_t packet_backlog,
@@ -1040,16 +1021,8 @@ private:
     // accumulator spaces omissions evenly and starts with only one skip per
     // twelve source frames (55 unique renders/second at a 60 Hz source).
     // Stronger fractions are reserved for lead that continues to grow.
-    static constexpr std::uint32_t ReplayCatchupMildFrames = 2;
-    static constexpr std::uint32_t ReplayCatchupMediumFrames = 8;
-    static constexpr std::uint32_t ReplayCatchupHeavyFrames = 12;
-    static constexpr std::uint32_t ReplayCatchupSevereFrames = 16;
-    static_assert(ReplayCatchupMildFrames < ReplayCatchupMediumFrames);
-    static_assert(ReplayCatchupMediumFrames < ReplayCatchupHeavyFrames);
-    static_assert(ReplayCatchupHeavyFrames < ReplayCatchupSevereFrames);
-    static constexpr std::size_t ReplayCatchupMildPackets = 64;
-    static constexpr std::size_t ReplayCatchupMediumPackets = 128;
-    static constexpr std::size_t ReplayCatchupHeavyPackets = 256;
+    static constexpr std::uint32_t ReplayCatchupMildFrames =
+        AdaptiveCatchupBudget::MildFrames;
     static constexpr std::size_t ReplayCatchupSeverePackets = 384;
     // Diagnostic pressure valve: the old fast pipelined ARM-video run stayed
     // near the DS cadence with an 87% render-skip rate and never filled its
@@ -1155,9 +1128,11 @@ private:
         replay_read_index_ = 0;
         replay_write_index_ = 0;
         replay_state_.reset();
+        replay_wake_.reset();
         replay_queue_high_water_.store(0, std::memory_order_relaxed);
         latest_replay_frame_.store(0, std::memory_order_relaxed);
         replay_catchup_pacer_.reset();
+        replay_catchup_budget_.reset();
         catchup_visibility_taint_.reset();
         replay_frame_active_ = false;
         replay_frame_skip_render_ = false;
@@ -1360,13 +1335,12 @@ private:
                 replay_input_packets_, replay_input_total_ns_,
                 replay_input_max_ns_, input_started);
         }
-        if (queue_count == 1) {
+        if (replay_wake_.notify()) {
 #ifdef __linux__
-            replay_futex_wake(replay_state_.published_word());
+            replay_futex_wake(replay_wake_.word());
 #else
-            // Serialize only the empty-to-nonempty transition with a worker
-            // that may be between its predicate check and sleep. Backlogged
-            // packets never enter this mutex path.
+            // Registered sleepers alone need the CV mutex. The event
+            // generation also closes publication-before-wait races.
             std::lock_guard<std::mutex> lock(replay_mutex_);
             replay_cv_.notify_one();
 #endif
@@ -1652,27 +1626,30 @@ private:
                 auto claimed = snapshot.claimed;
                 auto published = snapshot.published;
                 if (published == claimed) {
-#ifdef __linux__
                     while (!replay_stop_.load(std::memory_order_acquire) &&
                            published == claimed) {
-                        const int result = replay_futex_wait(
-                            replay_state_.published_word(), published, nullptr);
-                        if (result != 0 && errno != EAGAIN && errno != EINTR)
-                            std::this_thread::yield();
+                        const auto expected = replay_wake_.prepare_wait();
+                        snapshot = replay_state_.consumer_snapshot();
+                        if (!replay_stop_.load(std::memory_order_acquire) &&
+                            snapshot.published == snapshot.claimed) {
+#ifdef __linux__
+                            const int result = replay_futex_wait(
+                                replay_wake_.word(), expected, nullptr);
+                            if (result != 0 && errno != EAGAIN && errno != EINTR)
+                                std::this_thread::yield();
+#else
+                            std::unique_lock<std::mutex> lock(replay_mutex_);
+                            replay_cv_.wait(lock, [this, expected] {
+                                return replay_stop_.load(std::memory_order_acquire) ||
+                                    replay_wake_.word().load(std::memory_order_acquire) != expected;
+                            });
+#endif
+                        }
+                        replay_wake_.cancel_wait();
                         snapshot = replay_state_.consumer_snapshot();
                         claimed = snapshot.claimed;
                         published = snapshot.published;
                     }
-#else
-                    std::unique_lock<std::mutex> lock(replay_mutex_);
-                    replay_cv_.wait(lock, [this] {
-                        return replay_stop_.load(std::memory_order_acquire) ||
-                            replay_queue_count() != 0;
-                    });
-                    snapshot = replay_state_.consumer_snapshot();
-                    claimed = snapshot.claimed;
-                    published = snapshot.published;
-#endif
                     if (replay_stop_.load(std::memory_order_acquire)) return;
                 }
 
@@ -1765,26 +1742,7 @@ private:
         const auto lead = latest >= replay_frame ? latest - replay_frame : 0;
         const auto backlog = replay_queue_count();
 
-        std::uint32_t skip_numerator = 0;
-        // The contiguous GX executor can sustain the source rate once it is
-        // current, but Mario Kart's startup burst reached 343 queued packets
-        // before the former gentle controller recovered.  Bound latency
-        // instead of letting old complete frames remain seconds behind sound:
-        // progressively spend the raster budget on draining authoritative
-        // replay, and at severe pressure hold the last complete plane until
-        // state is current.  The phase accumulator still spaces every partial
-        // tier evenly, avoiding clustered visible judder.
-        if (backlog >= ReplayCatchupHeavyPackets ||
-            lead >= ReplayCatchupSevereFrames)
-            skip_numerator = SmoothCatchupPacer::Denominator;
-        else if (backlog >= ReplayCatchupMediumPackets ||
-                 lead >= ReplayCatchupHeavyFrames)
-            skip_numerator = 9; // retain one render in four
-        else if (backlog >= ReplayCatchupMildPackets ||
-                 lead >= ReplayCatchupMediumFrames)
-            skip_numerator = 6; // retain one render in two
-        else if (lead >= ReplayCatchupMildFrames)
-            skip_numerator = 2; // retain five renders in six
+        const auto skip_numerator = replay_catchup_budget_.update(lead, backlog);
 
         if (!replay_catchup_pacer_.should_skip(skip_numerator)) return false;
 
@@ -1853,11 +1811,13 @@ private:
         if (!replay_worker_.joinable()) return;
 #ifdef __linux__
         replay_stop_.store(true, std::memory_order_release);
-        replay_futex_wake(replay_state_.published_word());
+        (void)replay_wake_.notify();
+        replay_futex_wake(replay_wake_.word());
 #else
         {
             std::lock_guard<std::mutex> lock(replay_mutex_);
             replay_stop_.store(true, std::memory_order_release);
+            (void)replay_wake_.notify();
             replay_cv_.notify_one();
         }
 #endif
@@ -4167,12 +4127,14 @@ private:
     std::size_t replay_read_index_ = 0;
     std::size_t replay_write_index_ = 0;
     nds4mister::replay::ReplaySpscState replay_state_;
+    nds4mister::replay::ReplayWakeEvent replay_wake_;
     std::atomic<std::uint32_t> replay_queue_high_water_ {0};
     std::mutex replay_mutex_;
     std::condition_variable replay_cv_;
     std::thread replay_worker_;
     std::atomic<std::uint32_t> latest_replay_frame_ {0};
     SmoothCatchupPacer replay_catchup_pacer_;
+    AdaptiveCatchupBudget replay_catchup_budget_;
     CatchupVisibilityTaint catchup_visibility_taint_;
     bool replay_frame_active_ = false;
     bool replay_frame_skip_render_ = false;
@@ -4405,6 +4367,17 @@ void run_self_test()
         if (!pacer.should_skip(1) || pacer.should_skip(0) ||
             pacer.should_skip(1))
             self_test_fail("smooth catch-up phase did not reset cleanly");
+    }
+    {
+        AdaptiveCatchupBudget budget;
+        if (budget.update(2, 0) != 2 || budget.update(8, 0) != 3 ||
+            budget.update(16, 0) != 12 || budget.update(0, 0) != 0 ||
+            budget.update(0, 64) < 6 || budget.update(0, 128) < 9 ||
+            budget.update(0, 256) != 12)
+            self_test_fail("adaptive catch-up lost its pressure safety floors");
+        budget.reset();
+        if (budget.update(0, 0) != 0 || budget.update(2, 0) != 2)
+            self_test_fail("adaptive catch-up leaked state across reset");
     }
     {
         std::array<std::uint32_t, 37> source {};

@@ -75,6 +75,23 @@ inline constexpr auto NDS4MiSTerRasterMagic =
 inline constexpr auto NDS4MiSTerPerspectiveMagic =
     NDS4MiSTerMakePerspectiveMagicTable();
 
+// Dedicated to the bounded perspective-factor quotient. Keep the floor table
+// above unchanged: geometry clipping also uses it with different bounds.
+constexpr auto NDS4MiSTerMakePerspectiveCeilMagicTable()
+{
+    std::array<std::uint32_t,
+        NDS4MiSTerPerspectiveMagicLimit -
+        NDS4MiSTerPerspectiveMagicBase + 1> table {};
+    for (std::size_t divisor = NDS4MiSTerPerspectiveMagicBase;
+         divisor <= NDS4MiSTerPerspectiveMagicLimit; ++divisor)
+        table[divisor - NDS4MiSTerPerspectiveMagicBase] =
+            0xFFFFFFFFu / static_cast<std::uint32_t>(divisor) + 1u;
+    return table;
+}
+
+inline constexpr auto NDS4MiSTerPerspectiveCeilMagic =
+    NDS4MiSTerMakePerspectiveCeilMagicTable();
+
 inline std::uint32_t NDS4MiSTerDividePreparedU32(
     std::uint32_t numerator,
     std::uint32_t denominator,
@@ -149,10 +166,16 @@ inline std::uint32_t NDS4MiSTerDivideFactorDeltaExact(
     const std::uint32_t shift = highestBit - 9u;
     const std::uint32_t normalizedDenominator = denominator >> shift;
     const std::uint32_t normalizedNumerator = numerator >> shift;
-    std::uint32_t quotient = NDS4MiSTerDividePreparedNonUnitU32(
-        normalizedNumerator, normalizedDenominator,
-        NDS4MiSTerPerspectiveMagic[
-            normalizedDenominator - NDS4MiSTerPerspectiveMagicBase]);
+    // Here numerator / denominator <= 256, hence normalizedNumerator is
+    // < 257 * (normalizedDenominator + 1) <= 263168. Rounding the reciprocal
+    // upward contributes < 263168 / 2^32, which is less than 1/1023: it cannot
+    // bridge even the smallest nonzero fractional gap to the next integer.
+    // Thus the high multiply is already the exact normalized quotient; no
+    // intermediate remainder multiply/comparison/correction is necessary.
+    std::uint32_t quotient = static_cast<std::uint32_t>(
+        (static_cast<std::uint64_t>(normalizedNumerator) *
+         NDS4MiSTerPerspectiveCeilMagic[
+             normalizedDenominator - NDS4MiSTerPerspectiveMagicBase]) >> 32);
 
     // FinalW is normalized to 16 bits and a native X span is at most 256
     // pixels, so quotient*denominator fits in u32 for the supported

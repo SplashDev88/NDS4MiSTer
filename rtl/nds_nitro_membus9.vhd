@@ -4,7 +4,7 @@
 -- Product-local derivative of authenticated Nitro_DarkSide d2dabe/rtl/nds_membus9.vhd.
 -- Donor SHA-256: a219e85218e022fe6096e38bfc4b17cfc3aa88069f215e97a8fbbf9913a4dd62.
 -- Intentional delta: palette/OAM writes wait for the existing IO CDC completion;
--- reads retain the donor FINISH behavior. Entity name intentionally remains nds_membus9.
+-- palette reads wait for the synchronous readback shadow. Entity name remains nds_membus9.
 -- ARM9 memory bus decoder. Same request/done idiom as nds_membus7 (accepts a
 -- new CPU request on every completing cycle), plus the ARM946E-S TCM overlay:
 --
@@ -117,14 +117,15 @@ entity nds_membus9 is
       vram_dout      : in  std_logic_vector(31 downto 0);
       vram_done      : in  std_logic;
 
-      -- palette / OAM write ports (word index 0..255 = engine A, 256..511 =
+      -- palette / OAM ports (word index 0..255 = engine A, 256..511 =
       -- engine B half of each 2 KB mirror; the integration splits them onto
-      -- the two nds_gpu2d instances. CPU readback is a known gap - reads
-      -- return 0 until the BRAMs grow a read port)
+      -- the two nds_gpu2d instances. Palette readback has a synchronous shadow;
+      -- OAM readback is still an independent, unimplemented path.)
       pal_we         : out std_logic := '0';
       pal_addr       : out integer range 0 to 511 := 0;
       pal_din        : out std_logic_vector(31 downto 0) := (others => '0');
       pal_be         : out std_logic_vector(3 downto 0) := (others => '0');
+      pal_readdata   : in  std_logic_vector(31 downto 0) := (others => '0');
       oam_we         : out std_logic := '0';
       oam_addr       : out integer range 0 to 511 := 0;
       oam_din        : out std_logic_vector(31 downto 0) := (others => '0');
@@ -171,7 +172,7 @@ architecture arch of nds_membus9 is
    -- falls back to x"00000000" for an unclaimed T_IO. Every ARM9 IO read returned
    -- zero. Measured with sim/tests/iotest: IPCSYNC, IE, DISPCNT and POWCNT1 all
    -- read back 0 where melonDS returns the written value.
-   type t_state  is (IDLE, FINISH, W_WRAMSH, W_VRAM, W_MAIN, W_IO_ALIGN, W_IO_RESP);
+   type t_state  is (IDLE, FINISH, W_WRAMSH, W_VRAM, W_MAIN, W_IO_ALIGN, W_IO_RESP, W_PAL_READ);
 
    signal state    : t_state  := IDLE;
    signal target   : t_target := T_OPEN;
@@ -592,6 +593,11 @@ begin
             -- CPU's next request and it waits forever for a done that never comes.
             -- That is exactly how the first version of this fix hung the ARM9 on
             -- its second IO access.
+            elsif state = W_PAL_READ then
+               -- pal_addr was registered on acceptance. The shadow samples it
+               -- on this edge; FINISH then exposes its registered word. No IO
+               -- request is emitted and a new access may be accepted in FINISH.
+               state <= FINISH;
             elsif can_accept then
                state <= IDLE;
                if (cpu_ena = '1') then
@@ -628,14 +634,14 @@ begin
 
                      when T_PAL =>
                         -- std palettes: 2 KB mirror, engine A low / B high
+                        pal_addr <= to_integer(unsigned(cpu_adr(10 downto 2)));
                         if (cpu_rnw = '0') then
                            pal_we   <= '1';
-                           pal_addr <= to_integer(unsigned(cpu_adr(10 downto 2)));
                            pal_be   <= be;
                            pal_din  <= wdata;
                            state    <= W_IO_RESP;
                         else
-                           state    <= FINISH;
+                           state    <= W_PAL_READ;
                         end if;
 
                      when T_OAM =>
@@ -726,7 +732,8 @@ begin
                 brom_data     when target = T_BROM   else
                 wsh_dout      when target = T_WRAMSH else
                 vram_dout     when target = T_VRAM   else
-                x"00000000"   when (target = T_PAL or target = T_OAM) else -- readback gap: BRAMs are write-only from the CPU
+                pal_readdata  when target = T_PAL    else
+                x"00000000"   when target = T_OAM    else -- independent OAM readback gap
                 cresp_rdata   when target = T_MAIN   else
                 -- unclaimed NDS9 IO reads 0 (not GBA open bus): calico probes SCFG
                 -- 0x04004000 for NTR/TWL detection. io_wired_out is a wired-OR tree

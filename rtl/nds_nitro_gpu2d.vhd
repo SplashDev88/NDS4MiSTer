@@ -16,8 +16,9 @@
 --  * extended palettes are shadow BRAMs (32 KB BG / 8 KB OBJ) streamed
 --    from the line-server ext-pal channels during vblank - the CPU can
 --    only write ext-pal banks while they are remapped to LCDC, so a
---    vblank shadow tracks hardware behavior for well-behaved games
---    (mid-frame ext-pal remaps are not modeled yet)
+--    mapping change requests a repeat pass, so a VBlank LCDC upload cannot
+--    leave unmapped zero responses cached for the following visible frame.
+--    Per-pixel mid-frame palette coherency is not modeled yet.
 --
 -- Line pacing comes from nds_gpu_timing (drawline at the real dot
 -- cadence); within a line the render is functional: drawline starts the
@@ -69,6 +70,9 @@ entity nds_gpu2d is
       hblank_trigger    : in  std_logic;   -- latches merge config
       vblank_trigger    : in  std_logic;   -- affine ref reload + ext-pal shadow refill
       refpoint_update   : in  std_logic;   -- per visible line: ref += dm
+      -- Main-engine palette-capable VRAMCNT_E/F/G bytes. A mapping change
+      -- invalidates an in-progress shadow pass without abandoning its request.
+      extpal_config     : in  std_logic_vector(23 downto 0) := (others => '0');
 
       line_busy         : out std_logic;   -- high from drawline until the line is merged
       epfill_busy       : out std_logic;   -- ext-pal shadow refill in progress
@@ -411,6 +415,8 @@ architecture arch of nds_gpu2d is
    type t_epfill is (EPIDLE, EPBG_REQ, EPBG_WAIT, EPOBJ_REQ, EPOBJ_WAIT);
    signal epfill       : t_epfill := EPIDLE;
    signal epfill_addr  : integer range 0 to 8191 := 0;
+   signal epfill_pending : std_logic := '0';
+   signal extpal_config_prev : std_logic_vector(23 downto 0) := (others => '0');
 
    -- ================= line buffers =================
    -- BG line buffers: one M10K per BG. Port A takes the drawer's pixel
@@ -1565,12 +1571,19 @@ begin
          srv_objep_req <= '0';
          if (reset = '1') then
             epfill <= EPIDLE;
+            epfill_pending <= '0';
+            extpal_config_prev <= extpal_config;
          else
+            extpal_config_prev <= extpal_config;
+            if extpal_config /= extpal_config_prev then
+               epfill_pending <= '1';
+            end if;
             case epfill is
                when EPIDLE =>
-                  if (vblank_trigger = '1') then
+                  if (vblank_trigger = '1' or epfill_pending = '1') then
                      epfill_addr <= 0;
                      epfill      <= EPBG_REQ;
+                     epfill_pending <= '0';
                   end if;
                when EPBG_REQ =>
                   srv_bgep_addr <= epfill_addr;
@@ -1596,7 +1609,17 @@ begin
                   if (srv_objep_done = '1') then
                      objep_shadow(epfill_addr mod 2048) <= srv_objep_data;
                      if (epfill_addr = 2047) then
-                        epfill <= EPIDLE;
+                        -- Drain accepted requests before restarting. Kirby
+                        -- switches E to LCDC at line199 and back at202/203;
+                        -- unmapped replies from that interval must not be the
+                        -- final cached colors for the next visible frame.
+                        if epfill_pending = '1' then
+                           epfill_addr <= 0;
+                           epfill <= EPBG_REQ;
+                           epfill_pending <= '0';
+                        else
+                           epfill <= EPIDLE;
+                        end if;
                      else
                         epfill_addr <= epfill_addr + 1;
                         epfill      <= EPOBJ_REQ;
