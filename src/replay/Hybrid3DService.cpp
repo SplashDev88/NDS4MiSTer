@@ -5885,6 +5885,8 @@ void run_self_test()
             saved_environment("NDS4MISTER_ADAPTIVE_RASTER_SPLIT");
         const auto saved_bands =
             saved_environment("NDS4MISTER_RASTER_BAND_QUEUE");
+        const auto saved_x_partition = saved_environment(
+            "NDS4MISTER_RASTER_X_PARTITION");
         const auto saved_band_delay = saved_environment(
             "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER");
         const auto saved_sparse_clear = saved_environment(
@@ -5900,7 +5902,12 @@ void run_self_test()
         };
         const auto make_renderer_nds = [](bool band_queue,
                                           bool sparse_clear = true,
-                                          bool texture_cache = true) {
+                                          bool texture_cache = true,
+                                          bool x_partition = false) {
+            if (x_partition)
+                setenv("NDS4MISTER_RASTER_X_PARTITION", "1", 1);
+            else
+                unsetenv("NDS4MISTER_RASTER_X_PARTITION");
             if (sparse_clear)
                 unsetenv("NDS4MISTER_DISABLE_SPARSE_3D_CLEAR");
             else
@@ -6588,6 +6595,75 @@ void run_self_test()
                   << rejected_shadow_profile
                          .ThreeDBandQueueShadowFallbackFrames << '\n';
 
+        // X clipping skips the canonical prefix of an antialiased edge.
+        // Coverage advances only after depth/alpha acceptance, so retaining
+        // its initial value at the split changes visible pixels. Exercise a
+        // wide, shallow edge through real GX commands and a full viewport.
+        // A shadow mask selects X ownership when AA is off; AA must retain
+        // the established Y split. Compare both physical pixel layers too.
+        for (const bool antialias : {false, true})
+        for (const bool edge_marking : {false, true})
+        {
+            auto x_oracle = make_renderer_nds(false, false);
+            auto x_candidate = make_renderer_nds(true, true, true, true);
+            for (auto* nds : {x_oracle.get(), x_candidate.get()})
+            {
+                push(*nds, 0x60, 0xbfff0000u); // full 256x192 viewport
+                push(*nds, 0x10, 0); // projection matrix
+                push(*nds, 0x15, 0); // identity
+                push(*nds, 0x10, 1); // position matrix
+                push(*nds, 0x15, 0); // identity
+                // A closer quad rejects some of the later triangle's edge
+                // prefix, preventing a width-only coverage adjustment.
+                push(*nds, 0x20, 0x000003e0u);
+                push(*nds, 0x29, 0x011f00c0u);
+                push(*nds, 0x40, 1); // quads
+                for (const auto& xy : {
+                         std::array<int, 2>{-60, 30}, {-20, 30},
+                         {-20, 10}, {-60, 10}})
+                    push(*nds, 0x24, vertex10(xy[0], xy[1], -20));
+                push(*nds, 0x41, 0);
+                push(*nds, 0x20, 0x0000001fu);
+                push(*nds, 0x29, 0x021f00c0u);
+                push(*nds, 0x40, 0); // shallow triangle crossing X split
+                push(*nds, 0x24, vertex10(-60, 20, 0));
+                push(*nds, 0x24, vertex10(60, 18, 0));
+                push(*nds, 0x24, vertex10(-60, 16, 0));
+                push(*nds, 0x41, 0);
+                push(*nds, 0x29, 0x001f00f0u); // ID-zero shadow mask
+                push(*nds, 0x40, 1);
+                for (const auto& xy : {
+                         std::array<int, 2>{-60, 60}, {60, 60},
+                         {60, -60}, {-60, -60}})
+                    push(*nds, 0x24, vertex10(xy[0], xy[1], 30));
+                push(*nds, 0x41, 0);
+                push(*nds, 0x50, 0);
+                nds->GPU.GPU3D.VBlank();
+                auto& gpu3d = nds->GPU.GPU3D;
+                gpu3d.RenderDispCnt = (1u << 3) |
+                    (antialias ? (1u << 4) : 0u) |
+                    (edge_marking ? (1u << 5) : 0u);
+                gpu3d.RenderClearAttr1 = 0x071f7c00u;
+                gpu3d.RenderClearAttr2 = 0x00007fffu;
+                if (gpu3d.RenderNumPolygons != 3 ||
+                    !gpu3d.RenderPolygonRAM[2]->IsShadowMask ||
+                    gpu3d.RenderPolygonRAM[1]->YBottom -
+                        gpu3d.RenderPolygonRAM[1]->YTop < 4)
+                    self_test_fail("X-AA fixture geometry is degenerate");
+            }
+            render_and_compare(*x_oracle, *x_candidate,
+                "X-AA clipping color/depth/attribute oracle diverged");
+            const auto x_profile = x_candidate->GPU.GetRenderer()
+                .GetExternalRendererStageProfile();
+            if (x_profile.ThreeDBandQueueFrames != 0 ||
+                x_profile.ThreeDXPartitionFrames != (antialias ? 0u : 1u))
+                self_test_fail("X-AA clipping admission gate was not exercised");
+            std::cout << "H3D_RASTER_X_AA_ORACLE_PASS aa=" << antialias
+                      << " edge_marking=" << edge_marking
+                      << " x_frames=" << x_profile.ThreeDXPartitionFrames
+                      << '\n';
+        }
+
         rejected_shadow_queued.reset();
         rejected_shadow_oracle.reset();
 
@@ -6601,6 +6677,8 @@ void run_self_test()
         restore_environment(
             "NDS4MISTER_ADAPTIVE_RASTER_SPLIT", saved_adaptive);
         restore_environment("NDS4MISTER_RASTER_BAND_QUEUE", saved_bands);
+        restore_environment(
+            "NDS4MISTER_RASTER_X_PARTITION", saved_x_partition);
         restore_environment(
             "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER", saved_band_delay);
         restore_environment(

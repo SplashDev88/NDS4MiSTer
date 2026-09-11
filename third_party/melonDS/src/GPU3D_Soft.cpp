@@ -3080,8 +3080,14 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     const bool bandQueueSafe =
         bandQueueRequested && RasterBandQueueSafe(polygonsPrepared);
     const bool bandQueueFrame = bandQueueSafe;
+    // AA edge coverage advances only for depth/alpha-accepted pixels.
+    // An X-clipped worker cannot reconstruct the skipped edge prefix from
+    // its width, and reading its peer's pixels would violate ownership.
+    // Retain the established Y split for these frames; non-AA shadows can
+    // still use disjoint X intervals, and safe band-queue frames are intact.
     const bool xPartitionFrame =
-        frameHasShadow && !bandQueueFrame;
+        frameHasShadow && !bandQueueFrame &&
+        !(GPU3D.RenderDispCnt & (1u << 4));
     const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();
     const s32 SplitLine = bandQueueFrame ? RasterBandLines :
         (xPartitionFrame ? 0 :

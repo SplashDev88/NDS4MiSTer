@@ -267,6 +267,11 @@ int main(int argc, char** argv) {
             ? static_cast<u32>(std::strtoul(
                 std::getenv("NDS_GPU_CACHE_DEBUG_LINE"),nullptr,10)) : ~0u;
         std::ofstream output_dump;
+        std::ofstream geometry_dump;
+        if (const char* path = std::getenv("NDS_GPU_3D_OUTPUT_DUMP")) {
+            geometry_dump.open(path, std::ios::binary);
+            if (!geometry_dump) throw std::runtime_error("cannot open 3D output dump");
+        }
         if(output_dump_path) {
             output_dump.open(output_dump_path,std::ios::binary);
             if(!output_dump) throw std::runtime_error("cannot open output dump");
@@ -765,6 +770,12 @@ int main(int argc, char** argv) {
                 nds->GPU.GPU3D.VBlank();
                 nds->GPU.GetRenderer().Start3DRendering(); nds->GPU.GetRenderer().Finish3DRendering();
                 dump_3d_frame(nds->GPU.GetRenderer(), p.Frame);
+                if (geometry_dump.is_open()) {
+                    for (u32 y = 0; y < 192; ++y)
+                        geometry_dump.write(reinterpret_cast<const char*>(
+                            nds->GPU.GetRenderer().Get3DScanline(y)), 256 * sizeof(u32));
+                    if (!geometry_dump) throw std::runtime_error("3D output dump failed");
+                }
                 if (analyze_geometry_delta) {
                     constexpr u32 BlockPixels = 16;
                     const auto bank = rendered & 1u;
