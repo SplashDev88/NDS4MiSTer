@@ -47,7 +47,11 @@ constexpr bool validate_record(
     const auto access = static_cast<std::uint8_t>(
         (record.metadata >> 8) & 0x03u);
     const auto byte_enable = h3d::frame_packet::record_byte_enable(record);
-    if ((record.metadata & 0xfff0fc00u) != 0 ||
+    if ((record.metadata & 0xc000fc00u) != 0 ||
+        (!h3d::frame_packet::record_has_scanline(record) &&
+         (record.metadata & h3d::frame_packet::RecordScanlineMask) != 0) ||
+        (h3d::frame_packet::record_has_scanline(record) &&
+         h3d::frame_packet::record_scanline(record) >= 263) ||
         (record.data >> 32) != 0)
         return false;
 

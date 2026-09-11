@@ -13,12 +13,11 @@
 //
 // Read side: the scanout (CLK_VIDEO) requests both screen lines for row V+1
 // during row V (toggle handshake into clk_sys). The pager bursts each line
-// from DDR3 through ddram ch6 into a four-banked dual-clock line buffer. The
-// scanout reads by {row parity, screen, pair}; parity keeps the next row away
-// from the displayed row. A drain (<10us even behind card traffic) beats the
-// engine's next line completion (>=56us), so one pending job per engine
-// cannot overflow; a prefetch (<10us worst case) always beats its 31.8us
-// scanout-line deadline.
+// from DDR3 through ddram ch6 into a dual-clock line buffer. Each
+// {row-parity,screen} has two slots: DDR fills the inactive slot and promotes
+// it only after all 128 pairs arrive. Scanout therefore sees either the old
+// complete line or the new complete line, never a partially fetched mixture
+// when DDR arbitration misses the nominal 31.8us deadline.
 //
 // DDR3 layout: 32bpp {14'b0, BGR666} pixels, two per 64-bit beat;
 // line = 1 KB, screen s in frame bank f at
@@ -32,6 +31,7 @@
 
 module nds_nitro_fb_ddr3 #(
 	parameter [27:1] FB_HW_BASE = 27'h7F00000,  // byte address 0x0FE00000 >> 1
+	parameter [27:1] ENGINE_B_HW_BASE = 27'h7EC0000,
 	parameter  [7:0] FB_BURST   = 8'd128,       // beats per command (divisor of 128)
 	parameter        RUNTIME_TELEMETRY = 1'b0
 )(
@@ -39,6 +39,11 @@ module nds_nitro_fb_ddr3 #(
 	input             CLK_VIDEO,
 	input             reset_sys,
 	input             reset_video,
+    // Read ownership belongs to the legacy DDR fabric, which survives guest
+    // and HPS session resets. Only its power-up reset may cancel a ch6 burst.
+    input             reset_read,
+    input             external_enable,
+    output            external_quiescent,
 
 	// engine pixel streams (clk_sys)
 	input       [7:0] pix_x,
@@ -82,6 +87,7 @@ module nds_nitro_fb_ddr3 #(
 	input       [7:0] pf_line,
 	input             pf_bank,
 	input       [1:0] pf_frame_bank,
+	input             pf_external,
 
 	// Last completely drained, order-valid top+bottom frame pair (clk_sys).
 	// Scanout synchronizes and adopts this bank only at its own frame boundary.
@@ -666,7 +672,7 @@ end
 // third scratch bank, but complete intermediate frames are deliberately
 // dropped instead of replacing a bank that scanout may already have selected.
 wire scanout_prefetch_event = pf_sync[2] != pf_sync[1];
-wire scanout_adopts_publication = publication_pending &&
+wire scanout_adopts_publication = publication_pending && !pf_external &&
 	scanout_prefetch_event && (pf_frame_bank == published_frame_bank);
 wire publication_slot_available = !publication_pending ||
 	scanout_adopts_publication;
@@ -896,23 +902,27 @@ always @(posedge clk_sys or posedge reset_sys) begin
 end
 
 // ---- read side: scanout line prefetch -> ch6 read bursts ----
-reg [35:0] linebuf[0:511];            // 2 row parities x 2 screens x 128 pairs
+reg [35:0] linebuf[0:1023]; // 2 parities x 2 screens x 2 slots x 128 pairs
 // The video domain cannot be backpressured. Retain the two screen requests
 // for the newest output row, but never replay an older row after the next
 // row's request arrives. The line RAM is indexed only by row parity: a late
 // old-row read would otherwise overwrite the parity bank now being displayed
 // and produce visible horizontal jumps. Two entries are sufficient because
 // scanout emits exactly A then B for each target row.
-reg [11:0] pf_q0, pf_q1;
+reg [12:0] pf_q0, pf_q1;
 reg  [2:0] pf_count = 0;
 reg        rbusy = 0;
 reg        rscr;
 reg  [7:0] rline;
 reg        rbank;
 reg  [1:0] rframe_bank;
+reg        rexternal;
+reg        rslot;
+reg        r_obsolete;
 reg  [6:0] rwidx;
 reg  [7:0] rsent;
 reg        fb6_req_r = 0;
+reg  [3:0] active_line_slot = 0;
 
 // E[27:0] is sampled only by diagnostic builds through the existing FPGA
 // heartbeat. The upper fields show live bank ownership; the low flags latch
@@ -927,15 +937,36 @@ assign bank_diagnostic = {
 	(scanout_late_count != 0), 2'b00
 };
 
-wire scanout_read_late = scanout_prefetch_event && rbusy &&
-	((pf_frame_bank != rframe_bank) || (pf_line != rline));
+// Side-by-side scanout deliberately requests two different sources for one
+// target row: local Engine A followed by ARM-published Engine B. Different
+// source/frame-bank fields therefore do not make the first read late when the
+// request is for the opposite screen on the same row. A newer row always
+// expires the in-flight fetch; so does replacement of the same screen from a
+// different source bank.
+wire scanout_request_replaces_inflight =
+	(pf_line != rline) ||
+	((pf_scr == rscr) &&
+	 ((pf_external != rexternal) || (pf_frame_bank != rframe_bank)));
+wire scanout_prefetch_allowed = scanout_prefetch_event &&
+    (!pf_external || external_enable);
+wire scanout_read_late = scanout_prefetch_allowed && rbusy &&
+	scanout_request_replaces_inflight;
+wire scanout_dequeue = (pf_count != 0) && !rbusy;
+
+// A pulse already presented to ch6 remains owned even before physical DDR
+// acceptance. rbusy spans that entire interval through the final ready.
+assign external_quiescent = !(rbusy && rexternal) &&
+    !(pf_count != 0 && pf_q0[12]) &&
+    !(pf_count > 1 && pf_q1[12]);
 
 assign fb6_req  = fb6_req_r;
-assign fb6_addr = FB_HW_BASE + {rframe_bank, rscr, rline, 9'd0} +
+assign fb6_addr = (rexternal ?
+	ENGINE_B_HW_BASE + {rframe_bank[0], rline, 9'd0} :
+	FB_HW_BASE + {rframe_bank, rscr, rline, 9'd0}) +
 	{17'd0, rsent, 2'd0};
 
-always @(posedge clk_sys or posedge reset_sys) begin
-	if (reset_sys) begin
+always @(posedge clk_sys or posedge reset_read) begin
+	if (reset_read) begin
 		pf_sync <= 0;
 		scanout_frame_bank <= 0;
 		scanout_bank_valid <= 0;
@@ -952,10 +983,14 @@ always @(posedge clk_sys or posedge reset_sys) begin
 		rline <= 0;
 		rbank <= 0;
 		rframe_bank <= 0;
+		rexternal <= 0;
+		rslot <= 0;
+		r_obsolete <= 0;
 		rwidx <= 0;
 		rsent <= 0;
 		fb6_req_r <= 0;
 		scanout_late_count <= 0;
+		active_line_slot <= 0;
 	end else begin
 	pf_sync <= {pf_sync[1:0], pf_tgl};
 	fb6_req_r <= 0;
@@ -965,7 +1000,7 @@ always @(posedge clk_sys or posedge reset_sys) begin
 	if (fb5_req_r && (tjob_kind == TJ_NORMAL) && publication_pending &&
 	    (dframe_bank == published_frame_bank))
 		published_write_collision <= 1;
-	if (scanout_prefetch_event && scanout_bank_valid &&
+	if (scanout_prefetch_event && !pf_external && scanout_bank_valid &&
 	    (pf_frame_bank != scanout_frame_bank) &&
 	    !(pf_scr == 1'b0 && pf_line == 8'd0))
 		midframe_bank_switch <= 1;
@@ -978,19 +1013,32 @@ always @(posedge clk_sys or posedge reset_sys) begin
 		source_frame_discard <= 1;
 	if (scanout_read_late && scanout_late_count != 8'hff)
 		scanout_late_count <= scanout_late_count + 1'd1;
-	case ({scanout_prefetch_event, (pf_count != 0) && !rbusy})
+    // Session diagnostics retain their original reset scope. They do not
+    // own any DDR work: clear them without disturbing the live read queue,
+    // accepted burst, bank reservations, or completed line slots below.
+    if (reset_sys) begin
+        scanout_write_collision <= 0;
+        published_write_collision <= 0;
+        midframe_bank_switch <= 0;
+        render_bank_split <= 0;
+        source_frame_discard <= 0;
+        scanout_late_count <= 0;
+    end
+	if (scanout_read_late || (rbusy && rexternal && !external_enable))
+		r_obsolete <= 1;
+	case ({scanout_prefetch_allowed, scanout_dequeue})
 		2'b10: begin
 			if (pf_count == 0) begin
-				pf_q0 <= {pf_frame_bank,pf_bank,pf_line,pf_scr};
+				pf_q0 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
 				pf_count <= 1;
-			end else if ({pf_q0[11:10],pf_q0[8:1]} ==
-			             {pf_frame_bank,pf_line}) begin
+			end else if (pf_q0[8:1] == pf_line &&
+			             pf_q0[0] != pf_scr) begin
 				// The opposite screen for the same target row remains useful.
-				pf_q1 <= {pf_frame_bank,pf_bank,pf_line,pf_scr};
+				pf_q1 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
 				pf_count <= 2;
 			end else begin
 				// A newer target row makes every queued older row obsolete.
-				pf_q0 <= {pf_frame_bank,pf_bank,pf_line,pf_scr};
+				pf_q0 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
 				pf_count <= 1;
 			end
 		end
@@ -1000,38 +1048,50 @@ always @(posedge clk_sys or posedge reset_sys) begin
 		end
 		2'b11: begin
 			if (pf_count == 1) begin
-				pf_q0 <= {pf_frame_bank,pf_bank,pf_line,pf_scr};
+				pf_q0 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
 				pf_count <= 1;
-			end else if ({pf_q1[11:10],pf_q1[8:1]} ==
-			             {pf_frame_bank,pf_line}) begin
+			end else if (pf_q1[8:1] == pf_line &&
+			             pf_q1[0] != pf_scr) begin
 				pf_q0 <= pf_q1;
-				pf_q1 <= {pf_frame_bank,pf_bank,pf_line,pf_scr};
+				pf_q1 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
 				pf_count <= 2;
 			end else begin
-				pf_q0 <= {pf_frame_bank,pf_bank,pf_line,pf_scr};
+				pf_q0 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
 				pf_count <= 1;
 			end
 		end
 		default: begin end
 	endcase
-	if (scanout_prefetch_event) begin
+	if (scanout_prefetch_event && !pf_external) begin
 		scanout_frame_bank <= pf_frame_bank;
 		scanout_bank_valid <= 1;
 	end
-	if ((pf_count != 0) && !rbusy) begin
-		{rframe_bank,rbank,rline,rscr} <= pf_q0;
+	if (scanout_dequeue && (!pf_q0[12] || external_enable)) begin
+		{rexternal,rframe_bank,rbank,rline,rscr} <= pf_q0;
+		rslot <= ~active_line_slot[{pf_q0[9], pf_q0[0]}];
+		r_obsolete <= 0;
 		rwidx     <= 0;
 		rsent     <= 0;
 		fb6_req_r <= 1;
 		rbusy     <= 1;
 	end
 	if (rbusy && fb6_valid) begin
-		linebuf[{rbank, rscr, rwidx}] <=
+		linebuf[{rbank, rscr, rslot, rwidx}] <=
 			{fb6_dout[49:32], fb6_dout[17:0]};
 		rwidx <= rwidx + 1'd1;
 	end
 	if (rbusy && fb6_ready) begin
-		if (rsent + FB_BURST >= 8'd128) rbusy <= 0;
+		if (rsent + FB_BURST >= 8'd128 ||
+            (rexternal && !external_enable)) begin
+			rbusy <= 0;
+			// A newer target row makes this completed fetch obsolete. Keep
+			// the previously promoted complete line rather than expose stale
+			// data at the new row's parity slot.
+			if (!r_obsolete && !scanout_read_late &&
+                (!rexternal || external_enable) &&
+                rsent + FB_BURST >= 8'd128)
+				active_line_slot[{rbank, rscr}] <= rslot;
+		end
 		else begin
 			rsent     <= rsent + FB_BURST;
 			fb6_req_r <= 1;
@@ -1041,9 +1101,29 @@ always @(posedge clk_sys or posedge reset_sys) begin
 end
 
 // ---- scanout fetch: runs every clock, pair stable 4 clocks per dot ----
+(* async_reg = "true" *) reg [3:0] active_line_slot_meta = 0;
+(* async_reg = "true" *) reg [3:0] active_line_slot_sync = 0;
+reg [3:0] video_line_slot = 0;
+wire [1:0] lb_line_index = lb_raddr[8:7];
+wire lb_slot = (lb_raddr[6:0] == 7'd0) ?
+	active_line_slot_sync[lb_line_index] : video_line_slot[lb_line_index];
 always @(posedge CLK_VIDEO or posedge reset_video) begin
-	if (reset_video) lb_q <= 0;
-	else lb_q <= linebuf[lb_raddr];
+	if (reset_video) begin
+		lb_q <= 0;
+		active_line_slot_meta <= 0;
+		active_line_slot_sync <= 0;
+		video_line_slot <= 0;
+	end else begin
+		active_line_slot_meta <= active_line_slot;
+		active_line_slot_sync <= active_line_slot_meta;
+		// Hold the chosen complete slot for the full visible row. A DDR
+		// completion in the middle of scanout takes effect at the next x=0
+		// instead of creating a horizontal seam.
+		if (lb_raddr[6:0] == 7'd0)
+			video_line_slot[lb_line_index] <=
+				active_line_slot_sync[lb_line_index];
+		lb_q <= linebuf[{lb_raddr[8:7], lb_slot, lb_raddr[6:0]}];
+	end
 end
 
 endmodule

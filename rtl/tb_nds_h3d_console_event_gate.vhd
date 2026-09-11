@@ -22,7 +22,8 @@ architecture sim of tb_nds_h3d_console_event_gate is
    signal gpu_event_address : std_logic_vector(27 downto 0);
    signal gpu_event_access : std_logic_vector(1 downto 0);
    signal gpu_event_be : std_logic_vector(3 downto 0);
-   signal gpu_event_data, gpu_event_frame : std_logic_vector(31 downto 0);
+   signal gpu_event_data : std_logic_vector(31 downto 0);
+   signal gpu_event_scanline : std_logic_vector(8 downto 0);
    signal gpu_event_timestamp : std_logic_vector(63 downto 0);
 
    signal v9_source_valid : std_logic := '0';
@@ -32,7 +33,8 @@ architecture sim of tb_nds_h3d_console_event_gate is
    signal v9_source_data : std_logic_vector(31 downto 0) := (others => '0');
    signal v9_source_ready, v9_issue : std_logic;
    signal v9_event_valid, v9_event_ready : std_logic := '0';
-   signal v9_event_address, v9_event_data, v9_event_frame : std_logic_vector(31 downto 0);
+   signal v9_event_address, v9_event_data : std_logic_vector(31 downto 0);
+   signal v9_event_scanline : std_logic_vector(8 downto 0);
    signal v9_event_access : std_logic_vector(1 downto 0);
    signal v9_event_be : std_logic_vector(3 downto 0);
    signal v9_event_timestamp : std_logic_vector(63 downto 0);
@@ -44,7 +46,8 @@ architecture sim of tb_nds_h3d_console_event_gate is
    signal v7_source_data : std_logic_vector(31 downto 0) := (others => '0');
    signal v7_source_ready, v7_issue : std_logic;
    signal v7_event_valid, v7_event_ready : std_logic := '0';
-   signal v7_event_address, v7_event_data, v7_event_frame : std_logic_vector(31 downto 0);
+   signal v7_event_address, v7_event_data : std_logic_vector(31 downto 0);
+   signal v7_event_scanline : std_logic_vector(8 downto 0);
    signal v7_event_access : std_logic_vector(1 downto 0);
    signal v7_event_be : std_logic_vector(3 downto 0);
    signal v7_event_timestamp : std_logic_vector(63 downto 0);
@@ -83,7 +86,7 @@ begin
       gpu_event_access => gpu_event_access,
       gpu_event_be => gpu_event_be,
       gpu_event_data => gpu_event_data,
-      gpu_event_frame => gpu_event_frame,
+      gpu_event_scanline => gpu_event_scanline,
       gpu_event_timestamp => gpu_event_timestamp,
       vram9_source_valid => v9_source_valid,
       vram9_source_address => v9_source_address,
@@ -98,7 +101,7 @@ begin
       vram9_event_access => v9_event_access,
       vram9_event_be => v9_event_be,
       vram9_event_data => v9_event_data,
-      vram9_event_frame => v9_event_frame,
+      vram9_event_scanline => v9_event_scanline,
       vram9_event_timestamp => v9_event_timestamp,
       vram7_source_valid => v7_source_valid,
       vram7_source_address => v7_source_address,
@@ -113,7 +116,7 @@ begin
       vram7_event_access => v7_event_access,
       vram7_event_be => v7_event_be,
       vram7_event_data => v7_event_data,
-      vram7_event_frame => v7_event_frame,
+      vram7_event_scanline => v7_event_scanline,
       vram7_event_timestamp => v7_event_timestamp,
       hblank_pulse => hblank_pulse,
       hblank_line => hblank_line,
@@ -136,6 +139,9 @@ begin
       variable third_time : std_logic_vector(63 downto 0);
       variable fourth_time : std_logic_vector(63 downto 0);
       variable refill_time : std_logic_vector(63 downto 0);
+      constant GPU_QUEUE_DEPTH : integer := 32;
+      variable dma_accepts, dma_outputs : integer;
+      variable dma_handshake_now : boolean;
    begin
       reset <= '1';
       wait until rising_edge(clk);
@@ -192,7 +198,7 @@ begin
                 gpu_event_address = x"0000400" and
                 gpu_event_access = "10" and gpu_event_be = "1111" and
                 gpu_event_data = x"11223344" and
-                gpu_event_timestamp = held_time and gpu_event_frame = x"00000000"
+                gpu_event_timestamp = held_time and gpu_event_scanline = "000000000"
             report "CPU GPU event was lost or mutated while stalled" severity failure;
       end loop;
       gpu_event_ready <= '1';
@@ -282,7 +288,7 @@ begin
       wait for 1 ns;
       assert gpu_event_valid = '1' and
              gpu_event_address = std_logic_vector(to_unsigned(16#600#, 28)) and
-             gpu_event_data = x"00000000" and gpu_source_ready = '1' and
+             gpu_event_data = x"00000000" and gpu_source_ready = '0' and
              gpu_cpu_complete = '1'
          report "GPU skid did not complete while the full queue popped"
          severity failure;
@@ -303,6 +309,95 @@ begin
       gpu_event_ready <= '0';
       assert gpu_event_valid = '0' and gpu_cpu_complete = '0'
          report "posted GPU queue did not drain exactly once" severity failure;
+
+      reset <= '1';
+      wait until rising_edge(clk);
+      wait until falling_edge(clk);
+      reset <= '0';
+
+      -- A DMA producer follows ordinary ready/valid semantics: it holds both
+      -- valid and payload until the event gate raises ready.  Saturate every
+      -- RAM slot, hold one more DMA request through prolonged backpressure,
+      -- then drain continuously.  The held word must be acknowledged once and
+      -- appear once.  In particular, retaining an unacknowledged DMA word in
+      -- the CPU pulse skid would enqueue it, expose ready later, and enqueue
+      -- the same still-held request a second time.
+      reset <= '1';
+      wait until rising_edge(clk);
+      wait until falling_edge(clk);
+      reset <= '0';
+      gpu_event_ready <= '0';
+      gpu_source_is_cpu <= '1';
+      for i in 0 to GPU_QUEUE_DEPTH - 1 loop
+         gpu_source_address <= std_logic_vector(
+            to_unsigned(16#700# + i * 4, 28));
+         gpu_source_data <= std_logic_vector(to_unsigned(i, 32));
+         gpu_source_valid <= '1';
+         wait for 1 ns;
+         assert gpu_source_ready = '1' and gpu_cpu_complete = '1'
+            report "DMA saturation fixture could not fill the GPU queue"
+            severity failure;
+         wait until rising_edge(clk);
+         wait until falling_edge(clk);
+         gpu_source_valid <= '0';
+      end loop;
+
+      gpu_source_is_cpu <= '0';
+      gpu_source_address <= x"0000B00";
+      gpu_source_data <= x"D00DFEED";
+      gpu_source_valid <= '1';
+      wait for 1 ns;
+      assert gpu_source_ready = '0' and gpu_cpu_complete = '0'
+         report "full GPU queue incorrectly acknowledged held DMA request"
+         severity failure;
+      for i in 0 to 5 loop
+         wait until rising_edge(clk);
+         wait until falling_edge(clk);
+         wait for 1 ns;
+         assert gpu_source_ready = '0' and gpu_source_valid = '1'
+            report "held DMA request was acknowledged while the sink was blocked"
+            severity failure;
+      end loop;
+
+      gpu_event_ready <= '1';
+      dma_accepts := 0;
+      dma_outputs := 0;
+      for cycle in 0 to GPU_QUEUE_DEPTH * 4 + 16 loop
+         wait for 1 ns;
+         if (gpu_event_valid = '1') then
+            if (dma_outputs < GPU_QUEUE_DEPTH) then
+               assert gpu_event_address = std_logic_vector(
+                         to_unsigned(16#700# + dma_outputs * 4, 28)) and
+                      gpu_event_data = std_logic_vector(
+                         to_unsigned(dma_outputs, 32))
+                  report "held-DMA saturation test reordered the queue prefix"
+                  severity failure;
+            else
+               assert gpu_event_address = x"0000B00" and
+                      gpu_event_data = x"D00DFEED"
+                  report "held-DMA saturation test corrupted its tail word"
+                  severity failure;
+            end if;
+            dma_outputs := dma_outputs + 1;
+         end if;
+         dma_handshake_now := gpu_source_valid = '1' and
+                              gpu_source_ready = '1';
+         if (dma_handshake_now) then
+            dma_accepts := dma_accepts + 1;
+         end if;
+         wait until rising_edge(clk);
+         if (dma_handshake_now) then
+            gpu_source_valid <= '0';
+         end if;
+         wait until falling_edge(clk);
+      end loop;
+      gpu_event_ready <= '0';
+      assert dma_accepts = 1
+         report "held DMA request did not receive exactly one ready/valid handshake"
+         severity failure;
+      assert dma_outputs = GPU_QUEUE_DEPTH + 1
+         report "held DMA request was lost or enqueued more than once"
+         severity failure;
 
       reset <= '1';
       wait until rising_edge(clk);

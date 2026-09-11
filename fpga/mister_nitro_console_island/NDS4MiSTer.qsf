@@ -359,6 +359,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_touch_input.s
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_video_scanout.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_ddram_arbiter_4client.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_ddr_fabric.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_session_policy_latch.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_control_init.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_event_async_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_gx_fifo_packet_frontend.sv

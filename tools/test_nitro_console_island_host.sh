@@ -16,6 +16,8 @@ python3 "$script_dir/test_cache_tag_packing.py"
 "$script_dir/test_nds_audio_headroom.sh"
 bash "$script_dir/test_nds_gpu2d_register_shadow.sh"
 bash "$script_dir/test_h3d_vram9_retirement.sh"
+bash "$script_dir/test_h3d_console_event_gate.sh"
+bash "$script_dir/test_h3d_session_policy.sh"
 bash "$script_dir/test_nds_extpal_remap.sh"
 bash "$script_dir/test_nds_palette_readback.sh"
 
@@ -72,6 +74,17 @@ run_sv tb_nds_nitro_fb_side_by_side \
 run_sv tb_nds_nitro_fb_telemetry \
     "$repo_dir/rtl/nds_nitro_fb_ddr3.sv" \
     "$repo_dir/rtl/tb_nds_nitro_fb_telemetry.sv"
+
+run_sv tb_nds_h3d_sparse_phase_cdc \
+    "$repo_dir/rtl/nds_h3d_event_async_fifo.sv" \
+    "$repo_dir/rtl/nds_gx_fifo_packet_frontend.sv" \
+    "$repo_dir/rtl/nds_h3d_frame_record_cdc.sv" \
+    "$repo_dir/rtl/tb_nds_h3d_sparse_phase_cdc.sv"
+run_sv tb_nds_h3d_delayed_scanline_tag \
+    "$repo_dir/rtl/nds_h3d_event_async_fifo.sv" \
+    "$repo_dir/rtl/nds_gx_fifo_packet_frontend.sv" \
+    "$repo_dir/rtl/nds_h3d_frame_record_cdc.sv" \
+    "$repo_dir/rtl/tb_nds_h3d_delayed_scanline_tag.sv"
 
 run_sv tb_nds_nitro_arm9_math_unit \
     "$repo_dir/rtl/nds_nitro_arm9_math_unit.sv" \
@@ -299,9 +312,9 @@ grep -Fq 'wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : 
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq 'h3d_control_release, h3d_record_source_active, h3d_console_release,' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
-grep -Fq 'h3d_gpu_source_address <= io_bus9.Adr;' \
+grep -Fq 'h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna, h3d_engine_b_enable)' \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
-grep -Fq "hblank_pulse => '0'" \
+grep -Fq "hblank_pulse => lcd_phase and h3d_engine_b_enable" \
     "$repo_dir/rtl/nds_nitro_console_top.vhd"
 grep -Fq ".external_frame_mode(1'b0), .external_frame_publish(1'b0)" \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
@@ -372,6 +385,7 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/rtl/nds_ddram_arbiter_4client.sv" \
     "$repo_dir/rtl/nds_h3d_ddr_fabric.sv" \
     "$repo_dir/rtl/nds_h3d_control_init.sv" \
+    "$repo_dir/rtl/nds_h3d_session_policy_latch.sv" \
     "$repo_dir/rtl/nds_h3d_event_async_fifo.sv" \
     "$repo_dir/rtl/nds_gx_fifo_packet_frontend.sv" \
     "$repo_dir/rtl/nds_h3d_frame_record_cdc.sv" \
@@ -395,4 +409,8 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 
-echo "PASS: r355 Nitro console-island host RTL gates"
+if grep -Eq '"P[0-9]+,Credits;' "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"; then
+    echo "FAIL: credits menu is prohibited" >&2
+    exit 1
+fi
+echo "PASS: Nitro console-island host RTL gates with Engine B policy"

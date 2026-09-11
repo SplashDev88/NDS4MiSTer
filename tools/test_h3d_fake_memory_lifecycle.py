@@ -65,8 +65,11 @@ def publish_quiesce(memory: mmap.mmap, token: int) -> None:
     memory.flush()
 
 
-def publish_fresh(memory: mmap.mmap, session: int, token: int) -> None:
+def publish_fresh(memory: mmap.mmap, session: int, token: int,
+                  engine_b: bool = False) -> None:
+    retained_b = memory[0x180000:0x200000]
     clear_window(memory)
+    memory[0x180000:0x200000] = retained_b
     put_identity(memory)
     put_u32(memory, OFF_SESSION, session)
     # Packet mode reuses the former entry-count word as the reserved high half
@@ -76,6 +79,9 @@ def publish_fresh(memory: mmap.mmap, session: int, token: int) -> None:
     put_u32(memory, OFF_ACCEPTED_SESSION, 0)
     put_u32(memory, OFF_QUIESCE_REQUEST, token)
     put_u32(memory, OFF_QUIESCE_ACK, token)
+    # H3P1 is immutable for this session and committed before H3D1 identity.
+    struct.pack_into("<8I", memory, 0x300, 0x31503348, 0x00200001,
+                     session, int(engine_b), token, 0, token, 0)
     # Magic is the FPGA publication commit and is written last.
     put_u32(memory, OFF_MAGIC, MAGIC_H3D1)
     memory.flush()
@@ -206,6 +212,8 @@ def main(argv: list[str]) -> int:
                         u32(memory, OFF_HPS_HEARTBEAT) != 0,
                         "fresh H3D1 initialization",
                     )
+                    require(memory[0x300:0x320] == memory[0x340:0x360],
+                            "initial default-Off policy was not acknowledged")
 
                     # The public launcher sends SIGUSR1 for a manual dump.
                     # Even with the FPGA monitor disabled on this file-backed
@@ -247,6 +255,8 @@ def main(argv: list[str]) -> int:
                         u32(memory, OFF_ACCEPTED_SESSION) == 0x102,
                         "replacement H3D1 initialization",
                     )
+                    require(memory[0x300:0x320] == memory[0x340:0x360],
+                            "restart did not retain the applied Off policy")
 
                     # A live FPGA reconfiguration follows the same destroy,
                     # final-ack, read-only, fresh-session sequence without
@@ -257,13 +267,33 @@ def main(argv: list[str]) -> int:
                                "live-reconfiguration H3DQ acknowledgement")
                     assert_read_only(process, memory,
                                      "waiting during live reconfiguration")
-                    publish_fresh(memory, 0x103, 0x43)
+                    publish_fresh(memory, 0x103, 0x43, True)
                     wait_until(
                         process,
                         lambda: u32(memory, OFF_SERVICE_STATE) == STATE_READY and
                         u32(memory, OFF_ACCEPTED_SESSION) == 0x103,
                         "post-reconfiguration H3D1 initialization",
                     )
+                    require(memory[0x300:0x320] == memory[0x340:0x360],
+                            "reset-session On policy was not acknowledged")
+
+                    publish_quiesce(memory, 0x44)
+                    wait_until(process,
+                               lambda: u32(memory, OFF_QUIESCE_ACK) == 0x44,
+                               "Off transition quiescence")
+                    # Dirty B DDR survives; only fresh ownership can expose it.
+                    memory[0x180000:0x200000] = b"\xA5" * 0x80000
+                    publish_fresh(memory, 0x104, 0x44)
+                    wait_until(
+                        process,
+                        lambda: u32(memory, OFF_SERVICE_STATE) == STATE_READY and
+                        u32(memory, OFF_ACCEPTED_SESSION) == 0x104,
+                        "On-to-Off reset initialization",
+                    )
+                    require(memory[0x300:0x320] == memory[0x340:0x360],
+                            "reset-session Off policy was not acknowledged")
+                    require(memory[0x180000:0x200000] == b"\xA5" * 0x80000,
+                            "Off initialization touched retained B DDR")
                 finally:
                     memory.close()
         finally:

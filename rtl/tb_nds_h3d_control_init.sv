@@ -24,6 +24,8 @@ module tb_nds_h3d_control_init #(
     logic clk = 0;
     logic reset = 1;
     logic [31:0] requested_session = 0;
+    logic engine_b_pixels_enable = 0;
+    logic video_quiescent = 1;
     logic [31:0] external_fault_bits = 0;
     logic [31:0] fpga_heartbeat_value = 32'h12345678;
     logic [31:0] fpga_telemetry_value = 32'h89abcdef;

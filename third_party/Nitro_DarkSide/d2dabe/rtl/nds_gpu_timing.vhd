@@ -69,6 +69,7 @@ entity nds_gpu_timing is
       line_trigger      : out std_logic := '0';
       hblank_trigger    : out std_logic := '0';
       lcd_phase         : out std_logic := '0';
+      lcd_phase_line    : out unsigned(8 downto 0) := (others => '0');
       vblank_trigger    : out std_logic := '0';
       refpoint_update   : out std_logic := '0';
 
@@ -209,6 +210,7 @@ begin
 
             cycles       <= 0;
             line         <= 0;
+            lcd_phase_line <= (others => '0');
             vcnt         <= (others => '0');
             vblank_flag  <= '0';
             hblank_flag  <= '0';
@@ -286,6 +288,10 @@ begin
                   -- 192/215/262 melonDS lifecycle points; the existing
                   -- visible-only GPU2D cadence remains unchanged.
                   lcd_phase <= '1';
+                  -- Pair the exported phase with the physical raster line.
+                  -- VCOUNT is software-writable and therefore cannot identify
+                  -- transport lifecycle markers reliably.
+                  lcd_phase_line <= to_unsigned(line, lcd_phase_line'length);
                   if (line < 192) then
                      drawline    <= '1';
                      linecounter <= line;

@@ -166,6 +166,7 @@ entity nds_nitro_console_wrap is
 
       -- Lossless raw H3D event streams, all in the clk1x domain.
       h3d_service_ready       : in  std_logic := '0';
+      h3d_engine_b_enable     : in  std_logic := '0';
       h3d_gx_fifo_level       : in  std_logic_vector(8 downto 0) := (others => '0');
       h3d_timestamp           : out std_logic_vector(63 downto 0);
       h3d_current_frame       : out std_logic_vector(31 downto 0);
@@ -177,7 +178,7 @@ entity nds_nitro_console_wrap is
       h3d_gpu_write_access      : out std_logic_vector(1 downto 0);
       h3d_gpu_write_byte_enable : out std_logic_vector(3 downto 0);
       h3d_gpu_write_data        : out std_logic_vector(31 downto 0);
-      h3d_gpu_write_frame       : out std_logic_vector(31 downto 0);
+      h3d_gpu_write_scanline    : out std_logic_vector(8 downto 0);
       h3d_gpu_write_timestamp   : out std_logic_vector(63 downto 0);
 
       h3d_vram9_write_valid       : out std_logic;
@@ -186,7 +187,7 @@ entity nds_nitro_console_wrap is
       h3d_vram9_write_access      : out std_logic_vector(1 downto 0);
       h3d_vram9_write_byte_enable : out std_logic_vector(3 downto 0);
       h3d_vram9_write_data        : out std_logic_vector(31 downto 0);
-      h3d_vram9_write_frame       : out std_logic_vector(31 downto 0);
+      h3d_vram9_write_scanline    : out std_logic_vector(8 downto 0);
       h3d_vram9_write_timestamp   : out std_logic_vector(63 downto 0);
 
       h3d_vram7_write_valid       : out std_logic;
@@ -195,7 +196,7 @@ entity nds_nitro_console_wrap is
       h3d_vram7_write_access      : out std_logic_vector(1 downto 0);
       h3d_vram7_write_byte_enable : out std_logic_vector(3 downto 0);
       h3d_vram7_write_data        : out std_logic_vector(31 downto 0);
-      h3d_vram7_write_frame       : out std_logic_vector(31 downto 0);
+      h3d_vram7_write_scanline    : out std_logic_vector(8 downto 0);
       h3d_vram7_write_timestamp   : out std_logic_vector(63 downto 0);
 
       h3d_hblank_valid       : out std_logic;
@@ -441,6 +442,7 @@ begin
       h3d_merge_pixel_y    => h3d_merge_y_i,
 
       h3d_service_ready       => h3d_service_ready,
+      h3d_engine_b_enable     => h3d_engine_b_enable,
       h3d_gx_fifo_level       => h3d_gx_fifo_level,
       h3d_timestamp           => h3d_timestamp,
       h3d_current_frame       => h3d_current_frame,
@@ -451,7 +453,7 @@ begin
       h3d_gpu_write_access      => h3d_gpu_write_access,
       h3d_gpu_write_byte_enable => h3d_gpu_write_byte_enable,
       h3d_gpu_write_data        => h3d_gpu_write_data,
-      h3d_gpu_write_frame       => h3d_gpu_write_frame,
+      h3d_gpu_write_scanline    => h3d_gpu_write_scanline,
       h3d_gpu_write_timestamp   => h3d_gpu_write_timestamp,
       h3d_vram9_write_valid       => h3d_vram9_write_valid,
       h3d_vram9_write_ready       => h3d_vram9_write_ready,
@@ -459,7 +461,7 @@ begin
       h3d_vram9_write_access      => h3d_vram9_write_access,
       h3d_vram9_write_byte_enable => h3d_vram9_write_byte_enable,
       h3d_vram9_write_data        => h3d_vram9_write_data,
-      h3d_vram9_write_frame       => h3d_vram9_write_frame,
+      h3d_vram9_write_scanline    => h3d_vram9_write_scanline,
       h3d_vram9_write_timestamp   => h3d_vram9_write_timestamp,
       h3d_vram7_write_valid       => h3d_vram7_write_valid,
       h3d_vram7_write_ready       => h3d_vram7_write_ready,
@@ -467,7 +469,7 @@ begin
       h3d_vram7_write_access      => h3d_vram7_write_access,
       h3d_vram7_write_byte_enable => h3d_vram7_write_byte_enable,
       h3d_vram7_write_data        => h3d_vram7_write_data,
-      h3d_vram7_write_frame       => h3d_vram7_write_frame,
+      h3d_vram7_write_scanline    => h3d_vram7_write_scanline,
       h3d_vram7_write_timestamp   => h3d_vram7_write_timestamp,
       h3d_hblank_valid       => h3d_hblank_valid,
       h3d_hblank_ready       => h3d_hblank_ready,

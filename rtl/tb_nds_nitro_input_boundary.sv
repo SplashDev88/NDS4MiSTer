@@ -22,6 +22,7 @@ module tb_nds_nitro_input_boundary;
     logic video_screen_order_select = 1'b0;
     logic [1:0] video_gap_select = 2'd0;
     logic video_fps_select = 1'b0;
+    logic engine_b_select = 1'b0;
     wire [1:0] video_layout_active;
     wire video_screen_order_active;
     wire [1:0] video_gap_active;

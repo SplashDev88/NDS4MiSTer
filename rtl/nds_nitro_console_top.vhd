@@ -281,6 +281,7 @@ entity nds_nitro_console_top is
       -- addresses in the 0x06xxxxxx aperture.  All timestamps use the single
       -- ARM7-rate DS system clock, including ARM9-originated events.
       h3d_service_ready       : in  std_logic := '0';
+      h3d_engine_b_enable     : in  std_logic := '0';
       h3d_gx_fifo_level       : in  std_logic_vector(8 downto 0) := (others => '0');
       h3d_timestamp           : out std_logic_vector(63 downto 0) := (others => '0');
       h3d_current_frame       : out std_logic_vector(31 downto 0) := (others => '0');
@@ -292,7 +293,7 @@ entity nds_nitro_console_top is
       h3d_gpu_write_access      : out std_logic_vector(1 downto 0) := (others => '0');
       h3d_gpu_write_byte_enable : out std_logic_vector(3 downto 0) := (others => '0');
       h3d_gpu_write_data        : out std_logic_vector(31 downto 0) := (others => '0');
-      h3d_gpu_write_frame       : out std_logic_vector(31 downto 0) := (others => '0');
+      h3d_gpu_write_scanline    : out std_logic_vector(8 downto 0) := (others => '0');
       h3d_gpu_write_timestamp   : out std_logic_vector(63 downto 0) := (others => '0');
 
       h3d_vram9_write_valid       : out std_logic := '0';
@@ -301,7 +302,7 @@ entity nds_nitro_console_top is
       h3d_vram9_write_access      : out std_logic_vector(1 downto 0) := (others => '0');
       h3d_vram9_write_byte_enable : out std_logic_vector(3 downto 0) := (others => '0');
       h3d_vram9_write_data        : out std_logic_vector(31 downto 0) := (others => '0');
-      h3d_vram9_write_frame       : out std_logic_vector(31 downto 0) := (others => '0');
+      h3d_vram9_write_scanline    : out std_logic_vector(8 downto 0) := (others => '0');
       h3d_vram9_write_timestamp   : out std_logic_vector(63 downto 0) := (others => '0');
 
       h3d_vram7_write_valid       : out std_logic := '0';
@@ -310,7 +311,7 @@ entity nds_nitro_console_top is
       h3d_vram7_write_access      : out std_logic_vector(1 downto 0) := (others => '0');
       h3d_vram7_write_byte_enable : out std_logic_vector(3 downto 0) := (others => '0');
       h3d_vram7_write_data        : out std_logic_vector(31 downto 0) := (others => '0');
-      h3d_vram7_write_frame       : out std_logic_vector(31 downto 0) := (others => '0');
+      h3d_vram7_write_scanline    : out std_logic_vector(8 downto 0) := (others => '0');
       h3d_vram7_write_timestamp   : out std_logic_vector(63 downto 0) := (others => '0');
 
       h3d_hblank_valid       : out std_logic := '0';
@@ -509,10 +510,11 @@ architecture arch of nds_nitro_console_top is
    -- the SystemVerilog capture remains the event-format authority.
    function h3d_gpu_write_hit(
       address : std_logic_vector(27 downto 0);
-      be      : std_logic_vector(3 downto 0)) return boolean is
+      be      : std_logic_vector(3 downto 0);
+      engine_b : std_logic) return boolean is
       variable low, lane : integer;
    begin
-      if (address(27 downto 12) /= x"0000") then
+      if (address(27 downto 13) /= "000000000000000") then
          return false;
       end if;
       case be is
@@ -521,8 +523,12 @@ architecture arch of nds_nitro_console_top is
          when "1000"          => lane := 3;
          when others          => lane := 0;
       end case;
-      low := to_integer(unsigned(address(11 downto 2))) * 4 + lane;
-      return (low >= 16#060# and low <= 16#063#) or
+      low := to_integer(unsigned(address(12 downto 2))) * 4 + lane;
+      return (engine_b = '1' and
+              ((low >= 16#000# and low <= 16#05F#) or
+               (low >= 16#064# and low <= 16#06F#) or
+               (low >= 16#1000# and low <= 16#106F#))) or
+             (low >= 16#060# and low <= 16#063#) or
              (low >= 16#240# and low <= 16#249#) or
              (low >= 16#304# and low <= 16#307#) or
              (low >= 16#320# and low <= 16#3BF#) or
@@ -941,6 +947,7 @@ architecture arch of nds_nitro_console_top is
    signal linecounter     : integer range 0 to 191;
    signal linecounter_obj : integer range 0 to 191;
    signal drawline, drawObj, line_trigger, hblank_trigger, lcd_phase, gpu_vblank, refpoint_update : std_logic;
+   signal lcd_phase_line : unsigned(8 downto 0);
    signal h3d_frame_pending_level : std_logic_vector(8 downto 0);
    -- Exact renderer-side receipt for the NSMB BG1 parallax problem row.
    signal bg1_scroll_renderer_diag : std_logic_vector(31 downto 0) := (others => '0');
@@ -993,16 +1000,38 @@ begin
    -- CPU IO requests are one-cycle pulses; DMA GXFIFO valid is deliberately
    -- independent of its acceptance enable.  dma_bus_on makes the sources
    -- mutually exclusive, and both buses hold their payload until completion.
-   -- The ARM service owns only 3D. Palette/OAM and 2D registers remain local
-   -- to the FPGA renderer and therefore cannot inherit HPS backpressure.
-   h3d_gpu_source_is_cpu <= not dma_bus_on;
-   h3d_gpu_source_valid <= dma_gx_write_valid when dma_bus_on = '1' else
+   -- Geometry, both 2D register banks, and palette/OAM writes share the one
+   -- lossless GPU source. Palette/OAM are mutually exclusive with IO on the
+   -- ARM9 membus, so this adds no second arbitration queue. Their address is
+   -- encoded as an offset from 0x04000000; the record CDC restores the full
+   -- 0x05/0x07 architectural aperture before publishing it to the HPS.
+   -- Only the dedicated DMA GXFIFO fast lane retires through source_ready.
+   -- Palette/OAM and ordinary IO still traverse membus9's W_IO_RESP state
+   -- even while DMA owns that bus, so they require the completion toggle.
+   h3d_gpu_source_is_cpu <= '0'
+      when dma_bus_on = '1' and dma_gx_write_valid = '1' else '1';
+   h3d_gpu_source_valid <= dma_gx_write_valid when dma_bus_on = '1' and
+                                                  dma_gx_write_valid = '1' else
+      pal_we when (h3d_engine_b_enable = '1') and pal_we = '1' else
+      oam_we when (h3d_engine_b_enable = '1') and oam_we = '1' else
       '1' when (io9_ena = '1' and io9_lat_1x.rnw = '0' and
-                h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna)) else '0';
-   h3d_gpu_source_address <= io_bus9.Adr;
-   h3d_gpu_source_access <= io_bus9.acc;
-   h3d_gpu_source_be <= io_bus9.bEna;
-   h3d_gpu_source_data <= io_bus9.Din;
+                h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna, h3d_engine_b_enable)) else '0';
+   h3d_gpu_source_address <=
+      std_logic_vector(to_unsigned(16#1000000# + pal_addr * 4, 28))
+         when (h3d_engine_b_enable = '1') and pal_we = '1' else
+      std_logic_vector(to_unsigned(16#3000000# + oam_addr * 4, 28))
+         when (h3d_engine_b_enable = '1') and oam_we = '1' else
+      io_bus9.Adr;
+   h3d_gpu_source_access <= h3d_access_from_be(pal_be)
+      when (h3d_engine_b_enable = '1') and pal_we = '1' else
+      h3d_access_from_be(oam_be)
+         when (h3d_engine_b_enable = '1') and oam_we = '1' else io_bus9.acc;
+   h3d_gpu_source_be <= pal_be
+      when (h3d_engine_b_enable = '1') and pal_we = '1' else
+      oam_be when (h3d_engine_b_enable = '1') and oam_we = '1' else io_bus9.bEna;
+   h3d_gpu_source_data <= pal_din
+      when (h3d_engine_b_enable = '1') and pal_we = '1' else
+      oam_din when (h3d_engine_b_enable = '1') and oam_we = '1' else io_bus9.Din;
 
    h3d_vram9_source_address <=
       x"06" & std_logic_vector(dma_vr_addr) & "00" when dma_bus_on = '1' else
@@ -1010,11 +1039,14 @@ begin
    h3d_vram9_source_be <= dma_vr_be when dma_bus_on = '1' else vram9_be;
    h3d_vram9_source_data <= dma_vr_din when dma_bus_on = '1' else vram9_din;
    h3d_vram9_source_access <= h3d_access_from_be(h3d_vram9_source_be);
-   -- The HPS 3D model needs uploads through the LCDC aperture while a
-   -- texture/palette bank is CPU-visible. BG/OBJ writes are consumed by the
-   -- FPGA 2D engines and stay off the HPS event stream.
+   -- The Engine-B shadow needs the complete 0x06 VRAM view, not only the LCDC
+   -- texture aperture used by the earlier 3D-only service. Preserve the same
+   -- held/accepted write as the local VRAM path so the two mirrors cannot
+   -- diverge under backpressure.
    h3d_vram9_needed_by_h3d <= '1'
-      when h3d_vram9_source_address(27 downto 20) = x"68" else '0';
+      when h3d_vram9_source_address(27 downto 20) = x"68" or
+           (h3d_engine_b_enable = '1' and
+            h3d_vram9_source_address(27 downto 24) = x"6") else '0';
    -- A posted DMA write becomes an event source only when nds_vram can accept
    -- it on the same edge.  `vram_write_valid` remains held independently, so
    -- a full local write queue cannot deadlock valid behind event ready; wok is
@@ -1052,6 +1084,13 @@ begin
       h3d_vram7_issue;
 
    ih3d_events : entity work.nds_h3d_console_event_gate
+   generic map
+   (
+      SPARSE_HBLANK => true,
+      -- Preserve beta.11's 32-entry posting window and empty-queue bypass.
+      -- Engine B On admits additional writes through the same lossless gate.
+      GPU_QUEUE_ADDRESS_BITS => 5
+   )
    port map
    (
       clk => clk1x,
@@ -1075,7 +1114,7 @@ begin
       gpu_event_access => h3d_gpu_write_access,
       gpu_event_be => h3d_gpu_write_byte_enable,
       gpu_event_data => h3d_gpu_write_data,
-      gpu_event_frame => h3d_gpu_write_frame,
+      gpu_event_scanline => h3d_gpu_write_scanline,
       gpu_event_timestamp => h3d_gpu_write_timestamp,
 
       vram9_source_valid => h3d_vram9_source_valid,
@@ -1091,7 +1130,7 @@ begin
       vram9_event_access => h3d_vram9_write_access,
       vram9_event_be => h3d_vram9_write_byte_enable,
       vram9_event_data => h3d_vram9_write_data,
-      vram9_event_frame => h3d_vram9_write_frame,
+      vram9_event_scanline => h3d_vram9_write_scanline,
       vram9_event_timestamp => h3d_vram9_write_timestamp,
 
       vram7_source_valid => h3d_vram7_source_valid,
@@ -1107,12 +1146,15 @@ begin
       vram7_event_access => h3d_vram7_write_access,
       vram7_event_be => h3d_vram7_write_byte_enable,
       vram7_event_data => h3d_vram7_write_data,
-      vram7_event_frame => h3d_vram7_write_frame,
+      vram7_event_scanline => h3d_vram7_write_scanline,
       vram7_event_timestamp => h3d_vram7_write_timestamp,
 
-      -- HBlank is an FPGA-local 2D/HDMA deadline in 3D-plane mode.
-      hblank_pulse => '0',
-      hblank_line => std_logic_vector(vcount_out),
+      -- Engine A still consumes HBlank locally. The hybrid transport takes a
+      -- sparse, nonblocking timing copy from the full LCD phase cadence so it
+      -- includes visible-end and frame-wrap lifecycle points needed by the
+      -- ARM reconstruction of the missing Engine B screen.
+      hblank_pulse => lcd_phase and h3d_engine_b_enable,
+      hblank_line => std_logic_vector(lcd_phase_line),
       hblank_event_valid => h3d_hblank_valid,
       hblank_event_ready => h3d_hblank_ready,
       hblank_event_line => h3d_hblank_line,
@@ -1632,15 +1674,23 @@ begin
    -- source gate. The peripheral consumed io9_ena on its original edge; the
    -- held event never reasserts the local enable, so a stalled write cannot be
    -- executed twice.
-   -- Palette/OAM stay local to the FPGA 2D engine and retain legacy timing.
+   -- Palette/OAM still update the local FPGA engine on their request edge,
+   -- but with Engine-B replay active the ARM9 transaction retires only after
+   -- the same payload is durably posted to H3D. The membus holds the request
+   -- fields until this completion, preventing a following write from replacing
+   -- a palette/OAM event while the source gate is full.
    process (clk1x)
    begin
       if rising_edge(clk1x) then
          if (pal_we = '1' or oam_we = '1') then
-            cdc_io_cpl <= not cdc_io_cpl;
+            if (not (h3d_engine_b_enable = '1') or
+                h3d_service_ready = '0' or
+                h3d_gpu_cpu_complete = '1') then
+               cdc_io_cpl <= not cdc_io_cpl;
+            end if;
          elsif (io9_ena = '1') then
             if (h3d_service_ready = '1' and io9_lat_1x.rnw = '0' and
-                h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna)) then
+                h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna, h3d_engine_b_enable)) then
                if (h3d_gpu_cpu_complete = '1') then
                   cdc_io_cpl <= not cdc_io_cpl;
                end if;
@@ -2569,6 +2619,7 @@ begin
       line_trigger    => line_trigger,
       hblank_trigger  => hblank_trigger,
       lcd_phase       => lcd_phase,
+      lcd_phase_line  => lcd_phase_line,
       vblank_trigger  => gpu_vblank,
       refpoint_update => refpoint_update,
       vcount_out      => vcount_out,
@@ -2775,10 +2826,9 @@ begin
       );
    end generate;
 
-   -- One-engine output keeps Engine B's drawers and VRAM clients removed.
-   -- Retain control readbacks because games calculate upload addresses from
-   -- them even when Engine B is not displayed. Both panels still mirror A;
-   -- this does not enable ARM-side Engine B rendering or its transport.
+   -- One-engine diagnostic: remove the complete engine-B register/drawer/
+   -- merge cone and its VRAM clients.  Mirroring A keeps both HDMI panels
+   -- visibly useful without introducing a second video transport mode.
    g_no_gpu2d_b : if GPU2D_B_ENABLE = 0 generate
    begin
       igpu2d_b_register_shadow : entity work.nds_gpu2d_register_shadow

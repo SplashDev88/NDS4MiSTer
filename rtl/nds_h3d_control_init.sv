@@ -34,6 +34,11 @@
 // nonzero reserved counter half, bad session, invalid service state, or HPS
 // fault is sticky for the current session and fails closed.  A different
 // nonzero session clears the sticky fault by running the full sequence again.
+//
+// Optional packet-only H3P1 policy adds a video-read quiescence barrier before
+// step 4 and a committed policy request before step 6. CPU release also needs
+// the exact immutable host ACK. See docs/hybrid-3d-session-policy.md; no H3D1
+// reserved field is repurposed by this independently versioned extension.
 module nds_h3d_control_init #(
     // FPGA byte address 0x0fc00000 divided by the 64-bit DDR word size.
     parameter logic [28:0] BASE_WORD = 29'h01f80000,
@@ -41,6 +46,9 @@ module nds_h3d_control_init #(
     // Packet mode reuses header words 2/3 as its producer/ack counters and
     // reserves the high half of word 1.  Legacy event mode remains default.
     parameter bit PACKET_MODE = 1'b0,
+    // H3P1 uses packet-only control-page space. Old clients remain unchanged;
+    // the product enables this and cannot release with a legacy-only host.
+    parameter bit SESSION_POLICY_ENABLE = 1'b0,
     parameter integer HEADER_WORDS64 = 16,
     // One second at the product's retained 60 MHz DDR clock is deliberately
     // longer than a valid render/copy stall, but bounds stale Ready state if
@@ -54,6 +62,12 @@ module nds_h3d_control_init #(
     input  logic        reset,
 
     input  logic [31:0] requested_session,
+    // Already latched at the user Reset / completed ROM-load boundary.
+    // A host-only restart retains this value, never the live OSD selection.
+    input  logic        engine_b_pixels_enable,
+    // Video owns external B read transactions independently of HPS writers.
+    // Do not permit new-session bank reuse until old scanout reads drain.
+    input  logic        video_quiescent,
     // Sticky product-path faults already synchronized to this DDR clock.
     // These are folded into the FPGA-owned fault word and hold console reset.
     input  logic [31:0] external_fault_bits,
@@ -119,7 +133,7 @@ module nds_h3d_control_init #(
         COMMIT_INDEX_BITS'(ENTRY_COUNT - 1);
     localparam logic [3:0] LAST_POLL_INDEX = 4'(POLL_COUNT - 1);
 
-    typedef enum logic [3:0] {
+    typedef enum logic [4:0] {
         WAIT_SESSION,
         READ_COUNTER_ISSUE,
         READ_COUNTER_WAIT,
@@ -134,7 +148,12 @@ module nds_h3d_control_init #(
         POLL_ISSUE,
         POLL_WAIT,
         WRITE_FAULT,
-        FAULT_HOLD
+        FAULT_HOLD,
+        CLEAR_POLICY_ACK,
+        CLEAR_POLICY_COMMIT,
+        WRITE_POLICY,
+        POLICY_ACK_ISSUE,
+        POLICY_ACK_WAIT
     } state_t;
     state_t state;
 
@@ -143,6 +162,23 @@ module nds_h3d_control_init #(
     logic [3:0] poll_index;
     logic service_ready;
     logic startup_complete;
+    logic policy_engine_b;
+    logic policy_acknowledged;
+    logic policy_ack_matches;
+    logic [1:0] policy_word_index;
+    logic [63:0] policy_expected_word;
+
+    // H3P1: two separately owned 32-byte records at byte +0x300/+0x340.
+    // The final 64-bit beat holds commit=epoch in its low half. Payload is
+    // immutable after commit; the FPGA clears it only after H3DQ exact ACK.
+    always_comb begin
+        case (policy_word_index)
+            2'd0: policy_expected_word = 64'h00200001_31503348;
+            2'd1: policy_expected_word =
+                {31'd0, policy_engine_b, active_session};
+            default: policy_expected_word = {32'd0, active_session};
+        endcase
+    end
     logic heartbeat_seen;
     logic [31:0] last_hps_heartbeat;
     logic [HEARTBEAT_COUNTER_BITS-1:0] heartbeat_stale_cycles;
@@ -210,6 +246,8 @@ module nds_h3d_control_init #(
             $fatal(1, "H3D HPS heartbeat timeout must be at least 2 clocks");
         if (DIAGNOSTIC_HOLD_CYCLES < 2)
             $fatal(1, "H3D diagnostic hold must be at least 2 clocks");
+        if (SESSION_POLICY_ENABLE && !PACKET_MODE)
+            $fatal(1, "H3P1 policy overlaps the legacy event ring");
     end
 
     wire session_change_requested =
@@ -238,6 +276,10 @@ module nds_h3d_control_init #(
         poll_response_now && current_poll_word == 5'd13 &&
         (!heartbeat_seen ||
          ddram_read_data[31:0] != last_hps_heartbeat);
+    wire policy_ack_response_now =
+        (state == POLICY_ACK_WAIT && ddram_read_data_ready) ||
+        (state == POLICY_ACK_ISSUE && accepted_read &&
+         ddram_read_data_ready);
 
     always_comb begin
         commit_word_address =
@@ -248,10 +290,12 @@ module nds_h3d_control_init #(
         active = state != WAIT_SESSION && state != FAULT_HOLD;
         initialized =
             state == POLL_ISSUE || state == POLL_WAIT ||
+            state == POLICY_ACK_ISSUE || state == POLICY_ACK_WAIT ||
             state == WRITE_FAULT || state == FAULT_HOLD;
         fault = fault_bits != 0;
         console_release =
             initialized && !fault && startup_complete && service_ready &&
+            (!SESSION_POLICY_ENABLE || policy_acknowledged) &&
             external_fault_bits == 0 &&
             active_session != 0 && !restart_pending &&
             !service_restart_pending &&
@@ -298,6 +342,28 @@ module nds_h3d_control_init #(
                 ddram_address = BASE_WORD + 29'd1;
                 ddram_write_data = {CONFIG_HIGH_32, active_session};
                 ddram_write = !issued_command && !ddram_busy;
+            end
+            CLEAR_POLICY_ACK: begin
+                ddram_address = BASE_WORD + 29'd104 +
+                    {27'd0, policy_word_index};
+                ddram_write = !issued_command && !ddram_busy;
+            end
+            CLEAR_POLICY_COMMIT: begin
+                ddram_address = BASE_WORD + 29'd99;
+                ddram_write = !issued_command && !ddram_busy;
+            end
+            WRITE_POLICY: begin
+                ddram_address = BASE_WORD + 29'd96 +
+                    {27'd0, policy_word_index};
+                ddram_write_data = policy_expected_word;
+                ddram_write = !issued_command && !ddram_busy;
+            end
+            POLICY_ACK_ISSUE: begin
+                ddram_address = BASE_WORD + 29'd104 +
+                    {27'd0, policy_word_index};
+                ddram_read = !issued_command && !ddram_busy &&
+                    !restart_pending && !service_restart_pending &&
+                    !(requested_session != 0 && session_change_requested);
             end
             WRITE_MAGIC: begin
                 ddram_address = BASE_WORD;
@@ -406,6 +472,10 @@ module nds_h3d_control_init #(
             poll_index <= 4'd0;
             service_ready <= 1'b0;
             startup_complete <= 1'b0;
+            policy_engine_b <= 1'b0;
+            policy_acknowledged <= 1'b0;
+            policy_ack_matches <= 1'b0;
+            policy_word_index <= 2'd0;
             heartbeat_seen <= 1'b0;
             last_hps_heartbeat <= 32'd0;
             heartbeat_stale_cycles <= '0;
@@ -462,10 +532,15 @@ module nds_h3d_control_init #(
                 (requested_session != 0 && session_change_requested)) &&
                 !issued_command &&
                 (state == WAIT_SESSION || state == POLL_ISSUE ||
+                 state == POLICY_ACK_ISSUE ||
                  state == FAULT_HOLD)) begin
                 fault_bits <= 32'd0;
                 service_ready <= 1'b0;
                 startup_complete <= 1'b0;
+                policy_engine_b <= engine_b_pixels_enable;
+                policy_acknowledged <= 1'b0;
+                policy_ack_matches <= 1'b0;
+                policy_word_index <= 2'd0;
                 heartbeat_seen <= 1'b0;
                 last_hps_heartbeat <= 32'd0;
                 heartbeat_stale_cycles <= '0;
@@ -492,13 +567,40 @@ module nds_h3d_control_init #(
                     active_session <= ddram_read_data[31:0] + 1'b1;
                 state <= WRITE_QUIESCE_REQUEST;
             end else if (ack_response_now) begin
-                if (ddram_read_data == {32'd0, active_session}) begin
+                if (ddram_read_data == {32'd0, active_session} &&
+                    (!SESSION_POLICY_ENABLE || video_quiescent)) begin
                     // The exact ack is the only permission to overwrite any
                     // HPS-owned word or stale event state.
                     header_word_index <= 5'd1;
                     state <= CLEAR_HEADER;
                 end else begin
                     state <= READ_QUIESCE_ACK_ISSUE;
+                end
+            end else if (policy_ack_response_now) begin
+                // No ACK, stale ACK, wrong flags, or malformed reserved words
+                // all fail closed. Continue polling so a delayed compatible
+                // service can finish; no speculative release from Ready alone.
+                policy_ack_matches <= policy_ack_matches &&
+                    ddram_read_data == policy_expected_word;
+                if (policy_word_index == 2'd3) begin
+                    policy_acknowledged <= policy_ack_matches &&
+                        ddram_read_data == policy_expected_word;
+                    // A committed ACK is immutable. Once accepted, losing
+                    // it is an epoch fault, not a temporary capability wait:
+                    // resetting then releasing CPUs in the same host epoch
+                    // would restart guest execution against stale HPS state.
+                    if (policy_acknowledged &&
+                        (!policy_ack_matches ||
+                         ddram_read_data != policy_expected_word)) begin
+                        fault_bits <= fault_bits | FAULT_BAD_HEADER;
+                        service_ready <= 1'b0;
+                        startup_complete <= 1'b0;
+                        state <= WRITE_FAULT;
+                    end else
+                        state <= POLL_ISSUE;
+                end else begin
+                    policy_word_index <= policy_word_index + 1'b1;
+                    state <= POLICY_ACK_ISSUE;
                 end
             end else if (poll_response_now) begin
                 if (current_poll_word == 5'd5)
@@ -533,7 +635,10 @@ module nds_h3d_control_init #(
                     poll_index <= 4'd0;
                     if (service_ready)
                         startup_complete <= 1'b1;
-                    state <= POLL_ISSUE;
+                    policy_word_index <= 2'd0;
+                    policy_ack_matches <= 1'b1;
+                    state <= SESSION_POLICY_ENABLE ?
+                        POLICY_ACK_ISSUE : POLL_ISSUE;
                 end else begin
                     poll_index <= poll_index + 1'b1;
                     state <= POLL_ISSUE;
@@ -595,8 +700,39 @@ module nds_h3d_control_init #(
                         end
                     end
                     WRITE_CONFIG: begin
+                        if (accepted_write) begin
+                            policy_word_index <= 2'd0;
+                            state <= SESSION_POLICY_ENABLE ?
+                                CLEAR_POLICY_ACK : WRITE_MAGIC;
+                        end
+                    end
+                    CLEAR_POLICY_ACK: begin
+                        if (accepted_write) begin
+                            if (policy_word_index == 2'd3) begin
+                                policy_word_index <= 2'd0;
+                                state <= CLEAR_POLICY_COMMIT;
+                            end else
+                                policy_word_index <= policy_word_index + 1'b1;
+                        end
+                    end
+                    CLEAR_POLICY_COMMIT: begin
                         if (accepted_write)
-                            state <= WRITE_MAGIC;
+                            state <= WRITE_POLICY;
+                    end
+                    WRITE_POLICY: begin
+                        if (accepted_write) begin
+                            if (policy_word_index == 2'd3)
+                                state <= WRITE_MAGIC;
+                            else
+                                policy_word_index <= policy_word_index + 1'b1;
+                        end
+                    end
+                    POLICY_ACK_ISSUE: begin
+                        if (accepted_read)
+                            state <= POLICY_ACK_WAIT;
+                    end
+                    POLICY_ACK_WAIT: begin
+                        // Delayed data handled by policy_ack_response_now.
                     end
                     WRITE_MAGIC: begin
                         if (accepted_write) begin

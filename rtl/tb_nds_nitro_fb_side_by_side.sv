@@ -4,13 +4,18 @@
 
 module tb_nds_nitro_fb_side_by_side;
     localparam [27:1] FB_BASE = 27'h7f00000;
+    localparam [27:1] ENGINE_B_BASE = 27'h7ec0000;
     logic clk_sys = 0, clk_video = 0;
     always #8.333 clk_sys = ~clk_sys;
     always #7 clk_video = ~clk_video;
 
     logic reset_sys = 1, reset_video = 1;
+    logic external_enable = 1;
+    wire external_quiescent;
+    wire reset_read = reset_sys;
     logic pf_tgl = 0, pf_scr = 0, pf_bank = 0;
     logic [1:0] pf_frame_bank = 0;
+    logic pf_external = 0;
     logic [7:0] pf_line = 0;
     logic [8:0] lb_raddr = 0;
     wire [35:0] lb_q;
@@ -31,6 +36,7 @@ module tb_nds_nitro_fb_side_by_side;
         .RUNTIME_TELEMETRY(1'b0)
     ) dut (
         .clk_sys, .CLK_VIDEO(clk_video), .reset_sys, .reset_video,
+        .reset_read, .external_enable, .external_quiescent,
         .pix_x(8'd0), .pix_y(8'd0), .pix_d(18'd0), .pix_we(1'b0),
         .pixb_x(8'd0), .pixb_y(8'd0), .pixb_d(18'd0), .pixb_we(1'b0),
         .source_fault(1'b0), .telemetry_session(32'd0),
@@ -40,6 +46,7 @@ module tb_nds_nitro_fb_side_by_side;
         .dbg4(18'd0), .dbg5(18'd0), .dbg6(18'd0), .dbg7(18'd0),
         .dbg8(18'd0), .dbg9(18'd0), .dbg10(18'd0), .dbg11(18'd0),
         .pf_tgl, .pf_scr, .pf_line, .pf_bank, .pf_frame_bank,
+        .pf_external,
         .published_frame_toggle, .published_frame_bank,
         .scanout_late_count, .lb_raddr, .lb_q,
         .fb5_addr(), .fb5_din(), .fb5_req(),
@@ -88,6 +95,48 @@ module tb_nds_nitro_fb_side_by_side;
             fb6_valid = 0;
             fb6_ready = 0;
             wait (!dut.rbusy);
+            repeat (4) @(posedge clk_video);
+        end
+    endtask
+
+    task automatic load_engine_b_line(
+        input logic screen,
+        input logic bank,
+        input logic engine_b_bank,
+        input logic [7:0] line_number,
+        input logic [1:0] tag
+    );
+        integer index;
+        logic [27:1] expected_addr;
+        begin
+            expected_addr = ENGINE_B_BASE +
+                {engine_b_bank, line_number, 9'd0};
+            @(negedge clk_video);
+            pf_scr = screen;
+            pf_bank = bank;
+            pf_frame_bank = {1'b0, engine_b_bank};
+            pf_line = line_number;
+            pf_external = 1'b1;
+            pf_tgl = ~pf_tgl;
+            wait (fb6_req);
+            #1;
+            if (fb6_addr !== expected_addr)
+                $fatal(1, "Engine-B address mismatch got=%h expected=%h",
+                       fb6_addr, expected_addr);
+            for (index = 0; index < 128; index = index + 1) begin
+                @(negedge clk_sys);
+                fb6_dout = 64'd0;
+                fb6_dout[17:0] = tagged_pixel(tag, index[6:0], 1'b0);
+                fb6_dout[49:32] = tagged_pixel(tag, index[6:0], 1'b1);
+                fb6_valid = 1;
+                fb6_ready = (index == 127);
+            end
+            @(negedge clk_sys);
+            fb6_valid = 0;
+            fb6_ready = 0;
+            pf_external = 1'b0;
+            wait (!dut.rbusy);
+            repeat (4) @(posedge clk_video);
         end
     endtask
 
@@ -138,6 +187,37 @@ module tb_nds_nitro_fb_side_by_side;
         end
     endtask
 
+    task automatic expect_engine_b_request_and_serve(
+        input logic engine_b_bank,
+        input logic [7:0] line_number,
+        input logic [1:0] tag
+    );
+        integer index;
+        logic [27:1] expected_addr;
+        begin
+            expected_addr = ENGINE_B_BASE +
+                {engine_b_bank, line_number, 9'd0};
+            wait (fb6_req);
+            #1;
+            if (fb6_addr !== expected_addr)
+                $fatal(1,
+                       "queued Engine-B read mismatch got=%h expected=%h line=%0d",
+                       fb6_addr, expected_addr, line_number);
+            for (index = 0; index < 128; index = index + 1) begin
+                @(negedge clk_sys);
+                fb6_dout = 64'd0;
+                fb6_dout[17:0] = tagged_pixel(tag, index[6:0], 1'b0);
+                fb6_dout[49:32] = tagged_pixel(tag, index[6:0], 1'b1);
+                fb6_valid = 1;
+                fb6_ready = (index == 127);
+            end
+            @(negedge clk_sys);
+            fb6_valid = 0;
+            fb6_ready = 0;
+            wait (!dut.rbusy);
+        end
+    endtask
+
     task automatic check_pair(
         input logic bank,
         input logic screen,
@@ -148,6 +228,10 @@ module tb_nds_nitro_fb_side_by_side;
         begin
             expected = {tagged_pixel(tag, pair_index, 1'b1),
                         tagged_pixel(tag, pair_index, 1'b0)};
+            @(negedge clk_video);
+            // x=0 is the atomic line-slot adoption boundary.
+            lb_raddr = {bank, screen, 7'd0};
+            @(posedge clk_video);
             @(negedge clk_video);
             lb_raddr = {bank, screen, pair_index};
             @(posedge clk_video);
@@ -177,6 +261,89 @@ module tb_nds_nitro_fb_side_by_side;
         check_pair(1'b1, 1'b0, 7'd127, 2'd2);
         check_pair(1'b1, 1'b1, 7'd0,   2'd3);
         check_pair(1'b1, 1'b1, 7'd127, 2'd3);
+
+        // Engine B owns a separate two-bank DDR window but still lands in
+        // the physical screen/parity line-buffer slot requested by scanout.
+        load_engine_b_line(1'b1, 1'b0, 1'b1, 8'd22, 2'd2);
+        check_pair(1'b0, 1'b1, 7'd0,   2'd2);
+        check_pair(1'b0, 1'b1, 7'd127, 2'd2);
+
+        // Production side-by-side scanout requests local Engine A first and
+        // ARM-published Engine B second for the same target row. Their source
+        // type and frame-bank fields are intentionally different. The second
+        // request must queue behind the first without declaring the first
+        // obsolete; otherwise every Engine-A line is discarded as soon as
+        // the Engine-B request crosses clock domains.
+        pf_external = 1'b0;
+        request_line(1'b0, 1'b1, 2'd0, 8'd23);
+        wait (fb6_req);
+        #1;
+        if (fb6_addr !== FB_BASE + {2'd0, 1'b0, 8'd23, 9'd0})
+            $fatal(1, "mixed-source Engine-A request address mismatch");
+        pf_external = 1'b1;
+        request_line(1'b1, 1'b1, 2'd1, 8'd23);
+        repeat (5) @(posedge clk_sys);
+        if (dut.r_obsolete)
+            $fatal(1,
+                   "same-row Engine-B request incorrectly obsoleted Engine A");
+        for (integer index = 0; index < 128; index = index + 1) begin
+            @(negedge clk_sys);
+            fb6_dout = 64'd0;
+            fb6_dout[17:0] = tagged_pixel(2'd1, index[6:0], 1'b0);
+            fb6_dout[49:32] = tagged_pixel(2'd1, index[6:0], 1'b1);
+            fb6_valid = 1;
+            fb6_ready = (index == 127);
+        end
+        @(negedge clk_sys);
+        fb6_valid = 0;
+        fb6_ready = 0;
+        wait (!dut.rbusy);
+        expect_engine_b_request_and_serve(1'b1, 8'd23, 2'd3);
+        pf_external = 1'b0;
+        repeat (4) @(posedge clk_video);
+        check_pair(1'b1, 1'b0, 7'd0,   2'd1);
+        check_pair(1'b1, 1'b0, 7'd127, 2'd1);
+        check_pair(1'b1, 1'b1, 7'd0,   2'd3);
+        check_pair(1'b1, 1'b1, 7'd127, 2'd3);
+
+        // A delayed Engine-B fetch must remain invisible until its final
+        // pair arrives. The former direct-to-live line buffer exposed a new
+        // left half and an old right half here, matching the vertical-band
+        // corruption seen on hardware under DDR contention.
+        request_line(1'b1, 1'b0, 2'd0, 8'd24);
+        pf_external = 1'b1;
+        wait (fb6_req);
+        #1;
+        if (fb6_addr !== ENGINE_B_BASE + {1'b0, 8'd24, 9'd0})
+            $fatal(1, "delayed Engine-B request address mismatch");
+        for (integer index = 0; index < 64; index = index + 1) begin
+            @(negedge clk_sys);
+            fb6_dout = 64'd0;
+            fb6_dout[17:0] = tagged_pixel(2'd3, index[6:0], 1'b0);
+            fb6_dout[49:32] = tagged_pixel(2'd3, index[6:0], 1'b1);
+            fb6_valid = 1;
+            fb6_ready = 0;
+        end
+        @(negedge clk_sys);
+        fb6_valid = 0;
+        check_pair(1'b0, 1'b1, 7'd0,   2'd2);
+        check_pair(1'b0, 1'b1, 7'd127, 2'd2);
+        for (integer index = 64; index < 128; index = index + 1) begin
+            @(negedge clk_sys);
+            fb6_dout = 64'd0;
+            fb6_dout[17:0] = tagged_pixel(2'd3, index[6:0], 1'b0);
+            fb6_dout[49:32] = tagged_pixel(2'd3, index[6:0], 1'b1);
+            fb6_valid = 1;
+            fb6_ready = (index == 127);
+        end
+        @(negedge clk_sys);
+        fb6_valid = 0;
+        fb6_ready = 0;
+        pf_external = 1'b0;
+        wait (!dut.rbusy);
+        repeat (4) @(posedge clk_video);
+        check_pair(1'b0, 1'b1, 7'd0,   2'd3);
+        check_pair(1'b0, 1'b1, 7'd127, 2'd3);
 
         // A full DDR read may overlap more than one 32 us scanout request
         // under product contention.  Once line 32 is requested, queued line

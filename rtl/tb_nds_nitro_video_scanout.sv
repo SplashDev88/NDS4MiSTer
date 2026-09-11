@@ -17,7 +17,7 @@ module tb_nds_nitro_video_scanout;
     wire screen_order_active;
     wire [1:0] gap_active;
     wire fps_active;
-    wire pf_tgl, pf_scr, pf_bank;
+    wire pf_tgl, pf_scr, pf_bank, pf_external;
     wire [1:0] pf_frame_bank;
     wire [7:0] pf_line;
     wire [8:0] lb_raddr;
@@ -25,6 +25,12 @@ module tb_nds_nitro_video_scanout;
     logic published_frame_toggle = 1'b0;
     logic [1:0] published_frame_bank = 2'd0;
     logic effective_3d_frame_toggle = 1'b0;
+    logic external_screen_toggle = 1'b0;
+    logic [1:0] external_screen_bank = 2'd0;
+    logic external_screen_select = 1'b0;
+    wire external_screen_adopted_toggle;
+    logic external_enable = 1'b1;
+    wire external_quiescent;
     wire ce_pixel, de, hsync, vsync;
     wire [7:0] red, green, blue;
 
@@ -46,6 +52,9 @@ module tb_nds_nitro_video_scanout;
     longint active_total = 0;
     longint prefetch_total = 0;
     logic old_pf_tgl = 0;
+    logic monitor_external = 0;
+    logic saw_external_screen = 0;
+    logic saw_normal_screen = 0;
 
     always @(negedge clk_video) begin
         if (reset) begin
@@ -57,12 +66,25 @@ module tb_nds_nitro_video_scanout;
             if (pf_tgl != old_pf_tgl) begin
                 prefetch_total = prefetch_total + 1;
                 old_pf_tgl = pf_tgl;
-                if (pf_scr !== 1'b0)
-                    $fatal(1, "first-beta scanout requested Engine B");
                 if (pf_line > 8'd191 || pf_bank !== pf_line[0])
                     $fatal(1, "bad prefetch line=%0d bank=%0d", pf_line, pf_bank);
+                if (!external_enable && (pf_external ||
+                    pf_frame_bank !== dut.active_normal_bank))
+                    $fatal(1, "Off fetched B or switched normal bank midframe");
+                if (monitor_external) begin
+                    if (pf_scr == 1'b1) begin
+                        if (!pf_external || pf_frame_bank != 2'd1)
+                            $fatal(1, "Engine-B screen used wrong source/bank");
+                        saw_external_screen = 1'b1;
+                    end else begin
+                        if (pf_external || pf_frame_bank != 2'd0)
+                            $fatal(1, "Engine-A screen was replaced by Engine B");
+                        saw_normal_screen = 1'b1;
+                    end
+                end
             end
-            if (lb_raddr !== {dut.local_y[0],1'b0,dut.local_x[7:1]})
+            if (lb_raddr !==
+                    {dut.local_y[0],dut.local_screen,dut.local_x[7:1]})
                 $fatal(1, "line-buffer coordinate mapping mismatch");
         end
     end
@@ -187,28 +209,105 @@ module tb_nds_nitro_video_scanout;
 
         repeat (8) @(negedge clk_video);
         reset = 1'b0;
-        check_complete_frame(512,192,261,6,192);
+        check_complete_frame(512,192,261,6,384);
 
-        // Source-coordinate overlay must appear on both Engine-A aliases.
+        // A composite publication replaces only its named physical screen.
+        // The new B bank and the current normal A bank must become visible in
+        // the same HDMI frame, and the adoption toggle must fire exactly once.
+        wait (dut.vcount == 10'd100 && dut.hcount == 10'd100);
+        external_screen_bank = 2'd1;
+        external_screen_select = 1'b1;
+        external_screen_toggle = ~external_screen_toggle;
+        begin
+            logic old_adopt;
+            old_adopt = external_screen_adopted_toggle;
+            wait (external_screen_adopted_toggle != old_adopt);
+        end
+        saw_external_screen = 1'b0;
+        saw_normal_screen = 1'b0;
+        monitor_external = 1'b1;
+        wait (saw_external_screen && saw_normal_screen);
+        monitor_external = 1'b0;
+        if (!dut.active_screen_external[1] ||
+            dut.active_screen_external[0] ||
+            dut.active_screen_bank[1] != 2'd1 ||
+            dut.active_screen_bank[0] != 2'd0)
+            $fatal(1, "Engine-B frame was not adopted atomically");
+
+        // Session withdrawal leaves the raster running, immediately forbids
+        // external prefetch, and clears ownership only at the safe boundary.
+        wait (dut.vcount == 10'd100 && dut.hcount == 10'd100);
+        begin
+            logic old_adopt;
+            longint c0;
+            old_adopt = external_screen_adopted_toggle;
+            c0 = ce_total;
+            external_screen_toggle = ~external_screen_toggle;
+            repeat (5) @(negedge clk_video);
+            if (!dut.pending_external_valid)
+                $fatal(1, "cancel test did not stage a B publication");
+            external_enable = 1'b0;
+            // Normal A publication remains frame-atomic in Off as well.
+            published_frame_bank = 2'd2;
+            published_frame_toggle = ~published_frame_toggle;
+            repeat (5) @(negedge clk_video);
+            if (external_quiescent || !dut.active_external_valid)
+                $fatal(1, "external ownership cleared before safe boundary");
+            while (!external_quiescent) begin
+                @(negedge clk_video);
+                if (pf_tgl != old_pf_tgl && pf_external)
+                    $fatal(1, "external fetch after session withdrawal");
+            end
+            if (ce_total-c0 < 100 || dut.hcount > 1 || !dut.frame_end ||
+                dut.active_screen_external[0] ||
+                dut.active_screen_external[1] ||
+                dut.pending_external_valid ||
+                external_screen_adopted_toggle != old_adopt)
+                $fatal(1, "video quiescence stopped raster or retained ownership");
+            // Consume a late old toggle while disabled, including the value
+            // change caused by a bridge reset. No fabricated adoption ACK.
+            external_screen_toggle = ~external_screen_toggle;
+            repeat (8) @(negedge clk_video);
+            if (!external_quiescent)
+                $fatal(1, "disabled publication toggle did not drain");
+            check_complete_frame(512,192,261,6,192);
+            move_pointer_at_next_frame(8'd40,8'd50);
+            wait_pointer_pixel(40,50,1'b1,1'b0);
+            wait_pointer_pixel(296,50,1'b1,1'b0);
+            external_enable = 1'b1;
+            check_complete_frame(512,192,261,6,384);
+            if (dut.active_external_valid ||
+                external_screen_adopted_toggle != old_adopt)
+                $fatal(1, "new On permission revived stale B ownership");
+            external_screen_toggle = ~external_screen_toggle;
+            wait (external_screen_adopted_toggle != old_adopt);
+            if (!dut.active_external_valid ||
+                !dut.active_screen_external[1])
+                $fatal(1, "fresh On B publication was not adopted");
+        end
+        $display("PROOF: external ownership drains at a live raster boundary; disabled stale toggles do not republish on On");
+
+        // The pointer belongs to physical panel one (the DS touchscreen),
+        // not to a particular GPU engine or output position.
         move_pointer_at_next_frame(8'd50,8'd60);
-        wait_pointer_pixel(50,60,1'b1,1'b0);
+        wait_pointer_pixel(50,60,1'b0,1'b0);
         wait_pointer_pixel(306,60,1'b1,1'b0);
 
         select_layout(2'd1,1'b1,2'd3,1'b1);
         wait_pointer_pixel(50,66,1'b1,1'b0);
-        wait_pointer_pixel(50,282,1'b1,1'b0);
+        wait_pointer_pixel(50,282,1'b0,1'b0);
         check_complete_frame(256,414,522,3,384);
 
         select_layout(2'd2,1'b0,2'd2,1'b1);
-        wait_pointer_pixel(50,66,1'b1,1'b0);
+        wait_pointer_pixel(50,66,1'b0,1'b0);
         check_complete_frame(256,198,261,6,192);
 
-        select_layout(2'd3,1'b1,2'd0,1'b0);
+        select_layout(2'd3,1'b0,2'd0,1'b0);
         wait_pointer_pixel(50,60,1'b1,1'b0);
         check_complete_frame(256,192,261,6,192);
 
         select_layout(2'd0,1'b0,2'd3,1'b1);
-        check_complete_frame(536,198,261,6,192);
+        check_complete_frame(536,198,261,6,384);
 
         // Reset the shortened two-frame FPS sample window. Deliver one new
         // HPS 3D descriptor during each raster and verify the BCD overlay

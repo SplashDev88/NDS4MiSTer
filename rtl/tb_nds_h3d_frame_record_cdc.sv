@@ -17,6 +17,7 @@ module tb_nds_h3d_frame_record_cdc;
     logic [3:0] gpu_byte_enable = 4'hf;
     logic [31:0] gpu_data = 0;
     logic [63:0] gpu_timestamp = 0;
+    logic [8:0] gpu_scanline = 0;
 
     logic arm9_vram_valid = 0;
     logic arm9_vram_ready;
@@ -25,6 +26,7 @@ module tb_nds_h3d_frame_record_cdc;
     logic [3:0] arm9_vram_byte_enable = 4'hf;
     logic [31:0] arm9_vram_data = 0;
     logic [63:0] arm9_vram_timestamp = 0;
+    logic [8:0] arm9_vram_scanline = 0;
 
     logic arm7_vram_valid = 0;
     logic arm7_vram_ready;
@@ -33,6 +35,7 @@ module tb_nds_h3d_frame_record_cdc;
     logic [3:0] arm7_vram_byte_enable = 4'hf;
     logic [31:0] arm7_vram_data = 0;
     logic [63:0] arm7_vram_timestamp = 0;
+    logic [8:0] arm7_vram_scanline = 0;
 
     logic hblank_valid = 0;
     logic hblank_ready;

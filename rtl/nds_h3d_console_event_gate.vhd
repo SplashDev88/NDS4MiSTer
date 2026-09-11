@@ -4,14 +4,19 @@
 -- The console buses use one-cycle request pulses, while the H3D queue uses
 -- held ready/valid records. This block posts complete GPU writes into a small
 -- ordered queue before granting architectural retirement; VRAM sources retain
--- their dedicated held stages. Frame and timestamp are copied at posting time
--- because those clocks continue to advance during downstream backpressure.
+-- their dedicated held stages. Scanline and timestamp are copied at posting time
+-- because LCD timing continues to advance during downstream backpressure.
 
 library IEEE;
 use IEEE.std_logic_1164.all;
 use IEEE.numeric_std.all;
 
 entity nds_h3d_console_event_gate is
+   generic
+   (
+      SPARSE_HBLANK : boolean := false;
+      GPU_QUEUE_ADDRESS_BITS : positive := 5
+   );
    port
    (
       clk           : in  std_logic;
@@ -40,7 +45,7 @@ entity nds_h3d_console_event_gate is
       gpu_event_access    : out std_logic_vector(1 downto 0);
       gpu_event_be        : out std_logic_vector(3 downto 0);
       gpu_event_data      : out std_logic_vector(31 downto 0);
-      gpu_event_frame     : out std_logic_vector(31 downto 0);
+      gpu_event_scanline     : out std_logic_vector(8 downto 0);
       gpu_event_timestamp : out std_logic_vector(63 downto 0);
 
       -- Virtual-VRAM write sources. *_issue marks output acceptance. ARM9's
@@ -62,7 +67,7 @@ entity nds_h3d_console_event_gate is
       vram9_event_access    : out std_logic_vector(1 downto 0);
       vram9_event_be        : out std_logic_vector(3 downto 0);
       vram9_event_data      : out std_logic_vector(31 downto 0);
-      vram9_event_frame     : out std_logic_vector(31 downto 0);
+      vram9_event_scanline     : out std_logic_vector(8 downto 0);
       vram9_event_timestamp : out std_logic_vector(63 downto 0);
 
       vram7_source_valid   : in  std_logic;
@@ -79,7 +84,7 @@ entity nds_h3d_console_event_gate is
       vram7_event_access    : out std_logic_vector(1 downto 0);
       vram7_event_be        : out std_logic_vector(3 downto 0);
       vram7_event_data      : out std_logic_vector(31 downto 0);
-      vram7_event_frame     : out std_logic_vector(31 downto 0);
+      vram7_event_scanline     : out std_logic_vector(8 downto 0);
       vram7_event_timestamp : out std_logic_vector(63 downto 0);
 
       -- Visible-line HBlank is an architectural ordering point for HDMA.
@@ -117,7 +122,7 @@ architecture arch of nds_h3d_console_event_gate is
    signal gpu_pending_access  : std_logic_vector(1 downto 0) := (others => '0');
    signal gpu_pending_be      : std_logic_vector(3 downto 0) := (others => '0');
    signal gpu_pending_data    : std_logic_vector(31 downto 0) := (others => '0');
-   signal gpu_pending_frame : std_logic_vector(31 downto 0) := (others => '0');
+   signal gpu_pending_scanline : std_logic_vector(8 downto 0) := (others => '0');
    signal gpu_pending_time  : std_logic_vector(63 downto 0) := (others => '0');
 
    -- Posted GPU-write queue. The old single skid slot did retain a stalled
@@ -126,17 +131,19 @@ architecture arch of nds_h3d_console_event_gate is
    -- GXSTAT/DISP3DCNT writes in ARM9 W_IO_RESP for hundreds of cycles, blocking
    -- HBlank DMA and making NSMB BG2 reuse stale scroll values. This queue is the
    -- architectural posting point: acceptance is completion for CPU/DMA, while
-   -- the complete payload/frame/timestamp remains ordered for the HPS shadow.
-   constant GPU_QUEUE_DEPTH : natural := 32;
+   -- the complete payload/scanline/timestamp remains ordered for the HPS shadow.
+   -- Keep beta.11's asynchronous MLAB head and empty-queue bypass so Off
+   -- does not inherit the older Engine B candidate's registered queue delay.
+   constant GPU_QUEUE_DEPTH : natural := 2 ** GPU_QUEUE_ADDRESS_BITS;
    type gpu_queue_type is array (0 to GPU_QUEUE_DEPTH - 1) of
-      std_logic_vector(161 downto 0);
+      std_logic_vector(138 downto 0);
    signal gpu_queue : gpu_queue_type;
    attribute ramstyle : string;
    attribute ramstyle of gpu_queue : signal is "MLAB, no_rw_check";
-   signal gpu_queue_read : std_logic_vector(161 downto 0);
-   signal gpu_read_pointer : unsigned(4 downto 0) := (others => '0');
-   signal gpu_write_pointer : unsigned(4 downto 0) := (others => '0');
-   signal gpu_pending_count : unsigned(5 downto 0) := (others => '0');
+   signal gpu_queue_read : std_logic_vector(138 downto 0);
+   signal gpu_read_pointer : unsigned(GPU_QUEUE_ADDRESS_BITS - 1 downto 0) := (others => '0');
+   signal gpu_write_pointer : unsigned(GPU_QUEUE_ADDRESS_BITS - 1 downto 0) := (others => '0');
+   signal gpu_pending_count : unsigned(GPU_QUEUE_ADDRESS_BITS downto 0) := (others => '0');
    signal gpu_queue_pop, gpu_queue_push, gpu_queue_space : std_logic;
    signal gpu_source_take, gpu_bypass_fire, gpu_pending_move : std_logic;
 
@@ -145,7 +152,7 @@ architecture arch of nds_h3d_console_event_gate is
    signal vram9_pending_access  : std_logic_vector(1 downto 0) := (others => '0');
    signal vram9_pending_be      : std_logic_vector(3 downto 0) := (others => '0');
    signal vram9_pending_data    : std_logic_vector(31 downto 0) := (others => '0');
-   signal vram9_pending_frame : std_logic_vector(31 downto 0) := (others => '0');
+   signal vram9_pending_scanline : std_logic_vector(8 downto 0) := (others => '0');
    signal vram9_pending_time  : std_logic_vector(63 downto 0) := (others => '0');
 
    signal vram7_pending : std_logic := '0';
@@ -153,7 +160,7 @@ architecture arch of nds_h3d_console_event_gate is
    signal vram7_pending_access  : std_logic_vector(1 downto 0) := (others => '0');
    signal vram7_pending_be      : std_logic_vector(3 downto 0) := (others => '0');
    signal vram7_pending_data    : std_logic_vector(31 downto 0) := (others => '0');
-   signal vram7_pending_frame : std_logic_vector(31 downto 0) := (others => '0');
+   signal vram7_pending_scanline : std_logic_vector(8 downto 0) := (others => '0');
    signal vram7_pending_time  : std_logic_vector(63 downto 0) := (others => '0');
 
    -- 512 scanlines absorb bounded packet/render arbitration stalls without
@@ -219,7 +226,8 @@ begin
    gpu_valid_i <= '1' when service_ready = '1' and
                            (gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) or
                             (gpu_pending = '0' and gpu_source_valid = '1')) else '0';
-   gpu_source_ready <= '1' when service_ready = '0' else gpu_queue_space;
+   gpu_source_ready <= '1' when service_ready = '0' else
+                       gpu_queue_space when gpu_pending = '0' else '0';
    -- CPU completion is tied to durable local posting, not downstream drain.
    -- A pulse captured in the overflow skid slot completes when that slot can
    -- move into the queue; DMA observes the same edge through source_ready.
@@ -242,10 +250,10 @@ begin
    gpu_event_data      <= gpu_queue_read(65 downto 34)
                            when gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) else
                           gpu_source_data;
-   gpu_event_frame     <= gpu_queue_read(97 downto 66)
+   gpu_event_scanline     <= gpu_queue_read(74 downto 66)
                            when gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) else
-                          std_logic_vector(frame_counter);
-   gpu_event_timestamp <= gpu_queue_read(161 downto 98)
+                          hblank_line;
+   gpu_event_timestamp <= gpu_queue_read(138 downto 75)
                            when gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) else
                           std_logic_vector(timestamp_counter);
 
@@ -267,7 +275,7 @@ begin
    vram9_event_access    <= vram9_pending_access;
    vram9_event_be        <= vram9_pending_be;
    vram9_event_data      <= vram9_pending_data;
-   vram9_event_frame     <= vram9_pending_frame;
+   vram9_event_scanline     <= vram9_pending_scanline;
    vram9_event_timestamp <= vram9_pending_time;
 
    vram7_valid_i <= '1' when service_ready = '1' and
@@ -284,25 +292,42 @@ begin
                             vram7_source_be;
    vram7_event_data      <= vram7_pending_data when vram7_pending = '1' else
                             vram7_source_data;
-   vram7_event_frame     <= vram7_pending_frame when vram7_pending = '1' else
-                            std_logic_vector(frame_counter);
+   vram7_event_scanline     <= vram7_pending_scanline when vram7_pending = '1' else
+                            hblank_line;
    vram7_event_timestamp <= vram7_pending_time when vram7_pending = '1' else
                             std_logic_vector(timestamp_counter);
 
-   hblank_valid_i <= '1' when service_ready = '1' and
-                              (hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) or
-                               hblank_pulse = '1') else '0';
    hblank_event_valid <= hblank_valid_i;
-   hblank_queue_read <= hblank_queue(to_integer(hblank_read_pointer));
-   hblank_event_line <= hblank_queue_read(104 downto 96)
-                         when hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) else
-                         hblank_line;
-   hblank_event_frame <= hblank_queue_read(95 downto 64)
-                          when hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) else
-                          std_logic_vector(hblank_frame_counter);
-   hblank_event_timestamp <= hblank_queue_read(63 downto 0)
-                              when hblank_pending_count /= to_unsigned(0, hblank_pending_count'length) else
-                              std_logic_vector(timestamp_counter);
+   sparse_hblank_output : if SPARSE_HBLANK generate
+      hblank_valid_i <= '1' when service_ready = '1' and
+         hblank_pulse = '1' and
+         (unsigned(hblank_line) = to_unsigned(0, hblank_line'length) or
+          unsigned(hblank_line) = to_unsigned(192, hblank_line'length))
+         else '0';
+      hblank_queue_read <= (others => '0');
+      hblank_event_line <= hblank_line;
+      hblank_event_frame <= std_logic_vector(hblank_frame_counter);
+      hblank_event_timestamp <= std_logic_vector(timestamp_counter);
+   end generate;
+
+   queued_hblank_output : if not SPARSE_HBLANK generate
+      hblank_valid_i <= '1' when service_ready = '1' and
+         (hblank_pending_count /=
+             to_unsigned(0, hblank_pending_count'length) or
+          hblank_pulse = '1') else '0';
+      hblank_queue_read <= hblank_queue(to_integer(hblank_read_pointer));
+      hblank_event_line <= hblank_queue_read(104 downto 96)
+         when hblank_pending_count /=
+            to_unsigned(0, hblank_pending_count'length) else hblank_line;
+      hblank_event_frame <= hblank_queue_read(95 downto 64)
+         when hblank_pending_count /=
+            to_unsigned(0, hblank_pending_count'length) else
+         std_logic_vector(hblank_frame_counter);
+      hblank_event_timestamp <= hblank_queue_read(63 downto 0)
+         when hblank_pending_count /=
+            to_unsigned(0, hblank_pending_count'length) else
+         std_logic_vector(timestamp_counter);
+   end generate;
 
    frame_valid_i <= '1' when service_ready = '1' and
                              (frame_pending_count /=
@@ -360,13 +385,13 @@ begin
                if (gpu_queue_push = '1') then
                   if (gpu_pending = '1') then
                      gpu_queue(to_integer(gpu_write_pointer)) <=
-                        gpu_pending_time & gpu_pending_frame &
+                        gpu_pending_time & gpu_pending_scanline &
                         gpu_pending_data & gpu_pending_be &
                         gpu_pending_access & gpu_pending_address;
                   else
                      gpu_queue(to_integer(gpu_write_pointer)) <=
                         std_logic_vector(timestamp_counter) &
-                        std_logic_vector(frame_counter) & gpu_source_data &
+                        hblank_line & gpu_source_data &
                         gpu_source_be & gpu_source_access & gpu_source_address;
                   end if;
                   gpu_write_pointer <= gpu_write_pointer + 1;
@@ -386,14 +411,15 @@ begin
                   if (gpu_pending_move = '1') then
                      gpu_pending <= '0';
                   end if;
-               elsif (gpu_source_valid = '1' and gpu_queue_space = '0') then
+               elsif (gpu_source_valid = '1' and gpu_source_is_cpu = '1' and
+                      gpu_queue_space = '0') then
                   gpu_pending <= '1';
                   gpu_pending_cpu <= gpu_source_is_cpu;
                   gpu_pending_address <= gpu_source_address;
                   gpu_pending_access <= gpu_source_access;
                   gpu_pending_be <= gpu_source_be;
                   gpu_pending_data <= gpu_source_data;
-                  gpu_pending_frame <= std_logic_vector(frame_counter);
+                  gpu_pending_scanline <= hblank_line;
                   gpu_pending_time <= std_logic_vector(timestamp_counter);
                end if;
 
@@ -404,7 +430,7 @@ begin
                   vram9_pending_access <= vram9_source_access;
                   vram9_pending_be <= vram9_source_be;
                   vram9_pending_data <= vram9_source_data;
-                  vram9_pending_frame <= std_logic_vector(frame_counter);
+                  vram9_pending_scanline <= hblank_line;
                   vram9_pending_time <= std_logic_vector(timestamp_counter);
                elsif (vram9_pending = '1' and vram9_event_ready = '1') then
                   vram9_pending <= '0';
@@ -420,11 +446,15 @@ begin
                   vram7_pending_access <= vram7_source_access;
                   vram7_pending_be <= vram7_source_be;
                   vram7_pending_data <= vram7_source_data;
-                  vram7_pending_frame <= std_logic_vector(frame_counter);
+                  vram7_pending_scanline <= hblank_line;
                   vram7_pending_time <= std_logic_vector(timestamp_counter);
                end if;
 
-               if (hblank_pending_count = to_unsigned(0, hblank_pending_count'length)) then
+               if SPARSE_HBLANK then
+                  hblank_pending_count <= (others => '0');
+                  hblank_read_pointer <= (others => '0');
+                  hblank_write_pointer <= (others => '0');
+               elsif (hblank_pending_count = to_unsigned(0, hblank_pending_count'length)) then
                   if (hblank_pulse = '1' and hblank_event_ready = '0') then
                      hblank_queue(to_integer(hblank_write_pointer)) <=
                         hblank_line & std_logic_vector(hblank_frame_counter) &

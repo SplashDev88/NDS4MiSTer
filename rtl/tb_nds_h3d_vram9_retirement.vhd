@@ -6,7 +6,7 @@ use std.env.all;
 use work.pProc_bus_gba.all;
 
 entity tb_nds_h3d_vram9_retirement is
-   generic (CASE_ID : natural := 0; STALL_SINK : boolean := false; LOCAL_ONLY : boolean := false);
+   generic (CASE_ID : natural := 0; STALL_SINK : boolean := false; LOCAL_ONLY : boolean := false; ENGINE_B : boolean := false);
 end;
 architecture sim of tb_nds_h3d_vram9_retirement is
    signal clk, reset : std_logic := '0';
@@ -34,6 +34,7 @@ architecture sim of tb_nds_h3d_vram9_retirement is
    signal vr9_be : std_logic_vector(3 downto 0);
    signal vr9_din : std_logic_vector(31 downto 0);
    signal h3d_service_ready : std_logic := '1';
+   signal h3d_engine_b_enable : std_logic;
    signal h3d_vram9_unposted_pending : std_logic := '0';
    signal h3d_vram9_source_address, h3d_vram9_source_data : std_logic_vector(31 downto 0);
    signal h3d_vram9_source_be : std_logic_vector(3 downto 0);
@@ -62,6 +63,7 @@ architecture sim of tb_nds_h3d_vram9_retirement is
    end;
 begin
    clk <= not clk after 5 ns;
+   h3d_engine_b_enable <= '1' when ENGINE_B else '0';
    dma : entity work.nds_dma9 port map (
       clk => clk, reset => reset, gb_bus => regs_bus, wired_out => open, wired_done => open,
       trig_vblank => '0', trig_hblank => '0', trig_card => '0', cpu_bus_idle => '1',
@@ -83,7 +85,7 @@ begin
       gpu_source_access => "10", gpu_source_be => "1111", gpu_source_data => (others => '0'),
       gpu_source_ready => open, gpu_cpu_complete => open, gpu_event_valid => open,
       gpu_event_ready => '1', gpu_event_address => open, gpu_event_access => open,
-      gpu_event_be => open, gpu_event_data => open, gpu_event_frame => open,
+      gpu_event_be => open, gpu_event_data => open, gpu_event_scanline => open,
       gpu_event_timestamp => open,
       vram9_source_valid => h3d_vram9_source_valid, vram9_source_address => h3d_vram9_source_address,
       vram9_source_access => h3d_vram9_source_access, vram9_source_be => h3d_vram9_source_be,
@@ -91,12 +93,12 @@ begin
       vram9_issue => h3d_vram9_issue, vram9_event_valid => event_valid,
       vram9_event_ready => event_ready, vram9_event_address => h3d_vram9_write_address,
       vram9_event_data => h3d_vram9_write_data, vram9_event_be => h3d_vram9_write_byte_enable,
-      vram9_event_access => open, vram9_event_frame => open, vram9_event_timestamp => open,
+      vram9_event_access => open, vram9_event_scanline => open, vram9_event_timestamp => open,
       vram7_source_valid => '0', vram7_source_address => (others => '0'), vram7_source_access => "10",
       vram7_source_be => "1111", vram7_source_data => (others => '0'), vram7_source_ready => open,
       vram7_issue => open, vram7_event_valid => open, vram7_event_ready => '1',
       vram7_event_address => open, vram7_event_access => open, vram7_event_be => open,
-      vram7_event_data => open, vram7_event_frame => open, vram7_event_timestamp => open,
+      vram7_event_data => open, vram7_event_scanline => open, vram7_event_timestamp => open,
       hblank_pulse => '0', hblank_line => (others => '0'), hblank_event_valid => open,
       hblank_event_ready => '1', hblank_event_line => open, hblank_event_frame => open,
       hblank_event_timestamp => open, frame_pulse => '0', frame_event_valid => open,
@@ -178,9 +180,9 @@ begin
       end if;
       wait for 10000 ns;
       report "VRAM receipt case=" & integer'image(CASE_ID) & " stall=" & boolean'image(STALL_SINK) &
-         " local_only=" & boolean'image(LOCAL_ONLY) & " ARM=" & integer'image(arm_writes) & " FPGA=" & integer'image(local_writes) &
+         " engine_b=" & boolean'image(ENGINE_B) & " local_only=" & boolean'image(LOCAL_ONLY) & " ARM=" & integer'image(arm_writes) & " FPGA=" & integer'image(local_writes) &
          " reads=" & integer'image(local_reads);
-      assert (((CASE_ID = 4 or LOCAL_ONLY) and arm_writes = 0) or (CASE_ID /= 4 and not LOCAL_ONLY and arm_writes = 16)) and local_writes = 16
+      assert (((CASE_ID = 4 or (LOCAL_ONLY and not ENGINE_B)) and arm_writes = 0) or (CASE_ID /= 4 and (not LOCAL_ONLY or ENGINE_B) and arm_writes = 16)) and local_writes = 16
          report "FPGA local VRAM did not receive exactly the same writes as HPS" severity failure;
       assert CASE_ID /= 1 or local_reads = 16 report "read following posted write was lost" severity failure;
       report "PASS: local VRAM and HPS have matching ordered write receipts";

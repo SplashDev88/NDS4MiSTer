@@ -34,6 +34,7 @@ module emu
         // the user-facing default at eight pixels while retaining None.
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],3D FPS Counter,Off,On;",
+        "O[10],Engine B (next Reset),Off,On;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",
@@ -163,6 +164,7 @@ module emu
         .video_screen_order_select(status[7]),
         .video_gap_select(video_gap_select),
         .video_fps_select(status[4]),
+        .engine_b_select(status[10]),
         .video_layout_active,.video_screen_order_active,
         .video_gap_active,.video_fps_active,
         .joystick(joystick_touch),.joystick_analog(touch_analog),

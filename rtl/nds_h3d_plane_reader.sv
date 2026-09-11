@@ -43,6 +43,9 @@ module nds_h3d_plane_reader #(
     // session owner must update each copy synchronously in its own domain.
     input  logic [31:0] ddr_session,
     input  logic [31:0] pixel_session,
+    // DDR-domain session policy. This gates only externally rendered video,
+    // never the normal 3D plane/line-fetch path.
+    input  logic        external_enable,
 
     // Pixel-domain request source.  Hold a request and its payload until the
     // corresponding ready is high.  Descriptor requests have priority if
@@ -112,6 +115,7 @@ module nds_h3d_plane_reader #(
     // it adopted this publication, so HPS cannot recycle the live bank.
     output logic        full_frame_publish,
     output logic [1:0]  full_frame_bank,
+    output logic        full_frame_screen,
     input  logic        full_frame_adopted,
 
     // MiSTer DDR client port.  command_accepted means that the command has
@@ -134,6 +138,7 @@ module nds_h3d_plane_reader #(
     localparam logic [31:0] EXPECTED_WIDTH_HEIGHT = 32'h00c00100;
     localparam logic [31:0] EXPECTED_STRIDE = 32'd1024;
     localparam logic [31:0] FULL_FRAME_PIXEL_FORMAT = 32'd2;
+    localparam logic [31:0] COMPOSITE_ENGINE_B_PIXEL_FORMAT = 32'd3;
     localparam logic [7:0] LINE_BURST_WORDS = 8'd128;
     localparam integer REQUEST_WIDTH = 89;
 
@@ -176,6 +181,12 @@ module nds_h3d_plane_reader #(
 
     logic [15:0] scanline_generation_binary_pixel;
     logic [15:0] scanline_generation_gray_pixel;
+    // Applied B mode is stable throughout a released session. Synchronize
+    // it for the optional held-request aging path; Off retains beta.11's
+    // newest-line scheduling and FIFO-admission age.
+    (* async_reg = "true" *) logic [1:0] external_mode_pixel_sync;
+    logic line_request_age_tracking;
+    logic [15:0] line_request_birth_generation_gray;
     (* async_reg = "true" *) logic [15:0] scanline_generation_gray_ddr_meta;
     (* async_reg = "true" *) logic [15:0] scanline_generation_gray_ddr_sync;
 
@@ -210,6 +221,36 @@ module nds_h3d_plane_reader #(
         end
     end
 
+    always_ff @(posedge pixel_clk) begin
+        if (pixel_reset) external_mode_pixel_sync <= 2'b00;
+        else external_mode_pixel_sync <=
+            {external_mode_pixel_sync[0], external_enable};
+    end
+
+    // A ready/valid source may wait outside the asynchronous FIFO for an
+    // arbitrary number of pixel clocks.  Its raster deadline starts when the
+    // request is first presented, not when FIFO space finally raises ready.
+    // Capture that birth generation only for a stalled transaction; a request
+    // accepted on its first cycle uses the live generation directly.  Clearing
+    // tracking on each handshake also supports gapless back-to-back requests.
+    wire [15:0] presented_scanline_generation_gray = scanline_tick
+        ? binary_to_gray(scanline_generation_binary_pixel + 1'b1)
+        : scanline_generation_gray_pixel;
+    always_ff @(posedge pixel_clk) begin
+        if (pixel_reset) begin
+            line_request_age_tracking <= 1'b0;
+            line_request_birth_generation_gray <= 16'd0;
+        end else if (!line_request) begin
+            line_request_age_tracking <= 1'b0;
+        end else if (line_request_ready) begin
+            line_request_age_tracking <= 1'b0;
+        end else if (!line_request_age_tracking) begin
+            line_request_age_tracking <= 1'b1;
+            line_request_birth_generation_gray <=
+                presented_scanline_generation_gray;
+        end
+    end
+
     always_ff @(posedge ddr_clk) begin
         if (ddr_reset) begin
             scanline_generation_gray_ddr_meta <= 16'd0;
@@ -222,9 +263,10 @@ module nds_h3d_plane_reader #(
         end
     end
 
-    wire [15:0] request_write_scanline_generation_gray = scanline_tick
-        ? binary_to_gray(scanline_generation_binary_pixel + 1'b1)
-        : scanline_generation_gray_pixel;
+    wire [15:0] request_write_scanline_generation_gray =
+        (external_mode_pixel_sync[1] && line_request_age_tracking)
+            ? line_request_birth_generation_gray
+            : presented_scanline_generation_gray;
     wire [15:0] request_scanline_generation_binary =
         gray_to_binary(request_scanline_generation_gray);
     wire [15:0] scanline_generation_binary_ddr =
@@ -316,7 +358,9 @@ module nds_h3d_plane_reader #(
     logic [31:0] descriptor_meta_frame_ddr;
     logic descriptor_meta_bank_ddr;
     logic descriptor_meta_full_frame_ddr;
+    logic descriptor_meta_composite_ddr;
     logic [1:0] descriptor_meta_full_bank_ddr;
+    logic descriptor_meta_full_screen_ddr;
     logic descriptor_activation_pending_ddr;
     logic descriptor_ready_toggle_ddr;
     logic descriptor_active_toggle_ddr;
@@ -359,6 +403,13 @@ module nds_h3d_plane_reader #(
     logic [31:0] ack_sequence;
     logic [31:0] ack_session;
     logic full_ack_pending;
+    // Composite descriptors continue fetching 3D scanlines while their
+    // independent Engine-B framebuffer waits for scanout adoption.  The
+    // adoption indication is a one-DDR-clock pulse and can therefore arrive
+    // during LINE_ISSUE/LINE_WAIT.  Retain it until IDLE issues the shared
+    // descriptor ACK; otherwise that single missed pulse leaves the HPS bank
+    // owned forever and freezes every later Engine-B publication.
+    logic full_adoption_pending;
     logic [31:0] active_session;
     logic active_descriptor_full_frame;
     logic session_invalidate_pending;
@@ -379,11 +430,15 @@ module nds_h3d_plane_reader #(
     wire candidate_is_full_frame =
         descriptor_word2[31:0] <= 32'd3 &&
         descriptor_word2[63:32] == FULL_FRAME_PIXEL_FORMAT;
+    wire candidate_is_composite =
+        descriptor_word2[31:0] <= 32'd7 &&
+        descriptor_word2[63:32] == COMPOSITE_ENGINE_B_PIXEL_FORMAT;
     wire candidate_fields_valid =
         descriptor_word0[31:0] == candidate_sequence &&
         descriptor_word0[63:32] == 32'd0 &&
         descriptor_word1[31:0] == ddr_session &&
-        (candidate_is_plane || candidate_is_full_frame) &&
+        (candidate_is_plane || (external_enable &&
+         (candidate_is_full_frame || candidate_is_composite))) &&
         descriptor_word3[31:0] == EXPECTED_WIDTH_HEIGHT &&
         descriptor_word3[63:32] == EXPECTED_STRIDE;
 
@@ -449,7 +504,12 @@ module nds_h3d_plane_reader #(
             end
 
             LINE_ISSUE: begin
-                ddram_read = !ddram_busy;
+                // Keep a deadline-critical line request visible while another
+                // DDR owner is active.  The outer arbiter can only apply its
+                // bounded video-priority grant while RD remains asserted.
+                // Address and burst length stay stable in LINE_ISSUE, and the
+                // state advances only after command_accepted.
+                ddram_read = external_enable || !ddram_busy;
                 ddram_burst_count = LINE_BURST_WORDS;
                 ddram_address = fetch_line_address;
             end
@@ -458,7 +518,8 @@ module nds_h3d_plane_reader #(
         endcase
     end
 
-    // Pop a descriptor only when the previous descriptor bundle was acked.
+    // Start a descriptor read only when the previous descriptor bundle was
+    // acked; redundant refreshes are consumed while that link remains owned.
     // Invalid line requests are consumed as explicit misses.  A valid line
     // request, however, remains at the FIFO head while all line banks are
     // owned by the pixel side.  That ownership normally clears at line_end;
@@ -469,7 +530,12 @@ module nds_h3d_plane_reader #(
         if (state == IDLE && !session_invalidate_pending &&
             request_read_valid) begin
             if (request_is_descriptor) begin
-                request_read = descriptor_link_free && !full_ack_pending;
+                // The producer cannot replace its immutable descriptor until
+                // the outstanding sequence is acknowledged.  A refresh seen
+                // while that link is owned is therefore redundant; consume it
+                // so it cannot head-of-line block deadline-critical rows.
+                request_read = external_enable ||
+                    (descriptor_link_free && !full_ack_pending);
             end else if (
                 request_session != ddr_session ||
                 request_line_is_stale ||
@@ -527,8 +593,10 @@ module nds_h3d_plane_reader #(
             ack_sequence <= 32'd0;
             ack_session <= 32'd0;
             full_ack_pending <= 1'b0;
+            full_adoption_pending <= 1'b0;
             full_frame_publish <= 1'b0;
             full_frame_bank <= 2'd0;
+            full_frame_screen <= 1'b0;
             active_descriptor_valid <= 1'b0;
             active_descriptor_sequence <= 32'd0;
             active_descriptor_frame <= 32'd0;
@@ -542,7 +610,9 @@ module nds_h3d_plane_reader #(
             descriptor_meta_frame_ddr <= 32'd0;
             descriptor_meta_bank_ddr <= 1'b0;
             descriptor_meta_full_frame_ddr <= 1'b0;
+            descriptor_meta_composite_ddr <= 1'b0;
             descriptor_meta_full_bank_ddr <= 2'd0;
+            descriptor_meta_full_screen_ddr <= 1'b0;
             descriptor_activation_pending_ddr <= 1'b0;
             descriptor_ready_toggle_ddr <= 1'b0;
             descriptor_active_toggle_ddr <= 1'b0;
@@ -580,6 +650,10 @@ module nds_h3d_plane_reader #(
             descriptor_rejected <= 1'b0;
             line_loaded <= 1'b0;
             line_missed <= 1'b0;
+            // This event becomes a toggle in the parent.  It must be exactly
+            // one DDR clock wide or one adoption repeatedly republishes the
+            // same complete-frame bank.
+            full_frame_publish <= 1'b0;
 
             // Session is an epoch, not telemetry.  It invalidates the active
             // descriptor immediately and prevents an in-flight fetch from
@@ -590,13 +664,21 @@ module nds_h3d_plane_reader #(
                 descriptor_activation_pending_ddr <= 1'b0;
                 session_invalidate_pending <= 1'b1;
             end
-            if (full_ack_pending && ack_session != ddr_session)
+            if (full_ack_pending &&
+                (ack_session != ddr_session || !external_enable)) begin
                 full_ack_pending <= 1'b0;
+                full_adoption_pending <= 1'b0;
+            end else if (full_ack_pending && full_frame_adopted) begin
+                full_adoption_pending <= 1'b1;
+            end
 
             case (state)
                 IDLE: begin
-                    if (full_ack_pending && full_frame_adopted) begin
+                    if (full_ack_pending && external_enable &&
+                        ack_session == ddr_session &&
+                        (full_frame_adopted || full_adoption_pending)) begin
                         full_ack_pending <= 1'b0;
+                        full_adoption_pending <= 1'b0;
                         state <= DESC_ACK_ISSUE;
                     end else if (session_invalidate_pending) begin
                         if (descriptor_link_free) begin
@@ -606,7 +688,9 @@ module nds_h3d_plane_reader #(
                             descriptor_meta_frame_ddr <= 32'd0;
                             descriptor_meta_bank_ddr <= 1'b0;
                             descriptor_meta_full_frame_ddr <= 1'b0;
+                            descriptor_meta_composite_ddr <= 1'b0;
                             descriptor_meta_full_bank_ddr <= 2'd0;
+                            descriptor_meta_full_screen_ddr <= 1'b0;
                             descriptor_ready_toggle_ddr <=
                                 !descriptor_ready_toggle_ddr;
                             session_invalidate_pending <= 1'b0;
@@ -632,10 +716,20 @@ module nds_h3d_plane_reader #(
                         // banks remain mutually coherent in both domains.
                         descriptor_active_toggle_ddr <=
                             !descriptor_active_toggle_ddr;
-                        if (descriptor_meta_full_frame_ddr) begin
-                            full_frame_publish <= 1'b1;
-                            full_frame_bank <= descriptor_meta_full_bank_ddr;
-                            full_ack_pending <= 1'b1;
+                        if (descriptor_meta_full_frame_ddr ||
+                            descriptor_meta_composite_ddr) begin
+                            // A verified bundle may still be waiting for its
+                            // pixel-domain frame boundary when H3DQ begins.
+                            // Never publish that old external bank after the
+                            // session owner withdrew permission.
+                            if (external_enable) begin
+                                full_frame_publish <= 1'b1;
+                                full_frame_bank <= descriptor_meta_full_bank_ddr;
+                                full_frame_screen <=
+                                    descriptor_meta_full_screen_ddr;
+                                full_ack_pending <= 1'b1;
+                            end
+                            full_adoption_pending <= 1'b0;
                             state <= IDLE;
                         end else begin
                             state <= DESC_ACK_ISSUE;
@@ -646,7 +740,10 @@ module nds_h3d_plane_reader #(
                             // last verified plane active until a complete,
                             // tear-free replacement is accepted below.
                             session_invalidate_pending <= 1'b0;
-                            if (request_session == ddr_session) begin
+                            if (!descriptor_link_free || full_ack_pending) begin
+                                // The stable descriptor is already in flight;
+                                // this queued refresh cannot name newer data.
+                            end else if (request_session == ddr_session) begin
                                 state <= DESC_SEQUENCE0_ISSUE;
                             end else begin
                                 descriptor_rejected <= 1'b1;
@@ -780,8 +877,15 @@ module nds_h3d_plane_reader #(
                                     descriptor_word2[0];
                                 descriptor_meta_full_frame_ddr <=
                                     candidate_is_full_frame;
+                                descriptor_meta_composite_ddr <=
+                                    candidate_is_composite;
                                 descriptor_meta_full_bank_ddr <=
-                                    descriptor_word2[1:0];
+                                    candidate_is_composite ?
+                                        {1'b0,descriptor_word2[1]} :
+                                        descriptor_word2[1:0];
+                                descriptor_meta_full_screen_ddr <=
+                                    candidate_is_composite &&
+                                    descriptor_word2[2];
                                 descriptor_ready_toggle_ddr <=
                                     !descriptor_ready_toggle_ddr;
                                 descriptor_activation_pending_ddr <= 1'b1;
@@ -817,8 +921,15 @@ module nds_h3d_plane_reader #(
                                 descriptor_word2[0];
                             descriptor_meta_full_frame_ddr <=
                                 candidate_is_full_frame;
+                            descriptor_meta_composite_ddr <=
+                                candidate_is_composite;
                             descriptor_meta_full_bank_ddr <=
-                                descriptor_word2[1:0];
+                                candidate_is_composite ?
+                                    {1'b0,descriptor_word2[1]} :
+                                    descriptor_word2[1:0];
+                            descriptor_meta_full_screen_ddr <=
+                                candidate_is_composite &&
+                                descriptor_word2[2];
                             descriptor_ready_toggle_ddr <=
                                 !descriptor_ready_toggle_ddr;
                             descriptor_activation_pending_ddr <= 1'b1;
