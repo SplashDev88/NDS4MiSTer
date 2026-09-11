@@ -2,11 +2,12 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.3.0-beta.11 — fast single-screen release**
+**v0.3.0-beta.12 — optional second screen, fast mode by default**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
-> is not displayed yet, so both visible screen positions show Engine A. Treat
+> defaults Off for speed. Turn it On and Reset or reload the ROM to display
+> the second graphics engine; enabling it costs performance. Treat
 > this release as something to experiment with, not as a reliable way to play
 > your entire library.
 
@@ -27,14 +28,16 @@ artifacts, or credentials are included in this source repository.
   hardware-tested with beta.7.
 - Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
 - Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
+- Optional Engine B rendering, with an Off/On setting applied on Reset or ROM
+  load. Off retains the fast single-screen path from beta.11.
 
 ## Current limitations
 
-- **Only Engine A is displayed.** A Nintendo DS has two 2D engines, but Engine
-  B is currently synthesized out to fit the FPGA. Both visible screen positions
-  therefore show the same Engine A image. Touch input still reaches the game,
-  but games that require precise interaction with unseen touchscreen graphics
-  remain difficult to use.
+- **Engine B costs speed.** Off is the default and displays Engine A in both
+  screen positions. On restores the second graphics engine using the ARM
+  service, but games can slow down and the second screen can lag under load.
+  Change **Engine B (next Reset)** in the core menu, then Reset or reload the
+  ROM to apply it. Returning to Off restores the fast single-screen path.
 - **Pokémon graphics using GX readback can remain missing.** The experimental
   correction is deferred because of slowdown; see issue #16 below.
 - **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
@@ -58,12 +61,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.11_20260910.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.12_20260911.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260910** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260911** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -98,12 +101,12 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. In this single-screen build, both displayed positions duplicate Engine A, so the
-pointer is drawn over every visible copy of that image.
+movement. With Engine B Off, the pointer appears over both copies of Engine A.
+With Engine B On, it follows the DS touchscreen through the selected layout
+and screen order.
 
-Touch coordinates are delivered to the DS touchscreen even though Engine B is
-not displayed. Games that require you to tap a specific bottom-screen control
-are therefore still effectively blind.
+Touch input reaches the game in either mode. With Engine B Off, controls drawn
+only by the second graphics engine are invisible, making precise taps difficult.
 
 ## Saves
 
@@ -144,10 +147,20 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.11
+## What's new in beta.12
 
-This release freezes the fast single-screen development lane after
-beta.10. It keeps the latest accepted ARM renderer optimizations, including
+Engine B returns as an optional second graphics engine, default Off. Change
+**Engine B (next Reset)**, then Reset or reload the ROM to apply it. The setting
+stays fixed during the running game session. On restores both engines; Off
+duplicates Engine A and retains the fast path.
+
+- A bounded refresh keeps Engine B updating during sustained renderer catch-up.
+  The second screen can still update slowly or lag under heavy load.
+- The registered reset-release qualifier is retained for reliable startup.
+- Antialiased shadow frames use the exact Y raster split to avoid missing
+  coverage updates. Other accepted parallel rendering paths remain enabled.
+
+This release keeps beta.11's accepted ARM renderer optimizations, including
 constant-color span/depth reuse, translucent shading work, adaptive catch-up,
 and the replay worker wakeup correction. Existing parallel shadow/stencil
 rendering, specialized antialias final pass, and frontend CPU0 pinning remain.
@@ -167,34 +180,33 @@ its experimental pairing causes substantial gameplay slowdown. Those objects
 can remain missing in this fast build. See
 [issue #16](https://github.com/SplashDev88/NDS4MiSTer/issues/16).
 
-**Beta.12 is planned for Engine B with an On/Off option**, default Off and
-applied on Reset or ROM load. Beta.11 retains the single-screen configuration.
-**Up to about 30% faster 3D rendering in targeted tests.** This measures the
-latest transparency optimization against its preceding accepted build; gains
-vary by game. It is not a whole-game FPS comparison against public beta.10.
+The transparency speed improvements introduced in beta.11 remain. No additional
+3D speed percentage is claimed for beta.12. Locality-cache and stateless-rendering
+experiments did not show a repeatable net gain on MiSTer and are excluded.
 
 ## Verification
 
 | Item | Release identity |
 | --- | --- |
-| Core file | `_Console/NDS_20260910.rbf` |
-| Build identity | `260910-FASTIRQ2` |
-| FPGA SHA-256 | `d8e43c125dde46a54bcb764e06694391b8400cca14d030cc8015668dc5456019` |
+| Core file | `_Console/NDS_20260911.rbf` |
+| Build identity | `260911-EBRLS2` |
+| FPGA SHA-256 | `8ff3dafeb04ca3db964899656eb61b6791bd199cf47ccfaa2d8a033f150142b5` |
 | Quartus seed | 2 |
 | ARM clocks | 1 GHz |
-| ARM SHA-256 | `b815045a40a117aacd429f4f52d827a4276bf0f24f55ac2d430e43104c4d00e7` |
+| ARM SHA-256 | `b107acaf4cd2d283ed3653fe4151d7209db83635d4fc4465fa154086cd41fd4d` |
 | Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-The production ARM9 WFI regression passes 130 combinations of memory latency,
-wake timing, and IRQ masking. The old palette baseline reproduces the skipped
-return in the negative control. The standard-palette regression also passes.
-The seed-2 IRQ FPGA completed map, fit, assembly, and timing analysis. The
-maintainer tested this exact FPGA/ARM pair in Castlevania: Dawn of Sorrow and
-New Super Mario Bros. and confirmed that both worked well with the accepted
-fast responsiveness. Castlevania also reported Ready status and zero FPGA/HPS
-faults during the hardware smoke check.
-Static timing reports setup/recovery violations and hold violations;
-timing closure is not claimed. Fit: 40,850 ALMs, 491 RAM blocks, 69 DSP blocks.
+This package reuses the exact Test3 FPGA/ARM pair accepted by the maintainer
+after TV testing; packaging did not rebuild either binary. Hardware checks in
+Castlevania: Dawn of Sorrow and New Super Mario Bros. verified Off/On session
+policy, advancing guest/rendered frames, and zero transport faults. A cold NSMB
+startup also passed. Host and ARM regressions cover the bounded Engine B
+refresh, unchanged Off admissions, and exact antialiased shadow output.
+
+The seed-2 FPGA completed map, fit, assembly, and timing analysis. Static timing
+reports setup/recovery and hold violations; timing closure is not claimed.
+Fit: 41,196 ALMs, 493 RAM blocks, 69 DSP blocks. Worst setup: -13.340 ns;
+worst hold: -0.555 ns; worst recovery: -8.844 ns.
 Simulation and publication counters are not gameplay FPS measurements.
 
 ## For developers
@@ -206,10 +218,13 @@ Simulation and publication counters are not gameplay FPS measurements.
   memory and VRAM mapping, Engine A 2D graphics, sound, saves, and MiSTer
   video/control paths.
 - The **ARM/HPS service** replays ordered graphics events into melonDS's 3D
-  engine and publishes completed 256×192 3D planes to the FPGA.
+  engine and publishes completed 256×192 3D planes to the FPGA. When Engine B
+  is enabled, it also renders Engine B from ordered register/VRAM snapshots and
+  publishes paired 3D/Engine B planes.
 - The FPGA composes the published 3D plane into Engine A using DS priority,
   window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of the FPGA 2D engine in this build.
+  shadow copy of Engine A. Engine B Off avoids the second-engine rendering and
+  snapshot transport work; Engine B On uses separate display storage.
 - The plane-only renderer uses one complete-frame ownership fence, avoiding
   192 unused per-scanline semaphore publications per changed frame without
   changing scanline-capable melonDS frontends.

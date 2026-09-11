@@ -1,79 +1,86 @@
-NDS4MiSTer v0.3.0-beta.11 source — fast single-screen release
+NDS4MiSTer v0.3.0-beta.12 source — optional Engine B
 
-This source snapshot accompanies NDS4MiSTer_Public_Beta_v0.3.0-beta.11_20260910.
-It freezes the latest accepted ARM speed improvements and independent FPGA
-fixes from the single-screen beta.10 development lane. Beta.12 is planned for
-Engine B with an On/Off option, default Off and applied on Reset or ROM load.
+This source snapshot accompanies NDS4MiSTer_Public_Beta_v0.3.0-beta.12_20260911.
+Engine B defaults Off to retain the fast single-screen path. Enable Engine B
+in the core menu, then Reset or reload the ROM to apply the change. On restores
+the second graphics engine but costs speed and can lag under heavy load.
 
-Production source baseline: dc0c9da (accepted palette parent 30e1608).
-The packaging documentation is updated in this snapshot; the production code
-and build assignments are unchanged from that baseline.
+Production ARM source: 48d8bce4290b4525f22a9e9bcc9dbcb1c3ed4545
+Production FPGA source: 4bb276cae44768794736007e882538bb22ae552d
+The ARM revision contains exactly the same FPGA sources as the FPGA revision.
+Only README.md, SOURCE_PACKAGE.txt, and the source SHA256SUMS manifest change
+for packaging. The accepted Test3 FPGA, ARM helper, and launcher are reused
+byte for byte. The installed core is renamed to NDS_20260911.rbf.
 
 Included changes
 ----------------
+- Optional ARM-rendered Engine B with an Off/On session policy. Off avoids its
+  rendering/snapshot work and retains the accepted 3D-only fast path.
+- The registered reset-release qualifier for reliable startup is retained.
+- A bounded Engine B refresh under sustained emergency catch-up prevents all
+  eligible refreshes from being skipped indefinitely. It completes before
+  successor packets replace the current snapshot. Incomplete/discarded geometry
+  and future snapshots remain ineligible; Off render admissions are unchanged.
+- Antialiased shadow frames retain the exact Y raster split because X clipping
+  loses coverage updates. Non-AA X splitting, adaptive splitting, and bands stay.
 - Latest accepted ARM renderer work, including constant-color span/depth reuse,
-  exact translucent shading work, responsive adaptive catch-up, and the replay
-  worker missed-wakeup correction. Public beta.10's parallel shadow/stencil
-  work, specialized antialias final pass, and frontend CPU0 pinning remain.
-- Kirby graphics fixes: extended-palette refill after VRAM remaps, local ARM9
-  VRAM write retirement, and disabled-Engine-B register readback.
-- Standard-palette readback for fade/text-color behavior.
-- Independent ARM9 halt/IRQ-resume correction: preserve the pending decoded PC
-  when IRQ selection occurs on the edge that clears halt.
-- Existing sound-bias correction, touch calibration and pointer, EEPROM/FRAM/
-  Flash saves, and InsaneFriend's writable firmware, ARM7 Wi-Fi boot-memory,
-  and cartridge-IR compatibility work. Wi-Fi register compatibility does not
-  provide networking.
+  transparent shading improvements, adaptive catch-up, replay worker wakeup
+  correction, parallel shadow/stencil rendering, specialized antialias final
+  pass, direct plane publication, and frontend CPU0 pinning.
+- Kirby extended-palette, local ARM9 VRAM write retirement, disabled Engine B
+  register readback, and standard-palette fade/text-color fixes.
+- ARM9 halt/IRQ-resume correction, sound-bias correction, touch calibration and
+  pointer, EEPROM/FRAM/Flash saves, and InsaneFriend's writable firmware, ARM7
+  Wi-Fi boot-memory, and cartridge-IR compatibility work. Wi-Fi register
+  compatibility does not provide networking.
 
 Deferred work and limits
 -----------------------
-Engine B rendering is excluded. Both screen positions display Engine A.
-The experimental GX readback path is excluded because its FPGA/ARM pairing
-caused substantial slowdown. It supplies the clip-matrix and BOX_TEST results
-needed by missing Pokemon player/furniture graphics, so those objects can
-remain missing in this fast build. See GitHub issue #16:
+The experimental GX readback path remains excluded because it caused substantial
+slowdown. It supplies the clip-matrix and BOX_TEST results needed by missing
+Pokemon player/furniture graphics, so those objects can remain missing:
 https://github.com/SplashDev88/NDS4MiSTer/issues/16
 
-Up to about 30% faster 3D rendering in targeted tests: the latest translucent
-optimization reduced a complete synthetic frame from 126.246046 ms to
-97.746822 ms on MiSTer at 1 GHz (29.16% higher throughput), against its preceding
-accepted build. Results vary by game. This is not a whole-game FPS comparison
-against public beta.10.
+Beta.11's transparency improvements remain. No additional 3D speed percentage
+is claimed for beta.12. Locality-cache and stateless-rendering experiments were
+implemented and measured on MiSTer; neither showed a repeatable useful net gain,
+so they are excluded. No credits menu was added. ARM remains at 1 GHz.
 
-No claim is made that all games run at full speed or that all graphics, save,
-audio, or crash problems are solved. FPS/publication counters do not measure
-unique displayed frames or total gameplay speed; see issue #11.
+Engine B On can refresh slowly and lag under load. Hardware publication counts
+and snapshot age are not measurements of live gameplay FPS or input latency.
+No claim is made that all games run at full speed or that graphics, saves, audio,
+or crashes are universally fixed. Audio remains experimental; networking,
+microphone, NAND saves, and save states are not implemented.
 
 Build and binary identities
 ---------------------------
 FPGA project: fpga/mister_nitro_console_island/NDS4MiSTer.qpf
-Quartus: Prime 17.0.2, seed 2
-Build identity: 260910-FASTIRQ2
-FPGA SHA256: d8e43c125dde46a54bcb764e06694391b8400cca14d030cc8015668dc5456019
+Quartus: Prime 17.0.2, seed 2, unchanged clock family
+Build identity: 260911-EBRLS2
+FPGA SHA256: 8ff3dafeb04ca3db964899656eb61b6791bd199cf47ccfaa2d8a033f150142b5
 ARM clocks: 1 GHz
-ARM SHA256: b815045a40a117aacd429f4f52d827a4276bf0f24f55ac2d430e43104c4d00e7
+ARM SHA256: b107acaf4cd2d283ed3653fe4151d7209db83635d4fc4465fa154086cd41fd4d
 Kickstart SHA256: 4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc
 
-ARM sources, vendored melonDS, build scripts, and Kickstart match the accepted
-fast ARM source at f436c9c. The existing tested ARM binary is reused. The
-isolated IRQ correction changes FPGA CPU logic, not the ARM renderer.
 Build instructions and dependencies are described in README.md, CMakeLists.txt,
 tools/build_hybrid_3d_service_armhf.sh, and tools/run_quartus_docker.sh.
 
 Validation
 ----------
-The production nds_cpu9 WFI/BX caller-return test passes 130 cases across five
-memory latencies, thirteen wake phases, and IRQ enabled/masked operation.
-The baseline negative control fails by skipping the post-WFI return instruction.
-The standard-palette readback regression and source safety audit pass.
-The seed-2 FPGA completed map, fit, assembly, and timing analysis. The
-maintainer confirmed good graphics/gameplay and retained fast responsiveness
-in Castlevania: Dawn of Sorrow and New Super Mario Bros. on this exact pair.
-The Castlevania hardware smoke check also reported Ready and no FPGA/HPS faults.
-Fit: 40,850 ALMs, 491 RAM blocks, 69 DSP blocks. Static timing reports setup,
-recovery, and hold violations; timing closure is not claimed.
-Static timing is retained as diagnostic information. Simulation and source
-checks do not establish game speed or universal stability.
+The maintainer accepted the exact Test3 pair after TV testing. Hardware checks
+covered NSMB Engine B On, Castlevania Off and On, and a final cold NSMB Off
+startup. Session policy matched, guest and published rendered frames advanced,
+and transport faults stayed zero. The tested ARM clock was 1 GHz.
+Host and ARM tests passed for the bounded refresh, unchanged Off admissions,
+future/discard/reset guards, paired publication, and exact AA shadow output.
+Earlier transport, snapshot ownership, Off equivalence, reset, palette, and
+ARM9 halt/IRQ regression evidence is retained with the development record.
+
+Map, fit, assembly, and timing analysis completed. Fit: 41,196 ALMs, 493 RAM
+blocks, 69 DSP blocks. Worst setup: -13.340 ns; worst hold: -0.555 ns;
+worst recovery: -8.844 ns. Timing closure is not claimed. The accepted binaries
+were not rebuilt for packaging. Simulation, hashes, and source checks do not
+establish universal stability or game speed.
 
 Source contents and licensing
 -----------------------------
