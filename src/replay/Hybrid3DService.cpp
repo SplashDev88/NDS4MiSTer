@@ -440,6 +440,29 @@ private:
 using nds4mister::h3d::AdaptiveCatchupBudget;
 using nds4mister::h3d::SmoothCatchupPacer;
 
+// Emergency catch-up can omit every 3D raster, but Engine B still produces
+// complete images. Give those images a bounded publication opportunity without
+// changing the catch-up controller or authorizing incomplete geometry.
+class EngineBRefreshPacer {
+public:
+    static constexpr unsigned Interval = 12;
+    void reset() noexcept { skipped_ = 0; }
+
+    bool force(bool budget_skipped, bool geometry_discarded,
+               bool snapshot_eligible) noexcept
+    {
+        if (geometry_discarded) return false;
+        if (!budget_skipped) { reset(); return false; }
+        if (!snapshot_eligible) return false;
+        if (++skipped_ < Interval) return false;
+        reset();
+        return true;
+    }
+
+private:
+    unsigned skipped_ = 0;
+};
+
 constexpr bool catchup_should_discard_geometry(
     std::uint32_t skip_numerator, std::size_t packet_backlog,
     std::size_t severe_packet_threshold) noexcept
@@ -1039,6 +1062,8 @@ public:
     }
 
 private:
+    friend void run_self_test();
+
     struct ReplayPacket {
         frame_packet::PacketHeader header {};
         std::vector<frame_packet::Record> records;
@@ -1184,6 +1209,8 @@ private:
         engine_b_latest_screen_ = false;
         engine_b_latest_frame_number_ = 0;
         engine_b_copied_bytes_ = 0;
+        engine_b_refresh_pacer_.reset();
+        engine_b_forced_refreshes_ = 0;
         pending_frame_expected_alpha_ = false;
         plane_visibility_filter_.reset();
         completed_plane_generation_ = 0;
@@ -1757,9 +1784,22 @@ private:
                     !arm_video_render_shadow_) {
                     const auto disposition = frame_disposition();
                     if (disposition == FrameDisposition::Fault) return;
+                    bool force_engine_b_refresh = false;
+                    if (engine_b_pixels_enabled_ &&
+                        disposition == FrameDisposition::Render) {
+                        // Both the sparse image and this decision belong to
+                        // the replay worker. Never pair a future B image with
+                        // older 3D state, including at a SWAP-only boundary.
+                        const bool snapshot_eligible =
+                            engine_b_latest_ready_ &&
+                            engine_b_latest_frame_number_ <= packet_frame;
+                        force_engine_b_refresh = engine_b_refresh_pacer_.force(
+                            replay_frame_skip_render_,
+                            replay_frame_discard_geometry_, snapshot_eligible);
+                    }
                     const bool render =
                         disposition == FrameDisposition::Render &&
-                        !replay_frame_skip_render_;
+                        (!replay_frame_skip_render_ || force_engine_b_refresh);
 
                     // This is the asynchronous equivalent of poll()'s
                     // terminal-packet path. The input owner has already
@@ -1775,6 +1815,14 @@ private:
                     if (render && !start_arm_render(
                             packet_frame, packet_sequence))
                         return;
+                    if (force_engine_b_refresh) {
+                        // Finish before successor records replace the only
+                        // latest B snapshot. This rare On-only refresh gives
+                        // up replay/raster overlap, and cannot be canceled by
+                        // the successor-boundary cancellation path above.
+                        if (!finish_arm_render()) return;
+                        ++engine_b_forced_refreshes_;
+                    }
                 }
                 replay_packets_applied_.fetch_add(
                     1, std::memory_order_release);
@@ -3996,6 +4044,8 @@ private:
                       std::memory_order_relaxed)
                << " geometry_discard_frames="
                << replay_geometry_discard_frames_
+               << " engine_b_forced_refreshes="
+               << engine_b_forced_refreshes_
                << " geometry_discard_vertices="
                << nds_->GPU.GPU3D.ExternalDiscardedVertices
                << " arm_render_finishes="
@@ -4421,6 +4471,8 @@ private:
     std::uint32_t policy_epoch_ = 0;
     session_policy::Block policy_ {};
     std::uint64_t engine_b_copied_bytes_ = 0;
+    EngineBRefreshPacer engine_b_refresh_pacer_;
+    std::uint64_t engine_b_forced_refreshes_ = 0;
     nds4mister::crash::FpgaRuntimeTelemetry* runtime_telemetry_ = nullptr;
     bool arm_video_phase_started_ = false;
     bool arm_video_renderer_started_ = false;
@@ -5161,6 +5213,214 @@ void run_self_test()
     }
     std::cout << "H3D_ENGINE_B_POLICY_SELF_TEST_PASS "
                  "publication_modes=8 strict_abi=1 off_pixel_copy_ddr=0\n";
+
+    {
+        EngineBRefreshPacer refresh;
+        const auto eleven_skips = [&] {
+            for (unsigned i = 0; i < EngineBRefreshPacer::Interval - 1; ++i)
+                if (refresh.force(true, false, true))
+                    self_test_fail("Engine-B refresh exceeded its admission floor");
+        };
+        eleven_skips();
+        for (unsigned i = 0; i < 100; ++i)
+            if (refresh.force(true, true, true) ||
+                refresh.force(true, false, false))
+                self_test_fail("Engine-B refresh admitted discard or future pixels");
+        if (!refresh.force(true, false, true))
+            self_test_fail("Engine-B refresh lost its pending eligible admission");
+        eleven_skips();
+        if (refresh.force(false, false, true))
+            self_test_fail("Engine-B refresh forced an ordinary admission");
+        eleven_skips();
+        refresh.reset();
+        eleven_skips();
+        if (!refresh.force(true, false, true))
+            self_test_fail("Engine-B refresh reset or normal admission leaked phase");
+
+        // Off never enters the new policy: compare the original controller
+        // and accumulator against the gated decision over changing pressure.
+        AdaptiveCatchupBudget original_budget, off_budget;
+        SmoothCatchupPacer original_pacer, off_pacer;
+        unsigned forced = 0;
+        for (unsigned i = 0; i < 4096; ++i) {
+            const auto lead = (i / 13) % 33;
+            const auto backlog = std::size_t((i / 7) % 5) * 64;
+            const bool original_skip = original_pacer.should_skip(
+                original_budget.update(lead, backlog));
+            const bool off_skip = off_pacer.should_skip(
+                off_budget.update(lead, backlog));
+            const bool pixels_enabled = false;
+            const bool override_skip = pixels_enabled &&
+                refresh.force(off_skip, false, true);
+            forced += override_skip;
+            if (original_skip != (off_skip && !override_skip))
+                self_test_fail("Off changed its catch-up admissions");
+        }
+        if (forced != 0)
+            self_test_fail("Off entered Engine-B refresh policy");
+    }
+
+    // Hold the real private replay queue at emergency lead by preloading 36
+    // terminal frames followed by a later continuation. No timing-dependent
+    // producer race or fabricated renderer result is needed. The first frame
+    // swaps 3D; the remainder change B palette pixels without SWAP_BUFFERS.
+    // LCD numbering normally lags logical packet numbering; also exercise
+    // equal numbering and reject a future snapshot at every terminal boundary.
+    struct RefreshScenario { bool pixels; int offset; bool carried_discard; };
+    for (const auto scenario : std::array<RefreshScenario, 7> {{
+             {false, -1, false}, {true, -1, false},
+             {false, 0, false}, {true, 0, false},
+             {false, 1, false}, {true, 1, false}, {true, 0, true}}}) {
+        const auto pixels_enabled = scenario.pixels;
+        const auto display_offset = scenario.offset;
+        Fixture refresh_fixture(Session + 0x50u, pixels_enabled);
+        Hybrid3DService refresh_service(
+            refresh_fixture.bytes.data(), refresh_fixture.bytes.size(), {},
+            true, false, false, true, true, false, nullptr, nullptr, false,
+            true, true);
+        if (!refresh_service.initialize())
+            self_test_fail("Engine-B refresh service initialization failed");
+        refresh_service.stop_replay_worker();
+        if (scenario.carried_discard) {
+            // Seed a real discarded primitive list while replay is stopped.
+            // Frame one's FLUSH ends it, but that entire frame must remain
+            // ineligible; the first safe forced completion therefore is 13.
+            auto& nds = refresh_service.nds();
+            nds.GPU.GPU3D.SetExternalGeometryDiscard(true);
+            nds.GPU.GPU3D.WriteExternalNormalizedCommand(0x40, 0);
+            nds.ARM9Timestamp += std::uint64_t {1} << 16;
+            nds.ARM9Target = nds.ARM9Timestamp;
+            nds.ARM7Timestamp = nds.ARM9Timestamp >> nds.ARM9ClockShift;
+            nds.ARM7Target = nds.ARM7Timestamp;
+            nds.GPU.GPU3D.Run();
+            refresh_service.packet_timestamp_ = nds.ARM7Timestamp;
+            if (!nds.GPU.GPU3D.ExternalGeometryDiscardInProgress())
+                self_test_fail("Engine-B refresh fixture did not carry geometry discard");
+        }
+        const auto palette = [](unsigned frame) {
+            return (frame & 31u) | (((frame >> 5) & 31u) << 5);
+        };
+        for (unsigned frame = 1; frame <= 36; ++frame) {
+            const auto lcd_frame = static_cast<std::uint32_t>(
+                static_cast<int>(frame) + display_offset);
+            std::vector<frame_packet::Record> records;
+            if (frame == 1) {
+                records.push_back(packet_record(
+                    frame_packet::RecordKind::GxRegister,
+                    static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
+                    0x04000304, 0x0000820f));
+                records.push_back(packet_record(
+                    frame_packet::RecordKind::GxRegister,
+                    static_cast<std::uint8_t>(AccessWidth::Word), 0x0f,
+                    0x04000350, 0x001f0001));
+            }
+            if (pixels_enabled) {
+                if (frame == 1)
+                    records.push_back(packet_record(
+                        frame_packet::RecordKind::Gpu2DRegister,
+                        static_cast<std::uint8_t>(AccessWidth::Word), 0x0f,
+                        0x04001000, 0x00010000));
+                records.push_back(packet_record(
+                    frame_packet::RecordKind::PaletteWrite,
+                    static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
+                    0x05000400, palette(frame)));
+                records.push_back(packet_record(
+                    frame_packet::RecordKind::HBlank, 0, 0, 0, lcd_frame));
+                records.push_back(packet_record(
+                    frame_packet::RecordKind::HBlank, 0, 0, 192, lcd_frame));
+            }
+            if (frame == 1)
+                records.push_back(packet_record(
+                    frame_packet::RecordKind::GxCommand, 0x50, 0, 0, 0));
+            refresh_fixture.publish(
+                frame, frame, frame_packet::FlagFrameEnd, records);
+            if (refresh_service.poll() != PollResult::Applied)
+                self_test_fail("Engine-B refresh did not queue an input frame");
+        }
+        refresh_fixture.publish(37, 100, frame_packet::FlagContinuation, {});
+        if (refresh_service.poll() != PollResult::Applied ||
+            refresh_service.replay_queue_count() != 37)
+            self_test_fail("Engine-B refresh did not retain emergency lead");
+        refresh_service.start_replay_worker();
+        const auto deadline = std::chrono::steady_clock::now() +
+            std::chrono::seconds(20);
+        while (refresh_service.replay_packets_applied() != 37 &&
+               std::chrono::steady_clock::now() < deadline) {
+            if (refresh_service.poll() == PollResult::Fault)
+                self_test_fail("Engine-B refresh queued replay faulted");
+            std::this_thread::sleep_for(HpsQueuePollInterval);
+        }
+        refresh_service.stop_replay_worker();
+        const bool eligible = pixels_enabled && display_offset <= 0;
+        const unsigned first_refresh = scenario.carried_discard ? 13 : 12;
+        const unsigned final_refresh = scenario.carried_discard ? 25 : 36;
+        const unsigned refresh_count = eligible ?
+            (scenario.carried_discard ? 2 : 3) : 0;
+        if (refresh_service.replay_packets_applied() != 37 ||
+            refresh_service.frame_drop_replay_budget_.load() != 36 ||
+            refresh_service.engine_b_forced_refreshes_ != refresh_count ||
+            refresh_service.frames_rendered() != refresh_count ||
+            refresh_service.arm_render_cancel_requests_.load() != 0 ||
+            refresh_service.arm_render_cancellations_.load() != 0 ||
+            refresh_service.arm_render_pending_ ||
+            refresh_service.replay_geometry_discard_frames_ !=
+                (scenario.carried_discard ? 1u : 0u))
+            self_test_fail("Engine-B refresh did not complete its bounded queued work");
+
+        const auto check_publication = [&](unsigned previous_frame) {
+            auto* header = refresh_fixture.header;
+            const auto wait_until = std::chrono::steady_clock::now() +
+                std::chrono::seconds(10);
+            while ((load_acquire(&header->frame_publish_sequence) == 0 ||
+                    header->frame.frame <= previous_frame) &&
+                   std::chrono::steady_clock::now() < wait_until)
+                std::this_thread::sleep_for(HpsQueuePollInterval);
+            const auto expected_frame = header->frame.frame;
+            if (expected_frame <= previous_frame || expected_frame > final_refresh ||
+                expected_frame % 12 != first_refresh % 12 ||
+                header->frame.format != nds4mister::h3d::PixelFormatRgb666A5EngineB ||
+                header->frame.sequence != header->frame_publish_sequence ||
+                (header->frame.sequence & 1u))
+                self_test_fail("Engine-B refresh did not publish its complete snapshot");
+            const auto bank = (header->frame.bank >> 1) & 1u;
+            const auto* pixels = reinterpret_cast<const std::uint32_t*>(
+                refresh_fixture.bytes.data() + EngineBFramebufferOffset +
+                bank * nds4mister::h3d::EngineBBankStride);
+            const auto value = palette(expected_frame);
+            const auto expected = ((value & 31u) << 1) |
+                (((value >> 5) & 31u) << 7);
+            if (!std::all_of(pixels, pixels + PlanePixels,
+                    [expected](std::uint32_t p) { return p == expected; }))
+                self_test_fail("Engine-B refresh paired the wrong full-frame pixels");
+            nds4mister::h3d::store_counter(
+                &header->frame_ack_sequence,
+                &header->frame_ack_sequence_reserved,
+                header->frame_publish_sequence);
+            return expected_frame;
+        };
+        if (eligible) {
+            // First direct publication stays immutable until ACK. The single
+            // newest queued successor is frame 36 after replay has drained.
+            auto published_frame = check_publication(0);
+            if (published_frame != first_refresh)
+                self_test_fail("Engine-B refresh lost its first direct publication");
+            while (published_frame < final_refresh)
+                published_frame = check_publication(published_frame);
+        } else if (refresh_fixture.header->frame_publish_sequence != 0) {
+            self_test_fail("Off or future B snapshot bypassed emergency admission");
+        }
+        refresh_service.stop_publication_worker();
+        if (!refresh_service.reset_machine() ||
+            refresh_service.engine_b_forced_refreshes_ != 0)
+            self_test_fail("Engine-B refresh survived its session reset");
+        std::cout << "H3D_ENGINE_B_REFRESH_CASE_PASS pixels=" << pixels_enabled
+                  << " lcd_offset=" << display_offset
+                  << " discarded=" << scenario.carried_discard
+                  << " forced=" << refresh_count
+                  << " canceled=0 queued=37\n";
+    }
+    std::cout << "H3D_ENGINE_B_REFRESH_SELF_TEST_PASS cases=7 off_decisions=4096 "
+                 "interval=12 no_swap_successors=35\n";
 
     Fixture fixture(Session);
     const std::vector<frame_packet::Record> continuation {
