@@ -162,6 +162,14 @@ module nds_h3d_control_init #(
     logic [3:0] poll_index;
     logic service_ready;
     logic startup_complete;
+    // Qualify release through one DDR-clock register, never the reconvergent
+    // one-hot state decode. Startup requires a full sweep, so this adds no
+    // legal release latency; direct fault/session guards remain below.
+    (* preserve *) logic initialized_release_q;
+    always_ff @(posedge clk) begin
+        if (reset) initialized_release_q <= 1'b0;
+        else initialized_release_q <= initialized;
+    end
     logic policy_engine_b;
     logic policy_acknowledged;
     logic policy_ack_matches;
@@ -294,7 +302,7 @@ module nds_h3d_control_init #(
             state == WRITE_FAULT || state == FAULT_HOLD;
         fault = fault_bits != 0;
         console_release =
-            initialized && !fault && startup_complete && service_ready &&
+            initialized_release_q && !fault && startup_complete && service_ready &&
             (!SESSION_POLICY_ENABLE || policy_acknowledged) &&
             external_fault_bits == 0 &&
             active_session != 0 && !restart_pending &&
