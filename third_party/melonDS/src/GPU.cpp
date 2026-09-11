@@ -1224,7 +1224,8 @@ void GPU::FinishFrame(u32 lines) noexcept
 
 bool GPU::ApplyExternalRendererPhase(
     u32 kind, u32 line, u32 vcount, u32 dispstat9, u32 dispstat7,
-    u32 frameSequence, bool render, bool resync) noexcept
+    u32 frameSequence, bool render, bool resync,
+    bool renderer2DOnly) noexcept
 {
     if (kind > 2 || line > 262 || vcount > 511 ||
         (kind == 2 && line != 0) ||
@@ -1247,7 +1248,8 @@ bool GPU::ApplyExternalRendererPhase(
     if (resync)
     {
 #if !NDS4MISTER_NO_VIDEO_RENDER && !NDS4MISTER_NO_3D_RENDER
-        Rend->Restart3DRendering();
+        if (!renderer2DOnly)
+            Rend->Restart3DRendering();
 #endif
         GPU3D.AbortFrame = false;
         CaptureEnable = false;
@@ -1286,7 +1288,7 @@ bool GPU::ApplyExternalRendererPhase(
             }
 #endif
         }
-        else if (render && VCount == 215)
+        else if (render && VCount == 215 && !renderer2DOnly)
         {
 #if !NDS4MISTER_NO_VIDEO_RENDER && !NDS4MISTER_NO_3D_RENDER
             Rend->Start3DRendering();
@@ -1321,10 +1323,11 @@ bool GPU::ApplyExternalRendererPhase(
         DispFIFOReadPtr = 0;
         DispFIFOWritePtr = 0;
 #if !NDS4MISTER_NO_VIDEO_RENDER && !NDS4MISTER_NO_3D_RENDER
-        if (render)
+        if (render && !renderer2DOnly)
             Rend->Finish3DRendering();
 #endif
-        GPU3D.VBlank();
+        if (!renderer2DOnly)
+            GPU3D.VBlank();
         if (render)
             Rend->VBlank();
         if (CaptureEnable)

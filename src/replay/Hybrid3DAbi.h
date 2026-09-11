@@ -23,12 +23,15 @@ constexpr std::uint32_t EventSize = 32;
 constexpr std::uint32_t DefaultEntryCount = 16384;
 constexpr std::uint32_t PixelFormatRgb666A5 = 1;
 constexpr std::uint32_t PixelFormatFullRgb666 = 2;
+constexpr std::uint32_t PixelFormatRgb666A5EngineB = 3;
 constexpr std::uint32_t PlaneWidth = 256;
 constexpr std::uint32_t PlaneHeight = 192;
 constexpr std::uint32_t PlaneStride = PlaneWidth * sizeof(std::uint32_t);
 constexpr std::size_t PlanePixels =
     std::size_t(PlaneWidth) * PlaneHeight;
 constexpr std::size_t PlaneBytes = PlanePixels * sizeof(std::uint32_t);
+constexpr std::size_t EngineBBankCount = 2;
+constexpr std::size_t EngineBBankStride = 0x40000;
 constexpr std::size_t FullFrameBankCount = 4;
 constexpr std::size_t FullFrameScreenStride = 0x40000;
 constexpr std::size_t FullFrameBankStride = 0x80000;
@@ -558,16 +561,19 @@ class PlanePublisher {
 public:
     PlanePublisher(
         Header& header, std::uint32_t* bank0, std::uint32_t* bank1,
-        bool write_combined = false)
+        bool write_combined = false,
+        std::uint32_t* framebuffer = nullptr)
         : header_(header), banks_{bank0, bank1},
-          write_combined_(write_combined)
+          write_combined_(write_combined), framebuffer_(framebuffer)
     {
     }
 
     bool publish(
         std::uint32_t session, std::uint32_t frame,
         const std::uint32_t* melon_pixels,
-        std::atomic<bool>* publication_fence_active = nullptr)
+        std::atomic<bool>* publication_fence_active = nullptr,
+        const std::uint32_t* engine_b_pixels = nullptr,
+        bool engine_b_screen = false)
     {
         if (!melon_pixels) return false;
         return publish_lines_impl(
@@ -575,13 +581,15 @@ public:
             [melon_pixels](std::size_t line) {
                 return melon_pixels + line * PlaneWidth;
             },
-            publication_fence_active);
+            publication_fence_active, engine_b_pixels, engine_b_screen);
     }
 
     bool publish_scanlines(
         std::uint32_t session, std::uint32_t frame,
         const std::array<const std::uint32_t*, PlaneHeight>& scanlines,
-        std::atomic<bool>* publication_fence_active = nullptr)
+        std::atomic<bool>* publication_fence_active = nullptr,
+        const std::uint32_t* engine_b_pixels = nullptr,
+        bool engine_b_screen = false)
     {
         for (const auto* line : scanlines) {
             if (!line) return false;
@@ -589,7 +597,7 @@ public:
         return publish_lines_impl(
             session, frame,
             [&scanlines](std::size_t line) { return scanlines[line]; },
-            publication_fence_active);
+            publication_fence_active, engine_b_pixels, engine_b_screen);
     }
 
     // A direct scanline caller may use this while serializing all calls into
@@ -625,7 +633,9 @@ private:
     bool publish_lines_impl(
         std::uint32_t session, std::uint32_t frame,
         LineSource source_line,
-        std::atomic<bool>* publication_fence_active)
+        std::atomic<bool>* publication_fence_active,
+        const std::uint32_t* engine_b_pixels,
+        bool engine_b_screen)
     {
         last_store_count_ = 0;
         if (!banks_[0] || !banks_[1]) return false;
@@ -711,6 +721,41 @@ private:
                 }
             }
         }
+        std::uint32_t engine_b_bank = 0;
+        if (engine_b_pixels) {
+            if (!framebuffer_) return false;
+            engine_b_bank = next_engine_b_bank_;
+            auto* shared_screen = framebuffer_ +
+                engine_b_bank * (EngineBBankStride / 4);
+            auto& source_screen = engine_b_source_banks_[engine_b_bank];
+            const bool initialize_engine_b =
+                !engine_b_bank_initialized_[engine_b_bank];
+            auto* volatile_screen =
+                reinterpret_cast<volatile std::uint32_t*>(shared_screen);
+            for (std::size_t index = 0; index < PlanePixels;
+                 index += BlockPixels) {
+                if (!initialize_engine_b && equal_pixel_block_16(
+                        engine_b_pixels + index,
+                        source_screen.data() + index))
+                    continue;
+                if (write_combined_) {
+                    // Engine-B-only rendering keeps PackedOutput enabled.
+                    pack_and_cache_melonds_pixel_block_16(
+                        shared_screen + index, source_screen.data() + index,
+                        engine_b_pixels + index);
+                    last_store_count_ += BlockPixels;
+                } else {
+                    for (std::size_t lane = 0; lane < BlockPixels; ++lane) {
+                        const auto pixel_index = index + lane;
+                        const auto source = engine_b_pixels[pixel_index];
+                        source_screen[pixel_index] = source;
+                        volatile_screen[pixel_index] =
+                            pack_melonds_pixel(source) & 0x0003ffffu;
+                        ++last_store_count_;
+                    }
+                }
+            }
+        }
         publication_barrier();
 
         // The full-plane copy is deliberately interruptible only at its
@@ -745,8 +790,12 @@ private:
         descriptor.sequence = even;
         descriptor.session = session;
         descriptor.frame = frame;
-        descriptor.bank = bank;
-        descriptor.format = PixelFormatRgb666A5;
+        descriptor.bank = engine_b_pixels ?
+            bank | (engine_b_bank << 1) |
+                (static_cast<std::uint32_t>(engine_b_screen) << 2) :
+            bank;
+        descriptor.format = engine_b_pixels ?
+            PixelFormatRgb666A5EngineB : PixelFormatRgb666A5;
         descriptor.width_height = PlaneWidth | (PlaneHeight << 16);
         descriptor.stride = PlaneStride;
         store_release(&header_.frame.sequence, descriptor.sequence);
@@ -767,6 +816,10 @@ private:
         if (publication_fence_active)
             publication_fence_active->store(false, std::memory_order_release);
         bank_initialized_[bank] = true;
+        if (engine_b_pixels) {
+            engine_b_bank_initialized_[engine_b_bank] = true;
+            next_engine_b_bank_ ^= 1u;
+        }
         last_published_bank_ = bank;
         last_published_bank_valid_ = true;
         next_bank_ ^= 1u;
@@ -861,14 +914,41 @@ public:
         return last_store_count_;
     }
 
+    // Diagnostics call these only while the owner serializes publication.
+    // They expose the exact cached source that produced a descriptor bank,
+    // allowing an on-demand comparison with the words actually in DDR.
+    bool diagnostic_copy_plane_source(
+        std::uint32_t bank, std::uint32_t* output) const noexcept
+    {
+        if (!output || bank >= 2 || !bank_initialized_[bank]) return false;
+        std::memcpy(output, source_banks_[bank].data(), PlaneBytes);
+        return true;
+    }
+
+    bool diagnostic_copy_engine_b_source(
+        std::uint32_t bank, std::uint32_t* output) const noexcept
+    {
+        if (!output || bank >= EngineBBankCount ||
+            !engine_b_bank_initialized_[bank])
+            return false;
+        std::memcpy(
+            output, engine_b_source_banks_[bank].data(), PlaneBytes);
+        return true;
+    }
+
 private:
     Header& header_;
     std::uint32_t* banks_[2];
     bool write_combined_ = false;
+    std::uint32_t* framebuffer_ = nullptr;
     std::array<std::array<std::uint32_t, PlanePixels>, 2> source_banks_ {};
     std::array<std::array<std::uint32_t, PlanePixels>, 2> packed_banks_ {};
     std::array<bool, 2> bank_initialized_ {};
+    std::array<std::array<std::uint32_t, PlanePixels>,
+               EngineBBankCount> engine_b_source_banks_ {};
+    std::array<bool, EngineBBankCount> engine_b_bank_initialized_ {};
     std::uint32_t next_bank_ = 0;
+    std::uint32_t next_engine_b_bank_ = 1;
     std::uint32_t last_published_bank_ = 0;
     bool last_published_bank_valid_ = false;
     std::size_t last_store_count_ = 0;

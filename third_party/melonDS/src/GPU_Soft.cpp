@@ -123,6 +123,8 @@ void SoftRenderer::PostSavestate()
 void SoftRenderer::SetRenderSettings(RendererSettings& settings)
 {
     PackedOutput = settings.PackedOutput;
+    EngineBOnly = settings.EngineBOnly;
+    EngineBPixelsEnabled = settings.EngineBPixelsEnabled;
     StageProfileEnabled = settings.StageProfile;
     if (LineCache != settings.LineCache)
     {
@@ -385,6 +387,81 @@ void SoftRenderer::DrawScanline(u32 line)
         dstB = &Framebuffer[BackBuffer][0][dstoffset];
     }
 
+    // The split-video renderer supplies only the missing GPU2D-B screen.
+    // Keep its physical top/bottom routing through the ordinary ScreenSwap
+    // mapping above, but do not touch engine A or the independent 3D worker.
+    if (EngineBOnly)
+    {
+        line = GPU.VCount;
+        if (line < 192)
+        {
+            if (EngineBPixelsEnabled)
+            {
+                const auto engineBStarted = profileStarted(StageProfileEnabled);
+                Rend2D_B->DrawScanline(line);
+                if (StageProfileEnabled)
+                {
+                    ++StageProfile.EngineBPixelLines;
+                    StageProfile.EngineBNs += profileElapsedNs(engineBStarted);
+                }
+                const auto compositeBStarted =
+                    profileStarted(StageProfileEnabled);
+                DrawScanlineB(line, dstB);
+                if (StageProfileEnabled)
+                    StageProfile.CompositeBNs +=
+                        profileElapsedNs(compositeBStarted);
+                if (!GPU.ScreensEnabled)
+                    memset(dstB, 0, 256 * sizeof(u32));
+            }
+
+            // Display capture writes Engine A/3D/FIFO/VRAM output back into
+            // VRAM even though this auxiliary renderer publishes only Engine
+            // B. Reconstruct source A only for capture modes that consume it;
+            // source-B-only capture must not wake the omitted Engine A/3D
+            // paths. The destination VRAM can feed Engine B later in this or
+            // a following frame, so skipping this side effect leaves stale
+            // pixels even when the rendered Engine-B scanline itself is
+            // otherwise correct.
+            if (GPU.CaptureEnable)
+            {
+                const u32 captureSource = (GPU.CaptureCnt >> 29) & 0x3;
+                if (captureSource != 1)
+                {
+                    const bool sourceAIs3D = GPU.CaptureCnt & (1 << 24);
+                    const bool sourceAScreenUses3D =
+                        !sourceAIs3D &&
+                        (GPU.GPU2D_A.DispCnt & (1 << 3)) &&
+                        (GPU.GPU2D_A.LayerEnable & 1);
+                    if (sourceAIs3D || sourceAScreenUses3D)
+                    {
+                        const auto output3DStarted =
+                            profileStarted(StageProfileEnabled);
+                        Output3D = Rend3D->GetLine(line);
+                        if (StageProfileEnabled)
+                            StageProfile.Output3DNs +=
+                                profileElapsedNs(output3DStarted);
+                    }
+                    if (!sourceAIs3D)
+                    {
+                        const auto engineAStarted =
+                            profileStarted(StageProfileEnabled);
+                        Rend2D_A->DrawScanline(line);
+                        if (StageProfileEnabled)
+                            StageProfile.EngineANs +=
+                                profileElapsedNs(engineAStarted);
+                    }
+                }
+                DoCapture(line);
+            }
+        }
+        if (StageProfileEnabled)
+        {
+            ++StageProfile.Scanlines;
+            StageProfile.ScanlineTotalNs += profileElapsedNs(scanlineStarted);
+        }
+        return;
+    }
+
     // the position used for drawing operations is based on VCOUNT
     line = GPU.VCount;
     if (line < 192)
@@ -636,6 +713,32 @@ void SoftRenderer::DrawScanline(u32 line)
 
 void SoftRenderer::DrawSprites(u32 line)
 {
+    if (EngineBOnly)
+    {
+        const u32 captureSource = (GPU.CaptureCnt >> 29) & 0x3;
+        const bool captureUsesEngineA =
+            (GPU.CaptureEnable || (GPU.CaptureCnt & (1 << 31))) &&
+            captureSource != 1 && !(GPU.CaptureCnt & (1 << 24));
+        if (captureUsesEngineA)
+        {
+            const auto spritesStarted = profileStarted(StageProfileEnabled);
+            Rend2D_A->DrawSprites(line);
+            if (StageProfileEnabled)
+                StageProfile.SpritesANs +=
+                    profileElapsedNs(spritesStarted);
+        }
+        if (EngineBPixelsEnabled)
+        {
+            const auto spritesStarted = profileStarted(StageProfileEnabled);
+            Rend2D_B->DrawSprites(line);
+            if (StageProfileEnabled)
+            {
+                ++StageProfile.EngineBSpriteLines;
+                StageProfile.SpritesBNs += profileElapsedNs(spritesStarted);
+            }
+        }
+        return;
+    }
     SpriteCacheLine = ~0u;
     PreparedLineStateLine = ~0u;
     SpriteDrawSkipped[0] = false;
