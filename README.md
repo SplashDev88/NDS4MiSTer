@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.3.0-beta.12 — optional second screen, fast mode by default**
+**v0.3.0-beta.13 — Chrono Trigger fixes and opening movie video**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -17,6 +17,7 @@ artifacts, or credentials are included in this source repository.
 ## What works today
 
 - Some 2D and lighter 3D games boot and run.
+- Opening movie video in Chrono Trigger and Castlevania; playback can be choppy.
 - FPGA-generated sound with corrected DS sound-bias initialization.
 - Persistent cartridge saves:
   - 512-byte tiny EEPROM.
@@ -33,6 +34,8 @@ artifacts, or credentials are included in this source repository.
 
 ## Current limitations
 
+- **Movie playback can be choppy.** Castlevania's opening video is now visible,
+  but smooth or full-speed movie playback is still work in progress.
 - **Engine B costs speed.** Off is the default and displays Engine A in both
   screen positions. On restores the second graphics engine using the ARM
   service, but games can slow down and the second screen can lag under load.
@@ -61,12 +64,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.12_20260911.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.13_20260912.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260911** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260912** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -147,67 +150,61 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.12
+## What's new in beta.13
 
-Engine B returns as an optional second graphics engine, default Off. Change
-**Engine B (next Reset)**, then Reset or reload the ROM to apply it. The setting
-stays fixed during the running game session. On restores both engines; Off
-duplicates Engine A and retains the fast path.
+Chrono Trigger now passes the Square Enix logo. Opening movie video is visible
+in Chrono Trigger and Castlevania, and the black rectangle over Crono in the
+opening bedroom scene is fixed. Castlevania movie playback remains choppy.
 
-- A bounded refresh keeps Engine B updating during sustained renderer catch-up.
-  The second screen can still update slowly or lag under heavy load.
-- The registered reset-release qualifier is retained for reliable startup.
-- Antialiased shadow frames use the exact Y raster split to avoid missing
-  coverage updates. Other accepted parallel rendering paths remain enabled.
+- ARM9 memory requests retain their own SWP lock attributes, preventing a
+  later CPU request from corrupting a background cache fill.
+- The final cartridge read retires before an immediately following command.
+- Transparent sprites no longer replace an existing opaque sprite's priority.
+- Engine A direct VRAM display reads the selected LCDC bank through the FPGA
+  line server, with queued mode ownership and master brightness handling.
 
-This release keeps beta.11's accepted ARM renderer optimizations, including
-constant-color span/depth reuse, translucent shading work, adaptive catch-up,
-and the replay worker wakeup correction. Existing parallel shadow/stencil
-rendering, specialized antialias final pass, and frontend CPU0 pinning remain.
+The beta.12 ARM helper is reused unchanged, including the accepted renderer
+optimizations. Engine B remains optional and defaults Off. On restores the
+second graphics engine but costs speed; apply changes with Reset or ROM reload.
+Kirby graphics, palette fades and text colors, transparency, processor wake-up,
+touch, sound, cartridge saves, and earlier boot compatibility fixes remain.
+ARM continues to run at 1 GHz. No new speed percentage is claimed for beta.13.
 
-- Kirby graphics fixes cover extended-palette refill after VRAM remaps,
-  local ARM9 VRAM write retirement, and register readback for disabled Engine B.
-- Standard-palette readback restores fade/text-color behavior without adding
-  GX queries to the ARM service.
-- The isolated ARM9 halt/IRQ fix preserves the pending return instruction when
-  an IRQ arrives on the halt wake edge.
-- Existing touch calibration, sound-bias correction, cartridge saves, and
-  InsaneFriend's boot-compatibility work are retained.
-
-The experimental GX readback correction is deferred: it supplies the matrix
-and BOX_TEST results needed by missing Pokémon player/furniture graphics, but
-its experimental pairing causes substantial gameplay slowdown. Those objects
-can remain missing in this fast build. See
+The experimental GX readback correction is still deferred because of slowdown.
+Pokemon player/furniture graphics can remain missing; see
 [issue #16](https://github.com/SplashDev88/NDS4MiSTer/issues/16).
-
-The transparency speed improvements introduced in beta.11 remain. No additional
-3D speed percentage is claimed for beta.12. Locality-cache and stateless-rendering
-experiments did not show a repeatable net gain on MiSTer and are excluded.
+Locality-cache and stateless-rendering experiments remain excluded.
 
 ## Verification
 
 | Item | Release identity |
 | --- | --- |
-| Core file | `_Console/NDS_20260911.rbf` |
-| Build identity | `260911-EBRLS2` |
-| FPGA SHA-256 | `8ff3dafeb04ca3db964899656eb61b6791bd199cf47ccfaa2d8a033f150142b5` |
+| Core file | `_Console/NDS_20260912.rbf` |
+| Build identity | `260911-CTVID2` |
+| FPGA SHA-256 | `84b42b87411f3863ef2a40cec2c943407d9710e64898315ee94a42bfaa2097e4` |
 | Quartus seed | 2 |
 | ARM clocks | 1 GHz |
 | ARM SHA-256 | `b107acaf4cd2d283ed3653fe4151d7209db83635d4fc4465fa154086cd41fd4d` |
 | Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-This package reuses the exact Test3 FPGA/ARM pair accepted by the maintainer
-after TV testing; packaging did not rebuild either binary. Hardware checks in
-Castlevania: Dawn of Sorrow and New Super Mario Bros. verified Off/On session
-policy, advancing guest/rendered frames, and zero transport faults. A cold NSMB
-startup also passed. Host and ARM regressions cover the bounded Engine B
-refresh, unchanged Off admissions, and exact antialiased shadow output.
+This package reuses the exact CTVID2 movie core tested by the maintainer,
+paired with the unchanged beta.12 ARM helper. Neither binary was rebuilt for
+packaging. The maintainer reported movie video working in Chrono Trigger and
+Castlevania, with choppy Castlevania playback. Chrono gameplay, the sprite fix,
+and in-game save/load were accepted on the preceding sprite build; those fixes
+are retained, but that is not a complete gameplay/save regression on CTVID2.
+
+Production simulations cover delayed cache fills/SWP ownership, adjacent
+cartridge commands, sprite priority, all four LCDC banks, delayed VRAM replies,
+backpressure, mode changes, brightness, reset, and palette/3D alignment. Full
+VHDL analysis passed. Earlier beta.12 helper validation remains applicable to
+the unchanged helper; no new general performance measurement is claimed.
 
 The seed-2 FPGA completed map, fit, assembly, and timing analysis. Static timing
 reports setup/recovery and hold violations; timing closure is not claimed.
-Fit: 41,196 ALMs, 493 RAM blocks, 69 DSP blocks. Worst setup: -13.340 ns;
-worst hold: -0.555 ns; worst recovery: -8.844 ns.
-Simulation and publication counters are not gameplay FPS measurements.
+Fit: 41,185 ALMs, 494 RAM blocks, 69 DSP blocks. Worst setup: -13.635 ns;
+worst hold: -0.651 ns; worst recovery: -10.965 ns. Broader game testing remains.
+See SOURCE_PACKAGE.txt for source provenance and validation limits.
 
 ## For developers
 

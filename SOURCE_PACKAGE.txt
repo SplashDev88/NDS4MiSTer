@@ -1,63 +1,67 @@
-NDS4MiSTer v0.3.0-beta.12 source — optional Engine B
+NDS4MiSTer v0.3.0-beta.13 source — Chrono fixes and opening movie video
 
-This source snapshot accompanies NDS4MiSTer_Public_Beta_v0.3.0-beta.12_20260911.
-Engine B defaults Off to retain the fast single-screen path. Enable Engine B
-in the core menu, then Reset or reload the ROM to apply the change. On restores
-the second graphics engine but costs speed and can lag under heavy load.
+This source snapshot accompanies NDS4MiSTer_Public_Beta_v0.3.0-beta.13_20260912.
+It fixes Chrono Trigger startup, the black rectangle over Crono in the opening
+bedroom scene, and direct VRAM display used by opening movies. Video now appears
+in Chrono Trigger and Castlevania; Castlevania movie playback remains choppy.
+Engine B still defaults Off. Enable Engine B in the core menu, then Reset or
+reload the ROM to apply the change. On restores the second graphics engine
+but costs speed and can lag under heavy load.
 
+Production FPGA source: 0329cdbae0a8d6da8391f331de86bded7d25bd3c
 Production ARM source: 48d8bce4290b4525f22a9e9bcc9dbcb1c3ed4545
-Production FPGA source: 4bb276cae44768794736007e882538bb22ae552d
-The ARM revision contains exactly the same FPGA sources as the FPGA revision.
+FPGA sources match the tested CTVID2 build, including build identity and seed.
+The ARM source and helper are unchanged from the published beta.12 release.
 Only README.md, SOURCE_PACKAGE.txt, and the source SHA256SUMS manifest change
-for packaging. The accepted Test3 FPGA, ARM helper, and launcher are reused
-byte for byte. The installed core is renamed to NDS_20260911.rbf.
+after the production FPGA source commit for packaging. The tested FPGA and
+accepted ARM helper and launcher are reused byte for byte. The installed core
+is renamed to NDS_20260912.rbf. No binaries are rebuilt for packaging.
 
 Included changes
 ----------------
-- Optional ARM-rendered Engine B with an Off/On session policy. Off avoids its
-  rendering/snapshot work and retains the accepted 3D-only fast path.
-- The registered reset-release qualifier for reliable startup is retained.
-- A bounded Engine B refresh under sustained emergency catch-up prevents all
-  eligible refreshes from being skipped indefinitely. It completes before
-  successor packets replace the current snapshot. Incomplete/discarded geometry
-  and future snapshots remain ineligible; Off render admissions are unchanged.
-- Antialiased shadow frames retain the exact Y raster split because X clipping
-  loses coverage updates. Non-AA X splitting, adaptive splitting, and bands stay.
-- Latest accepted ARM renderer work, including constant-color span/depth reuse,
-  transparent shading improvements, adaptive catch-up, replay worker wakeup
-  correction, parallel shadow/stencil rendering, specialized antialias final
-  pass, direct plane publication, and frontend CPU0 pinning.
-- Kirby extended-palette, local ARM9 VRAM write retirement, disabled Engine B
-  register readback, and standard-palette fade/text-color fixes.
-- ARM9 halt/IRQ-resume correction, sound-bias correction, touch calibration and
-  pointer, EEPROM/FRAM/Flash saves, and InsaneFriend's writable firmware, ARM7
-  Wi-Fi boot-memory, and cartridge-IR compatibility work. Wi-Fi register
-  compatibility does not provide networking.
+- Keep ARM9 SWP lock attributes attached to the accepted memory request so a
+  background cache fill cannot acquire a later CPU request's lock. Preserve
+  critical-word-first returns, paired fills, and existing cache sizes.
+- Retire the final cartridge read before an immediately following command,
+  including the busy flag, interrupt, and command acceptance state.
+- Preserve opaque sprite priority when an overlapping sprite is transparent.
+  This removes the black rectangle seen over Crono in the opening bedroom.
+- Render Engine A direct VRAM display (mode 2) through the existing FPGA line
+  server. Latch bank/line ownership, support all four physical LCDC banks,
+  handle backpressure, and apply master brightness. Normal rendering retains
+  its existing path. Display FIFO mode 3 remains unsupported.
+- Retain optional Engine B, bounded refresh under renderer catch-up, reset
+  release qualification, and the antialiased-shadow coverage correction.
+- Preserve accepted ARM optimizations, including constant-color span/depth
+  reuse, transparency shading, adaptive catch-up, replay worker wakeup,
+  parallel shadow/stencil rendering, specialized antialias final pass,
+  direct plane publication, and frontend CPU0 pinning.
+- Retain Kirby extended-palette and VRAM retirement fixes, disabled Engine B
+  register readback, standard-palette fades and text, ARM9 halt/IRQ wake-up,
+  sound-bias correction, touch, cartridge saves, and boot compatibility fixes.
 
 Deferred work and limits
 -----------------------
+Castlevania's opening movie is visible but choppy. Movie output correctness
+does not establish smooth playback, full game speed, or universal compatibility.
 The experimental GX readback path remains excluded because it caused substantial
-slowdown. It supplies the clip-matrix and BOX_TEST results needed by missing
-Pokemon player/furniture graphics, so those objects can remain missing:
+slowdown. Missing Pokemon player/furniture graphics remain tracked here:
 https://github.com/SplashDev88/NDS4MiSTer/issues/16
 
-Beta.11's transparency improvements remain. No additional 3D speed percentage
-is claimed for beta.12. Locality-cache and stateless-rendering experiments were
-implemented and measured on MiSTer; neither showed a repeatable useful net gain,
-so they are excluded. No credits menu was added. ARM remains at 1 GHz.
-
-Engine B On can refresh slowly and lag under load. Hardware publication counts
-and snapshot age are not measurements of live gameplay FPS or input latency.
-No claim is made that all games run at full speed or that graphics, saves, audio,
-or crashes are universally fixed. Audio remains experimental; networking,
-microphone, NAND saves, and save states are not implemented.
+No new speed percentage or measured performance improvement is claimed for
+beta.13. The accepted ARM binary and its optimizations are unchanged; no credits
+menu, locality-cache experiment, or stateless-rendering experiment was added.
+ARM remains at 1 GHz. Engine B On can refresh slowly and lag under load.
+Publication counters are not gameplay FPS or input-latency measurements.
+Audio remains experimental. Networking, microphone, NAND saves, and save states
+are not implemented. Wi-Fi register compatibility does not provide networking.
 
 Build and binary identities
 ---------------------------
 FPGA project: fpga/mister_nitro_console_island/NDS4MiSTer.qpf
 Quartus: Prime 17.0.2, seed 2, unchanged clock family
-Build identity: 260911-EBRLS2
-FPGA SHA256: 8ff3dafeb04ca3db964899656eb61b6791bd199cf47ccfaa2d8a033f150142b5
+Build identity: 260911-CTVID2
+FPGA SHA256: 84b42b87411f3863ef2a40cec2c943407d9710e64898315ee94a42bfaa2097e4
 ARM clocks: 1 GHz
 ARM SHA256: b107acaf4cd2d283ed3653fe4151d7209db83635d4fc4465fa154086cd41fd4d
 Kickstart SHA256: 4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc
@@ -67,28 +71,36 @@ tools/build_hybrid_3d_service_armhf.sh, and tools/run_quartus_docker.sh.
 
 Validation
 ----------
-The maintainer accepted the exact Test3 pair after TV testing. Hardware checks
-covered NSMB Engine B On, Castlevania Off and On, and a final cold NSMB Off
-startup. Session policy matched, guest and published rendered frames advanced,
-and transport faults stayed zero. The tested ARM clock was 1 GHz.
-Host and ARM tests passed for the bounded refresh, unchanged Off admissions,
-future/discard/reset guards, paired publication, and exact AA shadow output.
-Earlier transport, snapshot ownership, Off equivalence, reset, palette, and
-ARM9 halt/IRQ regression evidence is retained with the development record.
+The maintainer tested the CTVID2 movie build in Chrono Trigger and Castlevania
+and requested release packaging. Chrono movie video worked; Castlevania movie
+video worked but was choppy. Chrono gameplay, sprite correction, and in-game
+save/load were accepted on the preceding sprite build; these fixes are retained.
+That earlier gameplay/save check is not a complete regression on CTVID2.
 
-Map, fit, assembly, and timing analysis completed. Fit: 41,196 ALMs, 493 RAM
-blocks, 69 DSP blocks. Worst setup: -13.340 ns; worst hold: -0.555 ns;
-worst recovery: -8.844 ns. Timing closure is not claimed. The accepted binaries
-were not rebuilt for packaging. Simulation, hashes, and source checks do not
-establish universal stability or game speed.
+Production simulations passed for delayed cache fills and SWP lock ownership,
+adjacent cartridge commands, opaque/transparent sprite priority, direct VRAM
+line reads with delayed replies/stalls, bank mapping, queued mode changes,
+brightness, reset, and existing palette/3D alignment. Negative controls expose
+the old cache, cartridge, and sprite failures. Full VHDL analysis passed.
+Historical beta.12 helper tests cover Engine B policy, bounded refresh, unchanged
+Off admissions, and exact antialiased-shadow output. These are retained results,
+not new full-suite hardware testing for this release.
+
+Map, fit, assembly, and timing analysis completed. Fit: 41,185 ALMs, 494 RAM
+blocks, 69 DSP blocks. Worst setup: -13.635 ns; worst hold: -0.651 ns;
+worst recovery: -10.965 ns. Timing closure is not claimed. Simulation, source
+checks, hashes, and limited hardware testing do not establish universal
+stability or game speed. Extended gameplay and broader regressions remain.
 
 Source contents and licensing
 -----------------------------
-Contains the tracked FPGA/ARM sources, build and test scripts, generated-image
-source for the free boot code, and component license/attribution files.
+Contains tracked FPGA/ARM sources, build/test scripts, generated-image source
+for the free boot code, and component licenses. GitHub's automatic Source code
+zip/tar.gz downloads provide the matching source; no duplicate source ZIP is
+uploaded. SHA256SUMS covers every other tracked source file.
 Commercial ROMs, console BIOS/firmware dumps, personal saves, credentials,
-private handoffs/captures, developer paths, and compiled build databases or
-binaries are excluded. Installable binaries are supplied separately.
+private handoffs/captures/probes, developer paths, and compiled build databases
+or binaries are excluded. Installable binaries are supplied separately.
 
 NDS4MiSTer is distributed under GPLv3; see LICENSE.txt. Vendored component
 licenses and notices remain in third_party/ and the MiSTer FPGA project.
