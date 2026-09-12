@@ -51,6 +51,7 @@ entity nds_cache9 is
       req_rnw       : in  std_logic;
       req_code      : in  std_logic;
       req_cacheable : in  std_logic;
+      req_lock      : in  std_logic := '0';
       req_addr      : in  std_logic_vector(31 downto 0);
       req_be        : in  std_logic_vector(3 downto 0);
       req_wdata     : in  std_logic_vector(31 downto 0);
@@ -80,6 +81,9 @@ entity nds_cache9 is
       -- which costs far more than the burst does. mem_addr is always even in
       -- pair mode: a line is 32-byte aligned, so its four pairs are too.
       mem_pair      : out std_logic := '0';
+      -- Only an uncached SWP bypass owns the external memory lock. Background
+      -- fills/writebacks must not inherit the CPU's later, live SWP state.
+      mem_lock      : out std_logic := '0';
       mem_rdata_hi  : in  std_logic_vector(31 downto 0) := (others => '0');
 
       -- maintenance (see nds_cpu9 cache_op encoding)
@@ -216,6 +220,7 @@ architecture arch of nds_cache9 is
    -- latched CPU request
    signal r_rnw   : std_logic := '1';
    signal r_code  : std_logic := '0';
+   signal r_lock  : std_logic := '0';
    signal r_addr  : std_logic_vector(31 downto 0) := (others => '0');
    signal r_be    : std_logic_vector(3 downto 0) := (others => '0');
    signal r_wdata : std_logic_vector(31 downto 0) := (others => '0');
@@ -502,6 +507,7 @@ begin
             op_pending  <= '0';
             op_active   <= '0';
             req_pending <= '0';
+            mem_lock    <= '0';
          else
 
             -- park an op that arrives while the FSM is busy
@@ -559,6 +565,7 @@ begin
                      req_pending <= '0';
                      r_rnw   <= req_rnw;
                      r_code  <= req_code;
+                     r_lock  <= req_lock;
                      r_addr  <= req_addr;
                      r_be    <= req_be;
                      r_wdata <= req_wdata;
@@ -740,6 +747,7 @@ begin
                when BYPASS_ISSUE =>
                   mem_ena   <= '1';
                   mem_pair  <= '0';
+                  mem_lock  <= r_lock;
                   mem_rnw   <= r_rnw;
                   mem_addr  <= r_addr(21 downto 2);
                   mem_be    <= r_be;
@@ -759,6 +767,7 @@ begin
 
                when WB_BEAT =>
                   mem_ena   <= '1';
+                  mem_lock  <= '0';
                   -- writes never pair (nds_mainram masks it anyway), and this
                   -- must be HELD like mem_rnw/mem_addr rather than pulsed: the
                   -- request crosses into clk1x through a toggle handshake, so
@@ -803,6 +812,7 @@ begin
                when FILL_BEAT =>
                   mem_ena  <= '1';
                   mem_pair <= '1';
+                  mem_lock <= '0';
                   mem_rnw  <= '1';
                   mem_addr <= r_addr(21 downto 5) & std_logic_vector(beat);
                   mem_be   <= "1111";

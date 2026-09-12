@@ -601,6 +601,7 @@ architecture arch of nds_nitro_console_top is
    signal io9_lat_1x : proc_bus_gb_type;
    -- island-side capture of the main-RAM request's SWP lock bit (see mr9_lock)
    signal mr9_lock  : std_logic := '0';
+   signal i9_mr_lock : std_logic := '0';
    signal io9_ena   : std_logic := '0';   -- stretched io_bus9.ena, clk1x domain
    signal cdc_dmab_ena_d, dmab_ena_i9   : std_logic := '0';
    signal cdc_cpudone_tgl, cdc_cpudone_tgl_d, cpu9_done_1x : std_logic := '0';
@@ -921,6 +922,7 @@ architecture arch of nds_nitro_console_top is
    signal r_objep_dout              : std_logic_vector(31 downto 0);
 
    signal g_bg_addr    : integer range 0 to 131071;
+   signal g_bg_lcdc    : std_logic := '0';
    signal g_obj_addr   : integer range 0 to 65535;
    signal g_bgep_addr  : integer range 0 to 8191;
    signal g_objep_addr : integer range 0 to 2047;
@@ -1586,21 +1588,15 @@ begin
                acc  => io9_lat_1x.acc,  bEna => io9_lat_1x.bEna,
                rst  => i9_io_bus.rst);
 
-   -- Main-RAM SWP lock, island -> clk1x. Same payload-latch reasoning as io9_lat
-   -- above, but this one was a *timing* bug rather than a functional one, and it
-   -- was the whole worst-path family: `cpu9_lock and not bus_cacheable_d` was
-   -- wired live into nds_mainram's mem9_lock, so nds_mainram's clk1x req9_lock
-   -- flop closed a combinational path that started at the ARM9's register file
-   -- and ran through the shifter, the ALU, the writeback mux, the address mux
-   -- and the CP15 PU region compare - 18.48 ns into a 14.915 ns clk2x->clk1x
-   -- relationship. All 50 paths in the global -npaths 50 report ended here.
+   -- Main-RAM SWP lock, island -> clk1x. The cache supplies the lock belonging
+   -- to this memory request. Sampling the live CPU flags here is incorrect:
+   -- critical-word-first can release the CPU into a SWP while the cache still
+   -- issues background pair fills. A spurious lock makes mainram suppress the
+   -- high half of a pair and corrupts the unfinished cache line.
    --
-   -- Nothing about that was necessary. req9_lock only samples mem9_lock in the
-   -- clk1x cycle where mem9_ena is high, and mem9_ena is mr9_ena - the toggle
-   -- edge-detect above, which cannot fire until at least one clk1x edge AFTER
-   -- the island raised i9_mr_ena. Latching the term in the island at the instant
-   -- the request is launched therefore delivers the identical value with a full
-   -- clk1x period of settling, and turns the crossing into flop -> flop.
+   -- Keep the existing payload latch and settling time across the toggle
+   -- bridge. This adds no request cycles and keeps the CPU/PU combinational
+   -- path out of the clk1x request latch.
    --
    -- dma_bus_on / ld_busy stay live at the port: both are clk1x registers that
    -- hold for the whole burst, so they cost one LUT and no cross-domain cone.
@@ -1610,7 +1606,7 @@ begin
          if (resetCpu = '1') then
             mr9_lock <= '0';
          elsif (i9_mr_ena = '1') then
-            mr9_lock <= cpu9_lock and not bus_cacheable_d;
+            mr9_lock <= i9_mr_lock;
          end if;
       end if;
    end process;
@@ -1955,6 +1951,7 @@ begin
       dtcm_base => cp15_dtcm_base, dtcm_size => cp15_dtcm_size,
       dma_bus => dma_bus_on,
       cpu_adr => mbus_adr, cpu_rnw => mbus_rnw, cpu_ena => mbus_ena, cpu_code => mbus_code,
+      cpu_lock => cpu9_lock,
       cpu_acc => mbus_acc, cpu_dout => mbus_dout, cpu_lowbits => mbus_low,
       -- cpu_done stays island-native: membus9 and icpu9 are both on clk2x, so the
       -- CPU's own handshake needs no crossing. The clk1x stretch below is only for
@@ -1976,6 +1973,7 @@ begin
       mr_ena => i9_mr_ena, mr_rnw => mr9_rnw, mr_addr => mr9_addr, mr_be => mr9_be,
       mr_writedata => mr9_writedata, mr_done => i9_mr_done, mr_readdata => mr9_readdata,
       mr_pair => mr9_pair, mr_readdata_hi => mr9_readdata_hi,
+      mr_lock => i9_mr_lock,
       io_ce_next => '1',
       io_bus => i9_io_bus, io_wired_out => io_wired_out9, io_wired_done => i9_io_done,
       dbg_mb => dbg_mb9, dbg_cache => dbg_cache9
@@ -2560,7 +2558,7 @@ begin
       cpu7_be => vr7_be, cpu7_din => vr7_din, cpu7_dout => vram7_dout, cpu7_done => vram7_done,
       srv_req => vsrv_req, srv_rnw => vsrv_rnw, srv_bank => vsrv_bank, srv_addr => vsrv_addr,
       srv_be => vsrv_be, srv_din => vsrv_din, srv_dout => vsrv_dout, srv_done => vsrv_done,
-      rdr_bg_req => r_bg_req, rdr_bg_addr => r_bg_addr,
+      rdr_bg_req => r_bg_req, rdr_bg_addr => r_bg_addr, rdr_bg_lcdc => g_bg_lcdc,
       rdr_bg_dout => r_bg_dout, rdr_bg_done => r_bg_done,
       rdr_bg_accept => r_bg_accept,
       rdr_obj_req => r_obj_req, rdr_obj_addr => r_obj_addr,
@@ -2651,7 +2649,7 @@ begin
          line_busy => line_busy, epfill_busy => epfill_busy, clr_busy => pclr_busy_a,
          pal_we => pal_we_a, pal_addr => pal_addr_lo, pal_din => pal_din, pal_be => pal_be,
          oam_we => oam_we_a, oam_addr => oam_addr_lo, oam_din => oam_din, oam_be => oam_be,
-         srv_bg_req => r_bg_req, srv_bg_addr => g_bg_addr,
+         srv_bg_req => r_bg_req, srv_bg_addr => g_bg_addr, srv_bg_lcdc => g_bg_lcdc,
          srv_bg_data => r_bg_dout, srv_bg_done => r_bg_done,
          srv_bg_accept => r_bg_accept,
          srv_obj_req => r_obj_req, srv_obj_addr => g_obj_addr,
@@ -2679,6 +2677,7 @@ begin
 
    g_gpu2d_a_fast : if GPU_FAST /= 0 generate
    begin
+      g_bg_lcdc <= '0';
       h3d_line_request <= '0';
       h3d_line_request_y <= 0;
       h3d_merge_line_start <= '0';

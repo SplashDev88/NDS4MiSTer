@@ -164,6 +164,7 @@ entity nds_vram is
       -- the cycle the server takes the request - a client may present the
       -- next one immediately and have several outstanding, answered in order.
       rdr_bg_req     : in  std_logic := '0';
+      rdr_bg_lcdc    : in  std_logic := '0';
       rdr_bg_addr    : in  unsigned(18 downto 2) := (others => '0');
       rdr_bg_dout    : out std_logic_vector(31 downto 0) := (others => '0');
       rdr_bg_done    : out std_logic := '0';
@@ -679,8 +680,11 @@ begin
    port map ( vramcnt => vramcnt, addr => cpu7_addr & "00", is_arm7 => '1', hit => dec7_hit, offs => dec7_offs );
 
    -- renderer BG/OBJ decode: flat renderer spaces are exactly the ARM9 view of
-   -- the main-BG (0x000000) and main-OBJ (0x400000) regions
-   rdec_bg_addr   <= "00000" & rdr_bg_addr & "00";
+   -- the main-BG (0x000000) and main-OBJ (0x400000) regions. Direct
+   -- display temporarily uses the BG channel at 0x06800000 + bank offset;
+   -- the same decoder enforces bank enable and the LCDC role.
+   rdec_bg_addr   <= "10000" & rdr_bg_addr & "00" when rdr_bg_lcdc='1' else
+                     "00000" & rdr_bg_addr & "00";
    rdec_obj_addr  <= "010000" & rdr_obj_addr & "00";
    rdec_bgb_addr  <= "0010000" & rdr_bgb_addr & "00";   -- 0x06200000 region
    rdec_objb_addr <= "0110000" & rdr_objb_addr & "00";  -- 0x06600000 region

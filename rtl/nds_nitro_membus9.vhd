@@ -64,6 +64,7 @@ entity nds_membus9 is
       cpu_rnw        : in  std_logic;
       cpu_ena        : in  std_logic;
       cpu_code       : in  std_logic;
+      cpu_lock       : in  std_logic := '0';
       cpu_acc        : in  std_logic_vector(1 downto 0);
       cpu_dout       : in  std_logic_vector(31 downto 0);
       cpu_lowbits    : in  std_logic_vector(1 downto 0);
@@ -142,6 +143,7 @@ entity nds_membus9 is
       -- cache line fills ask for an aligned 8-byte pair per request; the second
       -- word arrives beside mr_readdata on the same mr_done
       mr_pair        : out std_logic := '0';
+      mr_lock        : out std_logic := '0';
       mr_readdata_hi : in  std_logic_vector(31 downto 0) := (others => '0');
 
       -- IO register bus. The peripherals may live in a slower ce domain
@@ -236,6 +238,7 @@ architecture arch of nds_membus9 is
    signal creq_rnw       : std_logic := '1';
    signal creq_code      : std_logic := '0';
    signal creq_cacheable : std_logic := '0';
+   signal creq_lock      : std_logic := '0';
    signal creq_addr      : std_logic_vector(31 downto 0) := (others => '0');
    signal creq_be        : std_logic_vector(3 downto 0) := (others => '0');
    signal creq_wdata     : std_logic_vector(31 downto 0) := (others => '0');
@@ -283,6 +286,7 @@ begin
       req_rnw       => creq_rnw,
       req_code      => creq_code,
       req_cacheable => creq_cacheable,
+      req_lock      => creq_lock,
       req_addr      => creq_addr,
       req_be        => creq_be,
       req_wdata     => creq_wdata,
@@ -299,6 +303,7 @@ begin
       mem_done      => mr_done,
       mem_rdata     => mr_readdata,
       mem_pair      => mr_pair,
+      mem_lock      => mr_lock,
       mem_rdata_hi  => mr_readdata_hi,
       op_ena        => cache_op_ena,
       op            => cache_op,
@@ -660,6 +665,10 @@ begin
                         creq_ena   <= '1';
                         creq_rnw   <= cpu_rnw;
                         creq_code  <= cpu_code;
+                        -- Associate the lock with this accepted CPU data access,
+                        -- not with a later cache fill or maintenance writeback.
+                        creq_lock  <= cpu_lock and not cpu_code and
+                                      not dma_bus and not bus_cacheable_d;
                         creq_addr  <= cpu_adr;
                         creq_be    <= be;
                         creq_wdata <= wdata;

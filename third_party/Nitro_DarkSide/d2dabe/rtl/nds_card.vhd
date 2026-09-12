@@ -386,6 +386,7 @@ begin
       variable v_eff_pos : unsigned(15 downto 0);
       variable v_flash   : boolean;
       variable v_next_sram_addr : unsigned(19 downto 0);
+      variable v_pop     : std_logic;
    begin
       if rising_edge(clk) then
 
@@ -733,12 +734,15 @@ begin
 
             end if;
 
-            -- data-port pop (owner read, read direction only)
-            pop_req <= '0';
+            -- Consume the data read on its bus edge. Delaying it through a
+            -- register leaves busy set when the next bus transaction starts,
+            -- and can silently discard an adjacent ROMCTRL command.
+            v_pop := '0';
             if (owner_bus.ena = '1' and owner_bus.rnw = '1' and owner_bus.Adr = ADR_DATA and
                 romctrl(30) = '0' and word_ready = '1') then
-               pop_req <= '1';
+               v_pop := '1';
             end if;
+            pop_req <= v_pop; -- passive diagnostic history
 
             -- -------- transfer start --------
             if (v_start = '1') then
@@ -922,12 +926,19 @@ begin
                   end if;
 
                when DATAREADY =>
-                  if (pop_req = '1') then
+                  if (v_pop = '1') then
                      word_ready <= '0';
                      v_pos      := xferpos + 1;
                      xferpos    <= v_pos;
                      if (v_pos >= xferlen) then
-                        state <= FINISH;
+                        -- The final read completes this transfer before the
+                        -- next transaction, including its completion IRQ.
+                        busy <= '0';
+                        if (spicnt(14) = '1') then
+                           irq9_xfer <= own9;
+                           irq7_xfer <= own7;
+                        end if;
+                        state <= IDLE;
                      else
                         -- 4 bus cycles per word, +gap2 at 512-byte boundaries
                         if (romctrl(27) = '1') then v_xcyc := to_unsigned(8, 4); else v_xcyc := to_unsigned(5, 4); end if;

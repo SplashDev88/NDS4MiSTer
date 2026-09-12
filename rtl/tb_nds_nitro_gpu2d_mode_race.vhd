@@ -51,6 +51,13 @@ architecture sim of tb_nds_nitro_gpu2d_mode_race is
    signal oam_din           : std_logic_vector(31 downto 0) := (others => '0');
 
    signal srv_bg_req        : std_logic;
+   signal srv_bg_lcdc       : std_logic;
+   signal lcdc_check       : std_logic := '0';
+   signal lcdc_count       : natural := 0;
+   signal lcdc_expected_y  : natural := 0;
+   signal lcdc_expected_base : natural := 0;
+   signal lcdc_read_count  : natural := 0;
+   signal lcdc_bright      : natural range 0 to 16 := 0;
    signal srv_bg_addr       : integer range 0 to 131071;
    signal srv_bg_data       : std_logic_vector(31 downto 0) := (others => '0');
    signal srv_bg_done       : std_logic := '0';
@@ -151,6 +158,7 @@ begin
       oam_din           => oam_din,
       oam_be            => "1111",
       srv_bg_req        => srv_bg_req,
+      srv_bg_lcdc       => srv_bg_lcdc,
       srv_bg_addr       => srv_bg_addr,
       srv_bg_data       => srv_bg_data,
       srv_bg_done       => srv_bg_done,
@@ -209,7 +217,8 @@ begin
             bg_pipe(0).valid <= '0';
             if (srv_bg_req = '1' and srv_bg_accept = '1') then
                bg_pipe(0).valid <= '1';
-               bg_pipe(0).data  <= (others => '0');
+               if srv_bg_lcdc='1' then bg_pipe(0).data <= x"801F7C00";
+               else bg_pipe(0).data <= (others=>'0'); end if;
                bg_accept_count  <= bg_accept_count + 1;
             end if;
             srv_bg_done <= bg_pipe(BG_LATENCY - 1).valid;
@@ -275,6 +284,33 @@ begin
                   report "H3D merge emitted more than two complete lines"
                   severity failure;
                h3d_output_count <= h3d_output_count + 1;
+            end if;
+         end if;
+      end if;
+   end process;
+
+   p_lcdc_check : process(clk)
+      variable r,g,b : natural;
+   begin
+      if rising_edge(clk) then
+         if lcdc_check='0' then lcdc_count<=0;lcdc_read_count<=0;
+         else
+            if srv_bg_req='1' and srv_bg_accept='1' then
+               assert srv_bg_lcdc='1' and srv_bg_addr=lcdc_expected_base+lcdc_read_count
+                  report "LCDC channel/address switched during a pending line" severity failure;
+               lcdc_read_count<=lcdc_read_count+1;
+            end if;
+            if pixel_out_we='1' then
+               assert pixel_out_x=lcdc_count and pixel_out_y=lcdc_expected_y
+                  report "LCDC integrated pixel order" severity failure;
+               r:=0;g:=0;b:=62;
+               if lcdc_count mod 2=1 then r:=62;b:=0;end if;
+               r:=r+(63-r)*lcdc_bright/16;
+               g:=g+(63-g)*lcdc_bright/16;
+               b:=b+(63-b)*lcdc_bright/16;
+               assert pixel_out_data=std_logic_vector(to_unsigned(b*4096+g*64+r,18))
+                  report "LCDC integrated brightness/color/blank handling" severity failure;
+               lcdc_count<=lcdc_count+1;
             end if;
          end if;
       end if;
@@ -582,6 +618,35 @@ begin
          severity failure;
       h3d_check_enable <= '0';
       h3d_reader_enable <= '0';
+
+      -- Change bank, then leave direct display while its reads are pending.
+      -- The accepted line keeps its LCDC owner; a queued normal line then
+      -- resumes the existing text renderer without consuming LCDC replies.
+      wait until falling_edge(clk);
+      regwrite(16#000#,x"000A0000");
+      lcdc_expected_y<=7;lcdc_expected_base<=2*32768+7*128;lcdc_bright<=0;
+      lcdc_check<='1';linecounter<=7;drawline<='1';
+      wait until rising_edge(clk);drawline<='0';wait until falling_edge(clk);
+      regwrite(16#000#,x"000E0000");
+      regwrite(16#000#,x"00010000");
+      linecounter<=8;drawline<='1';
+      wait until rising_edge(clk);drawline<='0';
+      wait until lcdc_count=256;
+      wait until falling_edge(clk);
+      assert lcdc_read_count=128 report "LCDC integrated request count" severity failure;
+      lcdc_check<='0';
+      wait until rising_edge(clk) and line_busy='0';wait until falling_edge(clk);
+      assert srv_bg_lcdc='0' report "queued normal line did not reclaim BG channel" severity failure;
+
+      -- VRAM display ignores the normal 2D forced-blank bit, but does apply
+      -- master brightness. Bit15-clear blue must remain opaque and visible.
+      regwrite(16#06C#,x"00004008");
+      regwrite(16#000#,x"000E0080");
+      lcdc_expected_y<=191;lcdc_expected_base<=3*32768+191*128;lcdc_bright<=8;
+      lcdc_check<='1';renderline(191);
+      assert lcdc_count=256 and lcdc_read_count=128 report "LCDC final line incomplete" severity failure;
+      lcdc_check<='0';
+      report "LCDC_GPU_PASS bank and display changes, queued normal line, brightness and forced blank" severity note;
 
       report "MODE_RACE_PASS text_requests=" & integer'image(text_req_count) &
              " affine_requests=" & integer'image(affine_req_count) &

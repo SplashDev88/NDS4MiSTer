@@ -1592,7 +1592,12 @@ begin
             end if;
 
             if (Pixel_merge.objwnd = '0') then
-               if (Pixel_readback.transparent = '1' or unsigned(Pixel_merge.prio) < unsigned(Pixel_readback.prio)) then
+               -- A transparent pixel may claim empty metadata, but must not
+               -- promote an already opaque sprite in front of a background.
+               -- Keep that sprite's priority and blend settings with its color.
+               if (Pixel_readback.transparent = '1' or
+                   (Pixel_merge.transparent = '0' and
+                    unsigned(Pixel_merge.prio) < unsigned(Pixel_readback.prio))) then
                   pixel_we_settings             <= '1';
                   pixelarray(target_merge).prio <= Pixel_merge.prio;
                   if (Pixel_merge.transparent = '0') then

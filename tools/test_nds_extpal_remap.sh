@@ -31,6 +31,7 @@ run_tests() {
         "$src/third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_affext.vhd" \
         "$src/third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_obj.vhd" \
         "$src/third_party/Nitro_DarkSide/d2dabe/rtl/nds_drawer_merge.vhd" \
+        "$src/rtl/nds_lcdc_line.vhd" \
         "$src/rtl/nds_nitro_gpu2d.vhd" \
         "$src/rtl/tb_nds_nitro_gpu2d_mode_race.vhd"
     nvc --std=2008 -L . -e tb_nds_nitro_gpu2d_mode_race

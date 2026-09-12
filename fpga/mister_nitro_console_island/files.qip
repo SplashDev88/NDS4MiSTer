@@ -53,6 +53,7 @@ set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_text.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_affext.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_obj.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_drawer_merge.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_lcdc_line.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_gpu2d.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_gpu2d_fast.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_gpu_timing.vhd

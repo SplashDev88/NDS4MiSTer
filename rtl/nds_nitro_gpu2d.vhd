@@ -97,6 +97,7 @@ entity nds_gpu2d is
       -- second request may only be presented once the first is accepted -
       -- after that any number may be in flight, answered in issue order.
       srv_bg_req        : out std_logic := '0';
+      srv_bg_lcdc       : out std_logic := '0'; -- physical LCDC banks on BG channel
       srv_bg_addr       : out integer range 0 to 131071;
       srv_bg_data       : in  std_logic_vector(31 downto 0);
       srv_bg_done       : in  std_logic;
@@ -162,6 +163,19 @@ entity nds_gpu2d is
 end entity;
 
 architecture arch of nds_gpu2d is
+
+   signal normal_bg_req : std_logic := '0';
+   signal normal_bg_addr : integer range 0 to 131071;
+   signal normal_bg_data : std_logic_vector(31 downto 0);
+   signal normal_bg_done, normal_bg_accept : std_logic;
+   signal lcdc_req, lcdc_accept, lcdc_done, lcdc_busy, lcdc_start, lcdc_we : std_logic;
+   signal lcdc_addr : integer range 0 to 131071;
+   signal lcdc_x, merge_pixel_x : integer range 0 to 255;
+   signal lcdc_y, merge_pixel_y : integer range 0 to 191;
+   signal lcdc_color : std_logic_vector(17 downto 0);
+   signal merge_pixel_we : std_logic;
+   signal active_lcdc, start_lcdc, pending_lcdc : std_logic := '0';
+   signal start_lcdc_bank, pending_lcdc_bank : std_logic_vector(1 downto 0) := "00";
 
    -- ================= registers =================
    constant REGCOUNT : integer := 72;
@@ -490,6 +504,30 @@ architecture arch of nds_gpu2d is
    signal merge_out666    : std_logic_vector(17 downto 0);
 
 begin
+   -- Reuse the BG memory channel only after the preceding line has drained.
+   -- Both display ownership and bank belong to the accepted/queued line;
+   -- live DISPCNT changes cannot redirect a reply into another drawer.
+   start_lcdc <= pending_lcdc when drawline_pending='1' else
+                 '1' when is_engine_b='0' and R_dispmode="10" else '0';
+   start_lcdc_bank <= pending_lcdc_bank when drawline_pending='1' else R_vramblock;
+   lcdc_start <= drawline_acc and start_lcdc;
+   srv_bg_lcdc <= active_lcdc;
+   srv_bg_req <= lcdc_req when active_lcdc='1' else normal_bg_req;
+   srv_bg_addr <= lcdc_addr when active_lcdc='1' else normal_bg_addr;
+   normal_bg_data <= srv_bg_data;
+   normal_bg_done <= srv_bg_done and not active_lcdc;
+   normal_bg_accept <= srv_bg_accept and not active_lcdc;
+   lcdc_done <= srv_bg_done and active_lcdc;
+   lcdc_accept <= srv_bg_accept and active_lcdc;
+   ilcdc : entity work.nds_lcdc_line port map (
+      clk=>clk, reset=>reset, start=>lcdc_start, line_y=>drawline_start_y,
+      bank=>start_lcdc_bank, busy=>lcdc_busy, mem_req=>lcdc_req,
+      mem_addr=>lcdc_addr, mem_accept=>lcdc_accept, mem_done=>lcdc_done,
+      mem_data=>srv_bg_data, pixel_we=>lcdc_we, pixel_x=>lcdc_x,
+      pixel_y=>lcdc_y, pixel_data=>lcdc_color);
+   pixel_out_x <= lcdc_x when active_lcdc='1' else merge_pixel_x;
+   pixel_out_y <= lcdc_y when active_lcdc='1' else merge_pixel_y;
+   pixel_out_we <= lcdc_we when active_lcdc='1' else merge_pixel_we;
 
    -- ================= register instances =================
    iDISPCNT_BG_Mode    : entity work.eProcReg_gba generic map (DISPCNT_BG_Mode)            port map (clk, gb_bus, reg_wired_or(0),  reg_wired_done(0),  R_bgmode, R_bgmode);
@@ -938,12 +976,16 @@ begin
          if (reset = '1') then
             drawline_pending   <= '0';
             drawline_pending_y <= 0;
+            pending_lcdc <= '0'; pending_lcdc_bank <= "00";
          elsif (linestate = LIDLE and drawline_pending = '1') then
             -- The held line starts now.  A simultaneous new raster pulse
             -- replaces it, preserving one-in/one-out ordering.
             if (drawline = '1' and text_queue_safe = '1') then
                drawline_pending   <= '1';
                drawline_pending_y <= linecounter;
+               pending_lcdc <= '0';
+               if is_engine_b='0' and R_dispmode="10" then pending_lcdc<='1'; end if;
+               pending_lcdc_bank <= R_vramblock;
                pending_bgcnt      <= R_bgcnt;
                pending_hofs       <= R_hofs;
                pending_vofs       <= R_vofs;
@@ -960,6 +1002,9 @@ begin
                 drawline_pending = '0' and text_queue_safe = '1') then
             drawline_pending   <= '1';
             drawline_pending_y <= linecounter;
+            pending_lcdc <= '0';
+            if is_engine_b='0' and R_dispmode="10" then pending_lcdc<='1'; end if;
+            pending_lcdc_bank <= R_vramblock;
             pending_bgcnt      <= R_bgcnt;
             pending_hofs       <= R_hofs;
             pending_vofs       <= R_vofs;
@@ -1006,17 +1051,20 @@ begin
       if rising_edge(clk) then
          if (reset = '1') then
             active_bgtype <= (0, 0, 0, 0);
+            active_lcdc <= '0';
          elsif (drawline_acc = '1') then
-            active_bgtype <= start_bgtype;
+            active_lcdc <= start_lcdc;
+            if start_lcdc='1' then active_bgtype <= (0,0,0,0);
+            else active_bgtype <= start_bgtype; end if;
          end if;
       end if;
    end process;
 
    gen_dl_text : for i in 0 to 3 generate
-      drawline_text(i) <= drawline_acc when (start_bgtype(i) = 1) else '0';
+      drawline_text(i) <= drawline_acc when (start_bgtype(i) = 1 and start_lcdc='0') else '0';
    end generate;
    gen_dl_a : for i in 2 to 3 generate
-      drawline_ae(i) <= drawline_acc when (start_bgtype(i) = 2 or start_bgtype(i) = 3) else '0';
+      drawline_ae(i) <= drawline_acc when ((start_bgtype(i) = 2 or start_bgtype(i) = 3) and start_lcdc='0') else '0';
    end generate;
 
    any_bg_busy <= busy_text(0) or busy_text(1) or busy_text(2) or busy_text(3)
@@ -1457,7 +1505,7 @@ begin
    --
    -- v2 issues one request per cycle and keeps a FIFO of which BG owns each
    -- op. nds_vram retires in issue order, so popping the FIFO on each
-   -- srv_bg_done routes the answer back to the right BG with no tag on the
+   -- normal_bg_done routes the answer back to the right BG with no tag on the
    -- wire. A BG may therefore have several fetches outstanding, which is what
    -- lets the drawers run their fetch stage ahead of their pixel stage.
    b_arb : block
@@ -1479,7 +1527,7 @@ begin
       arb_busy <= '0' when os_count = 0 else '1';
 
       -- bgv_done is registered, so a drawer sees it one cycle after
-      -- srv_bg_done - but srv_bg_data is only valid ON the done cycle, because
+      -- normal_bg_done - but normal_bg_data is only valid ON the done cycle, because
       -- the line server overwrites it at the next retire. With one op in
       -- flight that never mattered (nothing could retire in the gap); with
       -- several it means the drawer reads the NEXT request's word, which shows
@@ -1496,7 +1544,7 @@ begin
          variable v_tail : integer range 0 to OS_DEPTH-1;
       begin
          if rising_edge(clk) then
-            srv_bg_req <= '0';
+            normal_bg_req <= '0';
             bgv_done   <= (others => '0');
             bgv_accept <= (others => '0');
 
@@ -1507,7 +1555,7 @@ begin
                end if;
             end loop;
 
-            if (srv_bg_accept = '1') then
+            if (normal_bg_accept = '1') then
                unaccepted <= '0';
             end if;
 
@@ -1523,9 +1571,9 @@ begin
                v_tail := os_tail;
 
                -- completion: in-order, so the oldest op owns this answer
-               if (srv_bg_done = '1' and v_cnt > 0) then
+               if (normal_bg_done = '1' and v_cnt > 0) then
                   bgv_done(owner(v_head)) <= '1';
-                  bg_data_r               <= srv_bg_data;
+                  bg_data_r               <= normal_bg_data;
                   v_head := (v_head + 1) mod OS_DEPTH;
                   v_cnt  := v_cnt - 1;
                end if;
@@ -1541,10 +1589,10 @@ begin
                   end if;
                end loop;
                if (found and v_cnt < OS_DEPTH and
-                   (unaccepted = '0' or srv_bg_accept = '1')) then
+                   (unaccepted = '0' or normal_bg_accept = '1')) then
                   arb_rr      <= (sel + 1) mod 4;
-                  srv_bg_addr <= bgv_addr(sel);
-                  srv_bg_req  <= '1';
+                  normal_bg_addr <= bgv_addr(sel);
+                  normal_bg_req  <= '1';
                   unaccepted  <= '1';
                   bgv_accept(sel) <= '1';
                   pend_v(sel) := '0';
@@ -1806,7 +1854,7 @@ begin
                   end if;
                when LDRAW =>
                   -- one settle cycle after busy falls covers drawline latency
-                  if (any_bg_busy = '0' and obj_busy = '0' and clear_addr = 256) then
+                  if (any_bg_busy = '0' and obj_busy = '0' and lcdc_busy='0' and clear_addr = 256) then
                      linestate <= LMERGE;
                      merge_x   <= 0;
                   end if;
@@ -1902,21 +1950,22 @@ begin
       pixeldata_h3d        => h3d_pixel_data,
       objwindow_in         => mrg_objwnd,
       pixeldata_out        => merge_out666,
-      pixel_x              => pixel_out_x,
-      pixel_y              => pixel_out_y,
-      pixel_we             => pixel_out_we
+      pixel_x              => merge_pixel_x,
+      pixel_y              => merge_pixel_y,
+      pixel_we             => merge_pixel_we
    );
 
    -- forced blank: hardware outputs white
    -- output stage, melonDS DrawScanline order: forced-blank white
    -- composites like a normal line (master brightness applies); display
-   -- mode 0 shows white and skips master brightness; engine A's VRAM/FIFO
-   -- display modes (2/3) are unimplemented and render like mode 1.
+   -- mode 0 shows white and skips master brightness. Engine A mode2 uses
+   -- direct LCDC pixels; FIFO mode3 remains unimplemented.
    -- Master brightness (18-bit space): up c += ((63-c)*f)/16 (bias 0),
    -- down c -= (c*f + 15)/16 (bias 0xF), factor clamped to 16.
-   raw666 <= (others => '1') when R_forced_blank = "1" else merge_out666;
+   raw666 <= lcdc_color when active_lcdc='1' else
+             (others => '1') when R_forced_blank = "1" else merge_out666;
 
-   dispmode_eff <= R_dispmode(17 downto 16) when is_engine_b = '0' else '0' & R_dispmode(16);
+   dispmode_eff <= "10" when active_lcdc='1' else R_dispmode(17 downto 16) when is_engine_b = '0' else '0' & R_dispmode(16);
 
    p_mbright : process (all)
       variable f    : integer range 0 to 31;
