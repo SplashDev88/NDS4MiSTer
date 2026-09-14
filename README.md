@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.3.0-beta.13 — Chrono Trigger fixes and opening movie video**
+**v0.3.0-beta.14 — Smoother FMV playback and TATE mode**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -17,7 +17,9 @@ artifacts, or credentials are included in this source repository.
 ## What works today
 
 - Some 2D and lighter 3D games boot and run.
-- Opening movie video in Chrono Trigger and Castlevania; playback can be choppy.
+- Smoother opening movies in Chrono Trigger and Castlevania, with occasional
+  audio hitches still possible.
+- Optional 90-degree counterclockwise TATE rotation for a sideways monitor.
 - FPGA-generated sound with corrected DS sound-bias initialization.
 - Persistent cartridge saves:
   - 512-byte tiny EEPROM.
@@ -34,8 +36,10 @@ artifacts, or credentials are included in this source repository.
 
 ## Current limitations
 
-- **Movie playback can be choppy.** Castlevania's opening video is now visible,
-  but smooth or full-speed movie playback is still work in progress.
+- **Movies and audio can still hitch occasionally.** Playback is smoother, but
+  full-speed playback in every game remains work in progress.
+- **TATE supports 90 CCW only.** The game picture and MiSTer menu rotate
+  separately. Both-screen performance still depends on the game.
 - **Engine B costs speed.** Off is the default and displays Engine A in both
   screen positions. On restores the second graphics engine using the ARM
   service, but games can slow down and the second screen can lag under load.
@@ -64,12 +68,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.13_20260912.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.3.0-beta.14_20260914.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260912** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260914** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -79,6 +83,19 @@ repository.
 > correctly if the helper is not running. Kickstart also watches for that one
 > core launch and moves its replacement MiSTer frontend to CPU0; rerun
 > Kickstart before a later NDS re-entry or if five minutes elapsed.
+
+## TATE mode
+
+For a portrait setup, turn your monitor clockwise. Select **Video Layout →
+Top/Bottom**, then **Video Rotation → 90 CCW** in the core menu. Rotation
+starts Off and can be changed without resetting the game. D-pad, right-stick
+touch, and mouse controls keep their native DS directions for this physical
+monitor orientation. Screen order and gap settings remain available.
+
+Rotation applies to the game picture. The MiSTer menu rotates separately; if
+needed, set `osd_rotate=2` under `[NDS]` in `MiSTer.ini` to rotate it
+counterclockwise. The installer does not modify that file. Clockwise picture
+rotation is not exposed by this release.
 
 ## Controller and keyboard mapping
 
@@ -150,61 +167,72 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.13
+## What's new in beta.14
 
-Chrono Trigger now passes the Square Enix logo. Opening movie video is visible
-in Chrono Trigger and Castlevania, and the black rectangle over Crono in the
-opening bedroom scene is fixed. Castlevania movie playback remains choppy.
+Smoother FMV playback and optional TATE rotation are the headline changes.
+See the [release notes](docs/RELEASE_NOTES_BETA14.md) for installation and
+known issues.
 
-- ARM9 memory requests retain their own SWP lock attributes, preventing a
-  later CPU request from corrupting a background cache fill.
-- The final cartridge read retires before an immediately following command.
-- Transparent sprites no longer replace an existing opaque sprite's priority.
-- Engine A direct VRAM display reads the selected LCDC bank through the FPGA
-  line server, with queued mode ownership and master brightness handling.
+- Reduce redundant ARM9 instruction, load, and cached-write return cycles so
+  movie decoding and audio-buffer production can make progress sooner.
+- Join compatible adjacent LCDC reads and let sound refills interrupt long
+  ARM7 DMA transfers at complete transfer-unit boundaries.
+- Reuse unchanged Engine B lines and transfer completed snapshots without an
+  extra full-image copy in the matched ARM helper.
+- Add compact four-row TATE capture through the existing scaler DDR port,
+  publishing only complete rotated frames. Normal capture is replaced while
+  rotation is active. Off produces no additional rotation traffic.
+- Retain the accepted VRAM storage optimization and use equivalent sound
+  register readback to make room for TATE. Passive sound/display diagnostic
+  payloads are omitted; session/fault handling, the PC heartbeat, and the
+  on-screen FPS counter remain.
 
-The beta.12 ARM helper is reused unchanged, including the accepted renderer
-optimizations. Engine B remains optional and defaults Off. On restores the
-second graphics engine but costs speed; apply changes with Reset or ROM reload.
-Kirby graphics, palette fades and text colors, transparency, processor wake-up,
-touch, sound, cartridge saves, and earlier boot compatibility fixes remain.
-ARM continues to run at 1 GHz. No new speed percentage is claimed for beta.13.
+Earlier Chrono startup and sprite corrections, Kirby graphics, palette fades
+and text colors, transparency, processor wake-up, touch, sound, cartridge saves,
+and boot fixes remain. Engine B defaults Off; change it and Reset or reload
+for both graphics engines. ARM continues to run at 1 GHz with no overclock.
+No new gameplay speed percentage or universal 60 FPS claim is made.
 
-The experimental GX readback correction is still deferred because of slowdown.
+The experimental GX readback correction remains deferred because of slowdown.
 Pokemon player/furniture graphics can remain missing; see
 [issue #16](https://github.com/SplashDev88/NDS4MiSTer/issues/16).
-Locality-cache and stateless-rendering experiments remain excluded.
 
 ## Verification
 
 | Item | Release identity |
 | --- | --- |
-| Core file | `_Console/NDS_20260912.rbf` |
-| Build identity | `260911-CTVID2` |
-| FPGA SHA-256 | `84b42b87411f3863ef2a40cec2c943407d9710e64898315ee94a42bfaa2097e4` |
+| Core file | `_Console/NDS_20260914.rbf` |
+| Build identity | `260914-TATE10` |
+| FPGA SHA-256 | `4b6b623b129aebeb7ebf222305ec23cbc398b49fa3a62142355eacf04d9ffd3a` |
 | Quartus seed | 2 |
 | ARM clocks | 1 GHz |
-| ARM SHA-256 | `b107acaf4cd2d283ed3653fe4151d7209db83635d4fc4465fa154086cd41fd4d` |
+| ARM SHA-256 | `826d5c95bab26d523c5327cb61384fd13abe540d43e3c91ba89630c12a98d937` |
 | Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-This package reuses the exact CTVID2 movie core tested by the maintainer,
-paired with the unchanged beta.12 ARM helper. Neither binary was rebuilt for
-packaging. The maintainer reported movie video working in Chrono Trigger and
-Castlevania, with choppy Castlevania playback. Chrono gameplay, the sprite fix,
-and in-game save/load were accepted on the preceding sprite build; those fixes
-are retained, but that is not a complete gameplay/save regression on CTVID2.
+This package reuses the exact TATE10 candidate loaded for maintainer testing
+and its matched ARM helper. Neither binary was rebuilt for packaging. The
+maintainer reported substantially better movie playback on the retained WCR1
+movie path, then requested TATE and release packaging. This does not establish
+a full game, input, or display compatibility matrix for TATE10.
 
-Production simulations cover delayed cache fills/SWP ownership, adjacent
-cartridge commands, sprite priority, all four LCDC banks, delayed VRAM replies,
-backpressure, mode changes, brightness, reset, and palette/3D alignment. Full
-VHDL analysis passed. Earlier beta.12 helper validation remains applicable to
-the unchanged helper; no new general performance measurement is claimed.
+Focused verification covers CPU/cache returns and collision handling, LCDC
+reads, sound refill/DMA ownership, Engine B line/snapshot ownership, VRAM
+storage equivalence, sound register and complete sound-unit equivalence,
+TATE pixel/color correctness, DDR stalls, complete-frame publication, and Off
+pass-through. Final control-path tests preserve the heartbeat and session
+policy with passive tracing disabled. Deliberate broken variants check that
+key tests detect faults. Finite tests and portable memory/scaler simulation
+assumptions do not establish universal hardware compatibility.
 
-The seed-2 FPGA completed map, fit, assembly, and timing analysis. Static timing
-reports setup/recovery and hold violations; timing closure is not claimed.
-Fit: 41,185 ALMs, 494 RAM blocks, 69 DSP blocks. Worst setup: -13.635 ns;
-worst hold: -0.651 ns; worst recovery: -10.965 ns. Broader game testing remains.
-See SOURCE_PACKAGE.txt for source provenance and validation limits.
+All 476 frozen FPGA input files match the compiled candidate. Production ARM
+sources and build configuration match the tested helper build. Source/archive
+hashes and installer contents are checked separately during packaging.
+
+Map, fit, assembly, and timing analysis completed. Fit: 41,238 ALMs needed,
+41,022 placed, 510 M10K blocks, 69 DSP blocks. Worst setup: -13.873 ns; worst
+hold: -0.366 ns; worst recovery: -10.925 ns. Timing is not closed. Shared DDR
+contention, physical routing, and demanding games still require broader
+hardware testing. See SOURCE_PACKAGE.txt for source provenance and limits.
 
 ## For developers
 
