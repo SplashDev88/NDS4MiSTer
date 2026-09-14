@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta — Smoother FMV playback and TATE mode**
+**v0.4.0-beta.1 — Clockwise and counterclockwise TATE rotation**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -19,7 +19,8 @@ artifacts, or credentials are included in this source repository.
 - Some 2D and lighter 3D games boot and run.
 - Smoother opening movies in Chrono Trigger and Castlevania, with occasional
   audio hitches still possible.
-- Optional 90-degree counterclockwise TATE rotation for a sideways monitor.
+- Optional 90-degree clockwise or counterclockwise TATE rotation for a
+  sideways monitor.
 - FPGA-generated sound with corrected DS sound-bias initialization.
 - Persistent cartridge saves:
   - 512-byte tiny EEPROM.
@@ -38,8 +39,8 @@ artifacts, or credentials are included in this source repository.
 
 - **Movies and audio can still hitch occasionally.** Playback is smoother, but
   full-speed playback in every game remains work in progress.
-- **TATE supports 90 CCW only.** The game picture and MiSTer menu rotate
-  separately. Both-screen performance still depends on the game.
+- **TATE supports 90 CW and 90 CCW, but not 180 degrees.** The game picture
+  and MiSTer menu rotate separately. Both-screen performance depends on the game.
 - **Engine B costs speed.** Off is the default and displays Engine A in both
   screen positions. On restores the second graphics engine using the ARM
   service, but games can slow down and the second screen can lag under load.
@@ -68,7 +69,7 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta_20260914.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta.1_20260914.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
@@ -86,16 +87,23 @@ repository.
 
 ## TATE mode
 
-For a portrait setup, turn your monitor clockwise. Select **Video Layout →
-Top/Bottom**, then **Video Rotation → 90 CCW** in the core menu. Rotation
-starts Off and can be changed without resetting the game. D-pad, right-stick
-touch, and mouse controls keep their native DS directions for this physical
-monitor orientation. Screen order and gap settings remain available.
+Select **Video Layout → Top/Bottom** to stack the DS screens. Choose the
+picture rotation opposite to your monitor's physical turn:
 
-Rotation applies to the game picture. The MiSTer menu rotates separately; if
-needed, set `osd_rotate=2` under `[NDS]` in `MiSTer.ini` to rotate it
-counterclockwise. The installer does not modify that file. Clockwise picture
-rotation is not exposed by this release.
+| Monitor physically turns | Video Rotation | Optional NDS menu setting |
+| --- | --- | --- |
+| Clockwise / right | **90 CCW** | `osd_rotate=2` |
+| Counterclockwise / left | **90 CW** | `osd_rotate=1` |
+
+Rotation starts Off and can be changed without resetting the game. Existing
+saved Off and 90 CCW settings retain their meaning. D-pad, right-stick touch,
+and mouse controls keep their native DS directions for the physically turned
+monitor. Screen order and gap settings remain available.
+
+The MiSTer menu rotates separately. Put the matching `osd_rotate` setting
+under `[NDS]` in `MiSTer.ini`, then save and reboot. If that section already
+exists, update it. This affects NDS only; the installer does not edit your INI.
+See the [MiSTer INI documentation](https://mister-devel.github.io/MkDocs_MiSTer/advanced/ini/#menu-settings).
 
 ## Controller and keyboard mapping
 
@@ -167,11 +175,14 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta
+## What's new in v0.4.0-beta.1
 
-Smoother FMV playback and optional TATE rotation are the headline changes.
-See the [release notes](docs/RELEASE_NOTES_V040_BETA.md) for installation and
-known issues.
+Clockwise picture rotation joins the existing counterclockwise option. Both
+directions use the same four-row strip buffers and scaler DDR port. Existing
+Off/CCW saved settings and native controls are preserved. See the
+[release notes](docs/RELEASE_NOTES_V040_BETA1.md) for setup and known issues.
+
+The smoother movie playback and other work from v0.4.0-beta are retained:
 
 - Reduce redundant ARM9 instruction, load, and cached-write return cycles so
   movie decoding and audio-buffer production can make progress sooner.
@@ -202,18 +213,19 @@ Pokemon player/furniture graphics can remain missing; see
 | Item | Release identity |
 | --- | --- |
 | Core file | `_Console/NDS_20260914.rbf` |
-| Build identity | `260914-TATE10` |
-| FPGA SHA-256 | `4b6b623b129aebeb7ebf222305ec23cbc398b49fa3a62142355eacf04d9ffd3a` |
+| Build identity | `260914-TATECW1` |
+| FPGA SHA-256 | `5aa6c45b485fd4c27c1a7ffd8265a9e8351b7afb31cd35d4d2e7faa0c02334be` |
 | Quartus seed | 2 |
 | ARM clocks | 1 GHz |
 | ARM SHA-256 | `826d5c95bab26d523c5327cb61384fd13abe540d43e3c91ba89630c12a98d937` |
 | Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-This package reuses the exact TATE10 candidate loaded for maintainer testing
-and its matched ARM helper. Neither binary was rebuilt for packaging. The
-maintainer reported substantially better movie playback on the retained WCR1
-movie path, then requested TATE and release packaging. This does not establish
-a full game, input, or display compatibility matrix for TATE10.
+This package reuses the exact TATECW1 core loaded for maintainer testing and
+the unchanged v0.4.0-beta ARM helper. Neither binary was rebuilt for packaging.
+The core/helper load and stock clock were verified, and the maintainer
+requested packaging. No detailed CW game, display or input acceptance matrix
+has been reported. Earlier improved movie playback feedback applies to the
+retained movie path; it is not a new speed measurement for this build.
 
 Focused verification covers CPU/cache returns and collision handling, LCDC
 reads, sound refill/DMA ownership, Engine B line/snapshot ownership, VRAM
@@ -224,14 +236,21 @@ policy with passive tracing disabled. Deliberate broken variants check that
 key tests detect faults. Finite tests and portable memory/scaler simulation
 assumptions do not establish universal hardware compatibility.
 
+Additional CW tests cover both maximum native canvases, direction changes
+within a frame, and the actual menu decode across 512 cases with two negative
+controls. Both direction and menu test suites passed from this curated tree.
+
 All 476 frozen FPGA input files match the compiled candidate. Production ARM
 sources and build configuration match the tested helper build. Source/archive
 hashes and installer contents are checked separately during packaging.
 
-Map, fit, assembly, and timing analysis completed. Fit: 41,238 ALMs needed,
-41,022 placed, 510 M10K blocks, 69 DSP blocks. Worst setup: -13.873 ns; worst
-hold: -0.366 ns; worst recovery: -10.925 ns. Timing is not closed. Shared DDR
-contention, physical routing, and demanding games still require broader
+Map, fit, assembly, and timing analysis completed. Fit: 41,258 ALMs needed,
+41,065 placed, all 4,191 LABs, 510 M10K blocks, 69 DSP blocks. Versus
+v0.4.0-beta this is +20 ALMs needed, with no additional RAM or DSP blocks.
+Worst setup: -15.252 ns; hold: -0.233 ns; recovery: -10.937 ns; removal: +0.258 ns.
+Setup is 1.379 ns worse and hold 0.133 ns better than v0.4.0-beta. Neither
+build is timing-closed; unchanged source paths do not prove unchanged speed.
+Shared DDR contention, physical routing, and demanding games require broader
 hardware testing. See SOURCE_PACKAGE.txt for source provenance and limits.
 
 ## For developers
