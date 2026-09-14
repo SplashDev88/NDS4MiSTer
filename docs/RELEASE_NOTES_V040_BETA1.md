@@ -1,14 +1,10 @@
 # NDS4MiSTer v0.4.0-beta.1
 
-**TATE now rotates in either direction, with the smoother movie playback from v0.4.0-beta retained.**
+**Clockwise TATE rotation.**
 
 ## What's new
 
-- **Clockwise TATE rotation.** The core menu now offers **Video Rotation → Off / 90 CCW / 90 CW**, so you can match a monitor that turns either way. Rotation is Off by default and can be changed without resetting the game.
-- **Your existing rotation settings carry over.** Saved Off and 90 CCW settings keep their previous meaning.
-- **Smoother movie playback carries over.** The Chrono Trigger and Castlevania movie/audio improvements from v0.4.0-beta are retained. Occasional hitches can still happen.
-- **Earlier fixes carry over.** Optional Engine B, Chrono Trigger startup and sprite fixes, Kirby graphics, transparency, screen fades, colored text, touchscreen, sound, cartridge saves, and previous boot fixes are retained.
-- **Processor speed is unchanged.** The release uses the same ARM helper as v0.4.0-beta at a stock 1 GHz. No overclock.
+- **Clockwise TATE rotation.** Select **Video Rotation → 90 CW** in the core menu.
 
 ## How to install
 
