@@ -397,21 +397,75 @@ void SoftRenderer::DrawScanline(u32 line)
         {
             if (EngineBPixelsEnabled)
             {
+                // Movie playback can redraw an unchanged auxiliary screen
+                // while engine A streams new LCDC pixels. Reuse B only when
+                // its complete register/map state and memory revision match.
+                // Capture and tracing retain the ordinary rendering path.
+                const bool cacheEligible = LineCache && PackedOutput &&
+                    GPU.ScreensEnabled && !GPU.CaptureEnable &&
+                    !NDS4MiSTer::Trace2DEnabled() &&
+                    !NDS4MiSTer::CompositeLineEnabled() &&
+                    ((GPU.GPU2D_B.DispCnt >> 16) & 1u) == 1u;
+                EngineLineState currentState {};
+                bool reuseB = false;
+                if (cacheEligible)
+                {
+                    currentState = CaptureLineState(1);
+                    reuseB = LineCacheStateValid[1][line] &&
+                        ExternalLineCacheValid[1][line] &&
+                        memcmp(&LineCacheState[1][line], &currentState,
+                               sizeof(EngineLineState)) == 0;
+                }
+                LastExternalLineCacheReuse[0] = false;
+                LastExternalLineCacheReuse[1] = reuseB;
                 const auto engineBStarted = profileStarted(StageProfileEnabled);
-                Rend2D_B->DrawScanline(line);
+                if (reuseB)
+                {
+                    // Keep flat VRAM, windows and mosaic state coherent even
+                    // when the resulting pixels are already known. Sprites
+                    // still run at their normal preceding-line phase.
+                    if (GPU.GPU2D_B.Enabled && !GPU.GPU2D_B.ForcedBlank)
+                        static_cast<SoftRenderer2D*>(Rend2D_B.get())
+                            ->AdvanceLineCacheState();
+                }
+                else
+                    Rend2D_B->DrawScanline(line);
                 if (StageProfileEnabled)
                 {
-                    ++StageProfile.EngineBPixelLines;
+                    if (!reuseB) ++StageProfile.EngineBPixelLines;
                     StageProfile.EngineBNs += profileElapsedNs(engineBStarted);
                 }
                 const auto compositeBStarted =
                     profileStarted(StageProfileEnabled);
-                DrawScanlineB(line, dstB);
+                if (reuseB)
+                    memcpy(dstB, ExternalLineCache[1][line], 256*sizeof(u32));
+                else
+                    DrawScanlineB(line, dstB);
                 if (StageProfileEnabled)
                     StageProfile.CompositeBNs +=
                         profileElapsedNs(compositeBStarted);
+                if (cacheEligible)
+                {
+                    if (!reuseB)
+                        memcpy(ExternalLineCache[1][line], dstB, 256*sizeof(u32));
+                    LineCacheState[1][line] = currentState;
+                    LineCacheStateValid[1][line] = true;
+                    ExternalLineCacheValid[1][line] = true;
+                }
+                else
+                {
+                    LineCacheStateValid[1][line] = false;
+                    ExternalLineCacheValid[1][line] = false;
+                }
                 if (!GPU.ScreensEnabled)
                     memset(dstB, 0, 256 * sizeof(u32));
+            }
+            else
+            {
+                LineCacheStateValid[1][line] = false;
+                ExternalLineCacheValid[1][line] = false;
+                LastExternalLineCacheReuse[0] = false;
+                LastExternalLineCacheReuse[1] = false;
             }
 
             // Display capture writes Engine A/3D/FIFO/VRAM output back into

@@ -1164,7 +1164,7 @@ private:
             melonDS::RendererSettings settings {
                 1, Threaded3D, false, false,
                 arm_video_render_shadow_ || arm_video_engine_b_only_,
-                Parallel2D, arm_video_render_shadow_,
+                Parallel2D, arm_video_render_shadow_ || arm_video_engine_b_only_,
                 pipeline_profile_enabled_, FullFrame3D,
                 arm_video_engine_b_only_, engine_b_pixels_enabled_};
             auto& renderer = nds_->GPU.GetRenderer();
@@ -3276,10 +3276,11 @@ private:
             publication_frame_engine_b_number_[destination_index] =
                 engine_b_frame_number;
             if (has_engine_b) {
-                std::memcpy(
-                    publication_engine_b_frames_[destination_index].data(),
-                    engine_b_publication_snapshot_->data(), PlaneBytes);
-                engine_b_copied_bytes_ += PlaneBytes;
+                // Reservation excludes active and queued buffers. Transfer
+                // this immutable snapshot to that slot, retaining its old
+                // free storage for the next snapshot instead of copying it.
+                publication_engine_b_frames_[destination_index].swap(
+                    engine_b_publication_snapshot_);
             }
         }
         if (reuse_published_plane) {
@@ -3638,7 +3639,7 @@ private:
                             publication_frames_[index].data(),
                             &frame_publication_fence_active_,
                             publication_frame_has_engine_b_[index] ?
-                                publication_engine_b_frames_[index].data() :
+                                publication_engine_b_frames_[index]->data() :
                                 nullptr,
                             publication_frame_engine_b_screen_[index]);
                 }
@@ -4422,8 +4423,14 @@ private:
         new FullVideoBuffer[ArmVideoBufferCount] {}};
     std::unique_ptr<PlaneBuffer[]> publication_frames_ {
         new PlaneBuffer[PublicationBufferCount] {}};
-    std::unique_ptr<PlaneBuffer[]> publication_engine_b_frames_ {
-        new PlaneBuffer[PublicationBufferCount] {}};
+    std::array<std::unique_ptr<PlaneBuffer>, PublicationBufferCount>
+        publication_engine_b_frames_ = [] {
+            std::array<std::unique_ptr<PlaneBuffer>, PublicationBufferCount>
+                buffers;
+            for (auto& buffer : buffers)
+                buffer = std::make_unique<PlaneBuffer>();
+            return buffers;
+        }();
     std::unique_ptr<PlaneBuffer> engine_b_publication_snapshot_ {
         new PlaneBuffer {}};
     std::array<std::uint32_t, PublicationBufferCount>
@@ -5213,6 +5220,68 @@ void run_self_test()
     }
     std::cout << "H3D_ENGINE_B_POLICY_SELF_TEST_PASS "
                  "publication_modes=8 strict_abi=1 off_pixel_copy_ddr=0\n";
+
+    // Exercise the real snapshot/reservation/enqueue path while the publisher
+    // owns an unacknowledged frame. Successors replace the pending frame, but
+    // must never reuse the active image or pair pixels with stale metadata.
+    {
+        Fixture ownership_fixture(Session + 0x49u, true);
+        Hybrid3DService ownership_service(
+            ownership_fixture.bytes.data(), ownership_fixture.bytes.size(),
+            {}, true, false, false, false, false, false, nullptr,
+            nullptr, false, false, true);
+        if (!ownership_service.initialize())
+            self_test_fail("Engine-B ownership fixture did not initialize");
+        ownership_service.stop_publication_worker();
+        auto& renderer = ownership_service.nds().GPU.GetRenderer();
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        const auto pixel = [](unsigned frame, std::size_t i) {
+            return 0x1f000000u | ((frame * 65537u + i * 17u) & 0x003fffffu);
+        };
+        const auto check = [&](int index, unsigned frame) {
+            if (index < 0 ||
+                !ownership_service.publication_frame_has_engine_b_[index] ||
+                ownership_service.publication_frame_numbers_[index] != frame ||
+                ownership_service.publication_frame_engine_b_number_[index] != frame ||
+                ownership_service.publication_frame_engine_b_screen_[index] !=
+                    ((frame & 1u) != 0))
+                self_test_fail("Engine-B ownership metadata mismatch");
+            const auto& pixels =
+                *ownership_service.publication_engine_b_frames_[index];
+            for (std::size_t i = 0; i < PlanePixels; ++i)
+                if (pixels[i] != pixel(frame, i))
+                    self_test_fail("Engine-B ownership changed retained pixels");
+        };
+        constexpr unsigned Copies = 16;
+        int active_index = -1;
+        for (unsigned frame = 1; frame <= Copies; ++frame) {
+            for (std::size_t i = 0; i < PlanePixels; ++i)
+                (*ownership_service.engine_b_latest_frame_)[i] = pixel(frame, i);
+            ownership_service.engine_b_latest_ready_ = true;
+            ownership_service.engine_b_latest_frame_number_ = frame;
+            ownership_service.engine_b_latest_screen_ = (frame & 1u) != 0;
+            if (!ownership_service.copy_rendered_frame(frame, renderer))
+                self_test_fail("Engine-B ownership copy failed");
+            if (ownership_service.publication_queue_count_ != 1)
+                self_test_fail("Engine-B ownership queue was not bounded");
+            const auto newest_index = ownership_service.publication_queue_[
+                ownership_service.publication_queue_read_index_];
+            check(newest_index, frame);
+            if (frame == 1) {
+                active_index = ownership_service.dequeue_publication_buffer_locked();
+                ownership_service.publication_active_index_ = active_index;
+            }
+            check(active_index, 1);
+        }
+        if (ownership_service.engine_b_copied_bytes_for_test() !=
+                std::uint64_t(Copies) * PlaneBytes ||
+            ownership_service.publication_queue_replacements() != Copies - 2)
+            self_test_fail("Engine-B ownership copied twice or lost replacement accounting");
+        ownership_service.publication_active_index_ = -1;
+        std::cout << "H3D_ENGINE_B_OWNERSHIP_SELF_TEST_PASS frames=16 "
+                     "immutable_active=1 full_pixel_check=1 snapshot_copies=1\n";
+    }
 
     {
         EngineBRefreshPacer refresh;

@@ -41,6 +41,12 @@ output        HDMI_FREEZE,
 output        HDMI_BLACKOUT,
 output        HDMI_BOB_DEINT,
 
+`ifdef NDS_TATE
+output [1:0] VIDEO_ROTATION,
+input [1:0] VIDEO_ROTATION_APPLIED,
+output [9:0] VIDEO_SOURCE_WIDTH, VIDEO_SOURCE_HEIGHT,
+`endif
+
 `ifdef MISTER_FB
 // Use framebuffer in DDRAM
 // FB_FORMAT:

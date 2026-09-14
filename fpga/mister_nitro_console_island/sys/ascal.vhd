@@ -143,6 +143,7 @@ ENTITY ascal IS
 		i_de  : IN  std_logic; -- Display Enable
 		i_ce  : IN  std_logic; -- Clock Enable
 		i_clk : IN  std_logic; -- Input clock
+		i_capture_disable : IN std_logic := '0'; -- External rotated capture owns writes
 
 		------------------------------------
 		-- Output video
@@ -1176,7 +1177,7 @@ BEGIN
 			i_push<='0';
 			i_pushhead<='0';
 			i_eol<='0'; -- End Of Line
-			i_freeze <=freeze; -- <ASYNC>
+			i_freeze <=freeze OR i_capture_disable; -- <ASYNC>, input writes only
 			i_bob_deint <= bob_deint;
 			i_iauto<=iauto; -- <ASYNC>
 			i_wreq<='0';

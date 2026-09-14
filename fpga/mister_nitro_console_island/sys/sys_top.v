@@ -745,6 +745,46 @@ wire         hdmi_vs, hdmi_hs, hdmi_de, hdmi_vbl, hdmi_brd;
 wire         freeze;
 wire         bob_deint;
 
+`ifdef NDS_TATE
+wire [1:0] tate_rotation, tate_applied;
+wire [9:0] tate_source_width, tate_source_height;
+wire tate_fb_enable;
+wire [9:0] tate_fb_width, tate_fb_height;
+wire [31:0] tate_fb_base;
+wire [13:0] tate_fb_stride;
+wire [27:0] tate_address, scaler_address;
+wire [127:0] tate_writedata, scaler_writedata;
+wire tate_write, tate_ready, scaler_waitrequest, scaler_read, scaler_write;
+wire [7:0] scaler_burstcount;
+wire [15:0] scaler_byteenable;
+// This port already carries the scaler's frame capture and readback. Rotation
+// replaces the normal capture while active; the console DDR port is untouched.
+localparam integer TATE_TILE_ROWS = 4;
+nds_tate_video #(.TILE_ROWS(TATE_TILE_ROWS),.CCW_ONLY(1)) tate_video (
+    .reset(reset_req), .i_clk(clk_ihdmi), .i_ce(ce_hpix),
+    .i_de(hde_emu), .i_vs(hvs_fix), .i_rgb({hr_out,hg_out,hb_out}),
+    .rotation(tate_rotation), .source_width(tate_source_width),
+    .source_height(tate_source_height), .avl_clk(clk_100m),
+    .o_clk(hdmi_clk_out), .o_vbl(hdmi_vbl),
+    .fb_enable(tate_fb_enable), .rotation_applied(tate_applied),
+    .fb_width(tate_fb_width), .fb_height(tate_fb_height),
+    .fb_base(tate_fb_base), .fb_stride(tate_fb_stride),
+    .wr_address(tate_address), .wr_data(tate_writedata),
+    .wr_valid(tate_write), .wr_ready(tate_ready), .overflow()
+);
+nds_tate_scaler_arbiter #(.TATE_BEATS(TATE_TILE_ROWS/4)) tate_arbiter (
+    .clk(clk_100m), .reset(reset_req),
+    .s_read(scaler_read), .s_write(scaler_write), .s_address(scaler_address),
+    .s_burstcount(scaler_burstcount), .s_writedata(scaler_writedata),
+    .s_byteenable(scaler_byteenable), .s_waitrequest(scaler_waitrequest),
+    .t_write(tate_write), .t_address(tate_address), .t_writedata(tate_writedata),
+    .t_ready(tate_ready), .m_read(vbuf_read), .m_write(vbuf_write),
+    .m_address(vbuf_address), .m_burstcount(vbuf_burstcount),
+    .m_writedata(vbuf_writedata), .m_byteenable(vbuf_byteenable),
+    .m_waitrequest(vbuf_waitrequest)
+);
+`endif
+
 `ifndef MISTER_DEBUG_NOHDMI
 	wire clk_hdmi  = hdmi_clk_out;
 
@@ -784,6 +824,9 @@ wire         bob_deint;
 		.bob_deint  (bob_deint),
 
 		.i_clk    (clk_ihdmi),
+`ifdef NDS_TATE
+        .i_capture_disable (tate_rotation == 1 || tate_rotation == 2),
+`endif
 		.i_ce     (ce_hpix),
 		.i_r      (hr_out),
 		.i_g      (hg_out),
@@ -861,15 +904,25 @@ wire         bob_deint;
 		.o_fb_stride      (FB_STRIDE),
 
 		.avl_clk          (clk_100m),
-		.avl_waitrequest  (vbuf_waitrequest),
 		.avl_readdata     (vbuf_readdata),
 		.avl_readdatavalid(vbuf_readdatavalid),
+`ifdef NDS_TATE
+        .avl_waitrequest  (scaler_waitrequest),
+        .avl_burstcount   (scaler_burstcount),
+        .avl_writedata    (scaler_writedata),
+        .avl_address      (scaler_address),
+        .avl_write        (scaler_write),
+        .avl_read         (scaler_read),
+        .avl_byteenable   (scaler_byteenable)
+`else
+		.avl_waitrequest  (vbuf_waitrequest),
 		.avl_burstcount   (vbuf_burstcount),
 		.avl_writedata    (vbuf_writedata),
 		.avl_address      (vbuf_address),
 		.avl_write        (vbuf_write),
 		.avl_read         (vbuf_read),
 		.avl_byteenable   (vbuf_byteenable)
+`endif
 	);
 `endif
 
@@ -893,7 +946,11 @@ reg [31:0] FB_BASE   = 0;
 reg [13:0] FB_STRIDE = 0;
 
 always @(posedge clk_sys) begin
+`ifdef NDS_TATE
+    FB_EN <= LFB_EN | fb_en | tate_fb_enable;
+`else
 	FB_EN <= LFB_EN | fb_en;
+`endif
 	if(LFB_EN) begin
 		FB_FMT    <= LFB_FMT;
 		FB_WIDTH  <= LFB_WIDTH;
@@ -901,6 +958,15 @@ always @(posedge clk_sys) begin
 		FB_BASE   <= LFB_BASE;
 		FB_STRIDE <= LFB_STRIDE;
 	end
+`ifdef NDS_TATE
+    else if(tate_fb_enable) begin
+        FB_FMT <= 6'b000110;
+        FB_WIDTH <= {2'd0,tate_fb_width};
+        FB_HEIGHT <= {2'd0,tate_fb_height};
+        FB_BASE <= tate_fb_base;
+        FB_STRIDE <= tate_fb_stride;
+    end
+`endif
 	else begin
 		FB_FMT    <= fb_fmt;
 		FB_WIDTH  <= fb_width;
@@ -1940,6 +2006,12 @@ emu emu
 	.VGA_SL(scanlines),
 	.VIDEO_ARX(ARX),
 	.VIDEO_ARY(ARY),
+`ifdef NDS_TATE
+    .VIDEO_ROTATION(tate_rotation),
+    .VIDEO_ROTATION_APPLIED(tate_applied),
+    .VIDEO_SOURCE_WIDTH(tate_source_width),
+    .VIDEO_SOURCE_HEIGHT(tate_source_height),
+`endif
 
 `ifdef MISTER_FB
 	.FB_EN(fb_en),

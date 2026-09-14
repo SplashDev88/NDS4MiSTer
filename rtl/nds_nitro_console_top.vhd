@@ -79,6 +79,8 @@ entity nds_nitro_console_top is
       -- (see FITTING.md; the fitter is short by ~470 ALMs). Diagnostic images
       -- only - there is no audio at all with this off.
       SOUND_ENABLE             : integer   := 1;
+      SOUND_DIAGNOSTICS : integer := 0;
+      SOUND_STREAM_DIAGNOSTICS : integer := 0;
       -- DEBUG_ENABLE = 0 compiles nds_debug (the IS-NITRO-style halt/step/peek
       -- unit) out: 474 ALMs, ~47 LABs. That is enough to close the 27-LAB gap
       -- that SOUND_ENABLE=1 opens, which is the only reason to turn it off.
@@ -338,6 +340,8 @@ entity nds_nitro_console_top is
       vblank_out       : out std_logic;
 
       -- sound
+      sound_diagnostic : out std_logic_vector(127 downto 0) := (others => '0');
+      sound_stream_diagnostic : out std_logic_vector(63 downto 0) := (others => '0');
       sound_out_left   : out std_logic_vector(15 downto 0);
       sound_out_right  : out std_logic_vector(15 downto 0);
 
@@ -635,7 +639,7 @@ architecture arch of nds_nitro_console_top is
    signal cp15_dtcm_ena, cp15_dtcm_load : std_logic;
    signal cp15_dtcm_base : std_logic_vector(31 downto 12);
    signal cp15_dtcm_size, cp15_itcm_size : std_logic_vector(4 downto 0);
-   signal bus_cacheable_i, bus_cacheable_d : std_logic;
+   signal bus_cacheable_i, bus_cacheable_d, bus_bufferable_d : std_logic;
    signal cache_op_ena, cache_op_busy : std_logic;
    signal cache_op      : std_logic_vector(3 downto 0);
    signal cache_op_addr : std_logic_vector(31 downto 0);
@@ -1932,6 +1936,7 @@ begin
       cp15_itcm_size  => cp15_itcm_size,
       bus_cacheable_i => bus_cacheable_i,
       bus_cacheable_d => bus_cacheable_d,
+      bus_bufferable_d => bus_bufferable_d,
       cache_op_ena    => cache_op_ena,
       cache_op        => cache_op,
       cache_op_addr   => cache_op_addr,
@@ -1944,6 +1949,7 @@ begin
    (
       clk => clk2x, reset => resetCpu,
       bus_cacheable_i => bus_cacheable_i, bus_cacheable_d => bus_cacheable_d,
+      bus_bufferable_d => bus_bufferable_d,
       cache_op_ena => cache_op_ena, cache_op => cache_op,
       cache_op_addr => cache_op_addr, cache_op_busy => cache_op_busy,
       itcm_ena => cp15_itcm_ena, itcm_load => cp15_itcm_load, itcm_size => cp15_itcm_size,
@@ -2172,13 +2178,14 @@ begin
 
    -- ARM7 bus mux: the DMA owns the membus while dma7_bus_on (CPU paused
    -- via cpu7_pause and drained via cpu7_bus_idle before the grant); the
-   -- sound fetch unit is a second, lower-priority guest - it pauses the
-   -- CPU the same way (snd_bus_req -> cpu7_pause) but only gets the bus
-   -- when DMA7 neither holds nor wants it, and DMA7's grant is held off
-   -- while a sound word is in flight (dma7_idle_ok)
+   -- sound fetch unit pauses the CPU the same way (snd_bus_req ->
+   -- cpu7_pause). A pending refill wins the next free bus grant, and a
+   -- running DMA yields only after a complete read/write unit. This keeps
+   -- long transfers from starving the SPU without splitting a DMA word;
+   -- the CPU remains paused for the whole transfer and any sound refill.
    cpu7_pause   <= dma7_on or snd_bus_req;
-   dma7_idle_ok <= cpu7_bus_idle and not snd_bus_own;
-   snd_bus_ok   <= cpu7_bus_idle and not dma7_on and not dma7_bus_on;
+   dma7_idle_ok <= cpu7_bus_idle and not snd_bus_own and not snd_bus_req;
+   snd_bus_ok   <= cpu7_bus_idle and not dma7_bus_on;
 
    mbus7_adr  <= dmab7_adr  when dma7_bus_on = '1' else
                  sndb7_adr  when snd_bus_own = '1' else cpu7_adr;
@@ -2204,6 +2211,7 @@ begin
       trig_vblank  => gpu_vblank,
       trig_card    => dma7_card_trig,
       cpu_bus_idle => dma7_idle_ok,
+      yield_bus    => snd_bus_req,
       dma_on       => dma7_on,
       dma_bus_on   => dma7_bus_on,
       mb_ena       => dmab7_ena,
@@ -2368,9 +2376,34 @@ begin
    rtc_wired_out7  <= (others => '0');
    rtc_wired_done7 <= '1' when io_bus7.Adr = x"0000138" else '0';
 
+   -- Private Chrono movie measurement only: count actual completed writes to
+   -- the two PCM buffers observed in the software reference and AUDD1 D tags.
+   -- These address windows affect diagnostics alone, never emulation behavior.
+   gsound_stream : if SOUND_STREAM_DIAGNOSTICS /= 0 generate
+      signal permit9 : std_logic;
+   begin
+      permit9 <= not ld_busy and not dbg_pk_sel;
+      watch : entity work.nds_sound_stream_watch
+      generic map (
+         WINDOW0_FIRST_WORD => 16#2584B0# / 4, WINDOW0_WORDS => 30464 / 4,
+         WINDOW1_FIRST_WORD => 16#2672CC# / 4, WINDOW1_WORDS => 30464 / 4
+      )
+      port map (
+         clk => clk1x, reset => resetCpu,
+         permit9 => permit9, req9 => mem9_ena, rnw9 => mem9_rnw,
+         addr9 => mem9_addr, be9 => mem9_be, done9 => mem9_done,
+         permit7 => '1', req7 => mr7_ena, rnw7 => mr7_rnw,
+         addr7 => mr7_addr, be7 => mr7_be, done7 => mr7_done,
+         diagnostic => sound_stream_diagnostic
+      );
+   end generate;
+   gno_sound_stream : if SOUND_STREAM_DIAGNOSTICS = 0 generate
+      sound_stream_diagnostic <= (others => '0');
+   end generate;
+
    gsound : if SOUND_ENABLE /= 0 generate
       isound : entity work.nds_sound
-      generic map ( is_simu => is_simu )
+      generic map ( is_simu => is_simu, DIAGNOSTICS => SOUND_DIAGNOSTICS )
       port map
       (
          clk => clk1x, ce => '1', reset => resetCpu,
@@ -2385,7 +2418,7 @@ begin
          sample_l     => sound_out_left,
          sample_r     => sound_out_right,
          sample_valid => open,
-         snd_enable => open, snd_active => open
+         snd_enable => open, snd_active => open, diagnostic => sound_diagnostic
       );
    end generate;
 
@@ -2404,6 +2437,7 @@ begin
       snd_bus_own     <= '0';
       sndb7_ena       <= '0';
       sndb7_adr       <= (others => '0');
+      sound_diagnostic <= (others => '0');
       sound_out_left  <= (others => '0');
       sound_out_right <= (others => '0');
    end generate;

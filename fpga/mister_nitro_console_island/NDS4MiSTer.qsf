@@ -42,6 +42,7 @@ set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_SHADOWMASK=1"
 # fixed off. This removes an unused clock selector from the timing-critical
 # HDMI domain. Sound remains on.
 set_global_assignment -name VERILOG_MACRO "NDS_HDMI_SCALER_ONLY=1"
+set_global_assignment -name VERILOG_MACRO "NDS_TATE=1"
 set_global_assignment -name VERILOG_MACRO "NDS_DISABLE_HDMI_LOW_LATENCY=1"
 
 # Composite/S-video and adaptive/downscale filters are not first-alpha
@@ -388,3 +389,21 @@ set_global_assignment -name MISC_FILE nds_save_profile_entries.hex
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_firmware.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_spi.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_audio_headroom.sv
+
+# Passive sound refill counters for private investigation only.
+set_global_assignment -name VERILOG_MACRO "NDS_SOUND_DIAGNOSTIC=1"
+set_global_assignment -name VERILOG_MACRO "NDS_SOUND_STREAM_DIAGNOSTIC=1"
+
+# Private consumption/write diagnostics without prior underrun/wait counters.
+set_global_assignment -name VERILOG_MACRO "NDS_SOUND_DIAGNOSTIC_SLIM=1"
+
+set_global_assignment -name VHDL_FILE ../../rtl/nds_sound_stream_watch.vhd
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_tate_video.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_tate_controls.sv
+
+# Release-size candidate: omit private movie tracing, retain its reserved slots.
+set_global_assignment -name VERILOG_MACRO "NDS_PRIVATE_SOUND_TRACE_OFF=1"
+
+# Omit passive display-stall telemetry in the release-size TATE candidate.
+set_global_assignment -name VERILOG_MACRO "NDS_PRIVATE_RENDER_TRACE_OFF=1"

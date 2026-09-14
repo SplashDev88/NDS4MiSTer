@@ -174,10 +174,12 @@ entity nds_cpu9 is
       cp15_dtcm_size   : out   std_logic_vector(4 downto 0);   -- 512B << N
       cp15_itcm_size   : out   std_logic_vector(4 downto 0);
 
-      -- PU cachability of the current bus address (combinational lookup on
-      -- gb_bus_Adr; qualified with the control-reg cache enables)
+      -- PU attributes of the current bus address (combinational lookup on
+      -- gb_bus_Adr). Cacheability includes the cache enables; bufferability
+      -- depends on the highest matching region and the PU enable only.
       bus_cacheable_i  : out   std_logic;
       bus_cacheable_d  : out   std_logic;
+      bus_bufferable_d : out std_logic := '0';
 
       -- cache maintenance ops (MCR c7): one-cycle ena pulse, the CPU stalls
       -- until cache_op_busy has fallen again. op encoding:
@@ -185,6 +187,7 @@ entity nds_cpu9 is
       --   0010 inv D all   0011 inv D line MVA   0100 inv D line idx
       --   0101 clean D MVA 0110 clean D idx
       --   0111 clean+inv D MVA                   1000 clean+inv D idx
+      --   1001 drain external write buffer
       cache_op_ena     : out   std_logic := '0';
       cache_op         : out   std_logic_vector(3 downto 0) := (others => '0');
       cache_op_addr    : out   std_logic_vector(31 downto 0) := (others => '0');
@@ -498,6 +501,10 @@ architecture arch of nds_cpu9 is
                
    signal execute_stall                   : std_logic := '0';
    signal execute_done                    : std_logic;
+   signal execute_load_retire_early       : boolean;
+   signal execute_load_base_start         : boolean;
+   signal execute_load_base_early         : std_logic := '0';
+   signal execute_load_base_value         : unsigned(31 downto 0);
    signal execute_now                     : std_logic;
    signal execute_skip                    : std_logic;
 
@@ -526,8 +533,8 @@ architecture arch of nds_cpu9 is
    signal execute_mul_product_signed       : std_logic := '0';
    signal execute_mul_capture              : std_logic;
    signal execute_mul_accum_capture        : std_logic;
+   signal execute_mul_low_result          : unsigned(31 downto 0);
    signal execute_mul_result              : unsigned(63 downto 0) := (others => '0');
-   signal execute_mul_wait                : integer range 0 to 3 := 0;
 
    type texecute_RW_State is
    (
@@ -639,6 +646,13 @@ architecture arch of nds_cpu9 is
 -- synthesis translate_on  
      
 begin  
+
+   -- The ordinary 32-bit MLA sum consumes registered product/accumulator
+   -- operands. Commit this sum on the same edge as a plain MUL result;
+   -- retain separate 64-bit accumulate/high-word beats for long multiplies.
+   execute_mul_low_result <= execute_mul_result(31 downto 0) + execute_mul_opaddlow
+      when execute_MUL_State = MUL_MUL and decode_mul_useadd = '1' and decode_mul_long = '0'
+      else execute_mul_result(31 downto 0);
 
    execute_mul_capture <= '1' when
       ce = '1' and execute_now = '1' and execute_skip = '0' and
@@ -780,6 +794,7 @@ begin
    begin
       bus_cacheable_i <= '0';
       bus_cacheable_d <= '0';
+      bus_bufferable_d <= '0';
       a := unsigned(gb_bus_Adr(31 downto 12));
       if (cp15_control(0) = '1') then
          for r in 0 to 7 loop
@@ -788,6 +803,7 @@ begin
                     and cp15_pu_mask(r)) = 0) then
                   bus_cacheable_i <= cp15_control(12) and cp15_pu_icache(r);
                   bus_cacheable_d <= cp15_control(2)  and cp15_pu_dcache(r);
+                  bus_bufferable_d <= cp15_pu_wbuf(r);
                end if;
             end if;
          end loop;
@@ -2555,8 +2571,8 @@ begin
                   if (execute_mul_result = 0) then execute_flag_Zero <= '1'; else execute_flag_Zero <= '0'; end if;
                   execute_flag_Negative <= execute_mul_result(63);
                else
-                  if (execute_mul_result(31 downto 0) = 0) then execute_flag_Zero <= '1'; else execute_flag_Zero <= '0'; end if;
-                  execute_flag_Negative <= execute_mul_result(31);
+                  if (execute_mul_low_result = 0) then execute_flag_Zero <= '1'; else execute_flag_Zero <= '0'; end if;
+                  execute_flag_Negative <= execute_mul_low_result(31);
                end if;
          
             when others => null;
@@ -2701,7 +2717,7 @@ begin
       '1' when (decode_cp15_mrc = '0' and decode_cp15_crn = x"7" and
                 ((decode_cp15_crm = x"5" and (decode_cp15_op2 = "000" or decode_cp15_op2 = "001")) or
                  (decode_cp15_crm = x"6" and (decode_cp15_op2 = "000" or decode_cp15_op2 = "001" or decode_cp15_op2 = "010")) or
-                 (decode_cp15_crm = x"A" and (decode_cp15_op2 = "001" or decode_cp15_op2 = "010")) or
+                 (decode_cp15_crm = x"A" and (decode_cp15_op2 = "001" or decode_cp15_op2 = "010" or decode_cp15_op2 = "100")) or
                  (decode_cp15_crm = x"E" and (decode_cp15_op2 = "001" or decode_cp15_op2 = "010")))) else '0';
 
    -- data read/write
@@ -2998,9 +3014,39 @@ begin
    execute_branchPC_masked(0) <= '0';
    
    
+   -- Eligible scalar loads use the single register-write port twice: update
+   -- Rn on the edge that launches the data request, then write Rd on its
+   -- acknowledged return. The address and base update both use the original
+   -- operands. The instruction stays stalled until Rd is available; an IRQ
+   -- therefore sees the completed instruction, including both registers.
+   -- Do not move a base update when the request is deferred behind DMA/fetch,
+   -- or for PC, overlapping Rd/Rn, double transfers, swaps or register shifts.
+   execute_load_base_value <= execute_busaddress + execute_busaddmod
+      when decode_datatransfer_addup = '1' else execute_busaddress - execute_busaddmod;
+   execute_load_base_start <= reset = '0' and ce = '1' and
+      execute_now = '1' and execute_skip = '0' and
+      decode_functions_detail = data_read and execute_RW_State = DATARW_IDLE and
+      decode_datatransfer_writeback = '1' and decode_datatransfer_double = '0' and
+      decode_datatransfer_swap = '0' and decode_shift_regbased = '0' and
+      decode_Rn_op1 /= x"F" and decode_rdest /= x"F" and decode_Rn_op1 /= decode_rdest and
+      dma_on = '0' and dma_on_1 = '0' and gb_bus_ena = '1' and
+      gb_bus_saved = '0' and bus_accessFetch = '0';
+   execute_load_retire_early <= reset = '0' and ce = '1' and
+      execute_stall = '1' and decode_functions_detail = data_read and
+      execute_RW_State = DATARW_READSTART and
+      busState = BUSSTATE_WAITDATA and gb_bus_done = '1' and
+      (decode_datatransfer_writeback = '0' or execute_load_base_early = '1') and
+      decode_datatransfer_double = '0' and decode_datatransfer_swap = '0' and
+      decode_rdest /= x"F" and dma_on = '0' and dma_on_1 = '0';
+
    -- register writeback
    process (all)
+      variable load_result : std_logic_vector(31 downto 0);
    begin
+      load_result := execute_RW_dataRead;
+      if execute_load_retire_early then
+         load_result := gb_bus_din;
+      end if;
       
       execute_done      <= '0';
       
@@ -3027,6 +3073,13 @@ begin
                      execute_done      <= '1';
                   end if;
             
+               when data_read =>
+                  if execute_load_base_start then
+                     execute_writeback <= '1';
+                     execute_writereg <= unsigned(decode_Rn_op1);
+                     execute_writedata <= execute_load_base_value;
+                  end if;
+
                when data_processing_MRS =>
                   if (decode_psr_with_spsr = '1') then
                      execute_writedata <= SPSR;
@@ -3106,15 +3159,13 @@ begin
             when mulboth =>
                case (execute_MUL_State) is
                   when MUL_MUL =>
-                     if (execute_mul_wait = 0) then
-                        if (decode_mul_useadd = '0') then 
-                           execute_writeback <= '1';
-                           execute_writereg  <= unsigned(decode_RM_op2);
-                           execute_writedata <= execute_mul_result(31 downto 0); 
-                           if (decode_mul_long = '0') then
-                              execute_done <= '1';
-                              execute_writereg  <= unsigned(decode_rdest);
-                           end if;
+                     if (decode_mul_useadd = '0' or decode_mul_long = '0') then
+                        execute_writeback <= '1';
+                        execute_writereg  <= unsigned(decode_RM_op2);
+                        execute_writedata <= execute_mul_low_result;
+                        if (decode_mul_long = '0') then
+                           execute_done <= '1';
+                           execute_writereg  <= unsigned(decode_rdest);
                         end if;
                      end if;
                      
@@ -3180,23 +3231,27 @@ begin
                   end if;
                end if;
             
-               if (execute_RW_State = DATARW_READWAIT or execute_RW_State = DATARW_SWAPWRITE) then
+               if (execute_RW_State = DATARW_READWAIT or execute_RW_State = DATARW_SWAPWRITE or execute_load_retire_early) then
                   execute_writeback <= '1';
                   case (decode_datareceivetype) is
-                     when RECEIVETYPE_BYTE       => execute_writedata <= x"000000" & unsigned(execute_RW_dataRead(7 downto 0));
-                     when RECEIVETYPE_WORD       => execute_writedata <= unsigned(execute_RW_dataRead); -- !!!
-                     when RECEIVETYPE_DWORD      => execute_writedata <= unsigned(execute_RW_dataRead);
-                     when RECEIVETYPE_SIGNEDBYTE => execute_writedata <= unsigned(resize(signed(execute_RW_dataRead(7 downto 0)), 32));
+                     when RECEIVETYPE_BYTE       => execute_writedata <= x"000000" & unsigned(load_result(7 downto 0));
+                     when RECEIVETYPE_WORD       => execute_writedata <= unsigned(load_result); -- !!!
+                     when RECEIVETYPE_DWORD      => execute_writedata <= unsigned(load_result);
+                     when RECEIVETYPE_SIGNEDBYTE => execute_writedata <= unsigned(resize(signed(load_result(7 downto 0)), 32));
                      when RECEIVETYPE_SIGNEDWORD =>
                         if (execute_RW_addr_last(0) = '0') then
-                           execute_writedata <= unsigned(resize(signed(execute_RW_dataRead(15 downto 0)), 32));
+                           execute_writedata <= unsigned(resize(signed(load_result(15 downto 0)), 32));
                         else
-                           execute_writedata <= unsigned(resize(signed(execute_RW_dataRead(7 downto 0)), 32));
+                           execute_writedata <= unsigned(resize(signed(load_result(7 downto 0)), 32));
                         end if;
                   end case;
                   if (decode_datatransfer_double = '1') then
                      execute_writereg <= unsigned(decode_rdest) + 1; -- LDRD second word
                   end if;
+               end if;
+
+               if execute_load_retire_early then
+                  execute_done <= '1';
                end if;
 
                -- LDRD first word writes back the moment its beat completes
@@ -3214,7 +3269,7 @@ begin
                   end if;
                   -- for doubles the base writeback waits for the second beat so
                   -- it cannot collide with the first data writeback
-                  if (decode_datatransfer_writeback = '1' and
+                  if (decode_datatransfer_writeback = '1' and execute_load_base_early = '0' and
                       (decode_datatransfer_double = '0' or
                        execute_RW_State = DATARW_READSTART_D2 or execute_RW_State = DATARW_WRITE_D2)) then
                      execute_writeback <= '1';
@@ -3369,6 +3424,7 @@ begin
             regs_5_14 <= unsigned(SAVESTATE_REGS_5_14);
             regs_5_17 <= unsigned(SAVESTATE_REGS_5_17);
             
+            execute_load_base_early <= '0';
             execute_RW_State  <= DATARW_IDLE;
             execute_MUL_State <= MUL_IDLE;
             alu_wait_shift   <= '0';
@@ -3377,6 +3433,12 @@ begin
 
          elsif (ce = '1') then
 
+            if execute_now = '1' then
+               execute_load_base_early <= '0';
+               if execute_load_base_start then
+                  execute_load_base_early <= '1';
+               end if;
+            end if;
             cache_op_ena <= '0';
             
             if (execute_writeback = '1' and execute_writereg /= 15) then
@@ -3438,23 +3500,15 @@ begin
                         execute_MUL_State <= MUL_MUL;
 
                      when MUL_MUL =>
-                        if (execute_mul_wait > 0) then
-                           execute_mul_wait <= execute_mul_wait - 1;
+                        if (decode_mul_useadd = '1' and decode_mul_long = '1') then
+                           execute_MUL_State <= MUL_ADD;
+                           execute_mul_result <= execute_mul_result +
+                              (execute_mul_opaddhigh & execute_mul_opaddlow);
+                        elsif (decode_mul_long = '1') then
+                           execute_MUL_State <= MUL_STOREHI;
                         else
-                           if (decode_mul_useadd = '1') then 
-                              execute_MUL_State  <= MUL_ADD;
-                              if (decode_mul_long = '1') then
-                                 execute_mul_result <= execute_mul_result +
-                                    (execute_mul_opaddhigh & execute_mul_opaddlow);
-                              else
-                                 execute_mul_result <= execute_mul_result + execute_mul_opaddlow;
-                              end if;
-                           elsif (decode_mul_long = '1') then
-                              execute_MUL_State <= MUL_STOREHI;
-                           else
-                              execute_MUL_State <= MUL_IDLE;
-                              execute_stall     <= '0';
-                           end if;
+                           execute_MUL_State <= MUL_IDLE;
+                           execute_stall     <= '0';
                         end if;
                         
                      when MUL_ADD =>
@@ -3543,6 +3597,9 @@ begin
                            execute_RW_State <= DATARW_SWAPWRITE;
                         elsif (decode_datatransfer_double = '1') then
                            execute_RW_State <= DATARW_READSTART_D2;
+                        elsif execute_load_retire_early then
+                           execute_RW_State <= DATARW_IDLE;
+                           execute_stall    <= '0';
                         else
                            execute_RW_State <= DATARW_READWAIT;
                         end if;
@@ -3683,19 +3740,13 @@ begin
                         execute_stall        <= '1';
                         execute_MUL_State    <= MUL_PREP;
 
-                        -- The product is consumed only after the existing
-                        -- multiply stall. Capture the resolved operands here,
-                        -- then let MUL_PREP perform the DSP operation from
-                        -- nearby registers on the following clk2x edge.
-                        execute_mul_wait <= 3;
-                        if    (execute_op2(31 downto 8)  = x"000000") then execute_mul_wait <= 0;
-                        elsif (execute_op2(31 downto 16) = x"0000"  ) then execute_mul_wait <= 1;
-                        elsif (execute_op2(31 downto 24) = x"00"    ) then execute_mul_wait <= 2; end if;  
-                        if (decode_mul_long = '0' or decode_mul_signed = '1') then
-                           if    (execute_op2(31 downto 8)  = x"FFFFFF") then execute_mul_wait <= 0;
-                           elsif (execute_op2(31 downto 16) = x"FFFF"  ) then execute_mul_wait <= 1;
-                           elsif (execute_op2(31 downto 24) = x"FF"    ) then execute_mul_wait <= 2; end if;
-                        end if;                        
+                        -- The registered multiplier computes the complete
+                        -- product in MUL_PREP. Retain that operand/product cut
+                        -- and the separate accumulate/high-word beats, but do
+                        -- not wait for ARM7-style byte-at-a-time iterations
+                        -- after the result is already ready. ARM9E multiply
+                        -- timing is not the ARM7 operand-size timing model.
+
 
 
                      when data_read | data_write =>
@@ -3706,11 +3757,7 @@ begin
                            execute_RW_State <= DATARW_WRITE;
                         end if;
 
-                        if (decode_datatransfer_addup = '1') then
-                           execute_RW_WBaddr <= execute_busaddress + execute_busaddmod;
-                        else
-                           execute_RW_WBaddr <= execute_busaddress - execute_busaddmod;
-                        end if;
+                        execute_RW_WBaddr <= execute_load_base_value;
                         if (decode_shift_regbased = '1') then
                            error_cpu <= '1';
                         end if;
@@ -3795,8 +3842,8 @@ begin
                                  cp15_pu_region(to_integer(unsigned(decode_cp15_crm(2 downto 0)))) <= cp15_wval;
                               when x"7" =>
                                  -- cache maintenance -> nds_cache9 (wfi c7,c0,4
-                                 -- is handled in decode; c7,c10,4 drain write
-                                 -- buffer and c7,c13,1 prefetch are no-ops)
+                                 -- is handled in decode; c7,c10,4 drains pending
+                                 -- external writes; c7,c13,1 prefetch remains a no-op)
                                  v_cacheop := "1111"; -- invalid = no op
                                  case (decode_cp15_crm) is
                                     when x"5" =>
@@ -3811,6 +3858,7 @@ begin
                                     when x"A" =>
                                        if    (decode_cp15_op2 = "001") then v_cacheop := "0101";
                                        elsif (decode_cp15_op2 = "010") then v_cacheop := "0110";
+                                       elsif (decode_cp15_op2 = "100") then v_cacheop := "1001";
                                        end if;
                                     when x"E" =>
                                        if    (decode_cp15_op2 = "001") then v_cacheop := "0111";

@@ -1356,11 +1356,63 @@ wire [31:0] h3d_diagnostic_heartbeat = fb_runtime_heartbeat;
 // overhead 100 ms recorder to collect full CPU/subsystem context over time.
 // PC/address values use their architecturally meaningful low 28 bits. CPSR
 // keeps NZCV plus bits 23:0; ARMv5 bits 27:24 are unused/reserved here.
+wire [127:0] sound_diagnostic;
+wire [63:0] sound_stream_diagnostic;
+`ifdef NDS_SOUND_DIAGNOSTIC
+// Observation only. Results retain their own tags through selector and data
+// crossings, so a transition cannot label the previous selection as new data.
+logic [2:0] sound_select_meta, sound_select_sync, sound_select_last;
+logic [31:0] sound_word_1x, sound_word_meta_ddr, sound_word_ddr;
+always_ff @(posedge clk1x) begin
+    if (console_reset_1x) begin
+        sound_select_meta <= 0; sound_select_sync <= 0; sound_select_last <= 0; sound_word_1x <= 0;
+    end else begin
+        sound_select_meta <= h3d_telemetry_index;
+        sound_select_sync <= sound_select_meta;
+        // Capture a coherent source-clock snapshot only when selection changes;
+        // keep the bundle stable for the long telemetry dwell.
+        if (sound_select_sync != sound_select_last) begin
+        sound_select_last <= sound_select_sync;
+        case (sound_select_sync)
+`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
+            3'd0: sound_word_1x <= sound_stream_diagnostic[63:32];
+            3'd5: sound_word_1x <= sound_stream_diagnostic[31:0];
+`endif
+            3'd1: sound_word_1x <= sound_diagnostic[127:96];
+            3'd2: sound_word_1x <= sound_diagnostic[95:64];
+            3'd3: sound_word_1x <= sound_diagnostic[63:32];
+            3'd4: sound_word_1x <= sound_diagnostic[31:0];
+            default: sound_word_1x <= 0;
+        endcase
+        end
+    end
+end
+always_ff @(posedge ddr_clk) begin
+    if (h3d_path_reset) begin
+        sound_word_meta_ddr <= 0; sound_word_ddr <= 0;
+    end else begin
+        sound_word_meta_ddr <= sound_word_1x;
+        sound_word_ddr <= sound_word_meta_ddr;
+    end
+end
+`endif
+`ifdef NDS_PRIVATE_RENDER_TRACE_OFF
+// Reserved telemetry payload only: retain the PC heartbeat, control-header
+// transactions and all fault/session handling. Unobserved stall counters prune.
+wire [31:0] h3d_public_crash_telemetry = 32'd0;
+`else
 logic [31:0] h3d_public_crash_telemetry;
 always_comb begin
     case (h3d_telemetry_index)
+`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
+        3'd0: h3d_public_crash_telemetry = sound_word_ddr;
+`else
         3'd0: h3d_public_crash_telemetry =
             {4'h1, dbg_pc7_diag[27:0]};
+`endif
+`ifdef NDS_SOUND_DIAGNOSTIC
+        3'd1, 3'd2, 3'd3, 3'd4: h3d_public_crash_telemetry = sound_word_ddr;
+`else
         3'd1: h3d_public_crash_telemetry =
             {4'h2, dbg_r0_diag[27:0]};
         3'd2: h3d_public_crash_telemetry =
@@ -1371,6 +1423,10 @@ always_comb begin
             4'h5, h3d_gx_fifo_full, h3d_gx_fifo_level,
             dbg_hwstat_diag
         };
+`endif
+`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
+        3'd5: h3d_public_crash_telemetry = sound_word_ddr;
+`else
         3'd5: h3d_public_crash_telemetry = {
             4'h6, 9'd0,
             boundary_fault, h3d_fabric_protocol_error,
@@ -1384,6 +1440,7 @@ always_comb begin
             h3d_pixel_descriptor_pending, h3d_diagnostic_hold_ddr,
             cart_loaded_ddr
         };
+`endif
         3'd6: h3d_public_crash_telemetry =
             {4'h7, h3d_fabric_debug[27:0]};
         default: h3d_public_crash_telemetry = {
@@ -1393,6 +1450,7 @@ always_comb begin
         };
     endcase
 end
+`endif
 // The return plane is derived display data and may complete after its source
 // frame has advanced.  Once a current-session descriptor crosses, keep its
 // complete plane visible until a newer descriptor replaces it; the reader's
@@ -1984,7 +2042,28 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
 );
 
 nds_nitro_console_wrap #(
-    .CLKMEM_RATIO(CLKMEM_RATIO)
+    .CLKMEM_RATIO(CLKMEM_RATIO),
+`ifdef NDS_PRIVATE_SOUND_TRACE_OFF
+    // Omit passive private movie counters in the release-size candidate.
+    // Keep telemetry slots reserved; no emulation or sample path changes.
+    .SOUND_STREAM_DIAGNOSTICS(0),
+    .SOUND_DIAGNOSTICS(0)
+`else
+`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
+    .SOUND_STREAM_DIAGNOSTICS(1),
+`else
+    .SOUND_STREAM_DIAGNOSTICS(0),
+`endif
+`ifdef NDS_SOUND_DIAGNOSTIC
+`ifdef NDS_SOUND_DIAGNOSTIC_SLIM
+    .SOUND_DIAGNOSTICS(2)
+`else
+    .SOUND_DIAGNOSTICS(1)
+`endif
+`else
+    .SOUND_DIAGNOSTICS(0)
+`endif
+`endif
 ) console (
     .clk1x(clk1x),.clk2x(clk2x),.clkMem(clk_mem),
     .clkMemIndex(clkMemIndex),
@@ -2040,6 +2119,8 @@ nds_nitro_console_wrap #(
     .pixel_out_data(pix_d),.pixel_out_we(pix_we),
     .pixelb_out_x(pixb_x),.pixelb_out_y(pixb_y),
     .pixelb_out_data(pixb_d),.pixelb_out_we(pixb_we),.vblank_out(),
+    .sound_diagnostic(sound_diagnostic),
+    .sound_stream_diagnostic(sound_stream_diagnostic),
     .sound_out_left(sound_left),.sound_out_right(sound_right),
 `ifdef NDS_HYBRID_3D
     .h3d_pixel_valid(h3d_plane_pixel_valid),

@@ -39,7 +39,8 @@ library MEM;
 entity nds_cache9 is
    generic
    (
-      is_simu : std_logic := '0'
+      is_simu : std_logic := '0';
+      posted_write_misses : boolean := true
    );
    port
    (
@@ -51,6 +52,7 @@ entity nds_cache9 is
       req_rnw       : in  std_logic;
       req_code      : in  std_logic;
       req_cacheable : in  std_logic;
+      req_bufferable : in std_logic := '0';
       req_lock      : in  std_logic := '0';
       req_addr      : in  std_logic_vector(31 downto 0);
       req_be        : in  std_logic_vector(3 downto 0);
@@ -59,8 +61,9 @@ entity nds_cache9 is
       -- registers req_* on the edge it accepts, so req_addr only becomes valid
       -- the cycle after the CPU presented it. Indexing the tag/data BRAMs off
       -- this instead spends that otherwise-idle cycle on the lookup read, which
-      -- is what lets a read hit answer in 2 cycles instead of 3. Speculative and
-      -- unqualified on purpose - a wrong index just reads a line nobody uses.
+      -- lets qualified I and unlocked D read hits answer in 1 cycle.
+      -- Speculative and unqualified on purpose: a wrong index only reads a
+      -- line nobody uses; spec_ok and the registered request qualify its use.
       spec_addr     : in  std_logic_vector(31 downto 0);
       resp_done     : out std_logic := '0';
       resp_rdata    : out std_logic_vector(31 downto 0) := (others => '0');
@@ -147,9 +150,9 @@ architecture arch of nds_cache9 is
    signal resp_use_i : std_logic := '0';
    signal resp_use_d : std_logic := '0';
 
-   -- D write hit: the BRAM write commits during HIT_RESP (one cycle after
-   -- the lookup - invisible, the next lookup's read capture is >= 2 edges
-   -- later, and resp_done timing is unchanged)
+   -- D write hit: the BRAM write commits during HIT_RESP. An unlocked store
+   -- can complete on that edge. A simultaneous speculative D read may see
+   -- old/undefined mixed-port data, so dwr_committed forces a fresh lookup.
    signal dwr_pend : std_logic := '0';
    signal dwr_way  : integer range 0 to 3 := 0;
    signal dwr_addr : integer range 0 to 255 := 0;
@@ -168,6 +171,18 @@ architecture arch of nds_cache9 is
    -- together with req_ena = '1' proves the latched tags are this request's.
    signal spec_sel : std_logic := '0';
    signal spec_ok  : std_logic := '0';
+
+   -- A speculative I-cache hit already has registered request metadata and
+   -- synchronous tag/data outputs. Return those outputs during this cycle,
+   -- without registering them for a second response cycle. Qualified unlocked
+   -- D reads use the same contract. Cached stores complete at their RAM commit
+   -- edge; fills, bypass traffic and maintenance retain their existing paths.
+   signal i_hit_return : std_logic := '0';
+   signal d_hit_return : std_logic := '0';
+   signal w_hit_return : std_logic := '0';
+   signal dwr_committed : std_logic := '0';
+   signal resp_done_reg : std_logic := '0';
+   signal resp_rdata_reg : std_logic_vector(31 downto 0) := (others => '0');
 
    -- One shared 4-way comparator set, address-muxed between the early lookup
    -- (IDLE, comparing req_addr) and the normal one (REQ_LOOKUP, comparing the
@@ -251,6 +266,8 @@ architecture arch of nds_cache9 is
    signal p_op        : std_logic_vector(3 downto 0) := (others => '0');
    signal p_addr      : std_logic_vector(31 downto 0) := (others => '0');
    signal req_pending : std_logic := '0';
+   signal r_posted : std_logic := '0';
+   signal posted_i_read : std_logic;
 
    signal resp_hold   : std_logic_vector(31 downto 0) := (others => '0');
 
@@ -260,14 +277,36 @@ begin
 
    dbg_state <= r_code & std_logic_vector(beat) & state_code(state);
 
+   i_hit_return <= '1' when reset = '0' and state = IDLE and
+      op_ena = '0' and op_pending = '0' and op_active = '0' and
+      req_ena = '1' and req_pending = '0' and spec_ok = '1' and
+      req_code = '1' and req_rnw = '1' and req_cacheable = '1' and
+      ihit_c = '1' else '0';
+   -- Only idle, unlocked, qualified data read hits can use this return.
+   -- A pending or just-committed store excludes speculative D data: the RAM
+   -- read from its commit edge may have collided with that write.
+   d_hit_return <= '1' when reset = '0' and state = IDLE and
+      op_ena = '0' and op_pending = '0' and op_active = '0' and
+      req_ena = '1' and req_pending = '0' and spec_ok = '1' and
+      req_code = '0' and req_rnw = '1' and req_cacheable = '1' and
+      req_lock = '0' and dwr_pend = '0' and dwr_committed = '0' and dhit_c = '1' else '0';
+   -- Completion is on the deferred RAM write edge, never before it.
+   w_hit_return <= '1' when reset = '0' and state = HIT_RESP and
+      dwr_pend = '1' and r_rnw = '0' and r_code = '0' and r_lock = '0' and
+      op_ena = '0' and op_pending = '0' and op_active = '0' else '0';
+   resp_done <= resp_done_reg or i_hit_return or d_hit_return or w_hit_return;
+   resp_rdata <= id_q(ihway_c) when i_hit_return = '1' else
+                 dd_q(dhway_c) when d_hit_return = '1' else resp_rdata_reg;
+
    -- ================= tag and line-data stores =================
    -- At IDLE, select the address of the operation that wins arbitration.
    -- The per-way synchronous tag outputs are consumed in REQ_LOOKUP or
    -- OP_LOOKUP on the following edge.
-   -- spec_sel: IDLE with nothing already in flight, so the read port is free to
-   -- prefetch the tags of the address the CPU is presenting right now.
-   spec_sel <= '1' when (state = IDLE and op_ena = '0' and op_pending = '0' and
-                         req_ena = '0' and req_pending = '0') else '0';
+   -- Read the next live address while idle, on a read return or on a store
+   -- commit. I-cache reads do not share the D write port. A colliding D read
+   -- is retried through REQ_LOOKUP, using the dwr_committed guard above.
+   spec_sel <= '1' when ((state = IDLE or w_hit_return = '1') and op_ena = '0' and op_pending = '0' and
+                         (req_ena = '0' or i_hit_return = '1' or d_hit_return = '1' or w_hit_return = '1') and req_pending = '0') else '0';
 
    it_raddr <= to_integer(unsigned(op_addr(10 downto 5))) when (state = IDLE and op_ena = '1') else
                to_integer(unsigned(p_addr(10 downto 5))) when (state = IDLE and op_pending = '1') else
@@ -281,7 +320,13 @@ begin
    -- Shared hit resolution. In IDLE the candidate is the incoming req_addr (whose
    -- tags spec_sel prefetched last cycle); everywhere else it is r_addr, which is
    -- what REQ_LOOKUP has always compared.
-   cmp_addr <= req_addr when (state = IDLE) else r_addr;
+   -- A posted write retains all memory attributes until physical completion.
+   -- Only already-cached instruction reads can pass it. Data/maintenance wait
+   -- until IDLE; a drain operation therefore cannot complete before the store.
+   posted_i_read <= '1' when state = BYPASS_WAIT and r_posted = '1' and
+      req_pending = '1' and req_code = '1' and req_rnw = '1' and req_cacheable = '1' and
+      op_ena = '0' and op_pending = '0' and op_active = '0' else '0';
+   cmp_addr <= req_addr when (state = IDLE or posted_i_read = '1') else r_addr;
 
    process (all)
       variable s : integer range 0 to 63;
@@ -494,11 +539,13 @@ begin
       if rising_edge(clk) then
 
          mem_ena   <= '0';
-         resp_done <= '0';
+         resp_done_reg <= '0';
+         dwr_committed <= dwr_pend;
          dwr_pend  <= '0';
          spec_ok   <= spec_sel;
 
          if (reset = '1') then
+            dwr_committed <= '0';
             spec_ok     <= '0';
             state       <= IDLE;
             ivalid      <= (others => '0');
@@ -507,6 +554,7 @@ begin
             op_pending  <= '0';
             op_active   <= '0';
             req_pending <= '0';
+            r_posted <= '0';
             mem_lock    <= '0';
          else
 
@@ -520,6 +568,13 @@ begin
             -- inputs stay stable: the membus holds them until resp_done)
             if (req_ena = '1' and (state /= IDLE or op_ena = '1' or op_pending = '1')) then
                req_pending <= '1';
+            end if;
+
+            if posted_i_read = '1' and ihit_c = '1' then
+               resp_done_reg <= '1';
+               resp_use_i <= '0'; resp_use_d <= '0';
+               resp_rdata_reg <= id_q(ihway_c);
+               req_pending <= '0';
             end if;
 
             case state is
@@ -557,6 +612,8 @@ begin
                            r_opaddr <= v_opaddr;
                            state    <= OP_LOOKUP;
 
+                        when "1001" => -- drain: reaching IDLE proves no write in flight
+                           state <= OP_FINISH;
                         when others =>
                            state <= OP_FINISH;
                      end case;
@@ -569,12 +626,51 @@ begin
                      r_addr  <= req_addr;
                      r_be    <= req_be;
                      r_wdata <= req_wdata;
+                     -- Only write misses in WB regions are posted to external
+                     -- memory. Cached hits commit to the existing way RAM;
+                     -- uncached and locked accesses keep their original paths.
+                     r_posted <= '0';
+                     if posted_write_misses and req_bufferable = '1' and req_cacheable = '1' and
+                        req_rnw = '0' and req_code = '0' and req_lock = '0' then
+                        r_posted <= '1';
+                     end if;
 
                      if (req_cacheable = '0') then
                         state <= BYPASS_ISSUE;
+                     elsif (i_hit_return = '1') then
+                        -- The consumer sees the synchronous way output on this
+                        -- edge. Do not emit a second registered completion.
+                        -- spec_sel simultaneously reads the next live address,
+                        -- allowing consecutive I hits without an empty cycle.
+                        -- Preserve the completed word after the response too;
+                        -- only the completion pulse bypasses the old register.
+                        resp_rdata_reg <= id_q(ihway_c);
+                        resp_use_i <= '0';
+                        resp_use_d <= '0';
+                     elsif (d_hit_return = '1') then
+                        -- Consume the synchronous D way output exactly once,
+                        -- while retaining it after the completed response.
+                        resp_rdata_reg <= dd_q(dhway_c);
+                        resp_use_i <= '0';
+                        resp_use_d <= '0';
+                     elsif (spec_ok = '1' and req_pending = '0' and
+                            req_code = '0' and req_rnw = '0' and
+                            req_lock = '0' and dwr_pend = '0' and dhit_c = '1') then
+                        -- The prefetched tag already qualifies this store.
+                        -- Schedule the ordinary port-B write without another
+                        -- tag lookup. HIT_RESP completes at the RAM commit.
+                        dset := to_integer(unsigned(req_addr(9 downto 5)));
+                        dwr_pend <= '1';
+                        dwr_way <= dhway_c;
+                        dwr_addr <= dset*8 + to_integer(unsigned(req_addr(4 downto 2)));
+                        dwr_be <= req_be;
+                        dwr_data <= req_wdata;
+                        ddirty(dhway_c*32 + dset) <= '1';
+                        resp_use_i <= '0'; resp_use_d <= '0';
+                        state <= HIT_RESP;
                      elsif (spec_ok = '1' and req_pending = '0' and
                             ((req_code = '1' and ihit_c = '1') or
-                             (req_code = '0' and dhit_c = '1' and req_rnw = '1'))) then
+                             (req_code = '0' and dhit_c = '1' and req_rnw = '1' and dwr_committed = '0'))) then
                         -- Early read hit: spec_sel prefetched this address's tags
                         -- last cycle, so the lookup REQ_LOOKUP would have done next
                         -- cycle is already resolvable. Answer now and stay in IDLE,
@@ -586,16 +682,16 @@ begin
                         -- costs exactly what it always did (the mux re-presents
                         -- req_addr this cycle, so its tags are valid there as
                         -- before); duplicating the fill/writeback setup here would
-                        -- buy one cycle on misses for a lot of logic. Write hits
-                        -- likewise still take HIT_RESP, where the line update is
-                        -- issued on port B.
-                        resp_done  <= '1';
+                        -- buy one cycle on misses for a lot of logic. The
+                        -- separate write-hit path above still commits through
+                        -- HIT_RESP and the existing port-B write controls.
+                        resp_done_reg  <= '1';
                         resp_use_i <= '0';
                         resp_use_d <= '0';
                         if (req_code = '1') then
-                           resp_rdata <= id_q(ihway_c);
+                           resp_rdata_reg <= id_q(ihway_c);
                         else
-                           resp_rdata <= dd_q(dhway_c);
+                           resp_rdata_reg <= dd_q(dhway_c);
                         end if;
                      else
                         state <= REQ_LOOKUP;
@@ -621,8 +717,8 @@ begin
                         -- measured CPI was 2.65 against the ARM7's 1.12.
                         -- Reads only - a D-cache *write* hit still needs
                         -- HIT_RESP, where the line update is issued.
-                        resp_done  <= '1';
-                        resp_rdata <= id_q(hway);
+                        resp_done_reg  <= '1';
+                        resp_rdata_reg <= id_q(hway);
                         resp_use_i <= '0';
                         resp_use_d <= '0';
                         state      <= IDLE;
@@ -642,8 +738,8 @@ begin
                            -- D-cache READ hit: same one-cycle answer as the
                            -- I-side above. dd_q is valid here too (dd_raddr
                            -- follows req_addr outside the writeback states).
-                           resp_done  <= '1';
-                           resp_rdata <= dd_q(hway);
+                           resp_done_reg  <= '1';
+                           resp_rdata_reg <= dd_q(hway);
                            resp_use_i <= '0';
                            resp_use_d <= '0';
                            state      <= IDLE;
@@ -734,13 +830,15 @@ begin
                   end if;
 
                when HIT_RESP =>
-                  resp_done  <= '1';
+                  if w_hit_return = '0' then
+                     resp_done_reg <= '1';
+                  end if;
                   if (resp_use_i = '1') then
-                     resp_rdata <= id_q(resp_way);
+                     resp_rdata_reg <= id_q(resp_way);
                   elsif (resp_use_d = '1') then
-                     resp_rdata <= dd_q(resp_way);
+                     resp_rdata_reg <= dd_q(resp_way);
                   else
-                     resp_rdata <= resp_hold;
+                     resp_rdata_reg <= resp_hold;
                   end if;
                   state <= IDLE;
 
@@ -752,13 +850,17 @@ begin
                   mem_addr  <= r_addr(21 downto 2);
                   mem_be    <= r_be;
                   mem_wdata <= r_wdata;
+                  if r_posted = '1' then
+                     resp_done_reg <= '1'; resp_use_i <= '0'; resp_use_d <= '0';
+                  end if;
                   state     <= BYPASS_WAIT;
 
                when BYPASS_WAIT =>
                   if (mem_done = '1') then
-                     resp_done  <= '1';
-                     resp_rdata <= mem_rdata;
-                     state      <= IDLE;
+                     if r_posted = '0' then
+                        resp_done_reg <= '1'; resp_rdata_reg <= mem_rdata;
+                     end if;
+                     state <= IDLE;
                   end if;
 
                when WB_PREP =>
@@ -830,8 +932,8 @@ begin
                      -- is caught by req_pending and replayed against a complete,
                      -- valid line, so it cannot hit a half-filled one.
                      if (beat = to_integer(unsigned(r_addr(4 downto 2)))) then
-                        resp_rdata <= mem_rdata;
-                        resp_done  <= '1';
+                        resp_rdata_reg <= mem_rdata;
+                        resp_done_reg  <= '1';
                      end if;
                      -- one extra cycle to push the high word through the same
                      -- single write port, rather than widening the way BRAMs
@@ -840,8 +942,8 @@ begin
 
                when FILL_HI =>
                   if (beat + 1 = unsigned(r_addr(4 downto 2))) then
-                     resp_rdata <= mem_rdata_hi;
-                     resp_done  <= '1';
+                     resp_rdata_reg <= mem_rdata_hi;
+                     resp_done_reg  <= '1';
                   end if;
                   if (fill_cnt = 3) then
                      if (r_code = '1') then

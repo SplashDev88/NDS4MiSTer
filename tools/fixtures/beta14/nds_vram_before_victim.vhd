@@ -649,8 +649,7 @@ architecture arch of nds_vram is
    signal adhit_slot  : integer range 0 to RQ_DEPTH-1 := 0;
    signal adhit_word  : std_logic_vector(31 downto 0) := (others => '0');
 
-   -- Two-entry ownerless victim extension. The MRU selector orders two fixed
-   -- physical slots, so promotion does not copy a complete line between them.
+   -- Two-entry ownerless victim extension. Entry 0 is MRU and entry 1 is LRU.
    -- Tags are ownerless: any renderer channel may hit a line evicted by any
    -- other channel. The eight `adline` entries remain functional primaries.
    -- A victim hit installs the hit line in the requesting channel's primary and
@@ -658,7 +657,6 @@ architecture arch of nds_vram is
    -- installs in primary and inserts the displaced valid primary in the pair.
    type t_adglobal2 is array (0 to 1) of t_adline;
    signal adglobal2 : t_adglobal2 := (others => ADLINE_INIT);
-   signal adglobal2_mru : integer range 0 to 1 := 0;
 
    -- false: no cache, every word costs a memory access (the 64-bit channel still
    -- carries the line, only its low word is used). It was false for one build:
@@ -1009,7 +1007,6 @@ begin
       variable v_line  : unsigned(16 downto 3);
       variable v_hi    : std_logic;
       variable v_g2    : t_adglobal2;
-      variable v_g2_mru: integer range 0 to 1;
       variable v_g2_hit: integer range -1 to 1;
       variable v_direct_hit : boolean;
       variable v_line_data  : std_logic_vector(63 downto 0);
@@ -1024,41 +1021,34 @@ begin
                 a.bank = b.bank and a.line = b.line;
       end function;
 
-      -- idx is the logical order: 0 = MRU, 1 = LRU.
-      function victim_slot(mru : integer; idx : integer) return integer is
-      begin
-         if idx = 0 then return mru;
-         else return 1 - mru;
-         end if;
-      end function;
-
       procedure victim_remove(variable cache : inout t_adglobal2;
-                              variable mru : inout integer;
                               constant idx : in integer) is
       begin
          if idx = 0 then
-            cache(mru) := ADLINE_INIT;
-            mru := 1 - mru;
+            cache(0) := cache(1);
+            cache(1) := ADLINE_INIT;
          elsif idx = 1 then
-            cache(1 - mru) := ADLINE_INIT;
+            cache(1) := ADLINE_INIT;
          end if;
       end procedure;
 
       -- Insert or promote at MRU while maintaining unique valid tags inside
       -- the victim pair.
       procedure victim_insert(variable cache : inout t_adglobal2;
-                              variable mru : inout integer;
                               constant incoming : in t_adline) is
+         variable old_mru : t_adline;
       begin
          if incoming.valid = '0' then
             return;
-         elsif same_tag(cache(mru), incoming) then
-            cache(mru) := incoming;
+         elsif same_tag(cache(0), incoming) then
+            cache(0) := incoming;
+         elsif same_tag(cache(1), incoming) then
+            old_mru := cache(0);
+            cache(0) := incoming;
+            cache(1) := old_mru;
          else
-            -- LRU promotion and new-tag insertion both keep the old MRU as
-            -- logical LRU, including when an invalid hole occupies either slot.
-            cache(1 - mru) := incoming;
-            mru := 1 - mru;
+            cache(1) := cache(0);
+            cache(0) := incoming;
          end if;
       end procedure;
    begin
@@ -1087,7 +1077,6 @@ begin
             rsrv_req  <= '0';
             adline    <= (others => ADLINE_INIT);
             adglobal2 <= (others => ADLINE_INIT);
-            adglobal2_mru <= 0;
             rsp_valid <= '0';
             adhit_valid <= '0';
 
@@ -1103,7 +1092,6 @@ begin
             v_adq   := adq;
             v_adl   := adline;
             v_g2    := adglobal2;
-            v_g2_mru := adglobal2_mru;
             adhit_valid <= '0';
             v_pair_returning := false;
 
@@ -1232,15 +1220,15 @@ begin
                   -- channel primary.
                   v_g2_hit := -1;
                   for e in 0 to 1 loop
-                     if v_g2(victim_slot(v_g2_mru, e)).valid = '1' and
-                        v_g2(victim_slot(v_g2_mru, e)).bank = v_adq(v_adh).bank and
-                        v_g2(victim_slot(v_g2_mru, e)).line = v_adq(v_adh).line then
+                     if v_g2(e).valid = '1' and
+                        v_g2(e).bank = v_adq(v_adh).bank and
+                        v_g2(e).line = v_adq(v_adh).line then
                         v_g2_hit := e;
                         exit;
                      end if;
                   end loop;
                   if v_g2_hit >= 0 then
-                     victim_remove(v_g2, v_g2_mru, v_g2_hit);
+                     victim_remove(v_g2, v_g2_hit);
                   end if;
                   if v_old_line.valid = '1' and
                      v_old_line.bank = v_adq(v_adh).bank and
@@ -1249,7 +1237,7 @@ begin
                      -- must not evict that same tag into the victim pair.
                      null;
                   else
-                     victim_insert(v_g2, v_g2_mru, v_old_line);
+                     victim_insert(v_g2, v_old_line);
                   end if;
                   v_adl(v_adq(v_adh).chan) :=
                      ('1', v_adq(v_adh).bank, v_adq(v_adh).line, v_line_data);
@@ -1316,11 +1304,11 @@ begin
                   -- happened.
                   v_g2_hit := -1;
                   if (not v_direct_hit) then
-                     if v_g2(v_g2_mru).valid = '1' and v_g2(v_g2_mru).bank = v_bank and
-                        v_g2(v_g2_mru).line = v_line then
+                     if v_g2(0).valid = '1' and v_g2(0).bank = v_bank and
+                        v_g2(0).line = v_line then
                         v_g2_hit := 0;
-                     elsif v_g2(1 - v_g2_mru).valid = '1' and v_g2(1 - v_g2_mru).bank = v_bank and
-                           v_g2(1 - v_g2_mru).line = v_line then
+                     elsif v_g2(1).valid = '1' and v_g2(1).bank = v_bank and
+                           v_g2(1).line = v_line then
                         v_g2_hit := 1;
                      end if;
                   end if;
@@ -1351,12 +1339,12 @@ begin
                         -- Primary miss + victim hit: remove/promote the hit line
                         -- into this channel's primary, and send the displaced
                         -- valid primary into the ownerless victim MRU position.
-                        v_line_data := v_g2(victim_slot(v_g2_mru, v_g2_hit)).data;
+                        v_line_data := v_g2(v_g2_hit).data;
                         v_word := v_line_data(31 downto 0);
                         if (v_hi = '1') then v_word := v_line_data(63 downto 32); end if;
                         v_old_line := v_adl(v_chan);
-                        victim_remove(v_g2, v_g2_mru, v_g2_hit);
-                        victim_insert(v_g2, v_g2_mru, v_old_line);
+                        victim_remove(v_g2, v_g2_hit);
+                        victim_insert(v_g2, v_old_line);
                         v_adl(v_chan) := ('1', v_bank, v_line, v_line_data);
                      end if;
                      -- staged, NOT applied here: this branch is gated on
@@ -1479,7 +1467,6 @@ begin
                report "victim pair contains duplicate valid tags"
                severity failure;
             adglobal2 <= v_g2;
-            adglobal2_mru <= v_g2_mru;
 
          end if;
       end if;

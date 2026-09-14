@@ -38,6 +38,9 @@ entity nds_dma7 is
       trig_card    : in  std_logic;
 
       cpu_bus_idle : in  std_logic;
+      -- Release the bus between complete read/write units for an SPU refill.
+      -- The CPU stays paused until the entire DMA transfer completes.
+      yield_bus    : in  std_logic := '0';
       dma_on       : out std_logic := '0';
       dma_bus_on   : out std_logic := '0';
 
@@ -81,7 +84,7 @@ architecture arch of nds_dma7 is
    type t_chans is array (0 to 3) of t_chan;
    signal ch : t_chans := (others => CHAN_INIT);
 
-   type t_state is (IDLE, GRANT, LATCH, RD, RD_WAIT, WR, WR_WAIT, NEXTUNIT, COMPLETE);
+   type t_state is (IDLE, GRANT, REGRANT, LATCH, RD, RD_WAIT, WR, WR_WAIT, NEXTUNIT, COMPLETE);
    signal state  : t_state := IDLE;
    signal active : integer range 0 to 3 := 0;
 
@@ -268,6 +271,14 @@ begin
                      state      <= LATCH;
                   end if;
 
+               when REGRANT =>
+                  -- Initial LATCH consumes the triggering event. Resuming a
+                  -- paused burst must retain a later pending repeat trigger.
+                  if cpu_bus_idle = '1' then
+                     dma_bus_on <= '1';
+                     state <= RD;
+                  end if;
+
                when LATCH =>
                   ch(active).pend <= '0';
                   if (ch(active).remain = 0) then
@@ -338,6 +349,9 @@ begin
                   ch(active).remain  <= ch(active).remain - 1;
                   if (ch(active).remain = 1 or ch(active).enable = '0') then
                      state <= COMPLETE;
+                  elsif yield_bus = '1' then
+                     dma_bus_on <= '0';
+                     state <= REGRANT;
                   else
                      state <= RD;
                   end if;

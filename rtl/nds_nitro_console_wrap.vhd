@@ -27,7 +27,9 @@ entity nds_nitro_console_wrap is
       -- product currently keeps GPU_FAST off, but carrying the exact ratio
       -- through the mixed-language boundary prevents a future fast-engine
       -- build from silently using the 3x phase gate under a 4x PLL.
-      CLKMEM_RATIO     : integer := 3
+      CLKMEM_RATIO     : integer := 3;
+      SOUND_DIAGNOSTICS : integer := 0;
+      SOUND_STREAM_DIAGNOSTICS : integer := 0
    );
    port
    (
@@ -222,6 +224,8 @@ entity nds_nitro_console_wrap is
       vblank_out       : out std_logic;
 
       -- sound
+      sound_diagnostic : out std_logic_vector(127 downto 0) := (others => '0');
+      sound_stream_diagnostic : out std_logic_vector(63 downto 0) := (others => '0');
       sound_out_left   : out std_logic_vector(15 downto 0);
       sound_out_right  : out std_logic_vector(15 downto 0);
 
@@ -325,7 +329,8 @@ begin
    -- against until 1-4 in that document are proved.
    generic map (
       GPU_FAST => 0, GPU2D_B_ENABLE => 0,
-      SOUND_ENABLE => 1, DEBUG_ENABLE => 0,
+      SOUND_ENABLE => 1, SOUND_DIAGNOSTICS => SOUND_DIAGNOSTICS,
+      SOUND_STREAM_DIAGNOSTICS => SOUND_STREAM_DIAGNOSTICS, DEBUG_ENABLE => 0,
       CLKMEM_RATIO => CLKMEM_RATIO
    )
    port map
@@ -491,6 +496,8 @@ begin
       pixelb_out_we    => pixelb_out_we,
       vblank_out       => vblank_out,
 
+      sound_diagnostic => sound_diagnostic,
+      sound_stream_diagnostic => sound_stream_diagnostic,
       sound_out_left   => sound_out_left,
       sound_out_right  => sound_out_right,
 

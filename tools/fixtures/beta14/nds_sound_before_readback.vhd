@@ -510,56 +510,37 @@ begin
    -- ================= read data =================
    process (all)
       variable n : integer;
-      variable channel_select : std_logic_vector(15 downto 0);
-      variable control_select : std_logic_vector(7 downto 0);
-      variable read_value, channel_value : std_logic_vector(31 downto 0);
    begin
-      channel_select := (others => '0');
-      control_select := (others => '0');
-      read_value := (others => '0');
+      wired_out7  <= (others => '0');
       wired_done7 <= '0';
 
       if (bus7.Adr(27 downto 9) = "0000000000000000010") then  -- 0x400-0x5FF
          wired_done7 <= '1';
          if (bus7.Adr(8) = '0') then
-            -- Retain numeric_std's channel-index conversion, including its
-            -- simulation behavior for an address containing a metavalue.
+            -- 0x400-0x4FF: channel registers
             n := to_integer(unsigned(bus7.Adr(7 downto 4)));
             case bus7.Adr(3 downto 2) is
-               when "00" => channel_select(n) := '1';
-               when others => null;  -- SAD/TMR/PNT/LEN write-only
+               when "00" =>
+                  wired_out7 <= chan(n).busy & chan(n).format & chan(n).repeatm & chan(n).duty &
+                                '0' & chan(n).pan & '0' & chan(n).hold & "0000" &
+                                chan(n).voldiv & '0' & chan(n).volmul;
+               when others =>
+                  wired_out7 <= (others => '0');  -- SAD/TMR/PNT/LEN write-only
             end case;
          else
-            -- Keep the existing aliases: bits 7:5 do not select these words.
+            -- 0x500-0x51F: control/bias/capture
             case bus7.Adr(4 downto 2) is
-               when "000"  => control_select(0) := '1';
-               when "001"  => control_select(1) := '1';
-               when "010"  => control_select(2) := '1';
-               when "100"  => control_select(4) := '1';
-               when "101"  => control_select(5) := '1';
-               when "110"  => control_select(6) := '1';
-               when "111"  => control_select(7) := '1';
-               when others => null;
+               when "000"  => wired_out7 <= x"0000" & soundcnt;
+               when "001"  => wired_out7 <= x"00000" & "00" & soundbias;
+               when "010"  => wired_out7 <= x"0000" & cap(1).cnt & cap(0).cnt;
+               when "100"  => wired_out7 <= "00000" & cap(0).dad;
+               when "101"  => wired_out7 <= x"0000" & cap(0).len;
+               when "110"  => wired_out7 <= "00000" & cap(1).dad;
+               when "111"  => wired_out7 <= x"0000" & cap(1).len;
+               when others => wired_out7 <= (others => '0');
             end case;
          end if;
       end if;
-
-      -- Share address decoding across output bits. Exactly one source can be
-      -- selected; all register state and the address-only response stay live.
-      for i in 0 to 15 loop
-         channel_value := chan(i).busy & chan(i).format & chan(i).repeatm & chan(i).duty &
-                          '0' & chan(i).pan & '0' & chan(i).hold & "0000" &
-                          chan(i).voldiv & '0' & chan(i).volmul;
-         read_value := read_value or (channel_value and (31 downto 0 => channel_select(i)));
-      end loop;
-      read_value := read_value or ((x"0000" & soundcnt) and (31 downto 0 => control_select(0)));
-      read_value := read_value or ((x"00000" & "00" & soundbias) and (31 downto 0 => control_select(1)));
-      read_value := read_value or ((x"0000" & cap(1).cnt & cap(0).cnt) and (31 downto 0 => control_select(2)));
-      read_value := read_value or (("00000" & cap(0).dad) and (31 downto 0 => control_select(4)));
-      read_value := read_value or ((x"0000" & cap(0).len) and (31 downto 0 => control_select(5)));
-      read_value := read_value or (("00000" & cap(1).dad) and (31 downto 0 => control_select(6)));
-      read_value := read_value or ((x"0000" & cap(1).len) and (31 downto 0 => control_select(7)));
-      wired_out7 <= read_value;
    end process;
 
    -- ================= state: registers, decode, fetch =================

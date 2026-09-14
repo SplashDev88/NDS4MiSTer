@@ -50,6 +50,7 @@ entity nds_membus9 is
       -- cache attributes of the current address + maintenance (from nds_cpu9)
       bus_cacheable_i : in  std_logic;
       bus_cacheable_d : in  std_logic;
+      bus_bufferable_d : in std_logic := '0';
       cache_op_ena    : in  std_logic;
       cache_op        : in  std_logic_vector(3 downto 0);
       cache_op_addr   : in  std_logic_vector(31 downto 0);
@@ -238,6 +239,7 @@ architecture arch of nds_membus9 is
    signal creq_rnw       : std_logic := '1';
    signal creq_code      : std_logic := '0';
    signal creq_cacheable : std_logic := '0';
+   signal creq_bufferable : std_logic := '0';
    signal creq_lock      : std_logic := '0';
    signal creq_addr      : std_logic_vector(31 downto 0) := (others => '0');
    signal creq_be        : std_logic_vector(3 downto 0) := (others => '0');
@@ -286,6 +288,7 @@ begin
       req_rnw       => creq_rnw,
       req_code      => creq_code,
       req_cacheable => creq_cacheable,
+      req_bufferable => creq_bufferable,
       req_lock      => creq_lock,
       req_addr      => creq_addr,
       req_be        => creq_be,
@@ -665,6 +668,7 @@ begin
                         creq_ena   <= '1';
                         creq_rnw   <= cpu_rnw;
                         creq_code  <= cpu_code;
+                        creq_bufferable <= bus_bufferable_d and not dma_bus and not cpu_code;
                         -- Associate the lock with this accepted CPU data access,
                         -- not with a later cache fill or maintenance writeback.
                         creq_lock  <= cpu_lock and not cpu_code and

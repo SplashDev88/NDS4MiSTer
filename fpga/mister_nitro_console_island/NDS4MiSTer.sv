@@ -35,6 +35,7 @@ module emu
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],3D FPS Counter,Off,On;",
         "O[10],Engine B (next Reset),Off,On;",
+        "O[11],Video Rotation,Off,90 CCW;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",
@@ -79,11 +80,31 @@ module emu
 
     // Request the largest exact integer multiple of the frame-boundary-latched
     // source canvas. This keeps menu changes and scaler geometry atomic.
+    wire [12:0] normal_arx, normal_ary, rotated_arx, rotated_ary;
+    wire [1:0] rotation_select = status[11] ? 2'd2 : 2'd0;
+    assign VIDEO_ROTATION = rotation_select;
+    assign VIDEO_SOURCE_WIDTH = video_layout_active == 0
+        ? 10'd512 + {video_gap_active,3'd0} : 10'd256;
+    assign VIDEO_SOURCE_HEIGHT = (video_layout_active == 1
+        ? 10'd384 + {video_gap_active,3'd0} : 10'd192) +
+        (video_fps_active ? 10'd6 : 10'd0);
+    (* async_reg = "true" *) reg [1:0] rotation_meta=0, rotation_applied=0;
+    always @(posedge clk_sys) begin
+        rotation_meta <= VIDEO_ROTATION_APPLIED;
+        rotation_applied <= rotation_meta;
+    end
+    assign VIDEO_ARX = rotation_applied != 0 ? rotated_arx : normal_arx;
+    assign VIDEO_ARY = rotation_applied != 0 ? rotated_ary : normal_ary;
+    nds_tate_scale tate_scale (
+        .clk(clk_sys), .reset(RESET), .hdmi_width(HDMI_WIDTH),
+        .hdmi_height(HDMI_HEIGHT), .source_width(VIDEO_SOURCE_WIDTH),
+        .source_height(VIDEO_SOURCE_HEIGHT), .arx(rotated_arx), .ary(rotated_ary)
+    );
     nds_nitro_integer_scale integer_scale (
         .hdmi_width(HDMI_WIDTH),.hdmi_height(HDMI_HEIGHT),
         .layout(video_layout_active),.gap(video_gap_active),
         .fps_enabled(video_fps_active),
-        .video_arx(VIDEO_ARX),.video_ary(VIDEO_ARY)
+        .video_arx(normal_arx),.video_ary(normal_ary)
     );
 
     wire clk_sys,shell_pll_locked;
@@ -127,6 +148,7 @@ module emu
     wire media_reset=RESET|~shell_pll_locked;
     wire core_reset=media_reset|status[0]|buttons[1];
     wire touch_pressed;
+    // TATE targets a physically rotated monitor: retain native DS controls.
     wire [15:0] touch_analog;
     wire [31:0] joystick_touch = {
         joystick_0[31:13],touch_pressed,joystick_0[11:0]
