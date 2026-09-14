@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.1 — Clockwise TATE rotation**
+**v0.4.0-beta.1 — TATE mode now rotates both directions**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -177,7 +177,7 @@ revision is enough to identify it.
 
 ## What's new in v0.4.0-beta.1
 
-- **Clockwise TATE rotation.** Select **Video Rotation → 90 CW** in the core menu.
+- **Clockwise rotation added.** The previous beta could only rotate the picture counterclockwise, which meant your monitor had to turn clockwise. Now there's a **Video Rotation → 90 CW** option too, so a monitor that turns the other way works just as well. Everything else in this release is unchanged from v0.4.0-beta.
 
 ## Retained from v0.4.0-beta
 
