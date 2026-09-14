@@ -1,4 +1,4 @@
-# NDS4MiSTer v0.3.0-beta.14
+# NDS4MiSTer v0.4.0-beta
 
 **Smoother FMV playback and TATE mode for a sideways monitor.**
 

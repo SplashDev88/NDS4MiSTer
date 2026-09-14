@@ -1,6 +1,6 @@
-NDS4MiSTer v0.3.0-beta.14 source — smoother FMV playback and TATE mode
+NDS4MiSTer v0.4.0-beta source — smoother FMV playback and TATE mode
 
-This snapshot accompanies NDS4MiSTer_Public_Beta_v0.3.0-beta.14_20260914.
+This snapshot accompanies NDS4MiSTer_Public_Beta_v0.4.0-beta_20260914.
 Movie playback is smoother, with occasional audio hitches still possible.
 Video Rotation adds Off / 90 CCW for a physically rotated monitor. Engine B
 and rotation default Off. Engine B changes apply after Reset or ROM reload;

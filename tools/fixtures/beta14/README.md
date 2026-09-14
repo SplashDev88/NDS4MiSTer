@@ -1,4 +1,4 @@
-# beta.14 equivalence references
+# FMV and TATE equivalence references
 
 These GPL source fixtures are the complete reference implementations used by
 the sound-register readback and VRAM victim-cache equivalence tests. They are

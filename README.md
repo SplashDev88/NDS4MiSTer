@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.3.0-beta.14 — Smoother FMV playback and TATE mode**
+**v0.4.0-beta — Smoother FMV playback and TATE mode**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -68,7 +68,7 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.3.0-beta.14_20260914.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta_20260914.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
@@ -167,10 +167,10 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in beta.14
+## What's new in v0.4.0-beta
 
 Smoother FMV playback and optional TATE rotation are the headline changes.
-See the [release notes](docs/RELEASE_NOTES_BETA14.md) for installation and
+See the [release notes](docs/RELEASE_NOTES_V040_BETA.md) for installation and
 known issues.
 
 - Reduce redundant ARM9 instruction, load, and cached-write return cycles so
