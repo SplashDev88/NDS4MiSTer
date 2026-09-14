@@ -35,7 +35,7 @@ module emu
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],3D FPS Counter,Off,On;",
         "O[10],Engine B (next Reset),Off,On;",
-        "O[11],Video Rotation,Off,90 CCW;",
+        "O[12:11],Video Rotation,Off,90 CCW,90 CW;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",
@@ -81,7 +81,10 @@ module emu
     // Request the largest exact integer multiple of the frame-boundary-latched
     // source canvas. This keeps menu changes and scaler geometry atomic.
     wire [12:0] normal_arx, normal_ary, rotated_arx, rotated_ary;
-    wire [1:0] rotation_select = status[11] ? 2'd2 : 2'd0;
+    // Retain v0.4.0-beta's stored Off/CCW values. New CW uses option 2;
+    // reserved option 3 is Off. Controls remain native for a turned monitor.
+    wire [1:0] rotation_select = {status[11] & ~status[12],
+                                 status[12] & ~status[11]};
     assign VIDEO_ROTATION = rotation_select;
     assign VIDEO_SOURCE_WIDTH = video_layout_active == 0
         ? 10'd512 + {video_gap_active,3'd0} : 10'd256;

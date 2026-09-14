@@ -117,6 +117,7 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
             repeat(1) @(negedge i_clk);
         end
     endtask
+    integer midframe_rotation = -1;
     task automatic frame(input integer w,h,id,rot);
         integer px,py;
         begin
@@ -124,7 +125,11 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
             rotation=rot; source_width=w; source_height=h;
             tick_pixel(0,0,0); tick_pixel(0,0,0); tick_pixel(0,1,0);
             for(py=0;py<h;py=py+1) begin
-                for(px=0;px<w;px=px+1) tick_pixel(1,1,pattern(px,py,id));
+                for(px=0;px<w;px=px+1) begin
+                    tick_pixel(1,1,pattern(px,py,id));
+                    if(midframe_rotation >= 0 && py == h/2 && px == w/2)
+                        rotation=midframe_rotation;
+                end
                 repeat(12) tick_pixel(0,1,0);
             end
             tick_pixel(0,1,0);
@@ -156,6 +161,7 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
         end
     endtask
     integer before_writes, id, h, rot, rgb;
+    reg [31:0] previous_frame_base;
     reg [5:0] test_r,test_g,test_b;
     initial begin
         for(rgb=0;rgb<262144;rgb=rgb+1)begin
@@ -171,8 +177,31 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
         for(rot=1;rot<=2;rot=rot+1) for(h=16;h<=23;h=h+1) begin
             frame(32,h,id,rot);verify_frame(32,h,id,rot);id=id+1;
         end
-        frame(536,198,id,1);verify_frame(536,198,id,1);id=id+1;
-        frame(256,414,id,2);verify_frame(256,414,id,2);id=id+1;
+        // Both native maximum canvases must work in both directions, with
+        // non-tile-aligned heights from gaps and the optional FPS overlay.
+        for(rot=1;rot<=2;rot=rot+1) begin
+            frame(536,198,id,rot);verify_frame(536,198,id,rot);id=id+1;
+            frame(256,414,id,rot);verify_frame(256,414,id,rot);id=id+1;
+        end
+        if(!CCW_ONLY) begin
+            // A menu change during capture must not publish a frame in the
+            // old direction or mix the two transforms. Keep the old complete
+            // picture until the next full frame in the requested direction.
+            for(rot=1;rot<=2;rot=rot+1) begin
+                frame(32,23,id,rot);verify_frame(32,23,id,rot);
+                previous_frame_base=fb_base;
+                midframe_rotation=3-rot;
+                frame(32,23,id+1,rot);
+                midframe_rotation=-1;
+                repeat(10000) @(negedge avl_clk);
+                if(fb_base != previous_frame_base || rotation_applied != rot)
+                    $fatal(1,"mid-frame direction change published a stale transform");
+                verify_frame(32,23,id,rot);
+                id=id+2;
+                frame(32,23,id,3-rot);verify_frame(32,23,id,3-rot);id=id+1;
+            end
+            $display("PASS both mid-frame direction changes hold the previous complete frame");
+        end
         if(overflow) $fatal(1,"unexpected overflow with ordinary stalls");
         pause_display=1;
         frame(32,24,id,1);repeat(1000) @(negedge avl_clk);

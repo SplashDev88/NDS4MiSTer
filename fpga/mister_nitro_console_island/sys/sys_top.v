@@ -760,7 +760,7 @@ wire [15:0] scaler_byteenable;
 // This port already carries the scaler's frame capture and readback. Rotation
 // replaces the normal capture while active; the console DDR port is untouched.
 localparam integer TATE_TILE_ROWS = 4;
-nds_tate_video #(.TILE_ROWS(TATE_TILE_ROWS),.CCW_ONLY(1)) tate_video (
+nds_tate_video #(.TILE_ROWS(TATE_TILE_ROWS),.CCW_ONLY(0)) tate_video (
     .reset(reset_req), .i_clk(clk_ihdmi), .i_ce(ce_hpix),
     .i_de(hde_emu), .i_vs(hvs_fix), .i_rgb({hr_out,hg_out,hb_out}),
     .rotation(tate_rotation), .source_width(tate_source_width),
