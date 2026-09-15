@@ -88,6 +88,8 @@ module nds_nitro_video_scanout #(
 ) (
     input  logic        clk_video,
     input  logic        reset,
+    // Invalidate session pixels without interrupting the HDMI raster.
+    input  logic        session_reset,
     input  logic [1:0]  layout_select,
     input  logic        screen_order_select,
     input  logic [1:0]  gap_select,
@@ -121,6 +123,7 @@ module nds_nitro_video_scanout #(
     input  logic        effective_3d_frame_toggle,
     output logic [8:0]  lb_raddr,
     input  logic [35:0] lb_q,
+    input  logic        lb_valid,
     output logic        ce_pixel,
     output logic        de,
     output logic        hsync,
@@ -153,6 +156,7 @@ module nds_nitro_video_scanout #(
     logic published_toggle_seen;
     logic effective_3d_toggle_seen;
     logic external_toggle_seen;
+    logic normal_frame_valid;
     logic pending_frame_valid;
     logic [1:0] pending_frame_bank;
     logic pending_external_valid;
@@ -208,16 +212,17 @@ module nds_nitro_video_scanout #(
     wire [9:0] hsync_end = canvas_width + 10'd64;
     wire [9:0] vsync_begin = canvas_height + 10'd3;
     wire [9:0] vsync_end = canvas_height + 10'd9;
-    wire publication_event =
+    wire publication_event = !session_reset &&
         published_toggle_sync[1] != published_toggle_seen;
     wire effective_3d_frame_event =
         effective_3d_toggle_sync[1] != effective_3d_toggle_seen;
-    wire publication_available = publication_event || pending_frame_valid;
+    wire publication_available = !session_reset &&
+        (publication_event || pending_frame_valid);
     wire [1:0] publication_bank = publication_event ?
         published_bank_sync_1 : pending_frame_bank;
     wire external_event =
         external_toggle_sync[1] != external_toggle_seen;
-    wire external_available = external_enable &&
+    wire external_available = !session_reset && external_enable &&
         (external_event || pending_external_valid);
     assign external_quiescent = !external_enable &&
         external_boundary_cleared && !pending_external_valid &&
@@ -447,6 +452,7 @@ module nds_nitro_video_scanout #(
             published_toggle_seen <= 0;
             effective_3d_toggle_seen <= 0;
             external_toggle_seen <= 0;
+            normal_frame_valid <= 0;
             pending_frame_valid <= 0;
             pending_frame_bank <= 0;
             pending_external_valid <= 0;
@@ -523,6 +529,20 @@ module nds_nitro_video_scanout #(
                 pending_external_screen <= external_screen_sync[1];
             end
 
+            if (session_reset) begin
+                // A reset-to-zero toggle is not a newly completed frame.
+                // Align with the held producer while discarding old ownership.
+                published_toggle_seen <= published_toggle_sync[1];
+                effective_3d_toggle_seen <= effective_3d_toggle_sync[1];
+                external_toggle_seen <= external_toggle_sync[1];
+                normal_frame_valid <= 1'b0;
+                pending_frame_valid <= 1'b0;
+                pending_external_valid <= 1'b0;
+                active_external_valid <= 1'b0;
+                active_screen_external[0] <= 1'b0;
+                active_screen_external[1] <= 1'b0;
+            end
+
             lb_half <= local_x[0];
             ce_pixel <= pixel_divider == pixel_divider_limit;
             if (pixel_divider == pixel_divider_limit) begin
@@ -530,7 +550,12 @@ module nds_nitro_video_scanout #(
                 hsync <= !(hcount >= hsync_begin && hcount < hsync_end);
                 vsync <= !(vcount >= vsync_begin && vcount < vsync_end);
                 de <= hcount < canvas_width && vcount < canvas_height;
-                if (fps_font_pixel) begin
+                if (session_reset ||
+                    (screen_pixel && (!lb_valid || !(active_screen_external[local_screen] ?
+                        (external_enable && active_external_valid) :
+                        normal_frame_valid)))) begin
+                    red <= 0; green <= 0; blue <= 0;
+                end else if (fps_font_pixel) begin
                     red <= 8'hff; green <= 8'hff; blue <= 8'hff;
                 end else if (pointer_red_pixel) begin
                     red <= 8'hff; green <= 8'h00; blue <= 8'h00;
@@ -551,6 +576,7 @@ module nds_nitro_video_scanout #(
                 if (hcount == 0 && frame_end) begin
                     if (publication_available) begin
                         active_normal_bank <= publication_bank;
+                        normal_frame_valid <= 1'b1;
                         pending_frame_valid <= 1'b0;
                     end
                     if (!external_enable) begin
@@ -589,15 +615,20 @@ module nds_nitro_video_scanout #(
                         end
                     end
                 end
-                if (hcount == 0 && next_screen_line) begin
+                if (!session_reset && hcount == 0 && next_screen_line &&
+                    (request_is_external(next_local_screen) ?
+                        (active_external_valid || (frame_end && external_available)) :
+                        (normal_frame_valid || (frame_end && publication_available)))) begin
                     pf_scr <= next_local_screen;
                     pf_line <= next_local_y;
                     pf_bank <= next_local_y[0];
                     pf_frame_bank <= request_frame_bank(next_local_screen);
                     pf_external <= request_is_external(next_local_screen);
                     pf_tgl <= ~pf_tgl;
-                end else if (hcount == 64 &&
-                             next_second_screen_line) begin
+                end else if (!session_reset && hcount == 64 &&
+                             next_second_screen_line &&
+                    (request_is_external(next_second_local_screen) ?
+                        active_external_valid : normal_frame_valid)) begin
                     pf_scr <= next_second_local_screen;
                     pf_line <= next_local_y;
                     pf_bank <= next_local_y[0];

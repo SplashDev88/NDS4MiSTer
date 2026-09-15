@@ -265,6 +265,32 @@ module tb_nds_h3d_session_policy #(
         valid_ack();
         closed_for(1000);
         if (!fault) $fatal(1, "immutable ACK fault was not sticky");
+        // A faulted game must not poison a later ROM. Repeatedly replace the
+        // session, alternating the pending Engine B policy and reset timing.
+        for (integer attempt = 0; attempt < 24; attempt = attempt + 1) begin
+            previous = active_session;
+            @(negedge clk);
+            engine_b_select = attempt[0];
+            if (attempt % 3 == 0) begin
+                reset = 1;
+                repeat (5) @(negedge clk);
+                reset = 0;
+            end else begin
+                cart_ready = 0;
+                repeat (17) @(negedge clk);
+                cart_ready = 1;
+            end
+            video_quiescent = 0;
+            await_quiesce(previous);
+            finish_init(attempt[0]);
+            valid_ack(); await_release();
+            if (fault || active_session == previous)
+                $fatal(1, "ROM/reset failed to recover a faulted session");
+            // Corrupt the HPS-owned ACK again, then recover in the next loop.
+            memory[107] = 0;
+            wait (fault);
+            closed_for(13);
+        end
         $display("PASS H3P1 zero_latency=%0d default/pending/reset/load/restart, 8 malformed ACK fields, opposite policy, delayed commit, immutable ACK fault, video barrier, DDR stalls/drain: reads=%0d writes=%0d cycles=%0d", ZERO_LATENCY, reads, writes, cycles);
         $finish;
     end

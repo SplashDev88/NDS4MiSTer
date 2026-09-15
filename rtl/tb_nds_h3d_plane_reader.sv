@@ -122,6 +122,7 @@ module tb_nds_h3d_plane_reader;
     wire [7:0] scanout_r, scanout_g, scanout_b;
 
     nds_nitro_video_scanout scanout (
+        .session_reset(1'b0),
         .clk_video(ddr_clk), .reset(ddr_reset),
         .external_enable, .external_quiescent(),
         .layout_select(2'd0), .screen_order_select(1'b0),
@@ -141,7 +142,7 @@ module tb_nds_h3d_plane_reader;
         .external_screen_adopted_toggle(
             scanout_external_adopted_toggle),
         .effective_3d_frame_toggle(1'b0),
-        .lb_raddr(scanout_lb_raddr), .lb_q(36'd0),
+        .lb_raddr(scanout_lb_raddr), .lb_q(36'd0), .lb_valid(1'b1),
         .ce_pixel(scanout_ce), .de(scanout_de),
         .hsync(scanout_hs), .vsync(scanout_vs),
         .red(scanout_r), .green(scanout_g), .blue(scanout_b)

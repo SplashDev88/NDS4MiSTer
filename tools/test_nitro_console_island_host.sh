@@ -6,6 +6,7 @@ repo_dir="$(cd "$script_dir/.." && pwd)"
 test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/nds-nitro-island-host.XXXXXX")"
 trap 'rm -rf "$test_tmp"' EXIT
 
+python3 "$script_dir/test_nds_cart_session_reset.py"
 python3 "$script_dir/test_arm7_shared_shifter.py"
 python3 "$script_dir/test_sound_fetch_state_packing.py"
 "$script_dir/test_nds_sound_vhdl_analyze.sh"

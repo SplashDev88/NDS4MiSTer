@@ -14,6 +14,7 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
     logic [1:0] pf_frame_bank = 0;
     logic [8:0] lb_raddr = 0;
     wire [35:0] lb_q;
+    wire lb_valid;
     wire [27:1] fb6_addr;
     wire fb6_req, fb6_valid, fb6_ready;
     wire [63:0] fb6_dout;
@@ -31,7 +32,7 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
         .pf_tgl, .pf_scr, .pf_line, .pf_bank, .pf_frame_bank, .pf_external,
         .published_frame_toggle(), .published_frame_bank(),
         .scanout_late_count(), .runtime_fault_flags(), .bank_diagnostic(),
-        .lb_raddr, .lb_q,
+        .lb_raddr, .lb_q, .lb_valid,
         .fb5_addr(), .fb5_din(), .fb5_req(),
         .fb5_next(1'b0), .fb5_ready(1'b0),
         .fb6_addr, .fb6_req, .fb6_dout, .fb6_valid, .fb6_ready
@@ -92,6 +93,8 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
         end
         if (external_quiescent && (fb.rbusy && fb.rexternal))
             $fatal(1, "quiescence during owned external read");
+        if (fb.r_session_cancel && !fb.r_obsolete)
+            $fatal(1, "canceled session read lost its obsolete marker");
     end
 
     task automatic request_line(input logic ext, input logic scr,
@@ -115,11 +118,11 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
     task automatic check_local(input logic scr, input logic parity);
         lb_raddr = {parity, scr, 7'd0};
         repeat (5) @(negedge clk);
-        if (lb_q !== {18'h01234,18'h02345})
+        if (!lb_valid || lb_q !== {18'h01234,18'h02345})
             $fatal(1, "old external data attached to new local line %h", lb_q);
         lb_raddr = {parity, scr, 7'd127};
         repeat (3) @(negedge clk);
-        if (lb_q !== {18'h01234,18'h02345})
+        if (!lb_valid || lb_q !== {18'h01234,18'h02345})
             $fatal(1, "local line truncated after external cancel");
     endtask
 
@@ -179,8 +182,16 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
         reset_sys = 0;
         idle();
         if (external_requests != 1 || external_reads != 1 ||
-            beats-before_beats != BURST+128 || !external_quiescent)
+            beats-before_beats != BURST || !external_quiescent)
             $fatal(1, "canceled queued B/chunks escaped or burst did not drain B=%0d/%0d beats=%0d", external_requests, external_reads, beats-before_beats);
+        // Old queued local requests are canceled too, not reinterpreted as
+        // pixels from the new game. RAM can retain data but cannot expose it.
+        lb_raddr = {1'b0, 1'b0, 7'd0};
+        repeat (5) @(negedge clk);
+        if (lb_valid !== 1'b0 || fb.active_line_valid != 0)
+            $fatal(1, "old framebuffer remained visible after session reset");
+        request_line(0, 0, 8'd41);
+        idle();
         check_local(0, 1);
 
         // Cancel after physical acceptance and some response beats. Neither
@@ -207,11 +218,25 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
         idle();
         lb_raddr = {1'b0,1'b1,7'd0};
         repeat (5) @(negedge clk);
-        if (lb_q !== {18'h2a5a5,18'h15555} ||
+        if (!lb_valid || lb_q !== {18'h2a5a5,18'h15555} ||
             external_reads != 2+128/BURST || requests != reads ||
             completions != reads)
             $fatal(1, "fresh On incomplete or duplicate/stale callbacks");
-        $display("PASS: Engine-B quiesce burst=%0d reads=%0d B=%0d beats=%0d completions=%0d; queued/accepted DDR drains survive session reset, Off forbids new B, local and fresh On remain exact", BURST, reads, external_reads, beats, completions);
+        // Start the next session's first row before its new line arrives.
+        // A completed fetch may change the active slot, but the displayed
+        // slot and its validity must remain together until the next x=0.
+        external_enable = 0;
+        reset_sys = 1;
+        lb_raddr = {1'b0,1'b1,7'd0};
+        repeat (12) @(negedge clk);
+        reset_sys = 0;
+        lb_raddr = {1'b0,1'b1,7'd1};
+        request_line(0,1,8'd44);
+        idle();
+        if (lb_valid)
+            $fatal(1,"stale slot became valid midway through the first new row");
+        check_local(1,0);
+        $display("PASS: Engine-B quiesce burst=%0d reads=%0d B=%0d beats=%0d completions=%0d; queued/accepted DDR drains survive session reset, Off forbids new B, fresh lines remain exact, and validity follows the held row", BURST, reads, external_reads, beats, completions);
         done = 1;
     end
 endmodule

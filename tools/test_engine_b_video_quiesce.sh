@@ -27,3 +27,7 @@ run_sv tb_nds_h3d_plane_reader \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
     "$repo_dir/rtl/nds_h3d_plane_reader.sv" \
     "$repo_dir/rtl/tb_nds_h3d_plane_reader.sv"
+
+run_sv tb_nds_video_session_clear \
+    "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
+    "$repo_dir/rtl/tb_nds_video_session_clear.sv"

@@ -309,6 +309,79 @@ bool production_engine_b_source_a_capture(bool source_3d)
                [](u16 pixel) { return pixel != 0 && pixel != 0x1357; });
 }
 
+// Match the live Strange Journey stack: a threaded whole-frame 3D job is
+// pending when Engine B's display-capture phase asks for a 3D scanline.
+// Compare against an explicit pre-capture fence, then exercise the service's
+// later fence and a second frame. Baseline hangs on the absent scanline token.
+bool production_threaded_capture(bool source_3d, bool blend,
+                                 bool pixels_enabled)
+{
+    constexpr unsigned width = 128;
+    constexpr unsigned rows = 3;
+    using Captured = std::array<u16, width * rows>;
+    const auto run = [=](bool fence_before_capture,
+                         std::array<Captured, 4>& captures) {
+        auto nds = make_nds();
+        nds->GPU.GPU3D.SetEnabled(true, true);
+        nds->GPU.GPU3D.SetExternalCommandReplay(true);
+        melonDS::RendererSettings settings {
+            1, true, false, false, true, false, false, false, true,
+            true, pixels_enabled};
+        auto& renderer = nds->GPU.GetRenderer();
+        renderer.SetRenderSettings(settings);
+        renderer.Finish3DRendering();
+        for (unsigned frame = 0; frame < captures.size(); ++frame) {
+            if (frame == 2) {
+                // A new renderer epoch must re-arm its initial completion,
+                // even when the preceding frame was already fenced.
+                nds->GPU.GPU3D.AbortFrame = false;
+                renderer.Restart3DRendering();
+                renderer.Finish3DRendering();
+            }
+            nds->ARM9Write16(0x04000304, 0x020f);
+            nds->ARM9Write32(0x04000000,
+                (1u << 16) | (source_3d ? 0u : ((1u << 8) | (1u << 3))));
+            for (auto& latch : nds->GPU.GPU2D_A.DispCntLatch)
+                latch = nds->GPU.GPU2D_A.DispCnt;
+            nds->GPU.GPU2D_A.LayerEnable = source_3d ? 0 : 1;
+            nds->GPU.VRAMMap_LCDC = 1u << 1;
+            auto* destination = bank_words(nds->GPU, 1);
+            std::fill_n(destination, 0x10000, u16{0x1357});
+            for (unsigned x = 0; x < 256; ++x)
+                nds->GPU.DispFIFOBuffer[x] = u16(0x8000u | ((x * 29u) & 0x7fffu));
+            nds->GPU.GPU3D.RenderNumPolygons = 0;
+            nds->GPU.GPU3D.RenderFrameIdentical = false;
+            nds->GPU.GPU3D.RenderClearAttr1 =
+                0x001f0000u | (frame & 1 ? 0x7c00u : 0x001fu);
+            renderer.Start3DRendering();
+            if (fence_before_capture) renderer.Finish3DRendering();
+            nds->GPU.CaptureCnt = (1u << 31) | (1u << 16) |
+                (source_3d ? (1u << 24) : 0u) |
+                (blend ? ((2u << 29) | (1u << 25) | 12u | (7u << 8)) : 0u);
+            for (unsigned line = 0; line < rows; ++line) {
+                if (!nds->GPU.ApplyExternalRendererPhase(
+                        line == 0 ? 2u : 0u, line, line, 0, 0,
+                        frame + 1, true, line == 0, true) ||
+                    !nds->GPU.CaptureEnable ||
+                    !nds->GPU.ApplyExternalRendererPhase(
+                        1, line, line, 2, 2, frame + 1, true, false, true))
+                    return false;
+            }
+            std::copy_n(destination, width * rows, captures[frame].begin());
+            renderer.Finish3DRendering();
+            renderer.Finish3DRendering();
+            nds->GPU.SyncVRAM_LCDC(0x06820000u, true);
+        }
+        return true;
+    };
+    std::array<Captured, 4> oracle {}, early_capture {};
+    if (!run(false, early_capture) || !run(true, oracle) ||
+        oracle != early_capture || oracle[0] == oracle[1])
+        return false;
+    return std::all_of(early_capture[0].begin(), early_capture[0].end(),
+                      [](u16 p) { return p != 0x1357; });
+}
+
 bool blended_sources(bool engine_b_only = false, bool pixels_enabled = true)
 {
     auto nds = make_nds();
@@ -490,6 +563,20 @@ bool production_engine_b_publication(bool swap)
 
 int main()
 {
+    for (bool pixels : {false, true}) {
+        for (bool source_3d : {false, true}) {
+            for (bool blend : {false, true}) {
+                if (!production_threaded_capture(source_3d, blend, pixels)) {
+                    std::cerr << "FAIL: threaded full-frame capture fence\n";
+                    return 1;
+                }
+            }
+        }
+    }
+    std::cout << "PASS: threaded full-frame capture, 8 modes, 4 frames each, "
+                 "early reads match completed-frame oracle; repeated fences "
+                 "and renderer restart return\n" << std::flush;
+
     for (bool pixels_enabled : {false, true}) {
         if (!source_a_and_destination_offset(true, pixels_enabled) ||
             !source_b_fifo(true, pixels_enabled) ||

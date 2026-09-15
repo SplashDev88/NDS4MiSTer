@@ -163,6 +163,7 @@ void SoftRenderer3D::EnableRenderThread()
 {
     if (Threaded && Sema_RenderStart)
     {
+        RenderFrameFinished = false;
         Platform::Semaphore_Post(Sema_RenderStart);
     }
 }
@@ -3325,7 +3326,8 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
 
 void SoftRenderer3D::FinishRendering()
 {
-    if (RenderThreadRunning.load(std::memory_order_relaxed) && !GPU3D.AbortFrame)
+    if (RenderThreadRunning.load(std::memory_order_relaxed) && !GPU3D.AbortFrame &&
+        (!FullFrameCompletion || !RenderFrameFinished))
     {
         Platform::Semaphore_Wait(Sema_RenderDone);
         Platform::Semaphore_Reset(Sema_ScanlineCount);
@@ -3515,7 +3517,15 @@ u32* SoftRenderer3D::GetLine(int line)
     if (RenderThreadRunning.load(std::memory_order_relaxed) &&
         !RenderFrameFinished)
     {
-        if (line < 192)
+        if (FullFrameCompletion)
+        {
+            // Engine-B display capture can consume 3D before the service's
+            // usual frame-publication fence. This mode never posts scanline
+            // tokens: join its complete-frame fence once, then let subsequent
+            // capture rows and FinishRendering reuse that completed frame.
+            FinishRendering();
+        }
+        else if (line < 192)
             // We need a scanline, so let's wait for the render thread to finish it.
             // (both threads process scanlines from top-to-bottom,
             // so we don't need to wait for a specific row)

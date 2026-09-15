@@ -167,8 +167,8 @@ wire console_reset_request = shell_reset | ~island_locked | ~enable |
 // fail-closed H3D/CPU reset must not hold HS/VS/CE inactive: doing so makes
 // HDMI sinks report an invalid mode exactly when the console faults.  Keep
 // the scanout and its line-buffer read port alive through cartridge/session
-// and H3D resets; their contents may go black or retain the last frame, but
-// the raster remains continuously valid.
+// and H3D resets. Session validity blanks retained pixels independently,
+// while the raster remains continuously valid.
 wire video_output_reset_request = shell_reset | ~island_locked | ~enable;
 (* async_reg = "true" *) logic [1:0] video_output_reset_sync = 2'b11;
 always_ff @(posedge clk1x or posedge console_reset_request) begin
@@ -196,6 +196,12 @@ wire console_reset_2x = console_reset_sync_2x[1];
 wire console_reset_mem = console_reset_sync_mem[1];
 wire console_reset_ddr = console_reset_sync_ddr[1];
 wire video_output_reset = video_output_reset_sync[1];
+(* async_reg = "true" *) logic [1:0] video_session_reset_sync = 2'b11;
+always_ff @(posedge clk_video or posedge console_reset_request) begin
+    if (console_reset_request) video_session_reset_sync <= 2'b11;
+    else video_session_reset_sync <= {video_session_reset_sync[0], 1'b0};
+end
+wire video_session_reset = video_session_reset_sync[1];
 
 // The card pager is infrastructure for completing the cache-displacing read;
 // unlike the CPUs, it must remain alive throughout CART_DOWNLOAD/CART_FLUSH.
@@ -534,6 +540,7 @@ end
 logic card_req_seen;
 logic cd_busy;
 logic cd_flush;
+logic cd_cancel;
 logic cd_req;
 logic [24:0] cd_addr;
 // ddram ch2 retains one aligned four-beat cartridge read-ahead line. Probe
@@ -544,14 +551,23 @@ localparam logic [24:0] FLUSH_PROBE1_WORD = 25'd8;
 logic [1:0] flush_probe_count;
 wire cd_ready;
 wire [31:0] cd_dout;
-always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
-    if (bridge_reset_ddr) begin
+// ddram ch2 has no guest reset. Keep its queued/accepted command owned until
+// the response drains, just like framebuffer ch6 and the outer DDR fabric.
+`ifdef NDS_HYBRID_3D
+logic h3d_fabric_boot_reset = 1'b1;
+wire card_bridge_boot_reset = h3d_fabric_boot_reset;
+`else
+wire card_bridge_boot_reset = bridge_reset_ddr;
+`endif
+always_ff @(posedge ddr_clk or posedge card_bridge_boot_reset) begin
+    if (card_bridge_boot_reset) begin
         card_req_sync <= '0;
         card_req_seen <= 1'b0;
         card_rsp_toggle <= 1'b0;
         card_rsp_data <= '0;
         cd_busy <= 1'b0;
         cd_flush <= 1'b0;
+        cd_cancel <= 1'b0;
         cd_req <= 1'b0;
         cd_addr <= '0;
         flush_probe_count <= 2'd0;
@@ -561,15 +577,22 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
         cd_req <= 1'b0;
         flush_complete <= 1'b0;
 
-        // Start a new bridge epoch with the download.  While the console is
-        // held reset, continuously consume/align any old toggle that was still
-        // crossing so it cannot become the first request of the new image.
-        if (cart_download_ddr && !cart_download_d) begin
+        // A CPU/HPS reset also clears the source toggle, even with the same
+        // ROM still mounted. Align both ends without treating that clear as
+        // a new read of word zero. Retire old replies without delivering them
+        // to the new CPU epoch; do not cancel the physical DDR transaction.
+        if (console_reset_ddr) begin
+            card_req_sync <= '0;
+            card_req_seen <= 1'b0;
+            card_rsp_toggle <= 1'b0;
+            if (cd_busy && !cd_flush) cd_cancel <= 1'b1;
+        end
+        if (bridge_reset_ddr || (cart_download_ddr && !cart_download_d)) begin
             card_req_sync <= '0;
             card_req_seen <= 1'b0;
             card_rsp_toggle <= 1'b0;
             flush_probe_count <= 2'd0;
-        end else if (cart_state != CART_READY) begin
+        end else if (!console_reset_ddr && cart_state != CART_READY) begin
             card_req_seen <= card_req_sync[2];
         end
 
@@ -579,31 +602,34 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
             // Both probes win over card requests. Do not launch one on the
             // first edge of a replacement download; any already-outstanding
             // probe may drain, but its completion cannot qualify that epoch.
-            if ((cart_state == CART_FLUSH) && !cart_download_raw &&
-                !cart_download_ddr && (flush_probe_count != 2'd2)) begin
+            if (!bridge_reset_ddr && (cart_state == CART_FLUSH) &&
+                !cart_download_raw && !cart_download_ddr && (flush_probe_count != 2'd2)) begin
                 cd_addr <= (flush_probe_count == 2'd0)
                     ? FLUSH_PROBE0_WORD : FLUSH_PROBE1_WORD;
                 cd_flush <= 1'b1;
+                cd_cancel <= 1'b0;
                 cd_req <= 1'b1;
                 cd_busy <= 1'b1;
                 flush_probe_count <= flush_probe_count + 1'b1;
-            end else if ((cart_state == CART_READY) && !cart_download_raw &&
-                         !cart_download_ddr &&
+            end else if (!console_reset_ddr && (cart_state == CART_READY) &&
+                         !cart_download_raw && !cart_download_ddr &&
                          (card_req_sync[2] != card_req_seen)) begin
                 card_req_seen <= card_req_sync[2];
                 cd_addr <= card_addr_hold;
                 cd_flush <= 1'b0;
+                cd_cancel <= 1'b0;
                 cd_req <= 1'b1;
                 cd_busy <= 1'b1;
             end
         end else if (cd_ready) begin
             cd_busy <= 1'b0;
             if (cd_flush) begin
-                if ((flush_probe_count == 2'd2) && !cart_download_raw &&
-                    !cart_download_ddr)
+                if (!bridge_reset_ddr && (flush_probe_count == 2'd2) &&
+                    !cart_download_raw && !cart_download_ddr)
                     flush_complete <= 1'b1;
-            end else if ((cart_state == CART_READY) && !cart_download_raw &&
-                         !cart_download_ddr) begin
+            end else if (!console_reset_ddr && !cd_cancel &&
+                         (cart_state == CART_READY) &&
+                         !cart_download_raw && !cart_download_ddr) begin
                 card_rsp_data <= cd_dout;
                 card_rsp_toggle <= ~card_rsp_toggle;
             end
@@ -1077,6 +1103,7 @@ logic [1:0] pf_frame_bank;
 logic [7:0] pf_line;
 logic [8:0] lb_raddr;
 wire [35:0] lb_q;
+wire lb_valid;
 wire fb_published_frame_toggle;
 wire [1:0] fb_published_frame_bank;
 logic effective_3d_frame_toggle;
@@ -1229,7 +1256,6 @@ assign h3d_console_release =
 // FPGA power-up value supplies exactly one synchronous reset edge when the
 // retained DDR clock first becomes live.  H3D clients reset independently and
 // ignore any drained response belonging to their old epoch.
-logic h3d_fabric_boot_reset = 1'b1;
 always_ff @(posedge ddr_clk) begin
     if (island_locked)
         h3d_fabric_boot_reset <= 1'b0;
@@ -1579,12 +1605,13 @@ nds_nitro_fb_ddr3 #(
     .scanout_late_count(h3d_scanout_late_count),
     .runtime_fault_flags(h3d_fb_fault_flags),
     .bank_diagnostic(h3d_fb_bank_diagnostic),
-    .lb_raddr,.lb_q,
+    .lb_raddr,.lb_q,.lb_valid,
     .fb5_addr,.fb5_din,.fb5_req,.fb5_next,.fb5_ready,
     .fb6_addr,.fb6_req,.fb6_dout,.fb6_valid,.fb6_ready
 );
 nds_nitro_video_scanout scanout (
-    .clk_video,.reset(video_output_reset),.pf_tgl,.pf_scr,.pf_line,.pf_bank,
+    .clk_video,.reset(video_output_reset),.session_reset(video_session_reset),
+    .pf_tgl,.pf_scr,.pf_line,.pf_bank,
     .external_enable(h3d_external_video_enable),
     .external_quiescent(h3d_scanout_external_quiescent),
     .pf_frame_bank,.pf_external,
@@ -1602,7 +1629,7 @@ nds_nitro_video_scanout scanout (
     .external_screen_select(h3d_full_frame_screen),
     .external_screen_adopted_toggle(h3d_external_screen_adopted_toggle),
     .effective_3d_frame_toggle,
-    .lb_raddr,.lb_q,.ce_pixel(video_ce),.de(video_de),
+    .lb_raddr,.lb_q,.lb_valid,.ce_pixel(video_ce),.de(video_de),
     .hsync(video_hs),.vsync(video_vs),
     .red(video_r),.green(video_g),.blue(video_b)
 );

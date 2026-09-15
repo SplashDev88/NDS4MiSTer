@@ -45,13 +45,18 @@ reg [21:0] osd_t;
 reg [21:0] osd_w;
 
 reg  [1:0] rot = 0;
+reg        highres = 0;
+
+// An eight-row message occupies only the first64 pixels of buffer height.
+// Reverse within that height, so rotation cannot select old file-list rows.
+// Info windows use their existing128-pixel origin adjustment below.
+wire [3:0] rot_row_mask = {4{~rot[1]}} & {highres | info, 3'b111};
 
 always@(posedge clk_sys) begin
 	reg [12:0] bcnt;
 	reg  [7:0] cmd;
 	reg        has_cmd;
 	reg        old_strobe;
-	reg        highres = 0;
 
 	osd_t <= rot[0] ? OSD_WIDTH : (OSD_HEIGHT<<1);
 	osd_h <= rot[0] ? (info ? infow : OSD_WIDTH) : info ? infoh : (OSD_HEIGHT<<highres);
@@ -253,7 +258,7 @@ always @(posedge clk_video) begin
 			end
 		end
 
-		osd_byte  <= osd_buffer[rot[0] ? ({osd_hcnt2[6:3], osd_vcnt[7:0]} ^ { {4{~rot[1]}}, {8{rot[1]}} }) : {osd_vcnt[7:3], osd_hcnt[7:0]}];
+		osd_byte  <= osd_buffer[rot[0] ? ({osd_hcnt2[6:3], osd_vcnt[7:0]} ^ {rot_row_mask, {8{rot[1]}}}) : {osd_vcnt[7:3], osd_hcnt[7:0]}];
 		osd_pixel <= osd_byte[rot[0] ? ((osd_hcnt2[2:0]-1'd1) ^ {3{~rot[1]}}) : osd_vcnt[2:0]];
 		osd_de[2:1] <= osd_de[1:0];
 	end

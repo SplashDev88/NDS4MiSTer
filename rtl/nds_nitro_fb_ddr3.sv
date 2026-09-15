@@ -106,7 +106,8 @@ module nds_nitro_fb_ddr3 #(
 
 	// scanout fetch: pair address {row parity, screen, x[7:1]}
 	input       [8:0] lb_raddr,
-	output reg [35:0] lb_q,
+	output wire [35:0] lb_q,
+	output wire       lb_valid,
 
 	// ddram ch5: framebuffer write bursts (clk_sys)
 	output     [27:1] fb5_addr,
@@ -919,10 +920,12 @@ reg  [1:0] rframe_bank;
 reg        rexternal;
 reg        rslot;
 reg        r_obsolete;
+reg        r_session_cancel;
 reg  [6:0] rwidx;
 reg  [7:0] rsent;
 reg        fb6_req_r = 0;
 reg  [3:0] active_line_slot = 0;
+reg  [3:0] active_line_valid = 0;
 
 // E[27:0] is sampled only by diagnostic builds through the existing FPGA
 // heartbeat. The upper fields show live bank ownership; the low flags latch
@@ -947,11 +950,11 @@ wire scanout_request_replaces_inflight =
 	(pf_line != rline) ||
 	((pf_scr == rscr) &&
 	 ((pf_external != rexternal) || (pf_frame_bank != rframe_bank)));
-wire scanout_prefetch_allowed = scanout_prefetch_event &&
+wire scanout_prefetch_allowed = !reset_sys && scanout_prefetch_event &&
     (!pf_external || external_enable);
 wire scanout_read_late = scanout_prefetch_allowed && rbusy &&
 	scanout_request_replaces_inflight;
-wire scanout_dequeue = (pf_count != 0) && !rbusy;
+wire scanout_dequeue = !reset_sys && (pf_count != 0) && !rbusy;
 
 // A pulse already presented to ch6 remains owned even before physical DDR
 // acceptance. rbusy spans that entire interval through the final ready.
@@ -986,11 +989,13 @@ always @(posedge clk_sys or posedge reset_read) begin
 		rexternal <= 0;
 		rslot <= 0;
 		r_obsolete <= 0;
+		r_session_cancel <= 0;
 		rwidx <= 0;
 		rsent <= 0;
 		fb6_req_r <= 0;
 		scanout_late_count <= 0;
 		active_line_slot <= 0;
+		active_line_valid <= 0;
 	end else begin
 	pf_sync <= {pf_sync[1:0], pf_tgl};
 	fb6_req_r <= 0;
@@ -1013,9 +1018,9 @@ always @(posedge clk_sys or posedge reset_read) begin
 		source_frame_discard <= 1;
 	if (scanout_read_late && scanout_late_count != 8'hff)
 		scanout_late_count <= scanout_late_count + 1'd1;
-    // Session diagnostics retain their original reset scope. They do not
-    // own any DDR work: clear them without disturbing the live read queue,
-    // accepted burst, bank reservations, or completed line slots below.
+    // Retain an already presented DDR burst until its final response. Queued
+    // lines and visible slots belong to the old game and can be invalidated
+    // immediately; late old responses must never promote them again.
     if (reset_sys) begin
         scanout_write_collision <= 0;
         published_write_collision <= 0;
@@ -1023,6 +1028,13 @@ always @(posedge clk_sys or posedge reset_read) begin
         render_bank_split <= 0;
         source_frame_discard <= 0;
         scanout_late_count <= 0;
+        scanout_bank_valid <= 0;
+        active_line_valid <= 0;
+        pf_count <= 0;
+        if (rbusy) begin
+            r_session_cancel <= 1;
+            r_obsolete <= 1;
+        end
     end
 	if (scanout_read_late || (rbusy && rexternal && !external_enable))
 		r_obsolete <= 1;
@@ -1062,7 +1074,7 @@ always @(posedge clk_sys or posedge reset_read) begin
 		end
 		default: begin end
 	endcase
-	if (scanout_prefetch_event && !pf_external) begin
+	if (scanout_prefetch_allowed && !pf_external) begin
 		scanout_frame_bank <= pf_frame_bank;
 		scanout_bank_valid <= 1;
 	end
@@ -1070,6 +1082,7 @@ always @(posedge clk_sys or posedge reset_read) begin
 		{rexternal,rframe_bank,rbank,rline,rscr} <= pf_q0;
 		rslot <= ~active_line_slot[{pf_q0[9], pf_q0[0]}];
 		r_obsolete <= 0;
+		r_session_cancel <= 0;
 		rwidx     <= 0;
 		rsent     <= 0;
 		fb6_req_r <= 1;
@@ -1082,15 +1095,19 @@ always @(posedge clk_sys or posedge reset_read) begin
 	end
 	if (rbusy && fb6_ready) begin
 		if (rsent + FB_BURST >= 8'd128 ||
+            reset_sys || r_session_cancel ||
             (rexternal && !external_enable)) begin
 			rbusy <= 0;
 			// A newer target row makes this completed fetch obsolete. Keep
 			// the previously promoted complete line rather than expose stale
 			// data at the new row's parity slot.
-			if (!r_obsolete && !scanout_read_late &&
+			if (!reset_sys &&
+                !r_obsolete && !scanout_read_late &&
                 (!rexternal || external_enable) &&
-                rsent + FB_BURST >= 8'd128)
-				active_line_slot[{rbank, rscr}] <= rslot;
+                rsent + FB_BURST >= 8'd128) begin
+                active_line_slot[{rbank, rscr}] <= rslot;
+                active_line_valid[{rbank, rscr}] <= 1;
+            end
 		end
 		else begin
 			rsent     <= rsent + FB_BURST;
@@ -1104,25 +1121,48 @@ end
 (* async_reg = "true" *) reg [3:0] active_line_slot_meta = 0;
 (* async_reg = "true" *) reg [3:0] active_line_slot_sync = 0;
 reg [3:0] video_line_slot = 0;
+reg [3:0] video_line_valid = 0;
+(* async_reg = "true" *) reg [3:0] line_valid_meta = 0;
+(* async_reg = "true" *) reg [3:0] line_valid_sync = 0;
+reg [35:0] lb_data_q;
+reg lb_valid_q = 0;
+// Keep validity outside the synchronous RAM read template. Register it
+// alongside the data, and let scanout blank the selected pixel once rather
+// than masking this wider pair bus as well as the final RGB output.
+assign lb_q = lb_data_q;
+assign lb_valid = lb_valid_q;
 wire [1:0] lb_line_index = lb_raddr[8:7];
 wire lb_slot = (lb_raddr[6:0] == 7'd0) ?
 	active_line_slot_sync[lb_line_index] : video_line_slot[lb_line_index];
 always @(posedge CLK_VIDEO or posedge reset_video) begin
 	if (reset_video) begin
-		lb_q <= 0;
+		lb_data_q <= 0;
+		lb_valid_q <= 0;
 		active_line_slot_meta <= 0;
 		active_line_slot_sync <= 0;
 		video_line_slot <= 0;
+		video_line_valid <= 0;
+		line_valid_meta <= 0;
+		line_valid_sync <= 0;
 	end else begin
+		line_valid_meta <= active_line_valid;
+		line_valid_sync <= line_valid_meta;
 		active_line_slot_meta <= active_line_slot;
 		active_line_slot_sync <= active_line_slot_meta;
+		// Invalidate held rows when their session ends. A late first fetch
+		// must not make the old slot valid halfway through a displayed row.
+		video_line_valid <= video_line_valid & line_valid_sync;
 		// Hold the chosen complete slot for the full visible row. A DDR
 		// completion in the middle of scanout takes effect at the next x=0
 		// instead of creating a horizontal seam.
-		if (lb_raddr[6:0] == 7'd0)
+		if (lb_raddr[6:0] == 7'd0) begin
 			video_line_slot[lb_line_index] <=
 				active_line_slot_sync[lb_line_index];
-		lb_q <= linebuf[{lb_raddr[8:7], lb_slot, lb_raddr[6:0]}];
+			video_line_valid[lb_line_index] <= line_valid_sync[lb_line_index];
+		end
+		lb_data_q <= linebuf[{lb_raddr[8:7], lb_slot, lb_raddr[6:0]}];
+		lb_valid_q <= line_valid_sync[lb_line_index] &&
+            ((lb_raddr[6:0] == 7'd0) || video_line_valid[lb_line_index]);
 	end
 end
 

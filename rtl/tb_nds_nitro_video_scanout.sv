@@ -6,6 +6,7 @@ module tb_nds_nitro_video_scanout;
     logic clk_video = 1'b0;
     always #8.333 clk_video = ~clk_video; // retained 60 MHz shell clock
     logic reset = 1'b1;
+    logic session_reset = 1'b0;
     logic [1:0] layout_select = 2'd0;
     logic screen_order_select = 1'b0;
     logic [1:0] gap_select = 2'd0;
@@ -22,6 +23,7 @@ module tb_nds_nitro_video_scanout;
     wire [7:0] pf_line;
     wire [8:0] lb_raddr;
     logic [35:0] lb_q = 36'h123456789;
+    logic lb_valid = 1'b1;
     logic published_frame_toggle = 1'b0;
     logic [1:0] published_frame_bank = 2'd0;
     logic effective_3d_frame_toggle = 1'b0;
@@ -209,6 +211,8 @@ module tb_nds_nitro_video_scanout;
 
         repeat (8) @(negedge clk_video);
         reset = 1'b0;
+        published_frame_toggle = 1'b1;
+        @(negedge vsync); // first complete frame becomes displayable
         check_complete_frame(512,192,261,6,384);
 
         // A composite publication replaces only its named physical screen.
