@@ -1,7 +1,8 @@
 NDS4MiSTer v0.4.0-beta.2 source — Stability fixes
 
 This source accompanies NDS4MiSTer_Public_Beta_v0.4.0-beta.2_20260915.
-The release notes are intentionally limited to: Stability fixes.
+The What's new section says only: Stability fixes. The release notes retain
+the installation, TATE, Engine B, known-issues, files and credits sections.
 
 Production source: 624a24a503359ee68aa11f9c3a03e77bbf5bd4e5
 Only README, release documentation and SHA256SUMS change after this commit.
