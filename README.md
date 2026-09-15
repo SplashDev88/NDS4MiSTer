@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.1 — TATE mode now rotates both directions**
+**v0.4.0-beta.2 — Stability fixes**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -69,12 +69,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta.1_20260914.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta.2_20260915.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260914** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260915** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -90,18 +90,19 @@ repository.
 Select **Video Layout → Top/Bottom** to stack the DS screens. Choose the
 picture rotation opposite to your monitor's physical turn:
 
-| Monitor physically turns | Video Rotation | Optional NDS menu setting |
-| --- | --- | --- |
-| Clockwise / right | **90 CCW** | `osd_rotate=2` |
-| Counterclockwise / left | **90 CW** | `osd_rotate=1` |
+| Monitor physically turns | Video Rotation |
+| --- | --- |
+| Clockwise / right | **90 CCW** |
+| Counterclockwise / left | **90 CW** |
 
 Rotation starts Off and can be changed without resetting the game. Existing
 saved Off and 90 CCW settings retain their meaning. D-pad, right-stick touch,
 and mouse controls keep their native DS directions for the physically turned
 monitor. Screen order and gap settings remain available.
 
-The MiSTer menu rotates separately. Put the matching `osd_rotate` setting
-under `[NDS]` in `MiSTer.ini`, then save and reboot. If that section already
+The MiSTer menu rotates separately. Put `osd_rotate=1` or `osd_rotate=2`
+under `[NDS]` in `MiSTer.ini` to match your setup, then save and reboot. If the
+menu is upside down, switch between 1 and 2. If an `[NDS]` section already
 exists, update it. This affects NDS only; the installer does not edit your INI.
 See the [MiSTer INI documentation](https://mister-devel.github.io/MkDocs_MiSTer/advanced/ini/#menu-settings).
 
@@ -175,9 +176,9 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta.1
+## What's new in v0.4.0-beta.2
 
-- **Clockwise rotation added.** The previous beta could only rotate the picture counterclockwise, which meant your monitor had to turn clockwise. Now there's a **Video Rotation → 90 CW** option too, so a monitor that turns the other way works just as well. Everything else in this release is unchanged from v0.4.0-beta.
+- Stability fixes.
 
 ## Retained from v0.4.0-beta
 
@@ -211,20 +212,18 @@ Pokemon player/furniture graphics can remain missing; see
 
 | Item | Release identity |
 | --- | --- |
-| Core file | `_Console/NDS_20260914.rbf` |
-| Build identity | `260914-TATECW1` |
-| FPGA SHA-256 | `5aa6c45b485fd4c27c1a7ffd8265a9e8351b7afb31cd35d4d2e7faa0c02334be` |
+| Core file | `_Console/NDS_20260915.rbf` |
+| Build identity | `260914-RESET5` |
+| FPGA SHA-256 | `50ca160d67ca0fdbd97a50815564eece8235125b987afa57943afb9cdbf23166` |
 | Quartus seed | 2 |
 | ARM clocks | 1 GHz |
-| ARM SHA-256 | `826d5c95bab26d523c5327cb61384fd13abe540d43e3c91ba89630c12a98d937` |
+| ARM SHA-256 | `67a0c007da13fb00144ab62c93d8d1d5d233b8708f127e3be4f318a0ab115655` |
 | Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
 
-This package reuses the exact TATECW1 core loaded for maintainer testing and
-the unchanged v0.4.0-beta ARM helper. Neither binary was rebuilt for packaging.
-The core/helper load and stock clock were verified, and the maintainer
-requested packaging. No detailed CW game, display or input acceptance matrix
-has been reported. Earlier improved movie playback feedback applies to the
-retained movie path; it is not a new speed measurement for this build.
+This package reuses the exact RESET5 FPGA core and CAPTURE1 ARM helper tested
+on the maintainer's MiSTer. Neither binary was rebuilt for packaging. After
+retesting, the maintainer reported that it worked great and requested release
+packaging. This feedback is not a complete game-compatibility or speed matrix.
 
 Focused verification covers CPU/cache returns and collision handling, LCDC
 reads, sound refill/DMA ownership, Engine B line/snapshot ownership, VRAM
@@ -235,11 +234,13 @@ policy with passive tracing disabled. Deliberate broken variants check that
 key tests detect faults. Finite tests and portable memory/scaler simulation
 assumptions do not establish universal hardware compatibility.
 
-Additional CW tests cover both maximum native canvases, direction changes
-within a frame, and the actual menu decode across 512 cases with two negative
-controls. Both direction and menu test suites passed from this curated tree.
+New tests cover cartridge reset ownership, stale video suppression, rotated
+loading messages, and threaded display capture. The capture regression passed
+on the host, ARM emulation, and physical MiSTer; its baseline negative control
+hangs as expected. Earlier TATE direction/menu tests remain applicable to the
+unchanged implementation. See SOURCE_PACKAGE.txt for scope and timing limits.
 
-All 476 frozen FPGA input files match the compiled candidate. Production ARM
+All 478 frozen FPGA source/test inventory files match the compiled candidate. Production ARM
 sources and build configuration match the tested helper build. Source/archive
 hashes and installer contents are checked separately during packaging.
 

@@ -1,126 +1,84 @@
-NDS4MiSTer v0.4.0-beta.1 source — CW/CCW TATE and retained smoother FMV playback
+NDS4MiSTer v0.4.0-beta.2 source — Stability fixes
 
-This snapshot accompanies NDS4MiSTer_Public_Beta_v0.4.0-beta.1_20260914.
-Movie playback is smoother, with occasional audio hitches still possible.
-Video Rotation offers Off / 90 CCW / 90 CW for a physically rotated monitor.
-Engine B and rotation default Off. Engine B changes apply after Reset or ROM reload;
-rotation changes do not require a reset.
+This source accompanies NDS4MiSTer_Public_Beta_v0.4.0-beta.2_20260915.
+The release notes are intentionally limited to: Stability fixes.
 
-Production FPGA and ARM source: 0cca13627c4d27fa45b07c3fe62f25b579c16fe0
-Only documentation and SHA256SUMS change after this production commit. All
-476 frozen FPGA input hashes match TATECW1, and ARM sources/build configuration
-match the tested helper. The exact binaries are reused, with the core renamed
-NDS_20260914.rbf. Neither binary was rebuilt for packaging.
+Production source: 624a24a503359ee68aa11f9c3a03e77bbf5bd4e5
+Only README, release documentation and SHA256SUMS change after this commit.
+FPGA and ARM source are compared with the exact tested builds. The installer
+reuses those binaries; neither was rebuilt for packaging. The dated installer
+core filename is NDS_20260915.rbf; internal FPGA build ID remains260914-RESET5.
 
-Included changes
+Build identities
 ----------------
-- Earlier ARM9 instruction/data returns, eligible load retirement, load-base
-  reuse, and cached-write completion at RAM commit. Preserve collision,
-  reset, maintenance, and request-ownership guards.
-- Joined compatible adjacent LCDC reads, and sound refill access between
-  complete ARM7 DMA transfer units with repeat/resume behavior preserved.
-- Engine B unchanged-line reuse and completed-snapshot ownership transfer
-  without an additional full-image copy in the matched ARM helper.
-- Accepted VRAM victim-storage optimization and equivalent sound-register
-  readback. Passive sound/display diagnostic payloads are omitted to fit.
-  Sound fetch/decode/mix/scheduling, fault/session control, PC heartbeat,
-  ARM runtime telemetry, and the on-screen FPS counter remain.
-- Four-row RGB666 TATE capture through the scaler DDR port, triple frame
-  ownership, complete-frame publication, and native controls. New CW support
-  reuses the existing rotation memory and preserves saved Off/CCW values.
-- Prior CPU/cache and ARM/3D speed work, optional Engine B, Chrono startup,
-  sprite and movie fixes, Kirby and palette graphics, transparency, processor
-  wake-up, touchscreen, sound, cartridge saves, and boot compatibility.
-
-TATE and performance scope
---------------------------
-The picture rotates 90 degrees clockwise or counterclockwise. For a monitor
-turned clockwise, select Video Rotation -> 90 CCW; for a monitor turned
-counterclockwise, select 90 CW. Choose Video Layout -> Top/Bottom for stacked
-screens. Controls retain native DS directions; screen order/gap remain
-available. MiSTer menu rotation is separate; see README.md. There is no
-180-degree option in this release.
-
-TATE replaces normal scaler capture while On. Steady Off operation adds no
-rotation requests or extra request-cycle latency. Shared DDR contention and
-physical placement can still affect performance; zero On cost is not claimed.
-If capture misses its deadline, the previous complete frame stays displayed.
-
-Engine B On restores the second graphics engine using the ARM helper, but
-costs speed and can lag under load. Off copies Engine A to both screen positions.
-No whole-game speed percentage or universal full-speed playback claim is made.
-Audio remains experimental, and occasional movie hitches can remain.
-The slow experimental GX readback correction remains excluded; see:
-https://github.com/SplashDev88/NDS4MiSTer/issues/16
-No credits menu or ARM overclock was added. Networking, microphone, NAND saves,
-and save states are not implemented. Wi-Fi register compatibility is not Wi-Fi.
-
-Build and binary identities
----------------------------
 FPGA project: fpga/mister_nitro_console_island/NDS4MiSTer.qpf
-Quartus: Prime 17.0.2, seed 2
-Build identity: 260914-TATECW1
-FPGA SHA256: 5aa6c45b485fd4c27c1a7ffd8265a9e8351b7afb31cd35d4d2e7faa0c02334be
-FPGA bytes: 4612496
-ARM clocks: 1 GHz
-ARM SHA256: 826d5c95bab26d523c5327cb61384fd13abe540d43e3c91ba89630c12a98d937
-ARM bytes: 2543636
-Kickstart SHA256: 4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc
+Quartus Prime17.0.2, seed2; internal build260914-RESET5.
+FPGA SHA256: 50ca160d67ca0fdbd97a50815564eece8235125b987afa57943afb9cdbf23166
+FPGA bytes:4603544
+ARM helper CAPTURE1, stock1GHz; no overclock.
+ARM SHA256: 67a0c007da13fb00144ab62c93d8d1d5d233b8708f127e3be4f318a0ab115655
+ARM bytes:2543792
+Kickstart SHA256:4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc
 Build instructions: README.md, CMakeLists.txt,
 tools/build_hybrid_3d_service_armhf.sh, tools/run_quartus_docker.sh.
-The helper is unchanged from v0.4.0-beta and newer than beta.13's helper;
-distribute the matched pair.
+Distribute the core and helper together, including the helper checksum manifest.
 
-Validation
-----------
-The TATECW1 core was loaded with the accepted helper at 1 GHz, preserving
-current settings and without a ROM autoload. The maintainer requested this
-package. No detailed CW game, input or display acceptance matrix has been
-reported. Earlier improved movie playback feedback concerns the retained
-movie path; no additional playback or speed gain is claimed for CW.
+Scope and validation
+--------------------
+Cartridge transactions retain physical ownership across guest resets and
+suppress old replies. Video session validity discards old frames/line slots
+without clearing large RAM arrays or abandoning accepted DDR transactions.
+Rotated short OSD messages address their active64-pixel height rather than
+old file-list rows. Engine-B display capture uses the complete-frame 3D fence
+when the fast renderer omits scanline tokens; later fences reuse completion.
+Renderer startup/reset jobs re-arm that completion state.
 
-Focused tests cover CPU/cache/write returns and collisions, LCDC backpressure,
-sound refill/repeated DMA ownership, Engine B line/snapshot ownership, VRAM
-storage equivalence, TATE native canvases and all 262,144 RGB666 colors,
-Avalon stalls, late-frame recovery, and Off pass-through. Sound readback passed
-888,352 checks, full sound-unit comparisons, and three negative controls.
-The final control/heartbeat comparison passed 5,034 paired cycles plus a
-heartbeat-corruption negative control and Engine B session tests. Unchanged
-results were retained only after source-hash comparison. Portable RAM and
-finite scaler tests have modeling/initialization limits and do not prove
-universal hardware correctness or speed.
+The maintainer tested the pair on MiSTer and reported that it worked great,
+then requested packaging. Prior failure evidence involved Strange Journey
+followed by other ROMs staying black. No detailed compatibility or speed
+matrix was reported; no measured speed gain or universal game support claim.
 
-CW-specific tests cover both maximum native canvases, mid-frame direction
-changes, and 512 actual menu-decode cases with two negative controls. Both
-rotation and menu suites passed again from this curated public source.
+Reset/cart/video finite simulations and negative controls passed during
+candidate development. The OSD regression checks301056 pixels across both
+rotated directions and Off; baseline fails20480 checks. Threaded capture
+checks8 modes with4 frames each, compared with an explicit completed-frame
+oracle, including repeated fences and renderer restart. Host and ARM-emulated
+capture/service/lifecycle tests passed; capture also passed on physical MiSTer.
+The unchanged baseline renderer hangs in the new early-capture negative test.
+Earlier test results are retained only for source-identical implementations.
+Simulation and finite oracles do not prove universal hardware behavior.
 
-GPL reference fixtures allow sound/VRAM equivalence tests to run from source
-archives without development Git history. Both archive-ready runners passed
-during v0.4.0-beta packaging, including sound negative controls. Those tests
-and their production/reference inputs remain unchanged. Source/archive hashes,
-installer contents, executable bits, and exact binary identities are checked.
+All478 frozen FPGA source/test inventory files match RESET5. ARM source and
+build configuration match CAPTURE1. Source/archive checksums, install archive
+CRC, contents, file modes and exact binary identities are verified separately.
+FPGA fit:41235 ALMs needed,41101 placed,4191/4191 LABs,510/553 M10K,69/112 DSP.
+Worst setup-13.670ns, hold-0.021ns, recovery-10.889ns, removal+0.406ns.
+Timing is not closed.83 timing rows regress versus beta.1 despite improved
+aggregate worst slack. Playability feedback is the maintainer's acceptance
+criterion; compilation and area figures are not a gameplay speed measurement.
 
-Map, fit, assembly, and timing analysis completed. Resources: 41,258 ALMs
-needed; 41,065 placed; 4,191/4,191 LABs; 510/553 M10K; 69/112 DSP.
-Compared with v0.4.0-beta: +20 ALMs needed, +43 placed, no extra RAM or DSPs.
-Worst setup -15.252 ns; hold -0.233 ns; recovery -10.937 ns; removal +0.258 ns.
-Setup worsened by 1.379 ns; hold improved by 0.133 ns. No hardware speed
-conclusion follows from successful compilation or unchanged movie/audio RTL.
-Timing is not closed. Unused ALMs do not establish freely placeable headroom
-when every LAB is occupied. Broader hardware regression remains. Omitted
-passive diagnostic words are not evidence of zero sound/display stalls.
+Retained behavior and limitations
+---------------------------------
+Engine B defaults Off, with changes applied on Reset or ROM reload. Off copies
+Engine A to both screen positions. On restores the second engine at a speed
+cost. CW/CCW TATE, native input rotation, earlier movie/audio and ARM speed
+work, Chrono/Kirby/palette fixes, touchscreen and cartridge saves remain.
+Movies/audio can still hitch; demanding games can fail or run slowly.
+The slow experimental Pokemon GX readback correction remains excluded:
+https://github.com/SplashDev88/NDS4MiSTer/issues/16
+No credits menu was added. Networking, microphone, NAND saves and save states
+remain unimplemented. Wi-Fi register compatibility does not provide networking.
 
-Source contents and licensing
------------------------------
-Contains FPGA/ARM sources, build/test scripts, generated-image source for free
-boot code, and component licenses. GitHub's automatic Source code zip/tar.gz
-links provide matching source; no duplicate source ZIP is uploaded. SHA256SUMS
-covers every other tracked source file. Commercial ROMs, console BIOS/firmware
-dumps, personal saves, credentials, captures, personal paths, compiled databases,
-and release binaries are excluded. Installable binaries ship separately.
+Source distribution and licenses
+--------------------------------
+GitHub's automatic Source code(zip/tar.gz) links provide the matching tagged
+source; no duplicate source ZIP is uploaded. SHA256SUMS covers every other
+tracked file. Sources, build/test scripts, free boot-code generation sources,
+and component licenses are included. Commercial ROMs, BIOS/firmware dumps,
+personal saves, credentials, captures and release binaries are excluded.
 
 Distributed under GPLv3; see LICENSE.txt. Vendored licenses/notices remain in
 third_party/ and the MiSTer project. Credits include the MiSTer community,
 FPGAzumSpass's GBA CPU lineage, Nitro_DarkSide, melonDS, heni, srg320, ElectronAsh,
-Corn, skmp, and InsaneFriend (GitHub: saneFriend). See README.md and component
-attribution files. No credits menu was added.
+Corn, skmp, and InsaneFriend(GitHub:saneFriend). Full attribution remains in
+README.md and component notices. No credits menu was added.
