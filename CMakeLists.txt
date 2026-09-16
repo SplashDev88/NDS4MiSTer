@@ -78,6 +78,13 @@ target_compile_options(nds_headless_save PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(nds_headless_save PUBLIC Threads::Threads)
 
 if(BUILD_TESTING)
+    add_executable(nds_h3d_memory_mapping_test
+        src/replay/Hybrid3DMemoryMappingTest.cpp)
+    target_include_directories(nds_h3d_memory_mapping_test PRIVATE src)
+    target_compile_options(nds_h3d_memory_mapping_test PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME nds_h3d_memory_mapping COMMAND nds_h3d_memory_mapping_test)
+
     add_executable(nds_headless_save_test
         src/replay/HeadlessSaveManagerTest.cpp)
     target_include_directories(nds_headless_save_test PRIVATE src)

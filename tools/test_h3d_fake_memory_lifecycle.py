@@ -143,24 +143,12 @@ def stop_service(process: subprocess.Popen[str]) -> None:
     )
 
 
-def verify_source_window_contract() -> None:
-    source = (Path(__file__).resolve().parents[1] /
-              "src" / "replay" / "Hybrid3DService.cpp").read_text()
-    require("constexpr std::size_t MappingBytes = 0x400000;" in source,
-            "service mapping length is no longer the H3D window length")
-    require("constexpr off_t PhysicalBase = 0x3fc00000;" in source,
-            "service physical mapping base is no longer 0x3fc00000")
-    require("physical ? PhysicalBase : 0" in source,
-            "/dev/mem mapping no longer uses the fixed physical base")
-
-
 def main(argv: list[str]) -> int:
     if len(argv) != 1:
         print(f"usage: {Path(sys.argv[0]).name} SERVICE", file=sys.stderr)
         return 2
     executable = Path(argv[0]).resolve()
     require(executable.is_file(), f"service does not exist: {executable}")
-    verify_source_window_contract()
 
     guard = bytes((index * 29 + 7) & 0xFF for index in range(GUARD_BYTES))
     with tempfile.TemporaryDirectory(prefix="h3d-memory-lifecycle-") as temporary:

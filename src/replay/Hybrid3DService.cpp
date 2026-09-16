@@ -7,6 +7,7 @@
 #include "replay/FpgaCrashMonitor.h"
 #include "replay/Hybrid3DAbi.h"
 #include "replay/Hybrid3DFramePacket.h"
+#include "replay/Hybrid3DMemoryMapping.h"
 #include "replay/Hybrid3DSessionPolicy.h"
 #include "replay/ReplaySpscState.h"
 
@@ -85,9 +86,9 @@ constexpr std::size_t Bank0Offset = 0x100000;
 constexpr std::size_t Bank1Offset = 0x140000;
 constexpr std::size_t EngineBFramebufferOffset = 0x180000;
 constexpr std::size_t FramebufferOffset = 0x200000;
-constexpr off_t PhysicalBase = 0x3fc00000;
-constexpr std::size_t PublicationMappingBytes = MappingBytes - Bank0Offset;
-constexpr off_t PublicationPhysicalBase = PhysicalBase + Bank0Offset;
+static_assert(MappingBytes == nds4mister::h3d::memory::WindowBytes);
+static_assert(Bank0Offset == nds4mister::h3d::memory::ControlBytes);
+static_assert(frame_packet::MappingBytes <= Bank0Offset);
 constexpr const char* PlaneStatsPath = "/tmp/nds-h3d-plane-stats.log";
 constexpr const char* PipelineProfilePath =
     "/tmp/nds-h3d-pipeline-profile.log";
@@ -204,106 +205,6 @@ std::uint64_t parse_count(const char* text, const char* name)
         throw std::runtime_error(std::string("invalid ") + name);
     return value;
 }
-
-class Mapping {
-public:
-    explicit Mapping(const std::string& path)
-    {
-        const bool physical = path == "/dev/mem";
-        fd_ = open(path.c_str(), O_RDWR | O_SYNC | O_CLOEXEC);
-        if (fd_ < 0) system_error("open " + path);
-
-        if (!physical) {
-            struct stat status {};
-            if (fstat(fd_, &status)) system_error("stat " + path);
-            if (status.st_size < static_cast<off_t>(MappingBytes))
-                throw std::runtime_error(
-                    "memory file is smaller than 0x400000 bytes");
-        }
-
-        bytes_ = mmap(
-            nullptr, MappingBytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd_,
-            physical ? PhysicalBase : 0);
-        if (bytes_ == MAP_FAILED) {
-            bytes_ = nullptr;
-            system_error("map " + path);
-        }
-    }
-
-    Mapping(const Mapping&) = delete;
-    Mapping& operator=(const Mapping&) = delete;
-
-    ~Mapping()
-    {
-        if (bytes_) munmap(bytes_, MappingBytes);
-        if (fd_ >= 0) close(fd_);
-    }
-
-    void* data() const { return bytes_; }
-
-private:
-    int fd_ = -1;
-    void* bytes_ = nullptr;
-};
-
-// DreamSTer avoids turning every framebuffer word into a separate ordered
-// AXI transaction by mapping only its bulk pixel window as Normal
-// Non-Cacheable/write-combined memory. Keep H3D control, packet, and ownership
-// fields on /dev/mem's Device mapping; an unavailable or incompatible helper
-// therefore degrades to the existing known-good path without changing any
-// protocol behavior.
-class WriteCombinedPublicationMapping {
-public:
-    explicit WriteCombinedPublicationMapping(bool enabled)
-    {
-        if (!enabled) return;
-        const char* device = "/dev/nds_mem_wc";
-        int fd = open(device, O_RDWR | O_SYNC | O_CLOEXEC);
-        if (fd < 0) {
-            // Also accept DreamSTer's original general-purpose helper when a
-            // user already has it installed. The NDS package ships the
-            // restricted node above and never requires unrestricted mapping.
-            device = "/dev/mem_wc";
-            fd = open(device, O_RDWR | O_SYNC | O_CLOEXEC);
-        }
-        if (fd < 0) {
-            std::cerr << "H3D: write-combined device unavailable ("
-                      << std::strerror(errno)
-                      << "); using Device-memory publication\n";
-            return;
-        }
-        void* mapped = mmap(
-            nullptr, PublicationMappingBytes, PROT_READ | PROT_WRITE,
-            MAP_SHARED, fd, PublicationPhysicalBase);
-        const int map_error = errno;
-        close(fd);
-        if (mapped == MAP_FAILED) {
-            std::cerr << "H3D: " << device << " publication map failed ("
-                      << std::strerror(map_error)
-                      << "); using Device-memory publication\n";
-            return;
-        }
-        bytes_ = mapped;
-        std::cout << "H3D: write-combined 3D publication enabled via "
-                  << device << '\n';
-    }
-
-    WriteCombinedPublicationMapping(
-        const WriteCombinedPublicationMapping&) = delete;
-    WriteCombinedPublicationMapping& operator=(
-        const WriteCombinedPublicationMapping&) = delete;
-
-    ~WriteCombinedPublicationMapping()
-    {
-        if (bytes_) munmap(bytes_, PublicationMappingBytes);
-    }
-
-    void* data() const { return bytes_; }
-    bool active() const { return bytes_ != nullptr; }
-
-private:
-    void* bytes_ = nullptr;
-};
 
 class SingletonLock {
 public:
@@ -735,7 +636,8 @@ public:
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
           separate_publication_mapping_(publication_mapping != nullptr),
-          header_(*checked_header(mapping, mapping_size)),
+          header_(*checked_header(mapping, mapping_size,
+                                  publication_mapping != nullptr)),
           consumer_(
               mapping, mapping_size,
               !texture_trace_path.empty()),
@@ -1115,10 +1017,12 @@ private:
     // the last completed bank while authoritative input catches up.
     static constexpr std::uint32_t ReplayRenderCadence = 8;
 
-    static Header* checked_header(void* mapping, std::size_t mapping_size)
+    static Header* checked_header(void* mapping, std::size_t mapping_size,
+                                  bool separate_publication)
     {
-        if (!mapping || mapping_size < MappingBytes)
-            throw std::runtime_error("H3D1 mapping is smaller than 0x400000 bytes");
+        const auto required = separate_publication ? Bank0Offset : MappingBytes;
+        if (!mapping || mapping_size < required)
+            throw std::runtime_error("H3D1 mapping is smaller than its control window");
         return static_cast<Header*>(mapping);
     }
 
@@ -5065,6 +4969,7 @@ void run_self_test()
     // Production no longer transports 263 HBlank records per frame. Prove
     // that line 0 plus line 192, with one tagged mid-frame write, expands to
     // a complete Engine-B image and publishes the composite descriptor.
+    for (unsigned mapping_mode : {0u, 1u, 2u})
     for (bool pixels_enabled : {false, true})
     for (bool direct_publication : {false, true})
     for (bool async_replay : {false, true}) {
@@ -5072,6 +4977,20 @@ void run_self_test()
         std::fill(sparse_fixture.bytes.begin() + EngineBFramebufferOffset,
                   sparse_fixture.bytes.begin() + FramebufferOffset,
                   std::byte {0xa5});
+        // Exercise the actual service with a truthful one-MiB control extent
+        // and independent pixel storage for both Device and WC publication.
+        // Poison the exterior pages to detect an offset/bounds regression.
+        constexpr std::size_t GuardBytes = 4096;
+        std::vector<std::byte> separate_pixels(
+            nds4mister::h3d::memory::PublicationBytes + 2 * GuardBytes,
+            std::byte {0xcd});
+        auto* published_pixels = mapping_mode ?
+            separate_pixels.data() + GuardBytes :
+            sparse_fixture.bytes.data() + Bank0Offset;
+        if (mapping_mode) {
+            std::copy(sparse_fixture.bytes.begin() + Bank0Offset,
+                      sparse_fixture.bytes.end(), published_pixels);
+        }
         auto tagged_write = packet_record(
             frame_packet::RecordKind::Gpu2DRegister,
             static_cast<std::uint8_t>(AccessWidth::Half), 0x03,
@@ -5106,9 +5025,11 @@ void run_self_test()
             1, 1, frame_packet::FlagFrameEnd,
             pixels_enabled ? sparse_frame : off_frame);
         Hybrid3DService sparse_service(
-            sparse_fixture.bytes.data(), sparse_fixture.bytes.size(),
+            sparse_fixture.bytes.data(),
+            mapping_mode ? Bank0Offset : sparse_fixture.bytes.size(),
             {}, true, false, false, async_replay, true, false, nullptr,
-            nullptr, false, direct_publication, true);
+            mapping_mode ? published_pixels : nullptr,
+            mapping_mode == 2, direct_publication, true);
         if (!sparse_service.initialize())
             self_test_fail("sparse Engine-B service initialization failed");
         bool sparse_applied = false;
@@ -5160,8 +5081,7 @@ void run_self_test()
             const auto engine_b_bank = (bank >> 1) & 1u;
             const auto* engine_b_pixels =
                 reinterpret_cast<const std::uint32_t*>(
-                    sparse_fixture.bytes.data() +
-                    EngineBFramebufferOffset +
+                    published_pixels + EngineBFramebufferOffset - Bank0Offset +
                     engine_b_bank * nds4mister::h3d::EngineBBankStride);
             sparse_engine_b_pixel = engine_b_pixels[0];
             break;
@@ -5207,19 +5127,34 @@ void run_self_test()
                 profile.EngineBSpriteLines != 0 ||
                 sparse_service.engine_b_copied_bytes_for_test() != 0 ||
                 !std::all_of(
-                    sparse_fixture.bytes.begin() + EngineBFramebufferOffset,
-                    sparse_fixture.bytes.begin() + FramebufferOffset,
+                    published_pixels + EngineBFramebufferOffset - Bank0Offset,
+                    published_pixels + FramebufferOffset - Bank0Offset,
                     [](std::byte b) { return b == std::byte {0xa5}; }))))
             self_test_fail("Off/On B raster, copies, snapshot or DDR mismatch");
         if (direct_publication !=
                 (sparse_service.direct_plane_publications_for_test() != 0))
             self_test_fail("Engine-B policy test missed direct publication");
+        if (mapping_mode) {
+            if (!std::all_of(separate_pixels.begin(),
+                             separate_pixels.begin() + GuardBytes,
+                             [](std::byte b) { return b == std::byte {0xcd}; }) ||
+                !std::all_of(separate_pixels.end() - GuardBytes,
+                             separate_pixels.end(),
+                             [](std::byte b) { return b == std::byte {0xcd}; }))
+                self_test_fail("split publication crossed a mapping boundary");
+            for (std::size_t offset = Bank0Offset; offset < MappingBytes; ++offset) {
+                const auto expected = offset >= EngineBFramebufferOffset &&
+                    offset < FramebufferOffset ? std::byte {0xa5} : std::byte {};
+                if (sparse_fixture.bytes[offset] != expected)
+                    self_test_fail("split publication touched old Device alias");
+            }
+        }
         sparse_fixture.header->magic = QuiesceMagic;
         if (sparse_service.engine_b_snapshot_available())
             self_test_fail("old-session B snapshot remained available");
     }
     std::cout << "H3D_ENGINE_B_POLICY_SELF_TEST_PASS "
-                 "publication_modes=8 strict_abi=1 off_pixel_copy_ddr=0\n";
+                 "publication_modes=24 split_device_wc=1 strict_abi=1 off_pixel_copy_ddr=0\n";
 
     // Exercise the real snapshot/reservation/enqueue path while the publisher
     // owns an unacknowledged frame. Successors replace the pending frame, but
@@ -7762,10 +7697,14 @@ try {
 
     if (!nds4mister::crash::install_arm_crash_handler())
         throw std::runtime_error("could not install ARM crash handlers");
-    Mapping mapping(memory_path);
-    WriteCombinedPublicationMapping publication_mapping(
-        memory_path == "/dev/mem");
+    const bool disable_wc = nds4mister::h3d::memory::disable_write_combining(
+        std::getenv("NDS4MISTER_H3D_DISABLE_WC"));
+    // Acquire ownership before mapping: even a rejected second process must
+    // not temporarily alias the live publisher with different ARM attributes.
     SingletonLock singleton;
+    nds4mister::h3d::memory::Mapping mapping(memory_path, disable_wc);
+    if (!mapping.mode_message().empty())
+        std::cout << mapping.mode_message() << std::endl;
     auto& header = *static_cast<Header*>(mapping.data());
     CrashHeaderRegistration crash_header(header);
     nds4mister::crash::FpgaRuntimeTelemetry runtime_telemetry;
@@ -7831,7 +7770,7 @@ try {
             if (memory_path == "/dev/mem")
                 bind_current_thread_to_cpu(0);
             auto candidate = std::make_unique<Hybrid3DService>(
-                mapping.data(), MappingBytes,
+                mapping.data(), mapping.size(),
                 memory_path == "/dev/mem" && trace_requested &&
                         std::strcmp(trace_requested, "0") != 0 ?
                     "/tmp/nds-h3d-texture-roundtrip.h3t" : "",
@@ -7842,8 +7781,8 @@ try {
                 diagnostics,
                 memory_path == "/dev/mem",
                 &runtime_telemetry,
-                publication_mapping.data(),
-                publication_mapping.active(),
+                mapping.publication_data(),
+                mapping.write_combined(),
                 direct_publication,
                 true);
             const bool initialized = candidate->initialize();

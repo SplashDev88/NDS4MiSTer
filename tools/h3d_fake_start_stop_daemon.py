@@ -137,6 +137,14 @@ def main(argv: list[str]) -> int:
                   file=sys.stderr)
             return 2
         environment = os.environ.copy()
+        capture_path = environment.get("H3D_FAKE_ENV_CAPTURE")
+        if capture_path:
+            Path(capture_path).write_text(json.dumps({
+                key: environment.get(key) for key in (
+                    "NDS4MISTER_H3D_DISABLE_WC",
+                    "NDS4MISTER_H3D_DIAGNOSTICS",
+                    "NDS4MISTER_DIRECT_PLANE_PUBLICATION")
+            }), encoding="utf-8")
         environment["H3D_FAKE_SERVICE_MARKER"] = str(marker)
         marker.write_text("running\n", encoding="ascii")
         child = subprocess.Popen(

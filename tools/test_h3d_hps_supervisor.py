@@ -426,6 +426,24 @@ def main() -> int:
             require(logfile.stat().st_size == 65536,
                     "stopped logfile was not bounded to 64 KiB")
 
+            # A/B changes only the publication mapping. The real launcher must
+            # forward both explicit choices, preserving production diagnostics
+            # Off and the existing direct-publication fast path.
+            env_capture = runtime / "helper-environment.json"
+            environment["H3D_FAKE_ENV_CAPTURE"] = str(env_capture)
+            environment["NDS4MISTER_H3D_DIAGNOSTICS"] = "0"
+            for mode in ("0", "1"):
+                environment["NDS4MISTER_H3D_DISABLE_WC"] = mode
+                run_control("start", environment)
+                captured = json.loads(env_capture.read_text())
+                require(captured == {
+                    "NDS4MISTER_H3D_DISABLE_WC": mode,
+                    "NDS4MISTER_H3D_DIAGNOSTICS": "0",
+                    "NDS4MISTER_DIRECT_PLANE_PUBLICATION": "1",
+                }, "launcher changed A/B or production rendering settings")
+                run_control("stop", environment)
+            environment.pop("NDS4MISTER_H3D_DISABLE_WC")
+
             # A changed executable is rejected before start-stop-daemon sees a
             # launch request.
             with service.open("ab") as output:

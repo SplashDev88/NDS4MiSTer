@@ -21,8 +21,10 @@ if [[ -n "$source_wc_module" ]]; then
         echo "FAIL: WC module is not a 32-bit ARM kernel module" >&2
         exit 1
     fi
-    if ! strings "$source_wc_module" | grep -Fqx \
-        'vermagic=5.15.1-MiSTer SMP mod_unload ARMv7 p2v8 '; then
+    # Consume strings completely: grep -q can SIGPIPE the producer under
+    # pipefail for modules containing debug sections, rejecting a valid match.
+    if ! strings "$source_wc_module" | grep -Fx \
+        'vermagic=5.15.1-MiSTer SMP mod_unload ARMv7 p2v8 ' >/dev/null; then
         echo "FAIL: WC module vermagic does not match MiSTer 5.15.1" >&2
         exit 1
     fi

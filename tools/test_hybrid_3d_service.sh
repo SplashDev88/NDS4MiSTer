@@ -58,6 +58,11 @@ if [[ -z "$build_dir" ]]; then
     "$cmake_bin" --build "$build_dir" --target core -j 8 >/dev/null
 fi
 
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Werror -pedantic \
+    -I"$repo_dir/src" "$repo_dir/src/replay/Hybrid3DMemoryMappingTest.cpp" \
+    -o "$tmp_dir/h3d_memory_mapping_test"
+"$tmp_dir/h3d_memory_mapping_test"
+
 link_options=(-pthread)
 if [[ $(uname -s) != Darwin ]]; then
     link_options+=(-ldl)
