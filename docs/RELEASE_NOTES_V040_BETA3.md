@@ -1,6 +1,6 @@
 # NDS4MiSTer v0.4.0-beta.3
 
-**A faster path for moving 3D graphics to the FPGA.**
+**Faster 3D graphics transfers with write-combining memory.**
 
 ## What's new
 
