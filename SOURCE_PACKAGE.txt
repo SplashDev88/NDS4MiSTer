@@ -1,85 +1,106 @@
-NDS4MiSTer v0.4.0-beta.2 source — Stability fixes
+NDS4MiSTer v0.4.0-beta.3 source — Write-combining graphics transfers
 
-This source accompanies NDS4MiSTer_Public_Beta_v0.4.0-beta.2_20260915.
-The What's new section says only: Stability fixes. The release notes retain
-the installation, TATE, Engine B, known-issues, files and credits sections.
-
-Production source: 624a24a503359ee68aa11f9c3a03e77bbf5bd4e5
-Only README, release documentation and SHA256SUMS change after this commit.
-FPGA and ARM source are compared with the exact tested builds. The installer
-reuses those binaries; neither was rebuilt for packaging. The dated installer
-core filename is NDS_20260915.rbf; internal FPGA build ID remains260914-RESET5.
+This source accompanies NDS4MiSTer_Public_Beta_v0.4.0-beta.3_20260916.
+Production source: afbace0d2f062432c8a650ee98a2cfa804a563e6
+Only release documentation, module build records/configuration, package auditing
+and SHA256SUMS change after this commit. All runtime source matches the frozen
+WC candidate; all 478 FPGA source/test inventory entries match accepted RESET5.
+No binaries were rebuilt while packaging. The installer core is renamed
+NDS_20260916.rbf; its internal build ID remains 260914-RESET5.
 
 Build identities
 ----------------
 FPGA project: fpga/mister_nitro_console_island/NDS4MiSTer.qpf
-Quartus Prime17.0.2, seed2; internal build260914-RESET5.
+Quartus Prime 17.0.2, seed 2. Same FPGA binary as v0.4.0-beta.2.
 FPGA SHA256: 50ca160d67ca0fdbd97a50815564eece8235125b987afa57943afb9cdbf23166
-FPGA bytes:4603544
-ARM helper CAPTURE1, stock1GHz; no overclock.
-ARM SHA256: 67a0c007da13fb00144ab62c93d8d1d5d233b8708f127e3be4f318a0ab115655
-ARM bytes:2543792
-Kickstart SHA256:4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc
-Build instructions: README.md, CMakeLists.txt,
-tools/build_hybrid_3d_service_armhf.sh, tools/run_quartus_docker.sh.
-Distribute the core and helper together, including the helper checksum manifest.
+FPGA bytes: 4603544
+ARM helper SHA256: 329d74a7f4c43328b033a41984e933fc9b449fa4ee7d67b26646c7b2409db79e
+ARM bytes: 2544580
+Kickstart SHA256: ee56872dad6fd944358a0e9e528b8175712574ba90ee0f3f6c9503b0b1ac13d2
+WC module SHA256: c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113
+WC module bytes: 126120
+ARM GCC 13.3.0, Cortex-A9/NEON hard-float, static, -O3, release LTO; existing
+fast renderer flags unchanged. Stock 1 GHz; no overclock.
+Helper instructions: tools/build_hybrid_3d_service_armhf.sh and CMakeLists.txt.
+Module source, Makefile, exact prepared kernel config, build script, dependency
+archive URLs/hashes and GPL-2.0 license: kernel/nds_mem_wc/.
+Module compiler: Arm GNU Toolchain 10.2-2020.11, GCC 10.2.1.
+Kernel source: Linux-Kernel_MiSTer 794e6f002d0f655c504733c126a01f8c1f0bc1d4.
+Module vermagic: 5.15.1-MiSTer SMP mod_unload ARMv7 p2v8.
 
-Scope and validation
---------------------
-Cartridge transactions retain physical ownership across guest resets and
-suppress old replies. Video session validity discards old frames/line slots
-without clearing large RAM arrays or abandoning accepted DDR transactions.
-Rotated short OSD messages address their active64-pixel height rather than
-old file-list rows. Engine-B display capture uses the complete-frame 3D fence
-when the fast renderer omits scanline tokens; later fences reuse completion.
-Renderer startup/reset jobs re-arm that completion state.
+Change and compatibility
+------------------------
+Kickstart verifies and normally loads the optional restricted WC module.
+The helper uses Device control/packet memory at 0x3fc00000 for 1 MiB, and a
+separate WC-or-Device pixel window at 0x3fd00000 for 3 MiB. Singleton ownership
+precedes all mappings. Control and pixel mappings never overlap; existing
+publication barriers, session checks, banking and rendering remain unchanged.
 
-The maintainer tested the pair on MiSTer and reported that it worked great,
-then requested packaging. Prior failure evidence involved Strange Journey
-followed by other ROMs staying black. No detailed compatibility or speed
-matrix was reported; no measured speed gain or universal game support claim.
+An absent or kernel-rejected optional module falls back to Device pixel
+publication. A partial/corrupt module+checksum pair is rejected by Kickstart;
+re-extract the full package. No forced module insertion, kernel replacement,
+permanent boot service or clock changes are included. Normal load, aperture
+checks and unload passed on the test MiSTer. Matching vermagic alone is not
+proof of compatibility with every other kernel build.
 
-Reset/cart/video finite simulations and negative controls passed during
-candidate development. The OSD regression checks301056 pixels across both
-rotated directions and Off; baseline fails20480 checks. Threaded capture
-checks8 modes with4 frames each, compared with an explicit completed-frame
-oracle, including repeated fences and renderer restart. Host and ARM-emulated
-capture/service/lifecycle tests passed; capture also passed on physical MiSTer.
-The unchanged baseline renderer hangs in the new early-capture negative test.
-Earlier test results are retained only for source-identical implementations.
-Simulation and finite oracles do not prove universal hardware behavior.
+The module was built using modules_prepare without Module.symvers and with
+CONFIG_MODVERSIONS disabled. Six unresolved modpost import warnings were
+checked against live symbols and the pinned source's EXPORT_SYMBOL entries;
+normal hardware insertion then succeeded. The exact prepared config differs
+from the captured live config only by an added disabled CONFIG_HID_VADER4 entry.
+The pinned kernel is the module build dependency, not a claim about the source
+commit used to build the running test kernel. See module build provenance.
 
-All478 frozen FPGA source/test inventory files match RESET5. ARM source and
-build configuration match CAPTURE1. Source/archive checksums, install archive
-CRC, contents, file modes and exact binary identities are verified separately.
-FPGA fit:41235 ALMs needed,41101 placed,4191/4191 LABs,510/553 M10K,69/112 DSP.
-Worst setup-13.670ns, hold-0.021ns, recovery-10.889ns, removal+0.406ns.
-Timing is not closed.83 timing rows regress versus beta.1 despite improved
-aggregate worst slack. Playability feedback is the maintainer's acceptance
-criterion; compilation and area figures are not a gameplay speed measurement.
+Measurements and validation
+---------------------------
+Device/WC/Device production pixel-publication comparison at stock 1 GHz:
+all changed pixels averaged 9.294 / 1.823 / 9.286 ms (80.4% less time);
+one in sixteen blocks changed averaged 1.724 / 1.172 / 1.667 ms (29.7–32.0%).
+All 336 readbacks matched; 8 warmups + 48 measurements per workload per run.
+This includes comparisons/packing/stores/barriers and the existing WC NEON
+writer; it excludes real FPGA ACK waiting and is not a game-FPS measurement.
+Sparse WC maximum latency exceeded one Device repeat despite better mean/p95.
+No universal hitch reduction or measured whole-game speed percentage is claimed.
+
+Normal NSMB checks reached animated menus, its opening movie and World 1 map.
+The maintainer reported a large perceived WC speed gain with an experimental
+arbitration core, then requested the accepted FPGA with WC and this package.
+That user comparison does not isolate WC-only FPS. This package excludes the
+experimental FPGA. Final-pair gameplay/audio and reset/ROM-switch qualification
+is limited. Strange Journey's intro freeze persists in both memory modes.
+
+Source-identical host and ARM-emulated tests passed: ABI, mapping alias/bounds,
+fallback/cleanup, singleton and lifecycle, launcher/hash handling, 24 service
+Engine B/publisher/replay combinations and full-frame display capture. Packaging
+checks the matching source, manifests, exact binary identities, complete source
+archive, ZIP CRC/contents/modes, and the public-source/history audit. Hardware
+results and bounded tests do not establish universal game compatibility.
+
+FPGA resources and timing are unchanged from beta.2: 41235 ALMs needed,
+41101 placed, 4191/4191 LABs, 510/553 M10K, 69/112 DSP.
+Worst setup -13.670 ns, hold -0.021 ns, recovery -10.889 ns, removal +0.406 ns.
+Timing is not closed. The prior RESET5 report has 83 timing rows regressing
+versus beta.1. This release introduces no new FPGA routing or area change.
 
 Retained behavior and limitations
 ---------------------------------
-Engine B defaults Off, with changes applied on Reset or ROM reload. Off copies
-Engine A to both screen positions. On restores the second engine at a speed
-cost. CW/CCW TATE, native input rotation, earlier movie/audio and ARM speed
-work, Chrono/Kirby/palette fixes, touchscreen and cartridge saves remain.
-Movies/audio can still hitch; demanding games can fail or run slowly.
-The slow experimental Pokemon GX readback correction remains excluded:
-https://github.com/SplashDev88/NDS4MiSTer/issues/16
+Engine B defaults Off and changes on Reset/ROM reload. Off copies Engine A to
+both screen positions; On restores Engine B at a performance cost. CW/CCW TATE,
+rotated controls, stability/ROM-switch fixes, smoother movies and audio,
+Chrono/Kirby/palette fixes, touchscreen and cartridge saves remain.
+Movies/audio can still hitch and games may run slowly, glitch or crash.
+Pokemon's slow GX readback correction remains excluded (GitHub issue #16).
 No credits menu was added. Networking, microphone, NAND saves and save states
 remain unimplemented. Wi-Fi register compatibility does not provide networking.
 
 Source distribution and licenses
 --------------------------------
-GitHub's automatic Source code(zip/tar.gz) links provide the matching tagged
-source; no duplicate source ZIP is uploaded. SHA256SUMS covers every other
-tracked file. Sources, build/test scripts, free boot-code generation sources,
-and component licenses are included. Commercial ROMs, BIOS/firmware dumps,
-personal saves, credentials, captures and release binaries are excluded.
-
-Distributed under GPLv3; see LICENSE.txt. Vendored licenses/notices remain in
-third_party/ and the MiSTer project. Credits include the MiSTer community,
-FPGAzumSpass's GBA CPU lineage, Nitro_DarkSide, melonDS, heni, srg320, ElectronAsh,
-Corn, skmp, and InsaneFriend(GitHub:saneFriend). Full attribution remains in
-README.md and component notices. No credits menu was added.
+Use GitHub's automatic Source code (zip/tar.gz) links at the matching tag;
+no duplicate source ZIP is uploaded. SHA256SUMS covers every other tracked
+source file. Release binaries remain in the installer only. Commercial ROMs,
+BIOS/firmware dumps, personal saves, credentials and captures are excluded.
+The main project is GPLv3; see LICENSE.txt. The separate WC module is GPL-2.0;
+see kernel/nds_mem_wc/COPYING. Its license and source location are also included
+in the installer. Existing component licenses and attribution are preserved.
+Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni,
+skmp/DreamSTer, srg320, ElectronAsh, Corn and InsaneFriend (saneFriend).

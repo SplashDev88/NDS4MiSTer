@@ -1,14 +1,36 @@
-# Write-combined publication A/B candidate — 2026-09-16
+# Write-combined publication — v0.4.0-beta.3
 
-This software-only experiment starts from accepted helper source
-`b2b8f12fd1f0ccdfd2f82916d74abda1dcc73f67`. It changes no FPGA RTL, emulated
-CPU behavior, clocks, rendering math, Engine B/TATE policy, audio, saves,
-frame admission or pacing. Hardware improvement is not yet established.
+This software-only release builds on the accepted v0.4.0-beta.2 FPGA and ARM
+renderer. The FPGA binary is unchanged. It changes no emulated CPU behavior,
+clocks, rendering math, Engine B/TATE policy, audio, saves or frame pacing.
 
-The accepted helper already had WC/NEON pixel publication and a Device-memory
-fallback. The module was absent from the inspected installation and recent
-release packages. This candidate restores its tracked source and provides a
-controlled test of that existing path.
+The earlier helper already had a WC/NEON pixel path, but recent releases did
+not include the driver. This release includes a restricted driver, prevents
+Device/WC aliases, and acquires singleton ownership before any physical mapping.
+
+## Measured result and limits
+
+A controlled Device → WC → Device test at stock 1 GHz measured the complete
+production pixel-publication routine with deterministic Engine A+B images:
+
+| Changed pixels | Device 1 | WC | Device 2 | Mean time reduction |
+| --- | ---: | ---: | ---: | ---: |
+| All | 9.294 ms | 1.823 ms | 9.286 ms | 80.4% |
+| One in sixteen blocks | 1.724 ms | 1.172 ms | 1.667 ms | 29.7–32.0% |
+
+Each workload had 8 warmups and 48 measured publications per run. All 336 pixel
+readbacks matched. The gain includes the existing bulk/NEON pixel writer;
+it is not a pure DDR-bandwidth or game-FPS result. Descriptor/ACK storage was
+private heap memory, so real FPGA ACK waiting was excluded. Sparse WC worst-case
+latency exceeded one Device run despite lower mean and p95; universal hitch
+reduction is not established.
+
+Normal NSMB tests reached animated menus, its movie and world map. The user
+reported a large perceived speed gain on a WC test with experimental FPGA
+arbitration; that comparison does not isolate WC-only game FPS. This package
+uses the accepted stability FPGA, excluding that experimental arbitration.
+Broad gameplay/audio and reset/ROM-switch qualification on the final WC pair
+remains limited. Strange Journey still freezes during the intro in both modes.
 
 ## Mapping change
 
@@ -55,8 +77,9 @@ env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
 ```
 
 Use `0` for WC, confirm its startup log and `/proc/PID/maps`, then follow the
-normal core/ROM lifecycle. This document does not itself install or execute
-anything on the board. The private payload is not a release installer.
+normal core/ROM lifecycle. These commands are for developer comparison; ordinary users just run the
+release Kickstart launcher. The driver is optional and kernel rejection falls
+back to Device publication. There is no forced loading or kernel replacement.
 
 Observe the same movie/3D scene for at least two minutes and use an A/B/A
 comparison. Evaluate complete-frame progress, image correctness, audio,
@@ -70,7 +93,7 @@ helper/launcher/hash files and original absence/presence of the optional
 module pair, then reloads the accepted core normally. Do not overwrite saves,
 change settings or force-kill MiSTer.
 
-## Offline verification
+## Verification
 
 The physical mapping test uses real shared temporary files with syscall
 injection, never `/dev/mem`. It covers both WC nodes, rejected/absent nodes,
@@ -87,3 +110,7 @@ module/hash handling and the accepted display-capture oracle remain required.
 The launcher test verifies that both A/B choices arrive with diagnostics Off
 and direct publication On. Host and emulated ARM results are not hardware
 throughput measurements.
+
+Normal module insertion, restricted aperture checks and unloading also passed
+on the physical MiSTer running Linux 5.15.1. See kernel/nds_mem_wc for the exact
+source, kernel configuration, build instructions, provenance and GPL-2.0 license.

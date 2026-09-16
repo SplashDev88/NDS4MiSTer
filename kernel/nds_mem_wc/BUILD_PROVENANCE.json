@@ -1,0 +1,30 @@
+{
+  "release": "v0.4.0-beta.3",
+  "module_sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+  "compiler": "arm-none-linux-gnueabihf-gcc (GNU Toolchain for the A-profile Architecture 10.2-2020.11 (arm-10.16)) 10.2.1 20201103",
+  "kernel_commit": "794e6f002d0f655c504733c126a01f8c1f0bc1d4",
+  "kernel_url": "https://codeload.github.com/MiSTer-devel/Linux-Kernel_MiSTer/tar.gz/794e6f002d0f655c504733c126a01f8c1f0bc1d4",
+  "toolchain_url": "https://developer.arm.com/-/media/Files/downloads/gnu-a/10.2-2020.11/binrel/gcc-arm-10.2-2020.11-aarch64-arm-none-linux-gnueabihf.tar.xz",
+  "archives": [
+    {
+      "sha256": "fc95ec23ce16d3f1662ba22cdf3b5730ef6a0c8c6fe796013aaf4ebb6c20d401",
+      "bytes": 217261495,
+      "filename": "Linux-Kernel_MiSTer-794e6f.tar.gz"
+    },
+    {
+      "sha256": "d169f9196e3a6c4248ee79ca85987ebce0e4ea9174c1f8d51af9b28fecf22da1",
+      "bytes": 100507060,
+      "filename": "gcc-arm-10.2-2020.11-aarch64-arm-none-linux-gnueabihf.tar.xz"
+    }
+  ],
+  "config_sha256": "e679c1c0647bcd1a6baf13e5bd639ac50df806d79ca0d39d0b652a89b1c2c192",
+  "vermagic": "vermagic=5.15.1-MiSTer SMP mod_unload ARMv7 p2v8",
+  "build_timestamp": "2026-09-16 00:00:00 UTC",
+  "build_user": "nds4mister",
+  "build_host": "reproducible",
+  "normal_hardware_load_verified": true,
+  "forced_module_load": false,
+  "module_symvers_available": false,
+  "modversions_enabled": false,
+  "source_distribution": "Module C source, Makefile, exact prepared kernel config and build script in this directory. Pinned kernel/toolchain downloads listed above."
+}

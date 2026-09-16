@@ -76,7 +76,9 @@ python3 tools/audit_public_release.py \
 
 The audit accepts only the documented MiSTer installation structure, exactly
 one dated NDS RBF, the Kickstart launcher, the ARM service and its checksum,
-the README, licenses, and complete internal hashes. It rejects traversal,
+the README, licenses, and complete internal hashes. The optional WC module
+must include its matching checksum, GPL-2.0 license and source-location notice.
+It rejects traversal,
 links, unexpected files, ROM/save/private extensions, personal paths and
 emails, credentials, corrupt archives, and checksum mismatches.
 

@@ -18,6 +18,12 @@ SUPPORT_FILES = {
     "Scripts/NDS_Support/nds_hybrid_3d_service",
     "Scripts/NDS_Support/nds_hybrid_3d_service.sha256",
 }
+WC_FILES = {
+    "Scripts/NDS_Support/nds_mem_wc.ko",
+    "Scripts/NDS_Support/nds_mem_wc.ko.sha256",
+    "WC_MODULE_LICENSE.txt",
+    "WC_MODULE_SOURCE.txt",
+}
 DIRECTORIES = {"_Console/", "Scripts/", "Scripts/NDS_Support/"}
 CORE_PATTERN = re.compile(r"_Console/NDS_[0-9A-Za-z_.-]+\.rbf$")
 FORBIDDEN_SUFFIXES = {
@@ -51,7 +57,7 @@ def sha256(data: bytes) -> str:
 
 
 def allowed_file(name: str) -> bool:
-    return name in ROOT_FILES or name in SUPPORT_FILES or CORE_PATTERN.fullmatch(name) is not None
+    return name in ROOT_FILES | SUPPORT_FILES | WC_FILES or CORE_PATTERN.fullmatch(name) is not None
 
 
 def content_problems(name: str, data: bytes) -> list[str]:
@@ -160,6 +166,29 @@ def audit_zip(zip_path: Path, sidecar: Path | None) -> list[str]:
         for required in ROOT_FILES | SUPPORT_FILES:
             if required not in file_data:
                 failures.append(f"missing required file: {required}")
+
+        # The optional WC payload is an indivisible module/hash/license/source
+        # set. Older installers without WC remain valid.
+        if WC_FILES & file_data.keys():
+            for required in WC_FILES - file_data.keys():
+                failures.append(f"incomplete WC payload: missing {required}")
+            module_name = "Scripts/NDS_Support/nds_mem_wc.ko"
+            module = file_data.get(module_name)
+            module_hash = file_data.get(module_name + ".sha256")
+            if module is not None:
+                # ELF32, little-endian, relocatable, EM_ARM.
+                if (len(module) < 52 or module[:7] != b"\x7fELF\x01\x01\x01"
+                        or module[16:20] != b"\x01\x00\x28\x00"):
+                    failures.append("WC module is not a 32-bit ARM relocatable ELF")
+                if b"vermagic=5.15.1-MiSTer SMP mod_unload ARMv7 p2v8 \0" not in module:
+                    failures.append("WC module vermagic does not match the qualified kernel")
+                if module_hash is not None and module_hash != (
+                        sha256(module) + "  nds_mem_wc.ko\n").encode("ascii"):
+                    failures.append("WC module checksum manifest does not match")
+            license_text = file_data.get("WC_MODULE_LICENSE.txt", b"")
+            if license_text and (b"GNU GENERAL PUBLIC LICENSE" not in license_text
+                                 or b"Version 2, June 1991" not in license_text):
+                failures.append("WC module license is not GPL version 2")
 
         if "SHA256SUMS" in file_data:
             try:

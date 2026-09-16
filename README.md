@@ -2,7 +2,7 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.2 — Stability fixes**
+**v0.4.0-beta.3 — Faster graphics transfers with write-combining memory**
 
 > **Read this first:** This is an early beta, not a finished core. Some games
 > boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
@@ -15,6 +15,9 @@ No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
 artifacts, or credentials are included in this source repository.
 
 ## What works today
+
+- Faster ARM-to-FPGA pixel transfers through the included WC driver on compatible
+  kernels, with automatic Device-memory fallback.
 
 - Some 2D and lighter 3D games boot and run.
 - Smoother opening movies in Chrono Trigger and Castlevania, with occasional
@@ -36,6 +39,10 @@ artifacts, or credentials are included in this source repository.
   load. Off retains the fast single-screen path from beta.11.
 
 ## Current limitations
+
+- **Strange Journey can still freeze during its intro.** WC does not fix it.
+- **WC was tested on MiSTer Linux 5.15.1.** Other kernel builds may reject the
+  optional module and use the previous transfer path without the WC gain.
 
 - **Movies and audio can still hitch occasionally.** Playback is smoother, but
   full-speed playback in every game remains work in progress.
@@ -69,12 +76,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta.2_20260915.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta.3_20260916.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260915** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260916** and launch the core.
 4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
@@ -176,9 +183,22 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta.2
+## What's new in v0.4.0-beta.3
 
-- Stability fixes.
+- Faster graphics transfers using write-combining (WC) memory, enabled by
+  Kickstart when the included driver can load. Speed gains vary by game.
+- Pixel and control memory use nonoverlapping mappings; singleton ownership
+  is acquired before mapping. Existing rendering, barriers and clocks remain.
+- The accepted stability FPGA, reset/ROM-switching improvements and all previous
+  features are retained.
+
+The controlled full-change pixel-publication workload took about 80% less time;
+this is not a whole-game FPS measurement. See
+[WC measurements and scope](docs/H3D_WC_PUBLICATION_EXPERIMENT.md).
+
+The installer adds the driver and its checksum to `Scripts/NDS_Support`.
+There is no new menu option, kernel replacement or permanent boot hook.
+Do not mix launcher, helper or module files from different packages.
 
 ## Retained from v0.4.0-beta
 
@@ -212,18 +232,20 @@ Pokemon player/furniture graphics can remain missing; see
 
 | Item | Release identity |
 | --- | --- |
-| Core file | `_Console/NDS_20260915.rbf` |
+| Core file | `_Console/NDS_20260916.rbf` |
 | Build identity | `260914-RESET5` |
 | FPGA SHA-256 | `50ca160d67ca0fdbd97a50815564eece8235125b987afa57943afb9cdbf23166` |
 | Quartus seed | 2 |
 | ARM clocks | 1 GHz |
-| ARM SHA-256 | `67a0c007da13fb00144ab62c93d8d1d5d233b8708f127e3be4f318a0ab115655` |
-| Kickstart SHA-256 | `4919b202a634c32babb45c4d65dc3421cdff434f61ddfdf804752ba0f3bf38cc` |
+| ARM SHA-256 | `329d74a7f4c43328b033a41984e933fc9b449fa4ee7d67b26646c7b2409db79e` |
+| Kickstart SHA-256 | `ee56872dad6fd944358a0e9e528b8175712574ba90ee0f3f6c9503b0b1ac13d2` |
+| WC module SHA-256 | `c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113` |
 
-This package reuses the exact RESET5 FPGA core and CAPTURE1 ARM helper tested
-on the maintainer's MiSTer. Neither binary was rebuilt for packaging. After
-retesting, the maintainer reported that it worked great and requested release
-packaging. This feedback is not a complete game-compatibility or speed matrix.
+This package reuses the accepted RESET5 FPGA core from beta.2 and the exact
+WC helper/module tested on the maintainer's MiSTer. None was rebuilt during
+packaging. The user requested packaging after reporting a perceived speed gain
+on a WC combination test. This is not a complete game-compatibility, audio,
+reset/ROM-switch or isolated WC game-FPS qualification.
 
 Focused verification covers CPU/cache returns and collision handling, LCDC
 reads, sound refill/DMA ownership, Engine B line/snapshot ownership, VRAM
@@ -244,14 +266,17 @@ All 478 frozen FPGA source/test inventory files match the compiled candidate. Pr
 sources and build configuration match the tested helper build. Source/archive
 hashes and installer contents are checked separately during packaging.
 
-Map, fit, assembly, and timing analysis completed. Fit: 41,258 ALMs needed,
-41,065 placed, all 4,191 LABs, 510 M10K blocks, 69 DSP blocks. Versus
-v0.4.0-beta this is +20 ALMs needed, with no additional RAM or DSP blocks.
-Worst setup: -15.252 ns; hold: -0.233 ns; recovery: -10.937 ns; removal: +0.258 ns.
-Setup is 1.379 ns worse and hold 0.133 ns better than v0.4.0-beta. Neither
-build is timing-closed; unchanged source paths do not prove unchanged speed.
-Shared DDR contention, physical routing, and demanding games require broader
-hardware testing. See SOURCE_PACKAGE.txt for source provenance and limits.
+The FPGA is byte-identical to beta.2, so this release adds no FPGA resource or
+routing changes. Original fit: 41,235 ALMs needed, 41,101 placed, all 4,191 LABs,
+510 M10K blocks and 69 DSP blocks. Worst setup: -13.670 ns; hold: -0.021 ns;
+recovery: -10.889 ns; removal: +0.406 ns. Timing is not closed. SOURCE_PACKAGE.txt contains the
+RESET5 provenance and limitations.
+
+WC host and emulated ARM checks cover ABI, nonoverlapping mappings, fallback,
+bounds/cleanup, duplicate starts, both Engine B modes and direct/queued
+publication. The physical module loaded and unloaded normally; restricted
+mapping checks and 336 exact-pixel benchmark readbacks passed. Hardware
+benchmark throughput does not measure total game speed or prove hitch-free audio.
 
 ## For developers
 
@@ -319,6 +344,10 @@ Build the ARM hybrid-3D service with the isolated Docker build:
 ./tools/build_hybrid_3d_service_armhf.sh
 ```
 
+Build the optional WC driver using the pinned kernel/configuration and
+instructions in [kernel/nds_mem_wc](kernel/nds_mem_wc/README.md). Its separate
+GPL-2.0 license and source accompany the release.
+
 The resulting ARM binary must pass its built-in self-test before deployment.
 The installable ZIP, launcher, compiled RBF, ARM payload, and hashes are
 distributed separately on the GitHub Releases page.
@@ -337,6 +366,7 @@ distributed separately on the GitHub Releases page.
 | `third_party/melonDS` | Vendored melonDS source and license |
 | `tools` | Build, test, generation, and service-control scripts |
 | `docs` | Architecture, ABI, lifecycle, boot, and publishing contracts |
+| `kernel/nds_mem_wc` | Restricted WC module source, license, configuration and build recipe |
 
 Contributions and maintainer pushes must follow
 [`docs/PUBLIC_PUBLISHING.md`](docs/PUBLIC_PUBLISHING.md). The versioned audit
@@ -358,5 +388,6 @@ Wi-Fi boot-memory, and cartridge-IR compatibility work in beta.7.
 
 ## License
 
-NDS4MiSTer is distributed under GPLv3; see `LICENSE.txt`. Vendored components
+NDS4MiSTer is distributed under GPLv3; see `LICENSE.txt`. The separate WC
+kernel module is GPL-2.0; see `kernel/nds_mem_wc/COPYING`. Vendored components
 retain their own licenses and attribution files.
