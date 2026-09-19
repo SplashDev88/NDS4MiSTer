@@ -2,14 +2,13 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.3 — Faster graphics transfers with write-combining memory**
+**v0.4.0-beta.4 — Much faster, with graphical regressions still to fix**
 
-> **Read this first:** This is an early beta, not a finished core. Some games
-> boot and play well; others slow down, glitch, fail to boot, or crash. Engine B
-> defaults Off for speed. Turn it On and Reset or reload the ROM to display
-> the second graphics engine; enabling it costs performance. Treat
-> this release as something to experiment with, not as a reliable way to play
-> your entire library.
+> **Read this first:** MATCH4 is much faster in testing, but several graphical
+> regressions remain and still need fixes. This is an experimental beta.
+> **Engine B must be On**; change it in the core menu, then Reset or reload
+> your ROM. Existing Off settings can produce a blank display. Use this
+> release's core, helper and launcher together.
 
 No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
 artifacts, or credentials are included in this source repository.
@@ -35,8 +34,7 @@ artifacts, or credentials are included in this source repository.
   hardware-tested with beta.7.
 - Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
 - Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
-- Optional Engine B rendering, with an Off/On setting applied on Reset or ROM
-  load. Off retains the fast single-screen path from beta.11.
+- Both screens composed together by the MATCH4 renderer. Engine B On is required.
 
 ## Current limitations
 
@@ -48,11 +46,11 @@ artifacts, or credentials are included in this source repository.
   full-speed playback in every game remains work in progress.
 - **TATE supports 90 CW and 90 CCW, but not 180 degrees.** The game picture
   and MiSTer menu rotate separately. Both-screen performance depends on the game.
-- **Engine B costs speed.** Off is the default and displays Engine A in both
-  screen positions. On restores the second graphics engine using the ARM
-  service, but games can slow down and the second screen can lag under load.
-  Change **Engine B (next Reset)** in the core menu, then Reset or reload the
-  ROM to apply it. Returning to Off restores the fast single-screen path.
+- **Several graphical regressions remain**, including flickering and intermittent
+  black flashes. Castlevania bottom-screen flashing is unresolved.
+- **Engine B must stay On.** Off remains in the menu but is unsupported by this
+  build. Set On, then Reset or reload the ROM. The installer preserves your
+  configuration, so an older saved Off setting must be changed manually.
 - **Pokémon graphics using GX readback can remain missing.** The experimental
   correction is deferred because of slowdown; see issue #16 below.
 - **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
@@ -76,13 +74,14 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta.3_20260916.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta.4_20260918.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260916** and launch the core.
-4. Open the core menu, choose **Load NDS**, and select your `.nds` file.
+3. Within five minutes, go to **Console → NDS_20260918** and launch the core.
+4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
+   file. If already loaded, Reset or reload after changing Engine B.
 
 > **Run NDS_Kickstart once after every MiSTer reboot, before launching the
 > core.** The DS 3D renderer is a helper program on the MiSTer's ARM/HPS. The
@@ -137,12 +136,8 @@ edges. Hold the left mouse button to press the stylus.
 
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
-movement. With Engine B Off, the pointer appears over both copies of Engine A.
-With Engine B On, it follows the DS touchscreen through the selected layout
-and screen order.
-
-Touch input reaches the game in either mode. With Engine B Off, controls drawn
-only by the second graphics engine are invisible, making precise taps difficult.
+movement. With Engine B On, it follows the DS touchscreen through the selected
+layout and screen order. Engine B Off is unsupported in this build.
 
 ## Saves
 
@@ -183,22 +178,17 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta.3
+## What's new in v0.4.0-beta.4
 
-- Faster graphics transfers using write-combining (WC) memory, enabled by
-  Kickstart when the included driver can load. Speed gains vary by game.
-- Pixel and control memory use nonoverlapping mappings; singleton ownership
-  is acquired before mapping. Existing rendering, barriers and clocks remain.
-- The accepted stability FPGA, reset/ROM-switching improvements and all previous
-  features are retained.
+- Much faster gameplay in the maintainer's testing, with several graphical
+  regressions still to fix. No numeric game-speed or universal 60 FPS claim.
+- Matched composition of both screens, improved rendering and caching, and
+  removal of the mandatory alternate-frame drawing limit.
+- Write-combining graphics transfers and stock 1 GHz operation retained.
 
-The controlled full-change pixel-publication workload took about 80% less time;
-this is not a whole-game FPS measurement. See
-[WC measurements and scope](docs/H3D_WC_PUBLICATION_EXPERIMENT.md).
-
-The installer adds the driver and its checksum to `Scripts/NDS_Support`.
-There is no new menu option, kernel replacement or permanent boot hook.
-Do not mix launcher, helper or module files from different packages.
+See the [release notes](docs/RELEASE_NOTES_V040_BETA4.md) and
+[matched-display design](docs/MATCHED_DISPLAY_TEST.md). Use the supplied
+core/helper/launcher together and keep Engine B On.
 
 ## Retained from v0.4.0-beta
 
@@ -220,8 +210,8 @@ The smoother movie playback and other work from v0.4.0-beta are retained:
 
 Earlier Chrono startup and sprite corrections, Kirby graphics, palette fades
 and text colors, transparency, processor wake-up, touch, sound, cartridge saves,
-and boot fixes remain. Engine B defaults Off; change it and Reset or reload
-for both graphics engines. ARM continues to run at 1 GHz with no overclock.
+and boot fixes remain in the source. New graphical regressions are listed
+above. Engine B On is required. ARM runs at stock 1 GHz with no overclock.
 No new gameplay speed percentage or universal 60 FPS claim is made.
 
 The experimental GX readback correction remains deferred because of slowdown.
@@ -232,83 +222,41 @@ Pokemon player/furniture graphics can remain missing; see
 
 | Item | Release identity |
 | --- | --- |
-| Core file | `_Console/NDS_20260916.rbf` |
-| Build identity | `260914-RESET5` |
-| FPGA SHA-256 | `50ca160d67ca0fdbd97a50815564eece8235125b987afa57943afb9cdbf23166` |
-| Quartus seed | 2 |
-| ARM clocks | 1 GHz |
-| ARM SHA-256 | `329d74a7f4c43328b033a41984e933fc9b449fa4ee7d67b26646c7b2409db79e` |
-| Kickstart SHA-256 | `ee56872dad6fd944358a0e9e528b8175712574ba90ee0f3f6c9503b0b1ac13d2` |
+| Core file | `_Console/NDS_20260918.rbf` |
+| FPGA build identity | `260917-MATCH1` |
+| ARM candidate | MATCH4 |
+| FPGA SHA-256 | `d23f3b6fcf1650cad2b1d36c7206bed558ab45f964d0eb936803ef1ecc4aec81` |
+| ARM SHA-256 | `fb62322ea3c361d3797a25b2a8dc46497d31b1d40aa6337011f7b4e9aab8200f` |
+| Kickstart SHA-256 | `48037a77011db9914872257002630016973fd1a693f251a5def2fd97aaf50770` |
 | WC module SHA-256 | `c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113` |
 
-This package reuses the accepted RESET5 FPGA core from beta.2 and the exact
-WC helper/module tested on the maintainer's MiSTer. None was rebuilt during
-packaging. The user requested packaging after reporting a perceived speed gain
-on a WC combination test. This is not a complete game-compatibility, audio,
-reset/ROM-switch or isolated WC game-FPS qualification.
+FPGA, ARM and module bytes are the tested artifacts; none was rebuilt during
+packaging. Kickstart enables the tested runtime flags. All 483 original FPGA
+inventory files and ARM build inputs are verified against the frozen candidate.
+Host/emulated ARM full self-tests and focused physical full-rate pixel,
+backlog-recovery and ownership tests passed. Package/source checksums and
+launcher lifecycle are checked separately. These checks do not establish broad
+game compatibility or a measured gameplay speed percentage.
 
-Focused verification covers CPU/cache returns and collision handling, LCDC
-reads, sound refill/DMA ownership, Engine B line/snapshot ownership, VRAM
-storage equivalence, sound register and complete sound-unit equivalence,
-TATE pixel/color correctness, DDR stalls, complete-frame publication, and Off
-pass-through. Final control-path tests preserve the heartbeat and session
-policy with passive tracing disabled. Deliberate broken variants check that
-key tests detect faults. Finite tests and portable memory/scaler simulation
-assumptions do not establish universal hardware compatibility.
-
-New tests cover cartridge reset ownership, stale video suppression, rotated
-loading messages, and threaded display capture. The capture regression passed
-on the host, ARM emulation, and physical MiSTer; its baseline negative control
-hangs as expected. Earlier TATE direction/menu tests remain applicable to the
-unchanged implementation. See SOURCE_PACKAGE.txt for scope and timing limits.
-
-All 478 frozen FPGA source/test inventory files match the compiled candidate. Production ARM
-sources and build configuration match the tested helper build. Source/archive
-hashes and installer contents are checked separately during packaging.
-
-The FPGA is byte-identical to beta.2, so this release adds no FPGA resource or
-routing changes. Original fit: 41,235 ALMs needed, 41,101 placed, all 4,191 LABs,
-510 M10K blocks and 69 DSP blocks. Worst setup: -13.670 ns; hold: -0.021 ns;
-recovery: -10.889 ns; removal: +0.406 ns. Timing is not closed. SOURCE_PACKAGE.txt contains the
-RESET5 provenance and limitations.
-
-WC host and emulated ARM checks cover ABI, nonoverlapping mappings, fallback,
-bounds/cleanup, duplicate starts, both Engine B modes and direct/queued
-publication. The physical module loaded and unloaded normally; restricted
-mapping checks and 336 exact-pixel benchmark readbacks passed. Hardware
-benchmark throughput does not measure total game speed or prove hitch-free audio.
+Fit: 37,349 ALMs needed, 39,369 placed, 4,138/4,191 LABs, 447 M10K and 54 DSP.
+Worst setup -16.142 ns, hold +0.082 ns, recovery -11.148 ns, removal +0.317 ns.
+Timing is not closed. See SOURCE_PACKAGE.txt for provenance and test limits.
 
 ## For developers
 
 <details>
 <summary>Architecture</summary>
 
-- The **FPGA** runs the ARM9 and ARM7 CPUs, system timing, DMA, cartridge,
-  memory and VRAM mapping, Engine A 2D graphics, sound, saves, and MiSTer
-  video/control paths.
-- The **ARM/HPS service** replays ordered graphics events into melonDS's 3D
-  engine and publishes completed 256×192 3D planes to the FPGA. When Engine B
-  is enabled, it also renders Engine B from ordered register/VRAM snapshots and
-  publishes paired 3D/Engine B planes.
-- The FPGA composes the published 3D plane into Engine A using DS priority,
-  window, blending, and brightness rules. The HPS service does not render a
-  shadow copy of Engine A. Engine B Off avoids the second-engine rendering and
-  snapshot transport work; Engine B On uses separate display storage.
-- The plane-only renderer uses one complete-frame ownership fence, avoiding
-  192 unused per-scanline semaphore publications per changed frame without
-  changing scanline-capable melonDS frontends.
-- Heavy scenes use feedback-guided dual-core raster splitting. If replay falls
-  behind, work that can no longer be displayed is discarded only through a
-  real GX flush boundary so incomplete polygon buffers are not published.
-- A generation-tagged visibility guard keeps the last valid 3D plane when
-  catch-up produces an empty intermediate result. Mild load skips only an
-  obsolete raster pass; aggressive discard is reserved for a growing backlog.
-- Packet and renderer handoffs use cache-separated SPSC indices with private
-  Linux futexes, avoiding mutex and kernel transitions on the normal queued
-  path.
-- Completed immutable ARM planes publish directly, avoiding an extra
-  full-frame copy. The four-band raster path admits shadow work only after its
-  ordering dependency is satisfied.
+- The **FPGA** runs ARM9/ARM7, timing, DMA, cartridge, memory/VRAM, sound,
+  saves, input and MiSTer video output, and transports ordered graphics events.
+- The **ARM/HPS service** composes Engine A, Engine B and 3D into complete pairs.
+  The FPGA adopts acknowledged complete banks; native FPGA pixel writes are
+  disabled in the matched configuration.
+- Weighted dual-core raster bands, packed background rows and Engine B
+  composition caching reduce rendering work. Full-rate drawing has no mandatory
+  alternate-frame skip; backlog admission can still omit obsolete pictures.
+- All architectural records replay. Frame-bank ownership, separate WC pixel
+  mappings, session checks and reset quiescence remain enforced.
 - Sound is the GPL-licensed Nitro_DarkSide engine at
   `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`, built by the release
   wrapper with `SOUND_ENABLE=1`.
@@ -348,7 +296,9 @@ Build the optional WC driver using the pinned kernel/configuration and
 instructions in [kernel/nds_mem_wc](kernel/nds_mem_wc/README.md). Its separate
 GPL-2.0 license and source accompany the release.
 
-The resulting ARM binary must pass its built-in self-test before deployment.
+Run the full built-in self-test on the host or under ARM emulation. On the
+physical MiSTer, use only the focused `--self-test-matched-full-rate` in MENU;
+do not run the aggregate native self-test.
 The installable ZIP, launcher, compiled RBF, ARM payload, and hashes are
 distributed separately on the GitHub Releases page.
 

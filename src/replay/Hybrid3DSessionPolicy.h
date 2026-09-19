@@ -15,6 +15,8 @@ constexpr std::size_t AckOffset = 0x340;
 constexpr std::uint32_t Magic = 0x31503348u;
 constexpr std::uint32_t VersionSize = 0x00200001u;
 constexpr std::uint32_t EngineBPixels = 1u;
+// Separate diagnostic core: ordered full LCD phases and paired screen output.
+constexpr std::uint32_t MatchedDisplay = 2u;
 constexpr std::size_t CommitWord = 6;
 using Block = std::array<std::uint32_t, 8>;
 static_assert(sizeof(Block) == 32);
@@ -29,7 +31,7 @@ constexpr bool valid(const Block& b, std::uint32_t session, std::uint32_t epoch)
 {
     return session != 0 && epoch != 0 && b[0] == Magic &&
         b[1] == VersionSize && b[2] == session &&
-        (b[3] & ~EngineBPixels) == 0 && b[4] == epoch &&
+        (b[3] & ~(EngineBPixels | MatchedDisplay)) == 0 && b[4] == epoch &&
         b[5] == 0 && b[CommitWord] == epoch && b[7] == 0;
 }
 

@@ -25,6 +25,7 @@ run_sv tb_nds_nitro_video_scanout \
     "$repo_dir/rtl/tb_nds_nitro_video_scanout.sv"
 run_sv tb_nds_h3d_plane_reader \
     "$repo_dir/rtl/nds_nitro_video_scanout.sv" \
+    "$repo_dir/rtl/nds_h3d_adoption_window.sv" \
     "$repo_dir/rtl/nds_h3d_plane_reader.sv" \
     "$repo_dir/rtl/tb_nds_h3d_plane_reader.sv"
 

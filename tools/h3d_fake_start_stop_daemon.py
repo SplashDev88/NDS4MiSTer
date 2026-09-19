@@ -143,7 +143,15 @@ def main(argv: list[str]) -> int:
                 key: environment.get(key) for key in (
                     "NDS4MISTER_H3D_DISABLE_WC",
                     "NDS4MISTER_H3D_DIAGNOSTICS",
-                    "NDS4MISTER_DIRECT_PLANE_PUBLICATION")
+                    "NDS4MISTER_DIRECT_PLANE_PUBLICATION",
+                    "NDS4MISTER_MATCHED_DISPLAY_TEST",
+                    "NDS4MISTER_MATCHED_DISPLAY_FULL_RATE",
+                    "NDS4MISTER_WEIGHTED_RASTER_BANDS",
+                    "NDS4MISTER_DUAL_CORE_3D",
+                    "NDS4MISTER_ADAPTIVE_RASTER_SPLIT",
+                    "NDS4MISTER_RASTER_BAND_QUEUE",
+                    "NDS4MISTER_RASTER_X_PARTITION",
+                )
             }), encoding="utf-8")
         environment["H3D_FAKE_SERVICE_MARKER"] = str(marker)
         marker.write_text("running\n", encoding="ascii")

@@ -1076,6 +1076,7 @@ begin
       port map
       (
          clk                  => clk,
+         reset                => reset,
          drawline             => drawline_text(i),
          busy                 => busy_text(i),
          ypos                 => drawline_start_y,

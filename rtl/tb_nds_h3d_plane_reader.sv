@@ -1,6 +1,9 @@
 `timescale 1ps/1ps
 
-module tb_nds_h3d_plane_reader;
+module tb_nds_h3d_plane_reader #(
+    parameter bit LATE_ADOPTION = 1'b0,
+    parameter bit REQUIRE_LATE_TEST = 1'b0
+);
     localparam logic [28:0] CONTROL_BASE = 29'h00360000;
     localparam logic [28:0] BANK0_BASE = 29'h00400000;
     localparam logic [28:0] BANK1_BASE = 29'h00408000;
@@ -33,6 +36,13 @@ module tb_nds_h3d_plane_reader;
     logic [31:0] line_frame = 32'd0;
     logic [7:0] line_y = 8'd0;
     logic frame_boundary = 1'b0;
+    logic manual_switch_window = 1'b0;
+    logic window_controller_enable = 1'b0;
+    logic lcd_phase = 1'b0;
+    logic [8:0] lcd_line = 9'd0;
+    wire controlled_switch_window;
+    wire descriptor_switch_window = window_controller_enable
+        ? controlled_switch_window : manual_switch_window;
     logic line_start = 1'b0;
     logic line_end = 1'b0;
     logic [31:0] merge_frame = 32'd0;
@@ -87,10 +97,18 @@ module tb_nds_h3d_plane_reader;
     logic [63:0] ddram_read_data = 64'd0;
     logic ddram_read_data_ready = 1'b0;
 
+    nds_h3d_adoption_window window_control (
+        .clk(pixel_clk), .reset(pixel_reset), .lcd_phase, .lcd_line,
+        .merge_start(line_start), .merge_end(line_end), .merge_y,
+        .switch_allowed(controlled_switch_window)
+    );
+
+
     nds_h3d_plane_reader #(
         .CONTROL_BASE_WORD(CONTROL_BASE),
         .BANK0_BASE_WORD(BANK0_BASE),
-        .BANK1_BASE_WORD(BANK1_BASE)
+        .BANK1_BASE_WORD(BANK1_BASE),
+        .LATE_ADOPTION_WINDOW(LATE_ADOPTION)
     ) dut (
         .*
     );
@@ -628,8 +646,194 @@ module tb_nds_h3d_plane_reader;
                 $fatal(1, "pending descriptor did not reach pixel domain");
             @(negedge pixel_clk);
             frame_boundary = 1'b1;
+            manual_switch_window = 1'b1;
             @(negedge pixel_clk);
             frame_boundary = 1'b0;
+
+        end
+    endtask
+
+    always @(negedge pixel_clk) begin
+        if (manual_switch_window && !dut.pending_descriptor_valid_pixel)
+            manual_switch_window = 1'b0;
+    end
+
+    task automatic raw_lcd_phase(input logic [8:0] y);
+        begin
+            @(negedge pixel_clk);
+            lcd_line = y;
+            lcd_phase = 1'b1;
+            @(negedge pixel_clk);
+            lcd_phase = 1'b0;
+        end
+    endtask
+
+    task automatic finish_visible_tail;
+        begin
+            @(negedge pixel_clk);
+            merge_y = 8'd191;
+            line_end = 1'b1;
+            frame_boundary = 1'b1;
+            @(negedge pixel_clk);
+            line_end = 1'b0;
+            frame_boundary = 1'b0;
+        end
+    endtask
+
+    task automatic prepare_late_descriptor(
+        input logic [31:0] sequence_value,
+        input logic [31:0] frame_value,
+        input logic [31:0] bank_value
+    );
+        integer timeout;
+        begin
+            publish_sequence = sequence_value;
+            descriptor_sequence = sequence_value;
+            descriptor_frame = frame_value;
+            descriptor_bank = bank_value;
+            descriptor_session = ddr_session;
+            descriptor_transaction(1'b1);
+            timeout = 0;
+            while (!pixel_descriptor_pending && timeout < 2000) begin
+                @(negedge pixel_clk);
+                timeout = timeout + 1;
+            end
+            if (timeout >= 2000)
+                $fatal(1, "late descriptor did not stage");
+        end
+    endtask
+
+    task automatic late_window_tests;
+        integer timeout;
+        integer ack_before;
+        begin
+            window_controller_enable = 1'b1;
+            manual_switch_window = 1'b0;
+            auto_adoption_enable = 1'b0;
+            manual_full_frame_adopted = 1'b0;
+            external_enable = 1'b1;
+            @(negedge pixel_clk); pixel_reset = 1'b1;
+            @(negedge ddr_clk); ddr_reset = 1'b1;
+            repeat (8) @(negedge ddr_clk);
+            ddr_session = ddr_session + 1;
+            pixel_session = ddr_session;
+            descriptor_session = ddr_session;
+            descriptor_format = 32'd1;
+            ddr_reset = 1'b0;
+            repeat (8) @(negedge pixel_clk);
+            pixel_reset = 1'b0;
+            raw_lcd_phase(9'd191);
+            finish_visible_tail();
+            // The descriptor arrives AFTER the old line191 pulse. No other
+            // architectural boundary is supplied; only safe blanking opens.
+            prepare_late_descriptor(32'd40, 32'd300, 32'd0);
+            if (active_descriptor_valid || pixel_descriptor_valid)
+                $fatal(1, "late plane activated before blanking");
+            raw_lcd_phase(9'd192);
+            wait_pixel_descriptor(32'd40, 32'd300, 1'b0);
+            wait_descriptor_ack(32'd40);
+            // The product reseeds rows0/1 after a commit. Exercise the actual
+            // reader and all256 pixels of both rows with the new tags.
+            line_transaction(32'd300, 8'd0, 1'b1);
+            line_transaction(32'd300, 8'd1, 1'b1);
+            raw_lcd_phase(9'd240);
+            raw_lcd_phase(9'd0);
+            wait_line_available(32'd300, 8'd0);
+            scan_line(32'd300, 8'd0, 1'b1, 1'b0);
+            wait_line_available(32'd300, 8'd1);
+            scan_line(32'd300, 8'd1, 1'b1, 1'b0);
+            wait_banks_free();
+            $display("PROOF: descriptor arriving after line191 activated during blanking; first two rows exact without another frame boundary");
+
+            // A post-cutoff descriptor is retained through visible drawing.
+            prepare_late_descriptor(32'd42, 32'd301, 32'd1);
+            repeat (200) @(negedge pixel_clk);
+            if (pixel_descriptor_sequence != 32'd40 || last_ack != 32'd40)
+                $fatal(1, "post-cutoff plane activated during visible frame");
+            raw_lcd_phase(9'd191);
+            // The architectural raster may already be blank while a late
+            // last visible merge is still running. Do not expose the new tag.
+            @(negedge pixel_clk); merge_y=8'd191; line_start=1'b1;
+            @(negedge pixel_clk); line_start=1'b0;
+            raw_lcd_phase(9'd192);
+            repeat (200) @(negedge pixel_clk);
+            if (controlled_switch_window || pixel_descriptor_sequence != 32'd40)
+                $fatal(1, "late line191 merge was not protected");
+            finish_visible_tail();
+            wait_pixel_descriptor(32'd42, 32'd301, 1'b1);
+            wait_descriptor_ack(32'd42);
+            raw_lcd_phase(9'd240);
+            $display("PROOF: closed cutoff retained old plane and a late last visible merge blocked adoption until it finished");
+
+            // A DDR burst may outlive the safe window after pixel requested
+            // activation. Let it finish during visible drawing: DDR must
+            // defer the plane switch, not merely the initial pixel request.
+            prepare_late_descriptor(32'd44, 32'd302, 32'd0);
+            hold_line_response=1'b1;
+            enqueue_line(32'd301, 8'd5);
+            timeout=0;
+            while (!read_inflight && timeout<2000) begin
+                @(negedge ddr_clk); timeout=timeout+1;
+            end
+            if (!read_inflight) $fatal(1, "late window stall did not start read");
+            raw_lcd_phase(9'd0);
+            raw_lcd_phase(9'd191); finish_visible_tail();
+            raw_lcd_phase(9'd192);
+            timeout=0;
+            while (!dut.descriptor_activation_pending_ddr && timeout<2000) begin
+                @(negedge ddr_clk); timeout=timeout+1;
+            end
+            if (!dut.descriptor_activation_pending_ddr)
+                $fatal(1, "late activation did not queue behind DDR burst");
+            raw_lcd_phase(9'd240);
+            repeat (12) @(negedge ddr_clk);
+            raw_lcd_phase(9'd0);
+            hold_line_response=1'b0;
+            wait_line_available(32'd301, 8'd5);
+            scan_line(32'd301, 8'd5, 1'b1, 1'b1);
+            repeat (200) @(negedge pixel_clk);
+            if (pixel_descriptor_sequence != 32'd42 ||
+                active_descriptor_sequence != 32'd42 || last_ack != 32'd42)
+                $fatal(1, "DDR stall committed or reclaimed a plane during visible drawing");
+            raw_lcd_phase(9'd191); finish_visible_tail();
+            raw_lcd_phase(9'd192);
+            wait_pixel_descriptor(32'd44, 32'd302, 1'b0);
+            wait_descriptor_ack(32'd44);
+            $display("PROOF: pending DDR activation survived a whole closed window and committed only in the next safe blanking interval");
+
+            // Engine B ownership return can occur outside this DS blanking
+            // window. Keep its existing scanout-adoption ACK contract.
+            raw_lcd_phase(9'd240);
+            descriptor_format=32'd3;
+            prepare_late_descriptor(32'd46, 32'd303, 32'd7);
+            raw_lcd_phase(9'd0); raw_lcd_phase(9'd191);
+            finish_visible_tail(); raw_lcd_phase(9'd192);
+            wait_pixel_descriptor(32'd46, 32'd303, 1'b1);
+            repeat (20) @(negedge ddr_clk);
+            if (!dut.full_ack_pending || last_ack != 32'd44)
+                $fatal(1, "late composite ACK preceded Engine B adoption");
+            raw_lcd_phase(9'd240); raw_lcd_phase(9'd0);
+            @(negedge ddr_clk); manual_full_frame_adopted=1'b1;
+            @(negedge ddr_clk); manual_full_frame_adopted=1'b0;
+            wait_descriptor_ack(32'd46);
+            $display("PROOF: Engine B ACK still waits for scanout adoption and is not blocked by a closed DS window");
+
+            // Reset drops an uncommitted late descriptor and closes the
+            // window. No stale activation/ownership return may cross epochs.
+            descriptor_format=32'd1;
+            prepare_late_descriptor(32'd48, 32'd304, 32'd0);
+            ack_before=ack_writes;
+            @(negedge pixel_clk); pixel_reset=1'b1;
+            @(negedge ddr_clk); ddr_reset=1'b1;
+            repeat (8) @(negedge ddr_clk);
+            ddr_session=ddr_session+1; pixel_session=ddr_session;
+            ddr_reset=1'b0;
+            repeat (8) @(negedge pixel_clk); pixel_reset=1'b0;
+            repeat (100) @(negedge pixel_clk);
+            if (pixel_descriptor_valid || pixel_descriptor_pending ||
+                controlled_switch_window || ack_writes != ack_before)
+                $fatal(1, "reset revived an uncommitted late plane");
+            $display("PROOF: reset canceled late descriptor and adoption window");
         end
     endtask
 
@@ -1431,6 +1635,8 @@ module tb_nds_h3d_plane_reader;
                 accepted_commands, accepted_line_reads,
                 busy_stall_cycles, response_gap_cycles,
                 ready_publish_count);
+
+        if (REQUIRE_LATE_TEST) late_window_tests();
 
         $display(
             "PASS: dual-clock H3D bridge accepted %0d commands and %0d line bursts across unrelated clocks; %0d complete lines published only after 128 beats, tags stayed immutable until ack, no owned bank was overwritten, late/stale/reset lines stayed transparent, and every valid 256-pixel line matched",

@@ -110,6 +110,7 @@ private:
     u32* Framebuffer[2][2];
     bool PackedOutput = false;
     bool LineCache = false;
+    bool PairedBCache = false;
     bool EngineBOnly = false;
     bool EngineBPixelsEnabled = true;
     bool StageProfileEnabled = false;
@@ -165,6 +166,21 @@ private:
     };
     EngineLineState LineCacheState[2][192] {};
     bool LineCacheStateValid[2][192] {};
+
+    // OBJ pixels are prepared before the composition phase. Current OAM,
+    // VRAM and registers alone cannot identify those already-prepared pixels.
+    struct PreparedBSpriteKey
+    {
+        u64 OAMRevision = 0;
+        u64 VRAMEpoch = 0;
+        u32 DispCnt = 0;
+        u32 MosaicLine = 0;
+        u32 Line = 0;
+        u32 OBJEnable = 0;
+    };
+    PreparedBSpriteKey PreparedBSprites {};
+    PreparedBSpriteKey CachedBSprites[192] {};
+    bool PreparedBSpritesValid = false;
 
     enum class Parallel2DTask
     {

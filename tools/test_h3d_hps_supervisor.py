@@ -426,12 +426,18 @@ def main() -> int:
             require(logfile.stat().st_size == 65536,
                     "stopped logfile was not bounded to 64 KiB")
 
-            # A/B changes only the publication mapping. The real launcher must
-            # forward both explicit choices, preserving production diagnostics
-            # Off and the existing direct-publication fast path.
+            # A clean launch must select the packaged MATCH4 protocol and
+            # raster settings while retaining both WC/fallback choices.
             env_capture = runtime / "helper-environment.json"
             environment["H3D_FAKE_ENV_CAPTURE"] = str(env_capture)
             environment["NDS4MISTER_H3D_DIAGNOSTICS"] = "0"
+            environment.pop("NDS4MISTER_MATCHED_DISPLAY_TEST", None)
+            environment.pop("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE", None)
+            environment.pop("NDS4MISTER_WEIGHTED_RASTER_BANDS", None)
+            environment.pop("NDS4MISTER_DUAL_CORE_3D", None)
+            environment.pop("NDS4MISTER_ADAPTIVE_RASTER_SPLIT", None)
+            environment.pop("NDS4MISTER_RASTER_BAND_QUEUE", None)
+            environment.pop("NDS4MISTER_RASTER_X_PARTITION", None)
             for mode in ("0", "1"):
                 environment["NDS4MISTER_H3D_DISABLE_WC"] = mode
                 run_control("start", environment)
@@ -440,7 +446,14 @@ def main() -> int:
                     "NDS4MISTER_H3D_DISABLE_WC": mode,
                     "NDS4MISTER_H3D_DIAGNOSTICS": "0",
                     "NDS4MISTER_DIRECT_PLANE_PUBLICATION": "1",
-                }, "launcher changed A/B or production rendering settings")
+                    "NDS4MISTER_MATCHED_DISPLAY_TEST": "1",
+                    "NDS4MISTER_MATCHED_DISPLAY_FULL_RATE": "1",
+                    "NDS4MISTER_WEIGHTED_RASTER_BANDS": "1",
+                    "NDS4MISTER_DUAL_CORE_3D": "1",
+                    "NDS4MISTER_ADAPTIVE_RASTER_SPLIT": "1",
+                    "NDS4MISTER_RASTER_BAND_QUEUE": "1",
+                    "NDS4MISTER_RASTER_X_PARTITION": "1",
+                }, "launcher lost MATCH4 protocol, raster, or WC settings")
                 run_control("stop", environment)
             environment.pop("NDS4MISTER_H3D_DISABLE_WC")
 

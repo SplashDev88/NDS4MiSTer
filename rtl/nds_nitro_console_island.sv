@@ -1524,6 +1524,15 @@ wire [7:0] h3d_core_merge_x, h3d_core_merge_y;
 // asserted across several queued VBlanks and therefore has no per-frame edge.
 wire h3d_scanout_frame_boundary = h3d_core_line_end &&
     h3d_core_merge_y == 8'd191;
+wire h3d_lcd_phase_raw;
+wire [8:0] h3d_lcd_line_raw;
+wire h3d_descriptor_switch_window;
+nds_h3d_adoption_window h3d_adoption_window (
+    .clk(clk1x), .reset(console_reset_1x),
+    .lcd_phase(h3d_lcd_phase_raw), .lcd_line(h3d_lcd_line_raw),
+    .merge_start(h3d_core_line_start), .merge_end(h3d_core_line_end),
+    .merge_y(h3d_core_merge_y), .switch_allowed(h3d_descriptor_switch_window)
+);
 logic h3d_descriptor_request;
 logic [11:0] h3d_descriptor_retry;
 logic h3d_line_pending;
@@ -1548,7 +1557,11 @@ wire [7:0] h3d_line_prefetch_y = h3d_core_line_y == 8'd190 ? 8'd0 :
 // bank. The displayed bank is therefore already the exact content toggle;
 // wiring it directly adds no state or comparison logic to this full device.
 `ifdef NDS_HYBRID_3D
+`ifdef NDS_MATCHED_DISPLAY_TEST
+always_comb effective_3d_frame_toggle = fb_published_frame_toggle;
+`else
 always_comb effective_3d_frame_toggle = h3d_pixel_descriptor_bank;
+`endif
 `else
 always_comb effective_3d_frame_toggle = fb_published_frame_toggle;
 `endif
@@ -1585,8 +1598,15 @@ nds_nitro_fb_ddr3 #(
     .telemetry_session(32'd0),
     // Keep timing-sensitive 2D/BG/HDMA scanout in the FPGA. HPS publishes
     // only the completed 3D plane through the registered merge seam below.
+`ifdef NDS_MATCHED_DISPLAY_TEST
+    .external_frame_mode(1'b1),
+    .external_frame_publish(h3d_full_frame_publish),
+    .external_frame_bank(h3d_full_frame_bank),
+    .external_frame_adopted(h3d_full_frame_adopted),
+`else
     .external_frame_mode(1'b0), .external_frame_publish(1'b0),
     .external_frame_bank(2'd0), .external_frame_adopted(),
+`endif
 `ifdef NDS_BOOT_DIAGNOSTIC
     .dbg0(18'h2d15a),.dbg1(diag_heartbeat),.dbg2(diag_lifecycle),
     .dbg3(diag_hwstat_ddr),
@@ -1639,6 +1659,10 @@ nds_nitro_video_scanout scanout (
 // to a stable cross-domain toggle, then return one DDR-domain adoption pulse
 // so the descriptor/DDR bank cannot be recycled early.
 `ifdef NDS_HYBRID_3D
+`ifdef NDS_MATCHED_DISPLAY_TEST
+// Both physical screens use the same complete frame bank. No independent B.
+assign h3d_external_screen_toggle = 1'b0;
+`else
 always_ff @(posedge ddr_clk) begin
     if (bridge_reset_ddr) begin
         h3d_external_screen_toggle <= 1'b0;
@@ -1657,6 +1681,7 @@ always_ff @(posedge ddr_clk) begin
             h3d_external_adopt_seen <= h3d_external_adopt_sync[1];
     end
 end
+`endif
 `else
 always_comb h3d_external_screen_toggle = 1'b0;
 assign h3d_external_video_enable = 1'b0;
@@ -1671,6 +1696,9 @@ assign h3d_full_frame_screen = 1'b0;
 nds_h3d_control_init #(
     .BASE_WORD(H3D_CONTROL_WORD), .ENTRY_COUNT(16384),
     .PACKET_MODE(1'b1), .SESSION_POLICY_ENABLE(1'b1)
+`ifdef NDS_MATCHED_DISPLAY_TEST
+    , .MATCHED_DISPLAY_TEST(1'b1)
+`endif
 ) h3d_control (
     .clk(ddr_clk), .reset(bridge_reset_ddr),
     .requested_session(h3d_session_trigger),
@@ -1702,7 +1730,11 @@ nds_h3d_control_init #(
 // order, and cross complete frame records and boundary tokens into DDR.
 nds_h3d_frame_record_cdc #(
     .ASYNC_LGDEPTH(4),
+`ifdef NDS_MATCHED_DISPLAY_TEST
+    .SPARSE_HBLANK(1'b0),
+`else
     .SPARSE_HBLANK(1'b1),
+`endif
     .SCANLINE_TAGS(1'b1)
 ) h3d_record_cdc (
     .source_clk(clk1x), .ddr_clk(ddr_clk),
@@ -1891,7 +1923,8 @@ end
 
 nds_h3d_plane_reader #(
     .CONTROL_BASE_WORD(H3D_CONTROL_WORD),
-    .BANK0_BASE_WORD(H3D_BANK0_WORD), .BANK1_BASE_WORD(H3D_BANK1_WORD)
+    .BANK0_BASE_WORD(H3D_BANK0_WORD), .BANK1_BASE_WORD(H3D_BANK1_WORD),
+    .LATE_ADOPTION_WINDOW(1'b1)
 ) h3d_plane_reader (
     .ddr_clk(ddr_clk), .ddr_reset(h3d_path_reset),
     .external_enable(h3d_external_video_enable),
@@ -1904,6 +1937,7 @@ nds_h3d_plane_reader #(
     .line_request_ready(h3d_plane_line_request_ready),
     .line_frame(h3d_line_pending_frame), .line_y(h3d_line_pending_y),
     .frame_boundary(h3d_scanout_frame_boundary),
+    .descriptor_switch_window(h3d_descriptor_switch_window),
     .scanline_tick(h3d_core_line_request),
     .scanline_y(h3d_core_line_y),
     .line_start(h3d_core_line_start), .line_end(h3d_core_line_end),
@@ -2069,6 +2103,9 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
 );
 
 nds_nitro_console_wrap #(
+`ifdef NDS_MATCHED_DISPLAY_TEST
+    .H3D_MATCHED_DISPLAY_TEST(1),
+`endif
     .CLKMEM_RATIO(CLKMEM_RATIO),
 `ifdef NDS_PRIVATE_SOUND_TRACE_OFF
     // Omit passive private movie counters in the release-size candidate.
@@ -2194,6 +2231,8 @@ nds_nitro_console_wrap #(
     .h3d_vram7_write_data(h3d_vram7_write_data),
     .h3d_vram7_write_scanline(h3d_vram7_write_scanline),
     .h3d_vram7_write_timestamp(h3d_vram7_write_timestamp),
+    .h3d_lcd_phase_raw(h3d_lcd_phase_raw),
+    .h3d_lcd_line_raw(h3d_lcd_line_raw),
     .h3d_hblank_valid(h3d_hblank_valid),
     .h3d_hblank_ready(h3d_hblank_ready),
     .h3d_hblank_line(h3d_hblank_line),

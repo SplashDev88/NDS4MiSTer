@@ -108,7 +108,9 @@ entity nds_drawer_text is
       VRAM_Drawer_addr     : out integer range 0 to 131071; -- word into 512 KB BG space
       VRAM_Drawer_data     : in  std_logic_vector(31 downto 0);
       VRAM_Drawer_done     : in  std_logic;
-      VRAM_Drawer_accept   : in  std_logic := '1'
+      VRAM_Drawer_accept   : in  std_logic := '1';
+      -- Assert with the request owner when an old session is discarded.
+      reset               : in  std_logic := '0'
    );
 end entity;
 
@@ -310,7 +312,22 @@ begin
          -- ------------------------------------------------------------------
          -- start of line: latch configuration, reset both sides
          -- ------------------------------------------------------------------
-         if (drawline = '1') then
+         if (reset = '1') then
+            -- The VRAM owner cancels its old responses at a session reset.
+            -- A drawer not selected by the next game's BG mode will receive
+            -- no new drawline, so it must stop waiting for those responses.
+            -- Invalidate control only; tile rows and tags need no reset mux.
+            busy        <= '0';
+            p_active    <= '0';
+            w_valid     <= '0';
+            unaccepted  <= '0';
+            tag_count   <= 0;
+            tq_count    <= 0;
+            f_tile      <= 33;
+            for i in 0 to TQ_DEPTH - 1 loop
+               tq(i).state <= E_FREE;
+            end loop;
+         elsif (drawline = '1') then
             cfg_hicolor  <= hicolor;
             cfg_extpal   <= extpalette;
             cfg_slot     <= extpal_slot;

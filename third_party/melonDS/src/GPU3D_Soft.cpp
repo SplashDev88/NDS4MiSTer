@@ -17,6 +17,7 @@
 */
 
 #include "GPU3D_Soft.h"
+#include <ctime>
 
 #include <algorithm>
 #include <cassert>
@@ -193,6 +194,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         std::getenv("NDS4MISTER_RASTER_BAND_QUEUE");
     RasterBandQueue = DualCoreRaster && rasterBandQueue &&
         strcmp(rasterBandQueue, "0") != 0;
+    const char* weightedRasterBands =
+        std::getenv("NDS4MISTER_WEIGHTED_RASTER_BANDS");
+    WeightedRasterBands = RasterBandQueue && weightedRasterBands &&
+        strcmp(weightedRasterBands, "1") == 0;
     const char* rasterXPartition =
         std::getenv("NDS4MISTER_RASTER_X_PARTITION");
     RasterXPartition = DualCoreRaster &&
@@ -241,6 +246,8 @@ SoftRenderer3D::~SoftRenderer3D()
 
 void SoftRenderer3D::Reset()
 {
+    RasterTileHistoryValid = false;
+    CollectRasterTileCosts = false;
     TextureCache.Reset();
 
     memset(ColorBuffer, 0, BufferSize * 2 * 4);
@@ -1614,7 +1621,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
         u32 vertexColor;
         s16 textureS;
         s16 textureT;
-        spanAttributes.InterpolateCachedPixel<ConstantColor>(
+        spanAttributes.InterpolateCachedPixel<ConstantColor, ConstantLinearDepth>(
             vertexColor, textureS, textureT, packedSpanColor);
         const u32 texel = pixelState.TexturePixels[
             NDS4MiSTerCachedTextureIndexForMode<WrapMode>(
@@ -2673,12 +2680,12 @@ SoftRenderer3D::RasterBandResult SoftRenderer3D::RenderRasterBandJobs(
 {
     RasterBandResult result;
     int band = initialBand;
-    s32 contextLine = band * RasterBandLines;
+    s32 contextLine = RasterBandBoundaries[band];
     while (band < RasterBandCount)
     {
         if (CancelRasterIfRequested()) break;
-        const s32 firstLine = band * RasterBandLines;
-        const s32 endLine = firstLine + RasterBandLines;
+        const s32 firstLine = RasterBandBoundaries[band];
+        const s32 endLine = RasterBandBoundaries[band + 1];
         if (contextLine < firstLine)
         {
             RebaseRasterContext(
@@ -2686,10 +2693,38 @@ SoftRenderer3D::RasterBandResult SoftRenderer3D::RenderRasterBandJobs(
                 prevIsShadowMask);
             result.AdvancedScanlines += firstLine - contextLine;
         }
-        result.RenderNs += RenderScanlineBand(
-            firstLine, endLine, polygonList, activePolygonMask,
-            prevIsShadowMask, stencilBuffer, 0, 256,
-            FinalPassMinX, FinalPassMaxX);
+        if (CollectRasterTileCosts)
+        {
+            // Time 12-row groups, not individual pixels or scanlines. Thread
+            // CPU time excludes replay-worker preemption from the work model.
+            // Each tile belongs to one worker, and history is read only after
+            // the complete-frame fence on the following frame.
+            const auto cpuNow = []() -> u64 {
+#ifdef CLOCK_THREAD_CPUTIME_ID
+                timespec value {};
+                if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &value) == 0)
+                    return u64(value.tv_sec) * 1000000000u + value.tv_nsec;
+#endif
+                return renderer3DClockNowNs();
+            };
+            for (s32 line = firstLine; line < endLine; line += RasterWorkTileLines)
+            {
+                const u64 started = cpuNow();
+                result.RenderNs += RenderScanlineBand(
+                    line, line + RasterWorkTileLines, polygonList, activePolygonMask,
+                    prevIsShadowMask, stencilBuffer, 0, 256,
+                    FinalPassMinX, FinalPassMaxX);
+                RasterTileCosts[line / RasterWorkTileLines] =
+                    static_cast<u32>(std::min<u64>(cpuNow() - started, UINT32_MAX));
+            }
+        }
+        else
+        {
+            result.RenderNs += RenderScanlineBand(
+                firstLine, endLine, polygonList, activePolygonMask,
+                prevIsShadowMask, stencilBuffer, 0, 256,
+                FinalPassMinX, FinalPassMaxX);
+        }
         ++result.Jobs;
         contextLine = endLine;
         band = ParallelRasterNextBand_.fetch_add(
@@ -2888,12 +2923,11 @@ void SoftRenderer3D::PrepareParallelRasterBand(
     }
 }
 
-s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
+u32 SoftRenderer3D::BuildRasterScanlineWork(int npolys, u32* lineWork) const
 {
-    // CPU1 also owns command replay, so give CPU0 roughly 60% of projected
-    // polygon area. A fixed split left CPU0 nearly idle whenever NSMB placed
-    // most geometry low on screen. This bounded O(vertices+P+H) estimate uses
-    // the frame's already-prepared polygons and adds no work to pixel loops.
+    // Shared bounded O(vertices+P+H) estimate for adaptive two-way splitting
+    // and the optional four-job layout. Use already-prepared geometry and
+    // add no work to the pixel loops.
     s32 scanlineDelta[VisibleScanlines + 1] = {};
     for (int i = 0; i < npolys; i++)
     {
@@ -2920,7 +2954,6 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
         scanlineDelta[end] -= projectedWidth;
     }
 
-    u32 lineWork[VisibleScanlines] = {};
     u32 totalWork = 0;
     s32 activeProjectedWidth = 0;
     for (int y = 0; y < VisibleScanlines; y++)
@@ -2929,6 +2962,13 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
         lineWork[y] = static_cast<u32>(activeProjectedWidth);
         totalWork += lineWork[y];
     }
+    return totalWork;
+}
+
+s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
+{
+    u32 lineWork[VisibleScanlines] {};
+    const u32 totalWork = BuildRasterScanlineWork(npolys, lineWork);
     if (totalWork == 0) return 112;
 
     const u32 primaryPermille = AdaptiveRasterSplit ?
@@ -3066,7 +3106,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         RasterBandQueueActive &&
         polygonsPrepared > ScheduledPolygonThreshold;
     bool frameHasShadow = false;
-    if (RasterXPartition)
+    if (RasterXPartition || (WeightedRasterBands && bandQueueRequested))
     {
         for (int index = 0; index < polygonsPrepared; ++index)
         {
@@ -3078,19 +3118,43 @@ void SoftRenderer3D::RenderPolygonsDualCore(
             }
         }
     }
+    // The existing shadow/stencil gate was proved at fixed 48-line
+    // boundaries. Preserve that layout for every shadow-bearing frame.
+    // Publish the complete plan before waking either raster worker.
+    for (int band = 0; band <= RasterBandCount; ++band)
+        RasterBandBoundaries[band] = band * RasterBandLines;
+    if (WeightedRasterBands && bandQueueRequested && !frameHasShadow)
+    {
+        u32 tileWork[RasterWorkTileCount] {};
+        if (RasterTileHistoryValid)
+            std::copy_n(RasterTileHistory, RasterWorkTileCount, tileWork);
+        else
+        {
+            u32 lineWork[VisibleScanlines] {};
+            BuildRasterScanlineWork(polygonsPrepared, lineWork);
+            for (int line = 0; line < VisibleScanlines; ++line)
+                tileWork[line / RasterWorkTileLines] += lineWork[line];
+        }
+        NDS4MiSTerBalancedRasterBands(tileWork, RasterBandBoundaries);
+        for (s32& boundary : RasterBandBoundaries) boundary *= RasterWorkTileLines;
+    }
     const bool bandQueueSafe =
         bandQueueRequested && RasterBandQueueSafe(polygonsPrepared);
     const bool bandQueueFrame = bandQueueSafe;
+    CollectRasterTileCosts =
+        WeightedRasterBands && bandQueueFrame && !frameHasShadow;
+    if (!CollectRasterTileCosts) RasterTileHistoryValid = false;
+    else std::fill_n(RasterTileCosts, RasterWorkTileCount, 0);
     // AA edge coverage advances only for depth/alpha-accepted pixels.
     // An X-clipped worker cannot reconstruct the skipped edge prefix from
     // its width, and reading its peer's pixels would violate ownership.
     // Retain the established Y split for these frames; non-AA shadows can
     // still use disjoint X intervals, and safe band-queue frames are intact.
     const bool xPartitionFrame =
-        frameHasShadow && !bandQueueFrame &&
+        RasterXPartition && frameHasShadow && !bandQueueFrame &&
         !(GPU3D.RenderDispCnt & (1u << 4));
     const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();
-    const s32 SplitLine = bandQueueFrame ? RasterBandLines :
+    const s32 SplitLine = bandQueueFrame ? RasterBandBoundaries[1] :
         (xPartitionFrame ? 0 :
          ChooseParallelRasterSplitLine(polygonsPrepared));
     const s32 SplitX = xPartitionFrame ?
@@ -3146,7 +3210,19 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     Platform::Semaphore_Wait(Sema_ParallelRasterDone);
 
-    if (RenderFrameCanceled.load(std::memory_order_relaxed)) return;
+    if (RenderFrameCanceled.load(std::memory_order_relaxed))
+    {
+        RasterTileHistoryValid = false;
+        return;
+    }
+    if (CollectRasterTileCosts)
+    {
+        for (int tile = 0; tile < RasterWorkTileCount; ++tile)
+            RasterTileHistory[tile] = RasterTileHistoryValid ?
+                static_cast<u32>((u64(RasterTileHistory[tile]) * 3 + RasterTileCosts[tile]) / 4) :
+                RasterTileCosts[tile];
+        RasterTileHistoryValid = true;
+    }
 
     if (xPartitionFrame)
     {

@@ -6,6 +6,7 @@ repo_dir="$(cd "$script_dir/.." && pwd)"
 test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/nds-nitro-island-host.XXXXXX")"
 trap 'rm -rf "$test_tmp"' EXIT
 
+bash "$script_dir/test_h3d_tag_factoring.sh"
 python3 "$script_dir/test_nds_cart_session_reset.py"
 python3 "$script_dir/test_arm7_shared_shifter.py"
 python3 "$script_dir/test_sound_fetch_state_packing.py"
@@ -391,6 +392,7 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/rtl/nds_gx_fifo_packet_frontend.sv" \
     "$repo_dir/rtl/nds_h3d_frame_record_cdc.sv" \
     "$repo_dir/rtl/nds_h3d_frame_packet_writer.sv" \
+    "$repo_dir/rtl/nds_h3d_adoption_window.sv" \
     "$repo_dir/rtl/nds_h3d_plane_reader.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \

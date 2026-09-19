@@ -951,16 +951,16 @@ wire scanout_request_replaces_inflight =
 	((pf_scr == rscr) &&
 	 ((pf_external != rexternal) || (pf_frame_bank != rframe_bank)));
 wire scanout_prefetch_allowed = !reset_sys && scanout_prefetch_event &&
-    (!pf_external || external_enable);
+    (!(pf_external || external_frame_mode) || external_enable);
 wire scanout_read_late = scanout_prefetch_allowed && rbusy &&
 	scanout_request_replaces_inflight;
 wire scanout_dequeue = !reset_sys && (pf_count != 0) && !rbusy;
 
 // A pulse already presented to ch6 remains owned even before physical DDR
 // acceptance. rbusy spans that entire interval through the final ready.
-assign external_quiescent = !(rbusy && rexternal) &&
-    !(pf_count != 0 && pf_q0[12]) &&
-    !(pf_count > 1 && pf_q1[12]);
+assign external_quiescent = !(rbusy && (rexternal || external_frame_mode)) &&
+    !(pf_count != 0 && (pf_q0[12] || external_frame_mode)) &&
+    !(pf_count > 1 && (pf_q1[12] || external_frame_mode));
 
 assign fb6_req  = fb6_req_r;
 assign fb6_addr = (rexternal ?
@@ -1036,7 +1036,7 @@ always @(posedge clk_sys or posedge reset_read) begin
             r_obsolete <= 1;
         end
     end
-	if (scanout_read_late || (rbusy && rexternal && !external_enable))
+	if (scanout_read_late || (rbusy && (rexternal || external_frame_mode) && !external_enable))
 		r_obsolete <= 1;
 	case ({scanout_prefetch_allowed, scanout_dequeue})
 		2'b10: begin
@@ -1078,7 +1078,7 @@ always @(posedge clk_sys or posedge reset_read) begin
 		scanout_frame_bank <= pf_frame_bank;
 		scanout_bank_valid <= 1;
 	end
-	if (scanout_dequeue && (!pf_q0[12] || external_enable)) begin
+	if (scanout_dequeue && (!(pf_q0[12] || external_frame_mode) || external_enable)) begin
 		{rexternal,rframe_bank,rbank,rline,rscr} <= pf_q0;
 		rslot <= ~active_line_slot[{pf_q0[9], pf_q0[0]}];
 		r_obsolete <= 0;
@@ -1096,14 +1096,14 @@ always @(posedge clk_sys or posedge reset_read) begin
 	if (rbusy && fb6_ready) begin
 		if (rsent + FB_BURST >= 8'd128 ||
             reset_sys || r_session_cancel ||
-            (rexternal && !external_enable)) begin
+            ((rexternal || external_frame_mode) && !external_enable)) begin
 			rbusy <= 0;
 			// A newer target row makes this completed fetch obsolete. Keep
 			// the previously promoted complete line rather than expose stale
 			// data at the new row's parity slot.
 			if (!reset_sys &&
                 !r_obsolete && !scanout_read_late &&
-                (!rexternal || external_enable) &&
+                (!(rexternal || external_frame_mode) || external_enable) &&
                 rsent + FB_BURST >= 8'd128) begin
                 active_line_slot[{rbank, rscr}] <= rslot;
                 active_line_valid[{rbank, rscr}] <= 1;

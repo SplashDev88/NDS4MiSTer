@@ -173,6 +173,17 @@ if(NDS4MISTER_USE_MELONDS)
     target_link_libraries(nds_hybrid_3d_service PRIVATE
         core ${CMAKE_DL_LIBS})
 
+    add_executable(nds_effective_render_write_test
+        src/replay/EffectiveRenderWriteTest.cpp
+        src/replay/Hybrid3DFramePacket.cpp src/replay/ArmVideoShadow.cpp
+        src/replay/ArmCrashDump.cpp src/replay/FpgaCrashMonitor.cpp
+        src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_effective_render_write_test PRIVATE
+        src third_party/melonDS/src)
+    set_property(TARGET nds_effective_render_write_test PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+    target_link_libraries(nds_effective_render_write_test PRIVATE core ${CMAKE_DL_LIBS})
+
     add_executable(hps_gpu_ring_test src/replay/RingTest.cpp)
     target_include_directories(hps_gpu_ring_test PRIVATE src)
 
@@ -237,6 +248,7 @@ if(NDS4MISTER_USE_MELONDS)
         core ${CMAKE_DL_LIBS})
     if(BUILD_TESTING)
         add_test(NAME nds_engine_b_line_cache COMMAND nds_engine_b_line_cache_test)
+        add_test(NAME nds_paired_b_line_cache COMMAND nds_engine_b_line_cache_test --paired)
     endif()
 
     add_executable(nds_touch_oracle_probe

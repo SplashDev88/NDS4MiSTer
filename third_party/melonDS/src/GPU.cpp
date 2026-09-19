@@ -99,6 +99,7 @@ GPU::~GPU() noexcept
 
 void GPU::ResetVRAMCache() noexcept
 {
+    ++BOBJCoherencyEpoch;
     for (int i = 0; i < 9; i++)
         VRAMDirty[i] = NonStupidBitField<128*1024/VRAMDirtyGranularity>();
 
@@ -127,6 +128,7 @@ void GPU::ResetVRAMCache() noexcept
 
 void GPU::Reset() noexcept
 {
+    BOBJCoherencyEpoch = 0;
     ExternalRenderMemorySequence = 0;
     memset(ExternalRenderVRAMRevision, 0,
            sizeof(ExternalRenderVRAMRevision));
@@ -150,6 +152,7 @@ void GPU::Reset() noexcept
 
     memset(Palette, 0, 2*1024);
     memset(OAM, 0, 2*1024);
+    MarkSpriteOAMWritten(0, 2*1024);
 
     memset(VRAM_A, 0, 128*1024);
     memset(VRAM_B, 0, 128*1024);
@@ -250,6 +253,7 @@ void GPU::DoSavestate(Savestate* file) noexcept
 
     file->VarArray(Palette, 2*1024);
     file->VarArray(OAM, 2*1024);
+    if (!file->Saving) MarkSpriteOAMWritten(0, 2*1024);
 
     file->VarArray(VRAM_A, 128*1024);
     file->VarArray(VRAM_B, 128*1024);
@@ -1644,7 +1648,9 @@ bool GPU::MakeVRAMFlat_BOBJCoherent(NonStupidBitField<128*1024/VRAMDirtyGranular
 {
     if (NDS4MiSTer::Trace2DEnabled())
         for (u32 i=0;i<dirty.DataLength;i++) NDS4MiSTerTraceDirtyFlatBOBJ.Data[i]|=dirty.Data[i];
-    return CopyLinearVRAM<16*1024>(VRAMFlat_BOBJ, VRAMMap_BOBJ, dirty, &GPU::ReadVRAM_BOBJ<u64>);
+    const bool copied = CopyLinearVRAM<16*1024>(VRAMFlat_BOBJ, VRAMMap_BOBJ, dirty, &GPU::ReadVRAM_BOBJ<u64>);
+    if (copied) ++BOBJCoherencyEpoch;
+    return copied;
 }
 
 bool GPU::MakeVRAMFlat_ABGExtPalCoherent(NonStupidBitField<32*1024/VRAMDirtyGranularity>& dirty) noexcept

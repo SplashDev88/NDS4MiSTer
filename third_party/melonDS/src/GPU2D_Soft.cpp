@@ -20,6 +20,7 @@
 #include "GPU_ColorOp.h"
 #include "NDS.h"
 #include "NDS4MiSTer_2DTrace.h"
+#include <cstdlib>
 
 namespace melonDS
 {
@@ -36,6 +37,10 @@ void SoftRenderer2D::GetOBJBufferHashes(u64& lineHash, u64& windowHash) const
 SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
     : Renderer2D(gpu2D), Parent(parent)
 {
+    // Keep the accepted default unchanged while qualifying this experiment.
+    const char* cache = std::getenv("NDS_GPU_SPRITE_PHASE_CACHE");
+    if (gpu2D.Num == 1 && cache && std::strcmp(cache, "1") == 0)
+        SpriteCache = std::make_unique<SpritePhaseCache>();
     // mosaic table is initialized at compile-time
 }
 
@@ -45,6 +50,7 @@ SoftRenderer2D::~SoftRenderer2D()
 
 void SoftRenderer2D::Reset()
 {
+    if (SpriteCache) SpriteCache->Invalidate();
     memset(BGOBJLine, 0, sizeof(BGOBJLine));
     memset(WindowMask, 0, sizeof(WindowMask));
     memset(OBJLine, 0, sizeof(OBJLine));
@@ -554,6 +560,52 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
                     tilesetaddr + ((curtile & 0x03FF) << 6) +
                     (((curtile & (1<<11)) ?
                       (7-(yoff&0x7)) : (yoff&0x7)) << 3);
+                if (span == 8)
+                {
+                    u32 windowWords[2];
+                    std::memcpy(windowWords, &WindowMask[screenX],
+                                sizeof(windowWords));
+                    const u32 windowBit = 1u << bgnum;
+                    if (((windowWords[0] | windowWords[1]) &
+                         (windowBit * 0x01010101u)) == 0)
+                    {
+                        screenX += 8;
+                        xoff = static_cast<u16>(xoff + 8);
+                        continue;
+                    }
+                    // An entire 8bpp tile row is one aligned doubleword. Its address
+                    // cannot cross the power-of-two flat VRAM boundary. Read
+                    // once and specialize the eight byte positions, retaining
+                    // the ordinary window, transparent-index and layer rules.
+                    u64 packed;
+                    std::memcpy(&packed, &bgvram[pixelsaddr & bgvrammask],
+                                sizeof(packed));
+                    const u32 layerFlag = 0x01000000u << bgnum;
+                    auto draw = [&](u32 outputOffset, u32 shift)
+#if defined(__GNUC__) || defined(__clang__)
+                        __attribute__((always_inline))
+#endif
+                    {
+                        const u32 outputX = screenX + outputOffset;
+                        const u32 color = (packed >> shift) & 0xFFu;
+                        if (color && (WindowMask[outputX] & windowBit))
+                            DrawPixel(&BGOBJLine[outputX], curpal[color],
+                                      layerFlag);
+                    };
+                    if (curtile & (1u << 10))
+                    {
+                        draw(0, 56); draw(1, 48); draw(2, 40); draw(3, 32);
+                        draw(4, 24); draw(5, 16); draw(6, 8); draw(7, 0);
+                    }
+                    else
+                    {
+                        draw(0, 0); draw(1, 8); draw(2, 16); draw(3, 24);
+                        draw(4, 32); draw(5, 40); draw(6, 48); draw(7, 56);
+                    }
+                    screenX += 8;
+                    xoff = static_cast<u16>(xoff + 8);
+                    continue;
+                }
                 for (u32 j = 0; j < span; ++j)
                 {
                     const int outputX = screenX + static_cast<int>(j);
@@ -575,6 +627,52 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
                     tilesetaddr + ((curtile & 0x03FF) << 5) +
                     (((curtile & (1<<11)) ?
                       (7-(yoff&0x7)) : (yoff&0x7)) << 2);
+                if (span == 8)
+                {
+                    u32 windowWords[2];
+                    std::memcpy(windowWords, &WindowMask[screenX],
+                                sizeof(windowWords));
+                    const u32 windowBit = 1u << bgnum;
+                    if (((windowWords[0] | windowWords[1]) &
+                         (windowBit * 0x01010101u)) == 0)
+                    {
+                        screenX += 8;
+                        xoff = static_cast<u16>(xoff + 8);
+                        continue;
+                    }
+                    // An entire 4bpp tile row is one aligned word. Its address
+                    // cannot cross the power-of-two flat VRAM boundary. Read
+                    // once and specialize the eight nibble positions, retaining
+                    // the ordinary window, transparent-index and layer rules.
+                    u32 packed;
+                    std::memcpy(&packed, &bgvram[pixelsaddr & bgvrammask],
+                                sizeof(packed));
+                    const u32 layerFlag = 0x01000000u << bgnum;
+                    auto draw = [&](u32 outputOffset, u32 shift)
+#if defined(__GNUC__) || defined(__clang__)
+                        __attribute__((always_inline))
+#endif
+                    {
+                        const u32 outputX = screenX + outputOffset;
+                        const u32 color = (packed >> shift) & 0xFu;
+                        if (color && (WindowMask[outputX] & windowBit))
+                            DrawPixel(&BGOBJLine[outputX], curpal[color],
+                                      layerFlag);
+                    };
+                    if (curtile & (1u << 10))
+                    {
+                        draw(0, 28); draw(1, 24); draw(2, 20); draw(3, 16);
+                        draw(4, 12); draw(5, 8); draw(6, 4); draw(7, 0);
+                    }
+                    else
+                    {
+                        draw(0, 0); draw(1, 4); draw(2, 8); draw(3, 12);
+                        draw(4, 16); draw(5, 20); draw(6, 24); draw(7, 28);
+                    }
+                    screenX += 8;
+                    xoff = static_cast<u16>(xoff + 8);
+                    continue;
+                }
                 for (u32 j = 0; j < span; ++j)
                 {
                     const int outputX = screenX + static_cast<int>(j);
@@ -1181,7 +1279,10 @@ void SoftRenderer2D::DrawSprites(u32 line)
 {
     // the OBJ buffers don't get updated at all if the 2D engine is disabled
     if (!GPU2D.Enabled)
+    {
+        if (SpriteCache) SpriteCache->Invalidate();
         return;
+    }
 
     if (GPU2D.Num == 0)
     {
@@ -1192,6 +1293,49 @@ void SoftRenderer2D::DrawSprites(u32 line)
     {
         auto objDirty = GPU.VRAMDirty_BOBJ.DeriveState(GPU.VRAMMap_BOBJ, GPU);
         GPU.MakeVRAMFlat_BOBJCoherent(objDirty);
+    }
+
+    SpritePhaseCache::Entry* cacheEntry = nullptr;
+    SpritePhaseCache::Key cacheKey;
+    bool storeSpriteResult = false;
+    if (SpriteCache)
+    {
+        // Stay at the original sprite phase. Coherency above always runs,
+        // including when this cache hits. Capture/tracing use the full path.
+        const bool eligible = line < 192 && GPU2D.OBJEnable &&
+            !GPU.CaptureEnable && !(GPU.CaptureCnt & (1u << 31)) &&
+            !NDS4MiSTer::Trace2DEnabled() && !NDS4MiSTer::CompositeLineEnabled();
+        if (eligible)
+        {
+            // Full OAM includes every affine matrix. Compare effective bytes:
+            // games commonly rewrite the same OAM contents each frame.
+            if (!SpriteCache->OAMValid || !GPU.SpriteOAMWritesTracked ||
+                SpriteCache->ObservedWriteEpoch != GPU.SpriteOAMWriteEpoch)
+            {
+                // A write generation is only a dirty hint, never evidence of
+                // changed contents: redundant/rejected writes remain exact hits.
+                if (!SpriteCache->OAMValid ||
+                    std::memcmp(SpriteCache->OAM.data(), GPU.OAM+1024, 1024))
+                {
+                    std::memcpy(SpriteCache->OAM.data(), GPU.OAM+1024, 1024);
+                    ++SpriteCache->OAMEpoch;
+                    SpriteCache->OAMValid = true;
+                }
+                SpriteCache->ObservedWriteEpoch = GPU.SpriteOAMWriteEpoch;
+            }
+            cacheKey = {SpriteCache->OAMEpoch, GPU.BOBJCoherencyEpoch,
+                        GPU2D.DispCnt, GPU2D.OBJMosaicLine};
+            cacheEntry = &SpriteCache->Lines[line];
+            storeSpriteResult = cacheEntry->Valid && cacheEntry->Input == cacheKey;
+            if (storeSpriteResult && cacheEntry->OutputValid)
+            {
+                std::memcpy(OBJLine, cacheEntry->Line, sizeof(OBJLine));
+                std::memcpy(OBJWindow, cacheEntry->Window, sizeof(OBJWindow));
+                NumSprites = cacheEntry->Count;
+                return;
+            }
+        }
+        else SpriteCache->Invalidate();
     }
 
     NumSprites = 0;
@@ -1267,6 +1411,21 @@ void SoftRenderer2D::DrawSprites(u32 line)
             DoDrawSprite(Normal, sprnum, width, height, xpos, ypos);
 
         NumSprites++;
+    }
+    if (cacheEntry)
+    {
+        cacheEntry->Input = cacheKey;
+        // A changed key is cheap to remember. Store pixels only once that
+        // exact key repeats, avoiding 1,280 bytes of write traffic per miss
+        // in scenes whose sprite inputs change every frame.
+        cacheEntry->OutputValid = storeSpriteResult;
+        if (storeSpriteResult)
+        {
+            std::memcpy(cacheEntry->Line, OBJLine, sizeof(OBJLine));
+            std::memcpy(cacheEntry->Window, OBJWindow, sizeof(OBJWindow));
+            cacheEntry->Count = NumSprites;
+        }
+        cacheEntry->Valid = true;
     }
 }
 

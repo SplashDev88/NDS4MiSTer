@@ -43,6 +43,40 @@ public:
 private:
     SoftRenderer& Parent;
 
+    // Experimental, opt-in B-only cache of the pre-mosaic sprite result.
+    struct SpritePhaseCache
+    {
+        struct Key
+        {
+            u64 OAMEpoch = 0, VRAMEpoch = 0;
+            u32 DispCnt = 0, MosaicLine = 0;
+            bool operator==(const Key& other) const
+            {
+                return OAMEpoch == other.OAMEpoch && VRAMEpoch == other.VRAMEpoch &&
+                    DispCnt == other.DispCnt && MosaicLine == other.MosaicLine;
+            }
+        };
+        struct Entry
+        {
+            Key Input;
+            alignas(8) u32 Line[256];
+            u8 Window[256];
+            u32 Count = 0;
+            bool Valid = false, OutputValid = false;
+        };
+        std::array<Entry,192> Lines;
+        std::array<u8,1024> OAM {};
+        u64 OAMEpoch = 0, ObservedWriteEpoch = 0;
+        bool OAMValid = false;
+        void Invalidate()
+        {
+            for (auto& entry : Lines) entry.Valid = false;
+            OAMValid = false;
+        }
+    };
+    std::unique_ptr<SpritePhaseCache> SpriteCache;
+
+
     enum
     {
         OBJ_StandardPal = (1<<12),

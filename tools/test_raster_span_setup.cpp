@@ -172,7 +172,10 @@ int main()
                 }
                 u32 color;
                 s16 s, t;
-                noFactorSpan.InterpolateCachedPixel<true>(color, s, t, packedSpanColor);
+                if (iteration % 4 != 0)
+                    noFactorSpan.InterpolateCachedPixel<true, true>(color, s, t, packedSpanColor);
+                else
+                    noFactorSpan.InterpolateCachedPixel<true>(color, s, t, packedSpanColor);
                 const u32 expected = (u32(actual[0]) >> 3) |
                     ((u32(actual[1]) >> 3) << 8) | ((u32(actual[2]) >> 3) << 16);
                 if (color != expected || s != s16(actual[3]) || t != s16(actual[4]) ||

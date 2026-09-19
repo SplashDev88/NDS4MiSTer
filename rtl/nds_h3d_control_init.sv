@@ -49,6 +49,7 @@ module nds_h3d_control_init #(
     // H3P1 uses packet-only control-page space. Old clients remain unchanged;
     // the product enables this and cannot release with a legacy-only host.
     parameter bit SESSION_POLICY_ENABLE = 1'b0,
+    parameter bit MATCHED_DISPLAY_TEST = 1'b0,
     parameter integer HEADER_WORDS64 = 16,
     // One second at the product's retained 60 MHz DDR clock is deliberately
     // longer than a valid render/copy stall, but bounds stale Ready state if
@@ -183,7 +184,7 @@ module nds_h3d_control_init #(
         case (policy_word_index)
             2'd0: policy_expected_word = 64'h00200001_31503348;
             2'd1: policy_expected_word =
-                {31'd0, policy_engine_b, active_session};
+                {30'd0, MATCHED_DISPLAY_TEST, policy_engine_b, active_session};
             default: policy_expected_word = {32'd0, active_session};
         endcase
     end

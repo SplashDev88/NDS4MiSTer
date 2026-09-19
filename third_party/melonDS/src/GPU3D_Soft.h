@@ -33,6 +33,36 @@
 namespace melonDS
 {
 
+// Four disjoint, nonempty jobs, balanced by projected pixel work rather than
+// fixed height. Keep the established job count and fall back to equal heights
+// for empty frames. The sums are widened for adversarial estimator inputs.
+template<size_t Count>
+inline void NDS4MiSTerBalancedRasterBands(
+    const u32 (&lineWork)[Count], s32 (&boundaries)[5]) noexcept
+{
+    static_assert(Count >= 4 && Count % 4 == 0);
+    u64 total = 0;
+    for (u32 work : lineWork) total += work;
+    boundaries[0] = 0;
+    boundaries[4] = Count;
+    if (!total)
+    {
+        for (int band = 1; band < 4; ++band) boundaries[band] = band * (Count / 4);
+        return;
+    }
+    int line = 0;
+    u64 prefix = 0;
+    for (int band = 1; band < 4; ++band)
+    {
+        const u64 target = (total * band + 3) / 4;
+        const int minimum = boundaries[band - 1] + 1;
+        const int maximum = Count - (4 - band);
+        while (line < maximum && (line < minimum || prefix < target))
+            prefix += lineWork[line++];
+        boundaries[band] = line;
+    }
+}
+
 // Final-pass antialiasing touches only pixels whose raster attributes retain
 // an edge flag.  Inspect four consecutive attributes together so the common
 // edge-free interior can bypass four coverage tests and all color traffic.
@@ -1566,22 +1596,26 @@ private:
             }
 #endif
 
-            template<int FirstAttribute = 0>
+            template<int FirstAttribute = 0, bool KnownLinear = false>
             constexpr void Interpolate(s32* values)
             {
                 static_assert(FirstAttribute == 0 || FirstAttribute == 3);
+                // The constant-depth interior dispatcher already proved a
+                // positive-width linear span. Carry that proof into this
+                // loop instead of rechecking its mode for every texel.
+                assert(!KnownLinear || (Parent.linear && Parent.xdiff > 0));
                 // FirstAttribute=3 is only used after exact RGB equality was
                 // established for the whole span. Its RGB Current state is
                 // invariant (Base), so sharing LastX with a later generic
                 // edge pixel is safe even when depth rejection skipped pixels.
-                if (Parent.xdiff == 0)
+                if (!KnownLinear && Parent.xdiff == 0)
                 {
                     for (int i = FirstAttribute; i < 5; ++i)
                         values[i] = Base[i];
                     return;
                 }
 
-                if (!Parent.linear)
+                if (!KnownLinear && !Parent.linear)
                 {
                     // The span constructor has already reduced every
                     // attribute pair to Base/Delta/Ascending.  Rebuilding
@@ -1651,7 +1685,7 @@ private:
             // non-aliasing lifetime so LTO can keep the values in registers
             // instead of copying them through the caller-owned spanValues
             // array and loading them back for packing.
-            template<bool ConstantColor = false>
+            template<bool ConstantColor = false, bool KnownLinear = false>
             [[gnu::always_inline, gnu::hot]] inline void
             InterpolateCachedPixel(
                 u32& vertexColor, s16& textureS, s16& textureT,
@@ -1661,14 +1695,14 @@ private:
                 if constexpr (ConstantColor)
                 {
                     assert((Delta[0] | Delta[1] | Delta[2]) == 0);
-                    Interpolate<3>(values);
+                    Interpolate<3, KnownLinear>(values);
                     vertexColor = packedSpanColor;
                     textureS = static_cast<s16>(values[3]);
                     textureT = static_cast<s16>(values[4]);
                 }
                 else
                 {
-                    Interpolate(values);
+                    Interpolate<0, KnownLinear>(values);
                     NDS4MiSTerPackCachedSpanValues(
                         values, vertexColor, textureS, textureT);
                 }
@@ -2046,6 +2080,14 @@ private:
     static constexpr int RasterBandPolygonThreshold = 24;
     static constexpr int RasterBandEnterFrames = 2;
     static constexpr int RasterBandExitFrames = 8;
+    s32 RasterBandBoundaries[RasterBandCount + 1] {0, 48, 96, 144, 192};
+    bool WeightedRasterBands = false;
+    static constexpr int RasterWorkTileLines = 12;
+    static constexpr int RasterWorkTileCount = VisibleScanlines / RasterWorkTileLines;
+    u32 RasterTileCosts[RasterWorkTileCount] {};
+    u32 RasterTileHistory[RasterWorkTileCount] {};
+    bool RasterTileHistoryValid = false;
+    bool CollectRasterTileCosts = false;
 
     struct RasterBandResult
     {
@@ -2176,6 +2218,7 @@ private:
         u32* activePolygonMask, bool& prevIsShadowMask);
     void PrepareParallelRasterBand(
         int npolys, s32 firstLine, bool preserveShadowState);
+    u32 BuildRasterScanlineWork(int npolys, u32* lineWork) const;
     s32 ChooseParallelRasterSplitLine(int npolys) const;
     s32 ChooseParallelRasterSplitX(int npolys) const;
 

@@ -32,7 +32,8 @@ module nds_h3d_plane_reader #(
     parameter logic [28:0] CONTROL_BASE_WORD = 29'h01f80000,
     parameter logic [28:0] BANK0_BASE_WORD = 29'h01fa0000,
     parameter logic [28:0] BANK1_BASE_WORD = 29'h01fa8000,
-    parameter logic [31:0] PIXEL_FORMAT = 32'd1
+    parameter logic [31:0] PIXEL_FORMAT = 32'd1,
+    parameter bit LATE_ADOPTION_WINDOW = 1'b0
 ) (
     input  logic        ddr_clk,
     input  logic        ddr_reset,
@@ -58,9 +59,12 @@ module nds_h3d_plane_reader #(
     input  logic [7:0]  line_y,
 
     // Pixel-domain architectural frame boundary. A newly verified HPS
-    // descriptor is staged until this pulse so one scanout frame never mixes
-    // two independently rendered 3D planes.
+    // descriptor is staged until this pulse, or the optional bounded blanking
+    // window, so one visible frame never mixes independently rendered planes.
     input  logic        frame_boundary,
+    // Optional bounded blanking level. Also checked in DDR so a stalled
+    // activation cannot commit later during visible drawing.
+    input  logic        descriptor_switch_window,
 
     // Raw architectural scanline position. This advances even when the
     // best-effort 2D renderer drops a drawline.
@@ -155,6 +159,19 @@ module nds_h3d_plane_reader #(
         LINE_WAIT
     } state_t;
     state_t state;
+    (* async_reg = "true" *) logic [1:0] switch_window_sync_ddr;
+    always_ff @(posedge ddr_clk) begin
+        if (ddr_reset)
+            switch_window_sync_ddr <= 2'b00;
+        else
+            switch_window_sync_ddr <= {
+                switch_window_sync_ddr[0], descriptor_switch_window
+            };
+    end
+    wire switch_opportunity_pixel = LATE_ADOPTION_WINDOW
+        ? descriptor_switch_window : frame_boundary;
+    wire switch_opportunity_ddr = !LATE_ADOPTION_WINDOW ||
+        switch_window_sync_ddr[1];
 
     // ---------------------------------------------------------------------
     // Pixel-to-DDR request FIFO.
@@ -696,9 +713,9 @@ module nds_h3d_plane_reader #(
                             session_invalidate_pending <= 1'b0;
                         end
                     end else if (descriptor_activation_pending_ddr &&
-                            descriptor_link_free) begin
+                            descriptor_link_free && switch_opportunity_ddr) begin
                         // The pixel side accepted the staged descriptor at an
-                        // architectural frame boundary. Only now may DDR line
+                        // permitted blanking opportunity. Only now may DDR line
                         // requests switch planes and HPS reclaim the old bank.
                         active_descriptor_valid <= descriptor_meta_valid_ddr;
                         active_descriptor_sequence <=
@@ -1101,36 +1118,45 @@ module nds_h3d_plane_reader #(
         end
     end
 
+    // Factor transitive equality tests shared by all three banks. All tag
+    // fields remain checked: (bank.session == live == descriptor) and
+    // (bank.frame == descriptor == merge). This changes no state, pipeline,
+    // CDC bundle, bank lifetime or accepted binary tag combination.
+    wire descriptor_session_current =
+        pixel_descriptor_session == pixel_session;
+    wire descriptor_merge_frame_current =
+        pixel_descriptor_frame == merge_frame;
+
     wire bank0_tag_current =
         bank_available_pixel[0] && pixel_descriptor_valid &&
+        descriptor_session_current &&
         bank_tag_sequence_pixel[0] == pixel_descriptor_sequence &&
         bank_tag_session_pixel[0] == pixel_session &&
-        bank_tag_session_pixel[0] == pixel_descriptor_session &&
         bank_tag_frame_pixel[0] == pixel_descriptor_frame &&
         bank_tag_source_pixel[0] == pixel_descriptor_bank;
     wire bank1_tag_current =
         bank_available_pixel[1] && pixel_descriptor_valid &&
+        descriptor_session_current &&
         bank_tag_sequence_pixel[1] == pixel_descriptor_sequence &&
         bank_tag_session_pixel[1] == pixel_session &&
-        bank_tag_session_pixel[1] == pixel_descriptor_session &&
         bank_tag_frame_pixel[1] == pixel_descriptor_frame &&
         bank_tag_source_pixel[1] == pixel_descriptor_bank;
     wire bank2_tag_current =
         bank_available_pixel[2] && pixel_descriptor_valid &&
+        descriptor_session_current &&
         bank_tag_sequence_pixel[2] == pixel_descriptor_sequence &&
         bank_tag_session_pixel[2] == pixel_session &&
-        bank_tag_session_pixel[2] == pixel_descriptor_session &&
         bank_tag_frame_pixel[2] == pixel_descriptor_frame &&
         bank_tag_source_pixel[2] == pixel_descriptor_bank;
 
     wire line_start_hit0 = bank0_tag_current &&
-        bank_tag_frame_pixel[0] == merge_frame &&
+        descriptor_merge_frame_current &&
         bank_tag_y_pixel[0] == merge_y;
     wire line_start_hit1 = bank1_tag_current &&
-        bank_tag_frame_pixel[1] == merge_frame &&
+        descriptor_merge_frame_current &&
         bank_tag_y_pixel[1] == merge_y;
     wire line_start_hit2 = bank2_tag_current &&
-        bank_tag_frame_pixel[2] == merge_frame &&
+        descriptor_merge_frame_current &&
         bank_tag_y_pixel[2] == merge_y;
     wire line_start_hit = line_start_hit0 || line_start_hit1 ||
         line_start_hit2;
@@ -1297,7 +1323,7 @@ module nds_h3d_plane_reader #(
             // the old plane until that switch is confirmed. Committing here
             // would create a deterministic transparent interval: pixels
             // would reject old banks while DDR still rejected new requests.
-            if (frame_boundary && pending_descriptor_valid_pixel &&
+            if (switch_opportunity_pixel && pending_descriptor_valid_pixel &&
                     !descriptor_activation_requested_pixel) begin
                 descriptor_activation_requested_pixel <= 1'b1;
                 descriptor_ack_toggle_pixel <= descriptor_ready_seen_pixel;

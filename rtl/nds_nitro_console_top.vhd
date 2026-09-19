@@ -62,6 +62,7 @@ entity nds_nitro_console_top is
       -- the renderer 6390 cycles per scanline instead of 2130. A rendered line
       -- measures 5829 cycles, so it only fits the former. See nds_gpu2d_fast.
       GPU_FAST                 : integer   := 0;
+      H3D_MATCHED_DISPLAY_TEST  : integer   := 0;
       -- Diagnostic area split: 0 removes engine B and mirrors engine A onto
       -- both physical screens.  This keeps NSMB's main-screen BG2/HDMA and
       -- the ARM 3D merge in FPGA while measuring whether one 2D engine fits.
@@ -316,6 +317,9 @@ entity nds_nitro_console_top is
       h3d_vram7_write_scanline    : out std_logic_vector(8 downto 0) := (others => '0');
       h3d_vram7_write_timestamp   : out std_logic_vector(63 downto 0) := (others => '0');
 
+      -- Raw physical LCD timing for safe late 3D adoption; never queued.
+      h3d_lcd_phase_raw      : out std_logic := '0';
+      h3d_lcd_line_raw       : out std_logic_vector(8 downto 0) := (others => '0');
       h3d_hblank_valid       : out std_logic := '0';
       h3d_hblank_ready       : in  std_logic := '1';
       h3d_hblank_line        : out std_logic_vector(8 downto 0) := (others => '0');
@@ -1092,7 +1096,7 @@ begin
    ih3d_events : entity work.nds_h3d_console_event_gate
    generic map
    (
-      SPARSE_HBLANK => true,
+      SPARSE_HBLANK => H3D_MATCHED_DISPLAY_TEST = 0,
       -- Preserve beta.11's 32-entry posting window and empty-queue bypass.
       -- Engine B On admits additional writes through the same lossless gate.
       GPU_QUEUE_ADDRESS_BITS => 5
@@ -2901,6 +2905,8 @@ begin
    pixelb_out_data <= pxb_data_eff when pow_swap = '1' else pxa_data;
    pixelb_out_we   <= pxb_we       when pow_swap = '1' else pxa_we;
 
+   h3d_lcd_phase_raw <= lcd_phase;
+   h3d_lcd_line_raw <= std_logic_vector(lcd_phase_line);
    vblank_out <= gpu_vblank;
 
    -- Per-engine drop exports. The combined `drawline and (busy_a or busy_b)`

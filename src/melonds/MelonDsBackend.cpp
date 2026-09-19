@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <cstdint>
 #include <limits>
@@ -1515,6 +1516,12 @@ bool MelonDsBackend::load_rom(const std::string& path, std::string& error)
     nds_->GetRenderer().SetRenderSettings(rendererSettings);
     nds_->SetNDSCart(std::move(cart));
     nds_->Reset();
+#ifndef JIT_ENABLED
+    // Interpreter CPU/DMA OAM stores use GPU::WriteOAM. Other integrations
+    // retain the full comparison fallback until their writers are audited.
+    if (const char* cache = std::getenv("NDS_GPU_SPRITE_PHASE_CACHE"))
+        nds_->GPU.SetSpriteOAMWriteTracking(std::strcmp(cache, "1") == 0);
+#endif
     // OSD downloads have no pathname.  A fixed synthetic name keeps product
     // logs and homebrew argv free of a commercial filename.
     nds_->SetupDirectBoot("rom.nds");

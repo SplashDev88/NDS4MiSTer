@@ -9,6 +9,7 @@
 #include "replay/Hybrid3DFramePacket.h"
 #include "replay/Hybrid3DMemoryMapping.h"
 #include "replay/Hybrid3DSessionPolicy.h"
+#include "replay/MatchedDisplayAdmission.h"
 #include "replay/ReplaySpscState.h"
 
 #include <array>
@@ -606,8 +607,9 @@ class Hybrid3DService {
 public:
     static constexpr std::uint32_t HeartbeatPollInterval = 256;
     static constexpr std::size_t MaxTextureTraceRecords = 65536;
-    // One buffer may be owned by the FPGA publication fence, one newest
-    // completed successor may wait, and one may be filled by the renderer.
+    // One buffer may be consumed by the synchronous publication copy, one
+    // newest completed successor may wait, and one may be filled by the
+    // renderer.
     // A deeper FIFO measured as permanent 2D/3D skew (nine frames with the
     // former seven-entry limit), so replace obsolete completed planes instead
     // of smoothing them into the future display stream.
@@ -631,7 +633,9 @@ public:
         void* publication_mapping = nullptr,
         bool publication_write_combined = false,
         bool direct_plane_publication = false,
-        bool arm_video_engine_b_only = false)
+        bool arm_video_engine_b_only = false,
+        bool matched_display_test = false,
+        bool matched_full_rate = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -651,6 +655,8 @@ public:
           asynchronous_plane_publication_(asynchronous_plane_publication),
           plane_stats_enabled_(plane_stats_enabled),
           arm_video_render_shadow_(arm_video_render_shadow),
+          matched_display_test_(matched_display_test),
+          matched_full_rate_(matched_display_test && matched_full_rate),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           bind_hps_worker_cores_(bind_hps_worker_cores),
@@ -687,6 +693,14 @@ public:
             !session_policy::read(policy_, session_, policy_epoch_,
                 [&](std::size_t i) { return policy_words[i]; }))
             return fail(FaultBadHeader, "missing or invalid H3P1 session policy");
+        const bool matched_policy =
+            (policy_[3] & session_policy::MatchedDisplay) != 0;
+        if (matched_policy != matched_display_test_ ||
+            (matched_display_test_ &&
+             (!arm_video_render_shadow_ || arm_video_engine_b_only_ ||
+              !(policy_[3] & session_policy::EngineBPixels))))
+            return fail(FaultBadHeader,
+                "matched-display test requires its companion core and Engine B On");
         engine_b_pixels_enabled_ = arm_video_engine_b_only_ &&
             (policy_[3] & session_policy::EngineBPixels) != 0;
         // Off retains beta.11's 3D-only replay and renderer settings. The
@@ -965,6 +979,11 @@ public:
 
 private:
     friend void run_self_test();
+    friend void run_scanline_lifetime_test();
+    friend void run_latest_plane_ack_test();
+    friend void run_matched_display_test(bool);
+    friend void run_matched_catchup_test(bool);
+    friend struct EffectiveRenderWriteTest;
 
     struct ReplayPacket {
         frame_packet::PacketHeader header {};
@@ -1046,6 +1065,9 @@ private:
         args.JIT = std::nullopt;
         nds_ = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
         nds_->Reset();
+        // OAM enters through ARM9 writes; direct external marks are dirty hints.
+        if (const char* cache = std::getenv("NDS_GPU_SPRITE_PHASE_CACHE"))
+            nds_->GPU.SetSpriteOAMWriteTracking(std::strcmp(cache, "1") == 0);
         nds_->GPU.GPU3D.SetEnabled(true, true);
         nds_->GPU.GPU3D.SetExternalCommandReplay(true);
         // This service always publishes melonDS's native software output.
@@ -1068,9 +1090,15 @@ private:
             melonDS::RendererSettings settings {
                 1, Threaded3D, false, false,
                 arm_video_render_shadow_ || arm_video_engine_b_only_,
-                Parallel2D, arm_video_render_shadow_ || arm_video_engine_b_only_,
+                // Full-video lookahead caches row-zero 3D at sprite phase
+                // 262. Matched mode deliberately starts that render at zero;
+                // retain production B caching and use B-only composition
+                // caching in paired mode, without future-3D lookahead.
+                Parallel2D, !matched_display_test_ &&
+                    (arm_video_render_shadow_ || arm_video_engine_b_only_),
                 pipeline_profile_enabled_, FullFrame3D,
-                arm_video_engine_b_only_, engine_b_pixels_enabled_};
+                arm_video_engine_b_only_, engine_b_pixels_enabled_,
+                matched_display_test_};
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
@@ -1100,6 +1128,7 @@ private:
         arm_render_expected_alpha_ = false;
         arm_render_visibility_generation_ = 0;
         arm_video_phase_started_ = false;
+        matched_next_line_ = 0;
         arm_video_renderer_started_ = false;
         arm_video_render_in_flight_ = false;
         arm_video_render_this_frame_ = false;
@@ -1118,6 +1147,7 @@ private:
         pending_frame_expected_alpha_ = false;
         plane_visibility_filter_.reset();
         completed_plane_generation_ = 0;
+        completed_plane_scroll_ = 0;
         published_plane_generation_.store(0, std::memory_order_relaxed);
         texture_trace_records_.clear();
         completed_texture_trace_.clear();
@@ -2310,6 +2340,20 @@ private:
         // masks, palette/OAM power rules, dirty tracking, and mapped VRAM
         // rendering all use the maintained emulator implementation. Only a
         // complete frame from that private renderer is published to scanout.
+        // Compact palette/OAM accesses are naturally aligned and contained in
+        // one four-byte word. Compare the effective storage around the normal
+        // write: byte/power-rejected and same-value writes must retain their
+        // ordinary dirty side effects without evicting unchanged cached lines.
+        const bool palette_access = access->address >= 0x05000000u &&
+            access->address < 0x05000800u;
+        const bool oam_access = access->address >= 0x07000000u &&
+            access->address < 0x07000800u;
+        const auto* effective_word = palette_access ?
+            nds_->GPU.Palette + (access->address & 0x7fcu) : oam_access ?
+            nds_->GPU.OAM + (access->address & 0x7fcu) : nullptr;
+        std::uint32_t before_word = 0;
+        if (effective_word)
+            std::memcpy(&before_word, effective_word, sizeof(before_word));
         if (access->bytes == 1)
             nds_->ARM9Write8(
                 access->address, static_cast<melonDS::u8>(access->value));
@@ -2345,14 +2389,18 @@ private:
                 }
             }
         }
-        if (access->address >= 0x05000000u &&
-            access->address < 0x05000800u)
-            nds_->GPU.MarkExternalRenderPalette(
-                access->address & 0x7ffu, access->bytes);
-        else if (access->address >= 0x07000000u &&
-                 access->address < 0x07000800u)
-            nds_->GPU.MarkExternalRenderOAM(
-                access->address & 0x7ffu, access->bytes);
+        if (effective_word) {
+            std::uint32_t after_word = 0;
+            std::memcpy(&after_word, effective_word, sizeof(after_word));
+            if (after_word != before_word) {
+                if (palette_access)
+                    nds_->GPU.MarkExternalRenderPalette(
+                        access->address & 0x7ffu, access->bytes);
+                else
+                    nds_->GPU.MarkExternalRenderOAM(
+                        access->address & 0x7ffu, access->bytes);
+            }
+        }
         return true;
     }
 
@@ -2434,6 +2482,14 @@ private:
         // first complete line-0 epoch instead of publishing a partial shadow.
         if (!arm_video_phase_started_ && line != 0) return true;
 
+        if (matched_display_test_) {
+            // The companion core retains every LCD phase in timestamp order.
+            // Missing phases must fail closed, never silently pair stale 3D.
+            if (arm_video_phase_started_ && line != matched_next_line_)
+                return fail(FaultBadFrame, "matched-display LCD phase gap");
+            matched_next_line_ = line == 262 ? 0 : line + 1;
+        }
+
         if (line == 0) {
             // A copied packet can outlive its H3B slot. Advance every melonDS
             // state transition, but derive the first complete frame and then
@@ -2442,7 +2498,23 @@ private:
             arm_video_render_this_frame_ = arm_video_engine_b_only_ ||
                 !asynchronous_arm_video_replay_ ||
                 !arm_video_frame_ready_ ||
-                arm_video_skipped_frames_ >= ReplayRenderCadence - 1;
+                arm_video_skipped_frames_ >=
+                    (matched_display_test_ ? (matched_full_rate_ ? 1u : 2u) :
+                        ReplayRenderCadence) - 1;
+            if (matched_display_test_ && asynchronous_arm_video_replay_ &&
+                arm_video_render_this_frame_ &&
+                !nds4mister::replay::matched_display_can_draw(
+                    replay_packet_frame_, replay_state_.latest_input_frame(),
+                    replay_queue_count())) {
+                // MATCH1 kept drawing every other historical frame while
+                // replay fell seconds behind. Omit only the derived picture,
+                // including the first one if it is already obsolete. All
+                // records, VBlank geometry and row-zero sprite state still
+                // replay below. Decide only at line zero: never mix halves of
+                // pictures or discard authoritative geometry to catch up.
+                arm_video_render_this_frame_ = false;
+                frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
+            }
             if (arm_video_render_this_frame_)
                 arm_video_skipped_frames_ = 0;
             else {
@@ -2493,13 +2565,32 @@ private:
         const bool renderer_resync =
             line == 0 && arm_video_render_this_frame_ &&
             !arm_video_renderer_started_;
+        // Matched output starts exactly one fresh 3D render per admitted
+        // display frame. Restart3DRendering only re-arms old renderer state;
+        // after skipped frames it does not refresh textures/FrameIdentical.
+        // Suppress the speculative line-215 render and start from the latest
+        // latched VBlank state at line zero, before composing either screen.
+        if (matched_display_test_ && renderer_resync) {
+            // VBlank's identity hint compares adjacent guest frames. The last
+            // actually drawn frame can be older after display decimation.
+            nds_->GPU.GPU3D.RenderFrameIdentical = false;
+            nds_->GPU.GPU3D.AbortFrame = false;
+            nds_->GPU.GetRenderer().Start3DRendering();
+        }
+        // Prime next frame's row-zero OBJ at its architectural phase even
+        // when this frame's visible output was skipped. Re-priming at line
+        // zero would incorrectly observe later OAM/register/palette writes.
+        const bool render_phase = arm_video_render_this_frame_ ||
+            (matched_display_test_ && line == 262);
+        const bool phase_2d_only = arm_video_engine_b_only_ ||
+            (matched_display_test_ && line == 215);
         auto phase_started = std::chrono::steady_clock::time_point {};
         if (pipeline_profile_enabled_)
             phase_started = std::chrono::steady_clock::now();
         if (!nds_->GPU.ApplyExternalRendererPhase(
                 start_kind, line, line, vblank, vblank,
-                display_frame, arm_video_render_this_frame_,
-                renderer_resync, arm_video_engine_b_only_))
+                display_frame, render_phase,
+                renderer_resync && !matched_display_test_, phase_2d_only))
             return fail(FaultBadFrame, "melonDS rejected LCD start phase");
         if (renderer_resync)
             arm_video_render_in_flight_ = true;
@@ -2507,8 +2598,8 @@ private:
             arm_video_renderer_started_ = true;
         if (!nds_->GPU.ApplyExternalRendererPhase(
                 1, line, line, vblank | 2u, vblank | 2u,
-                display_frame, arm_video_render_this_frame_, false,
-                arm_video_engine_b_only_))
+                display_frame, render_phase, false,
+                phase_2d_only))
             return fail(FaultBadFrame, "melonDS rejected LCD HBlank phase");
         if (pipeline_profile_enabled_ && arm_video_render_this_frame_ &&
             line < PlaneHeight) {
@@ -2536,10 +2627,12 @@ private:
                     arm_video_skip_phase_max_ns_, phase_started);
         }
         if (arm_video_render_shadow_ && arm_video_render_this_frame_ &&
-            line == 192)
+            line == 192) {
             arm_video_render_in_flight_ = false;
+            if (matched_display_test_) arm_video_renderer_started_ = false;
+        }
         else if (arm_video_render_shadow_ && arm_video_render_this_frame_ &&
-                 line == 215)
+                 line == 215 && !matched_display_test_)
             arm_video_render_in_flight_ = true;
 
         if (!arm_video_render_this_frame_) return true;
@@ -3021,7 +3114,7 @@ private:
             publication_queue_count_ == buffer_count ||
             publication_index_queued_locked(index))
             return false;
-        if (!arm_video_render_shadow_ &&
+        if ((!arm_video_render_shadow_ || matched_display_test_) &&
             publication_queue_count_ == PendingPublicationLimit) {
             // Keep a shallow FIFO to absorb renderer/publisher phase bursts,
             // but bound its age by evicting the oldest pending plane before
@@ -3070,8 +3163,16 @@ private:
         bool visibility_preapproved = false;
         std::uint32_t* destination = native_frame_.data();
         int destination_index = -1;
-        const bool identical = renderer.Is3DFrameIdentical();
         const auto completed_generation = completed_plane_generation_;
+        // Raster identity excludes BG0HOFS: Get3DScanline applies the live
+        // display-time scroll after rasterization. A changed scroll therefore
+        // needs new publication pixels, but never a new raster. Couple the
+        // scroll to the completed plane's generation so queued/ACK-delayed
+        // publications cannot make another scroll value eligible for reuse.
+        const auto publication_scroll = nds_->GPU.GPU3D.GetRenderXPos();
+        const bool identical = renderer.Is3DFrameIdentical() &&
+            completed_generation != 0 &&
+            completed_plane_scroll_ == publication_scroll;
         const bool reuse_published_plane =
             asynchronous_plane_publication_ && identical &&
             (!arm_video_engine_b_only_ || !engine_b_pixels_enabled_) &&
@@ -3115,6 +3216,15 @@ private:
             if (publisher_lock.owns_lock() && private_publication_idle &&
                 publisher_.ready(session_)) {
                 std::array<const std::uint32_t*, PlaneHeight> scanlines {};
+                // Nonzero X scroll makes the software renderer return its
+                // single ScrolledLine scratch buffer. Preserve each row before
+                // Get3DScanline overwrites it; publish_scanlines consumes the
+                // complete pointer array only after this loop. The service's
+                // native plane is private to this replay owner and is not a
+                // publication-worker FIFO slot. Unscrolled native rows remain
+                // stable through the synchronous publish, requiring no copy.
+                const bool transient_scanlines =
+                    publication_scroll != 0;
                 bool plane_alpha = false;
                 for (std::size_t y = 0; y < PlaneHeight; ++y) {
                     scanlines[y] = renderer.Get3DScanline(y);
@@ -3122,6 +3232,12 @@ private:
                         return fail(
                             FaultBadFrame,
                             "melonDS returned a null direct 3D line");
+                    if (transient_scanlines) {
+                        auto* stable_line = native_frame_.data() + y * PlaneWidth;
+                        std::memcpy(stable_line, scanlines[y],
+                            PlaneWidth * sizeof(std::uint32_t));
+                        scanlines[y] = stable_line;
+                    }
                     if (!plane_alpha)
                         plane_alpha = plane_row_has_alpha(
                             scanlines[y], PlaneWidth);
@@ -3129,6 +3245,7 @@ private:
                 catchup_visibility_taint_.complete_render(
                     arm_render_visibility_generation_, plane_alpha);
                 ++completed_plane_generation_;
+                completed_plane_scroll_ = publication_scroll;
                 ++frames_rendered_;
                 render_accounted = true;
                 if (!plane_visibility_filter_.publish(
@@ -3237,6 +3354,7 @@ private:
                 arm_render_visibility_generation_, copied_plane_has_alpha);
             if (!identical || completed_plane_generation_ == 0)
                 ++completed_plane_generation_;
+            completed_plane_scroll_ = publication_scroll;
         }
         if (asynchronous_plane_publication_) {
             {
@@ -3401,6 +3519,44 @@ private:
             replay_kind_run_max_ns_[kind_index], elapsed);
     }
 
+    bool wait_for_plane_publication_ack()
+    {
+        auto started = std::chrono::steady_clock::time_point {};
+        if (pipeline_profile_enabled_)
+            started = std::chrono::steady_clock::now();
+        for (;;) {
+            {
+                std::lock_guard<std::mutex> lock(publication_mutex_);
+                if (publication_stop_) return false;
+            }
+            std::uint32_t producer = 0;
+            std::uint32_t acknowledged = 0;
+            if (!nds4mister::h3d::load_counter(
+                    &header_.frame_publish_sequence,
+                    &header_.frame_publish_sequence_reserved, producer) ||
+                !nds4mister::h3d::load_counter(
+                    &header_.frame_ack_sequence,
+                    &header_.frame_ack_sequence_reserved, acknowledged) ||
+                (producer & 1u) != 0 || acknowledged > producer ||
+                producer - acknowledged > 2) {
+                publication_fail("invalid asynchronous plane fence");
+                return false;
+            }
+            if (producer == acknowledged) {
+                if (pipeline_profile_enabled_)
+                    record_profile_sample(
+                        plane_publication_ack_waits_,
+                        plane_publication_ack_wait_total_ns_,
+                        plane_publication_ack_wait_max_ns_, started);
+                return true;
+            }
+            if (pipeline_profile_enabled_)
+                plane_publication_wait_polls_.fetch_add(
+                    1, std::memory_order_relaxed);
+            std::this_thread::sleep_for(HpsQueuePollInterval);
+        }
+    }
+
     void publication_worker_loop()
     {
         for (;;) {
@@ -3412,6 +3568,18 @@ private:
                     return publication_stop_ || publication_queue_count_ != 0;
                 });
                 if (publication_stop_) return;
+                if (!arm_video_render_shadow_ || matched_display_test_) {
+                    // Until the old shared descriptor is acknowledged, keep
+                    // private completed frames replaceable in the existing
+                    // newest-only queue. Claiming a frame before this wait
+                    // pins an obsolete result even if a newer one finishes.
+                    // A nonempty queue excludes direct publication; after
+                    // dequeue the active index provides the same exclusion.
+                    lock.unlock();
+                    if (!wait_for_plane_publication_ack()) return;
+                    lock.lock();
+                    if (publication_stop_) return;
+                }
                 index = dequeue_publication_buffer_locked();
                 if (index < 0) {
                     publication_worker_error_ =
@@ -3490,80 +3658,46 @@ private:
                 continue;
             }
 
-            bool published = false;
-            auto acknowledgement_wait_started =
+            {
+                std::lock_guard<std::mutex> lock(publication_mutex_);
+                if (publication_stop_) return;
+            }
+            auto publication_started =
                 std::chrono::steady_clock::time_point {};
             if (pipeline_profile_enabled_)
-                acknowledgement_wait_started = std::chrono::steady_clock::now();
-            while (!published) {
-                {
-                    std::lock_guard<std::mutex> lock(publication_mutex_);
-                    if (publication_stop_) return;
-                }
-                std::uint32_t producer = 0;
-                std::uint32_t acknowledged = 0;
-                if (!nds4mister::h3d::load_counter(
-                        &header_.frame_publish_sequence,
-                        &header_.frame_publish_sequence_reserved, producer) ||
-                    !nds4mister::h3d::load_counter(
-                        &header_.frame_ack_sequence,
-                        &header_.frame_ack_sequence_reserved, acknowledged) ||
-                    (producer & 1u) != 0 || acknowledged > producer ||
-                    producer - acknowledged > 2) {
-                    publication_fail("invalid asynchronous plane fence");
-                    return;
-                }
-                if (producer != acknowledged) {
-                    if (pipeline_profile_enabled_)
-                        plane_publication_wait_polls_.fetch_add(
-                            1, std::memory_order_relaxed);
-                    std::this_thread::sleep_for(HpsQueuePollInterval);
-                    continue;
-                }
-                if (pipeline_profile_enabled_)
-                    record_profile_sample(
-                        plane_publication_ack_waits_,
-                        plane_publication_ack_wait_total_ns_,
-                        plane_publication_ack_wait_max_ns_,
-                        acknowledgement_wait_started);
-                auto publication_started =
-                    std::chrono::steady_clock::time_point {};
-                if (pipeline_profile_enabled_)
-                    publication_started = std::chrono::steady_clock::now();
-                bool publication_ok = false;
-                {
-                    std::lock_guard<std::mutex> publisher_lock(
-                        publisher_call_mutex_);
-                    publication_ok = reuses_plane ?
-                        publisher_.republish_last(
-                            session_, frame,
-                            &frame_publication_fence_active_) :
-                        publisher_.publish(
-                            session_, frame,
-                            publication_frames_[index].data(),
-                            &frame_publication_fence_active_,
-                            publication_frame_has_engine_b_[index] ?
-                                publication_engine_b_frames_[index]->data() :
-                                nullptr,
-                            publication_frame_engine_b_screen_[index]);
-                }
-                if (!publication_ok) {
-                    publication_fail("asynchronous 3D plane publication failed");
-                    return;
-                }
-                if (pipeline_profile_enabled_)
-                    record_profile_sample(
-                        plane_publications_, plane_publication_total_ns_,
-                        plane_publication_max_ns_, publication_started);
-                published = true;
-                frames_published_.fetch_add(1, std::memory_order_relaxed);
-                if (!reuses_plane)
-                    published_plane_generation_.store(
-                        publication_frame_generations_[index],
-                        std::memory_order_release);
-                if (!reuses_plane)
-                    retain_plane_sample(publication_frame_samples_[index]);
+                publication_started = std::chrono::steady_clock::now();
+            bool publication_ok = false;
+            {
+                std::lock_guard<std::mutex> publisher_lock(
+                    publisher_call_mutex_);
+                publication_ok = reuses_plane ?
+                    publisher_.republish_last(
+                        session_, frame,
+                        &frame_publication_fence_active_) :
+                    publisher_.publish(
+                        session_, frame,
+                        publication_frames_[index].data(),
+                        &frame_publication_fence_active_,
+                        publication_frame_has_engine_b_[index] ?
+                            publication_engine_b_frames_[index]->data() :
+                            nullptr,
+                        publication_frame_engine_b_screen_[index]);
             }
+            if (!publication_ok) {
+                publication_fail("asynchronous 3D plane publication failed");
+                return;
+            }
+            if (pipeline_profile_enabled_)
+                record_profile_sample(
+                    plane_publications_, plane_publication_total_ns_,
+                    plane_publication_max_ns_, publication_started);
+            frames_published_.fetch_add(1, std::memory_order_relaxed);
+            if (!reuses_plane)
+                published_plane_generation_.store(
+                    publication_frame_generations_[index],
+                    std::memory_order_release);
+            if (!reuses_plane)
+                retain_plane_sample(publication_frame_samples_[index]);
 
             std::lock_guard<std::mutex> lock(publication_mutex_);
             publication_active_index_ = -1;
@@ -4373,6 +4507,10 @@ private:
     bool asynchronous_plane_publication_ = false;
     bool plane_stats_enabled_ = false;
     bool arm_video_render_shadow_ = false;
+    bool matched_display_test_ = false;
+    // Opt-in: remove only the cadence ceiling, retaining line-zero admission.
+    bool matched_full_rate_ = false;
+    std::uint32_t matched_next_line_ = 0;
     bool asynchronous_arm_video_replay_ = false;
     bool pipeline_profile_enabled_ = false;
     bool bind_hps_worker_cores_ = false;
@@ -4417,6 +4555,7 @@ private:
     bool pending_frame_has_alpha_ = false;
     bool pending_frame_expected_alpha_ = false;
     std::uint64_t completed_plane_generation_ = 0;
+    std::uint16_t completed_plane_scroll_ = 0;
     std::atomic<std::uint64_t> published_plane_generation_ {0};
     std::uint64_t last_timestamp_ = 0;
     std::uint32_t heartbeat_ = 0;
@@ -4592,7 +4731,8 @@ struct Fixture {
     std::uint32_t diagnostic_state = frame_packet::DiagnosticCrcInitial;
     std::uint32_t diagnostic_count = 0;
 
-    explicit Fixture(std::uint32_t session, bool engine_b_pixels = false)
+    explicit Fixture(std::uint32_t session, bool engine_b_pixels = false,
+                     bool matched_display = false)
     {
         *header = {};
         header->magic = nds4mister::h3d::Magic;
@@ -4604,7 +4744,8 @@ struct Fixture {
         header->entry_count = 0;
         header->quiesce_request = session;
         header->quiesce_ack = session;
-        const auto policy = session_policy::make(session, session, engine_b_pixels);
+        auto policy = session_policy::make(session, session, engine_b_pixels);
+        if (matched_display) policy[3] |= session_policy::MatchedDisplay;
         std::memcpy(bytes.data() + session_policy::RequestOffset,
                     policy.data(), sizeof(policy));
     }
@@ -4686,8 +4827,910 @@ frame_packet::Record packet_record(
     throw std::runtime_error(std::string("self-test: ") + message);
 }
 
+void run_scanline_lifetime_test()
+{
+    // Exercise the actual threaded software renderer and service publisher.
+    // The oracle copies each returned row before asking for the next one;
+    // retaining all returned pointers is a deliberately broken control.
+    constexpr std::uint32_t Session = 0x12345678;
+    constexpr std::uint32_t Sentinel = 0xdeadbeef;
+    struct Environment {
+        std::vector<std::pair<std::string, std::optional<std::string>>> saved;
+        void set(const char* name, const char* value)
+        {
+            const auto* old = std::getenv(name);
+            saved.emplace_back(name, old ?
+                std::optional<std::string>(old) : std::nullopt);
+            setenv(name, value, 1);
+        }
+        ~Environment()
+        {
+            for (const auto& item : saved) {
+                if (item.second) setenv(item.first.c_str(), item.second->c_str(), 1);
+                else unsetenv(item.first.c_str());
+            }
+        }
+    } environment;
+    environment.set("NDS4MISTER_DUAL_CORE_3D", "1");
+    environment.set("NDS4MISTER_ADAPTIVE_RASTER_SPLIT", "1");
+    environment.set("NDS4MISTER_RASTER_BAND_QUEUE", "1");
+    environment.set("NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER", "1");
+    std::uint64_t mismatches = 0;
+    std::uint64_t pixels_checked = 0;
+    std::uint64_t negative_controls = 0;
+    std::uint64_t identity_mismatches = 0;
+    std::uint64_t identity_reuse_mismatches = 0;
+    unsigned identity_cases = 0;
+    std::uint64_t output_hash = 14695981039346656037ull;
+    unsigned cases = 0;
+    for (const bool wc : {false, true}) {
+        Fixture fixture(Session);
+        auto service = std::make_unique<Hybrid3DService>(
+            fixture.bytes.data(), fixture.bytes.size(), std::string {},
+            true, false, false, false, false, false, nullptr, nullptr,
+            wc, true);
+        if (!service->initialize()) self_test_fail("scanline fixture init failed");
+        auto& nds = *service->nds_;
+        auto& gpu = nds.GPU;
+        auto& gpu3d = gpu.GPU3D;
+        auto& renderer = gpu.GetRenderer();
+        // Clear-image mode renders a real, nonuniform plane from texture VRAM.
+        // Every row has a different G/B pair; X varies R and transparency.
+        gpu.MapVRAM_CD(2, 0x93);
+        gpu.MapVRAM_CD(3, 0x9b);
+        auto* colors = reinterpret_cast<melonDS::u16*>(gpu.VRAM[2]);
+        auto* depths = reinterpret_cast<melonDS::u16*>(gpu.VRAM[3]);
+        for (unsigned y = 0; y < 256; ++y) {
+            for (unsigned x = 0; x < 256; ++x) {
+                colors[y * 256 + x] = ((x + 1) % 17 ? 0x8000 : 0) |
+                    (x & 31) | ((y & 31) << 5) | (((y >> 5) & 7) << 10);
+                if (y == 73) colors[y * 256 + x] = 0;
+                depths[y * 256 + x] = 0x7fff;
+            }
+        }
+        gpu.VRAMDirty[2].SetRange(0, 256);
+        gpu.VRAMDirty[3].SetRange(0, 256);
+        gpu3d.RenderDispCnt = 1u << 14;
+        gpu3d.RenderClearAttr1 = 0;
+        gpu3d.RenderClearAttr2 = 0x7fff;
+        gpu3d.RenderFrameIdentical = false;
+        gpu3d.RenderXPos = 0;
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        std::vector<std::uint32_t> unscrolled(PlanePixels);
+        for (unsigned y = 0; y < PlaneHeight; ++y)
+            std::memcpy(unscrolled.data() + y * PlaneWidth,
+                renderer.Get3DScanline(y), PlaneWidth * sizeof(std::uint32_t));
+        if (unscrolled[PlaneWidth + 1] == unscrolled[191 * PlaneWidth + 1] ||
+            !plane_has_alpha(unscrolled.data()))
+            self_test_fail("scanline fixture did not render distinct populated rows");
+
+        // Include both signed extremes, one-pixel remnants, ordinary offsets,
+        // blank edge pixels, and AbortFrame's shared all-zero scratch row.
+        for (const bool aborted : {false, true}) {
+            for (const unsigned scroll : {0u, 1u, 7u, 127u, 255u,
+                                          256u, 257u, 385u, 505u, 511u}) {
+                gpu3d.RenderXPos = scroll;
+                gpu3d.AbortFrame = aborted;
+                std::vector<std::uint32_t> expected(PlanePixels);
+                std::array<const std::uint32_t*, PlaneHeight> retained {};
+                for (unsigned y = 0; y < PlaneHeight; ++y) {
+                    retained[y] = renderer.Get3DScanline(y);
+                    std::memcpy(expected.data() + y * PlaneWidth,
+                        retained[y], PlaneWidth * sizeof(std::uint32_t));
+                    // Check renderer scroll/blank semantics against the real
+                    // unscrolled render, independently of the publication fix.
+                    const int signed_scroll = scroll < 256 ? int(scroll) : int(scroll) - 512;
+                    for (unsigned x = 0; x < PlaneWidth; ++x) {
+                        const int source_x = int(x) + signed_scroll;
+                        const auto pixel = !aborted && source_x >= 0 && source_x < 256 ?
+                            unscrolled[y * PlaneWidth + source_x] : 0u;
+                        if (expected[y * PlaneWidth + x] != pixel)
+                            self_test_fail("actual renderer scroll semantics diverged");
+                    }
+                }
+                bool retained_differs = false;
+                for (unsigned y = 0; y < PlaneHeight; ++y)
+                    retained_differs |= std::memcmp(retained[y],
+                        expected.data() + y * PlaneWidth,
+                        PlaneWidth * sizeof(std::uint32_t)) != 0;
+                const bool should_detect = !aborted && scroll != 0 && scroll != 256;
+                if (retained_differs != should_detect)
+                    self_test_fail("retained-pointer negative control missed row corruption");
+                negative_controls += retained_differs;
+                if (!aborted && scroll == 0 && retained[0] == retained[191])
+                    self_test_fail("zero-scroll renderer did not return stable native rows");
+                std::fill(service->native_frame_.begin(), service->native_frame_.end(), Sentinel);
+                const auto direct_before = service->direct_plane_publications_.load();
+                const auto sequence_before = fixture.header->frame_publish_sequence;
+                if (!service->copy_rendered_frame(++cases, renderer) ||
+                    service->direct_plane_publications_.load() != direct_before + 1 ||
+                    fixture.header->frame_publish_sequence != sequence_before + 2)
+                    self_test_fail("scanline fixture missed direct service publication");
+                const auto bank_offset = (fixture.header->frame.bank & 1) ? Bank1Offset : Bank0Offset;
+                const auto* published = reinterpret_cast<const std::uint32_t*>(
+                    fixture.bytes.data() + bank_offset);
+                std::uint64_t case_mismatches = 0;
+                for (std::size_t i = 0; i < PlanePixels; ++i) {
+                    case_mismatches += published[i] != nds4mister::h3d::pack_melonds_pixel(expected[i]);
+                    output_hash = (output_hash ^ published[i]) * 1099511628211ull;
+                }
+                mismatches += case_mismatches;
+                pixels_checked += PlanePixels;
+                if (scroll == 0 && !std::all_of(service->native_frame_.begin(),
+                        service->native_frame_.end(), [](auto pixel) { return pixel == Sentinel; }))
+                    self_test_fail("zero-scroll direct publication copied its native plane");
+                nds4mister::h3d::store_counter(&fixture.header->frame_ack_sequence,
+                    &fixture.header->frame_ack_sequence_reserved,
+                    fixture.header->frame_publish_sequence);
+                std::cout << "H3D_SCANLINE_CASE wc=" << wc << " scroll=" << scroll
+                    << " aborted=" << aborted << " mismatches=" << case_mismatches << '\n';
+            }
+        }
+        gpu3d.AbortFrame = false;
+
+        // Engine B is Off. Raster identity alone must not reuse a bank whose
+        // display-time scroll differs. Use actual BG0HOFS writes after render,
+        // including a blocked-bank fallback whose private copy must survive a
+        // subsequent register change before publication.
+        if (service->engine_b_pixels_enabled_)
+            self_test_fail("scroll identity fixture unexpectedly enabled Engine B");
+        const auto wait_for_publication = [&](std::uint64_t count) {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            for (;;) {
+                if (service->publication_worker_faulted())
+                    self_test_fail("scroll identity publisher faulted");
+                {
+                    std::lock_guard<std::mutex> lock(service->publication_mutex_);
+                    if (service->frames_published_.load() == count &&
+                        service->publication_active_index_ < 0 &&
+                        service->publication_queue_count_ == 0)
+                        return;
+                }
+                if (std::chrono::steady_clock::now() >= deadline)
+                    self_test_fail("scroll identity publication timed out");
+                std::this_thread::yield();
+            }
+        };
+        const auto identity_publish = [&](unsigned scroll, bool expect_reuse,
+                                          bool ack_after, bool release_previous) {
+            gpu.GPU2D_A.Write16(0x010, scroll);
+            std::vector<std::uint32_t> expected(PlanePixels);
+            for (unsigned y = 0; y < PlaneHeight; ++y)
+                std::memcpy(expected.data() + y * PlaneWidth,
+                    renderer.Get3DScanline(y), PlaneWidth * sizeof(std::uint32_t));
+            const auto before_count = service->frames_published_.load();
+            const auto before_reuses = service->identical_plane_republications_.load();
+            const auto before_sequence = fixture.header->frame_publish_sequence;
+            if (!service->copy_rendered_frame(++cases, renderer))
+                self_test_fail("scroll identity service copy failed");
+            if (release_previous) {
+                if (service->frames_published_.load() != before_count)
+                    self_test_fail("blocked bank was published without acknowledgement");
+                gpu.GPU2D_A.Write16(0x010, 31);
+                nds4mister::h3d::store_counter(&fixture.header->frame_ack_sequence,
+                    &fixture.header->frame_ack_sequence_reserved, before_sequence);
+            }
+            wait_for_publication(before_count + 1);
+            const bool reused = service->identical_plane_republications_.load() != before_reuses;
+            identity_reuse_mismatches += reused != expect_reuse;
+            const auto offset = (fixture.header->frame.bank & 1) ? Bank1Offset : Bank0Offset;
+            const auto* published = reinterpret_cast<const std::uint32_t*>(fixture.bytes.data() + offset);
+            std::uint64_t different = 0;
+            for (std::size_t i = 0; i < PlanePixels; ++i) {
+                different += published[i] != nds4mister::h3d::pack_melonds_pixel(expected[i]);
+                output_hash = (output_hash ^ published[i]) * 1099511628211ull;
+            }
+            identity_mismatches += different;
+            pixels_checked += PlanePixels;
+            ++identity_cases;
+            std::cout << "H3D_SCROLL_IDENTITY_CASE wc=" << wc << " scroll=" << scroll
+                << " blocked=" << release_previous << " reused=" << reused
+                << " expected_reuse=" << expect_reuse << " mismatches=" << different << '\n';
+            if (ack_after)
+                nds4mister::h3d::store_counter(&fixture.header->frame_ack_sequence,
+                    &fixture.header->frame_ack_sequence_reserved,
+                    fixture.header->frame_publish_sequence);
+        };
+        gpu3d.RenderFrameIdentical = false;
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        identity_publish(0, false, true, false);
+        gpu3d.RenderFrameIdentical = true;
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        if (!renderer.Is3DFrameIdentical())
+            self_test_fail("scroll identity fixture rerasterized");
+        const auto native_hashes_before = [&] {
+            std::array<melonDS::u64, 3> hashes {};
+            if (!renderer.Get3DNativeBufferHashes(hashes.data()))
+                self_test_fail("scroll identity native hashes unavailable");
+            return hashes;
+        }();
+        for (const unsigned scroll : {0u, 7u, 7u, 505u, 505u, 0u}) {
+            const unsigned previous = gpu3d.GetRenderXPos();
+            identity_publish(scroll, scroll == previous, true, false);
+        }
+        identity_publish(0, true, false, false);
+        identity_publish(7, false, true, true);
+        identity_publish(7, true, true, false);
+        std::array<melonDS::u64, 3> native_hashes_after {};
+        if (!renderer.Is3DFrameIdentical() ||
+            !renderer.Get3DNativeBufferHashes(native_hashes_after.data()) ||
+            native_hashes_before != native_hashes_after)
+            self_test_fail("scroll-only publication mutated or rerasterized native buffers");
+
+        // A real transparent clear must also publish zeroes at either sign.
+        gpu3d.RenderDispCnt = 0;
+        gpu3d.RenderClearAttr1 = 0;
+        gpu3d.RenderFrameIdentical = false;
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        for (const unsigned scroll : {0u, 7u, 505u}) {
+            gpu3d.RenderXPos = scroll;
+            const auto direct_before = service->direct_plane_publications_.load();
+            if (!service->copy_rendered_frame(++cases, renderer) ||
+                service->direct_plane_publications_.load() != direct_before + 1)
+                self_test_fail("transparent clear missed direct service publication");
+            const auto offset = (fixture.header->frame.bank & 1) ? Bank1Offset : Bank0Offset;
+            const auto* published = reinterpret_cast<const std::uint32_t*>(fixture.bytes.data() + offset);
+            for (std::size_t i = 0; i < PlanePixels; ++i) {
+                if (published[i] != 0) self_test_fail("transparent clear published stale pixels");
+                output_hash = (output_hash ^ published[i]) * 1099511628211ull;
+            }
+            pixels_checked += PlanePixels;
+            nds4mister::h3d::store_counter(&fixture.header->frame_ack_sequence,
+                &fixture.header->frame_ack_sequence_reserved,
+                fixture.header->frame_publish_sequence);
+        }
+
+        // Drive the actual cancellable polygon renderer, then the service's
+        // completion gate. No canceled buffer may reach either publisher.
+        const auto push = [&](std::uint8_t command, std::uint32_t parameter) {
+            gpu3d.WriteExternalNormalizedCommand(command, parameter);
+            nds.ARM9Timestamp += std::uint64_t {1} << 16;
+            nds.ARM9Target = nds.ARM9Timestamp;
+            nds.ARM7Timestamp = nds.ARM9Timestamp >> nds.ARM9ClockShift;
+            nds.ARM7Target = nds.ARM7Timestamp;
+            gpu3d.Run();
+        };
+        const auto vertex = [](int x, int y) {
+            return (std::uint32_t(x) & 0x3ffu) | ((std::uint32_t(y) & 0x3ffu) << 10);
+        };
+        push(0x10, 1); push(0x15, 0);
+        push(0x20, 0x001f00c0); push(0x29, 0x001f00c0);
+        for (int i = 0; i < 10; ++i) {
+            push(0x40, 0);
+            push(0x24, vertex(-256, -256));
+            push(0x24, vertex(256, -256));
+            push(0x24, vertex(0, 256));
+            push(0x41, 0);
+        }
+        push(0x50, 0);
+        gpu3d.VBlank();
+        gpu3d.RenderXPos = 511;
+        gpu3d.RenderFrameIdentical = false;
+        const auto sequence_before = fixture.header->frame_publish_sequence;
+        const auto rendered_before = service->frames_rendered_.load();
+        const auto generation_before = service->completed_plane_generation_;
+        const auto canceled_before = service->arm_render_cancellations_.load();
+        service->arm_render_frame_ = ++cases;
+        service->arm_render_pending_ = true;
+        renderer.Start3DRendering();
+        if (!renderer.Request3DRenderingCancellation() ||
+            !service->finish_arm_render() || !renderer.Was3DRenderingCanceled() ||
+            service->arm_render_pending_ ||
+            service->arm_render_cancellations_ != canceled_before + 1 ||
+            service->completed_plane_generation_ != generation_before ||
+            service->frames_rendered_ != rendered_before ||
+            fixture.header->frame_publish_sequence != sequence_before)
+            self_test_fail("canceled render reached scanline publication");
+
+        gpu3d.RenderFrameIdentical = false;
+        service->arm_render_pending_ = true;
+        service->arm_render_frame_ = ++cases;
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        std::vector<std::uint32_t> recovered(PlanePixels);
+        for (unsigned y = 0; y < PlaneHeight; ++y)
+            std::memcpy(recovered.data() + y * PlaneWidth,
+                renderer.Get3DScanline(y), PlaneWidth * sizeof(std::uint32_t));
+        const auto direct_before = service->direct_plane_publications_.load();
+        if (!service->finish_arm_render() || renderer.Was3DRenderingCanceled() ||
+            service->direct_plane_publications_.load() != direct_before + 1)
+            self_test_fail("recovery render missed direct service publication");
+        const auto offset = (fixture.header->frame.bank & 1) ? Bank1Offset : Bank0Offset;
+        const auto* published = reinterpret_cast<const std::uint32_t*>(fixture.bytes.data() + offset);
+        for (std::size_t i = 0; i < PlanePixels; ++i) {
+            mismatches += published[i] != nds4mister::h3d::pack_melonds_pixel(recovered[i]);
+            output_hash = (output_hash ^ published[i]) * 1099511628211ull;
+        }
+        pixels_checked += PlanePixels;
+
+        // Production replaces the service at a session/ROM boundary. An
+        // identical first raster in that fresh instance has no reusable bank,
+        // even when the preceding session ended with the same scroll value.
+        service.reset();
+        Fixture fresh(Session + 1);
+        service = std::make_unique<Hybrid3DService>(
+            fresh.bytes.data(), fresh.bytes.size(), std::string {},
+            true, false, false, false, false, false, nullptr, nullptr,
+            wc, true);
+        if (!service->initialize() || service->completed_plane_generation_ != 0 ||
+            service->published_plane_generation_.load() != 0)
+            self_test_fail("fresh session retained publication identity");
+        auto& fresh_gpu = service->nds_->GPU;
+        auto& fresh_renderer = fresh_gpu.GetRenderer();
+        fresh_gpu.GPU3D.RenderClearAttr1 = 0x001f7c00;
+        fresh_gpu.GPU3D.RenderFrameIdentical = false;
+        fresh_renderer.Start3DRendering();
+        fresh_renderer.Finish3DRendering();
+        fresh_gpu.GPU3D.RenderFrameIdentical = true;
+        fresh_renderer.Start3DRendering();
+        fresh_renderer.Finish3DRendering();
+        if (!fresh_renderer.Is3DFrameIdentical())
+            self_test_fail("fresh-session identity fixture rerasterized");
+        fresh_gpu.GPU2D_A.Write16(0x010, 511);
+        std::vector<std::uint32_t> fresh_expected(PlanePixels);
+        for (unsigned y = 0; y < PlaneHeight; ++y)
+            std::memcpy(fresh_expected.data() + y * PlaneWidth,
+                fresh_renderer.Get3DScanline(y), PlaneWidth * sizeof(std::uint32_t));
+        if (!service->copy_rendered_frame(++cases, fresh_renderer))
+            self_test_fail("fresh-session publication failed");
+        wait_for_publication(1);
+        if (service->identical_plane_republications_.load() != 0)
+            self_test_fail("fresh session reused a preceding session's plane");
+        const auto fresh_offset = (fresh.header->frame.bank & 1) ? Bank1Offset : Bank0Offset;
+        const auto* fresh_published = reinterpret_cast<const std::uint32_t*>(fresh.bytes.data() + fresh_offset);
+        for (std::size_t i = 0; i < PlanePixels; ++i) {
+            identity_mismatches += fresh_published[i] !=
+                nds4mister::h3d::pack_melonds_pixel(fresh_expected[i]);
+            output_hash = (output_hash ^ fresh_published[i]) * 1099511628211ull;
+        }
+        pixels_checked += PlanePixels;
+        ++identity_cases;
+        service.reset();
+    }
+    std::cout << "H3D_SCANLINE_LIFETIME_RESULT cases=" << cases
+        << " pixels=" << pixels_checked << " mismatches=" << mismatches
+        << " detecting_controls=" << negative_controls
+        << " packed_hash=" << std::hex << output_hash << std::dec << '\n';
+    std::cout << "H3D_SCROLL_IDENTITY_RESULT cases=" << identity_cases
+        << " mismatches=" << identity_mismatches
+        << " reuse_mismatches=" << identity_reuse_mismatches << '\n';
+    if (mismatches) self_test_fail("direct publication retained transient renderer rows");
+    if (identity_mismatches || identity_reuse_mismatches)
+        self_test_fail("identical raster reused a plane with different display scroll");
+    std::cout << "H3D_SCANLINE_LIFETIME_PASS\n";
+}
+
+void run_latest_plane_ack_test()
+{
+    using nds4mister::h3d::store_counter;
+    unsigned cases = 0;
+    std::uint64_t pixels_checked = 0;
+    for (bool wc : {false, true}) {
+        for (bool engine_b : {false, true}) {
+            for (bool stop_while_waiting : {false, true}) {
+                Fixture fixture(0x12345100u + cases, engine_b);
+                store_counter(&fixture.header->frame_publish_sequence,
+                    &fixture.header->frame_publish_sequence_reserved, 2);
+                Hybrid3DService service(
+                    fixture.bytes.data(), fixture.bytes.size(), {},
+                    true, false, false, false, true, false,
+                    nullptr, nullptr, wc, true, engine_b);
+                if (!service.initialize())
+                    self_test_fail("latest-at-ACK fixture initialization failed");
+                const std::vector<std::byte> before(
+                    fixture.bytes.begin() + Bank0Offset, fixture.bytes.end());
+                const auto pixel = [](unsigned frame, std::size_t i) {
+                    return 0x1f000000u |
+                        ((frame * 65537u + i * 17u) & 0x003fffffu);
+                };
+                const auto queue = [&](unsigned frame) {
+                    std::lock_guard<std::mutex> lock(service.publication_mutex_);
+                    const auto index = service.reserve_publication_buffer_locked();
+                    if (index < 0)
+                        self_test_fail("latest-at-ACK private buffer exhausted");
+                    for (std::size_t i = 0; i < PlanePixels; ++i) {
+                        service.publication_frames_[index][i] = pixel(frame, i);
+                        (*service.publication_engine_b_frames_[index])[i] =
+                            pixel(frame + 100, i) & 0x003fffffu;
+                    }
+                    service.publication_frame_numbers_[index] = frame;
+                    service.publication_frame_generations_[index] = frame;
+                    service.publication_frame_has_alpha_[index] = true;
+                    service.publication_frame_expected_alpha_[index] = true;
+                    service.publication_frame_reuses_plane_[index] = false;
+                    service.publication_frame_visibility_preapproved_[index] = false;
+                    service.publication_frame_has_engine_b_[index] = engine_b;
+                    service.publication_frame_engine_b_number_[index] = frame;
+                    service.publication_frame_engine_b_screen_[index] = (frame & 1u) != 0;
+                    if (!service.enqueue_publication_buffer_locked(index))
+                        self_test_fail("latest-at-ACK queue rejected frame");
+                    service.publication_cv_.notify_one();
+                };
+                queue(1);
+                // Wait until the real publication worker has seen the held
+                // ACK. The old policy pins frame 1 here; do not assume any
+                // particular host scheduler delay or render completion time.
+                for (unsigned attempt = 0; attempt < 2000 &&
+                        service.plane_publication_wait_polls_.load() < 2;
+                        ++attempt)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                if (service.plane_publication_wait_polls_.load() < 2)
+                    self_test_fail("latest-at-ACK worker never observed blocked fence");
+                queue(2);
+                queue(3);
+                if (fixture.header->frame_publish_sequence != 2 ||
+                    !std::equal(before.begin(), before.end(),
+                        fixture.bytes.begin() + Bank0Offset))
+                    self_test_fail("latest-at-ACK modified shared pixels before ACK");
+                if (stop_while_waiting) {
+                    service.stop_publication_worker();
+                    if (service.frames_published() != 0 ||
+                        !std::equal(before.begin(), before.end(),
+                            fixture.bytes.begin() + Bank0Offset))
+                        self_test_fail("latest-at-ACK stop leaked a pending publication");
+                    ++cases;
+                    continue;
+                }
+                store_counter(&fixture.header->frame_ack_sequence,
+                    &fixture.header->frame_ack_sequence_reserved, 2);
+                for (unsigned attempt = 0; attempt < 2000 &&
+                        service.frames_published() == 0; ++attempt)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                // Stop joins the worker before reading its descriptor/pixels.
+                // Do not ACK the new descriptor: exactly one may be emitted.
+                service.stop_publication_worker();
+                if (service.frames_published() != 1 ||
+                    fixture.header->frame_publish_sequence != 4 ||
+                    fixture.header->frame.frame != 3) {
+                    std::cerr << "H3D_LATEST_ACK_DIAG first_frame="
+                              << fixture.header->frame.frame << '\n';
+                    self_test_fail("ACK released an obsolete completed plane");
+                }
+                const auto bank = fixture.header->frame.bank;
+                const auto* plane = reinterpret_cast<const std::uint32_t*>(
+                    fixture.bytes.data() + ((bank & 1u) ? Bank1Offset : Bank0Offset));
+                const auto* screen = reinterpret_cast<const std::uint32_t*>(
+                    fixture.bytes.data() + EngineBFramebufferOffset +
+                    ((bank >> 1) & 1u) * nds4mister::h3d::EngineBBankStride);
+                if (fixture.header->frame.format != (engine_b ?
+                        nds4mister::h3d::PixelFormatRgb666A5EngineB :
+                        nds4mister::h3d::PixelFormatRgb666A5) ||
+                    (engine_b && ((bank >> 2) & 1u) != 1u))
+                    self_test_fail("latest-at-ACK lost Engine B routing metadata");
+                for (std::size_t i = 0; i < PlanePixels; ++i) {
+                    if (plane[i] != nds4mister::h3d::pack_melonds_pixel(pixel(3, i)))
+                        self_test_fail("latest-at-ACK published stale 3D pixels");
+                    if (engine_b && screen[i] !=
+                            (nds4mister::h3d::pack_melonds_pixel(pixel(103, i)) & 0x0003ffffu))
+                        self_test_fail("latest-at-ACK mixed Engine B snapshot generations");
+                    pixels_checked += 1 + engine_b;
+                }
+                ++cases;
+            }
+        }
+    }
+    std::cout << "H3D_LATEST_ACK_PASS cases=" << cases
+              << " pixels=" << pixels_checked
+              << " first_released_frame=3 shared_immutable_before_ack=1 stop_while_waiting=1\n";
+}
+
+void run_matched_display_test(bool full_rate = false)
+{
+    constexpr std::uint32_t Session = 0x44556677;
+    for (bool policy : {false, true}) {
+        Fixture fixture(Session, true, policy);
+        Hybrid3DService service(fixture.bytes.data(), fixture.bytes.size(),
+            {}, false, false, true, false, false, false, nullptr, nullptr,
+            false, false, false, !policy);
+        if (service.initialize()) self_test_fail("matched policy mismatch accepted");
+    }
+    {
+        Fixture fixture(Session, false, true);
+        Hybrid3DService service(fixture.bytes.data(), fixture.bytes.size(),
+            {}, false, false, true, false, false, false, nullptr, nullptr,
+            false, false, false, true);
+        if (service.initialize()) self_test_fail("matched mode accepted incomplete stream");
+    }
+    Fixture fixture(Session, true, true), oracle_fixture(Session + 1, true);
+    auto service = std::make_unique<Hybrid3DService>(
+        fixture.bytes.data(), fixture.bytes.size(), std::string{},
+        true, false, true, true, false, false, nullptr, nullptr,
+        true, false, false, true, full_rate);
+    // Same authoritative register/LCD stream, rendering every frame without
+    // replay or publication workers. This exposes skipped-frame lifetime bugs.
+    auto oracle = std::make_unique<Hybrid3DService>(
+        oracle_fixture.bytes.data(), oracle_fixture.bytes.size(), std::string{},
+        false, false, true);
+    if (!service->initialize() || !oracle->initialize())
+        self_test_fail("matched fixture initialization");
+    std::uint64_t checked = 0, different_frames = 0;
+    std::array<std::uint32_t, 2> previous{};
+    for (std::uint32_t frame = 1; frame <= 20; ++frame) {
+        // Submit real moving geometry into the writable polygon bank before
+        // the next VBlank. The reference consumes every render; the candidate
+        // skips alternating output while keeping every geometry transition.
+        if (frame > 10) for (auto* replay : {service.get(), oracle.get()}) {
+            auto& nds = *replay->nds_;
+            const auto push = [&](std::uint8_t command, std::uint32_t value) {
+                nds.GPU.GPU3D.WriteExternalNormalizedCommand(command, value);
+                nds.ARM9Timestamp += std::uint64_t{1} << 16;
+                nds.ARM9Target = nds.ARM9Timestamp;
+                nds.GPU.GPU3D.Run();
+            };
+            const auto vertex = [](int x, int y) {
+                return (std::uint32_t(x) & 1023u) |
+                    ((std::uint32_t(y) & 1023u) << 10);
+            };
+            const int x = static_cast<int>(frame) * 8 - 48;
+            push(0x60, 0xbfff0000); push(0x10, 1); push(0x15, 0);
+            push(0x20, 0x7fff); push(0x29, 0x001f00c0); push(0x40, 0);
+            push(0x24, vertex(x - 80, -80));
+            push(0x24, vertex(x + 80, -80));
+            push(0x24, vertex(x, 80)); push(0x41, 0); push(0x50, 0);
+        }
+        std::vector<frame_packet::Record> records;
+        auto write = [&](frame_packet::RecordKind kind, unsigned address, unsigned data) {
+            records.push_back(packet_record(kind,
+                static_cast<std::uint8_t>(AccessWidth::Word), 15, address, data));
+        };
+        write(frame_packet::RecordKind::GxRegister, 0x04000304, 0x820f);
+        write(frame_packet::RecordKind::Gpu2DRegister, 0x04000000, 0x10108);
+        write(frame_packet::RecordKind::Gpu2DRegister, 0x04001000, 0x11000);
+        if (frame == 1) {
+            records.push_back(packet_record(frame_packet::RecordKind::VramMap,
+                static_cast<std::uint8_t>(AccessWidth::Byte), 8,
+                0x04000243, 0x84000000));
+            for (unsigned i = 0; i < 8; ++i)
+                write(frame_packet::RecordKind::VramWrite, 0x06600000 + i * 4, 0x11111111);
+            write(frame_packet::RecordKind::PaletteWrite, 0x05000600, 0x001f0000);
+            for (unsigned i = 0; i < 128; ++i)
+                write(frame_packet::RecordKind::OamWrite, 0x07000400 + i * 8, 0x0200);
+            write(frame_packet::RecordKind::OamWrite, 0x07000404, 0);
+        }
+        // The row-zero sprite was fetched at the preceding line 262; this
+        // later OAM write must not be pulled backward across that boundary.
+        write(frame_packet::RecordKind::OamWrite, 0x07000400, (frame * 8) << 16);
+        // Real 3D clear plane changes at VBlank; backdrop changes immediately.
+        // They deliberately carry different generation numbers.
+        write(frame_packet::RecordKind::GxRegister, 0x04000350,
+              (31u << 16) | (((frame + 1) / 2) << 10) | ((frame + 1) / 2));
+        write(frame_packet::RecordKind::PaletteWrite, 0x05000000, frame << 5);
+        write(frame_packet::RecordKind::PaletteWrite, 0x05000400, frame << 5);
+        for (unsigned line = 0; line <= 262; ++line) {
+            if (line == 96)
+                write(frame_packet::RecordKind::PaletteWrite, 0x05000400,
+                      (frame + 10) << 5);
+            records.push_back(packet_record(frame_packet::RecordKind::HBlank,
+                0, 0, line, frame));
+        }
+        fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        oracle_fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        if (service->poll() != PollResult::Applied ||
+            oracle->poll() != PollResult::Applied)
+            self_test_fail("matched stream rejected");
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (service->replay_packets_applied() != frame) {
+            if (service->faulted_.load(std::memory_order_acquire) ||
+                std::chrono::steady_clock::now() > deadline)
+                self_test_fail("matched replay timeout");
+            std::this_thread::yield();
+        }
+        if (service->nds_->GPU.GPU3D.RenderNumPolygons != (frame > 10 ? 1u : 0u) ||
+            oracle->nds_->GPU.GPU3D.RenderNumPolygons != (frame > 10 ? 1u : 0u))
+            self_test_fail("matched moving polygon was not latched");
+        const bool rendered = full_rate || (frame & 1u) != 0;
+        const auto expected_count = full_rate ? frame : (frame + 1) / 2;
+        while (service->frames_published() < expected_count) {
+            if (service->publication_worker_faulted() ||
+                std::chrono::steady_clock::now() > deadline)
+                self_test_fail("matched publish timeout");
+            std::this_thread::yield();
+        }
+        if (service->frames_published() != expected_count ||
+            service->frames_rendered_ != expected_count)
+            self_test_fail("matched cadence changed");
+        if (rendered) {
+            const auto& expected = oracle->arm_video_frames_[oracle->arm_video_completed_index_];
+            const auto& descriptor = fixture.header->frame;
+            if (descriptor.format != nds4mister::h3d::PixelFormatFullRgb666 ||
+                descriptor.frame != frame)
+                self_test_fail("matched descriptor frame/format");
+            for (unsigned screen = 0; screen < 2; ++screen) {
+                const auto* actual = reinterpret_cast<const std::uint32_t*>(
+                    fixture.bytes.data() + FramebufferOffset +
+                    descriptor.bank * nds4mister::h3d::FullFrameBankStride +
+                    screen * nds4mister::h3d::FullFrameScreenStride);
+                for (std::size_t i = 0; i < PlanePixels; ++i) {
+                    if (actual[i] != (nds4mister::h3d::pack_melonds_pixel(expected[screen][i]) & 0x3ffffu)) {
+                        std::cerr << "MATCHED_DIAG frame=" << frame << " screen=" << screen
+                                  << " pixel=" << i << " actual=" << std::hex << actual[i]
+                                  << " expected=" << nds4mister::h3d::pack_melonds_pixel(expected[screen][i])
+                                  << std::dec << '\n';
+                        self_test_fail("matched pixels differ from every-frame reference");
+                    }
+                    ++checked;
+                }
+                if (frame > 1 && previous[screen] != actual[0]) ++different_frames;
+                previous[screen] = actual[0];
+            }
+            nds4mister::h3d::store_counter(&fixture.header->frame_ack_sequence,
+                &fixture.header->frame_ack_sequence_reserved,
+                fixture.header->frame_publish_sequence);
+        }
+        oracle_fixture.header->frame_ack_sequence = oracle_fixture.header->frame_publish_sequence;
+    }
+    // The 3D clear color changes every two guest frames, while B's backdrop
+    // changes every frame. Consecutive full-rate pictures may legitimately
+    // repeat the top-left 3D pixel even though the complete pair is new.
+    if (different_frames != (full_rate ? 29u : 18u))
+        self_test_fail("matched fixture failed to vary both screens");
+    service->stop_replay_worker();
+    auto gap = packet_record(frame_packet::RecordKind::HBlank, 0, 0, 1, 21);
+    if (service->apply_arm_video_phase(gap))
+        self_test_fail("matched mode accepted missing LCD line zero");
+    std::cout << "H3D_MATCHED_DISPLAY_PASS frames=20 full_rate=" << full_rate
+              << " rendered=" << (full_rate ? 20 : 10) << " pixels=" << checked
+              << " policies=3 missing_phase_rejected=1\n";
+}
+
+void run_matched_catchup_test(bool full_rate = false)
+{
+    constexpr std::uint32_t Session = 0x55667788;
+    Fixture fixture(Session, true, true), reference_fixture(Session + 1, true);
+    // Stop only the replay thread, so a deterministic burst can be admitted
+    // through the real validated input queue before draining its exact slots.
+    // Normal asynchronous replay is covered by run_matched_display_test().
+    auto service = std::make_unique<Hybrid3DService>(
+        fixture.bytes.data(), fixture.bytes.size(), std::string{},
+        false, false, true, true, false, false, nullptr, nullptr,
+        true, false, false, true, full_rate);
+    auto reference = std::make_unique<Hybrid3DService>(
+        reference_fixture.bytes.data(), reference_fixture.bytes.size(),
+        std::string{}, false, false, true);
+    if (!service->initialize() || !reference->initialize())
+        self_test_fail("matched catchup initialization");
+    service->stop_replay_worker();
+
+    const auto records_for = [](std::uint32_t frame) {
+        std::vector<frame_packet::Record> records;
+        auto write = [&](frame_packet::RecordKind kind, unsigned addr, unsigned data) {
+            records.push_back(packet_record(kind,
+                static_cast<std::uint8_t>(AccessWidth::Word), 15, addr, data));
+        };
+        auto gx = [&](unsigned command, unsigned value) {
+            records.push_back(packet_record(frame_packet::RecordKind::GxCommand,
+                command, 0, 0, value));
+        };
+        write(frame_packet::RecordKind::GxRegister, 0x04000304, 0x820f);
+        write(frame_packet::RecordKind::Gpu2DRegister, 0x04000000, 0x10108);
+        write(frame_packet::RecordKind::Gpu2DRegister, 0x04001000, 0x11000);
+        if (frame == 1) {
+            records.push_back(packet_record(frame_packet::RecordKind::VramMap,
+                static_cast<std::uint8_t>(AccessWidth::Byte), 8,
+                0x04000243, 0x84000000));
+            for (unsigned i = 0; i < 8; ++i)
+                write(frame_packet::RecordKind::VramWrite, 0x06600000 + i * 4, 0x11111111);
+            write(frame_packet::RecordKind::PaletteWrite, 0x05000600, 0x001f0000);
+            for (unsigned i = 0; i < 128; ++i)
+                write(frame_packet::RecordKind::OamWrite, 0x07000400 + i * 8, 0x0200);
+            write(frame_packet::RecordKind::OamWrite, 0x07000404, 0);
+        }
+        write(frame_packet::RecordKind::OamWrite, 0x07000400, ((frame % 29) * 8) << 16);
+        const unsigned color = (frame % 30) + 1;
+        write(frame_packet::RecordKind::GxRegister, 0x04000350,
+            (31u << 16) | (color << 10) | color);
+        write(frame_packet::RecordKind::PaletteWrite, 0x05000000, color << 5);
+        write(frame_packet::RecordKind::PaletteWrite, 0x05000400, color << 5);
+        gx(0x60, 0xbfff0000); gx(0x10, 1); gx(0x15, 0);
+        gx(0x20, 0x7fff); gx(0x29, 0x001f00c0); gx(0x40, 0);
+        const int x = static_cast<int>(frame % 16) * 8 - 60;
+        const auto vertex = [](int x, int y) {
+            return (std::uint32_t(x) & 1023u) | ((std::uint32_t(y) & 1023u) << 10);
+        };
+        gx(0x24, vertex(x - 80, -80)); gx(0x24, vertex(x + 80, -80));
+        gx(0x24, vertex(x, 80)); gx(0x41, 0);
+        for (unsigned line = 0; line <= 262; ++line) {
+            if (line == 96)
+                write(frame_packet::RecordKind::PaletteWrite, 0x05000400,
+                    ((color + 7) % 31) << 5);
+            records.push_back(packet_record(frame_packet::RecordKind::HBlank,
+                0, 0, line, frame));
+        }
+        // SWAP is a packet terminal; its geometry latches on the following
+        // VBlank even if no picture is selected for that guest frame.
+        gx(0x50, 0);
+        return records;
+    };
+
+    std::uint32_t frame = 0, drawn = 0, recovered = 0;
+    std::uint64_t checked = 0;
+    auto burst = [&](unsigned count) {
+        const auto first = frame + 1;
+        const auto last = frame + count;
+        for (unsigned f = first; f <= last; ++f) {
+            fixture.publish(f, f, frame_packet::FlagFrameEnd, records_for(f));
+            if (service->poll() != PollResult::Applied)
+                self_test_fail("matched burst was not durably queued");
+        }
+        if (service->replay_queue_count() != count)
+            self_test_fail("matched burst queue accounting");
+        const auto draws_before = drawn;
+        for (unsigned f = first; f <= last; ++f) {
+            reference_fixture.publish(f, f, frame_packet::FlagFrameEnd, records_for(f));
+            if (reference->poll() != PollResult::Applied)
+                self_test_fail("matched catchup reference replay");
+            const auto snapshot = service->replay_state_.consumer_snapshot();
+            auto& packet = service->replay_queue_[service->replay_read_index_];
+            service->replay_read_index_ =
+                (service->replay_read_index_ + 1) % Hybrid3DService::ReplayArenaCapacity;
+            service->replay_state_.claim(snapshot.claimed + 1);
+            const auto before = service->frames_rendered_.load();
+            if (packet.header.frame != f || !service->apply_replay_packet(packet))
+                self_test_fail("matched catchup authoritative replay");
+            packet.records.clear();
+            if (service->nds_->GPU.GPU3D.ExternalGeometryDiscardInProgress() ||
+                service->nds_->GPU.GPU3D.RenderNumPolygons !=
+                    reference->nds_->GPU.GPU3D.RenderNumPolygons)
+                self_test_fail("matched catchup discarded authoritative geometry");
+            if (service->frames_rendered_.load() != before) {
+                if (last - f > 1 || service->replay_queue_count() > 4)
+                    self_test_fail("matched catchup drew obsolete queued picture");
+                ++drawn;
+                const auto& descriptor = fixture.header->frame;
+                if (descriptor.frame != f || descriptor.format != 2)
+                    self_test_fail("matched catchup lost selected frame identity");
+                const auto& expected = reference->arm_video_frames_[reference->arm_video_completed_index_];
+                for (unsigned screen = 0; screen < 2; ++screen) {
+                    const auto* actual = reinterpret_cast<const std::uint32_t*>(
+                        fixture.bytes.data() + FramebufferOffset +
+                        descriptor.bank * nds4mister::h3d::FullFrameBankStride +
+                        screen * nds4mister::h3d::FullFrameScreenStride);
+                    for (std::size_t i = 0; i < PlanePixels; ++i) {
+                        if (actual[i] != (nds4mister::h3d::pack_melonds_pixel(expected[screen][i]) & 0x3ffffu))
+                            self_test_fail("matched catchup pixels differ after long skip");
+                        ++checked;
+                    }
+                }
+            }
+            fixture.header->frame_ack_sequence = fixture.header->frame_publish_sequence;
+            reference_fixture.header->frame_ack_sequence = reference_fixture.header->frame_publish_sequence;
+        }
+        if (service->replay_queue_count() != 0 ||
+            fixture.header->hps_fault_bits || fixture.header->fpga_fault_bits)
+            self_test_fail("matched catchup failed to drain without faults");
+        if (count > 1) {
+            if (drawn == draws_before || drawn > draws_before + (full_rate ? 2u : 1u))
+                self_test_fail("matched catchup did not resume at recent complete picture");
+            ++recovered;
+        }
+        frame = last;
+    };
+    burst(512); // Includes cold admission, maximum backlog and a long sprite gap.
+    for (unsigned i = 0; i < 16; ++i) burst(1);
+    for (unsigned i = 0; i < 4; ++i) {
+        burst(64);
+        for (unsigned n = 0; n < 8; ++n) burst(1);
+    }
+    if (service->replay_queue_high_water_.load() != 512 ||
+        service->replay_queue_full_polls_.load() != 0 ||
+        service->frame_drop_replay_budget_.load() < 700 ||
+        drawn != (full_rate ? 58u : 29u) || recovered != 5)
+        self_test_fail("matched catchup stress did not exercise recovery");
+    std::cout << "H3D_MATCHED_CATCHUP_PASS full_rate=" << full_rate << " frames=" << frame
+              << " rendered=" << drawn << " pixels=" << checked
+              << " burst_recoveries=" << recovered
+              << " injected_queue_high_water=512 full_polls=0\n";
+
+    service.reset();
+    reference.reset();
+    Fixture async_fixture(Session + 2, true, true), async_reference(Session + 3, true);
+    service = std::make_unique<Hybrid3DService>(
+        async_fixture.bytes.data(), async_fixture.bytes.size(), std::string{},
+        true, false, true, true, false, false, nullptr, nullptr,
+        true, false, false, true, full_rate);
+    reference = std::make_unique<Hybrid3DService>(
+        async_reference.bytes.data(), async_reference.bytes.size(),
+        std::string{}, false, false, true);
+    if (!service->initialize() || !reference->initialize())
+        self_test_fail("matched concurrent catchup initialization");
+    service->stop_replay_worker();
+    auto expected = std::make_unique<Hybrid3DService::FullVideoBuffer>();
+    auto expected_last = std::make_unique<Hybrid3DService::FullVideoBuffer>();
+    std::vector<std::uint32_t> retained;
+    std::uint32_t retained_bank = 0, retained_frame = 0;
+    for (unsigned batch = 0; batch < 2; ++batch) {
+        const unsigned last = (batch + 1) * 512;
+        for (unsigned f = batch * 512 + 1; f <= last; ++f) {
+            const auto records = records_for(f);
+            async_fixture.publish(f, f, frame_packet::FlagFrameEnd, records);
+            if (service->poll() != PollResult::Applied)
+                self_test_fail("matched concurrent queue admission");
+            async_reference.publish(f, f, frame_packet::FlagFrameEnd, records);
+            if (reference->poll() != PollResult::Applied)
+                self_test_fail("matched concurrent reference");
+            if (f == last - 1)
+                *expected = reference->arm_video_frames_[reference->arm_video_completed_index_];
+            if (f == last)
+                *expected_last = reference->arm_video_frames_[reference->arm_video_completed_index_];
+            async_reference.header->frame_ack_sequence = async_reference.header->frame_publish_sequence;
+        }
+        service->start_replay_worker();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (service->replay_packets_applied() != last) {
+            if (service->faulted_.load(std::memory_order_acquire) ||
+                std::chrono::steady_clock::now() > deadline)
+                self_test_fail("matched concurrent drain stalled");
+            std::this_thread::yield();
+        }
+        service->stop_replay_worker();
+        if (service->frames_rendered_.load() != (batch + 1) * (full_rate ? 2u : 1u) ||
+            service->replay_queue_count() != 0 || service->replay_queue_full_polls_.load())
+            self_test_fail("matched concurrent replay did not drain cheaply");
+        if (batch != 0) {
+            // Delayed scanout acknowledgement must not be a replay barrier,
+            // and the published bank must remain immutable while it is held.
+            if (service->frames_published() != 1 || async_fixture.header->frame.frame != retained_frame)
+                self_test_fail("matched held ACK was bypassed");
+            for (unsigned screen = 0; screen < 2; ++screen) {
+                const auto* actual = reinterpret_cast<const std::uint32_t*>(
+                    async_fixture.bytes.data() + FramebufferOffset +
+                    retained_bank * nds4mister::h3d::FullFrameBankStride +
+                    screen * nds4mister::h3d::FullFrameScreenStride);
+                if (std::memcmp(actual, retained.data() + screen * PlanePixels, PlaneBytes) != 0)
+                    self_test_fail("matched publication bank overwritten before ACK");
+            }
+            nds4mister::h3d::store_counter(&async_fixture.header->frame_ack_sequence,
+                &async_fixture.header->frame_ack_sequence_reserved,
+                async_fixture.header->frame_publish_sequence);
+        }
+        while (service->frames_published() != batch + 1) {
+            if (service->publication_worker_faulted() ||
+                std::chrono::steady_clock::now() > deadline)
+                self_test_fail("matched concurrent publication did not recover");
+            std::this_thread::yield();
+        }
+        // No more queued work exists, so the descriptor and both banks are
+        // stable until the explicit acknowledgement in the next iteration.
+        const auto descriptor = async_fixture.header->frame;
+        // The first publication may precede the final queued frame. After
+        // the held ACK, only the newest completed pair may be released.
+        const bool correct_frame = full_rate ?
+            (batch == 0 ? (descriptor.frame == last - 1 || descriptor.frame == last) :
+                descriptor.frame == last) : descriptor.frame == last - 1;
+        if (!correct_frame || descriptor.format != 2)
+            self_test_fail("matched concurrent publication picked an old pair");
+        retained.clear();
+        retained_bank = descriptor.bank;
+        retained_frame = descriptor.frame;
+        const auto& expected_pair = descriptor.frame == last ? *expected_last : *expected;
+        for (unsigned screen = 0; screen < 2; ++screen) {
+            const auto* actual = reinterpret_cast<const std::uint32_t*>(
+                async_fixture.bytes.data() + FramebufferOffset +
+                descriptor.bank * nds4mister::h3d::FullFrameBankStride +
+                screen * nds4mister::h3d::FullFrameScreenStride);
+            for (std::size_t i = 0; i < PlanePixels; ++i)
+                if (actual[i] != (nds4mister::h3d::pack_melonds_pixel(expected_pair[screen][i]) & 0x3ffffu))
+                    self_test_fail("matched concurrent recovery pixel mismatch");
+            retained.insert(retained.end(), actual, actual + PlanePixels);
+        }
+    }
+    std::cout << "H3D_MATCHED_CONCURRENT_PASS frames=1024 full_rate=" << full_rate
+              << " rendered=" << (full_rate ? 4 : 2)
+              << " pixels=196608 delayed_ack=1 published_banks_immutable=1\n";
+}
+
 void run_self_test()
 {
+    run_matched_display_test();
+    run_matched_catchup_test();
+    run_matched_display_test(true);
+    run_matched_catchup_test(true);
+    run_latest_plane_ack_test();
+    run_scanline_lifetime_test();
     constexpr std::uint32_t Session = 0x12345678;
 
     // Versioned request/ack protocol: strict fields, commit-last publication,
@@ -4697,7 +5740,7 @@ void run_self_test()
         const auto request = session_policy::make(Session, Session, false);
         for (std::size_t word = 0; word < request.size(); ++word) {
             auto malformed = request;
-            malformed[word] ^= word == 3 ? 2u : 1u;
+            malformed[word] ^= word == 3 ? 4u : 1u;
             if (session_policy::valid(malformed, Session, Session))
                 self_test_fail("H3P1 accepted a malformed field");
         }
@@ -6334,9 +7377,16 @@ void run_self_test()
             queued_renderer.GetExternalRendererStageProfile();
         const auto oracle_profile =
             oracle_renderer.GetExternalRendererStageProfile();
+        const char* weighted_bands =
+            std::getenv("NDS4MISTER_WEIGHTED_RASTER_BANDS");
+        const bool weighted_band_test = weighted_bands &&
+            std::strcmp(weighted_bands, "1") == 0;
+        // The delayed worker must force a real context jump. Its skipped
+        // job has a variable height in the weighted layout.
         if (queue_profile.ThreeDBandQueueFrames != 1 ||
             queue_profile.ThreeDBandQueueJobs != 4 ||
-            queue_profile.ThreeDBandQueueAdvancedScanlines < 48)
+            queue_profile.ThreeDBandQueueAdvancedScanlines <
+                (weighted_band_test ? 1u : 48u))
             self_test_fail("four-band raster queue did not execute");
         if (queue_profile.ThreeDModePolygons[0] != 10 ||
             queue_profile.ThreeDTextureFormatPolygons[0] != 10 ||
@@ -7503,9 +8553,8 @@ void run_self_test()
             self_test_fail("pipelined busy-plane render did not publish after ACK");
     }
 
-    // A temporarily busy FPGA plane must keep the in-flight buffer immutable
-    // while retaining a shallow smoothing FIFO and replacing only its oldest
-    // pending result when that FIFO is full.
+    // A temporarily busy FPGA plane must remain immutable while its newest
+    // private successor stays replaceable until acknowledgement.
     {
         Fixture publication_burst(Session + 23);
         publication_burst.header->frame_publish_sequence = 2;
@@ -7542,14 +8591,11 @@ void run_self_test()
         }
         const auto burst_replacements =
             burst_service.publication_queue_replacements();
-        const auto minimum_replacements = BurstFrames - 1 -
-            Hybrid3DService::PendingPublicationLimit;
-        const auto maximum_replacements = BurstFrames -
+        const auto expected_replacements = BurstFrames -
             Hybrid3DService::PendingPublicationLimit;
         if (burst_service.frames_rendered() != BurstFrames ||
             burst_service.frames_published() != 0 ||
-            burst_replacements < minimum_replacements ||
-            burst_replacements > maximum_replacements ||
+            burst_replacements != expected_replacements ||
             burst_service.publication_queue_high_water() !=
                 Hybrid3DService::PendingPublicationLimit) {
             std::cerr << "H3D_PUBLICATION_BURST_DIAG rendered="
@@ -7562,11 +8608,8 @@ void run_self_test()
             self_test_fail("publication burst did not bound smoothing queue");
         }
 
-        // If the worker claimed the first buffer before the burst, one active
-        // immutable frame plus one pending newest frame remain. If Linux did
-        // not schedule it yet, only the newest pending frame remains. Both
-        // states are valid; the replacement count tells us how many complete
-        // buffers must publish once the FPGA ownership fence opens.
+        // Regardless of worker scheduling, only the newest private frame
+        // remains when the held FPGA ownership fence opens.
         const auto retained_publications = BurstFrames - burst_replacements;
         for (unsigned attempt = 0;
              attempt < 1000 &&
@@ -7661,7 +8704,12 @@ void usage()
 {
     std::cerr <<
         "usage: nds_hybrid_3d_service [--memory FILE] [--max-events N]\n"
-        "       nds_hybrid_3d_service --self-test\n";
+        "       nds_hybrid_3d_service --self-test\n"
+        "       nds_hybrid_3d_service --self-test-matched-display\n"
+        "       nds_hybrid_3d_service --self-test-matched-catchup\n"
+        "       nds_hybrid_3d_service --self-test-matched-full-rate\n"
+        "       nds_hybrid_3d_service --self-test-scanline-lifetime\n"
+        "       nds_hybrid_3d_service --self-test-latest-plane-ack\n";
 }
 
 } // namespace
@@ -7671,11 +8719,26 @@ try {
     std::string memory_path = "/dev/mem";
     std::uint64_t max_events = 0;
     bool self_test = false;
+    bool scanline_lifetime_test = false;
+    bool latest_plane_ack_test = false;
+    bool matched_display_test = false;
+    bool matched_catchup_test = false;
+    bool matched_full_rate_test = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
         if (argument == "--self-test") {
             self_test = true;
+        } else if (argument == "--self-test-scanline-lifetime") {
+            scanline_lifetime_test = true;
+        } else if (argument == "--self-test-matched-display") {
+            matched_display_test = true;
+        } else if (argument == "--self-test-matched-catchup") {
+            matched_catchup_test = true;
+        } else if (argument == "--self-test-matched-full-rate") {
+            matched_full_rate_test = true;
+        } else if (argument == "--self-test-latest-plane-ack") {
+            latest_plane_ack_test = true;
         } else if (argument == "--memory" && index + 1 < argc) {
             memory_path = argv[++index];
         } else if (argument == "--max-events" && index + 1 < argc) {
@@ -7686,12 +8749,19 @@ try {
         }
     }
 
-    if (self_test) {
+    if (self_test || scanline_lifetime_test || latest_plane_ack_test || matched_display_test || matched_catchup_test || matched_full_rate_test) {
         if (argc != 2) {
             usage();
             return 2;
         }
-        run_self_test();
+        if (matched_full_rate_test) {
+            run_matched_display_test(true);
+            run_matched_catchup_test(true);
+        } else if (matched_catchup_test) run_matched_catchup_test();
+        else if (matched_display_test) run_matched_display_test();
+        else if (latest_plane_ack_test) run_latest_plane_ack_test();
+        else if (scanline_lifetime_test) run_scanline_lifetime_test();
+        else run_self_test();
         return 0;
     }
 
@@ -7757,6 +8827,14 @@ try {
             const bool diagnostics =
                 memory_path == "/dev/mem" && diagnostics_requested &&
                 std::strcmp(diagnostics_requested, "0") != 0;
+            const char* matched_requested =
+                std::getenv("NDS4MISTER_MATCHED_DISPLAY_TEST");
+            const bool matched_display = memory_path == "/dev/mem" &&
+                matched_requested && std::strcmp(matched_requested, "1") == 0;
+            const char* full_rate_requested =
+                std::getenv("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE");
+            const bool matched_full_rate = matched_display && full_rate_requested &&
+                std::strcmp(full_rate_requested, "1") == 0;
             const bool direct_publication =
                 memory_path == "/dev/mem" && direct_publication_requested &&
                 std::strcmp(direct_publication_requested, "0") != 0;
@@ -7776,15 +8854,17 @@ try {
                     "/tmp/nds-h3d-texture-roundtrip.h3t" : "",
                 memory_path == "/dev/mem",
                 diagnostics,
-                false,
+                matched_display,
                 memory_path == "/dev/mem",
                 diagnostics,
                 memory_path == "/dev/mem",
                 &runtime_telemetry,
                 mapping.publication_data(),
                 mapping.write_combined(),
-                direct_publication,
-                true);
+                direct_publication && !matched_display,
+                !matched_display,
+                matched_display,
+                matched_full_rate);
             const bool initialized = candidate->initialize();
             if (memory_path == "/dev/mem")
                 bind_current_thread_to_cpu(1);

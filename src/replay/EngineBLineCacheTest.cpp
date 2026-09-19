@@ -14,7 +14,7 @@
 
 using namespace melonDS;
 
-static std::unique_ptr<NDS> fixture(bool cache)
+static std::unique_ptr<NDS> fixture(bool cache, bool paired = false)
 {
     NDSArgs args;
     args.JIT = std::nullopt;
@@ -48,8 +48,10 @@ static std::unique_ptr<NDS> fixture(bool cache)
     RendererSettings settings {};
     settings.ScaleFactor = 1;
     settings.PackedOutput = true;
-    settings.EngineBOnly = true;
-    settings.LineCache = cache;
+    settings.EngineBOnly = !paired;
+    settings.LineCache = cache && !paired;
+    settings.PairedBCache = cache && paired;
+    if (paired) nds->ARM9Write32(0x04000000, 0x00010000);
     gpu.GetRenderer().SetRenderSettings(settings);
     return nds;
 }
@@ -134,9 +136,15 @@ static const u32* pixels(NDS& nds, unsigned line)
 
 int main(int argc, char** argv)
 try {
-    if (argc == 2 && std::strcmp(argv[1], "--benchmark") == 0) {
+    bool paired = false, benchmark = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--paired") == 0) paired = true;
+        else if (std::strcmp(argv[i], "--benchmark") == 0) benchmark = true;
+        else throw std::runtime_error("unknown test option");
+    }
+    if (benchmark) {
         for (bool cache : {false, true, true, false}) {
-            auto nds = fixture(cache);
+            auto nds = fixture(cache, paired);
             const auto start = std::chrono::steady_clock::now();
             for (unsigned f = 0; f < 240; ++f)
                 for (unsigned y = 0; y < 263; ++y) {
@@ -145,13 +153,13 @@ try {
                 }
             const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
                 std::chrono::steady_clock::now()-start).count();
-            std::cout << "ENGINE_B_CACHE_BENCH cache=" << cache
+            std::cout << "ENGINE_B_CACHE_BENCH paired=" << paired << " cache=" << cache
                       << " frames=240 us=" << us << '\n';
         }
         return 0;
     }
-    auto plain = fixture(false);
-    auto cached = fixture(true);
+    auto plain = fixture(false, paired);
+    auto cached = fixture(true, paired);
     unsigned hits = 0;
     unsigned misses = 0;
     for (unsigned f = 0; f < 72; ++f)
@@ -159,6 +167,12 @@ try {
             for (auto* nds : {plain.get(), cached.get()}) {
                 phase(*nds, f, y, y == 0 ? 2 : 0);
                 edit(*nds, f, y);
+                if (paired && y < 192) {
+                    // A changes independently while B can hit its cache.
+                    // Do not accidentally reuse a physical screen or A row.
+                    nds->ARM9Write16(0x05000000, (f * 31 + y) & 0x7fff);
+                    nds->GPU.MarkExternalRenderPalette(0, 2);
+                }
                 phase(*nds, f, y, 1);
             }
             if (y >= 192) continue;
@@ -172,6 +186,14 @@ try {
                 std::cerr << "pixel mismatch frame=" << f << " line=" << y << '\n';
                 return 1;
             }
+            if (paired) {
+                u32 *a[2], *b[2];
+                plain->GPU.GetRenderer().GetRenderedScanlines(y, &a[0], &a[1]);
+                cached->GPU.GetRenderer().GetRenderedScanlines(y, &b[0], &b[1]);
+                for (unsigned s = 0; s < 2; ++s)
+                    if (std::memcmp(a[s], b[s], 256 * sizeof(u32)) != 0)
+                        throw std::runtime_error("paired screen differs from uncached reference");
+            }
             bool a = false, b = false;
             cached->GPU.GetRenderer().GetExternalLineCacheResult(a, b);
             if (a) throw std::runtime_error("auxiliary cache touched engine A");
@@ -179,7 +201,8 @@ try {
         }
     if (hits < 1000 || misses < 1000)
         throw std::runtime_error("fixture did not exercise hits and invalidation");
-    std::cout << "ENGINE_B_CACHE_ORACLE_PASS pixels=" << 72*192*256
+    std::cout << "ENGINE_B_CACHE_ORACLE_PASS paired=" << paired
+              << " pixels=" << 72*192*256*(paired ? 2 : 1)
               << " hits=" << hits << " misses=" << misses << '\n';
     return 0;
 } catch (const std::exception& e) {

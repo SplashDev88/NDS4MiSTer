@@ -28,6 +28,7 @@ entity nds_nitro_console_wrap is
       -- through the mixed-language boundary prevents a future fast-engine
       -- build from silently using the 3x phase gate under a 4x PLL.
       CLKMEM_RATIO     : integer := 3;
+      H3D_MATCHED_DISPLAY_TEST : integer := 0;
       SOUND_DIAGNOSTICS : integer := 0;
       SOUND_STREAM_DIAGNOSTICS : integer := 0
    );
@@ -201,6 +202,9 @@ entity nds_nitro_console_wrap is
       h3d_vram7_write_scanline    : out std_logic_vector(8 downto 0);
       h3d_vram7_write_timestamp   : out std_logic_vector(63 downto 0);
 
+      -- Raw physical LCD timing for safe late 3D adoption; never queued.
+      h3d_lcd_phase_raw      : out std_logic := '0';
+      h3d_lcd_line_raw       : out std_logic_vector(8 downto 0) := (others => '0');
       h3d_hblank_valid       : out std_logic;
       h3d_hblank_ready       : in  std_logic := '1';
       h3d_hblank_line        : out std_logic_vector(8 downto 0);
@@ -329,6 +333,7 @@ begin
    -- against until 1-4 in that document are proved.
    generic map (
       GPU_FAST => 0, GPU2D_B_ENABLE => 0,
+      H3D_MATCHED_DISPLAY_TEST => H3D_MATCHED_DISPLAY_TEST,
       SOUND_ENABLE => 1, SOUND_DIAGNOSTICS => SOUND_DIAGNOSTICS,
       SOUND_STREAM_DIAGNOSTICS => SOUND_STREAM_DIAGNOSTICS, DEBUG_ENABLE => 0,
       CLKMEM_RATIO => CLKMEM_RATIO
@@ -476,6 +481,8 @@ begin
       h3d_vram7_write_data        => h3d_vram7_write_data,
       h3d_vram7_write_scanline    => h3d_vram7_write_scanline,
       h3d_vram7_write_timestamp   => h3d_vram7_write_timestamp,
+      h3d_lcd_phase_raw      => h3d_lcd_phase_raw,
+      h3d_lcd_line_raw       => h3d_lcd_line_raw,
       h3d_hblank_valid       => h3d_hblank_valid,
       h3d_hblank_ready       => h3d_hblank_ready,
       h3d_hblank_line        => h3d_hblank_line,

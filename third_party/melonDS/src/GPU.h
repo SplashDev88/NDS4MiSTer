@@ -569,6 +569,7 @@ public:
         addr &= 0x7FF;
 
         *(T*)&OAM[addr] = val;
+        MarkSpriteOAMWritten(addr, sizeof(T));
         OAMDirty |= 1 << (addr / 1024);
     }
 
@@ -681,6 +682,26 @@ public:
     melonDS::GPU3D GPU3D;
 
     NonStupidBitField<128*1024/VRAMDirtyGranularity> VRAMDirty[9] {};
+    // Changes whenever the coherent B OBJ bytes may have changed.
+    u64 BOBJCoherencyEpoch = 0;
+    // Off for arbitrary external users that can mutate the public OAM array.
+    // Opt in only when every writer uses WriteOAM or marks its direct writes.
+    bool SpriteOAMWritesTracked = false;
+    u64 SpriteOAMWriteEpoch = 0;
+    void SetSpriteOAMWriteTracking(bool tracked) noexcept
+    {
+        if (SpriteOAMWritesTracked != tracked)
+        {
+            SpriteOAMWritesTracked = tracked;
+            ++SpriteOAMWriteEpoch;
+        }
+    }
+    void MarkSpriteOAMWritten(u32 offset, u32 size) noexcept
+    {
+        if (SpriteOAMWritesTracked && size && offset < sizeof(OAM) &&
+            u64(offset) + size > 1024)
+            ++SpriteOAMWriteEpoch;
+    }
     u64 ExternalRenderMemorySequence = 0;
     u64 ExternalRenderVRAMRevision[9] {};
     u64 ExternalRenderPaletteRevision[4] {};
@@ -712,6 +733,7 @@ public:
     }
     void MarkExternalRenderOAM(u32 offset, u32 size) noexcept
     {
+        MarkSpriteOAMWritten(offset, size);
         if (!size) return;
         const u64 revision = ++ExternalRenderMemorySequence;
         const u32 first = offset / VRAMDirtyGranularity;
@@ -912,6 +934,11 @@ struct RendererSettings
     // output must preserve register timing and display-capture VRAM effects.
     // Ordinary frontends retain their existing rendering by default.
     bool EngineBPixelsEnabled = true;
+
+    // Cache only B composition in the paired-screen diagnostic renderer.
+    // Sprite preparation still runs at its ordinary phase. Unlike LineCache,
+    // this never requests a future 3D row from the preceding sprite phase.
+    bool PairedBCache = false;
 };
 
 struct ExternalRendererStageProfile
