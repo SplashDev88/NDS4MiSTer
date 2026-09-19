@@ -4,7 +4,7 @@
 
 ## What's new
 
-This release packages the latest test build, MATCH4. It is much faster in testing, but several graphical regressions remain and will need to be fixed in future updates. Speed and smoothness vary by game; this is still an experimental beta.
+This release is much faster in testing, but several graphical regressions remain and will need to be fixed in future updates. Speed and smoothness vary by game; this is still an experimental beta.
 
 The updated renderer composes both screens together, improves rendering and caching, and removes the previous alternate-frame drawing limit. Write-combining graphics transfers and stock 1 GHz ARM operation are retained.
 
