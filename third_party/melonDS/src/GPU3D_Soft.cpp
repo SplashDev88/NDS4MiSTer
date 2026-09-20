@@ -17,12 +17,14 @@
 */
 
 #include "GPU3D_Soft.h"
+#include "GPU3D_Diagnostic.h"
 #include <ctime>
 
 #include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
+#include <sstream>
 #include <stdio.h>
 #include <string.h>
 #include <thread>
@@ -211,6 +213,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
     UseTextureCache = std::getenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE") == nullptr;
+    const char* uploadSnapshot = std::getenv("NDS4MISTER_H3D_UPLOAD_SNAPSHOT");
+    PreserveUploadSnapshot = uploadSnapshot && strcmp(uploadSnapshot, "1") == 0;
+    const char* uploadTrace = std::getenv("NDS4MISTER_BLACK_EVENT_TRACE");
+    UploadTraceEnabled = uploadTrace && strcmp(uploadTrace, "1") == 0;
     SparseClearEnabled =
         std::getenv("NDS4MISTER_DISABLE_SPARSE_3D_CLEAR") == nullptr;
 }
@@ -2486,6 +2492,119 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
     }
 }
 
+void SoftRenderer3D::RecordPaletteDiagnostic(PaletteDiagnostic& d)
+{
+    d.Valid = true;
+    std::copy_n(GPU.VRAMCNT, 9, d.Banks);
+    std::copy_n(GPU.VRAMMap_TexPal, 8, d.Mapping);
+    d.PhysicalGNonzero = d.FlatNonzero = 0;
+    for (unsigned i = 0; i < sizeof(GPU.VRAM_G); i += 2)
+        d.PhysicalGNonzero += (*reinterpret_cast<const u16*>(&GPU.VRAM_G[i]) & 0x7fff) != 0;
+    for (unsigned i = 0; i < sizeof(GPU.VRAMFlat_TexPal); i += 2)
+        d.FlatNonzero += (*reinterpret_cast<const u16*>(&GPU.VRAMFlat_TexPal[i]) & 0x7fff) != 0;
+}
+
+void SoftRenderer3D::RecordPalettePhase215()
+{
+    if (Parent.StageProfileEnabled) RecordPaletteDiagnostic(PaletteAt215);
+}
+
+bool SoftRenderer3D::DumpCompletedInputs(const char* path) const
+{
+    // Diagnostic caller is the replay owner, after 2D consumed row 96.
+    // Do not wait on or reset a semaphore, refresh a cache, or read worker
+    // state until this exact frame's completion was already consumed.
+    if (!FullFrameCompletion || !RenderFrameFinished) return false;
+    std::ostringstream out;
+    out << "H3D_COMPLETED_INPUTS_V1\n"
+        << "prepared=" << CurrentPolygonCount
+        << " latched=" << GPU3D.RenderNumPolygons
+        << " identical=" << FrameIdentical
+        << " canceled=" << RenderFrameCanceled.load(std::memory_order_relaxed)
+        << " dual=" << DualCoreRaster
+        << " cache=" << UseTextureCache
+        << " sparse=" << SparseClearEnabled
+        << " xpos=" << GPU3D.RenderXPos << '\n';
+    out << "upload_snapshot=" << PreserveUploadSnapshot
+        << " trace=" << UploadTraceEnabled
+        << " held=" << std::hex << UploadAtStart.Held
+        << " expired=" << UploadAtStart.Expired
+        << " reassigned=" << UploadAtStart.Reassigned << " banks=";
+    for (auto v : UploadBanksAtStart) out << unsigned(v) << ',';
+    out << " textures=";
+    for (auto v : UploadTextureMapping) out << v << ',';
+    out << " palettes=";
+    for (auto v : UploadPaletteMapping) out << v << ',';
+    out << std::dec << " texture_age=";
+    for (auto v : UploadAtStart.TextureAge) out << unsigned(v) << ',';
+    out << " palette_age=";
+    for (auto v : UploadAtStart.PaletteAge) out << unsigned(v) << ',';
+    out << '\n';
+    for (const auto& entry : {std::make_pair("215", &PaletteAt215),
+                              std::make_pair("start", &PaletteAtStart)})
+    {
+        const auto& d = *entry.second;
+        out << "palette_phase=" << entry.first << " valid=" << d.Valid << " banks=" << std::hex;
+        for (auto v : d.Banks) out << unsigned(v) << ',';
+        out << " mapping=";
+        for (auto v : d.Mapping) out << v << ',';
+        out << std::dec << " physical_g_rgb=" << d.PhysicalGNonzero
+            << " flat_rgb=" << d.FlatNonzero << '\n';
+    }
+    std::vector<const u32*> textures;
+    for (int i = 0; i < CurrentPolygonCount; ++i)
+    {
+        const auto& rp = PolygonList[i];
+        const auto& ps = rp.PixelState;
+        const auto& p = *rp.PolyData;
+        const auto found = std::find(textures.begin(), textures.end(), ps.TexturePixels);
+        const auto textureId = found - textures.begin();
+        if (found == textures.end())
+        {
+            textures.push_back(ps.TexturePixels);
+            const unsigned size = ps.TexturePixels ?
+                unsigned(ps.TextureWidth) * unsigned(ps.TextureHeight) : 0;
+            // Inspect small textures completely. A regular sparse stride
+            // repeatedly selects tile borders and can miss opaque interiors.
+            const unsigned samples = std::min(size, 65536u);
+            unsigned count = 0, rgb = 0, alpha = 0;
+            u64 hash = 1469598103934665603ULL;
+            for (unsigned t = 0; t < samples; ++t)
+            {
+                const unsigned index = size <= 65536 ? t :
+                    ((t * 65537u) & (size - 1));
+                const u32 v = ps.TexturePixels[index];
+                ++count; rgb += (v & 0x00ffffffu) != 0; alpha += (v >> 24) != 0;
+                hash = (hash ^ v) * 1099511628211ULL;
+            }
+            out << "texture=" << textureId << " size=" << size
+                << " count=" << count << " rgb=" << rgb << " alpha=" << alpha
+                << " hash=" << std::hex << hash << std::dec << '\n';
+        }
+        out << "polygon=" << i << " texture=" << textureId
+            << " texparam=" << std::hex << p.TexParam << " palette=" << p.TexPalette
+            << " attr=" << p.Attr << " prepared_attr=" << rp.PolyAttr << std::dec
+            << " mode=" << unsigned(ps.BlendMode) << " alpha=" << unsigned(ps.PolyAlpha)
+            << " enabled=" << ps.TextureEnabled << " format=" << unsigned(ps.TextureFormat)
+            << " bounds=" << p.XTop << ',' << p.XBottom << ',' << p.YTop << ',' << p.YBottom
+            << " shadow=" << p.IsShadowMask << ',' << p.IsShadow << '\n';
+        unsigned coloredVertices = 0;
+        for (unsigned v = 0; v < p.NumVertices; ++v)
+            coloredVertices += (p.Vertices[v]->FinalColor[0] |
+                p.Vertices[v]->FinalColor[1] | p.Vertices[v]->FinalColor[2]) != 0;
+        out << " vertices=" << p.NumVertices << " rgb=" << coloredVertices << '\n';
+        for (unsigned v = 0; i < 4 && v < p.NumVertices; ++v)
+        {
+            const auto& a = *p.Vertices[v];
+            out << " vertex=" << v << " xy=" << a.FinalPosition[0] << ',' << a.FinalPosition[1]
+                << " color=" << a.FinalColor[0] << ',' << a.FinalColor[1] << ',' << a.FinalColor[2]
+                << " uv=" << a.TexCoords[0] << ',' << a.TexCoords[1]
+                << " zw=" << p.FinalZ[v] << ',' << p.FinalW[v] << '\n';
+        }
+    }
+    return WriteBounded3DDiagnostic(path, out.str());
+}
+
 void SoftRenderer3D::ClearBuffers()
 {
     u32 clearz = ((GPU3D.RenderClearAttr2 & 0x7FFF) * 0x200) + 0x1FF;
@@ -3422,7 +3541,14 @@ void SoftRenderer3D::RenderFrame()
     if (UseTextureCache)
     {
         u8 clearBitmapDirty = 0;
-        textureChanged = TextureCache.Update(clearBitmapDirty);
+        textureChanged = TextureCache.Update(clearBitmapDirty, PreserveUploadSnapshot,
+            UploadTraceEnabled ? &UploadAtStart : nullptr);
+        if (UploadTraceEnabled)
+        {
+            std::copy_n(GPU.VRAMCNT, 9, UploadBanksAtStart);
+            std::copy_n(GPU.VRAMMap_Texture, 4, UploadTextureMapping);
+            std::copy_n(GPU.VRAMMap_TexPal, 8, UploadPaletteMapping);
+        }
     }
     else
     {
@@ -3433,6 +3559,8 @@ void SoftRenderer3D::RenderFrame()
         textureChanged = GPU.MakeVRAMFlat_TextureCoherent(textureDirty);
         textureChanged |= GPU.MakeVRAMFlat_TexPalCoherent(texPalDirty);
     }
+
+    if (Parent.StageProfileEnabled) RecordPaletteDiagnostic(PaletteAtStart);
 
     const bool forceRecovery =
         RenderForceNextFrame.exchange(false, std::memory_order_relaxed);

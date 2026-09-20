@@ -1021,6 +1021,8 @@ using SoftTexcache = Texcache<SoftTexcacheLoader, u32*>;
 class SoftRenderer3D : public Renderer3D
 {
 public:
+    bool DumpCompletedInputs(const char* path) const;
+    void RecordPalettePhase215();
     SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noexcept;
     ~SoftRenderer3D() override;
     void Reset() override;
@@ -1056,6 +1058,16 @@ public:
 
 private:
     SoftRenderer& Parent;
+    bool PreserveUploadSnapshot = false;
+    struct PaletteDiagnostic
+    {
+        bool Valid = false;
+        u8 Banks[9] {};
+        u32 Mapping[8] {};
+        unsigned PhysicalGNonzero = 0;
+        unsigned FlatNonzero = 0;
+    } PaletteAt215, PaletteAtStart;
+    void RecordPaletteDiagnostic(PaletteDiagnostic& destination);
 
     friend void GPU3D::DoSavestate(Savestate* file) noexcept;
 
@@ -2238,6 +2250,10 @@ private:
     static constexpr int FirstPixelOffset = ScanlineWidth + 1;
 
     SoftTexcache TextureCache;
+    bool UploadTraceEnabled = false;
+    SoftTexcache::UploadTrace UploadAtStart;
+    u8 UploadBanksAtStart[9] {};
+    u32 UploadTextureMapping[4] {}, UploadPaletteMapping[8] {};
     bool UseTextureCache;
 
     u32 ColorBuffer[BufferSize * 2];

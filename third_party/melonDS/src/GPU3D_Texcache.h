@@ -115,10 +115,32 @@ public:
         return false;
     }
 
-    bool Update(u8& clrBitmapDirty)
+    struct UploadTrace
     {
+        u32 Held = 0, Expired = 0, Reassigned = 0;
+        std::array<u8, 4> TextureAge {};
+        std::array<u8, 8> PaletteAge {};
+    };
+
+    bool Update(u8& clrBitmapDirty, bool preserveUploadSnapshot = false,
+                UploadTrace* trace = nullptr)
+    {
+        if (trace) *trace = {};
         auto textureDirty = GPU.VRAMDirty_Texture.DeriveState(GPU.VRAMMap_Texture, GPU);
         auto texPalDirty = GPU.VRAMDirty_TexPal.DeriveState(GPU.VRAMMap_TexPal, GPU);
+
+        if (preserveUploadSnapshot)
+        {
+            PreservePendingUpload<128*1024>(textureDirty,
+                GPU.VRAMMap_Texture, TextureSnapshotBanks, TextureSnapshotAge, trace, 0);
+            PreservePendingUpload<16*1024>(texPalDirty,
+                GPU.VRAMMap_TexPal, PaletteSnapshotBanks, PaletteSnapshotAge, trace, 4);
+            if (trace)
+            {
+                trace->TextureAge = TextureSnapshotAge;
+                trace->PaletteAge = PaletteSnapshotAge;
+            }
+        }
 
         bool textureChanged = GPU.MakeVRAMFlat_TextureCoherent(textureDirty);
         bool texPalChanged = GPU.MakeVRAMFlat_TexPalCoherent(texPalDirty);
@@ -328,6 +350,8 @@ public:
 
     void Reset()
     {
+        TextureSnapshotBanks.fill(0); TextureSnapshotAge.fill(0);
+        PaletteSnapshotBanks.fill(0); PaletteSnapshotAge.fill(0);
         for (u32 i = 0; i < 8; i++)
         {
             for (u32 j = 0; j < 8; j++)
@@ -343,6 +367,56 @@ public:
 
 private:
     melonDS::GPU& GPU;
+
+    // External display replay can reach a render boundary while the slower
+    // guest is still uploading through LCDC. Keep only its derived texture
+    // view stable for four render attempts; CPU-visible mappings and VRAM
+    // writes remain authoritative. A remap forces a full refresh through
+    // DeriveState. Expiry or reassignment to another engine exposes the
+    // normal unmapped contents, so a permanent unmap cannot retain forever.
+    template <u32 Granularity, u32 Bits, size_t Slots>
+    void PreservePendingUpload(NonStupidBitField<Bits>& dirty,
+        const u32* mapping, std::array<u32, Slots>& previous,
+        std::array<u8, Slots>& age, UploadTrace* trace, u32 traceOffset)
+    {
+        constexpr u32 bitsPerSlot = Granularity / VRAMDirtyGranularity;
+        for (u32 slot = 0; slot < Slots; ++slot)
+        {
+            if (mapping[slot])
+            {
+                previous[slot] = mapping[slot]; age[slot] = 0;
+                continue;
+            }
+            if (!previous[slot]) continue;
+            bool upload = true;
+            for (u32 banks = previous[slot]; banks; banks &= banks - 1)
+                upload &= (GPU.VRAMCNT[__builtin_ctz(banks)] & 0x87) == 0x80;
+            if (upload && age[slot] < 4)
+            {
+                ++age[slot];
+                if (trace) trace->Held |= 1u << (slot + traceOffset);
+                const u32 start = slot * bitsPerSlot;
+                for (u32 word = start / 64; word < (start + bitsPerSlot + 63) / 64; ++word)
+                    dirty.Data[word] &= ~GetRangedBitMask(word, start, bitsPerSlot);
+            }
+            else
+            {
+                if (trace)
+                {
+                    if (upload) trace->Expired |= 1u << (slot + traceOffset);
+                    else trace->Reassigned |= 1u << (slot + traceOffset);
+                }
+                // DeriveState already saw the zero map on an earlier held
+                // attempt. Force the deferred clear now, even without writes.
+                if (age[slot]) dirty.SetRange(slot * bitsPerSlot, bitsPerSlot);
+                previous[slot] = 0; age[slot] = 0;
+            }
+        }
+    }
+    std::array<u32, 4> TextureSnapshotBanks {};
+    std::array<u8, 4> TextureSnapshotAge {};
+    std::array<u32, 8> PaletteSnapshotBanks {};
+    std::array<u8, 8> PaletteSnapshotAge {};
 
     struct TexArrayEntry
     {

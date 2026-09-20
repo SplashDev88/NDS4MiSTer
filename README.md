@@ -2,13 +2,15 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.4 — Much faster, with graphical regressions still to fix**
+**v0.4.0-beta.5 — Castlevania and Metroid Prime Pinball graphics fixes**
 
-> **Read this first:** MATCH4 is much faster in testing, but several graphical
-> regressions remain and still need fixes. This is an experimental beta.
-> **Engine B must be On**; change it in the core menu, then Reset or reload
-> your ROM. Existing Off settings can produce a blank display. Use this
-> release's core, helper and launcher together.
+The latest beta fixes Castlevania: Dawn of Sorrow's intermittent bottom-screen
+black flashes and Metroid Prime Pinball's missing top-screen section in testing.
+Recent rendering and write-combining speed improvements are retained.
+
+> **Engine B must be On.** Change it in the core menu, then reset or reload
+> your ROM. Older Off settings can produce a blank display. Use this release's
+> core, helper and launcher together.
 
 No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
 artifacts, or credentials are included in this source repository.
@@ -46,8 +48,8 @@ artifacts, or credentials are included in this source repository.
   full-speed playback in every game remains work in progress.
 - **TATE supports 90 CW and 90 CCW, but not 180 degrees.** The game picture
   and MiSTer menu rotate separately. Both-screen performance depends on the game.
-- **Several graphical regressions remain**, including flickering and intermittent
-  black flashes. Castlevania bottom-screen flashing is unresolved.
+- **Other graphical regressions remain.** Castlevania and Metroid fixes passed
+  focused testing; other games and scenes can still expose rendering problems.
 - **Engine B must stay On.** Off remains in the menu but is unsupported by this
   build. Set On, then Reset or reload the ROM. The installer preserves your
   configuration, so an older saved Off setting must be changed manually.
@@ -74,12 +76,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta.4_20260918.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta.5_20260920.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260918** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260920** and launch the core.
 4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
    file. If already loaded, Reset or reload after changing Engine B.
 
@@ -178,17 +180,14 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta.4
+## What's new in v0.4.0-beta.5
 
-- Much faster gameplay in the maintainer's testing, with several graphical
-  regressions still to fix. No numeric game-speed or universal 60 FPS claim.
-- Matched composition of both screens, improved rendering and caching, and
-  removal of the mandatory alternate-frame drawing limit.
-- Write-combining graphics transfers and stock 1 GHz operation retained.
+- Castlevania: Dawn of Sorrow's bottom-screen black flashes fixed in gameplay testing.
+- Metroid Prime Pinball's missing left half of the top screen restored.
+- Recent rendering, WC, movie playback and TATE improvements retained at stock 1 GHz.
 
-See the [release notes](docs/RELEASE_NOTES_V040_BETA4.md) and
-[matched-display design](docs/MATCHED_DISPLAY_TEST.md). Use the supplied
-core/helper/launcher together and keep Engine B On.
+See the [release notes](docs/RELEASE_NOTES_V040_BETA5.md) and
+[technical source notes](SOURCE_PACKAGE.txt).
 
 ## Retained from v0.4.0-beta
 
@@ -220,27 +219,12 @@ Pokemon player/furniture graphics can remain missing; see
 
 ## Verification
 
-| Item | Release identity |
-| --- | --- |
-| Core file | `_Console/NDS_20260918.rbf` |
-| FPGA build identity | `260917-MATCH1` |
-| ARM candidate | MATCH4 |
-| FPGA SHA-256 | `d23f3b6fcf1650cad2b1d36c7206bed558ab45f964d0eb936803ef1ecc4aec81` |
-| ARM SHA-256 | `fb62322ea3c361d3797a25b2a8dc46497d31b1d40aa6337011f7b4e9aab8200f` |
-| Kickstart SHA-256 | `48037a77011db9914872257002630016973fd1a693f251a5def2fd97aaf50770` |
-| WC module SHA-256 | `c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113` |
-
-FPGA, ARM and module bytes are the tested artifacts; none was rebuilt during
-packaging. Kickstart enables the tested runtime flags. All 483 original FPGA
-inventory files and ARM build inputs are verified against the frozen candidate.
-Host/emulated ARM full self-tests and focused physical full-rate pixel,
-backlog-recovery and ownership tests passed. Package/source checksums and
-launcher lifecycle are checked separately. These checks do not establish broad
-game compatibility or a measured gameplay speed percentage.
-
-Fit: 37,349 ALMs needed, 39,369 placed, 4,138/4,191 LABs, 447 M10K and 54 DSP.
-Worst setup -16.142 ns, hold +0.082 ns, recovery -11.148 ns, removal +0.317 ns.
-Timing is not closed. See SOURCE_PACKAGE.txt for provenance and test limits.
+The installer contains the exact user-tested BREG2 FPGA and upload-snapshot2 ARM
+helper. Source, binary identities, test coverage and timing limits are in
+[SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). The source and installer each include
+checksums. No runtime binary was rebuilt for packaging. Full ARM self-tests and
+focused FPGA register tests passed; the user verified both games. These are
+focused compatibility checks, not a guarantee of 60 FPS or all-game accuracy.
 
 ## For developers
 

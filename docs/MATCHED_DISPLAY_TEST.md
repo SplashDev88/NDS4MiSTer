@@ -1,6 +1,6 @@
 # MATCH4 matched display
 
-This is the display configuration packaged in v0.4.0-beta.4. It retains the
+This display configuration originated in v0.4.0-beta.4 and is retained in beta.5. It retains the
 MATCH1 FPGA protocol with the later MATCH4 helper. Both screens and 3D are
 composed together on ARM and published as a complete pair. FPGA native pixel
 writes are disabled; CPUs, sound, input, cartridge, saves and ordered LCD
@@ -31,7 +31,8 @@ for exact binary identities, test coverage and timing limits. Synthetic pixel
 checks are not gameplay FPS or broad compatibility measurements.
 
 The maintainer reports much faster gameplay with several remaining graphical
-regressions. Castlevania bottom-screen flashes are unresolved. The initial
+regressions. The beta.5 upload-snapshot correction passed the Castlevania gameplay test;
+see CASTLEVANIA_UPLOAD_SNAPSHOT.md for the bounded policy and its tradeoff. The initial
 MATCH1 helper overflowed its event queue during testing; this release includes
 subsequent backlog control, B caching and full-rate work in MATCH4. Historical
 MATCH2/MATCH3 cadence measurements are not measurements of this release.

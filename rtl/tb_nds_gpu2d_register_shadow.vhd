@@ -115,6 +115,72 @@ begin
       read_expect(x"000000C", x"120789AB");
       read_expect(x"0000018", x"00000000", '0');
 
+      -- Metroid sets window 0, reads WININ, then enables window 1. A zero
+      -- readback turns 0x3F3F into 0x3F00 and hides the left 128 pixels.
+      write_word(x"0000048", x"0000003F", "0011");
+      read_expect(x"0000048", x"0000003F");
+      rmw_value := (wired_out and x"FFFFC0FF") or x"00003F00";
+      write_word(x"0000048", rmw_value, "0011");
+      read_expect(x"0000048", x"00003F3F");
+      write_word(x"0000048", x"00200000", "1100");
+      read_expect(x"0000048", x"00203F3F");
+      -- Byte stores leave all other window masks untouched, including the
+      -- upper-half WINOUT registers. Reserved bits read as zero.
+      write_word(x"0000048", x"FFFFFFFF", "1111");
+      read_expect(x"0000048", x"3F3F3F3F");
+      for lane in 0 to 3 loop
+         write_word(x"0000048", x"00000000",
+                    std_logic_vector(shift_left(to_unsigned(1, 4), lane)));
+         rmw_value := x"3F3F3F3F";
+         for cleared in 0 to lane loop
+            rmw_value(cleared*8+7 downto cleared*8) := x"00";
+         end loop;
+         read_expect(x"0000048", rmw_value);
+      end loop;
+
+      -- BLDCNT and BLDALPHA share a bus word but preserve independent
+      -- programmed fields, including coefficients greater than 16.
+      write_word(x"0000050", x"FFFFFFFF", "1111");
+      read_expect(x"0000050", x"1F1F3FFF");
+      write_word(x"0000050", x"00003F48", "0011");
+      read_expect(x"0000050", x"1F1F3F48");
+      write_word(x"0000050", x"030D0000", "1100");
+      read_expect(x"0000050", x"030D3F48");
+      write_word(x"0000050", x"00000080", "0001");
+      read_expect(x"0000050", x"030D3F80");
+      write_word(x"0000050", x"001F0000", "0100");
+      read_expect(x"0000050", x"031F3F80");
+      -- Unselected/disabled transactions and write-only register words do
+      -- not mutate or claim these readable effects registers.
+      write_word(x"0000050", x"FFFFFFFF", "0000");
+      read_expect(x"0000050", x"031F3F80");
+      write_word(x"0000040", x"80000080", "1111");
+      read_expect(x"0000040", x"00000000", '0');
+      read_expect(x"000004C", x"00000000", '0');
+      read_expect(x"0000054", x"00000000", '0');
+      read_expect(x"FFFFFFF", x"00000000", '0');
+
+      -- Master brightness is also readable when Engine B is shadowed. A
+      -- fade can update the factor using read/modify/write without losing
+      -- its brighten/darken mode. Keep programmed factors above 16; only
+      -- rendering clamps them. Reserved bits and the upper half read zero.
+      write_word(x"000006C", x"00008010", "0011");
+      read_expect(x"000006C", x"00008010");
+      rmw_value := std_logic_vector(unsigned(wired_out) - 1);
+      write_word(x"000006C", rmw_value, "0011");
+      read_expect(x"000006C", x"0000800F");
+      write_word(x"000006C", x"FFFFFFFF", "1111");
+      read_expect(x"000006C", x"0000C01F");
+      write_word(x"000006C", x"00004000", "0010");
+      read_expect(x"000006C", x"0000401F");
+      write_word(x"000006C", x"00000008", "0001");
+      read_expect(x"000006C", x"00004008");
+      write_word(x"000006C", x"00000000", "1100");
+      read_expect(x"000006C", x"00004008");
+      write_word(x"000006C", x"00000000", "0000");
+      read_expect(x"000006C", x"00004008");
+      read_expect(x"0000068", x"00000000", '0');
+
       gb_bus.rst <= '1';
       wait until rising_edge(clk);
       wait until falling_edge(clk);
@@ -122,6 +188,20 @@ begin
       read_expect(x"0000000", x"00000000");
       read_expect(x"0000008", x"00000000");
       read_expect(x"000000C", x"00000000");
+      read_expect(x"0000048", x"00000000");
+      read_expect(x"0000050", x"00000000");
+      read_expect(x"000006C", x"00000000");
+
+      write_word(x"0000048", x"00203F3F", "1111");
+      write_word(x"0000050", x"030D3F48", "1111");
+      write_word(x"000006C", x"00008010", "1111");
+      reset <= '1';
+      wait until rising_edge(clk);
+      wait until falling_edge(clk);
+      reset <= '0';
+      read_expect(x"0000048", x"00000000");
+      read_expect(x"0000050", x"00000000");
+      read_expect(x"000006C", x"00000000");
 
       report "PASS: Engine B register shadow preserves read/modify/write state"
          severity note;

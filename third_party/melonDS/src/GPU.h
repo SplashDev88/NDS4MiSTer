@@ -1060,6 +1060,11 @@ public:
     // if the renderer uses RAM buffers, they should be 32-bit BGRA, 256x192 for each screen
     virtual bool GetFramebuffers(void** top, void** bottom) = 0;
     virtual u32* Get3DScanline(u32 line) { (void)line; return nullptr; }
+    // Diagnostic-only observation of the input already consumed by 2D.
+    // Unlike Get3DScanline, this must not consume another scanline token.
+    virtual const u32* GetLastComposited3DLine() const { return nullptr; }
+    virtual bool DumpCompleted3DInputs(const char*) const { return false; }
+    virtual void Record3DPalettePhase215() {}
     virtual bool Is3DFrameIdentical() const { return false; }
     virtual bool Get3DNativeBufferHashes(u64 hashes[3]) const
         { (void)hashes; return false; }

@@ -144,6 +144,8 @@ def main(argv: list[str]) -> int:
                     "NDS4MISTER_H3D_DISABLE_WC",
                     "NDS4MISTER_H3D_DIAGNOSTICS",
                     "NDS4MISTER_DIRECT_PLANE_PUBLICATION",
+                    "NDS4MISTER_H3D_UPLOAD_SNAPSHOT",
+                    "NDS4MISTER_BLACK_EVENT_TRACE",
                     "NDS4MISTER_MATCHED_DISPLAY_TEST",
                     "NDS4MISTER_MATCHED_DISPLAY_FULL_RATE",
                     "NDS4MISTER_WEIGHTED_RASTER_BANDS",

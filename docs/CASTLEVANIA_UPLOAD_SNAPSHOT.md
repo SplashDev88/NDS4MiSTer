@@ -1,3 +1,5 @@
+# Bounded texture and palette upload snapshots
+
 NDS4MiSTer v0.4.0-beta.5 — graphics corrections
 
 Exact accepted FPGA/ARM pair; neither binary rebuilt for packaging.

@@ -68,6 +68,16 @@ public:
 
     bool GetFramebuffers(void** top, void** bottom) override;
     u32* Get3DScanline(u32 line) override { return Rend3D->GetLine(line); }
+    const u32* GetLastComposited3DLine() const override { return Output3D; }
+    bool DumpCompleted3DInputs(const char* path) const override
+    {
+        return static_cast<const SoftRenderer3D*>(Rend3D.get())
+            ->DumpCompletedInputs(path);
+    }
+    void Record3DPalettePhase215() override
+    {
+        static_cast<SoftRenderer3D*>(Rend3D.get())->RecordPalettePhase215();
+    }
     bool Is3DFrameIdentical() const override
     {
         return static_cast<const SoftRenderer3D*>(Rend3D.get())

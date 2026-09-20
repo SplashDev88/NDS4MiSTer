@@ -430,7 +430,10 @@ def main() -> int:
             # raster settings while retaining both WC/fallback choices.
             env_capture = runtime / "helper-environment.json"
             environment["H3D_FAKE_ENV_CAPTURE"] = str(env_capture)
-            environment["NDS4MISTER_H3D_DIAGNOSTICS"] = "0"
+            # Even a stale diagnostic parent must launch production settings.
+            environment["NDS4MISTER_H3D_DIAGNOSTICS"] = "1"
+            environment["NDS4MISTER_BLACK_EVENT_TRACE"] = "1"
+            environment["NDS4MISTER_H3D_UPLOAD_SNAPSHOT"] = "0"
             environment.pop("NDS4MISTER_MATCHED_DISPLAY_TEST", None)
             environment.pop("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE", None)
             environment.pop("NDS4MISTER_WEIGHTED_RASTER_BANDS", None)
@@ -446,6 +449,8 @@ def main() -> int:
                     "NDS4MISTER_H3D_DISABLE_WC": mode,
                     "NDS4MISTER_H3D_DIAGNOSTICS": "0",
                     "NDS4MISTER_DIRECT_PLANE_PUBLICATION": "1",
+                    "NDS4MISTER_H3D_UPLOAD_SNAPSHOT": "1",
+                    "NDS4MISTER_BLACK_EVENT_TRACE": "0",
                     "NDS4MISTER_MATCHED_DISPLAY_TEST": "1",
                     "NDS4MISTER_MATCHED_DISPLAY_FULL_RATE": "1",
                     "NDS4MISTER_WEIGHTED_RASTER_BANDS": "1",

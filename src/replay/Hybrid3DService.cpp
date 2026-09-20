@@ -1,5 +1,6 @@
 #include "Args.h"
 #include "GPU.h"
+#include "GPU3D_Texcache.h"
 #include "NDS.h"
 #include "replay/AdaptiveCatchup.h"
 #include "replay/ArmCrashDump.h"
@@ -10,6 +11,7 @@
 #include "replay/Hybrid3DMemoryMapping.h"
 #include "replay/Hybrid3DSessionPolicy.h"
 #include "replay/MatchedDisplayAdmission.h"
+#include "replay/NearBlackEventGate.h"
 #include "replay/ReplaySpscState.h"
 
 #include <array>
@@ -91,6 +93,8 @@ static_assert(MappingBytes == nds4mister::h3d::memory::WindowBytes);
 static_assert(Bank0Offset == nds4mister::h3d::memory::ControlBytes);
 static_assert(frame_packet::MappingBytes <= Bank0Offset);
 constexpr const char* PlaneStatsPath = "/tmp/nds-h3d-plane-stats.log";
+constexpr const char* FullVideoStatsPath =
+    "/tmp/nds-h3d-full-video-stats.log";
 constexpr const char* PipelineProfilePath =
     "/tmp/nds-h3d-pipeline-profile.log";
 // The FPGA fence and replay ring remain occupied for milliseconds. The old
@@ -521,6 +525,65 @@ PlaneSample summarize_plane(
     return sample;
 }
 
+// Full paired-frame output is copied from the native compositor before it
+// crosses the HPS/FPGA boundary. This bounded diagnostic distinguishes a
+// black source region from a later handoff or scanout failure without adding
+// a pixel readback path. Four 64-pixel bands expose broad edge loss while
+// keeping the postmortem file within MiSTer's log cap. It retains a rolling
+// two-second window so a title screen reached after boot replaces startup.
+struct FullVideoScreenSample {
+    std::array<std::uint16_t, 4> nonblack_pixels {};
+    std::array<std::uint8_t, 4> nonblack_rows {};
+    std::uint64_t hash = 1469598103934665603ull;
+};
+
+using FullVideoScrollLines = std::array<std::uint16_t, PlaneHeight>;
+
+struct FullVideoSample {
+    std::uint32_t frame = 0;
+    // Capture the display-time BG0 horizontal offset for each source row.
+    // A completed frame can be published after later HBlank writes have
+    // changed GPU3D::RenderXPos, so one value sampled at publication time
+    // cannot identify an incorrectly phased source-side scroll.
+    FullVideoScrollLines render_xpos {};
+    bool screen_swap = false;
+    std::array<FullVideoScreenSample, 2> screen {};
+};
+
+FullVideoScreenSample summarize_full_video_screen(const std::uint32_t* pixels)
+{
+    FullVideoScreenSample sample {};
+    for (std::uint32_t y = 0; y < PlaneHeight; ++y) {
+        std::array<bool, 4> row_nonblack {};
+        for (std::uint32_t x = 0; x < PlaneWidth; ++x) {
+            const auto pixel = pixels[std::size_t(y) * PlaneWidth + x];
+            sample.hash ^= pixel;
+            sample.hash *= 1099511628211ull;
+            if ((pixel & 0x00ffffffu) == 0) continue;
+            const auto band = x >> 6;
+            ++sample.nonblack_pixels[band];
+            row_nonblack[band] = true;
+        }
+        for (std::size_t band = 0; band < row_nonblack.size(); ++band)
+            sample.nonblack_rows[band] += row_nonblack[band] ? 1u : 0u;
+    }
+    return sample;
+}
+
+FullVideoSample summarize_full_video(
+    std::uint32_t frame, const FullVideoScrollLines& render_xpos,
+    bool screen_swap,
+    const std::uint32_t* top, const std::uint32_t* bottom)
+{
+    FullVideoSample sample {};
+    sample.frame = frame;
+    sample.render_xpos = render_xpos;
+    sample.screen_swap = screen_swap;
+    sample.screen[0] = summarize_full_video_screen(top);
+    sample.screen[1] = summarize_full_video_screen(bottom);
+    return sample;
+}
+
 SharedPhase inspect_shared_phase(Header& header)
 {
     const auto magic = load_acquire(&header.magic);
@@ -654,6 +717,11 @@ public:
               header_, publication_pointer(FramebufferOffset)),
           asynchronous_plane_publication_(asynchronous_plane_publication),
           plane_stats_enabled_(plane_stats_enabled),
+          full_video_stats_enabled_(pipeline_profile_enabled &&
+                                    matched_display_test),
+          black_event_trace_enabled_(matched_display_test &&
+              std::getenv("NDS4MISTER_BLACK_EVENT_TRACE") &&
+              std::strcmp(std::getenv("NDS4MISTER_BLACK_EVENT_TRACE"), "1") == 0),
           arm_video_render_shadow_(arm_video_render_shadow),
           matched_display_test_(matched_display_test),
           matched_full_rate_(matched_display_test && matched_full_rate),
@@ -676,6 +744,7 @@ public:
         stop_replay_worker();
         stop_publication_worker();
         dump_plane_samples();
+        dump_full_video_samples();
         dump_pipeline_profile();
         write_texture_trace_dump();
     }
@@ -1086,7 +1155,12 @@ private:
             // ownership boundary for this pipelined 3D worker.
             constexpr bool Threaded3D = true;
             constexpr bool Parallel2D = false;
-            const bool FullFrame3D = !arm_video_render_shadow_;
+            // Matched display composes both screens from one completed 3D
+            // job. Its two-core raster already joins before releasing the
+            // final-pass rows; consume one completion fence before 2D reads
+            // the buffer instead of 192 unlabelled scanline tokens.
+            const bool FullFrame3D =
+                !arm_video_render_shadow_ || matched_display_test_;
             melonDS::RendererSettings settings {
                 1, Threaded3D, false, false,
                 arm_video_render_shadow_ || arm_video_engine_b_only_,
@@ -2540,6 +2614,8 @@ private:
         }
 
         const auto vblank = line >= 192 && line < 262 ? 1u : 0u;
+        if (matched_display_test_ && pipeline_profile_enabled_ && line == 215)
+            nds_->GPU.GetRenderer().Record3DPalettePhase215();
         if (line == 192 && !arm_video_engine_b_only_)
             nds_->GPU.GPU3D.Run();
         // A skipped frame still performs the architectural VBlank below.
@@ -2684,10 +2760,28 @@ private:
                 arm_video_frames_[destination_index][1].data() +
                     line * PlaneWidth,
                 bottom, PlaneWidth * sizeof(std::uint32_t));
-            if (pipeline_profile_enabled_)
+            // The bounded event trace can run without stage profiling, so
+            // the rare upload expiry is observed at normal gameplay speed.
+            if (black_event_trace_enabled_ && line == 96)
+                trace_near_black_source(display_frame, line, top, bottom);
+            if (pipeline_profile_enabled_) {
+                // Diagnostic-only source observation. It happens after the
+                // exact phase that composed this row and before the
+                // framebuffer leaves ARM memory. Keep it within the existing
+                // profiling gate, so the production per-line path retains
+                // precisely its previous branch structure.
+                if (full_video_stats_enabled_) {
+                    arm_video_render_xpos_[destination_index][line] =
+                        nds_->GPU.GPU3D.GetRenderXPos();
+                    arm_video_screen_swap_[destination_index] =
+                        nds_->GPU.ScreenSwap;
+                    if (line == 96 && (display_frame & 127u) == 0)
+                        dump_source_registers(display_frame, line);
+                }
                 record_plain_profile_sample(
                     arm_video_scanlines_, arm_video_scanline_total_ns_,
                     arm_video_scanline_max_ns_, scanline_started);
+            }
             if (line == PlaneHeight - 1) {
                 arm_video_frame_ = display_frame;
                 arm_video_frame_ready_ = true;
@@ -3636,6 +3730,12 @@ private:
                             full_frame_publications_,
                             full_frame_publication_total_ns_,
                             full_frame_publication_max_ns_, publication_started);
+                    if (full_video_stats_enabled_)
+                        retain_full_video_sample(summarize_full_video(
+                            frame, arm_video_render_xpos_[index],
+                            arm_video_screen_swap_[index],
+                            arm_video_frames_[index][0].data(),
+                            arm_video_frames_[index][1].data()));
                     published = true;
                     frames_published_.fetch_add(
                         1, std::memory_order_relaxed);
@@ -3768,9 +3868,208 @@ private:
         plane_samples_dumped_.store(true, std::memory_order_release);
     }
 
+    void dump_source_registers(std::uint32_t frame, std::uint32_t line,
+                               const char* path = "/tmp/nds-h3d-source-registers.log")
+    {
+        // Opt-in, replay-thread observation of the same state used for this
+        // source row. Never called by the production (unprofiled) path.
+        std::ostringstream output;
+        const auto& gpu = nds_->GPU;
+        output << "session=" << session_ << " frame=" << frame << " line=" << line << std::hex
+               << " swap=" << gpu.ScreenSwap
+               << " screens_enabled=" << gpu.ScreensEnabled
+               << " capture=" << gpu.CaptureCnt
+               << " capture_enable=" << gpu.CaptureEnable
+               << " brightness=" << gpu.MasterBrightnessA << ','
+               << gpu.MasterBrightnessB << " vram=";
+        for (auto value : gpu.VRAMCNT) output << unsigned(value) << ',';
+        output << "\n3d_disp=" << gpu.GPU3D.RenderDispCnt
+               << " polygons=" << gpu.GPU3D.RenderNumPolygons
+               << " clear=" << gpu.GPU3D.RenderClearAttr1 << ','
+               << gpu.GPU3D.RenderClearAttr2
+               << " abort=" << gpu.GPU3D.AbortFrame
+               << " identical=" << gpu.GPU3D.RenderFrameIdentical
+               << " geometry_enabled=" << gpu.GPU3D.GeometryEnabled
+               << " rendering_enabled=" << gpu.GPU3D.RenderingEnabled
+               << " vcount=" << gpu.VCount << '\n';
+        // Observe the line that 2D already consumed. Calling Get3DScanline
+        // here would consume a second semaphore token in scanline mode.
+        if (const auto* row = gpu.GetRenderer().GetLastComposited3DLine()) {
+            unsigned alpha = 0;
+            unsigned nonblack = 0;
+            std::uint64_t hash = 1469598103934665603ULL;
+            for (unsigned x = 0; x < PlaneWidth; ++x) {
+                alpha += (row[x] >> 24) != 0;
+                nonblack += (row[x] & 0x00ffffffu) != 0;
+                hash = (hash ^ row[x]) * 1099511628211ULL;
+            }
+            output << "3d_input_alpha=" << alpha
+                   << " rgb=" << nonblack << " hash=" << hash << '\n';
+        }
+        for (const auto* engine : {&gpu.GPU2D_A, &gpu.GPU2D_B}) {
+            output << "engine=" << engine->Num << " disp=" << engine->DispCnt
+                   << " enabled=" << unsigned(engine->Enabled)
+                   << " layers=" << unsigned(engine->LayerEnable)
+                   << " blank=" << unsigned(engine->ForcedBlank)
+                   << " bg=";
+            for (auto value : engine->BGCnt) output << value << ',';
+            output << " x=";
+            for (auto value : engine->BGXPos) output << value << ',';
+            output << " y=";
+            for (auto value : engine->BGYPos) output << value << ',';
+            output << " win0=";
+            for (auto value : engine->Win0Coords) output << unsigned(value) << ',';
+            output << " win1=";
+            for (auto value : engine->Win1Coords) output << unsigned(value) << ',';
+            output << " wincnt=";
+            for (auto value : engine->WinCnt) output << unsigned(value) << ',';
+            output << " active=" << unsigned(engine->Win0Active) << ','
+                   << unsigned(engine->Win1Active)
+                   << " blend=" << engine->BlendCnt << ','
+                   << engine->BlendAlpha << '\n';
+        }
+        const auto contents = output.str();
+        const int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (fd < 0) return;
+        write_all(fd, reinterpret_cast<const std::byte*>(contents.data()),
+                  contents.size());
+        close(fd);
+    }
+
+    void trace_near_black_source(std::uint32_t frame, std::uint32_t line,
+                                 const std::uint32_t* top,
+                                 const std::uint32_t* bottom)
+    {
+        // Replay-thread only, after this exact source row was composed and
+        // before its complete frame can be queued for WC publication.
+        // Poll the explicit session cookie once per 64 observed frames;
+        // do not do filesystem work on every scanline or on production runs.
+        if ((black_event_poll_count_++ & 63u) == 0) {
+            unsigned cookie = 0;
+            FILE* arm = std::fopen("/tmp/nds-h3d-black-event.arm", "r");
+            const bool parsed = arm && std::fscanf(arm, "%u", &cookie) == 1;
+            if (arm) std::fclose(arm);
+            black_event_gate_.arm(session_, parsed && cookie == session_);
+        }
+        using Gate = nds4mister::replay::NearBlackEventGate;
+        const auto event = black_event_gate_.observe(
+            nds4mister::replay::count_rgb_nonblack(top, PlaneWidth),
+            nds4mister::replay::count_rgb_nonblack(bottom, PlaneWidth));
+        if (event == Gate::Event::None) return;
+        const char* kind = event == Gate::Event::Dark ? "dark" : "recovery";
+        char stem[160];
+        std::snprintf(stem, sizeof(stem),
+            "/tmp/nds-h3d-black-event-s%u-e%u-f%u-%s",
+            session_, black_event_gate_.event_number(), frame, kind);
+        const std::string registers = std::string(stem) + ".regs";
+        dump_source_registers(frame, line, registers.c_str());
+        const std::string inputs = std::string(stem) + ".3d-inputs";
+        nds_->GPU.GetRenderer().DumpCompleted3DInputs(inputs.c_str());
+        const std::string pixels = std::string(stem) + ".rgb666";
+        const int fd = open(pixels.c_str(),
+            O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        if (fd >= 0) {
+            const bool first = write_all(fd,
+                reinterpret_cast<const std::byte*>(top),
+                PlaneWidth * sizeof(std::uint32_t));
+            if (first) write_all(fd,
+                reinterpret_cast<const std::byte*>(bottom),
+                PlaneWidth * sizeof(std::uint32_t));
+            close(fd);
+        }
+        std::cout << "H3D_BLACK_EVENT path=" << stem << " line=" << line
+                  << " kind=" << kind << '\n';
+    }
+
+    void retain_full_video_sample(const FullVideoSample& sample)
+    {
+        if (!full_video_stats_enabled_) return;
+        full_video_samples_[full_video_sample_total_ %
+            full_video_samples_.size()] = sample;
+        ++full_video_sample_total_;
+        if (full_video_sample_total_ % full_video_samples_.size() == 0)
+            dump_full_video_samples();
+    }
+
+    void dump_full_video_samples()
+    {
+        if (!full_video_stats_enabled_ || full_video_sample_total_ == 0)
+            return;
+        const auto count = std::min<std::uint64_t>(
+            full_video_sample_total_, full_video_samples_.size());
+        const auto first = full_video_sample_total_ < full_video_samples_.size() ?
+            0u : full_video_sample_total_ % full_video_samples_.size();
+        std::ostringstream output;
+        output << "H3D_FULL_VIDEO_STATS_V1 count="
+               << count << " total=" << full_video_sample_total_ << '\n';
+        const auto write_scroll_runs = [&output](
+            const FullVideoScrollLines& offsets) {
+            std::size_t first_line = 0;
+            while (first_line < offsets.size()) {
+                std::size_t last_line = first_line;
+                while (last_line + 1 < offsets.size() &&
+                       offsets[last_line + 1] == offsets[first_line])
+                    ++last_line;
+                if (first_line) output << ',';
+                output << offsets[first_line] << '@' << first_line;
+                if (last_line != first_line) output << '-' << last_line;
+                first_line = last_line + 1;
+            }
+        };
+        for (std::size_t position = 0; position < count; ++position) {
+            const auto& sample = full_video_samples_[
+                (first + position) % full_video_samples_.size()];
+            output << "H3DV f=" << sample.frame
+                   << " x=";
+            write_scroll_runs(sample.render_xpos);
+            output << " swap=" << sample.screen_swap;
+            for (std::size_t screen = 0; screen < sample.screen.size(); ++screen) {
+                const auto& summary = sample.screen[screen];
+                output << " s" << screen << "=p";
+                for (std::size_t band = 0;
+                     band < summary.nonblack_pixels.size(); ++band) {
+                    if (band) output << ',';
+                    output << summary.nonblack_pixels[band];
+                }
+                output << "/r";
+                for (std::size_t band = 0;
+                     band < summary.nonblack_rows.size(); ++band) {
+                    if (band) output << ',';
+                    output << unsigned(summary.nonblack_rows[band]);
+                }
+                output << "/h=";
+                output.setf(std::ios::hex, std::ios::basefield);
+                output << summary.hash;
+                output.setf(std::ios::dec, std::ios::basefield);
+            }
+            output << '\n';
+        }
+        const auto contents = output.str();
+        std::string temporary = std::string(FullVideoStatsPath) + ".tmp.XXXXXX";
+        std::vector<char> temporary_name(temporary.begin(), temporary.end());
+        temporary_name.push_back('\0');
+        const int fd = mkstemp(temporary_name.data());
+        if (fd < 0) return;
+        bool ok = write_all(
+            fd, reinterpret_cast<const std::byte*>(contents.data()),
+            contents.size());
+        if (ok) ok = fsync(fd) == 0;
+        if (close(fd) != 0) ok = false;
+        if (ok)
+            ok = rename(temporary_name.data(), FullVideoStatsPath) == 0;
+        if (!ok) {
+            unlink(temporary_name.data());
+            return;
+        }
+        std::cout << contents << std::flush;
+    }
+
     void dump_pipeline_profile()
     {
-        if (!pipeline_profile_enabled_) return;
+        // A rejected companion-core policy can destroy the service before
+        // reset_machine creates melonDS. Diagnostics must also handle that
+        // ordinary initialization failure without dereferencing a null NDS.
+        if (!pipeline_profile_enabled_ || !nds_) return;
         const auto elapsed_ns = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 std::chrono::steady_clock::now() -
@@ -4459,6 +4758,9 @@ private:
     PlaneBuffer native_frame_ {};
     std::unique_ptr<FullVideoBuffer[]> arm_video_frames_ {
         new FullVideoBuffer[ArmVideoBufferCount] {}};
+    std::array<FullVideoScrollLines, ArmVideoBufferCount>
+        arm_video_render_xpos_ {};
+    std::array<bool, ArmVideoBufferCount> arm_video_screen_swap_ {};
     std::unique_ptr<PlaneBuffer[]> publication_frames_ {
         new PlaneBuffer[PublicationBufferCount] {}};
     std::array<std::unique_ptr<PlaneBuffer>, PublicationBufferCount>
@@ -4506,6 +4808,10 @@ private:
     bool publication_stop_ = false;
     bool asynchronous_plane_publication_ = false;
     bool plane_stats_enabled_ = false;
+    bool full_video_stats_enabled_ = false;
+    bool black_event_trace_enabled_ = false;
+    unsigned black_event_poll_count_ = 0;
+    nds4mister::replay::NearBlackEventGate black_event_gate_;
     bool arm_video_render_shadow_ = false;
     bool matched_display_test_ = false;
     // Opt-in: remove only the cadence ceiling, retaining line-zero admission.
@@ -4566,6 +4872,8 @@ private:
     std::array<PlaneSample, 512> plane_samples_ {};
     std::size_t plane_sample_count_ = 0;
     std::atomic<bool> plane_samples_dumped_ {false};
+    std::array<FullVideoSample, 128> full_video_samples_ {};
+    std::uint64_t full_video_sample_total_ = 0;
     std::uint64_t packet_timestamp_ = 0;
     // The 128-command experiment cut Run() call count by 44%, but increased
     // total geometry time and did not improve rendered or published FPS.
@@ -5725,6 +6033,78 @@ void run_matched_catchup_test(bool full_rate = false)
 
 void run_self_test()
 {
+    {
+        struct Loader {
+            std::uint32_t* GenerateTexture(unsigned w, unsigned h, unsigned n)
+                { return new std::uint32_t[std::size_t(w)*h*n]; }
+            void UploadTexture(std::uint32_t* p, unsigned w, unsigned h,
+                               unsigned layer, void* data)
+                { std::memcpy(p+std::size_t(w)*h*layer,data,std::size_t(w)*h*4); }
+            void DeleteTexture(std::uint32_t* p) { delete[] p; }
+        };
+        melonDS::NDSArgs args; args.JIT = std::nullopt;
+        auto nds = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
+        nds->Reset();
+        auto& gpu = nds->GPU;
+        gpu.MapVRAM_AB(0, 0x83); gpu.MapVRAM_FG(6, 0x83);
+        std::memset(gpu.VRAM_A, 0x11, 32);
+        reinterpret_cast<melonDS::u16*>(gpu.VRAM_G)[1] = 0x001f;
+        reinterpret_cast<melonDS::u16*>(gpu.VRAM_G)[2] = 0x7c00;
+        gpu.VRAMDirty[0][0] = true; gpu.VRAMDirty[6][0] = true;
+        auto cache = std::make_unique<melonDS::Texcache<Loader, std::uint32_t*>>(gpu, Loader{});
+        melonDS::Texcache<Loader, std::uint32_t*>::UploadTrace uploadTrace;
+        const auto pixel = [&](bool preserve) {
+            melonDS::u8 dirty = 0; cache->Update(dirty, preserve, &uploadTrace);
+            std::uint32_t* pixels; std::uint32_t layer; std::uint32_t* helper;
+            cache->GetTexture(3u << 26, 0, pixels, layer, helper);
+            const auto* row = pixels + layer * 64;
+            for (unsigned x = 1; x < 64; ++x)
+                if (row[x] != row[0]) self_test_fail("upload snapshot partial texture");
+            return row[0];
+        };
+        const auto red = pixel(true);
+        if (red != 0x1f00003fu) self_test_fail("upload snapshot initial texture");
+        gpu.MapVRAM_FG(6, 0x80);
+        for (unsigned attempt = 1; attempt <= 4; ++attempt) {
+            if (pixel(true) != red)
+                self_test_fail("temporary palette unmap lost complete colors");
+            if (uploadTrace.Held != 0x10 || uploadTrace.Expired ||
+                uploadTrace.PaletteAge[0] != attempt)
+                self_test_fail("upload held trace did not identify palette slot");
+        }
+        if (pixel(true) != 0x1f000000u)
+            self_test_fail("permanent palette unmap retained indefinitely");
+        if (uploadTrace.Expired != 0x10 || uploadTrace.Held)
+            self_test_fail("upload expiry trace did not identify palette slot");
+        reinterpret_cast<melonDS::u16*>(gpu.VRAM_G)[1] = 0x03e0;
+        gpu.VRAMDirty[6][0] = true; gpu.MapVRAM_FG(6, 0x83);
+        const auto green = pixel(true);
+        if (green != 0x1f003f00u) self_test_fail("palette remap lost uploaded colors");
+        gpu.MapVRAM_AB(0, 0x80); std::memset(gpu.VRAM_A, 0x22, 32);
+        gpu.VRAMDirty[0][0] = true;
+        if (pixel(true) != green) self_test_fail("partial texture upload became visible");
+        gpu.MapVRAM_AB(0, 0x83);
+        if (pixel(true) != 0x1f3f0000u) self_test_fail("texture remap did not refresh");
+        reinterpret_cast<melonDS::u16*>(gpu.VRAM_G)[2] = 0;
+        gpu.VRAMDirty[6][0] = true;
+        if (pixel(true) != 0x1f000000u)
+            self_test_fail("mapped intentional black palette was suppressed");
+        reinterpret_cast<melonDS::u16*>(gpu.VRAM_G)[2] = 0x7c00;
+        gpu.VRAMDirty[6][0] = true; pixel(true);
+        gpu.MapVRAM_FG(6, 0x80); pixel(true); gpu.MapVRAM_FG(6, 0x82);
+        if (pixel(true) != 0x1f000000u)
+            self_test_fail("palette bank reassignment kept stale snapshot");
+        if (uploadTrace.Reassigned != 0x10 || uploadTrace.Held)
+            self_test_fail("upload reassignment trace did not identify palette slot");
+        gpu.MapVRAM_FG(6, 0x83); pixel(false); gpu.MapVRAM_FG(6, 0x80);
+        if (pixel(false) != 0x1f000000u)
+            self_test_fail("ordinary oracle palette unmap behavior changed");
+        cache->Reset(); gpu.MapVRAM_FG(6, 0x83);
+        if (pixel(true) != 0x1f3f0000u) self_test_fail("upload cache reset lost reload");
+        cache->Reset();
+        std::cout << "H3D_UPLOAD_SNAPSHOT_PASS temporary_unmap=4 expiry=1 remap_refresh=1 "
+                     "partial_upload=1 mapped_black=1 reassignment=1 oracle_unchanged=1 reset=1 trace=1\n";
+    }
     run_matched_display_test();
     run_matched_catchup_test();
     run_matched_display_test(true);
@@ -5779,7 +6159,8 @@ void run_self_test()
             if (bad == 3) ++policy[4];
             if (bad == 4) fixture.header->entry_count = 1; // legacy ring
             auto service = std::make_unique<Hybrid3DService>(
-                fixture.bytes.data(), fixture.bytes.size());
+                fixture.bytes.data(), fixture.bytes.size(),
+                std::string{}, false, false, false, false, true);
             if (service->initialize() || fixture.header->accepted_session != 0)
                 self_test_fail("incompatible H3P1 service did not fail closed");
         }
@@ -5961,6 +6342,27 @@ void run_self_test()
             sample.min_y != 0 || sample.max_x != 123 || sample.max_y != 9 ||
             sample.hash == 0)
             self_test_fail("plane summary is invalid");
+        std::array<std::uint32_t, PlanePixels> top_video {};
+        std::array<std::uint32_t, PlanePixels> bottom_video {};
+        top_video[3] = 0xff102030u;
+        top_video[PlaneWidth + 70] = 0xff405060u;
+        bottom_video[2 * PlaneWidth + 130] = 0xff708090u;
+        FullVideoScrollLines full_video_scroll {};
+        full_video_scroll.fill(384);
+        const auto full_video = summarize_full_video(
+            31, full_video_scroll, true, top_video.data(), bottom_video.data());
+        if (full_video.frame != 31 || full_video.render_xpos != full_video_scroll ||
+            !full_video.screen_swap ||
+            full_video.screen[0].nonblack_pixels !=
+                std::array<std::uint16_t, 4>{1, 1, 0, 0} ||
+            full_video.screen[0].nonblack_rows !=
+                std::array<std::uint8_t, 4>{1, 1, 0, 0} ||
+            full_video.screen[1].nonblack_pixels !=
+                std::array<std::uint16_t, 4>{0, 0, 1, 0} ||
+            full_video.screen[1].nonblack_rows !=
+                std::array<std::uint8_t, 4>{0, 0, 1, 0} ||
+            full_video.screen[0].hash == 0 || full_video.screen[1].hash == 0)
+            self_test_fail("full-video source summary is invalid");
         if (filter.publish(false, true) || filter.publish(false, true) ||
             filter.publish(false, true) || !filter.publish(true, true) ||
             filter.publish(false, true) || filter.publish(false, true) ||
