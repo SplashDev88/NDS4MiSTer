@@ -45,6 +45,16 @@ public:
 
     void SetRenderSettings(RendererSettings& settings) override;
 
+    bool SetExternalFramebuffers(u32* top, u32* bottom) override
+    {
+        if ((top == nullptr) != (bottom == nullptr)) return false;
+        if (top && (!PackedOutput || EngineBOnly ||
+                    ((reinterpret_cast<uintptr_t>(top) |
+                      reinterpret_cast<uintptr_t>(bottom)) & 7))) return false;
+        ExternalFramebuffer[0] = top;
+        ExternalFramebuffer[1] = bottom;
+        return true;
+    }
     void DrawScanline(u32 line) override;
     void DrawSprites(u32 line) override;
     void SetExternalLineCacheReuse(u32 line, bool engineA,
@@ -102,8 +112,10 @@ public:
     bool GetRenderedScanlines(u32 line, u32** top, u32** bottom) override
     {
         if (line >= 192) return false;
-        *top = &Framebuffer[BackBuffer][0][line * 256];
-        *bottom = &Framebuffer[BackBuffer][1][line * 256];
+        *top = &(ExternalFramebuffer[0] ? ExternalFramebuffer[0] :
+                 Framebuffer[BackBuffer][0])[line * 256];
+        *bottom = &(ExternalFramebuffer[1] ? ExternalFramebuffer[1] :
+                    Framebuffer[BackBuffer][1])[line * 256];
         return true;
     }
     bool GetOBJBufferHashes(u64 hashes[4]) override
@@ -118,6 +130,7 @@ private:
     friend class SoftRenderer3D;
 
     u32* Framebuffer[2][2];
+    u32* ExternalFramebuffer[2] {};
     bool PackedOutput = false;
     bool LineCache = false;
     bool PairedBCache = false;

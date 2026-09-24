@@ -244,6 +244,54 @@ if(NDS4MISTER_USE_MELONDS)
             COMMAND nds_display_capture_oracle_test)
     endif()
 
+    add_executable(nds_gx_overflow_order_test
+        src/replay/GXOverflowOrderTest.cpp
+        src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_gx_overflow_order_test PRIVATE
+        src third_party/melonDS/src)
+    target_compile_options(nds_gx_overflow_order_test PRIVATE
+        -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_gx_overflow_order_test PRIVATE
+        core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_gx_overflow_order COMMAND nds_gx_overflow_order_test)
+    endif()
+
+    add_executable(nds_gx_matrix_prefix_test
+        src/replay/GxMatrixPrefixTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_gx_matrix_prefix_test PRIVATE
+        src third_party/melonDS/src)
+    target_compile_options(nds_gx_matrix_prefix_test PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_gx_matrix_prefix_test PRIVATE core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_gx_matrix_prefix COMMAND nds_gx_matrix_prefix_test)
+    endif()
+
+    add_executable(nds_2d_background_bench EXCLUDE_FROM_ALL
+        tools/benchmark_2d_background.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_2d_background_bench PRIVATE
+        src src/replay src/melonds third_party/melonDS/src)
+    target_compile_definitions(nds_2d_background_bench PRIVATE NDS_BENCH_DIRECT=1)
+    target_link_libraries(nds_2d_background_bench PRIVATE core ${CMAKE_DL_LIBS})
+
+    add_executable(nds_sprite_priority_index_test
+        src/replay/SpritePriorityIndexTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_sprite_priority_index_test PRIVATE
+        src third_party/melonDS/src)
+    target_link_libraries(nds_sprite_priority_index_test PRIVATE core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_sprite_priority_index COMMAND nds_sprite_priority_index_test)
+    endif()
+
+    add_executable(nds_sprite_setup_cache_test
+        src/replay/SpriteSetupCacheTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_sprite_setup_cache_test PRIVATE
+        src third_party/melonDS/src)
+    target_link_libraries(nds_sprite_setup_cache_test PRIVATE core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_sprite_setup_cache COMMAND nds_sprite_setup_cache_test)
+    endif()
+
     add_executable(nds_engine_b_line_cache_test
         src/replay/EngineBLineCacheTest.cpp
         src/melonds/HeadlessPlatform.cpp)
@@ -256,6 +304,7 @@ if(NDS4MISTER_USE_MELONDS)
     if(BUILD_TESTING)
         add_test(NAME nds_engine_b_line_cache COMMAND nds_engine_b_line_cache_test)
         add_test(NAME nds_paired_b_line_cache COMMAND nds_engine_b_line_cache_test --paired)
+        add_test(NAME nds_direct_framebuffer COMMAND nds_engine_b_line_cache_test --direct-output)
     endif()
 
     add_executable(nds_touch_oracle_probe

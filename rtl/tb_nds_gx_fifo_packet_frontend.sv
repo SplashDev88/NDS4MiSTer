@@ -26,6 +26,7 @@ module tb_nds_gx_fifo_packet_frontend;
     logic fifo_below_half;
     logic fifo_full;
     logic packed_active;
+    logic normalization_pending;
     logic protocol_error;
 
     logic [7:0] expected_command [0:MAX_EXPECTED-1];

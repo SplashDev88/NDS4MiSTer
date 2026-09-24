@@ -243,8 +243,13 @@ bool Consumer::begin_into(
     auto diagnostic_state = chain_active_ ? chain_diagnostic_state_ :
                                             DiagnosticCrcInitial;
     auto selected_count = chain_active_ ? chain_selected_count_ : 0u;
-    for (const auto& record : output_records) {
+    for (std::size_t index = 0; index < output_records.size(); ++index) {
+        const auto& record = output_records[index];
         if (!validate_record(record)) return reject(FaultBadRecord);
+        if (record_kind(record) == RecordKind::GxReadbackFence &&
+            (first.flags != FlagContinuation ||
+             index + 1 != output_records.size()))
+            return reject(FaultBadRecord);
         if (require_diagnostic_ && diagnostic_record_selected(record)) {
             const auto added = diagnostic_selected_count(record);
             if (added > std::numeric_limits<std::uint32_t>::max() -
@@ -508,6 +513,8 @@ bool Consumer::validate_header(const PacketHeader& header) const
 bool Consumer::validate_record(const Record& record) const
 {
     const auto kind = record_kind(record);
+    if (kind == RecordKind::GxReadbackFence)
+        return valid_readback_fence(record);
     if (kind == RecordKind::GxPacked) return true;
     if ((record.metadata & 0xc0000000u) != 0 ||
         (!record_has_scanline(record) &&

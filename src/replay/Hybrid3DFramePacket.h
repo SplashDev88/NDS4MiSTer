@@ -54,6 +54,8 @@ enum class RecordKind : std::uint8_t {
     // Three normalized GX commands packed as
     // {data2, data1, data0, tag2, tag1, tag0, kind}.
     GxPacked = 9,
+    // Ordered execution fence, never a guest MMIO write or scanline event.
+    GxReadbackFence = 10,
 };
 
 enum Fault : std::uint32_t {
@@ -133,6 +135,13 @@ static_assert(offsetof(DiagnosticEntry, commit_sequence) == 0x1c);
 constexpr RecordKind record_kind(const Record& record)
 {
     return static_cast<RecordKind>(record.metadata & 0xffu);
+}
+
+constexpr bool valid_readback_fence(const Record& record)
+{
+    return record.metadata ==
+               static_cast<std::uint32_t>(RecordKind::GxReadbackFence) &&
+           record.address_or_aux != 0 && record.data == 0;
 }
 
 constexpr std::uint8_t record_tag(const Record& record)

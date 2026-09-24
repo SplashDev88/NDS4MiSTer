@@ -96,6 +96,7 @@ module nds_h3d_frame_packet_writer #(
     logic [31:0] latched_session;
     logic [127:0] saved_record;
     logic saved_frame_end;
+    logic saved_readback_fence;
     logic [31:0] packet_frame;
     logic [31:0] packet_sequence;
     logic [31:0] close_flags;
@@ -109,6 +110,10 @@ module nds_h3d_frame_packet_writer #(
     logic [31:0] outstanding;
     logic session_changed;
     logic refreshed_ack_fault;
+    wire record_readback_fence = record[7:0] == 8'd10;
+    wire malformed_readback_fence = record_readback_fence &&
+        (record[31:0] != 32'd10 || record[63:32] == 0 ||
+         record[127:64] != 0 || record_frame_end);
 
     initial begin
         if (SLOT_COUNT != 4)
@@ -233,6 +238,7 @@ module nds_h3d_frame_packet_writer #(
             latched_session <= 0;
             saved_record <= 0;
             saved_frame_end <= 0;
+            saved_readback_fence <= 0;
             packet_frame <= 0;
             packet_sequence <= 0;
             close_flags <= 0;
@@ -410,7 +416,10 @@ module nds_h3d_frame_packet_writer #(
                             state <= WRITE_HEADER0;
                         end
                     end else if (record_valid && record_ready) begin
-                        if ((record_count == 0 && chain_active &&
+                        if (malformed_readback_fence) begin
+                            fault <= 1'b1;
+                            fault_reason <= 5'd19;
+                        end else if ((record_count == 0 && chain_active &&
                              record_frame != chain_frame) ||
                             (record_count != 0 &&
                              record_frame != packet_frame)) begin
@@ -422,6 +431,7 @@ module nds_h3d_frame_packet_writer #(
                         end else begin
                             saved_record <= record;
                             saved_frame_end <= record_frame_end;
+                            saved_readback_fence <= record_readback_fence;
                             if (record_count == 0) begin
                                 packet_frame <= record_frame;
                                 packet_sequence <= producer_sequence + 1'b1;
@@ -491,9 +501,12 @@ module nds_h3d_frame_packet_writer #(
                         if (saved_frame_end) begin
                             close_flags <= FLAG_FRAME_END;
                             state <= WRITE_HEADER0;
-                        end else if (
+                        end else if (saved_readback_fence ||
                             record_count + 1'b1 == MAX_RECORDS_COUNT
                         ) begin
+                            // An execution query is a publication boundary,
+                            // not a frame boundary. Its continuation commits
+                            // immediately, with the fence as the last record.
                             close_flags <= FLAG_CONT;
                             state <= WRITE_HEADER0;
                         end else begin

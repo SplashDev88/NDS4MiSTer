@@ -49,6 +49,9 @@ module nds_gx_fifo_packet_frontend #(
     output logic         fifo_below_half,
     output logic         fifo_full,
     output logic         packed_active,
+    // Autonomous packed-command expansion still owed for accepted input.
+    // Unlike packed_active, this excludes commands waiting for future params.
+    output logic         normalization_pending,
     output logic         protocol_error
 );
     localparam integer POINTER_WIDTH =
@@ -178,6 +181,7 @@ module nds_gx_fifo_packet_frontend #(
     wire packed_zero_phase =
         packed_command_count != 0 &&
         packed_parameters_remaining == 0;
+    assign normalization_pending = packed_zero_phase;
     wire packed_zero_emits =
         packed_commands[7:0] != 0 ||
         (packed_command_count == 4 && packed_commands == 0);

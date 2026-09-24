@@ -2,11 +2,11 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.5 — Castlevania and Metroid Prime Pinball graphics fixes**
+**v0.4.0-beta.6 — Final Fantasy Tactics A2 and Pokemon Platinum graphics fixes**
 
-The latest beta fixes Castlevania: Dawn of Sorrow's intermittent bottom-screen
-black flashes and Metroid Prime Pinball's missing top-screen section in testing.
-Recent rendering and write-combining speed improvements are retained.
+The latest beta restores missing graphics in Final Fantasy Tactics A2 and
+Pokemon Platinum, with faster ARM rendering and a fix for disconnected Wi-Fi
+retries that caused a Lunar Knights movie crash. Earlier game fixes remain.
 
 > **Engine B must be On.** Change it in the core menu, then reset or reload
 > your ROM. Older Off settings can produce a blank display. Use this release's
@@ -53,8 +53,8 @@ artifacts, or credentials are included in this source repository.
 - **Engine B must stay On.** Off remains in the menu but is unsupported by this
   build. Set On, then Reset or reload the ROM. The installer preserves your
   configuration, so an older saved Off setting must be changed manually.
-- **Pokémon graphics using GX readback can remain missing.** The experimental
-  correction is deferred because of slowdown; see issue #16 below.
+- **Pokemon Platinum character and room furniture passed testing.** SoulSilver
+  has not been verified with this build; other scenes may still expose problems.
 - **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
   the most active area of development.
 - **Cartridge-access latency remains a bottleneck.** Some objects or effects
@@ -76,12 +76,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta.5_20260920.zip` directly into the root
+   `NDS4MiSTer_Public_Beta_v0.4.0-beta.6_20260924.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260920** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260924** and launch the core.
 4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
    file. If already loaded, Reset or reload after changing Engine B.
 
@@ -180,13 +180,15 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta.5
+## What's new in v0.4.0-beta.6
 
-- Castlevania: Dawn of Sorrow's bottom-screen black flashes fixed in gameplay testing.
-- Metroid Prime Pinball's missing left half of the top screen restored.
-- Recent rendering, WC, movie playback and TATE improvements retained at stock 1 GHz.
+- Final Fantasy Tactics A2 startup/menu graphics restored.
+- Pokemon Platinum character and room furniture restored in testing.
+- Faster ARM rendering, retaining the recovered graphics and stock 1 GHz clock.
+- Disconnected Wi-Fi retries stopped at Kickstart to avoid the observed
+  Lunar Knights movie crash. Connected Wi-Fi and saved settings are preserved.
 
-See the [release notes](docs/RELEASE_NOTES_V040_BETA5.md) and
+See the [release notes](docs/RELEASE_NOTES_V040_BETA6.md) and
 [technical source notes](SOURCE_PACKAGE.txt).
 
 ## Retained from v0.4.0-beta
@@ -213,18 +215,19 @@ and boot fixes remain in the source. New graphical regressions are listed
 above. Engine B On is required. ARM runs at stock 1 GHz with no overclock.
 No new gameplay speed percentage or universal 60 FPS claim is made.
 
-The experimental GX readback correction remains deferred because of slowdown.
-Pokemon player/furniture graphics can remain missing; see
+The new ordered matrix and visibility readback restores the tested Pokemon
+Platinum player and room furniture. SoulSilver and other scenes still need
+validation; see
 [issue #16](https://github.com/SplashDev88/NDS4MiSTer/issues/16).
 
 ## Verification
 
-The installer contains the exact user-tested BREG2 FPGA and upload-snapshot2 ARM
-helper. Source, binary identities, test coverage and timing limits are in
-[SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). The source and installer each include
-checksums. No runtime binary was rebuilt for packaging. Full ARM self-tests and
-focused FPGA register tests passed; the user verified both games. These are
-focused compatibility checks, not a guarantee of 60 FPS or all-game accuracy.
+The installer contains the exact user-tested PBOX1 FPGA and C22 ARM helper.
+Source, binary identities, test coverage and timing limits are in
+[SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). Source and installer each include
+checksums. No runtime binary was rebuilt for packaging. ARM self-tests, exact
+pixel comparisons, focused FPGA tests and hardware gameplay checks passed.
+These are focused checks, not a guarantee of 60 FPS or all-game accuracy.
 
 ## For developers
 

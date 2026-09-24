@@ -14,6 +14,7 @@ architecture sim of tb_nds_h3d_gx_status is
        ena => '0', acc => ACCESS_32BIT, bEna => "0000", rst => '0');
    signal wired_out : std_logic_vector(31 downto 0);
    signal wired_done, trig_gx, irq_gxfifo : std_logic;
+   signal test_bits : std_logic_vector(1 downto 0) := "00";
    signal fifo_level : std_logic_vector(8 downto 0) := (others => '0');
 begin
    clk <= not clk after 5 ns;
@@ -22,7 +23,7 @@ begin
       port map
       (
          clk => clk, reset => reset, service_ready => service_ready,
-         fifo_level => fifo_level,
+         fifo_level => fifo_level, test_result_bits => test_bits,
          gb_bus => regs_bus, wired_out => wired_out, wired_done => wired_done,
          trig_gx => trig_gx, irq_gxfifo => irq_gxfifo
       );
@@ -200,6 +201,17 @@ begin
       wait for 1 ns;
       assert trig_gx = '0' and wired_out(25) = '1' and wired_out(26) = '1'
          report "service loss leaked transport state into GXSTAT" severity failure;
+
+      -- The completed visibility and busy bits are independent of the
+      -- local FIFO/IRQ owner. Both word and halfword reads see the same low
+      -- architectural bits; CPU lane extraction is performed by the membus.
+      service_ready <= '1'; test_bits <= "10"; wait for 1 ns;
+      assert wired_out = x"c6000002" and irq_gxfifo='0' and trig_gx='1'
+         report "test result replaced native FIFO/IRQ fields" severity failure;
+      regs_bus.acc <= ACCESS_16BIT; test_bits <= "01"; wait for 1 ns;
+      assert wired_out = x"c6000001"
+         report "halfword status did not preserve busy bit" severity failure;
+      regs_bus.acc <= ACCESS_32BIT; test_bits <= "00"; wait for 1 ns;
 
       -- Unsupported synchronous result/count registers remain unclaimed, so
       -- the existing IO wired-OR returns zero rather than fabricated values.

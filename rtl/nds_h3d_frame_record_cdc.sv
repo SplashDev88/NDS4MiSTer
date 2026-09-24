@@ -91,6 +91,7 @@ module nds_h3d_frame_record_cdc #(
     localparam logic [7:0] KIND_OAM_WRITE = 8'd7;
     localparam logic [7:0] KIND_HBLANK = 8'd8;
     localparam logic [7:0] KIND_GX_PACKED = 8'd9;
+    localparam logic [7:0] KIND_GX_READBACK_FENCE = 8'd10;
 
     function automatic logic [1:0] address_low(
         input logic [3:0] byte_enable
@@ -146,6 +147,9 @@ module nds_h3d_frame_record_cdc #(
         gpu_arch_address <= 28'h00005cb;
     wire gpu_gxstat = gpu_arch_address >= 28'h0000600 &&
         gpu_arch_address <= 28'h0000613;
+    // Internal ordered-source sentinel, never an architectural MMIO write.
+    wire gpu_readback_fence = gpu_address == 28'h00007f0 &&
+        gpu_access == 2'b11 && gpu_byte_enable == 4'b0000;
     wire gpu_qualified = gpu_2d || gpu_palette || gpu_oam || gpu_disp3d ||
         gpu_vramcnt || gpu_powcnt1 || gpu_renderer || gpu_geometry ||
         gpu_gxstat;
@@ -230,6 +234,7 @@ module nds_h3d_frame_record_cdc #(
     logic gx_swap_pending;
     logic [63:0] gx_oldest_swap_timestamp;
     logic gx_packed_active;
+    logic gx_normalization_pending;
     logic gx_protocol_error;
     logic [31:0] logical_frame;
 
@@ -258,6 +263,7 @@ module nds_h3d_frame_record_cdc #(
         .fifo_below_half(fifo_below_half),
         .fifo_full(fifo_full),
         .packed_active(gx_packed_active),
+        .normalization_pending(gx_normalization_pending),
         .protocol_error(gx_protocol_error)
     );
 
@@ -369,7 +375,8 @@ module nds_h3d_frame_record_cdc #(
         // its original source timestamp. GX wins ties. A geometry raw write
         // may simultaneously enter the independent 256-entry GX FIFO.
         select_gx_head = gx_record_valid &&
-            (!selected_raw_valid ||
+            ((select_gpu && gpu_readback_fence) ||
+             !selected_raw_valid ||
              gx_record_timestamp < selected_raw_timestamp ||
              (gx_record_timestamp == selected_raw_timestamp &&
               !select_hblank));
@@ -434,7 +441,20 @@ module nds_h3d_frame_record_cdc #(
                         if (!SPARSE_HBLANK)
                             hblank_ready = async_write_ready;
                     end else if (select_gpu) begin
-                        if (!gpu_qualified) begin
+                        if (gpu_readback_fence) begin
+                            // Drain every previously accepted GX parameter,
+                            // including packed zero-param expansion not yet
+                            // in the FIFO. A partial command awaiting future
+                            // input must NOT block the executed-prefix query.
+                            if (fifo_empty && !gx_normalization_pending) begin
+                                gpu_ready = gpu_data == 0 || async_write_ready;
+                                async_write_valid = gpu_valid && gpu_data != 0;
+                                async_write_data = {
+                                    1'b0, 1'b0, logical_frame, 10'd0,
+                                    64'd0, gpu_data, 24'd0,
+                                    KIND_GX_READBACK_FENCE};
+                            end
+                        end else if (!gpu_qualified) begin
                             gpu_ready = 1;
                         end else begin
                             async_write_valid = gpu_valid;
@@ -563,6 +583,8 @@ module nds_h3d_frame_record_cdc #(
             source_fault_reason_now = 4'd6;
         else if (frame_stability_fault)
             source_fault_reason_now = 4'd7;
+        else if (gpu_fire && gpu_readback_fence && gpu_data == 0)
+            source_fault_reason_now = 4'd8;
     end
 
     always_ff @(posedge source_clk or posedge source_reset_local) begin

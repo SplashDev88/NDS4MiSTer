@@ -243,9 +243,8 @@ private:
     // and advances it in bounded 256-command runs.  Keep that run contiguous
     // instead of paying the emulated four-entry pipe plus 256-entry FIFO
     // write/refill/read machinery for commands no emulated CPU can observe.
-    // The extra room is a fail-safe for a future caller that exceeds the
-    // service's current run boundary; overflow retains exact order in the
-    // ordinary FIFO behind this batch.
+    // SWAP_BUFFERS can suspend execution across several such runs. Overflow
+    // stays in the ordinary FIFO behind this bank until the entire tail drains.
     static constexpr u32 ExternalBatchCapacity = 512;
     CmdFIFOEntry ExternalBatch[ExternalBatchCapacity] {};
     u32 ExternalBatchRead = 0;

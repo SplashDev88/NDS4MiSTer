@@ -1204,6 +1204,23 @@ wire h3d_packet_busy, h3d_packet_command_accepted;
 wire [63:0] h3d_packet_dout;
 wire h3d_packet_dout_ready;
 
+// One ordered GX-result request from the source owner. The reply RAM stays
+// in the reader; only its synchronous index/data port reaches the console.
+wire h3d_readback_request, h3d_readback_ready;
+wire [31:0] h3d_readback_id;
+wire h3d_readback_response;
+wire [31:0] h3d_readback_response_id, h3d_readback_status;
+wire [4:0] h3d_readback_index;
+wire [31:0] h3d_readback_data;
+wire h3d_readback_source_fault;
+wire h3d_readback_ddr_read, h3d_readback_ddr_busy;
+wire [28:0] h3d_readback_ddr_address;
+wire h3d_readback_ddr_accepted, h3d_readback_ddr_data_ready;
+wire [63:0] h3d_readback_ddr_data;
+wire h3d_readback_ch3_request, h3d_readback_ch3_ready;
+wire [27:1] h3d_readback_ch3_address;
+wire [63:0] h3d_readback_ch3_data;
+
 wire h3d_plane_read, h3d_plane_write;
 wire [7:0] h3d_plane_burst;
 wire [28:0] h3d_plane_addr;
@@ -1490,14 +1507,17 @@ wire [31:0] h3d_plane_display_frame = h3d_pixel_descriptor_valid
 // and can recover on a later line or frame.  Resetting both CPUs for such a
 // display miss turns recoverable backpressure into a permanent boot failure.
 (* async_reg = "true" *) logic [1:0] h3d_source_fault_sync_ddr;
+(* async_reg = "true" *) logic [1:0] h3d_readback_fault_sync_ddr;
 always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
     if (bridge_reset_ddr) begin
         h3d_source_fault_sync_ddr <= 2'b00;
+        h3d_readback_fault_sync_ddr <= 2'b00;
         h3d_external_fault_bits <= 32'd0;
     end else begin
         h3d_source_fault_sync_ddr <= {
             h3d_source_fault_sync_ddr[0], h3d_console_source_fault
         };
+        h3d_readback_fault_sync_ddr <= {h3d_readback_fault_sync_ddr[0], h3d_readback_source_fault};
         if (h3d_cart_ready_rise) begin
             h3d_external_fault_bits <= 32'd0;
         end else begin
@@ -1509,7 +1529,10 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
                 (h3d_packet_fault ?
                     (32'h00000400 |
                      {11'd0, h3d_packet_fault_reason, 16'd0}) : 32'd0) |
-                (h3d_fabric_protocol_error ? 32'h00000800 : 32'd0);
+                (h3d_fabric_protocol_error ? 32'h00000800 : 32'd0) |
+                // Bits 12..15/16..20 hold record/packet fault reasons;
+                // bit 21 is the first unused external-fault bit.
+                (h3d_readback_fault_sync_ddr[1] ? 32'h00200000 : 32'd0);
         end
     end
 end
@@ -1823,6 +1846,44 @@ nds_h3d_frame_packet_writer #(
     .ddram_read_data_ready(h3d_packet_dout_ready)
 );
 
+// The result reply lives at physical 0x3fc00200. Its dedicated, read-only
+// client borrows unused uncached legacy channel 3 rather than adding a fifth
+// outer-fabric client. The adapter removes the legacy 0x30000000 translation
+// and keeps old ownership alive through session/reset cancellation.
+nds_h3d_gx_readback_reply #(
+    .CONTROL_BASE_WORD(H3D_CONTROL_WORD)
+) h3d_readback_reply (
+    .source_clk(clk1x), .ddr_clk(ddr_clk),
+    .reset(bridge_reset_ddr), .session_flush(~h3d_control_release),
+    .session(h3d_session_sync_1x),
+    .request_valid(h3d_readback_request), .request_ready(h3d_readback_ready),
+    .request_id(h3d_readback_id),
+    .response_valid(h3d_readback_response),
+    .response_id(h3d_readback_response_id),
+    .response_status(h3d_readback_status),
+    .read_index(h3d_readback_index), .read_data(h3d_readback_data),
+    .source_fault(h3d_readback_source_fault),
+    .ddram_read(h3d_readback_ddr_read), .ddram_burst_count(),
+    .ddram_address(h3d_readback_ddr_address),
+    .ddram_busy(h3d_readback_ddr_busy),
+    .ddram_command_accepted(h3d_readback_ddr_accepted),
+    .ddram_read_data(h3d_readback_ddr_data),
+    .ddram_read_data_ready(h3d_readback_ddr_data_ready)
+);
+
+nds_h3d_readback_legacy_adapter h3d_readback_adapter (
+    .clk(ddr_clk), .boot_reset(h3d_fabric_boot_reset),
+    .cancel(h3d_path_reset),
+    .read(h3d_readback_ddr_read), .address(h3d_readback_ddr_address),
+    .busy(h3d_readback_ddr_busy),
+    .command_accepted(h3d_readback_ddr_accepted),
+    .read_data(h3d_readback_ddr_data),
+    .read_data_ready(h3d_readback_ddr_data_ready),
+    .ch_request(h3d_readback_ch3_request),
+    .ch_address(h3d_readback_ch3_address),
+    .ch_ready(h3d_readback_ch3_ready), .ch_data(h3d_readback_ch3_data)
+);
+
 // The active session is bundled stable while console_reset is asserted.  It
 // is synchronized before the first post-release drawline can reach the reader.
 always_ff @(posedge clk1x or posedge console_reset_1x) begin
@@ -2018,8 +2079,14 @@ ddram island_ddram (
     .ch1_req(1'b0),.ch1_rnw(1'b1),.ch1_ready(),
     .ch2_addr({1'b0,cd_addr,1'b0}),.ch2_dout(cd_dout),.ch2_din(32'd0),
     .ch2_req(cd_req),.ch2_rnw(1'b1),.ch2_ready(cd_ready),
+`ifdef NDS_HYBRID_3D
+    .ch3_addr(h3d_readback_ch3_address),.ch3_dout(h3d_readback_ch3_data),
+    .ch3_din(64'd0),.ch3_req(h3d_readback_ch3_request),
+    .ch3_rnw(1'b1),.ch3_be(8'd0),.ch3_ready(h3d_readback_ch3_ready),
+`else
     .ch3_addr(27'd0),.ch3_dout(),.ch3_din(64'd0),.ch3_req(1'b0),
     .ch3_rnw(1'b1),.ch3_be(8'd0),.ch3_ready(),
+`endif
     .ch4_addr(27'd0),.ch4_dout(),.ch4_din(64'd0),.ch4_req(1'b0),
     .ch4_rnw(1'b1),.ch4_be(8'd0),.ch4_ready(),
     .ch5_addr(fb5_addr),.ch5_din(fb5_din),.ch5_req(fb5_req),
@@ -2103,6 +2170,9 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
 );
 
 nds_nitro_console_wrap #(
+`ifdef NDS_HYBRID_3D
+    .H3D_GX_READBACK_ENABLE(1'b1),
+`endif
 `ifdef NDS_MATCHED_DISPLAY_TEST
     .H3D_MATCHED_DISPLAY_TEST(1),
 `endif
@@ -2198,6 +2268,14 @@ nds_nitro_console_wrap #(
     .h3d_line_drop(h3d_core_line_drop),
     .h3d_bg1_scroll_triplet(h3d_bg1_scroll_triplet),
     .h3d_service_ready(h3d_console_release),
+    .h3d_readback_request(h3d_readback_request),
+    .h3d_readback_ready(h3d_readback_ready),
+    .h3d_readback_id(h3d_readback_id),
+    .h3d_readback_response(h3d_readback_response),
+    .h3d_readback_response_id(h3d_readback_response_id),
+    .h3d_readback_status(h3d_readback_status),
+    .h3d_readback_index(h3d_readback_index),
+    .h3d_readback_data(h3d_readback_data),
 `ifdef NDS_HYBRID_3D
     .h3d_engine_b_enable(h3d_engine_b_sync_1x[1]),
 `else

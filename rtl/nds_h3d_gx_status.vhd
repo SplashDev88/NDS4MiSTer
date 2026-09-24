@@ -11,12 +11,10 @@
 -- Clearing ARM9 IF while the condition remains true therefore reasserts on
 -- the next IRQ-controller evaluation, as hardware does.
 --
--- Matrix stack/test busy, geometry busy, stack pointers, polygon/vertex
--- counts, and test/matrix result registers are not fabricated here. GXSTAT
--- returns zero for those fields. Addresses 0x04000604 and above remain
--- unclaimed and therefore read zero through the product's existing NDS open-
--- IO behavior. Workloads needing synchronous result-register semantics are a
--- later phase and must not infer them from packet-transport state.
+-- Bits 0/1 are supplied by the ordered test-result owner. Ordinary GXSTAT
+-- polls remain local; that owner fences only after a new BOX/POS command.
+-- Matrix stack/geometry busy, stack pointers and polygon/vertex counts still
+-- read zero here. The separate result owner also handles clip-matrix reads.
 --
 -- DISP3DCNT at 0x04000060 is a CPU-visible read/modify/write register even
 -- though its renderer-side writes are also transported to the HPS. Retain the
@@ -38,6 +36,7 @@ entity nds_h3d_gx_status is
       reset          : in  std_logic;
       service_ready  : in  std_logic;
       fifo_level     : in  std_logic_vector(8 downto 0) := (others => '0');
+      test_result_bits : in std_logic_vector(1 downto 0) := "00";
 
       gb_bus         : in  proc_bus_gb_type;
       wired_out      : out std_logic_vector(31 downto 0) := (others => '0');
@@ -67,6 +66,7 @@ begin
    process (all)
    begin
       gxstat_word <= (others => '0');
+      gxstat_word(1 downto 0) <= test_result_bits;
       gxstat_word(24 downto 16) <= fifo_level;
       gxstat_word(25) <= fifo_below_half;
       gxstat_word(26) <= fifo_empty;

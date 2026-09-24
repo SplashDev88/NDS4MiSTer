@@ -1,3 +1,5 @@
+# Beta.6 source and validation
+
 NDS4MiSTer v0.4.0-beta.6 — graphics fixes and rendering improvements
 
 Exact accepted PBOX1 FPGA and C22 ARM helper. Neither binary rebuilt.

@@ -895,6 +895,84 @@ module tb_nds_h3d_frame_record_cdc;
         send_arm9(28'h6804000, 32'ha9000600, 64'd600);
         wait_drain();
 
+        // A leading pair of packed NOP bytes creates an empty-FIFO window
+        // before the accepted zero-param commands have been normalized. The
+        // query cannot pass that window, and it must flush the two-word tail.
+        expect_output(gx_record_value(8'h15, 32'h11150000), 1, 0);
+        expect_output(gx_record_value(8'h11, 32'h11150000), 1, 0);
+        expect_output(direct_record(10, 0, 0, 32'h12340001, 0), 1, 0);
+        send_gpu(28'h400, 2'b10, 4'hf, 32'h11150000, 64'd900);
+        send_gpu(28'h7f0, 2'b11, 4'h0, 32'h12340001, 64'd901);
+        wait_drain();
+        $display("stage fence drains autonomous normalization and untagged tail");
+
+        // A prefix of an intentionally incomplete BOX_TEST still publishes.
+        // Waiting for packed_active to clear would deadlock this query. Later
+        // parameters resume the same packed parser, strictly after the fence.
+        expect_output(gx_record_value(8'h70, 32'h10002000), 1, 0);
+        expect_output(direct_record(10, 0, 0, 32'h12340002, 0), 1, 0);
+        send_gpu(28'h400, 2'b10, 4'hf, 32'h00000070, 64'd910);
+        send_gpu(28'h400, 2'b10, 4'hf, 32'h10002000, 64'd911);
+        send_gpu(28'h7f0, 2'b11, 4'h0, 32'h12340002, 64'd912);
+        wait_drain();
+        if (!dut.gx_packed_active || dut.gx_normalization_pending)
+            $fatal(1, "fence discarded or waited for incomplete BOX params");
+        expect_output(gx_record_value(8'h70, 32'h30004000), 1, 0);
+        expect_output(gx_record_value(8'h70, 32'h50006000), 1, 0);
+        expect_output(direct_record(10, 0, 0, 32'h12340003, 0), 1, 0);
+        send_gpu(28'h400, 2'b10, 4'hf, 32'h30004000, 64'd913);
+        send_gpu(28'h400, 2'b10, 4'hf, 32'h50006000, 64'd914);
+        send_gpu(28'h7f0, 2'b11, 4'h0, 32'h12340003, 64'd915);
+        wait_drain();
+        $display("stage incomplete-command prefix and resumption");
+
+        // An ordered query held behind both FIFOs may not retire early. All
+        // 17 earlier words must drain, then the two-word packed tail, fence,
+        // and only then a later geometry word and its next fence.
+        @(negedge ddr_clk);
+        record_ready = 0;
+        for (i = 0; i < 15; i = i + 3)
+            expect_output(gx_packed_three(
+                8'h20, 32'hf0000000 + i,
+                8'h20, 32'hf0000001 + i,
+                8'h20, 32'hf0000002 + i), 1, 0);
+        expect_output(gx_record_value(8'h20, 32'hf000000f), 1, 0);
+        expect_output(gx_record_value(8'h20, 32'hf0000010), 1, 0);
+        expect_output(direct_record(10, 0, 0, 32'h12340004, 0), 1, 0);
+        for (i = 0; i < 17; i = i + 1)
+            send_gpu(28'h480, 2'b10, 4'hf, 32'hf0000000 + i,
+                     64'd920 + i);
+        fork
+            send_gpu(28'h7f0, 2'b11, 4'h0, 32'h12340004, 64'd940);
+            begin
+                repeat (40) @(posedge source_clk);
+                if (!gpu_valid || gpu_ready || fifo_empty)
+                    $fatal(1, "query escaped blocked prior GX FIFO words");
+                @(negedge ddr_clk);
+                record_ready = 1;
+            end
+        join
+        expect_output(gx_record_value(8'h20, 32'hf0000011), 1, 0);
+        expect_output(direct_record(10, 0, 0, 32'h12340005, 0), 1, 0);
+        send_gpu(28'h480, 2'b10, 4'hf, 32'hf0000011, 64'd941);
+        send_gpu(28'h7f0, 2'b11, 4'h0, 32'h12340005, 64'd942);
+        wait_drain();
+        $display("stage ordered fences under sustained backpressure");
+
+        // A genuine SWAP closes the previous frame; the subsequent query is
+        // a nonterminal record of the new frame, not a replacement SWAP.
+        expect_output(gx_record_value(8'h50, 3), 1, 1);
+        expect_output(direct_record(10, 0, 0, 32'h12340006, 0), 2, 0);
+        send_gpu(28'h540, 2'b10, 4'hf, 3, 64'd950);
+        send_gpu(28'h7f0, 2'b11, 4'h0, 32'h12340006, 64'd951);
+        wait_drain();
+
+        // Zero is not a legal request ID and must never enter the record ABI.
+        send_gpu(28'h7f0, 2'b11, 4'h0, 0, 64'd960);
+        wait_for_fault();
+        if (source_fault_reason != 4'd8 || ddr_fault_reason != 4'd8)
+            $fatal(1, "zero request ID reported wrong fault reason");
+
         if (expected_read != expected_write)
             $fatal(1, "not all expected records drained");
         $display("PASS: frame record CDC timestamp merge, GX normalization/buffering, SWAP/VBlank frames, skewed reset, held backpressure, and protocol-fault recovery");

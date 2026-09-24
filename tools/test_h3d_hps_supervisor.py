@@ -132,9 +132,12 @@ def main() -> int:
             encoding="ascii",
         )
         fake_taskset.chmod(0o755)
+        fake_pidof_trace = runtime / "fake-pidof-calls"
         fake_pidof = runtime / "pidof"
         fake_pidof.write_text(
-            "#!/bin/sh\n[ \"${1:-}\" = MiSTer ] && cat \"$H3D_FAKE_MISTER_PID_STATE\"\n",
+            "#!/bin/sh\n"
+            "printf 'call\\n' >>\"$H3D_FAKE_PIDOF_TRACE\"\n"
+            "[ \"${1:-}\" = MiSTer ] && cat \"$H3D_FAKE_MISTER_PID_STATE\"\n",
             encoding="ascii",
         )
         fake_pidof.chmod(0o755)
@@ -168,6 +171,7 @@ def main() -> int:
                 "H3D_FAKE_TASKSET_ENTERED": str(fake_taskset_entered),
                 "H3D_FAKE_TASKSET_RELEASE": str(fake_taskset_release),
                 "H3D_FAKE_MISTER_PID_STATE": str(fake_mister_pid_state),
+                "H3D_FAKE_PIDOF_TRACE": str(fake_pidof_trace),
                 "H3D_TEST_MISTER_WATCH_INTERVAL": "0.05",
             }
         )
@@ -242,7 +246,7 @@ def main() -> int:
             require(len(starts(trace)) == 1, "second start launched another process")
             wait_for(
                 lambda: (runtime / "nds-h3d-mister-watch.lock").is_dir(),
-                "one-shot watcher did not hold its singleton lock",
+                "affinity watcher did not hold its singleton lock",
             )
 
             # A stable replacement is pinned only after CORENAME says NDS.
@@ -255,12 +259,57 @@ def main() -> int:
                 lambda: fake_affinity.read_text(encoding="ascii").strip() == "0",
                 "stable replacement MiSTer epoch was not pinned",
             )
-            wait_for(
-                lambda: not (runtime / "nds-h3d-mister-watch.lock").exists(),
-                "one-shot watcher did not exit after pinning",
-            )
             require(len(records(fake_taskset_trace)) == 1,
                     "watcher repeated the CPU0 taskset write")
+
+            # Reopening NDS can replace the frontend without restarting the
+            # resident renderer. Every new epoch needs its own affinity; the
+            # old watcher exited after the first pin and missed this reload.
+            set_misters([(4444, 111112)])
+            wait_for(
+                lambda: fake_affinity.read_text().strip() == "0",
+                "reloaded frontend was left competing with the renderer",
+            )
+            require(len(records(fake_taskset_trace)) == 2,
+                    "reload did not issue exactly one new pin")
+            schedule_state = runtime / "nds-h3d-mister-scheduling.state"
+            require(schedule_state.read_text().strip() == "4444 111112 1",
+                    "reload did not retain the new frontend's original affinity")
+            run_control("start", environment)
+            time.sleep(0.15)
+            require(len(starts(trace)) == 1 and
+                    len(records(fake_taskset_trace)) == 2 and
+                    schedule_state.read_text().strip() == "4444 111112 1",
+                    "repeated Kickstart duplicated work or lost original affinity")
+
+            # The launch window must not expire during a running game. Leaving
+            # NDS restores an unchanged frontend; returning to it is observed
+            # even when MiSTer retains that same PID/start-time pair.
+            core_name.write_text("NDS", encoding="ascii")  # Live MiSTer uses no LF.
+            scans_before = len(fake_pidof_trace.read_text().splitlines())
+            time.sleep(2.2)  # More than the test's 40 * 0.05-second launch window.
+            require((runtime / "nds-h3d-mister-watch.lock").is_dir(),
+                    "watcher expired during active NDS gameplay")
+            require(len(fake_pidof_trace.read_text().splitlines()) == scans_before,
+                    "watcher kept scanning all processes during stable gameplay")
+
+            # The cheap steady-state check still detects PID reuse, rather
+            # than trusting the cached numeric PID after its frontend exits.
+            set_misters([(4444, 111113)])
+            wait_for(lambda: fake_affinity.read_text().strip() == "0",
+                     "steady-state watcher missed reuse of the frontend PID")
+            require(schedule_state.read_text().strip() == "4444 111113 1",
+                    "PID reuse retained stale scheduling state")
+            core_name.write_text("MENU\n", encoding="ascii")
+            wait_for(lambda: fake_affinity.read_text().strip() == "1",
+                     "leaving NDS did not restore the same frontend")
+            wait_for(lambda: not schedule_state.exists(),
+                     "leaving NDS left stale scheduling state")
+            core_name.write_text("NDS\n", encoding="ascii")
+            wait_for(lambda: fake_affinity.read_text().strip() == "0",
+                     "returning to NDS with the same frontend was missed")
+            require(len(records(fake_taskset_trace)) == 5,
+                    "same-frontend core switch repeated an affinity change")
             run_control("status", environment)
             dump = run_control("dump", environment)
             require("snapshot requested" in dump.stdout,
@@ -278,9 +327,32 @@ def main() -> int:
                     "stop did not restore MiSTer's original affinity: "
                     f"affinity={fake_affinity.read_text(encoding='ascii')!r} "
                     f"trace={fake_taskset_trace.read_text(encoding='ascii')!r}")
-            require(len(records(fake_taskset_trace)) == 2,
+            require(len(records(fake_taskset_trace)) == 6,
                     "stop did not perform exactly one restoring write")
             run_control("status", environment, 3)
+
+            # Before NDS is loaded the bounded launch window still expires.
+            # Kickstart then adopts an already-running NDS frontend, without
+            # requiring another frontend restart or a second ARM service.
+            wait_for(lambda: not (runtime / "nds-h3d-mister-watch.lock").exists(),
+                     "watcher outlived its stopped service")
+            core_name.write_text("MENU\n", encoding="ascii")
+            short_window = environment | {"H3D_TEST_MISTER_WATCH_LIMIT": "4"}
+            run_control("start", short_window)
+            wait_for(lambda: (runtime / "nds-h3d-mister-watch.lock").exists(),
+                     "bounded launch watcher did not start")
+            wait_for(lambda: not (runtime / "nds-h3d-mister-watch.lock").exists(),
+                     "watcher did not expire outside NDS")
+            require(fake_affinity.read_text().strip() == "1",
+                    "waiting for NDS changed menu affinity")
+            starts_before_adoption = len(starts(trace))
+            core_name.write_text("NDS\n", encoding="ascii")
+            run_control("start", environment)
+            wait_for(lambda: fake_affinity.read_text().strip() == "0",
+                     "Kickstart missed an already-running NDS frontend")
+            require(len(starts(trace)) == starts_before_adoption,
+                    "adopting NDS restarted the ARM service")
+            run_control("stop", environment)
 
             # PID reuse is distinguished by /proc start time.  The same
             # numeric PID with a new epoch must be treated as the replacement.
@@ -309,7 +381,7 @@ def main() -> int:
                      "singleton replacement after duplicate PIDs was not pinned")
             time.sleep(0.15)
             require(len(records(fake_taskset_trace)) == before_writes + 1,
-                    "one-shot watcher repeated taskset")
+                    "watcher repeated taskset for the same epoch")
             run_control("stop", environment)
 
             # A taskset that mutates CPU affinity but reports failure is
@@ -434,6 +506,10 @@ def main() -> int:
             environment["NDS4MISTER_H3D_DIAGNOSTICS"] = "1"
             environment["NDS4MISTER_BLACK_EVENT_TRACE"] = "1"
             environment["NDS4MISTER_H3D_UPLOAD_SNAPSHOT"] = "0"
+            environment["NDS4MISTER_GX_MATRIX_PREFIX"] = "off"
+            environment["NDS4MISTER_GX_QUERY_FAST_POLL"] = "1"
+            environment["NDS4MISTER_PACKET_NC"] = "1"
+            environment["NDS_GPU_STANDARD_PALETTE_CACHE"] = "0"
             environment.pop("NDS4MISTER_MATCHED_DISPLAY_TEST", None)
             environment.pop("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE", None)
             environment.pop("NDS4MISTER_WEIGHTED_RASTER_BANDS", None)
@@ -449,6 +525,10 @@ def main() -> int:
                     "NDS4MISTER_H3D_DISABLE_WC": mode,
                     "NDS4MISTER_H3D_DIAGNOSTICS": "0",
                     "NDS4MISTER_DIRECT_PLANE_PUBLICATION": "1",
+                    "NDS4MISTER_GX_MATRIX_PREFIX": "fast",
+                    "NDS4MISTER_GX_QUERY_FAST_POLL": "0",
+                    "NDS4MISTER_PACKET_NC": "0",
+                    "NDS_GPU_STANDARD_PALETTE_CACHE": "1",
                     "NDS4MISTER_H3D_UPLOAD_SNAPSHOT": "1",
                     "NDS4MISTER_BLACK_EVENT_TRACE": "0",
                     "NDS4MISTER_MATCHED_DISPLAY_TEST": "1",

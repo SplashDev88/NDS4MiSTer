@@ -28,6 +28,7 @@ entity nds_nitro_console_wrap is
       -- through the mixed-language boundary prevents a future fast-engine
       -- build from silently using the 3x phase gate under a 4x PLL.
       CLKMEM_RATIO     : integer := 3;
+      H3D_GX_READBACK_ENABLE : std_logic := '0';
       H3D_MATCHED_DISPLAY_TEST : integer := 0;
       SOUND_DIAGNOSTICS : integer := 0;
       SOUND_STREAM_DIAGNOSTICS : integer := 0
@@ -169,6 +170,14 @@ entity nds_nitro_console_wrap is
 
       -- Lossless raw H3D event streams, all in the clk1x domain.
       h3d_service_ready       : in  std_logic := '0';
+      h3d_readback_request    : out std_logic := '0';
+      h3d_readback_ready      : in  std_logic := '0';
+      h3d_readback_id         : out std_logic_vector(31 downto 0) := (others => '0');
+      h3d_readback_response   : in  std_logic := '0';
+      h3d_readback_response_id: in  std_logic_vector(31 downto 0) := (others => '0');
+      h3d_readback_status     : in  std_logic_vector(31 downto 0) := (others => '0');
+      h3d_readback_index      : out std_logic_vector(4 downto 0) := (others => '0');
+      h3d_readback_data       : in  std_logic_vector(31 downto 0) := (others => '0');
       h3d_engine_b_enable     : in  std_logic := '0';
       h3d_gx_fifo_level       : in  std_logic_vector(8 downto 0) := (others => '0');
       h3d_timestamp           : out std_logic_vector(63 downto 0);
@@ -336,6 +345,7 @@ begin
       H3D_MATCHED_DISPLAY_TEST => H3D_MATCHED_DISPLAY_TEST,
       SOUND_ENABLE => 1, SOUND_DIAGNOSTICS => SOUND_DIAGNOSTICS,
       SOUND_STREAM_DIAGNOSTICS => SOUND_STREAM_DIAGNOSTICS, DEBUG_ENABLE => 0,
+      H3D_GX_READBACK_ENABLE => H3D_GX_READBACK_ENABLE = '1',
       CLKMEM_RATIO => CLKMEM_RATIO
    )
    port map
@@ -452,6 +462,14 @@ begin
       h3d_merge_pixel_y    => h3d_merge_y_i,
 
       h3d_service_ready       => h3d_service_ready,
+      h3d_readback_request    => h3d_readback_request,
+      h3d_readback_ready      => h3d_readback_ready,
+      h3d_readback_id         => h3d_readback_id,
+      h3d_readback_response   => h3d_readback_response,
+      h3d_readback_response_id=> h3d_readback_response_id,
+      h3d_readback_status     => h3d_readback_status,
+      h3d_readback_index      => h3d_readback_index,
+      h3d_readback_data       => h3d_readback_data,
       h3d_engine_b_enable     => h3d_engine_b_enable,
       h3d_gx_fifo_level       => h3d_gx_fifo_level,
       h3d_timestamp           => h3d_timestamp,

@@ -136,9 +136,10 @@ static const u32* pixels(NDS& nds, unsigned line)
 
 int main(int argc, char** argv)
 try {
-    bool paired = false, benchmark = false;
+    bool paired = false, benchmark = false, direct = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--paired") == 0) paired = true;
+        else if (std::strcmp(argv[i], "--direct-output") == 0) direct = paired = true;
         else if (std::strcmp(argv[i], "--benchmark") == 0) benchmark = true;
         else throw std::runtime_error("unknown test option");
     }
@@ -160,10 +161,23 @@ try {
     }
     auto plain = fixture(false, paired);
     auto cached = fixture(true, paired);
+    // Two publication slots, each with guard words. The completed slot stays
+    // immutable while the next one is drawn, just as in the H3D owner queue.
+    using Plane = std::array<u32, 256*192+4>;
+    auto output = std::make_unique<std::array<std::array<Plane,2>,2>>();
+    for (auto& slot : *output) for (auto& plane : slot) plane.fill(0xDEADBEEF);
+    std::array<Plane,2> lastCompleted {};
+    if (direct && cached->GetRenderer().SetExternalFramebuffers(
+            (*output)[0][0].data()+1, (*output)[0][1].data()+1))
+        throw std::runtime_error("misaligned planes were accepted");
     unsigned hits = 0;
     unsigned misses = 0;
     for (unsigned f = 0; f < 72; ++f)
         for (unsigned y = 0; y < 263; ++y) {
+            if (direct && y == 0 &&
+                !cached->GetRenderer().SetExternalFramebuffers(
+                    (*output)[f&1][0].data()+2, (*output)[f&1][1].data()+2))
+                throw std::runtime_error("direct output rejected");
             for (auto* nds : {plain.get(), cached.get()}) {
                 phase(*nds, f, y, y == 0 ? 2 : 0);
                 edit(*nds, f, y);
@@ -196,13 +210,23 @@ try {
             }
             bool a = false, b = false;
             cached->GPU.GetRenderer().GetExternalLineCacheResult(a, b);
+            if (direct && y == 191) {
+                for (auto& plane : (*output)[f&1])
+                    if (plane.front()!=0xDEADBEEF || plane[1]!=0xDEADBEEF ||
+                        plane[plane.size()-2]!=0xDEADBEEF || plane.back()!=0xDEADBEEF)
+                        throw std::runtime_error("direct output wrote outside its plane");
+                if (f && (*output)[(f^1)&1] != lastCompleted)
+                    throw std::runtime_error("renderer overwrote completed publication slot");
+                lastCompleted = (*output)[f&1];
+                cached->GetRenderer().SetExternalFramebuffers(nullptr, nullptr);
+            }
             if (a) throw std::runtime_error("auxiliary cache touched engine A");
             if (b) ++hits; else ++misses;
         }
     if (hits < 1000 || misses < 1000)
         throw std::runtime_error("fixture did not exercise hits and invalidation");
     std::cout << "ENGINE_B_CACHE_ORACLE_PASS paired=" << paired
-              << " pixels=" << 72*192*256*(paired ? 2 : 1)
+              << " direct=" << direct << " pixels=" << 72*192*256*(paired ? 2 : 1)
               << " hits=" << hits << " misses=" << misses << '\n';
     return 0;
 } catch (const std::exception& e) {

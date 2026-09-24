@@ -8,6 +8,8 @@
 #include "replay/FpgaCrashMonitor.h"
 #include "replay/Hybrid3DAbi.h"
 #include "replay/Hybrid3DFramePacket.h"
+#include "replay/Hybrid3DGxReadback.h"
+#include "replay/GxMatrixPrefix.h"
 #include "replay/Hybrid3DMemoryMapping.h"
 #include "replay/Hybrid3DSessionPolicy.h"
 #include "replay/MatchedDisplayAdmission.h"
@@ -81,6 +83,7 @@ using nds4mister::h3d::event_width;
 using nds4mister::h3d::load_acquire;
 using nds4mister::h3d::make_metadata;
 using nds4mister::h3d::store_release;
+namespace gx_readback = nds4mister::h3d::gx_readback;
 namespace frame_packet = nds4mister::h3d::frame_packet;
 namespace session_policy = nds4mister::h3d::session_policy;
 
@@ -698,7 +701,8 @@ public:
         bool direct_plane_publication = false,
         bool arm_video_engine_b_only = false,
         bool matched_display_test = false,
-        bool matched_full_rate = false)
+        bool matched_full_rate = false,
+        unsigned matrix_prefix_mode = 0)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -733,6 +737,11 @@ public:
           runtime_telemetry_(runtime_telemetry),
           texture_trace_path_(std::move(texture_trace_path))
     {
+        // Experimental companion-helper mode: the prefix is owned only by
+        // intake, and renderer state remains owned only by replay. Sparse LCD
+        // transport and synchronous replay retain the original result path.
+        matrix_prefix_mode_ = asynchronous_arm_video_replay_ &&
+            matched_display_test_ ? matrix_prefix_mode : 0;
         if (!texture_trace_path_.empty()) {
             texture_trace_records_.reserve(MaxTextureTraceRecords);
             completed_texture_trace_.reserve(MaxTextureTraceRecords);
@@ -798,6 +807,11 @@ public:
                 policy_ack[i] = value;
             }))
             return fail(FaultBadSession, "H3P1 changed during initialization");
+        // Invalidate a preceding helper/session reply before advertising Ready.
+        auto* readback_words = reinterpret_cast<volatile std::uint32_t*>(
+            mapping_ + gx_readback::MappingOffset);
+        readback_words[gx_readback::CommitWord] = 0;
+        nds4mister::h3d::device_barrier();
         store_release(&header_.accepted_session, session_);
         store_release(
             &header_.service_state,
@@ -965,6 +979,11 @@ public:
     }
 
     const std::string& error() const { return error_; }
+    bool fast_matrix_replies_active() const
+    {
+        return matrix_prefix_mode_ == 2 && matrix_prefix_.valid() &&
+            matrix_prefix_published_ != 0;
+    }
     std::uint64_t events_applied() const { return events_applied_; }
     std::uint64_t frames_published() const
     {
@@ -1057,6 +1076,11 @@ private:
     struct ReplayPacket {
         frame_packet::PacketHeader header {};
         std::vector<frame_packet::Record> records;
+        // Diagnostic only: distinguish time behind earlier replay/render work
+        // from the cost of calculating and publishing the matrix itself.
+        std::chrono::steady_clock::time_point readback_received {};
+        gx_readback::Snapshot prefix_snapshot {};
+        bool prefix_published = false;
     };
 
     // Beta100's NSMB map transition latched the FPGA console-source overflow
@@ -1134,9 +1158,14 @@ private:
         args.JIT = std::nullopt;
         nds_ = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
         nds_->Reset();
+        const char* direct_output = std::getenv("NDS4MISTER_DIRECT_FULL_VIDEO");
+        direct_full_video_output_ = !direct_output || std::strcmp(direct_output, "0") != 0;
         // OAM enters through ARM9 writes; direct external marks are dirty hints.
-        if (const char* cache = std::getenv("NDS_GPU_SPRITE_PHASE_CACHE"))
-            nds_->GPU.SetSpriteOAMWriteTracking(std::strcmp(cache, "1") == 0);
+        const char* setup = std::getenv("NDS_GPU_SPRITE_SETUP_CACHE");
+        const char* phase = std::getenv("NDS_GPU_SPRITE_PHASE_CACHE");
+        nds_->GPU.SetSpriteOAMWriteTracking(
+            !setup || std::strcmp(setup, "0") != 0 ||
+            (phase && std::strcmp(phase, "1") == 0));
         nds_->GPU.GPU3D.SetEnabled(true, true);
         nds_->GPU.GPU3D.SetExternalCommandReplay(true);
         // This service always publishes melonDS's native software output.
@@ -1144,6 +1173,9 @@ private:
         // calculating it costs two 64-bit divisions for every accepted
         // vertex on the Cortex-A9.
         nds_->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+        matrix_prefix_.reset();
+        active_prefix_snapshot_ = nullptr;
+        active_prefix_published_ = false;
         arm_video_shadow_ = nds4mister::ArmVideoShadow {};
         if (asynchronous_plane_publication_ || arm_video_render_shadow_ ||
             arm_video_engine_b_only_) {
@@ -1329,6 +1361,13 @@ private:
             input_started = std::chrono::steady_clock::now();
 
         packet.header = packet_header_;
+        packet.prefix_snapshot[0] = 0;
+        packet.prefix_published = false;
+        if (pipeline_profile_enabled_)
+            packet.readback_received = !packet.records.empty() &&
+                frame_packet::record_kind(packet.records.back()) ==
+                    frame_packet::RecordKind::GxReadbackFence ?
+                input_started : std::chrono::steady_clock::time_point {};
         bool saw_swap = false;
         for (std::size_t index = 0; index < packet.records.size(); ++index) {
             const auto& record = packet.records[index];
@@ -1372,6 +1411,8 @@ private:
             }
             if (!texture_record_fits(record)) return PollResult::Fault;
             if (!retain_texture_record(record)) return PollResult::Fault;
+            if (matrix_prefix_mode_ && !apply_matrix_prefix(record, packet))
+                return PollResult::Fault;
             events_applied_ +=
                 kind == frame_packet::RecordKind::GxPacked ? 3 : 1;
             heartbeat();
@@ -1407,6 +1448,15 @@ private:
         if (!consumer_.acknowledge())
             return consumer_fault_result(
                 "queued frame packet acknowledgement failed");
+        if (matrix_prefix_mode_ == 2 && packet.prefix_snapshot[0]) {
+            if (!publish_prefix_snapshot(packet.prefix_snapshot))
+                return PollResult::Fault;
+            packet.prefix_published = true;
+            if (pipeline_profile_enabled_)
+                record_plain_profile_sample(matrix_prefix_reply_samples_,
+                    matrix_prefix_reply_total_ns_, matrix_prefix_reply_max_ns_,
+                    packet.readback_received);
+        }
         packet_pending_ = false;
         ++packets_applied_;
 
@@ -1581,6 +1631,11 @@ private:
 
     bool apply_replay_packet(const ReplayPacket& packet)
     {
+        active_prefix_snapshot_ = packet.prefix_snapshot[0] ?
+            &packet.prefix_snapshot : nullptr;
+        active_prefix_published_ = packet.prefix_published;
+        if (pipeline_profile_enabled_)
+            active_readback_received_ = packet.readback_received;
         replay_packet_frame_ = packet.header.frame;
         packet_saw_swap_ = false;
         std::size_t index = 0;
@@ -1711,11 +1766,9 @@ private:
         replay_worker_ = std::thread([this] {
             if (bind_hps_worker_cores_) {
                 try {
-                    // MiSTer's frontend is pinned to CPU1 and continuously
-                    // runnable, but the production supervisor now starts H3D
-                    // at nice -20. Give command replay CPU1 explicitly so it
-                    // preempts that idle loop instead of migrating onto CPU0
-                    // and contending with the software rasterizer.
+                    // Replay/2D remains on CPU1 while the short command intake
+                    // owner uses CPU0. Rasterization still uses both cores;
+                    // packet ordering and matched-frame ownership are unchanged.
                     bind_current_thread_to_cpu(1);
                 } catch (const std::exception& error) {
                     fail(FaultBadFrame, error.what());
@@ -2610,6 +2663,11 @@ private:
                 } else {
                     publication_filling_index_ = destination_index;
                 }
+                if (direct_full_video_output_ &&
+                    !nds_->GPU.GetRenderer().SetExternalFramebuffers(
+                        arm_video_frames_[destination_index][0].data(),
+                        arm_video_frames_[destination_index][1].data()))
+                    return fail(FaultBadFrame, "renderer rejected private output planes");
             }
         }
 
@@ -2752,14 +2810,14 @@ private:
                 return fail(
                     FaultBadFrame,
                     "ARM full-video frame has no local destination");
-            std::memcpy(
-                arm_video_frames_[destination_index][0].data() +
-                    line * PlaneWidth,
-                top, PlaneWidth * sizeof(std::uint32_t));
-            std::memcpy(
-                arm_video_frames_[destination_index][1].data() +
-                    line * PlaneWidth,
-                bottom, PlaneWidth * sizeof(std::uint32_t));
+            if (!direct_full_video_output_) {
+                std::memcpy(
+                    arm_video_frames_[destination_index][0].data() + line * PlaneWidth,
+                    top, PlaneWidth * sizeof(std::uint32_t));
+                std::memcpy(
+                    arm_video_frames_[destination_index][1].data() + line * PlaneWidth,
+                    bottom, PlaneWidth * sizeof(std::uint32_t));
+            }
             // The bounded event trace can run without stage profiling, so
             // the rare upload expiry is observed at normal gameplay speed.
             if (black_event_trace_enabled_ && line == 96)
@@ -2783,6 +2841,9 @@ private:
                     arm_video_scanline_max_ns_, scanline_started);
             }
             if (line == PlaneHeight - 1) {
+                // Detach before the publication owner can see this slot. A
+                // skipped/partial next frame must never overwrite queued data.
+                nds_->GPU.GetRenderer().SetExternalFramebuffers(nullptr, nullptr);
                 arm_video_frame_ = display_frame;
                 arm_video_frame_ready_ = true;
                 arm_video_completed_index_ = destination_index;
@@ -2873,6 +2934,10 @@ private:
                     return false;
             }
             return true;
+        case frame_packet::RecordKind::GxReadbackFence:
+            if (!frame_packet::valid_readback_fence(record) || packet_saw_swap_)
+                return fail(FaultBadEvent, "invalid ordered GX readback fence");
+            return publish_gx_readback(session_, record.address_or_aux);
         case frame_packet::RecordKind::GxRegister: {
             if (packet_saw_swap_)
                 return fail(
@@ -2932,6 +2997,125 @@ private:
             return apply_arm_video_write(record);
         }
         return fail(FaultBadEvent, "unknown frame-packet record kind");
+    }
+
+    bool publish_gx_readback(std::uint32_t packet_session,
+                             std::uint32_t request_id)
+    {
+        if (packet_session != session_ || !shared_session_current(true))
+            return fail(FaultBadSession, "stale GX readback fence session");
+        auto reply_started = std::chrono::steady_clock::time_point {};
+        if (pipeline_profile_enabled_) {
+            reply_started = std::chrono::steady_clock::now();
+            if (active_readback_received_ !=
+                std::chrono::steady_clock::time_point {}) {
+                const auto queued_ns = static_cast<std::uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        reply_started - active_readback_received_).count());
+                ++readback_queue_samples_;
+                readback_queue_total_ns_ += queued_ns;
+                readback_queue_max_ns_ = std::max(readback_queue_max_ns_, queued_ns);
+                constexpr std::array<std::uint64_t, 7> limits {
+                    100000, 500000, 1000000, 4000000,
+                    16000000, 50000000, 100000000
+                };
+                const auto bucket = std::upper_bound(
+                    limits.begin(), limits.end(), queued_ns) - limits.begin();
+                ++readback_queue_histogram_[bucket];
+            }
+        }
+        // A SWAP can hold already accepted commands until the LCD's VBlank.
+        // Run() records the intervening timestamp while it is blocked, so a
+        // later query must supply execution time of its own. Otherwise a
+        // read-only burst after VBlank can keep returning the pre-SWAP matrix
+        // indefinitely, until an unrelated future GX write advances time.
+        // This adds no command and never forces VBlank or a renderer join.
+        if (!advance_packet_geometry()) return false;
+        flush_pending_geometry();
+        // Preserve incomplete commands and snapshots taken before VBlank;
+        // their busy status prevents the FPGA from reusing this generation.
+        const auto snapshot = gx_readback::capture(session_, request_id,
+            [this](std::uint32_t address) {
+                return nds_->GPU.GPU3D.Read32(address);
+            });
+        if (active_prefix_snapshot_) {
+            const auto& expected = *active_prefix_snapshot_;
+            if (expected[1] != session_ || expected[2] != request_id ||
+                ((expected[gx_readback::StatusWord] ^ snapshot[gx_readback::StatusWord]) & 2u) ||
+                !std::equal(expected.begin() + gx_readback::ClipWord,
+                    expected.begin() + gx_readback::CommitWord,
+                    snapshot.begin() + gx_readback::ClipWord))
+                return fail(FaultBadFrame, "matrix prefix disagreed with ordered renderer");
+            ++matrix_prefix_verified_;
+        }
+        auto* words = reinterpret_cast<volatile std::uint32_t*>(
+            mapping_ + gx_readback::MappingOffset);
+        // Intake can already have answered a later request. Never overwrite
+        // its commit with this older renderer-side verification snapshot.
+        if (!active_prefix_published_ && !gx_readback::publish(snapshot,
+                [this] { return shared_session_current(true); },
+                [words](std::size_t index, std::uint32_t value) {
+                    words[index] = value;
+                }))
+            return fail(FaultBadSession, "H3D1 changed during GX readback reply");
+        if (pipeline_profile_enabled_) {
+            record_plain_profile_sample(readback_replies_,
+                readback_reply_total_ns_, readback_reply_max_ns_, reply_started);
+            if (snapshot[gx_readback::StatusWord] & 0x08000001u)
+                ++readback_busy_replies_;
+        }
+        return true;
+    }
+
+    bool publish_prefix_snapshot(const gx_readback::Snapshot& snapshot)
+    {
+        auto* words = reinterpret_cast<volatile std::uint32_t*>(
+            mapping_ + gx_readback::MappingOffset);
+        if (!gx_readback::publish(snapshot,
+                [this] { return shared_session_current(true); },
+                [words](std::size_t index, std::uint32_t value) { words[index] = value; }))
+            return fail(FaultBadSession, "session changed during fast matrix reply");
+        ++matrix_prefix_published_;
+        return true;
+    }
+
+    bool apply_matrix_prefix(const frame_packet::Record& record, ReplayPacket& packet)
+    {
+        using K = frame_packet::RecordKind;
+        const auto kind = frame_packet::record_kind(record);
+        if (kind == K::GxCommand)
+            matrix_prefix_.command(frame_packet::record_tag(record),
+                static_cast<std::uint32_t>(record.data));
+        else if (kind == K::GxPacked)
+            for (unsigned i = 0; i < 3; ++i)
+                matrix_prefix_.command(frame_packet::packed_gx_tag(record, i),
+                    frame_packet::packed_gx_data(record, i));
+        else if (kind == K::HBlank) {
+            if (record.address_or_aux == 192) matrix_prefix_.vblank();
+        } else if (kind == K::GxRegister || kind == K::Gpu2DRegister) {
+            const auto event = packet_write_event(record, EventType::Arm9GpuIoWrite, 0);
+            const auto access = decode_io_access(event);
+            if (!access) return fail(FaultBadEvent, "invalid matrix prefix register write");
+            matrix_prefix_.power(access->address, access->value, access->bytes);
+            matrix_prefix_.gxstat(access->address, access->value, access->bytes);
+        } else if (kind == K::GxReadbackFence && matrix_prefix_.valid()) {
+            matrix_prefix_.settle();
+            if (!matrix_prefix_.valid()) return true;
+            auto& result = packet.prefix_snapshot;
+            result = {};
+            result[0] = gx_readback::Magic; result[1] = session_;
+            result[2] = record.address_or_aux;
+            result[gx_readback::CommitWord] = result[2];
+            result[gx_readback::StatusWord] = matrix_prefix_.status();
+            const auto clip = matrix_prefix_.clip();
+            for (unsigned i = 0; i < 16; ++i)
+                result[gx_readback::ClipWord + i] = static_cast<std::uint32_t>(clip[i]);
+            const auto& vector = matrix_prefix_.vector();
+            for (unsigned i = 0; i < 9; ++i)
+                result[gx_readback::VectorWord + i] =
+                    static_cast<std::uint32_t>(vector[(i / 3) * 4 + i % 3]);
+        }
+        return true;
     }
 
     bool advance_packet_geometry()
@@ -4086,6 +4270,28 @@ private:
         output << "H3D_PIPELINE_PROFILE_V1"
                << " session=" << session_
                << " elapsed_ns=" << elapsed_ns
+               << " matrix_prefix_mode=" << matrix_prefix_mode_
+               << " matrix_prefix_valid=" << matrix_prefix_.valid()
+               << " matrix_prefix_invalid_reason=" << matrix_prefix_.invalid_reason()
+               << " matrix_prefix_invalid_tag=" << matrix_prefix_.invalid_tag()
+               << " matrix_prefix_invalid_partial=" << matrix_prefix_.invalid_partial()
+               << " matrix_prefix_deferred_peak=" << matrix_prefix_.deferred_peak()
+               << " matrix_prefix_verified=" << matrix_prefix_verified_
+               << " matrix_prefix_published=" << matrix_prefix_published_
+               << " matrix_prefix_reply_samples=" << matrix_prefix_reply_samples_
+               << " matrix_prefix_reply_total_ns=" << matrix_prefix_reply_total_ns_
+               << " matrix_prefix_reply_max_ns=" << matrix_prefix_reply_max_ns_
+               << " readback_replies=" << readback_replies_
+               << " readback_busy_replies=" << readback_busy_replies_
+               << " readback_reply_total_ns=" << readback_reply_total_ns_
+               << " readback_reply_max_ns=" << readback_reply_max_ns_
+               << " readback_queue_samples=" << readback_queue_samples_
+               << " readback_queue_total_ns=" << readback_queue_total_ns_
+               << " readback_queue_max_ns=" << readback_queue_max_ns_;
+        for (std::size_t bucket = 0; bucket < readback_queue_histogram_.size(); ++bucket)
+            output << " readback_queue_bucket" << bucket << '='
+                   << readback_queue_histogram_[bucket];
+        output
                << " queue_capacity=" << ReplayQueueCapacity
                << " queue_high_water="
                << replay_queue_high_water_.load(std::memory_order_relaxed)
@@ -4821,6 +5027,7 @@ private:
     bool pipeline_profile_enabled_ = false;
     bool bind_hps_worker_cores_ = false;
     bool direct_plane_publication_ = false;
+    bool direct_full_video_output_ = true;
     bool arm_video_engine_b_only_ = false;
     bool engine_b_pixels_enabled_ = false;
     std::uint32_t policy_epoch_ = 0;
@@ -4875,6 +5082,19 @@ private:
     std::array<FullVideoSample, 128> full_video_samples_ {};
     std::uint64_t full_video_sample_total_ = 0;
     std::uint64_t packet_timestamp_ = 0;
+    unsigned matrix_prefix_mode_ = 0;
+    nds4mister::replay::GxMatrixPrefix matrix_prefix_;
+    const gx_readback::Snapshot* active_prefix_snapshot_ = nullptr;
+    bool active_prefix_published_ = false;
+    std::uint64_t matrix_prefix_verified_ = 0, matrix_prefix_published_ = 0;
+    std::uint64_t matrix_prefix_reply_samples_ = 0;
+    std::uint64_t matrix_prefix_reply_total_ns_ = 0, matrix_prefix_reply_max_ns_ = 0;
+    std::chrono::steady_clock::time_point active_readback_received_ {};
+    std::uint64_t readback_replies_ = 0, readback_busy_replies_ = 0;
+    std::uint64_t readback_reply_total_ns_ = 0, readback_reply_max_ns_ = 0;
+    std::uint64_t readback_queue_samples_ = 0;
+    std::uint64_t readback_queue_total_ns_ = 0, readback_queue_max_ns_ = 0;
+    std::array<std::uint64_t, 8> readback_queue_histogram_ {};
     // The 128-command experiment cut Run() call count by 44%, but increased
     // total geometry time and did not improve rendered or published FPS.
     // Retain the measured-safe lower batching latency.
@@ -6031,8 +6251,223 @@ void run_matched_catchup_test(bool full_rate = false)
               << " pixels=196608 delayed_ack=1 published_banks_immutable=1\n";
 }
 
+void run_gx_readback_swap_self_test()
+{
+    const auto gx = [](std::uint8_t tag, std::uint32_t word) {
+        return packet_record(frame_packet::RecordKind::GxCommand, tag, 0, 0, word);
+    };
+    const auto phase = [](unsigned line) {
+        return packet_record(frame_packet::RecordKind::HBlank, 0, 0, line, 1);
+    };
+    for (unsigned prefix_mode : {0u, 1u, 2u})
+    for (bool asynchronous : {false, true}) {
+        Fixture fixture(asynchronous ? 911 : 910, true, true);
+        auto owned_service = std::make_unique<Hybrid3DService>(
+            fixture.bytes.data(), fixture.bytes.size(), std::string{},
+            false, false, true, asynchronous, false, false, nullptr, nullptr,
+            false, false, false, true, true, prefix_mode);
+        auto& service = *owned_service;
+        if (!service.initialize()) self_test_fail("readback SWAP fixture init");
+        auto* reply = reinterpret_cast<std::uint32_t*>(
+            fixture.bytes.data() + gx_readback::MappingOffset);
+        const auto submit = [&](unsigned sequence, unsigned frame, unsigned flags,
+                                std::vector<frame_packet::Record> records) {
+            fixture.publish(sequence, frame, flags, records);
+            if (service.poll() != PollResult::Applied)
+                self_test_fail("readback SWAP packet rejected");
+            if (asynchronous) {
+                const auto deadline = std::chrono::steady_clock::now() +
+                    std::chrono::seconds(2);
+                while (service.replay_packets_applied() < sequence &&
+                       std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::yield();
+                if (service.replay_packets_applied() != sequence)
+                    self_test_fail("readback SWAP prefix waited for future input");
+            }
+        };
+        submit(1, 1, frame_packet::FlagContinuation,
+            {gx(0x10, 0), gx(0x15, 0), gx(0x10, 2), gx(0x15, 0), phase(0), {10, 1, 0}});
+        if (reply[gx_readback::ClipWord] != 4096)
+            self_test_fail("readback initial identity");
+        submit(2, 1, frame_packet::FlagFrameEnd, {gx(0x50, 0)});
+        submit(3, 2, frame_packet::FlagContinuation,
+            {gx(0x1b, 8192), gx(0x1b, 8192), gx(0x1b, 8192), {10, 3, 0}});
+        if (reply[gx_readback::ClipWord] != 4096 ||
+            !(reply[gx_readback::StatusWord] & (1u << 27)))
+            self_test_fail("readback forced SWAP before architectural VBlank");
+        // No new GX input follows. The queued matrix must advance once the
+        // real LCD boundary releases SWAP, including in a read-only burst.
+        std::vector<frame_packet::Record> records;
+        for (unsigned line = 1; line <= 192; ++line)
+            records.push_back(phase(line));
+        records.push_back({10, 4, 0});
+        submit(4, 2, frame_packet::FlagContinuation, std::move(records));
+        if (reply[gx_readback::CommitWord] != 4 ||
+            reply[gx_readback::ClipWord] != 8192 ||
+            (reply[gx_readback::StatusWord] & (1u << 27)))
+            self_test_fail("readback after VBlank required a future GX write");
+    }
+    std::cout << "H3D_GX_READBACK_SWAP_SELF_TEST_PASS sync_async_prefix=6\n";
+}
+
+void run_gx_readback_self_test()
+{
+    const auto gx = [](std::uint8_t tag, std::uint32_t data) {
+        return packet_record(frame_packet::RecordKind::GxCommand,
+                             tag, 0, 0, data);
+    };
+    // Neither path receives a SWAP or terminal frame. The worker must answer
+    // the prefix without a future command, render, or publication dependency.
+    for (unsigned prefix_mode : {0u, 1u, 2u})
+    for (bool matched : {false, true})
+    for (bool asynchronous : {false, true}) {
+        Fixture fixture((asynchronous ? 902 : 901) + (matched ? 2 : 0), matched, matched);
+        auto* reply = reinterpret_cast<std::uint32_t*>(
+            fixture.bytes.data() + gx_readback::MappingOffset);
+        reply[gx_readback::CommitWord] = 1;
+        auto owned_service = std::make_unique<Hybrid3DService>(
+            fixture.bytes.data(), fixture.bytes.size(), std::string{},
+            false, false, matched, asynchronous, false, false, nullptr, nullptr,
+            false, false, false, matched, matched, prefix_mode);
+        auto& service = *owned_service;
+        if (!service.initialize()) self_test_fail("readback fixture init failed");
+        if (load_acquire(reply + gx_readback::CommitWord) != 0 ||
+            fixture.header->accepted_session != fixture.header->fpga_session ||
+            fixture.header->service_state !=
+                static_cast<std::uint32_t>(ServiceState::Ready))
+            self_test_fail("readback stale commit survived initialization");
+        reply[-1] = 0x1234abcd;
+        reply[32] = 0x5678ef01;
+        std::uint32_t sequence = 0;
+        const auto submit = [&](std::vector<frame_packet::Record> records) {
+            ++sequence;
+            records.push_back({10, sequence, 0});
+            fixture.publish(sequence, 77, frame_packet::FlagContinuation, records);
+            if (service.poll() != PollResult::Applied)
+                self_test_fail("readback continuation was not accepted");
+            if (asynchronous) {
+                const auto deadline = std::chrono::steady_clock::now() +
+                    std::chrono::seconds(2);
+                while (service.replay_packets_applied() < sequence &&
+                       std::chrono::steady_clock::now() < deadline)
+                    std::this_thread::yield();
+                if (service.replay_packets_applied() != sequence)
+                    self_test_fail("readback waited for future frame/parameters");
+            }
+            if (load_acquire(reply + gx_readback::CommitWord) != sequence ||
+                reply[0] != gx_readback::Magic ||
+                reply[1] != fixture.header->fpga_session ||
+                reply[2] != sequence || reply[3] != 0 || reply[31] != 0 ||
+                reply[-1] != 0x1234abcd || reply[32] != 0x5678ef01 ||
+                service.frames_rendered() != 0 || service.frames_published() != 0)
+                self_test_fail("readback reply ownership/range/frame mismatch");
+        };
+        std::vector<frame_packet::Record> records {
+            frame_packet::pack_gx_commands(
+                gx(0x10, 0), gx(0x15, 0), gx(0x10, 2))
+        };
+        const std::array<std::uint32_t, 12> position {
+            4096, 0, 0, 0, 8192, 0, 0, 0, 12288, 1024, 0xfffffe00, 256
+        };
+        for (auto value : position) records.push_back(gx(0x17, value));
+        // Complete an intersecting box before the first reply.
+        records.push_back(gx(0x70, 0xff00ff00));
+        records.push_back(gx(0x70, 0x0200ff00));
+        records.push_back(gx(0x70, 0x02000200));
+        submit(records);
+        const std::array<std::uint32_t, 16> clip {
+            4096, 0, 0, 0, 0, 8192, 0, 0, 0, 0, 12288, 0,
+            1024, 0xfffffe00, 256, 4096
+        };
+        const std::array<std::uint32_t, 9> vector {
+            4096, 0, 0, 0, 8192, 0, 0, 0, 12288
+        };
+        if (!(reply[gx_readback::StatusWord] & 2) ||
+            std::memcmp(reply + gx_readback::ClipWord, clip.data(), sizeof(clip)) ||
+            std::memcmp(reply + gx_readback::VectorWord, vector.data(), sizeof(vector)))
+            self_test_fail("ordered BOX/clip/vector prefix mismatch");
+
+        // A read fence may separate parameters of one command. Preserve the
+        // previous matrix until LOAD4x3 receives its remaining parameters.
+        submit({gx(0x17, 8192)});
+        if (std::memcmp(reply + gx_readback::ClipWord, clip.data(), sizeof(clip)))
+            self_test_fail("partial matrix changed readback state");
+        records.clear();
+        for (std::size_t i = 1; i < position.size(); ++i)
+            records.push_back(gx(0x17, position[i]));
+        submit(records);
+        if (reply[gx_readback::ClipWord] != 8192 ||
+            reply[gx_readback::VectorWord] != 8192)
+            self_test_fail("matrix parser did not resume after readback fence");
+        submit({gx(0x70, 0x70007000)});
+        if (!(reply[gx_readback::StatusWord] & 1))
+            self_test_fail("partial BOX_TEST busy prefix was not preserved");
+        submit({gx(0x70, 0x01007000), gx(0x70, 0x01000100)});
+        if (reply[gx_readback::StatusWord] & 3)
+            self_test_fail("BOX_TEST parser/result did not resume after fence");
+
+        // The authoritative snapshot must also survive the backend's derived
+        // geometry-discard mode used by catch-up. Worker is idle at this point.
+        service.nds().GPU.GPU3D.SetExternalGeometryDiscard(true);
+        submit({gx(0x10, 2), gx(0x15, 0)});
+        if (reply[gx_readback::ClipWord] != 4096 ||
+            reply[gx_readback::ClipWord + 12] != 0)
+            self_test_fail("catch-up discarded an authoritative readback fence");
+        service.nds().GPU.GPU3D.SetExternalGeometryDiscard(false);
+    }
+    std::cout << "H3D_GX_READBACK_PREFIX_SELF_TEST_PASS "
+                 "sync_async_matched_prefix=12 partial_matrix_box=12 commit_init_clear=1\n";
+}
+
+
 void run_self_test()
 {
+    run_gx_readback_self_test();
+    run_gx_readback_swap_self_test();
+    {
+        // Hold the renderer behind 256 independently answered queries, then
+        // let it catch up. Verification of older snapshots must never replace
+        // the newest committed answer in the shared reply window.
+        Fixture fixture(909, true, true);
+        auto owned_service = std::make_unique<Hybrid3DService>(
+            fixture.bytes.data(), fixture.bytes.size(), std::string{},
+            false, false, true, true, false, false, nullptr, nullptr,
+            false, false, false, true, true, 2);
+        auto& service = *owned_service;
+        if (!service.initialize()) self_test_fail("fast prefix burst init");
+        service.stop_replay_worker();
+        auto* reply = reinterpret_cast<std::uint32_t*>(
+            fixture.bytes.data() + gx_readback::MappingOffset);
+        const auto gx = [](std::uint8_t tag, std::uint32_t data) {
+            return packet_record(frame_packet::RecordKind::GxCommand,
+                tag, 0, 0, data);
+        };
+        for (unsigned id = 1; id <= 256; ++id) {
+            fixture.publish(id, 1, frame_packet::FlagContinuation,
+                {gx(0x10, 2), gx(0x15, 0), gx(0x1c, id),
+                 gx(0x1c, 0), gx(0x1c, 0), {10, id, 0}});
+            if (service.poll() != PollResult::Applied ||
+                load_acquire(reply + gx_readback::CommitWord) != id ||
+                reply[gx_readback::ClipWord + 12] != id ||
+                service.replay_packets_applied() != 0)
+                self_test_fail("fast prefix waited for renderer");
+        }
+        service.start_replay_worker();
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (service.replay_packets_applied() != 256) {
+            if (service.faulted_.load() || std::chrono::steady_clock::now() > deadline)
+                self_test_fail("fast prefix burst verification failed");
+            if (load_acquire(reply + gx_readback::CommitWord) != 256)
+                self_test_fail("older renderer reply clobbered newest prefix");
+            std::this_thread::yield();
+        }
+        service.stop_replay_worker();
+        if (service.matrix_prefix_verified_ != 256 ||
+            service.matrix_prefix_published_ != 256 ||
+            reply[gx_readback::ClipWord + 12] != 256)
+            self_test_fail("fast prefix burst verification count/value");
+        std::cout << "H3D_GX_FAST_PREFIX_BURST_PASS independent_replies=256 verified=256\n";
+    }
     {
         struct Loader {
             std::uint32_t* GenerateTexture(unsigned w, unsigned h, unsigned n)
@@ -6105,12 +6540,6 @@ void run_self_test()
         std::cout << "H3D_UPLOAD_SNAPSHOT_PASS temporary_unmap=4 expiry=1 remap_refresh=1 "
                      "partial_upload=1 mapped_black=1 reassignment=1 oracle_unchanged=1 reset=1 trace=1\n";
     }
-    run_matched_display_test();
-    run_matched_catchup_test();
-    run_matched_display_test(true);
-    run_matched_catchup_test(true);
-    run_latest_plane_ack_test();
-    run_scanline_lifetime_test();
     constexpr std::uint32_t Session = 0x12345678;
 
     // Versioned request/ack protocol: strict fields, commit-last publication,
@@ -9040,6 +9469,10 @@ void run_self_test()
                 {}, false, false, false, false, true);
             if (!profile_service.initialize())
                 self_test_fail("pipeline-profile fixture init failed");
+            profile_fixture.publish(1, 1, frame_packet::FlagContinuation,
+                {{10, 1, 0}});
+            if (profile_service.poll() != PollResult::Applied)
+                self_test_fail("profiled readback was not applied");
         }
         const int profile_fd =
             open(PipelineProfilePath, O_RDONLY | O_CLOEXEC);
@@ -9060,6 +9493,8 @@ void run_self_test()
             profile.find("input_packets=0") == std::string::npos ||
             profile.find("replay_packets=0") == std::string::npos ||
             profile.find("publications=0") == std::string::npos ||
+            profile.find("readback_replies=1") == std::string::npos ||
+            profile.find("readback_queue_samples=0") == std::string::npos ||
             profile.find("power_control9=0") == std::string::npos ||
             profile.find("gpu2d_b_enabled=0") == std::string::npos ||
             profile.find("gpu2d_b_dispcnt=0") == std::string::npos ||
@@ -9163,7 +9598,18 @@ try {
         else if (matched_display_test) run_matched_display_test();
         else if (latest_plane_ack_test) run_latest_plane_ack_test();
         else if (scanline_lifetime_test) run_scanline_lifetime_test();
-        else run_self_test();
+        else {
+            // These tests own large framebuffer fixtures. Run them before
+            // entering the legacy self-test's large stack frame so the ARM
+            // test harness stays inside its ordinary 8 MiB stack limit.
+            run_matched_display_test();
+            run_matched_catchup_test();
+            run_matched_display_test(true);
+            run_matched_catchup_test(true);
+            run_latest_plane_ack_test();
+            run_scanline_lifetime_test();
+            run_self_test();
+        }
         return 0;
     }
 
@@ -9185,6 +9631,9 @@ try {
     std::unique_ptr<Hybrid3DService> service;
     std::uint64_t total_events = 0;
     std::uint64_t total_frames = 0;
+    const char* fast_poll_requested = std::getenv("NDS4MISTER_GX_QUERY_FAST_POLL");
+    const bool fast_query_poll = fast_poll_requested &&
+        std::strcmp(fast_poll_requested, "1") == 0;
 
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);
@@ -9209,7 +9658,12 @@ try {
                 service.reset();
             }
             if (service) {
-                std::this_thread::sleep_for(HpsQueuePollInterval);
+                // Separate opt-in experiment: only shorten idle intake waits
+                // after this session has actually used the fast matrix path.
+                // Renderer/publication waits and no-read games stay unchanged.
+                std::this_thread::sleep_for(fast_query_poll &&
+                    service->fast_matrix_replies_active() ?
+                    std::chrono::microseconds(100) : HpsQueuePollInterval);
                 continue;
             }
         }
@@ -9237,16 +9691,15 @@ try {
                 std::getenv("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE");
             const bool matched_full_rate = matched_display && full_rate_requested &&
                 std::strcmp(full_rate_requested, "1") == 0;
+            const char* prefix_requested = std::getenv("NDS4MISTER_GX_MATRIX_PREFIX");
+            const unsigned matrix_prefix_mode = !prefix_requested ? 0u :
+                std::strcmp(prefix_requested, "verify") == 0 ? 1u :
+                std::strcmp(prefix_requested, "fast") == 0 ? 2u : 0u;
             const bool direct_publication =
                 memory_path == "/dev/mem" && direct_publication_requested &&
                 std::strcmp(direct_publication_requested, "0") != 0;
-            // Construct melonDS on CPU0 so its software renderer and display
-            // publisher inherit that affinity. Replay and intake are the
-            // ordered transport side and run on CPU1 at the supervisor's
-            // higher nice priority, ahead of MiSTer's continuously runnable
-            // main loop. This keeps the two expensive H3D stages on separate
-            // CPUs instead of allowing Linux to co-locate both on CPU0 under
-            // map-scene pressure.
+            // The primary raster worker inherits CPU0 during construction.
+            // Replay and the second raster worker explicitly bind to CPU1.
             if (memory_path == "/dev/mem")
                 bind_current_thread_to_cpu(0);
             auto candidate = std::make_unique<Hybrid3DService>(
@@ -9266,10 +9719,16 @@ try {
                 direct_publication && !matched_display,
                 !matched_display,
                 matched_display,
-                matched_full_rate);
+                matched_full_rate,
+                matrix_prefix_mode);
             const bool initialized = candidate->initialize();
-            if (memory_path == "/dev/mem")
-                bind_current_thread_to_cpu(1);
+            if (memory_path == "/dev/mem") {
+                // Keep ordered intake/readbacks off replay's busy CPU1 queue.
+                // Retain an override for controlled baseline comparisons.
+                const char* intake_cpu = std::getenv("NDS4MISTER_INTAKE_CPU");
+                bind_current_thread_to_cpu(
+                    intake_cpu && std::strcmp(intake_cpu, "1") == 0 ? 1 : 0);
+            }
             if (initialized)
                 service = std::move(candidate);
             else

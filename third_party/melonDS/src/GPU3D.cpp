@@ -1931,15 +1931,17 @@ GPU3D::CmdFIFOEntry GPU3D::CmdFIFORead() noexcept
 
 void GPU3D::ExternalBatchWrite(const CmdFIFOEntry& entry) noexcept
 {
-    if (ExternalBatchCount < ExternalBatchCapacity)
+    if (ExternalBatchCount < ExternalBatchCapacity && CmdPIPE.IsEmpty())
     {
         ExternalBatch[ExternalBatchCount++] = entry;
     }
     else
     {
-        // This cannot occur with H3B's proven 256-command run boundary. Keep
-        // a future oversized caller lossless and ordered behind the complete
-        // contiguous batch rather than silently dropping its command.
+        // SWAP_BUFFERS can hold execution until VBlank while further H3B
+        // batches arrive. Once the contiguous bank spills into the ordinary
+        // FIFO, keep appending there until that older tail drains. Refilling
+        // a newly empty bank first would let newer commands overtake the
+        // spill, including parameters of partially executed matrix loads.
         CmdFIFOWrite(entry);
         return;
     }

@@ -21,6 +21,9 @@
 #include "NDS.h"
 #include "NDS4MiSTer_2DTrace.h"
 #include <cstdlib>
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 
 namespace melonDS
 {
@@ -41,6 +44,17 @@ SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
     const char* cache = std::getenv("NDS_GPU_SPRITE_PHASE_CACHE");
     if (gpu2D.Num == 1 && cache && std::strcmp(cache, "1") == 0)
         SpriteCache = std::make_unique<SpritePhaseCache>();
+    const char* batch = std::getenv("NDS_GPU_SPRITE_BATCH");
+    SpriteBatch = !batch || std::strcmp(batch, "0") != 0;
+    const char* priorityIndex = std::getenv("NDS_GPU_SPRITE_PRIORITY_INDEX");
+    SpritePriorityIndex = !priorityIndex || std::strcmp(priorityIndex, "0") != 0;
+    const char* affineTile = std::getenv("NDS_GPU_AFFINE_TILE_CACHE");
+    AffineTileCache = !affineTile || std::strcmp(affineTile, "0") != 0;
+    const char* paletteCache = std::getenv("NDS_GPU_STANDARD_PALETTE_CACHE");
+    StandardPaletteCache = !paletteCache || std::strcmp(paletteCache, "0") != 0;
+    const char* setup = std::getenv("NDS_GPU_SPRITE_SETUP_CACHE");
+    if (!setup || std::strcmp(setup, "0") != 0)
+        SpriteSetup = std::make_unique<SpriteSetupCache>();
     // mosaic table is initialized at compile-time
 }
 
@@ -50,7 +64,9 @@ SoftRenderer2D::~SoftRenderer2D()
 
 void SoftRenderer2D::Reset()
 {
+    StandardPaletteValid = StandardPaletteChecked = false;
     if (SpriteCache) SpriteCache->Invalidate();
+    if (SpriteSetup) SpriteSetup->Valid = false;
     memset(BGOBJLine, 0, sizeof(BGOBJLine));
     memset(WindowMask, 0, sizeof(WindowMask));
     memset(OBJLine, 0, sizeof(OBJLine));
@@ -133,6 +149,7 @@ u32 SoftRenderer2D::ColorComposite(int i, u32 val1, u32 val2) const
 
 void SoftRenderer2D::DrawScanline(u32 line)
 {
+    StandardPaletteChecked = false;
     u32* dst = Parent.Output2D[GPU2D.Num];
 
     if (!GPU2D.Enabled)
@@ -366,6 +383,9 @@ void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
     ApplySpriteMosaicX();
     CurBGXMosaicTable = MosaicTable[GPU2D.BGMosaicSize[0]].data();
 
+    if (SpritePriorityIndex && (GPU2D.LayerEnable & (1<<4)) && NumSprites)
+        IndexSpritePriorities();
+
     switch (GPU2D.DispCnt & 0x7)
     {
         case 0: DrawScanlineBGMode<0>(line); break;
@@ -474,8 +494,47 @@ void SoftRenderer2D::DrawBG_3D()
     }
 }
 
+const u32* SoftRenderer2D::GetStandardBGColors(const u16* palette)
+{
+    // Compare the real bytes once per composed line. This also catches raw
+    // external writes and save-state restores without relying on a revision
+    // hint. Expanded colors retain the renderer's bit-15 green-channel rule.
+    if (!StandardPaletteChecked)
+    {
+        if (!StandardPaletteValid ||
+            std::memcmp(StandardPaletteRaw, palette, sizeof(StandardPaletteRaw)))
+        {
+            std::memcpy(StandardPaletteRaw, palette, sizeof(StandardPaletteRaw));
+            for (unsigned i = 0; i < 256; ++i)
+            {
+                const u32 c = StandardPaletteRaw[i];
+                StandardPaletteColors[i] = ((c & 31u) << 1) |
+                    (((c & 0x3e0u) >> 4 | (c >> 15)) << 8) |
+                    ((c & 0x7c00u) << 7);
+            }
+            StandardPaletteValid = true;
+        }
+        StandardPaletteChecked = true;
+    }
+    return StandardPaletteColors;
+}
+
+template<bool cached>
+void SoftRenderer2D::DrawPalettePixel(u32* dst, u32 color, u32 flag)
+{
+    if constexpr (cached) { dst[256] = dst[0]; dst[0] = color | flag; }
+    else DrawPixel(dst, static_cast<u16>(color), flag);
+}
+
 template<bool mosaic>
 void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
+{
+    if (StandardPaletteCache) DrawBG_TextImpl<mosaic, true>(line, bgnum);
+    else DrawBG_TextImpl<mosaic, false>(line, bgnum);
+}
+
+template<bool mosaic, bool cached>
+void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
 {
     // workaround for backgrounds missing on aarch64 with lto build
     asm volatile ("" : : : "memory");
@@ -523,6 +582,10 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
 
         pal = (u16*)&GPU.Palette[0];
     }
+
+    const u32* converted = nullptr;
+    if constexpr (cached)
+        if (!(bgcnt & (1u << 7))) converted = GetStandardBGColors(pal);
 
     // adjust Y position in tilemap
     if (bgcnt & (1<<15))
@@ -622,7 +685,10 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
             }
             else
             {
-                u16* const curpal = pal + ((curtile & 0xF000) >> 8);
+                const auto* const curpal = [&]() {
+                    if constexpr (cached) return converted + ((curtile & 0xF000) >> 8);
+                    else return pal + ((curtile & 0xF000) >> 8);
+                }();
                 const u32 pixelsaddr =
                     tilesetaddr + ((curtile & 0x03FF) << 5) +
                     (((curtile & (1<<11)) ?
@@ -656,7 +722,7 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
                         const u32 outputX = screenX + outputOffset;
                         const u32 color = (packed >> shift) & 0xFu;
                         if (color && (WindowMask[outputX] & windowBit))
-                            DrawPixel(&BGOBJLine[outputX], curpal[color],
+                            DrawPalettePixel<cached>(&BGOBJLine[outputX], curpal[color],
                                       layerFlag);
                     };
                     if (curtile & (1u << 10))
@@ -685,7 +751,7 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
                     const u8 color = tileX & 1 ?
                         packed >> 4 : packed & 0x0F;
                     if (color)
-                        DrawPixel(&BGOBJLine[outputX], curpal[color],
+                        DrawPalettePixel<cached>(&BGOBJLine[outputX], curpal[color],
                                   0x01000000<<bgnum);
                 }
             }
@@ -757,12 +823,17 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
     else
     {
         // 16-color
+        const auto* palette4 = [&]() {
+            if constexpr (cached) return converted;
+            else return pal;
+        }();
+        const auto* curpal4 = palette4;
 
         // preload shit as needed
         if ((xoff & 0x7) || mosaic)
         {
             curtile = *(u16*)&bgvram[((tilemapaddr + ((xoff & 0xF8) >> 2) + ((xoff & widexmask) << 3))) & bgvrammask];
-            curpal = pal + ((curtile & 0xF000) >> 8);
+            curpal4 = palette4 + ((curtile & 0xF000) >> 8);
             pixelsaddr = tilesetaddr + ((curtile & 0x03FF) << 5)
                                      + (((curtile & (1<<11)) ? (7-(yoff&0x7)) : (yoff&0x7)) << 2);
         }
@@ -780,7 +851,7 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
             {
                 // load a new tile
                 curtile = *(u16*)&bgvram[(tilemapaddr + ((xpos & 0xF8) >> 2) + ((xpos & widexmask) << 3)) & bgvrammask];
-                curpal = pal + ((curtile & 0xF000) >> 8);
+                curpal4 = palette4 + ((curtile & 0xF000) >> 8);
                 pixelsaddr = tilesetaddr + ((curtile & 0x03FF) << 5)
                                          + (((curtile & (1<<11)) ? (7-(yoff&0x7)) : (yoff&0x7)) << 2);
 
@@ -801,7 +872,7 @@ void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
                 }
 
                 if (color)
-                    DrawPixel(&BGOBJLine[i], curpal[color], 0x01000000<<bgnum);
+                    DrawPalettePixel<cached>(&BGOBJLine[i], curpal4[color], 0x01000000<<bgnum);
             }
 
             xoff++;
@@ -1062,6 +1133,49 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
 
         yshift -= 3;
 
+        if (AffineTileCache)
+        {
+            // Adjacent affine pixels usually address the same tile even when
+            // rotated or scaled. Reuse only its map entry and palette pointer
+            // within this call. VRAM and register changes on the next scanline
+            // start with an empty cache; all pixel fetches remain live.
+            u32 previousMapAddress = ~0u;
+            u32 tileBase = 0, tileFlip = 0;
+            u16* tilePalette = pal;
+            for (int i = 0; i < 256; ++i)
+            {
+                if (WindowMask[i] & (1<<bgnum))
+                {
+                    const int im = mosaic ? CurBGXMosaicTable[i] : 0;
+                    const s32 finalX = rotX - im * rotA;
+                    const s32 finalY = rotY - im * rotC;
+                    if (!((finalX | finalY) & overflowmask))
+                    {
+                        const u32 mapAddress = (tilemapaddr +
+                            (((((finalY & coordmask) >> 11) << yshift) +
+                              ((finalX & coordmask) >> 11)) << 1)) & bgvrammask;
+                        if (mapAddress != previousMapAddress)
+                        {
+                            const u16 tile = *(u16*)&bgvram[mapAddress];
+                            previousMapAddress = mapAddress;
+                            tileBase = tilesetaddr + ((tile & 0x03FF) << 6);
+                            tileFlip = (tile & (1<<10) ? 7u : 0u) |
+                                (tile & (1<<11) ? 56u : 0u);
+                            tilePalette = extpal ? GPU2D.GetBGExtPal(bgnum, tile >> 12) : pal;
+                        }
+                        const u32 offset = (((finalY >> 5) & 56) |
+                            ((finalX >> 8) & 7)) ^ tileFlip;
+                        const u8 index = bgvram[(tileBase + offset) & bgvrammask];
+                        if (index)
+                            DrawPixel(&BGOBJLine[i], tilePalette[index], 0x01000000<<bgnum);
+                    }
+                }
+                rotX += rotA;
+                rotY += rotC;
+            }
+            return;
+        }
+
         for (int i = 0; i < 256; i++)
         {
             if (WindowMask[i] & (1<<bgnum))
@@ -1235,11 +1349,39 @@ void SoftRenderer2D::ApplySpriteMosaicX()
     }
 }
 
+void SoftRenderer2D::IndexSpritePriorities()
+{
+    // Mosaic and window evaluation have already completed for this scanline.
+    // Build only the pixel positions; palette reads remain at composition time.
+    // Nothing is retained across scanlines or memory/register writes.
+    std::memset(SpritePriorityCount, 0, sizeof(SpritePriorityCount));
+    for (u32 x = 0; x < 256; ++x)
+    {
+        const u32 pixel = OBJLine[x];
+        if (!(pixel & OBJ_IsOpaque) || !(WindowMask[x] & 0x10)) continue;
+        const u32 priority = (pixel >> 16) & 3;
+        SpritePriorityPixels[priority][SpritePriorityCount[priority]++] = x;
+    }
+}
+
 void SoftRenderer2D::InterleaveSprites(u32 prio)
 {
     u32 attrmask = (prio << 16) | OBJ_IsOpaque;
     u16* pal = (u16*)&GPU.Palette[GPU2D.Num ? 0x600 : 0x200];
     u16* extpal = GPU2D.GetOBJExtPal();
+
+    if (SpritePriorityIndex)
+    {
+        for (u32 n = 0; n < SpritePriorityCount[prio]; ++n)
+        {
+            const u32 i = SpritePriorityPixels[prio][n];
+            const u32 pixel = OBJLine[i];
+            const u16 color = (pixel & OBJ_DirectColor) ? (pixel & 0x7FFF) :
+                (pixel & OBJ_StandardPal) ? pal[pixel & 0xFF] : extpal[pixel & 0xFFF];
+            DrawPixel(&BGOBJLine[i], color, pixel & 0xFF000000);
+        }
+        return;
+    }
 
     for (u32 i = 0; i < 256; i++)
     {
@@ -1275,12 +1417,48 @@ void SoftRenderer2D::InterleaveSprites(u32 prio)
         } \
     } while (0)
 
+void SoftRenderer2D::UpdateSpriteSetup()
+{
+    auto& cache = *SpriteSetup;
+    if (cache.Valid && GPU.SpriteOAMWritesTracked &&
+        cache.ObservedWriteEpoch == GPU.SpriteOAMWriteEpoch)
+        return;
+    const u8* bytes = GPU.OAM + (GPU2D.Num ? 0x400 : 0);
+    cache.ObservedWriteEpoch = GPU.SpriteOAMWriteEpoch;
+    if (cache.Valid && !std::memcmp(cache.OAM.data(), bytes, cache.OAM.size()))
+        return;
+    std::memcpy(cache.OAM.data(), bytes, cache.OAM.size());
+    const u16* oam = reinterpret_cast<const u16*>(bytes);
+    static constexpr u8 widths[16] =
+        {8,16,8,8,16,32,8,8,32,32,16,8,64,64,32,8};
+    static constexpr u8 heights[16] =
+        {8,8,16,8,16,8,32,8,32,16,32,8,64,32,64,8};
+    cache.Count = 0;
+    for (unsigned num = 0; num < 128; ++num)
+    {
+        const u16 a0 = oam[num*4], a1 = oam[num*4+1];
+        const unsigned type = (a0 >> 8) & 3;
+        if (type == 2) continue;
+        const unsigned size = (a0 >> 14) | ((a1 & 0xC000) >> 12);
+        const unsigned width = widths[size], height = heights[size];
+        const unsigned bw = width << (type == 3), bh = height << (type == 3);
+        const s32 x = (a1 & 0x1FF) - ((a1 & 0x100) ? 512 : 0);
+        if (x <= -static_cast<s32>(bw)) continue;
+        cache.Sprites[cache.Count++] = {
+            static_cast<u16>(num), a0, static_cast<s16>(x),
+            static_cast<u8>(a0), static_cast<u8>(width), static_cast<u8>(height),
+            static_cast<u8>(bw), static_cast<u8>(bh)};
+    }
+    cache.Valid = true;
+}
+
 void SoftRenderer2D::DrawSprites(u32 line)
 {
     // the OBJ buffers don't get updated at all if the 2D engine is disabled
     if (!GPU2D.Enabled)
     {
-        if (SpriteCache) SpriteCache->Invalidate();
+        StandardPaletteValid = StandardPaletteChecked = false;
+    if (SpriteCache) SpriteCache->Invalidate();
         return;
     }
 
@@ -1362,7 +1540,29 @@ void SoftRenderer2D::DrawSprites(u32 line)
         64, 32, 64, 8
     };
 
-    for (int sprnum = 0; sprnum < 128; sprnum++)
+    if (SpriteSetup)
+    {
+        UpdateSpriteSetup();
+        for (unsigned n = 0; n < SpriteSetup->Count; ++n)
+        {
+            const auto& spr = SpriteSetup->Sprites[n];
+            s32 ypos = (line - spr.Y) & 0xFF;
+            if (ypos >= spr.BoundHeight) continue;
+            const bool iswin = ((spr.Attr0 >> 10) & 3) == 2;
+            if ((spr.Attr0 & (1 << 12)) && !iswin)
+            {
+                ypos = (GPU2D.OBJMosaicLine - spr.Y) & 0xFF;
+                if (ypos >= spr.BoundHeight) ypos = 0;
+            }
+            if (spr.Attr0 & (1 << 8))
+                DoDrawSprite(Rotscale, spr.Number, spr.BoundWidth, spr.BoundHeight,
+                             spr.Width, spr.Height, spr.X, ypos);
+            else
+                DoDrawSprite(Normal, spr.Number, spr.Width, spr.Height, spr.X, ypos);
+            ++NumSprites;
+        }
+    }
+    else for (int sprnum = 0; sprnum < 128; sprnum++)
     {
         u16* attrib = &oam[sprnum*4];
 
@@ -1454,6 +1654,69 @@ void SoftRenderer2D::DrawSpritePixel(int color, u32 pixelattr, s32 xpos)
             OBJLine[xpos] |= (pixelattr & (OBJ_IsSprite | OBJ_Mosaic | OBJ_BGPrioMask));
         }
     }
+}
+
+// Complete tile rows do not cross the OBJ VRAM wrap boundary. Decode eight
+// neighboring palette indices once and apply the original priority/mosaic rules.
+template<bool window>
+void SoftRenderer2D::DrawSpritePixelBatch8(
+    const u8* src, bool fourBit, bool flip, u32 pixelattr, s32 xpos)
+{
+#if defined(__ARM_NEON)
+    uint8x8_t colors;
+    if (fourBit)
+    {
+        u32 packed;
+        std::memcpy(&packed, src, sizeof(packed));
+        const auto bytes = vcreate_u8(packed);
+        colors = vzip_u8(vand_u8(bytes, vdup_n_u8(15)),
+                         vshr_n_u8(bytes, 4)).val[0];
+    }
+    else colors = vld1_u8(src);
+    if (flip) colors = vrev64_u8(colors);
+    if constexpr (window)
+    {
+        const auto present = vand_u8(vmvn_u8(vceq_u8(colors, vdup_n_u8(0))),
+                                    vdup_n_u8(1));
+        vst1_u8(OBJWindow+xpos, vorr_u8(vld1_u8(OBJWindow+xpos), present));
+    }
+    else
+    {
+        const auto wide = vmovl_u8(colors);
+        const auto attr = vdupq_n_u32(pixelattr);
+        const auto zero = vdupq_n_u32(0);
+        const auto priority = vdupq_n_u32(OBJ_BGPrioMask);
+        const auto attrPriority = vdupq_n_u32(pixelattr & OBJ_BGPrioMask);
+        const auto attrTransparent = vdupq_n_u32(
+            pixelattr & (OBJ_IsSprite | OBJ_Mosaic | OBJ_BGPrioMask));
+        auto draw = [&](uint32x4_t color, u32* dst) {
+            const auto old = vld1q_u32(dst);
+            const auto oldTransparent = vceqq_u32(
+                vandq_u32(old, vdupq_n_u32(OBJ_IsOpaque)), zero);
+            const auto newTransparent = vceqq_u32(color, zero);
+            const auto replace = vandq_u32(vmvnq_u32(newTransparent),
+                vorrq_u32(oldTransparent,
+                          vcltq_u32(attrPriority, vandq_u32(old, priority))));
+            const auto empty = vandq_u32(oldTransparent, newTransparent);
+            const auto transparent = vorrq_u32(
+                vbicq_u32(old, vdupq_n_u32(OBJ_Mosaic | OBJ_BGPrioMask)),
+                attrTransparent);
+            const auto opaque = vbslq_u32(replace, vorrq_u32(color, attr), old);
+            vst1q_u32(dst, vbslq_u32(empty, transparent, opaque));
+        };
+        draw(vmovl_u16(vget_low_u16(wide)), OBJLine+xpos);
+        draw(vmovl_u16(vget_high_u16(wide)), OBJLine+xpos+4);
+    }
+#else
+    for (unsigned x=0; x<8; ++x)
+    {
+        const unsigned offset = flip ? 7-x : x;
+        const unsigned color = fourBit ?
+            ((src[offset/2] >> ((offset&1)*4)) & 15) : src[offset];
+        DrawSpritePixel<window>(color ? static_cast<int>(color) : -1,
+                                pixelattr, xpos+x);
+    }
+#endif
 }
 
 template<bool window>
@@ -1794,6 +2057,16 @@ void SoftRenderer2D::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos,
 
             for (; xoff < xend;)
             {
+                if (SpriteBatch && !(xoff & 7) && xend-xoff >= 8)
+                {
+                    const bool flip = pixelstride < 0;
+                    const auto address = (pixelsaddr - (flip ? 7 : 0)) & objvrammask;
+                    DrawSpritePixelBatch8<window>(objvram+address, false, flip,
+                                                  pixelattr, xpos);
+                    pixelsaddr += 64 * pixelstride;
+                    xoff += 8; xpos += 8;
+                    continue;
+                }
                 color = objvram[pixelsaddr & objvrammask];
 
                 pixelsaddr += pixelstride;
@@ -1838,6 +2111,16 @@ void SoftRenderer2D::DrawSprite_Normal(u32 num, u32 width, u32 height, s32 xpos,
 
             for (; xoff < xend;)
             {
+                if (SpriteBatch && !(xoff & 7) && xend-xoff >= 8)
+                {
+                    const bool flip = pixelstride < 0;
+                    const auto address = (pixelsaddr - (flip ? 3 : 0)) & objvrammask;
+                    DrawSpritePixelBatch8<window>(objvram+address, true, flip,
+                                                  pixelattr, xpos);
+                    pixelsaddr += 32 * pixelstride;
+                    xoff += 8; xpos += 8;
+                    continue;
+                }
                 if (attrib[1] & (1<<12))
                 {
                     if (xoff & 0x1) { color = objvram[pixelsaddr & objvrammask] & 0x0F; pixelsaddr--; }

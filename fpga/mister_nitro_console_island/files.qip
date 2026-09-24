@@ -61,6 +61,7 @@ set_global_assignment -name VHDL_FILE $nitro_rtl/nds_gpu_timing.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_dma9.vhd
 set_global_assignment -name VHDL_FILE $nitro_rtl/nds_dma7.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_status.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_readback_owner.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_console_event_gate.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios7.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios9.vhd

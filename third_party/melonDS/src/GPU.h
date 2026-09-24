@@ -698,8 +698,7 @@ public:
     }
     void MarkSpriteOAMWritten(u32 offset, u32 size) noexcept
     {
-        if (SpriteOAMWritesTracked && size && offset < sizeof(OAM) &&
-            u64(offset) + size > 1024)
+        if (SpriteOAMWritesTracked && size && offset < sizeof(OAM))
             ++SpriteOAMWriteEpoch;
     }
     u64 ExternalRenderMemorySequence = 0;
@@ -1034,6 +1033,10 @@ public:
 
     virtual void SetRenderSettings(RendererSettings& settings) = 0;
 
+    // Caller owns both full-size native output planes until explicitly detached.
+    // Only the replay owner may attach/detach, between completed scanlines.
+    virtual bool SetExternalFramebuffers(u32* top, u32* bottom)
+        { (void)top; (void)bottom; return false; }
     virtual void DrawScanline(u32 line) = 0;
     virtual void DrawSprites(u32 line) = 0;
     virtual void SetExternalLineCacheReuse(u32 line, bool engineA,

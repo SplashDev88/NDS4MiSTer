@@ -40,6 +40,9 @@ sha256_program=sha256sum
 taskset_program=taskset
 pidof_program=pidof
 proc_root=/proc
+ip_program=ip
+wpa_cli_program=wpa_cli
+wifi_stop_program=$start_stop_daemon
 mister_watch_interval=1
 mister_watch_limit=300
 test_stop_lock_marker=
@@ -50,6 +53,9 @@ if [ -n "$test_root" ]; then
     taskset_program=${H3D_TEST_TASKSET:-$taskset_program}
     pidof_program=${H3D_TEST_PIDOF:-$pidof_program}
     proc_root=${H3D_TEST_PROC_ROOT:-$proc_root}
+    ip_program=${H3D_TEST_IP:-$ip_program}
+    wpa_cli_program=${H3D_TEST_WPA_CLI:-$wpa_cli_program}
+    wifi_stop_program=${H3D_TEST_WIFI_STOP:-$start_stop_daemon}
     mister_watch_interval=${H3D_TEST_MISTER_WATCH_INTERVAL:-0.05}
     mister_watch_limit=${H3D_TEST_MISTER_WATCH_LIMIT:-40}
     test_stop_lock_marker=${H3D_TEST_STOP_LOCK_MARKER:-}
@@ -60,6 +66,79 @@ fail()
 {
     echo "H3D: $*" >&2
     return 1
+}
+
+wifi_disconnected()
+{
+    wifi_carrier_file=${test_root}/sys/class/net/${wifi_interface}/carrier
+    [ -r "$wifi_carrier_file" ] || return 1
+    IFS= read -r wifi_carrier <"$wifi_carrier_file" 2>/dev/null || return 1
+    [ "$wifi_carrier" = 0 ] || return 1
+    # Retained IPv4/global IPv6 addresses also protect a wireless connection
+    # during a transient link drop. Do not depend on a wpa control socket.
+    wifi_addresses=$("$ip_program" -o address show dev "$wifi_interface" scope global 2>/dev/null) || return 1
+    [ -z "$wifi_addresses" ] || return 1
+    # Protect an association or key handshake before carrier/DHCP completes.
+    # A missing control socket is normal on some MiSTer setups; carrier and
+    # addresses remain mandatory checks in that case.
+    wifi_status=$("$wpa_cli_program" -i "$wifi_interface" status 2>/dev/null || :)
+    if printf '%s\n' "$wifi_status" |
+        grep -Eq '^wpa_state=(ASSOCIATING|ASSOCIATED|4WAY_HANDSHAKE|GROUP_HANDSHAKE|COMPLETED)$'; then
+        return 1
+    fi
+    return 0
+}
+
+quiet_disconnected_wifi()
+{
+    for wifi_interface in wlan0 wlan1; do
+        wifi_disconnected || continue
+        wifi_pidfile=${test_root}/run/wpa_supplicant.${wifi_interface}.pid
+        [ ! -L "$wifi_pidfile" ] && [ -f "$wifi_pidfile" ] || continue
+        IFS= read -r wifi_pid <"$wifi_pidfile" || continue
+        case "$wifi_pid" in ''|*[!0-9]*) continue ;; esac
+        [ "$wifi_pid" -gt 1 ] || continue
+        wifi_proc=${proc_root}/${wifi_pid}
+        [ -r "$wifi_proc/stat" ] && [ -r "$wifi_proc/cmdline" ] || continue
+        IFS= read -r wifi_stat <"$wifi_proc/stat" || continue
+        case "$wifi_stat" in "$wifi_pid (wpa_supplicant) "*) ;; *) continue ;; esac
+        # A stale PID file must never terminate another process or a daemon
+        # managing several adapters, one of which could be connected.
+        if ! tr '\000' '\n' <"$wifi_proc/cmdline" |
+            awk -v interface="$wifi_interface" '
+                NR == 1 && $0 !~ /(^|\/)wpa_supplicant$/ { bad = 1 }
+                $0 == "-N" { bad = 1 }
+                $0 == "-i" { count++; if (getline <= 0 || $0 != interface) bad = 1; next }
+                /^-i./ { bad = 1 }
+                END { exit (bad || count != 1) }
+            '; then
+            continue
+        fi
+        wifi_start=$(read_process_start_time "$wifi_pid") || continue
+        wifi_exe=$(readlink "$wifi_proc/exe") || continue
+        case "$wifi_exe" in */wpa_supplicant) ;; *) continue ;; esac
+        wifi_disconnected || continue
+        [ "$(read_process_start_time "$wifi_pid" || :)" = "$wifi_start" ] || continue
+        if ! "$wifi_stop_program" -K -q -p "$wifi_pidfile" -x "$wifi_exe" -s TERM; then
+            echo "H3D: could not stop disconnected $wifi_interface retries" >&2
+            continue
+        fi
+        wifi_checks=0
+        while [ "$(read_process_start_time "$wifi_pid" || :)" = "$wifi_start" ]; do
+            wifi_checks=$((wifi_checks + 1))
+            [ "$wifi_checks" -lt 10 ] || break
+            sleep 0.1
+        done
+        # Do not lower a link if shutdown failed or the PID was reused.
+        [ ! -d "$wifi_proc" ] || continue
+        wifi_disconnected || continue
+        if "$ip_program" link set dev "$wifi_interface" down; then
+            echo "H3D: stopped disconnected $wifi_interface retries for this boot"
+        else
+            echo "H3D: could not lower disconnected $wifi_interface" >&2
+        fi
+    done
+    return 0
 }
 
 read_mister_start_time()
@@ -174,14 +253,36 @@ restore_mister_frontend()
 
 service_epoch_alive()
 {
-    [ "$(read_process_start_time "$1" || :)" = "$2" ]
+    # This runs every second for the lifetime of NDS. Read /proc with shell
+    # builtins instead of forking cut and a command-substitution shell on each
+    # poll. Strip through the final ') ' so spaces in comm do not move field22.
+    epoch_expected_start=$2
+    { IFS= read -r epoch_stat <"${proc_root}/$1/stat"; } 2>/dev/null || return 1
+    epoch_fields=${epoch_stat##*) }
+    set -f
+    set -- $epoch_fields
+    set +f
+    [ "$#" -ge 20 ] || return 1
+    shift 19
+    [ "$1" = "$epoch_expected_start" ]
 }
 
 nds_core_active()
 {
     reject_link "$core_name_file" >/dev/null 2>&1 &&
-    [ -f "$core_name_file" ] &&
-    [ "$(cat "$core_name_file" 2>/dev/null || :)" = NDS ]
+    [ -f "$core_name_file" ] || return 1
+    # CORENAME may lack its final newline. Match the former cat/substitution
+    # check exactly (including rejecting extra text), without spawning cat.
+    {
+        core_line=
+        IFS= read -r core_line || [ -n "$core_line" ] || return 1
+        [ "$core_line" = NDS ] || return 1
+        core_tail=
+        while IFS= read -r core_tail || [ -n "$core_tail" ]; do
+            [ -z "$core_tail" ] || return 1
+            core_tail=
+        done
+    } <"$core_name_file" 2>/dev/null
 }
 
 acquire_schedule_lock()
@@ -223,7 +324,21 @@ pin_mister_epoch()
     pin_start=$2
     pin_affinity=$(read_mister_affinity "$pin_pid" || :)
     case "$pin_affinity" in 0|1|0,1|0-1) ;; *) return 2 ;; esac
-    write_mister_schedule_state "$pin_pid" "$pin_start" "$pin_affinity" || return 1
+    pin_current_affinity=$pin_affinity
+    if [ -f "$mister_schedule_state" ]; then
+        read_mister_schedule_state || return 1
+        if [ "$schedule_mister_pid $schedule_mister_start" = "$pin_epoch" ]; then
+            # A replacement watcher or repeated Kickstart must retain the
+            # original affinity, not replace it with our already-pinned CPU0.
+            [ "$pin_affinity" != 0 ] || return 0
+            pin_affinity=$schedule_affinity
+        else
+            restore_mister_frontend || return 1
+            write_mister_schedule_state "$pin_pid" "$pin_start" "$pin_affinity" || return 1
+        fi
+    else
+        write_mister_schedule_state "$pin_pid" "$pin_start" "$pin_affinity" || return 1
+    fi
     status_raw && [ "$(read_pid || :)" = "$pin_service_pid" ] &&
     service_epoch_alive "$pin_service_pid" "$pin_service_start" &&
     nds_core_active &&
@@ -231,7 +346,7 @@ pin_mister_epoch()
         remove_mister_schedule_state
         return 2
     }
-    [ "$pin_affinity" = 0 ] ||
+    [ "$pin_current_affinity" = 0 ] ||
         "$taskset_program" -pc 0 "$pin_pid" >/dev/null 2>&1 || true
     after_start=$(read_mister_start_time "$pin_pid" || :)
     after_affinity=$(read_mister_affinity "$pin_pid" || :)
@@ -250,8 +365,7 @@ mister_watch_loop()
 {
     watch_service_pid=$1
     watch_service_start=$2
-    baseline="$3 $4"
-    case "$watch_service_pid:$watch_service_start:${3}:${4}" in
+    case "$watch_service_pid:$watch_service_start" in
         ''|*[!0-9:]*) return 2 ;;
     esac
     watch_lock_checks=0
@@ -266,13 +380,35 @@ mister_watch_loop()
     watch_schedule_locked=0
     service_epoch_alive "$watch_service_pid" "$watch_service_start" || return 0
     candidate=
+    handled_epoch=
     watch_checks=0
     while [ "$watch_checks" -lt "$mister_watch_limit" ] &&
           service_epoch_alive "$watch_service_pid" "$watch_service_start"; do
         watch_checks=$((watch_checks + 1))
+        if [ -n "$handled_epoch" ] && nds_core_active; then
+            set -- $handled_epoch
+            if service_epoch_alive "$1" "$2"; then
+                case "$epoch_stat" in
+                    "$1 (MiSTer) "*)
+                        # The already-pinned frontend is still alive. A core
+                        # reload invalidates its PID/start time and returns to
+                        # singleton discovery below; avoid scanning all Linux
+                        # processes throughout otherwise-stable gameplay.
+                        watch_checks=0
+                        sleep "$mister_watch_interval"
+                        continue
+                        ;;
+                esac
+            fi
+        fi
         epoch=$(single_mister_epoch || :)
-        if [ -n "$epoch" ] && [ "$epoch" != "$baseline" ]; then
-            if [ "$epoch" = "$candidate" ]; then
+        if [ -n "$epoch" ] && nds_core_active; then
+            # Keep following reloads for the same resident helper. The
+            # five-minute timeout applies while waiting outside NDS, not
+            # while a game is running. Poll once a second; pin each epoch once.
+            watch_checks=0
+            if [ "$epoch" != "$handled_epoch" ] &&
+               [ "$epoch" = "$candidate" ]; then
                 acquire_schedule_lock || return 1
                 watch_schedule_locked=1
                 trap '' INT TERM
@@ -282,12 +418,27 @@ mister_watch_loop()
                 release_schedule_lock || return 1
                 watch_schedule_locked=0
                 trap 'exit 0' INT TERM
-                [ "$pin_result" -eq 2 ] || return "$pin_result"
-                candidate=
+                [ "$pin_result" -ne 1 ] || return 1
+                [ "$pin_result" -ne 0 ] || handled_epoch=$epoch
             fi
             candidate=$epoch
         else
             candidate=
+            handled_epoch=
+            if [ -f "$mister_schedule_state" ]; then
+                acquire_schedule_lock || return 1
+                watch_schedule_locked=1
+                trap '' INT TERM
+                # Stop uses the same lock. Never change state on behalf of a
+                # helper that has already stopped or been replaced.
+                if service_epoch_alive "$watch_service_pid" "$watch_service_start" &&
+                   ! nds_core_active; then
+                    restore_mister_frontend || return 1
+                fi
+                release_schedule_lock || return 1
+                watch_schedule_locked=0
+                trap 'exit 0' INT TERM
+            fi
         fi
         sleep "$mister_watch_interval"
     done
@@ -303,22 +454,10 @@ start_mister_watch()
     service_pid=$(read_pid) || return 1
     service_start=$(read_process_start_time "$service_pid" || :)
     case "$service_start" in ''|*[!0-9]*) return 1 ;; esac
-    if [ -f "$mister_schedule_state" ]; then
-        read_mister_schedule_state || return 1
-        if [ "$(read_mister_start_time "$schedule_mister_pid" || :)" = \
-             "$schedule_mister_start" ]; then
-            return 0
-        fi
-        restore_mister_frontend || return 1
-    fi
-    baseline=$(single_mister_epoch || :)
-    [ -n "$baseline" ] || {
-        echo "H3D: expected one MiSTer frontend; affinity watcher not started" >&2
-        return 0
-    }
-    set -- $baseline
+    # The watcher owns all affinity state under the scheduling lock, including
+    # stale-state cleanup. Its lifetime lock prevents duplicate watchers.
     (trap '' HUP; exec "$0" __mister_watch \
-        "$service_pid" "$service_start" "$1" "$2") \
+        "$service_pid" "$service_start") \
         </dev/null >>"$logfile" 2>&1 &
     return 0
 }
@@ -524,6 +663,12 @@ bound_stopped_log()
 start_service()
 {
     preflight || return 1
+    # This kernel's disconnected Realtek Wi-Fi retries can block even FIFO
+    # workers for 100 ms, overflowing the FPGA's ~32 ms timing-event queue.
+    # Run once at Kickstart, including resident-helper adoption; never poll
+    # network state during gameplay. Saved wireless settings are untouched,
+    # and normal networking starts again at the next boot.
+    quiet_disconnected_wifi
     set_hps_clock || return 1
     if status_raw; then
         pid=$(read_pid)
@@ -545,6 +690,10 @@ start_service()
         # MiSTer's main loop is continuously runnable on CPU1. Give the
         # bounded H3D replay/render work precedence without killing MiSTer,
         # which preserves the normal menu, input, and core lifecycle.
+        NDS4MISTER_GX_MATRIX_PREFIX=fast \
+        NDS4MISTER_GX_QUERY_FAST_POLL=0 \
+        NDS4MISTER_PACKET_NC=0 \
+        NDS_GPU_STANDARD_PALETTE_CACHE=1 \
         NDS4MISTER_H3D_UPLOAD_SNAPSHOT=1 \
         NDS4MISTER_H3D_DIAGNOSTICS=0 \
         NDS4MISTER_BLACK_EVENT_TRACE=0 \
@@ -661,9 +810,13 @@ dump_service()
 }
 
 case "${1:-start}" in
+    __test_quiet_wifi)
+        [ -n "$test_root" ] || exit 2
+        quiet_disconnected_wifi
+        ;;
     __mister_watch)
-        [ "$#" -eq 5 ] || exit 2
-        mister_watch_loop "$2" "$3" "$4" "$5"
+        [ "$#" -eq 3 ] || exit 2
+        mister_watch_loop "$2" "$3"
         ;;
     preflight)
         preflight

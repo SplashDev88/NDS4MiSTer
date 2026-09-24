@@ -93,6 +93,7 @@ entity nds_nitro_console_top is
       -- a staged card image with nobody at the OSD. Other mailbox ops stop
       -- answering and fall to NDS.sv's outer timeout rather than hanging.
       DEBUG_ENABLE             : integer   := 1;
+      H3D_GX_READBACK_ENABLE    : boolean   := false;
       -- simulation only: the testbench has staged the ARM9/ARM7 main-RAM sections
       -- itself, so nds_loader may skip copying them (see nds_loader.skip_copy)
       skip_copy                : std_logic := '0'
@@ -284,6 +285,14 @@ entity nds_nitro_console_top is
       -- addresses in the 0x06xxxxxx aperture.  All timestamps use the single
       -- ARM7-rate DS system clock, including ARM9-originated events.
       h3d_service_ready       : in  std_logic := '0';
+      h3d_readback_request    : out std_logic := '0';
+      h3d_readback_ready      : in  std_logic := '0';
+      h3d_readback_id         : out std_logic_vector(31 downto 0) := (others => '0');
+      h3d_readback_response   : in  std_logic := '0';
+      h3d_readback_response_id: in  std_logic_vector(31 downto 0) := (others => '0');
+      h3d_readback_status     : in  std_logic_vector(31 downto 0) := (others => '0');
+      h3d_readback_index      : out std_logic_vector(4 downto 0) := (others => '0');
+      h3d_readback_data       : in  std_logic_vector(31 downto 0) := (others => '0');
       h3d_engine_b_enable     : in  std_logic := '0';
       h3d_gx_fifo_level       : in  std_logic_vector(8 downto 0) := (others => '0');
       h3d_timestamp           : out std_logic_vector(63 downto 0) := (others => '0');
@@ -700,6 +709,12 @@ architecture arch of nds_nitro_console_top is
    signal h3d_gpu_source_access : std_logic_vector(1 downto 0);
    signal h3d_gpu_source_be : std_logic_vector(3 downto 0);
    signal h3d_gpu_source_data : std_logic_vector(31 downto 0);
+   signal gx_readback_enabled, gx_readback_selected, gx_readback_busy : std_logic;
+   signal gx_readback_complete, gx_readback_fence, gx_readback_geometry_write : std_logic;
+   signal gx_readback_cpu_read : std_logic;
+   signal gx_test_write : std_logic;
+   signal gx_test_status : std_logic_vector(1 downto 0);
+   signal gx_readback_value, gx_readback_wired : std_logic_vector(31 downto 0);
    signal dma_gx_write_valid, dma_gx_write_ready : std_logic;
    signal h3d_vram9_source_valid, h3d_vram9_source_ready : std_logic;
    signal h3d_vram9_needed_by_h3d : std_logic;
@@ -1020,26 +1035,27 @@ begin
    -- even while DMA owns that bus, so they require the completion toggle.
    h3d_gpu_source_is_cpu <= '0'
       when dma_bus_on = '1' and dma_gx_write_valid = '1' else '1';
-   h3d_gpu_source_valid <= dma_gx_write_valid when dma_bus_on = '1' and
+   h3d_gpu_source_valid <= '1' when gx_readback_fence = '1' else
+      dma_gx_write_valid when dma_bus_on = '1' and
                                                   dma_gx_write_valid = '1' else
       pal_we when (h3d_engine_b_enable = '1') and pal_we = '1' else
       oam_we when (h3d_engine_b_enable = '1') and oam_we = '1' else
       '1' when (io9_ena = '1' and io9_lat_1x.rnw = '0' and
                 h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna, h3d_engine_b_enable)) else '0';
-   h3d_gpu_source_address <=
+   h3d_gpu_source_address <= x"00007f0" when gx_readback_fence = '1' else
       std_logic_vector(to_unsigned(16#1000000# + pal_addr * 4, 28))
          when (h3d_engine_b_enable = '1') and pal_we = '1' else
       std_logic_vector(to_unsigned(16#3000000# + oam_addr * 4, 28))
          when (h3d_engine_b_enable = '1') and oam_we = '1' else
       io_bus9.Adr;
-   h3d_gpu_source_access <= h3d_access_from_be(pal_be)
+   h3d_gpu_source_access <= "11" when gx_readback_fence = '1' else h3d_access_from_be(pal_be)
       when (h3d_engine_b_enable = '1') and pal_we = '1' else
       h3d_access_from_be(oam_be)
          when (h3d_engine_b_enable = '1') and oam_we = '1' else io_bus9.acc;
-   h3d_gpu_source_be <= pal_be
+   h3d_gpu_source_be <= "0000" when gx_readback_fence = '1' else pal_be
       when (h3d_engine_b_enable = '1') and pal_we = '1' else
       oam_be when (h3d_engine_b_enable = '1') and oam_we = '1' else io_bus9.bEna;
-   h3d_gpu_source_data <= pal_din
+   h3d_gpu_source_data <= h3d_readback_id when gx_readback_fence = '1' else pal_din
       when (h3d_engine_b_enable = '1') and pal_we = '1' else
       oam_din when (h3d_engine_b_enable = '1') and oam_we = '1' else io_bus9.Din;
 
@@ -1693,7 +1709,10 @@ begin
                cdc_io_cpl <= not cdc_io_cpl;
             end if;
          elsif (io9_ena = '1') then
-            if (h3d_service_ready = '1' and io9_lat_1x.rnw = '0' and
+            if (gx_readback_selected = '1' and io9_lat_1x.rnw = '1') then
+               -- Posting a fence does not retire its waiting CPU read.
+               null;
+            elsif (h3d_service_ready = '1' and io9_lat_1x.rnw = '0' and
                 h3d_gpu_write_hit(io9_lat_1x.Adr, io9_lat_1x.bEna, h3d_engine_b_enable)) then
                if (h3d_gpu_cpu_complete = '1') then
                   cdc_io_cpl <= not cdc_io_cpl;
@@ -1701,7 +1720,9 @@ begin
             else
                cdc_io_cpl <= not cdc_io_cpl;
             end if;
-         elsif (h3d_gpu_cpu_complete = '1') then
+         elsif (gx_readback_complete = '1') then
+            cdc_io_cpl <= not cdc_io_cpl;
+         elsif (h3d_gpu_cpu_complete = '1' and gx_readback_busy = '0') then
             cdc_io_cpl <= not cdc_io_cpl;
          end if;
       end if;
@@ -2290,10 +2311,12 @@ begin
    -- ================= IO register banks =================
    io_wired_out9  <= irq_wired_out9 or timer_wired_out9 or ipc_wired_out9 or sys_wired_out9 or
                      tim_wired_out9 or g2d_wired_out or g2db_wired_out or dma_wired_out or
-                     key_wired_out9 or card_wired_out9 or math_read_data or gx_wired_out_eff;
+                     key_wired_out9 or card_wired_out9 or math_read_data or gx_wired_out_eff or
+                     gx_readback_wired;
    io_wired_done9 <= irq_wired_done9 or timer_wired_done9 or ipc_wired_done9 or sys_wired_done9 or
                      tim_wired_done9 or g2d_wired_done or g2db_wired_done or dma_wired_done or
-                     key_wired_done9 or card_wired_done9 or math_selected or gx_wired_done_eff;
+                     key_wired_done9 or card_wired_done9 or math_selected or gx_wired_done_eff or
+                     gx_readback_selected;
    io_wired_out7  <= irq_wired_out7 or timer_wired_out7 or ipc_wired_out7 or sys_wired_out7 or
                      tim_wired_out7 or key_wired_out7 or spi_wired_out7 or card_wired_out7 or
                      rtc_wired_out7 or snd_wired_out7 or dma7_wired_out;
@@ -2355,6 +2378,39 @@ begin
    -- from the visible wired-OR while the HPS service is unavailable, restoring
    -- the exact pre-3D open-IO behavior at 0x04000600 and suppressing timing-7
    -- DMA startup.  IRQ mode is reset with the CPUs between sessions.
+   gx_readback_enabled <= h3d_service_ready when H3D_GX_READBACK_ENABLE else '0';
+   gx_readback_cpu_read <= io9_ena and io9_lat_1x.rnw;
+   -- io_bus9.ena already includes acceptance for the held DMA FIFO lane;
+   -- it also covers DMA writes to individual GX command registers.
+   gx_test_write <= io_bus9.ena and not io_bus9.rnw;
+   -- Invalidate at architectural issue, including DMA GX writes. Reset the
+   -- cache on power/GXSTAT writes as well as matrix, test and vertex commands.
+   gx_readback_geometry_write <= '1' when dma_gx_write_valid = '1' or
+      (io_bus9.ena = '1' and io_bus9.rnw = '0' and
+       ((unsigned(io_bus9.Adr) >= 16#400# and unsigned(io_bus9.Adr) <= 16#5cb#) or
+        io_bus9.Adr = x"0000600" or io_bus9.Adr = x"0000304")) else '0';
+   igx_readback : entity work.nds_h3d_gx_readback_owner
+   port map (
+      clk => clk1x, reset => resetCpu, service_ready => gx_readback_enabled,
+      cpu_read => gx_readback_cpu_read, address => io9_lat_1x.Adr,
+      geometry_write => gx_readback_geometry_write,
+      gx_write => gx_test_write, gx_address => io_bus9.Adr,
+      gx_access => io_bus9.acc, gx_data => io_bus9.Din,
+      test_result_bits => gx_test_status,
+      selected => gx_readback_selected, busy => gx_readback_busy,
+      complete => gx_readback_complete, read_data => gx_readback_value,
+      fence_valid => gx_readback_fence,
+      request_valid => h3d_readback_request, request_ready => h3d_readback_ready,
+      request_id => h3d_readback_id,
+      response_valid => h3d_readback_response, response_id => h3d_readback_response_id,
+      response_status => h3d_readback_status,
+      cache_index => h3d_readback_index, cache_data => h3d_readback_data
+   );
+   -- The fast DMA bus can replace io_bus9 without changing the CPU latch.
+   -- Never OR an old CPU result into a subsequent DMA read of another address.
+   gx_readback_wired <= gx_readback_value when gx_readback_selected = '1' and
+      io_bus9.rnw = '1' and dma_bus_on = '0' else (others => '0');
+
    ih3d_gx : entity work.nds_h3d_gx_status
    port map
    (
@@ -2362,6 +2418,7 @@ begin
       reset => resetCpu,
       service_ready => h3d_service_ready,
       fifo_level => h3d_gx_fifo_level,
+      test_result_bits => gx_test_status,
       gb_bus => io_bus9,
       wired_out => gx_wired_out,
       wired_done => gx_wired_done,

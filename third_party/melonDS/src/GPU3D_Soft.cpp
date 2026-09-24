@@ -1817,9 +1817,40 @@ void SoftRenderer3D::RenderPolygonScanline(
     Interpolator<0>::SpanDepthInterpolator spanDepth(interpX, zl, zr);
     Interpolator<0>::SpanInterpolator spanAttributes(
         interpX, rl, rr, gl, gr, bl, br, sl, sr, tl, tr);
-    s32 spanValues[5];
+    // Equal RGB endpoints make color invariant across this entire row,
+    // including antialiased edges and the generic/shadow pixel paths. The
+    // cached interior already skips these three interpolators; keep the
+    // same exact optimization when returning to either edge. RGB recurrence
+    // state stays at its constant base, so skipped/depth-rejected pixels and
+    // transitions between generic and cached spans need no resynchronizing.
+    const bool constantSpanColor = rl == rr && gl == gr && bl == br;
+    s32 spanValues[5] = {rl, gl, bl, 0, 0};
+    const auto interpolateSpanValues = [&]()
+    {
+        if (constantSpanColor)
+            spanAttributes.Interpolate<3>(spanValues);
+        else
+            spanAttributes.Interpolate(spanValues);
+    };
+    s32 constantDepth = 0;
+    const bool constantLinearDepth = spanDepth.GetLinearConstantDepth(constantDepth);
+    const auto interpolateSpanDepth = [&](s32 pixelX) -> s32
+    {
+        // Linear attributes and equal depth endpoints never consume the
+        // perspective factor, even on antialiased/shadow edge pixels.
+        // Invalidate it exactly as the cached interior does, so the next
+        // consumer that needs it takes the normal exact resync path.
+        if (constantLinearDepth)
+        {
+            interpX.SetLinearX(pixelX);
+            return constantDepth;
+        }
+        interpX.SetX(pixelX);
+        return spanDepth.Interpolate();
+    };
     const auto renderSpanPixel = [this, rp](
-        u32 vr, u32 vg, u32 vb, s16 s, s16 t) -> u32
+        u32 vr, u32 vg, u32 vb, s16 s, s16 t)
+        __attribute__((always_inline)) -> u32
     {
         if (rp->PixelState.CachedModulate)
         {
@@ -1883,9 +1914,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 dstattr &= ~0xF; // quick way to prevent drawing the shadow under antialiased edges
         }
 
-        interpX.SetX(x);
-
-        s32 z = spanDepth.Interpolate();
+        s32 z = interpolateSpanDepth(x);
 
         // if depth test against the topmost pixel fails, test
         // against the pixel underneath
@@ -1899,7 +1928,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 continue;
         }
 
-        spanAttributes.Interpolate(spanValues);
+        interpolateSpanValues();
         const u32 vr = spanValues[0];
         const u32 vg = spanValues[1];
         const u32 vb = spanValues[2];
@@ -1987,9 +2016,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 dstattr &= ~0xF; // quick way to prevent drawing the shadow under antialiased edges
         }
 
-        interpX.SetX(x);
-
-        s32 z = spanDepth.Interpolate();
+        s32 z = interpolateSpanDepth(x);
 
         // if depth test against the topmost pixel fails, test
         // against the pixel underneath
@@ -2003,7 +2030,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 continue;
         }
 
-        spanAttributes.Interpolate(spanValues);
+        interpolateSpanValues();
         const u32 vr = spanValues[0];
         const u32 vg = spanValues[1];
         const u32 vb = spanValues[2];
@@ -2080,9 +2107,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 dstattr &= ~0xF; // quick way to prevent drawing the shadow under antialiased edges
         }
 
-        interpX.SetX(x);
-
-        s32 z = spanDepth.Interpolate();
+        s32 z = interpolateSpanDepth(x);
 
         // if depth test against the topmost pixel fails, test
         // against the pixel underneath
@@ -2096,7 +2121,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 continue;
         }
 
-        spanAttributes.Interpolate(spanValues);
+        interpolateSpanValues();
         const u32 vr = spanValues[0];
         const u32 vg = spanValues[1];
         const u32 vb = spanValues[2];
@@ -2525,6 +2550,33 @@ bool SoftRenderer3D::DumpCompletedInputs(const char* path) const
         << " cache=" << UseTextureCache
         << " sparse=" << SparseClearEnabled
         << " xpos=" << GPU3D.RenderXPos << '\n';
+    out << "viewport=";
+    for (auto value : GPU3D.Viewport) out << value << ',';
+    out << "\nprojection=";
+    for (auto value : GPU3D.ProjMatrix) out << value << ',';
+    out << "\nposition=";
+    for (auto value : GPU3D.PosMatrix) out << value << ',';
+    out << '\n';
+    // Include rejected geometry: otherwise an all-degenerate frame contains
+    // no polygon evidence in this explicitly armed diagnostic.
+    for (unsigned i = 0; i < std::min(32u, GPU3D.RenderNumPolygons); ++i)
+    {
+        const auto* p = GPU3D.RenderPolygonRAM[i];
+        if (!p) continue;
+        out << "latched_polygon=" << i << " degenerate=" << p->Degenerate
+            << " vertices=" << p->NumVertices << " bounds="
+            << p->XTop << ',' << p->XBottom << ',' << p->YTop << ',' << p->YBottom
+            << " texparam=" << std::hex << p->TexParam << " palette="
+            << p->TexPalette << " attr=" << p->Attr << std::dec << '\n';
+        for (unsigned v = 0; v < std::min(10u, p->NumVertices); ++v)
+        {
+            const auto& a = *p->Vertices[v];
+            out << " latched_vertex=" << v << " xy=" << a.FinalPosition[0]
+                << ',' << a.FinalPosition[1] << " position=";
+            for (auto value : a.Position) out << value << ',';
+            out << " uv=" << a.TexCoords[0] << ',' << a.TexCoords[1] << '\n';
+        }
+    }
     out << "upload_snapshot=" << PreserveUploadSnapshot
         << " trace=" << UploadTraceEnabled
         << " held=" << std::hex << UploadAtStart.Held

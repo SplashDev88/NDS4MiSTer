@@ -1,4 +1,5 @@
 #include "replay/Hybrid3DFramePacket.h"
+#include "replay/Hybrid3DGxReadback.h"
 
 #include <array>
 #include <chrono>
@@ -12,6 +13,7 @@
 #include <string>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 
 using namespace nds4mister::h3d::frame_packet;
@@ -136,6 +138,96 @@ Record make_record(RecordKind kind, std::uint32_t ordinal)
     record.address_or_aux = 0x06000000u + ordinal * 4;
     record.data = 0x1234000000000000ull | ordinal;
     return record;
+}
+
+void test_readback_fences()
+{
+    const Record fence {10, 0x12345678, 0};
+    {
+        Fixture fixture;
+        fixture.publish(1, 12, FlagContinuation, {fence});
+        Consumer consumer(fixture.bytes, MappingBytes);
+        PacketHeader header {};
+        std::vector<Record> records;
+        if (!consumer.initialize(fixture.session) ||
+            !consumer.begin(header, records) || records.size() != 1 ||
+            !consumer.accept_all_records() || !consumer.acknowledge())
+            die("valid final-continuation readback fence rejected");
+        if (diagnostic_record_selected(fence) || diagnostic_selected_count(fence))
+            die("readback fence entered texture diagnostic CRC");
+    }
+    const std::vector<Record> malformed {
+        {10, 0, 0}, {10, 1, 1}, {10, 1, std::uint64_t{1} << 32},
+        {10 | (1u << 8), 1, 0}, {10 | (1u << 16), 1, 0},
+        {10 | (1u << 29), 1, 0}, {10 | (1u << 31), 1, 0}
+    };
+    for (const auto& record : malformed) {
+        Fixture fixture;
+        fixture.publish(1, 12, FlagContinuation, {record});
+        Consumer consumer(fixture.bytes, MappingBytes);
+        PacketHeader header {};
+        if (!consumer.initialize(fixture.session) || consumer.begin(header) ||
+            !(consumer.local_faults() & FaultBadRecord))
+            die("malformed readback fence accepted");
+    }
+    for (bool terminal : {false, true}) {
+        Fixture fixture;
+        fixture.publish(1, 12, terminal ? FlagFrameEnd : FlagContinuation,
+            terminal ? std::vector<Record>{fence} :
+                       std::vector<Record>{fence, {1, 0, 0}});
+        Consumer consumer(fixture.bytes, MappingBytes);
+        PacketHeader header {};
+        if (!consumer.initialize(fixture.session) || consumer.begin(header) ||
+            !(consumer.local_faults() & FaultBadRecord))
+            die("readback fence accepted outside continuation tail");
+    }
+}
+
+void test_readback_publication()
+{
+    namespace rb = nds4mister::h3d::gx_readback;
+    std::vector<std::uint32_t> reads;
+    const auto snapshot = rb::capture(7, 42, [&](std::uint32_t address) {
+        reads.push_back(address);
+        return address ^ 0x12345678u;
+    });
+    if (reads.size() != 26 || reads[0] != 0x04000600 ||
+        reads[1] != 0x04000640 || reads[16] != 0x0400067c ||
+        reads[17] != 0x04000680 || reads[25] != 0x040006a0 ||
+        snapshot[3] != 0 || snapshot[31] != 0)
+        die("readback snapshot address/layout mismatch");
+    std::array<std::uint32_t, 34> guarded;
+    guarded.fill(0xa5a5a5a5);
+    std::vector<std::pair<std::size_t, std::uint32_t>> writes;
+    unsigned session_checks = 0;
+    const auto write = [&](std::size_t index, std::uint32_t value) {
+        if (index >= 32) die("readback wrote outside reply");
+        writes.emplace_back(index, value);
+        guarded[index + 1] = value;
+    };
+    if (!rb::publish(snapshot, [&] {
+            ++session_checks;
+            if (session_checks == 2) {
+                if (guarded[rb::CommitWord + 1] != 0)
+                    die("readback committed before ownership recheck");
+                for (std::size_t i = 0; i < 32; ++i)
+                    if (i != rb::CommitWord && guarded[i + 1] != snapshot[i])
+                        die("readback rechecked ownership before payload");
+            }
+            return true;
+        }, write) || session_checks != 2 || writes.size() != 33 ||
+        writes.front() != std::make_pair(rb::CommitWord, std::uint32_t{0}) ||
+        writes.back() != std::make_pair(rb::CommitWord, std::uint32_t{42}) ||
+        guarded.front() != 0xa5a5a5a5 || guarded.back() != 0xa5a5a5a5)
+        die("readback clear/payload/commit order or range mismatch");
+    writes.clear();
+    session_checks = 0;
+    if (rb::publish(snapshot, [&] { return ++session_checks == 1; }, write) ||
+        guarded[rb::CommitWord + 1] != 0 || writes.size() != 32)
+        die("readback committed after session loss");
+    writes.clear();
+    if (rb::publish(snapshot, [] { return false; }, write) || !writes.empty())
+        die("stale readback touched reply memory");
 }
 
 std::vector<Record> make_copy_oracle_records(std::size_t count)
@@ -659,6 +751,8 @@ int main(int argc, char** argv)
 {
     test_known_rtl_crc();
     test_packed_gx_record();
+    test_readback_fences();
+    test_readback_publication();
     test_one_frame();
     test_direct_packet_copy();
     test_payload_copy_sizes();
@@ -674,6 +768,7 @@ int main(int argc, char** argv)
         "H3D frame-packet consumer test\n"
         "known_rtl_crc32c: passed\n"
         "packed_gx_record: passed\n"
+        "readback_validation_commit_order_session_loss: passed\n"
         "one_frame: passed\n"
         "direct_packet_copy: passed\n"
         "payload_copy_sizes: passed\n"

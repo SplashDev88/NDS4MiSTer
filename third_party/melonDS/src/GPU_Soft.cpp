@@ -69,6 +69,7 @@ SoftRenderer::~SoftRenderer()
 
 void SoftRenderer::Reset()
 {
+    SetExternalFramebuffers(nullptr, nullptr);
     const size_t len = 256 * 192 * sizeof(u32);
     memset(Framebuffer[0][0], 0, len);
     memset(Framebuffer[0][1], 0, len);
@@ -97,6 +98,7 @@ void SoftRenderer::Reset()
 
 void SoftRenderer::Stop()
 {
+    SetExternalFramebuffers(nullptr, nullptr);
     // clear framebuffers to black
     const size_t len = 256 * 192 * sizeof(u32);
     memset(Framebuffer[0][0], 0, len);
@@ -383,15 +385,16 @@ void SoftRenderer::DrawScanline(u32 line)
     const auto scanlineStarted = profileStarted(StageProfileEnabled);
     u32 *dstA, *dstB;
     u32 dstoffset = 256 * line;
+    auto* output = ExternalFramebuffer[0] ? ExternalFramebuffer : Framebuffer[BackBuffer];
     if (GPU.ScreenSwap)
     {
-        dstA = &Framebuffer[BackBuffer][0][dstoffset];
-        dstB = &Framebuffer[BackBuffer][1][dstoffset];
+        dstA = &output[0][dstoffset];
+        dstB = &output[1][dstoffset];
     }
     else
     {
-        dstA = &Framebuffer[BackBuffer][1][dstoffset];
-        dstB = &Framebuffer[BackBuffer][0][dstoffset];
+        dstA = &output[1][dstoffset];
+        dstB = &output[0][dstoffset];
     }
 
     // The split-video renderer supplies only the missing GPU2D-B screen.
