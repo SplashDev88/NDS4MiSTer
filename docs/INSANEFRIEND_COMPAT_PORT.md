@@ -20,13 +20,21 @@ This is not a published release or a hardware-qualified combined core.
   The author's reported on-board game results are not independent validation
   of this newer combined source. Submitted executables have not been loaded.
 
-## Missing prerequisites
+- **Kirby Mass Attack:** decode low-register Thumb format-5 ADD/CMP on both
+  ARM cores instead of falling into the unsupported/default operation.
+- **Kirby Super Star Ultra:** ARM9 STM base-in-list stores the original base;
+  ARM7 substitutes the advanced base only with writeback enabled.
+- **Grand Theft Auto: Chinatown Wars:** bound every clipping emission to the
+  ten-vertex buffers, preventing malformed polygons overwriting the helper's
+  stack. The author's remaining stray grey triangles are **not fixed** by this
+  overflow guard; the underlying malformed-geometry cause is still separate.
 
-The MMZX archive explicitly describes its base as beta.5 **with the Kirby and
-GTA fixes already applied**, and says none of their source files are included
-in its delta. Separate sources for **Kirby Mass Attack, Kirby Super Star Ultra,
-and GTA: Chinatown Wars** are therefore still required. Do not infer those
-fixes from the supplied prebuilt FPGA or claim this candidate includes them.
+These last three changes come from `NDS4MiSTer_Kirby_GTA.zip`, SHA-256
+`520c33fe885fc4ddab33056394496d071b8682be62445de824651b0202611f3d`.
+Its three-file delta was applied to the accepted newer sources, retaining the
+C22 clipping math, fast paths and renderer caches. Both required archives have
+now been received. The author's hardware results are reports about his build,
+not proof that this combined candidate has passed gameplay tests.
 
 ## Integration corrections
 
@@ -67,18 +75,51 @@ register/VRAM state when a VBlank blank clears late. It is a bounded timing
 approximation, not cycle-accurate display behavior. Persistent blank falls
 back after 64 lines. New game-specific graphics and motion checks are required.
 
-Existing complete console VHDL analysis, permission/negative-control tests,
-VRAM DMA retirement, GX readback transport, host/ARM service self-tests and
-new packed-transfer tests pass in this integration. There is no new fitted
-FPGA, hardware speed measurement or confirmation that all requested games
-work. In particular, DMA main-RAM prefetch and SDRAM burst changes still need
-focused memory-model tests and a full FPGA build. The added 4096-entry event
-queue consumes FPGA block RAM; resource fit cannot be inferred from RTL alone.
+The new DMA transfer regression also exposed an inherited VHDL typing error:
+`unsigned_address + integer_step` selects a NATURAL operand and fails on a
+negative step. Encode the signed step at the 28-bit address width before adding
+it. This makes the intended modulo-address operation explicit without adding
+pipeline stages or changing transfer timing. It is an integration correction,
+not one of the author's submitted changes.
 
-After the missing prerequisites arrive: port them without replacing whole
-newer source files, validate their interactions, build a matching pair, and
-test the five requested games plus FFT A2, Platinum, NSMB and Castlevania.
-Keep the accepted beta.6 package intact as rollback until user acceptance.
+## Local validation
+
+- Complete console VHDL analysis; Resident Evil PU permission tests and four
+  detecting negative controls; existing VRAM DMA retirement and GX readback
+  transport tests pass.
+- New authored CPU programs check all low-register ADD/CMP pairs, flags and
+  aliasing, and STM IA/IB/DA/DB with and without writeback and base first/middle/
+  last/absent. Both CPUs pass nine memory/clock-enable timings, with 616 checked
+  stores per run. Reverting each of the four fixes independently is detected.
+- New actual-production-clipper test: 98,956 unchanged cases and 1,045 bounded
+  overflow cases. Host optimized and ASan/UBSan runs pass; removing the guards
+  triggers the expected stack-buffer-overflow. The test uses wrapping signed
+  arithmetic consistently with the existing clip math. This is a bounds/output
+  regression, not a full hardware geometry-accuracy oracle.
+- DMA main RAM fast/fallback tests pass 72 transfer combinations at each of
+  three latency settings: 16/32-bit units, both pair offsets, increment,
+  decrement and fixed addresses. Checks pair data, write byte lanes, ownership
+  through posted completion, transfer count and reduced physical reads.
+- SDRAM pin scoreboard passes 512 32/64-bit writes (1,536 physical halfword
+  writes), all byte masks and refresh delays. Lower request attributes change
+  after acceptance to check latching; upper payload stays live through ready
+  as required. Simulation initializes three otherwise unspecified request
+  flops to the Cyclone V flow's zero power-up value, and models the fixed DDR
+  output clock; controller protocol and data expressions are unchanged.
+- Full host and rebuilt ARM service self-tests pass, including packed VRAM
+  versus individual writes in the matched-display renderer oracle.
+
+Candidate build ID is **260925-IFP3**. IFP2 synthesis passed but its fitter was
+stopped to incorporate the explicit DMA decrement arithmetic. IFP3 synthesis,
+fit, assembly and timing analysis are running as a separate build. Do not use
+an old RBF from another candidate with this helper. Fitted resource/timing
+results and a hashed binary-pair receipt will be recorded in the local handoff.
+
+The added 4096-entry event queue consumes FPGA block RAM. There is no combined
+hardware speed measurement or confirmation yet that these five games work on
+this port. Validate the five requested games plus FFT A2, Platinum, NSMB and
+Castlevania before promoting this candidate. Keep the accepted beta.6 package
+intact as rollback until user acceptance.
 
 ## Attribution
 

@@ -496,10 +496,13 @@ begin
          variable preempt   : boolean;
       begin
          unit_ret <= '1';
+         -- numeric_std unsigned + integer selects a NATURAL operand, which
+         -- rejects decrement mode in simulation. Encode the signed step at
+         -- address width explicitly to retain modulo-2^28 pointer arithmetic.
          inc := inc_of(ch(active).srcctl, ch(active).word32);
-         ch(active).cur_src <= ch(active).cur_src + inc;  -- wraps mod 2^28 (address mask)
+         ch(active).cur_src <= ch(active).cur_src + unsigned(to_signed(inc, ch(active).cur_src'length));  -- wraps mod 2^28 (address mask)
          inc := inc_of(ch(active).dstctl, ch(active).word32);
-         ch(active).cur_dst <= ch(active).cur_dst + inc;
+         ch(active).cur_dst <= ch(active).cur_dst + unsigned(to_signed(inc, ch(active).cur_dst'length));
          ch(active).remain  <= ch(active).remain - 1;
 
          -- NDS DMA priority is reconsidered between transfer units. A newly

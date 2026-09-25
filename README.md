@@ -1,8 +1,9 @@
 # NDS4MiSTer
 
-> Private InsaneFriend integration candidate. Resident Evil and Mega Man ZX source
-> are ported; Kirby/GTA prerequisites, a combined FPGA build and hardware tests
-> are still pending. See [integration status](docs/INSANEFRIEND_COMPAT_PORT.md).
+> Private InsaneFriend integration candidate for Resident Evil, both Kirby
+> games, GTA: Chinatown Wars and Mega Man ZX. All source patches are ported;
+> the combined FPGA build and hardware tests are pending.
+> See [integration status](docs/INSANEFRIEND_COMPAT_PORT.md).
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 

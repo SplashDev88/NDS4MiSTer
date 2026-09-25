@@ -1,15 +1,15 @@
 Private InsaneFriend compatibility integration — 2026-09-25
 
 Base: accepted beta.6 source 4f25ede1ec41ae66cd07dff9bd352f339a331635.
-Candidate build ID: 260925-IFP1. No new FPGA binary has been built.
+Candidate build ID: 260925-IFP3. The separate FPGA build is in progress.
 New ARM helper SHA256:
-64c9c9cfa4fcf4e41bf10cf7cade027f5ef39ad65f8c211f0eed451d8f52fc06
+d5963af5bbbc1becdc4a589f58b16edc1c19d02db9ada7fc7963552fe6e985b0
 
 See docs/INSANEFRIEND_COMPAT_PORT.md for source provenance, attribution,
 integration corrections, passing tests and remaining validation.
-Resident Evil REPU2 and Mega Man ZX source changes are ported. Separate Kirby
-Mass Attack/Super Star Ultra and GTA prerequisites are missing from the supplied
-MMZX archive. Do not advertise all five games fixed or publish this candidate.
+Resident Evil REPU2, Mega Man ZX, Kirby Mass Attack, Kirby Super Star Ultra and
+GTA: Chinatown Wars source fixes are ported. Automated regressions pass.
+Hardware gameplay validation of the combined candidate remains pending.
 
 The new packed VRAM record is kind 11; existing FFT/Platinum readback fences
 remain kind 10. A rebuilt matching FPGA/helper pair is required. The submitted
