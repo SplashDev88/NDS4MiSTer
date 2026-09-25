@@ -1,17 +1,14 @@
 # NDS4MiSTer
 
-> Private InsaneFriend integration candidate for Resident Evil, both Kirby
-> games, GTA: Chinatown Wars and Mega Man ZX. All source patches are ported;
-> the combined FPGA build and hardware tests are pending.
-> See [integration status](docs/INSANEFRIEND_COMPAT_PORT.md).
-
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.4.0-beta.6 — Final Fantasy Tactics A2 and Pokemon Platinum graphics fixes**
+**v0.5.0 — more games working, restored graphics, and faster rendering**
 
-The latest beta restores missing graphics in Final Fantasy Tactics A2 and
-Pokemon Platinum, with faster ARM rendering and a fix for disconnected Wi-Fi
-retries that caused a Lunar Knights movie crash. Earlier game fixes remain.
+This release brings InsaneFriend's Resident Evil: Deadly Silence, Kirby Mass
+Attack, Kirby Super Star Ultra, GTA: Chinatown Wars and Mega Man ZX fixes into
+the current core. It also restores Final Fantasy Tactics A2 and Pokemon
+Platinum graphics, improves rendering speed and prevents disconnected Wi-Fi
+retries from stalling the core. Earlier game fixes remain.
 
 > **Engine B must be On.** Change it in the core menu, then reset or reload
 > your ROM. Older Off settings can produce a blank display. Use this release's
@@ -46,6 +43,8 @@ artifacts, or credentials are included in this source repository.
 ## Current limitations
 
 - **Strange Journey can still freeze during its intro.** WC does not fix it.
+- **GTA: Chinatown Wars may still show stray triangles.** Its new overflow
+  guard addresses helper crashes, not all malformed geometry.
 - **WC was tested on MiSTer Linux 5.15.1.** Other kernel builds may reject the
   optional module and use the previous transfer path without the WC gain.
 
@@ -81,12 +80,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_Public_Beta_v0.4.0-beta.6_20260924.zip` directly into the root
+   `NDS4MiSTer_v0.5.0_20260925.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260924** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260925** and launch the core.
 4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
    file. If already loaded, Reset or reload after changing Engine B.
 
@@ -185,15 +184,20 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.4.0-beta.6
+## What's new in v0.5.0
 
-- Final Fantasy Tactics A2 startup/menu graphics restored.
-- Pokemon Platinum character and room furniture restored in testing.
+- InsaneFriend's Mega Man ZX graphics and transfer improvements.
+- Kirby Mass Attack and Kirby Super Star Ultra CPU compatibility fixes.
+- Resident Evil: Deadly Silence CPU store-permission correction.
+- GTA: Chinatown Wars clipping-overflow crash guard.
+- Final Fantasy Tactics A2 startup/menu graphics and Pokemon Platinum character
+  and room furniture restored.
 - Faster ARM rendering, retaining the recovered graphics and stock 1 GHz clock.
 - Disconnected Wi-Fi retries stopped at Kickstart to avoid the observed
   Lunar Knights movie crash. Connected Wi-Fi and saved settings are preserved.
 
-See the [release notes](docs/RELEASE_NOTES_V040_BETA6.md) and
+See the [release notes](docs/RELEASE_NOTES_V050.md),
+[integration notes](docs/INSANEFRIEND_COMPAT_PORT.md) and
 [technical source notes](SOURCE_PACKAGE.txt).
 
 ## Retained from v0.4.0-beta
@@ -227,11 +231,11 @@ validation; see
 
 ## Verification
 
-The installer contains the exact user-tested PBOX1 FPGA and C22 ARM helper.
-Source, binary identities, test coverage and timing limits are in
-[SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). Source and installer each include
-checksums. No runtime binary was rebuilt for packaging. ARM self-tests, exact
-pixel comparisons, focused FPGA tests and hardware gameplay checks passed.
+The installer contains the exact IFP3 FPGA and ARM helper accepted after
+Mega Man ZX hardware testing. Source, binary identities, test coverage and
+timing limits are in [SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). Source and
+installer each include checksums. No runtime binary was rebuilt for packaging.
+CPU/memory/graphics regressions and host/emulated-ARM service self-tests passed.
 These are focused checks, not a guarantee of 60 FPS or all-game accuracy.
 
 ## For developers
@@ -326,7 +330,9 @@ Component licenses and source notices remain in their vendored trees.
 Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, heni, and the
 wider MiSTer community for technical advice, testing, and development guidance;
 and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware, ARM7
-Wi-Fi boot-memory, and cartridge-IR compatibility work in beta.7.
+Wi-Fi boot-memory, and cartridge-IR compatibility work in beta.7, plus the
+Resident Evil: Deadly Silence, Kirby Mass Attack, Kirby Super Star Ultra, GTA:
+Chinatown Wars and Mega Man ZX fixes in this release.
 
 ## License
 

@@ -1,3 +1,5 @@
+# v0.5.0 source and validation
+
 NDS4MiSTer v0.5.0 — compatibility, graphics and speed improvements
 
 Release packaging of the accepted 260925-IFP3 FPGA/ARM pair. Neither runtime

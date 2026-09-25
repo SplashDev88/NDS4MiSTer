@@ -1,7 +1,8 @@
 # InsaneFriend compatibility port — 2026-09-25
 
-Private integration candidate based on accepted beta.6 source `4f25ede`.
-This is not a published release or a hardware-qualified combined core.
+Release integration based on the previously accepted beta.6 source `4f25ede`.
+IFP3 completed its FPGA build and was accepted after Mega Man ZX hardware
+testing on September 25. Full playthroughs of all five ports are not claimed.
 
 ## Included source
 
@@ -17,8 +18,8 @@ This is not a published release or a hardware-qualified combined core.
   transport and bounded late forced-blank recovery. Source supplied in
   `NDS4MiSTer_MMZX.zip`, SHA-256
   `77f7819e7a3a7f511cd4b90cf864c8d997c48fff0745959b37425d138a1fa76e`.
-  The author's reported on-board game results are not independent validation
-  of this newer combined source. Submitted executables have not been loaded.
+  The user tested Mega Man ZX (Europe) on the rebuilt combined IFP3 pair and
+  accepted it for release. Submitted executables have not been loaded.
 
 - **Kirby Mass Attack:** decode low-register Thumb format-5 ADD/CMP on both
   ARM cores instead of falling into the unsupported/default operation.
@@ -109,17 +110,16 @@ not one of the author's submitted changes.
 - Full host and rebuilt ARM service self-tests pass, including packed VRAM
   versus individual writes in the matched-display renderer oracle.
 
-Candidate build ID is **260925-IFP3**. IFP2 synthesis passed but its fitter was
-stopped to incorporate the explicit DMA decrement arithmetic. IFP3 synthesis,
-fit, assembly and timing analysis are running as a separate build. Do not use
-an old RBF from another candidate with this helper. Fitted resource/timing
-results and a hashed binary-pair receipt will be recorded in the local handoff.
+Release build ID is **260925-IFP3**, compiled from `1d81c99`. All Quartus
+stages completed. It uses 39,116 ALMs, 530 M10K and 54 DSP blocks. Worst setup
+slack is -21.592 ns; worst hold is +0.067 ns. Timing is not closed.
+The 4096-entry event queue increases block-RAM use.
 
-The added 4096-entry event queue consumes FPGA block RAM. There is no combined
-hardware speed measurement or confirmation yet that these five games work on
-this port. Validate the five requested games plus FFT A2, Platinum, NSMB and
-Castlevania before promoting this candidate. Keep the accepted beta.6 package
-intact as rollback until user acceptance.
+The user accepted Mega Man ZX (Europe) on this exact paired core/helper and
+requested release packaging. Earlier FFT A2 and Platinum checks cover the
+base fixes retained here; independent full-game checks of all five new ports
+are not claimed. Source and binary identities are in SOURCE_PACKAGE.txt.
+The prior C22/PBOX1 package remains available locally for rollback.
 
 ## Attribution
 
