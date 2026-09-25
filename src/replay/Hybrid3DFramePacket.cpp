@@ -524,6 +524,7 @@ bool Consumer::validate_record(const Record& record) const
     if (kind != RecordKind::GxCommand &&
         kind != RecordKind::GxRegister &&
         kind != RecordKind::VramWrite &&
+        kind != RecordKind::VramWritePair &&
         kind != RecordKind::VramMap &&
         kind != RecordKind::Gpu2DRegister &&
         kind != RecordKind::PaletteWrite &&
@@ -537,6 +538,11 @@ bool Consumer::validate_record(const Record& record) const
         !nds4mister::arm_video::validate_record(record))
         return false;
     if (kind == RecordKind::VramWrite && record_byte_enable(record) == 0)
+        return false;
+    if (kind == RecordKind::VramWritePair &&
+        (record_byte_enable(record) != 0x0f ||
+         record_tag(record) != 2u ||
+         (record.address_or_aux & 3u) != 0))
         return false;
     return true;
 }

@@ -11,6 +11,17 @@
 // only after the slot commit is physically accepted. A packet therefore costs
 // one shared publication/acknowledgement instead of one per source event.
 //
+// Payload records are gathered, up to BURST_RECORDS at a time, and written as
+// one Avalon burst of two beats per record. Each record used to be two single-
+// beat commands, and on the shared four-client fabric every command pays the
+// grant dwell, the registered queue and the physical acceptance: at the 60 MHz
+// DDR clock that was ~20 cycles a record, which is what bounded every mirrored
+// VRAM write (Mega Man ZX's VBlank uploads ran ~100 lines, past VBlank, with
+// the screen still force-blanked white). A burst pays that overhead once.
+// Gathering never waits on a record that is not there: a partial group is
+// written as soon as the source goes idle for LINGER_CYCLES, and at FRAME_END,
+// MAX_RECORDS or a pending boundary exactly as the single-record path did.
+//
 module nds_h3d_frame_packet_writer #(
     // HPS physical 0x3fc00000 appears as FPGA byte 0x0fc00000.
     parameter logic [28:0] CONTROL_BASE_WORD = 29'h01f80000,
@@ -18,7 +29,9 @@ module nds_h3d_frame_packet_writer #(
     parameter logic [28:0] SLOT_BASE_WORD = 29'h01f82000,
     parameter integer SLOT_COUNT = 4,
     parameter integer SLOT_STRIDE_WORDS = 8192,
-    parameter integer MAX_RECORDS = 3840
+    parameter integer MAX_RECORDS = 3840,
+    parameter integer BURST_RECORDS = 4,
+    parameter integer LINGER_CYCLES = 8
 ) (
     input  logic         clk,
     input  logic         reset,
@@ -79,8 +92,7 @@ module nds_h3d_frame_packet_writer #(
         COLLECT,
         READ_ACK_ISSUE,
         READ_ACK_WAIT,
-        WRITE_PAYLOAD_LOW,
-        WRITE_PAYLOAD_HIGH,
+        WRITE_BURST,
         WRITE_HEADER0,
         WRITE_HEADER1,
         WRITE_HEADER2,
@@ -94,9 +106,20 @@ module nds_h3d_frame_packet_writer #(
 
     state_t state;
     logic [31:0] latched_session;
-    logic [127:0] saved_record;
-    logic saved_frame_end;
-    logic saved_readback_fence;
+    localparam integer BUF_WIDTH = $clog2(BURST_RECORDS + 1);
+    localparam integer BEAT_WIDTH = $clog2(2 * BURST_RECORDS);
+    // Registers, not a RAM: the burst reads the entry selected by burst_beat in
+    // the same cycle, and a block RAM's registered read would put each beat's
+    // data a cycle late.
+    (* ramstyle = "logic" *) logic [127:0] buf_record [0:BURST_RECORDS-1];
+    logic [BUF_WIDTH-1:0] buf_count;
+    logic buf_frame_end;
+    logic buf_readback_fence;
+    logic [BEAT_WIDTH-1:0] burst_beat;
+    logic [7:0] linger;
+    logic [COUNT_WIDTH:0] filled;
+    logic packet_first;
+    logic flush_now;
     logic [31:0] packet_frame;
     logic [31:0] packet_sequence;
     logic [31:0] close_flags;
@@ -139,14 +162,25 @@ module nds_h3d_frame_packet_writer #(
             (29'(slot_index) * 29'(SLOT_STRIDE_WORDS));
         payload_word_offset = 29'd8 + (29'(record_count) << 1);
 
+        // records committed to this packet, counting the gathered group
+        filled = (COUNT_WIDTH+1)'(record_count) + (COUNT_WIDTH+1)'(buf_count);
+        packet_first = record_count == 0 && buf_count == 0;
+        flush_now = buf_count != 0 &&
+            (buf_count == BUF_WIDTH'(BURST_RECORDS) || buf_frame_end || buf_readback_fence ||
+             filled == (COUNT_WIDTH+1)'(MAX_RECORDS) || boundary_valid ||
+             linger >= 8'(LINGER_CYCLES));
+
         record_ready =
             state == COLLECT && !fault && !full &&
             latched_session != 0 && !session_changed &&
-            producer_sequence != 32'hffffffff && !boundary_valid;
+            producer_sequence != 32'hffffffff && !boundary_valid &&
+            !flush_now && buf_count != BUF_WIDTH'(BURST_RECORDS) &&
+            !buf_frame_end && !buf_readback_fence && filled < (COUNT_WIDTH+1)'(MAX_RECORDS);
         boundary_ready =
             state == COLLECT && !fault && !full &&
             latched_session != 0 && !session_changed &&
-            producer_sequence != 32'hffffffff && !record_valid;
+            producer_sequence != 32'hffffffff && !record_valid &&
+            buf_count == 0;
         active = state != WAIT_SESSION && state != COLLECT;
 
         ddram_read = 1'b0;
@@ -170,14 +204,14 @@ module nds_h3d_frame_packet_writer #(
                 ddram_address = ACK_WORD;
                 ddram_read = !ddram_busy;
             end
-            WRITE_PAYLOAD_LOW: begin
+            WRITE_BURST: begin
+                // Avalon burst: the start address and count stay constant for
+                // every beat; each accepted beat is the next 64-bit half.
                 ddram_address = slot_base + payload_word_offset;
-                ddram_write_data = saved_record[63:0];
-                ddram_write = !ddram_busy;
-            end
-            WRITE_PAYLOAD_HIGH: begin
-                ddram_address = slot_base + payload_word_offset + 29'd1;
-                ddram_write_data = saved_record[127:64];
+                ddram_burst_count = 8'(buf_count) << 1;
+                ddram_write_data = burst_beat[0] ?
+                    buf_record[burst_beat >> 1][127:64] :
+                    buf_record[burst_beat >> 1][63:0];
                 ddram_write = !ddram_busy;
             end
             WRITE_HEADER0: begin
@@ -236,9 +270,11 @@ module nds_h3d_frame_packet_writer #(
         if (reset || session_flush) begin
             state <= WAIT_SESSION;
             latched_session <= 0;
-            saved_record <= 0;
-            saved_frame_end <= 0;
-            saved_readback_fence <= 0;
+            buf_count <= 0;
+            buf_frame_end <= 0;
+            buf_readback_fence <= 0;
+            burst_beat <= 0;
+            linger <= 0;
             packet_frame <= 0;
             packet_sequence <= 0;
             close_flags <= 0;
@@ -396,6 +432,10 @@ module nds_h3d_frame_packet_writer #(
                     end else if (!fault && producer_sequence == 32'hffffffff) begin
                         fault <= 1'b1;
                         fault_reason <= 5'd10;
+                    end else if (!fault && flush_now) begin
+                        burst_beat <= 0;
+                        linger <= 0;
+                        state <= WRITE_BURST;
                     end else if (boundary_valid && boundary_ready) begin
                         if ((record_count == 0 && chain_active &&
                              boundary_frame != chain_frame) ||
@@ -419,25 +459,28 @@ module nds_h3d_frame_packet_writer #(
                         if (malformed_readback_fence) begin
                             fault <= 1'b1;
                             fault_reason <= 5'd19;
-                        end else if ((record_count == 0 && chain_active &&
+                        end else if ((packet_first && chain_active &&
                              record_frame != chain_frame) ||
-                            (record_count != 0 &&
+                            (!packet_first &&
                              record_frame != packet_frame)) begin
                             fault <= 1'b1;
-                            if (record_count == 0)
+                            if (packet_first)
                                 fault_reason <= 5'd13;
                             else
                                 fault_reason <= 5'd14;
                         end else begin
-                            saved_record <= record;
-                            saved_frame_end <= record_frame_end;
-                            saved_readback_fence <= record_readback_fence;
-                            if (record_count == 0) begin
+                            buf_record[buf_count] <= record;
+                            buf_count <= buf_count + 1'b1;
+                            buf_frame_end <= record_frame_end;
+                            buf_readback_fence <= record_readback_fence;
+                            linger <= 0;
+                            if (packet_first) begin
                                 packet_frame <= record_frame;
                                 packet_sequence <= producer_sequence + 1'b1;
                             end
-                            state <= WRITE_PAYLOAD_LOW;
                         end
+                    end else if (buf_count != 0 && linger != 8'hff) begin
+                        linger <= linger + 1'b1;
                     end
                 end
 
@@ -490,27 +533,27 @@ module nds_h3d_frame_packet_writer #(
                     end
                 end
 
-                WRITE_PAYLOAD_LOW: begin
-                    if (ddram_command_accepted)
-                        state <= WRITE_PAYLOAD_HIGH;
-                end
-
-                WRITE_PAYLOAD_HIGH: begin
+                WRITE_BURST: begin
                     if (ddram_command_accepted) begin
-                        record_count <= record_count + 1'b1;
-                        if (saved_frame_end) begin
-                            close_flags <= FLAG_FRAME_END;
-                            state <= WRITE_HEADER0;
-                        end else if (saved_readback_fence ||
-                            record_count + 1'b1 == MAX_RECORDS_COUNT
-                        ) begin
-                            // An execution query is a publication boundary,
-                            // not a frame boundary. Its continuation commits
-                            // immediately, with the fence as the last record.
-                            close_flags <= FLAG_CONT;
-                            state <= WRITE_HEADER0;
+                        if (burst_beat == BEAT_WIDTH'((buf_count << 1) - 1)) begin
+                            record_count <= record_count + COUNT_WIDTH'(buf_count);
+                            buf_count <= 0;
+                            buf_frame_end <= 0;
+                            buf_readback_fence <= 0;
+                            if (buf_frame_end) begin
+                                close_flags <= FLAG_FRAME_END;
+                                state <= WRITE_HEADER0;
+                            end else if (buf_readback_fence ||
+                                filled == (COUNT_WIDTH+1)'(MAX_RECORDS)) begin
+                                // Readback commits immediately at a continuation
+                                // boundary, with the fence last in the packet.
+                                close_flags <= FLAG_CONT;
+                                state <= WRITE_HEADER0;
+                            end else begin
+                                state <= COLLECT;
+                            end
                         end else begin
-                            state <= COLLECT;
+                            burst_beat <= burst_beat + 1'b1;
                         end
                     end
                 end

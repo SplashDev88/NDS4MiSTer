@@ -47,6 +47,10 @@ module tb_nds_h3d_frame_packet_writer;
     logic [63:0] write_log_data [0:MAX_WRITES-1];
     integer write_log_count = 0;
     integer accepted_reads = 0;
+    integer burst_index = 0;
+    logic [28:0] burst_base;
+    logic [7:0] burst_length;
+    logic [28:0] effective_write_address;
     integer input_handshakes = 0;
     integer boundary_handshakes = 0;
     integer completed_packets = 0;
@@ -290,6 +294,7 @@ module tb_nds_h3d_frame_packet_writer;
             ddram_busy = 0;
             ddram_accept_enable = 0;
             read_pending = 0;
+            burst_index = 0;
             delayed_read_ready = 0;
             session = new_session;
             memory[CONTROL_BASE + 1] = {32'd0, new_session};
@@ -330,9 +335,10 @@ module tb_nds_h3d_frame_packet_writer;
     end
 
     always @(posedge clk) begin
-        if (ddram_burst_count !== 8'd1 ||
-            ddram_byte_enable !== 8'hff)
-            $fatal(1, "writer used burst or partial DDR byte enable");
+        if (ddram_byte_enable !== 8'hff)
+            $fatal(1, "writer used partial DDR byte enable");
+        if (ddram_read && (ddram_burst_count !== 8'd1 || burst_index != 0))
+            $fatal(1, "read interrupted a payload burst");
         if (ddram_busy && (ddram_read || ddram_write))
             $fatal(1, "writer requested DDR while busy was asserted");
         if ((ddram_read || ddram_write) && !ddram_busy &&
@@ -368,15 +374,25 @@ module tb_nds_h3d_frame_packet_writer;
         end
 
         if (ddram_command_accepted && ddram_write) begin
-            if (ddram_address >= MEMORY_WORDS)
-                $fatal(1, "DDR write outside test memory: %h",
-                       ddram_address);
+            if (burst_index == 0) begin
+                burst_base = ddram_address;
+                burst_length = ddram_burst_count;
+                if (burst_length < 1 || burst_length > 8)
+                    $fatal(1, "invalid payload burst length");
+            end else if (ddram_address !== burst_base ||
+                         ddram_burst_count !== burst_length)
+                $fatal(1, "burst address/count changed before final beat");
+            effective_write_address = burst_base + burst_index;
+            if (effective_write_address >= MEMORY_WORDS)
+                $fatal(1, "DDR write outside test memory");
             if (write_log_count >= MAX_WRITES)
                 $fatal(1, "write log overflow");
-            write_log_address[write_log_count] = ddram_address;
+            write_log_address[write_log_count] = effective_write_address;
             write_log_data[write_log_count] = ddram_write_data;
             write_log_count = write_log_count + 1;
-            memory[ddram_address] = ddram_write_data;
+            memory[effective_write_address] = ddram_write_data;
+            burst_index = burst_index + 1;
+            if (burst_index == burst_length) burst_index = 0;
         end
 
         if (ddram_command_accepted && ddram_read) begin

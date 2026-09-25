@@ -242,6 +242,14 @@ entity nds_nitro_console_top is
       vsrv_din         : out std_logic_vector(31 downto 0);
       vsrv_dout        : in  std_logic_vector(31 downto 0);
       vsrv_done        : in  std_logic;
+      -- streaming extensions, see nds_vram's srv_seq/srv_wide/srv_more and
+      -- RD_LINE_BUF (vsrv_dout_hi: the other word of the 8-byte line read)
+      vsrv_dout_hi     : in  std_logic_vector(31 downto 0) := (others => '0');
+      vsrv_seq         : out std_logic;
+      vsrv_wide        : out std_logic;
+      vsrv_din_hi      : out std_logic_vector(31 downto 0);
+      vsrv_be_hi       : out std_logic_vector(3 downto 0);
+      vsrv_more        : out std_logic;
       vrsrv_req        : out std_logic;
       vrsrv_bank       : out std_logic_vector(1 downto 0);
       vrsrv_addr       : out unsigned(16 downto 3);
@@ -717,6 +725,14 @@ architecture arch of nds_nitro_console_top is
    signal gx_test_status : std_logic_vector(1 downto 0);
    signal gx_readback_value, gx_readback_wired : std_logic_vector(31 downto 0);
    signal dma_gx_write_valid, dma_gx_write_ready : std_logic;
+   signal dma_io_capture : std_logic;
+   -- nds_dma9's main-RAM fast lane (see the mem9 mux)
+   signal dma_mr_ok, dma_mr_sel, dma_mr_act : std_logic := '0';
+   signal dma_mr_bus_d, dma_mr_idle1, dma_mr_idle2 : std_logic := '0';
+   signal dma_mr_ena, dma_mr_rnw, dma_mr_pair, dma_mr_done : std_logic;
+   signal dma_mr_addr : std_logic_vector(21 downto 2);
+   signal dma_mr_be : std_logic_vector(3 downto 0);
+   signal dma_mr_wdata : std_logic_vector(31 downto 0);
    signal h3d_vram9_source_valid, h3d_vram9_source_ready : std_logic;
    signal h3d_vram9_needed_by_h3d : std_logic;
    signal h3d_vram9_issue : std_logic;
@@ -1473,21 +1489,59 @@ begin
    end process;
    dbg_pk_sel <= dbg_pk_ena or dbg_pk_act;
 
+   -- nds_dma9's main-RAM fast lane is the fourth owner, below the loader. It
+   -- may only take the port once the DMA holds the bus AND the ARM9 cache is
+   -- idle: the cache retires a posted write, and releases the CPU at a line
+   -- fill's critical word, before it has finished with nds_mainram, so "CPU
+   -- bus idle" alone does not mean this port is free. With the CPU paused
+   -- nothing can wake the cache again until the DMA lets go. Two samples of
+   -- each, on top of the related-clock crossing, keep a request the cache
+   -- accepted just before the grant from slipping between them.
+   process (clk1x)
+   begin
+      if rising_edge(clk1x) then
+         dma_mr_bus_d <= dma_bus_on;
+         if (dbg_cache9(3 downto 0) = "0000") then
+            dma_mr_idle1 <= '1';
+         else
+            dma_mr_idle1 <= '0';
+         end if;
+         dma_mr_idle2 <= dma_mr_idle1;
+         dma_mr_ok    <= dma_bus_on and dma_mr_bus_d and dma_mr_idle1 and
+                         dma_mr_idle2 and not ld_busy and not dbg_pk_sel;
+         if (reset_boot = '1') then
+            dma_mr_act <= '0';
+         elsif (dma_mr_sel = '1' and dma_mr_ena = '1') then
+            dma_mr_act <= '1';
+         elsif (mem9_done = '1') then
+            dma_mr_act <= '0';
+         end if;
+      end if;
+   end process;
+   dma_mr_sel  <= dma_mr_ok and dma_bus_on;
+   dma_mr_done <= mem9_done and dma_mr_act;
+
    mem9_ena       <= (ld_wr_ena and ld_to_main) when ld_busy = '1' else
-                     dbg_pk_ena                 when dbg_pk_sel = '1' else mr9_ena;
+                     dbg_pk_ena                 when dbg_pk_sel = '1' else
+                     dma_mr_ena                 when dma_mr_sel = '1' else mr9_ena;
    mem9_rnw       <= ld_wr_rnw                  when ld_busy = '1' else
-                     '1'                        when dbg_pk_sel = '1' else mr9_rnw;
+                     '1'                        when dbg_pk_sel = '1' else
+                     dma_mr_rnw                 when dma_mr_sel = '1' else mr9_rnw;
    mem9_addr      <= ld_wr_addr(21 downto 2)    when ld_busy = '1' else
-                     dbg_pk_addr_s(21 downto 2) when dbg_pk_sel = '1' else mr9_addr;
+                     dbg_pk_addr_s(21 downto 2) when dbg_pk_sel = '1' else
+                     dma_mr_addr                when dma_mr_sel = '1' else mr9_addr;
    mem9_be        <= "1111"                     when ld_busy = '1' else
-                     "1111"                     when dbg_pk_sel = '1' else mr9_be;
-   mem9_writedata <= ld_wr_data                 when ld_busy = '1' else mr9_writedata;
-   -- Pair mode belongs to the cache alone. The loader writes and the debugger's
-   -- peek both borrow this port, and neither wants two words back - forcing it
-   -- low here means a peek issued mid-fill cannot make nds_mainram wait on a
-   -- done64 that its 32-bit op will never produce.
-   mem9_pair_s    <= mr9_pair when (ld_busy = '0' and dbg_pk_sel = '0') else '0';
-   mr9_done       <= mem9_done and not ld_busy and not dbg_pk_sel;
+                     "1111"                     when dbg_pk_sel = '1' else
+                     dma_mr_be                  when dma_mr_sel = '1' else mr9_be;
+   mem9_writedata <= ld_wr_data                 when ld_busy = '1' else
+                     dma_mr_wdata               when dma_mr_sel = '1' else mr9_writedata;
+   -- Pair mode belongs to the cache and the DMA lane. The loader writes and the
+   -- debugger's peek both borrow this port, and neither wants two words back -
+   -- forcing it low here means a peek issued mid-fill cannot make nds_mainram
+   -- wait on a done64 that its 32-bit op will never produce.
+   mem9_pair_s    <= '0'         when (ld_busy = '1' or dbg_pk_sel = '1') else
+                     dma_mr_pair when dma_mr_sel = '1' else mr9_pair;
+   mr9_done       <= mem9_done and not ld_busy and not dbg_pk_sel and not dma_mr_act;
    mr9_readdata   <= mem9_readdata;
    mr9_readdata_hi <= mem9_readdata_hi_s;
    dbg_pk_done_s  <= mem9_done and dbg_pk_sel;
@@ -2046,6 +2100,7 @@ begin
       trig_gx      => gx_trig,
       gx_write_ready => dma_gx_write_ready,
       gx_write_valid => dma_gx_write_valid,
+      io_write_capture => dma_io_capture,
       cpu_bus_idle => cpu9_bus_idle,
       dma_on       => dma_on,
       dma_bus_on   => dma_bus_on,
@@ -2084,6 +2139,16 @@ begin
       vram_fast_welig => vr9_welig,
       vram_fast_wok   => dma_vr_wok_safe,
       vram_write_valid => dma_vram_write_valid,
+      mr_fast_ok       => dma_mr_ok,
+      mr_fast_ena      => dma_mr_ena,
+      mr_fast_rnw      => dma_mr_rnw,
+      mr_fast_addr     => dma_mr_addr,
+      mr_fast_be       => dma_mr_be,
+      mr_fast_wdata    => dma_mr_wdata,
+      mr_fast_pair     => dma_mr_pair,
+      mr_fast_done     => dma_mr_done,
+      mr_fast_rdata    => mem9_readdata,
+      mr_fast_rdata_hi => mem9_readdata_hi_s,
       irq_dma      => irq_dma9
    );
 
@@ -2638,6 +2703,15 @@ begin
    -- Macro-off is byte-for-byte legacy acceptance: an immediate DMA to the
    -- GXFIFO aperture still retires even though timing-7 startup is disabled.
    dma_gx_write_ready <= (not h3d_service_ready) or h3d_gpu_source_ready;
+   -- A DMA IO write lands on io_bus9 through the fast lane, not through
+   -- io9_ena, so the CPU-side capture above never saw it: a game that sets
+   -- its BGxCNT/scroll/affine registers with a VBlank DMA (Mega Man ZX does
+   -- all of them that way) left the HPS mirror with zeros there, and the
+   -- screens it composes showed garbage tiles. Route every DMA write the
+   -- mirror needs through the same held valid/ready lane GXFIFO DMA uses.
+   dma_io_capture <= '1' when h3d_service_ready = '1' and
+                              h3d_gpu_write_hit(dma_io_adr, dma_io_be, h3d_engine_b_enable)
+                     else '0';
 
    -- ================= VRAM + engine A render path =================
    ivram : entity work.nds_vram
@@ -2645,7 +2719,7 @@ begin
    -- ~10 LABs this image does not currently have. See the generic's own comment
    -- in nds_vram; set it false to get the fitting configuration back at the cost
    -- of that test.
-   generic map ( is_simu => is_simu, POSTED_WRITES => true )
+   generic map ( is_simu => is_simu, POSTED_WRITES => true, RD_LINE_BUF => true )
    port map
    (
       clk => clk1x, reset => reset_boot, vramcnt => vramcnt,
@@ -2656,6 +2730,9 @@ begin
       cpu7_be => vr7_be, cpu7_din => vr7_din, cpu7_dout => vram7_dout, cpu7_done => vram7_done,
       srv_req => vsrv_req, srv_rnw => vsrv_rnw, srv_bank => vsrv_bank, srv_addr => vsrv_addr,
       srv_be => vsrv_be, srv_din => vsrv_din, srv_dout => vsrv_dout, srv_done => vsrv_done,
+      srv_dout_hi => vsrv_dout_hi,
+      srv_seq => vsrv_seq, srv_wide => vsrv_wide, srv_din_hi => vsrv_din_hi,
+      srv_be_hi => vsrv_be_hi, srv_more => vsrv_more,
       rdr_bg_req => r_bg_req, rdr_bg_addr => r_bg_addr, rdr_bg_lcdc => g_bg_lcdc,
       rdr_bg_dout => r_bg_dout, rdr_bg_done => r_bg_done,
       rdr_bg_accept => r_bg_accept,

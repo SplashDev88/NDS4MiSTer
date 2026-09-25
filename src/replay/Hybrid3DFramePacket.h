@@ -56,6 +56,10 @@ enum class RecordKind : std::uint8_t {
     GxPacked = 9,
     // Ordered execution fence, never a guest MMIO write or scanline event.
     GxReadbackFence = 10,
+    // Two consecutive full ARM9 VRAM words folded by the FPGA packer:
+    // address_or_aux = word 0's address, data = {word1, word0}, byte enable
+    // 0xf, tag = 32-bit ARM9 access, same scanline tag as a VramWrite.
+    VramWritePair = 11,
 };
 
 enum Fault : std::uint32_t {
@@ -211,6 +215,18 @@ constexpr Record pack_gx_commands(
         static_cast<std::uint64_t>(static_cast<std::uint32_t>(second.data)) |
             (static_cast<std::uint64_t>(
                  static_cast<std::uint32_t>(third.data)) << 32),
+    };
+}
+
+// One word of a VramWritePair as the ordinary VramWrite it stands for.
+constexpr Record unpack_vram_pair(const Record& record, std::size_t index)
+{
+    return Record {
+        (record.metadata & ~0xffu) |
+            static_cast<std::uint32_t>(RecordKind::VramWrite),
+        record.address_or_aux + static_cast<std::uint32_t>(index) * 4u,
+        index == 0 ? static_cast<std::uint32_t>(record.data) :
+                     static_cast<std::uint32_t>(record.data >> 32),
     };
 }
 

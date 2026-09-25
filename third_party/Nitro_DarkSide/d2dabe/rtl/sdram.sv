@@ -83,6 +83,14 @@ module sdram
 	input             ch2_req,     // request
 	input             ch2_cancel,  // cancel pending read request so it doesn't deliver ready anymore
 	input             ch2_rnw,     // 1 - read, 0 - write
+	// 64-bit write: ch2_din/ch2_be go to the even word of the 8-byte line at
+	// ch2_addr, ch2_din_hi/ch2_be_hi to the odd one, as one four-WRITE burst.
+	// ch2_addr must be 8-byte aligned. Unlike the rest of ch2 the high word is
+	// NOT latched - it is read while the burst runs - so the requester holds it
+	// until ch2_ready. Tie ch2_wide low if you do not use it.
+	input             ch2_wide,
+	input      [31:0] ch2_din_hi,
+	input       [3:0] ch2_be_hi,
 	output reg        ch2_ready,
 	output reg        ch2_ready16,
 	// The high 32 bits of the SAME burst ch2_dout already returns. BURST_LENGTH
@@ -198,12 +206,15 @@ localparam STATE_IDLE_4  = 8;
 localparam STATE_IDLE_5  = 9;
 localparam STATE_RFSH    = 10;
 localparam STATE_WAIT2   = 11;   // second tRCD cycle, only entered when TRCD_WAIT > 1
+localparam STATE_RW3     = 12;   // third and fourth WRITE of a ch2 64-bit write
+localparam STATE_RW4     = 13;
 
 
 always @(posedge clk) begin
 	reg [RDLY:0] data_ready_delay1, data_ready_delay2, data_ready_delay3;
 
 	reg        saved_wr;
+	reg        saved_wide;
 	reg [12:0] cas_addr;
 	reg [31:0] saved_data;
 	reg  [3:0] saved_be;
@@ -218,7 +229,7 @@ always @(posedge clk) begin
 	reg [31:0] pre_data;
 	reg  [3:0] pre_be;
 	reg        pre_rfsh = 0, pre_ch1 = 0, pre_ch2 = 0, pre_ch3 = 0;
-	reg        pre_chip, pre_wr;
+	reg        pre_chip, pre_wr, pre_wide;
 	reg        n_ch1, n_ch2, n_ch3;
 
 	// ch2 request contract fix (2P guest mux): a request owns its attributes.
@@ -234,6 +245,7 @@ always @(posedge clk) begin
 	reg [31:0] ch2_din_r;
 	reg  [3:0] ch2_be_r;
 	reg        ch2_rnw_r;
+	reg        ch2_wide_r;
 	reg        ch2_kill = 0;
 
 	ch1_rq <= ch1_rq | ch1_req;
@@ -282,6 +294,7 @@ always @(posedge clk) begin
 		pre_data <= ch1_din;
 		pre_be   <= 4'b1111;
 		pre_wr   <= ~ch1_rnw;
+		pre_wide <= 0;
 	end
 	else if (n_ch2) begin
 		// a request owns its attributes: live only for the same-edge pulse,
@@ -292,6 +305,7 @@ always @(posedge clk) begin
 			pre_data <= ch2_din;
 			pre_be   <= ch2_be;
 			pre_wr   <= ~ch2_rnw;
+			pre_wide <= ch2_wide & ~ch2_rnw;
 		end
 		else begin
 			{pre_cas[12:9], pre_ba, pre_a, pre_cas[8:0]} <= {2'b00, ch2_rnw_r, ch2_addr_r[25:1]};
@@ -299,6 +313,7 @@ always @(posedge clk) begin
 			pre_data <= ch2_din_r;
 			pre_be   <= ch2_be_r;
 			pre_wr   <= ~ch2_rnw_r;
+			pre_wide <= ch2_wide_r & ~ch2_rnw_r;
 		end
 	end
 	else begin
@@ -307,6 +322,7 @@ always @(posedge clk) begin
 		pre_data <= {8'hFF, ch3_din[15:8], 8'hFF, ch3_din[7:0]};
 		pre_be   <= 4'b1111;
 		pre_wr   <= ~ch3_rnw;
+		pre_wide <= 0;
 	end
 
 	if (ch2_req) begin
@@ -314,6 +330,7 @@ always @(posedge clk) begin
 		ch2_din_r  <= ch2_din;
 		ch2_be_r   <= ch2_be;
 		ch2_rnw_r  <= ch2_rnw;
+		ch2_wide_r <= ch2_wide;
 	end
 
 	ch1_ready   <= 0;
@@ -435,6 +452,7 @@ always @(posedge clk) begin
 				saved_data <= pre_data;
 				saved_be   <= pre_be;
 				saved_wr   <= pre_wr;
+				saved_wide <= pre_wide;
 				command    <= CMD_ACTIVE;
 				state      <= STATE_WAIT;
 
@@ -501,18 +519,25 @@ always @(posedge clk) begin
 				// 6.4 cycles). The old 6-cycle slot fired ACT at 59.6ns,
 				// corrupting rows under sustained EWRAM write traffic --
 				// harmless in 1P, whose gameplay never writes ch2.
-				state       <= STATE_IDLE_4;
-				SDRAM_A[10] <= 1;
+				//
+				// A 64-bit write (saved_wide) is the same WRITE, but its burst
+				// goes on through RW3/RW4: no auto-precharge yet (A10 stays 0
+				// from the column address) and no ready. The command, DQM and
+				// dq_oe are identical either way, which keeps saved_wide out of
+				// the I/O-register cones - those are the 134 MHz critical paths.
+				state       <= saved_wide ? STATE_RW3 : STATE_IDLE_4;
+				SDRAM_A[10] <= ~saved_wide;
 				SDRAM_A[0]  <= 1;
 				SDRAM_A[12:11] <= ~saved_be[3:2]; // DQM byte masks for the high word
 				command     <= CMD_WRITE;
+				dq_pre      <= ch2_din_hi[15:0];  // only used by RW3
 				dq_oe       <= 1;
-				ch2_ready   <= 1;
-				ch2_ready16 <= 1;
+				ch2_ready   <= ~saved_wide;
+				ch2_ready16 <= ~saved_wide;
 				// a write returns no data; raise the 64-bit done too so a
 				// pair-mode caller retires writes on the same signal it
 				// retires reads on
-				ch2_ready64 <= 1;
+				ch2_ready64 <= ~saved_wide;
 			end
 			else begin
 				state       <= STATE_IDLE_2;
@@ -522,6 +547,29 @@ always @(posedge clk) begin
 				dq_oe       <= 1;
 				ch3_ready   <= 1;
 			end
+		end
+
+		// the odd word of a ch2 64-bit write, columns +2 and +3. The last
+		// WRITE auto-precharges, and IDLE_4 gives it the same tWR+tRP slot
+		// RW2 gives a 32-bit write; tRC is only easier with the burst longer.
+		STATE_RW3: begin
+			state          <= STATE_RW4;
+			SDRAM_A[1:0]   <= 2'b10;
+			SDRAM_A[12:11] <= ~ch2_be_hi[1:0];
+			command        <= CMD_WRITE;
+			dq_pre         <= ch2_din_hi[31:16];
+			dq_oe          <= 1;
+		end
+		STATE_RW4: begin
+			state          <= STATE_IDLE_4;
+			SDRAM_A[10]    <= 1;
+			SDRAM_A[1:0]   <= 2'b11;
+			SDRAM_A[12:11] <= ~ch2_be_hi[3:2];
+			command        <= CMD_WRITE;
+			dq_oe          <= 1;
+			ch2_ready      <= 1;
+			ch2_ready16    <= 1;
+			ch2_ready64    <= 1;
 		end
 	endcase
 

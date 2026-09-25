@@ -71,6 +71,13 @@ entity nds_dma9 is
       -- uses this as ready/valid `valid`; io_fast_ena below remains the actual
       -- peripheral accept and is therefore qualified by gx_write_ready.
       gx_write_valid : out std_logic := '0';
+      -- '1' when the IO write presented on io_fast_adr/io_fast_be must also
+      -- reach the product event gate (2D engine registers, VRAMCNT, POWCNT1,
+      -- 3D registers...). Such a write takes the same held valid/ready
+      -- handshake as a GXFIFO write, so the HPS mirror sees every register a
+      -- DMA writes, not only the ones the CPU writes. Combinational from the
+      -- address this module is presenting; the default keeps it GXFIFO-only.
+      io_write_capture : in std_logic := '0';
 
       -- membus grant: dma_on pauses the CPU, the bus is ours once idle
       cpu_bus_idle : in  std_logic;
@@ -144,6 +151,35 @@ entity nds_dma9 is
       -- nds_vram acceptance and is qualified by wok for posted writes.
       vram_write_valid : out std_logic := '0';
 
+      -- clk1x fast lane straight into nds_mainram's ARM9 port, the third of the
+      -- same kind. Through the membus a main-RAM word costs about 12 clk1x
+      -- (request CDC into the island, the cache's bypass path, nds_mainram,
+      -- then done back across both bridges) where nds_mainram alone answers in
+      -- about 4. At 12, Mega Man ZX's 41 KB of VBlank uploads run ~100 lines
+      -- - past the end of VBlank - and the top of every frame is still in the
+      -- forced blank its handler set, which the LCD shows as white.
+      --
+      -- mr_fast_ok says the lane may be used: the DMA owns the bus AND the
+      -- ARM9 cache has gone idle (a posted write or the tail of a line fill
+      -- can still be using nds_mainram after the CPU is released). The CPU is
+      -- paused for the whole grant, so once idle the cache stays idle. Without
+      -- it every access takes the membus exactly as before.
+      --
+      -- Reads always fetch the aligned 8-byte pair (mem9_pair) into a one-
+      -- block buffer, so a 32-bit transfer needs one request per two units and
+      -- a 16-bit one per four. The buffer is dropped at every LATCH (the CPU
+      -- may have run since) and on any DMA write to main RAM.
+      mr_fast_ok      : in  std_logic := '0';
+      mr_fast_ena     : out std_logic := '0';
+      mr_fast_rnw     : out std_logic := '1';
+      mr_fast_addr    : out std_logic_vector(21 downto 2) := (others => '0');
+      mr_fast_be      : out std_logic_vector(3 downto 0) := "1111";
+      mr_fast_wdata   : out std_logic_vector(31 downto 0) := (others => '0');
+      mr_fast_pair    : out std_logic := '0';
+      mr_fast_done    : in  std_logic := '0';
+      mr_fast_rdata   : in  std_logic_vector(31 downto 0) := (others => '0');
+      mr_fast_rdata_hi : in std_logic_vector(31 downto 0) := (others => '0');
+
       irq_dma      : out std_logic_vector(3 downto 0) := (others => '0')
    );
 end entity;
@@ -185,12 +221,28 @@ architecture arch of nds_dma9 is
    -- RD_VRW / WR_VRW are the VRAM fast lane. Unlike IO, nds_vram takes several
    -- cycles and pulses done, so these do wait - just without the island in the
    -- middle.
-   type t_state is (IDLE, GRANT, LATCH, RD, RD_WAIT, RD_VRW,
-                    WR, WR_WAIT, WR_VRW, GX_PAUSE, COMPLETE);
+   -- RD_MRW / WR_MRW are the main-RAM fast lane's waits.
+   type t_state is (IDLE, GRANT, LATCH, RD, RD_WAIT, RD_VRW, RD_MRW,
+                    WR, WR_WAIT, WR_VRW, WR_MRW, GX_PAUSE, COMPLETE);
    signal state  : t_state := IDLE;
    signal active : integer range 0 to 3 := 0;
 
    signal rdval  : std_logic_vector(31 downto 0) := (others => '0');
+
+   -- main-RAM read buffer: one aligned 8-byte block
+   signal pf_valid : std_logic := '0';
+   signal pf_blk   : unsigned(21 downto 3) := (others => '0');
+   signal pf_data  : std_logic_vector(63 downto 0) := (others => '0');
+   -- the NEXT block, fetched while the current one's units are being written
+   signal pn_valid : std_logic := '0';
+   signal pn_blk   : unsigned(21 downto 3) := (others => '0');
+   signal pn_data  : std_logic_vector(63 downto 0) := (others => '0');
+   -- one fast-lane op in flight (nds_mainram holds exactly one ARM9 request):
+   -- a read (demand or prefetch) or a posted write
+   signal mr_busy     : std_logic := '0';
+   signal mr_op_read  : std_logic := '0';
+   signal mr_req_pref : std_logic := '0';
+   signal mr_req_blk  : unsigned(21 downto 3) := (others => '0');
 
    -- one cycle per retired unit, for the census below
    signal unit_ret : std_logic := '0';
@@ -222,6 +274,29 @@ architecture arch of nds_dma9 is
    function is_vram(a : unsigned(27 downto 0)) return boolean is
    begin
       return a(27 downto 24) = 6;
+   end function;
+
+   -- main RAM is 0x02000000-0x02FFFFFF (4 MB, mirrored)
+   function is_main(a : unsigned(27 downto 0)) return boolean is
+   begin
+      return a(27 downto 24) = 2;
+   end function;
+
+   -- the unit at address a out of an 8-byte block, rotated down like every
+   -- other read path here: a halfword ends up in the low half
+   function block_unit(blk : std_logic_vector(63 downto 0);
+                       a   : unsigned(27 downto 0);
+                       w32 : std_logic) return std_logic_vector is
+      variable w : std_logic_vector(31 downto 0);
+   begin
+      if (a(2) = '1') then w := blk(63 downto 32); else w := blk(31 downto 0); end if;
+      if (w32 = '1') then
+         return w;
+      elsif (a(1) = '1') then
+         return x"0000" & w(31 downto 16);
+      else
+         return x"0000" & w(15 downto 0);
+      end if;
    end function;
 
    -- ARM9 GXFIFO is the 0x04000400..0x0400043F write aperture. Mode-7
@@ -271,8 +346,8 @@ begin
    begin
       if rising_edge(clk) then
          if (state /= IDLE)     then cy := cy + 1; end if;
-         if (state = RD_WAIT or state = RD_VRW) then rw := rw + 1; end if;
-         if (state = WR_WAIT or state = WR_VRW) then ww := ww + 1; end if;
+         if (state = RD_WAIT or state = RD_VRW or state = RD_MRW) then rw := rw + 1; end if;
+         if (state = WR_WAIT or state = WR_VRW or state = WR_MRW) then ww := ww + 1; end if;
          if (unit_ret = '1')    then un := un + 1; end if;
          if (state = COMPLETE and un > 0) then
             report "dma9 census ch" & integer'image(active) & ": " &
@@ -300,7 +375,8 @@ begin
    -- decode -> back here to be captured. That is the shape of a single-cycle bus
    -- and it is the thing to watch in the fit, not a functional risk.
    gx_write_valid_s <= '1' when state = WR and
-                               is_gxfifo(ch(active).cur_dst) else '0';
+                               (is_gxfifo(ch(active).cur_dst) or
+                                (is_io(ch(active).cur_dst) and io_write_capture = '1')) else '0';
    gx_write_valid <= gx_write_valid_s;
    io_fast_ena <= '1' when (state = RD and is_io(ch(active).cur_src)) or
                            (state = WR and is_io(ch(active).cur_dst) and
@@ -350,7 +426,9 @@ begin
       x"7" when WR_WAIT,
       x"8" when WR_VRW,
       x"9" when GX_PAUSE,
-      x"A" when COMPLETE;
+      x"A" when COMPLETE,
+      x"B" when RD_MRW,
+      x"C" when WR_MRW;
 
    -- ================= register decode =================
    process (all)
@@ -406,6 +484,9 @@ begin
       variable v_inc   : integer;
       variable lane16  : std_logic_vector(15 downto 0);
       variable v_total : unsigned(21 downto 0);
+      variable v_blk   : unsigned(21 downto 3);
+      variable v_next  : unsigned(21 downto 3);
+      variable v_left  : integer range 0 to 4;
 
       -- End of a unit: step both pointers, drop the count and either start the
       -- next read or finish. This used to be its own NEXTUNIT state, which cost a
@@ -481,12 +562,16 @@ begin
 
          irq_dma     <= (others => '0');
          mb_ena        <= '0';
+         mr_fast_ena   <= '0';
          unit_ret      <= '0';
          trig_gx_d     <= trig_gx;
 
          if (reset = '1') then
             ch     <= (others => CHAN_INIT);
             state  <= IDLE;
+            pf_valid <= '0';
+            pn_valid <= '0';
+            mr_busy  <= '0';
             dma_on <= '0';
             dma_bus_on <= '0';
             gx_chunk_rem <= (others => '0');
@@ -580,6 +665,12 @@ begin
             case state is
 
                when IDLE =>
+                 if (mr_busy = '1') then
+                  -- a posted main-RAM write or a prefetch is still in flight on
+                  -- the fast lane: keep the bus (and so the mem9 port) until it
+                  -- retires, then arbitrate
+                  null;
+                 else
                   dma_bus_on <= '0';
                   v_got  := '0';
                   v_pick := 0;
@@ -596,6 +687,7 @@ begin
                   else
                      dma_on <= '0';
                   end if;
+                 end if;
 
                when GRANT =>
                   if (cpu_bus_idle = '1') then
@@ -637,6 +729,9 @@ begin
                   else
                      v_total := ch(active).remain;
                   end if;
+                  -- the CPU may have written main RAM since the last grant
+                  pf_valid <= '0';
+                  pn_valid <= '0';
                   if (ch(active).timing = "111") then
                      if (v_total > to_unsigned(112, v_total'length)) then
                         gx_chunk_rem <= to_unsigned(112, gx_chunk_rem'length);
@@ -663,6 +758,65 @@ begin
                      state <= WR;
                   elsif (is_vram(ch(active).cur_src)) then
                      state <= RD_VRW;
+                  elsif (is_main(ch(active).cur_src) and mr_fast_ok = '1') then
+                     -- Main RAM through the fast lane. The unit waits here, in
+                     -- RD, for its block: from pf, from the prefetched pn, or
+                     -- from a demand read. Whenever the lane is free and the
+                     -- transfer continues past this block, the next block is
+                     -- fetched ahead so its latency overlaps this block's
+                     -- writes.
+                     v_blk := ch(active).cur_src(21 downto 3);
+                     if (ch(active).srcctl = "01") then
+                        v_next := v_blk - 1;
+                     else
+                        v_next := v_blk + 1;
+                     end if;
+                     if (ch(active).word32 = '1') then
+                        if (ch(active).srcctl = "01") then
+                           v_left := 1 + to_integer(ch(active).cur_src(2 downto 2));
+                        else
+                           v_left := 2 - to_integer(ch(active).cur_src(2 downto 2));
+                        end if;
+                     else
+                        if (ch(active).srcctl = "01") then
+                           v_left := 1 + to_integer(ch(active).cur_src(2 downto 1));
+                        else
+                           v_left := 4 - to_integer(ch(active).cur_src(2 downto 1));
+                        end if;
+                     end if;
+                     if (pf_valid = '1' and v_blk = pf_blk) then
+                        rdval <= block_unit(pf_data, ch(active).cur_src, ch(active).word32);
+                        state <= WR;
+                        if (mr_busy = '0' and ch(active).srcctl /= "10" and
+                            ch(active).timing /= "111" and
+                            ch(active).remain > v_left and
+                            not (pn_valid = '1' and pn_blk = v_next)) then
+                           mr_fast_ena  <= '1';
+                           mr_fast_rnw  <= '1';
+                           mr_fast_pair <= '1';
+                           mr_fast_addr <= std_logic_vector(v_next) & '0';
+                           mr_fast_be   <= "1111";
+                           mr_busy      <= '1';
+                           mr_op_read   <= '1';
+                           mr_req_pref  <= '1';
+                           mr_req_blk   <= v_next;
+                        end if;
+                     elsif (pn_valid = '1' and v_blk = pn_blk) then
+                        pf_valid <= '1';
+                        pf_blk   <= pn_blk;
+                        pf_data  <= pn_data;
+                        pn_valid <= '0';
+                     elsif (mr_busy = '0') then
+                        mr_fast_ena  <= '1';
+                        mr_fast_rnw  <= '1';
+                        mr_fast_pair <= '1';
+                        mr_fast_addr <= std_logic_vector(v_blk) & '0';
+                        mr_fast_be   <= "1111";
+                        mr_busy      <= '1';
+                        mr_op_read   <= '1';
+                        mr_req_pref  <= '0';
+                        mr_req_blk   <= v_blk;
+                     end if;
                   else
                      mb_ena     <= '1';
                      mb_rnw     <= '1';
@@ -684,6 +838,16 @@ begin
                      state <= WR;
                   end if;
 
+               when RD_MRW =>
+                  if (mr_fast_done = '1') then
+                     pf_valid <= '1';
+                     pf_blk   <= ch(active).cur_src(21 downto 3);
+                     pf_data  <= mr_fast_rdata_hi & mr_fast_rdata;
+                     rdval    <= block_unit(mr_fast_rdata_hi & mr_fast_rdata,
+                                            ch(active).cur_src, ch(active).word32);
+                     state    <= WR;
+                  end if;
+
                when RD_VRW =>
                   if (vram_fast_done = '1') then
                      -- same rotation as the IO read above, for the same reason
@@ -699,8 +863,7 @@ begin
 
                when WR =>
                   if (is_io(ch(active).cur_dst)) then
-                     if (is_gxfifo(ch(active).cur_dst) and
-                         gx_write_ready = '0') then
+                     if (gx_write_valid_s = '1' and gx_write_ready = '0') then
                         -- io_fast_ena is suppressed too, so the sink cannot
                         -- sample this payload twice while transport is full.
                         null;
@@ -721,7 +884,41 @@ begin
                         -- this one cycle and nds_vram latched it the ordinary way
                         state <= WR_VRW;
                      end if;
+                  elsif (is_main(ch(active).cur_dst) and mr_fast_ok = '1' and
+                         ch(active).timing /= "111") then
+                     -- Posted: the unit retires as soon as nds_mainram has the
+                     -- write, and the lane's next op (read or write) waits for
+                     -- it. A block this write lands in is no longer fresh.
+                     if (mr_busy = '0') then
+                        if (ch(active).cur_dst(21 downto 3) = pf_blk) then
+                           pf_valid <= '0';
+                        end if;
+                        if (ch(active).cur_dst(21 downto 3) = pn_blk) then
+                           pn_valid <= '0';
+                        end if;
+                        mr_fast_ena   <= '1';
+                        mr_fast_rnw   <= '0';
+                        mr_fast_pair  <= '0';
+                        mr_fast_addr  <= std_logic_vector(ch(active).cur_dst(21 downto 2));
+                        mr_fast_be    <= be_of(ch(active).cur_dst, ch(active).word32);
+                        if (ch(active).word32 = '1') then
+                           mr_fast_wdata <= rdval;
+                        else
+                           mr_fast_wdata <= rdval(15 downto 0) & rdval(15 downto 0);
+                        end if;
+                        mr_busy    <= '1';
+                        mr_op_read <= '0';
+                        retire_unit;
+                     end if;
                   else
+                     if (is_main(ch(active).cur_dst) and
+                         ch(active).cur_dst(21 downto 3) = pf_blk) then
+                        pf_valid <= '0';
+                     end if;
+                     if (is_main(ch(active).cur_dst) and
+                         ch(active).cur_dst(21 downto 3) = pn_blk) then
+                        pn_valid <= '0';
+                     end if;
                      mb_ena <= '1';
                      mb_rnw <= '0';
                      if (ch(active).word32 = '1') then
@@ -748,6 +945,11 @@ begin
                      retire_unit;
                   end if;
 
+               when WR_MRW =>
+                  if (mr_fast_done = '1') then
+                     retire_unit;
+                  end if;
+
                when GX_PAUSE =>
                   ch(active).pend <= '0';
                   dma_bus_on <= '0';
@@ -755,6 +957,11 @@ begin
                   state      <= IDLE;
 
                when COMPLETE =>
+                 if (mr_busy = '1') then
+                  -- the last posted write (or a prefetch) is still in flight;
+                  -- the channel is not done until main RAM has it
+                  null;
+                 else
                   -- repeat keeps the channel armed for the next trigger;
                   -- immediate transfers always disable (DualSOUP)
                   if (ch(active).repeat = '0' or ch(active).timing = "000") then
@@ -777,8 +984,26 @@ begin
                   dma_bus_on <= '0';
                   gx_chunk_rem <= (others => '0');
                   state      <= IDLE;
+                 end if;
 
             end case;
+
+            -- fast-lane completion, after the FSM so the op it retires is the
+            -- one the FSM saw as in flight this cycle
+            if (mr_fast_done = '1') then
+               mr_busy <= '0';
+               if (mr_op_read = '1') then
+                  if (mr_req_pref = '1') then
+                     pn_valid <= '1';
+                     pn_blk   <= mr_req_blk;
+                     pn_data  <= mr_fast_rdata_hi & mr_fast_rdata;
+                  else
+                     pf_valid <= '1';
+                     pf_blk   <= mr_req_blk;
+                     pf_data  <= mr_fast_rdata_hi & mr_fast_rdata;
+                  end if;
+               end if;
+            end if;
 
          end if;
       end if;

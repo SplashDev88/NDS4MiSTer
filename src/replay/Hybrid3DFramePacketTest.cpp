@@ -183,6 +183,55 @@ void test_readback_fences()
     }
 }
 
+void test_vram_pair_and_fence()
+{
+    static_assert(static_cast<unsigned>(RecordKind::GxReadbackFence) == 10);
+    static_assert(static_cast<unsigned>(RecordKind::VramWritePair) == 11);
+    const Record pair{make_record_metadata(RecordKind::VramWritePair, 2, 15),
+                      0x06000004, 0x8765432112345678ull};
+    for (unsigned scanline : {0u, 191u, 262u}) {
+        auto tagged = pair;
+        tagged.metadata |= RecordScanlineValid | (scanline << 20);
+        const auto lo = unpack_vram_pair(tagged, 0);
+        const auto hi = unpack_vram_pair(tagged, 1);
+        if (lo.address_or_aux != 0x06000004 || hi.address_or_aux != 0x06000008 ||
+            lo.data != 0x12345678u || hi.data != 0x87654321u ||
+            record_kind(lo) != RecordKind::VramWrite ||
+            record_tag(hi) != 2 || record_byte_enable(lo) != 15 ||
+            record_scanline(hi) != scanline)
+            die("VRAM pair lost word order, access width or scanline");
+        Fixture fixture;
+        const Record fence{10, 123, 0};
+        fixture.publish(1, 10, FlagContinuation, {tagged, fence});
+        Consumer consumer(fixture.bytes, MappingBytes);
+        PacketHeader header{};
+        std::vector<Record> records;
+        if (!consumer.initialize(fixture.session) || !consumer.begin(header, records) ||
+            records.size() != 2 || record_kind(records[0]) != RecordKind::VramWritePair ||
+            record_kind(records[1]) != RecordKind::GxReadbackFence ||
+            !consumer.accept_all_records() || !consumer.acknowledge())
+            die("VRAM pair and ordered readback fence did not coexist");
+    }
+    for (unsigned malformed = 0; malformed < 6; ++malformed) {
+        auto record = pair;
+        switch (malformed) {
+        case 0: record.metadata = make_record_metadata(RecordKind::VramWritePair, 0, 15); break;
+        case 1: record.metadata = make_record_metadata(RecordKind::VramWritePair, 1, 15); break;
+        case 2: record.metadata = make_record_metadata(RecordKind::VramWritePair, 6, 15); break;
+        case 3: record.metadata = make_record_metadata(RecordKind::VramWritePair, 2, 3); break;
+        case 4: record.address_or_aux += 2; break;
+        default: record.metadata |= 0x8000u; break;
+        }
+        Fixture fixture;
+        fixture.publish(1, 10, FlagFrameEnd, {record});
+        Consumer consumer(fixture.bytes, MappingBytes);
+        PacketHeader header{};
+        if (!consumer.initialize(fixture.session) || consumer.begin(header) ||
+            !(consumer.local_faults() & FaultBadRecord))
+            die("malformed VRAM pair accepted");
+    }
+}
+
 void test_readback_publication()
 {
     namespace rb = nds4mister::h3d::gx_readback;
@@ -752,6 +801,7 @@ int main(int argc, char** argv)
     test_known_rtl_crc();
     test_packed_gx_record();
     test_readback_fences();
+    test_vram_pair_and_fence();
     test_readback_publication();
     test_one_frame();
     test_direct_packet_copy();

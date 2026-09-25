@@ -1244,6 +1244,10 @@ private:
         arm_video_completed_index_ = -1;
         arm_video_sparse_frame_ = 0;
         arm_video_sparse_last_line_ = -1;
+        arm_video_last_line_ = -1;
+        late_blank_armed_[0] = late_blank_armed_[1] = false;
+        late_blank_hold_ = false;
+        late_blank_held_.clear();
         engine_b_latest_ready_ = false;
         engine_b_latest_screen_ = false;
         engine_b_latest_frame_number_ = 0;
@@ -2481,6 +2485,8 @@ private:
         std::uint32_t before_word = 0;
         if (effective_word)
             std::memcpy(&before_word, effective_word, sizeof(before_word));
+        const auto blank_before =
+            arm_video_engine_b_only_ ? 0u : forced_blank_bits();
         if (access->bytes == 1)
             nds_->ARM9Write8(
                 access->address, static_cast<melonDS::u8>(access->value));
@@ -2528,13 +2534,109 @@ private:
                         access->address & 0x7ffu, access->bytes);
             }
         }
+        // Late forced-blank recovery: an engine entering forced blank during
+        // VBlank is a candidate; the write that takes the last candidate out
+        // of it releases any held line phases.
+        if (!arm_video_engine_b_only_) {
+            const auto blank_after = forced_blank_bits();
+            if (blank_after != blank_before) {
+                const auto entered = blank_after & ~blank_before;
+                if (arm_video_last_line_ >= 192) {
+                    if (entered & 1u) late_blank_armed_[0] = true;
+                    if (entered & 2u) late_blank_armed_[1] = true;
+                }
+                if (late_blank_hold_ && !late_blank_blocked())
+                    return release_late_blank();
+            }
+        }
+        return true;
+    }
+
+    // DISPCNT bit 7 (forced blank) of engine A (bit 0) and engine B (bit 1).
+    unsigned forced_blank_bits() const
+    {
+        return ((nds_->GPU.GPU2D_A.DispCnt >> 7) & 1u) |
+               (((nds_->GPU.GPU2D_B.DispCnt >> 7) & 1u) << 1);
+    }
+
+    bool late_blank_blocked() const
+    {
+        const auto blank = forced_blank_bits();
+        return (late_blank_armed_[0] && (blank & 1u)) ||
+               (late_blank_armed_[1] && (blank & 2u));
+    }
+
+    // melonDS delays DISPCNT by two lines (DispCntLatch): forced blank holds,
+    // and layers stay off, for two lines after the write that clears it. For
+    // an engine whose clear is being treated as having landed before line 0,
+    // settle that pipeline now so line 0 already sees it.
+    void settle_late_blank_latches()
+    {
+        auto settle = [](auto& engine) {
+            for (auto& latch : engine.DispCntLatch) latch = engine.DispCnt;
+        };
+        if (late_blank_armed_[0] && !(forced_blank_bits() & 1u))
+            settle(nds_->GPU.GPU2D_A);
+        if (late_blank_armed_[1] && !(forced_blank_bits() & 2u))
+            settle(nds_->GPU.GPU2D_B);
+    }
+
+    bool release_late_blank()
+    {
+        settle_late_blank_latches();
+        late_blank_hold_ = false;
+        late_blank_armed_[0] = late_blank_armed_[1] = false;
+        ++late_blank_releases_;
+        auto held = std::move(late_blank_held_);
+        late_blank_held_.clear();
+        for (const auto& phase : held) {
+            if (!apply_arm_video_phase_line(phase)) return false;
+            arm_video_last_line_ = static_cast<int>(phase.address_or_aux);
+        }
+        return true;
+    }
+
+    // Late forced-blank recovery. Games commonly set DISPCNT forced blank at
+    // the start of VBlank, upload the next frame's graphics, and clear it
+    // again before VBlank ends. When the FPGA runs that handler slower than a
+    // DS (DMA into SDRAM-backed VRAM, a heavy frame), the clear can land a few
+    // lines into the next frame, and those lines are composed white.
+    //
+    // So when a frame starts with forced blank still set on an engine that
+    // set it during the previous VBlank, its line phases are held while the
+    // writes behind them keep being applied. The moment the flagged engines
+    // leave forced blank, the held lines are composed with that state - the
+    // frame the game meant to show had its handler finished in time. An
+    // engine the game blanks deliberately never set the bit in that VBlank,
+    // or stays blanked past LateBlankHoldLines, and composes unchanged.
+    bool apply_full_video_phase(const frame_packet::Record& record)
+    {
+        const auto line = record.address_or_aux;
+        if (late_blank_hold_) {
+            late_blank_held_.push_back(record);
+            if (line < LateBlankHoldLines) return true;
+            return release_late_blank();
+        }
+        if (line == 0 && arm_video_phase_started_) {
+            if (late_blank_blocked()) {
+                late_blank_hold_ = true;
+                late_blank_held_.clear();
+                late_blank_held_.push_back(record);
+                return true;
+            }
+            // cleared in time, but perhaps only in the last lines of VBlank
+            settle_late_blank_latches();
+            late_blank_armed_[0] = late_blank_armed_[1] = false;
+        }
+        if (!apply_arm_video_phase_line(record)) return false;
+        arm_video_last_line_ = static_cast<int>(line);
         return true;
     }
 
     bool apply_arm_video_phase(const frame_packet::Record& record)
     {
         if (!arm_video_engine_b_only_)
-            return apply_arm_video_phase_line(record);
+            return apply_full_video_phase(record);
 
         auto target_line = record.address_or_aux;
         const auto display_frame = static_cast<std::uint32_t>(record.data);
@@ -2893,6 +2995,7 @@ private:
         const bool scanline_ordered_write =
             kind == frame_packet::RecordKind::GxRegister ||
             kind == frame_packet::RecordKind::VramWrite ||
+            kind == frame_packet::RecordKind::VramWritePair ||
             kind == frame_packet::RecordKind::VramMap ||
             kind == frame_packet::RecordKind::Gpu2DRegister ||
             kind == frame_packet::RecordKind::PaletteWrite ||
@@ -2903,7 +3006,8 @@ private:
         if (kind != frame_packet::RecordKind::GxCommand &&
             kind != frame_packet::RecordKind::GxPacked)
             flush_pending_geometry();
-        if (kind != frame_packet::RecordKind::VramWrite)
+        if (kind != frame_packet::RecordKind::VramWrite &&
+            kind != frame_packet::RecordKind::VramWritePair)
             flush_external_vram_revisions();
         switch (kind) {
         case frame_packet::RecordKind::GxCommand: {
@@ -2967,6 +3071,23 @@ private:
                      : EventType::Arm9VramWrite,
                 timestamp);
             return apply_vram(event, arm7);
+        }
+        case frame_packet::RecordKind::VramWritePair: {
+            // Two consecutive full ARM9 words folded by the FPGA packer;
+            // apply them exactly as the two VramWrites they replace.
+            if (packet_saw_swap_)
+                return fail(
+                    FaultBadEvent,
+                    "record followed SWAP_BUFFERS in one frame packet");
+            for (std::size_t index = 0; index < 2; ++index) {
+                const auto word = frame_packet::unpack_vram_pair(record, index);
+                if (!valid_packet_write(word) || packet_is_arm7(word))
+                    return fail(FaultBadEvent, "invalid VRAM pair record");
+                if (!apply_vram(packet_write_event(
+                        word, EventType::Arm9VramWrite, timestamp), false))
+                    return false;
+            }
+            return true;
         }
         case frame_packet::RecordKind::VramMap: {
             if (packet_saw_swap_)
@@ -5046,6 +5167,15 @@ private:
     int arm_video_completed_index_ = -1;
     std::uint32_t arm_video_sparse_frame_ = 0;
     int arm_video_sparse_last_line_ = -1;
+    // Late forced-blank recovery (see apply_full_video_phase). The full-video
+    // path's most recent composed LCD line, which engines set forced blank
+    // during the preceding VBlank, and the line-zero phases held back.
+    static constexpr std::uint32_t LateBlankHoldLines = 64;
+    int arm_video_last_line_ = -1;
+    bool late_blank_armed_[2] = {false, false};
+    bool late_blank_hold_ = false;
+    std::vector<frame_packet::Record> late_blank_held_;
+    std::uint64_t late_blank_releases_ = 0;
     std::mutex engine_b_mutex_;
     std::unique_ptr<PlaneBuffer> engine_b_render_frame_ {
         new PlaneBuffer {}};
@@ -5935,7 +6065,31 @@ void run_matched_display_test(bool full_rate = false)
             records.push_back(packet_record(frame_packet::RecordKind::HBlank,
                 0, 0, line, frame));
         }
-        fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        // The candidate takes the new packed VRAM transport; the oracle
+        // still replays each original word. Compare every published pixel.
+        std::vector<frame_packet::Record> packed_records;
+        for (std::size_t i = 0; i < records.size(); ++i) {
+            const auto& first = records[i];
+            if (i + 1 < records.size() &&
+                frame_packet::record_kind(first) == frame_packet::RecordKind::VramWrite &&
+                frame_packet::record_tag(first) == 2 &&
+                frame_packet::record_byte_enable(first) == 15 &&
+                records[i+1].metadata == first.metadata &&
+                records[i+1].address_or_aux == first.address_or_aux + 4) {
+                packed_records.push_back(frame_packet::Record {
+                    (first.metadata & ~0xffu) |
+                        static_cast<std::uint32_t>(frame_packet::RecordKind::VramWritePair),
+                    first.address_or_aux,
+                    static_cast<std::uint32_t>(first.data) |
+                        (std::uint64_t{static_cast<std::uint32_t>(records[i+1].data)} << 32)});
+                ++i;
+            } else {
+                packed_records.push_back(first);
+            }
+        }
+        if (frame == 1 && packed_records.size() == records.size())
+            self_test_fail("matched VRAM pair oracle had no packed records");
+        fixture.publish(frame, frame, frame_packet::FlagFrameEnd, packed_records);
         oracle_fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
         if (service->poll() != PollResult::Applied ||
             oracle->poll() != PollResult::Applied)

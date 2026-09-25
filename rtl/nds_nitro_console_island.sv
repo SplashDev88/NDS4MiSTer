@@ -693,12 +693,16 @@ wire  [1:0] vsrv_bank_c;
 wire [14:0] vsrv_addr_c;
 wire  [3:0] vsrv_be_c;
 wire [31:0] vsrv_din_c;
+wire        vsrv_seq_c, vsrv_wide_c, vsrv_more_c;
+wire [31:0] vsrv_din_hi_c;
+wire  [3:0] vsrv_be_hi_c;
 wire        vrsrv_req_c;
 wire  [1:0] vrsrv_bank_c;
 wire [13:0] vrsrv_addr_c;
 wire        vrsrv_ready_c;
 
 reg  [31:0] vsrv_dout_r;
+reg  [31:0] vsrv_dout_hi_r; // the rest of the line, for nds_vram's RD_LINE_BUF
 reg  [63:0] vrsrv_dout_r;   // 64-bit A..D line, see nds_vram's rsrv_* port
 reg         vsrv_done_r,  vrsrv_done_r;
 
@@ -713,18 +717,30 @@ wire [63:0] sd_ch1_dout;
 wire        sd_ch1_accept;
 
 // ---- vsrv arbiter: park main RAM, run one ch2 op, hand ch2 back ----
+// A_HOLD keeps main RAM parked for a few cycles after an op when nds_vram says
+// more srv work is already waiting (vsrv_more). The next op then goes straight
+// to SDRAM: parking takes more than a clk1x period, which was as long as the
+// SDRAM write itself, and a DMA into banks A..D pays it for every word.
 localparam A_IDLE  = 2'd0;
 localparam A_DRAIN = 2'd1;
 localparam A_WAIT  = 2'd2;
+localparam A_HOLD  = 2'd3;
+// long enough for the next op to arrive when nds_vram goes through IDLE for it
+// (done, the clk1x edge that sees it, one more clk1x edge, seq detect, pend)
+localparam [3:0] HOLD_CYCLES = 4'd12;
 
 reg  [1:0] arb_state = A_IDLE;
-reg        vs_req_d = 0, vs_pend = 0, vs_fin = 0;
+reg        vs_seq_d = 0, vs_pend = 0, vs_fin = 0;
 reg        sd_vs_req = 0;
 reg [26:0] vs_adr;
 reg        vs_rnw;
 reg  [3:0] vs_be;
 reg [31:0] vs_din;
+reg        vs_wide;
+reg  [3:0] vs_be_hi;
+reg [31:0] vs_din_hi;
 reg  [2:0] drain_cnt;
+reg  [3:0] hold_cnt;
 
 wire vs_owns = (arb_state == A_WAIT);
 wire mr_done32 = sd_ch2_ready & ~vs_owns;
@@ -735,7 +751,9 @@ wire mr_done64 = sd_ch2_ready64 & ~vs_owns;
 always @(posedge clk_mem or posedge console_reset_mem) begin
 	if (console_reset_mem) begin
 		arb_state <= A_IDLE;
-		vs_req_d <= 0;
+		// tracks rather than clears: nds_vram's toggle is not reset with us,
+		// and a stale difference would start an op nobody asked for
+		vs_seq_d <= vsrv_seq_c;
 		vs_pend <= 0;
 		vs_fin <= 0;
 		sd_vs_req <= 0;
@@ -743,21 +761,32 @@ always @(posedge clk_mem or posedge console_reset_mem) begin
 		vs_rnw <= 0;
 		vs_be <= 0;
 		vs_din <= 0;
+		vs_wide <= 0;
+		vs_be_hi <= 0;
+		vs_din_hi <= 0;
 		drain_cnt <= 0;
+		hold_cnt <= 0;
 		mainram_allow <= 1;
 		vsrv_dout_r <= 0;
+		vsrv_dout_hi_r <= 0;
 		vsrv_done_r <= 0;
 	end else begin
-		vs_req_d  <= vsrv_req_c;
+		vs_seq_d  <= vsrv_seq_c;
 		sd_vs_req <= 0;
 
-	// vsrv_req is clk1x-registered (CLKMEM_RATIO clkMem cycles wide) - edge detect
-	if (vsrv_req_c & ~vs_req_d) begin
+	// A new op is a CHANGE of vsrv_seq, which is clk1x-registered and so stable
+	// for CLKMEM_RATIO clkMem cycles. It used to be a rising edge of vsrv_req;
+	// nds_vram now chains posted-write drains with vsrv_req held high, and an
+	// edge detect never sees those.
+	if (vsrv_seq_c != vs_seq_d) begin
 		vs_pend <= 1;
 		vs_adr  <= {8'd0, vsrv_bank_c, vsrv_addr_c, 2'b00};
 		vs_rnw  <= vsrv_rnw_c;
 		vs_be   <= vsrv_be_c;
 		vs_din  <= vsrv_din_c;
+		vs_wide <= vsrv_wide_c & ~vsrv_rnw_c;
+		vs_be_hi  <= vsrv_be_hi_c;
+		vs_din_hi <= vsrv_din_hi_c;
 	end
 
 	case (arb_state)
@@ -785,11 +814,31 @@ always @(posedge clk_mem or posedge console_reset_mem) begin
 		end
 
 		A_WAIT: begin
-			if (sd_ch2_ready) begin
-				vsrv_dout_r <= sd_ch2_dout;
+			// A read waits for the whole burst: nds_vram keeps the other word
+			// of the line (ch2_dout_hi, with ready64 two cycles after ready).
+			// That also keeps the burst's own ready64 from reaching main RAM
+			// as a done after ch2 has been handed back. ch2_dout holds.
+			if (vs_rnw ? sd_ch2_ready64 : sd_ch2_ready) begin
+				vsrv_dout_r    <= sd_ch2_dout;
+				vsrv_dout_hi_r <= sd_ch2_dout_hi;
 				vs_fin      <= 1;
-				arb_state   <= A_IDLE;
+				hold_cnt    <= 0;
+				arb_state   <= vsrv_more_c ? A_HOLD : A_IDLE;
 			end
+		end
+
+		A_HOLD: begin
+			// mainram_allow has stayed low since the drain that started this
+			// run of ops, so main RAM cannot have an op in flight: no drain
+			if (vs_pend) begin
+				sd_vs_req <= 1;
+				vs_pend   <= 0;
+				arb_state <= A_WAIT;
+			end
+			else if (hold_cnt == HOLD_CYCLES)
+				arb_state <= A_IDLE;
+			else
+				hold_cnt <= hold_cnt + 1'd1;
 		end
 
 		default: arb_state <= A_IDLE;
@@ -951,6 +1000,11 @@ sdram #(
 	.ch2_req   (sd_vs_req | mr_ena),
 	.ch2_cancel(1'b0),
 	.ch2_rnw   (vs_owns ? vs_rnw       : mr_rnw),
+	// 64-bit posted VRAM writes. The odd word is read live by sdram.sv while
+	// the burst runs, which is safe because vs_* only change on the next op.
+	.ch2_wide  (vs_owns & vs_wide),
+	.ch2_din_hi(vs_din_hi),
+	.ch2_be_hi (vs_be_hi),
 	.ch2_ready (sd_ch2_ready),
 	.ch2_ready16(),
 	.ch2_dout_hi(sd_ch2_dout_hi),
@@ -1179,6 +1233,12 @@ wire h3d_diagnostic_release_1x =
 wire h3d_diagnostic_release_2x =
     h3d_hold_previous_2x && !h3d_hold_sync_2x[1];
 
+wire h3d_raw_record_valid, h3d_raw_record_ready;
+wire [127:0] h3d_raw_record;
+wire [31:0] h3d_raw_record_frame;
+wire h3d_raw_record_frame_end;
+wire h3d_raw_boundary_valid, h3d_raw_boundary_ready;
+wire [31:0] h3d_raw_boundary_frame;
 wire h3d_record_valid, h3d_record_ready;
 wire [127:0] h3d_record;
 wire [31:0] h3d_record_frame;
@@ -1808,12 +1868,32 @@ nds_h3d_frame_record_cdc #(
     .fifo_empty(h3d_gx_fifo_empty),
     .fifo_below_half(h3d_gx_fifo_below_half),
     .fifo_full(h3d_gx_fifo_full),
-    .record_valid(h3d_record_valid), .record_ready(h3d_record_ready),
-    .record(h3d_record), .record_frame(h3d_record_frame),
-    .record_frame_end(h3d_record_frame_end),
-    .boundary_valid(h3d_boundary_valid),
-    .boundary_ready(h3d_boundary_ready),
-    .boundary_frame(h3d_boundary_frame)
+    .record_valid(h3d_raw_record_valid), .record_ready(h3d_raw_record_ready),
+    .record(h3d_raw_record), .record_frame(h3d_raw_record_frame),
+    .record_frame_end(h3d_raw_record_frame_end),
+    .boundary_valid(h3d_raw_boundary_valid),
+    .boundary_ready(h3d_raw_boundary_ready),
+    .boundary_frame(h3d_raw_boundary_frame)
+);
+
+// Fold consecutive ARM9 VRAM writes (halfwords into words, words into pairs)
+// before the DDR writer; see the module header for why.
+nds_h3d_vram_record_packer h3d_vram_packer (
+    .clk(ddr_clk), .reset(bridge_reset_ddr | ~h3d_control_release),
+    .in_record_valid(h3d_raw_record_valid),
+    .in_record_ready(h3d_raw_record_ready),
+    .in_record(h3d_raw_record),
+    .in_record_frame(h3d_raw_record_frame),
+    .in_record_frame_end(h3d_raw_record_frame_end),
+    .in_boundary_valid(h3d_raw_boundary_valid),
+    .in_boundary_ready(h3d_raw_boundary_ready),
+    .in_boundary_frame(h3d_raw_boundary_frame),
+    .out_record_valid(h3d_record_valid), .out_record_ready(h3d_record_ready),
+    .out_record(h3d_record), .out_record_frame(h3d_record_frame),
+    .out_record_frame_end(h3d_record_frame_end),
+    .out_boundary_valid(h3d_boundary_valid),
+    .out_boundary_ready(h3d_boundary_ready),
+    .out_boundary_frame(h3d_boundary_frame)
 );
 
 nds_h3d_frame_packet_writer #(
@@ -2242,6 +2322,10 @@ nds_nitro_console_wrap #(
     .vsrv_bank(vsrv_bank_c),.vsrv_addr(vsrv_addr_c),
     .vsrv_be(vsrv_be_c),.vsrv_din(vsrv_din_c),
     .vsrv_dout(vsrv_dout_r),.vsrv_done(vsrv_done_r),
+    .vsrv_dout_hi(vsrv_dout_hi_r),
+    .vsrv_seq(vsrv_seq_c),.vsrv_wide(vsrv_wide_c),
+    .vsrv_din_hi(vsrv_din_hi_c),.vsrv_be_hi(vsrv_be_hi_c),
+    .vsrv_more(vsrv_more_c),
     .vrsrv_req(vrsrv_req_c),.vrsrv_bank(vrsrv_bank_c),
     .vrsrv_addr(vrsrv_addr_c),.vrsrv_dout(vrsrv_dout_r),
     .vrsrv_done(vrsrv_done_r),.vrsrv_ready(vrsrv_ready_c),

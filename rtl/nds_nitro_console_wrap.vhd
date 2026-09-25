@@ -139,6 +139,12 @@ entity nds_nitro_console_wrap is
       vsrv_din         : out std_logic_vector(31 downto 0);
       vsrv_dout        : in  std_logic_vector(31 downto 0);
       vsrv_done        : in  std_logic;
+      vsrv_dout_hi     : in  std_logic_vector(31 downto 0);
+      vsrv_seq         : out std_logic;
+      vsrv_wide        : out std_logic;
+      vsrv_din_hi      : out std_logic_vector(31 downto 0);
+      vsrv_be_hi       : out std_logic_vector(3 downto 0);
+      vsrv_more        : out std_logic;
       vrsrv_req        : out std_logic;
       vrsrv_bank       : out std_logic_vector(1 downto 0);
       vrsrv_addr       : out std_logic_vector(13 downto 0);
@@ -437,6 +443,12 @@ begin
       vsrv_din         => vsrv_din,
       vsrv_dout        => vsrv_dout,
       vsrv_done        => vsrv_done,
+      vsrv_dout_hi     => vsrv_dout_hi,
+      vsrv_seq         => vsrv_seq,
+      vsrv_wide        => vsrv_wide,
+      vsrv_din_hi      => vsrv_din_hi,
+      vsrv_be_hi       => vsrv_be_hi,
+      vsrv_more        => vsrv_more,
       vrsrv_req        => vrsrv_req,
       vrsrv_bank       => vrsrv_bank,
       vrsrv_addr       => vrsrv_addr_u,
