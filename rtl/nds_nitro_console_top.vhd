@@ -653,6 +653,7 @@ architecture arch of nds_nitro_console_top is
    signal cp15_dtcm_base : std_logic_vector(31 downto 12);
    signal cp15_dtcm_size, cp15_itcm_size : std_logic_vector(4 downto 0);
    signal bus_cacheable_i, bus_cacheable_d, bus_bufferable_d : std_logic;
+   signal bus_wdenied_d : std_logic;
    signal cache_op_ena, cache_op_busy : std_logic;
    signal cache_op      : std_logic_vector(3 downto 0);
    signal cache_op_addr : std_logic_vector(31 downto 0);
@@ -1962,6 +1963,7 @@ begin
       bus_cacheable_i => bus_cacheable_i,
       bus_cacheable_d => bus_cacheable_d,
       bus_bufferable_d => bus_bufferable_d,
+      bus_wdenied_d   => bus_wdenied_d,
       cache_op_ena    => cache_op_ena,
       cache_op        => cache_op,
       cache_op_addr   => cache_op_addr,
@@ -1975,6 +1977,7 @@ begin
       clk => clk2x, reset => resetCpu,
       bus_cacheable_i => bus_cacheable_i, bus_cacheable_d => bus_cacheable_d,
       bus_bufferable_d => bus_bufferable_d,
+      bus_wdenied_d => bus_wdenied_d,
       cache_op_ena => cache_op_ena, cache_op => cache_op,
       cache_op_addr => cache_op_addr, cache_op_busy => cache_op_busy,
       itcm_ena => cp15_itcm_ena, itcm_load => cp15_itcm_load, itcm_size => cp15_itcm_size,

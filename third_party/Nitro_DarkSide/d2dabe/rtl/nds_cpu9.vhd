@@ -180,6 +180,9 @@ entity nds_cpu9 is
       bus_cacheable_i  : out   std_logic;
       bus_cacheable_d  : out   std_logic;
       bus_bufferable_d : out std_logic := '0';
+      -- '1' when the PU forbids the current privileged CPU data store.
+      -- Only meaningful for accepted data writes; not instruction fetches.
+      bus_wdenied_d    : out std_logic := '0';
 
       -- cache maintenance ops (MCR c7): one-cycle ena pulse, the CPU stalls
       -- until cache_op_busy has fallen again. op encoding:
@@ -232,6 +235,7 @@ architecture arch of nds_cpu9 is
    -- per-region "bits above the size code" mask, derived from the region
    -- registers only so it stays off the address path (see the PU compare below)
    signal cp15_pu_mask : t_cp15_masks;
+   signal pu_store_addr : unsigned(31 downto 12);
    signal cp15_pu_region   : t_cp15_regions :=                                -- c6,cN,0
    (
       0 => x"04000033", 1 => x"0200002B", 2 => x"00000000", 3 => x"08000035",
@@ -789,6 +793,7 @@ begin
       end loop;
    end process;
 
+   -- Cacheability still describes the complete bus address, including fetches.
    process (all)
       variable a : unsigned(31 downto 12);
    begin
@@ -809,7 +814,54 @@ begin
          end loop;
       end if;
    end process;
-   
+
+   -- The permission belongs only to a CPU data store. Select its address
+   -- before the instruction-fetch/PC-write mux: that late fetch address can
+   -- depend on live IO read data and must not lengthen every store-enable path.
+   -- A deferred DMA request retains its own address, exactly as gb_bus_Adr does.
+   -- On an accepted data write this address is identical to gb_bus_Adr; the
+   -- assertion below covers saved requests and ordinary stores in simulation.
+   pu_store_addr <= unsigned(gb_bus_saved_Adr(31 downto 12)) when gb_bus_saved = '1'
+                    else execute_RW_addr(31 downto 12);
+
+   -- InsaneFriend's RE: Deadly Silence fix: null-base stores otherwise corrupt
+   -- the ITCM mirror containing the sine/cosine helper literal pool. This
+   -- partial PU implementation suppresses privileged stores without DataAbort.
+   -- Highest matching region wins; AP 1/2/3 permits privileged writes, and no
+   -- region denies while PU is enabled. User/read/fetch checks remain separate.
+   process (all)
+      variable ap : std_logic_vector(3 downto 0);
+   begin
+      bus_wdenied_d <= '0';
+      if cp15_control(0) = '1' then
+         bus_wdenied_d <= '1';
+         for r in 0 to 7 loop
+            if cp15_pu_region(r)(0) = '1' and
+               (((pu_store_addr xor unsigned(cp15_pu_region(r)(31 downto 12)))
+                  and cp15_pu_mask(r)) = 0) then
+               ap := cp15_pu_dperm(4*r + 3 downto 4*r);
+               if ap = x"1" or ap = x"2" or ap = x"3" then
+                  bus_wdenied_d <= '0';
+               else
+                  bus_wdenied_d <= '1';
+               end if;
+            end if;
+         end loop;
+      end if;
+   end process;
+
+-- synthesis translate_off
+   process (clk)
+   begin
+      if rising_edge(clk) then
+         if reset = '0' and gb_bus_ena = '1' and gb_bus_code = '0' and gb_bus_rnw = '0' then
+            assert pu_store_addr = unsigned(gb_bus_Adr(31 downto 12))
+               report "PU store permission address differs from accepted data address" severity failure;
+         end if;
+      end if;
+   end process;
+-- synthesis translate_on
+
    -- savestates
    -- ---------------------------------------------------------------------
    -- This core has no savestates - the bus exists only so nds_top can preset
@@ -2682,7 +2734,18 @@ begin
             end if;
          when x"3" => cp15_rdata <= cp15_pu_wbuf;
          when x"5" =>
-            if (decode_cp15_op2(0) = '1') then
+            -- Legacy MRC c5,c0,0/1 packs each region's low two AP bits.
+            -- Keep reads symmetrical with legacy MCR expansion below.
+            if (decode_cp15_op2(1) = '0') then
+               cp15_rdata <= (others => '0');
+               for r in 0 to 7 loop
+                  if (decode_cp15_op2(0) = '1') then
+                     cp15_rdata(2*r + 1 downto 2*r) <= cp15_pu_iperm(4*r + 1 downto 4*r);
+                  else
+                     cp15_rdata(2*r + 1 downto 2*r) <= cp15_pu_dperm(4*r + 1 downto 4*r);
+                  end if;
+               end loop;
+            elsif (decode_cp15_op2(0) = '1') then
                cp15_rdata <= cp15_pu_iperm;
             else
                cp15_rdata <= cp15_pu_dperm;
@@ -3833,7 +3896,18 @@ begin
                                  end if;
                               when x"3" => cp15_pu_wbuf <= cp15_wval;
                               when x"5" =>
-                                 if (decode_cp15_op2(0) = '1') then
+                                 -- op2 0/1 is the ARMv4 2-bit-per-region form,
+                                 -- op2 2/3 the extended 4-bit form this core
+                                 -- stores; widen the former (melonDS does the same).
+                                 if (decode_cp15_op2(1) = '0') then
+                                    for r in 0 to 7 loop
+                                       if (decode_cp15_op2(0) = '1') then
+                                          cp15_pu_iperm(4*r + 3 downto 4*r) <= "00" & cp15_wval(2*r + 1 downto 2*r);
+                                       else
+                                          cp15_pu_dperm(4*r + 3 downto 4*r) <= "00" & cp15_wval(2*r + 1 downto 2*r);
+                                       end if;
+                                    end loop;
+                                 elsif (decode_cp15_op2(0) = '1') then
                                     cp15_pu_iperm <= cp15_wval;
                                  else
                                     cp15_pu_dperm <= cp15_wval;

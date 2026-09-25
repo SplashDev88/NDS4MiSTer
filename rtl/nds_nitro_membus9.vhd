@@ -51,6 +51,8 @@ entity nds_membus9 is
       bus_cacheable_i : in  std_logic;
       bus_cacheable_d : in  std_logic;
       bus_bufferable_d : in std_logic := '0';
+      -- PU forbids a privileged data write at the CPU's address (nds_cpu9)
+      bus_wdenied_d   : in  std_logic := '0';
       cache_op_ena    : in  std_logic;
       cache_op        : in  std_logic_vector(3 downto 0);
       cache_op_addr   : in  std_logic_vector(31 downto 0);
@@ -207,6 +209,9 @@ architecture arch of nds_membus9 is
    signal be         : std_logic_vector(3 downto 0);
 
    signal accept_now : std_logic;
+   -- A CPU data store the PU forbids. It retires through FINISH with no side
+   -- effects - the stand-in for the data abort this core does not take.
+   signal store_denied : std_logic;
    signal itcm_sel   : std_logic;
    signal dtcm_sel   : std_logic;
 
@@ -347,13 +352,15 @@ begin
    --   dec_target = T_ITCM  <->  itcm_hit
    --   dec_target = T_DTCM  <->  dtcm_hit and not itcm_hit
    -- and nothing above ITCM can claim the address.
-   itcm_sel       <= accept_now and cpu_ena and itcm_hit;
+   store_denied   <= bus_wdenied_d and not cpu_rnw and not cpu_code and not dma_bus;
+
+   itcm_sel       <= accept_now and cpu_ena and itcm_hit and not store_denied;
    itcm_addr      <= unsigned(cpu_adr(14 downto 2));
    itcm_we        <= itcm_sel and not cpu_rnw;
    itcm_be        <= be;
    itcm_writedata <= wdata;
 
-   dtcm_sel       <= accept_now and cpu_ena and dtcm_hit and not itcm_hit;
+   dtcm_sel       <= accept_now and cpu_ena and dtcm_hit and not itcm_hit and not store_denied;
    dtcm_addr      <= unsigned(cpu_adr(13 downto 2));
 
    -- ================= DTCM deferred store =================
@@ -608,7 +615,13 @@ begin
                state <= FINISH;
             elsif can_accept then
                state <= IDLE;
-               if (cpu_ena = '1') then
+               if (cpu_ena = '1' and store_denied = '1') then
+                  -- PU-forbidden store: complete without touching any target
+                  target <= T_OPEN;
+                  r_acc  <= cpu_acc;
+                  r_low  <= cpu_adr(1 downto 0);
+                  state  <= FINISH;
+               elsif (cpu_ena = '1') then
                   target <= dec_target;
                   r_acc  <= cpu_acc;
                   r_low  <= cpu_adr(1 downto 0);
