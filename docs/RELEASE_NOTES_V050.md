@@ -56,6 +56,10 @@ osd_rotate=2
 
 If the menu comes out upside down, use `osd_rotate=1`. Edit the existing `[NDS]` section if there is one, then save and reboot. The installer won't touch your INI.
 
+## Known regressions
+
+- **New Super Mario Bros.** — runs slower and has graphical glitches in this release.
+
 ## Known issues
 
 - **Blank screen after upgrading?** Check that Engine B is On. See Read this first; other causes of a blank screen are still possible.

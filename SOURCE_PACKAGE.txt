@@ -37,6 +37,10 @@ fixes a VHDL NATURAL-overload failure for decrement transfers, without an
 additional pipeline stage. See docs/INSANEFRIEND_COMPAT_PORT.md for detail,
 archive identities, authorship and regression coverage.
 
+Known regression reported after acceptance: New Super Mario Bros. runs slower
+and has graphical glitches with this release. Root cause has not been isolated;
+no follow-up fix or measured performance comparison is claimed.
+
 User accepted the IFP3 build after testing Mega Man ZX (Europe), reporting it
 works amazingly well and requesting this package. This is focused hardware
 validation, not a claim of independent full-game testing of all five ports.

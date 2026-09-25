@@ -42,6 +42,9 @@ artifacts, or credentials are included in this source repository.
 
 ## Current limitations
 
+- **New Super Mario Bros. regresses in this release:** it runs slower and has
+  graphical glitches.
+
 - **Strange Journey can still freeze during its intro.** WC does not fix it.
 - **GTA: Chinatown Wars may still show stray triangles.** Its new overflow
   guard addresses helper crashes, not all malformed geometry.
