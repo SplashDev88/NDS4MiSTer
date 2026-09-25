@@ -1615,6 +1615,13 @@ begin
                               decode_datacomb(11 downto  0)  := x"00" & '0' & decode_data(5 downto 3); -- RS -> 2nd OP -> no shift using op2 is default
                               decode_functions               := data_processing;
                               case (decode_data(9 downto 6)) is
+                                 -- H1 = H2 = 0 is architecturally unpredictable for ADD/CMP, but the
+                                 -- DS's ARM946E-S (and melonDS) simply use the two low registers.
+                                 -- Without these arms both fell to `others`, leaving opcode 0000 = AND:
+                                 -- Kirby Mass Attack's anti-tamper hash derives its range with
+                                 -- `add r2, r0` (0x4402), got r2 AND r0, failed the hash and wiped RAM.
+                                 when x"0" => decode_datacomb(24 downto 21) := x"4";                                                                                     -- 0000 ADD Rd, Rs (both low)
+                                 when x"4" => decode_datacomb(24 downto 21) := x"A";                                                                                     decode_datacomb(20) := '1'; -- 0100 CMP Rd, Rs (both low)
                                  when x"1" => decode_datacomb(24 downto 21) := x"4"; decode_datacomb( 3) := '1';                                                         -- 0001 ADD Rd, Hs ADD Rd, Rd, Hs Add a register in the range 8 - 15 to a register in the range 0 - 7.
                                  when x"2" => decode_datacomb(24 downto 21) := x"4"; decode_datacomb(19) := '1'; decode_datacomb(15) := '1';                             -- 0010 ADD Hd, Rs ADD Hd, Hd, Rs Add a register in the range 0 - 7 to a register in the range 8 - 15.
                                  when x"3" => decode_datacomb(24 downto 21) := x"4"; decode_datacomb( 3) := '1'; decode_datacomb(19) := '1'; decode_datacomb(15) := '1'; -- 0011 ADD Hd, Hs ADD Hd, Hd, Hs Add two registers in the range 8 - 15
@@ -2885,9 +2892,14 @@ begin
             end case;
          end if;
          
-         if (execute_stall = '1' and decode_RM_op2 = decode_Rn_op1) then
-            execute_RW_data <= std_logic_vector(execute_blockRW_endaddr);
-         end if;
+         -- STM with the base register in the list: the ARM9 (ARMv5) stores the
+         -- ORIGINAL base in every case (melonDS A_STM: Num == 0 -> oldbase).
+         -- This core writes the base back only after the last transfer, so the
+         -- register file already holds that value; nothing to substitute. The
+         -- ARMv4 rule inherited from gba_cpu (store the written-back address
+         -- when the base is not first) was applied here even without writeback:
+         -- Kirby Super Star Ultra's `stmib r4, {r0, r4}` links each new task node
+         -- to itself, got node+8 instead, and its task tree became circular.
          
          if (execute_stall = '0') then
             execute_RW_ena  <= execute_now and (not execute_skip); 

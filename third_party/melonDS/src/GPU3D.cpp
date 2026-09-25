@@ -930,10 +930,19 @@ void ClipSegment(Vertex* outbuf, Vertex* vin, Vertex* vout)
 #undef INTERPOLATE
 }
 
+// Every caller's vertex array holds 10 entries (SubmitPolygon's clippedvertices,
+// the box-test faces, temp below). A convex quad clipped against the six planes
+// never exceeds that, but a twisted or self-intersecting quad can: each outside
+// vertex with two inside neighbours emits two. Unchecked, the extra vertices were
+// written past the end of the stack arrays; on the MiSTer's ARM build the stack
+// protector then aborts the H3D service (GTA: Chinatown Wars' first cutscene).
+// Drop the excess instead.
+constexpr int MaxClipVertices = 10;
+
 template<int comp, bool attribs>
 int ClipAgainstPlane(const GPU3D& gpu, Vertex* vertices, int nverts, int clipstart)
 {
-    Vertex temp[10];
+    Vertex temp[MaxClipVertices];
     int prev, next;
     int c = clipstart;
 
@@ -954,20 +963,20 @@ int ClipAgainstPlane(const GPU3D& gpu, Vertex* vertices, int nverts, int clipsta
             if ((comp == 2) && (!(gpu.CurPolygonAttr & (1<<12)))) return 0;
 
             Vertex* vprev = &vertices[prev];
-            if (vprev->Position[comp] <= vprev->Position[3])
+            if (vprev->Position[comp] <= vprev->Position[3] && c < MaxClipVertices)
             {
                 ClipSegment<comp, 1, attribs>(&temp[c], &vtx, vprev);
                 c++;
             }
 
             Vertex* vnext = &vertices[next];
-            if (vnext->Position[comp] <= vnext->Position[3])
+            if (vnext->Position[comp] <= vnext->Position[3] && c < MaxClipVertices)
             {
                 ClipSegment<comp, 1, attribs>(&temp[c], &vtx, vnext);
                 c++;
             }
         }
-        else
+        else if (c < MaxClipVertices)
             temp[c++] = vtx;
     }
 
@@ -981,20 +990,20 @@ int ClipAgainstPlane(const GPU3D& gpu, Vertex* vertices, int nverts, int clipsta
         if (vtx.Position[comp] < -vtx.Position[3])
         {
             Vertex* vprev = &temp[prev];
-            if (vprev->Position[comp] >= -vprev->Position[3])
+            if (vprev->Position[comp] >= -vprev->Position[3] && c < MaxClipVertices)
             {
                 ClipSegment<comp, -1, attribs>(&vertices[c], &vtx, vprev);
                 c++;
             }
 
             Vertex* vnext = &temp[next];
-            if (vnext->Position[comp] >= -vnext->Position[3])
+            if (vnext->Position[comp] >= -vnext->Position[3] && c < MaxClipVertices)
             {
                 ClipSegment<comp, -1, attribs>(&vertices[c], &vtx, vnext);
                 c++;
             }
         }
-        else
+        else if (c < MaxClipVertices)
             vertices[c++] = vtx;
     }
 
