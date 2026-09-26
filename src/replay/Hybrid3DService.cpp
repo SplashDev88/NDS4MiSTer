@@ -702,7 +702,8 @@ public:
         bool arm_video_engine_b_only = false,
         bool matched_display_test = false,
         bool matched_full_rate = false,
-        unsigned matrix_prefix_mode = 0)
+        unsigned matrix_prefix_mode = 0,
+        bool timing_profile_only = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -722,7 +723,7 @@ public:
           asynchronous_plane_publication_(asynchronous_plane_publication),
           plane_stats_enabled_(plane_stats_enabled),
           full_video_stats_enabled_(pipeline_profile_enabled &&
-                                    matched_display_test),
+                                    matched_display_test && !timing_profile_only),
           black_event_trace_enabled_(matched_display_test &&
               std::getenv("NDS4MISTER_BLACK_EVENT_TRACE") &&
               std::strcmp(std::getenv("NDS4MISTER_BLACK_EVENT_TRACE"), "1") == 0),
@@ -731,6 +732,7 @@ public:
           matched_full_rate_(matched_display_test && matched_full_rate),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
+          timing_profile_only_(timing_profile_only),
           bind_hps_worker_cores_(bind_hps_worker_cores),
           direct_plane_publication_(direct_plane_publication),
           arm_video_engine_b_only_(arm_video_engine_b_only),
@@ -2777,7 +2779,7 @@ private:
         }
 
         const auto vblank = line >= 192 && line < 262 ? 1u : 0u;
-        if (matched_display_test_ && pipeline_profile_enabled_ && line == 215)
+        if (matched_display_test_ && full_video_stats_enabled_ && line == 215)
             nds_->GPU.GetRenderer().Record3DPalettePhase215();
         if (line == 192 && !arm_video_engine_b_only_)
             nds_->GPU.GPU3D.Run();
@@ -4393,6 +4395,8 @@ private:
         std::ostringstream output;
         output << "H3D_PIPELINE_PROFILE_V1"
                << " session=" << session_
+               << " timing_profile_only=" << timing_profile_only_
+               << " full_video_stats_enabled=" << full_video_stats_enabled_
                << " elapsed_ns=" << elapsed_ns
                << " matrix_prefix_mode=" << matrix_prefix_mode_
                << " matrix_prefix_valid=" << matrix_prefix_.valid()
@@ -4843,6 +4847,9 @@ private:
         }
         output << '\n';
         const auto contents = output.str();
+        // Keep the private timing record below Kickstart's 64 KiB file cap.
+        // It replaces one file at session end; it never grows the service log.
+        if (timing_profile_only_ && contents.size() > 60000) return;
         std::string temporary =
             std::string(PipelineProfilePath) + ".tmp.XXXXXX";
         std::vector<char> temporary_name(temporary.begin(), temporary.end());
@@ -4857,7 +4864,7 @@ private:
         if (ok)
             ok = rename(temporary_name.data(), PipelineProfilePath) == 0;
         if (!ok) unlink(temporary_name.data());
-        if (ok) std::cout << contents << std::flush;
+        if (ok && !timing_profile_only_) std::cout << contents << std::flush;
     }
 
     PollResult finish_frame_event()
@@ -5150,6 +5157,7 @@ private:
     std::uint32_t matched_next_line_ = 0;
     bool asynchronous_arm_video_replay_ = false;
     bool pipeline_profile_enabled_ = false;
+    bool timing_profile_only_ = false;
     bool bind_hps_worker_cores_ = false;
     bool direct_plane_publication_ = false;
     bool direct_full_video_output_ = true;
@@ -9852,6 +9860,14 @@ try {
             const bool diagnostics =
                 memory_path == "/dev/mem" && diagnostics_requested &&
                 std::strcmp(diagnostics_requested, "0") != 0;
+            // Private profiling keeps the normal pixel path and uses only
+            // existing stage counters. Do not enable framebuffer statistics,
+            // row/palette traces, or source-register file writes with it.
+            const char* timing_profile_requested =
+                std::getenv("NDS4MISTER_TIMING_PROFILE");
+            const bool timing_profile_only = memory_path == "/dev/mem" &&
+                timing_profile_requested &&
+                std::strcmp(timing_profile_requested, "1") == 0;
             const char* matched_requested =
                 std::getenv("NDS4MISTER_MATCHED_DISPLAY_TEST");
             const bool matched_display = memory_path == "/dev/mem" &&
@@ -9880,7 +9896,7 @@ try {
                 diagnostics,
                 matched_display,
                 memory_path == "/dev/mem",
-                diagnostics,
+                diagnostics || timing_profile_only,
                 memory_path == "/dev/mem",
                 &runtime_telemetry,
                 mapping.publication_data(),
@@ -9889,7 +9905,8 @@ try {
                 !matched_display,
                 matched_display,
                 matched_full_rate,
-                matrix_prefix_mode);
+                matrix_prefix_mode,
+                timing_profile_only);
             const bool initialized = candidate->initialize();
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.
