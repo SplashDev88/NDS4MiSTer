@@ -180,13 +180,12 @@ begin
          cached_read(16#640#+4*i,std_logic_vector(bank_base+to_unsigned(5+i,32)));
       end loop;
       for i in 0 to 8 loop
-         address<=std_logic_vector(to_unsigned(16#680#+4*i,28)); wait for 1 ns;
-         assert selected='0' report "vector result must remain unclaimed" severity failure;
+         cached_read(16#680#+4*i,std_logic_vector(bank_base+to_unsigned(21+i,32)));
       end loop;
       address<=x"0000600"; wait for 1 ns;
       assert selected='0' report "GXSTAT polling must remain local" severity failure;
       assert fences=1 report "matrix/status burst posted repeated fences" severity failure;
-      report "stage delayed reply, clip-only selection, and 16-word clip cache burst; GXSTAT/vector unclaimed";
+      report "stage delayed reply, 16 clip plus 9 vector words share one cache query; GXSTAT local";
 
       -- Writes invalidate the generation, while either geometry-busy or
       -- test-busy status requires another real snapshot on the next read.
@@ -284,6 +283,22 @@ begin
       reset<='1'; tick; reset<='0'; tick; local_status("00");
       write_gx(16#400#,x"00000011"); local_status("00");
       report "stage selective BOX/POS GXSTAT, packed/direct parser, busy refresh and later generation";
+      -- Vector-first queries use the same ordered fence and share their
+      -- reply with later clip reads. Busy and invalidation rules also apply.
+      start_read(16#680#); accept_request(19);
+      reply(19,x"00000002",x"30000015");
+      cached_read(16#6a0#,x"3000001d");
+      cached_read(16#640#,x"30000005");
+      address<=x"00006a4"; wait for 1 ns;
+      assert selected='0' report "vector range overran its nine words" severity failure;
+      invalidate; start_read(16#68c#); accept_request(20);
+      reply(20,x"08000002",x"30000018");
+      start_read(16#6a0#); accept_request(21);
+      reply(21,x"00000002",x"3000001d");
+      invalidate; start_read(16#684#); accept_request(22);
+      invalidate; reply(22,x"00000002",x"30000016");
+      start_read(16#684#); accept_request(23);
+      reply(23,x"00000002",x"30000016");
       assert wrap_done='1' report "token exhaustion test did not finish" severity failure;
       report "PASS: GX readback owner delayed handshakes, matching replies, cache generation, busy refresh, reset token retention; fences=" & integer'image(fences);
       stop; wait;

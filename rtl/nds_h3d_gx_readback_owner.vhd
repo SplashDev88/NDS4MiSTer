@@ -76,7 +76,7 @@ architecture arch of nds_h3d_gx_readback_owner is
    end function;
 begin
    selected_i <= '1' when service_ready='1' and
-      ((unsigned(address)>=16#640# and unsigned(address)<=16#67c#) or
+      ((unsigned(address)>=16#640# and unsigned(address)<=16#6a0#) or
        (address=x"0000600" and (test_dirty='1' or test_event='1' or
                                (state/=IDLE and status_read='1')))) else '0';
    test_result_bits <= test_bits;
@@ -144,7 +144,11 @@ begin
                      status_read<='0'; test_invalidated<='0';
                      if address=x"0000600" then
                         status_read<='1'; index<=to_unsigned(4,5);
-                     else index<=to_unsigned(5,5)+resize(unsigned(address(5 downto 2)),5);
+                     -- H3R1 stores 16 clip words at 5..20, followed by the
+                     -- nine direction/vector matrix words at 21..29.
+                     -- Games read these to construct environment-map texture
+                     -- coordinates; returning open-bus zero collapses them.
+                     else index<=to_unsigned(5,5)+(unsigned(address(6 downto 2)) xor to_unsigned(16,5));
                      end if;
                      if address/=x"0000600" and cached_valid='1' and geometry_write='0' and
                         (cached_status and x"08000001")=x"00000000" then
