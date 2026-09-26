@@ -10,8 +10,8 @@
 -- Scope notes (phase 1):
 --  * Texture / texture-palette / extended-palette MST modes have NO CPU mapping;
 --    those banks simply do not hit here (renderer-side ports come later).
---  * Region mirroring is decoded coarsely: each window is matched at its canonical
---    location inside the 2MB regions selected by addr(23:21). TODO: full mirrors.
+--  * H/I Engine-B mappings include their mirrors throughout the 2MB apertures.
+--    Other windows retain their existing decode; TODO: audit the remaining mirrors.
 --  * Multiple banks may hit the same address (hardware ORs reads, writes go to all);
 --    callers get the full hit vector and must implement that semantic.
 
@@ -194,8 +194,11 @@ begin
                   v_hit(BANK_H)  := '1';
                   v_offs(BANK_H) := "00" & addr(14 downto 0);
                end if;
-            when 1 =>   -- sub BG 0x200000
-               if (region = REG_SUBBG and addr(20 downto 15) = "000000") then
+            when 1 =>   -- sub BG, 32 KB at each 64 KB boundary
+               -- H occupies 16 KB slots 0,1,4,5 in the 128 KB B-BG window.
+               -- Both the +0x10000 copy and the 128 KB aperture mirrors are
+               -- real CPU mappings: NSMB decompresses character data there.
+               if (region = REG_SUBBG and addr(15) = '0') then
                   v_hit(BANK_H)  := '1';
                   v_offs(BANK_H) := "00" & addr(14 downto 0);
                end if;
@@ -211,13 +214,13 @@ begin
                   v_hit(BANK_I)  := '1';
                   v_offs(BANK_I) := "000" & addr(13 downto 0);
                end if;
-            when 1 =>   -- sub BG 0x208000
-               if (region = REG_SUBBG and addr(20 downto 14) = "0000010") then
+            when 1 =>   -- sub BG, slots 2,3,6,7 mirror the same 16 KB
+               if (region = REG_SUBBG and addr(15) = '1') then
                   v_hit(BANK_I)  := '1';
                   v_offs(BANK_I) := "000" & addr(13 downto 0);
                end if;
-            when 2 =>   -- sub OBJ 0x600000
-               if (region = REG_SUBOBJ and addr(20 downto 14) = "0000000") then
+            when 2 =>   -- sub OBJ, 16 KB repeated through the aperture
+               if (region = REG_SUBOBJ) then
                   v_hit(BANK_I)  := '1';
                   v_offs(BANK_I) := "000" & addr(13 downto 0);
                end if;
