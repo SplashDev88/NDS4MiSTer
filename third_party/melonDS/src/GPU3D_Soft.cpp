@@ -307,14 +307,24 @@ bool SoftRenderer3D::CancelRasterIfRequested() noexcept
 u32* SoftTexcacheLoader::GenerateTexture(
     u32 width, u32 height, u32 layers)
 {
-    return new u32[static_cast<size_t>(width) * height * layers];
+    // Each decoded layer owns one maximum-alpha word per texture row.
+    // It is refreshed with the pixels by the existing cache invalidation.
+    return new u32[(static_cast<size_t>(width) * height + height) * layers];
 }
 
 void SoftTexcacheLoader::UploadTexture(
     u32* handle, u32 width, u32 height, u32 layer, void* data)
 {
     const size_t pixels = static_cast<size_t>(width) * height;
-    memcpy(handle + pixels * layer, data, pixels * sizeof(u32));
+    u32* destination = handle + (pixels + height) * layer;
+    memcpy(destination, data, pixels * sizeof(u32));
+    for (u32 y = 0; y < height; ++y)
+    {
+        u32 maximum = 0;
+        for (u32 x = 0; x < width; ++x)
+            maximum = std::max(maximum, destination[y * width + x] >> 24);
+        destination[pixels + y] = maximum;
+    }
 }
 
 void SoftTexcacheLoader::DeleteTexture(u32* handle)
@@ -1014,7 +1024,8 @@ void SoftRenderer3D::SetupPolygon(
                 textureArray, textureLayer, textureHelper);
             pixelState.TexturePixels = textureArray +
                 static_cast<size_t>(textureLayer) *
-                    pixelState.TextureWidth * pixelState.TextureHeight;
+                    (pixelState.TextureWidth * pixelState.TextureHeight +
+                     pixelState.TextureHeight);
             textureBinding.Pixels = pixelState.TexturePixels;
             textureBinding.TexParam = polygon->TexParam;
             textureBinding.TexPalette = polygon->TexPalette;
@@ -1515,6 +1526,23 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     Interpolator<0>::SpanDepthInterpolator& spanDepth,
     Interpolator<0>::SpanInterpolator& spanAttributes)
 {
+    s16 constantTextureT;
+    if (spanAttributes.GetConstantTextureT(constantTextureT))
+    {
+        const auto& state = rp->PixelState;
+        const u32 row = NDS4MiSTerCachedTextureIndex(
+            0, constantTextureT, state.TextureWidth, state.TextureHeight,
+            state.TextureWidthMask, state.TextureHeightMask,
+            state.TextureWrapFlags, state.TextureWidthShift) >> state.TextureWidthShift;
+        const u32 maximumTextureAlpha = state.TexturePixels[
+            state.TextureWidth * state.TextureHeight + row];
+        const u32 maximumAlpha =
+            ((maximumTextureAlpha + 1) * (state.PolyAlpha + 1) - 1) >> 5;
+        // Modulate spans cannot exceed the row's maximum alpha, regardless
+        // of S, depth, color or perspective. A wholly rejected row changes
+        // none of the color/depth/attribute planes or interpolation history.
+        if (maximumAlpha <= GPU3D.RenderAlphaRef) return;
+    }
 #if defined(__arm__) && defined(__ARM_NEON)
     // Batch independent depth/attributes and shade work. Translucent polygons
     // use the exact polygon*texture alpha kernel; alpha test and framebuffer

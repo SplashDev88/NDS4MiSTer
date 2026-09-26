@@ -1567,6 +1567,14 @@ private:
                 return true;
             }
 
+            [[gnu::always_inline]] inline bool
+            GetConstantTextureT(s16& coordinate) const noexcept
+            {
+                if (Delta[4]) return false;
+                coordinate = static_cast<s16>(Base[4]);
+                return true;
+            }
+
 #if defined(__arm__) && defined(__ARM_NEON)
             [[gnu::always_inline, gnu::hot]] inline void
             InterpolatePerspectiveBatch4(

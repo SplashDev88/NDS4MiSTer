@@ -54,6 +54,9 @@ static void push(NDS& n,u8 command,u32 value)
 static u32 vertex(int x,int y,int z) { return (u32(x)&1023)|((u32(y)&1023)<<10)|((u32(z)&1023)<<20); }
 static void frame(NDS& n,unsigned scenario)
 {
+    const bool constantTextureRow = scenario & 512u;
+    const bool transparentTextureRow = scenario & 1024u;
+    const bool twoBitTexture = scenario & 2048u;
     const bool clampOnly = scenario & 256u;
     const bool repeatOnly = scenario & 128u;
     const bool varyingDepth = scenario & 64u;
@@ -70,11 +73,19 @@ static void frame(NDS& n,unsigned scenario)
     push(n,0x50,0); n.GPU.GPU3D.VBlank();
     auto& g=n.GPU.GPU3D;
     require(g.RenderNumPolygons==10,"polygon fixture");
-    const u32 formats[]={4,6,1,7}; const u32 fmt=formats[scenario&3u];
+    const u32 formats[]={4,6,1,7}; const u32 fmt=twoBitTexture ? 2 : formats[scenario&3u];
     g.RenderDispCnt=1u|8u|((scenario&1)?48u:0u);
     g.RenderAlphaRef=scenario==2?15:0;
     g.RenderClearAttr1=0x0712254a; g.RenderClearAttr2=0x7fff;
     for(u32 i=0;i<128;++i) n.GPU.VRAM_A[i]=u8((i*37+scenario*17)&255);
+    // Alternating empty/nonempty texture-row cases exercise row-summary
+    // invalidation with the same TexParam/palette binding. The uncached
+    // reference still fetches and alpha-tests each individual texel.
+    if (constantTextureRow && transparentTextureRow)
+    {
+        const u32 rowBytes = fmt == 7 ? 16u : fmt == 2 ? 2u : 8u;
+        std::memset(n.GPU.VRAM_A + rowBytes, 0, rowBytes);
+    }
     std::memset(n.GPU.VRAMDirty[0].Data,255,sizeof(n.GPU.VRAMDirty[0].Data));
     std::memset(n.GPU.VRAMDirty[4].Data,255,sizeof(n.GPU.VRAMDirty[4].Data));
     for(u32 i=0;i<g.RenderNumPolygons;++i) {
@@ -91,6 +102,7 @@ static void frame(NDS& n,unsigned scenario)
             for(u32 c=0;c<3;++c) p->Vertices[v]->FinalColor[c]=((i*(5+4*c)+((scenario&4u)?0:v*(17-5*c))+3+4*c)&63)<<3;
             p->Vertices[v]->TexCoords[0]=s16(int(v)*93-41);
             p->Vertices[v]->TexCoords[1]=s16(151-int(v)*77);
+            if (constantTextureRow) p->Vertices[v]->TexCoords[1]=16;
             if(scenario==3 && i==1) p->Vertices[v]->FinalPosition[0]-=192;
         }
     }
@@ -108,7 +120,7 @@ int main(int argc,char** argv) try
     const unsigned benchmarkScenario=argc>3?std::strtoul(argv[3],nullptr,10):0;
     const bool timingOnly=argc==5 && std::strcmp(argv[4],"--timing-only")==0;
     require(argc<=5 && (argc<5 || timingOnly),"usage: [frames samples scenario [--timing-only]]");
-    require(frames>0 && frames<=512 && samples>0 && samples<=16 && benchmarkScenario<512,"bounds");
+    require(frames>0 && frames<=512 && samples>0 && samples<=16 && benchmarkScenario<4096,"bounds");
     auto ref=machine(false), test=machine(true);
     // Cross product: four texture formats, flat/gradient color, W/Z depth,
     // perspective/linear spans, opaque/translucent polygons, constant/varying
@@ -126,9 +138,11 @@ int main(int argc,char** argv) try
     // The selected workload is always independently rendered and hash-checked
     // outside the timed interval, including after every timed sample.
     std::printf("CHECK_MODE %s\n",timingOnly?"selected-workload":"full-matrix");
-    for(unsigned fixture=0;fixture<(timingOnly?1u:262u);++fixture) {
+    for(unsigned fixture=0;fixture<(timingOnly?1u:774u);++fixture) {
         const unsigned s=timingOnly ? benchmarkScenario : fixture<128 ? fixture : fixture<134 ?
-            extraScenarios[fixture-128] : 256+fixture-134;
+            extraScenarios[fixture-128] : fixture<262 ? 256+fixture-134 :
+            (512u | (((fixture-262u)%256u)/2u) | ((fixture&1u) ? 1024u : 0u) |
+             (fixture>=518 ? 2048u : 0u));
         frame(*ref,s); frame(*test,s); render(*ref); render(*test);
         auto& a=ref->GPU.GetRenderer(); auto& b=test->GPU.GetRenderer();
         for(u32 y=0;y<192;++y) require(!std::memcmp(a.Get3DScanline(y),b.Get3DScanline(y),256*4),"visible mismatch");
