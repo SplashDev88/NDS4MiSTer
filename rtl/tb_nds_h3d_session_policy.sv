@@ -1,7 +1,8 @@
 `timescale 1ns/1ps
 module tb_nds_h3d_session_policy #(
     parameter bit ZERO_LATENCY = 1'b0,
-    parameter bit MATCHED_DISPLAY_TEST = 1'b0
+    parameter bit MATCHED_DISPLAY_TEST = 1'b0,
+    parameter bit MATCHED_ENGINE_B_OPTIONAL = 1'b0
 );
     localparam logic [28:0] BASE = 29'h00010000;
     localparam logic [63:0] HEADER = 64'h00800001_31443348;
@@ -49,6 +50,7 @@ module tb_nds_h3d_session_policy #(
     nds_h3d_control_init #(
         .BASE_WORD(BASE), .ENTRY_COUNT(8), .PACKET_MODE(1),
         .SESSION_POLICY_ENABLE(1), .MATCHED_DISPLAY_TEST(MATCHED_DISPLAY_TEST),
+        .MATCHED_ENGINE_B_OPTIONAL(MATCHED_ENGINE_B_OPTIONAL),
         .HPS_HEARTBEAT_TIMEOUT_CYCLES(100000)
     ) dut (
         .clk, .reset, .requested_session, .engine_b_pixels_enable,
@@ -95,7 +97,7 @@ module tb_nds_h3d_session_policy #(
                     // physically visible; no policy write while HPS owns it.
                     if (queued_address == BASE && queued_data == HEADER) begin
                         if (memory[96] != 64'h00200001_31503348 ||
-                            memory[97] != {30'd0, MATCHED_DISPLAY_TEST, engine_b_pixels_enable,
+                            memory[97] != {29'd0, (MATCHED_DISPLAY_TEST && MATCHED_ENGINE_B_OPTIONAL), MATCHED_DISPLAY_TEST, engine_b_pixels_enable,
                                            active_session} ||
                             memory[98] != {32'd0, active_session} ||
                             memory[99] != {32'd0, active_session})
@@ -165,7 +167,7 @@ module tb_nds_h3d_session_policy #(
                 timeout = timeout + 1;
                 if (timeout > 10000) $fatal(1, "initialization stuck");
             end
-            if (memory[97] != {30'd0, MATCHED_DISPLAY_TEST, expected_b, active_session})
+            if (memory[97] != {29'd0, (MATCHED_DISPLAY_TEST && MATCHED_ENGINE_B_OPTIONAL), MATCHED_DISPLAY_TEST, expected_b, active_session})
                 $fatal(1, "pending menu applied at wrong boundary");
             memory[5] = {active_session, 32'd2};
         end
@@ -211,7 +213,8 @@ module tb_nds_h3d_session_policy #(
             closed_for(1000);
         end
         valid_ack();
-        memory[105][63:32] = MATCHED_DISPLAY_TEST ? 3 : 1; // supported, but not the requested Off policy
+        memory[105][63:32] = (MATCHED_DISPLAY_TEST ? 3 : 1) |
+            ((MATCHED_DISPLAY_TEST && MATCHED_ENGINE_B_OPTIONAL) ? 4 : 0); // supported, but not the requested Off policy
         closed_for(1000);
         valid_ack();
         memory[107] = 0; // payload written, commit delayed

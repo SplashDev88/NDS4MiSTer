@@ -135,6 +135,7 @@ private:
     bool LineCache = false;
     bool PairedBCache = false;
     bool EngineBOnly = false;
+    bool EngineAOnly = false;
     bool EngineBPixelsEnabled = true;
     bool StageProfileEnabled = false;
     ExternalRendererStageProfile StageProfile {};

@@ -1187,7 +1187,13 @@ wire h3d_control_release;
 // clk_video and ddr_clk are the same retained shell clk_sys. The pending OSD
 // bit never drives fetch gating; only the boundary-latched policy does.
 assign h3d_external_video_enable =
+`ifdef NDS_MATCHED_DISPLAY_TEST
+    // Both A-only and paired output live in ARM-owned full-frame banks.
+    // Disabling B pixels must not disable the shared DDR scanout path.
+    h3d_control_release && !bridge_reset_ddr;
+`else
     h3d_engine_b_applied && h3d_control_release && !bridge_reset_ddr;
+`endif
 wire [31:0] h3d_active_session, h3d_control_fault_bits;
 wire [2:0] h3d_telemetry_index;
 wire h3d_diagnostic_hold_ddr;
@@ -1780,7 +1786,7 @@ nds_h3d_control_init #(
     .BASE_WORD(H3D_CONTROL_WORD), .ENTRY_COUNT(16384),
     .PACKET_MODE(1'b1), .SESSION_POLICY_ENABLE(1'b1)
 `ifdef NDS_MATCHED_DISPLAY_TEST
-    , .MATCHED_DISPLAY_TEST(1'b1)
+    , .MATCHED_DISPLAY_TEST(1'b1), .MATCHED_ENGINE_B_OPTIONAL(1'b1)
 `endif
 ) h3d_control (
     .clk(ddr_clk), .reset(bridge_reset_ddr),
@@ -2360,7 +2366,13 @@ nds_nitro_console_wrap #(
     .h3d_readback_status(h3d_readback_status),
     .h3d_readback_index(h3d_readback_index),
     .h3d_readback_data(h3d_readback_data),
-`ifdef NDS_HYBRID_3D
+`ifdef NDS_MATCHED_DISPLAY_TEST
+    // Matched ARM output needs A/B registers, palette/OAM, all VRAM and LCD
+    // phases even when B pixels are disabled. The immutable H3P1 policy above
+    // retains the real menu selection; this legacy-named input controls the
+    // transport scope, not the renderer's pixel policy.
+    .h3d_engine_b_enable(1'b1),
+`elsif NDS_HYBRID_3D
     .h3d_engine_b_enable(h3d_engine_b_sync_1x[1]),
 `else
     .h3d_engine_b_enable(1'b0),

@@ -129,11 +129,12 @@ void SoftRenderer::SetRenderSettings(RendererSettings& settings)
     PreparedBSpritesValid = false;
     PackedOutput = settings.PackedOutput;
     EngineBOnly = settings.EngineBOnly;
+    EngineAOnly = settings.EngineAOnly && !EngineBOnly;
     EngineBPixelsEnabled = settings.EngineBPixelsEnabled;
     StageProfileEnabled = settings.StageProfile;
     // The general cache already owns B's line keys and can omit sprite work.
     // Keep its contract separate from the composition-only paired cache.
-    const bool pairedBCache = settings.PairedBCache && !settings.LineCache;
+    const bool pairedBCache = settings.PairedBCache && !settings.LineCache && !EngineAOnly;
     if (LineCache != settings.LineCache || PairedBCache != pairedBCache)
     {
         LineCache = settings.LineCache;
@@ -543,6 +544,27 @@ void SoftRenderer::DrawScanline(u32 line)
         if (StageProfileEnabled)
             StageProfile.Output3DNs += profileElapsedNs(output3DStarted);
 
+        if (EngineAOnly)
+        {
+            // Use the same A renderer, final display-mode selection, master
+            // brightness and capture path as dual-screen output. B has no
+            // input to DS display capture (capture source B means VRAM/FIFO).
+            LastExternalLineCacheReuse[0] = false;
+            LastExternalLineCacheReuse[1] = false;
+            const auto engineStarted = profileStarted(StageProfileEnabled);
+            Rend2D_A->DrawScanline(line);
+            if (StageProfileEnabled)
+                StageProfile.EngineANs += profileElapsedNs(engineStarted);
+            const auto compositeStarted = profileStarted(StageProfileEnabled);
+            DrawScanlineA(line, dstA);
+            memcpy(dstB, dstA, 256 * sizeof(u32));
+            if (StageProfileEnabled)
+                StageProfile.CompositeANs += profileElapsedNs(compositeStarted);
+            if (GPU.CaptureEnable)
+                DoCapture(line);
+        }
+        else
+        {
         const auto cacheDecisionStarted = profileStarted(StageProfileEnabled);
         const bool cacheCommon =
             PackedOutput && GPU.ScreensEnabled &&
@@ -751,6 +773,7 @@ void SoftRenderer::DrawScanline(u32 line)
         // perform display capture if enabled
         if (GPU.CaptureEnable)
             DoCapture(line);
+        }
     }
     else
     {
@@ -847,6 +870,15 @@ void SoftRenderer::DrawSprites(u32 line)
                 StageProfile.SpritesBNs += profileElapsedNs(spritesStarted);
             }
         }
+        return;
+    }
+    if (EngineAOnly)
+    {
+        PreparedBSpritesValid = false;
+        const auto started = profileStarted(StageProfileEnabled);
+        Rend2D_A->DrawSprites(line);
+        if (StageProfileEnabled)
+            StageProfile.SpritesANs += profileElapsedNs(started);
         return;
     }
     SpriteCacheLine = ~0u;

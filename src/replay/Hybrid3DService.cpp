@@ -776,9 +776,12 @@ public:
         if (matched_policy != matched_display_test_ ||
             (matched_display_test_ &&
              (!arm_video_render_shadow_ || arm_video_engine_b_only_ ||
-              !(policy_[3] & session_policy::EngineBPixels))))
+              (!(policy_[3] & session_policy::EngineBPixels) &&
+               !(policy_[3] & session_policy::EngineBOptional)))))
             return fail(FaultBadHeader,
-                "matched-display test requires its companion core and Engine B On");
+                "matched display requires its companion core; Engine B Off needs optional-B transport");
+        matched_engine_a_only_ = matched_display_test_ &&
+            !(policy_[3] & session_policy::EngineBPixels);
         engine_b_pixels_enabled_ = arm_video_engine_b_only_ &&
             (policy_[3] & session_policy::EngineBPixels) != 0;
         // Off retains beta.11's 3D-only replay and renderer settings. The
@@ -1069,7 +1072,7 @@ private:
     friend void run_self_test();
     friend void run_scanline_lifetime_test();
     friend void run_latest_plane_ack_test();
-    friend void run_matched_display_test(bool);
+    friend void run_matched_display_test(bool, bool);
     friend void run_matched_catchup_test(bool);
     friend struct EffectiveRenderWriteTest;
 
@@ -1204,7 +1207,7 @@ private:
                     (arm_video_render_shadow_ || arm_video_engine_b_only_),
                 pipeline_profile_enabled_, FullFrame3D,
                 arm_video_engine_b_only_, engine_b_pixels_enabled_,
-                matched_display_test_};
+                matched_display_test_, matched_engine_a_only_};
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
@@ -4552,6 +4555,7 @@ private:
                << " engine_b_copied_bytes=" << engine_b_copied_bytes_
                << " engine_b_policy_epoch=" << policy_epoch_
                << " engine_b_pixels_enabled=" << engine_b_pixels_enabled_
+               << " matched_engine_a_only=" << matched_engine_a_only_
                << " renderer_composite_a_ns="
                << renderer_profile.CompositeANs
                << " renderer_composite_b_ns="
@@ -5150,6 +5154,7 @@ private:
     bool direct_plane_publication_ = false;
     bool direct_full_video_output_ = true;
     bool arm_video_engine_b_only_ = false;
+    bool matched_engine_a_only_ = false;
     bool engine_b_pixels_enabled_ = false;
     std::uint32_t policy_epoch_ = 0;
     session_policy::Block policy_ {};
@@ -5390,7 +5395,7 @@ struct Fixture {
     std::uint32_t diagnostic_count = 0;
 
     explicit Fixture(std::uint32_t session, bool engine_b_pixels = false,
-                     bool matched_display = false)
+                     bool matched_display = false, bool engine_b_optional = false)
     {
         *header = {};
         header->magic = nds4mister::h3d::Magic;
@@ -5404,6 +5409,7 @@ struct Fixture {
         header->quiesce_ack = session;
         auto policy = session_policy::make(session, session, engine_b_pixels);
         if (matched_display) policy[3] |= session_policy::MatchedDisplay;
+        if (engine_b_optional) policy[3] |= session_policy::EngineBOptional;
         std::memcpy(bytes.data() + session_policy::RequestOffset,
                     policy.data(), sizeof(policy));
     }
@@ -5976,7 +5982,7 @@ void run_latest_plane_ack_test()
               << " first_released_frame=3 shared_immutable_before_ack=1 stop_while_waiting=1\n";
 }
 
-void run_matched_display_test(bool full_rate = false)
+void run_matched_display_test(bool full_rate = false, bool engine_a_only = false)
 {
     constexpr std::uint32_t Session = 0x44556677;
     for (bool policy : {false, true}) {
@@ -5993,7 +5999,7 @@ void run_matched_display_test(bool full_rate = false)
             false, false, false, true);
         if (service.initialize()) self_test_fail("matched mode accepted incomplete stream");
     }
-    Fixture fixture(Session, true, true), oracle_fixture(Session + 1, true);
+    Fixture fixture(Session, !engine_a_only, true, true), oracle_fixture(Session + 1, true);
     auto service = std::make_unique<Hybrid3DService>(
         fixture.bytes.data(), fixture.bytes.size(), std::string{},
         true, false, true, true, false, false, nullptr, nullptr,
@@ -6005,6 +6011,8 @@ void run_matched_display_test(bool full_rate = false)
         false, false, true);
     if (!service->initialize() || !oracle->initialize())
         self_test_fail("matched fixture initialization");
+    if (service->matched_engine_a_only_ != engine_a_only)
+        self_test_fail("matched Engine B menu policy was not applied");
     std::uint64_t checked = 0, different_frames = 0;
     std::array<std::uint32_t, 2> previous{};
     for (std::uint32_t frame = 1; frame <= 20; ++frame) {
@@ -6122,15 +6130,17 @@ void run_matched_display_test(bool full_rate = false)
                 descriptor.frame != frame)
                 self_test_fail("matched descriptor frame/format");
             for (unsigned screen = 0; screen < 2; ++screen) {
+                const auto expected_screen = engine_a_only ?
+                    (oracle->nds_->GPU.ScreenSwap ? 0u : 1u) : screen;
                 const auto* actual = reinterpret_cast<const std::uint32_t*>(
                     fixture.bytes.data() + FramebufferOffset +
                     descriptor.bank * nds4mister::h3d::FullFrameBankStride +
                     screen * nds4mister::h3d::FullFrameScreenStride);
                 for (std::size_t i = 0; i < PlanePixels; ++i) {
-                    if (actual[i] != (nds4mister::h3d::pack_melonds_pixel(expected[screen][i]) & 0x3ffffu)) {
+                    if (actual[i] != (nds4mister::h3d::pack_melonds_pixel(expected[expected_screen][i]) & 0x3ffffu)) {
                         std::cerr << "MATCHED_DIAG frame=" << frame << " screen=" << screen
                                   << " pixel=" << i << " actual=" << std::hex << actual[i]
-                                  << " expected=" << nds4mister::h3d::pack_melonds_pixel(expected[screen][i])
+                                  << " expected=" << nds4mister::h3d::pack_melonds_pixel(expected[expected_screen][i])
                                   << std::dec << '\n';
                         self_test_fail("matched pixels differ from every-frame reference");
                     }
@@ -6148,13 +6158,15 @@ void run_matched_display_test(bool full_rate = false)
     // The 3D clear color changes every two guest frames, while B's backdrop
     // changes every frame. Consecutive full-rate pictures may legitimately
     // repeat the top-left 3D pixel even though the complete pair is new.
-    if (different_frames != (full_rate ? 29u : 18u))
+    if (different_frames != (engine_a_only ? (full_rate ? 20u : 18u) :
+                              (full_rate ? 29u : 18u)))
         self_test_fail("matched fixture failed to vary both screens");
     service->stop_replay_worker();
     auto gap = packet_record(frame_packet::RecordKind::HBlank, 0, 0, 1, 21);
     if (service->apply_arm_video_phase(gap))
         self_test_fail("matched mode accepted missing LCD line zero");
     std::cout << "H3D_MATCHED_DISPLAY_PASS frames=20 full_rate=" << full_rate
+              << " engine_a_only=" << engine_a_only
               << " rendered=" << (full_rate ? 20 : 10) << " pixels=" << checked
               << " policies=3 missing_phase_rejected=1\n";
 }
@@ -9747,6 +9759,7 @@ try {
         }
         if (matched_full_rate_test) {
             run_matched_display_test(true);
+            run_matched_display_test(true, true);
             run_matched_catchup_test(true);
         } else if (matched_catchup_test) run_matched_catchup_test();
         else if (matched_display_test) run_matched_display_test();
@@ -9757,8 +9770,10 @@ try {
             // entering the legacy self-test's large stack frame so the ARM
             // test harness stays inside its ordinary 8 MiB stack limit.
             run_matched_display_test();
+            run_matched_display_test(false, true);
             run_matched_catchup_test();
             run_matched_display_test(true);
+            run_matched_display_test(true, true);
             run_matched_catchup_test(true);
             run_latest_plane_ack_test();
             run_scanline_lifetime_test();

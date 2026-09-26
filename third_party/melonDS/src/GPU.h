@@ -938,6 +938,10 @@ struct RendererSettings
     // Sprite preparation still runs at its ordinary phase. Unlike LineCache,
     // this never requests a future 3D row from the preceding sprite phase.
     bool PairedBCache = false;
+
+    // Matched MiSTer single-engine mode: draw A and mirror its completed
+    // output on both physical screens. Preserve LCD lifecycle and capture.
+    bool EngineAOnly = false;
 };
 
 struct ExternalRendererStageProfile

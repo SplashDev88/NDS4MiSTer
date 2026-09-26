@@ -2,6 +2,21 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
+## Private Engine B toggle experiment — 260925-EBO1
+
+This branch builds on v0.5.0 and restores the **Engine B (next Reset)** choice.
+**On** draws both engines. **Off** skips Engine B rendering and mirrors Engine A
+to both screen positions. Set the option, then Reset or reload the ROM.
+Content drawn only by Engine B is unavailable in Off mode.
+
+Use the matching experimental core and helper; the published v0.5.0 core
+cannot support this Off path. Details and validation are in
+[the experiment notes](docs/engine-b-optional-experiment.md). This experiment
+has not been published as a release. The release information below describes
+the unchanged v0.5.0 baseline, whose Engine B setting must remain On.
+
+## Published v0.5.0 reference
+
 **v0.5.0 — more games working, restored graphics, and faster rendering**
 
 This release brings InsaneFriend's Resident Evil: Deadly Silence, Kirby Mass

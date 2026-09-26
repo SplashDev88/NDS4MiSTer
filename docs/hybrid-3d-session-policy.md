@@ -1,5 +1,24 @@
 # Engine B session policy
 
+## Matched renderer experiment (260925-EBO1)
+
+The current matched ARM renderer composes both physical screens. In EBO1,
+On preserves the v0.5.0 rendering path; Off renders Engine A only and copies
+its finished pixels to both planes. Complete graphics-state and LCD-phase
+transport remains enabled in both modes. Old matched cores omit that state
+when Off, so they cannot run this path. Display capture and its memory side
+effects continue with B pixels disabled. See
+[the experiment notes](engine-b-optional-experiment.md).
+
+H3P1 flag bit 1 identifies matched full-screen output. Bit 2 advertises the
+new complete-transport capability with optional B pixels and is valid only
+with bit 1. The FPGA publishes flags 6 (Off) or 7 (On), and ARM acknowledges
+the exact flags. A previous helper rejects these unknown flags. The new
+helper rejects old matched Off requests without bit 2; old matched On is
+still understood. No new mailbox version or memory region is needed.
+
+## Earlier split-renderer policy (historical reference)
+
 The Engine B menu setting defaults to Off. A selection takes effect after
 Reset or a completed ROM load. Changing the menu while playing does not change
 the running session. Restarting only the ARM helper retains the applied choice.
@@ -39,7 +58,7 @@ The FPGA owns a 32-byte request at control offset `0x300`; ARM owns an exact
 | 0 | Magic `0x31503348` (H3P1) |
 | 1 | Version/size `0x00200001` |
 | 2 | Nonzero FPGA session |
-| 3 | Flags: bit 0 enables Engine B pixels; all other bits zero |
+| 3 | Flags: bit 0 enables Engine B pixels; bits 1/2 extend matched mode as above; other bits zero |
 | 4 | Nonzero quiesce epoch |
 | 5 | Reserved, zero |
 | 6 | Commit: the same epoch, written last |
