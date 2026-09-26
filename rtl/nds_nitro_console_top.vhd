@@ -2451,12 +2451,16 @@ begin
    -- io_bus9.ena already includes acceptance for the held DMA FIFO lane;
    -- it also covers DMA writes to individual GX command registers.
    gx_test_write <= io_bus9.ena and not io_bus9.rnw;
-   -- Invalidate at architectural issue, including DMA GX writes. Reset the
-   -- cache on power/GXSTAT writes as well as matrix, test and vertex commands.
-   gx_readback_geometry_write <= '1' when dma_gx_write_valid = '1' or
-      (io_bus9.ena = '1' and io_bus9.rnw = '0' and
-       ((unsigned(io_bus9.Adr) >= 16#400# and unsigned(io_bus9.Adr) <= 16#5cb#) or
-        io_bus9.Adr = x"0000600" or io_bus9.Adr = x"0000304")) else '0';
+   -- Invalidate at architectural issue, including held DMA GX writes.
+   -- The DMA event lane now also transports ordinary 2D IO: a BGxHOFS,
+   -- palette-control or Engine-B write cannot change a 3D matrix snapshot.
+   -- Apply the geometry/power/status address qualifier to BOTH sources.
+   -- Otherwise NSMB's per-line scroll DMA evicts the matrix cache between
+   -- consecutive reads, creating unnecessary HPS stalls and late HBlank DMA.
+   gx_readback_geometry_write <= '1' when
+      (dma_gx_write_valid = '1' or (io_bus9.ena = '1' and io_bus9.rnw = '0')) and
+      ((unsigned(io_bus9.Adr) >= 16#400# and unsigned(io_bus9.Adr) <= 16#5cb#) or
+       io_bus9.Adr = x"0000600" or io_bus9.Adr = x"0000304") else '0';
    igx_readback : entity work.nds_h3d_gx_readback_owner
    port map (
       clk => clk1x, reset => resetCpu, service_ready => gx_readback_enabled,
