@@ -37,9 +37,9 @@ python3 - "$repo_dir/rtl/nds_h3d_plane_reader.sv" "$test_tmp/reader-no-ddr-windo
 from pathlib import Path
 import sys
 source = Path(sys.argv[1]).read_text()
-old = 'descriptor_link_free && switch_opportunity_ddr)'
+old = '(descriptor_meta_full_frame_ddr || switch_opportunity_ddr)'
 assert source.count(old) == 1
-Path(sys.argv[2]).write_text(source.replace(old, 'descriptor_link_free)'))
+Path(sys.argv[2]).write_text(source.replace(old, "1'b1"))
 PY_MUTATE
 iverilog -g2012 -s tb_nds_h3d_plane_reader \
     -Ptb_nds_h3d_plane_reader.LATE_ADOPTION=1 \

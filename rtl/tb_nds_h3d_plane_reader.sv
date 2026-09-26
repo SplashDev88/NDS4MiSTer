@@ -1451,15 +1451,18 @@ module tb_nds_h3d_plane_reader #(
         wait_banks_free();
 
         // Format 2 publishes a complete ARM-rendered framebuffer bank. It
-        // activates at the same frame boundary but must not become a 3D plane
-        // descriptor, and ownership ACK waits for scanout adoption.
+        // does not depend on the unused local renderer's frame boundary. It
+        // must not become a 3D plane, and ownership ACK still waits for the
+        // actual video scanout. Supply no merge/window/frame-boundary event.
+        @(negedge pixel_clk);
+        manual_switch_window = 1'b0;
+        frame_boundary = 1'b0;
         publish_sequence = 32'd14;
         descriptor_sequence = 32'd14;
         descriptor_frame = 32'd104;
         descriptor_bank = 32'd3;
         descriptor_format = 32'd2;
         descriptor_transaction(1'b1);
-        activate_pending_descriptor();
         timeout = 0;
         while (full_frame_publish_count == 0 && timeout < 2000) begin
             @(posedge ddr_clk);
@@ -1470,14 +1473,19 @@ module tb_nds_h3d_plane_reader #(
             @(posedge pixel_clk);
             timeout = timeout + 1;
         end
-        if (timeout >= 4000 || last_full_frame_bank != 2'd3 ||
+        if (full_frame_publish_count != 1 || timeout >= 4000 || last_full_frame_bank != 2'd3 ||
             pixel_descriptor_valid || last_ack != 32'd12)
             $fatal(1, "full framebuffer descriptor activated or ACKed incorrectly");
+        repeat (200) @(negedge ddr_clk);
+        if (!dut.full_ack_pending || last_ack != 32'd12 ||
+            full_frame_publish_count != 1 || descriptor_switch_window || frame_boundary)
+            $fatal(1, "complete frame ownership returned before scanout adoption");
         @(negedge ddr_clk);
         manual_full_frame_adopted = 1'b1;
         @(negedge ddr_clk);
         manual_full_frame_adopted = 1'b0;
         wait_descriptor_ack(32'd14);
+        $display("PROOF: complete frame published with no local renderer boundary, but ownership waited for video scanout adoption");
 
         // Format 3 atomically carries a normal 3D plane plus one independent
         // Engine-B scanout bank. The plane activates immediately at VBlank,

@@ -713,10 +713,14 @@ module nds_h3d_plane_reader #(
                             session_invalidate_pending <= 1'b0;
                         end
                     end else if (descriptor_activation_pending_ddr &&
-                            descriptor_link_free && switch_opportunity_ddr) begin
+                            descriptor_link_free &&
+                            (descriptor_meta_full_frame_ddr || switch_opportunity_ddr)) begin
                         // The pixel side accepted the staged descriptor at an
                         // permitted blanking opportunity. Only now may DDR line
                         // requests switch planes and HPS reclaim the old bank.
+                        // A complete ARM frame does not use the local line
+                        // renderer: its independent scanout adoption below is
+                        // the ownership fence, so it needs no local blanking.
                         active_descriptor_valid <= descriptor_meta_valid_ddr;
                         active_descriptor_sequence <=
                             descriptor_meta_sequence_ddr;
@@ -1323,7 +1327,11 @@ module nds_h3d_plane_reader #(
             // the old plane until that switch is confirmed. Committing here
             // would create a deterministic transparent interval: pixels
             // would reject old banks while DDR still rejected new requests.
-            if (switch_opportunity_pixel && pending_descriptor_valid_pixel &&
+            // Complete ARM frames bypass this legacy line-merge boundary.
+            // They never expose a local 3D plane and remain owned by HPS until
+            // full_frame_adopted confirms the actual video scanout switch.
+            if ((pending_descriptor_full_frame_pixel || switch_opportunity_pixel) &&
+                    pending_descriptor_valid_pixel &&
                     !descriptor_activation_requested_pixel) begin
                 descriptor_activation_requested_pixel <= 1'b1;
                 descriptor_ack_toggle_pixel <= descriptor_ready_seen_pixel;
