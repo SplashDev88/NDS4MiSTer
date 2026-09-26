@@ -602,9 +602,6 @@ architecture arch of nds_nitro_console_top is
    signal vclr_busy   : std_logic;
    signal pclr_busy_a : std_logic;
    signal pclr_busy_b : std_logic;
-   signal local_a_drawline, local_a_drawobj : std_logic;
-   signal local_a_line, local_a_hblank, local_a_vblank, local_a_refpoint : std_logic;
-   signal local_a_extpal : std_logic_vector(23 downto 0);
    signal pal_read_data : std_logic_vector(31 downto 0);
    signal pal_read_busy : std_logic;
    signal pal_read_busy_meta, pal_read_busy_1x : std_logic := '1';
@@ -2829,19 +2826,6 @@ begin
    r_bgep_addr  <= to_unsigned(g_bgep_addr, 13);
    r_objep_addr <= to_unsigned(g_objep_addr, 11);
 
-   -- Matched display uses complete ARM-rendered frames; the framebuffer
-   -- discards this local renderer's pixels. Keep its exact register readback
-   -- and reset/clear behavior, but stop redundant VRAM drawing/refills. LCD
-   -- timing, HBlank DMA, IRQs and the ordered ARM phase transport remain live.
-   -- Full-frame descriptor adoption is independently fenced by video scanout.
-   local_a_drawline <= drawline when H3D_MATCHED_DISPLAY_TEST = 0 else '0';
-   local_a_drawobj <= drawObj when H3D_MATCHED_DISPLAY_TEST = 0 else '0';
-   local_a_line <= line_trigger when H3D_MATCHED_DISPLAY_TEST = 0 else '0';
-   local_a_hblank <= hblank_trigger when H3D_MATCHED_DISPLAY_TEST = 0 else '0';
-   local_a_vblank <= gpu_vblank when H3D_MATCHED_DISPLAY_TEST = 0 else '0';
-   local_a_refpoint <= refpoint_update when H3D_MATCHED_DISPLAY_TEST = 0 else '0';
-   local_a_extpal <= vramcnt(55 downto 32) when H3D_MATCHED_DISPLAY_TEST = 0 else (others => '0');
-
    -- Shipping uses GPU_FAST=0.  Instantiate the product-local renderer
    -- directly in that branch so its registered H3D seam stays in clk1x.  The
    -- superseded experimental fast branch is retained for diagnostic builds;
@@ -2854,11 +2838,11 @@ begin
       (
          clk => clk1x, reset => resetCpu,
          gb_bus => io_bus9, wired_out => g2d_wired_out, wired_done => g2d_wired_done,
-         linecounter => linecounter, drawline => local_a_drawline,
-         linecounter_obj => linecounter_obj, drawObj => local_a_drawobj,
-         line_trigger => local_a_line, hblank_trigger => local_a_hblank,
-         vblank_trigger => local_a_vblank, refpoint_update => local_a_refpoint,
-         extpal_config => local_a_extpal,
+         linecounter => linecounter, drawline => drawline,
+         linecounter_obj => linecounter_obj, drawObj => drawObj,
+         line_trigger => line_trigger, hblank_trigger => hblank_trigger,
+         vblank_trigger => gpu_vblank, refpoint_update => refpoint_update,
+         extpal_config => vramcnt(55 downto 32),
          line_busy => line_busy, epfill_busy => epfill_busy, clr_busy => pclr_busy_a,
          pal_we => pal_we_a, pal_addr => pal_addr_lo, pal_din => pal_din, pal_be => pal_be,
          oam_we => oam_we_a, oam_addr => oam_addr_lo, oam_din => oam_din, oam_be => oam_be,
