@@ -412,9 +412,12 @@ set_global_assignment -name VERILOG_MACRO "NDS_PRIVATE_SOUND_TRACE_OFF=1"
 set_global_assignment -name VERILOG_MACRO "NDS_PRIVATE_RENDER_TRACE_OFF=1"
 
 set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_readback_owner.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_dma_completion.vhd
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_gx_readback_reply.sv
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_readback_legacy_adapter.sv
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_adoption_window.sv
+# Private passive CPU/DMA ownership snapshots.
+set_global_assignment -name VERILOG_MACRO "NDS_NSMB_DMA_DIAGNOSTIC=1"

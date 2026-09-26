@@ -724,6 +724,8 @@ architecture arch of nds_nitro_console_top is
    signal gx_readback_enabled, gx_readback_selected, gx_readback_busy : std_logic;
    signal gx_readback_complete, gx_readback_fence, gx_readback_geometry_write : std_logic;
    signal gx_readback_cpu_read : std_logic;
+   signal gx_readback_cpu_complete, dma_io_read_wait_grant : std_logic;
+   signal nsmb_probe_selector : unsigned(1 downto 0) := (others => '0');
    signal gx_test_write : std_logic;
    signal gx_test_status : std_logic_vector(1 downto 0);
    signal gx_readback_value, gx_readback_wired : std_logic_vector(31 downto 0);
@@ -1778,7 +1780,7 @@ begin
             else
                cdc_io_cpl <= not cdc_io_cpl;
             end if;
-         elsif (gx_readback_complete = '1') then
+         elsif (gx_readback_cpu_complete = '1') then
             cdc_io_cpl <= not cdc_io_cpl;
          elsif (h3d_gpu_cpu_complete = '1' and gx_readback_busy = '0') then
             cdc_io_cpl <= not cdc_io_cpl;
@@ -2070,8 +2072,23 @@ begin
       dbg_mb => dbg_mb9, dbg_cache => dbg_cache9
    );
 
+   -- A GPU read can wait hundreds of microseconds for the ARM renderer.
+   -- A one-unit HBlank DMA may use independent RAM/IO lanes during that wait;
+   -- the DMA itself qualifies its addresses/count and forbids membus fallback.
+   -- The CPU remains paused and its true response is deferred until the IO
+   -- mux returns. Cache/write-buffer ownership and SWP locks stay respected.
+   dma_io_read_wait_grant <= gx_readback_busy and not gx_readback_fence and
+      not h3d_readback_request and
+      dma_mr_idle1 and dma_mr_idle2 and not ld_busy and not dbg_pk_sel and
+      not cpu9_lock;
+   igx_dma_completion : entity work.nds_h3d_gx_dma_completion
+      port map(clk => clk1x, reset => resetCpu,
+         gx_complete => gx_readback_complete, dma_bus_on => dma_bus_on,
+         cpu_complete => gx_readback_cpu_complete);
+
    -- ARM9 bus mux: the DMA owns the membus while dma_bus_on (CPU paused
-   -- via dma_on and drained via CPU_bus_idle before the grant)
+   -- via dma_on and normally drained via CPU_bus_idle before the grant;
+   -- a qualified GX-wait overlap never asserts dmab_ena)
    mbus_adr  <= dmab_adr  when dma_bus_on = '1' else cpu9_adr;
    mbus_rnw  <= dmab_rnw  when dma_bus_on = '1' else cpu9_rnw;
    mbus_ena  <= dmab_ena_i9 when dma_bus_on = '1' else cpu9_ena;
@@ -2105,6 +2122,7 @@ begin
       gx_write_valid => dma_gx_write_valid,
       io_write_capture => dma_io_capture,
       cpu_bus_idle => cpu9_bus_idle,
+      io_read_wait_grant => dma_io_read_wait_grant,
       dma_on       => dma_on,
       dma_bus_on   => dma_bus_on,
       dbg_active_channel => dma9_dbg_active_channel,
@@ -2922,24 +2940,29 @@ begin
    -- the real outstanding access, or proves the idle flag is stale, without
    -- changing bus arbitration or timing.
    p_bg1_line30_dma_receipt : process (clk1x)
+      variable sample_line : integer range 0 to 191;
    begin
       if rising_edge(clk1x) then
-         if (resetCpu = '1') then
-            bg1_scroll_sample_toggle_d <= '0';
+         if resetCpu = '1' then
+            nsmb_probe_selector <= (others => '0');
             dbg_bg1_scroll_triplet <= (others => '0');
-         elsif (bg1_scroll_renderer_diag(31 downto 28) = x"F" and
-                bg1_scroll_renderer_diag(27) /= bg1_scroll_sample_toggle_d) then
-            bg1_scroll_sample_toggle_d <= bg1_scroll_renderer_diag(27);
-            if (bg1_scroll_renderer_diag(24) = '0') then
+         else
+            if gpu_vblank = '1' then
+               nsmb_probe_selector <= nsmb_probe_selector + 1;
+            end if;
+            case to_integer(nsmb_probe_selector) is
+               when 0 => sample_line := 88;
+               when 1 => sample_line := 89;
+               when 2 => sample_line := 100;
+               when others => sample_line := 150;
+            end case;
+            if drawline = '1' and linecounter = sample_line then
                dbg_bg1_scroll_triplet <=
-                  bg1_scroll_renderer_diag(31 downto 24) &
-                  dbg_mb9(2 downto 0) & cpu_access_active &
-                  std_logic_vector(cpu_access_age) & cpu_access_rnw &
-                  cpu_access_addr;
-            else
-               dbg_bg1_scroll_triplet <=
-                  bg1_scroll_renderer_diag(31 downto 3) &
-                  dma_on & dma_bus_on & gx_trig;
+                  std_logic_vector(to_unsigned(12, 4) + resize(nsmb_probe_selector, 4)) &
+                  gx_readback_busy & cpu9_bus_idle & dma_on & dma_bus_on &
+                  dma9_dbg_state & dbg_mb9(2 downto 0) &
+                  cpu_access_active & cpu_access_rnw &
+                  std_logic_vector(cpu_access_age(6 downto 4)) & cpu_access_addr;
             end if;
          end if;
       end if;

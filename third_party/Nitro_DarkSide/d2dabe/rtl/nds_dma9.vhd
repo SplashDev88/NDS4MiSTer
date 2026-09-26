@@ -81,6 +81,10 @@ entity nds_dma9 is
 
       -- membus grant: dma_on pauses the CPU, the bus is ours once idle
       cpu_bus_idle : in  std_logic;
+      -- A companion arbiter may allow a single HBlank RAM -> 2D-register
+      -- transfer on the independent fast lanes while a CPU GX read waits.
+      -- Never grants general membus access; ordinary users leave this Off.
+      io_read_wait_grant : in std_logic := '0';
       dma_on       : out std_logic := '0';
       dma_bus_on   : out std_logic := '0';
       -- Observation-only scheduler state. These ports have defaults so the
@@ -253,6 +257,7 @@ architecture arch of nds_dma9 is
    signal gx_chunk_rem : unsigned(6 downto 0) := (others => '0');
    signal trig_gx_d    : std_logic := '0';
    signal gx_write_valid_s : std_logic;
+   signal io_read_overlap : std_logic := '0';
    signal vram_write_valid_s : std_logic;
 
    -- register write/read decode
@@ -330,6 +335,12 @@ architecture arch of nds_dma9 is
          when "10"   => return 0;
          when others => return step;      -- 0 and 3: increment
       end case;
+   end function;
+
+   function is_2d_register(a : unsigned(27 downto 0)) return boolean is
+   begin
+      return (a >= 16#04000000# and a < 16#04000060#) or
+             (a >= 16#04001000# and a < 16#04001060#);
    end function;
 
 begin
@@ -577,6 +588,7 @@ begin
             mr_busy  <= '0';
             dma_on <= '0';
             dma_bus_on <= '0';
+            io_read_overlap <= '0';
             gx_chunk_rem <= (others => '0');
             trig_gx_d <= '0';
          else
@@ -675,6 +687,7 @@ begin
                   null;
                  else
                   dma_bus_on <= '0';
+                  io_read_overlap <= '0';
                   v_got  := '0';
                   v_pick := 0;
                   for i in 3 downto 0 loop
@@ -694,8 +707,23 @@ begin
 
                when GRANT =>
                   if (cpu_bus_idle = '1') then
+                     io_read_overlap <= '0';
                      dma_bus_on <= '1';
                      state      <= LATCH;
+                  elsif (io_read_wait_grant = '1' and
+                         ch(active).timing = "010" and
+                         unsigned(ch(active).count) = 1 and
+                         ch(active).remain <= 1 and
+                         ch(active).srcctl /= "11" and
+                         is_main(ch(active).cur_src) and
+                         is_2d_register(ch(active).cur_dst) and
+                         (ch(active).dstctl /= "11" or
+                          is_2d_register(unsigned(ch(active).dad)))) then
+                     -- The CPU keeps its accepted I/O transaction. This DMA
+                     -- is confined to the separate RAM and IO fast lanes.
+                     io_read_overlap <= '1';
+                     dma_bus_on <= '1';
+                     state <= LATCH;
                   end if;
 
                when LATCH =>
@@ -745,7 +773,12 @@ begin
                   state <= RD;
 
                when RD =>
-                  if (is_io(ch(active).cur_src)) then
+                  if (io_read_overlap = '1' and mr_fast_ok = '0') then
+                     -- The RAM fast grant is intentionally delayed after bus
+                     -- ownership. A parked CPU still owns membus: never use
+                     -- its fallback merely because this lane is not ready.
+                     null;
+                  elsif (is_io(ch(active).cur_src)) then
                      -- the request is already on the wire (see the concurrent
                      -- drivers above) and the wired-OR answered inside this
                      -- cycle, so the read completes here. The rotation that

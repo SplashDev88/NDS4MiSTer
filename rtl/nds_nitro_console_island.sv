@@ -1450,7 +1450,9 @@ wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : {
 // blocker's actual accepted ARM9 membus state, age, and address. The
 // observational heartbeat does not alter rendering, DMA, framebuffer
 // publication, or display handshakes.
-`ifdef NDS_SEAM_DIAGNOSTIC
+`ifdef NDS_NSMB_DMA_DIAGNOSTIC
+wire [31:0] h3d_diagnostic_heartbeat = h3d_bg1_scroll_ddr;
+`elsif NDS_SEAM_DIAGNOSTIC
 // Sound bring-up diagnostic: Beta 78 proved the H3D transport, return plane,
 // and framebuffer were live while the console emitted empty frames. Publish
 // the existing architectural ARM9 PC tap so the next board run identifies the
