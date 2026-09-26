@@ -2,32 +2,18 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-## Private Engine B toggle experiment — 260925-EBO1
+**v0.5.1 — faster gameplay, NSMB graphics fixes, and an optional second screen**
 
-This branch builds on v0.5.0 and restores the **Engine B (next Reset)** choice.
-**On** draws both engines. **Off** skips Engine B rendering and mirrors Engine A
-to both screen positions. Set the option, then Reset or reload the ROM.
-Content drawn only by Engine B is unavailable in Off mode.
+New Super Mario Bros. background flickering, bottom-screen map corruption and
+pale Star Coins are corrected. More efficient rendering improves performance;
+NSMB and Castlevania: Dawn of Sorrow passed focused gameplay testing.
+The earlier compatibility and graphics fixes remain.
 
-Use the matching experimental core and helper; the published v0.5.0 core
-cannot support this Off path. Details and validation are in
-[the experiment notes](docs/engine-b-optional-experiment.md). This experiment
-has not been published as a release. The release information below describes
-the unchanged v0.5.0 baseline, whose Engine B setting must remain On.
-
-## Published v0.5.0 reference
-
-**v0.5.0 — more games working, restored graphics, and faster rendering**
-
-This release brings InsaneFriend's Resident Evil: Deadly Silence, Kirby Mass
-Attack, Kirby Super Star Ultra, GTA: Chinatown Wars and Mega Man ZX fixes into
-the current core. It also restores Final Fantasy Tactics A2 and Pokemon
-Platinum graphics, improves rendering speed and prevents disconnected Wi-Fi
-retries from stalling the core. Earlier game fixes remain.
-
-> **Engine B must be On.** Change it in the core menu, then reset or reload
-> your ROM. Older Off settings can produce a blank display. Use this release's
-> core, helper and launcher together.
+**Engine B is optional again.** On draws both DS screens. Off skips Engine B
+and mirrors Engine A to both positions, which can help performance but hides
+content drawn by Engine B. Change **Engine B (next Reset)**, then Reset or
+reload your ROM. The installer preserves existing settings. Unlike v0.5.0,
+this release supports both modes; use its matching core/helper/launcher.
 
 No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
 artifacts, or credentials are included in this source repository.
@@ -53,12 +39,10 @@ artifacts, or credentials are included in this source repository.
   hardware-tested with beta.7.
 - Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
 - Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
-- Both screens composed together by the MATCH4 renderer. Engine B On is required.
+- Both screens composed together by the MATCH4 renderer with Engine B On;
+  optional Engine B Off mirrors Engine A to both screens.
 
 ## Current limitations
-
-- **New Super Mario Bros. regresses in this release:** it runs slower and has
-  graphical glitches.
 
 - **Strange Journey can still freeze during its intro.** WC does not fix it.
 - **GTA: Chinatown Wars may still show stray triangles.** Its new overflow
@@ -72,9 +56,8 @@ artifacts, or credentials are included in this source repository.
   and MiSTer menu rotate separately. Both-screen performance depends on the game.
 - **Other graphical regressions remain.** Castlevania and Metroid fixes passed
   focused testing; other games and scenes can still expose rendering problems.
-- **Engine B must stay On.** Off remains in the menu but is unsupported by this
-  build. Set On, then Reset or reload the ROM. The installer preserves your
-  configuration, so an older saved Off setting must be changed manually.
+- **Engine B Off hides second-engine content.** It can improve performance,
+  but not every game or scene becomes faster. Use On for complete dual screens.
 - **Pokemon Platinum character and room furniture passed testing.** SoulSilver
   has not been verified with this build; other scenes may still expose problems.
 - **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
@@ -98,12 +81,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_v0.5.0_20260925.zip` directly into the root
+   `NDS4MiSTer_v0.5.1_20260926.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260925** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260926** and launch the core.
 4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
    file. If already loaded, Reset or reload after changing Engine B.
 
@@ -161,7 +144,7 @@ edges. Hold the left mouse button to press the stylus.
 The on-screen pointer is **white while hovering** and **red while pressed**. It
 remains visible while pressed and lingers for about half a second after
 movement. With Engine B On, it follows the DS touchscreen through the selected
-layout and screen order. Engine B Off is unsupported in this build.
+layout and screen order. Off mirrors Engine A, so a game may hide its touch UI.
 
 ## Saves
 
@@ -202,20 +185,17 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.5.0
+## What's new in v0.5.1
 
-- InsaneFriend's Mega Man ZX graphics and transfer improvements.
-- Kirby Mass Attack and Kirby Super Star Ultra CPU compatibility fixes.
-- Resident Evil: Deadly Silence CPU store-permission correction.
-- GTA: Chinatown Wars clipping-overflow crash guard.
-- Final Fantasy Tactics A2 startup/menu graphics and Pokemon Platinum character
-  and room furniture restored.
-- Faster ARM rendering, retaining the recovered graphics and stock 1 GHz clock.
-- Disconnected Wi-Fi retries stopped at Kickstart to avoid the observed
-  Lunar Knights movie crash. Connected Wi-Fi and saved settings are preserved.
+- NSMB background timing, bottom-screen overworld map and gold Star Coin fixes.
+- Optional Engine B with complete transport and correct mirrored output Off.
+- Texture-row alpha caching avoids drawing work that cannot affect the picture.
+- Existing InsaneFriend game fixes, FFT A2/Platinum graphics, disconnected Wi-Fi
+  guard and previous speed improvements are retained.
 
-See the [release notes](docs/RELEASE_NOTES_V050.md),
-[integration notes](docs/INSANEFRIEND_COMPAT_PORT.md) and
+See the [release notes](docs/RELEASE_NOTES_V051.md),
+[v0.5.1 validation](docs/V051_GRAPHICS_AND_PERFORMANCE.md),
+[InsaneFriend integration](docs/INSANEFRIEND_COMPAT_PORT.md) and
 [technical source notes](SOURCE_PACKAGE.txt).
 
 ## Retained from v0.4.0-beta
@@ -239,21 +219,19 @@ The smoother movie playback and other work from v0.4.0-beta are retained:
 Earlier Chrono startup and sprite corrections, Kirby graphics, palette fades
 and text colors, transparency, processor wake-up, touch, sound, cartridge saves,
 and boot fixes remain in the source. New graphical regressions are listed
-above. Engine B On is required. ARM runs at stock 1 GHz with no overclock.
+above. Engine B is optional. ARM runs at stock 1 GHz with no overclock.
 No new gameplay speed percentage or universal 60 FPS claim is made.
 
 The new ordered matrix and visibility readback restores the tested Pokemon
-Platinum player and room furniture. SoulSilver and other scenes still need
-validation; see
-[issue #16](https://github.com/SplashDev88/NDS4MiSTer/issues/16).
+Platinum player and room furniture. SoulSilver and other scenes still need validation.
 
 ## Verification
 
-The installer contains the exact IFP3 FPGA and ARM helper accepted after
-Mega Man ZX hardware testing. Source, binary identities, test coverage and
-timing limits are in [SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). Source and
-installer each include checksums. No runtime binary was rebuilt for packaging.
-CPU/memory/graphics regressions and host/emulated-ARM service self-tests passed.
+The installer contains the exact VEC1 FPGA and row-alpha ARM helper accepted
+after NSMB and Castlevania gameplay testing. Source/binary identities, test
+coverage and timing limits are in [SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt).
+The public launcher embeds the accepted fast-query polling mode. Source and
+installer include checksums; neither runtime binary was rebuilt for packaging.
 These are focused checks, not a guarantee of 60 FPS or all-game accuracy.
 
 ## For developers
@@ -263,7 +241,7 @@ These are focused checks, not a guarantee of 60 FPS or all-game accuracy.
 
 - The **FPGA** runs ARM9/ARM7, timing, DMA, cartridge, memory/VRAM, sound,
   saves, input and MiSTer video output, and transports ordered graphics events.
-- The **ARM/HPS service** composes Engine A, Engine B and 3D into complete pairs.
+- The **ARM/HPS service** composes Engine A, optional Engine B and 3D into complete pairs.
   The FPGA adopts acknowledged complete banks; native FPGA pixel writes are
   disabled in the matched configuration.
 - Weighted dual-core raster bands, packed background rows and Engine B

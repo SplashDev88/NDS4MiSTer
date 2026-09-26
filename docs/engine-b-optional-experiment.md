@@ -1,5 +1,8 @@
 # Engine B toggle experiment — 260925-EBO1
 
+> Historical experiment notes. The accepted combined v0.5.1 build and
+> current validation are documented in [V051_GRAPHICS_AND_PERFORMANCE.md](V051_GRAPHICS_AND_PERFORMANCE.md).
+
 This is a private test on top of the published v0.5.0 source. It is not a new
 release and has not yet passed MiSTer gameplay testing.
 

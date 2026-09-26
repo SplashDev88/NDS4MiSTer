@@ -1,5 +1,8 @@
 # NSMB DMA / matrix cache experiment (NSM2)
 
+> Historical experiment notes. The accepted combined v0.5.1 build and
+> current validation are documented in [V051_GRAPHICS_AND_PERFORMANCE.md](V051_GRAPHICS_AND_PERFORMANCE.md).
+
 Private candidate on published v0.5.0 (`4dd5624`). Hardware qualification is
 pending. No Engine B policy, CPU timing, raster cadence or readback data change.
 

@@ -1,3 +1,5 @@
+# v0.5.1 source and validation
+
 NDS4MiSTer v0.5.1 — NSMB graphics, optional Engine B and rendering speed
 
 Accepted build: 260926-VEC1. Public core: _Console/NDS_20260926.rbf.

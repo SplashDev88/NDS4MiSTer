@@ -1,5 +1,8 @@
 # Optional Engine B with the NSMB HBlank fix
 
+> Historical experiment notes. The accepted combined v0.5.1 build and
+> current validation are documented in [V051_GRAPHICS_AND_PERFORMANCE.md](V051_GRAPHICS_AND_PERFORMANCE.md).
+
 Private EBO6 combines EBO3's already tested optional-B policy with NSM5's
 bounded HBlank DMA overlap, retained real GX completion, and passive ownership
 heartbeat. The paired ARM service remains the optional-B b2d build. Use its
