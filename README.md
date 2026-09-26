@@ -2,12 +2,12 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.5.1 — faster gameplay, NSMB graphics fixes, and an optional second screen**
+**v0.5.1 — NSMB graphics fixes and an optional second screen**
 
 New Super Mario Bros. background flickering, bottom-screen map corruption and
-pale Star Coins are corrected. More efficient rendering improves performance;
-NSMB and Castlevania: Dawn of Sorrow passed focused gameplay testing.
-The earlier compatibility and graphics fixes remain.
+pale Star Coins are corrected, and the game runs well again in our testing.
+Engine B can be turned Off again, although On is recommended for normal play.
+The earlier compatibility, graphics and rendering improvements remain.
 
 **Engine B is optional again.** On draws both DS screens. Off skips Engine B
 and mirrors Engine A to both positions, which can help performance but hides
@@ -189,7 +189,6 @@ revision is enough to identify it.
 
 - NSMB background timing, bottom-screen overworld map and gold Star Coin fixes.
 - Optional Engine B with complete transport and correct mirrored output Off.
-- Texture-row alpha caching avoids drawing work that cannot affect the picture.
 - Existing InsaneFriend game fixes, FFT A2/Platinum graphics, disconnected Wi-Fi
   guard and previous speed improvements are retained.
 
