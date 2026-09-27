@@ -507,7 +507,7 @@ def main() -> int:
             environment["NDS4MISTER_BLACK_EVENT_TRACE"] = "1"
             environment["NDS4MISTER_H3D_UPLOAD_SNAPSHOT"] = "0"
             environment["NDS4MISTER_GX_MATRIX_PREFIX"] = "off"
-            environment["NDS4MISTER_GX_QUERY_FAST_POLL"] = "0"
+            environment["NDS4MISTER_GX_QUERY_FAST_POLL"] = "1"
             environment["NDS4MISTER_PACKET_NC"] = "1"
             environment["NDS_GPU_STANDARD_PALETTE_CACHE"] = "0"
             environment.pop("NDS4MISTER_MATCHED_DISPLAY_TEST", None)
@@ -526,7 +526,7 @@ def main() -> int:
                     "NDS4MISTER_H3D_DIAGNOSTICS": "0",
                     "NDS4MISTER_DIRECT_PLANE_PUBLICATION": "1",
                     "NDS4MISTER_GX_MATRIX_PREFIX": "fast",
-                    "NDS4MISTER_GX_QUERY_FAST_POLL": "1",
+                    "NDS4MISTER_GX_QUERY_FAST_POLL": "0",
                     "NDS4MISTER_PACKET_NC": "0",
                     "NDS_GPU_STANDARD_PALETTE_CACHE": "1",
                     "NDS4MISTER_H3D_UPLOAD_SNAPSHOT": "1",

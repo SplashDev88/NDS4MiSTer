@@ -691,7 +691,7 @@ start_service()
         # bounded H3D replay/render work precedence without killing MiSTer,
         # which preserves the normal menu, input, and core lifecycle.
         NDS4MISTER_GX_MATRIX_PREFIX=fast \
-        NDS4MISTER_GX_QUERY_FAST_POLL=1 \
+        NDS4MISTER_GX_QUERY_FAST_POLL=0 \
         NDS4MISTER_PACKET_NC=0 \
         NDS_GPU_STANDARD_PALETTE_CACHE=1 \
         NDS4MISTER_H3D_UPLOAD_SNAPSHOT=1 \
