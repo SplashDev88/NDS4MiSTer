@@ -2,12 +2,11 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.5.1 — NSMB graphics fixes and an optional second screen**
+**v0.5.2 — Final Fantasy Tactics A2 regression fix**
 
-New Super Mario Bros. background flickering, bottom-screen map corruption and
-pale Star Coins are corrected, and the game runs well again in our testing.
-Engine B can be turned Off again, although On is recommended for normal play.
-The earlier compatibility, graphics and rendering improvements remain.
+Final Fantasy Tactics A2's menus are fast and responsive again, and its
+startup logos display correctly when starting or reloading the game.
+Earlier graphics, compatibility and rendering improvements are retained.
 
 **Engine B is optional again.** On draws both DS screens. Off skips Engine B
 and mirrors Engine A to both positions, which can help performance but hides
@@ -81,7 +80,7 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_v0.5.1_20260926.zip` directly into the root
+   `NDS4MiSTer_v0.5.2_20260927.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
@@ -185,15 +184,16 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.5.1
+## What's new in v0.5.2
 
-- NSMB background timing, bottom-screen overworld map and gold Star Coin fixes.
-- Optional Engine B with complete transport and correct mirrored output Off.
-- Existing InsaneFriend game fixes, FFT A2/Platinum graphics, disconnected Wi-Fi
-  guard and previous speed improvements are retained.
+- Restored FFT A2 menu animation and button response.
+- Corrected FFT A2 startup-logo geometry, including after ROM reloads.
+- Earlier fixes, optional Engine B, saves, touch and both TATE directions remain.
 
-See the [release notes](docs/RELEASE_NOTES_V051.md),
-[v0.5.1 validation](docs/V051_GRAPHICS_AND_PERFORMANCE.md),
+See the [release notes](docs/RELEASE_NOTES_V052.md),
+[FFT startup validation](docs/fft-startup-geometry.md),
+[FFT menu-speed fix](docs/ffta-menu-pacing.md),
+[previous v0.5.1 validation](docs/V051_GRAPHICS_AND_PERFORMANCE.md),
 [InsaneFriend integration](docs/INSANEFRIEND_COMPAT_PORT.md) and
 [technical source notes](SOURCE_PACKAGE.txt).
 

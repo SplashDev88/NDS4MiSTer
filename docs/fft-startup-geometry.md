@@ -60,4 +60,6 @@ performance evidence is under `evidence/query-burst-20260927/`.
 
 The accepted parent helper is preserved (`e905ec9f...`). The final test helper
 SHA-256 is `91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390febe3`.
-This is a private test candidate; no release has been published.
+The user confirmed "works great" after testing the final candidate and
+requested packaging as the FFT regression fix. This is the accepted
+v0.5.2 runtime; packaging preserves these exact tested binaries.
