@@ -2,10 +2,11 @@
 
 **Status:** on 2026-09-27 the user confirmed the cost-bound correction:
 “yes its fast again”, in response to the FFT menu animation and button-response
-comparison. This is the accepted FFT menu-speed baseline. Moving NSMB and
-Castlevania checks on this exact helper remain outstanding. The earlier
-compaction-only helper was rejected because it did not cover a second
-fallback observed in the user’s startup sequence.
+comparison. When asked to check NSMB gameplay and Castlevania movement, the
+user then confirmed “yes speed holds up.” This beta is the accepted performance
+baseline for these tested games. The earlier compaction-only helper was
+rejected because it did not cover a second fallback observed in the user’s
+startup sequence.
 
 ## Second fallback: overstated command costs
 
@@ -35,7 +36,8 @@ and an empty replay queue at shutdown. A second boot used the user’s normal
 SD-card ROM, a longer load delay, and profiling disabled. Its prefix remained
 valid beyond 110,000 verified replies. The user then confirmed the menu feels
 fast again. Reply counts are not measurements of animation FPS or input
-latency, and this acceptance does not establish performance in other games.
+latency. NSMB and Castlevania speed retention is user-confirmed, rather than
+a new measured FPS comparison.
 
 ## First fallback: retired queue entries
 
