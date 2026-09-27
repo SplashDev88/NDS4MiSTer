@@ -1,8 +1,11 @@
 # Sustained fast graphics queries
 
-**Status:** the user rejected the compaction-only helper as slow in FFT
-A2’s title menu (both animation and input). Its earlier automated success
-did not cover the startup sequence observed in the user’s session.
+**Status:** on 2026-09-27 the user confirmed the cost-bound correction:
+“yes its fast again”, in response to the FFT menu animation and button-response
+comparison. This is the accepted FFT menu-speed baseline. Moving NSMB and
+Castlevania checks on this exact helper remain outstanding. The earlier
+compaction-only helper was rejected because it did not cover a second
+fallback observed in the user’s startup sequence.
 
 ## Second fallback: overstated command costs
 
@@ -30,8 +33,9 @@ On hardware, the first corrected FFT boot/menu run lasted 108 seconds with
 70,444 fast replies, all verified against ordered replay, no prefix fallback,
 and an empty replay queue at shutdown. A second boot used the user’s normal
 SD-card ROM, a longer load delay, and profiling disabled. Its prefix remained
-valid beyond 34,000 replies. The current beta is for user comparison; these
-checks do not establish input latency, animation FPS, or acceptance.
+valid beyond 110,000 verified replies. The user then confirmed the menu feels
+fast again. Reply counts are not measurements of animation FPS or input
+latency, and this acceptance does not establish performance in other games.
 
 ## First fallback: retired queue entries
 
