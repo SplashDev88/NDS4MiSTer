@@ -1072,6 +1072,7 @@ public:
 
 private:
     friend void run_self_test();
+    friend void run_gx_readback_swap_self_test();
     friend void run_scanline_lifetime_test();
     friend void run_latest_plane_ack_test();
     friend void run_matched_display_test(bool, bool);
@@ -1457,7 +1458,14 @@ private:
         if (!consumer_.acknowledge())
             return consumer_fault_result(
                 "queued frame packet acknowledgement failed");
-        if (matrix_prefix_mode_ == 2 && packet.prefix_snapshot[0]) {
+        // A busy prefix is an intermediate state, not a settled matrix
+        // generation. FFT A2's startup reuses the preceding projection when
+        // these replies bypass ordered replay, stretching its logos into
+        // clipped rectangles even though each snapshot verifies later.
+        // Let the existing owner retire busy/partial work; keep the prefix
+        // eligible so the next settled query can still reply immediately.
+        if (matrix_prefix_mode_ == 2 && packet.prefix_snapshot[0] &&
+            !(packet.prefix_snapshot[gx_readback::StatusWord] & 0x08000001u)) {
             if (!publish_prefix_snapshot(packet.prefix_snapshot))
                 return PollResult::Fault;
             packet.prefix_published = true;
@@ -6446,9 +6454,21 @@ void run_gx_readback_swap_self_test()
             fixture.bytes.data() + gx_readback::MappingOffset);
         const auto submit = [&](unsigned sequence, unsigned frame, unsigned flags,
                                 std::vector<frame_packet::Record> records) {
+            const bool inspect_early_reply = asynchronous && prefix_mode == 2 &&
+                (sequence == 3 || sequence == 4);
+            if (inspect_early_reply) service.stop_replay_worker();
+            const auto prior_commit = load_acquire(reply + gx_readback::CommitWord);
             fixture.publish(sequence, frame, flags, records);
             if (service.poll() != PollResult::Applied)
                 self_test_fail("readback SWAP packet rejected");
+            if (inspect_early_reply) {
+                const auto commit = load_acquire(reply + gx_readback::CommitWord);
+                if (sequence == 3 && commit != prior_commit)
+                    self_test_fail("busy SWAP prefix bypassed ordered replay");
+                if (sequence == 4 && commit != 4)
+                    self_test_fail("settled prefix did not resume early replies");
+                service.start_replay_worker();
+            }
             if (asynchronous) {
                 const auto deadline = std::chrono::steady_clock::now() +
                     std::chrono::seconds(2);
@@ -6481,7 +6501,8 @@ void run_gx_readback_swap_self_test()
             (reply[gx_readback::StatusWord] & (1u << 27)))
             self_test_fail("readback after VBlank required a future GX write");
     }
-    std::cout << "H3D_GX_READBACK_SWAP_SELF_TEST_PASS sync_async_prefix=6\n";
+    std::cout << "H3D_GX_READBACK_SWAP_SELF_TEST_PASS sync_async_prefix=6 "
+                 "busy_ordered=1 settled_early_resume=1\n";
 }
 
 void run_gx_readback_self_test()
