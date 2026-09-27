@@ -139,12 +139,34 @@ int main() try {
         p.command(0x1c,1234);p.command(0x1c,5678);p.command(0x1c,9012);
         p.compare();p.vblank();p.compare();
     }
+    // A steady stream can leave the next frame's first command behind each
+    // SWAP forever. Retired vector entries must not exhaust the pending-word
+    // bound even though the small live tail never becomes completely empty.
+    {
+        Probe streaming;
+        streaming.command(0x50,0);
+        for (unsigned frame=0;frame<1200;++frame) {
+            streaming.command(0x10,2);streaming.command(0x15,0);
+            streaming.command(0x1c,frame);streaming.command(0x1c,123);
+            streaming.command(0x1c,456);streaming.command(0x50,0);
+            streaming.command(0x20,frame & 0x7fff);
+            streaming.vblank();streaming.compare();
+        }
+        if (streaming.prefix.deferred_peak() > 8)
+            throw std::runtime_error("retired words counted as pending work");
+        std::printf("GX_MATRIX_PREFIX_STREAM_PASS frames=1200 comparisons=%u\n",
+                    streaming.checks);
+    }
     auto fallback=nds4mister::replay::GxMatrixPrefix{};
     fallback.command(0x16,123);fallback.command(0x10,2);
     if(fallback.valid())throw std::runtime_error("mixed partial command not rejected");
     fallback.reset();fallback.command(0x50,0);
     for(unsigned i=0;i<513;++i)fallback.command(0x20,i);
     if(fallback.valid())throw std::runtime_error("excess deferred queue not rejected");
+    fallback.reset();fallback.command(0x50,0);
+    for(unsigned i=0;i<4097;++i)fallback.command(0x34,0);
+    if(fallback.valid() || fallback.invalid_reason()!=1)
+        throw std::runtime_error("live deferred word cap not enforced");
     fallback.reset();if(!fallback.valid())throw std::runtime_error("reset fallback");
     std::printf("GX_MATRIX_PREFIX_PASS comparisons=%u matrix_stack_partial_swap_power=1 bounded_fallback=1\n",p.checks);
 } catch(const std::exception& e) { std::fprintf(stderr,"FAIL: %s\n",e.what());return 1; }

@@ -55,6 +55,15 @@ public:
         if (!valid_ || !enabled_) return;
         if (!swapped_) drain();
         if (swapped_ || deferred_head_ != deferred_.size()) {
+            // Consecutive SWAPs can keep a live tail across many VBlanks.
+            // Entries before head already executed and no longer consume
+            // the pending-work budget. Reclaim them only at the storage cap
+            // to avoid moving the live tail on every command/frame.
+            if (deferred_.size() == MaxDeferred && deferred_head_ != 0) {
+                deferred_.erase(deferred_.begin(),
+                    deferred_.begin() + deferred_head_);
+                deferred_head_ = 0;
+            }
             // A bounded fallback to the existing replay owner is preferable
             // to guessing after an unsupported/malformed command sequence.
             if (deferred_.size() == MaxDeferred) {
@@ -66,7 +75,8 @@ public:
             }
             deferred_.push_back({tag, value});
             deferred_cost_ += cost;
-            deferred_peak_ = std::max(deferred_peak_, unsigned(deferred_.size()));
+            deferred_peak_ = std::max(deferred_peak_,
+                unsigned(deferred_.size() - deferred_head_));
         } else execute(tag, value);
     }
 
