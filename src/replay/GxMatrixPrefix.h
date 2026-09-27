@@ -137,8 +137,10 @@ private:
     // Count execution work separately from parameter words. DS startup may
     // initialize all 32 matrix-stack entries behind SWAP, exceeding 512 words
     // without approaching one query's 32768 geometry-clock allowance.
-    // Allow 128 cycles for ordinary commands, 256 for multiword matrices,
-    // and 512 for SWAP/BOX_TEST, above the vendored command/pipeline costs.
+    // Allow 16 cycles for simple state/attribute commands, 128 for other
+    // ordinary commands, 256 for multiword matrices, and 512 for SWAP/BOX_TEST.
+    // These exceed the vendored command/pipeline costs; treating every
+    // texcoord as a vertex falsely rejects FFT A2's startup draw bursts.
     // Reserve 2768 cycles
     // for the prior SWAP's 325-cycle remainder and incomplete boundary work.
     // This is an eligibility bound, not an alternative geometry timing model.
@@ -158,6 +160,18 @@ private:
     }
     static unsigned deferred_cost(std::uint8_t tag)
     {
+        // GPU3D's Delayed4/6/8 helpers wait at most 8 cycles: both normal
+        // and vertex pipelines are bounded by 7. Material writes add 3,
+        // light color adds 1, and lighting adds at most 4 (four lights).
+        // None of these commands waits for polygon completion. Keep the
+        // conservative bounds below for vertices and matrix/stack work.
+        switch (tag) {
+        case 0x00: case 0x10: case 0x20: case 0x21: case 0x22:
+        case 0x29: case 0x2a: case 0x2b: case 0x30: case 0x31:
+        case 0x33: case 0x41: case 0x60:
+            return 16;
+        default: break;
+        }
         const auto count = parameters(tag);
         const auto cycles = tag == 0x50 || tag == 0x70 ? 512u :
             tag >= 0x16 && tag <= 0x1c ? 256u : 128u;

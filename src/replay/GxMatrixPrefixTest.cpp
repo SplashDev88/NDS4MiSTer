@@ -53,6 +53,38 @@ struct Probe {
 };
 }
 int main() try {
+    // Check the proposed inexpensive-command bound against the real replay
+    // owner, including every possible normal/vertex delay and light mask.
+    // These commands never wait for polygon completion. Leave expensive
+    // matrix, vertex, SWAP and BOX_TEST bounds unchanged.
+    {
+        Probe timing;
+        auto& gpu = timing.nds->GPU.GPU3D;
+        const unsigned cheap[] = {0x00,0x10,0x20,0x21,0x22,0x29,0x2a,
+                                  0x2b,0x30,0x31,0x33,0x41,0x60};
+        unsigned checked = 0, maximum = 0;
+        for (auto tag : cheap)
+            for (int vertex=0;vertex<=7;++vertex)
+                for (int normal=0;normal<=7;++normal)
+                    for (int polygon : {0,35})
+                        for (unsigned lights=0;lights<16;++lights) {
+                            gpu.Timestamp = timing.nds->ARM9Timestamp = 0;
+                            gpu.CycleCount = 0;
+                            gpu.VertexPipeline = vertex;
+                            gpu.NormalPipeline = normal;
+                            gpu.PolygonPipeline = polygon;
+                            gpu.CurPolygonAttr = lights;
+                            gpu.WriteExternalNormalizedCommand(tag,0x12345678);
+                            gpu.Run();
+                            if (gpu.CycleCount <= 0 || gpu.CycleCount > 16)
+                                throw std::runtime_error("inexpensive GX cost bound exceeded");
+                            maximum = std::max(maximum,unsigned(gpu.CycleCount));
+                            ++checked;
+                        }
+        if (gpu.GXCommandDrops) throw std::runtime_error("timing probe lost commands");
+        std::printf("GX_MATRIX_PREFIX_COST_PASS cases=%u max_cycles=%u bound=16\n",
+                    checked,maximum);
+    }
     Probe p; std::mt19937 random(0x234a06);
     // Compare independent position-only BOX_TEST with the unchanged GPU's
     // original clipping implementation, including every incomplete command.
@@ -125,6 +157,25 @@ int main() try {
     }
     p.compare(); // 680 words remain held until VBlank.
     p.vblank(); p.compare(); // One ordinary query clock step is sufficient.
+    // A texture/state-heavy draw queued behind SWAP must not permanently
+    // disable fast replies merely because a cheap command was charged like
+    // vertex submission. Exercise almost the full 30,000-cycle bound, with
+    // lighting and vertices mixed in, then prove the final matrix is visible
+    // after exactly one ordinary query step in the unchanged oracle.
+    for (unsigned mode=0;mode<4;++mode) {
+        p.command(0x29,0x001f00cf);p.command(0x40,mode);
+        p.command(0x50,0);
+        const unsigned cheap[] = {0x00,0x10,0x20,0x21,0x22,0x29,0x2a,
+                                  0x2b,0x30,0x31,0x33,0x41,0x60};
+        for (unsigned n=0;n<180;++n) {
+            p.command(cheap[n%13],random());
+            p.command(0x22,random());
+            p.command(0x24,random());
+        }
+        p.command(0x10,2);p.command(0x15,0);
+        p.command(0x1c,1234);p.command(0x1c,5678);p.command(0x1c,9012);
+        p.compare();p.vblank();p.compare();
+    }
     // Exercise near-budget expensive BOX_TEST work and a long single-word
     // command burst, then make a matrix change whose visibility proves that
     // the real geometry engine also reached the end in one query clock step.
@@ -161,8 +212,13 @@ int main() try {
     fallback.command(0x16,123);fallback.command(0x10,2);
     if(fallback.valid())throw std::runtime_error("mixed partial command not rejected");
     fallback.reset();fallback.command(0x50,0);
-    for(unsigned i=0;i<513;++i)fallback.command(0x20,i);
-    if(fallback.valid())throw std::runtime_error("excess deferred queue not rejected");
+    for(unsigned i=0;i<513;++i)fallback.command(0x24,i);
+    if(fallback.valid() || fallback.invalid_reason()!=3)
+        throw std::runtime_error("expensive deferred work cap not enforced");
+    fallback.reset();fallback.command(0x50,0);
+    for(unsigned i=0;i<1876;++i)fallback.command(0x22,i);
+    if(fallback.valid() || fallback.invalid_reason()!=3)
+        throw std::runtime_error("inexpensive deferred work cap not enforced");
     fallback.reset();fallback.command(0x50,0);
     for(unsigned i=0;i<4097;++i)fallback.command(0x34,0);
     if(fallback.valid() || fallback.invalid_reason()!=1)
