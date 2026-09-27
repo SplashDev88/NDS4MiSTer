@@ -28,7 +28,14 @@ A 144-second hardware FFT boot/menu run kept the prefix valid for 104,120
 replies, all verified against ordered replay. The exact published helper had
 disabled the path after 193 replies. Both screens render and menu selection
 moves correctly. These query counts are not gameplay FPS. NSMB and Castlevania
-checks are in progress; user gameplay validation remains required. The earlier global 500 us polling
+checks include successful NSMB startup, map rendering and World 1-1 entry.
+The stationary NSMB map retained the release query throughput and CPU load
+within measurement variation. Castlevania reached the same saved room with
+both screens visible; its packet/publication rates and CPU load also matched
+the release within measurement variation. All sampled fault words stayed zero.
+These are limited automated scene checks; moving gameplay still needs the
+user's visual and responsiveness comparison. Profiling is disabled for the
+installed test beta. The earlier global 500 us polling
 candidate improved FFT subjectively but slowed Mario and Castlevania. A brief
 adaptive-polling trial was also rejected as slow. Neither setting change is
 part of this candidate. The separate black-startup problem is not claimed fixed.
