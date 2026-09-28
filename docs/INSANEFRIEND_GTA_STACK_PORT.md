@@ -55,12 +55,35 @@ other seeds produced main-RAM hold failures and boot crashes. Retain seed 5 and
 inspect the new fitter/STA results rather than assuming the prebuilt's reported
 result applies to a rebuild. Existing setup violations are not timing closure.
 
-A fresh local FPGA build is prepared from this source. The contributor's prebuilt
-is retained separately as evidence and is not the locally compiled artifact.
-Use the unchanged v0.5.2 helper SHA-256
-`91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390febe3` and public
-Kickstart. The accepted v0.5.2 installation has not been changed for this port.
-Local hardware playtesting and publication are pending. Check GTA's intro/city
-and normal gameplay, then FFT startup/reload/menu, NSMB gameplay and Castlevania
-before accepting a combined release. Occasional near-camera clipping remains a
-separate limitation.
+A fresh local FPGA build completed from commit
+`f01bc87c3f9f51b43c001564bc8132c92f579e52`, using Quartus 17.0.2 and seed 5.
+Its SHA-256 is
+`8bc0d7d185152a59ab9c8a872a0c03e9e622cf68710b88405667825be885c53d`.
+The supplied prebuilt was not used. Every tracked build input was verified
+against its recorded pre-build hash. The only changes after the compiled
+commit are release documentation and the source checksum manifest.
+
+Resources: 38,938/41,910 ALMs (+36 versus the accepted FPGA), 42,563 registers
+(+39), 530/553 M10K and 54/112 DSP (both unchanged). Worst setup slack is
+-20.773 ns and worst hold slack is -0.204 ns, versus -21.922/-0.373 ns on the
+accepted FPGA. All 12 console-clock hold-summary slacks improve, but timing
+is NOT closed. The contributor's all-corner clean-hold result was not reproduced
+by this local build; report the measured result rather than assuming equivalence.
+
+GTA1 was loaded on the user's MiSTer with the unchanged v0.5.2 helper at
+stock 1 GHz and WC enabled. The user then requested packaging: "ok package
+this one up for release. gta fixes by insane friend". No local before/after
+GTA event count, new FPS benchmark or full-playthrough result is claimed.
+
+The release preserves that exact core, renamed `_Console/NDS_20260927.rbf`,
+and the v0.5.2 helper SHA-256
+`91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390febe3`.
+Its on-screen build text still reads `260926-VEC1`; the distinct release
+filename and SHA-256 identify the artifact. Rebuilding merely to change this
+text would invalidate the tested binary identity. The direct map/fit/asm/sta
+build uses tracked `build_id.v`; `sys/build_id.tcl` remains unchanged from the
+submission and can regenerate different text in other build flows.
+
+Retest GTA's intro/city and normal gameplay when checking other hardware.
+FFT startup/reload/menu, NSMB gameplay and Castlevania remain useful regression
+checks. Occasional near-camera clipping remains a separate limitation.

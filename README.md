@@ -2,11 +2,11 @@
 
 Experimental Nintendo DS support for the MiSTer FPGA platform.
 
-**v0.5.2 — Final Fantasy Tactics A2 regression fix**
+**v0.5.3 — GTA: Chinatown Wars graphics fixes**
 
-Final Fantasy Tactics A2's menus are fast and responsive again, and its
-startup logos display correctly when starting or reloading the game.
-Earlier graphics, compatibility and rendering improvements are retained.
+InsaneFriend's matrix-stack status fix corrects GTA's recurring stray triangles,
+distorted scenery and black 3D frames. The v0.5.2 ARM helper, FFT regression
+fix and previous graphics, compatibility and speed improvements are retained.
 
 **Engine B is optional again.** On draws both DS screens. Off skips Engine B
 and mirrors Engine A to both positions, which can help performance but hides
@@ -44,8 +44,9 @@ artifacts, or credentials are included in this source repository.
 ## Current limitations
 
 - **Strange Journey can still freeze during its intro.** WC does not fix it.
-- **GTA: Chinatown Wars may still show stray triangles.** Its new overflow
-  guard addresses helper crashes, not all malformed geometry.
+- **GTA: Chinatown Wars can still show occasional near-camera clipping.**
+  The recurring matrix-stack scene corruption is corrected; this is not a
+  complete fix for every graphics problem.
 - **WC was tested on MiSTer Linux 5.15.1.** Other kernel builds may reject the
   optional module and use the previous transfer path without the WC gain.
 
@@ -80,12 +81,12 @@ or firmware files, or saves are included, and none should be posted to this
 repository.
 
 1. Extract
-   `NDS4MiSTer_v0.5.2_20260927.zip` directly into the root
+   `NDS4MiSTer_v0.5.3_20260927.zip` directly into the root
    of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
    `Scripts` folders.
 2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
    the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260926** and launch the core.
+3. Within five minutes, go to **Console → NDS_20260927** and launch the core.
 4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
    file. If already loaded, Reset or reload after changing Engine B.
 
@@ -184,17 +185,21 @@ Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
 files, credentials, or other private data. A ROM filename plus its game code or
 revision is enough to identify it.
 
-## What's new in v0.5.2
+## What's new in v0.5.3
 
-- Restored FFT A2 menu animation and button response.
-- Corrected FFT A2 startup-logo geometry, including after ROM reloads.
+- GTA's position-matrix stack level is reported correctly, preventing repeated
+  frame-start POP commands from leaving the game with the wrong camera matrix.
+- Original fix by **InsaneFriend (GitHub: saneFriend)**.
+- The ARM helper, stock 1 GHz clock, WC transfers and rendering optimizations
+  are unchanged from v0.5.2. FFT's menu/startup fix is retained.
 - Earlier fixes, optional Engine B, saves, touch and both TATE directions remain.
 
-See the [release notes](docs/RELEASE_NOTES_V052.md),
+See the [release notes](docs/RELEASE_NOTES_V053.md),
+[GTA port and validation](docs/INSANEFRIEND_GTA_STACK_PORT.md),
 [FFT startup validation](docs/fft-startup-geometry.md),
 [FFT menu-speed fix](docs/ffta-menu-pacing.md),
 [previous v0.5.1 validation](docs/V051_GRAPHICS_AND_PERFORMANCE.md),
-[InsaneFriend integration](docs/INSANEFRIEND_COMPAT_PORT.md) and
+[earlier InsaneFriend integration](docs/INSANEFRIEND_COMPAT_PORT.md) and
 [technical source notes](SOURCE_PACKAGE.txt).
 
 ## Retained from v0.4.0-beta
@@ -226,12 +231,14 @@ Platinum player and room furniture. SoulSilver and other scenes still need valid
 
 ## Verification
 
-The installer contains the exact VEC1 FPGA and row-alpha ARM helper accepted
-after NSMB and Castlevania gameplay testing. Source/binary identities, test
-coverage and timing limits are in [SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt).
-The public launcher embeds the accepted fast-query polling mode. Source and
-installer include checksums; neither runtime binary was rebuilt for packaging.
-These are focused checks, not a guarantee of 60 FPS or all-game accuracy.
+The installer contains the exact GTA1 FPGA loaded for testing, with the
+unchanged v0.5.2 ARM helper, launcher and WC module. The user requested
+packaging after this test load. Automated matrix-stack, GXSTAT access,
+frame-transfer and existing readback/reply regressions passed.
+Source/binary identities and timing limits are in
+[SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). No runtime binary was rebuilt for
+packaging. These focused checks do not establish a full GTA playthrough,
+universal 60 FPS or timing closure across devices.
 
 ## For developers
 
@@ -327,7 +334,8 @@ wider MiSTer community for technical advice, testing, and development guidance;
 and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware, ARM7
 Wi-Fi boot-memory, and cartridge-IR compatibility work in beta.7, plus the
 Resident Evil: Deadly Silence, Kirby Mass Attack, Kirby Super Star Ultra, GTA:
-Chinatown Wars and Mega Man ZX fixes in this release.
+Chinatown Wars and Mega Man ZX compatibility fixes, and the additional GTA
+matrix-stack graphics fix in v0.5.3.
 
 ## License
 
