@@ -1,3 +1,10 @@
+Private GTA matrix-stack candidate on v0.5.2
+
+Original fix: InsaneFriend (saneFriend). See docs/INSANEFRIEND_GTA_STACK_PORT.md.
+New FPGA source/seed 5; fresh build and hardware qualification pending. ARM,
+Kickstart and WC sources are unchanged. The following is retained baseline
+release provenance, not a claim that its FPGA binary contains this change.
+
 NDS4MiSTer v0.5.2 — Final Fantasy Tactics A2 regression fix
 
 Public parent: v0.5.1 (ecaed5d08295270aa16f1f35ec1d3880000c8da7).

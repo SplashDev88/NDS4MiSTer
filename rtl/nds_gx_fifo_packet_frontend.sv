@@ -52,7 +52,16 @@ module nds_gx_fifo_packet_frontend #(
     // Autonomous packed-command expansion still owed for accepted input.
     // Unlike packed_active, this excludes commands waiting for future params.
     output logic         normalization_pending,
-    output logic         protocol_error
+    output logic         protocol_error,
+
+    // GXSTAT matrix-stack view (bits 8..13 and 15), tracked from the
+    // normalized command stream in submission order. stack_ack is a GXSTAT
+    // write with bit 15 set: clear the error and reset the projection and
+    // texture stack pointers, as melonDS does.
+    input  logic         stack_ack,
+    output logic [4:0]   pos_stack_level,
+    output logic         proj_stack_level,
+    output logic         stack_error
 );
     localparam integer POINTER_WIDTH =
         FIFO_DEPTH <= 2 ? 1 : $clog2(FIFO_DEPTH);
@@ -128,6 +137,11 @@ module nds_gx_fifo_packet_frontend #(
     // downstream boundary arbiter can identify the oldest real promise
     // without scanning or adding a second read port to the main GX FIFO.
     logic [63:0] swap_timestamp_memory [0:FIFO_DEPTH-1];
+
+    logic [1:0] matrix_mode;
+    logic [5:0] pos_pointer;
+    logic       proj_pointer;
+    logic       tex_pointer;
     logic [POINTER_WIDTH-1:0] swap_write_pointer;
     logic [POINTER_WIDTH-1:0] swap_read_pointer;
     logic [COUNT_WIDTH-1:0] swap_count;
@@ -224,6 +238,11 @@ module nds_gx_fifo_packet_frontend #(
         ? packed_word_frame : write_frame;
     wire [63:0] enqueue_timestamp = packed_zero_enqueue
         ? packed_word_timestamp : write_timestamp;
+    // MTX_POP's parameter is a signed 6-bit count; modulo-64 subtraction of
+    // its raw bits is the same as melonDS's sign-extended subtraction.
+    wire [5:0] pos_after_pop = pos_pointer - enqueue_parameter[5:0];
+    assign pos_stack_level = pos_pointer[4:0];
+    assign proj_stack_level = proj_pointer;
     assign swap_enqueued = enqueue && enqueue_command == 8'h50;
     assign swap_pending = swap_count != 0;
     assign oldest_swap_timestamp = swap_pending
@@ -249,6 +268,11 @@ module nds_gx_fifo_packet_frontend #(
             swap_read_pointer <= 0;
             swap_count <= 0;
             protocol_error <= 0;
+            matrix_mode <= 0;
+            pos_pointer <= 0;
+            proj_pointer <= 0;
+            tex_pointer <= 0;
+            stack_error <= 0;
         end else begin
             if (write_valid && gx_aperture &&
                 (!word_access || !aligned_access))
@@ -308,6 +332,47 @@ module nds_gx_fifo_packet_frontend #(
                 2'b01: count <= count - 1'b1;
                 default: count <= count;
             endcase
+
+            // Matrix stacks, mirroring melonDS GPU3D MTX_PUSH/MTX_POP. Games
+            // such as GTA: Chinatown Wars read the position-stack level from
+            // GXSTAT and pop exactly that many at the start of each frame; a
+            // constant zero level lets the pointer drift until it wraps onto
+            // the camera slot.
+            if (stack_ack) begin
+                stack_error <= 1'b0;
+                proj_pointer <= 1'b0;
+                tex_pointer <= 1'b0;
+            end
+            if (enqueue) begin
+                case (enqueue_command)
+                    8'h10: matrix_mode <= enqueue_parameter[1:0];
+                    8'h11: begin
+                        if (matrix_mode == 2'd0) begin
+                            if (proj_pointer) stack_error <= 1'b1;
+                            proj_pointer <= ~proj_pointer;
+                        end else if (matrix_mode == 2'd3) begin
+                            if (tex_pointer) stack_error <= 1'b1;
+                            tex_pointer <= ~tex_pointer;
+                        end else begin
+                            if (pos_pointer > 6'd30) stack_error <= 1'b1;
+                            pos_pointer <= pos_pointer + 6'd1;
+                        end
+                    end
+                    8'h12: begin
+                        if (matrix_mode == 2'd0) begin
+                            if (!proj_pointer) stack_error <= 1'b1;
+                            proj_pointer <= ~proj_pointer;
+                        end else if (matrix_mode == 2'd3) begin
+                            if (!tex_pointer) stack_error <= 1'b1;
+                            tex_pointer <= ~tex_pointer;
+                        end else begin
+                            if (pos_after_pop > 6'd30) stack_error <= 1'b1;
+                            pos_pointer <= pos_after_pop;
+                        end
+                    end
+                    default: ;
+                endcase
+            end
 
             // Exact state transition order from the existing frontend and
             // melonDS GPU3D::WriteToGXFIFO normalization.

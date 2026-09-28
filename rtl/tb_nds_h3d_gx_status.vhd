@@ -16,6 +16,8 @@ architecture sim of tb_nds_h3d_gx_status is
    signal wired_done, trig_gx, irq_gxfifo : std_logic;
    signal test_bits : std_logic_vector(1 downto 0) := "00";
    signal fifo_level : std_logic_vector(8 downto 0) := (others => '0');
+   signal stack_status : std_logic_vector(6 downto 0) := (others => '0');
+   signal stack_ack : std_logic;
 begin
    clk <= not clk after 5 ns;
 
@@ -24,6 +26,7 @@ begin
       (
          clk => clk, reset => reset, service_ready => service_ready,
          fifo_level => fifo_level, test_result_bits => test_bits,
+         stack_status => stack_status, stack_ack => stack_ack,
          gb_bus => regs_bus, wired_out => wired_out, wired_done => wired_done,
          trig_gx => trig_gx, irq_gxfifo => irq_gxfifo
       );
@@ -213,6 +216,45 @@ begin
          report "halfword status did not preserve busy bit" severity failure;
       regs_bus.acc <= ACCESS_32BIT; test_bits <= "00"; wait for 1 ns;
 
+      -- GTA reads its position-stack level locally before issuing MTX_POP.
+      -- Exercise every published stack bit without disturbing FIFO, test or
+      -- IRQ fields, including halfword reads through the aligned bus.
+      stack_status <= "1110101"; test_bits <= "10";
+      wait for 1 ns;
+      assert wired_out = x"c600b502"
+         report "GXSTAT lost stack levels/error or overwrote existing fields"
+         severity failure;
+      regs_bus.acc <= ACCESS_16BIT;
+      wait for 1 ns;
+      assert wired_out = x"c600b502"
+         report "halfword GXSTAT did not expose matrix-stack status"
+         severity failure;
+      regs_bus.acc <= ACCESS_32BIT;
+
+      -- Only the bit-15 write lane may acknowledge the stack error. A read,
+      -- other lane, zero-bit write or DISP3DCNT write must not emit an ack.
+      write_lane(x"00008000", "0001");
+      assert stack_ack = '0' report "wrong byte lane acknowledged stack" severity failure;
+      write_lane(x"00000000", "0010");
+      assert stack_ack = '0' report "zero bit15 acknowledged stack" severity failure;
+      write_lane(x"00008000", "1100");
+      assert stack_ack = '0' report "upper halfword acknowledged stack" severity failure;
+      write_lane(x"00008000", "0010");
+      assert stack_ack = '1' report "bit15 byte write did not acknowledge stack" severity failure;
+      wait until rising_edge(clk); wait for 1 ns;
+      assert stack_ack = '0' report "stack acknowledgment lasted beyond its write" severity failure;
+      write_lane(x"00008000", "0011");
+      assert stack_ack = '1' report "low halfword did not acknowledge stack" severity failure;
+      write_lane(x"40008000", "1111");
+      assert stack_ack = '1' and wired_out(31 downto 30) = "01"
+         report "word write failed independent stack/IRQ fields" severity failure;
+      write_disp3dcnt(x"00008000", "0011", ACCESS_16BIT);
+      assert stack_ack = '0' report "DISP3DCNT write acknowledged stack" severity failure;
+      reset <= '1';
+      wait until rising_edge(clk); wait for 1 ns;
+      assert stack_ack = '0' report "reset emitted stack acknowledgment" severity failure;
+      reset <= '0'; stack_status <= (others => '0'); test_bits <= "00";
+
       -- Unsupported synchronous result/count registers remain unclaimed, so
       -- the existing IO wired-OR returns zero rather than fabricated values.
       regs_bus.Adr <= x"0000604";
@@ -221,7 +263,7 @@ begin
          report "unsupported GX result register was accidentally claimed"
          severity failure;
 
-      report "PASS: DISP3DCNT preserves NSMB texture-enable readback; GXSTAT preserves width/lane writes, real 256-entry thresholds, service-gated DMA request, and level IRQ reassert semantics"
+      report "PASS: GXSTAT stack fields and byte/halfword/word acknowledgments; DISP3DCNT texture readback, FIFO thresholds, DMA request and IRQ semantics retained"
          severity note;
       finish;
       wait;

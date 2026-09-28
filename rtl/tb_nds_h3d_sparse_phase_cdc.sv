@@ -49,6 +49,8 @@ module tb_nds_h3d_sparse_phase_cdc;
     logic fifo_empty;
     logic fifo_below_half;
     logic fifo_full;
+    logic gx_stack_ack = 0;
+    logic [6:0] gx_stack_status;
     logic record_valid;
     logic record_ready = 1;
     logic [127:0] record;

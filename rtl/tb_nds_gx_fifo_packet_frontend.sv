@@ -28,6 +28,10 @@ module tb_nds_gx_fifo_packet_frontend;
     logic packed_active;
     logic normalization_pending;
     logic protocol_error;
+    logic stack_ack = 0;
+    logic [4:0] pos_stack_level;
+    logic proj_stack_level;
+    logic stack_error;
 
     logic [7:0] expected_command [0:MAX_EXPECTED-1];
     logic [31:0] expected_parameter [0:MAX_EXPECTED-1];
@@ -144,6 +148,31 @@ module tb_nds_gx_fifo_packet_frontend;
                         expected_read, expected_write, fifo_level,
                         record_valid, packed_active);
             end
+        end
+    endtask
+
+    task automatic expect_stack(
+        input logic [4:0] pos,
+        input logic proj,
+        input logic error,
+        input string what
+    );
+        begin
+            if (pos_stack_level !== pos || proj_stack_level !== proj ||
+                stack_error !== error)
+                $fatal(1,
+                    "%s: stack pos=%0d proj=%b err=%b expected pos=%0d proj=%b err=%b",
+                    what, pos_stack_level, proj_stack_level, stack_error,
+                    pos, proj, error);
+        end
+    endtask
+
+    task automatic pulse_stack_ack;
+        begin
+            @(negedge clk);
+            stack_ack = 1;
+            @(negedge clk);
+            stack_ack = 0;
         end
     endtask
 
@@ -383,6 +412,77 @@ module tb_nds_gx_fifo_packet_frontend;
             $fatal(1, "full-FIFO release did not consume exactly one record");
         wait_for_drain();
 
+        // GXSTAT matrix-stack levels follow melonDS MTX_PUSH/MTX_POP in
+        // submission order, from both direct and packed commands.
+        reset_state();
+        expect_stack(5'd0, 1'b0, 1'b0, "reset");
+        send_direct(0, 8'h10, 32'h00000002);
+        send_direct(0, 8'h11, 32'h00000000);
+        send_direct(0, 8'h11, 32'h00000000);
+        send_direct(1, 8'h11, 32'h00000000);
+        expect_stack(5'd3, 1'b0, 1'b0, "three position pushes");
+        send_direct(0, 8'h12, 32'h00000002);
+        expect_stack(5'd1, 1'b0, 1'b0, "pop two");
+        // GTA: Chinatown Wars pops the level read back from GXSTAT.
+        send_direct(0, 8'h12, 32'(pos_stack_level));
+        expect_stack(5'd0, 1'b0, 1'b0, "pop the reported level");
+        send_direct(0, 8'h12, 32'h0000003f);
+        expect_stack(5'd1, 1'b0, 1'b0, "pop of -1");
+        send_direct(0, 8'h12, 32'h00000002);
+        expect_stack(5'd31, 1'b0, 1'b1, "underflow wraps and flags error");
+        pulse_stack_ack();
+        expect_stack(5'd31, 1'b0, 1'b0, "acknowledge clears error only");
+        send_direct(0, 8'h12, 32'h0000003f);
+        send_direct(0, 8'h10, 32'h00000001);
+        expect_record(8'h11, 32'h00001111);
+        expect_record(8'h11, 32'h00001111);
+        send_write(0, 32'h04000400, 32'h00001111);
+        wait_for_packed_idle();
+        expect_stack(5'd2, 1'b0, 1'b0, "packed pushes");
+        send_direct(0, 8'h10, 32'h00000000);
+        send_direct(0, 8'h11, 32'h00000000);
+        expect_stack(5'd2, 1'b1, 1'b0, "projection push");
+        send_direct(0, 8'h11, 32'h00000000);
+        expect_stack(5'd2, 1'b0, 1'b1, "projection overflow");
+        send_direct(0, 8'h11, 32'h00000000);
+        expect_stack(5'd2, 1'b1, 1'b1, "error is sticky");
+        pulse_stack_ack();
+        expect_stack(5'd2, 1'b0, 1'b0, "acknowledge resets projection");
+        send_direct(0, 8'h10, 32'h00000003);
+        send_direct(0, 8'h12, 32'h00000000);
+        expect_stack(5'd2, 1'b0, 1'b1, "texture underflow");
+        wait_for_drain();
+
+        // Acknowledge resets the hidden texture pointer as well as its error.
+        pulse_stack_ack();
+        send_direct(0, 8'h11, 32'h00000000);
+        expect_stack(5'd2, 1'b0, 1'b0, "texture push after acknowledge");
+        send_direct(0, 8'h11, 32'h00000000);
+        expect_stack(5'd2, 1'b0, 1'b1, "texture overflow remains detectable");
+        wait_for_drain();
+
+        // Repeat GTA's frame-start read-level/POP and camera PUSH well past
+        // both 32- and 64-frame wrap boundaries. Mix packed DMA pushes with
+        // direct CPU pops; draining the queue must not execute a stack update
+        // a second time. No draw record may be lost or rewritten by tracking.
+        reset_state();
+        send_direct(0, 8'h10, 32'h00000002);
+        for (integer gta_frame = 0; gta_frame < 128; gta_frame++) begin
+            send_direct(0, 8'h12, 32'(pos_stack_level));
+            expect_stack(5'd0, 1'b0, 1'b0, "GTA frame emptied stack");
+            expect_record(8'h11, 32'h00000011);
+            send_write(1, 32'h04000400, 32'h00000011);
+            wait_for_packed_idle();
+            expect_stack(5'd1, 1'b0, 1'b0, "GTA camera remains in slot zero");
+            send_direct(1, 8'h11, 32'h00000000);
+            send_direct(0, 8'h12, 32'h00000001);
+            expect_stack(5'd1, 1'b0, 1'b0, "object push/pop preserves camera");
+            wait_for_drain();
+            expect_stack(5'd1, 1'b0, 1'b0, "draining does not change stack");
+        end
+        reset_state();
+        expect_stack(5'd0, 1'b0, 1'b0, "session reset clears tracked stack");
+
         if (expected_read != expected_write)
             $fatal(1, "not all ordered records were accepted");
         if (accepted_swaps != 1)
@@ -395,6 +495,7 @@ module tb_nds_gx_fifo_packet_frontend;
 
         $display(
             "PASS: GX FIFO packet frontend 118-word DMA order/stalls, packed/direct normalization, 256-entry thresholds, SWAP closure, and held backpressure");
+        $display("PASS: matrix-stack levels/errors, acknowledge/reset, and 128 GTA-style frame-start POP sequences");
         $display(
             "accepted_writes=%0d accepted_dma_writes=%0d accepted_records=%0d swaps=%0d",
             accepted_writes, accepted_dma_writes,

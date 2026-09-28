@@ -1256,6 +1256,8 @@ wire h3d_record_source_fault, h3d_record_ddr_fault;
 wire [3:0] h3d_record_source_fault_reason, h3d_record_ddr_fault_reason;
 wire [8:0] h3d_gx_fifo_level;
 wire h3d_gx_fifo_empty, h3d_gx_fifo_below_half, h3d_gx_fifo_full;
+wire [6:0] h3d_gx_stack_status;
+wire h3d_gx_stack_ack;
 
 wire h3d_packet_active, h3d_packet_full, h3d_packet_done;
 wire h3d_packet_fault;
@@ -1876,6 +1878,8 @@ nds_h3d_frame_record_cdc #(
     .fifo_empty(h3d_gx_fifo_empty),
     .fifo_below_half(h3d_gx_fifo_below_half),
     .fifo_full(h3d_gx_fifo_full),
+    .gx_stack_ack(h3d_gx_stack_ack),
+    .gx_stack_status(h3d_gx_stack_status),
     .record_valid(h3d_raw_record_valid), .record_ready(h3d_raw_record_ready),
     .record(h3d_raw_record), .record_frame(h3d_raw_record_frame),
     .record_frame_end(h3d_raw_record_frame_end),
@@ -2380,6 +2384,8 @@ nds_nitro_console_wrap #(
     .h3d_engine_b_enable(1'b0),
 `endif
     .h3d_gx_fifo_level(h3d_gx_fifo_level),
+    .h3d_gx_stack_status(h3d_gx_stack_status),
+    .h3d_gx_stack_ack(h3d_gx_stack_ack),
     .h3d_timestamp(h3d_timestamp_live),
     .h3d_current_frame(h3d_current_frame),
     .h3d_source_fault(h3d_console_source_fault),

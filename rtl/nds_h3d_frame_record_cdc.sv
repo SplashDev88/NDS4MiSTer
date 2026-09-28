@@ -68,6 +68,9 @@ module nds_h3d_frame_record_cdc #(
     output logic         fifo_empty,
     output logic         fifo_below_half,
     output logic         fifo_full,
+    // GXSTAT matrix stacks: {error, projection level, position level[4:0]}.
+    input  logic         gx_stack_ack,
+    output logic [6:0]   gx_stack_status,
 
     output logic         record_valid,
     input  logic         record_ready,
@@ -264,7 +267,11 @@ module nds_h3d_frame_record_cdc #(
         .fifo_full(fifo_full),
         .packed_active(gx_packed_active),
         .normalization_pending(gx_normalization_pending),
-        .protocol_error(gx_protocol_error)
+        .protocol_error(gx_protocol_error),
+        .stack_ack(gx_stack_ack),
+        .pos_stack_level(gx_stack_status[4:0]),
+        .proj_stack_level(gx_stack_status[5]),
+        .stack_error(gx_stack_status[6])
     );
 
     logic async_write_valid;
