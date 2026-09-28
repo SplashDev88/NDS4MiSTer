@@ -52,4 +52,4 @@ The install ZIP and its SHA-256 checksum are the release assets. Matching source
 
 ## Thanks
 
-Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to skmp, the DreamSTer developer, for the write-combining suggestion. Full credits and licenses are in the source tree.
+Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to skmp, the DreamSTer developer. Full credits and licenses are in the source tree.
