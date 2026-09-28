@@ -52,6 +52,4 @@ The install ZIP and its SHA-256 checksum are the release assets. Matching source
 
 ## Thanks
 
-Special thanks to **InsaneFriend (GitHub: saneFriend)** for this release's GTA graphics fix and the earlier Resident Evil: Deadly Silence, Kirby Mass Attack, Kirby Super Star Ultra, Grand Theft Auto: Chinatown Wars and Mega Man ZX fixes, along with earlier writable SPI firmware, ARM7 Wi-Fi boot-memory and cartridge-IR compatibility work. These Wi-Fi compatibility fixes do not add DS wireless multiplayer.
-
-Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, and heni. Thanks to skmp, the DreamSTer developer, for the write-combining suggestion. Full credits and licenses are in the source tree.
+Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to skmp, the DreamSTer developer, for the write-combining suggestion. Full credits and licenses are in the source tree.
