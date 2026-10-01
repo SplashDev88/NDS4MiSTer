@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 #include <type_traits>
 #include <vector>
 
@@ -290,6 +291,8 @@ public:
         void* mapping, std::size_t mapping_size,
         bool require_diagnostic = true);
 
+    void enable_acquisition_timing(bool enabled) { measure_acquisition_ = enabled; }
+    std::chrono::steady_clock::time_point acquisition_started() const { return acquisition_started_; }
     bool initialize(std::uint32_t expected_session);
     bool begin(PacketHeader& header);
     bool begin(PacketHeader& header, std::vector<Record>& records);
@@ -348,6 +351,8 @@ private:
     bool pending_ = false;
     bool exhausted_ = false;
     bool require_diagnostic_ = true;
+    bool measure_acquisition_ = false;
+    std::chrono::steady_clock::time_point acquisition_started_ {};
     bool chain_active_ = false;
     std::uint32_t chain_frame_ = 0;
     std::uint32_t chain_diagnostic_state_ = DiagnosticCrcInitial;

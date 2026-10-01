@@ -1377,8 +1377,14 @@ wire [63:0] h3d_frame_timestamp, h3d_timestamp_live;
 wire h3d_console_source_fault;
 wire h3d_core_line_drop;
 wire [31:0] h3d_bg1_scroll_triplet;
-(* async_reg = "true" *) logic [31:0] h3d_bg1_scroll_meta_ddr;
-(* async_reg = "true" *) logic [31:0] h3d_bg1_scroll_ddr;
+wire h3d_query_sample_toggle;
+wire [31:0] h3d_bg1_scroll_ddr;
+nds_h3d_probe_cdc query_probe_cdc (
+    .clk(ddr_clk), .reset(console_reset_ddr),
+    .source_data(h3d_bg1_scroll_triplet),
+    .source_toggle(h3d_query_sample_toggle),
+    .sample_data(h3d_bg1_scroll_ddr)
+);
 
 logic [7:0] h3d_line_drop_count_1x;
 logic [7:0] h3d_plane_deadline_count_1x;
@@ -1405,8 +1411,6 @@ end
 
 always_ff @(posedge ddr_clk or posedge console_reset_ddr) begin
     if (console_reset_ddr) begin
-        h3d_bg1_scroll_meta_ddr <= 32'd0;
-        h3d_bg1_scroll_ddr <= 32'd0;
         h3d_line_drop_meta_ddr <= 8'd0;
         h3d_line_drop_count_ddr <= 8'd0;
         h3d_plane_deadline_meta_ddr <= 8'd0;
@@ -1415,8 +1419,6 @@ always_ff @(posedge ddr_clk or posedge console_reset_ddr) begin
         h3d_plane_frame_diagnostic_ddr <= 28'd0;
         h3d_plane_miss_count_ddr <= 8'd0;
     end else begin
-        h3d_bg1_scroll_meta_ddr <= h3d_bg1_scroll_triplet;
-        h3d_bg1_scroll_ddr <= h3d_bg1_scroll_meta_ddr;
         h3d_line_drop_meta_ddr <= h3d_line_drop_count_1x;
         h3d_line_drop_count_ddr <= h3d_line_drop_meta_ddr;
         h3d_plane_deadline_meta_ddr <= h3d_plane_deadline_count_1x;
@@ -1446,12 +1448,8 @@ wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : {
     cart_loaded_sync[1], nds_on, bridge_reset_ddr, h3d_path_reset,
     dbg_hwstat_diag
 };
-// Passive renderer line-30 receipt. F[27:0] carries the accepted BG1HOFS,
-// queued/direct identity, and register-shadow comparison. Normal samples retain
-// the final-pixel row hash; a no-BG1-write sample substitutes the DMA grant
-// blocker's actual accepted ARM9 membus state, age, and address. The
-// observational heartbeat does not alter rendering, DMA, framebuffer
-// publication, or display handshakes.
+// QW1 passive query counters replace the old line-30 receipt. Existing
+// periodic header writes carry them without extra DDR traffic.
 `ifdef NDS_NSMB_DMA_DIAGNOSTIC
 wire [31:0] h3d_diagnostic_heartbeat = h3d_bg1_scroll_ddr;
 `elsif NDS_SEAM_DIAGNOSTIC
@@ -1910,7 +1908,13 @@ nds_h3d_vram_record_packer h3d_vram_packer (
 
 nds_h3d_frame_packet_writer #(
     .CONTROL_BASE_WORD(H3D_CONTROL_WORD),
-    .SLOT_BASE_WORD(H3D_SLOT_WORD)
+    .SLOT_BASE_WORD(H3D_SLOT_WORD),
+    // QC1 private experiment: commit long command prefixes while the guest
+    // is still submitting them, rather than deferring all ARM validation and
+    // matrix work until a readback fence closes a 2000--3000-record packet.
+    // Continuation ordering/commit/ack semantics and the 64-KiB ABI slots stay
+    // unchanged. Extra packet overhead must be measured before adoption.
+    .MAX_RECORDS(1024)
 ) h3d_packet_writer (
     .clk(ddr_clk), .reset(bridge_reset_ddr),
     .session_flush(~h3d_control_release),
@@ -2363,6 +2367,7 @@ nds_nitro_console_wrap #(
     .h3d_merge_pixel_y(h3d_core_merge_y),
     .h3d_line_drop(h3d_core_line_drop),
     .h3d_bg1_scroll_triplet(h3d_bg1_scroll_triplet),
+    .h3d_query_sample_toggle(h3d_query_sample_toggle),
     .h3d_service_ready(h3d_console_release),
     .h3d_readback_request(h3d_readback_request),
     .h3d_readback_ready(h3d_readback_ready),

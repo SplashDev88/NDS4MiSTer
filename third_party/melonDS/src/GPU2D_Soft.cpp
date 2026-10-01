@@ -1133,6 +1133,52 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
 
         yshift -= 3;
 
+        // With unit horizontal stepping, one tile-map/palette lookup serves
+        // the remaining pixels of this tile. Keep this within one scanline:
+        // register, VRAM and palette changes remain visible on the next call.
+        if constexpr (!mosaic)
+        {
+            if (AffineTileCache && rotA == 0x100 && rotC == 0)
+            {
+                if (rotY & overflowmask) return;
+                const u32 mapRow = ((rotY & coordmask) >> 11) << yshift;
+                const u32 tileY = (rotY >> 5) & 56u;
+                const u32 layer = 0x01000000u << bgnum;
+                const u8 windowBit = 1u << bgnum;
+                int i = 0;
+                while (i < 256)
+                {
+                    const u32 tileX = (rotX >> 8) & 7u;
+                    const int run = std::min<int>(8 - tileX, 256 - i);
+                    if (!(rotX & overflowmask))
+                    {
+                        const u32 mapAddress = (tilemapaddr +
+                            ((mapRow + ((rotX & coordmask) >> 11)) << 1)) & bgvrammask;
+                        const u16 tile = *(u16*)&bgvram[mapAddress];
+                        const u32 flipX = (tile & (1u << 10)) ? 7u : 0u;
+                        const u32 row = tileY ^ ((tile & (1u << 11)) ? 56u : 0u);
+                        const u32 rowAddress = (tilesetaddr +
+                            ((tile & 0x3FFu) << 6) + row) & bgvrammask;
+                        // Tile rows and the VRAM wrap boundary are aligned
+                        // to eight bytes, so this row cannot cross the wrap.
+                        const u8* pixels = &bgvram[rowAddress];
+                        const u16* palette = extpal ?
+                            GPU2D.GetBGExtPal(bgnum, tile >> 12) : pal;
+                        for (int j = 0; j < run; ++j)
+                        {
+                            if (!(WindowMask[i + j] & windowBit)) continue;
+                            const u8 index = pixels[(tileX + j) ^ flipX];
+                            if (index)
+                                DrawPixel(&BGOBJLine[i + j], palette[index], layer);
+                        }
+                    }
+                    i += run;
+                    rotX += run * 0x100;
+                }
+                return;
+            }
+        }
+
         if (AffineTileCache)
         {
             // Adjacent affine pixels usually address the same tile even when

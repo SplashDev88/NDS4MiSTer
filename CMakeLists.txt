@@ -24,6 +24,20 @@ option(NDS4MISTER_EXTERNAL_TIME_WINDOW
     "Build the default-off host/simulator external scheduler time-window proof API"
     OFF)
 
+add_executable(nds_game_query_profile_test src/replay/GameQueryProfileTest.cpp)
+target_include_directories(nds_game_query_profile_test PRIVATE src)
+target_compile_options(nds_game_query_profile_test PRIVATE -Wall -Wextra -Wpedantic)
+if(BUILD_TESTING)
+    add_test(NAME nds_game_query_profile COMMAND nds_game_query_profile_test)
+endif()
+
+add_executable(nds_matched_recovery_test src/replay/MatchedDisplayRecoveryTest.cpp)
+target_include_directories(nds_matched_recovery_test PRIVATE src)
+target_compile_options(nds_matched_recovery_test PRIVATE -Wall -Wextra -Wpedantic)
+if(BUILD_TESTING)
+    add_test(NAME nds_matched_recovery COMMAND nds_matched_recovery_test)
+endif()
+
 if(NDS4MISTER_FPGA_AUDIO_OFFLOAD AND NDS4MISTER_NO_AUDIO_MIX)
     message(FATAL_ERROR
         "NDS4MISTER_FPGA_AUDIO_OFFLOAD preserves SPU status timing and cannot be combined with NDS4MISTER_NO_AUDIO_MIX")
@@ -78,6 +92,20 @@ target_compile_options(nds_headless_save PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(nds_headless_save PUBLIC Threads::Threads)
 
 if(BUILD_TESTING)
+    add_executable(nds_scoped_timer_slack_test
+        src/replay/ScopedTimerSlackTest.cpp)
+    target_include_directories(nds_scoped_timer_slack_test PRIVATE src/replay)
+    target_compile_options(nds_scoped_timer_slack_test PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_scoped_timer_slack_test PRIVATE Threads::Threads)
+    add_test(NAME nds_scoped_timer_slack COMMAND nds_scoped_timer_slack_test)
+
+    add_executable(nds_scoped_query_priority_test
+        src/replay/ScopedQueryPriorityTest.cpp)
+    target_include_directories(nds_scoped_query_priority_test PRIVATE src/replay)
+    target_compile_options(nds_scoped_query_priority_test PRIVATE -Wall -Wextra -Wpedantic)
+    target_link_libraries(nds_scoped_query_priority_test PRIVATE Threads::Threads)
+    add_test(NAME nds_scoped_query_priority COMMAND nds_scoped_query_priority_test)
+
     add_executable(nds_near_black_event_gate_test
         src/replay/NearBlackEventGateTest.cpp)
     target_include_directories(nds_near_black_event_gate_test PRIVATE src)

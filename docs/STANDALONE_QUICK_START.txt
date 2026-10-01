@@ -1,0 +1,245 @@
+NDS4MiSTer v0.6.0-beta — Standalone
+DRAFT FOR REVIEW — NOT YET PUBLISHED
+
+START HERE
+
+Run Scripts → NDS Standalone.
+
+That one script starts the core and ARM helper and opens the NDS menu. You do
+not need to run NDS_Kickstart or choose an NDS core from Console first. There
+is no five-minute launch window.
+
+This release uses a lightweight NDS program while you play instead of keeping
+the normal MiSTer program running. Normal MiSTer still starts the system and
+remains installed. Standalone is the direction of future NDS4MiSTer updates;
+your existing normal NDS release is preserved so you can still run it.
+
+
+1. INSTALL
+
+- Back up your SD card's saves/NDS folder.
+- Extract the install ZIP to the root of the SD card. Merge Scripts; do not
+  replace the whole Scripts folder.
+- Include Scripts/.NDS_Standalone. This hidden folder holds the matching core,
+  helper and support files. The visible launcher is Scripts/NDS_Standalone.sh.
+- Leave the support files together. Do not copy files from another NDS version
+  into this folder.
+- Your old Console core, NDS_Kickstart, MiSTer.ini, global controller maps,
+  games and saves are not overwritten by this package.
+
+This package needs an existing working MiSTer installation, Python 3.8 or
+newer, and a kernel that supports the included write-combining module and
+1 GHz clock control. It was tested on Linux 5.15.1-MiSTer. No replacement
+kernel, MiSTer binary or boot script is installed.
+
+
+2. LAUNCH A GAME
+
+- Open Scripts → NDS Standalone and wait for the NDS menu.
+- A fresh installation starts with Engine B On and Top/Bottom layout, with
+  rotation and the FPS counter Off. Existing saved NDS settings take priority.
+- If you have older settings, check that Engine B (next Reset) is On for two
+  independent DS screens.
+- Choose Load NDS and select a game in games/NDS.
+- ROMs must be uncompressed .nds files no larger than 128 MiB. ZIP archives
+  and larger ROMs are not supported by this loader.
+- Use System → Save settings if you want the selected options on the next
+  launch. Press Right on the core-menu page to reach System.
+
+Run NDS Standalone again whenever you return to this release. Do not start a
+second launcher while standalone is already running.
+
+
+3. CONTROLS AND MENU
+
+Open or close the menu with F12, the board's OSD button, or your controller's
+configured menu combination. Select + Start and the Guide button provide
+fallbacks for controllers that have not been configured.
+
+Menu navigation:
+  Up/Down             Move through the choices
+  A or Enter          Select a file or cycle an option
+  B or Escape         Go back
+  Right               Open System from the core page
+  Left                Return to the core page from System
+  Left/Right          Page through files while in the file picker
+  Select or backtick  Open Recent Files at Load NDS or in the ROM picker
+
+Opening the menu does NOT pause the game. Pause inside the game first if you
+need to stop the action.
+
+System → Define NDS buttons lets you map a controller. Press Space on a
+keyboard to skip a binding, or Escape to cancel. The last binding, after
+Touch, is Cycle Video Layout. Assign a spare button to cycle Left/Right,
+Top/Bottom, Left Only and Right Only during gameplay. It changes once per
+press and does not reset the game. Leave it unassigned if you do not want it.
+
+Keyboard game controls:
+  Arrow keys     D-pad
+  X / Z          A / B
+  S / A          X / Y
+  Q / W          L / R
+  Right Shift    Select
+  Enter          Start
+  Space          Touch
+
+Mouse movement and left click control the touch pointer. A mapped right stick
+and Touch button can also be used. Picture rotation adjusts game controls.
+
+Some System rows are greyed out because their functions are not implemented:
+Button/Key remap, Reset player assignment, Video processing, Audio filter and
+its file selector, and Lock OSD when shown. Return to normal MiSTer for those
+features, Bluetooth pairing and global display changes.
+
+
+4. SAVES, SETTINGS AND RECENT FILES
+
+Cartridge saves are shared with normal MiSTer in saves/NDS. Keep the same ROM
+filename to keep using its matching .sav file. Use the game's own save option;
+this release does not add save states. Close through the menu rather than
+cutting power while a game is saving.
+
+Standalone reads existing normal NDS options and controller maps when no
+private version exists. Changes you save in standalone stay in its hidden
+support folder and do not overwrite normal NDS settings or controller maps.
+
+Use System → Save settings after changing options you want to keep. Changing
+Engine B applies only after Reset or reloading a ROM. Reset settings has a
+confirmation and changes saved options; it does not erase game saves.
+
+Recent Files shares the normal MiSTer NDS history. At Load NDS, press Select
+on the controller or the keyboard's backtick key. Missing or unsupported files
+are disabled. Backspace offers to clear the list with confirmation; this never
+deletes your ROMs or saves. The MiSTer.ini option recents=0 disables history.
+
+
+5. RETURN TO NORMAL MISTER
+
+Choose System → Reboot. It closes standalone, finishes outstanding save work
+and returns to the normal MiSTer menu. This familiar menu label does not mean
+a power cycle of the board.
+
+To play the previously installed normal NDS release, return to normal MiSTer
+and follow that release's own NDS_Kickstart and Console launch steps. Its
+core and helper must stay paired. Do not directly launch a different NDS RBF
+with the standalone helper.
+
+Your other cores and normal startup remain available. A full power cycle
+also starts normal MiSTer as before.
+
+
+6. SECOND SCREEN AND PERFORMANCE
+
+Engine B On draws both DS screens independently. This is recommended for
+normal play. If the top and bottom pictures are identical, turn Engine B On,
+then Reset or reload the ROM.
+
+Engine B Off skips the second engine and copies the first screen to both.
+Anything that belongs only to the second engine will be missing. Off can
+help speed in some games, but the benefit varies.
+
+The ARM processor runs at 1 GHz with write-combining. There is no 1.2 GHz
+overclock or overclock menu option.
+
+Game pacing is improved in our testing, but speed still varies by game and
+scene. The tested USA version of New Super Mario Bros. uses fewer drawing
+updates to help pacing. This trades some animation updates for less drawing
+work; other versions may behave differently. The 3D FPS Counter shows update
+activity and is not a cap selector or proof of 60 FPS game animation.
+
+
+7. TATE AND OPTIONAL 1080P
+
+For a monitor on its side:
+
+- Choose Video Layout → Top/Bottom.
+- Turn Video Rotation opposite to the monitor's physical rotation:
+    Monitor clockwise       → 90 CCW
+    Monitor counterclockwise → 90 CW
+- D-pad, mouse and touch directions follow the rotated picture.
+
+The menu rotates separately through MiSTer.ini. On our 1080p portrait setup,
+this NDS-only configuration filled about 95% of the width with small borders:
+
+  [NDS]
+  video_mode=8
+  osd_rotate=2
+
+video_mode=8 requests 1920x1080 at 60 Hz. Only use it with a display that
+supports 1080p; it is optional. The core uses whole-pixel scaling, so borders
+vary with the selected layout and screen gap. This is not an edge-to-edge
+stretch option.
+
+If the menu is upside down, change osd_rotate to 1. For an unrotated menu use
+0. Edit an existing [NDS] section rather than adding a second one. Return to
+normal MiSTer and relaunch standalone to apply changes.
+
+These INI settings apply to NDS, including the older normal NDS core, while
+leaving other core sections alone. The installer does not edit your INI.
+Active alternate INI configurations have not been fully validated here.
+
+
+8. TROUBLESHOOTING
+
+Script missing:
+  Check that NDS_Standalone.sh is inside Scripts on the SD card, not inside
+  an extra ZIP-name folder. Its .NDS_Standalone support folder must be present.
+
+Missing Python, clock control or write-combining error:
+  Standalone checks these requirements before taking over. The included
+  module is built for the supported MiSTer kernel; arbitrary kernels may not
+  load it. Record the error and your kernel version when reporting a problem.
+  Do not force-load a module or bypass the checks. Your normal NDS installation
+  is still available through its original launch steps.
+
+SHA-256 or matching-file error:
+  Re-extract all files from this one release. Do not mix its core, helper,
+  launcher or support files with those from another release.
+
+Slow network load returns to the normal menu:
+  This beta can time out if a CIFS read stalls. Copy the .nds file to the SD
+  card's games/NDS folder and try again. Local loading is the most reliable
+  option. The later slow-network loader experiment is not in this release.
+
+No picture after changing video settings:
+  Restore the previous NDS video_mode setting in MiSTer.ini and relaunch.
+  Use 1080p only if the connected display supports it.
+
+Both screens show the same picture:
+  Set Engine B On, then reset or reload the ROM.
+
+Wrong controller buttons:
+  Open System → Define NDS buttons. Menu navigation follows your generic
+  MiSTer mapping; game controls use the NDS mapping.
+
+Disconnected Wi-Fi:
+  The launcher stops disconnected Wi-Fi retries for that boot to avoid stalls.
+  It leaves an active connection and saved network settings alone. Establish
+  the network connection before launching if your ROMs are on a share. A full
+  reboot restores the normal Wi-Fi startup. This is not DS wireless multiplayer.
+
+Crash or return to normal menu:
+  The recovery guard tries to restore normal MiSTer after a frontend/helper
+  failure. A complete kernel or FPGA hang may still require a power cycle.
+  Report the game/version, scene, Engine B setting, SD versus network ROM,
+  controller, kernel version and the exact visible error. Do not send ROMs.
+
+
+KNOWN GAME LIMITATIONS
+
+Strange Journey can still freeze during the intro. GTA: Chinatown Wars may
+still clip near the camera. Slowdown, uneven animation and movie/audio hitches
+remain possible, and sound is experimental. The recent Jackass, King Kong and
+Need for Speed Carbon fixes are not included in this accepted build.
+
+
+SOURCE AND CREDITS
+
+Use the matching GitHub release's Source code (zip) or Source code (tar.gz)
+links. The installer and source tree include checksums. There is no separate,
+duplicate source ZIP release asset.
+
+Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and
+melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to
+Corn for the standalone suggestion and skmp, the DreamSTer developer. Full
+credits and licenses are in the source tree.

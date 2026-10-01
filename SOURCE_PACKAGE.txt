@@ -1,78 +1,51 @@
-NDS4MiSTer v0.5.3 — GTA: Chinatown Wars graphics fixes
+NDS4MiSTer v0.6.0-beta — Standalone
 
-Original GTA fix: InsaneFriend (GitHub: saneFriend).
-Public parent: v0.5.2 (62dbc62aea20f141f45c9f3a192e56bd26d19478).
-Compiled FPGA source: f01bc87c3f9f51b43c001564bc8132c92f579e52
-Unchanged compiled ARM source: c204530c961a63a7a6991797c91cd3d85709ea09
-Public core: _Console/NDS_20260927.rbf (retained on-screen text 260926-VEC1).
-FPGA SHA256: 8bc0d7d185152a59ab9c8a872a0c03e9e622cf68710b88405667825be885c53d
-ARM SHA256: 91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390febe3
-Kickstart SHA256: e76a83d8678e7feac55609d3689707e4c0b5f52b16fc2a5b614f696ef57c7273
-WC module SHA256: c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113
+Release package prepared for user review; not published.
+Public parent: v0.5.3 ea0a172ef0229182e9f7ec60a4fcb18d10f7604d.
 
-The exact GTA1 FPGA loaded on MiSTer is packaged without rebuilding. The ARM
-helper, Kickstart, WC module and their checksum files are identical to v0.5.2.
-Only release documentation and manifests change after the compiled revision.
-The on-screen build text was intentionally retained to preserve that binary.
+This source tree combines the exact accepted production sources:
+ARM renderer: 9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8 (PF3)
+FPGA/RTL: 6e8e18e088e405a01847b6ffb54ae4678808fc4c (QC1)
+Standalone frontend baseline: 5398c706a77fbf6b1d64c91571bfc6dab91f8c69 (F1)
+The private development history is not required; complete corresponding
+project sources are included directly in this public tree.
 
-GTA reads GXSTAT position-stack level and pops that many entries each frame.
-The prior FPGA returned zero, allowing stack-pointer drift and recurring wrong
-camera/stray-triangle/black-3D frames. InsaneFriend's fix tracks normalized
-MTX_MODE/PUSH/POP on acceptance, exposes the position/projection/error fields,
-and implements the stack-error acknowledgment. The seven production source
-and build files match the supplied archive byte-for-byte, including seed 5.
-The archive identifies original commit 70c75f9 but contains no Git history;
-we credit the author without presenting that as a locally verified commit.
+The FPGA, renderer and WC module are packaged without rebuilding or changing
+runtime rendering/pacing options. The frontend is rebuilt only to update its
+release label and startup log. Public scripts use self-contained paths,
+prerequisite checks, safe core handoff, per-run logs and portable first-use
+settings. No personal controls, settings, ROMs or saves are distributed.
 
-Tracker scope is submission-order state, not precise geometry execution
-latency. Matrix busy, polygon/vertex counts and STORE/RESTORE slot-31 error
-semantics are not expanded. No packet ABI, rendering schedule, clock, ARM
-round trip, buffer depth, command acceptance or CPU/DMA backpressure changes.
-Rare near-camera clipping remains separate from the recurring GTA scene bug.
-See docs/INSANEFRIEND_GTA_STACK_PORT.md for contributor evidence and limits.
+Component SHA-256:
+FPGA: de443f91e8d3251053a6c881be78b28ca26c27b930f8f5ba9828b0c2089a45d9
+ARM renderer: f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729
+WC module: c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113
+Public standalone frontend: d99eab43e4d887dba6741b59c995aeb4d4f5ac216f240c4274eac7a383491cc1
+Kickstart.sh: 8a8b205effdc14fed1d7c479d357dd1b4eaaad2742cea0e93df2d21002801659
+supervisor.py: 459e7ed53b0fed057b4a257318c04e1237054685246c8f62f4f2547dba50f033
+NDS_Standalone.sh: 594a59fcaa894496619c397a33ee0561810b682f0b3a2122386edca3c2e10b49
 
-Local validation: supplied FIFO/frame-CDC/delayed-scanline/sparse-phase tests;
-128 GTA-style frame-start POP sequences; DMA/direct normalization; stack error,
-acknowledgment/reset and register byte-lane tests; existing GX readback/reply
-regressions; full console VHDL analysis; complete map/fit/asm/sta build.
-All tracked build input hashes were verified after compilation. The user
-requested packaging after GTA1 was loaded. No full-playthrough, new measured
-GTA event count, all-game speedup or universal 60 FPS claim is made.
+Build information:
+- FPGA: Quartus Prime 17.0.2 Lite, checked-in NDS4MiSTer.qpf/QSF/RTL.
+  Accepted QC1 fit/timing is preserved; timing closure is not claimed.
+- ARM renderer: tools/build_hybrid_3d_service_armhf.sh; GCC 13.3.0,
+  Cortex-A9 NEON hard float, static, Release -O3 with LTO; no JIT, core
+  timing or ARM audio mixing. Rendering source and flags are preserved.
+- Frontend: tools/standalone_host/build.sh; GCC 13.3.0, static C++17 -O2,
+  Cortex-A9 NEON hard float. Build toolchain container used for release:
+  sha256:4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474.
+  The tools/Dockerfile.mister-armhf recipe is provided; distribution package
+  updates mean a fresh compiler image is not guaranteed byte-identical.
+- WC module: kernel/nds_mem_wc contains source, fixed config, build script,
+  license and BUILD_PROVENANCE.json. Required kernel vermagic:
+  5.15.1-MiSTer SMP mod_unload ARMv7 p2v8.
 
-Resources: 38,938/41,910 ALMs, 42,563 registers, 530/553 M10K, 54/112 DSP.
-Compared with v0.5.2: +36 ALMs, +39 registers, unchanged M10K/DSP.
-Worst setup -20.773 ns, hold -0.204 ns. Timing is NOT closed. All 12 console
-hold-summary slacks improve over the accepted FPGA; this does not establish
-closure or operation on every device. Contributor clean-hold results were
-not reproduced by this local build. No new compile is performed for packaging.
+The install ZIP has internal checksums and an external SHA-256 companion.
+The source tree SHA256SUMS covers every included source file except itself.
+Only the install ZIP and its checksum are intended as release assets; source
+will use GitHub's automatic source zip/tar.gz links at the matching release tag.
+No separate duplicate source ZIP is needed.
 
-Production settings remain stock 1 GHz, WC on compatible kernels, matrix-prefix
-fast, 100-us query polling, packet-NC=0, standard palette cache, upload snapshots,
-matched full-rate display and weighted dual-core raster. Normal diagnostics
-and timing profiling remain disabled. Engine B On and Off are supported;
-Off hides second-engine content. The normal MiSTer frontend is retained.
-
-All prior FFT startup/menu, NSMB, Pokemon Platinum, InsaneFriend compatibility,
-Castlevania and Metroid display, Chrono startup/movie/sprite, saves/touch/TATE
-and disconnected Linux Wi-Fi retry fixes remain. Strange Journey intro freezes,
-occasional GTA clipping, movie/audio hitches, slowdown and game-specific issues
-remain. SoulSilver has not been independently verified. No DS wireless multiplayer.
-
-ARM build: tools/build_hybrid_3d_service_armhf.sh; GCC 13.3.0, Cortex-A9 NEON,
-hard-float, static -O3/release LTO. FPGA project:
-fpga/mister_nitro_console_island/NDS4MiSTer.qpf, Quartus Prime 17.0.2 Lite.
-FPGA stages ran directly via tools/run_quartus_docker.sh with
-QUARTUS_PROJECT_DIR=fpga/mister_nitro_console_island. This uses the tracked
-build_id.v; sys/build_id.tcl is unchanged and can alter text in other flows.
-
-WC source/config/toolchain provenance: kernel/nds_mem_wc/.
-Pinned Linux 794e6f002d0f655c504733c126a01f8c1f0bc1d4; vermagic
-5.15.1-MiSTer SMP mod_unload ARMv7 p2v8. An incompatible optional module falls
-back to Device mapping. Missing/mismatched service or module checksums are
-installation errors: reinstall the complete matching package.
-
-Source SHA256SUMS covers every other tracked file. GPLv3 headers, attribution
-and separate GPL-2.0 WC COPYING remain. No games, saves, BIOS/firmware dumps,
-captures, private selectors, credentials or INI ship. Matching source is
-distributed through GitHub's automatic source zip/tar.gz at the release tag;
-no duplicate source ZIP is included among the release assets.
+Retain LICENSE.txt, all third-party notices and tools/standalone_host/THIRD_PARTY.md.
+InsaneFriend (saneFriend) attribution for existing compatibility and GTA fixes
+is retained. The later Jackass, King Kong and NFS Carbon bundle is not included.

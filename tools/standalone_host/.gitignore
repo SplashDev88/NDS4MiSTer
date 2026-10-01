@@ -1,0 +1,4 @@
+nds_standalone_host
+manifest.json
+__pycache__/
+*.pyc

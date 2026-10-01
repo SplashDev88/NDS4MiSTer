@@ -384,6 +384,7 @@ entity nds_nitro_console_top is
       dbg_line_drop_b  : out std_logic;   -- ... engine B specifically
       dbg_line_busy    : out std_logic;
       dbg_bg1_scroll_triplet : out std_logic_vector(31 downto 0);
+      dbg_query_sample_toggle : out std_logic := '0';
       dbg_cpu_err9     : out std_logic;
       dbg_cpu_err7     : out std_logic;
       dbg_pc9          : out std_logic_vector(31 downto 0);
@@ -723,9 +724,9 @@ architecture arch of nds_nitro_console_top is
    signal h3d_gpu_source_data : std_logic_vector(31 downto 0);
    signal gx_readback_enabled, gx_readback_selected, gx_readback_busy : std_logic;
    signal gx_readback_complete, gx_readback_fence, gx_readback_geometry_write : std_logic;
+   signal gx_readback_request_i : std_logic;
    signal gx_readback_cpu_read : std_logic;
    signal gx_readback_cpu_complete, dma_io_read_wait_grant : std_logic;
-   signal nsmb_probe_selector : unsigned(1 downto 0) := (others => '0');
    signal gx_test_write : std_logic;
    signal gx_test_status : std_logic_vector(1 downto 0);
    signal gx_readback_value, gx_readback_wired : std_logic_vector(31 downto 0);
@@ -2482,6 +2483,7 @@ begin
       (dma_gx_write_valid = '1' or (io_bus9.ena = '1' and io_bus9.rnw = '0')) and
       ((unsigned(io_bus9.Adr) >= 16#400# and unsigned(io_bus9.Adr) <= 16#5cb#) or
        io_bus9.Adr = x"0000600" or io_bus9.Adr = x"0000304") else '0';
+   h3d_readback_request <= gx_readback_request_i;
    igx_readback : entity work.nds_h3d_gx_readback_owner
    port map (
       clk => clk1x, reset => resetCpu, service_ready => gx_readback_enabled,
@@ -2493,7 +2495,7 @@ begin
       selected => gx_readback_selected, busy => gx_readback_busy,
       complete => gx_readback_complete, read_data => gx_readback_value,
       fence_valid => gx_readback_fence,
-      request_valid => h3d_readback_request, request_ready => h3d_readback_ready,
+      request_valid => gx_readback_request_i, request_ready => h3d_readback_ready,
       request_id => h3d_readback_id,
       response_valid => h3d_readback_response, response_id => h3d_readback_response_id,
       response_status => h3d_readback_status,
@@ -2915,47 +2917,18 @@ begin
       );
    end generate;
 
-   -- The previous product tap stopped at the CPU table and DMA source. Latch
-   -- the renderer's exact line-30 acceptance/output receipt together with the
-   -- geometry FIFO and DMA ownership on the same sample boundary. On a normal
-   -- frame [14:6] remains the row fingerprint. On a frame with no BG1HOFS write
-   -- since VBlank, replace the old scroll/fingerprint payload with the exact
-   -- actual ARM9 membus owner rather than the CPU's next pending address:
-   --   [23:21] membus FSM state, [20] accepted transaction active,
-   --   [19:13] transaction age, [12] read/write,
-   --   [11:0] accepted address offset.
-   -- The preceding trace established that missed NSMB parallax updates are
-   -- DMA1 HBlank transfers stuck in GRANT with CPU_bus_idle low. This identifies
-   -- the real outstanding access, or proves the idle flag is stale, without
-   -- changing bus arbitration or timing.
-   p_bg1_line30_dma_receipt : process (clk1x)
-      variable sample_line : integer range 0 to 191;
-   begin
-      if rising_edge(clk1x) then
-         if resetCpu = '1' then
-            nsmb_probe_selector <= (others => '0');
-            dbg_bg1_scroll_triplet <= (others => '0');
-         else
-            if gpu_vblank = '1' then
-               nsmb_probe_selector <= nsmb_probe_selector + 1;
-            end if;
-            case to_integer(nsmb_probe_selector) is
-               when 0 => sample_line := 88;
-               when 1 => sample_line := 89;
-               when 2 => sample_line := 100;
-               when others => sample_line := 150;
-            end case;
-            if drawline = '1' and linecounter = sample_line then
-               dbg_bg1_scroll_triplet <=
-                  std_logic_vector(to_unsigned(12, 4) + resize(nsmb_probe_selector, 4)) &
-                  gx_readback_busy & cpu9_bus_idle & dma_on & dma_bus_on &
-                  dma9_dbg_state & dbg_mb9(2 downto 0) &
-                  cpu_access_active & cpu_access_rnw &
-                  std_logic_vector(cpu_access_age(6 downto 4)) & cpu_access_addr;
-            end if;
-         end if;
-      end if;
-   end process;
+   -- Private QW1 observer: no path from these outputs to console control.
+   iquery_watch : entity work.nds_h3d_query_watch
+   port map (
+      clk => clk1x, reset => resetCpu or not gx_readback_enabled,
+      read_busy => gx_readback_busy,
+      request_valid => gx_readback_request_i,
+      request_ready => h3d_readback_ready,
+      complete => gx_readback_complete,
+      gpu_blocked => h3d_gpu_source_valid and not h3d_gpu_source_ready,
+      sample_data => dbg_bg1_scroll_triplet,
+      sample_toggle => dbg_query_sample_toggle
+   );
 
    -- ================= engine B =================
    -- register window 0x1000-0x106C: engine B sees the bus with bit 12

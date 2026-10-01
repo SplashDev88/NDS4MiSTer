@@ -421,3 +421,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_readback_legacy
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_adoption_window.sv
 # Private passive CPU/DMA ownership snapshots.
 set_global_assignment -name VERILOG_MACRO "NDS_NSMB_DMA_DIAGNOSTIC=1"
+
+# QW1 private passive end-to-end query wait probe.
+set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_query_watch.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_probe_cdc.sv

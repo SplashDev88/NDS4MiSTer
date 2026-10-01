@@ -50,34 +50,20 @@ public:
     unsigned deferred_peak() const { return deferred_peak_; }
     void invalidate() { valid_ = false; deferred_.clear(); deferred_head_ = 0; deferred_cost_ = 0; }
 
-    void command(std::uint8_t tag, std::uint32_t value)
+    [[gnu::always_inline]] inline void command(std::uint8_t tag, std::uint32_t value)
     {
         if (!valid_ || !enabled_) return;
-        if (!swapped_) drain();
-        if (swapped_ || deferred_head_ != deferred_.size()) {
-            // Consecutive SWAPs can keep a live tail across many VBlanks.
-            // Entries before head already executed and no longer consume
-            // the pending-work budget. Reclaim them only at the storage cap
-            // to avoid moving the live tail on every command/frame.
-            if (deferred_.size() == MaxDeferred && deferred_head_ != 0) {
-                deferred_.erase(deferred_.begin(),
-                    deferred_.begin() + deferred_head_);
-                deferred_head_ = 0;
-            }
-            // A bounded fallback to the existing replay owner is preferable
-            // to guessing after an unsupported/malformed command sequence.
-            if (deferred_.size() == MaxDeferred) {
-                invalid_reason_ = 1; invalid_tag_ = tag; invalidate(); return;
-            }
-            const auto cost = deferred_cost(tag);
-            if (deferred_cost_ + cost > MaxDeferredCost) {
-                invalid_reason_ = 3; invalid_tag_ = tag; invalidate(); return;
-            }
-            deferred_.push_back({tag, value});
-            deferred_cost_ += cost;
-            deferred_peak_ = std::max(deferred_peak_,
-                unsigned(deferred_.size() - deferred_head_));
-        } else execute(tag, value);
+        // COLOR/NORMAL/TEXCOORD and the single-word vertex commands do not
+        // affect this matrix/status shadow. The renderer still replays them.
+        // Skip only a fully settled command: pending matrix parameters must
+        // still reject a different tag, and work behind SWAP retains its
+        // ordered execution and bounded deferred-cost accounting. VTX_16
+        // (0x23) has two parameters and must retain its partial/busy state.
+        if (tag >= 0x20 && tag <= 0x28 && tag != 0x23 &&
+            !swapped_ && partial_count_ == 0 &&
+            deferred_head_ == deferred_.size())
+            return;
+        command_ordered(tag, value);
     }
 
     void vblank()
@@ -133,6 +119,39 @@ public:
     }
 
 private:
+    // Keep the ordered/deferred path out of the settled-command shortcut.
+    // On ARM32 its stack/register setup otherwise runs even for ignored
+    // single-word vertex commands. Only command() calls this after checking
+    // enabled/valid state; all deferred ordering and accounting is unchanged.
+    [[gnu::noinline]] void command_ordered(std::uint8_t tag, std::uint32_t value)
+    {
+        if (!swapped_) drain();
+        if (swapped_ || deferred_head_ != deferred_.size()) {
+            // Consecutive SWAPs can keep a live tail across many VBlanks.
+            // Entries before head already executed and no longer consume
+            // the pending-work budget. Reclaim them only at the storage cap
+            // to avoid moving the live tail on every command/frame.
+            if (deferred_.size() == MaxDeferred && deferred_head_ != 0) {
+                deferred_.erase(deferred_.begin(),
+                    deferred_.begin() + deferred_head_);
+                deferred_head_ = 0;
+            }
+            // A bounded fallback to the existing replay owner is preferable
+            // to guessing after an unsupported/malformed command sequence.
+            if (deferred_.size() == MaxDeferred) {
+                invalid_reason_ = 1; invalid_tag_ = tag; invalidate(); return;
+            }
+            const auto cost = deferred_cost(tag);
+            if (deferred_cost_ + cost > MaxDeferredCost) {
+                invalid_reason_ = 3; invalid_tag_ = tag; invalidate(); return;
+            }
+            deferred_.push_back({tag, value});
+            deferred_cost_ += cost;
+            deferred_peak_ = std::max(deferred_peak_,
+                unsigned(deferred_.size() - deferred_head_));
+        } else execute(tag, value);
+    }
+
     struct Command { std::uint8_t tag; std::uint32_t value; };
     // Count execution work separately from parameter words. DS startup may
     // initialize all 32 matrix-stack entries behind SWAP, exceeding 512 words

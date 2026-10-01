@@ -173,6 +173,7 @@ entity nds_nitro_console_wrap is
       h3d_merge_pixel_y    : out std_logic_vector(7 downto 0);
       h3d_line_drop        : out std_logic;
       h3d_bg1_scroll_triplet : out std_logic_vector(31 downto 0);
+      h3d_query_sample_toggle : out std_logic := '0';
 
       -- Lossless raw H3D event streams, all in the clk1x domain.
       h3d_service_ready       : in  std_logic := '0';
@@ -556,6 +557,7 @@ begin
       dbg_line_drop_b  => open,
       dbg_line_busy    => open,
       dbg_bg1_scroll_triplet => h3d_bg1_scroll_triplet,
+      dbg_query_sample_toggle => h3d_query_sample_toggle,
       dbg_cpu_err9     => open,
       dbg_cpu_err7     => open,
       dbg_pc9          => dbg_pc9,

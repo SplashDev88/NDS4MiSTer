@@ -49,6 +49,12 @@ struct VRAMTrackingSet
             Mapping[i] = 0x8000;
         }
     }
+    void InvalidateMapping(u32 slot) noexcept
+    {
+        // Preserve a remap even if the bank returns before DeriveState runs.
+        // Another consumer may have cleared that bank's shared dirty bits.
+        Mapping[slot] = 0x8000;
+    }
     NonStupidBitField<Size/VRAMDirtyGranularity> DeriveState(const u32* currentMappings, GPU& gpu);
 };
 

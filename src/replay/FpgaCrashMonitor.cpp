@@ -16,6 +16,7 @@
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <vector>
 
 #if defined(__linux__)
 #include <pthread.h>
@@ -31,6 +32,15 @@ constexpr auto DefaultStallThreshold = std::chrono::milliseconds(2000);
 constexpr auto ManualBurstInterval = std::chrono::milliseconds(2);
 constexpr std::size_t ManualBurstSamples = 40;
 constexpr std::size_t HistorySamples = 128;
+
+std::size_t history_samples(bool has_runtime)
+{
+    const char* trace = std::getenv("NDS4MISTER_STANDALONE_PACING_TRACE");
+    // Retain a complete moving-level test before the manual dump. The normal
+    // recorder stays at 128 samples; this opt-in costs only ARM process RAM.
+    return has_runtime && trace && trace[0] == '1' && trace[1] == '\0' ?
+        1024 : HistorySamples;
+}
 
 struct FlightSample {
     std::uint64_t elapsed_ms = 0;
@@ -68,6 +78,7 @@ struct FlightSample {
     std::uint64_t replay_budget_drops = 0;
     std::uint64_t publication_replacements = 0;
     std::uint32_t publication_queue_high_water = 0;
+    std::array<std::uint64_t, PacingMetricCount> pacing {};
 };
 
 bool write_all(int fd, const char* data, std::size_t size)
@@ -129,6 +140,7 @@ void FpgaRuntimeTelemetry::reset(std::uint32_t new_session) noexcept
     replay_budget_drops.store(0, std::memory_order_relaxed);
     publication_replacements.store(0, std::memory_order_relaxed);
     publication_queue_high_water.store(0, std::memory_order_relaxed);
+    for (auto& value : pacing) value.store(0, std::memory_order_relaxed);
     session.store(new_session, std::memory_order_release);
 }
 
@@ -137,7 +149,8 @@ struct FpgaCrashMonitor::Impl {
         volatile h3d::Header* shared_header, bool start,
         const FpgaRuntimeTelemetry* runtime)
         : header(shared_header), telemetry(runtime),
-          threshold(stall_threshold()), started(Clock::now())
+          threshold(stall_threshold()), started(Clock::now()),
+          history(history_samples(runtime != nullptr))
     {
         if (start && header) worker = std::thread([this] { run(); });
     }
@@ -206,6 +219,8 @@ struct FpgaCrashMonitor::Impl {
             result.publication_queue_high_water =
                 telemetry->publication_queue_high_water.load(
                     std::memory_order_relaxed);
+            for (std::size_t i = 0; i < PacingMetricCount; ++i)
+                result.pacing[i] = telemetry->pacing[i].load(std::memory_order_relaxed);
         }
         return result;
     }
@@ -282,7 +297,50 @@ struct FpgaCrashMonitor::Impl {
                    << ',' << item.publication_replacements
                    << ',' << item.publication_queue_high_water << '\n';
         }
+        // Separate table preserves the original samples_csv column schema.
+        if (trigger.pacing[static_cast<std::size_t>(PacingMetric::Enabled)]) {
+            output << "pacing_csv=elapsed_ms,session";
+            for (const auto* name : PacingMetricNames) output << ',' << name;
+            output << '\n';
+            for (std::size_t count = 0; count < history_count; ++count) {
+                const auto& item = history[(first + count) % history.size()];
+                output << std::dec << item.elapsed_ms << std::hex << ',' << item.runtime_session;
+                for (const auto value : item.pacing) output << ',' << value;
+                output << '\n';
+            }
+        }
         return output.str();
+    }
+
+    void write_timeline(const char* report_path)
+    {
+        if (!telemetry || !telemetry->timeline) return;
+        const auto cutoff = CausalTimeline::now_us();
+        const auto intake = telemetry->timeline->intake.snapshot(cutoff);
+        const auto replay = telemetry->timeline->replay.snapshot(cutoff);
+        const auto publication = telemetry->timeline->publication.snapshot(cutoff);
+        const std::string path = std::string(report_path) + ".timeline.bin";
+        const std::string temporary = path + ".part";
+        const int fd = open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+        if (fd < 0) return;
+        // CTL1 little-endian Linux/ARM ABI. 24-byte header, then three lane
+        // headers (id,published,overwritten,raced,count) and 32-byte records.
+        const std::array<std::uint32_t,6> header {{0x314c5443u,1,32,3,
+            static_cast<std::uint32_t>(cutoff),static_cast<std::uint32_t>(cutoff>>32)}};
+        bool ok = write_all(fd,reinterpret_cast<const char*>(header.data()),sizeof(header));
+        const std::array<const TimelineLane::Snapshot*,3> lanes {{&intake,&replay,&publication}};
+        for (unsigned i=0;ok && i<lanes.size();++i) {
+            const auto& lane=*lanes[i];
+            const std::array<std::uint32_t,5> meta {{i,lane.published,lane.overwritten,
+                lane.raced,static_cast<std::uint32_t>(lane.records.size())}};
+            ok=write_all(fd,reinterpret_cast<const char*>(meta.data()),sizeof(meta));
+            if(ok) ok=write_all(fd,reinterpret_cast<const char*>(lane.records.data()),
+                               lane.records.size()*sizeof(TimelineRecord));
+        }
+        if(ok) ok=fsync(fd)==0;
+        if(close(fd)!=0) ok=false;
+        if(ok) ok=rename(temporary.c_str(),path.c_str())==0;
+        if(!ok) unlink(temporary.c_str());
     }
 
     void write_report(const char* reason, const FlightSample& trigger)
@@ -306,6 +364,7 @@ struct FpgaCrashMonitor::Impl {
             unlink(path);
             return;
         }
+        write_timeline(path); // Only after the timed gameplay window/manual request.
         std::fprintf(stderr, "NDS4MISTER_CRASH_REPORT %s\n", path);
     }
 
@@ -405,7 +464,7 @@ struct FpgaCrashMonitor::Impl {
     const Clock::time_point started;
     std::atomic<bool> stop {false};
     std::thread worker;
-    std::array<FlightSample, HistorySamples> history {};
+    std::vector<FlightSample> history;
     std::size_t history_next = 0;
     std::size_t history_count = 0;
     std::uint32_t report_sequence = 0;

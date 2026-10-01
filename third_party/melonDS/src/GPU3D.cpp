@@ -188,7 +188,11 @@ void Vertex::DoSavestate(Savestate* file) noexcept
 
 void GPU3D::ResetRenderingState() noexcept
 {
+    // Power-off replaces the latched plane even without a SWAP. A renderer
+    // retaining its previous pixels must not reuse a pre-reset identity hint.
+    RenderFrameIdentical = false;
     RenderNumPolygons = 0;
+    ++RenderStateRevision;
 
     RenderDispCnt = 0;
     RenderAlphaRef = 0;
@@ -575,6 +579,7 @@ void GPU3D::DoSavestate(Savestate* file) noexcept
     file->Var32(&TexPalette);
 
     RenderFrameIdentical = false;
+    if (!file->Saving) ++RenderStateRevision;
 }
 
 
@@ -1940,17 +1945,35 @@ GPU3D::CmdFIFOEntry GPU3D::CmdFIFORead() noexcept
 
 void GPU3D::ExternalBatchWrite(const CmdFIFOEntry& entry) noexcept
 {
-    if (ExternalBatchCount < ExternalBatchCapacity && CmdPIPE.IsEmpty())
+    if (CmdPIPE.IsEmpty())
     {
+        if (ExternalBatchCount == ExternalBatch.size())
+        {
+            // A blocked SWAP can hold more than the old 512-entry bank plus
+            // 16K stall queue. SM64 DS lost 1,177 commands entering Bob-omb
+            // Battlefield, leaving a partial vertex parameter in the next
+            // projection load and collapsing the whole scene to one line.
+            // Reuse consumed space first; grow only when all entries are live.
+            // No allocation or copy occurs on the ordinary append/pop path.
+            if (ExternalBatchRead != 0)
+            {
+                const u32 pending = ExternalBatchCount - ExternalBatchRead;
+                std::move(ExternalBatch.begin() + ExternalBatchRead,
+                          ExternalBatch.begin() + ExternalBatchCount,
+                          ExternalBatch.begin());
+                ExternalBatchRead = 0;
+                ExternalBatchCount = pending;
+            }
+            else
+                ExternalBatch.resize(ExternalBatch.size() * 2);
+        }
         ExternalBatch[ExternalBatchCount++] = entry;
     }
     else
     {
-        // SWAP_BUFFERS can hold execution until VBlank while further H3B
-        // batches arrive. Once the contiguous bank spills into the ordinary
-        // FIFO, keep appending there until that older tail drains. Refilling
-        // a newly empty bank first would let newer commands overtake the
-        // spill, including parameters of partially executed matrix loads.
+        // Preserve ordering if external mode was enabled with an existing
+        // ordinary FIFO tail. Normal hybrid sessions start with empty FIFOs
+        // and keep their entire normalized stream in the growable bank.
         CmdFIFOWrite(entry);
         return;
     }
@@ -2853,6 +2876,8 @@ void GPU3D::VBlank() noexcept
                     && memcmp(RenderFogDensityTable + 1, FogDensityTable, 32) == 0
                     && memcmp(RenderToonTable, ToonTable, 32*2) == 0;
             }
+
+            if (!RenderFrameIdentical) ++RenderStateRevision;
 
             RenderDispCnt = DispCnt;
             RenderAlphaRef = AlphaRef;

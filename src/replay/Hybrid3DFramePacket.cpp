@@ -193,6 +193,7 @@ bool Consumer::begin_into(
     bool external_records)
 {
     output_records.clear();
+    acquisition_started_ = {};
     const auto reject = [this, &output_records](std::uint32_t fault) {
         output_records.clear();
         return fail(fault);
@@ -214,6 +215,7 @@ bool Consumer::begin_into(
         return reject(FaultSequence);
     if (producer < expected_sequence_) return false;
 
+    if (measure_acquisition_) acquisition_started_ = std::chrono::steady_clock::now();
     auto* slot_bytes = slot(expected_sequence_);
     PacketHeader first{};
     if (!snapshot_header(first)) return reject(FaultTornHeader);

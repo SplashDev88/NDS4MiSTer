@@ -53,6 +53,34 @@ struct Probe {
 };
 }
 int main() try {
+    // The settled no-op shortcut must agree with actual geometry readback,
+    // including after deferred work and around partial-command boundaries.
+    {
+        constexpr unsigned ignored[] = {0x20,0x21,0x22,0x24,0x25,0x26,0x27,0x28};
+        Probe fast;
+        fast.command(0x10,2); fast.command(0x15,0);
+        fast.command(0x1c,123); fast.command(0x1c,456); fast.command(0x1c,789);
+        for (unsigned iteration=0;iteration<128;++iteration) {
+            for (auto tag:ignored) {
+                fast.command(tag,iteration*0x010203u); fast.compare();
+            }
+            fast.command(0x50,0);
+            fast.command(0x10,2); fast.command(0x1c,iteration);
+            fast.command(0x1c,1); fast.command(0x1c,2);
+            for (auto tag:ignored) fast.command(tag,iteration);
+            fast.compare(); fast.vblank(); fast.compare();
+        }
+        for (auto partial : {0x16u,0x23u,0x34u,0x70u,0x71u})
+            for (auto tag:ignored) {
+                nds4mister::replay::GxMatrixPrefix malformed;
+                malformed.command(partial,123);
+                malformed.command(tag,456);
+                if (malformed.valid() || malformed.invalid_reason()!=2 ||
+                    malformed.invalid_tag()!=tag || malformed.invalid_partial()!=partial)
+                    throw std::runtime_error("settled shortcut bypassed partial-command rejection");
+            }
+        std::printf("GX_MATRIX_PREFIX_SETTLED_PASS comparisons=%u partial_rejections=40\n",fast.checks);
+    }
     // Check the proposed inexpensive-command bound against the real replay
     // owner, including every possible normal/vertex delay and light mask.
     // These commands never wait for polygon completion. Leave expensive

@@ -1,344 +1,243 @@
 # NDS4MiSTer
 
-Experimental Nintendo DS support for the MiSTer FPGA platform.
+Experimental Nintendo DS support for MiSTer FPGA.
 
-**v0.5.3 — GTA: Chinatown Wars graphics fixes**
+**v0.6.0-beta — standalone launch, a familiar menu, and improved pacing.**
 
-InsaneFriend's matrix-stack status fix corrects GTA's recurring stray triangles,
-distorted scenery and black 3D frames. The v0.5.2 ARM helper, FFT regression
-fix and previous graphics, compatibility and speed improvements are retained.
+> Release documentation draft; publication is pending approval.
 
-**Engine B is optional again.** On draws both DS screens. Off skips Engine B
-and mirrors Engine A to both positions, which can help performance but hides
-content drawn by Engine B. Change **Engine B (next Reset)**, then Reset or
-reload your ROM. The installer preserves existing settings. Unlike v0.5.0,
-this release supports both modes; use its matching core/helper/launcher.
+NDS4MiSTer now launches through **Scripts → NDS Standalone**. A lightweight
+NDS frontend handles menus, input, loading and saves while you play, allowing
+the ARM processors to spend more time on the Nintendo DS workload. The normal
+MiSTer program initializes output before standalone takes over and returns
+when you exit.
 
-No commercial ROMs, BIOS or firmware dumps, personal saves, compiled release
-artifacts, or credentials are included in this source repository.
+Standalone is the direction of future development. The installer preserves
+your existing normal NDS core, launcher and settings. Your ROM and cartridge
+save folders stay the same.
 
-## What works today
+This remains a beta. Not every game runs at full speed, and graphics, audio
+and compatibility issues remain. No commercial ROMs, BIOS/firmware dumps,
+personal saves or credentials are included in this source repository.
 
-- Faster ARM-to-FPGA pixel transfers through the included WC driver on compatible
-  kernels, with automatic Device-memory fallback.
+## Install and play
 
-- Some 2D and lighter 3D games boot and run.
-- Smoother opening movies in Chrono Trigger and Castlevania, with occasional
-  audio hitches still possible.
-- Optional 90-degree clockwise or counterclockwise TATE rotation for a
-  sideways monitor.
-- FPGA-generated sound with corrected DS sound-bias initialization.
-- Persistent cartridge saves:
-  - 512-byte tiny EEPROM.
-  - 8 KiB, 64 KiB, and 128 KiB EEPROM/FRAM profiles.
-  - 256 KiB, 512 KiB, and 1 MiB Flash profiles.
-- Touch input using either the controller's right analog stick or a MiSTer
-  mouse.
-- Remappable keyboard controls through MiSTer's standard controller mapping,
-  hardware-tested with beta.7.
-- Four video layouts: Left/Right, Top/Bottom, Left Only, and Right Only.
-- Selectable screen order, screen gap, and a changed-plane 3D FPS counter.
-- Both screens composed together by the MATCH4 renderer with Engine B On;
-  optional Engine B Off mirrors Engine A to both screens.
+1. Back up the SD card's `saves/NDS` folder.
+2. Extract the release install ZIP to the SD card root, merging **Scripts**.
+   Include the hidden `Scripts/.NDS_Standalone` support folder.
+3. Run **Scripts → NDS Standalone** and wait for the NDS menu.
+4. Choose **Load NDS** and a game from `games/NDS`. Fresh installations start
+   with both screens On in Top/Bottom layout. Older saved settings take
+   priority; check **Engine B (next Reset) → On** for independent screens.
+5. Use **System → Save settings** to keep your options.
 
-## Current limitations
+There is **no separate Kickstart step or five-minute window** for standalone.
+Run its script each time you want to launch this release. It contains its own
+matching FPGA core and ARM helper; do not mix support files between versions.
+The normal MiSTer installation is still required, but installing an older NDS
+release first is not required.
 
-- **Strange Journey can still freeze during its intro.** WC does not fix it.
-- **GTA: Chinatown Wars can still show occasional near-camera clipping.**
-  The recurring matrix-stack scene corruption is corrected; this is not a
-  complete fix for every graphics problem.
-- **WC was tested on MiSTer Linux 5.15.1.** Other kernel builds may reject the
-  optional module and use the previous transfer path without the WC gain.
+ROMs must be uncompressed `.nds` files up to **128 MiB**. Local SD loading is
+recommended: a stalled network/CIFS read can time out in this beta.
 
-- **Movies and audio can still hitch occasionally.** Playback is smoother, but
-  full-speed playback in every game remains work in progress.
-- **TATE supports 90 CW and 90 CCW, but not 180 degrees.** The game picture
-  and MiSTer menu rotate separately. Both-screen performance depends on the game.
-- **Other graphical regressions remain.** Castlevania and Metroid fixes passed
-  focused testing; other games and scenes can still expose rendering problems.
-- **Engine B Off hides second-engine content.** It can improve performance,
-  but not every game or scene becomes faster. Use On for complete dual screens.
-- **Pokemon Platinum character and room furniture passed testing.** SoulSilver
-  has not been verified with this build; other scenes may still expose problems.
-- **Heavy 3D can stutter, fall behind, show minor blanking, or crash.** This is
-  the most active area of development.
-- **Cartridge-access latency remains a bottleneck.** Some objects or effects
-  may appear late or fail to load.
-- **Audio remains experimental.** The incorrect startup bias that caused the
-  broadly overdriven output is fixed, but individual games may still expose
-  unsupported or inaccurate sound behavior.
-- **Not implemented:** NAND saves, save states, Wi-Fi, and microphone support.
-- **Reset is improved, but not universal.** It preserves the current cartridge
-  and save mount. If a game does not reset cleanly, reselect its ROM from the
-  core menu.
-- The first public compatibility target is *New Super Mario Bros.* Broad game
-  compatibility is not yet claimed.
+The launcher requires **Python 3.8+**, a kernel compatible with the included
+write-combining module, and working **1 GHz** clock control. Hardware testing
+used Linux **5.15.1-MiSTer**. Unlike the older normal launcher, this standalone
+requires a working write-combining mapping; it will not silently run without
+it. It does not install a kernel or change `MiSTer.ini`.
 
-## Getting started
+See [release notes](docs/RELEASE_NOTES_V060_BETA.md) and the bundled
+[quick start](docs/STANDALONE_QUICK_START.txt) for setup and troubleshooting.
 
-You supply your own legally obtained `.nds` files. No games, commercial BIOS
-or firmware files, or saves are included, and none should be posted to this
-repository.
+## The standalone menu
 
-1. Extract
-   `NDS4MiSTer_v0.5.3_20260927.zip` directly into the root
-   of the MiSTer SD card (`/media/fat`). Allow it to merge the `_Console` and
-   `Scripts` folders.
-2. After every MiSTer reboot, go to **Scripts → NDS_Kickstart** and wait for
-   the 3D service to start.
-3. Within five minutes, go to **Console → NDS_20260927** and launch the core.
-4. Set **Engine B (next Reset) → On**, then choose **Load NDS** and your `.nds`
-   file. If already loaded, Reset or reload after changing Engine B.
+Open the menu with F12, the board OSD button, or the configured controller menu
+combination. Select + Start and Guide provide fallbacks. **Opening the menu
+does not pause the game.** Press Right from the core page for System and Left
+to return. A/Enter selects; B/Escape goes back.
 
-> **Run NDS_Kickstart once after every MiSTer reboot, before launching the
-> core.** The DS 3D renderer is a helper program on the MiSTer's ARM/HPS. The
-> launcher verifies that helper, requests the tested 1 GHz HPS clock, and
-> starts exactly one non-persistent renderer process. Games will not run
-> correctly if the helper is not running. Kickstart also watches for that one
-> core launch and moves its replacement MiSTer frontend to CPU0; rerun
-> Kickstart before a later NDS re-entry or if five minutes elapsed.
+- **Define NDS buttons** creates a standalone controller map while preserving
+  normal MiSTer maps. Mouse and right-stick touch input remain available.
+- **Cycle Video Layout**, the final mapping prompt, can assign a spare button
+  to switch between Left/Right, Top/Bottom, Left Only and Right Only while playing.
+- **Recent Files** shares the normal NDS history. Press controller Select or
+  keyboard backtick at Load NDS or in the ROM picker.
+- **Save settings** stores standalone's own options. Existing normal NDS
+  settings are read when no private settings exist. With no saved settings,
+  Engine B starts On in Top/Bottom layout; rotation and the FPS counter are Off.
+- **System → Reboot** closes standalone and returns to normal MiSTer's menu;
+  it is not a power cycle. The old normal NDS release continues to use its own
+  Kickstart and Console launch steps.
 
-## TATE mode
+Greyed-out System rows are not implemented. Video/audio filters, advanced
+button remapping, player assignment and conditional OSD locking are among the
+unavailable actions. Use normal MiSTer for global changes and Bluetooth pairing.
+The familiar layout is not a promise of every MiSTer system feature.
 
-Select **Video Layout → Top/Bottom** to stack the DS screens. Choose the
-picture rotation opposite to your monitor's physical turn:
+## Screens, TATE and saves
 
-| Monitor physically turns | Video Rotation |
-| --- | --- |
-| Clockwise / right | **90 CCW** |
-| Counterclockwise / left | **90 CW** |
+**Engine B On** draws both DS screens separately and is recommended for normal
+play. **Off** skips the second engine and mirrors the first screen. It may
+improve performance in some scenes, but hides second-screen content. Reset or
+reload the game after changing it.
 
-Rotation starts Off and can be changed without resetting the game. Existing
-saved Off and 90 CCW settings retain their meaning. D-pad, right-stick touch,
-and mouse controls keep their native DS directions for the physically turned
-monitor. Screen order and gap settings remain available.
+TATE supports **90 CW** and **90 CCW**. Choose **Top/Bottom**, then rotate the
+picture opposite to the monitor's physical turn. D-pad, mouse and touch follow
+the rotated display. The menu rotates separately through `MiSTer.ini`.
 
-The MiSTer menu rotates separately. Put `osd_rotate=1` or `osd_rotate=2`
-under `[NDS]` in `MiSTer.ini` to match your setup, then save and reboot. If the
-menu is upside down, switch between 1 and 2. If an `[NDS]` section already
-exists, update it. This affects NDS only; the installer does not edit your INI.
-See the [MiSTer INI documentation](https://mister-devel.github.io/MkDocs_MiSTer/advanced/ini/#menu-settings).
+For a 1080p-capable portrait display, this optional setup gave small borders
+and about 95% portrait width in the tested layout:
 
-## Controller and keyboard mapping
+```ini
+[NDS]
+video_mode=8
+osd_rotate=2
+```
 
-Nintendo DS buttons can be mapped to keyboard keys through MiSTer's standard
-controller-mapping menu. Keyboard control was verified on real MiSTer hardware
-with beta.7.
+Use `osd_rotate=1` if the menu is upside down. Edit the existing `[NDS]` section
+if present, then return to normal MiSTer and relaunch standalone. The installer
+does not edit the INI. These NDS overrides also affect an older normal NDS core.
+Scaling uses whole pixels; border size depends on layout and screen gap.
 
-## Touch controls
-
-The most recently active touch input takes control.
-
-### Right analog stick
-
-The right stick uses absolute positioning. Centering it selects approximately
-the middle of the 256×192 touchscreen; moving it to an edge selects that edge.
-Hold the remappable `Touch` action to press the stylus and release it to lift
-the stylus.
-
-### Mouse
-
-Mouse movement is relative, like a desktop cursor, and stops at the touchscreen
-edges. Hold the left mouse button to press the stylus.
-
-The on-screen pointer is **white while hovering** and **red while pressed**. It
-remains visible while pressed and lingers for about half a second after
-movement. With Engine B On, it follows the DS touchscreen through the selected
-layout and screen order. Off mirrors Engine A, so a game may hide its touch UI.
-
-## Saves
-
-Cartridge saves are stored in MiSTer's standard directory:
+Cartridge saves are shared by normal NDS and standalone in:
 
 ```text
 /media/fat/saves/NDS/
 ```
 
-This is battery-backed cartridge-save support, not emulator save states. Save
-profiles are selected from the vendored melonDS ROM database. NAND save
-cartridges and unknown save hardware are not supported.
+Keep the same ROM filename to keep using its matching `.sav`. This is in-game
+cartridge saving, not save states. Back up saves before upgrading. Standalone
+does not repair older corrupt saves or replace progress with archived test saves.
 
-Back up existing saves before upgrading or troubleshooting. Older experimental
-builds could create incorrectly sized or corrupted files; this build does not
-automatically repair them. Preserve the original save while checking the game
-and save profile instead of replacing progress with an older backup.
+## Compatibility and performance
 
-## Reading the FPS counter
+The accepted build retains prior graphics and compatibility fixes and the
+Super Mario 64 DS fix for first-course graphics collapsing into one line.
+It reduces repeated drawing work and includes game-specific pacing choices.
+Both ARM cores remain at **1 GHz**, with no 1.2 GHz overclock.
 
-The overlay reports 3D publication activity; counters may include reused
-planes. It does not establish distinct displayed frames, total emulation speed,
-input latency, or 2D-engine performance. A displayed value of 60 is not proof of
-full-speed gameplay. See [issue #11](https://github.com/SplashDev88/NDS4MiSTer/issues/11).
+The tested **USA revision 0** of New Super Mario Bros. uses alternate drawing
+updates to reduce work; game state and graphics commands still advance. Other
+regions/revisions may behave differently. This is not a global FPS cap or a
+user-selectable frame-skip setting. The **3D FPS Counter** reports publication
+activity, including reused planes; it does not establish unique animation
+frames, emulation speed or input latency.
+
+Known limitations include:
+
+- Slowdown, surging, uneven animation, and movie/audio hitches. No universal
+  60 FPS or percentage speedup is claimed.
+- Strange Journey can still freeze during its intro.
+- GTA: Chinatown Wars can still show occasional near-camera clipping.
+- Slow network ROM reads can stall the loader and trigger recovery to normal
+  MiSTer. The later asynchronous network-loader experiment is not included.
+- The recent Jackass, King Kong and Need for Speed Carbon fixes are not in this
+  accepted build.
+- Incomplete controller, alternate-INI and display-hotplug coverage.
+- Experimental sound and incomplete game compatibility. NAND cartridge saves,
+  save states, DS wireless multiplayer and microphone input are not implemented.
+
+The launcher stops disconnected host Wi-Fi retries for the current boot to
+avoid stalls. Saved network settings and an active connection are preserved;
+normal Wi-Fi startup returns after reboot. This does not implement DS wireless.
 
 ## Reporting bugs
 
-Use [GitHub Issues](https://github.com/SplashDev88/NDS4MiSTer/issues). A useful
-report includes:
+Use [GitHub Issues](https://github.com/SplashDev88/NDS4MiSTer/issues). Include
+the release version, game title/region/revision, scene and steps to reproduce,
+Engine B setting, SD versus network ROM loading, controller and kernel version.
+Include the exact launch error or relevant generated log if available. Check
+logs for personal paths or network details before sharing.
 
-- The beta version.
-- The SHA-256 values of the FPGA core and ARM/HPS service.
-- The game title, region, and revision.
-- Exact steps to reproduce the problem.
-- Any NDS4MiSTer crash report that was generated.
-
-Never upload or link to commercial ROMs, BIOS or firmware dumps, personal save
-files, credentials, or other private data. A ROM filename plus its game code or
-revision is enough to identify it.
-
-## What's new in v0.5.3
-
-- GTA's position-matrix stack level is reported correctly, preventing repeated
-  frame-start POP commands from leaving the game with the wrong camera matrix.
-- Original fix by **InsaneFriend (GitHub: saneFriend)**.
-- The ARM helper, stock 1 GHz clock, WC transfers and rendering optimizations
-  are unchanged from v0.5.2. FFT's menu/startup fix is retained.
-- Earlier fixes, optional Engine B, saves, touch and both TATE directions remain.
-
-See the [release notes](docs/RELEASE_NOTES_V053.md),
-[GTA port and validation](docs/INSANEFRIEND_GTA_STACK_PORT.md),
-[FFT startup validation](docs/fft-startup-geometry.md),
-[FFT menu-speed fix](docs/ffta-menu-pacing.md),
-[previous v0.5.1 validation](docs/V051_GRAPHICS_AND_PERFORMANCE.md),
-[earlier InsaneFriend integration](docs/INSANEFRIEND_COMPAT_PORT.md) and
-[technical source notes](SOURCE_PACKAGE.txt).
-
-## Retained from v0.4.0-beta
-
-The smoother movie playback and other work from v0.4.0-beta are retained:
-
-- Reduce redundant ARM9 instruction, load, and cached-write return cycles so
-  movie decoding and audio-buffer production can make progress sooner.
-- Join compatible adjacent LCDC reads and let sound refills interrupt long
-  ARM7 DMA transfers at complete transfer-unit boundaries.
-- Reuse unchanged Engine B lines and transfer completed snapshots without an
-  extra full-image copy in the matched ARM helper.
-- Add compact four-row TATE capture through the existing scaler DDR port,
-  publishing only complete rotated frames. Normal capture is replaced while
-  rotation is active. Off produces no additional rotation traffic.
-- Retain the accepted VRAM storage optimization and use equivalent sound
-  register readback to make room for TATE. Passive sound/display diagnostic
-  payloads are omitted; session/fault handling, the PC heartbeat, and the
-  on-screen FPS counter remain.
-
-Earlier Chrono startup and sprite corrections, Kirby graphics, palette fades
-and text colors, transparency, processor wake-up, touch, sound, cartridge saves,
-and boot fixes remain in the source. New graphical regressions are listed
-above. Engine B is optional. ARM runs at stock 1 GHz with no overclock.
-No new gameplay speed percentage or universal 60 FPS claim is made.
-
-The new ordered matrix and visibility readback restores the tested Pokemon
-Platinum player and room furniture. SoulSilver and other scenes still need validation.
-
-## Verification
-
-The installer contains the exact GTA1 FPGA loaded for testing, with the
-unchanged v0.5.2 ARM helper, launcher and WC module. The user requested
-packaging after this test load. Automated matrix-stack, GXSTAT access,
-frame-transfer and existing readback/reply regressions passed.
-Source/binary identities and timing limits are in
-[SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt). No runtime binary was rebuilt for
-packaging. These focused checks do not establish a full GTA playthrough,
-universal 60 FPS or timing closure across devices.
+Do not post commercial ROMs, BIOS/firmware dumps, personal saves or credentials.
+A game code/revision and a description of the scene are enough to identify it.
 
 ## For developers
 
-<details>
-<summary>Architecture</summary>
+### Architecture
 
-- The **FPGA** runs ARM9/ARM7, timing, DMA, cartridge, memory/VRAM, sound,
-  saves, input and MiSTer video output, and transports ordered graphics events.
-- The **ARM/HPS service** composes Engine A, optional Engine B and 3D into complete pairs.
-  The FPGA adopts acknowledged complete banks; native FPGA pixel writes are
-  disabled in the matched configuration.
-- Weighted dual-core raster bands, packed background rows and Engine B
-  composition caching reduce rendering work. Full-rate drawing has no mandatory
-  alternate-frame skip; backlog admission can still omit obsolete pictures.
-- All architectural records replay. Frame-bank ownership, separate WC pixel
-  mappings, session checks and reset quiescence remain enforced.
-- Sound is the GPL-licensed Nitro_DarkSide engine at
-  `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`, built by the release
-  wrapper with `SOUND_ENABLE=1`.
-- PSX-core-derived space savings share the ARM7 shifter datapath, compress the
-  cartridge-save lookup tables, and pack sound-fetch state and ARM9 cache tags.
-  Each retained change has a focused equivalence test.
-- Retired private FPGA-sound experiments are excluded and are not release
-  dependencies.
+- The **FPGA** runs DS ARM9/ARM7 execution, timing, DMA, cartridge/memory/VRAM
+  paths, sound, save/input interfaces and MiSTer video output. It transports
+  ordered graphics events to the HPS.
+- The **ARM/HPS helper** replays graphics work and composes Engine A, optional
+  Engine B and 3D into complete screen pairs. The FPGA adopts completed banks.
+  Write-combining is restricted to pixel-publication mappings; ownership,
+  session checks and reset quiescence remain enforced.
+- The **standalone host** owns menu/input/ROM/save SPI after normal MiSTer
+  exits. A separate supervisor and recovery guard manage the handoff. They
+  prevent simultaneous frontend ownership and restore normal MiSTer after a
+  handled exit/failure; a kernel or FPGA hang may still require reboot.
+- Dual-core raster work, cached drawing and unchanged-3D reuse reduce repeated
+  work. Per-game query/cadence choices are in `src/replay/GameQueryProfile.h`
+  and `Hybrid3DService.cpp`. They are not all global rendering defaults.
+- Sound uses the GPL Nitro_DarkSide engine in
+  `third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd`, with `SOUND_ENABLE=1`.
 
-</details>
+### Source and builds
 
-<details>
-<summary>Building and testing</summary>
+The release tag must contain the source matching every shipped component.
+See [SOURCE_PACKAGE.txt](SOURCE_PACKAGE.txt) for exact source revisions,
+binary identities, validation and timing limits. Focused tests and user
+acceptance do not establish full playthrough coverage or FPGA timing closure.
 
-The release FPGA project is built and fitted with Quartus Prime 17.0.2:
+The Quartus Prime 17.0.2 project is:
 
 ```text
 fpga/mister_nitro_console_island/NDS4MiSTer.qpf
 ```
 
-Generated Quartus databases, RBF/SOF files, and other build outputs are
-intentionally excluded from the source repository.
-
-Run the production console-island host regression:
+Build/test entry points:
 
 ```sh
 ./tools/test_nitro_console_island_host.sh
-```
-
-Build the ARM hybrid-3D service with the isolated Docker build:
-
-```sh
 ./tools/build_hybrid_3d_service_armhf.sh
+./tools/standalone_host/build.sh
 ```
 
-Build the optional WC driver using the pinned kernel/configuration and
-instructions in [kernel/nds_mem_wc](kernel/nds_mem_wc/README.md). Its separate
-GPL-2.0 license and source accompany the release.
+See [standalone frontend source](tools/standalone_host/README.md) for menu,
+input and recovery tests, and [WC module instructions](kernel/nds_mem_wc/README.md)
+for the pinned kernel/configuration and GPL-2.0 module source. Do not force-load
+a module built for a different kernel. Run aggregate helper self-tests on a
+host or under ARM emulation, not inside an active hardware game session.
 
-Run the full built-in self-test on the host or under ARM emulation. On the
-physical MiSTer, use only the focused `--self-test-matched-full-rate` in MENU;
-do not run the aggregate native self-test.
-The installable ZIP, launcher, compiled RBF, ARM payload, and hashes are
-distributed separately on the GitHub Releases page.
-
-</details>
-
-<details>
-<summary>Repository layout</summary>
+Compiled release files, Quartus databases and private test evidence are not
+source dependencies. The install ZIP and checksum are distributed on GitHub
+Releases; matching source uses GitHub's automatic source archives without a
+duplicate source ZIP asset.
 
 | Path | Contents |
 | --- | --- |
-| `fpga/mister_nitro_console_island` | Production MiSTer Quartus project |
-| `rtl` | FPGA integration, video, 3D transport, cartridge-save, and test RTL |
-| `src` | ARM/HPS services, melonDS integration, and host utilities |
-| `third_party/Nitro_DarkSide` | Vendored GPL Nintendo DS FPGA source |
-| `third_party/melonDS` | Vendored melonDS source and license |
-| `tools` | Build, test, generation, and service-control scripts |
-| `docs` | Architecture, ABI, lifecycle, boot, and publishing contracts |
-| `kernel/nds_mem_wc` | Restricted WC module source, license, configuration and build recipe |
+| `fpga/mister_nitro_console_island` | MiSTer Quartus project |
+| `rtl` | FPGA integration, video, transport, save and test RTL |
+| `src` | ARM/HPS services and melonDS integration |
+| `tools/standalone_host` | Native menu/input/loader, supervisor and tests |
+| `tools` | Build, test, generation and service-control scripts |
+| `third_party/Nitro_DarkSide` | Vendored Nintendo DS FPGA source |
+| `third_party/melonDS` | Vendored melonDS source |
+| `kernel/nds_mem_wc` | Write-combining module, licence and build recipe |
+| `docs` | User documentation and technical contracts |
 
-Contributions and maintainer pushes must follow
-[`docs/PUBLIC_PUBLISHING.md`](docs/PUBLIC_PUBLISHING.md). The versioned audit
-rejects commercial ROMs, saves, release binaries, credentials, personal paths,
-unsafe commit identities, and other private artifacts before publication.
-
-</details>
+Contributions and publication follow [PUBLIC_PUBLISHING.md](docs/PUBLIC_PUBLISHING.md).
+The publication audit excludes commercial ROMs, saves, credentials, personal
+paths and other private artifacts.
 
 ## Credits
 
 Built on the MiSTer framework, Nitro_DarkSide, melonDS, and FPGAzumSpass's GBA
-ARM7 CPU implementation, which was used as the basis for the ARM9 work.
-Component licenses and source notices remain in their vendored trees.
+ARM7 implementation, which formed the basis of the ARM9 work. Thanks to the
+MiSTer community, FPGAzumSpass, srg320, ElectronAsh, Corn, skmp and heni.
 
-Special thanks to FPGAzumSpass, srg320, ElectronAsh, Corn, skmp, heni, and the
-wider MiSTer community for technical advice, testing, and development guidance;
-and to InsaneFriend (GitHub: saneFriend) for the writable SPI firmware, ARM7
-Wi-Fi boot-memory, and cartridge-IR compatibility work in beta.7, plus the
-Resident Evil: Deadly Silence, Kirby Mass Attack, Kirby Super Star Ultra, GTA:
-Chinatown Wars and Mega Man ZX compatibility fixes, and the additional GTA
-matrix-stack graphics fix in v0.5.3.
+InsaneFriend (GitHub: saneFriend) contributed Resident Evil: Deadly Silence,
+Kirby Mass Attack, Kirby Super Star Ultra, GTA: Chinatown Wars and Mega Man ZX
+fixes, plus earlier SPI firmware, ARM7 Wi-Fi boot-memory and cartridge-IR
+compatibility work. Thanks to Corn for the standalone suggestion and skmp's
+DreamSTer project for the process-handoff reference. The frontend retains the
+MiSTer Main font/protocol/OSD attribution in
+[THIRD_PARTY.md](tools/standalone_host/THIRD_PARTY.md).
 
 ## License
 
-NDS4MiSTer is distributed under GPLv3; see `LICENSE.txt`. The separate WC
-kernel module is GPL-2.0; see `kernel/nds_mem_wc/COPYING`. Vendored components
-retain their own licenses and attribution files.
+NDS4MiSTer is distributed under GPLv3; see [LICENSE.txt](LICENSE.txt). The
+separate write-combining kernel module is GPL-2.0; see
+[kernel/nds_mem_wc/COPYING](kernel/nds_mem_wc/COPYING). Vendored components
+retain their own licences and notices.

@@ -655,6 +655,7 @@ void GPU::MapVRAM_AB(u32 bank, u8 cnt) noexcept
 
         case 3: // texture
             VRAMMap_Texture[ofs] |= bankmask;
+            VRAMDirty_Texture.InvalidateMapping(ofs);
             break;
         }
     }
@@ -735,6 +736,7 @@ void GPU::MapVRAM_CD(u32 bank, u8 cnt) noexcept
 
         case 3: // texture
             VRAMMap_Texture[ofs] |= bankmask;
+            VRAMDirty_Texture.InvalidateMapping(ofs);
             break;
 
         case 4: // BBG/BOBJ
@@ -814,6 +816,8 @@ void GPU::MapVRAM_E(u32 bank, u8 cnt) noexcept
 
         case 3: // texture palette
             MAP_RANGE(TexPal, 0, 4);
+            for (u32 slot = 0; slot < 4; ++slot)
+                VRAMDirty_TexPal.InvalidateMapping(slot);
             break;
 
         case 4: // ABG ext palette
@@ -917,6 +921,7 @@ void GPU::MapVRAM_FG(u32 bank, u8 cnt) noexcept
 
         case 3: // texture palette
             VRAMMap_TexPal[(ofs & 0x1) + ((ofs & 0x2) << 1)] |= bankmask;
+            VRAMDirty_TexPal.InvalidateMapping((ofs & 0x1) + ((ofs & 0x2) << 1));
             break;
 
         case 4: // ABG ext palette

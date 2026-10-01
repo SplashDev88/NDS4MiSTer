@@ -5,16 +5,20 @@
 #include "replay/AdaptiveCatchup.h"
 #include "replay/ArmCrashDump.h"
 #include "replay/ArmVideoShadow.h"
+#include "replay/BoundedIdlePoll.h"
 #include "replay/FpgaCrashMonitor.h"
 #include "replay/Hybrid3DAbi.h"
 #include "replay/Hybrid3DFramePacket.h"
 #include "replay/Hybrid3DGxReadback.h"
 #include "replay/GxMatrixPrefix.h"
+#include "replay/GameQueryProfile.h"
 #include "replay/Hybrid3DMemoryMapping.h"
 #include "replay/Hybrid3DSessionPolicy.h"
 #include "replay/MatchedDisplayAdmission.h"
 #include "replay/NearBlackEventGate.h"
 #include "replay/ReplaySpscState.h"
+#include "replay/ScopedQueryPriority.h"
+#include "replay/ScopedTimerSlack.h"
 
 #include <array>
 #include <atomic>
@@ -85,6 +89,8 @@ using nds4mister::h3d::make_metadata;
 using nds4mister::h3d::store_release;
 namespace gx_readback = nds4mister::h3d::gx_readback;
 namespace frame_packet = nds4mister::h3d::frame_packet;
+using TimelineKind = nds4mister::crash::TimelineKind;
+using TimelineLane = nds4mister::crash::CausalTimeline::Lane;
 namespace session_policy = nds4mister::h3d::session_policy;
 
 constexpr std::size_t MappingBytes = 0x400000;
@@ -623,6 +629,29 @@ SharedPhase inspect_shared_phase(Header& header)
     return SharedPhase::RestartRequired;
 }
 
+nds4mister::replay::GameQuerySelection read_cartridge_query_profile(
+    const std::string& memory_path)
+{
+    // The standalone host copies the cartridge to this existing DDR aperture.
+    // FPGA cart verification precedes FreshSession; no ROM bytes are changed.
+    // Use two bounded reads once per fresh session, never on the render path.
+    const int fd = ::open(memory_path.c_str(), O_RDONLY | O_SYNC | O_CLOEXEC);
+    if (fd < 0) return {};
+    void* mapped = ::mmap(nullptr, 4096, PROT_READ, MAP_SHARED, fd, 0x30000000);
+    ::close(fd);
+    if (mapped == MAP_FAILED) return {};
+    const auto* bytes = static_cast<volatile const std::uint8_t*>(mapped);
+    const auto selected = nds4mister::replay::read_game_query_profile(
+        [bytes](nds4mister::replay::GameQueryHeader& out) {
+            nds4mister::h3d::device_barrier();
+            for (std::size_t i = 0; i < out.size(); ++i) out[i] = bytes[i];
+            nds4mister::h3d::device_barrier();
+            return true;
+        });
+    ::munmap(mapped, 4096);
+    return selected;
+}
+
 bool acknowledge_quiesce(Header& header)
 {
     std::uint32_t request = 0;
@@ -703,7 +732,8 @@ public:
         bool matched_display_test = false,
         bool matched_full_rate = false,
         unsigned matrix_prefix_mode = 0,
-        bool timing_profile_only = false)
+        bool timing_profile_only = false,
+        bool matched_recovery_skip = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -730,6 +760,8 @@ public:
           arm_video_render_shadow_(arm_video_render_shadow),
           matched_display_test_(matched_display_test),
           matched_full_rate_(matched_display_test && matched_full_rate),
+          matched_recovery_skip_enabled_(matched_display_test && matched_full_rate &&
+                                         asynchronous_arm_video_replay && matched_recovery_skip),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -739,11 +771,36 @@ public:
           runtime_telemetry_(runtime_telemetry),
           texture_trace_path_(std::move(texture_trace_path))
     {
+        timeline_ = matched_display_test_ && runtime_telemetry_ ?
+            runtime_telemetry_->timeline.get() : nullptr;
+        consumer_.enable_acquisition_timing(timeline_ != nullptr);
+        const char* pacing_trace = std::getenv("NDS4MISTER_STANDALONE_PACING_TRACE");
+        pacing_trace_enabled_ = matched_display_test_ && runtime_telemetry_ &&
+            pacing_trace && std::strcmp(pacing_trace, "1") == 0;
+        const char* pacing_packets = std::getenv("NDS4MISTER_STANDALONE_PACING_PACKETS");
+        if (matched_display_test_ && pacing_packets) {
+            if (std::strcmp(pacing_packets, "16") == 0)
+                matched_packet_limit_ = 16;
+            // QC2 private comparison: QC1 emits about 1.5x as many packets for
+            // similar ordered work. Keep the age bound and queue capacity,
+            // and test a proportional admission budget without a frame cap.
+            else if (std::strcmp(pacing_packets, "24") == 0)
+                matched_packet_limit_ = 24;
+        }
+        const char* upload_cpu0 = std::getenv("NDS4MISTER_STANDALONE_UPLOAD_CPU0");
+        matched_upload_cpu0_ = matched_display_test_ && upload_cpu0 &&
+            std::strcmp(upload_cpu0, "1") == 0;
+        const char* reuse_3d = std::getenv("NDS4MISTER_STANDALONE_REUSE_3D");
+        matched_reuse_3d_ = matched_display_test_ && reuse_3d &&
+            std::strcmp(reuse_3d, "1") == 0;
         // Experimental companion-helper mode: the prefix is owned only by
         // intake, and renderer state remains owned only by replay. Sparse LCD
         // transport and synchronous replay retain the original result path.
         matrix_prefix_mode_ = asynchronous_arm_video_replay_ &&
             matched_display_test_ ? matrix_prefix_mode : 0;
+        const char* query_priority = std::getenv("NDS4MISTER_STANDALONE_QUERY_PRIORITY");
+        scoped_query_priority_ = bind_hps_worker_cores_ && matrix_prefix_mode_ == 2 &&
+            query_priority && std::strcmp(query_priority, "1") == 0;
         if (!texture_trace_path_.empty()) {
             texture_trace_records_.reserve(MaxTextureTraceRecords);
             completed_texture_trace_.reserve(MaxTextureTraceRecords);
@@ -760,9 +817,12 @@ public:
         write_texture_trace_dump();
     }
 
-    bool initialize()
+    bool initialize(std::uint32_t expected_session = 0)
     {
         session_ = load_acquire(&header_.fpga_session);
+        // A cartridge-derived profile belongs only to the session that was
+        // identified. Reject a replacement session before writing shared state.
+        if (expected_session && session_ != expected_session) return false;
         if (!session_) return fail(FaultBadSession, "zero FPGA session");
         if (!shared_session_current(false))
             return fail(FaultBadSession, "H3D1 session is not stable");
@@ -1075,7 +1135,9 @@ private:
     friend void run_gx_readback_swap_self_test();
     friend void run_scanline_lifetime_test();
     friend void run_latest_plane_ack_test();
-    friend void run_matched_display_test(bool, bool);
+    friend void run_matched_display_test(bool, bool, bool, bool);
+    friend void run_matched_reuse_texture_test();
+    friend void run_matched_reuse_history_test();
     friend void run_matched_catchup_test(bool);
     friend struct EffectiveRenderWriteTest;
 
@@ -1245,6 +1307,8 @@ private:
         arm_video_render_in_flight_ = false;
         arm_video_render_this_frame_ = false;
         arm_video_skipped_frames_ = 0;
+        matched_recovery_pacer_.reset();
+        matched_3d_revision_valid_ = false;
         arm_video_frame_ready_ = false;
         arm_video_frame_ = 0;
         arm_video_completed_index_ = -1;
@@ -1296,6 +1360,8 @@ private:
         publication_queue_count_ = 0;
         publication_queue_high_water_.store(0, std::memory_order_relaxed);
         if (runtime_telemetry_) runtime_telemetry_->reset(session_);
+        if (pacing_trace_enabled_)
+            pacing_counter(nds4mister::crash::PacingMetric::Enabled).store(1, std::memory_order_relaxed);
         return true;
     }
 
@@ -1365,21 +1431,46 @@ private:
             return fail_result(
                 FaultBadSession,
                 "H3D1 changed while acquiring a frame packet");
+        if (timeline_) {
+            const auto query = !packet.records.empty() &&
+                frame_packet::record_kind(packet.records.back()) ==
+                    frame_packet::RecordKind::GxReadbackFence ?
+                packet.records.back().address_or_aux : 0u;
+            trace(TimelineLane::Intake, TimelineKind::AcquireBegin,
+                packet_header_.packet_sequence, packet_header_.frame, 0, query,
+                nds4mister::crash::CausalTimeline::micros(consumer_.acquisition_started()));
+            trace(TimelineLane::Intake, TimelineKind::AcquireEnd,
+                packet_header_.packet_sequence, packet_header_.frame,
+                static_cast<std::uint32_t>(packet.records.size()), query);
+        }
+        // The immutable packet has already been copied and the replay queue
+        // capacity checked. This region only validates/applies the bounded
+        // prefix and publishes its reply; no renderer or queue waits occur.
+        // Restore normal scheduling before publishing work to the replay ring.
+        nds4mister::replay::QueryPriorityBackend priority_backend;
+        nds4mister::replay::ScopedQueryPriority query_priority(priority_backend,
+            scoped_query_priority_ && !packet.records.empty() &&
+            frame_packet::record_kind(packet.records.back()) ==
+                frame_packet::RecordKind::GxReadbackFence);
         packet_pending_ = true;
         auto input_started = std::chrono::steady_clock::time_point {};
-        if (pipeline_profile_enabled_)
+        if (pipeline_profile_enabled_ || pacing_trace_enabled_)
             input_started = std::chrono::steady_clock::now();
 
         packet.header = packet_header_;
         packet.prefix_snapshot[0] = 0;
         packet.prefix_published = false;
-        if (pipeline_profile_enabled_)
+        if (pipeline_profile_enabled_ || pacing_trace_enabled_)
             packet.readback_received = !packet.records.empty() &&
                 frame_packet::record_kind(packet.records.back()) ==
                     frame_packet::RecordKind::GxReadbackFence ?
                 input_started : std::chrono::steady_clock::time_point {};
         bool saw_swap = false;
         for (std::size_t index = 0; index < packet.records.size(); ++index) {
+            // Do not let an unusually expensive prefix retain extra priority
+            // indefinitely. Check every64 records; a single record (including
+            // a bounded deferred-prefix drain) may exceed the target budget.
+            if ((index & 63u) == 0) query_priority.checkpoint();
             const auto& record = packet.records[index];
             const bool final_record = index + 1 == packet.records.size();
             if (saw_swap)
@@ -1387,6 +1478,14 @@ private:
                     FaultBadFrame,
                     "record followed SWAP_BUFFERS in one frame packet");
             const auto kind = frame_packet::record_kind(record);
+            if (timeline_ && kind == frame_packet::RecordKind::HBlank) {
+                timeline_input_lcd_ = static_cast<std::uint32_t>(record.data);
+                timeline_input_line_ = record.address_or_aux;
+                if (record.address_or_aux == 0 || record.address_or_aux == 192)
+                    trace(TimelineLane::Intake, TimelineKind::InputLcd,
+                        packet_header_.packet_sequence, timeline_input_lcd_,
+                        timeline_input_line_, packet_header_.frame);
+            }
             if (kind == frame_packet::RecordKind::GxPacked) {
                 if (!valid_packed_gx_record(record))
                     return fail_result(
@@ -1428,6 +1527,7 @@ private:
             heartbeat();
         }
 
+        query_priority.checkpoint();
         if (packet_header_.flags == frame_packet::FlagContinuation) {
             if (saw_swap)
                 return fail_result(
@@ -1469,10 +1569,34 @@ private:
             if (!publish_prefix_snapshot(packet.prefix_snapshot))
                 return PollResult::Fault;
             packet.prefix_published = true;
+            trace(TimelineLane::Intake, TimelineKind::QueryFastReply,
+                packet_header_.packet_sequence, packet_header_.frame,
+                packet.records.back().address_or_aux);
             if (pipeline_profile_enabled_)
                 record_plain_profile_sample(matrix_prefix_reply_samples_,
                     matrix_prefix_reply_total_ns_, matrix_prefix_reply_max_ns_,
                     packet.readback_received);
+            if (pacing_trace_enabled_)
+                pacing_span(nds4mister::crash::PacingMetric::GxFastReplies,
+                    nds4mister::crash::PacingMetric::GxFastUs,
+                    nds4mister::crash::PacingMetric::GxFastMaxUs,
+                    packet.readback_received);
+        }
+        query_priority.release();
+        if (pacing_trace_enabled_) {
+            using M = nds4mister::crash::PacingMetric;
+            if (saw_swap)
+                pacing_counter(M::GxSwapsInput).fetch_add(1, std::memory_order_relaxed);
+            if (packet.readback_received != std::chrono::steady_clock::time_point {}) {
+                pacing_counter(M::GxQueries).fetch_add(1, std::memory_order_relaxed);
+                if (!packet.prefix_published) {
+                    const bool busy_prefix = matrix_prefix_mode_ == 2 &&
+                        packet.prefix_snapshot[0] &&
+                        (packet.prefix_snapshot[gx_readback::StatusWord] & 0x08000001u);
+                    pacing_counter(busy_prefix ? M::GxPrefixBusyFallback :
+                        M::GxPrefixUnavailableFallback).fetch_add(1, std::memory_order_relaxed);
+                }
+            }
         }
         packet_pending_ = false;
         ++packets_applied_;
@@ -1483,7 +1607,14 @@ private:
         else
             replay_slot_reuses_.fetch_add(1, std::memory_order_relaxed);
 
+        if (saw_swap)
+            trace(TimelineLane::Intake, TimelineKind::InputSwap,
+                packet_header_.packet_sequence, timeline_input_lcd_,
+                timeline_input_line_, packet_header_.frame);
         const auto record_count = packet.records.size();
+        trace(TimelineLane::Intake, TimelineKind::InputQueued,
+            packet_header_.packet_sequence, packet_header_.frame,
+            static_cast<std::uint32_t>(record_count), saw_swap ? 1u : 0u);
         replay_write_index_ =
             (replay_write_index_ + 1) % ReplayArenaCapacity;
         // Release-publish the completely populated slot. Only the producer
@@ -1648,10 +1779,14 @@ private:
 
     bool apply_replay_packet(const ReplayPacket& packet)
     {
+        timeline_replay_sequence_ = packet.header.packet_sequence;
+        trace(TimelineLane::Replay, TimelineKind::ReplayBegin,
+            packet.header.packet_sequence, packet.header.frame,
+            static_cast<std::uint32_t>(packet.records.size()));
         active_prefix_snapshot_ = packet.prefix_snapshot[0] ?
             &packet.prefix_snapshot : nullptr;
         active_prefix_published_ = packet.prefix_published;
-        if (pipeline_profile_enabled_)
+        if (pipeline_profile_enabled_ || pacing_trace_enabled_)
             active_readback_received_ = packet.readback_received;
         replay_packet_frame_ = packet.header.frame;
         packet_saw_swap_ = false;
@@ -1773,6 +1908,17 @@ private:
             record_plain_profile_sample(
                 replay_packet_boundaries_, replay_packet_boundary_total_ns_,
                 replay_packet_boundary_max_ns_, boundary_started);
+        // Count before clearing the packet boundary flag. The worker sees it
+        // cleared after this function returns.
+        if (pacing_trace_enabled_ && packet_saw_swap_)
+            pacing_counter(nds4mister::crash::PacingMetric::GxSwapsReplay)
+                .fetch_add(1, std::memory_order_relaxed);
+        if (packet_saw_swap_)
+            trace(TimelineLane::Replay, TimelineKind::ReplaySwap,
+                packet.header.packet_sequence, timeline_replay_lcd_,
+                timeline_replay_line_, packet.header.frame);
+        trace(TimelineLane::Replay, TimelineKind::ReplayEnd,
+            packet.header.packet_sequence, packet.header.frame);
         packet_saw_swap_ = false;
         return true;
     }
@@ -1850,7 +1996,7 @@ private:
                 const auto packet_flags = packet->header.flags;
                 const auto packet_sequence = packet->header.packet_sequence;
                 auto replay_started = std::chrono::steady_clock::time_point {};
-                if (pipeline_profile_enabled_)
+                if (pipeline_profile_enabled_ || pacing_trace_enabled_)
                     replay_started = std::chrono::steady_clock::now();
                 if (!arm_video_render_shadow_ &&
                     !prepare_replay_frame(packet_frame))
@@ -1904,6 +2050,10 @@ private:
                 }
                 replay_packets_applied_.fetch_add(
                     1, std::memory_order_release);
+                if (pacing_trace_enabled_)
+                    pacing_span(nds4mister::crash::PacingMetric::ReplayPackets,
+                        nds4mister::crash::PacingMetric::ReplayUs,
+                        nds4mister::crash::PacingMetric::ReplayMaxUs, replay_started);
                 if (pipeline_profile_enabled_)
                     record_profile_sample(
                         replay_profile_packets_, replay_profile_total_ns_,
@@ -2720,6 +2870,8 @@ private:
 
         const auto line = record.address_or_aux;
         const auto display_frame = static_cast<std::uint32_t>(record.data);
+        timeline_replay_lcd_ = display_frame;
+        timeline_replay_line_ = line;
         // Admission may occur midway through a display frame. Wait for the
         // first complete line-0 epoch instead of publishing a partial shadow.
         if (!arm_video_phase_started_ && line != 0) return true;
@@ -2744,19 +2896,37 @@ private:
                     (matched_display_test_ ? (matched_full_rate_ ? 1u : 2u) :
                         ReplayRenderCadence) - 1;
             if (matched_display_test_ && asynchronous_arm_video_replay_ &&
-                arm_video_render_this_frame_ &&
-                !nds4mister::replay::matched_display_can_draw(
-                    replay_packet_frame_, replay_state_.latest_input_frame(),
-                    replay_queue_count())) {
-                // MATCH1 kept drawing every other historical frame while
-                // replay fell seconds behind. Omit only the derived picture,
-                // including the first one if it is already obsolete. All
-                // records, VBlank geometry and row-zero sprite state still
-                // replay below. Decide only at line zero: never mix halves of
-                // pictures or discard authoritative geometry to catch up.
-                arm_video_render_this_frame_ = false;
-                frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
+                arm_video_render_this_frame_) {
+                const auto latest = replay_state_.latest_input_frame();
+                const auto queued = replay_queue_count();
+                const bool near_head = nds4mister::replay::matched_display_can_draw(
+                    replay_packet_frame_, latest, queued, matched_packet_limit_);
+                const bool allowed = matched_recovery_skip_enabled_ ?
+                    matched_recovery_pacer_.can_draw(near_head) : near_head;
+                if (pacing_trace_enabled_) {
+                    using M = nds4mister::crash::PacingMetric;
+                    const bool old = std::uint32_t(latest - replay_packet_frame_) > 1u;
+                    pacing_counter(allowed ? M::Admitted : near_head ? M::RecoverySkips : old ?
+                        (queued > matched_packet_limit_ ? M::AgeAndPackets : M::AgeOnly) : M::PacketsOnly)
+                        .fetch_add(1, std::memory_order_relaxed);
+                }
+                if (!allowed) {
+                    // MATCH1 kept drawing every other historical frame while
+                    // replay fell seconds behind. Omit only the derived picture,
+                    // including the first one if it is already obsolete. All
+                    // records, VBlank geometry and row-zero sprite state still
+                    // replay below. Decide only at line zero: never mix halves of
+                    // pictures or discard authoritative geometry to catch up.
+                    arm_video_render_this_frame_ = false;
+                    if (!near_head)
+                        frame_drop_replay_budget_.fetch_add(1, std::memory_order_relaxed);
+                }
             }
+            trace(TimelineLane::Replay, TimelineKind::LcdAdmission,
+                timeline_replay_sequence_, display_frame,
+                arm_video_render_this_frame_ ? 1u : 0u, replay_queue_count());
+            if (pacing_trace_enabled_ && arm_video_render_this_frame_)
+                pacing_draw_started_ = std::chrono::steady_clock::now();
             if (arm_video_render_this_frame_)
                 arm_video_skipped_frames_ = 0;
             else {
@@ -2789,6 +2959,9 @@ private:
         const auto vblank = line >= 192 && line < 262 ? 1u : 0u;
         if (matched_display_test_ && full_video_stats_enabled_ && line == 215)
             nds_->GPU.GetRenderer().Record3DPalettePhase215();
+        if (line == 192)
+            trace(TimelineLane::Replay, TimelineKind::VBlankBegin,
+                timeline_replay_sequence_, display_frame);
         if (line == 192 && !arm_video_engine_b_only_)
             nds_->GPU.GPU3D.Run();
         // A skipped frame still performs the architectural VBlank below.
@@ -2820,9 +2993,23 @@ private:
         // Suppress the speculative line-215 render and start from the latest
         // latched VBlank state at line zero, before composing either screen.
         if (matched_display_test_ && renderer_resync) {
-            // VBlank's identity hint compares adjacent guest frames. The last
-            // actually drawn frame can be older after display decimation.
-            nds_->GPU.GPU3D.RenderFrameIdentical = false;
+            // The adjacent VBlank hint can become true after a change on a
+            // skipped frame. Also require the latched-state revision captured
+            // at our last actual start. Texture/palette coherence and canceled
+            // raster recovery still run inside Start3DRendering and can veto.
+            auto& gpu3d = nds_->GPU.GPU3D;
+            const bool consecutive = arm_video_frame_ready_ &&
+                std::uint32_t(display_frame - arm_video_frame_) == 1u;
+            const bool retained_state = matched_3d_revision_valid_ &&
+                matched_3d_revision_ == gpu3d.RenderStateRevision;
+            matched_3d_trace_flags_ =
+                (gpu3d.RenderFrameIdentical ? 1u : 0u) |
+                (consecutive ? 2u : 0u) | (matched_reuse_3d_ ? 4u : 0u) |
+                (retained_state ? 16u : 0u);
+            if (!matched_reuse_3d_ || !retained_state)
+                gpu3d.RenderFrameIdentical = false;
+            matched_3d_revision_ = gpu3d.RenderStateRevision;
+            matched_3d_revision_valid_ = true;
             nds_->GPU.GPU3D.AbortFrame = false;
             nds_->GPU.GetRenderer().Start3DRendering();
         }
@@ -2850,6 +3037,9 @@ private:
                 display_frame, render_phase, false,
                 phase_2d_only))
             return fail(FaultBadFrame, "melonDS rejected LCD HBlank phase");
+        if (line == 192)
+            trace(TimelineLane::Replay, TimelineKind::VBlankEnd,
+                timeline_replay_sequence_, display_frame);
         if (pipeline_profile_enabled_ && arm_video_render_this_frame_ &&
             line < PlaneHeight) {
             bool reused_a = false;
@@ -2963,11 +3153,22 @@ private:
                 arm_video_frame_ready_ = true;
                 arm_video_completed_index_ = destination_index;
                 ++frames_rendered_;
+                trace(TimelineLane::Replay, TimelineKind::PictureReady,
+                    timeline_replay_sequence_, display_frame,
+                    matched_3d_trace_flags_ |
+                        (nds_->GPU.GetRenderer().Is3DFrameIdentical() ? 8u : 0u),
+                    nds_->GPU.GPU3D.RenderNumPolygons);
+                if (pacing_trace_enabled_)
+                    pacing_span(nds4mister::crash::PacingMetric::Draws,
+                        nds4mister::crash::PacingMetric::DrawUs,
+                        nds4mister::crash::PacingMetric::DrawMaxUs, pacing_draw_started_);
                 if (asynchronous_plane_publication_) {
                     {
                         std::lock_guard<std::mutex> lock(publication_mutex_);
                         publication_frame_numbers_[destination_index] =
                             display_frame;
+                        if (pacing_trace_enabled_)
+                            pacing_ready_at_[destination_index] = std::chrono::steady_clock::now();
                         publication_filling_index_ = -1;
                         if (!enqueue_publication_buffer_locked(
                                 destination_index))
@@ -3197,6 +3398,20 @@ private:
                 readback_reply_total_ns_, readback_reply_max_ns_, reply_started);
             if (snapshot[gx_readback::StatusWord] & 0x08000001u)
                 ++readback_busy_replies_;
+        }
+        if (!active_prefix_published_)
+            trace(TimelineLane::Replay, TimelineKind::QueryOrderedReply,
+                timeline_replay_sequence_, replay_packet_frame_, request_id);
+        // Count only a real ordered reply, never the later verification of a
+        // reply already published by intake. Timing begins after packet copy,
+        // so this is an ARM-side lower bound, not total guest CPU stall time.
+        if (pacing_trace_enabled_ && !active_prefix_published_ &&
+            active_readback_received_ != std::chrono::steady_clock::time_point {}) {
+            using M = nds4mister::crash::PacingMetric;
+            pacing_span(M::GxOrderedReplies, M::GxOrderedUs, M::GxOrderedMaxUs,
+                active_readback_received_);
+            if (snapshot[gx_readback::StatusWord] & 0x08000001u)
+                pacing_counter(M::GxOrderedBusy).fetch_add(1, std::memory_order_relaxed);
         }
         return true;
     }
@@ -3829,7 +4044,11 @@ private:
                     // publication is bounded and FIFO-prioritized, so place it
                     // on CPU1 with replay instead of preempting rasterization
                     // for every completed frame.
-                    bind_current_thread_to_cpu(1);
+                    // Private matched-standalone experiment: current paired
+                    // full-rate output makes replay/2D the busier core. Move
+                    // only publication when explicitly requested; retain its
+                    // priority and all descriptor/buffer ownership fences.
+                    bind_current_thread_to_cpu(matched_upload_cpu0_ ? 0 : 1);
                     prioritize_current_thread_for_publication();
                 } catch (const std::exception& error) {
                     publication_fail(error.what());
@@ -3929,6 +4148,30 @@ private:
         replay_kind_run_total_ns_[kind_index] += elapsed;
         replay_kind_run_max_ns_[kind_index] = std::max(
             replay_kind_run_max_ns_[kind_index], elapsed);
+    }
+
+    void trace(TimelineLane lane, TimelineKind kind, std::uint32_t sequence,
+        std::uint32_t frame, std::uint32_t a=0, std::uint32_t b=0,
+        std::uint64_t at_us=0)
+    {
+        if (timeline_) timeline_->record(lane, kind, session_, sequence, frame, a, b, at_us);
+    }
+
+    std::atomic<std::uint64_t>& pacing_counter(nds4mister::crash::PacingMetric metric)
+    {
+        return runtime_telemetry_->pacing[static_cast<std::size_t>(metric)];
+    }
+
+    void pacing_span(nds4mister::crash::PacingMetric count,
+        nds4mister::crash::PacingMetric total, nds4mister::crash::PacingMetric maximum,
+        std::chrono::steady_clock::time_point started)
+    {
+        const auto us = static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now() - started).count());
+        pacing_counter(count).fetch_add(1, std::memory_order_relaxed);
+        pacing_counter(total).fetch_add(us, std::memory_order_relaxed);
+        update_profile_max(pacing_counter(maximum), us);
     }
 
     bool wait_for_plane_publication_ack()
@@ -4033,8 +4276,14 @@ private:
                     }
                     auto publication_started =
                         std::chrono::steady_clock::time_point {};
-                    if (pipeline_profile_enabled_)
+                    if (pacing_trace_enabled_)
+                        pacing_span(nds4mister::crash::PacingMetric::QueuedPictures,
+                            nds4mister::crash::PacingMetric::QueueUs,
+                            nds4mister::crash::PacingMetric::QueueMaxUs, pacing_ready_at_[index]);
+                    if (pipeline_profile_enabled_ || pacing_trace_enabled_)
                         publication_started = std::chrono::steady_clock::now();
+                    trace(TimelineLane::Publication, TimelineKind::UploadBegin,
+                        producer + 2, frame);
                     if (!full_frame_publisher_.publish(
                             session_, frame,
                             arm_video_frames_[index][0].data(),
@@ -4043,11 +4292,17 @@ private:
                             "asynchronous full-frame publication failed");
                         return;
                     }
+                    trace(TimelineLane::Publication, TimelineKind::UploadEnd,
+                        producer + 2, frame);
                     if (pipeline_profile_enabled_)
                         record_profile_sample(
                             full_frame_publications_,
                             full_frame_publication_total_ns_,
                             full_frame_publication_max_ns_, publication_started);
+                    if (pacing_trace_enabled_)
+                        pacing_span(nds4mister::crash::PacingMetric::Uploads,
+                            nds4mister::crash::PacingMetric::UploadUs,
+                            nds4mister::crash::PacingMetric::UploadMaxUs, publication_started);
                     if (full_video_stats_enabled_)
                         retain_full_video_sample(summarize_full_video(
                             frame, arm_video_render_xpos_[index],
@@ -4407,6 +4662,7 @@ private:
                << " full_video_stats_enabled=" << full_video_stats_enabled_
                << " elapsed_ns=" << elapsed_ns
                << " matrix_prefix_mode=" << matrix_prefix_mode_
+               << " matched_reuse_3d=" << matched_reuse_3d_
                << " matrix_prefix_valid=" << matrix_prefix_.valid()
                << " matrix_prefix_invalid_reason=" << matrix_prefix_.invalid_reason()
                << " matrix_prefix_invalid_tag=" << matrix_prefix_.invalid_tag()
@@ -5097,6 +5353,9 @@ private:
     bool separate_publication_mapping_ = false;
     Header& header_;
     frame_packet::Consumer consumer_;
+    nds4mister::crash::CausalTimeline* timeline_ = nullptr;
+    std::uint32_t timeline_input_lcd_=0, timeline_input_line_=0;
+    std::uint32_t timeline_replay_sequence_=0, timeline_replay_lcd_=0, timeline_replay_line_=0;
     PlanePublisher publisher_;
     nds4mister::h3d::FullFramePublisher full_frame_publisher_;
     nds4mister::ArmVideoShadow arm_video_shadow_;
@@ -5104,6 +5363,9 @@ private:
     PlaneBuffer native_frame_ {};
     std::unique_ptr<FullVideoBuffer[]> arm_video_frames_ {
         new FullVideoBuffer[ArmVideoBufferCount] {}};
+    std::array<std::chrono::steady_clock::time_point, ArmVideoBufferCount> pacing_ready_at_ {};
+    std::chrono::steady_clock::time_point pacing_draw_started_ {};
+    bool pacing_trace_enabled_ = false;
     std::array<FullVideoScrollLines, ArmVideoBufferCount>
         arm_video_render_xpos_ {};
     std::array<bool, ArmVideoBufferCount> arm_video_screen_swap_ {};
@@ -5160,8 +5422,17 @@ private:
     nds4mister::replay::NearBlackEventGate black_event_gate_;
     bool arm_video_render_shadow_ = false;
     bool matched_display_test_ = false;
+    std::uint32_t matched_packet_limit_ = 4;
+    bool matched_upload_cpu0_ = false;
+    bool matched_reuse_3d_ = false;
+    std::uint32_t matched_3d_trace_flags_ = 0;
+    std::uint64_t matched_3d_revision_ = 0;
+    bool matched_3d_revision_valid_ = false;
+    bool scoped_query_priority_ = false;
     // Opt-in: remove only the cadence ceiling, retaining line-zero admission.
     bool matched_full_rate_ = false;
+    bool matched_recovery_skip_enabled_ = false;
+    nds4mister::replay::MatchedDisplayRecovery matched_recovery_pacer_;
     std::uint32_t matched_next_line_ = 0;
     bool asynchronous_arm_video_replay_ = false;
     bool pipeline_profile_enabled_ = false;
@@ -5998,7 +6269,8 @@ void run_latest_plane_ack_test()
               << " first_released_frame=3 shared_immutable_before_ack=1 stop_while_waiting=1\n";
 }
 
-void run_matched_display_test(bool full_rate = false, bool engine_a_only = false)
+void run_matched_display_test(bool full_rate = false, bool engine_a_only = false,
+                              bool recovery_test = false, bool reuse_test = false)
 {
     constexpr std::uint32_t Session = 0x44556677;
     for (bool policy : {false, true}) {
@@ -6016,10 +6288,25 @@ void run_matched_display_test(bool full_rate = false, bool engine_a_only = false
         if (service.initialize()) self_test_fail("matched mode accepted incomplete stream");
     }
     Fixture fixture(Session, !engine_a_only, true, true), oracle_fixture(Session + 1, true);
+    nds4mister::crash::FpgaRuntimeTelemetry pacing_runtime;
     auto service = std::make_unique<Hybrid3DService>(
         fixture.bytes.data(), fixture.bytes.size(), std::string{},
-        true, false, true, true, false, false, nullptr, nullptr,
-        true, false, false, true, full_rate);
+        true, false, true, true, reuse_test, false, nullptr, nullptr,
+        true, false, false, true, full_rate, 0, reuse_test, recovery_test);
+    if (reuse_test) service->matched_reuse_3d_ = true;
+    if (const char* trace = std::getenv("NDS4MISTER_STANDALONE_PACING_TRACE")) {
+        if (std::strcmp(trace, "1") == 0) {
+            service->runtime_telemetry_ = &pacing_runtime;
+            service->pacing_trace_enabled_ = true;
+            if (const char* causal = std::getenv("NDS4MISTER_STANDALONE_CAUSAL_TRACE")) {
+                if (std::strcmp(causal, "1") == 0) {
+                    pacing_runtime.timeline = std::make_unique<nds4mister::crash::CausalTimeline>();
+                    service->timeline_ = pacing_runtime.timeline.get();
+                    service->consumer_.enable_acquisition_timing(true);
+                }
+            }
+        }
+    }
     // Same authoritative register/LCD stream, rendering every frame without
     // replay or publication workers. This exposes skipped-frame lifetime bugs.
     auto oracle = std::make_unique<Hybrid3DService>(
@@ -6031,7 +6318,13 @@ void run_matched_display_test(bool full_rate = false, bool engine_a_only = false
         self_test_fail("matched Engine B menu policy was not applied");
     std::uint64_t checked = 0, different_frames = 0;
     std::array<std::uint32_t, 2> previous{};
+    std::vector<std::uint32_t> rendered_frames;
     for (std::uint32_t frame = 1; frame <= 20; ++frame) {
+        // Previous packet has finished before injecting a pressure episode.
+        // The real replay/renderer then skips six paired images, retains all
+        // intervening state, and returns to full-rate on frames 17 through 20.
+        if (recovery_test && frame == 5)
+            service->matched_recovery_pacer_.can_draw(false);
         // Submit real moving geometry into the writable polygon bank before
         // the next VBlank. The reference consumes every render; the candidate
         // skips alternating output while keeping every geometry transition.
@@ -6128,8 +6421,11 @@ void run_matched_display_test(bool full_rate = false, bool engine_a_only = false
         if (service->nds_->GPU.GPU3D.RenderNumPolygons != (frame > 10 ? 1u : 0u) ||
             oracle->nds_->GPU.GPU3D.RenderNumPolygons != (frame > 10 ? 1u : 0u))
             self_test_fail("matched moving polygon was not latched");
-        const bool rendered = full_rate || (frame & 1u) != 0;
-        const auto expected_count = full_rate ? frame : (frame + 1) / 2;
+        const bool rendered = recovery_test ?
+            !(frame >= 6 && frame <= 16 && !(frame & 1u)) :
+            full_rate || (frame & 1u) != 0;
+        if (rendered) rendered_frames.push_back(frame);
+        const auto expected_count = rendered_frames.size();
         while (service->frames_published() < expected_count) {
             if (service->publication_worker_faulted() ||
                 std::chrono::steady_clock::now() > deadline)
@@ -6174,23 +6470,510 @@ void run_matched_display_test(bool full_rate = false, bool engine_a_only = false
     // The 3D clear color changes every two guest frames, while B's backdrop
     // changes every frame. Consecutive full-rate pictures may legitimately
     // repeat the top-left 3D pixel even though the complete pair is new.
-    if (different_frames != (engine_a_only ? (full_rate ? 20u : 18u) :
+    if (recovery_test ? different_frames < 8 :
+        different_frames != (engine_a_only ? (full_rate ? 20u : 18u) :
                               (full_rate ? 29u : 18u)))
         self_test_fail("matched fixture failed to vary both screens");
     service->stop_replay_worker();
+    if (reuse_test) {
+        const auto profile = service->nds_->GPU.GetRenderer().GetExternalRendererStageProfile();
+        // The first ten frames change clear color only every other VBlank.
+        // Full-rate output must reuse some unchanged 3D while still matching
+        // every pixel of the independently rendered two-screen oracle. Half
+        // rate must not reuse here: every omitted frame changes the state.
+        if ((full_rate && !recovery_test && profile.ThreeDIdenticalFrames == 0) ||
+            (!full_rate && profile.ThreeDIdenticalFrames != 0))
+            self_test_fail("matched 3D reuse was absent or missed changed state across a skip");
+        std::cout << "H3D_MATCHED_3D_REUSE_PASS full_rate=" << full_rate
+                  << " recovery=" << recovery_test
+                  << " engine_a_only=" << engine_a_only
+                  << " identical=" << profile.ThreeDIdenticalFrames
+                  << " paired_pixels=" << checked << '\n';
+    }
     auto gap = packet_record(frame_packet::RecordKind::HBlank, 0, 0, 1, 21);
+    service->stop_publication_worker();
+    if (service->timeline_) {
+        const auto input=service->timeline_->intake.snapshot(~0ull);
+        const auto replay=service->timeline_->replay.snapshot(~0ull);
+        const auto upload=service->timeline_->publication.snapshot(~0ull);
+        const auto count=[](const auto& events, TimelineKind kind) {
+            return std::count_if(events.records.begin(),events.records.end(),
+                [kind](const auto& r){return r.kind==static_cast<unsigned>(kind);});
+        };
+        const auto expected = rendered_frames.size();
+        if(input.raced || replay.raced || upload.raced ||
+            count(input,TimelineKind::AcquireBegin)!=20 ||
+            count(input,TimelineKind::AcquireEnd)!=20 ||
+            count(input,TimelineKind::InputQueued)!=20 ||
+            count(replay,TimelineKind::ReplayBegin)!=20 ||
+            count(replay,TimelineKind::ReplayEnd)!=20 ||
+            count(replay,TimelineKind::LcdAdmission)!=20 ||
+            count(replay,TimelineKind::PictureReady)!=expected ||
+            count(upload,TimelineKind::UploadBegin)!=expected ||
+            count(upload,TimelineKind::UploadEnd)!=expected)
+            self_test_fail("causal timeline missed or duplicated paired-frame stages");
+        if (reuse_test) {
+            const auto reused = std::count_if(replay.records.begin(), replay.records.end(),
+                [](const auto& r) {
+                    return r.kind == static_cast<unsigned>(TimelineKind::PictureReady) && (r.a & 8u);
+                });
+            if (static_cast<std::uint64_t>(reused) != service->nds_->GPU.GetRenderer()
+                    .GetExternalRendererStageProfile().ThreeDIdenticalFrames)
+                self_test_fail("causal reuse flags disagree with actual renderer reuse");
+        }
+        for(const auto& r:upload.records) {
+            const auto found = std::find(rendered_frames.begin(), rendered_frames.end(), r.frame);
+            if (found == rendered_frames.end() ||
+                r.sequence != 2u * (1u + static_cast<std::uint32_t>(
+                    std::distance(rendered_frames.begin(), found))))
+                self_test_fail("causal upload sequence does not match descriptor");
+        }
+        std::cout << "H3D_CAUSAL_FRAME_TRACE_PASS full_rate=" << full_rate
+                  << " frames=20 pictures=" << expected << " pixels_unchanged=1\n";
+    }
+    if (service->pacing_trace_enabled_) {
+        using M = nds4mister::crash::PacingMetric;
+        const auto expected = rendered_frames.size();
+        if (service->pacing_counter(M::Enabled).load() != 1 ||
+            service->pacing_counter(M::Admitted).load() != expected ||
+            service->pacing_counter(M::Draws).load() != expected ||
+            service->pacing_counter(M::Uploads).load() != expected ||
+            service->pacing_counter(M::QueuedPictures).load() != expected ||
+            service->pacing_counter(M::ReplayPackets).load() != service->replay_packets_applied_.load())
+            self_test_fail("pacing counters disagree with completed paired frames");
+        if (service->pacing_counter(M::RecoverySkips).load() != (recovery_test ? 6u : 0u))
+            self_test_fail("recovery skip reason counter");
+        std::cout << "H3D_PACING_DIAGNOSTICS_PASS full_rate=" << full_rate
+                  << " pictures=" << expected << " pixels_unchanged=1\n";
+    }
     if (service->apply_arm_video_phase(gap))
         self_test_fail("matched mode accepted missing LCD line zero");
     std::cout << "H3D_MATCHED_DISPLAY_PASS frames=20 full_rate=" << full_rate
               << " engine_a_only=" << engine_a_only
-              << " rendered=" << (full_rate ? 20 : 10) << " pixels=" << checked
+              << " rendered=" << rendered_frames.size() << " pixels=" << checked
               << " policies=3 missing_phase_rejected=1\n";
+    if (recovery_test)
+        std::cout << "H3D_RECOVERY_SKIP_PASS paired_pixels=" << checked
+                  << " skipped=6 resumed_full_rate=1 engine_a_only=" << engine_a_only << '\n';
+}
+
+void run_matched_reuse_texture_test()
+{
+    constexpr std::uint32_t Session = 0x48556677;
+    Fixture fixture(Session, true, true), oracle_fixture(Session + 1, true, true);
+    auto make = [](Fixture& f) {
+        return std::make_unique<Hybrid3DService>(
+            f.bytes.data(), f.bytes.size(), std::string{},
+            true, false, true, true, true, false, nullptr, nullptr,
+            true, false, false, true, true, 0, true);
+    };
+    auto service = make(fixture), oracle = make(oracle_fixture);
+    service->matched_reuse_3d_ = true;
+    oracle->matched_reuse_3d_ = false;
+    if (!service->initialize() || !oracle->initialize())
+        self_test_fail("matched texture reuse fixture initialization");
+    for (auto* replay : {service.get(), oracle.get()}) {
+        auto& nds = *replay->nds_;
+        const auto push = [&](std::uint8_t command, std::uint32_t value) {
+            nds.GPU.GPU3D.WriteExternalNormalizedCommand(command, value);
+            nds.ARM9Timestamp += std::uint64_t{1} << 16;
+            nds.ARM9Target = nds.ARM9Timestamp;
+            nds.GPU.GPU3D.Run();
+        };
+        const auto vertex = [](int x, int y) {
+            return (std::uint32_t(x) & 1023u) | ((std::uint32_t(y) & 1023u) << 10);
+        };
+        push(0x60, 0xbfff0000); push(0x10, 1); push(0x15, 0);
+        push(0x20, 0x7fff); push(0x29, 0x001f00c0);
+        push(0x2a, 3u << 26); push(0x2b, 0); // 8x8, 16-color texture.
+        push(0x40, 0);
+        push(0x22, 0); push(0x24, vertex(-200, -200));
+        push(0x22, 7u << 4); push(0x24, vertex(200, -200));
+        push(0x22, 7u << 20); push(0x24, vertex(0, 200));
+        push(0x41, 0); push(0x50, 0);
+    }
+    std::uint64_t checked = 0;
+    std::array<std::array<std::uint32_t, 2>, 18> center{};
+    for (std::uint32_t frame = 1; frame <= 17; ++frame) {
+        std::vector<frame_packet::Record> records;
+        const auto write = [&](frame_packet::RecordKind kind, unsigned address, unsigned data) {
+            records.push_back(packet_record(kind,
+                static_cast<std::uint8_t>(AccessWidth::Word), 15, address, data));
+        };
+        const auto map = [&](unsigned bank, unsigned value) {
+            records.push_back(packet_record(frame_packet::RecordKind::VramMap,
+                static_cast<std::uint8_t>(AccessWidth::Byte), 1u << (bank & 3u),
+                0x04000240 + bank, value << ((bank & 3u) * 8u)));
+        };
+        // Power-off resets the latched render plane immediately. Cover both
+        // remaining off across pictures and off/on within one picture: a
+        // guard that compares only the final power bits misses the latter.
+        if (frame == 15)
+            write(frame_packet::RecordKind::GxRegister, 0x04000304, 0x820b);
+        write(frame_packet::RecordKind::GxRegister, 0x04000304,
+            frame == 11 || frame == 12 ? 0x820b : 0x820f);
+        write(frame_packet::RecordKind::Gpu2DRegister, 0x04000000, 0x10108);
+        write(frame_packet::RecordKind::Gpu2DRegister, 0x04001000, 0x10000);
+        write(frame_packet::RecordKind::GxRegister, 0x04000060, 1); // Texture mapping enabled.
+        write(frame_packet::RecordKind::GxRegister, 0x04000350,
+            (31u << 16) | (frame >= 9 ? 0x4210u : 0u));
+        if (frame == 1 || frame == 4) {
+            map(0, 0x80);
+            for (unsigned i = 0; i < 8; ++i)
+                write(frame_packet::RecordKind::VramWrite, 0x06800000 + i * 4,
+                    frame == 1 ? 0x11111111 : 0x22222222);
+            map(0, 0x83);
+        }
+        if (frame == 1 || frame == 6) {
+            map(4, 0x80);
+            write(frame_packet::RecordKind::VramWrite, 0x06880000, 0x001f0000);
+            write(frame_packet::RecordKind::VramWrite, 0x06880004,
+                frame == 1 ? 0x03e0 : 0x7c00);
+            map(4, 0x83);
+        }
+        if (frame == 8)
+            write(frame_packet::RecordKind::Gpu2DRegister, 0x04000010, 7);
+        for (unsigned line = 0; line <= 262; ++line)
+            records.push_back(packet_record(frame_packet::RecordKind::HBlank, 0, 0, line, frame));
+        fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        oracle_fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        if (service->poll() != PollResult::Applied || oracle->poll() != PollResult::Applied)
+            self_test_fail("matched texture reuse stream rejected");
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        for (auto* replay : {service.get(), oracle.get()}) {
+            while (replay->replay_packets_applied() < frame || replay->frames_published() < frame) {
+                if (replay->faulted_.load(std::memory_order_acquire) ||
+                    replay->publication_worker_faulted() || std::chrono::steady_clock::now() > deadline)
+                    self_test_fail("matched texture reuse replay timeout");
+                std::this_thread::yield();
+            }
+        }
+        const auto pixels = [](Fixture& f) {
+            return reinterpret_cast<const std::uint32_t*>(f.bytes.data() + FramebufferOffset +
+                f.header->frame.bank * nds4mister::h3d::FullFrameBankStride);
+        };
+        const auto* actual = pixels(fixture);
+        const auto* expected = pixels(oracle_fixture);
+        for (unsigned screen = 0; screen < 2; ++screen) {
+            const auto offset = screen * nds4mister::h3d::FullFrameScreenStride / sizeof(std::uint32_t);
+            for (std::size_t i = 0; i < PlanePixels; ++i) {
+                if (actual[offset + i] != expected[offset + i]) {
+                    std::cerr << "REUSE_TEXTURE_DIAG frame=" << frame << " screen=" << screen
+                              << " pixel=" << i << '\n';
+                    self_test_fail("matched reuse changed textured paired pixels");
+                }
+                ++checked;
+            }
+            center[frame][screen] = actual[offset + 96 * PlaneWidth + 128];
+        }
+        const bool reused = service->nds_->GPU.GetRenderer().Is3DFrameIdentical();
+        if (((frame == 3 || frame == 5 || frame == 7 || frame == 8) && !reused) ||
+            ((frame == 1 || frame == 2 || frame == 4 || frame == 6 || frame == 10 ||
+              frame == 11 || frame == 12 || frame == 15) && reused))
+            self_test_fail("matched reuse ignored texture/palette/state invalidation");
+        for (auto* f : {&fixture, &oracle_fixture})
+            nds4mister::h3d::store_counter(&f->header->frame_ack_sequence,
+                &f->header->frame_ack_sequence_reserved, f->header->frame_publish_sequence);
+    }
+    if (center[3] == center[4] || center[5] == center[6])
+        self_test_fail("matched texture/palette changes had no visible effect");
+    if (center[10] == center[11] || center[14] == center[15])
+        self_test_fail("matched power resets had no visible effect");
+    service->stop_replay_worker(); oracle->stop_replay_worker();
+    service->stop_publication_worker(); oracle->stop_publication_worker();
+    std::cout << "H3D_MATCHED_REUSE_TEXTURE_PASS paired_pixels=" << checked
+              << " texture_write=1 palette_write=1 scroll=1 clear_state=1 power_off=1 power_cycle=1\n";
+}
+
+void run_matched_reuse_history_test()
+{
+    constexpr std::uint32_t Session = 0x49556677;
+    Fixture fixture(Session, true, true), oracle_fixture(Session + 1, true, true);
+    const auto make = [](Fixture& f, bool full_rate) {
+        return std::make_unique<Hybrid3DService>(
+            f.bytes.data(), f.bytes.size(), std::string{},
+            true, false, true, true, true, false, nullptr, nullptr,
+            true, false, false, true, full_rate, 0, true);
+    };
+    auto service = make(fixture, false), oracle = make(oracle_fixture, true);
+    service->matched_reuse_3d_ = true;
+    oracle->matched_reuse_3d_ = false;
+    if (!service->initialize() || !oracle->initialize())
+        self_test_fail("matched reuse history initialization");
+    const auto geometry = [](melonDS::NDS& nds, unsigned version, unsigned triangles = 1) {
+        const auto push = [&](std::uint8_t command, std::uint32_t value) {
+            nds.GPU.GPU3D.WriteExternalNormalizedCommand(command, value);
+            nds.ARM9Timestamp += std::uint64_t{1} << 16;
+            nds.ARM9Target = nds.ARM9Timestamp;
+            nds.GPU.GPU3D.Run();
+        };
+        const auto vertex = [](int x, int y) {
+            return (std::uint32_t(x) & 1023u) | ((std::uint32_t(y) & 1023u) << 10);
+        };
+        if (version) {
+            push(0x60, 0xbfff0000); push(0x10, 1); push(0x15, 0);
+            push(0x20, version == 1 ? 0x7fff : version == 2 ? 0x001f : 0x7c00);
+            push(0x29, 0x001f00c0);
+            const int x = version == 2 ? 80 : 0;
+            for (unsigned i = 0; i < triangles; ++i) {
+                push(0x40, 0);
+                push(0x24, vertex(x - 160, -160));
+                push(0x24, vertex(x + 160, -160));
+                push(0x24, vertex(x, 160)); push(0x41, 0);
+            }
+        }
+        // An empty SWAP must invalidate retained nonempty geometry too.
+        push(0x50, 0);
+    };
+    std::array<std::array<std::uint64_t, 2>, 34> hashes{};
+    std::array<unsigned, 7> reuse_gaps{};
+    std::uint64_t checked = 0, published = 0, reuses = 0;
+    std::uint32_t last_picture = 0;
+    unsigned engine_a_screen = 0;
+    for (std::uint32_t frame = 1; frame <= 33; ++frame) {
+        if (frame == 1 || frame == 7 || frame == 13 || frame == 17) {
+            const unsigned version = frame == 1 ? 1 : frame == 7 ? 2 : frame == 13 ? 0 : 3;
+            geometry(*service->nds_, version);
+            geometry(*oracle->nds_, version);
+        }
+        // Extend selected half-rate omissions while replaying every record.
+        // The worker is idle after the preceding packet's completion fence.
+        const bool extend_skip = frame == 11 || frame == 12 ||
+            frame == 23 || frame == 24 || (frame >= 29 && frame <= 32);
+        if (extend_skip) service->arm_video_skipped_frames_ = 0;
+        const bool rendered = (frame & 1u) && !extend_skip;
+        if (rendered) ++published;
+        std::vector<frame_packet::Record> records;
+        const auto write = [&](frame_packet::RecordKind kind, unsigned address, unsigned data) {
+            records.push_back(packet_record(kind,
+                static_cast<std::uint8_t>(AccessWidth::Word), 15, address, data));
+        };
+        if (frame == 1) {
+            write(frame_packet::RecordKind::GxRegister, 0x04000304, 0x820f);
+            write(frame_packet::RecordKind::Gpu2DRegister, 0x04000000, 0x10108);
+            write(frame_packet::RecordKind::Gpu2DRegister, 0x04001000, 0x10000);
+        }
+        // Power off and back on entirely inside the longer skipped interval.
+        // The final power bits match the retained picture, but its geometry
+        // was discarded; VBlank 24 makes the adjacent hint true again.
+        if (frame == 22 || frame == 23)
+            write(frame_packet::RecordKind::GxRegister, 0x04000304,
+                frame == 22 ? 0x820b : 0x820f);
+        write(frame_packet::RecordKind::PaletteWrite, 0x05000000, frame & 31u);
+        write(frame_packet::RecordKind::PaletteWrite, 0x05000400, (frame & 31u) << 5);
+        for (unsigned line = 0; line <= 262; ++line) {
+            if (line == 96)
+                write(frame_packet::RecordKind::PaletteWrite, 0x05000400,
+                    ((frame + 7u) & 31u) << 10);
+            // Frame 3 has already completed its old pixels at line 191.
+            // VBlank 3 changes state; skipped VBlank 4 reports identical.
+            // Frame 5 must compare against retained history, not that hint.
+            if (line == 192 && (frame == 1 || frame == 3))
+                write(frame_packet::RecordKind::GxRegister, 0x04000350,
+                    (31u << 16) | (frame == 1 ? 0x001fu : 0x03e0u));
+            records.push_back(packet_record(frame_packet::RecordKind::HBlank,
+                0, 0, line, frame));
+        }
+        fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        oracle_fixture.publish(frame, frame, frame_packet::FlagFrameEnd, records);
+        if (service->poll() != PollResult::Applied || oracle->poll() != PollResult::Applied)
+            self_test_fail("matched reuse history stream rejected");
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        for (auto* replay : {service.get(), oracle.get()}) {
+            const auto expected = replay == service.get() ? published : frame;
+            while (replay->replay_packets_applied() < frame || replay->frames_published() < expected) {
+                if (replay->faulted_.load(std::memory_order_acquire) ||
+                    replay->publication_worker_faulted() || std::chrono::steady_clock::now() > deadline)
+                    self_test_fail("matched reuse history replay timeout");
+                std::this_thread::yield();
+            }
+            if (replay->frames_published() != expected || replay->frames_rendered_ != expected)
+                self_test_fail("matched reuse history cadence changed");
+        }
+        if (rendered) {
+            const auto pixels = [](Fixture& f) {
+                return reinterpret_cast<const std::uint32_t*>(f.bytes.data() + FramebufferOffset +
+                    f.header->frame.bank * nds4mister::h3d::FullFrameBankStride);
+            };
+            const auto* actual = pixels(fixture);
+            const auto* expected = pixels(oracle_fixture);
+            engine_a_screen = service->nds_->GPU.ScreenSwap ? 0u : 1u;
+            if (fixture.header->frame.frame != frame || oracle_fixture.header->frame.frame != frame)
+                self_test_fail("matched reuse history paired wrong LCD frames");
+            for (unsigned screen = 0; screen < 2; ++screen) {
+                const auto offset = screen * nds4mister::h3d::FullFrameScreenStride / sizeof(std::uint32_t);
+                auto hash = std::uint64_t{1469598103934665603ULL};
+                for (std::size_t i = 0; i < PlanePixels; ++i) {
+                    if (actual[offset + i] != expected[offset + i]) {
+                        std::cerr << "REUSE_HISTORY_DIAG frame=" << frame << " screen=" << screen
+                                  << " pixel=" << i << '\n';
+                        self_test_fail("matched skipped-history pixels differ from forced oracle");
+                    }
+                    hash = (hash ^ actual[offset + i]) * 1099511628211ULL;
+                    ++checked;
+                }
+                hashes[frame][screen] = hash;
+            }
+            const bool expected_reuse = frame == 7 || frame == 13 || frame == 17 ||
+                frame == 21 || frame == 27 || frame == 33;
+            const bool reused = service->nds_->GPU.GetRenderer().Is3DFrameIdentical();
+            if (reused != expected_reuse) {
+                std::cerr << "REUSE_HISTORY_DIAG frame=" << frame << " reused=" << reused
+                          << " expected=" << expected_reuse << '\n';
+                self_test_fail("matched reuse history failed fresh/reused expectation");
+            }
+            reuses += reused;
+            if (reused) {
+                const auto gap = frame - last_picture;
+                if (gap >= reuse_gaps.size())
+                    self_test_fail("matched history reuse gap exceeded fixture schedule");
+                ++reuse_gaps[gap];
+            }
+            last_picture = frame;
+            if (frame == 5 || frame == 9 || frame == 15 || frame == 25) {
+                if (!(service->matched_3d_trace_flags_ & 1u) ||
+                    (service->matched_3d_trace_flags_ & 16u))
+                    self_test_fail("matched history fixture missed stale adjacent identity hint");
+            }
+            if (expected_reuse && ((service->matched_3d_trace_flags_ & 2u) ||
+                                  !(service->matched_3d_trace_flags_ & 16u)))
+                self_test_fail("matched history reuse was not across a retained-state gap");
+        }
+        for (auto* f : {&fixture, &oracle_fixture})
+            nds4mister::h3d::store_counter(&f->header->frame_ack_sequence,
+                &f->header->frame_ack_sequence_reserved, f->header->frame_publish_sequence);
+    }
+    for (const auto& pair : {std::pair{3u, 5u}, std::pair{7u, 9u},
+                            std::pair{13u, 15u}, std::pair{21u, 25u}})
+        if (hashes[pair.first][engine_a_screen] == hashes[pair.second][engine_a_screen])
+            self_test_fail("matched history invalidation had no visible Engine A effect");
+    if (hashes[7][1u - engine_a_screen] == hashes[13][1u - engine_a_screen] ||
+        hashes[27][1u - engine_a_screen] == hashes[33][1u - engine_a_screen])
+        self_test_fail("matched history reused stale Engine B output");
+    service->stop_replay_worker(); oracle->stop_replay_worker();
+    service->stop_publication_worker(); oracle->stop_publication_worker();
+    if (service->nds_->GPU.GetRenderer().GetExternalRendererStageProfile().ThreeDIdenticalFrames != reuses)
+        self_test_fail("matched history reuse count disagrees with renderer");
+    if (reuse_gaps[2] != 4 || reuse_gaps[4] != 1 || reuse_gaps[6] != 1)
+        self_test_fail("matched history missed half-rate or multiple-skip reuse");
+    std::cout << "H3D_MATCHED_REUSE_HISTORY_PASS pictures=" << published
+              << " reuses=" << reuses << " paired_pixels=" << checked
+              << " stale_clear=1 stale_geometry=1 empty_swap=1 power_cycle=1"
+              << " reuse_gap2=" << reuse_gaps[2] << " reuse_gap4=" << reuse_gaps[4]
+              << " reuse_gap6=" << reuse_gaps[6] << '\n';
+    service.reset(); oracle.reset();
+
+    // A canceled raster may have the same architectural revision as its
+    // successor. Exercise the renderer's separate recovery veto with an
+    // explicitly true identity hint, using the established delayed-band test
+    // setup so cancellation is observed before the raster finishes.
+    constexpr std::array<const char*, 4> names{{
+        "NDS4MISTER_DUAL_CORE_3D", "NDS4MISTER_ADAPTIVE_RASTER_SPLIT",
+        "NDS4MISTER_RASTER_BAND_QUEUE", "NDS4MISTER_RASTER_BAND_TEST_DELAY_WORKER"}};
+    std::array<std::optional<std::string>, names.size()> saved_environment;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (const char* value = std::getenv(names[i])) saved_environment[i] = value;
+        setenv(names[i], "1", 1);
+    }
+    const auto make_nds = [] {
+        melonDS::NDSArgs args;
+        args.JIT = std::nullopt;
+        auto nds = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
+        nds->Reset();
+        nds->GPU.GPU3D.SetEnabled(true, true);
+        nds->GPU.GPU3D.SetExternalCommandReplay(true);
+        nds->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+        melonDS::RendererSettings settings{
+            1, true, false, false, false, false, false, true, true};
+        nds->GPU.GetRenderer().SetRenderSettings(settings);
+        nds->GPU.GetRenderer().Finish3DRendering();
+        return nds;
+    };
+    auto canceled = make_nds(), fresh = make_nds();
+    for (auto* nds : {canceled.get(), fresh.get()}) {
+        geometry(*nds, 1, 32);
+        nds->GPU.GPU3D.VBlank();
+    }
+    auto& gpu3d = canceled->GPU.GPU3D;
+    auto& renderer = canceled->GPU.GetRenderer();
+    auto& fresh_renderer = fresh->GPU.GetRenderer();
+    const auto revision = gpu3d.RenderStateRevision;
+    renderer.Start3DRendering();
+    if (!renderer.Request3DRenderingCancellation())
+        self_test_fail("reuse history raster did not accept cancellation");
+    renderer.Finish3DRendering();
+    if (!renderer.Was3DRenderingCanceled())
+        self_test_fail("reuse history delayed raster did not observe cancellation");
+    const auto before_recovery = renderer.GetExternalRendererStageProfile();
+    gpu3d.RenderFrameIdentical = true;
+    renderer.Start3DRendering();
+    fresh_renderer.Start3DRendering();
+    renderer.Finish3DRendering();
+    fresh_renderer.Finish3DRendering();
+    const auto recovered = renderer.GetExternalRendererStageProfile();
+    if (renderer.Is3DFrameIdentical() || renderer.Was3DRenderingCanceled() ||
+        gpu3d.RenderStateRevision != revision ||
+        recovered.ThreeDRasterRecoveryFrames != before_recovery.ThreeDRasterRecoveryFrames + 1 ||
+        recovered.ThreeDIdenticalFrames != before_recovery.ThreeDIdenticalFrames)
+        self_test_fail("retained revision bypassed raster cancellation recovery");
+    for (unsigned y = 0; y < PlaneHeight; ++y)
+        if (std::memcmp(renderer.Get3DScanline(y), fresh_renderer.Get3DScanline(y),
+                PlaneWidth * sizeof(std::uint32_t)))
+            self_test_fail("reuse history recovery pixels differ from fresh raster");
+    std::array<melonDS::u64, 3> recovered_hashes{}, fresh_hashes{}, reused_hashes{};
+    renderer.Get3DNativeBufferHashes(recovered_hashes.data());
+    fresh_renderer.Get3DNativeBufferHashes(fresh_hashes.data());
+    if (recovered_hashes != fresh_hashes)
+        self_test_fail("reuse history recovery native buffers differ from fresh raster");
+    renderer.Start3DRendering();
+    renderer.Finish3DRendering();
+    renderer.Get3DNativeBufferHashes(reused_hashes.data());
+    const auto reused_profile = renderer.GetExternalRendererStageProfile();
+    if (!renderer.Is3DFrameIdentical() || reused_hashes != recovered_hashes ||
+        reused_profile.ThreeDIdenticalFrames != recovered.ThreeDIdenticalFrames + 1 ||
+        reused_profile.ThreeDRasterRecoveryFrames != recovered.ThreeDRasterRecoveryFrames)
+        self_test_fail("reuse history recovery did not re-enable stable reuse");
+
+    // Revision is renderer history, not serialized hardware state. Neither
+    // resetting nor repeatedly loading an older state may rewind it to a
+    // revision whose pre-reset pixels are still retained by a consumer.
+    gpu3d.RenderFrameIdentical = true;
+    gpu3d.Reset();
+    if (gpu3d.RenderStateRevision <= revision || gpu3d.RenderFrameIdentical)
+        self_test_fail("GPU3D reset retained render history");
+    melonDS::Savestate saved;
+    const auto saved_revision = gpu3d.RenderStateRevision;
+    gpu3d.DoSavestate(&saved);
+    saved.Finish();
+    if (saved.Error || gpu3d.RenderStateRevision != saved_revision)
+        self_test_fail("GPU3D save changed render revision");
+    for (unsigned attempt = 0; attempt < 2; ++attempt) {
+        const auto before_reset = gpu3d.RenderStateRevision;
+        gpu3d.Reset();
+        if (gpu3d.RenderStateRevision <= before_reset)
+            self_test_fail("GPU3D reset rewound render revision");
+        const auto before_load = gpu3d.RenderStateRevision;
+        gpu3d.RenderFrameIdentical = true;
+        melonDS::Savestate load(saved.Buffer(), saved.Length(), false);
+        if (load.Error) self_test_fail("GPU3D history state header invalid");
+        gpu3d.DoSavestate(&load);
+        if (load.Error || gpu3d.RenderStateRevision <= before_load || gpu3d.RenderFrameIdentical)
+            self_test_fail("GPU3D load rewound or retained render history");
+    }
+    canceled.reset(); fresh.reset();
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (saved_environment[i]) setenv(names[i], saved_environment[i]->c_str(), 1);
+        else unsetenv(names[i]);
+    }
+    std::cout << "H3D_MATCHED_REUSE_INVALIDATION_PASS cancellation=1 recovery_pixels="
+              << PlanePixels << " stable_reuse=1 resets=3 old_state_loads=2\n";
 }
 
 void run_matched_catchup_test(bool full_rate = false)
 {
     constexpr std::uint32_t Session = 0x55667788;
     Fixture fixture(Session, true, true), reference_fixture(Session + 1, true);
+    nds4mister::crash::FpgaRuntimeTelemetry pacing_runtime;
     // Stop only the replay thread, so a deterministic burst can be admitted
     // through the real validated input queue before draining its exact slots.
     // Normal asynchronous replay is covered by run_matched_display_test().
@@ -6198,6 +6981,12 @@ void run_matched_catchup_test(bool full_rate = false)
         fixture.bytes.data(), fixture.bytes.size(), std::string{},
         false, false, true, true, false, false, nullptr, nullptr,
         true, false, false, true, full_rate);
+    if (const char* trace = std::getenv("NDS4MISTER_STANDALONE_PACING_TRACE")) {
+        if (std::strcmp(trace, "1") == 0) {
+            service->runtime_telemetry_ = &pacing_runtime;
+            service->pacing_trace_enabled_ = true;
+        }
+    }
     auto reference = std::make_unique<Hybrid3DService>(
         reference_fixture.bytes.data(), reference_fixture.bytes.size(),
         std::string{}, false, false, true);
@@ -6330,6 +7119,17 @@ void run_matched_catchup_test(bool full_rate = false)
         service->frame_drop_replay_budget_.load() < 700 ||
         drawn != (full_rate ? 58u : 29u) || recovered != 5)
         self_test_fail("matched catchup stress did not exercise recovery");
+    if (service->pacing_trace_enabled_) {
+        using M = nds4mister::crash::PacingMetric;
+        const auto rejected = service->pacing_counter(M::AgeOnly).load() +
+            service->pacing_counter(M::PacketsOnly).load() +
+            service->pacing_counter(M::AgeAndPackets).load();
+        if (rejected != service->frame_drop_replay_budget_.load() ||
+            service->pacing_counter(M::Draws).load() != drawn)
+            self_test_fail("pacing diagnostics miscounted backlog recovery");
+        std::cout << "H3D_PACING_REJECTIONS_PASS full_rate=" << full_rate
+                  << " rejected=" << rejected << " restored_pictures=" << drawn << '\n';
+    }
     std::cout << "H3D_MATCHED_CATCHUP_PASS full_rate=" << full_rate << " frames=" << frame
               << " rendered=" << drawn << " pixels=" << checked
               << " burst_recoveries=" << recovered
@@ -6444,9 +7244,12 @@ void run_gx_readback_swap_self_test()
     for (unsigned prefix_mode : {0u, 1u, 2u})
     for (bool asynchronous : {false, true}) {
         Fixture fixture(asynchronous ? 911 : 910, true, true);
+        nds4mister::crash::FpgaRuntimeTelemetry pacing_runtime;
+        if (asynchronous)
+            pacing_runtime.timeline = std::make_unique<nds4mister::crash::CausalTimeline>();
         auto owned_service = std::make_unique<Hybrid3DService>(
             fixture.bytes.data(), fixture.bytes.size(), std::string{},
-            false, false, true, asynchronous, false, false, nullptr, nullptr,
+            false, false, true, asynchronous, false, false, &pacing_runtime, nullptr,
             false, false, false, true, true, prefix_mode);
         auto& service = *owned_service;
         if (!service.initialize()) self_test_fail("readback SWAP fixture init");
@@ -6500,6 +7303,32 @@ void run_gx_readback_swap_self_test()
             reply[gx_readback::ClipWord] != 8192 ||
             (reply[gx_readback::StatusWord] & (1u << 27)))
             self_test_fail("readback after VBlank required a future GX write");
+        if (asynchronous) {
+            service.stop_replay_worker();
+            const auto input=pacing_runtime.timeline->intake.snapshot(~0ull);
+            const auto replay=pacing_runtime.timeline->replay.snapshot(~0ull);
+            const auto count=[](const auto& events, TimelineKind kind) {
+                return std::count_if(events.records.begin(),events.records.end(),
+                    [kind](const auto& r){return r.kind==static_cast<unsigned>(kind);});
+            };
+            if(input.raced || replay.raced ||
+                count(input,TimelineKind::AcquireBegin)!=4 ||
+                count(input,TimelineKind::InputQueued)!=4 ||
+                count(input,TimelineKind::InputSwap)!=1 ||
+                count(replay,TimelineKind::ReplayBegin)!=4 ||
+                count(replay,TimelineKind::ReplayEnd)!=4 ||
+                count(replay,TimelineKind::ReplaySwap)!=1 ||
+                count(input,TimelineKind::QueryFastReply)+count(replay,TimelineKind::QueryOrderedReply)!=3)
+                self_test_fail("causal trace missed query or SWAP packet identity");
+            std::cout << "H3D_CAUSAL_QUERY_TRACE_PASS prefix=" << prefix_mode << " packets=4 replies=3 swap=1\n";
+        }
+        if (service.pacing_trace_enabled_ && asynchronous) {
+            using M = nds4mister::crash::PacingMetric;
+            if (service.pacing_counter(M::GxSwapsInput).load() != 1 ||
+                service.pacing_counter(M::GxSwapsReplay).load() != 1)
+                self_test_fail("SWAP pacing counters missed a replayed SWAP");
+            std::cout << "H3D_SWAP_PACING_PASS prefix_mode=" << prefix_mode << '\n';
+        }
     }
     std::cout << "H3D_GX_READBACK_SWAP_SELF_TEST_PASS sync_async_prefix=6 "
                  "busy_ordered=1 settled_early_resume=1\n";
@@ -6517,12 +7346,13 @@ void run_gx_readback_self_test()
     for (bool matched : {false, true})
     for (bool asynchronous : {false, true}) {
         Fixture fixture((asynchronous ? 902 : 901) + (matched ? 2 : 0), matched, matched);
+        nds4mister::crash::FpgaRuntimeTelemetry pacing_runtime;
         auto* reply = reinterpret_cast<std::uint32_t*>(
             fixture.bytes.data() + gx_readback::MappingOffset);
         reply[gx_readback::CommitWord] = 1;
         auto owned_service = std::make_unique<Hybrid3DService>(
             fixture.bytes.data(), fixture.bytes.size(), std::string{},
-            false, false, matched, asynchronous, false, false, nullptr, nullptr,
+            false, false, matched, asynchronous, false, false, &pacing_runtime, nullptr,
             false, false, false, matched, matched, prefix_mode);
         auto& service = *owned_service;
         if (!service.initialize()) self_test_fail("readback fixture init failed");
@@ -6609,14 +7439,147 @@ void run_gx_readback_self_test()
             reply[gx_readback::ClipWord + 12] != 0)
             self_test_fail("catch-up discarded an authoritative readback fence");
         service.nds().GPU.GPU3D.SetExternalGeometryDiscard(false);
+        const char* trace = std::getenv("NDS4MISTER_STANDALONE_PACING_TRACE");
+        if (matched && asynchronous && trace && std::strcmp(trace, "1") == 0) {
+            using M = nds4mister::crash::PacingMetric;
+            const auto value = [&](M metric) {
+                return pacing_runtime.pacing[static_cast<std::size_t>(metric)].load();
+            };
+            if (value(M::GxQueries) != sequence ||
+                value(M::GxFastReplies) + value(M::GxOrderedReplies) != sequence ||
+                value(M::GxPrefixBusyFallback) + value(M::GxPrefixUnavailableFallback) !=
+                    value(M::GxOrderedReplies) || value(M::GxSwapsInput) != 0 ||
+                value(M::GxSwapsReplay) != 0)
+                self_test_fail("query pacing counters double-counted verification or missed replies");
+            std::cout << "H3D_QUERY_PACING_PASS prefix_mode=" << prefix_mode
+                      << " queries=" << sequence << " fast=" << value(M::GxFastReplies)
+                      << " ordered=" << value(M::GxOrderedReplies) << '\n';
+        }
     }
     std::cout << "H3D_GX_READBACK_PREFIX_SELF_TEST_PASS "
                  "sync_async_matched_prefix=12 partial_matrix_box=12 commit_init_clear=1\n";
 }
 
 
+void run_texture_remap_coherence_test()
+{
+    const auto make_scene = [](bool changed_texture, bool changed_palette) {
+        melonDS::NDSArgs args;
+        args.JIT = std::nullopt;
+        auto nds = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
+        nds->Reset();
+        auto& gpu = nds->GPU;
+        gpu.GPU2D_A.SetEnabled(true);
+        gpu.GPU3D.SetEnabled(true, true);
+        gpu.GPU3D.SetExternalCommandReplay(true);
+        gpu.MapVRAM_AB(0, 0x80);
+        for (unsigned i = 0; i < 8; ++i)
+            gpu.WriteVRAM_LCDC<melonDS::u32>(0x06800000 + i * 4,
+                changed_texture ? 0x22222222u : 0x11111111u);
+        gpu.MapVRAM_AB(0, 0x83);
+        gpu.MapVRAM_E(4, 0x80);
+        gpu.WriteVRAM_LCDC<melonDS::u32>(0x06880000,
+            changed_palette ? 0x7c000000u : 0x001f0000u);
+        gpu.WriteVRAM_LCDC<melonDS::u32>(0x06880004, 0x03e0);
+        gpu.MapVRAM_E(4, 0x83);
+        gpu.GPU3D.DispCnt = 1;
+        const auto push = [&](std::uint8_t command, std::uint32_t value) {
+            gpu.GPU3D.WriteExternalNormalizedCommand(command, value);
+            nds->ARM9Timestamp += std::uint64_t{1} << 16;
+            nds->ARM9Target = nds->ARM9Timestamp;
+            gpu.GPU3D.Run();
+        };
+        const auto vertex = [](int x, int y) {
+            return (std::uint32_t(x) & 1023u) |
+                ((std::uint32_t(y) & 1023u) << 10);
+        };
+        push(0x60, 0xbfff0000); push(0x10, 1); push(0x15, 0);
+        push(0x20, 0x7fff); push(0x29, 0x001f00c0);
+        push(0x2a, 3u << 26); push(0x2b, 0);
+        push(0x40, 0);
+        push(0x22, 0); push(0x24, vertex(-200, -200));
+        push(0x22, 7u << 4); push(0x24, vertex(200, -200));
+        push(0x22, 7u << 20); push(0x24, vertex(0, 200));
+        push(0x41, 0); push(0x50, 0);
+        gpu.GPU3D.VBlank();
+        return nds;
+    };
+    const auto render = [](melonDS::NDS& nds, bool hint) {
+        nds.GPU.GPU3D.RenderFrameIdentical = hint;
+        auto& renderer = nds.GPU.GetRenderer();
+        renderer.Start3DRendering();
+        renderer.Finish3DRendering();
+        std::vector<std::uint32_t> pixels(PlanePixels);
+        for (unsigned y = 0; y < PlaneHeight; ++y)
+            std::copy_n(renderer.Get3DScanline(y), PlaneWidth,
+                pixels.data() + y * PlaneWidth);
+        return pixels;
+    };
+    unsigned failures = 0;
+    for (const bool palette : {false, true}) {
+        auto candidate = make_scene(false, false);
+        const auto before = render(*candidate, false);
+        auto& gpu = candidate->GPU;
+        // A no-op VRAMCNT write must leave an unchanged plane reusable.
+        gpu.MapVRAM_AB(0, 0x83);
+        gpu.MapVRAM_E(4, 0x83);
+        if (render(*candidate, true) != before ||
+            !gpu.GetRenderer().Is3DFrameIdentical())
+            self_test_fail("no-op texture/palette remap invalidated an unchanged plane");
+
+        // Skipped matched pictures still prime row-zero sprites at line 262.
+        // That real 2D consumer clears the bank's shared dirty bits before a
+        // later frame returns the bank to its original 3D mapping.
+        const unsigned bank = palette ? 4u : 0u;
+        if (palette) {
+            gpu.MapVRAM_E(bank, 0x82);
+            gpu.WriteVRAM_AOBJ<melonDS::u16>(0x06400002, 0x7c00);
+        } else {
+            gpu.MapVRAM_AB(bank, 0x82);
+            for (unsigned i = 0; i < 8; ++i)
+                gpu.WriteVRAM_AOBJ<melonDS::u32>(0x06400000 + i * 4, 0x22222222);
+        }
+        if (!gpu.VRAMDirty[bank][0])
+            self_test_fail("remap fixture failed to dirty the written OBJ bank");
+        gpu.GetRenderer().DrawSprites(0);
+        if (gpu.VRAMDirty[bank][0])
+            self_test_fail("remap fixture did not consume dirty bits through sprites");
+        if (palette) gpu.MapVRAM_E(bank, 0x83);
+        else gpu.MapVRAM_AB(bank, 0x83);
+
+        // Build the final scene independently, with fresh flat VRAM and a
+        // fresh decoded cache. Merely forcing the candidate to rasterize
+        // would share stale texture data and could falsely pass this test.
+        auto oracle = make_scene(!palette, palette);
+        const auto expected = render(*oracle, false);
+        const auto actual = render(*candidate, true);
+        const bool reused = gpu.GetRenderer().Is3DFrameIdentical();
+        std::uint64_t changed = 0, mismatches = 0;
+        for (std::size_t i = 0; i < actual.size(); ++i) {
+            changed += before[i] != expected[i];
+            mismatches += actual[i] != expected[i];
+        }
+        if (!changed)
+            self_test_fail("texture/palette remap fixture had no visible pixel change");
+        failures += reused || mismatches != 0;
+        std::cout << "H3D_TEXTURE_REMAP_CASE palette=" << palette
+                  << " reused=" << reused << " changed_pixels=" << changed
+                  << " mismatches=" << mismatches << '\n';
+        gpu.MapVRAM_AB(0, 0x83);
+        gpu.MapVRAM_E(4, 0x83);
+        if (render(*candidate, true) != actual ||
+            !gpu.GetRenderer().Is3DFrameIdentical())
+            self_test_fail("remap coherence did not settle after one refresh");
+    }
+    if (failures)
+        self_test_fail("texture/palette remap reused stale data after OBJ coherence");
+    std::cout << "H3D_MATCHED_REUSE_REMAP_PASS texture=1 palette=1 "
+                 "sprite_dirty_consumption=1 fresh_oracle=1 no_op_reuse=1\n";
+}
+
 void run_self_test()
 {
+    run_texture_remap_coherence_test();
     run_gx_readback_self_test();
     run_gx_readback_swap_self_test();
     {
@@ -6736,6 +7699,19 @@ void run_self_test()
                      "partial_upload=1 mapped_black=1 reassignment=1 oracle_unchanged=1 reset=1 trace=1\n";
     }
     constexpr std::uint32_t Session = 0x12345678;
+
+    {
+        Fixture fixture(Session);
+        auto service = std::make_unique<Hybrid3DService>(
+            fixture.bytes.data(), fixture.bytes.size(),
+            std::string{}, false, false, false, false, true);
+        const auto before = fixture.bytes;
+        if (service->initialize(Session + 1) || fixture.bytes != before)
+            self_test_fail("game query profile crossed a session boundary");
+        if (!service->initialize(Session))
+            self_test_fail("matching game query profile session rejected");
+        std::cout << "H3D_GAME_QUERY_SESSION_PASS stale_rejected=1 no_stale_writes=1 matching_accepted=1\n";
+    }
 
     // Versioned request/ack protocol: strict fields, commit-last publication,
     // and invalidation on lost ownership. No renderer is needed for these
@@ -9740,6 +10716,7 @@ void usage()
         "       nds_hybrid_3d_service --self-test-matched-display\n"
         "       nds_hybrid_3d_service --self-test-matched-catchup\n"
         "       nds_hybrid_3d_service --self-test-matched-full-rate\n"
+        "       nds_hybrid_3d_service --self-test-matched-reuse-history\n"
         "       nds_hybrid_3d_service --self-test-scanline-lifetime\n"
         "       nds_hybrid_3d_service --self-test-latest-plane-ack\n";
 }
@@ -9756,6 +10733,7 @@ try {
     bool matched_display_test = false;
     bool matched_catchup_test = false;
     bool matched_full_rate_test = false;
+    bool matched_reuse_history_test = false;
 
     for (int index = 1; index < argc; ++index) {
         const std::string_view argument(argv[index]);
@@ -9769,6 +10747,8 @@ try {
             matched_catchup_test = true;
         } else if (argument == "--self-test-matched-full-rate") {
             matched_full_rate_test = true;
+        } else if (argument == "--self-test-matched-reuse-history") {
+            matched_reuse_history_test = true;
         } else if (argument == "--self-test-latest-plane-ack") {
             latest_plane_ack_test = true;
         } else if (argument == "--memory" && index + 1 < argc) {
@@ -9781,7 +10761,24 @@ try {
         }
     }
 
-    if (self_test || scanline_lifetime_test || latest_plane_ack_test || matched_display_test || matched_catchup_test || matched_full_rate_test) {
+    if (self_test) {
+        nds4mister::replay::BoundedIdlePoll burst;
+        const auto start = std::chrono::steady_clock::time_point {};
+        for (unsigned n = 0; n < 4; ++n)
+            if (!burst.retry(start)) self_test_fail("bounded idle poll rejected initial retries");
+        for (unsigned n = 0; n < 100; ++n)
+            if (burst.retry(start)) self_test_fail("bounded idle poll exceeded retry cap");
+        burst.reset();
+        if (burst.active() || !burst.retry(start) ||
+            burst.retry(start + std::chrono::microseconds(50)))
+            self_test_fail("bounded idle poll deadline or lifecycle reset");
+        burst.reset();
+        if (!burst.retry(start + std::chrono::seconds(1)))
+            self_test_fail("bounded idle poll failed to rearm after sleep");
+        std::cout << "H3D_BOUNDED_IDLE_POLL_PASS retries=4 budget_us=50 reset=1\n";
+    }
+
+    if (self_test || scanline_lifetime_test || latest_plane_ack_test || matched_display_test || matched_catchup_test || matched_full_rate_test || matched_reuse_history_test) {
         if (argc != 2) {
             usage();
             return 2;
@@ -9789,8 +10786,18 @@ try {
         if (matched_full_rate_test) {
             run_matched_display_test(true);
             run_matched_display_test(true, true);
+            run_matched_display_test(true, false, true);
+            run_matched_display_test(true, true, true);
             run_matched_catchup_test(true);
-        } else if (matched_catchup_test) run_matched_catchup_test();
+            run_matched_display_test(true, false, false, true);
+            run_matched_display_test(true, true, false, true);
+            run_matched_display_test(false, false, false, true);
+            run_matched_display_test(true, false, true, true);
+            run_matched_reuse_texture_test();
+            run_texture_remap_coherence_test();
+            run_matched_reuse_history_test();
+        } else if (matched_reuse_history_test) run_matched_reuse_history_test();
+        else if (matched_catchup_test) run_matched_catchup_test();
         else if (matched_display_test) run_matched_display_test();
         else if (latest_plane_ack_test) run_latest_plane_ack_test();
         else if (scanline_lifetime_test) run_scanline_lifetime_test();
@@ -9804,6 +10811,7 @@ try {
             run_matched_display_test(true);
             run_matched_display_test(true, true);
             run_matched_catchup_test(true);
+            run_matched_reuse_history_test();
             run_latest_plane_ack_test();
             run_scanline_lifetime_test();
             run_self_test();
@@ -9824,6 +10832,9 @@ try {
     auto& header = *static_cast<Header*>(mapping.data());
     CrashHeaderRegistration crash_header(header);
     nds4mister::crash::FpgaRuntimeTelemetry runtime_telemetry;
+    const char* timeline_requested = std::getenv("NDS4MISTER_STANDALONE_CAUSAL_TRACE");
+    if (timeline_requested && std::strcmp(timeline_requested, "1") == 0)
+        runtime_telemetry.timeline = std::make_unique<nds4mister::crash::CausalTimeline>();
     nds4mister::crash::FpgaCrashMonitor crash_monitor(
         &header, memory_path == "/dev/mem", &runtime_telemetry);
     std::unique_ptr<Hybrid3DService> service;
@@ -9832,9 +10843,29 @@ try {
     const char* fast_poll_requested = std::getenv("NDS4MISTER_GX_QUERY_FAST_POLL");
     const bool fast_query_poll = fast_poll_requested &&
         std::strcmp(fast_poll_requested, "1") == 0;
+    const char* slack_requested = std::getenv("NDS4MISTER_STANDALONE_LOW_TIMER_SLACK");
+    const bool low_timer_slack = memory_path == "/dev/mem" && fast_query_poll &&
+        slack_requested && std::strcmp(slack_requested, "1") == 0;
+    nds4mister::replay::TimerSlackBackend timer_backend;
+    // Declared after service: exceptions restore intake before its workers are
+    // torn down. New-session workers are always created with original slack.
+    nds4mister::replay::ScopedTimerSlack intake_timer_slack(timer_backend);
 
     std::signal(SIGINT, request_stop);
     std::signal(SIGTERM, request_stop);
+    const char* burst_requested = std::getenv("NDS4MISTER_STANDALONE_QUERY_BURST");
+    const bool query_burst = memory_path == "/dev/mem" && fast_query_poll &&
+        burst_requested && std::strcmp(burst_requested, "1") == 0;
+    nds4mister::replay::BoundedIdlePoll idle_burst;
+    using Pacing = nds4mister::crash::PacingMetric;
+    const auto pacing_enabled = [&] {
+        return runtime_telemetry.pacing[static_cast<std::size_t>(Pacing::Enabled)]
+            .load(std::memory_order_relaxed) != 0;
+    };
+    const auto pacing_add = [&](Pacing metric, std::uint64_t value) {
+        runtime_telemetry.pacing[static_cast<std::size_t>(metric)]
+            .fetch_add(value, std::memory_order_relaxed);
+    };
     while (!stop_requested && (!max_events || total_events < max_events)) {
         if (service) {
             const auto before_events = service->events_applied();
@@ -9844,8 +10875,16 @@ try {
             total_frames += service->frames_published() - before_frames;
             if (result == PollResult::Fault) {
                 std::cerr << "H3D_SERVICE_FAULT " << service->error() << '\n';
+                intake_timer_slack.restore();
                 service.reset();
             } else if (result == PollResult::Applied) {
+                // Workers already exist. Only intake changes; future renderer
+                // workers created by replay retain that thread's normal slack.
+                if (low_timer_slack && service->fast_matrix_replies_active())
+                    intake_timer_slack.activate();
+                if (idle_burst.active() && pacing_enabled())
+                    pacing_add(Pacing::IntakeBurstHits, 1);
+                idle_burst.reset();
                 // poll() already performed the complete session/quiesce gate,
                 // and the next busy iteration starts with the same gate. Avoid
                 // repeating seven Device-memory barriers between two events.
@@ -9853,19 +10892,43 @@ try {
             } else if (!service->session_current()) {
                 // Empty and frame-ack waits sleep below, so retain the explicit
                 // post-poll lifecycle check before becoming idle.
+                intake_timer_slack.restore();
                 service.reset();
             }
             if (service) {
+                if (query_burst && result == PollResult::Empty &&
+                    service->fast_matrix_replies_active() &&
+                    idle_burst.retry(std::chrono::steady_clock::now())) {
+                    if (pacing_enabled()) pacing_add(Pacing::IntakeBurstRetries, 1);
+                    continue; // Next iteration repeats the normal lifecycle gate.
+                }
+                idle_burst.reset();
+                const bool trace_sleep = pacing_enabled();
+                const auto sleep_started = trace_sleep ? std::chrono::steady_clock::now() :
+                    std::chrono::steady_clock::time_point {};
                 // Separate opt-in experiment: only shorten idle intake waits
                 // after this session has actually used the fast matrix path.
                 // Renderer/publication waits and no-read games stay unchanged.
                 std::this_thread::sleep_for(fast_query_poll &&
                     service->fast_matrix_replies_active() ?
                     std::chrono::microseconds(100) : HpsQueuePollInterval);
+                if (trace_sleep) {
+                    const auto us = static_cast<std::uint64_t>(
+                        std::chrono::duration_cast<std::chrono::microseconds>(
+                            std::chrono::steady_clock::now() - sleep_started).count());
+                    pacing_add(Pacing::IntakeSleeps, 1);
+                    pacing_add(Pacing::IntakeSleepUs, us);
+                    auto& maximum = runtime_telemetry.pacing[
+                        static_cast<std::size_t>(Pacing::IntakeSleepMaxUs)];
+                    if (us > maximum.load(std::memory_order_relaxed))
+                        maximum.store(us, std::memory_order_relaxed); // Sole writer.
+                }
                 continue;
             }
         }
 
+        intake_timer_slack.restore();
+        idle_burst.reset(); // Never carry a retry deadline across sessions.
         const auto phase = inspect_shared_phase(header);
         if (phase == SharedPhase::Quiesce) {
             // Renderer destruction above is the quiesce point.  Never touch
@@ -9895,12 +10958,50 @@ try {
                 matched_requested && std::strcmp(matched_requested, "1") == 0;
             const char* full_rate_requested =
                 std::getenv("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE");
-            const bool matched_full_rate = matched_display && full_rate_requested &&
+            bool matched_full_rate = matched_display && full_rate_requested &&
                 std::strcmp(full_rate_requested, "1") == 0;
             const char* prefix_requested = std::getenv("NDS4MISTER_GX_MATRIX_PREFIX");
-            const unsigned matrix_prefix_mode = !prefix_requested ? 0u :
+            const bool automatic_query_profile = prefix_requested &&
+                std::strcmp(prefix_requested, "auto") == 0;
+            const char* frame_skip_requested = std::getenv("NDS4MISTER_STANDALONE_FRAME_SKIP");
+            const bool recovery_requested = frame_skip_requested &&
+                std::strcmp(frame_skip_requested, "nsmb-recovery") == 0;
+            const bool half_rate_requested = frame_skip_requested &&
+                std::strcmp(frame_skip_requested, "nsmb-half") == 0;
+            bool nsmb_recovery = false;
+            unsigned matrix_prefix_mode = !prefix_requested ? 0u :
                 std::strcmp(prefix_requested, "verify") == 0 ? 1u :
-                std::strcmp(prefix_requested, "fast") == 0 ? 2u : 0u;
+                std::strcmp(prefix_requested, "fast") == 0 || automatic_query_profile ? 2u : 0u;
+            std::uint32_t profile_session = 0;
+            if ((automatic_query_profile || recovery_requested || half_rate_requested) && matched_display) {
+                const auto selected_session = load_acquire(&header.fpga_session);
+                const auto selected = read_cartridge_query_profile(memory_path);
+                // Loading another ROM/resetting during identification must
+                // retry at its new boundary, not install the previous choice.
+                if (inspect_shared_phase(header) != SharedPhase::FreshSession ||
+                    load_acquire(&header.fpga_session) != selected_session)
+                    continue;
+                profile_session = selected_session;
+                if (automatic_query_profile)
+                    matrix_prefix_mode = nds4mister::replay::game_query_prefix_mode(selected.profile);
+                // Controlled NSMB-only comparison: reuse the existing tested
+                // paired-picture cadence while leaving all query/state work
+                // active. Other games and normal launchers keep full rate.
+                if (half_rate_requested && matrix_prefix_mode == 2 &&
+                    nds4mister::replay::nsmb_recovery_profile(selected))
+                    matched_full_rate = false;
+                nsmb_recovery = recovery_requested && matched_full_rate && matrix_prefix_mode == 2 &&
+                    nds4mister::replay::nsmb_recovery_profile(selected);
+                std::ostringstream profile_log;
+                profile_log << "H3D_GAME_QUERY_PROFILE session=" << selected_session
+                    << " profile=" << nds4mister::replay::game_query_profile_name(selected.profile)
+                    << " prefix_mode=" << matrix_prefix_mode
+                    << " identified=" << selected.identified
+                    << " recovery_skip=" << nsmb_recovery
+                    << " display_cadence=" << (matched_full_rate ? 1 : 2)
+                    << " header_crc32=" << std::hex << selected.identity.header_crc32;
+                std::cout << profile_log.str() << std::endl;
+            }
             const bool direct_publication =
                 memory_path == "/dev/mem" && direct_publication_requested &&
                 std::strcmp(direct_publication_requested, "0") != 0;
@@ -9927,8 +11028,9 @@ try {
                 matched_display,
                 matched_full_rate,
                 matrix_prefix_mode,
-                timing_profile_only);
-            const bool initialized = candidate->initialize();
+                timing_profile_only,
+                nsmb_recovery);
+            const bool initialized = candidate->initialize(profile_session);
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.
                 // Retain an override for controlled baseline comparisons.
@@ -9946,6 +11048,7 @@ try {
         std::this_thread::sleep_for(std::chrono::microseconds(50));
     }
 
+    intake_timer_slack.restore();
     service.reset();
     std::cout << "events_applied: " << total_events
               << "\nframes_published: " << total_frames

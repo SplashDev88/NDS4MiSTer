@@ -21,6 +21,7 @@
 
 #include <array>
 #include <memory>
+#include <vector>
 
 #include "Savestate.h"
 #include "FIFO.h"
@@ -243,10 +244,13 @@ private:
     // and advances it in bounded 256-command runs.  Keep that run contiguous
     // instead of paying the emulated four-entry pipe plus 256-entry FIFO
     // write/refill/read machinery for commands no emulated CPU can observe.
-    // SWAP_BUFFERS can suspend execution across several such runs. Overflow
-    // stays in the ordinary FIFO behind this bank until the entire tail drains.
+    // SWAP_BUFFERS can suspend execution across several such runs. The FPGA
+    // keeps producing while the replay waits for its recorded VBlank, so this
+    // host-only queue must retain the entire burst instead of spilling into a
+    // finite emulated CPU stall queue. Retain capacity across frames/resets.
     static constexpr u32 ExternalBatchCapacity = 512;
-    CmdFIFOEntry ExternalBatch[ExternalBatchCapacity] {};
+    std::vector<CmdFIFOEntry> ExternalBatch =
+        std::vector<CmdFIFOEntry>(ExternalBatchCapacity);
     u32 ExternalBatchRead = 0;
     u32 ExternalBatchCount = 0;
 
@@ -349,6 +353,9 @@ public:
     u32 RenderClearAttr2 = 0;
 
     bool RenderFrameIdentical = false; // not part of the hardware state, don't serialize
+    // Monotonic identity of the latched raster inputs. Unlike the adjacent
+    // VBlank hint, this retains invalidations across omitted render attempts.
+    u64 RenderStateRevision = 0; // replay-thread owned, not serialized/reset
 
     u16 RenderXPos = 0;
 
