@@ -18,6 +18,7 @@ Standalone is the direction for future NDS4MiSTer development. This installer ke
 - **Improved pacing and less repeated drawing work.** This is the build we preferred in testing, including New Super Mario Bros. and Castlevania. Speed still depends on the game and scene; this is not a promise of 60 FPS everywhere.
 - **Super Mario 64 DS graphics fixed.** The first course no longer collapses into a horizontal line in our tested version.
 - **Familiar menus and controls.** Core options, button mapping, Recent Files and the ROM loading bar follow the MiSTer layout. Press Right for the System page and Left to return.
+- **More reliable network ROM loading.** After you choose a ROM, slow network reads no longer make the launcher think it has frozen and return to MiSTer after 20 seconds. Loading can take longer, provided file data keeps arriving. It stops after two minutes without progress.
 - **A button to switch layouts.** The last option in **Define NDS buttons** is **Cycle Video Layout**. Assign a spare button to switch layouts while playing.
 - **Your saves carry over.** Standalone uses the same `games/NDS` and `saves/NDS` folders as the normal core. Your controller maps and standalone settings are kept separate.
 
@@ -70,7 +71,7 @@ This keeps the change to NDS; it also applies when you use the older normal NDS 
 ## Known issues
 
 - **Slowdown and uneven animation remain.** The tested USA version of New Super Mario Bros. uses fewer drawing updates to help game pacing. Other versions may behave differently. The **3D FPS Counter** is a counter, not a speed setting or a guarantee of 60 FPS gameplay.
-- **Slow network ROM loads can time out.** A stalled CIFS read can return you to the normal MiSTer menu. For this beta, copying the game to the SD card's `games/NDS` folder is the most reliable option.
+- **Network folder browsing can still stall.** The loading fix covers a selected ROM. Opening network folders or checking Recent Files can still hang on an unresponsive share and return you to MiSTer. Copying games to the SD card's `games/NDS` folder avoids these network delays.
 - **Shin Megami Tensei: Strange Journey can still freeze in the intro.**
 - **GTA: Chinatown Wars can still show occasional clipping near the camera.**
 - **Movies and audio can still hitch.** Sound remains experimental, and other games may have graphics problems, slow down or crash.

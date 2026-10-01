@@ -6,7 +6,112 @@
 #include <cassert>
 #include <iostream>
 #include <sys/wait.h>
+static unsigned rom_test_metadata_delay = 0, rom_test_read_delay = 0;
+static uint64_t rom_test_delay_offset = 0;
+static bool rom_test_read_error = false;
+static std::string rom_test_observer;
+static void delayed_rom_file(int fd, uint64_t off) {
+  const auto delay = fd < 0 ? rom_test_metadata_delay : off == rom_test_delay_offset ? rom_test_read_delay : 0;
+  const auto end = ms() + delay;
+  uint64_t maximum_age = 0;
+  while (ms() < end) {
+    uint64_t beat = 0;
+    std::ifstream("/tmp/nds-standalone-heartbeat") >> beat;
+    if (beat) maximum_age = std::max(maximum_age, ms() - beat);
+    usleep(10000);
+  }
+  if (delay) std::ofstream(rom_test_observer, std::ios::app) << maximum_age << '\n';
+  if (fd >= 0 && off > 0 && rom_test_read_error) close(fd);
+}
 struct HostTest {
+  static void rom_loading(const fs::path &root, bool slow) {
+    const auto sd = root / "loader-sd", kit = root / "loader-kit";
+    fs::create_directories(kit);
+    const auto roms = sd / "games/NDS";
+    fs::create_directories(roms);
+    const auto path = roms / "loader.nds";
+    std::ofstream(path, std::ios::binary) << std::string(512, 'x');
+    Host h(kit.string(), roms.string(), sd);
+    rom_test_observer = (root / "loader-heartbeat-observer.txt").string();
+    RomReader::test_hook = delayed_rom_file;
+    rom_test_metadata_delay = 250;
+    rom_test_read_delay = slow ? 21500 : 250;
+    running = 1;
+    h.spi.history.clear();
+    h.load(path.string());
+    assert(h.game == path && !h.menu && h.loading_progress == 167);
+    assert(RecentFiles::read(h.recentConfig()).size() == 1);
+    std::vector<std::vector<uint16_t>> downloads;
+    for (const auto &t : h.spi.history)
+      if (t.select == Spi::FIO && t.command == 0x53) downloads.push_back(t.words);
+    assert((downloads == std::vector<std::vector<uint16_t>>{{255, 512, 0}, {0}}));
+    uint64_t age, maximum_age = 0;
+    std::ifstream observer(rom_test_observer);
+    while (observer >> age) maximum_age = std::max(maximum_age, age);
+    assert(maximum_age > 0 && maximum_age < 1000);
+    std::cout << "PASS: actual Host::load metadata/read wait, heartbeat maximum_age_ms="
+              << maximum_age << " injected_read_delay_ms=" << rom_test_read_delay << '\n';
+    rom_test_metadata_delay = rom_test_read_delay = 0;
+    const auto outgoing_save = h.save;
+    const auto verify_no_start = [&] {
+      for (const auto &t : h.spi.history)
+        assert(!(t.select == Spi::FIO && t.command == 0x53 && t.words == std::vector<uint16_t>{0}));
+      assert(h.game == path && RecentFiles::read(h.recentConfig()).size() == 1);
+      assert(h.save == outgoing_save);
+    };
+    const auto broken = roms / "broken.nds";
+    std::ofstream(broken, std::ios::binary) << std::string(524288, 'x');
+    rom_test_read_error = true;
+    h.spi.history.clear();
+    bool failed = false;
+    try { h.load(broken.string()); }
+    catch (const std::exception &e) { failed = std::string(e.what()).find("ROM read failed") != std::string::npos; }
+    assert(failed);
+    verify_no_start();
+    assert(h.loading_progress > 0 && h.loading_progress < 167);
+    assert(!fs::exists(sd / "saves/NDS/broken.sav"));
+    rom_test_read_error = false;
+    h.spi.history.clear();
+    failed = false;
+    try { h.load((roms / "missing.nds").string()); }
+    catch (const std::exception &e) { failed = std::string(e.what()).find("open ROM") != std::string::npos; }
+    assert(failed);
+    for (const auto &t : h.spi.history) assert(t.select != Spi::FIO);
+    verify_no_start();
+    // SIGTERM cancels both blocked metadata and a read after download starts.
+    signal(SIGTERM, stop);
+    for (const bool metadata : {true, false}) {
+      rom_test_metadata_delay = metadata ? 5000 : 0;
+      rom_test_read_delay = metadata ? 0 : 5000;
+      rom_test_delay_offset = 262144;
+      const auto parent = getpid();
+      const auto signaller = fork();
+      assert(signaller >= 0);
+      if (!signaller) { usleep(900000); kill(parent, SIGTERM); _exit(0); }
+      h.spi.history.clear();
+      const auto start = ms();
+      failed = false;
+      try { h.load(broken.string()); }
+      catch (const std::exception &e) { failed = std::string(e.what()).find("ROM load interrupted") != std::string::npos; }
+      assert(failed && ms() - start < 1500);
+      verify_no_start();
+      if (!metadata) assert(h.loading_progress > 0 && h.loading_progress < 167);
+      assert(!fs::exists(sd / "saves/NDS/broken.sav"));
+      int status;
+      assert(waitpid(signaller, &status, 0) == signaller && WIFEXITED(status));
+      running = 1;
+    }
+    RomReader::test_hook = nullptr;
+    rom_test_metadata_delay = rom_test_read_delay = 0;
+    rom_test_delay_offset = 0;
+    // Beat reaps any cancellation that completed after the loader unwound.
+    usleep(10000);
+    h.nextbeat = 0;
+    h.beat();
+    int status;
+    assert(waitpid(-1, &status, WNOHANG) < 0 && errno == ECHILD);
+    std::cout << "PASS: ROM errors/cancellation cannot start partial ROM; all workers reaped\n";
+  }
   static void framebuffer_metadata(const fs::path &root) {
     const auto kit = root / "framebuffer-kit", sd = root / "framebuffer-sd";
     fs::create_directories(kit);
@@ -697,7 +802,7 @@ static void parent_death_test(bool before_arm) {
   std::cout << "PASS: supervisor death " << (before_arm ? "before" : "after")
             << " host parent-death signal armed\n";
 }
-int main() {
+int main(int argc, char **) {
   parent_death_test(false);
   parent_death_test(true);
   char dir[] = "/tmp/nds-standalone-host-test-XXXXXX";
@@ -715,5 +820,6 @@ int main() {
   HostTest::recents(root);
   HostTest::layout_hotkey(root);
   HostTest::framebuffer_metadata(root);
+  HostTest::rom_loading(root, argc > 1);
   fs::remove_all(root);
 }

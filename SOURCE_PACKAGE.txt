@@ -11,8 +11,12 @@ The private development history is not required; complete corresponding
 project sources are included directly in this public tree.
 
 The FPGA, renderer and WC module are packaged without rebuilding or changing
-runtime rendering/pacing options. The frontend is rebuilt only to update its
-release label and startup log. Public scripts use self-contained paths,
+runtime rendering/pacing options. The frontend includes its release label
+update and the isolated ROM-loading fix from
+1644284466634f53feafb2307e7d11577ef6f3d2. Slow file reads run in a
+disposable worker, while the parent keeps its existing watchdog heartbeat.
+The worker exists only during a ROM load; pacing/rendering policies are
+unchanged. Public scripts use self-contained paths,
 prerequisite checks, safe core handoff, per-run logs and portable first-use
 settings. No personal controls, settings, ROMs or saves are distributed.
 
@@ -20,7 +24,7 @@ Component SHA-256:
 FPGA: de443f91e8d3251053a6c881be78b28ca26c27b930f8f5ba9828b0c2089a45d9
 ARM renderer: f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729
 WC module: c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113
-Public standalone frontend: d99eab43e4d887dba6741b59c995aeb4d4f5ac216f240c4274eac7a383491cc1
+Public standalone frontend: 5d4275d484965c6749c7a70609ebb8b98546cc82ff66c8a5f3c184f3ba5cb56e
 Kickstart.sh: 8a8b205effdc14fed1d7c479d357dd1b4eaaad2742cea0e93df2d21002801659
 supervisor.py: 459e7ed53b0fed057b4a257318c04e1237054685246c8f62f4f2547dba50f033
 NDS_Standalone.sh: 594a59fcaa894496619c397a33ee0561810b682f0b3a2122386edca3c2e10b49

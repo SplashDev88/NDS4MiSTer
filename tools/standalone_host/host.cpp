@@ -7,6 +7,7 @@
 #include "menu_presentation.h"
 #include "osd_frame.h"
 #include "recent_files.h"
+#include "rom_reader.h"
 #include "system_menu.h"
 #include <algorithm>
 #include <array>
@@ -19,6 +20,7 @@
 #include <fstream>
 #include <linux/input.h>
 #include <map>
+#include <memory>
 #include <poll.h>
 #include <stdexcept>
 #include <string>
@@ -464,6 +466,7 @@ class Host {
   void beat() {
     uint64_t t = ms();
     if (t >= nextbeat) {
+      RomReader::reap();
       std::string s = std::to_string(t);
       require(pwrite(heartbeat, s.data(), s.size(), 0) == (ssize_t)s.size(),
               "heartbeat write");
@@ -1255,40 +1258,44 @@ public:
       close(heartbeat);
   }
   void load(const std::string &path) {
-    require(fs::is_regular_file(path), "ROM file");
-    auto n = fs::file_size(path);
-    require(n >= 512 && n <= 128u * 1024 * 1024, "ROM size");
     log("loading " + path);
     beginLoading(fs::path(path).filename().string());
     joy(0);
     drain(450);
-    int rf = open(path.c_str(), O_RDONLY | O_CLOEXEC);
-    require(rf >= 0, "open ROM");
+    const auto service = [&] {
+      if (!running) throw std::runtime_error("ROM load interrupted");
+      sector();
+      beat();
+    };
+    RomReader reader(path);
+    // File validation and all CIFS reads run outside the SPI/heartbeat owner.
+    const auto n = reader.size(service);
+#ifndef STANDALONE_TEST
     int mf = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
     require(mf >= 0, "ROM memory");
     void *mem =
         mmap(nullptr, n, PROT_READ | PROT_WRITE, MAP_SHARED, mf, 0x30000000);
     close(mf);
+#else
+    void *mem = mmap(nullptr, n, PROT_READ | PROT_WRITE,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+#endif
     require(mem != MAP_FAILED, "ROM mmap");
+    const auto unmap = [n](void *p) { munmap(p, n); };
+    std::unique_ptr<void, decltype(unmap)> mapping(mem, unmap);
     spi.cmd(Spi::FIO, 0x55, {3});
     spi.cmd(Spi::FIO, 0x56, {0x2e4e, 0x4453});
     spi.cmd(Spi::FIO, 0x53, {255, uint16_t(n), uint16_t(n >> 16)});
     // Download's rising edge asks the save bridge to flush the outgoing cart.
     drain(100);
     size_t off = 0;
-    while (off < n && running) {
-      ssize_t r =
-          pread(rf, (char *)mem + off, std::min<size_t>(262144, n - off), off);
-      require(r > 0, "ROM read");
-      off += r;
+    while (off < n) {
+      off += reader.read((char *)mem + off, std::min<size_t>(262144, n - off), service);
       updateLoading(off, n);
-      sector();
-      beat();
     }
-    close(rf);
-    require(off == n, "ROM load interrupted");
+    service();
     __sync_synchronize();
-    munmap(mem, n);
+    mapping.reset();
     mount(path);
     spi.cmd(Spi::FIO, 0x53, {0});
     game = path;

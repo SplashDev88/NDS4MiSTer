@@ -37,8 +37,12 @@ matching FPGA core and ARM helper; do not mix support files between versions.
 The normal MiSTer installation is still required, but installing an older NDS
 release first is not required.
 
-ROMs must be uncompressed `.nds` files up to **128 MiB**. Local SD loading is
-recommended: a stalled network/CIFS read can time out in this beta.
+ROMs must be uncompressed `.nds` files up to **128 MiB**. After you select a ROM,
+delayed network/CIFS reads no longer block the loader's heartbeat and trigger
+the 20-second recovery watchdog. Loading stops after **120 seconds without
+file progress**, not after 120 seconds of total loading time. The recovery
+watchdog itself is unchanged. Network folder browsing and Recent Files checks
+can still stall; local SD loading avoids those network delays.
 
 The launcher requires **Python 3.8+**, a kernel compatible with the included
 write-combining module, and working **1 GHz** clock control. Hardware testing
@@ -129,8 +133,9 @@ Known limitations include:
   60 FPS or percentage speedup is claimed.
 - Strange Journey can still freeze during its intro.
 - GTA: Chinatown Wars can still show occasional near-camera clipping.
-- Slow network ROM reads can stall the loader and trigger recovery to normal
-  MiSTer. The later asynchronous network-loader experiment is not included.
+- Network folder browsing and Recent Files availability checks can still block
+  the menu and trigger recovery to normal MiSTer. The loading fix covers reads
+  after selecting a ROM; it does not cover every operation on a network share.
 - The recent Jackass, King Kong and Need for Speed Carbon fixes are not in this
   accepted build.
 - Incomplete controller, alternate-INI and display-hotplug coverage.

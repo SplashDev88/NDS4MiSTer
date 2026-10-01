@@ -196,10 +196,17 @@ SHA-256 or matching-file error:
   Re-extract all files from this one release. Do not mix its core, helper,
   launcher or support files with those from another release.
 
-Slow network load returns to the normal menu:
-  This beta can time out if a CIFS read stalls. Copy the .nds file to the SD
-  card's games/NDS folder and try again. Local loading is the most reliable
-  option. The later slow-network loader experiment is not in this release.
+Slow network loading:
+  After you choose a ROM, delayed network/CIFS reads no longer block the
+  loader's heartbeat and cause the 20-second recovery watchdog to return to
+  MiSTer. That watchdog remains enabled. The loading bar can stay still while
+  waiting for more data. Loading stops after 120 seconds without file progress;
+  this is not a 120-second limit on the entire load.
+
+  Opening network folders and checking Recent Files availability can still
+  block the menu and trigger recovery to normal MiSTer. Those operations are
+  separate from the selected-ROM loading fix. If the share is unreliable, copy
+  the .nds file to the SD card's games/NDS folder and try again.
 
 No picture after changing video settings:
   Restore the previous NDS video_mode setting in MiSTer.ini and relaunch.
