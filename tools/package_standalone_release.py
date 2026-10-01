@@ -115,7 +115,7 @@ def main():
     digest = sha(archive.read_bytes())
     archive.with_suffix('.zip.sha256').write_text(digest + '  ' + archive.name + '\n')
     print(json.dumps({'archive': str(archive), 'sha256': digest,
-                      'files': len(files), 'bytes': archive.stat().st_size(),
+                      'files': len(files), 'bytes': archive.stat().st_size,
                       'source_revision': revision}, indent=2))
 
 
