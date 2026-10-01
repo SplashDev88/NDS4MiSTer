@@ -5,7 +5,7 @@ set -u
 kit=/media/fat/Scripts/.NDS_Standalone
 fail()
 {
-    printf '\nNDS Standalone: %s\n' "$1" >&2
+    printf '\nNDS4MiSTer: %s\n' "$1" >&2
     if [ -t 0 ]; then
         printf 'Press Enter to return to MiSTer.\n'
         read -r answer || :

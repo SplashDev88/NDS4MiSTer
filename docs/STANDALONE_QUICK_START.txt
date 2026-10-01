@@ -3,7 +3,7 @@ DRAFT FOR REVIEW — NOT YET PUBLISHED
 
 START HERE
 
-Run Scripts → NDS Standalone.
+Run Scripts → NDS4MiSTer.
 
 That one script starts the core and ARM helper and opens the NDS menu. You do
 not need to run NDS_Kickstart or choose an NDS core from Console first. There
@@ -21,7 +21,7 @@ your existing normal NDS release is preserved so you can still run it.
 - Extract the install ZIP to the root of the SD card. Merge Scripts; do not
   replace the whole Scripts folder.
 - Include Scripts/.NDS_Standalone. This hidden folder holds the matching core,
-  helper and support files. The visible launcher is Scripts/NDS_Standalone.sh.
+  helper and support files. The visible launcher is Scripts/NDS4MiSTer.sh.
 - Leave the support files together. Do not copy files from another NDS version
   into this folder.
 - Your old Console core, NDS_Kickstart, MiSTer.ini, global controller maps,
@@ -35,7 +35,7 @@ kernel, MiSTer binary or boot script is installed.
 
 2. LAUNCH A GAME
 
-- Open Scripts → NDS Standalone and wait for the NDS menu.
+- Open Scripts → NDS4MiSTer and wait for the NDS menu.
 - A fresh installation starts with Engine B On and Top/Bottom layout, with
   rotation and the FPS counter Off. Existing saved NDS settings take priority.
 - If you have older settings, check that Engine B (next Reset) is On for two
@@ -46,7 +46,7 @@ kernel, MiSTer binary or boot script is installed.
 - Use System → Save settings if you want the selected options on the next
   launch. Press Right on the core-menu page to reach System.
 
-Run NDS Standalone again whenever you return to this release. Do not start a
+Run NDS4MiSTer again whenever you return to this release. Do not start a
 second launcher while standalone is already running.
 
 
@@ -182,7 +182,7 @@ Active alternate INI configurations have not been fully validated here.
 8. TROUBLESHOOTING
 
 Script missing:
-  Check that NDS_Standalone.sh is inside Scripts on the SD card, not inside
+  Check that NDS4MiSTer.sh is inside Scripts on the SD card, not inside
   an extra ZIP-name folder. Its .NDS_Standalone support folder must be present.
 
 Missing Python, clock control or write-combining error:

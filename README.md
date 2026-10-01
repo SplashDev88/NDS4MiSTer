@@ -6,7 +6,7 @@ Experimental Nintendo DS support for MiSTer FPGA.
 
 > Release documentation draft; publication is pending approval.
 
-NDS4MiSTer now launches through **Scripts → NDS Standalone**. A lightweight
+NDS4MiSTer now launches through **Scripts → NDS4MiSTer**. A lightweight
 NDS frontend handles menus, input, loading and saves while you play, allowing
 the ARM processors to spend more time on the Nintendo DS workload. The normal
 MiSTer program initializes output before standalone takes over and returns
@@ -25,7 +25,7 @@ personal saves or credentials are included in this source repository.
 1. Back up the SD card's `saves/NDS` folder.
 2. Extract the release install ZIP to the SD card root, merging **Scripts**.
    Include the hidden `Scripts/.NDS_Standalone` support folder.
-3. Run **Scripts → NDS Standalone** and wait for the NDS menu.
+3. Run **Scripts → NDS4MiSTer** and wait for the NDS menu.
 4. Choose **Load NDS** and a game from `games/NDS`. Fresh installations start
    with both screens On in Top/Bottom layout. Older saved settings take
    priority; check **Engine B (next Reset) → On** for independent screens.

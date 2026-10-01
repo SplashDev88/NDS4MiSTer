@@ -208,7 +208,7 @@ def recover(state):
                 "This NDS core requires its matching helper. Normal MiSTer has been restored. "
                 "Run that release's NDS_Kickstart, then select its core."
             )
-            print("NDS Standalone: " + state["selected_core_message"], flush=True)
+            print("NDS4MiSTer: " + state["selected_core_message"], flush=True)
             target = None
         if target and target != SD_ROOT / "menu.rbf":
             # Only our exact FPGA may run with this package's renderer.
@@ -307,7 +307,7 @@ def validate_previous_renderer():
     try:
         pid = int(pidfile.read_text())
     except (ValueError, OSError):
-        raise RuntimeError("Invalid existing renderer PID file; reboot before launching NDS Standalone")
+        raise RuntimeError("Invalid existing renderer PID file; reboot before launching NDS4MiSTer")
     process = Path("/proc/%d/exe" % pid)
     if not process.exists():
         return
@@ -315,7 +315,7 @@ def validate_previous_renderer():
     actual = process.resolve()
     if actual == normal:
         prerequisite(sha(process) == NORMAL_HELPER_SHA,
-                     "Unrecognized normal NDS helper; reboot before starting NDS Standalone")
+                     "Unrecognized normal NDS helper; reboot before starting NDS4MiSTer")
         prerequisite((SD_ROOT / "Scripts/NDS_Kickstart.sh").is_file(),
                      "Existing NDS helper has no matching stop script; reboot first")
     else:
@@ -619,5 +619,5 @@ if __name__ == "__main__":
     try:
         main()
     except (Exception, KeyboardInterrupt) as error:
-        print("NDS Standalone: " + str(error), file=sys.stderr, flush=True)
+        print("NDS4MiSTer: " + str(error), file=sys.stderr, flush=True)
         sys.exit(1)

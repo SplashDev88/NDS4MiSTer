@@ -37,7 +37,7 @@ def main():
         if mode == 0o755:
             executable.add(name)
 
-    add('Scripts/NDS_Standalone.sh', HOST / 'NDS_Standalone.sh', 0o755)
+    add('Scripts/NDS4MiSTer.sh', HOST / 'NDS4MiSTer.sh', 0o755)
     add(SUPPORT + 'supervisor.py', HOST / 'supervisor.py', 0o755)
     add(SUPPORT + 'Kickstart.sh', HOST / 'Kickstart.sh', 0o755)
     add(SUPPORT + 'NDS_Standalone.rbf', a.core)
@@ -96,7 +96,7 @@ def main():
     # No user preferences or game data can be overwritten by extraction.
     for name in files:
         assert name.startswith(SUPPORT) or name in {
-            'Scripts/NDS_Standalone.sh', 'NDS4MiSTer_Standalone_README.txt'}
+            'Scripts/NDS4MiSTer.sh', 'NDS4MiSTer_Standalone_README.txt'}
         assert Path(name).suffix.lower() not in {'.cfg', '.ini', '.map', '.nds', '.sav', '.dsv'}
         assert '/inputs/' not in name
     a.out_dir.mkdir(parents=True, exist_ok=True)
