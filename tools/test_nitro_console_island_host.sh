@@ -8,6 +8,8 @@ trap 'rm -rf "$test_tmp"' EXIT
 
 bash "$script_dir/test_h3d_tag_factoring.sh"
 python3 "$script_dir/test_nds_cart_session_reset.py"
+python3 "$script_dir/test_nds_cart_large_rom.py"
+bash "$script_dir/test_nds_card_large_rom.sh"
 python3 "$script_dir/test_arm7_shared_shifter.py"
 python3 "$script_dir/test_sound_fetch_state_packing.py"
 "$script_dir/test_nds_sound_vhdl_analyze.sh"
@@ -45,6 +47,10 @@ run_sv() {
 run_sv tb_nds_nitro_ddram_cache_flush \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
     "$repo_dir/rtl/tb_nds_nitro_ddram_cache_flush.sv"
+
+run_sv tb_nds_ddram_cart_bank \
+    "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
+    "$repo_dir/rtl/tb_nds_ddram_cart_bank.sv"
 
 run_sv tb_nds_nitro_cart_readahead \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
@@ -115,7 +121,7 @@ vvp "$test_tmp/tb_nds_nitro_input_boundary"
 # a duplicate behavioral model in the testbench.
 grep -Fq '        "NDS;;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
-grep -Fq '        "FS3,NDS,Load NDS (max 128 MiB),30000000;",' \
+grep -Fq '        "FS3,NDS,Load NDS (max 512 MiB),30000000;",' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq 'nds_nitro_integer_scale integer_scale (' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
@@ -278,7 +284,13 @@ grep -Fq ".fpga_heartbeat_value(h3d_diagnostic_heartbeat)" \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq 'wire [31:0] h3d_bg1_scroll_triplet;' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
-grep -Fq 'h3d_bg1_scroll_meta_ddr <= h3d_bg1_scroll_triplet;' \
+grep -Fq 'nds_h3d_probe_cdc query_probe_cdc (' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.source_data(h3d_bg1_scroll_triplet)' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.source_toggle(h3d_query_sample_toggle)' \
+    "$repo_dir/rtl/nds_nitro_console_island.sv"
+grep -Fq '.sample_data(h3d_bg1_scroll_ddr)' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
 grep -Fq 'h3d_plane_descriptor_valid && h3d_plane_line_missed &&' \
     "$repo_dir/rtl/nds_nitro_console_island.sv"
@@ -394,6 +406,7 @@ iverilog -g2012 -Wall -i -tnull -s nds_nitro_console_island \
     "$repo_dir/rtl/nds_h3d_frame_packet_writer.sv" \
     "$repo_dir/rtl/nds_h3d_adoption_window.sv" \
     "$repo_dir/rtl/nds_h3d_plane_reader.sv" \
+    "$repo_dir/rtl/nds_h3d_probe_cdc.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv" \
     "$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv" \
     "$repo_dir/rtl/nds_nitro_console_island.sv"

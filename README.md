@@ -1,161 +1,138 @@
 # NDS4MiSTer
 
-Experimental Nintendo DS support for MiSTer FPGA.
+**v0.9.0-rc.1 — standalone launch, larger games, and the original DS firmware menu.**
 
-**v0.6.0-beta — standalone launch, a familiar menu, and improved pacing.**
-
-> Release documentation draft; publication is pending approval.
-
-NDS4MiSTer now launches through **Scripts → NDS4MiSTer**. A lightweight
-NDS frontend handles menus, input, loading and saves while you play, allowing
-the ARM processors to spend more time on the Nintendo DS workload. The normal
-MiSTer program initializes output before standalone takes over and returns
-when you exit.
-
-Standalone is the direction of future development. The installer preserves
-your existing normal NDS core, launcher and settings. Your ROM and cartridge
-save folders stay the same.
-
-This remains a beta. Not every game runs at full speed, and graphics, audio
-and compatibility issues remain. No commercial ROMs, BIOS/firmware dumps,
-personal saves or credentials are included in this source repository.
+Experimental Nintendo DS support for MiSTer FPGA. This release candidate
+retains the accepted gameplay build, adds supported larger ROM layouts and
+an optional way to visit the DS firmware interface. Graphics, sound and
+compatibility remain works in progress; not every game reaches full speed.
 
 ## Install and play
 
-1. Back up the SD card's `saves/NDS` folder.
-2. Extract the release install ZIP to the SD card root, merging **Scripts**.
-   Include the hidden `Scripts/.NDS_Standalone` support folder.
-3. Run **Scripts → NDS4MiSTer** and wait for the NDS menu.
-4. Choose **Load NDS** and a game from `games/NDS`. Fresh installations start
-   with both screens On in Top/Bottom layout. Older saved settings take
-   priority; check **Engine B (next Reset) → On** for independent screens.
-5. Use **System → Save settings** to keep your options.
+1. Extract the install ZIP to the SD card root, merging **Scripts**. Include
+   the hidden **Scripts/.NDS_Standalone** folder. If copying extracted files
+   manually, enable “show hidden files.” Exit standalone before updating it.
+2. Run **Scripts → NDS4MiSTer** and wait for the NDS menu.
+3. Choose **Load *.NDS** and an uncompressed game from `games/NDS`.
+4. Use **System → Save settings** to keep your options.
 
-There is **no separate Kickstart step or five-minute window** for standalone.
-Run its script each time you want to launch this release. It contains its own
-matching FPGA core and ARM helper; do not mix support files between versions.
-The normal MiSTer installation is still required, but installing an older NDS
-release first is not required.
+No separate Kickstart step, Console launch or five-minute window is needed.
+Standalone stops the normal MiSTer program while you play and uses its own
+lightweight menu. **System → Reboot** returns to normal MiSTer without
+power-cycling the board. The normal MiSTer installation is still required;
+a previous NDS release is not.
 
-ROMs must be uncompressed `.nds` files up to **128 MiB**. After you select a ROM,
-delayed network/CIFS reads no longer block the loader's heartbeat and trigger
-the 20-second recovery watchdog. Loading stops after **120 seconds without
-file progress**, not after 120 seconds of total loading time. The recovery
-watchdog itself is unchanged. Network folder browsing and Recent Files checks
-can still stall; local SD loading avoids those network delays.
+Existing normal NDS/Kickstart installations remain available. The update
+replaces standalone program files in its own support folder and preserves
+games, saves, settings and `MiSTer.ini`. Future development focuses on standalone.
+Use the matching core, host, renderer and scripts; do not mix release files.
 
-The launcher requires **Python 3.8+**, a kernel compatible with the included
-write-combining module, and working **1 GHz** clock control. Hardware testing
-used Linux **5.15.1-MiSTer**. Unlike the older normal launcher, this standalone
-requires a working write-combining mapping; it will not silently run without
-it. It does not install a kernel or change `MiSTer.ini`.
+Fresh settings use **Top/Bottom**, with rotation and the FPS counter Off.
+Both DS graphics engines are always enabled. Existing settings take priority;
+the former Engine B switch is gone. Cartridge saves are shared with normal
+NDS in `saves/NDS`; keep the same ROM filename to use its matching save.
 
-See [release notes](docs/RELEASE_NOTES_V060_BETA.md) and the bundled
-[quick start](docs/STANDALONE_QUICK_START.txt) for setup and troubleshooting.
+The launcher requires a compatible kernel with write-combining support and
+working **1 GHz** clock control. Testing used **Linux 5.15.1-MiSTer**. It does
+not install a kernel or change your INI. See the quick start if a prerequisite
+check fails. No overclock is used.
 
-## The standalone menu
+Read the [release notes](docs/RELEASE_NOTES_V090_RC1.md) and
+[quick start](docs/STANDALONE_QUICK_START.txt) for setup, requirements and
+troubleshooting. In the install ZIP these are `RELEASE_NOTES.md` and
+`QUICK_START.txt` at its root.
 
-Open the menu with F12, the board OSD button, or the configured controller menu
-combination. Select + Start and Guide provide fallbacks. **Opening the menu
-does not pause the game.** Press Right from the core page for System and Left
-to return. A/Enter selects; B/Escape goes back.
+## Optional DS firmware menu
 
-- **Define NDS buttons** creates a standalone controller map while preserving
-  normal MiSTer maps. Mouse and right-stick touch input remain available.
-- **Cycle Video Layout**, the final mapping prompt, can assign a spare button
-  to switch between Left/Right, Top/Bottom, Left Only and Right Only while playing.
-- **Recent Files** shares the normal NDS history. Press controller Select or
-  keyboard backtick at Load NDS or in the ROM picker.
-- **Save settings** stores standalone's own options. Existing normal NDS
-  settings are read when no private settings exist. With no saved settings,
-  Engine B starts On in Top/Bottom layout; rotation and the FPS counter are Off.
-- **System → Reboot** closes standalone and returns to normal MiSTer's menu;
-  it is not a power cycle. The old normal NDS release continues to use its own
-  Kickstart and Console launch steps.
+Normal games use built-in FreeBIOS and generated firmware; no external BIOS
+or firmware is needed. The default nickname is **MiSTer**.
 
-Greyed-out System rows are not implemented. Video/audio filters, advanced
-button remapping, player assignment and conditional OSD locking are among the
-unavailable actions. Use normal MiSTer for global changes and Bluetooth pairing.
-The familiar layout is not a promise of every MiSTer system feature.
+To use **Boot DS firmware**, put your own compatible files directly in:
 
-## Screens, TATE and saves
+```text
+games/NDS/bios7.bin
+games/NDS/bios9.bin
+games/NDS/firmware.bin
+```
 
-**Engine B On** draws both DS screens separately and is recommended for normal
-play. **Off** skips the second engine and mirrors the first screen. It may
-improve performance in some scenes, but hides second-screen content. Reset or
-reload the game after changing it.
+The native GUI requires supported BIOS files and a compatible **256 KiB DS/DS
+Lite firmware image**. Some dumps and touch calibrations are unsupported;
+see the quick start for exact requirements. These files are not distributed.
+Start games through **Load *.NDS**, not the native firmware cartridge slot.
 
-TATE supports **90 CW** and **90 CCW**. Choose **Top/Bottom**, then rotate the
-picture opposite to the monitor's physical turn. D-pad, mouse and touch follow
-the rotated display. The menu rotates separately through `MiSTer.ini`.
+Your original files stay untouched. Updated firmware is saved directly as
+`saves/NDS/firmware.bin`, with a previous copy beside it. There is no firmware
+subfolder. Nickname, birthday, favorite color and language are shared with the
+built-in game profile; touch calibration is not. Firmware clock changes last
+only for the current session, and RTC alarm interrupts are not implemented.
 
-For a 1080p-capable portrait display, this optional setup gave small borders
-and about 95% portrait width in the tested layout:
+## Menu and screen layout
+
+Open the menu with **F12**, the OSD button or your configured controller menu
+combination. Select + Start and Guide provide fallbacks for a new controller.
+Press Right for System, Left to return, A/Enter to select and B/Escape to go back.
+**The menu does not pause the game.** Greyed-out System rows are not implemented;
+use normal MiSTer for global changes and Bluetooth pairing.
+
+**Define NDS buttons** creates a standalone controller map. Its last prompt,
+**Cycle Video Layout**, assigns a spare button to cycle screen layouts during
+play. **Recent Files** shares the normal NDS history; use controller Select or
+keyboard backtick at **Load *.NDS** or in the ROM picker.
+
+For TATE, use Top/Bottom and set rotation opposite to your monitor's physical
+turn: **90 CCW** for a clockwise turn, **90 CW** for a counterclockwise turn.
+D-pad, mouse and touch follow the rotated picture. The menu rotates separately
+in `MiSTer.ini`:
 
 ```ini
 [NDS]
-video_mode=8
 osd_rotate=2
 ```
 
 Use `osd_rotate=1` if the menu is upside down. Edit the existing `[NDS]` section
-if present, then return to normal MiSTer and relaunch standalone. The installer
-does not edit the INI. These NDS overrides also affect an older normal NDS core.
-Scaling uses whole pixels; border size depends on layout and screen gap.
-
-Cartridge saves are shared by normal NDS and standalone in:
-
-```text
-/media/fat/saves/NDS/
-```
-
-Keep the same ROM filename to keep using its matching `.sav`. This is in-game
-cartridge saving, not save states. Back up saves before upgrading. Standalone
-does not repair older corrupt saves or replace progress with archived test saves.
+if present. On a display supporting 1080p, optional `video_mode=8` under `[NDS]`
+can widen the portrait picture with small borders. Scaling uses whole pixels;
+borders depend on the layout. Return to normal MiSTer and relaunch to apply
+changes. NDS-specific INI settings also affect an older normal NDS core.
 
 ## Compatibility and performance
 
-The accepted build retains prior graphics and compatibility fixes and the
-Super Mario 64 DS fix for first-course graphics collapsing into one line.
-It reduces repeated drawing work and includes game-specific pacing choices.
-Both ARM cores remain at **1 GHz**, with no 1.2 GHz overclock.
+The accepted standalone pacing, drawing reuse and write-combining work remain.
+Super Mario 64 DS's first-course horizontal-line problem is fixed in the tested
+version. Supported larger layouts include tested Kingdom Hearts: 358/2 Days
+and Pokémon White 2. File size alone is not a compatibility guarantee: files
+up to 256 MiB require all-FF padding above 252 MiB; larger files up to 512 MiB
+require it above 316 MiB. Unsupported layouts are rejected before upload.
 
-The tested **USA revision 0** of New Super Mario Bros. uses alternate drawing
-updates to reduce work; game state and graphics commands still advance. Other
-regions/revisions may behave differently. This is not a global FPS cap or a
-user-selectable frame-skip setting. The **3D FPS Counter** reports publication
-activity, including reused planes; it does not establish unique animation
-frames, emulation speed or input latency.
+Delayed ROM reads run separately so a slow network transfer can keep loading.
+A load stops after **120 seconds without file progress**, not 120 seconds total.
+Network folder browsing and Recent Files checks can still stall. Local SD
+loading avoids those delays.
 
-Known limitations include:
+Known limitations include slowdown, surging, uneven animation, movie/audio
+hitches and incomplete compatibility. Strange Journey can still freeze in its
+intro; GTA: Chinatown Wars can show near-camera clipping. The later Jackass,
+King Kong and NFS Carbon bundle is not included. NAND cartridge saves, save
+states, DS wireless multiplayer and microphone input are not implemented.
+DSi-enhanced game compatibility does not add DSi mode.
 
-- Slowdown, surging, uneven animation, and movie/audio hitches. No universal
-  60 FPS or percentage speedup is claimed.
-- Strange Journey can still freeze during its intro.
-- GTA: Chinatown Wars can still show occasional near-camera clipping.
-- Network folder browsing and Recent Files availability checks can still block
-  the menu and trigger recovery to normal MiSTer. The loading fix covers reads
-  after selecting a ROM; it does not cover every operation on a network share.
-- The recent Jackass, King Kong and Need for Speed Carbon fixes are not in this
-  accepted build.
-- Incomplete controller, alternate-INI and display-hotplug coverage.
-- Experimental sound and incomplete game compatibility. NAND cartridge saves,
-  save states, DS wireless multiplayer and microphone input are not implemented.
+The tested USA revision 0 of NSMB uses alternate drawing updates to reduce
+work while game state and graphics commands advance. This is not a global FPS
+cap. The **3D FPS Counter** reports publication activity, including reused
+planes, rather than unique animation frames or input latency. No universal
+60 FPS or percentage speedup is claimed.
 
-The launcher stops disconnected host Wi-Fi retries for the current boot to
-avoid stalls. Saved network settings and an active connection are preserved;
-normal Wi-Fi startup returns after reboot. This does not implement DS wireless.
+Disconnected host Wi-Fi retries are stopped for the current boot to avoid
+stalls. Saved network settings and active connections are preserved; normal
+Wi-Fi startup returns after reboot. This does not implement DS wireless.
 
 ## Reporting bugs
 
 Use [GitHub Issues](https://github.com/SplashDev88/NDS4MiSTer/issues). Include
-the release version, game title/region/revision, scene and steps to reproduce,
-Engine B setting, SD versus network ROM loading, controller and kernel version.
-Include the exact launch error or relevant generated log if available. Check
-logs for personal paths or network details before sharing.
-
-Do not post commercial ROMs, BIOS/firmware dumps, personal saves or credentials.
-A game code/revision and a description of the scene are enough to identify it.
+release version, game title/region/revision, scene, reproduction steps,
+SD versus network loading, controller and kernel version. Include the exact
+error or relevant log after checking it for personal paths or network details.
+Do not upload commercial ROMs, BIOS/firmware dumps, saves or credentials.
 
 ## For developers
 
@@ -164,7 +141,7 @@ A game code/revision and a description of the scene are enough to identify it.
 - The **FPGA** runs DS ARM9/ARM7 execution, timing, DMA, cartridge/memory/VRAM
   paths, sound, save/input interfaces and MiSTer video output. It transports
   ordered graphics events to the HPS.
-- The **ARM/HPS helper** replays graphics work and composes Engine A, optional
+- The **ARM/HPS helper** replays graphics work and composes Engine A,
   Engine B and 3D into complete screen pairs. The FPGA adopts completed banks.
   Write-combining is restricted to pixel-publication mappings; ownership,
   session checks and reset quiescence remain enforced.

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
+#include "rom_layout.h"
 #include <algorithm>
 #include <array>
 #include <cerrno>
@@ -23,7 +24,18 @@
 // disposable child touches the ROM file; the SPI owner waits in short polls.
 // A pipe also bounds read-ahead memory and keeps the child away from ROM/SPI MMIO.
 class RomReader {
+public:
+  static constexpr uint64_t max_file_size = RomLayout::max_file_size;
+  static constexpr uint64_t max_transfer_size = RomLayout::max_transfer_size;
+  static constexpr bool validSize(uint64_t size) {
+    return size >= 512 && size <= max_file_size;
+  }
+  static constexpr uint64_t transferSize(uint64_t size) {
+    return RomLayout::transferSize(size);
+  }
+private:
   struct Header { uint64_t size; int error; int operation; };
+  static constexpr int padding_progress = 7;
   int input = -1;
   pid_t child = -1;
   std::chrono::steady_clock::time_point progressed = std::chrono::steady_clock::now();
@@ -66,17 +78,38 @@ class RomReader {
     if (rom < 0) { h.operation = 1; h.error = errno; }
     else if (fstat(rom, &st)) { h.operation = 2; h.error = errno; }
     else if (!S_ISREG(st.st_mode)) { h.operation = 3; h.error = EINVAL; }
-    else if (st.st_size < 512 || st.st_size > 128 * 1024 * 1024) {
+    else if (st.st_size < 0 || !validSize(uint64_t(st.st_size))) {
       h.operation = 4; h.error = EINVAL;
     } else h.size = uint64_t(st.st_size);
-    if (!send(output, &h, sizeof(h)) || h.operation) _exit(1);
-    std::array<char, 262144> buffer;
-    uint64_t off = 0;
-    while (off < h.size) {
+    std::array<unsigned char, 262144> buffer;
+    // Validate all omitted bytes before telling the host it may start a
+    // download. The ROM header's used-size field is not evidence of padding.
+    uint64_t off = RomLayout::transferLimit(h.size);
+    while (!h.operation && off < h.size) {
 #ifdef STANDALONE_TEST
       if (test_hook) test_hook(rom, off);
 #endif
       const auto n = pread(rom, buffer.data(), std::min<uint64_t>(buffer.size(), h.size - off), off);
+      if (n < 0 && errno == EINTR) continue;
+      if (n <= 0) { h.operation = 6; h.error = n < 0 ? errno : EIO; break; }
+      if (std::any_of(buffer.begin(), buffer.begin() + n,
+                      [](unsigned char byte) { return byte != 0xff; })) {
+        h.operation = 5; h.error = EINVAL; break;
+      }
+      off += uint64_t(n);
+      // Keep the no-progress timeout honest during slow padding reads without
+      // granting the host permission to touch cartridge memory yet.
+      const Header progress{off, 0, padding_progress};
+      if (!send(output, &progress, sizeof(progress))) _exit(1);
+    }
+    if (!send(output, &h, sizeof(h)) || h.operation) _exit(1);
+    off = 0;
+    const auto transfer_size = transferSize(h.size);
+    while (off < transfer_size) {
+#ifdef STANDALONE_TEST
+      if (test_hook) test_hook(rom, off);
+#endif
+      const auto n = pread(rom, buffer.data(), std::min<uint64_t>(buffer.size(), transfer_size - off), off);
       if (n < 0 && errno == EINTR) continue;
       if (n <= 0 || !send(output, buffer.data(), size_t(n))) _exit(1);
       off += uint64_t(n);
@@ -148,11 +181,18 @@ public:
   template<class Service>
   uint64_t size(const Service &service, unsigned timeout_ms = no_progress_ms) {
     Header h{};
-    size_t off = 0;
-    while (off < sizeof(h))
-      off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
+    do {
+      size_t off = 0;
+      while (off < sizeof(h))
+        off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
+    } while (h.operation == padding_progress);
     if (h.operation) {
-      const char *names[] = {"", "open ROM", "ROM stat", "ROM file", "ROM size"};
+      if (h.operation == 5)
+        throw std::runtime_error(RomLayout::extended(h.size)
+            ? "ROM data above 316 MiB must be FF padding (cartridge storage is reserved)"
+            : "ROM data above 252 MiB must be FF padding (graphics memory is reserved)");
+      const char *names[] = {"", "open ROM", "ROM stat", "ROM file", "ROM size", "",
+                             "ROM read failed while checking padding"};
       throw std::runtime_error(std::string(names[h.operation]) + ": " + strerror(h.error));
     }
     return h.size;

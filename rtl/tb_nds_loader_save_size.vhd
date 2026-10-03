@@ -19,7 +19,7 @@ architecture sim of tb_nds_loader_save_size is
    signal save_code_seen : std_logic := '0';
    signal ir_cart_latched : std_logic := '0';
    signal card_ena, card_done : std_logic := '0';
-   signal card_addr : std_logic_vector(26 downto 2);
+   signal card_addr : std_logic_vector(28 downto 2);
    signal card_rdata : std_logic_vector(31 downto 0) := (others => '0');
    signal wr_ena, wr_rnw : std_logic;
    signal wr_addr, wr_data : std_logic_vector(31 downto 0);

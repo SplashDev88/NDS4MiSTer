@@ -70,6 +70,14 @@ entity nds_loader is
       -- does. nds_card serves the cart from its own channel either way, so the
       -- images do not need to be in main RAM first.
       fw_boot     : in  std_logic := '0';
+      -- Session inputs are stable from start through done. No cartridge is
+      -- valid only for native firmware boot; never fabricate a cartridge.
+      cart_present : in std_logic := '1';
+      profile_valid : in std_logic := '0';
+      profile_addr : out std_logic_vector(4 downto 0) := (others => '0');
+      profile_data : in std_logic_vector(31 downto 0) := (others => '0');
+      profile_fw_offset : in std_logic_vector(31 downto 0) := x"0001FE00";
+      profile_fw_checksums : in std_logic_vector(31 downto 0) := x"00000000";
       busy        : out std_logic := '0';
       done        : out std_logic := '0';              -- level, stays high
       load_error  : out std_logic := '0';
@@ -85,7 +93,7 @@ entity nds_loader is
 
       -- card image read port (word addressed into the staged .nds)
       card_ena    : out std_logic := '0';
-      card_addr   : out std_logic_vector(26 downto 2) := (others => '0');
+      card_addr   : out std_logic_vector(28 downto 2) := (others => '0');
       card_done   : in  std_logic;
       card_rdata  : in  std_logic_vector(31 downto 0);
 
@@ -123,7 +131,7 @@ architecture arch of nds_loader is
       CP_WR, CP_WR_WAIT,     -- ... destination write
       NEXT_CPU,
       CARTID_CALC,           -- one round-up-to-power-of-two step per cycle
-      ENV_SET, ENV_WR, ENV_WR_WAIT,   -- direct-boot env table
+      ENV_SET, ENV_PROFILE, ENV_WR, ENV_WR_WAIT,   -- direct-boot env table
       VF_RD, VF_RD_WAIT,     -- verify pass: re-read the card word ...
       VF_MEM, VF_MEM_WAIT,   -- ... then read main RAM back and compare
       FINISHED
@@ -132,7 +140,7 @@ architecture arch of nds_loader is
 
    type t_hdr is array (0 to 7) of std_logic_vector(31 downto 0);
    signal hdr     : t_hdr := (others => (others => '0'));
-   signal hdr_i   : integer range 0 to 9 := 0;
+   signal hdr_i   : integer range 0 to 11 := 0;
 
    -- Main RAM must be ZERO before the CPUs run. NitroSDK's MI_LockByWord does
    -- `swp r0,r0,[0x027FFFE8]` with lock id 0x40: SWP always writes the id and
@@ -152,7 +160,7 @@ architecture arch of nds_loader is
    signal clr_w7  : std_logic := '0';
 
    signal cpu_sel : integer range 0 to 2 := 0;         -- 0 = ARM9, 1 = ARM7, 2 = header env copy
-   signal src     : unsigned(26 downto 2) := (others => '0');
+   signal src     : unsigned(28 downto 2) := (others => '0');
    signal dst     : unsigned(31 downto 0) := (others => '0');
    signal words   : unsigned(21 downto 0) := (others => '0');
 
@@ -163,7 +171,8 @@ architecture arch of nds_loader is
    signal env_hdrcrc : std_logic_vector(15 downto 0) := (others => '0'); -- hdr+0x15E
    signal env_seccrc : std_logic_vector(15 downto 0) := (others => '0'); -- hdr+0x6C
    signal cart_p     : unsigned(31 downto 0) := to_unsigned(512, 32);
-   signal cart_iter  : integer range 9 to 28 := 9;
+   signal cart_iter  : integer range 9 to 29 := 9;
+   signal cart_dsi   : std_logic := '0'; -- metadata read only for >256 MiB media
    signal cartid     : std_logic_vector(31 downto 0) := (others => '0');
    signal crcword    : std_logic_vector(31 downto 0) := (others => '0');
    signal env_i      : integer range 0 to 41 := 0;
@@ -176,7 +185,21 @@ architecture arch of nds_loader is
    signal vfy_at     : std_logic_vector(31 downto 0) := (others => '0');
 
    -- table entries 0..12, then the 0x70-byte default user settings block
-   -- (melonDS LoadDefaultFirmware: version 5, defaults, name empty)
+   -- Generated from the same MiSTer-default synthetic pages as SPI/host.
+   -- BEGIN GENERATED BUILTIN PROFILE (generate_nitro_firmware_vhdl.py)
+   type t_builtin_profile is array (0 to 27) of std_logic_vector(31 downto 0);
+   constant BUILTIN_USER_WORDS : t_builtin_profile := (
+      0 => x"01000005",
+      1 => x"004D0001",
+      2 => x"00530069",
+      3 => x"00650054",
+      4 => x"00000072",
+      6 => x"00060000",
+      23 => x"0FF00000",
+      24 => x"BFFF0BF0",
+      25 => x"00000031",
+      others => (others => '0'));
+   -- END GENERATED BUILTIN PROFILE
    function env_addr(i : integer) return unsigned is
    begin
       case i is
@@ -200,6 +223,10 @@ architecture arch of nds_loader is
 begin
 
    cart_id  <= cartid;
+   -- The profile table may register its data for one clk cycle. ENV_PROFILE
+   -- supplies the extra settle cycle after env_i changes, only on this path.
+   profile_addr <= std_logic_vector(to_unsigned(env_i - 13, 5))
+                   when env_i >= 13 and env_i < 41 else (others => '0');
    vfy_bad  <= std_logic_vector(vfy_cnt);
    vfy_addr <= vfy_at;
 
@@ -231,6 +258,7 @@ begin
                      busy  <= '1';
                      done  <= '0';
                      hdr_i <= 0;
+                     cart_dsi <= '0';
                      save_is_64k <= '0';
                      save_gamecode <= (others => '0');
                      clr_i  <= (others => '0');
@@ -300,15 +328,27 @@ begin
                   end if;
 
                when HDR_REQ =>
+                  if cart_present = '0' then
+                     cartid <= (others => '1');
+                     busy <= '0';
+                     done <= '1';
+                     if fw_boot /= '1' then load_error <= '1'; end if;
+                     state <= FINISHED;
+                  else
                   card_ena <= '1';
                   if (hdr_i = 8) then                                        -- one extra word:
-                     card_addr <= std_logic_vector(to_unsigned(3, 25));      -- byte 0x0C, game code
+                     card_addr <= std_logic_vector(to_unsigned(3, card_addr'length));      -- byte 0x0C, game code
                   elsif (hdr_i = 9) then
-                     card_addr <= std_logic_vector(to_unsigned(16#20#, 25)); -- byte 0x80, used ROM size
+                     card_addr <= std_logic_vector(to_unsigned(16#20#, card_addr'length)); -- byte 0x80, used ROM size
+                  elsif (hdr_i = 10) then
+                     card_addr <= std_logic_vector(to_unsigned(4, card_addr'length)); -- byte 0x12 UnitCode
+                  elsif (hdr_i = 11) then
+                     card_addr <= std_logic_vector(to_unsigned(16#6C#, card_addr'length)); -- DSi region mask
                   else
-                     card_addr <= std_logic_vector(to_unsigned(8 + hdr_i, 25)); -- word 8 = byte 0x20
+                     card_addr <= std_logic_vector(to_unsigned(8 + hdr_i, card_addr'length)); -- word 8 = byte 0x20
                   end if;
                   state <= HDR_WAIT;
+                  end if;
 
                when HDR_WAIT =>
                   if (card_done = '1') then
@@ -322,10 +362,24 @@ begin
                         end if;
                         hdr_i <= hdr_i + 1;
                         state <= HDR_REQ;
-                     elsif (hdr_i = 9) then
-                        env_size <= unsigned(card_rdata);
-                        cpu_sel  <= 0;
-                        if (fw_boot = '1') then
+                     elsif (hdr_i = 10) then
+                        cart_dsi <= card_rdata(17); -- UnitCode bit 1, little endian
+                        hdr_i <= 11;
+                        state <= HDR_REQ;
+                     elsif (hdr_i = 9 or hdr_i = 11) then
+                        if (hdr_i = 9) then
+                           env_size <= unsigned(card_rdata);
+                           cpu_sel  <= 0;
+                        elsif (card_rdata = x"00000000") then
+                           cart_dsi <= '0'; -- melonDS zero-region bad-dump fallback
+                        end if;
+                        -- Older media keep the original reads and cycle count.
+                        -- These two metadata words also cover firmware boot,
+                        -- which does not perform the direct-boot header copy.
+                        if (hdr_i = 9 and unsigned(card_rdata) > x"10000000") then
+                           hdr_i <= 10;
+                           state <= HDR_REQ;
+                        elsif (fw_boot = '1') then
                            -- firmware boot: skip the staging copies entirely. The
                            -- header is still read because CARTID_CALC needs the
                            -- used-ROM-size word, and nds_card must answer B8 with a
@@ -357,7 +411,7 @@ begin
                      busy       <= '0';
                      state      <= FINISHED;
                   else
-                     src <= unsigned(romoff(26 downto 2));
+                     src <= unsigned(romoff(28 downto 2));
                      dst <= unsigned(loadaddr);
                      if (skip_copy = '1' and loadaddr(31 downto 24) = x"02") then
                         words <= (others => '0');   -- already in the model's RAM
@@ -429,13 +483,17 @@ begin
                   end if;
 
                when CARTID_CALC =>
-                  if (cart_iter <= 27) then
+                  if (cart_iter <= 27 or (cart_iter = 28 and env_size > x"10000000")) then
                      if (cart_p < env_size) then
                         cart_p <= shift_left(cart_p, 1);
                      end if;
                      cart_iter <= cart_iter + 1;
                   else
-                     if (cart_p >= x"00100000") then
+                     if (cart_p > x"10000000") then
+                        -- >128 MiB uses the reverse size-byte encoding;
+                        -- 512 MiB is FE, not the linear formula's 1FF.
+                        cartid <= "0" & cart_dsi & "00" & x"000FEC2";
+                     elsif (cart_p >= x"00100000") then
                         cartid <= std_logic_vector(
                            x"000000C2" or
                            shift_left(resize(shift_right(cart_p, 20) - 1, 32), 8));
@@ -475,25 +533,24 @@ begin
                         when 8             => wr_data <= x"0000FFFF";
                         when 9             => wr_data <= x"00000001";
                         when 10            => wr_data <= x"00000000";
-                        when 11            => wr_data <= x"0007FE00"; -- fw user-settings offset
-                        when 12            => wr_data <= x"0000FFFF"; -- fw data/gui CRC16s
-                        -- user settings: version 5, favorite color/birthday
-                        -- defaults, melonDS touchscreen calibration at
-                        -- +0x58..+0x63, halfword 0x0031 at +0x64
-                        when 13            => wr_data <= x"01000005";
-                        when 14            => wr_data <= x"00000001";
-                        -- ADC1=(0,0), Pixel1=(0,0),
-                        -- ADC2=(255<<4,191<<4), Pixel2=(255,191).
-                        -- Words are written little-endian: +0x60 must contain
-                        -- bytes F0 0B FF BF, not 0B F0 FF BF.
-                        -- +0x58 remains zero through the default arm below.
-                        when 36            => wr_data <= x"0FF00000";
-                        when 37            => wr_data <= x"BFFF0BF0";
-                        when 38            => wr_data <= x"00000031";
-                        when others        => wr_data <= x"00000000";
+                        when 11            =>
+                           if profile_valid = '1' then wr_data <= profile_fw_offset;
+                           else wr_data <= x"0001FE00"; end if;
+                        when 12            =>
+                           if profile_valid = '1' then wr_data <= profile_fw_checksums;
+                           else wr_data <= x"00000000"; end if;
+                        when others        => wr_data <= BUILTIN_USER_WORDS(env_i - 13);
                      end case;
-                     state <= ENV_WR;
+                     if profile_valid = '1' and env_i >= 13 then
+                        state <= ENV_PROFILE;
+                     else
+                        state <= ENV_WR;
+                     end if;
                   end if;
+
+               when ENV_PROFILE =>
+                  wr_data <= profile_data;
+                  state <= ENV_WR;
 
                when ENV_WR =>
                   wr_ena  <= '1';

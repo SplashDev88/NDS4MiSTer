@@ -17,6 +17,7 @@ run_analyze() {
         if [[ "$file" == */nds_nitro_console_top.vhd ]]; then
             ghdl -a --std=08 -frelaxed "$source_root/rtl/nds_palette_readback.vhd"
             ghdl -a --std=08 -frelaxed "$source_root/rtl/nds_gpu2d_register_shadow.vhd"
+            ghdl -a --std=08 -frelaxed "$source_root/rtl/nds_h3d_query_watch.vhd"
         fi
         ghdl -a --std=08 -frelaxed --work="${library:-work}" "$file"
     done < <(awk '$3 == "VHDL_FILE" {print $4, ($5 == "-library" ? $6 : "work")}' \

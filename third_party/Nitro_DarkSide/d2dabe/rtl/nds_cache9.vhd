@@ -46,6 +46,8 @@ entity nds_cache9 is
    (
       clk         : in  std_logic;
       reset       : in  std_logic;
+      -- Session policy is sampled only during reset; default keeps game latency.
+      native_mode : in  std_logic := '0';
 
       -- CPU request (main-RAM accesses only, one ena pulse per request)
       req_ena       : in  std_logic;
@@ -181,6 +183,7 @@ architecture arch of nds_cache9 is
    signal d_hit_return : std_logic := '0';
    signal w_hit_return : std_logic := '0';
    signal dwr_committed : std_logic := '0';
+   signal native_read_wait : std_logic := '0';
    signal resp_done_reg : std_logic := '0';
    signal resp_rdata_reg : std_logic_vector(31 downto 0) := (others => '0');
 
@@ -277,7 +280,7 @@ begin
 
    dbg_state <= r_code & std_logic_vector(beat) & state_code(state);
 
-   i_hit_return <= '1' when reset = '0' and state = IDLE and
+   i_hit_return <= '1' when reset = '0' and native_read_wait = '0' and state = IDLE and
       op_ena = '0' and op_pending = '0' and op_active = '0' and
       req_ena = '1' and req_pending = '0' and spec_ok = '1' and
       req_code = '1' and req_rnw = '1' and req_cacheable = '1' and
@@ -285,7 +288,7 @@ begin
    -- Only idle, unlocked, qualified data read hits can use this return.
    -- A pending or just-committed store excludes speculative D data: the RAM
    -- read from its commit edge may have collided with that write.
-   d_hit_return <= '1' when reset = '0' and state = IDLE and
+   d_hit_return <= '1' when reset = '0' and native_read_wait = '0' and state = IDLE and
       op_ena = '0' and op_pending = '0' and op_active = '0' and
       req_ena = '1' and req_pending = '0' and spec_ok = '1' and
       req_code = '0' and req_rnw = '1' and req_cacheable = '1' and
@@ -545,6 +548,10 @@ begin
          spec_ok   <= spec_sel;
 
          if (reset = '1') then
+            -- Native firmware uses the existing paired registered read-hit
+            -- fallback. Hold this policy for the whole active session so an
+            -- in-flight response never changes latency when the input changes.
+            native_read_wait <= native_mode;
             dwr_committed <= '0';
             spec_ok     <= '0';
             state       <= IDLE;

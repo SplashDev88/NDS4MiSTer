@@ -17,7 +17,7 @@ architecture sim of tb_nds_loader_touch_calibration is
    signal save_gamecode : std_logic_vector(31 downto 0);
    signal save_gamecode_valid : std_logic;
    signal card_ena, card_done : std_logic := '0';
-   signal card_addr : std_logic_vector(26 downto 2);
+   signal card_addr : std_logic_vector(28 downto 2);
    signal card_rdata : std_logic_vector(31 downto 0) := (others => '0');
    signal wr_ena, wr_rnw : std_logic;
    signal wr_addr, wr_data : std_logic_vector(31 downto 0);
@@ -25,6 +25,12 @@ architecture sim of tb_nds_loader_touch_calibration is
    signal vfy_addr : std_logic_vector(31 downto 0);
    signal saw_adc1_pixels_adc2x : std_logic := '0';
    signal saw_adc2y_pixels2 : std_logic := '0';
+   type t_expected is array(0 to 27) of std_logic_vector(31 downto 0);
+   constant EXPECTED_PROFILE : t_expected := (
+      0=>x"01000005",1=>x"004D0001",2=>x"00530069",3=>x"00650054",4=>x"00000072",6=>x"00060000",
+      23=>x"0FF00000",24=>x"BFFF0BF0",25=>x"00000031",others=>(others=>'0'));
+   signal profile_seen:std_logic_vector(27 downto 0):=(others=>'0');
+   signal offset_seen,checksums_seen:std_logic:='0';
 begin
    clk <= not clk after 5 ns;
 
@@ -65,6 +71,15 @@ begin
          end if;
 
          if wr_ena = '1' then
+            if unsigned(wr_addr)>=unsigned'(x"02FFFC80") and unsigned(wr_addr)<unsigned'(x"02FFFCF0") then
+               assert wr_data=EXPECTED_PROFILE(to_integer((unsigned(wr_addr)-unsigned'(x"02FFFC80"))/4))
+                  report "builtin profile word mismatch" severity failure;
+               profile_seen(to_integer((unsigned(wr_addr)-unsigned'(x"02FFFC80"))/4))<='1';
+            elsif wr_addr=x"02FFF868" then
+               assert wr_data=x"0001FE00" report "builtin offset mismatch" severity failure;offset_seen<='1';
+            elsif wr_addr=x"02FFF874" then
+               assert wr_data=x"00000000" report "builtin checksums mismatch" severity failure;checksums_seen<='1';
+            end if;
             if wr_addr = x"02FFFCDC" then
                assert wr_data = x"0FF00000"
                   report "direct-boot Pixel1/ADC2-X calibration mismatch"
@@ -103,7 +118,9 @@ begin
       assert saw_adc1_pixels_adc2x = '1' and saw_adc2y_pixels2 = '1'
          report "direct-boot loader omitted touchscreen calibration"
          severity failure;
-      report "PASS: direct-boot touchscreen calibration matches melonDS";
+      assert profile_seen=(profile_seen'range=>'1') and offset_seen='1' and checksums_seen='1'
+        report "missing builtin profile or metadata word" severity failure;
+      report "PASS: all28 MiSTer profile words + generated metadata; direct-boot touchscreen calibration matches melonDS";
       stop;
       wait;
    end process;

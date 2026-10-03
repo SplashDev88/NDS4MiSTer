@@ -45,6 +45,16 @@ entity nds_nitro_console_wrap is
       -- '1' = boot the real firmware from the retail BIOSes' reset vectors
       -- instead of HLE direct boot. See the header note on ARCHITECTURE.md.
       fw_boot          : in  std_logic;
+      cart_present     : in  std_logic := '1';
+      -- Selected effective firmware user settings, 28 little-endian words.
+      -- profile_data may have one clk1x cycle of latency.
+      profile_valid    : in  std_logic := '0';
+      profile_addr     : out std_logic_vector(4 downto 0);
+      profile_data     : in  std_logic_vector(31 downto 0) := (others => '0');
+      profile_fw_offset : in std_logic_vector(31 downto 0) := x"0007FE00";
+      profile_fw_checksums : in std_logic_vector(31 downto 0) := x"0000FFFF";
+      rtc_seed         : in std_logic_vector(55 downto 0) := (others => '0');
+      rtc_seed_toggle  : in std_logic := '0';
       -- keys (active high)
       KeyA             : in  std_logic;
       KeyB             : in  std_logic;
@@ -71,7 +81,7 @@ entity nds_nitro_console_wrap is
 
       -- card image read port (word addressed into the staged .nds)
       card_ena         : out std_logic;
-      card_addr        : out std_logic_vector(24 downto 0);  -- word address (byte addr 26:2)
+      card_addr        : out std_logic_vector(26 downto 0);  -- word address (byte addr 28:2)
       card_din         : in  std_logic_vector(31 downto 0);
       card_done        : in  std_logic;
 
@@ -90,7 +100,7 @@ entity nds_nitro_console_wrap is
       backup_cache_ready  : in  std_logic := '1';
       backup_run_ready    : in  std_logic := '1';
 
-      -- SPI firmware flash image read port (128 KB, word addressed)
+      -- SPI firmware flash image port (256 KiB aperture, word addressed)
       fw_addr          : out std_logic_vector(15 downto 0);  -- word address (byte addr 17:2)
       fw_req           : out std_logic;
       fw_done          : in  std_logic;
@@ -101,6 +111,8 @@ entity nds_nitro_console_wrap is
       fw_wr            : out std_logic;
       fw_wlane         : out std_logic_vector(1 downto 0);
       fw_wdata         : out std_logic_vector(7 downto 0);
+      fw_busy          : in std_logic := '0';
+      fw_release       : out std_logic; -- completed SPI program chip-select
 
       -- hot-loadable ARM7/ARM9 BIOS RAM write ports
       bios7_load_addr  : in std_logic_vector(13 downto 2);
@@ -257,6 +269,8 @@ entity nds_nitro_console_wrap is
       dbg_r0_9          : out std_logic_vector(31 downto 0);
       dbg_lr9           : out std_logic_vector(31 downto 0);
       dbg_cpsr9         : out std_logic_vector(31 downto 0);
+      dbg_mem_probe     : out std_logic_vector(31 downto 0) := (others => '0');
+      dbg_cpu9_addr     : out std_logic_vector(31 downto 0) := (others => '0');
       diagnostic_hold9  : in  std_logic := '0';
       diagnostic_hold7  : in  std_logic := '0';
       diagnostic_release9 : in std_logic := '0';
@@ -367,6 +381,14 @@ begin
       nds_on           => nds_on,
       direct_boot      => direct_boot,
       fw_boot          => fw_boot,
+      cart_present     => cart_present,
+      profile_valid    => profile_valid,
+      profile_addr     => profile_addr,
+      profile_data     => profile_data,
+      profile_fw_offset => profile_fw_offset,
+      profile_fw_checksums => profile_fw_checksums,
+      rtc_seed         => rtc_seed,
+      rtc_seed_toggle  => rtc_seed_toggle,
 
       KeyA             => KeyA,
       KeyB             => KeyB,
@@ -410,6 +432,8 @@ begin
       fw_wr            => fw_wr,
       fw_wlane         => fw_wlane_u,
       fw_wdata         => fw_wdata,
+      fw_busy          => fw_busy,
+      fw_release       => fw_release,
       fw_req           => fw_req,
       fw_done          => fw_done,
       fw_data          => fw_data,
@@ -565,6 +589,8 @@ begin
       dbg_r0_9         => dbg_r0_9,
       dbg_lr9          => dbg_lr9,
       dbg_cpsr9        => dbg_cpsr9,
+      dbg_mem_probe    => dbg_mem_probe,
+      dbg_cpu9_addr    => dbg_cpu9_addr,
       diagnostic_hold9 => diagnostic_hold9,
       diagnostic_hold7 => diagnostic_hold7,
       diagnostic_release9 => diagnostic_release9,

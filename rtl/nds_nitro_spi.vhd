@@ -6,11 +6,10 @@
 -- parity:
 --   device 0: power management IC (registers 0..7, masks per melonDS,
 --             reg4 resets to 0x40; shutdown bit is accepted and ignored)
---   device 1: firmware flash (commands 03 read / 05 RDSR / 04 WRDI /
---             06 WREN; 0A write is accepted bus-side but the image is
---             read-only). The 128 KB image is served through the fw_*
---             port (sim/tests/nds_firmware.hex = melonDS's generated
---             default firmware, dumped by melonds_fwdump).
+--   device 1: firmware flash (03 read / 05 RDSR / 04 WRDI / 06 WREN /
+--             02 and 0A program). The 256 KB address space is served by
+--             the fw_* backing port, with acknowledged byte writes and
+--             persistent writeback busy reported by flash status bit0.
 --   device 2: touchscreen TSC (control byte -> 12-bit conversion; touch
 --             coordinates match melonDS: X/Y are the held 8-bit pixel
 --             coordinates shifted left four, while release is X=0/Y=0xFFF;
@@ -27,8 +26,8 @@ use IEEE.numeric_std.all;
 
 use work.pProc_bus_gba.all;
 
--- PRODUCT-LOCAL DERIVATIVE of the donor nds_spi.vhd. The only change is a
--- write-back path for the firmware flash.
+-- PRODUCT-LOCAL DERIVATIVE of the donor nds_spi.vhd, with an acknowledged
+-- write-back path and program chip-select release for the firmware flash.
 --
 -- The donor accepts command 0x0A on the bus but discards the data, because its
 -- image is a read-only hex fixture. Measured against melonDS: Pokemon Pearl
@@ -55,6 +54,10 @@ entity nds_nitro_spi is
       fw_wr       : out std_logic := '0';
       fw_wlane    : out unsigned(1 downto 0) := (others => '0');
       fw_wdata    : out std_logic_vector(7 downto 0) := (others => '0');
+      -- Sector-backed firmware reports uncommitted writes in flash status bit0.
+      -- Every fw_wr is acknowledged via fw_done before SPI busy can clear.
+      fw_busy     : in std_logic := '0';
+      fw_release  : out std_logic := '0';
 
       bus7        : in  proc_bus_gb_type;
       wired_out7  : out std_logic_vector(31 downto 0);
@@ -114,7 +117,8 @@ architecture arch of nds_nitro_spi is
    signal fw_a       : unsigned(23 downto 0) := (others => '0');
    signal fw_out     : std_logic_vector(7 downto 0) := (others => '0');
    signal fw_status  : std_logic_vector(7 downto 0) := (others => '0');
-   signal fw_pend    : std_logic := '0';   -- word fetch outstanding (holds busy)
+   signal fw_pending_write : std_logic := '0';
+   signal fw_pend    : std_logic := '0';   -- backing read/write outstanding
    signal fw_lane    : unsigned(1 downto 0) := (others => '0');
 
    -- touchscreen
@@ -158,6 +162,8 @@ begin
             fw_pend    <= '0';
             fw_req     <= '0';
             fw_wr      <= '0';
+            fw_release <= '0';
+            fw_pending_write <= '0';
             tsc_ctrl   <= (others => '0');
             tsc_data   <= (others => '0');
             tsc_datapos <= (others => '0');
@@ -169,14 +175,17 @@ begin
             -- window below waits for fw_pend to clear)
             fw_req <= '0';
             fw_wr  <= '0';
+            fw_release <= '0';
             if (fw_pend = '1' and fw_done = '1') then
                fw_pend <= '0';
+               if fw_pending_write = '0' then
                case fw_lane is
                   when "00" => fw_out <= fw_data( 7 downto  0);
                   when "01" => fw_out <= fw_data(15 downto  8);
                   when "10" => fw_out <= fw_data(23 downto 16);
                   when others => fw_out <= fw_data(31 downto 24);
                end case;
+               end if;
             end if;
 
             -- transfer completion (held while a firmware fetch is in flight)
@@ -186,7 +195,9 @@ begin
                   if (cnt(14) = '1') then
                      irq_spi <= '1';
                   end if;
-               else
+               elsif delay_cnt /= 0 then
+                  -- Saturate while storage is backpressured; wrapping at zero
+                  -- used to append an unrelated 1024-cycle delay after an ack.
                   delay_cnt <= delay_cnt - 1;
                end if;
             end if;
@@ -206,7 +217,11 @@ begin
                      -- disable releases the selected device's chipselect
                      case cnt(9 downto 8) is
                         when "00" => pm_hold <= '0';
-                        when "01" => fw_hold <= '0';
+                        when "01" =>
+                           fw_hold <= '0';
+                           if fw_hold = '1' and (fw_cmd = x"0A" or fw_cmd = x"02") then
+                              fw_release <= '1';
+                           end if;
                         when others =>
                            -- melonDS SPIDevice::Release() resets the TSC byte
                            -- position whenever chip-select is released.  Some
@@ -284,14 +299,15 @@ begin
                                     fw_lane  <= fw_a(1 downto 0);
                                     fw_req   <= '1';
                                     fw_pend  <= '1';
+                                    fw_pending_write <= '0';
                                     fw_a     <= fw_a + 1;
                                  end if;
                                  if (fw_datapos /= 7) then
                                     fw_datapos <= fw_datapos + 1;
                                  end if;
                               when x"05" =>   -- read status register
-                                 fw_out <= fw_status;
-                              when x"0A" =>   -- page program: now written back
+                                 fw_out <= fw_status(7 downto 1) & fw_busy;
+                              when x"0A" | x"02" => -- page program, acknowledged backing
                                  if (fw_datapos < 4) then
                                     fw_a   <= fw_a(15 downto 0) & unsigned(wval);
                                     fw_out <= (others => '0');
@@ -307,6 +323,8 @@ begin
                                     fw_wlane <= fw_a(1 downto 0);
                                     fw_wdata <= wval;
                                     fw_wr    <= '1';
+                                    fw_pend <= '1';
+                                    fw_pending_write <= '1';
                                     fw_a     <= fw_a + 1;
                                  end if;
                                  if (fw_datapos /= 7) then
@@ -316,7 +334,12 @@ begin
                                  fw_out <= (others => '0');
                            end case;
                         end if;
-                        if (v_release = '1') then fw_hold <= '0'; end if;
+                        if (v_release = '1') then
+                           fw_hold <= '0';
+                           if fw_hold = '1' and (fw_cmd = x"0A" or fw_cmd = x"02") then
+                              fw_release <= '1';
+                           end if;
+                        end if;
 
                      when others =>   -- touchscreen
                         if (tsc_datapos = 1) then

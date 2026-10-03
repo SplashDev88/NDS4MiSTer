@@ -1,55 +1,56 @@
-NDS4MiSTer v0.6.0-beta — Standalone
+NDS4MiSTer v0.9.0-rc.1 — Standalone
 
-Release package prepared for user review; not published.
-Public parent: v0.5.3 ea0a172ef0229182e9f7ec60a4fcb18d10f7604d.
+Local release candidate prepared for review. Not published by packaging.
+The public tree includes complete corresponding project sources for each
+shipped component. Private development paths/history are not prerequisites.
 
-This source tree combines the exact accepted production sources:
-ARM renderer: 9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8 (PF3)
-FPGA/RTL: 6e8e18e088e405a01847b6ffb54ae4678808fc4c (QC1)
-Standalone frontend baseline: 5398c706a77fbf6b1d64c91571bfc6dab91f8c69 (F1)
-The private development history is not required; complete corresponding
-project sources are included directly in this public tree.
+The accepted standalone-fw1-20261003 FPGA, renderer and WC module are kept
+unchanged. The standalone host has only a release-version string change;
+the accepted parent was reproduced byte-for-byte before building it. Public
+launch scripts adapt the accepted runtime to Scripts/.NDS_Standalone.
+Normal Console/Kickstart installations and user files are preserved.
 
-The FPGA, renderer and WC module are packaged without rebuilding or changing
-runtime rendering/pacing options. The frontend includes its release label
-update and the isolated ROM-loading fix from
-1644284466634f53feafb2307e7d11577ef6f3d2. Slow file reads run in a
-disposable worker, while the parent keeps its existing watchdog heartbeat.
-The worker exists only during a ROM load; pacing/rendering policies are
-unchanged. Public scripts use self-contained paths,
-prerequisite checks, safe core handoff, per-run logs and portable first-use
-settings. No personal controls, settings, ROMs or saves are distributed.
+Component identities, build tools and validation limits are recorded in
+  docs/RELEASE_BUILD_V090_RC1.json
+Source content is verified by the top-level SHA256SUMS. It includes every
+tracked source file except itself. The FPGA source manifest and host snapshot
+were combined deliberately: current host sources override the older host
+copy present in the FPGA input snapshot. The accepted FPGA remains authoritative
+for every hardware file. The private test plan is not a build input and is
+omitted; the public firmware protocol describes the current paths and contract.
 
-Component SHA-256:
-FPGA: de443f91e8d3251053a6c881be78b28ca26c27b930f8f5ba9828b0c2089a45d9
-ARM renderer: f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729
-WC module: c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113
-Public standalone frontend: 5d4275d484965c6749c7a70609ebb8b98546cc82ff66c8a5f3c184f3ba5cb56e
-Kickstart.sh: 8a8b205effdc14fed1d7c479d357dd1b4eaaad2742cea0e93df2d21002801659
-supervisor.py: 0df976c20f66663fbfe3937ad8e2e790203103e4bc6ecc845f6e4229e7c02a38
-NDS4MiSTer.sh: 8f14dbf9770bed4025749165515a4bcfc8c93d5935d7456979ceccf0606c05b1
+Build entry points:
+- FPGA: fpga/mister_nitro_console_island/NDS4MiSTer.qpf, Quartus Prime
+  17.0.2 Build 602 Lite, Cyclone V 5CSEBA6U23I7, seed 5. The embedded build
+  label remains 260930-LR2; the SHA-256 identifies the actual accepted RBF.
+  Successful fitting and user acceptance do not establish timing closure;
+  negative slack remains, as recorded in the JSON receipt.
+- Renderer: tools/build_hybrid_3d_service_armhf.sh, GCC 13.3.0,
+  Cortex-A9 NEON hard-float, static Release -O3 with LTO. All 913 corresponding
+  source inputs match the accepted PF3 renderer exactly.
+- Frontend: tools/standalone_host/build.sh, GCC 13.3.0, static C++17 -O2,
+  Cortex-A9 NEON hard-float. tools/Dockerfile.mister-armhf is included. A
+  newly resolved distribution toolchain may not be byte-identical to the
+  recorded container. generate_menu.py reproduces the standalone Load *.NDS
+  label and reads every option bit/row from the matching FPGA CONF_STR.
+- WC module: kernel/nds_mem_wc includes source, config, GPL-2.0 licence,
+  build script and BUILD_PROVENANCE.json. Required kernel vermagic is
+  5.15.1-MiSTer SMP mod_unload ARMv7 p2v8. Do not force-load another ABI.
+- Installer: tools/package_standalone_release.py accepts matching compiled
+  component files and this source tree, verifies pinned identities, and emits
+  the public Scripts layout plus documentation and checksums. --check-only
+  performs no staging. See --help for all inputs.
 
-Build information:
-- FPGA: Quartus Prime 17.0.2 Lite, checked-in NDS4MiSTer.qpf/QSF/RTL.
-  Accepted QC1 fit/timing is preserved; timing closure is not claimed.
-- ARM renderer: tools/build_hybrid_3d_service_armhf.sh; GCC 13.3.0,
-  Cortex-A9 NEON hard float, static, Release -O3 with LTO; no JIT, core
-  timing or ARM audio mixing. Rendering source and flags are preserved.
-- Frontend: tools/standalone_host/build.sh; GCC 13.3.0, static C++17 -O2,
-  Cortex-A9 NEON hard float. Build toolchain container used for release:
-  sha256:4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474.
-  The tools/Dockerfile.mister-armhf recipe is provided; distribution package
-  updates mean a fresh compiler image is not guaranteed byte-identical.
-- WC module: kernel/nds_mem_wc contains source, fixed config, build script,
-  license and BUILD_PROVENANCE.json. Required kernel vermagic:
-  5.15.1-MiSTer SMP mod_unload ARMv7 p2v8.
+The public launcher checks prerequisites, manages SPI/process ownership,
+initializes only missing private settings and restores normal MiSTer on a
+handled exit. Its install archive contains no personal configuration, maps,
+commercial ROMs, BIOS/firmware dumps, saves, credentials or diagnostic captures.
+The included FreeBIOS and generated game firmware are open-source/synthetic;
+optional native GUI files must be supplied separately by the user.
 
-The install ZIP has internal checksums and an external SHA-256 companion.
-The source tree SHA256SUMS covers every included source file except itself.
-Only the install ZIP and its checksum are intended as release assets; source
-will use GitHub's automatic source zip/tar.gz links at the matching release tag.
-No separate duplicate source ZIP is needed.
-
-Retain LICENSE.txt, all third-party notices and tools/standalone_host/THIRD_PARTY.md.
+Only the install ZIP and its SHA-256 companion are release assets. Matching
+source will use GitHub's automatic source zip/tar.gz links at the release tag.
+No duplicate source ZIP is needed. Retain LICENSE.txt, all vendored licences
+and tools/standalone_host/THIRD_PARTY.md, including FreeBIOS attribution.
 InsaneFriend (saneFriend) attribution for existing compatibility and GTA fixes
 is retained. The later Jackass, King Kong and NFS Carbon bundle is not included.

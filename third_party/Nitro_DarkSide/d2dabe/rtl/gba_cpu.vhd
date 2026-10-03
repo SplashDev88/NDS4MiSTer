@@ -798,13 +798,27 @@ begin
             end if;
             
             if (fetch_done = '1') then
-               fetch_data  <= gb_bus_din;
+               -- HALTCNT can stop decode while the next prefetch is still
+               -- in flight. Do not overwrite the buffered instruction that
+               -- decode must consume after wake (native BIOS: BX LR).
+               -- There is one outstanding fetch: fetch_PC already points
+               -- just past it, so replay the discarded response after wake.
+               -- The existing branch redirect below retains priority.
+               if (decode_halt = '1' and fetch_ready = '1') then
+                  if (thumbmode = '1') then
+                     fetch_PC <= fetch_PC - 2;
+                  else
+                     fetch_PC <= fetch_PC - 4;
+                  end if;
+               else
+                  fetch_data  <= gb_bus_din;
 -- synthesis translate_off
-               if (thumbmode = '1') then
-                  fetch_data(31 downto 16) <= (others => '0');
-               end if;
+                  if (thumbmode = '1') then
+                     fetch_data(31 downto 16) <= (others => '0');
+                  end if;
 -- synthesis translate_on
-               fetch_ready <= '1'; 
+                  fetch_ready <= '1';
+               end if;
             end if;
             
             if (execute_branch = '1') then
@@ -3071,4 +3085,3 @@ begin
    
    
 end architecture;
-

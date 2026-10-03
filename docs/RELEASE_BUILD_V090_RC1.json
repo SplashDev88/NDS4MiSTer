@@ -1,0 +1,65 @@
+{
+  "version": "v0.9.0-rc.1",
+  "accepted_baseline": "standalone-fw1-20261003",
+  "publication_status": "Local release candidate; publication requires user approval.",
+  "components": {
+    "fpga": {
+      "sha256": "0cacd24fd22588fab6cbca20c83077fbea48a6663ff42571f16acfa4c63df0a6",
+      "bytes": 4614136,
+      "source_input_manifest_sha256": "17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950",
+      "original_manifest_entries": 1521,
+      "sources": "Matching FPGA, RTL, MIF, constraints and project files in this tree; embedded build date 260930-LR2 retained. Host sources are separately authoritative. No FPGA rebuild for packaging."
+    },
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "unchanged_inputs": 8,
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    },
+    "host": {
+      "sha256": "63311267e580a6d0c784d474a8933cef15dbfbd8e3047d35c7108efabe0b7b40",
+      "accepted_parent_sha256": "1b2b5c1ec083fa0ef9cd6d9ecbfdf50bcc45e9dbb39053ec2b9dd5caaa0f6b1a",
+      "accepted_parent_reproduced_exactly": true,
+      "behavior_change": "None: only VERSION and CORE_VERSION changed to v0.9.0-rc.1. Source generator repaired to reproduce the accepted Load *.NDS label; option rows unchanged.",
+      "source": "tools/standalone_host",
+      "compiler": "GCC 13.3.0",
+      "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard"
+    }
+  },
+  "runtime_scripts": {
+    "NDS4MiSTer.sh": "8f09290a99abc32b095597030ef23f4167806534327718faf3b9cbc5ebc0b4eb",
+    "Kickstart.sh": "8a8b205effdc14fed1d7c479d357dd1b4eaaad2742cea0e93df2d21002801659",
+    "supervisor.py": "f4a4722da8e76d1cf38b014b7cb0c68dee25c39723fa2d624b4cf91439a2b72c"
+  },
+  "fpga_build": {
+    "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+    "device": "5CSEBA6U23I7",
+    "seed": 5,
+    "resources": {
+      "alms_needed": 38400,
+      "total_registers": 44121,
+      "m10k": 551,
+      "dsp": 54,
+      "block_memory_bits": 4174192
+    },
+    "worst_slack_ns": {
+      "Setup": -20.062,
+      "Hold": -0.285,
+      "Recovery": -9.707,
+      "Removal": 0.248,
+      "Minimum Pulse Width": 0.932
+    },
+    "timing_closed": false
+  },
+  "validation": {
+    "hardware": "Accepted FPGA/renderer plus parent host user-tested. Native DS menu/touch, Castlevania dialogue comparison, and transitions back to games verified. Public path/version-only packaging not yet re-run on hardware. No game-speed or timing-closure guarantee.",
+    "host": "Accepted parent reproduced exactly; release host built; four ARM menu/host tests and native menu-presentation test pass.",
+    "packaging": "Runtime statement comparison, lifecycle/settings tests, content/hash/mode guards and independent review. Final archive verification recorded separately."
+  }
+}

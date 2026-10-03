@@ -36,6 +36,7 @@ entity nds_syscnt is
    (
       clk          : in  std_logic;
       reset        : in  std_logic;
+      cold_boot    : in  std_logic := '0';
 
       bus9         : in  proc_bus_gb_type;
       wired_out9   : out std_logic_vector(31 downto 0);
@@ -120,7 +121,8 @@ begin
       if rising_edge(clk) then
          halt7 <= '0';
          if (reset = '1') then
-            exmem9    <= x"6580";
+            if cold_boot = '1' then exmem9 <= x"6000";
+            else exmem9 <= x"6580"; end if;
             exmem7lo  <= (others => '0');
             r_wramcnt <= "00";
             r_vramcnt <= (others => '0');

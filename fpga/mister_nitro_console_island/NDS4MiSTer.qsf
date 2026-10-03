@@ -79,7 +79,7 @@ set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to ascal
 # The alpha prioritizes a routable RBF over final timing closure. Use three
 # spare global networks for the measured high-fanout reset controls.
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "*|nds_nitro_console_top:inds|resetCpu"
-set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_1x[1]}
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|console_reset_sync_1x[1]"
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_ddr[1]}
 
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
@@ -350,6 +350,13 @@ set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_gx_status.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_console_event_gate.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios7.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_freebios9.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_bootbios7.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_bootbios9.vhd
+set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_bootbios7.mif
+set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_bootbios9.mif
+set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_rtc.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_control.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_cache.sv
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios7.mif
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios9.mif
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
@@ -390,6 +397,7 @@ set_global_assignment -name MISC_FILE nds_save_profile_prefix.hex
 set_global_assignment -name MISC_FILE nds_save_profile_entries.hex
 
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_firmware.vhd
+set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_firmware.mif
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_spi.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_audio_headroom.sv
 
@@ -425,3 +433,6 @@ set_global_assignment -name VERILOG_MACRO "NDS_NSMB_DMA_DIAGNOSTIC=1"
 # QW1 private passive end-to-end query wait probe.
 set_global_assignment -name VHDL_FILE ../../rtl/nds_h3d_query_watch.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_probe_cdc.sv
+
+# Isolated passive native BIOS boot localization, full PCs in H3D1 words24/25.
+set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_BOOT_PC_DIAGNOSTIC=1"

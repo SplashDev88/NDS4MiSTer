@@ -3,13 +3,17 @@
 #define main standalone_unused_main
 #include "host.cpp"
 #undef main
+#include "test_rom_fixture.h"
 #include <cassert>
 #include <iostream>
 #include <sys/wait.h>
 static unsigned rom_test_metadata_delay = 0, rom_test_read_delay = 0;
 static uint64_t rom_test_delay_offset = 0;
+static uint64_t rom_test_error_offset = 262144;
 static bool rom_test_read_error = false;
 static std::string rom_test_observer;
+static uint64_t rom_test_fill_next = 0;
+static unsigned rom_test_fill_calls = 0;
 static void delayed_rom_file(int fd, uint64_t off) {
   const auto delay = fd < 0 ? rom_test_metadata_delay : off == rom_test_delay_offset ? rom_test_read_delay : 0;
   const auto end = ms() + delay;
@@ -21,7 +25,7 @@ static void delayed_rom_file(int fd, uint64_t off) {
     usleep(10000);
   }
   if (delay) std::ofstream(rom_test_observer, std::ios::app) << maximum_age << '\n';
-  if (fd >= 0 && off > 0 && rom_test_read_error) close(fd);
+  if (fd >= 0 && off == rom_test_error_offset && rom_test_read_error) close(fd);
 }
 struct HostTest {
   static void rom_loading(const fs::path &root, bool slow) {
@@ -30,6 +34,8 @@ struct HostTest {
     const auto roms = sd / "games/NDS";
     fs::create_directories(roms);
     const auto path = roms / "loader.nds";
+    RomMapping::test_iomem_path = (root / "iomem").string();
+    std::ofstream(RomMapping::test_iomem_path) << "00000000-1fefffff : System RAM\n";
     std::ofstream(path, std::ios::binary) << std::string(512, 'x');
     Host h(kit.string(), roms.string(), sd);
     rom_test_observer = (root / "loader-heartbeat-observer.txt").string();
@@ -42,9 +48,13 @@ struct HostTest {
     assert(h.game == path && !h.menu && h.loading_progress == 167);
     assert(RecentFiles::read(h.recentConfig()).size() == 1);
     std::vector<std::vector<uint16_t>> downloads;
-    for (const auto &t : h.spi.history)
+    std::vector<std::vector<uint16_t>> indices;
+    for (const auto &t : h.spi.history) {
       if (t.select == Spi::FIO && t.command == 0x53) downloads.push_back(t.words);
-    assert((downloads == std::vector<std::vector<uint16_t>>{{255, 512, 0}, {0}}));
+      if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
+    }
+    assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 512, 0}, {0}}));
+    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {3}}));
     uint64_t age, maximum_age = 0;
     std::ifstream observer(rom_test_observer);
     while (observer >> age) maximum_age = std::max(maximum_age, age);
@@ -53,11 +63,21 @@ struct HostTest {
               << maximum_age << " injected_read_delay_ms=" << rom_test_read_delay << '\n';
     rom_test_metadata_delay = rom_test_read_delay = 0;
     const auto outgoing_save = h.save;
+    const std::string saved_bytes(512, 's');
+    assert(pwrite(outgoing_save, saved_bytes.data(), saved_bytes.size(), 0) == ssize_t(saved_bytes.size()));
     const auto verify_no_start = [&] {
-      for (const auto &t : h.spi.history)
-        assert(!(t.select == Spi::FIO && t.command == 0x53 && t.words == std::vector<uint16_t>{0}));
+      uint16_t index = 0;
+      for (const auto &t : h.spi.history) {
+        if (t.select == Spi::FIO && t.command == 0x55) index = t.words.at(0);
+        assert(!(t.select == Spi::FIO && t.command == 0x53 && (index & 0xff) == 3 &&
+                 t.words == std::vector<uint16_t>{0}));
+      }
       assert(h.game == path && RecentFiles::read(h.recentConfig()).size() == 1);
       assert(h.save == outgoing_save);
+      assert(RomMapping::test_live_mappings == 0);
+      std::string current_save(saved_bytes.size(), '\0');
+      assert(pread(h.save, current_save.data(), current_save.size(), 0) == ssize_t(current_save.size()));
+      assert(current_save == saved_bytes);
     };
     const auto broken = roms / "broken.nds";
     std::ofstream(broken, std::ios::binary) << std::string(524288, 'x');
@@ -101,6 +121,158 @@ struct HostTest {
       assert(waitpid(signaller, &status, 0) == signaller && WIFEXITED(status));
       running = 1;
     }
+    rom_test_metadata_delay = rom_test_read_delay = 0;
+    const auto large = roms / "large.nds", oversize = roms / "oversize.nds";
+    largeRomFixture(large.c_str(), RomReader::max_file_size);
+    std::ofstream(oversize).put('x');
+    assert(truncate(oversize.c_str(), RomReader::max_file_size + 1) == 0);
+    h.browse(roms);
+    bool visible = false;
+    for (const auto &entry : h.roms) {
+      if (entry.name == "large.nds") visible = true;
+      assert(entry.name != "oversize.nds");
+    }
+    assert(visible && h.usableRecent(large) && !h.usableRecent(oversize));
+    const auto reject_large = [&](const char *expected, bool before_download) {
+      h.spi.history.clear();
+      bool rejected = false;
+      try { h.load(large.string()); }
+      catch (const std::exception &e) { rejected = std::string(e.what()).find(expected) != std::string::npos; }
+      assert(rejected);
+      verify_no_start();
+      assert(!fs::exists(sd / "saves/NDS/large.sav"));
+      if (before_download) {
+        for (const auto &t : h.spi.history) assert(t.select != Spi::FIO);
+        assert(h.loading_progress == 0);
+      } else assert(h.loading_progress > 0 && h.loading_progress < 167);
+    };
+    for (const auto offset : {RomReader::max_transfer_size, RomReader::max_file_size - 1}) {
+      romFixtureByte(large.c_str(), offset, 0);
+      reject_large("above 316 MiB must be FF padding", true);
+      romFixtureByte(large.c_str(), offset, 0xff);
+    }
+    rom_test_read_error = true;
+    rom_test_error_offset = RomReader::max_transfer_size;
+    reject_large("ROM read failed while checking padding", true);
+    for (const auto offset : {2 * RomLayout::mib, 252 * RomLayout::mib, 256 * RomLayout::mib}) {
+      rom_test_error_offset = offset;
+      reject_large("ROM read failed", false);
+    }
+    rom_test_read_error = false;
+    rom_test_error_offset = 262144;
+    // Every destination must map before any FIO. A failure in the second or
+    // third span must release earlier mappings and preserve the outgoing save.
+    for (int span = 0; span < 3; ++span) {
+      RomMapping::test_fail_mapping = span;
+      reject_large("ROM mmap", true);
+    }
+    RomMapping::test_fail_mapping = -1;
+    const auto good_iomem = RomMapping::test_iomem_path;
+    RomMapping::test_iomem_path = "/does/not/exist";
+    reject_large("readable, unredacted Linux memory map", true);
+    RomMapping::test_iomem_path = good_iomem;
+    std::ofstream(good_iomem) << "00000000-00000000 : System RAM\n";
+    reject_large("readable, unredacted Linux memory map", true);
+    std::ofstream(good_iomem) << "00000000-2fffffff : System RAM\n";
+    reject_large("overlaps Linux System RAM", true);
+    std::ofstream(good_iomem) << "00000000-1fefffff : System RAM\n";
+    // Trimmed extended images still map/fill the whole backing, and a
+    // cancellation during the bounded FF fill must never start a partial ROM.
+    assert(truncate(large.c_str(), 256 * RomLayout::mib + 1) == 0);
+    RomMapping::test_before_padding_write = [](uint64_t off) {
+      assert(off >= 256 * RomLayout::mib + 1);
+      running = 0;
+    };
+    reject_large("ROM load interrupted", false);
+    RomMapping::test_before_padding_write = nullptr;
+    running = 1;
+    largeRomFixture(large.c_str(), RomReader::max_file_size);
+    // Cancellation remains responsive while the worker checks omitted padding.
+    rom_test_delay_offset = RomReader::max_transfer_size;
+    rom_test_read_delay = 5000;
+    const auto parent = getpid();
+    const auto signaller = fork();
+    assert(signaller >= 0);
+    if (!signaller) { usleep(900000); kill(parent, SIGTERM); _exit(0); }
+    const auto start = ms();
+    reject_large("ROM load interrupted", true);
+    assert(ms() - start < 1500);
+    int signal_status;
+    assert(waitpid(signaller, &signal_status, 0) == signaller && WIFEXITED(signal_status));
+    running = 1;
+    // A complete 512 MiB file transfers 316 MiB and retains the full size on
+    // the wire, with heartbeat service during the pre-download padding check.
+    rom_test_read_delay = slow ? 21500 : 250;
+    h.spi.history.clear();
+    h.load(large.string());
+    downloads.clear();
+    indices.clear();
+    for (const auto &t : h.spi.history) {
+      if (t.select == Spi::FIO && t.command == 0x53) downloads.push_back(t.words);
+      if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
+    }
+    assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 0, 0x2000}, {0}}));
+    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {0x303}}));
+    assert(h.game == large && h.loading_progress == 167);
+    std::ifstream saved_file(sd / "saves/NDS/loader.sav", std::ios::binary);
+    assert(std::string(std::istreambuf_iterator<char>(saved_file), {}) == saved_bytes);
+    std::ifstream large_observer(rom_test_observer);
+    maximum_age = 0;
+    while (large_observer >> age) maximum_age = std::max(maximum_age, age);
+    assert(maximum_age > 0 && maximum_age < 1000);
+    assert(RomMapping::test_live_mappings == 0);
+    std::cout << "PASS: 512 MiB load, browser/recents boundary, padding/map/partial failure and cancellation preserve saves; heartbeat maximum_age_ms="
+              << maximum_age << '\n';
+    rom_test_read_delay = 0;
+    for (const uint64_t size : {128ull * 1024 * 1024, 128ull * 1024 * 1024 + 1,
+                               256ull * 1024 * 1024, 256ull * 1024 * 1024 + 1}) {
+      largeRomFixture(large.c_str(), size);
+      h.spi.history.clear();
+      h.load(large.string());
+      indices.clear();
+      for (const auto &t : h.spi.history)
+        if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
+      const uint16_t expected_index = size > 256ull * 1024 * 1024 ? 0x303 :
+                                      size > 128ull * 1024 * 1024 ? 0x103 : 3;
+      assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {expected_index}}));
+    }
+    std::cout << "PASS: legacy/LR1/512 protocol modes at both capacity boundaries\n";
+    // Exercise actual Host::load against persistent file-backed physical DDR:
+    // a full image leaves non-FF bytes, then a trimmed replacement clears all
+    // backed bytes after its EOF. Neither mapping reconstruction nor a fresh
+    // anonymous allocation can conceal stale data in this check.
+    const auto physical_file = root / "physical-ddr";
+    const int physical_fd = open(physical_file.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0600);
+    assert(physical_fd >= 0 && ftruncate(physical_fd, 0x40000000) == 0);
+    RomMapping::test_memory_fd = physical_fd;
+    largeRomFixture(large.c_str(), RomReader::max_file_size);
+    h.load(large.string());
+    unsigned char prior = 0;
+    assert(pread(physical_fd, &prior, 1, 0x2bbfffff) == 1 && prior == 0x37);
+    const auto trimmed = 256 * RomLayout::mib + 1;
+    largeRomFixture(large.c_str(), trimmed);
+    rom_test_fill_next = trimmed;
+    rom_test_fill_calls = 0;
+    RomMapping::test_before_padding_write = [](uint64_t off) {
+      assert(off == rom_test_fill_next);
+      rom_test_fill_next += std::min<uint64_t>(262144, RomLayout::max_transfer_size-off);
+      ++rom_test_fill_calls;
+    };
+    h.load(large.string());
+    assert(rom_test_fill_next == RomLayout::max_transfer_size && rom_test_fill_calls == 240);
+    RomMapping::test_before_padding_write = nullptr;
+    std::array<unsigned char, 262144> padding;
+    for (uint64_t off = trimmed; off < RomLayout::max_transfer_size;) {
+      const auto n = std::min<uint64_t>(padding.size(), RomLayout::max_transfer_size-off);
+      assert(pread(physical_fd, padding.data(), n, 0x28000000 + off % (64 * RomLayout::mib)) == ssize_t(n));
+      assert(std::all_of(padding.begin(), padding.begin()+n, [](unsigned char byte) { return byte == 0xff; }));
+      off += n;
+    }
+    assert(RomMapping::test_live_mappings == 0);
+    RomMapping::test_memory_fd = -1;
+    close(physical_fd);
+    fs::remove(physical_file);
+    std::cout << "PASS: actual Host full512->trimmed load clears every backed byte beyond EOF in240bounded chunks\n";
     RomReader::test_hook = nullptr;
     rom_test_metadata_delay = rom_test_read_delay = 0;
     rom_test_delay_offset = 0;
@@ -423,9 +595,42 @@ R"({
     assert(recentEnabled("recents=0\n[NDS]\nrecents=1\n"));
     std::cout << "PASS: Main-compatible recents, shortcuts, disabled files, clear confirmation, corrupt history\n";
   }
+  static void legacy_engine_b_config(const fs::path &root) {
+    for (bool private_config : {false, true}) {
+      const auto base = root / (private_config ? "legacy-private" : "legacy-shared");
+      const auto kit = base / "kit", sd = base / "sd";
+      fs::create_directories(kit);
+      fs::create_directories(sd / "config");
+      const auto input = (private_config ? kit : sd / "config") / "NDS_v1.CFG";
+      const std::array<uint16_t, 8> legacy{0x1020, 0, 0, 0, 0xdead};
+      {
+        std::ofstream file(input, std::ios::binary);
+        file.write(reinterpret_cast<const char *>(legacy.data()), sizeof(legacy));
+      }
+      Host h(kit.string(), (root / "roms").string(), sd);
+      assert(h.status == (legacy[0] | REQUIRED_STATUS));
+      for (const auto &t : h.spi.history)
+        if (t.command == 0x1e) assert(t.words[0] == h.status);
+      h.spi.history.clear();
+      h.status = 1; h.sendstatus(); // Required bit must not eat transient reset.
+      assert(h.spi.history.back().words[0] == (1 | REQUIRED_STATUS));
+      h.status = legacy[0]; h.saveSettings();
+      auto expected = legacy; expected[0] |= REQUIRED_STATUS;
+      std::array<uint16_t, 8> saved{};
+      std::ifstream file(kit / "NDS_v1.CFG", std::ios::binary);
+      assert(file.read(reinterpret_cast<char *>(saved.data()), sizeof(saved)));
+      assert(saved == expected && h.status == expected[0]);
+      if (!private_config) {
+        std::ifstream original(input, std::ios::binary);
+        assert(original.read(reinterpret_cast<char *>(saved.data()), sizeof(saved)));
+        assert(saved == legacy); // Shared/imported settings are never rewritten.
+      }
+    }
+    std::cout << "PASS: legacy Engine B Off normalized on import/save/status, reset and other settings preserved\n";
+  }
   static void run(const fs::path &root) {
     Host host(root.string(), (root / "roms").string(), root / "sd");
-    assert(host.status == 0);
+    assert(host.status == REQUIRED_STATUS);
     // Unavailable System rows cannot become cursor stops. Navigation is
     // OSD-only, fits Reboot/Exit on the same page, and wraps to Core.
     host.action(6);
@@ -455,7 +660,7 @@ R"({
       host.cursor = row;
       host.spi.history.clear();
       host.action(6);
-      assert(host.system_menu && host.cursor == 0 && host.status == 0);
+      assert(host.system_menu && host.cursor == 0 && host.status == REQUIRED_STATUS);
       assert(host.spi.history.empty());
       host.action(5);
       assert(!host.system_menu && host.menu && host.cursor == 0);
@@ -470,8 +675,9 @@ R"({
       unsigned row = t.command & 15;
       std::string text;
       if (!row) text = " " + std::string(LOAD_LABEL);
-      else if (row >= 2 && row <= 7) text = optionLabel(0, CORE_OPTIONS[row-2]);
-      else if (row == 8) text = " Reset";
+      else if (row == 1) text = " Boot DS firmware";
+      else if (row >= 3 && row <= 7) text = optionLabel(0, CORE_OPTIONS[row-3]);
+      else if (row == 9) text = " Reset";
       else if (row == 15) text = "            exit";
       auto bytes = expected.renderRow(row, text, row == 0, nds_osd::arrow_right);
       assert(t.words == std::vector<uint16_t>(bytes.begin(), bytes.end()));
@@ -486,13 +692,10 @@ R"({
     host.action(2);
     assert(!host.menu);
     host.togglemenu();
-    // Native counter bit and pending Engine B setting: no reset writes.
-    host.cursor = 4;
-    host.action(2);
-    assert(host.status == 16);
+    // Native counter option and rotation: no Engine B cursor or reset writes.
     host.cursor = 5;
     host.action(2);
-    assert(host.status == (16 | 1024));
+    assert(host.status == (16 | REQUIRED_STATUS));
     for (const auto &t : host.spi.history)
       if (t.select == Spi::IO && t.command == 0x1e)
         assert(!t.words.empty() && !(t.words[0] & 1));
@@ -531,7 +734,7 @@ R"({
     assert(std::string(save_bytes, 15) == "normal advanced");
     assert(fs::file_size(root / "saves/a.sav") == 13);
     // Reset confirmation defaults to No and must not touch status, saves or
-    // config before consent. Yes clears/persists all 128 bits without a reset.
+    // config before consent. Yes restores options but keeps both engines on.
     const auto before_reset = host.full_status;
     const auto before_status = host.status;
     host.system_menu = true;
@@ -556,14 +759,15 @@ R"({
     host.spi.history.clear();
     host.action(2); // Yes.
     assert(!host.reset_confirm && !host.system_menu && host.cursor == 0);
-    assert(host.status == 0 && host.full_status == (std::array<uint16_t, 8>{}));
+    assert(host.status == REQUIRED_STATUS &&
+           host.full_status == (std::array<uint16_t, 8>{REQUIRED_STATUS}));
     for (const auto &t : host.spi.history) {
       assert(t.command != 0x53);
       if (t.command == 0x1e) assert(!(t.words[0] & 1));
     }
     {
       Host reloaded(root.string(), (root / "roms").string(), root / "sd");
-      assert(reloaded.full_status == (std::array<uint16_t, 8>{}));
+      assert(reloaded.full_status == (std::array<uint16_t, 8>{REQUIRED_STATUS}));
     }
     host.full_status = before_reset;
     host.status = before_status;
@@ -622,7 +826,7 @@ R"({
     assert(host.menu);
     host.key(p, BTN_TL, false);
     host.key(p, BTN_TR, false);
-    host.cursor = 4;
+    host.cursor = 5;
     host.key(p, BTN_EAST, true);
     assert(!(host.status & 16));
     host.key(p, BTN_EAST, false);
@@ -697,7 +901,7 @@ R"({
     host.action(1);
     host.draw();
     assert(host.osd_rows[15] == host.frame.renderRow(15, "            exit", false, nds_osd::arrow_right));
-    host.cursor = 8;
+    host.cursor = 9;
     host.draw();
     assert(host.osd_rows[15] == host.frame.renderRow(15, "            exit", true, nds_osd::arrow_right));
     host.action(6);
@@ -816,6 +1020,7 @@ int main(int argc, char **) {
   std::ofstream(root / "roms/not-a-rom.txt") << "x";
   std::ofstream(root / "roms/short.nds") << "x";
   fs::create_symlink("/etc", root / "roms/outside");
+  HostTest::legacy_engine_b_config(root);
   HostTest::run(root);
   HostTest::recents(root);
   HostTest::layout_hotkey(root);

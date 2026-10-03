@@ -3,10 +3,12 @@
 #include <cassert>
 #include <iostream>
 int main() {
-  assert(CORE_OPTIONS.size() == 6 && CORE_OPTION_MASK == 0x1ff0);
+  assert(CORE_OPTIONS.size() == 5 && CORE_OPTION_MASK == 0x1bf0);
   for (unsigned original = 0; original < 65536; original++) {
     auto valid = cleanStatus(original);
-    assert((valid & ~CORE_OPTION_MASK) == 0);
+    assert((valid & ~(CORE_OPTION_MASK | REQUIRED_STATUS)) == 0);
+    assert((valid & REQUIRED_STATUS) == REQUIRED_STATUS);
+    assert(cleanStatus(original & ~REQUIRED_STATUS) == valid);
     for (const auto &o : CORE_OPTIONS) {
       auto value = valid;
       for (unsigned n = 0; n < o.count; n++)
@@ -19,11 +21,11 @@ int main() {
   }
   assert(CORE_OPTIONS[3].shift == 4 &&
          std::string(CORE_OPTIONS[3].label) == "3D FPS Counter");
-  assert(CORE_OPTIONS[4].shift == 10 &&
-         std::string(CORE_OPTIONS[4].label) == "Engine B (next Reset)");
+  assert(CORE_OPTIONS[4].shift == 11 &&
+         std::string(CORE_OPTIONS[4].label) == "Video Rotation");
   assert((changeOption(0, CORE_OPTIONS[4], 1) & 1) == 0);
   assert(optionLabel(0, CORE_OPTIONS[0]) == " Video Layout:    Left/Right");
-  assert(optionLabel(0, CORE_OPTIONS[4]) == " Engine B (next Reset):  Off");
+  assert(optionLabel(0, CORE_OPTIONS[4]) == " Video Rotation:         Off");
   for (const auto &o : CORE_OPTIONS)
     for (unsigned value = 0; value < o.count; ++value) {
       const auto label = optionLabel(value << o.shift, o);

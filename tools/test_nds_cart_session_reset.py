@@ -10,16 +10,17 @@ start=source.index('wire card_ena;');end=source.index('// Direct HLE boot still 
 bridge=source[start:end]
 # The isolated fixture drives the real product power-up reset externally.
 bridge=bridge.replace("logic h3d_fabric_boot_reset = 1'b1;\n", "")
-for old,new in [('wire card_ena;','wire card_ena = source_request;'),('wire [24:0] card_addr;','wire [24:0] card_addr = source_address;'),('wire cd_ready;','wire cd_ready = response_ready;'),('wire [31:0] cd_dout;','wire [31:0] cd_dout = response_data;')]:
+for old,new in [('wire card_ena;','wire card_ena = source_request;'),('wire [26:0] card_addr;','wire [26:0] card_addr = source_address;'),('wire cd_ready;','wire cd_ready = response_ready;'),('wire [31:0] cd_dout;','wire [31:0] cd_dout = response_data;')]:
     assert old in bridge;bridge=bridge.replace(old,new)
 wrapper='''module cart_bridge_under_test(
  input clk1x,ddr_clk,console_reset_1x,console_reset_ddr,
  input bridge_reset_ddr,h3d_fabric_boot_reset,
  input [1:0] cart_state,
  input cart_download_ddr,cart_download_d,cart_download_raw,
- input source_request,input [24:0] source_address,
+ input [15:0] ioctl_index,
+ input source_request,input [26:0] source_address,
  input response_ready,input [31:0] response_data,
- output request,output [24:0] address,
+ output request,output [25:0] address,
  output done,output [31:0] data,output logic flush_complete
 );
 localparam [1:0] CART_EMPTY=0,CART_DOWNLOAD=1,CART_FLUSH=2,CART_READY=3;

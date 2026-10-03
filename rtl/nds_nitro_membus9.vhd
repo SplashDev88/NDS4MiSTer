@@ -37,6 +37,7 @@ entity nds_membus9 is
    (
       clk            : in  std_logic;
       reset          : in  std_logic;
+      native_mode    : in  std_logic := '0';
 
       -- CP15 configuration (from nds_cpu9)
       itcm_ena       : in  std_logic;
@@ -240,9 +241,13 @@ architecture arch of nds_membus9 is
    signal dtcm_rd_eff : std_logic_vector(31 downto 0);
 
    -- cache <-> CPU-request side (main RAM only; the cache owns the mr_* port)
-   signal creq_ena       : std_logic := '0';
+   signal creq_ena       : std_logic;
+   signal creq_issued    : std_logic := '0';
    signal creq_rnw       : std_logic := '1';
    signal creq_code      : std_logic := '0';
+   -- Private native-firmware isolation policy. This is reset-stable, like the
+   -- cache read policy: changing the live session input cannot alter an access.
+   signal native_mainram_uncached : std_logic := '0';
    signal creq_cacheable : std_logic := '0';
    signal creq_bufferable : std_logic := '0';
    signal creq_lock      : std_logic := '0';
@@ -276,6 +281,22 @@ architecture arch of nds_membus9 is
 
 begin
 
+   -- The request payload and W_MAIN are registered together. Issue exactly
+   -- once on the following edge, matching the original registered pulse.
+   -- Completion rearms even when a new MAIN request replaces the old one.
+   -- Never reissue merely because the cache is idle or a response is late.
+   creq_ena <= '1' when reset = '0' and state = W_MAIN and creq_issued = '0' else '0';
+   process (clk)
+   begin
+      if rising_edge(clk) then
+         if reset = '1' or state /= W_MAIN or cresp_done = '1' then
+            creq_issued <= '0';
+         else
+            creq_issued <= '1';
+         end if;
+      end if;
+   end process;
+
    -- BIOS9 uses a synchronous hot-loadable RAM in hardware. Drive its read
    -- address in the accept cycle so the registered word is ready in FINISH.
    brom_addr <= unsigned(cpu_adr(14 downto 2));
@@ -289,6 +310,7 @@ begin
    (
       clk           => clk,
       reset         => reset,
+      native_mode   => native_mode,
       req_ena       => creq_ena,
       req_rnw       => creq_rnw,
       req_code      => creq_code,
@@ -583,13 +605,19 @@ begin
 
          wsh_ena  <= '0';
          vram_ena <= '0';
-         creq_ena <= '0';
          pal_we   <= '0';
          oam_we   <= '0';
          io_bus.ena <= '0';
          io_bus.rst <= reset;
 
+         -- Preserve the complete VRAM wait interval while avoiding target decode
+         -- on this data-register enable. Extra unqualified captures are unused.
+         if (accept_now = '1') then
+            vram_din <= wdata;
+         end if;
+
          if (reset = '1') then
+            native_mainram_uncached <= native_mode;
             state <= IDLE;
          else
             can_accept := (accept_now = '1');
@@ -650,7 +678,6 @@ begin
                         vram_rnw  <= cpu_rnw;
                         vram_addr <= unsigned(cpu_adr(23 downto 2));
                         vram_be   <= be;
-                        vram_din  <= wdata;
                         state     <= W_VRAM;
 
                      when T_PAL =>
@@ -678,14 +705,13 @@ begin
                         end if;
 
                      when T_MAIN =>
-                        creq_ena   <= '1';
                         creq_rnw   <= cpu_rnw;
                         creq_code  <= cpu_code;
-                        creq_bufferable <= bus_bufferable_d and not dma_bus and not cpu_code;
+                        creq_bufferable <= bus_bufferable_d and not dma_bus and not cpu_code and not native_mainram_uncached;
                         -- Associate the lock with this accepted CPU data access,
                         -- not with a later cache fill or maintenance writeback.
                         creq_lock  <= cpu_lock and not cpu_code and
-                                      not dma_bus and not bus_cacheable_d;
+                                      not dma_bus and (native_mainram_uncached or not bus_cacheable_d);
                         creq_addr  <= cpu_adr;
                         creq_be    <= be;
                         creq_wdata <= wdata;
@@ -714,7 +740,10 @@ begin
                         -- transfer looked perfect - correct address, correct data,
                         -- correct handshake - which is why this survived a probe of
                         -- the DMA path itself.
-                        if (dma_bus = '1') then
+                        -- Only external main RAM bypasses allocation/posting.
+                        -- Keep TCM, IO, permissions and real CP15 maintenance
+                        -- unchanged. Direct sessions retain their original policy.
+                        if (dma_bus = '1' or (native_mainram_uncached = '1' and cpu_code = '0')) then
                            creq_cacheable <= '0';
                         elsif (cpu_code = '1') then
                            creq_cacheable <= bus_cacheable_i;

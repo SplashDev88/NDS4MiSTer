@@ -3,24 +3,32 @@
 // See THIRD_PARTY.md. Copyright 2026 NDS4MiSTer contributors.
 #include "font.h"
 #include "framebuffer_metadata.h"
+#include "firmware_media.h"
+#include "freebios_media.h"
+#include "personal_profile.h"
 #include "menu_model.h"
 #include "menu_presentation.h"
 #include "osd_frame.h"
 #include "recent_files.h"
 #include "rom_reader.h"
+#include "rom_mapping.h"
 #include "system_menu.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
 #include <csignal>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <linux/input.h>
 #include <map>
 #include <memory>
+#include <optional>
+#include <functional>
 #include <poll.h>
 #include <stdexcept>
 #include <string>
@@ -162,11 +170,15 @@ public:
   std::vector<uint16_t> framebuffer_reply;
   size_t framebuffer_reply_index = 0;
   int framebuffer_fail_at = -1;
+  std::function<uint16_t(uint32_t, uint16_t, size_t, uint16_t)> response;
   bool selected = false;
   unsigned end_count = 0;
+  uint16_t default_firmware_flags = 0x23c, default_firmware_op = 0;
   uint16_t begin(uint32_t select, uint16_t command) {
     history.push_back({select, command, {}});
     selected = true;
+    if (response) return response(select, command, 0, command);
+    if (command == 0x45) return 0x4657;
     if (command == 0x40) {
       framebuffer_reply_index = 0;
       return framebufferWord();
@@ -175,6 +187,15 @@ public:
   }
   uint16_t word(uint16_t value) {
     history.back().words.push_back(value);
+    if (response) return response(history.back().select, history.back().command, history.back().words.size(), value);
+    if (history.back().command == 0x45) {
+      if (history.back().words.size() == 1) { default_firmware_op = value; return default_firmware_flags; }
+      if (history.back().words.size() == 2) {
+        if (default_firmware_op == 1) default_firmware_flags |= 1;
+        if (default_firmware_op == 3) default_firmware_flags &= ~3;
+      }
+      return 0;
+    }
     if (history.back().command == 0x40) return framebufferWord();
     return 0;
   }
@@ -219,6 +240,19 @@ class Host {
   fs::path sd_root;
   int save = -1, heartbeat = -1;
   std::string game;
+  std::optional<nds_firmware::Media> firmware;
+  bool native_firmware = false, firmware_slot_mounted = false;
+  bool firmware_rtc_seeded = false;
+  bool firmware_failed = false, firmware_error_dialog = false;
+  std::string firmware_error_title, firmware_error_text, personal_settings_notice;
+  uint64_t next_firmware_poll = 0;
+  // Opt-in troubleshooting only. No firmware bytes or personal profile fields.
+  bool firmware_diagnostics = false;
+  uint64_t firmware_read_requests = 0, firmware_write_requests = 0;
+  uint64_t firmware_reads_completed = 0, firmware_writes_durable = 0;
+  uint32_t firmware_last_lba = 0;
+  unsigned firmware_last_operation = 0, firmware_unique_lbas_logged = 0;
+  std::array<bool, 512> firmware_lba_logged{};
   uint16_t status = 0;
   std::array<uint16_t, 8> full_status{};
   std::vector<Pad> pads;
@@ -298,7 +332,8 @@ class Host {
     require(ok, "sync config directory");
   }
   void saveSettings() {
-    full_status[0] = cleanStatus(status);
+    status = cleanStatus(status);
+    full_status[0] = status;
     atomicFile(fs::path(kit) / "NDS_v1.CFG", full_status.data(),
                sizeof(full_status));
     message = "Settings saved";
@@ -315,8 +350,35 @@ class Host {
       const auto end_us = monotonic_us();
       auto live_status = full_status;
       live_status[0] = status;
-      const auto data = metadata.json(sequence, unsigned(getpid()), begin_us,
-                                      end_us, live_status);
+      auto data = metadata.json(sequence, unsigned(getpid()), begin_us,
+                                end_us, live_status);
+      if (firmware_diagnostics) {
+        // This explicit snapshot runs inside the SPI owner's normal loop.
+        // A diagnostic failure must not change firmware state or block video metadata.
+        std::ostringstream diagnostic;
+        diagnostic << "{\"read_requests\":" << firmware_read_requests
+                   << ",\"write_requests\":" << firmware_write_requests
+                   << ",\"reads_completed\":" << firmware_reads_completed
+                   << ",\"writes_durable\":" << firmware_writes_durable
+                   << ",\"last_lba\":" << firmware_last_lba
+                   << ",\"last_operation\":" << firmware_last_operation
+                   << ",\"unique_lbas_logged\":" << firmware_unique_lbas_logged;
+        try {
+          const auto state = firmwareControl();
+          diagnostic << ",\"controller_status_available\":true,\"flags\":" << state.flags
+                     << ",\"sequence\":" << state.sequence << ",\"error\":" << state.error;
+          log("firmware diagnostic snapshot flags=" + std::to_string(state.flags) +
+              " sequence=" + std::to_string(state.sequence) + " error=" + std::to_string(state.error) +
+              " reads=" + std::to_string(firmware_reads_completed) +
+              " writes_durable=" + std::to_string(firmware_writes_durable) +
+              " last_lba=" + std::to_string(firmware_last_lba));
+        } catch (const std::exception &error) {
+          diagnostic << ",\"controller_status_available\":false";
+          log(std::string("firmware diagnostic status unavailable: ") + error.what());
+        }
+        diagnostic << '}';
+        data.insert(data.rfind("\n}"), ",\n  \"firmware_diagnostics\": " + diagnostic.str());
+      }
       atomicFile(fs::path(kit) / "framebuffer-metadata.json", data.data(), data.size());
       log("framebuffer metadata snapshot=" + std::to_string(sequence));
     } catch (const std::exception &e) {
@@ -356,7 +418,7 @@ class Host {
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     if (ext != ".nds" || !fs::is_regular_file(path, ec) || ec) return false;
     auto size = fs::file_size(path, ec);
-    return !ec && size >= 512 && size <= 128u * 1024 * 1024;
+    return !ec && RomReader::validSize(size);
   }
   void openRecents() {
     if (!recents_enabled) return;
@@ -413,7 +475,7 @@ class Host {
         auto size = e.file_size(ec);
         const bool accepted = core_browser
             ? (ext == ".rbf" || ext == ".mra" || ext == ".mgl") && size > 0
-            : ext == ".nds" && size >= 512 && size <= 128u * 1024 * 1024;
+            : ext == ".nds" && RomReader::validSize(size);
         if (!ec && accepted)
           entries.push_back({e.path().filename().string(), false});
       }
@@ -475,6 +537,8 @@ class Host {
     }
   }
   void sendstatus() {
+    // Preserve transient reset bit0 while overriding legacy Engine B Off.
+    status |= REQUIRED_STATUS;
     spi.begin(Spi::IO, 0x1e);
     spi.word(status);
     for (int i = 1; i < 8; i++)
@@ -488,12 +552,19 @@ class Host {
     }
   }
   void reset() {
+    firmwareControl(1);
+    flushFirmware();
+    if (native_firmware) uploadNativeFirmwareAssets();
+    else uploadDirectGameAssets();
     drain(450);
     status |= 1;
     sendstatus();
     usleep(20000);
     status &= ~1;
     sendstatus();
+    firmwareControl(native_firmware ? 2 : 3);
+    waitFirmware(native_firmware ? 0x43 : 3, native_firmware ? 0x42 : 0,
+                 3000, "reset release");
     log("reset");
   }
   void osd(bool en, bool message_window = false) {
@@ -547,7 +618,7 @@ class Host {
     }
   }
   void animateMenu(uint64_t now) {
-    if (!menu || mapping_step >= 0 || reset_confirm || recent_clear_confirm) return;
+    if (!menu || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog) return;
     if (browser) {
       if (roms.empty() || browser_selected_row < 0 || now < next_scroll) return;
       if (recent_view) {
@@ -602,19 +673,35 @@ class Host {
   void draw() {
     if (!menu)
       return;
-    if (browser && !recent_clear_confirm) {
+    if (browser && !recent_clear_confirm && !firmware_error_dialog) {
       drawBrowser();
       osd(true);
       dirty = false;
       return;
     }
-    if (system_menu && mapping_step < 0 && !reset_confirm && !recent_clear_confirm) {
+    if (system_menu && mapping_step < 0 && !reset_confirm && !recent_clear_confirm && !firmware_error_dialog) {
       drawSystem();
       return;
     }
     std::array<std::string, 16> rows{};
     int selected = -1;
-    if (mapping_step >= 0) {
+    if (firmware_error_dialog) {
+      frame.setTitle("Firmware");
+      rows[1] = " " + firmware_error_title;
+      std::string remaining = firmware_error_text;
+      for (unsigned row = 3; row < 14 && !remaining.empty(); ++row) {
+        size_t length = std::min<size_t>(28, remaining.size());
+        if (length < remaining.size()) {
+          const auto space = remaining.rfind(' ', length);
+          if (space != std::string::npos && space) length = space;
+        }
+        rows[row] = " " + remaining.substr(0, length);
+        remaining.erase(0, length);
+        while (!remaining.empty() && remaining.front() == ' ') remaining.erase(0, 1);
+      }
+      rows[15] = "       Return to menu";
+      selected = 15;
+    } else if (mapping_step >= 0) {
       frame.setTitle("Define buttons");
       rows[3] = " Press: " + std::string(button_names[mapping_step]);
       rows[5] = " Use one controller";
@@ -636,17 +723,18 @@ class Host {
     } else {
       frame.setTitle("NDS");
       rows[0] = " " + std::string(LOAD_LABEL);
+      rows[1] = " Boot DS firmware";
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++)
-        rows[i + 2] = optionLabel(status, CORE_OPTIONS[i]);
-      rows[8] = " Reset";
-      rows[11] = message;
+        rows[i + 3] = optionLabel(status, CORE_OPTIONS[i]);
+      rows[9] = " Reset";
+      rows[11] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
-      selected = cursor == 0   ? 0
+      selected = cursor <= 1 ? cursor
                  : cursor <= 6 ? cursor + 1
-                 : cursor == 7 ? 8
+                 : cursor == 7 ? 9
                                : 15;
     }
-    const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm ? 0
+    const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
                             : system_menu ? nds_osd::arrow_left
                                           : nds_osd::arrow_right;
     for (int i = 0; i < 16; i++)
@@ -683,6 +771,16 @@ class Host {
     log(menu ? "menu opened" : "menu closed");
   }
   void action(int a) { // up, down, accept, back, menu, left, right, minus, plus, recent
+    if (firmware_error_dialog) {
+      if (a == 2 || a == 3 || a == 4) {
+        firmware_error_dialog = false;
+        menu = true;
+        browser = system_menu = false;
+        cursor = 1;
+        dirty = true;
+      }
+      return;
+    }
     if (a == 4) {
       togglemenu();
       return;
@@ -716,13 +814,12 @@ class Host {
         system_menu = !accepted;
         cursor = accepted ? 0 : 2;
         if (accepted) {
-          // Main clears the full status bank and saves the defaults; it does
-          // not pulse reset. Engine B keeps its next-reset semantics.
-          status = 0;
+          // Reset frontend options without pulsing reset; both engines stay on.
+          status = REQUIRED_STATUS;
           full_status.fill(0);
           saveSettings();
           sendstatus();
-          message = "Defaults: Reset to apply Engine B";
+          message = "Defaults restored";
         }
       }
       dirty = true;
@@ -757,13 +854,19 @@ class Host {
         if (a == 2 && !roms.empty()) {
           if (recent_view) {
             recent_available[cursor] = usableRecent(recent_paths[cursor]);
-            if (recent_available[cursor]) load(recent_paths[cursor].string());
+            if (recent_available[cursor]) {
+              try { load(recent_paths[cursor].string()); }
+              catch (const std::exception &e) { firmwareError("Cannot load game", e.what()); }
+            }
           } else {
             auto entry = roms.at(cursor);
             auto path = currentdir / entry.name;
             if (entry.directory) browse(path);
             else if (core_browser) selectCore(path);
-            else load(path.string());
+            else {
+              try { load(path.string()); }
+              catch (const std::exception &e) { firmwareError("Cannot load game", e.what()); }
+            }
           }
         } else if (a == 5 || a == 6) {
           if (count)
@@ -805,20 +908,24 @@ class Host {
         // when an option is selected. Values use Select or +/- instead.
         system_menu = true;
         cursor = 0;
-      } else if ((a == 2 || a == 7 || a == 8) && cursor >= 1 && cursor <= 6) {
-        const auto &o = CORE_OPTIONS[cursor - 1];
+      } else if ((a == 2 || a == 7 || a == 8) && cursor >= 2 && cursor <= 6) {
+        const auto &o = CORE_OPTIONS[cursor - 2];
         status = changeOption(status, o, a == 7 ? -1 : 1);
         sendstatus();
-        message = o.shift == 10 ? " Reset or reload ROM to apply" : "";
+        message.clear();
       } else if (a == 2) {
         switch (cursor) {
         case 0:
           browser = true;
           browse(currentdir.empty() ? fs::path(romdir) : currentdir);
           break;
+        case 1:
+          try { bootFirmware(); }
+          catch (const std::exception &e) { firmwareError("Cannot boot DS firmware", e.what()); }
+          break;
         case 7:
-          reset();
-          togglemenu();
+          try { reset(); togglemenu(); }
+          catch (const std::exception &e) { firmwareError("Cannot reset firmware", e.what()); }
           break;
         case 8:
           togglemenu();
@@ -830,6 +937,185 @@ class Host {
         std::to_string(browser) + " system=" + std::to_string(system_menu) +
         " status=" + std::to_string(status));
     dirty = true;
+  }
+  struct FirmwareStatus {
+    uint16_t flags = 0, sequence = 0, error = 0;
+  };
+  FirmwareStatus firmwareControl(uint16_t operation = 0, uint16_t argument = 0) {
+    try {
+      const auto magic = spi.begin(Spi::IO, 0x45);
+      if (magic != 0x4657)
+        throw std::runtime_error("This FPGA core does not support DS firmware boot");
+      FirmwareStatus result;
+      result.flags = spi.word(operation);
+      result.sequence = spi.word(argument);
+      result.error = spi.word(0);
+      spi.end();
+      return result;
+    } catch (...) { spi.end(); throw; }
+  }
+  void firmwareError(const std::string &title, const std::string &detail) {
+    firmware_error_title = title;
+    firmware_error_text = detail;
+    firmware_error_dialog = true;
+    menu = true;
+    browser = system_menu = false;
+    recent_view = recent_clear_confirm = false;
+    mapping_step = -1;
+    neutralInput();
+    dirty = true;
+    log(title + ": " + detail);
+  }
+  fs::path firmwarePath() const {
+    return sd_root / "saves/NDS/firmware.bin";
+  }
+  void ensureFirmware() {
+    if (firmware_failed)
+      throw std::runtime_error("Firmware storage failed. Correct the storage problem and restart standalone; saved copies were preserved.");
+    if (!firmware)
+      firmware.emplace(nds_firmware::Media::open(fs::path(romdir), firmwarePath()));
+    if (firmware) {
+      const auto profile = firmware->profile();
+      // The experimental FPGA TSC currently supplies pixel<<4 samples. Do not
+      // silently rewrite the user's physical calibration to make it fit.
+      const auto identity = [](const nds_firmware::CalibrationAxis &axis) {
+        return axis.pixel1 != axis.pixel2 && axis.adc1 == unsigned(axis.pixel1) * 16 &&
+               axis.adc2 == unsigned(axis.pixel2) * 16;
+      };
+      if (!identity(profile.x) || !identity(profile.y))
+        throw std::runtime_error("This firmware's touch calibration is not supported by this experimental core. Original data was preserved.");
+      if (profile.nonadjacent_counters)
+        log("firmware profile uses native primary-copy selection for nonadjacent counters");
+    }
+  }
+  void mountFirmware() {
+    if (!firmware || firmware_slot_mounted) return;
+    const uint64_t size = nds_firmware::image_size;
+    spi.begin(Spi::IO, 0x1d);
+    for (unsigned i = 0; i < 4; ++i) spi.word(uint16_t(size >> (16 * i)));
+    spi.end();
+    spi.cmd(Spi::IO, 0x1c, {2});
+    firmware_slot_mounted = true;
+  }
+  FirmwareStatus waitFirmware(uint16_t mask, uint16_t desired, unsigned timeout,
+                              const char *description) {
+    const auto deadline = ms() + timeout;
+    for (;;) {
+      if (!running) throw std::runtime_error("Firmware operation interrupted");
+      if (firmware_failed) throw std::runtime_error("Firmware storage failed; saved copies were preserved");
+      beat();
+      sector();
+      const auto state = firmwareControl();
+      if (state.flags & 0x80)
+        throw std::runtime_error("Firmware controller error " + std::to_string(state.error));
+      if ((state.flags & mask) == desired) return state;
+      if (ms() >= deadline) throw std::runtime_error(std::string("Timed out waiting for ") + description);
+      usleep(1000);
+    }
+  }
+  void flushFirmware() {
+    if (!firmware_slot_mounted) return;
+    if (firmware_failed) throw std::runtime_error("Firmware save failed; restart standalone after correcting storage");
+    firmwareControl(4);
+    waitFirmware(0x120, 0x20, 10000, "firmware settings to reach disk");
+  }
+  template<class Container> void uploadAsset(uint16_t index, const Container &bytes) {
+    if (bytes.empty() || (bytes.size() & 1))
+      throw std::runtime_error("Invalid firmware asset size");
+    try {
+      spi.cmd(Spi::FIO, 0x55, {index});
+      // Normal FIO transfers carry the starting byte address, not file length.
+      spi.cmd(Spi::FIO, 0x53, {1, 0, 0});
+      for (size_t offset = 0; offset < bytes.size(); offset += 512) {
+        if (!running) throw std::runtime_error("Firmware asset load interrupted");
+        beat();
+        spi.begin(Spi::FIO, 0x54);
+        for (size_t i = offset; i < std::min(bytes.size(), offset + 512); i += 2)
+          spi.word(uint16_t(bytes[i]) | uint16_t(bytes[i + 1]) << 8);
+        spi.end();
+      }
+      spi.cmd(Spi::FIO, 0x53, {0});
+    } catch (...) {
+      // End even an incomplete epoch so a retry has a fresh download edge.
+      // The held controller rejects the short asset and never releases CPUs.
+      spi.end();
+      try { spi.cmd(Spi::FIO, 0x53, {0}); } catch (...) { spi.end(); }
+      throw;
+    }
+  }
+  void uploadNativeFirmwareAssets() {
+    ensureFirmware();
+    uploadAsset(4, firmware->bios7());
+    uploadAsset(5, firmware->bios9());
+    const auto profile = firmware->profile();
+    std::array<uint8_t, 120> bytes{};
+    const uint32_t checksums = uint32_t(profile.data_gfx_crc) | uint32_t(profile.gui_wifi_crc) << 16;
+    for (unsigned i = 0; i < 4; ++i) {
+      bytes[i] = uint8_t(profile.user_offset >> (8 * i));
+      bytes[i + 4] = uint8_t(checksums >> (8 * i));
+    }
+    std::copy(profile.bytes.begin(), profile.bytes.end(), bytes.begin() + 8);
+    uploadAsset(6, bytes);
+    waitFirmware(0x1c, 0x1c, 3000, "BIOS and user profile upload");
+  }
+  void uploadDirectGameAssets() {
+    // No native Media import, BIOS files or calibration validation for games.
+    // When leaving GUI, the caller has already held and durably flushed it.
+    const auto personal = firmware ? nds_firmware::projectPersonalImage(firmware->image())
+                                   : nds_firmware::readGamePersonalProfile(firmwarePath());
+    personal_settings_notice = personal.warning.empty() ? "" : " Built-in personal settings";
+    if (!personal.warning.empty()) log(personal.warning);
+    uploadAsset(4, nds_firmware::freebios7);
+    uploadAsset(5, nds_firmware::freebios9);
+    uploadAsset(7, personal.pages);
+    // Bit9 is the new exact512-byte direct upload's completion acknowledgement.
+    // An older core cannot release with an ignored upload/stale native profile.
+    waitFirmware(0x21c, 0x21c, 3000, "built-in BIOS and personal settings upload");
+  }
+  void seedFirmwareClock() {
+    if (firmware_rtc_seeded) return;
+    const auto now = std::time(nullptr);
+    std::tm date{};
+    if (now == std::time_t(-1) || !localtime_r(&now, &date) ||
+        date.tm_year < 100 || date.tm_year > 199)
+      throw std::runtime_error("Set the MiSTer clock to a date between 2000 and 2099 before booting DS firmware");
+    const auto bcd = [](unsigned value) { return uint8_t((value / 10) * 16 + value % 10); };
+    const std::array<uint8_t, 8> bytes{{bcd(unsigned(date.tm_year - 100)),
+        bcd(unsigned(date.tm_mon + 1)), bcd(unsigned(date.tm_mday)),
+        bcd(unsigned(date.tm_wday)), bcd(unsigned(date.tm_hour)),
+        bcd(unsigned(date.tm_min)), bcd(unsigned(std::min(date.tm_sec, 59))), 0}};
+    try {
+      spi.begin(Spi::IO, 0x22);
+      for (unsigned i = 0; i < bytes.size(); i += 2)
+        spi.word(uint16_t(bytes[i]) | uint16_t(bytes[i + 1]) << 8);
+      spi.end();
+    } catch (...) { spi.end(); throw; }
+    // Native date edits remain authoritative for this standalone session.
+    // Guest resets and subsequent game/native transitions never reseed RTC.
+    firmware_rtc_seeded = true;
+  }
+  void bootFirmware() {
+    ensureFirmware(); // All native source/storage validation precedes CPU hold.
+    firmwareControl(1);
+    neutralInput();
+    drain(450);
+    flushFirmware();
+    mountFirmware();
+    beginLoading("DS firmware");
+    uploadNativeFirmwareAssets();
+    seedFirmwareClock();
+    firmwareControl(2);
+    waitFirmware(0x43, 0x42, 3000, "native firmware release");
+    native_firmware = true;
+    menu = browser = system_menu = false;
+    recent_view = recent_clear_confirm = false;
+    osd(false);
+    log("native DS firmware CPUs released; firmware menu progress not yet verified");
+  }
+  void firmwareStorageFailure(const std::exception &error) {
+    firmware_failed = true;
+    try { firmwareControl(6); } catch (...) {}
+    firmwareError("Firmware save failed", error.what());
   }
   void mount(const std::string &rom) {
     if (save >= 0) {
@@ -856,6 +1142,21 @@ class Host {
     spi.end();
     spi.cmd(Spi::IO, 0x1c, {1});
   }
+  void recordFirmwareRequest(unsigned operation, uint32_t lba) {
+    if (!firmware_diagnostics) return;
+    firmware_last_lba = lba;
+    firmware_last_operation = operation;
+    if (operation == 1) ++firmware_read_requests;
+    if (operation == 2) ++firmware_write_requests;
+    // Bound boot tracing even if guest firmware reads the complete flash.
+    if (lba < firmware_lba_logged.size() && !firmware_lba_logged[lba] &&
+        firmware_unique_lbas_logged < 32) {
+      firmware_lba_logged[lba] = true;
+      ++firmware_unique_lbas_logged;
+      log("firmware diagnostic request op=" + std::to_string(operation) +
+          " lba=" + std::to_string(lba));
+    }
+  }
   bool sector() {
     auto c = spi.begin(Spi::IO, 0x16);
     int op = c & 3;
@@ -867,9 +1168,48 @@ class Host {
     uint32_t lba = spi.word(0);
     lba |= uint32_t(spi.word(0)) << 16;
     spi.end();
-    require((c & 0x8000) && ((c >> 2) & 15) == 0 && ((c >> 6) & 7) == 2 &&
-                ((c >> 9) & 63) == 0 && lba < 2048,
+    const unsigned slot = (c >> 2) & 15;
+    require((c & 0x8000) && slot <= 1 && ((c >> 6) & 7) == 2 &&
+                ((c >> 9) & 63) == 0 && lba < (slot ? 512u : 2048u),
             "unsupported SD request");
+    if (slot == 1) {
+      if (firmware_failed) return false;
+      recordFirmwareRequest(unsigned(op), lba);
+      try {
+        if (!firmware || !firmware_slot_mounted)
+          throw std::runtime_error("Firmware sector requested without a mounted working image");
+        if (op == 1) {
+          const auto bytes = firmware->readSector(lba);
+          spi.begin(Spi::IO, 0x117);
+          for (unsigned i = 0; i < bytes.size(); i += 2)
+            spi.word(uint16_t(bytes[i]) | uint16_t(bytes[i + 1]) << 8);
+          spi.end();
+          if (firmware_diagnostics) ++firmware_reads_completed;
+        } else if (op == 2) {
+          nds_firmware::Sector bytes{};
+          spi.begin(Spi::IO, 0x118);
+          for (unsigned i = 0; i < bytes.size(); i += 2) {
+            const auto word = spi.word(0);
+            bytes[i] = uint8_t(word);
+            bytes[i + 1] = uint8_t(word >> 8);
+          }
+          spi.end();
+          // SD acknowledgement transfers bytes only. The cache keeps dirty
+          // state until the matching explicit durable-completion operation.
+          const auto state = firmwareControl();
+          if (!(state.flags & 0x100))
+            throw std::runtime_error("Firmware write has no pending commit sequence");
+          firmware->commitSector(lba, bytes);
+          firmwareControl(5, state.sequence);
+          if (firmware_diagnostics) ++firmware_writes_durable;
+        } else throw std::runtime_error("Simultaneous firmware read and write");
+        return true;
+      } catch (const std::exception &e) {
+        spi.end();
+        firmwareStorageFailure(e);
+        return false;
+      }
+    }
     require(save >= 0, "SD request without shared save");
     std::array<uint16_t, 256> b;
     b.fill(0xffff);
@@ -1223,6 +1563,8 @@ public:
   Host(std::string k, std::string r, fs::path sd = "/media/fat")
       : kit(k), romdir(r), savedir((sd / "saves/NDS").string()), sd_root(sd) {
     core_root = sd_root;
+    const char *diagnostics = std::getenv("NDS_FIRMWARE_DIAGNOSTICS");
+    firmware_diagnostics = diagnostics && std::strcmp(diagnostics, "1") == 0;
     fs::create_directories(savedir);
     heartbeat = open("/tmp/nds-standalone-heartbeat",
                      O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
@@ -1269,35 +1611,47 @@ public:
     };
     RomReader reader(path);
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.
-    const auto n = reader.size(service);
-#ifndef STANDALONE_TEST
-    int mf = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);
-    require(mf >= 0, "ROM memory");
-    void *mem =
-        mmap(nullptr, n, PROT_READ | PROT_WRITE, MAP_SHARED, mf, 0x30000000);
-    close(mf);
-#else
-    void *mem = mmap(nullptr, n, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-#endif
-    require(mem != MAP_FAILED, "ROM mmap");
-    const auto unmap = [n](void *p) { munmap(p, n); };
-    std::unique_ptr<void, decltype(unmap)> mapping(mem, unmap);
-    spi.cmd(Spi::FIO, 0x55, {3});
+    const auto file_size = reader.size(service);
+    const auto transfer_size = RomReader::transferSize(file_size);
+    const auto storage_size = RomLayout::storageSize(file_size);
+    // Reserve every destination before touching FIO. Large files use the
+    // separate rotated bank; graphics/control memory keeps its existing owner.
+    RomMapping mapping(file_size);
+    firmwareControl(1);
+    flushFirmware();
+    uploadDirectGameAssets();
+    spi.cmd(Spi::FIO, 0x55, {RomLayout::index(file_size)});
     spi.cmd(Spi::FIO, 0x56, {0x2e4e, 0x4453});
-    spi.cmd(Spi::FIO, 0x53, {255, uint16_t(n), uint16_t(n >> 16)});
+    spi.cmd(Spi::FIO, 0x53, {255, uint16_t(file_size), uint16_t(file_size >> 16)});
     // Download's rising edge asks the save bridge to flush the outgoing cart.
     drain(100);
     size_t off = 0;
-    while (off < n) {
-      off += reader.read((char *)mem + off, std::min<size_t>(262144, n - off), service);
-      updateLoading(off, n);
+    while (off < transfer_size) {
+      const auto chunk = mapping.at(off);
+      off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
+      updateLoading(off, storage_size);
+    }
+    // The extended FPGA aperture always backs316MiB. A trimmed file must not
+    // expose a prior cartridge's bytes between its EOF and that boundary.
+    while (off < storage_size) {
+#ifdef STANDALONE_TEST
+      if (RomMapping::test_before_padding_write) RomMapping::test_before_padding_write(off);
+#endif
+      service();
+      const auto chunk = mapping.at(off);
+      const auto n = std::min<size_t>(262144, chunk.size);
+      memset(chunk.data, 0xff, n);
+      off += n;
+      updateLoading(off, storage_size);
     }
     service();
     __sync_synchronize();
     mapping.reset();
     mount(path);
     spi.cmd(Spi::FIO, 0x53, {0});
+    firmwareControl(3);
+    waitFirmware(3, 0, 3000, "direct game boot release");
+    native_firmware = false;
     game = path;
     currentdir = fs::path(path).parent_path();
     try { remember(path); }
@@ -1323,6 +1677,14 @@ public:
       for (int i = 0; i < 4; i++)
         if (!sector())
           break;
+      if (native_firmware && firmware_slot_mounted && !firmware_failed && ms() >= next_firmware_poll) {
+        next_firmware_poll = ms() + 250;
+        try {
+          const auto state = firmwareControl();
+          if (state.flags & 0x80)
+            throw std::runtime_error("Firmware controller error " + std::to_string(state.error));
+        } catch (const std::exception &e) { firmwareStorageFailure(e); }
+      }
       uint32_t b = spi.buttons();
       if ((b & 1) && !(oldbuttons & 1))
         action(4);
@@ -1344,6 +1706,14 @@ public:
     // Neutral input first; service delayed dirty-sector requests before handing
     // off.
     joy(0);
+    if (firmware_slot_mounted && !firmware_failed) {
+      // A clean exit may follow SIGTERM (running=0); flush still owns SPI.
+      const auto previous = running;
+      running = 1;
+      try { firmwareControl(1); flushFirmware(); }
+      catch (...) { running = previous; throw; }
+      running = previous;
+    }
     drain(500);
     osd(false);
     if (save >= 0) require(fdatasync(save) == 0, "sync save before core handoff");

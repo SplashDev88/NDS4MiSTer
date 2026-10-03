@@ -36,7 +36,7 @@ architecture sim of tb_nds_card_back_to_back is
    signal irq9_xfer, irq7_xfer, dma9_card, dma7_card : std_logic;
    signal dbg_card      : std_logic_vector(31 downto 0);
    signal card_ena      : std_logic;
-   signal card_addr     : std_logic_vector(26 downto 2);
+   signal card_addr     : std_logic_vector(28 downto 2);
    signal chipid        : std_logic_vector(31 downto 0) := x"12345678";
 begin
    clk <= not clk after 5 ns when not done else '0';

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #define STANDALONE_TEST
 #include "rom_reader.h"
+#include "test_rom_fixture.h"
 #include <cassert>
 #include <filesystem>
 #include <fstream>
@@ -11,12 +12,20 @@ namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 static unsigned metadata_delay = 0, read_delay = 0;
 static bool shorten = false, fail_read = false;
+static bool fail_padding = false, shorten_padding = false;
+static unsigned padding_delay = 0;
+static uint64_t padding_start = RomReader::max_transfer_size;
 static int inherited_fd = -1;
 static void hook(int fd, uint64_t off) {
   if (fd < 0) {
     if (inherited_fd >= 0 && (fcntl(inherited_fd, F_GETFD) >= 0 || errno != EBADF)) _exit(9);
     usleep(metadata_delay * 1000);
   } else {
+    if (off >= padding_start) {
+      usleep(padding_delay * 1000);
+      if (fail_padding) close(fd);
+      if (shorten_padding) assert(truncate("/tmp/rom-reader-fixture.nds", padding_start) == 0);
+    }
     usleep(read_delay * 1000);
     if (!off && shorten) assert(truncate("/tmp/rom-reader-fixture.nds", 512) == 0);
     if (!off && fail_read) close(fd);
@@ -87,6 +96,95 @@ static void error(const std::string &path, const std::string &expected, bool bod
   }
   assert(caught);
   reaped(pid);
+}
+static void large_transfer(uint64_t file_size) {
+  const char *path = "/tmp/rom-reader-fixture.nds";
+  largeRomFixture(path, file_size);
+  pid_t pid;
+  {
+    RomReader r(path);
+    pid = r.testPid();
+    assert(r.size([] {}, 500) == file_size);
+    const auto expected = RomReader::transferSize(file_size);
+    uint64_t off = 0;
+    std::array<unsigned char, 262144> buffer;
+    while (off < expected) {
+      const auto n = r.read(buffer.data(), std::min<uint64_t>(buffer.size(), expected - off), [] {}, 500);
+      for (size_t i = 0; i < n; ++i)
+        assert(buffer[i] == (off + i == 0 ? 0x12 : off + i == expected - 1 ? 0x37 : 0));
+      off += n;
+    }
+    // The worker must not stream padding into the reserved graphics area.
+    bool ended = false;
+    try { r.read(buffer.data(), 1, [] {}, 500); }
+    catch (const std::exception &e) {
+      ended = std::string(e.what()).find("ROM read failed") != std::string::npos;
+    }
+    assert(ended);
+  }
+  reaped(pid);
+  std::cout << "PASS large ROM file_bytes=" << file_size
+            << " transfer_bytes=" << RomReader::transferSize(file_size) << '\n';
+}
+static void large_roms() {
+  const char *path = "/tmp/rom-reader-fixture.nds";
+  for (const auto size : {RomLayout::lr1_transfer_size - 1, RomLayout::lr1_transfer_size,
+                          RomLayout::lr1_transfer_size + 1, RomLayout::lr1_file_size,
+                          RomLayout::lr1_file_size + 1,
+                          RomReader::max_transfer_size - 1, RomReader::max_transfer_size,
+                          RomReader::max_transfer_size + 1, RomReader::max_file_size})
+    large_transfer(size);
+  // A tiny claimed used-size in the zero-filled header cannot hide real data.
+  for (const auto offset : {RomReader::max_transfer_size, RomReader::max_file_size - 1}) {
+    romFixtureByte(path, offset, 0x00);
+    error(path, "above 316 MiB must be FF padding");
+    romFixtureByte(path, offset, 0xff);
+  }
+  fail_padding = true;
+  error(path, "ROM read failed while checking padding");
+  fail_padding = false;
+  shorten_padding = true;
+  error(path, "ROM read failed while checking padding");
+  shorten_padding = false;
+  // Exercise the LR1-specific omitted span, then a four-MiB extended tail.
+  largeRomFixture(path, RomLayout::lr1_file_size);
+  for (const auto offset : {RomLayout::lr1_transfer_size, RomLayout::lr1_file_size - 1}) {
+    romFixtureByte(path, offset, 0);
+    error(path, "above 252 MiB must be FF padding");
+    romFixtureByte(path, offset, 0xff);
+  }
+  const auto progress_size = RomReader::max_transfer_size + 4 * RomLayout::mib;
+  largeRomFixture(path, progress_size);
+  pid_t pid;
+  padding_delay = 80;
+  const auto validation_start = Clock::now();
+  unsigned service_calls = 0;
+  {
+    RomReader r(path);
+    pid = r.testPid();
+    assert(r.size([&] { ++service_calls; }, 200) == progress_size);
+  }
+  reaped(pid);
+  assert(service_calls >= 16 && Clock::now() - validation_start >= std::chrono::milliseconds(1280));
+  padding_delay = 5000;
+  const auto start = Clock::now();
+  bool cancelled = false;
+  {
+    RomReader r(path);
+    pid = r.testPid();
+    try {
+      r.size([&] {
+        if (Clock::now() - start >= std::chrono::milliseconds(100))
+          throw std::runtime_error("cancelled padding");
+      }, 500);
+    } catch (const std::exception &e) {
+      cancelled = std::string(e.what()) == "cancelled padding";
+    }
+  }
+  assert(cancelled && Clock::now() - start < std::chrono::seconds(1));
+  reaped(pid);
+  padding_delay = 0;
+  std::cout << "PASS first/last omitted-byte rejection, padding read errors, progress and cancellation\n";
 }
 static void cancelled(bool cancel, bool body) {
   metadata_delay = body ? 0 : 5000;
@@ -161,7 +259,7 @@ int main(int argc, char **) {
   error("/tmp", "ROM file");
   fixture(511);
   error("/tmp/rom-reader-fixture.nds", "ROM size");
-  assert(truncate("/tmp/rom-reader-fixture.nds", 128 * 1024 * 1024 + 1) == 0);
+  assert(truncate("/tmp/rom-reader-fixture.nds", RomReader::max_file_size + 1) == 0);
   error("/tmp/rom-reader-fixture.nds", "ROM size");
   fixture(1024 * 1024);
   shorten = true;
@@ -192,6 +290,7 @@ int main(int argc, char **) {
   metadata_delay = 0;
   std::cout << "PASS inherited descriptors and lock released\n";
   parent_death();
+  large_roms();
   if (argc > 1) {
     read_delay = 21500;
     transfer(fixture(512), RomReader::no_progress_ms, 21500);

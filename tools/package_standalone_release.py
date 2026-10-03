@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""Build the standalone installer without touching an existing MiSTer install."""
+# SPDX-License-Identifier: GPL-3.0-only
+"""Package the reviewed standalone binaries using only public source inputs.
+
+No build, network or device operation is performed. Use --check-only to verify
+all inputs and inspect the intended layout without writing an archive. Extracted
+source archives can supply --source-revision instead of requiring a Git checkout.
+"""
 from pathlib import Path
 import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import stat
 import subprocess
 import zipfile
@@ -12,27 +19,58 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
+VERSION = 'v0.9.0-rc.1'
+HOST_SHA = '63311267e580a6d0c784d474a8933cef15dbfbd8e3047d35c7108efabe0b7b40'
+FRONTEND_BUILD_SHA = '9fe960b11637f3796f4eec555381fde7c924589ae75478e854f10a585ef7c932'
+FPGA_BUILD_SHA = 'e39fc16cc5cbcfe50e59af2a3c35fe0929f210cdceb6fb4b7a0a5a6ebed5cdb0'
+FPGA_SOURCE_SHA = '17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950'
+ACCEPTED_HOST_SHA = '1b2b5c1ec083fa0ef9cd6d9ecbfdf50bcc45e9dbb39053ec2b9dd5caaa0f6b1a'
+RUNTIME_INPUT_SHA = '84ebdbf7376762f87756949040a3cda68dc785f13d3090571d34dac3a678a7da'
+LICENSES = {
+    'GPL-3.0.txt': 'LICENSE.txt',
+    'WC-GPL-2.0.txt': 'kernel/nds_mem_wc/COPYING',
+    'STANDALONE_THIRD_PARTY.md': 'tools/standalone_host/THIRD_PARTY.md',
+    'FreeBIOS.txt': 'third_party/melonDS/freebios/drastic_bios_readme.txt',
+    'Template_MiSTer.txt': 'fpga/mister_nitro_console_island/LICENSE.Template_MiSTer',
+    'Nitro_DarkSide.md': 'third_party/Nitro_DarkSide/LICENSE.md',
+    'melonDS.txt': 'third_party/melonDS/LICENSE',
+    'teakra.txt': 'third_party/melonDS/src/teakra/LICENSE',
+    'blip-buf.txt': 'third_party/melonDS/src/blip-buf/license.txt',
+    'dolphin.txt': 'third_party/melonDS/src/dolphin/license_dolphin.txt',
+    'tiny-AES.txt': 'third_party/melonDS/src/tiny-AES-c/unlicense.txt',
+    'fatfs.txt': 'third_party/melonDS/src/fatfs/LICENSE.txt',
+    'libslirp.txt': 'third_party/melonDS/src/net/libslirp/COPYRIGHT',
+}
+RUNTIME_LICENSES = ('GCC-13-cross-copyright-and-runtime-exception.txt',
+                    'GPL-3.0-GCC-runtime.txt', 'LGPL-2.1-glibc.txt', 'glibc-armhf-copyright.txt')
 
 
 def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    for name in ('core', 'helper', 'host', 'module', 'out-dir'):
-        p.add_argument('--' + name, required=True, type=Path)
-    a = p.parse_args()
-    version = (HOST / 'VERSION').read_text().strip()
+def need(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+
+def json_bytes(value):
+    return (json.dumps(value, indent=2, sort_keys=True) + '\n').encode()
+
+
+def collect(a):
+    need((HOST / 'VERSION').read_text().strip() == VERSION, 'Unexpected frontend VERSION')
     spec = importlib.util.spec_from_file_location('supervisor', HOST / 'supervisor.py')
     supervisor = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(supervisor)
-    files = {}
-    executable = set()
+    revision = a.source_revision or subprocess.check_output(
+        ['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+    need(re.fullmatch(r'[0-9a-f]{40}', revision) is not None, 'Full source commit hash required')
+    files, executable = {}, set()
 
     def add(name, path, mode=0o644):
-        assert name not in files and '..' not in Path(name).parts
-        assert path.is_file() and not path.is_symlink(), path
+        need(name not in files and '..' not in Path(name).parts, 'Duplicate/unsafe archive name')
+        need(path.is_file() and not path.is_symlink(), 'Missing/nonregular input: ' + str(path))
         files[name] = path.read_bytes()
         if mode == 0o755:
             executable.add(name)
@@ -44,79 +82,99 @@ def main():
     add(SUPPORT + 'nds_standalone_host', a.host, 0o755)
     add(SUPPORT + 'support/nds_hybrid_3d_service', a.helper, 0o755)
     add(SUPPORT + 'support/nds_mem_wc.ko', a.module)
-    expected = {
+    for name, digest in {
         'NDS_Standalone.rbf': supervisor.EXPECTED_CORE,
         'support/nds_hybrid_3d_service': supervisor.EXPECTED_HELPER,
         'support/nds_mem_wc.ko': supervisor.EXPECTED_WC,
         'Kickstart.sh': supervisor.EXPECTED_KICKSTART,
-    }
-    for name, digest in expected.items():
-        assert sha(files[SUPPORT + name]) == digest, name
+        'nds_standalone_host': HOST_SHA,
+    }.items():
+        need(sha(files[SUPPORT + name]) == digest, 'Binary/runtime checksum mismatch: ' + name)
     for name in ('nds_hybrid_3d_service', 'nds_mem_wc.ko'):
         digest = sha(files[SUPPORT + 'support/' + name])
         files[SUPPORT + 'support/' + name + '.sha256'] = (digest + '  ' + name + '\n').encode()
-    add('NDS4MiSTer_Standalone_README.txt', ROOT / 'docs/STANDALONE_QUICK_START.txt')
-    add(SUPPORT + 'README.txt', ROOT / 'docs/STANDALONE_QUICK_START.txt')
-    add(SUPPORT + 'RELEASE_NOTES.md', ROOT / 'docs/RELEASE_NOTES_V060_BETA.md')
-    add(SUPPORT + 'SOURCE_PACKAGE.txt', ROOT / 'SOURCE_PACKAGE.txt')
-    for target, source in {
-        'GPL-3.0.txt': 'LICENSE.txt',
-        'WC-GPL-2.0.txt': 'kernel/nds_mem_wc/COPYING',
-        'STANDALONE_THIRD_PARTY.md': 'tools/standalone_host/THIRD_PARTY.md',
-        'Template_MiSTer.txt': 'fpga/mister_nitro_console_island/LICENSE.Template_MiSTer',
-        'Nitro_DarkSide.md': 'third_party/Nitro_DarkSide/LICENSE.md',
-        'melonDS.txt': 'third_party/melonDS/LICENSE',
-        'teakra.txt': 'third_party/melonDS/src/teakra/LICENSE',
-        'blip-buf.txt': 'third_party/melonDS/src/blip-buf/license.txt',
-        'dolphin.txt': 'third_party/melonDS/src/dolphin/license_dolphin.txt',
-        'tiny-AES.txt': 'third_party/melonDS/src/tiny-AES-c/unlicense.txt',
-        'fatfs.txt': 'third_party/melonDS/src/fatfs/LICENSE.txt',
-        'libslirp.txt': 'third_party/melonDS/src/net/libslirp/COPYRIGHT',
-    }.items():
-        add(SUPPORT + 'licenses/' + target, ROOT / source)
-    for path in sorted((ROOT / 'licenses/runtime').glob('*.txt')):
-        add(SUPPORT + 'licenses/runtime/' + path.name, path)
-    revision = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+    docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC1.md',
+            'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
+    for name, path in docs.items():
+        add(name, a.docs_dir / name if a.docs_dir else path)
+    add('LICENSE.txt', ROOT / 'LICENSE.txt')
+    for name, path in LICENSES.items():
+        add(SUPPORT + 'licenses/' + name, ROOT / path)
+    for name in RUNTIME_LICENSES:
+        add(SUPPORT + 'licenses/runtime/' + name, ROOT / 'licenses/runtime' / name)
     manifest = {
-        'name': 'NDS4MiSTer Standalone', 'version': version,
-        'source_revision': revision,
-        'host_sha256': sha(a.host.read_bytes()),
-        'core_sha256': supervisor.EXPECTED_CORE,
-        'helper_sha256': supervisor.EXPECTED_HELPER,
+        'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
+        'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
+        'host_change': 'Version label only; release-path packaging changes are separate.',
+        'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
+        'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
-        'module_sha256': supervisor.EXPECTED_WC,
-        'runtime_environment': supervisor.EXPECTED_SPEED_ENV,
-        'shared_saves': '/media/fat/saves/NDS',
-        'rom_directory': '/media/fat/games/NDS',
+        'supervisor_sha256': sha(files[SUPPORT + 'supervisor.py']),
+        'launcher_sha256': sha(files['Scripts/NDS4MiSTer.sh']),
+        'runtime_environment': supervisor.EXPECTED_SPEED_ENV, 'hps_clock_khz': 1000000,
+        'remote_kit': '/media/fat/Scripts/.NDS_Standalone', 'rom_directory': '/media/fat/games/NDS',
+        'shared_saves': '/media/fat/saves/NDS', 'firmware_working_image': '/media/fat/saves/NDS/firmware.bin',
+        'user_dumps_included': False, 'user_settings_included': False,
+        'diagnostic_revision': 'native-pc9-memctl-v1', 'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
+        'frontend_build_sha256': FRONTEND_BUILD_SHA,
     }
-    files[SUPPORT + 'manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
+    files[SUPPORT + 'manifest.json'] = json_bytes(manifest)
+    files[SUPPORT + 'BUILD_PROVENANCE.json'] = json_bytes({
+        'release': VERSION, 'source_revision': revision, 'fpga_build_sha256': FPGA_BUILD_SHA,
+        'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
+        'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
+        'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
+        'scope': 'Accepted FPGA/helper/module unchanged; version-only frontend rebuild; public runtime path and hash metadata updates.',
+    })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
-        sha(data) + '  ./' + name + '\n' for name, data in sorted(files.items())
+        sha(data) + '  ' + name[len(SUPPORT):] + '\n'
+        for name, data in sorted(files.items()) if name.startswith(SUPPORT)
     ).encode()
-    # No user preferences or game data can be overwritten by extraction.
-    for name in files:
-        assert name.startswith(SUPPORT) or name in {
-            'Scripts/NDS4MiSTer.sh', 'NDS4MiSTer_Standalone_README.txt'}
-        assert Path(name).suffix.lower() not in {'.cfg', '.ini', '.map', '.nds', '.sav', '.dsv'}
-        assert '/inputs/' not in name
+    for name, data in files.items():
+        need(name.startswith(SUPPORT) or name in set(docs) | {'LICENSE.txt', 'Scripts/NDS4MiSTer.sh'}, 'Unexpected package path')
+        need(Path(name).suffix.lower() not in {'.cfg', '.ini', '.map', '.nds', '.sav', '.dsv'} and '/inputs/' not in name, 'User data entered package')
+        if Path(name).suffix in {'.json', '.txt', '.md', '.sh', '.py'}:
+            need(b'/Users/' not in data, 'Private local path entered package')
+    return files, executable, revision
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    for name in ('core', 'helper', 'host', 'module'):
+        parser.add_argument('--' + name, required=True, type=Path)
+    parser.add_argument('--out-dir', type=Path)
+    parser.add_argument('--docs-dir', type=Path, help='Directory containing README.md, RELEASE_NOTES.md and QUICK_START.txt')
+    parser.add_argument('--source-revision', help='Full corresponding-source commit; otherwise use checkout HEAD')
+    parser.add_argument('--check-only', action='store_true')
+    a = parser.parse_args()
+    files, executable, revision = collect(a)
+    inventory = {name: {'sha256': sha(data), 'bytes': len(data), 'mode': oct(0o755 if name in executable else 0o644)}
+                 for name, data in sorted(files.items())}
+    if a.check_only:
+        print(json.dumps({'check_only': True, 'version': VERSION, 'source_revision': revision, 'files': inventory}, indent=2))
+        return
+    need(a.out_dir is not None, '--out-dir required unless --check-only')
+    archive = a.out_dir / ('NDS4MiSTer_' + VERSION + '_Standalone.zip')
+    checksum = archive.with_suffix('.zip.sha256')
+    need(not archive.exists() and not checksum.exists(), 'Output archive/checksum already exists')
     a.out_dir.mkdir(parents=True, exist_ok=True)
-    archive = a.out_dir / ('NDS4MiSTer_' + version + '_Standalone.zip')
-    with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+    with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 9, 30, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 3, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | (0o755 if name in executable else 0o644)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(info, data)
     with zipfile.ZipFile(archive) as z:
-        assert z.testzip() is None
-        assert z.namelist() == sorted(files)
-        assert all(z.read(name) == data for name, data in files.items())
+        need(z.testzip() is None and z.namelist() == sorted(files), 'Archive integrity/inventory mismatch')
+        for name, data in files.items():
+            need(z.read(name) == data, 'Archive data mismatch')
+            need(stat.S_IMODE(z.getinfo(name).external_attr >> 16) == int(inventory[name]['mode'], 8), 'Archive mode mismatch')
     digest = sha(archive.read_bytes())
-    archive.with_suffix('.zip.sha256').write_text(digest + '  ' + archive.name + '\n')
-    print(json.dumps({'archive': str(archive), 'sha256': digest,
-                      'files': len(files), 'bytes': archive.stat().st_size,
-                      'source_revision': revision}, indent=2))
+    checksum.write_text(digest + '  ' + archive.name + '\n')
+    print(json.dumps({'archive': str(archive), 'sha256': digest, 'files': len(files),
+                      'bytes': archive.stat().st_size, 'source_revision': revision}, indent=2))
 
 
 if __name__ == '__main__':

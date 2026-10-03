@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""Generate the standalone menu from the exact FPGA CONF_STR, not copied labels."""
+"""Generate standalone option rows from the matching FPGA CONF_STR."""
 from pathlib import Path
 import json, re
 root = Path(__file__).resolve().parents[2]
@@ -18,6 +18,9 @@ for row in re.findall(r'"([^"\n]+)"', conf):
     if row.startswith("FS3,"):
         load = row.split(",")[2]
 assert load and options and len(options) < 10
+# The standalone browser uses a file-pattern label; the accepted FPGA keeps
+# its legacy MiSTer FS3 label. This changes no option bits or generated rows.
+load = "Load *.NDS"
 version = (Path(__file__).resolve().parent / 'VERSION').read_text().strip()
 assert re.fullmatch(r'v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?', version), \
     'Standalone VERSION must identify its release'

@@ -3,11 +3,11 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/nds-h3p1.XXXXXX")"
 trap 'rm -rf "$test_tmp"' EXIT
-# Bind the simulated latch to the actual menu/reset boundary; toggling bit 10
-# must not become another term in core_reset or reinterpret an existing bit.
-grep -Fq '"O[10],Engine B (next Reset),Off,On;"' \
+# The public shell always enables both engines. Legacy bit 10 is ignored;
+# keep the session/reset handshake and all other option bit positions intact.
+! grep -Fq '"O[10],Engine B' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
-grep -Fq '.engine_b_select(status[10])' \
+grep -Fq ".engine_b_select(1'b1)" \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"
 grep -Fq 'wire core_reset=media_reset|status[0]|buttons[1];' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.sv"

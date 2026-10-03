@@ -170,7 +170,7 @@ architecture arch of nds_h3d_console_event_gate is
    type hblank_queue_type is array (0 to 511) of
       std_logic_vector(104 downto 0);
    signal hblank_queue : hblank_queue_type;
-   attribute ramstyle of hblank_queue : signal is "MLAB, no_rw_check";
+   attribute ramstyle of hblank_queue : signal is "M10K, no_rw_check";
    signal hblank_queue_read : std_logic_vector(104 downto 0);
    signal hblank_read_pointer : unsigned(8 downto 0) := (others => '0');
    signal hblank_write_pointer : unsigned(8 downto 0) := (others => '0');

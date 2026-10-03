@@ -174,11 +174,11 @@ static void compare(const nds_osd::Frame &frame, unsigned row,
 static void preview(const char *path) {
   const nds_osd::Frame frame("NDS", charfont);
   const std::array<std::string, 16> rows{
-      " Load NDS (max 128 MiB)", "", " Video Layout:    Left/Right",
-      " Screen Order:    Main First", " Screen Gap:        8 Pixels",
-      " 3D FPS Counter:          On", " Engine B (next Reset):   On",
-      " Video Rotation:         Off", " Reset", "", "", "", "", "",
-      "", "            exit"};
+      " Load *.NDS", " Boot DS firmware", "",
+      " Video Layout:    Left/Right", " Screen Order:    Main First",
+      " Screen Gap:        8 Pixels", " 3D FPS Counter:          On",
+      " Video Rotation:         Off", "", " Reset",
+      "", "", "", "", "", "            exit"};
   std::ofstream output(path, std::ios::binary);
   output << "P6\n1024 512\n255\n";
   for (unsigned y = 0; y < 512; ++y) {
@@ -262,7 +262,7 @@ int main(int argc, char **argv) {
       std::string(1000, 'W'), std::string(1000, ' ')};
   const std::array<std::string, 9> texts{
       "", " Load NDS", " 3D FPS Counter            On",
-      " Engine B (next Reset)     On", std::string(28, 'A'),
+      " Video Rotation:         Off", std::string(28, 'A'),
       std::string(29, 'B'), std::string(30, 'C'), std::string(1000, 'D'),
       "Plain\vStipple\vPlain\fReverse\f"};
   nds_osd::Frame frame("", charfont);

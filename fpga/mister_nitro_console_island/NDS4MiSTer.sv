@@ -26,7 +26,7 @@ module emu
     // Put the alpha label in the version line, not in the core-name field.
     localparam CONF_STR={
         "NDS;;",
-        "FS3,NDS,Load NDS (max 128 MiB),30000000;",
+        "FS3,NDS,Load NDS,30000000;",
         "-;",
         "O[6:5],Video Layout,Left/Right,Top/Bottom,Left Only,Right Only;",
         "O[7],Screen Order,Main First,Touch First;",
@@ -34,7 +34,6 @@ module emu
         // the user-facing default at eight pixels while retaining None.
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],3D FPS Counter,Off,On;",
-        "O[10],Engine B (next Reset),Off,On;",
         "O[12:11],Video Rotation,Off,90 CCW,90 CW;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
@@ -68,6 +67,14 @@ module emu
     wire [15:0] save_sd_buff_dout;
     wire [15:0] save_sd_buff_din;
     wire save_sd_buff_wr;
+    wire [1:0] media_img_mounted,media_sd_ack;
+    wire firmware_sd_rd,firmware_sd_wr;
+    wire [31:0] firmware_sd_lba;
+    wire [15:0] firmware_sd_buff_din;
+    wire [35:0] firmware_ext_bus;
+    wire [64:0] host_rtc;
+    assign save_img_mounted=media_img_mounted[0];
+    assign save_sd_ack=media_sd_ack[0];
     wire [1:0] video_layout_active;
     wire video_screen_order_active;
     wire [1:0] video_gap_active;
@@ -125,8 +132,8 @@ module emu
         .locked(nitro_pll_locked)
     );
 
-    hps_io #(.CONF_STR(CONF_STR),.WIDE(1)) hps_io(
-        .clk_sys(clk_sys),.HPS_BUS(HPS_BUS),.EXT_BUS(),
+    hps_io #(.CONF_STR(CONF_STR),.WIDE(1),.VDNUM(2)) hps_io(
+        .clk_sys(clk_sys),.HPS_BUS(HPS_BUS),.EXT_BUS(firmware_ext_bus),.RTC(host_rtc),
         .gamma_bus(gamma_bus),
         .joystick_0(joystick_0),.joystick_1(joystick_1),
         .joystick_r_analog_0(touch_analog_0),
@@ -136,13 +143,13 @@ module emu
         .ioctl_download(ioctl_download),.ioctl_addr(ioctl_addr),
         .ioctl_dout(ioctl_dout),.ioctl_wr(ioctl_wr),
         .ioctl_index(ioctl_index),.ioctl_wait(ioctl_wait),
-        .img_mounted(save_img_mounted),
+        .img_mounted(media_img_mounted),
         .img_readonly(save_img_readonly),.img_size(save_img_size),
-        .sd_lba('{save_sd_lba}),.sd_blk_cnt('{6'd0}),
-        .sd_rd(save_sd_rd),.sd_wr(save_sd_wr),.sd_ack(save_sd_ack),
+        .sd_lba('{0:save_sd_lba,1:firmware_sd_lba}),.sd_blk_cnt('{6'd0,6'd0}),
+        .sd_rd({firmware_sd_rd,save_sd_rd}),.sd_wr({firmware_sd_wr,save_sd_wr}),.sd_ack(media_sd_ack),
         .sd_buff_addr(save_sd_buff_addr),
         .sd_buff_dout(save_sd_buff_dout),
-        .sd_buff_din('{save_sd_buff_din}),.sd_buff_wr(save_sd_buff_wr)
+        .sd_buff_din('{0:save_sd_buff_din,1:firmware_sd_buff_din}),.sd_buff_wr(save_sd_buff_wr)
     );
 
     // Mounted media belongs to the loaded core, not to a DS CPU reset epoch.
@@ -189,11 +196,19 @@ module emu
         .video_screen_order_select(status[7]),
         .video_gap_select(video_gap_select),
         .video_fps_select(status[4]),
-        .engine_b_select(status[10]),
+        // Both DS engines are required. Ignore the legacy saved Off bit.
+        .engine_b_select(1'b1),
         .video_layout_active,.video_screen_order_active,
         .video_gap_active,.video_fps_active,
         .joystick(joystick_touch),.joystick_analog(touch_analog),
-        .ioctl_download,.ioctl_index,.ioctl_wait,
+        .ioctl_download,.ioctl_index,.ioctl_addr,.ioctl_dout,.ioctl_wr,.ioctl_wait,
+        .firmware_io_enable(firmware_ext_bus[34]),.firmware_io_strobe(firmware_ext_bus[33]),
+        .firmware_io_din(firmware_ext_bus[31:16]),
+        .firmware_io_override(firmware_ext_bus[32]),.firmware_io_dout(firmware_ext_bus[15:0]),
+        .host_rtc,
+        .firmware_img_mounted(media_img_mounted[1]),.firmware_img_readonly(save_img_readonly),
+        .firmware_img_size(save_img_size),.firmware_sd_lba,.firmware_sd_rd,.firmware_sd_wr,
+        .firmware_sd_ack(media_sd_ack[1]),.firmware_sd_buff_din,
         .save_img_mounted,.save_img_readonly,.save_img_size,
         .save_sd_lba,.save_sd_rd,.save_sd_wr,.save_sd_ack,
         .save_sd_buff_addr,.save_sd_buff_dout,
@@ -243,10 +258,9 @@ module emu
     assign AUDIO_L=nitro_audio_left;
     assign AUDIO_R=nitro_audio_right;
 
-    // Direct-to-DDR host loads do not emit per-beat ioctl_wr and report their
-    // file size through only the 27-bit ioctl_addr field.  A >128 MiB image is
-    // therefore indistinguishable from its wrapped size in fabric.  The OSD
-    // label is the user-visible first-beta preflight contract; the donor card
-    // address port itself spans exactly 128 MiB.
+    // Direct-to-DDR standalone loads validate image size/padding in the host.
+    // ioctl_addr remains the unused 27-bit MiSTer transfer counter; FS3 index
+    // bit 8 selects 28-bit cartridge addresses. The host stages at most 252 MiB,
+    // and the island synthesizes FF in the graphics-owned final 4 MiB.
     assign LED_USER=nitro_boot_error|nitro_boundary_fault|~nitro_cart_loaded;
 endmodule

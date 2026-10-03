@@ -35,9 +35,9 @@
 --   * ARM7 SPI bus (nds_spi): PMIC + firmware flash + TSC; the flash serves
 --     the fw_* image port (melonDS default firmware in sim; touch/mic not
 --     wired into the TSC yet)
---   * Redistributable melonDS FreeBIOS for ARM7 and ARM9. The registered
---     product ROMs provide the direct-boot SWIs used by the initial game
---     target without Nintendo BIOS data or a run-time BIOS loader.
+--   * Reloadable ARM7/ARM9 BIOS RAMs initialize to redistributable melonDS
+--     FreeBIOS. Private native BIOS images may be uploaded while held in reset;
+--     direct-boot sessions restore the same public FreeBIOS contents.
 --   * both 2D engines render (engine B via the 0x1000 register window,
 --     palette/OAM upper halves and the C/D/H/I VRAM roles); POWCNT routes
 --     the screens (swap bit; B-off shows white, palette/OAM writes gated
@@ -140,6 +140,16 @@ entity nds_nitro_console_top is
       -- WRAM were each fixed by hand-reimplementing one thing the firmware does.
       -- Booting the firmware addresses the cause rather than the symptoms.
       fw_boot          : in  std_logic := '0';
+      cart_present     : in  std_logic := '1';
+      -- Selected effective firmware user settings, 28 little-endian words.
+      -- profile_data may have one clk1x cycle of latency.
+      profile_valid    : in  std_logic := '0';
+      profile_addr     : out std_logic_vector(4 downto 0);
+      profile_data     : in  std_logic_vector(31 downto 0) := (others => '0');
+      profile_fw_offset : in std_logic_vector(31 downto 0) := x"0001FE00";
+      profile_fw_checksums : in std_logic_vector(31 downto 0) := x"00000000";
+      rtc_seed         : in std_logic_vector(55 downto 0) := (others => '0');
+      rtc_seed_toggle  : in std_logic := '0';
       -- keys (active high) — X/Y/lid are NDS additions routed via ARM7 side
       KeyA             : in  std_logic;
       KeyB             : in  std_logic;
@@ -166,7 +176,7 @@ entity nds_nitro_console_top is
 
       -- card image read port (word addressed into the staged .nds, via nds_wrap)
       card_ena         : out std_logic;
-      card_addr        : out std_logic_vector(26 downto 2);
+      card_addr        : out std_logic_vector(28 downto 2);
       card_din         : in  std_logic_vector(31 downto 0);
       card_done        : in  std_logic;
 
@@ -201,10 +211,12 @@ entity nds_nitro_console_top is
       fw_wr            : out std_logic;
       fw_wlane         : out unsigned(1 downto 0);
       fw_wdata         : out std_logic_vector(7 downto 0);
+      fw_busy          : in std_logic := '0';
+      fw_release       : out std_logic; -- completed SPI program chip-select
 
-      -- Legacy hot-BIOS boundary retained for entity compatibility. The
-      -- compact product instantiates built-in FreeBIOS ROMs and ignores these
-      -- ports; donor and simulation variants can still use this interface.
+      -- Reloadable BIOS RAM, initialized to public FreeBIOS at configuration.
+      -- Upload writes are accepted only while reset is asserted. Native mode
+      -- also requires both load_done levels before the boot FSM can start.
       bios7_load_addr  : in unsigned(13 downto 2) := (others => '0');
       bios7_load_data  : in std_logic_vector(31 downto 0) := (others => '0');
       bios7_load_be    : in std_logic_vector(3 downto 0) := (others => '0');
@@ -392,6 +404,9 @@ entity nds_nitro_console_top is
       dbg_r0_9         : out std_logic_vector(31 downto 0);
       dbg_lr9          : out std_logic_vector(31 downto 0);
       dbg_cpsr9        : out std_logic_vector(31 downto 0);
+      -- Evidence-only native memory diagnostic. Observation wires only.
+      dbg_mem_probe    : out std_logic_vector(31 downto 0) := (others => '0');
+      dbg_cpu9_addr    : out std_logic_vector(31 downto 0) := (others => '0');
       -- Public crash capture: a bounded external hold from the H3D control
       -- block. This remains available when the 474-ALM nds_debug unit is off.
       diagnostic_hold9 : in  std_logic := '0';
@@ -821,6 +836,7 @@ architecture arch of nds_nitro_console_top is
    -- RTC
    signal rtc_wired_out7  : std_logic_vector(31 downto 0);
    signal rtc_wired_done7 : std_logic;
+   signal rtc_native_out7 : std_logic_vector(31 downto 0);
 
    -- sound
    signal snd_wired_out7  : std_logic_vector(31 downto 0);
@@ -852,9 +868,12 @@ architecture arch of nds_nitro_console_top is
    signal dma9_card_trig, dma7_card_trig     : std_logic;
    signal exmem_card7_s                      : std_logic;
    signal cardm_ena                          : std_logic;
-   signal cardm_addr                         : std_logic_vector(26 downto 2);
+   signal cardm_empty_done                   : std_logic := '0';
+   signal cardm_done                         : std_logic;
+   signal cardm_data                         : std_logic_vector(31 downto 0);
+   signal cardm_addr                         : std_logic_vector(28 downto 2);
    signal ld_card_ena                        : std_logic;
-   signal ld_card_addr                       : std_logic_vector(26 downto 2);
+   signal ld_card_addr                       : std_logic_vector(28 downto 2);
    signal irq9_vblank, irq9_hblank, irq9_vcount : std_logic;
    signal dbg_vbl_ena9 : std_logic;
 
@@ -1243,7 +1262,8 @@ begin
                when B_RESET =>
                   resetCpu <= '1';
                   boot_cnt <= 0;
-                  if (nds_on = '1') then
+                  if nds_on = '1' and (fw_boot = '0' or
+                     (bios7_load_done = '1' and bios9_load_done = '1')) then
                      boot_state <= B_SETTLE;
                   end if;
 
@@ -1264,7 +1284,7 @@ begin
                   elsif (ld_done = '1' and ld_busy = '0' and
                          vclr_busy = '0' and pclr_busy_a = '0' and pclr_busy_b = '0' and
                          pal_read_busy_1x = '0' and
-                         backup_run_ready = '1') then
+                         (backup_run_ready = '1' or cart_present = '0')) then
                      boot_state  <= B_S9RST;
                      boot_cnt    <= 0;
                      ss_bus9.rst <= '1';
@@ -1361,7 +1381,7 @@ begin
                   -- to 0x037F8000 mirror into WRAM7 over the ARM7 stack)
                   if (boot_cnt = 0) then
                      boot_cnt      <= 1;
-                     preset_direct <= direct_boot;
+                     preset_direct <= direct_boot and not fw_boot;
                   end if;
 
                when B_ERROR =>
@@ -1381,6 +1401,10 @@ begin
    (
       clk => clk1x, reset => reset_boot,
       start => ld_start, direct => direct_boot, fw_boot => fw_boot,
+      cart_present => cart_present,
+      profile_valid => profile_valid, profile_addr => profile_addr,
+      profile_data => profile_data, profile_fw_offset => profile_fw_offset,
+      profile_fw_checksums => profile_fw_checksums,
       busy => ld_busy, done => ld_done, load_error => ld_error,
       arm9_entry => arm9_entry, arm7_entry => arm7_entry, cart_id => ld_cartid,
       save_is_64k => ld_save_is_64k,
@@ -1415,7 +1439,18 @@ begin
 
    -- card image port: the loader owns it during boot, the slot module after
    -- (the CPUs are in reset while ld_busy, so no ROMCTRL transfer can overlap)
-   card_ena  <= ld_card_ena  when ld_busy = '1' else cardm_ena;
+   card_ena <= '0' when cart_present = '0' else
+               ld_card_ena when ld_busy = '1' else cardm_ena;
+   -- An empty slot completes requested reads with the pulled-up bus value.
+   -- It neither accesses stale staged ROM bytes nor creates external traffic.
+   process(clk1x)
+   begin
+      if rising_edge(clk1x) then
+         cardm_empty_done <= cardm_ena and not cart_present and not resetCpu;
+      end if;
+   end process;
+   cardm_done <= card_done when cart_present = '1' else cardm_empty_done;
+   cardm_data <= card_din when cart_present = '1' else (others => '1');
    card_addr <= ld_card_addr when ld_busy = '1' else cardm_addr;
 
    icard : entity work.nds_card
@@ -1446,7 +1481,7 @@ begin
       backup_access_active => backup_access_active,
       backup_cache_ready => backup_cache_ready,
       card_ena => cardm_ena, card_addr => cardm_addr,
-      card_din => card_din, card_done => card_done
+      card_din => cardm_data, card_done => cardm_done
    );
 
    -- Cartridge IR transceiver: present when the game code's first character
@@ -1831,6 +1866,18 @@ begin
    -- out ports are write-only in VHDL-93; nds_debug reads the internals
    dbg_pc9 <= pc9_s;
    dbg_pc7 <= pc7_s;
+   dbg_mem_probe <= dbg_probe;
+   -- CP15-lite diagnostic snapshot only: reuse the existing address-named
+   -- observation port for packed control. No live CPU9 bus address is exported.
+   -- [14]=fw_boot, [13]=resetCpu, [12]=cpu9_ena, [11]=cpu9_done,
+   -- [10]=cpu9_irq, [9]=cpu9_retire (existing CPU done, not a count),
+   -- [8]=cpu9_halt, [7]=cpu9_bus_idle, [6]=dma_on (CPU HOLD),
+   -- [5:2]=cache_op, [1]=cache_op_busy, [0]=cache_op_ena; [31:15]=0.
+   -- Source domains remain asynchronous; pulse-low samples prove no absence.
+   dbg_cpu9_addr <= "00000000000000000" & fw_boot & resetCpu &
+                    cpu9_ena & cpu9_done & cpu9_irq & cpu9_retire &
+                    cpu9_halt & cpu9_bus_idle & dma_on & cache_op &
+                    cache_op_busy & cache_op_ena;
 
    -- PROBE word (mailbox op 0x0A). Byte 3 is the top-level mux state, which is
    -- what decides whether a cache request ever reaches nds_mainram at all.
@@ -1954,9 +2001,10 @@ begin
    -- The product uses redistributable melonDS FreeBIOS. It provides CpuSet,
    -- CpuFastSet, wait, decompression, and other direct-boot SWIs without
    -- Nintendo BIOS data. It is not a claim of full retail-BIOS equivalence.
-   -- Quartus may infer block memory or logic for this registered constant ROM;
-   -- the fit report, not the source form, is the resource authority.
-   ibios9 : entity work.nds_nitro_freebios9
+   -- Full-size M10K RAM retains the exact one-cycle ROM read contract and can
+   -- receive a private BIOS under reset. Host reloads FreeBIOS for direct boot.
+   ibios9 : entity work.nds_nitro_bootbios9
+   generic map (is_simu => is_simu)
    port map
    (
       -- clk2x, NOT clk1x. The membus presents the accepted BIOS address and
@@ -1964,7 +2012,10 @@ begin
       -- the same one-cycle read contract as the previous registered BIOS RAM.
       clk       => clk2x,
       brom_addr => brom_addr,
-      brom_data => brom_data
+      brom_data => brom_data,
+      reset => reset,
+      load_addr => bios9_load_addr, load_data => bios9_load_data,
+      load_be => bios9_load_be, load_we => bios9_load_we
    );
 
    icpu9 : entity work.nds_cpu9
@@ -1974,6 +2025,7 @@ begin
       clk             => clk2x,
       ce              => '1',
       reset           => resetCpu,
+      cold_boot       => fw_boot,
 -- synthesis translate_off
       cpu_export_done => dbg_export9_done,
       cpu_export      => dbg_export9,
@@ -2034,7 +2086,7 @@ begin
    generic map ( is_simu => is_simu )
    port map
    (
-      clk => clk2x, reset => resetCpu,
+      clk => clk2x, reset => resetCpu, native_mode => fw_boot,
       bus_cacheable_i => bus_cacheable_i, bus_cacheable_d => bus_cacheable_d,
       bus_bufferable_d => bus_bufferable_d,
       bus_wdenied_d => bus_wdenied_d,
@@ -2283,12 +2335,16 @@ begin
       new_halt        => cpu7_newhalt or dbg_hold7 or diagnostic_hold7
    );
 
-   ibios7 : entity work.nds_nitro_freebios7
+   ibios7 : entity work.nds_nitro_bootbios7
+   generic map (is_simu => is_simu)
    port map
    (
       clk       => clk1x,
       bios_addr => bios_addr,
-      bios_data => bios7_data
+      bios_data => bios7_data,
+      reset => reset,
+      load_addr => bios7_load_addr, load_data => bios7_load_data,
+      load_be => bios7_load_be, load_we => bios7_load_we
    );
 
    -- ARM7 bus mux: the DMA owns the membus while dma7_bus_on (CPU paused
@@ -2527,12 +2583,20 @@ begin
    gx_wired_done_eff <= gx_wired_done and h3d_service_ready;
    gx_irq_eff <= gx_irq and h3d_service_ready;
 
-   -- First playable island deliberately has no wall-clock service.  Keep the
-   -- donor nds_rtc entity in the analyzed closure for provenance, but remove it
-   -- from the product cone.  The serial RTC register still decodes and reads
-   -- zero so ARM7 firmware cannot fall through to an unrelated IO responder.
-   rtc_wired_out7  <= (others => '0');
-   rtc_wired_done7 <= '1' when io_bus7.Adr = x"0000138" else '0';
+   -- A native BIOS boot reads the serial RTC before loading firmware. Seed
+   -- once from the host; guest reset leaves the calendar and edited date intact.
+   irtc : entity work.nds_nitro_rtc
+   port map (
+      clk => clk1x, ce => '1', reset => resetCpu, fw_boot => fw_boot,
+      rtc_seed => rtc_seed, rtc_seed_toggle => rtc_seed_toggle,
+      rtc_datetime => open, date_written => open,
+      bus7 => io_bus7, wired_out7 => rtc_native_out7,
+      wired_done7 => rtc_wired_done7
+   );
+   -- Imported personal fields do not change the accepted game RTC behavior.
+   -- The native calendar belongs only to the optional firmware GUI.
+   rtc_wired_out7 <= rtc_native_out7 when fw_boot = '1'
+                     else (others => '0');
 
    -- Private Chrono movie measurement only: count actual completed writes to
    -- the two PCM buffers observed in the software reference and AUDD1 D tags.
@@ -2610,7 +2674,8 @@ begin
       irq_spi => irq7_spi,
       touch_active => touch_active, touch_x => touch_x, touch_y => touch_y,
       fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data,
-      fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata
+      fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata,
+      fw_busy => fw_busy, fw_release => fw_release
    );
 
    itimer9 : entity work.gba_timer
@@ -2653,7 +2718,7 @@ begin
    isyscnt : entity work.nds_syscnt
    port map
    (
-      clk => clk1x, reset => resetCpu,
+      clk => clk1x, reset => resetCpu, cold_boot => fw_boot,
       bus9 => io_bus9, wired_out9 => sys_wired_out9, wired_done9 => sys_wired_done9,
       bus7 => io_bus7, wired_out7 => sys_wired_out7, wired_done7 => sys_wired_done7,
       preset_direct => preset_direct,

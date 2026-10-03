@@ -30,7 +30,7 @@ architecture sim of tb_nds_card_ir is
    signal backup_write_toggle : std_logic;
    signal backup_access_active : std_logic;
    signal card_ena : std_logic;
-   signal card_addr : std_logic_vector(26 downto 2);
+   signal card_addr : std_logic_vector(28 downto 2);
    signal irq9_xfer, irq7_xfer, dma9_card, dma7_card : std_logic;
    signal dbg_card : std_logic_vector(31 downto 0);
    signal write_count : natural := 0;

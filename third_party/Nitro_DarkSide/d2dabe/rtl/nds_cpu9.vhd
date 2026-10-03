@@ -116,6 +116,7 @@ entity nds_cpu9 is
       clk              : in    std_logic;  
       ce               : in    std_logic;
       reset            : in    std_logic;
+      cold_boot        : in    std_logic := '0'; -- native BIOS reset, not HLE
       
 -- synthesis translate_off
       cpu_export_done  : out std_logic := '0'; 
@@ -3438,6 +3439,19 @@ begin
             -- Values are melonDS's SetupDirectBoot (src/NDS.cpp), which is the
             -- oracle these were differentially matched against; 0x78 alone
             -- loses bit 13 (V, high exception vectors) and bit 16 (DTCM enable).
+            if cold_boot = '1' then
+               -- Same cold reset values as the vendored ARMv5::CP15Reset.
+               -- Caches/TCMs/PU are disabled; BIOS establishes their mappings.
+               cp15_control <= x"00002078";
+               cp15_dtcm_reg <= (others => '0');
+               cp15_itcm_reg <= (others => '0');
+               cp15_pu_region <= (others => (others => '0'));
+               cp15_pu_dcache <= (others => '0');
+               cp15_pu_icache <= (others => '0');
+               cp15_pu_wbuf <= (others => '0');
+               cp15_pu_dperm <= (others => '0');
+               cp15_pu_iperm <= (others => '0');
+            else
             cp15_control      <= x"00012078";   -- c1,c0,0
             cp15_dtcm_reg     <= x"0300000A";   -- c9,c1,0  base 0x03000000, 16 KB
             cp15_itcm_reg     <= x"00000020";   -- c9,c1,1  32 KB at 0
@@ -3454,6 +3468,7 @@ begin
             cp15_pu_wbuf      <= x"00000002";   -- c3,c0,0
             cp15_pu_dperm     <= x"15111011";   -- c5,c0,2
             cp15_pu_iperm     <= x"05100011";   -- c5,c0,3
+            end if;
             cp15_dcache_lock  <= (others => '0');
             cp15_icache_lock  <= (others => '0');
             cp15_trace_pid    <= (others => '0');

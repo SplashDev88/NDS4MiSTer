@@ -35,7 +35,8 @@ architecture sim of tb_nds_spi_firmware_read is
    signal touch_y : std_logic_vector(7 downto 0) := x"60";
    signal fw_addr : unsigned(17 downto 2);
    signal fw_req  : std_logic;
-   signal fw_done : std_logic;
+   signal fw_done, fw_read_done : std_logic;
+   signal fw_write_ack : std_logic_vector(1 downto 0) := (others => '0');
    signal fw_data : std_logic_vector(31 downto 0);
    signal fw_wr    : std_logic;
    signal fw_wlane : unsigned(1 downto 0);
@@ -77,10 +78,17 @@ begin
       fw_done => fw_done, fw_data => fw_data,
       fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata);
 
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         fw_write_ack <= fw_write_ack(0) & fw_wr;
+      end if;
+   end process;
+   fw_done <= fw_read_done or fw_write_ack(1);
    rom : entity work.nds_nitro_firmware
    port map (
       clk => clk, fw_addr => fw_addr_slv, fw_req => fw_req,
-      fw_done => fw_done, fw_data => fw_data,
+      fw_done => fw_read_done, fw_data => fw_data,
       fw_wr => fw_wr, fw_wlane => fw_wlane_slv, fw_wdata => fw_wdata);
 
    process
@@ -189,8 +197,8 @@ begin
          assert stored = crc
             report name & " CRC MISMATCH"
             severity error;
-         assert stored = to_unsigned(16#D739#, 16)
-            report name & " does not contain the melonDS Reset CRC"
+         assert stored = to_unsigned(16#4C4C#, 16)
+            report name & " does not contain the MiSTer-default runtime CRC"
             severity error;
          report name & " calibration CRC OK" severity note;
       end procedure;
@@ -231,6 +239,10 @@ begin
       read_at(16#1FF58#, x"00", x"00", x"00", x"00", "user1 ADC1");
       read_at(16#1FF5C#, x"00", x"00", x"F0", x"0F", "user1 pixel1/ADC2-X");
       read_at(16#1FF60#, x"F0", x"0B", x"FF", x"BF", "user1 ADC2-Y/pixel2");
+      read_at(16#1FE06#, x"4D", x"00", x"69", x"00", "user0 Mi prefix");
+      read_at(16#1FF0A#, x"53", x"00", x"54", x"00", "user1 ST middle");
+      read_at(16#1FE0E#, x"65", x"00", x"72", x"00", "user0 er suffix");
+      read_at(16#1FF1A#, x"06", x"00", x"00", x"00", "user1 name length");
       validate_user_crc(16#1FE00#, "user0");
       validate_user_crc(16#1FF00#, "user1");
 
@@ -239,6 +251,13 @@ begin
       read_at(16#1FE00#, x"A5", x"00", x"00", x"01", "page program persists");
       program_byte(16#1FE02#, x"3C");
       read_at(16#1FE00#, x"A5", x"00", x"3C", x"01", "second lane persists");
+
+      -- Reset the SPI controller after writes; the firmware RAM has no reset.
+      wait until falling_edge(clk); reset <= '1';
+      wait for 50 ns;
+      wait until falling_edge(clk); reset <= '0';
+      wait for 50 ns;
+      read_at(16#1FE00#, x"A5", x"00", x"3C", x"01", "SPI reset preserves firmware bytes");
 
       if errors = 0 then
          report "PASS: SPI firmware reads and writes both work" severity note;

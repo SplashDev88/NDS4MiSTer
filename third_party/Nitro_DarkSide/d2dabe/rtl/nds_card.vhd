@@ -158,7 +158,7 @@ entity nds_card is
 
       -- staged card image read port (shared with nds_loader, muxed in nds_top)
       card_ena     : out std_logic := '0';
-      card_addr    : out std_logic_vector(26 downto 2) := (others => '0');
+      card_addr    : out std_logic_vector(28 downto 2) := (others => '0');
       card_din     : in  std_logic_vector(31 downto 0);
       card_done    : in  std_logic
    );
@@ -970,7 +970,7 @@ begin
             if (busy = '1' and cmd_b7 = '1' and v_inflt = '0' and
                 v_pfcnt < CARDPREFETCH and pf_asked < xferlen) then
                card_ena  <= '1';
-               card_addr <= std_logic_vector(eff_addr(b7_addr, cmd_redir)(26 downto 2));
+               card_addr <= std_logic_vector(eff_addr(b7_addr, cmd_redir)(28 downto 2));
                b7_addr   <= b7_addr + 4;
                pf_asked  <= pf_asked + 1;
                v_inflt   := '1';

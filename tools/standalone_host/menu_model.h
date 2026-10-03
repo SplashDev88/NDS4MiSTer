@@ -17,12 +17,14 @@ inline uint16_t changeOption(uint16_t status, const CoreOption &o,
   unsigned value = (optionValue(status, o) + o.count + direction) % o.count;
   return (status & ~(((1u << o.width) - 1) << o.shift)) | (value << o.shift);
 }
+// Bit10 is retained on the wire for older cores/configs; both engines are mandatory.
+inline constexpr uint16_t REQUIRED_STATUS = 1u << 10;
 inline uint16_t cleanStatus(uint16_t value) {
   value &= CORE_OPTION_MASK;
   for (const auto &o : CORE_OPTIONS)
     if (((value >> o.shift) & ((1u << o.width) - 1)) >= o.count)
       value &= ~(((1u << o.width) - 1) << o.shift);
-  return value;
+  return value | REQUIRED_STATUS;
 }
 inline std::string optionLabel(uint16_t status, const CoreOption &o) {
   std::string label = " " + std::string(o.label);

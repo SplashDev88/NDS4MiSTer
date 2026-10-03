@@ -40,6 +40,7 @@ module ddram
 	output        ch1_ready,
 
 	input  [27:1] ch2_addr,
+	input         ch2_altbank, // cartridge-only reserved bank at 0x28000000
 	output [31:0] ch2_dout,
 	input  [31:0] ch2_din,
 	input         ch2_req,
@@ -88,6 +89,9 @@ reg  [7:0] ram_burst;
 reg [63:0] ram_q[4:1];
 reg [63:0] ram_data;
 reg [27:1] ram_address;
+// Each granted command owns its bank until it drains, independently of
+// live cartridge inputs. Every non-cartridge grant restores the original bank.
+reg        ram_altbank = 0;
 reg        ram_read = 0;
 reg        ram_write = 0;
 reg  [7:0] ram_be;
@@ -96,7 +100,8 @@ reg  [6:1] ready;
 
 assign DDRAM_BURSTCNT = ram_burst;
 assign DDRAM_BE       = ram_read ? 8'hFF : ram_be;
-assign DDRAM_ADDR     = {4'b0011, ram_address[27:3]}; // RAM at 0x30000000
+assign DDRAM_ADDR     = ram_altbank ? {6'b001010, ram_address[25:3]}
+                                    : {4'b0011, ram_address[27:3]};
 assign DDRAM_RD       = ram_read;
 assign DDRAM_DIN      = ram_data;
 assign DDRAM_WE       = ram_write;
@@ -114,6 +119,7 @@ assign ch6_ready = ready[6];
 
 reg [63:0] next_q[2:1];
 reg [27:1] cache_addr[2:1];
+reg        ch2_cache_altbank;
 // The cartridge channel is overwhelmingly sequential.  Its former two-beat
 // fetch retained one current beat and one next beat, but then issued a new DDR
 // command for nearly every following beat.  Keep one bounded four-beat
@@ -161,6 +167,7 @@ always @(posedge DDRAM_CLK) begin
 		case(state)
 			0: if(p1) begin
 					ch_rq[1]         <= 0;
+					ram_altbank      <= 1'b0;
 					ch               <= 1;
 					ram_data         <= {4{ch1_din}};
 					ram_be           <= 8'h03 << {ch1_addr[2:1],1'b0};
@@ -180,6 +187,7 @@ always @(posedge DDRAM_CLK) begin
 				end
 			   else if(p2) begin
 					ch_rq[2]         <= 0;
+					ram_altbank      <= ch2_altbank;
 					ch               <= 2;
 					ram_data         <= {2{ch2_din}};
 					ram_be           <= ch2_addr[2] ? 8'hF0 : 8'h0F;
@@ -190,7 +198,7 @@ always @(posedge DDRAM_CLK) begin
 						cached[2]     <= 0;
 						ready[2]      <= 1;
 					end
-					else if(cached[2] && cache_addr[2][27:5] == ch2_addr[27:5]) begin
+					else if(cached[2] && ch2_cache_altbank == ch2_altbank && cache_addr[2][27:5] == ch2_addr[27:5]) begin
 						// Line hit.  The half-select still follows this exact
 						// request rather than the address that filled the line.
 						ram_q[2]      <= ch2_cache[ch2_addr[4:3]];
@@ -203,6 +211,7 @@ always @(posedge DDRAM_CLK) begin
 						// as that beat arrives while the bounded read-ahead
 						// continues into the remaining cache entries.
 						ram_address       <= {ch2_addr[27:5], 4'b0000};
+						ch2_cache_altbank <= ch2_altbank;
 						cache_addr[2]     <= {ch2_addr[27:5], 4'b0000};
 						ch2_request_addr  <= ch2_addr;
 						ch2_request_index <= ch2_addr[4:3];
@@ -220,6 +229,7 @@ always @(posedge DDRAM_CLK) begin
 					// [2:1]). It never fired because ch3 was tied off; it is gone
 					// rather than carried into a channel that now sees real traffic.
 					ch_rq[3]         <= 0;
+					ram_altbank      <= 1'b0;
 					ch               <= 3;
 					ram_address      <= ch3_addr;
 					ram_data         <= ch3_din;
@@ -236,6 +246,7 @@ always @(posedge DDRAM_CLK) begin
 				end
 			   else if(p4) begin
 					ch_rq[4]         <= 0;
+					ram_altbank      <= 1'b0;
 					ch               <= 4;
 					ram_data         <= ch4_din;
 					ram_be           <= ch4_be;
@@ -255,6 +266,7 @@ always @(posedge DDRAM_CLK) begin
 					// state 4 (not gated on DDRAM_BUSY - readdatavalid is
 					// independent of waitrequest)
 					ch_rq[6]         <= 0;
+					ram_altbank      <= 1'b0;
 					ram_address      <= ch6_addr;
 					ram_read         <= 1;
 					ram_burst        <= ch6_burst;
@@ -263,6 +275,7 @@ always @(posedge DDRAM_CLK) begin
 				end
             else if(p5) begin
 					ch_rq[5]         <= 0;
+					ram_altbank      <= 1'b0;
 					ch               <= 5;
 					ram_data         <= ch5_din;
 					ram_be           <= 8'hFF;

@@ -70,17 +70,33 @@ run the strict package audit with both the ZIP and its sidecar:
 
 ```sh
 python3 tools/audit_public_release.py \
+  /path/to/NDS4MiSTer_v0.9.0-rc.1_Standalone.zip \
+  --sidecar /path/to/NDS4MiSTer_v0.9.0-rc.1_Standalone.zip.sha256 \
+  --layout standalone
+
+# For an older normal-core/Kickstart package:
+python3 tools/audit_public_release.py \
   /path/to/NDS4MiSTer_Public_Beta.zip \
-  --sidecar /path/to/NDS4MiSTer_Public_Beta.zip.sha256
+  --sidecar /path/to/NDS4MiSTer_Public_Beta.zip.sha256 --layout normal
 ```
 
-The audit accepts only the documented MiSTer installation structure, exactly
-one dated NDS RBF, the Kickstart launcher, the ARM service and its checksum,
-the README, licenses, and complete internal hashes. The optional WC module
-must include its matching checksum, GPL-2.0 license and source-location notice.
-It rejects traversal,
-links, unexpected files, ROM/save/private extensions, personal paths and
-emails, credentials, corrupt archives, and checksum mismatches.
+The audit supports both layouts; omitting `--layout` auto-detects them. The
+v0.9 standalone layout requires the outer sidecar and exactly the public
+packager's approved files: `Scripts/NDS4MiSTer.sh`, the hidden
+`Scripts/.NDS_Standalone` runtime, root documentation and licenses. It checks
+the reviewed binary pins, exact launcher/supervisor/Kickstart and license
+bytes, metadata, file modes, component sidecars and every support-file hash.
+Root documentation is covered by the outer archive checksum. Check the recorded
+source commit against the reviewed corresponding source separately; a commit
+hash in metadata alone does not prove source correspondence.
+
+The older normal-core layout retains one dated `_Console/NDS_*.rbf`, Kickstart,
+the ARM service/checksum, README, licenses and complete root internal hashes.
+Its optional WC payload remains an indivisible module/checksum/GPL-2.0/source
+notice set. Both layouts reject traversal, links, unexpected files, user
+settings, ROMs/saves/dumps, private paths, credentials, corrupt archives and
+checksum mismatches. Audit fixtures run locally with
+`python3 tools/test_audit_public_release.py`; they do not access hardware.
 
 ## GitHub settings
 

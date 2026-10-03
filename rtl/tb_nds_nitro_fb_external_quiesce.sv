@@ -51,7 +51,7 @@ module fb_external_quiesce_case #(parameter integer BURST = 128)(output logic do
         .DDRAM_RD(ddr_read), .DDRAM_DIN(), .DDRAM_BE(), .DDRAM_WE(),
         .ch1_addr(27'd0), .ch1_dout(), .ch1_din(16'd0),
         .ch1_req(1'b0), .ch1_rnw(1'b1), .ch1_ready(),
-        .ch2_addr(27'd0), .ch2_dout(), .ch2_din(32'd0),
+        .ch2_altbank(1'b0), .ch2_addr(27'd0), .ch2_dout(), .ch2_din(32'd0),
         .ch2_req(1'b0), .ch2_rnw(1'b1), .ch2_ready(),
         .ch3_addr(27'd0), .ch3_dout(), .ch3_din(64'd0),
         .ch3_req(1'b0), .ch3_rnw(1'b1), .ch3_be(8'd0), .ch3_ready(),

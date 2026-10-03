@@ -9,16 +9,17 @@ module tb_nds_cart_session_reset;
     reg [1:0] cart_state=3;
     reg cart_download_ddr=0,cart_download_d=0,cart_download_raw=0;
     reg source_request=0,response_ready=0;
-    reg [24:0] source_address=0;
+    reg [15:0] ioctl_index=16'h0003;
+    reg [26:0] source_address=0;
     reg [31:0] response_data=0;
     wire request,done,flush_complete;
-    wire [24:0] address;
+    wire [25:0] address;
     wire [31:0] data;
     cart_bridge_under_test dut(.*);
     integer requests=0,replies=0;
     always @(negedge ddr_clk) if(request) requests=requests+1;
     always @(negedge clk1x) if(done) replies=replies+1;
-    task submit(input [24:0] addr);
+    task submit(input [25:0] addr);
         @(negedge clk1x);source_address=addr;source_request=1;
         @(negedge clk1x);source_request=0;
     endtask
@@ -41,21 +42,21 @@ module tb_nds_cart_session_reset;
         console_reset_1x=0;console_reset_ddr=0;
         for(integer n=0;n<16;n=n+1) begin
             old_requests=requests;old_replies=replies;
-            submit(25'h100+n);wait_requests(old_requests+1);
+            submit(26'h100+n);wait_requests(old_requests+1);
             // Legacy DDR retains this request while CPU and optionally the
             // shell/session control reset. Delay its completion past release.
             @(negedge ddr_clk);
             console_reset_1x=1;console_reset_ddr=1;bridge_reset_ddr=!n[0];
             repeat(8) @(negedge ddr_clk);
             console_reset_1x=0;console_reset_ddr=0;bridge_reset_ddr=0;
-            submit(25'h200+n);
+            submit(26'h200+n);
             repeat(20) @(negedge ddr_clk);
-            if(requests!=old_requests+1 || address!=25'h100+n)
+            if(requests!=old_requests+1 || address!=26'h100+n)
                 $fatal(1,"reset lost ownership of old cartridge read");
             complete(32'hbad00000+n);
             wait_requests(old_requests+2);
             repeat(10) @(negedge clk1x);
-            if(replies!=old_replies || address!=25'h200+n)
+            if(replies!=old_replies || address!=26'h200+n)
                 $fatal(1,"old response or reset-toggle reached new CPU epoch");
             complete(32'h12340000+n);
             repeat(10) @(negedge clk1x);

@@ -3,15 +3,14 @@
 #include <array>
 #include <cstdint>
 struct CoreOption { unsigned shift, width, count; const char *label; std::array<const char *, 4> values; };
-inline constexpr const char *LOAD_LABEL = "Load NDS (max 128 MiB)";
+inline constexpr const char *LOAD_LABEL = "Load *.NDS";
 inline constexpr unsigned LOAD_RECENT_INDEX = 3; // FS3 in CONF_STR
-inline constexpr const char *CORE_VERSION = "NDS4MiSTer v0.6.0-beta";
-inline constexpr std::array<CoreOption, 6> CORE_OPTIONS{{
+inline constexpr const char *CORE_VERSION = "NDS4MiSTer v0.9.0-rc.1";
+inline constexpr std::array<CoreOption, 5> CORE_OPTIONS{{
   {5, 2, 4, "Video Layout", {"Left/Right", "Top/Bottom", "Left Only", "Right Only"}},
   {7, 1, 2, "Screen Order", {"Main First", "Touch First"}},
   {8, 2, 4, "Screen Gap", {"8 Pixels", "None", "16 Pixels", "24 Pixels"}},
   {4, 1, 2, "3D FPS Counter", {"Off", "On"}},
-  {10, 1, 2, "Engine B (next Reset)", {"Off", "On"}},
   {11, 2, 3, "Video Rotation", {"Off", "90 CCW", "90 CW"}},
 }};
-inline constexpr uint16_t CORE_OPTION_MASK = 8176;
+inline constexpr uint16_t CORE_OPTION_MASK = 7152;

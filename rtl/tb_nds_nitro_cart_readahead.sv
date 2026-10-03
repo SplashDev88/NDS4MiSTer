@@ -31,7 +31,7 @@ module tb_nds_nitro_cart_readahead;
         .DDRAM_BE(ddram_be), .DDRAM_WE(ddram_we),
         .ch1_addr('0), .ch1_dout(), .ch1_din('0), .ch1_req(1'b0),
         .ch1_rnw(1'b1), .ch1_ready(),
-        .ch2_addr(ch2_addr), .ch2_dout(ch2_dout), .ch2_din('0),
+        .ch2_altbank(1'b0), .ch2_addr(ch2_addr), .ch2_dout(ch2_dout), .ch2_din('0),
         .ch2_req(ch2_req), .ch2_rnw(1'b1), .ch2_ready(ch2_ready),
         .ch3_addr('0), .ch3_dout(), .ch3_din('0), .ch3_req(1'b0),
         .ch3_rnw(1'b1), .ch3_be('0), .ch3_ready(),
