@@ -33,7 +33,7 @@ External BIOS and firmware files are optional and are not included.
 
 For **Boot DS firmware**, put your compatible **bios7.bin**, **bios9.bin** and
 **firmware.bin** directly in **games/NDS**. The quick start lists supported
-sizes and limitations. Your original files remain untouched; saved firmware
+sizes, reference SHA-256 hashes and limitations. Your original files remain untouched; saved firmware
 changes go directly into **saves/NDS/firmware.bin**. Nickname, birthday, favorite
 color and language are shared with normal games. Touch calibration is not.
 

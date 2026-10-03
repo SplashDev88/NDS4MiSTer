@@ -35,7 +35,8 @@ NDS in `saves/NDS`; keep the same ROM filename to use its matching save.
 The launcher requires a compatible kernel with write-combining support and
 working **1 GHz** clock control. Testing used **Linux 5.15.1-MiSTer**. It does
 not install a kernel or change your INI. See the quick start if a prerequisite
-check fails. No overclock is used.
+check fails. The ARM processors run at 1 GHz, overclocked from the standard
+800 MHz; this clock setting is unchanged from the accepted build.
 
 Read the [release notes](docs/RELEASE_NOTES_V090_RC1.md) and
 [quick start](docs/STANDALONE_QUICK_START.txt) for setup, requirements and
@@ -57,7 +58,8 @@ games/NDS/firmware.bin
 
 The native GUI requires supported BIOS files and a compatible **256 KiB DS/DS
 Lite firmware image**. Some dumps and touch calibrations are unsupported;
-see the quick start for exact requirements. These files are not distributed.
+see the quick start for exact requirements and reference SHA-256 hashes of
+the tested original files. These files are not distributed.
 Start games through **Load *.NDS**, not the native firmware cartridge slot.
 
 Your original files stay untouched. Updated firmware is saved directly as

@@ -76,6 +76,20 @@ To use Boot DS firmware, supply these original files directly in games/NDS:
   bios9.bin       4,096 bytes; supported Nintendo DS BIOS
   firmware.bin  262,144 bytes; supported DS/DS Lite firmware image
 
+SHA-256 reference hashes (the original files used in accepted testing):
+ba65f690eb04ec92db67c0e299e21ad71de087d6d5de8a9cb17a62eaab563c17  bios7.bin
+1693983a7707ae394786fa526c0552457888a51d4e410d715ef07acd5a540555  bios9.bin
+330c59198faec64b40e96cc875b422d340fc9ab1a9e32e9bd9b7baa1dbe6ba7f  firmware.bin
+
+Compare the files in games/NDS, not the saved copy in saves/NDS. Different
+firmware revisions and personal settings produce different hashes; the
+firmware hash above identifies the tested image rather than a universal
+compatibility requirement. The saved firmware hash changes after edits.
+
+To check on MiSTer:
+  cd /media/fat/games/NDS
+  sha256sum bios7.bin bios9.bin firmware.bin
+
 Choose Boot DS firmware, wait for the health screen, and tap/release Touch.
 The firmware GUI starts without a cartridge. Start games from Load *.NDS.
 
@@ -162,7 +176,8 @@ kernel, controller and the exact error; do not attach ROMs or BIOS dumps.
 
 PERFORMANCE AND KNOWN LIMITATIONS
 
-Both ARM cores stay at stock 1 GHz with write-combining. No overclock setting
+Both ARM cores stay at 1 GHz with write-combining, overclocked from the
+standard 800 MHz. This clock setting is unchanged from the accepted build. No overclock setting
 is exposed. The accepted renderer/pacing settings are retained. The tested
 USA revision0 of NSMB uses alternate drawing updates to reduce work; this is
 not a global FPS cap. The 3D FPS Counter reports publication activity, which
