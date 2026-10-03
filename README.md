@@ -1,6 +1,6 @@
 # NDS4MiSTer
 
-**v0.9.0-rc.1 — standalone launch, larger games, and the original DS firmware menu.**
+**v0.9.0-rc.1 — standalone launcher, larger games, and the original DS firmware menu.**
 
 Experimental Nintendo DS support for MiSTer FPGA. This release candidate
 retains the accepted gameplay build, adds supported larger ROM layouts and
