@@ -704,7 +704,6 @@ class Host {
     } else if (mapping_step >= 0) {
       frame.setTitle("Define buttons");
       rows[3] = " Press: " + std::string(button_names[mapping_step]);
-      rows[5] = " Use one controller";
       rows[7] = " Space: Skip    Esc: Cancel";
       rows[10] = " Saved for standalone only";
       rows[12] = " System mappings are retained";
