@@ -1,17 +1,18 @@
-NDS4MiSTer v0.9.0-rc.1 — Standalone
+NDS4MiSTer v0.9.0-rc.2 — Standalone
 
 Local release candidate prepared for review. Not published by packaging.
 The public tree includes complete corresponding project sources for each
 shipped component. Private development paths/history are not prerequisites.
 
 The accepted standalone-fw1-20261003 FPGA, renderer and WC module are kept
-unchanged. The standalone host has only a release-version string change;
-the accepted parent was reproduced byte-for-byte before building it. Public
-launch scripts adapt the accepted runtime to Scripts/.NDS_Standalone.
+unchanged. The standalone host adds parent-folder browsing across mounted
+storage, separate remembered game/firmware locations, and cancellable storage
+reads. The user-tested storage candidate is retained with a release-version
+label. Public launch paths remain Scripts/.NDS_Standalone.
 Normal Console/Kickstart installations and user files are preserved.
 
 Component identities, build tools and validation limits are recorded in
-  docs/RELEASE_BUILD_V090_RC1.json
+  docs/RELEASE_BUILD_V090_RC2.json
 Source content is verified by the top-level SHA256SUMS. It includes every
 tracked source file except itself. The FPGA source manifest and host snapshot
 were combined deliberately: current host sources override the older host

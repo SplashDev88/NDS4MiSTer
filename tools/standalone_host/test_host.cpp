@@ -12,6 +12,7 @@ static uint64_t rom_test_delay_offset = 0;
 static uint64_t rom_test_error_offset = 262144;
 static bool rom_test_read_error = false;
 static std::string rom_test_observer;
+static fs::path rom_test_heartbeat;
 static uint64_t rom_test_fill_next = 0;
 static unsigned rom_test_fill_calls = 0;
 static void delayed_rom_file(int fd, uint64_t off) {
@@ -20,7 +21,7 @@ static void delayed_rom_file(int fd, uint64_t off) {
   uint64_t maximum_age = 0;
   while (ms() < end) {
     uint64_t beat = 0;
-    std::ifstream("/tmp/nds-standalone-heartbeat") >> beat;
+    std::ifstream(rom_test_heartbeat) >> beat;
     if (beat) maximum_age = std::max(maximum_age, ms() - beat);
     usleep(10000);
   }
@@ -42,6 +43,7 @@ struct HostTest {
     std::ofstream(RomMapping::test_iomem_path) << "00000000-1fefffff : System RAM\n";
     std::ofstream(path, std::ios::binary) << std::string(512, 'x');
     Host h(kit.string(), roms.string(), sd);
+    rom_test_heartbeat = kit / "test-heartbeat";
     rom_test_observer = (root / "loader-heartbeat-observer.txt").string();
     RomReader::test_hook = delayed_rom_file;
     rom_test_metadata_delay = 250;

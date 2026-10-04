@@ -1,0 +1,67 @@
+{
+  "accepted_baseline": "v0.9.0-rc.1 FPGA/renderer/module plus accepted storage frontend",
+  "accepted_frontend": "e15b5a7c8bd19142ba833962fdad4dfde3fdb691",
+  "components": {
+    "fpga": {
+      "bytes": 4614136,
+      "original_manifest_entries": 1521,
+      "sha256": "0cacd24fd22588fab6cbca20c83077fbea48a6663ff42571f16acfa4c63df0a6",
+      "source_input_manifest_sha256": "17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950",
+      "sources": "Matching FPGA, RTL, MIF, constraints and project files in this tree; embedded build date 260930-LR2 retained. Host sources are separately authoritative. No FPGA rebuild for packaging."
+    },
+    "host": {
+      "accepted_parent_sha256": "11db1d4167cce8ce1eb52d06318ee8dca7012da1ca87eb33bcdc6ac98298cbc6",
+      "behavior_change": "Parent-folder browsing on mounted storage, separately remembered game and firmware folders, and cancellable storage reads; renderer and FPGA unchanged.",
+      "compiler": "GCC 13.3.0",
+      "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
+      "frontend_build_receipt": "docs/STANDALONE_FRONTEND_BUILD_V090_RC2.json",
+      "frontend_build_receipt_sha256": "76883d8551c82980afd717f6fc4bcbd5a165c9e74b2d820729a86bef40197f00",
+      "sha256": "ae4f9f55a8bda566dc3729567e6cf120bada8a9500c5524c7e70f7413165000b",
+      "source": "tools/standalone_host"
+    },
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "unchanged_inputs": 8,
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    }
+  },
+  "fpga_build": {
+    "device": "5CSEBA6U23I7",
+    "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+    "resources": {
+      "alms_needed": 38400,
+      "block_memory_bits": 4174192,
+      "dsp": 54,
+      "m10k": 551,
+      "total_registers": 44121
+    },
+    "seed": 5,
+    "timing_closed": false,
+    "worst_slack_ns": {
+      "Hold": -0.285,
+      "Minimum Pulse Width": 0.932,
+      "Recovery": -9.707,
+      "Removal": 0.248,
+      "Setup": -20.062
+    }
+  },
+  "publication_status": "Local release candidate; publication requires user approval.",
+  "runtime_scripts": {
+    "Kickstart.sh": "8a8b205effdc14fed1d7c479d357dd1b4eaaad2742cea0e93df2d21002801659",
+    "NDS4MiSTer.sh": "0ab3ded8a426976f7966dcf03c568bf0482a232aca369f602926c7ac3f171447",
+    "supervisor.py": "6b6a5bd6d2e856faa580919d5d173c5baaf1cdc9d9f982b539171c3f17c67c56"
+  },
+  "validation": {
+    "hardware": "User accepted the SD browser and firmware navigation. FPGA/renderer/module unchanged. Physical USB/HDD and network-share testing remains outstanding. New release label not deployed.",
+    "host": "Nine C++ suites and 25 Python checks passed for the release frontend. Native ARM fixture browser tests passed for the accepted candidate; production C++ changes since that candidate are limited to the release-version label.",
+    "packaging": "Public source, archive content, hashes, permissions and component identities checked before completion. No user BIOS, firmware, ROMs, saves or settings included."
+  },
+  "version": "v0.9.0-rc.2"
+}

@@ -70,8 +70,8 @@ run the strict package audit with both the ZIP and its sidecar:
 
 ```sh
 python3 tools/audit_public_release.py \
-  /path/to/NDS4MiSTer_v0.9.0-rc.1_Standalone.zip \
-  --sidecar /path/to/NDS4MiSTer_v0.9.0-rc.1_Standalone.zip.sha256 \
+  /path/to/NDS4MiSTer_v0.9.0-rc.2_Standalone.zip \
+  --sidecar /path/to/NDS4MiSTer_v0.9.0-rc.2_Standalone.zip.sha256 \
   --layout standalone
 
 # For an older normal-core/Kickstart package:

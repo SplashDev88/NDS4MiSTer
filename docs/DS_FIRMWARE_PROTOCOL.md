@@ -1,4 +1,4 @@
-# DS firmware protocol — v0.9.0-rc.1
+# DS firmware protocol — v0.9.0-rc.2
 
 This document describes the firmware interface and personal-settings storage in
 the standalone release. DS support remains experimental; compatibility and menu
@@ -141,21 +141,25 @@ the four fields shared into games.
 
 ## Optional user-supplied assets
 
-Originals are read directly from `/media/fat/games/NDS/bios7.bin`,
-`/media/fat/games/NDS/bios9.bin`, and `/media/fat/games/NDS/firmware.bin`.
-These filenames are relative to the configured game root if it differs from
-the default. The host does not search a nested `firmware` directory or migrate
-files automatically. These three files are optional and used only by
-`Boot DS firmware`; missing or invalid originals produce a visible error for
-that action and do not make them prerequisites for `Load *.NDS`.
-The supported inputs are the standard 16 KiB/4 KiB BIOS pair and bootable
-256 KiB DS/DS Lite firmware. The working copy lives alongside game saves at
-`/media/fat/saves/NDS/firmware.bin`, with a recoverable `firmware.bin.previous`
-copy and a `firmware.bin.lock` ownership file in the same directory. Temporary
-commit files also stay in that save directory. No firmware subdirectory is
-created under either `games/NDS` or `saves/NDS`. An existing working copy stays
-authoritative and is not reseeded when original input files change. Legacy
-nested working-copy paths are not imported automatically.
+Originals are read from the folder selected in the `Boot DS firmware` browser.
+The user selects `firmware.bin`; `bios7.bin` and `bios9.bin` must be beside it.
+The browser supports parent navigation across mounted SD, USB and network
+storage and remembers its own folder. That location is independent of the
+remembered game folder. Read-only discovery and original-file reads happen in
+a cancellable child, leaving SPI and heartbeat ownership in the main host.
+Neither browsing nor validation writes to those original files.
+
+These three files are optional and used only by `Boot DS firmware`; missing
+or invalid originals produce a visible error for that action and do not make
+them prerequisites for `Load *.NDS`. The supported inputs are the standard
+16 KiB/4 KiB BIOS pair and bootable 256 KiB DS/DS Lite firmware. The working
+copy lives alongside game saves at `/media/fat/saves/NDS/firmware.bin`, with a
+recoverable `firmware.bin.previous` copy and a `firmware.bin.lock` ownership
+file in the same directory. Temporary commit files also stay in that save
+directory. No firmware subdirectory is created under either `games/NDS` or
+`saves/NDS`. An existing working copy stays authoritative and is not reseeded
+when original input files change. Legacy nested working-copy paths are not
+imported automatically.
 
 The three original input files stay read-only. None of these personal files
 belongs in the source or release archive. The public FreeBIOS initialization
@@ -178,8 +182,8 @@ capture and commit, byte masks, both pages, subsequent guest writes, and native
 versus direct mode selection. RAM mapping and selected hardware behavior were
 checked separately; behavioral simulation alone is not proof of physical timing.
 
-The release-candidate version change affects frontend branding only. It does not
-add a performance or compatibility claim. Successful compilation is not timing
+This release changes frontend storage browsing and remembered locations;
+the firmware protocol, FPGA and renderer are unchanged. Successful compilation is not timing
 closure, and a short display-publication comparison is not a measurement of
 guest frame rate or overall game speed. RTC alarm interrupts and arbitrary
 physical touch calibration remain outside the supported implementation.

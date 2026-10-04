@@ -1,8 +1,6 @@
-# NDS4MiSTer
+# NDS4MiSTer v0.9.0-rc.2
 
 **Browse games and DS firmware on SD, USB, or network storage—and remember their folders.**
-
-[Download v0.9.0-rc.2](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.2) · [Quick start](docs/STANDALONE_QUICK_START.txt)
 
 ## What's new
 
@@ -23,7 +21,7 @@ At the device list, **fat** is the SD card. A mounted USB drive appears as **usb
 
 **Saves stay on the SD card in `saves/NDS`**, including when games are on USB or a network share. Keep each game's filename unchanged to use its existing save. The installer preserves your settings, controller maps, games, and `MiSTer.ini`.
 
-The launcher needs a kernel with write-combining and 1 GHz clock control. Testing used **Linux 5.15.1-MiSTer**. No kernel is included. See [QUICK_START.txt](docs/STANDALONE_QUICK_START.txt) for requirements and troubleshooting.
+The launcher needs a kernel with write-combining and 1 GHz clock control. Testing used **Linux 5.15.1-MiSTer**. No kernel is included. See **QUICK_START.txt** for requirements and troubleshooting.
 
 ## Optional: DS firmware
 
@@ -39,7 +37,7 @@ firmware.bin
 
 Choose **Boot DS firmware**, browse to that folder, and select **firmware.bin**. Tap the touch screen when prompted. Your nickname, birthday, favorite color, and language carry into games. The default nickname is **MiSTer**.
 
-Original files stay untouched. Saved personal settings remain in **saves/NDS/firmware.bin** on the SD card. Compatible BIOS files and a **256 KiB DS or DS Lite firmware image** are required. Reference SHA-256 hashes and compatibility details are in [QUICK_START.txt](docs/STANDALONE_QUICK_START.txt). Nintendo BIOS and firmware files are not included.
+Original files stay untouched. Saved personal settings remain in **saves/NDS/firmware.bin** on the SD card. Compatible BIOS files and a **256 KiB DS or DS Lite firmware image** are required. Reference SHA-256 hashes and compatibility details are in **QUICK_START.txt**. Nintendo BIOS and firmware files are not included.
 
 ## Menu and TATE
 
@@ -72,13 +70,3 @@ The release assets are the install ZIP and its SHA-256 checksum. Matching source
 ## Thanks
 
 Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to Corn for the standalone suggestion and skmp, the DreamSTer developer. Full credits and licenses are in the source tree.
-
-## More information
-
-- [Release notes](docs/RELEASE_NOTES_V090_RC2.md)
-- [Developer guide](docs/DEVELOPMENT.md)
-- [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues)
-
-## License
-
-NDS4MiSTer is distributed under GPLv3; see [LICENSE.txt](LICENSE.txt). The write-combining kernel module is [GPL-2.0](kernel/nds_mem_wc/COPYING). Vendored components retain their own licenses and notices.

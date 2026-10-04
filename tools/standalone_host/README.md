@@ -1,6 +1,6 @@
 # NDS4MiSTer standalone frontend
 
-See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC1.md).
+See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC2.md).
 
 Build this frontend using `build.sh`. Its menu options are generated from the included FPGA CONF_STR; the release label comes from `VERSION`. The accepted FPGA and renderer are separate components. `supervisor.py`, `Kickstart.sh` and `NDS4MiSTer.sh` supply the matching launch and recovery behavior. See [THIRD_PARTY.md](THIRD_PARTY.md) for font and MiSTer menu attribution.
 
@@ -32,7 +32,7 @@ Use the matching release host/core pair; the host refuses to release
 a game if the core lacks the required direct-profile acknowledgement. See
 [the firmware protocol and limitations](../../docs/DS_FIRMWARE_PROTOCOL.md).
 
-## Games and BIOS browsing (experimental candidate)
+## Games and BIOS browsing
 
 **Load *.NDS** starts in the last games folder you browsed. Select `..` at the
 top to go up, then enter another folder normally. From the root of a storage

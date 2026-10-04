@@ -1,10 +1,10 @@
-NDS4MiSTer v0.9.0-rc.1
+NDS4MiSTer v0.9.0-rc.2
 
 START HERE
 
 Extract the install ZIP to the SD card root, merging Scripts. Include the
 hidden Scripts/.NDS_Standalone folder. Run Scripts -> NDS4MiSTer.
-Choose Load *.NDS and a game from games/NDS.
+Choose Load *.NDS. Use .. at the top to browse to your game folder.
 
 There is no separate Kickstart step or five-minute launch window. This
 release starts its matching core and ARM helper itself. Normal MiSTer is
@@ -33,8 +33,22 @@ Use uncompressed .nds files. The loader accepts supported layouts up to
 unsupported data regions and are rejected before loading. File size alone
 does not guarantee game compatibility.
 
-Games and cartridge saves use games/NDS and saves/NDS, shared with normal
-MiSTer. Keep a game's filename unchanged to use its matching .sav. Save using
+Games may be on mounted SD, USB or network storage. Use .. at the top of
+Load *.NDS to go up; from the device root, .. shows mounted devices. The SD
+card appears as fat and USB drives as usb0, usb1, etc. Enter folders normally.
+The last browsed games folder is remembered automatically across restarts.
+If only one mounted games/NDS exists on first use, it opens automatically;
+otherwise the browser shows the devices. Unmounted USB placeholders are hidden.
+
+Drives and shares must already be mounted by MiSTer. This feature does not
+mount shares or change network configuration. A missing saved device offers
+Retry, Browse and Back without erasing its remembered location. USB filesystem
+UUIDs are used when available to follow a drive if its usb number changes;
+otherwise the saved mount point is used.
+
+Cartridge saves remain in /media/fat/saves/NDS on the SD card, shared with
+normal MiSTer, even for external games. Keep a game's filename unchanged to
+use its matching .sav. Save using
 the game itself; save states are not included. Exit through System -> Reboot
 when finished so outstanding writes can complete.
 
@@ -42,6 +56,12 @@ The initial default is Top/Bottom, rotation Off and FPS counter Off. Existing
 standalone settings, or normal NDS settings when standalone has none, take
 priority. Both DS graphics engines are always On, including when an older
 configuration had Engine B Off. There is no Engine B On/Off option.
+
+Browser folders save automatically to /media/fat/config/NDS_storage.cfg.
+Recent Files retain the shared MiSTer list and NDS_recent_locations.cfg beside
+it to remember drive identities. Save settings is not needed for locations.
+USB/HDD and network-share behavior has simulated coverage; real external-drive
+validation is still outstanding. SD browser navigation was tested on hardware.
 
 MENU AND CONTROLS
 
@@ -71,7 +91,8 @@ OPTIONAL: ORIGINAL DS FIRMWARE MENU
 Normal game loading uses the built-in BIOS and generated firmware. You do
 not need any external BIOS/firmware files to load games.
 
-To use Boot DS firmware, supply these original files directly in games/NDS:
+To use Boot DS firmware, keep these original files together in a folder on
+mounted SD, USB or network storage (games/NDS is still a valid choice):
   bios7.bin      16,384 bytes; supported Nintendo DS BIOS
   bios9.bin       4,096 bytes; supported Nintendo DS BIOS
   firmware.bin  262,144 bytes; supported DS/DS Lite firmware image
@@ -81,23 +102,26 @@ ba65f690eb04ec92db67c0e299e21ad71de087d6d5de8a9cb17a62eaab563c17  bios7.bin
 1693983a7707ae394786fa526c0552457888a51d4e410d715ef07acd5a540555  bios9.bin
 330c59198faec64b40e96cc875b422d340fc9ab1a9e32e9bd9b7baa1dbe6ba7f  firmware.bin
 
-Compare the files in games/NDS, not the saved copy in saves/NDS. Different
+Compare your original files, not the saved copy in saves/NDS. Different
 firmware revisions and personal settings produce different hashes; the
 firmware hash above identifies the tested image rather than a universal
 compatibility requirement. The saved firmware hash changes after edits.
 
-To check on MiSTer:
+To check on MiSTer, enter the folder holding your originals, for example:
   cd /media/fat/games/NDS
   sha256sum bios7.bin bios9.bin firmware.bin
 
-Choose Boot DS firmware, wait for the health screen, and tap/release Touch.
+Choose Boot DS firmware, navigate with .., then select firmware.bin. This
+browser remembers its own folder independently of the game browser. On first
+use it starts in the games folder. bios7.bin and bios9.bin must be beside the
+selected firmware.bin. Wait for the health screen and tap/release Touch.
 The firmware GUI starts without a cartridge. Start games from Load *.NDS.
 
 Change your nickname, birthday, favorite color or language in the DS settings.
 Saved changes are stored directly in saves/NDS/firmware.bin, with
 firmware.bin.previous beside it as the previous working image. These files
 belong with your other saves. There is no firmware subfolder. Original BIOS
-and firmware in games/NDS are never rewritten by this feature.
+and firmware in the selected source folder are never rewritten by this feature.
 
 Games still use the built-in firmware, with those four personal settings
 copied in. Without a valid saved personal profile the nickname is MiSTer.
@@ -146,9 +170,10 @@ Missing requirement or SHA-256 error: Record the displayed error. Re-extract
 the matching release files for a checksum mismatch. A kernel compatibility
 error needs a compatible kernel; this installer does not replace the kernel.
 
-Cannot boot DS firmware: The dialog names the first missing or invalid file.
-If all are missing it reports bios7.bin first. Return to menu to load normal
-games, which do not need these files. A saved profile alone does not replace
+Cannot find firmware.bin: Use .. to browse to the folder with your originals.
+The firmware browser only shows directories and firmware.bin. If selecting it
+fails, the dialog names the first missing or invalid file; check bios7.bin and
+bios9.bin beside it. Normal games do not need these files. A saved profile alone does not replace
 the required original BIOS and firmware for native boot.
 
 Firmware settings problem: Keep the saved current and previous copies.
@@ -158,8 +183,10 @@ the saved personal changes.
 
 Slow network ROM loading: Reads run separately so the launcher stays alive.
 Loading times out after 120 seconds with no file progress, not after
-120 seconds total. Network folder browsing and Recent Files checks can still
-stall. Copying games to local games/NDS avoids these network delays.
+120 seconds total. Directory reads, firmware-source reads and Recent Files
+checks run separately, are cancellable and time out after 15 seconds if they
+do not finish. Retry or browse another device. Copying games to the SD card
+avoids network delays.
 
 Disconnected Wi-Fi: The launcher stops disconnected host Wi-Fi retries for
 that boot. Connected Wi-Fi and saved settings stay intact. Connect the share

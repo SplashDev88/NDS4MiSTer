@@ -19,12 +19,12 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.1'
-HOST_SHA = '63311267e580a6d0c784d474a8933cef15dbfbd8e3047d35c7108efabe0b7b40'
-FRONTEND_BUILD_SHA = '9fe960b11637f3796f4eec555381fde7c924589ae75478e854f10a585ef7c932'
+VERSION = 'v0.9.0-rc.2'
+HOST_SHA = 'ae4f9f55a8bda566dc3729567e6cf120bada8a9500c5524c7e70f7413165000b'
+FRONTEND_BUILD_SHA = '76883d8551c82980afd717f6fc4bcbd5a165c9e74b2d820729a86bef40197f00'
 FPGA_BUILD_SHA = 'e39fc16cc5cbcfe50e59af2a3c35fe0929f210cdceb6fb4b7a0a5a6ebed5cdb0'
 FPGA_SOURCE_SHA = '17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950'
-ACCEPTED_HOST_SHA = '1b2b5c1ec083fa0ef9cd6d9ecbfdf50bcc45e9dbb39053ec2b9dd5caaa0f6b1a'
+ACCEPTED_HOST_SHA = '11db1d4167cce8ce1eb52d06318ee8dca7012da1ca87eb33bcdc6ac98298cbc6'
 RUNTIME_INPUT_SHA = '84ebdbf7376762f87756949040a3cda68dc785f13d3090571d34dac3a678a7da'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
@@ -94,7 +94,7 @@ def collect(a):
         digest = sha(files[SUPPORT + 'support/' + name])
         files[SUPPORT + 'support/' + name + '.sha256'] = (digest + '  ' + name + '\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC1.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC2.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
     for name, path in docs.items():
         add(name, a.docs_dir / name if a.docs_dir else path)
@@ -106,7 +106,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
-        'host_change': 'Version label only; release-path packaging changes are separate.',
+        'host_change': 'Parent-folder browsing on mounted storage, separately remembered game and firmware folders, and cancellable storage reads; renderer and FPGA unchanged.',
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
@@ -125,7 +125,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Accepted FPGA/helper/module unchanged; version-only frontend rebuild; public runtime path and hash metadata updates.',
+        'scope': 'Accepted storage frontend with release-version label; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.',
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'
@@ -161,7 +161,7 @@ def main():
     a.out_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 10, 3, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 4, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | (0o755 if name in executable else 0o644)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
