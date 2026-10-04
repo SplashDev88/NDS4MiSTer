@@ -10,7 +10,7 @@
 -- Scope notes (phase 1):
 --  * Texture / texture-palette / extended-palette MST modes have NO CPU mapping;
 --    those banks simply do not hit here (renderer-side ports come later).
---  * H/I Engine-B mappings include their mirrors throughout the 2MB apertures.
+--  * C/D/H/I Engine-B mappings include their mirrors throughout the 2MB apertures.
 --    Other windows retain their existing decode; TODO: audit the remaining mirrors.
 --  * Multiple banks may hit the same address (hardware ORs reads, writes go to all);
 --    callers get the full hit vector and must implement that semantic.
@@ -120,14 +120,15 @@ begin
                when 3 => null;  -- texture slot: renderer-only, no CPU mapping
                when 4 =>
                   if (i = BANK_C) then
-                     -- sub BG: 0x200000 (full 128 KB)
-                     if (is_arm7 = '0' and region = REG_SUBBG and addr(20 downto 17) = "0000") then
+                     -- sub BG: 128 KB repeated through the 2 MB aperture.
+                     -- CPU decompression can read back through these aliases.
+                     if (is_arm7 = '0' and region = REG_SUBBG) then
                         v_hit(i)  := '1';
                         v_offs(i) := addr(16 downto 0);
                      end if;
                   elsif (i = BANK_D) then
-                     -- sub OBJ: 0x600000
-                     if (is_arm7 = '0' and region = REG_SUBOBJ and addr(20 downto 17) = "0000") then
+                     -- sub OBJ: 128 KB repeated through the 2 MB aperture.
+                     if (is_arm7 = '0' and region = REG_SUBOBJ) then
                         v_hit(i)  := '1';
                         v_offs(i) := addr(16 downto 0);
                      end if;
