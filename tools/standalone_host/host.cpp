@@ -2084,8 +2084,14 @@ public:
     const char *diagnostics = std::getenv("NDS_FIRMWARE_DIAGNOSTICS");
     firmware_diagnostics = diagnostics && std::strcmp(diagnostics, "1") == 0;
     fs::create_directories(savedir);
+#ifdef STANDALONE_TEST
+    // Fixture tests must never touch a running standalone session's heartbeat.
+    heartbeat = open((fs::path(kit) / "test-heartbeat").c_str(),
+                     O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+#else
     heartbeat = open("/tmp/nds-standalone-heartbeat",
                      O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+#endif
     require(heartbeat >= 0, "heartbeat");
     auto cfgpath = fs::path(kit) / "NDS_v1.CFG";
     if (!fs::exists(cfgpath))
