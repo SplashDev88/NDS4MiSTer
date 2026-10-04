@@ -28,6 +28,10 @@ static void delayed_rom_file(int fd, uint64_t off) {
   if (fd >= 0 && off == rom_test_error_offset && rom_test_read_error) close(fd);
 }
 struct HostTest {
+  static void finishStorage(Host &host) {
+    const auto deadline=ms()+5000;
+    while(host.storage_job){assert(ms()<deadline);host.beat();host.pollStorage();usleep(1000);}
+  }
   static void rom_loading(const fs::path &root, bool slow) {
     const auto sd = root / "loader-sd", kit = root / "loader-kit";
     fs::create_directories(kit);
@@ -536,7 +540,7 @@ R"({
     keyboard.id = "keyboard";
     h.spi.history.clear();
     h.key(keyboard, KEY_GRAVE, true);
-    h.key(keyboard, KEY_GRAVE, false);
+    h.key(keyboard, KEY_GRAVE, false);finishStorage(h);
     assert(h.browser && h.recent_view && !h.system_menu && h.cursor == 0);
     assert(h.spi.history.empty()); // opening history never resets/loads a ROM
     h.draw();
@@ -552,7 +556,7 @@ R"({
     // Removal after opening is harmless; disabled selection never touches FIO.
     fs::remove(romdir / "Second.nds");
     h.spi.history.clear();
-    h.action(2);
+    h.action(2);finishStorage(h);
     assert(h.recent_view && !h.recent_available[1] && h.spi.history.empty());
     h.action(3);
     assert(!h.browser && !h.recent_view && h.cursor == 0);
@@ -560,7 +564,7 @@ R"({
     controller.id = "controller";
     controller.system_map[10] = BTN_SELECT;
     h.key(controller, BTN_SELECT, true);
-    h.key(controller, BTN_SELECT, false);
+    h.key(controller, BTN_SELECT, false);finishStorage(h);
     assert(h.recent_view);
     h.key(keyboard, KEY_BACKSPACE, true);
     h.key(keyboard, KEY_BACKSPACE, false);
@@ -570,11 +574,11 @@ R"({
     assert(fs::exists(romdir / "First.nds"));
     // Unavailable/out-of-root entries are retained but cannot be loaded.
     h.writeRecents({{"../", "escape.nds", "Outside"}, {"games/NDS", "missing.nds", "Missing"}});
-    h.openRecents();
+    h.openRecents();finishStorage(h);
     assert(h.recent_available == (std::vector<bool>{false, false}));
     h.action(3);
     h.recents_enabled = false;
-    h.openRecents();
+    h.openRecents();finishStorage(h);
     assert(!h.recent_view);
     const auto saved = RecentFiles::encode(RecentFiles::read(h.recentConfig()));
     h.remember(romdir / "First.nds");
@@ -634,9 +638,9 @@ R"({
     // Unavailable System rows cannot become cursor stops. Navigation is
     // OSD-only, fits Reboot/Exit on the same page, and wraps to Core.
     host.action(6);
-    const int main_rows[] = {0, 2, 11, 12, 14, 15};
-    const int scroll_down[] = {0, 0, 0, 0, 0, 0};
-    for (int i = 0; i < 6; ++i) {
+    const int main_rows[] = {0, 2, 11, 12, 14, 16, 17};
+    const int scroll_down[] = {0, 0, 0, 0, 0, 1, 2};
+    for (int i = 0; i < 7; ++i) {
       assert(host.cursor == i && host.system_menu);
       host.spi.history.clear();
       host.draw();
@@ -651,7 +655,7 @@ R"({
     assert(host.cursor == 0 && host.system_first == 0);
     host.action(0);
     host.draw();
-    assert(host.cursor == 5 && host.system_first == 0);
+    assert(host.cursor == 6 && host.system_first == 2);
     host.action(5);
     assert(!host.system_menu && host.cursor == 0);
     // Right opens the adjacent System page from EVERY core row. It must

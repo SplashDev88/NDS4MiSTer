@@ -86,9 +86,11 @@ inline std::vector<SystemMenuRow> systemMenuRows(const SystemMenuOptions &option
   add();
   // User preference: omit Help and About, including their trailing spacer.
   // User preference: omit Main's cold-reboot hint until that action exists.
-  add(" Reboot", 4);
+  add(" Storage                   \x16", 4);
+  add();
+  add(" Reboot", 5);
   while (rows.size() < 15) add();
-  add("            exit", 5, false, nds_osd::arrow_left);
+  add("            exit", 6, false, nds_osd::arrow_left);
   return rows;
 }
 

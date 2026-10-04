@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // NDS experimental standalone host. Protocol derived from MiSTer Main (GPLv3).
 // See THIRD_PARTY.md. Copyright 2026 NDS4MiSTer contributors.
+#include "firmware_media.h"
 #include "font.h"
 #include "framebuffer_metadata.h"
-#include "firmware_media.h"
 #include "freebios_media.h"
-#include "personal_profile.h"
 #include "menu_model.h"
 #include "menu_presentation.h"
 #include "osd_frame.h"
+#include "personal_profile.h"
 #include "recent_files.h"
-#include "rom_reader.h"
 #include "rom_mapping.h"
+#include "rom_reader.h"
+#include "storage_job.h"
+#include "storage_locations.h"
 #include "system_menu.h"
 #include <algorithm>
 #include <array>
@@ -24,11 +26,11 @@
 #include <fcntl.h>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <linux/input.h>
 #include <map>
 #include <memory>
 #include <optional>
-#include <functional>
 #include <poll.h>
 #include <stdexcept>
 #include <string>
@@ -238,6 +240,20 @@ class Host {
   nds_osd::Frame frame{"NDS", charfont};
   std::string kit, romdir, savedir;
   fs::path sd_root;
+  nds_storage::Preferences storage_preferences;
+  std::unique_ptr<StorageJob> storage_job;
+  std::function<void(const std::string &)> storage_done;
+  std::function<void(const std::string &)> storage_error;
+  bool storage_panel = false, storage_choices = false,
+       choosing_firmware = false;
+  struct StorageChoice {
+    std::string label;
+    std::function<void()> select;
+  };
+  std::vector<StorageChoice> storage_rows;
+  fs::path folder_volume;
+  std::vector<fs::path> game_paths;
+  std::string storage_caption = "Storage", storage_detail;
   int save = -1, heartbeat = -1;
   std::string game;
   std::optional<nds_firmware::Media> firmware;
@@ -387,14 +403,486 @@ class Host {
           " failed: " + e.what());
     }
   }
+  fs::path storageConfig() const { return sd_root / "config/NDS_storage.cfg"; }
+  void saveStorage() {
+    const auto data = storage_preferences.encode();
+    fs::create_directories(storageConfig().parent_path());
+    atomicFile(storageConfig(), data.data(), data.size());
+  }
+  void showStorageChoices(std::string title, std::vector<StorageChoice> rows) {
+    storage_caption = std::move(title);
+    storage_detail.clear();
+    storage_rows = std::move(rows);
+    storage_panel = false;
+    storage_choices = true;
+    browser = core_browser = recent_view = false;
+    cursor = browser_first = 0;
+    dirty = true;
+  }
+  void storageFailure(const std::string &error,
+                      const std::function<void()> &retry) {
+    log("storage: " + error);
+    showStorageChoices("Storage unavailable",
+                       {{"Retry", retry},
+                        {"Browse...", [this] { chooseStorageVolumes(); }},
+                        {"Back", [this] {
+                           storage_choices = false;
+                           storage_panel = true;
+                           cursor = 0;
+                           dirty = true;
+                         }}});
+    storage_detail = error;
+  }
+  void startStorage(const std::function<std::string()> &work,
+                    std::function<void(const std::string &)> done,
+                    std::function<void(const std::string &)> error = {}) {
+    storage_job.reset();
+    storage_done = std::move(done);
+    storage_error = std::move(error);
+    try {
+      storage_job = std::make_unique<StorageJob>(work);
+    } catch (const std::exception &e) {
+      if (storage_error)
+        storage_error(e.what());
+      else
+        message = e.what();
+    }
+    dirty = true;
+  }
+  void pollStorage() {
+    if (!storage_job)
+      return;
+    try {
+      auto result = storage_job->poll();
+      if (!result)
+        return;
+      storage_job.reset();
+      auto done = std::move(storage_done);
+      dirty = true;
+      if (done)
+        done(*result);
+    } catch (const std::exception &e) {
+      storage_job.reset();
+      storage_done = {};
+      auto error = std::move(storage_error);
+      dirty = true;
+      if (error)
+        error(e.what());
+      else
+        storageFailure(e.what(), [this] { chooseStorageVolumes(); });
+    }
+  }
+  void selectStorageFolder(const fs::path &path) {
+    const auto sd = sd_root;
+    startStorage(
+        [sd, path] {
+          return nds_storage::pack(
+              nds_storage::locate(path, nds_storage::volumes(sd)).fields());
+        },
+        [this](const std::string &data) {
+          auto location =
+              nds_storage::Location::parse(nds_storage::unpack(data));
+          if (choosing_firmware) {
+            storage_preferences.firmware = location;
+            // Existing GUI sessions keep their open working image until normal
+            // game loading releases it; a new source applies on the next boot.
+          } else {
+            storage_preferences.games = location;
+            storage_preferences.last = ".";
+            romdir = location.path;
+            currentdir = romdir;
+          }
+          saveStorage();
+          storage_choices = false;
+          if (choosing_firmware) {
+            storage_panel = true;
+            cursor = 1;
+          } else {
+            storage_panel = false;
+            browseGames(currentdir);
+          }
+        });
+  }
+  void chooseStorageVolumes() {
+    const auto sd = sd_root;
+    startStorage(
+        [sd] {
+          nds_storage::Fields f;
+          for (const auto &v : nds_storage::volumes(sd)) {
+            f.push_back(v.path.string());
+            f.push_back(v.label);
+          }
+          return nds_storage::pack(f);
+        },
+        [this](const std::string &data) {
+          auto f = nds_storage::unpack(data);
+          std::vector<StorageChoice> rows;
+          for (size_t i = 0; i + 1 < f.size(); i += 2) {
+            const fs::path path = f[i];
+            rows.push_back({f[i + 1] + "  " + path.string(), [this, path] {
+                              folder_volume = path;
+                              browseStorageFolder(path);
+                            }});
+          }
+          rows.push_back({"Back", [this] {
+                            storage_choices = false;
+                            storage_panel = true;
+                            cursor = 0;
+                            dirty = true;
+                          }});
+          showStorageChoices("Choose device", std::move(rows));
+        });
+  }
+  void browseStorageFolder(const fs::path &path) {
+    const auto root = folder_volume;
+    startStorage(
+        [path, root] {
+          return nds_storage::pack(nds_storage::directory(path, root, true));
+        },
+        [this, root](const std::string &data) {
+          auto f = nds_storage::unpack(data);
+          const fs::path dir = f.at(0);
+          std::vector<StorageChoice> rows{
+              {"Use: " + dir.string(),
+               [this, dir] { selectStorageFolder(dir); }},
+              {"Change device", [this] { chooseStorageVolumes(); }}};
+          if (dir != root)
+            rows.push_back({"..", [this, dir] {
+                              browseStorageFolder(dir.parent_path());
+                            }});
+          for (size_t i = 1; i + 1 < f.size(); i += 2) {
+            const auto path = dir / f[i];
+            rows.push_back({f[i], [this, path] { browseStorageFolder(path); }});
+          }
+          showStorageChoices(choosing_firmware ? "BIOS folder" : "Games folder",
+                             std::move(rows));
+        },
+        [this, path](const std::string &error) {
+          storageFailure(error, [this, path] { browseStorageFolder(path); });
+        });
+  }
+  void discoverGames() {
+    const auto sd = sd_root;
+    startStorage(
+        [sd] {
+          nds_storage::Fields f;
+          for (const auto &l :
+               nds_storage::discover(nds_storage::volumes(sd))) {
+            auto e = l.fields();
+            f.insert(f.end(), e.begin(), e.end());
+          }
+          return nds_storage::pack(f);
+        },
+        [this](const std::string &data) {
+          auto f = nds_storage::unpack(data);
+          if (f.size() == 4) {
+            selectStorageFolder(f[0]);
+            return;
+          }
+          if (f.empty()) {
+            chooseStorageVolumes();
+            return;
+          }
+          std::vector<StorageChoice> rows;
+          for (size_t i = 0; i + 3 < f.size(); i += 4) {
+            const fs::path path = f[i];
+            rows.push_back(
+                {path.string(), [this, path] { selectStorageFolder(path); }});
+          }
+          rows.push_back({"Browse...", [this] { chooseStorageVolumes(); }});
+          showStorageChoices("Choose games folder", std::move(rows));
+        },
+        [this](const std::string &error) {
+          storageFailure(error, [this] { discoverGames(); });
+        });
+  }
+  void openGames() {
+    choosing_firmware = false;
+    if (storage_preferences.games.empty()) {
+      discoverGames();
+      return;
+    }
+    const auto pref = storage_preferences;
+    const auto sd = sd_root;
+    startStorage(
+        [pref, sd] {
+          const auto root =
+              nds_storage::resolve(pref.games, nds_storage::volumes(sd));
+          auto dir = root / pref.last;
+          std::error_code ec;
+          if (!fs::is_directory(dir, ec))
+            dir = root;
+          return nds_storage::pack({root.string(), dir.string()});
+        },
+        [this](const std::string &data) {
+          auto f = nds_storage::unpack(data);
+          romdir = f.at(0);
+          browseGames(f.at(1));
+        },
+        [this](const std::string &error) {
+          storageFailure(error, [this] { openGames(); });
+        });
+  }
+  void browseGames(const fs::path &path) {
+    const fs::path root = romdir;
+    startStorage(
+        [path, root] {
+          return nds_storage::pack(nds_storage::directory(path, root, false));
+        },
+        [this, root](const std::string &data) {
+          auto f = nds_storage::unpack(data);
+          currentdir = f.at(0);
+          roms = {{"Change location", false, true}};
+          game_paths = {fs::path{}};
+          if (currentdir != root) {
+            roms.push_back({"..", true});
+            game_paths.push_back(currentdir.parent_path());
+          }
+          for (size_t i = 1; i + 1 < f.size(); i += 2) {
+            roms.push_back({f[i], f[i + 1] == "1"});
+            game_paths.push_back(currentdir / f[i]);
+          }
+          const auto last = currentdir.lexically_relative(root).string();
+          if (!storage_preferences.games.empty() &&
+              storage_preferences.last != last) {
+            storage_preferences.last = last;
+            saveStorage();
+          }
+          browser = true;
+          core_browser = recent_view = storage_panel = storage_choices = false;
+          system_menu = false;
+          cursor = browser_first = 0;
+          scroll_offset = 0;
+          next_scroll = ms() + 1000;
+          dirty = true;
+        },
+        [this, path](const std::string &error) {
+          storageFailure(error, [this, path] { browseGames(path); });
+        });
+  }
+  void requestFirmware() {
+    choosing_firmware = true;
+    const auto preferences = storage_preferences;
+    const auto sd = sd_root;
+    const auto fallback = romdir;
+    startStorage(
+        [preferences, sd, fallback] {
+          const auto locations = nds_storage::volumes(sd);
+          const auto &pref = preferences.firmware.empty()
+                                 ? preferences.games
+                                 : preferences.firmware;
+          const auto source = pref.empty()
+                                  ? fs::path(fallback)
+                                  : nds_storage::resolve(pref, locations);
+          const auto originals = nds_firmware::Media::readOriginals(source);
+          nds_storage::Fields f;
+          for (const auto *bytes :
+               {&originals.bios7, &originals.bios9, &originals.firmware})
+            f.emplace_back(reinterpret_cast<const char *>(bytes->data()),
+                           bytes->size());
+          for (const auto &id : originals.identities) {
+            f.push_back(std::to_string(id.first));
+            f.push_back(std::to_string(id.second));
+          }
+          return nds_storage::pack(f);
+        },
+        [this](const std::string &data) {
+          auto f = nds_storage::unpack(data);
+          if (f.size() != 9)
+            throw std::runtime_error("Incomplete firmware read");
+          nds_firmware::Media::Originals originals;
+          originals.bios7.assign(f[0].begin(), f[0].end());
+          originals.bios9.assign(f[1].begin(), f[1].end());
+          originals.firmware.assign(f[2].begin(), f[2].end());
+          for (size_t i = 3; i < 9; i += 2)
+            originals.identities.emplace_back(std::stoull(f[i]),
+                                              std::stoull(f[i + 1]));
+          if (firmware)
+            firmware->setOriginals(std::move(originals));
+          else
+            firmware.emplace(nds_firmware::Media::openPrepared(
+                std::move(originals), firmwarePath()));
+          storage_panel = storage_choices = false;
+          try {
+            bootFirmware();
+          } catch (const std::exception &e) {
+            firmwareError("Cannot boot DS firmware", e.what());
+          }
+        },
+        [this](const std::string &error) {
+          log("firmware source: " + error);
+          showStorageChoices("BIOS/firmware unavailable",
+                             {{"Retry", [this] { requestFirmware(); }},
+                              {"Choose BIOS/firmware folder",
+                               [this] {
+                                 choosing_firmware = true;
+                                 chooseStorageVolumes();
+                               }},
+                              {"Back", [this] {
+                                 storage_choices = false;
+                                 system_menu = false;
+                                 cursor = 1;
+                                 dirty = true;
+                               }}});
+          storage_detail = error;
+          firmware_error_text = error;
+        });
+  }
+  void drawStorage() {
+    frame.setTitle(storage_job       ? "Reading storage"
+                   : storage_choices ? storage_caption
+                                     : "Storage");
+    if (storage_job) {
+      for (int y = 0; y < 16; ++y)
+        line(y,
+             y == 6    ? " Reading storage..."
+             : y == 15 ? "           Cancel"
+                       : "",
+             y == 15);
+    } else if (storage_choices && !storage_detail.empty()) {
+      std::array<std::string, 16> rows{};
+      for (size_t i = 0; i < 8 && i * 28 < storage_detail.size(); ++i)
+        rows[i + 1] = " " + storage_detail.substr(i * 28, 28);
+      for (size_t i = 0; i < storage_rows.size() && i < 4; ++i)
+        rows[i + 11] = " " + storage_rows[i].label;
+      for (int y = 0; y < 16; ++y)
+        line(y, rows[y], y == cursor + 11);
+    } else if (storage_choices) {
+      std::vector<BrowserEntry> entries;
+      for (const auto &r : storage_rows)
+        entries.push_back({r.label, false, true});
+      const auto view =
+          browserView(entries, cursor, browser_first, true, false);
+      browser_first = view.first;
+      for (int y = 0; y < 16; ++y)
+        writeRow(y, frame.renderRow(y, view.rows[y], view.selected[y], 0,
+                                    view.markers[y]));
+    } else {
+      std::array<std::string, 16> rows{};
+      rows[1] = " Games folder             >";
+      rows[2] = " " + (storage_preferences.games.empty()
+                           ? std::string("Automatic")
+                           : storage_preferences.games.path.substr(0, 28));
+      rows[5] = " BIOS/firmware folder      >";
+      rows[6] = " " + (storage_preferences.firmware.empty()
+                           ? std::string("Same as games folder")
+                           : storage_preferences.firmware.path.substr(0, 28));
+      rows[9] = " Use games folder for BIOS";
+      rows[15] = "            Back";
+      const int selected = cursor == 0   ? 1
+                           : cursor == 1 ? 5
+                           : cursor == 2 ? 9
+                                         : 15;
+      for (int y = 0; y < 16; ++y)
+        line(y, rows[y], y == selected);
+    }
+    osd(true);
+    dirty = false;
+  }
+  bool storageAction(int a) {
+    if (!storage_job && !storage_panel && !storage_choices)
+      return false;
+    if (storage_job) {
+      if (a == 2 || a == 3 || a == 4) {
+        storage_job.reset();
+        storage_done = {};
+        storage_error = {};
+        storage_choices = false;
+        storage_panel = true;
+        cursor = 0;
+        dirty = true;
+      }
+      return true;
+    }
+    if (a == 3 || a == 4) {
+      storage_choices = storage_panel = false;
+      system_menu = true;
+      cursor = 4;
+      dirty = true;
+      return true;
+    }
+    const int count = storage_choices ? int(storage_rows.size()) : 4;
+    if (a == 0 && count)
+      cursor = (cursor + count - 1) % count;
+    if (a == 1 && count)
+      cursor = (cursor + 1) % count;
+    if (a == 2) {
+      if (storage_choices) {
+        if (count) {
+          auto select = storage_rows.at(cursor).select;
+          select();
+        }
+      } else if (cursor == 0 || cursor == 1) {
+        choosing_firmware = cursor == 1;
+        chooseStorageVolumes();
+      } else if (cursor == 2) {
+        storage_preferences.firmware = {};
+        saveStorage();
+      } else {
+        storage_panel = false;
+        system_menu = true;
+        cursor = 4;
+      }
+    }
+    dirty = true;
+    return true;
+  }
   fs::path recentConfig() const {
     return sd_root / "config" /
         ("NDS_recent_" + std::to_string(LOAD_RECENT_INDEX) + ".cfg");
+  }
+  std::map<std::string, nds_storage::Location> recentLocations() const {
+    const auto file = sd_root / "config/NDS_recent_locations.cfg";
+    std::ifstream in(file);
+    if (!in)
+      return {};
+    const auto fields = nds_storage::unpack(
+        std::string(std::istreambuf_iterator<char>(in), {}));
+    if (fields.size() % 5 || fields.size() > 80)
+      throw std::runtime_error("Invalid recent storage locations");
+    std::map<std::string, nds_storage::Location> result;
+    for (size_t i = 0; i < fields.size(); i += 5)
+      result[fields[i]] = nds_storage::Location::parse(fields, i + 1);
+    return result;
+  }
+  void rememberLocation(const fs::path &path,
+                        const std::vector<RecentFile> &entries) {
+    auto locations = recentLocations();
+    const auto directory = fs::absolute(path).parent_path().lexically_normal();
+    const auto volumes = nds_storage::volumes(sd_root);
+    const auto &volume = nds_storage::owner(directory, volumes);
+    locations[directory.string()] = {
+        directory.string(), volume.path.string(), volume.id,
+        directory.lexically_relative(volume.path).string()};
+    std::map<std::string, nds_storage::Location> kept;
+    for (const auto &entry : entries) {
+      auto p = fs::path(entry.directory);
+      if (!p.is_absolute())
+        p = sd_root / p;
+      auto it = locations.find(p.lexically_normal().string());
+      if (it != locations.end())
+        kept.insert(*it);
+    }
+    nds_storage::Fields fields;
+    for (const auto &[key, location] : kept) {
+      fields.push_back(key);
+      auto f = location.fields();
+      fields.insert(fields.end(), f.begin(), f.end());
+    }
+    const auto data = nds_storage::pack(fields);
+    fs::create_directories(sd_root / "config");
+    atomicFile(sd_root / "config/NDS_recent_locations.cfg", data.data(),
+               data.size());
   }
   void writeRecents(const std::vector<RecentFile> &entries) {
     const auto data = RecentFiles::encode(entries);
     fs::create_directories(recentConfig().parent_path());
     atomicFile(recentConfig(), data.data(), data.size());
+    if (entries.empty()) {
+      const auto empty = nds_storage::pack({});
+      atomicFile(sd_root / "config/NDS_recent_locations.cfg", empty.data(),
+                 empty.size());
+    }
   }
   void remember(const fs::path &path) {
     if (!recents_enabled) return;
@@ -402,26 +890,33 @@ class Host {
     // discards the other frontend's history. A bad list is left untouched.
     auto entries = RecentFiles::read(recentConfig());
     auto dir = fs::absolute(path).parent_path().lexically_relative(sd_root);
-    if (dir.empty() || *dir.begin() == "..") return;
+    if (dir.empty() || *dir.begin() == "..")
+      dir = fs::absolute(path).parent_path();
     RecentFiles::prepend(entries, {dir.string(), path.filename().string(), path.stem().string()});
+    rememberLocation(path, entries);
     writeRecents(entries);
   }
   bool usableRecent(const fs::path &path) const {
     std::error_code ec;
-    auto root = fs::weakly_canonical(romdir, ec);
-    if (ec) return false;
-    auto canonical = fs::weakly_canonical(path, ec);
-    if (ec) return false;
-    auto relative = canonical.lexically_relative(root);
-    if (relative.empty() || *relative.begin() == "..") return false;
+    const auto canonical = fs::canonical(path, ec);
+    if (ec)
+      return false;
+    try {
+      (void)nds_storage::owner(canonical, nds_storage::volumes(sd_root));
+    } catch (...) {
+      return false;
+    }
     auto ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-    if (ext != ".nds" || !fs::is_regular_file(path, ec) || ec) return false;
-    auto size = fs::file_size(path, ec);
+    if (ext != ".nds" || !fs::is_regular_file(canonical, ec) || ec)
+      return false;
+    const auto size = fs::file_size(canonical, ec);
     return !ec && RomReader::validSize(size);
   }
   void openRecents() {
-    if (!recents_enabled) return;
+    choosing_firmware = false;
+    if (!recents_enabled)
+      return;
     try {
       recent_entries = RecentFiles::read(recentConfig());
       if (recent_entries.empty()) {
@@ -433,21 +928,100 @@ class Host {
       roms.clear();
       for (const auto &entry : recent_entries) {
         auto path = fs::path(entry.directory) / entry.name;
-        if (!path.is_absolute()) path = sd_root / path;
+        if (!path.is_absolute())
+          path = sd_root / path;
         recent_paths.push_back(path);
-        recent_available.push_back(usableRecent(path));
         roms.push_back({entry.label, false});
       }
-      browser = recent_view = true;
-      core_browser = system_menu = false;
-      cursor = browser_first = 0;
-      scroll_offset = 0;
-      next_scroll = ms() + 1000;
-      log("recent files opened count=" + std::to_string(recent_entries.size()));
+      auto paths = recent_paths;
+      const auto pref = storage_preferences.games;
+      const auto identities = recentLocations();
+      startStorage(
+          [this, paths, pref, identities] {
+            nds_storage::Fields result;
+            fs::path resolved;
+            try {
+              if (!pref.empty())
+                resolved =
+                    nds_storage::resolve(pref, nds_storage::volumes(sd_root));
+            } catch (...) {
+            }
+            const auto volumes = nds_storage::volumes(sd_root);
+            for (auto path : paths) {
+              bool found = true;
+              const auto identity = identities.find(
+                  path.parent_path().lexically_normal().string());
+              if (identity != identities.end()) {
+                try {
+                  path = nds_storage::resolve(identity->second, volumes) /
+                         path.filename();
+                } catch (...) {
+                  found = false;
+                }
+              } else if (!resolved.empty() &&
+                         nds_storage::inside(path, pref.path))
+                path = resolved / path.lexically_relative(pref.path);
+              result.push_back(path.string());
+              result.push_back(found && usableRecent(path) ? "1" : "0");
+            }
+            return nds_storage::pack(result);
+          },
+          [this](const std::string &data) {
+            const auto f = nds_storage::unpack(data);
+            for (size_t i = 0; i + 1 < f.size(); i += 2) {
+              recent_paths[i / 2] = f[i];
+              recent_available.push_back(f[i + 1] == "1");
+            }
+            browser = recent_view = true;
+            storage_panel = storage_choices = core_browser = system_menu =
+                false;
+            cursor = browser_first = 0;
+            scroll_offset = 0;
+            next_scroll = ms() + 1000;
+            dirty = true;
+          });
     } catch (const std::exception &e) {
       message = " Cannot read recent files";
       log(e.what());
     }
+  }
+  void loadRecent() {
+    const auto selected = cursor;
+    if (!recent_available.at(selected))
+      return;
+    const auto path = recent_paths.at(selected);
+    const auto records = recentLocations();
+    const auto &entry = recent_entries.at(selected);
+    auto original = fs::path(entry.directory);
+    if (!original.is_absolute())
+      original = sd_root / original;
+    const auto record = records.find(original.lexically_normal().string());
+    const auto identity =
+        record == records.end() ? nds_storage::Location{} : record->second;
+    startStorage(
+        [this, path, identity] {
+          if (!identity.empty()) {
+            try {
+              if (nds_storage::resolve(identity,
+                                       nds_storage::volumes(sd_root)) !=
+                  path.parent_path())
+                return std::string("0");
+            } catch (...) {
+              return std::string("0");
+            }
+          }
+          return std::string(usableRecent(path) ? "1" : "0");
+        },
+        [this, path, selected](const std::string &result) {
+          recent_available.at(selected) = result == "1";
+          if (result == "1") {
+            try {
+              load(path.string());
+            } catch (const std::exception &e) {
+              firmwareError("Cannot load game", e.what());
+            }
+          }
+        });
   }
   void browse(const fs::path &where) {
     const auto root = fs::weakly_canonical(core_browser ? core_root : fs::path(romdir));
@@ -529,6 +1103,7 @@ class Host {
     uint64_t t = ms();
     if (t >= nextbeat) {
       RomReader::reap();
+      StorageJob::reap();
       std::string s = std::to_string(t);
       require(pwrite(heartbeat, s.data(), s.size(), 0) == (ssize_t)s.size(),
               "heartbeat write");
@@ -618,7 +1193,10 @@ class Host {
     }
   }
   void animateMenu(uint64_t now) {
-    if (!menu || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog) return;
+    if (!menu || storage_job || storage_panel || storage_choices ||
+        mapping_step >= 0 || reset_confirm || recent_clear_confirm ||
+        firmware_error_dialog)
+      return;
     if (browser) {
       if (roms.empty() || browser_selected_row < 0 || now < next_scroll) return;
       if (recent_view) {
@@ -673,6 +1251,10 @@ class Host {
   void draw() {
     if (!menu)
       return;
+    if (storage_job || storage_panel || storage_choices) {
+      drawStorage();
+      return;
+    }
     if (browser && !recent_clear_confirm && !firmware_error_dialog) {
       drawBrowser();
       osd(true);
@@ -770,6 +1352,8 @@ class Host {
     log(menu ? "menu opened" : "menu closed");
   }
   void action(int a) { // up, down, accept, back, menu, left, right, minus, plus, recent
+    if (storageAction(a))
+      return;
     if (firmware_error_dialog) {
       if (a == 2 || a == 3 || a == 4) {
         firmware_error_dialog = false;
@@ -834,7 +1418,7 @@ class Host {
     idle_since = ms();
     version_footer.reset(idle_since);
     next_scroll = idle_since + 1000;
-    int count = browser ? (int)roms.size() : system_menu ? 6 : 9;
+    int count = browser ? (int)roms.size() : system_menu ? 7 : 9;
     if (a == 0 && count)
       cursor = (cursor + count - 1) % count;
     if (a == 1 && count)
@@ -852,15 +1436,27 @@ class Host {
       if (browser) {
         if (a == 2 && !roms.empty()) {
           if (recent_view) {
-            recent_available[cursor] = usableRecent(recent_paths[cursor]);
-            if (recent_available[cursor]) {
-              try { load(recent_paths[cursor].string()); }
-              catch (const std::exception &e) { firmwareError("Cannot load game", e.what()); }
-            }
+            try { loadRecent(); }
+            catch (const std::exception &e) { firmwareError("Cannot load recent game", e.what()); }
           } else {
             auto entry = roms.at(cursor);
             auto path = currentdir / entry.name;
-            if (entry.directory) browse(path);
+            if (!core_browser && game_paths.size() == roms.size()) {
+              path = game_paths.at(cursor);
+              if (path.empty()) {
+                choosing_firmware = false;
+                chooseStorageVolumes();
+              } else if (entry.directory)
+                browseGames(path);
+              else {
+                try {
+                  load(path.string());
+                } catch (const std::exception &e) {
+                  firmwareError("Cannot load game", e.what());
+                }
+              }
+            } else if (entry.directory)
+              browse(path);
             else if (core_browser) selectCore(path);
             else {
               try { load(path.string()); }
@@ -892,9 +1488,13 @@ class Host {
             cursor = 0;
             break;
           case 4:
-            running = 0;
+            storage_panel = true;
+            cursor = 0;
             break;
           case 5:
+            running = 0;
+            break;
+          case 6:
             togglemenu();
             break;
           }
@@ -915,12 +1515,10 @@ class Host {
       } else if (a == 2) {
         switch (cursor) {
         case 0:
-          browser = true;
-          browse(currentdir.empty() ? fs::path(romdir) : currentdir);
+          openGames();
           break;
         case 1:
-          try { bootFirmware(); }
-          catch (const std::exception &e) { firmwareError("Cannot boot DS firmware", e.what()); }
+          requestFirmware();
           break;
         case 7:
           try { reset(); togglemenu(); }
@@ -971,8 +1569,16 @@ class Host {
   void ensureFirmware() {
     if (firmware_failed)
       throw std::runtime_error("Firmware storage failed. Correct the storage problem and restart standalone; saved copies were preserved.");
-    if (!firmware)
-      firmware.emplace(nds_firmware::Media::open(fs::path(romdir), firmwarePath()));
+    if (!firmware) {
+      const auto &pref = storage_preferences.firmware.empty()
+                             ? storage_preferences.games
+                             : storage_preferences.firmware;
+      const auto source =
+          pref.empty()
+              ? fs::path(romdir)
+              : nds_storage::resolve(pref, nds_storage::volumes(sd_root));
+      firmware.emplace(nds_firmware::Media::open(source, firmwarePath()));
+    }
     if (firmware) {
       const auto profile = firmware->profile();
       // The experimental FPGA TSC currently supplies pixel<<4 samples. Do not
@@ -1583,7 +2189,13 @@ public:
     system_rows = systemMenuRows(systemMenuOptions(text, sd_root / "config/NDS_afilter.cfg"));
     idle_since = ms();
     version_footer.reset(idle_since);
-    currentdir = fs::weakly_canonical(romdir);
+    currentdir = fs::path(romdir);
+    try {
+      storage_preferences = nds_storage::Preferences::read(storageConfig());
+    } catch (const std::exception &e) {
+      log(e.what());
+      message = "Storage settings need reselecting";
+    }
     sendstatus();
     joy(0);
     log(std::string(CORE_VERSION) + " standalone host ready status=" + std::to_string(status));
@@ -1672,6 +2284,8 @@ public:
         scan();
       }
       inputs();
+      if (storage_job)
+        pollStorage();
       serviceFramebufferMetadataRequest();
       for (int i = 0; i < 4; i++)
         if (!sector())

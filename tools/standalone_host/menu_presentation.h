@@ -7,7 +7,7 @@
 #include "osd_frame.h"
 #include <optional>
 
-struct BrowserEntry { std::string name; bool directory; };
+struct BrowserEntry { std::string name; bool directory; bool literal = false; };
 struct BrowserView {
   std::array<std::string, 16> rows{};
   std::array<bool, 16> selected{};
@@ -16,7 +16,7 @@ struct BrowserView {
 };
 inline std::string browserName(const BrowserEntry &entry, bool cores) {
   auto name = entry.name;
-  if (!entry.directory) {
+  if (!entry.directory && !entry.literal) {
     auto dot = name.find_last_of('.');
     if (dot != std::string::npos) name.resize(dot);
   } else if (cores && !name.empty() && name.front() == '_') name.erase(0, 1);

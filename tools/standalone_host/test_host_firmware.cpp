@@ -11,6 +11,10 @@
 using namespace firmware_fixture;
 
 struct HostTest {
+  static void finishStorage(Host &host) {
+    const auto deadline=ms()+5000;
+    while(host.storage_job){assert(ms()<deadline);host.beat();host.pollStorage();usleep(1000);}
+  }
   struct FakeFirmware {
     struct Request { unsigned slot, op; uint32_t lba; nds_firmware::Sector data; };
     Host &host;
@@ -124,23 +128,23 @@ struct HostTest {
     unsetenv("NDS_FIRMWARE_DIAGNOSTICS");
     // Mere menu entry never needs optional originals or touches firmware IO.
     assert(!host.firmware);
-    host.spi.history.clear(); host.cursor = 1; host.action(2);
-    assert(host.menu && host.firmware_error_dialog && !host.firmware);
+    host.spi.history.clear(); host.cursor = 1; host.action(2);finishStorage(host);
+    assert(host.menu && host.storage_choices && !host.firmware);
     for (const auto &t : host.spi.history) assert(t.select != Spi::FIO && t.command != 0x45);
     host.draw(); assert(!host.spi.selected);
-    host.action(3); assert(!host.firmware_error_dialog && host.cursor == 1);
+    host.cursor=2;host.action(2); assert(!host.storage_choices && host.cursor == 1);
     // A complete legacy subdirectory must not hide missing canonical files.
     sources(sd / "games/NDS/firmware");
-    host.spi.history.clear(); host.action(2);
-    assert(host.firmware_error_dialog && !host.firmware);
+    host.spi.history.clear(); host.action(2);finishStorage(host);
+    assert(host.storage_choices && !host.firmware);
     assert(host.firmware_error_text.find((sd / "games/NDS/bios7.bin").string()) != std::string::npos);
     assert(!fs::exists(host.firmwarePath()));
     for (const auto &t : host.spi.history) assert(t.select != Spi::FIO && t.command != 0x45);
-    host.action(3);
+    host.cursor=2;host.action(2);
     sources(sd / "games/NDS");
     const auto original = readBytes(sd / "games/NDS/firmware.bin");
     FakeFirmware device(host);
-    host.spi.history.clear(); host.action(2);
+    host.spi.history.clear(); host.action(2);finishStorage(host);
     assert(host.native_firmware && !host.menu && host.firmware_slot_mounted);
     assert(!host.firmware_error_dialog && host.firmware->image() == original);
     assert(readBytes(sd / "saves/NDS/firmware.bin") == original);
@@ -245,7 +249,7 @@ struct HostTest {
     host.cursor = 0; host.action(2);
     assert(host.firmware->profile().bytes[6] == 'Z');
     // Failed BIOS transfer retains console hold and visible menu error.
-    device.fail_upload = true; host.cursor = 1; host.action(2);
+    device.fail_upload = true; host.cursor = 1; host.action(2);finishStorage(host);
     assert(host.firmware_error_dialog && host.menu && (device.flags & 1));
     assert(host.spi.history.back().select == Spi::IO); // neutral input after error
     bool stopped_failed_download = false;
@@ -256,7 +260,7 @@ struct HostTest {
       }
     assert(stopped_failed_download && !(device.flags & 4));
     device.fail_upload = false; host.action(3);
-    host.action(2); assert(!host.menu && host.native_firmware);
+    host.action(2);finishStorage(host); assert(!host.menu && host.native_firmware);
     assert(device.clock_seeds == 1);
     // Exit still flushes after cancellation has set running=0.
     running = 0;

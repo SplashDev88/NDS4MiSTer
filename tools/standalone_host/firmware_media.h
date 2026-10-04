@@ -325,26 +325,83 @@ public:
   Media(Media &&) noexcept = default;
   Media &operator=(Media &&) noexcept = default;
 
+  struct Originals {
+    Bytes bios7, bios9, firmware;
+    std::vector<std::pair<uint64_t, uint64_t>> identities;
+  };
+  static void validateOriginals(const Originals &originals) {
+    // Same known-native identifiers used by melonDS MemConstants.h/NDS.cpp.
+    if (originals.bios7.size() != 16384 ||
+        crc32(originals.bios7) != 0x1280f0d5u)
+      throw std::runtime_error(
+          "bios7.bin is not the supported native Nintendo DS BIOS");
+    if (originals.bios9.size() != 4096 || crc32(originals.bios9) != 0x2ab23573u)
+      throw std::runtime_error(
+          "bios9.bin is not the supported native Nintendo DS BIOS");
+    if (originals.identities.size() != 3)
+      throw std::runtime_error("Incomplete original firmware identities");
+    (void)inspectProfile(originals.firmware);
+  }
+  static Originals readOriginals(const fs::path &sourceDirectory) {
+    Media reader;
+    Originals originals;
+    originals.bios7 =
+        reader.readFile(sourceDirectory / "bios7.bin", 16384, true);
+    originals.bios9 =
+        reader.readFile(sourceDirectory / "bios9.bin", 4096, true);
+    originals.firmware =
+        reader.readFile(sourceDirectory / "firmware.bin", image_size, true);
+    for (const auto &id : reader.sources_)
+      originals.identities.emplace_back(id.device, id.inode);
+    validateOriginals(originals);
+    return originals;
+  }
+  void setOriginals(Originals originals) {
+    validateOriginals(originals);
+    auto old = sources_;
+    sources_.clear();
+    for (const auto &id : originals.identities)
+      sources_.push_back({dev_t(id.first), ino_t(id.second)});
+    try {
+      safeDestination(working_);
+      safeDestination(working_.string() + ".previous");
+      safeDestination(working_.string() + ".lock");
+    } catch (...) {
+      sources_ = std::move(old);
+      throw;
+    }
+    bios7_ = std::move(originals.bios7);
+    bios9_ = std::move(originals.bios9);
+  }
   static Media open(const fs::path &sourceDirectory, const fs::path &workingPath
 #ifdef STANDALONE_FIRMWARE_TEST
-                    , std::function<void(const char *)> fault = {}, int exclusiveRenameError = 0
+                    ,
+                    std::function<void(const char *)> fault = {},
+                    int exclusiveRenameError = 0
 #endif
-                    ) {
+  ) {
+    return openPrepared(readOriginals(sourceDirectory), workingPath
+#ifdef STANDALONE_FIRMWARE_TEST
+                        ,
+                        std::move(fault), exclusiveRenameError
+#endif
+    );
+  }
+  static Media openPrepared(Originals originals, const fs::path &workingPath
+#ifdef STANDALONE_FIRMWARE_TEST
+                            ,
+                            std::function<void(const char *)> fault = {},
+                            int exclusiveRenameError = 0
+#endif
+  ) {
     Media media;
 #ifdef STANDALONE_FIRMWARE_TEST
     media.fault_ = std::move(fault);
     media.exclusive_rename_error_ = exclusiveRenameError;
 #endif
     media.working_ = fs::absolute(workingPath);
-    media.bios7_ = media.readFile(sourceDirectory / "bios7.bin", 16384, true);
-    media.bios9_ = media.readFile(sourceDirectory / "bios9.bin", 4096, true);
-    // Same known-native identifiers used by melonDS MemConstants.h/NDS.cpp.
-    if (crc32(media.bios7_) != 0x1280f0d5u)
-      throw std::runtime_error("bios7.bin is not the supported native Nintendo DS BIOS");
-    if (crc32(media.bios9_) != 0x2ab23573u)
-      throw std::runtime_error("bios9.bin is not the supported native Nintendo DS BIOS");
-    auto original = media.readFile(sourceDirectory / "firmware.bin", image_size, true);
-    (void)inspectProfile(original);
+    media.setOriginals(originals);
+    auto original = std::move(originals.firmware);
     // Only after all original assets validate may any persistent file be made.
     fs::create_directories(media.working_.parent_path());
     media.safeDestination(media.working_);

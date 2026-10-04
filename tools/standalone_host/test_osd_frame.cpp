@@ -196,17 +196,17 @@ static void preview(const char *path) {
 // Explicit MENU_COMMON1 reference rows for NDS: UART absent, audio filter
 // supported. Stipple comes from Main's disabled-UI flag (equivalent to 0x0b).
 static void system_menu_test(const char *preview_dir) {
-  const std::array<std::string, 16> main_rows{
+  const std::array<std::string, 18> main_rows{
     " Core                      \x16", "", " Define NDS buttons        \x16",
     " Button/Key remap          \x16", " Reset player assignment", "",
     " Video processing          \x16", "", " Audio filter - Internal",
     " < none >                  \x16 ", "", " Reset settings", " Save settings",
-    "", " Reboot", "            exit"}; // User exceptions: no Help/About/hold hint.
-  const int selected_rows[] = {0, 2, 11, 12, 14, 15};
-  const int first_rows[] = {0, 0, 0, 0, 0, 0};
+    "", " Storage                   \x16", "", " Reboot", "            exit"}; // User exceptions: no Help/About/hold hint.
+  const int selected_rows[] = {0, 2, 11, 12, 14, 16, 17};
+  const int first_rows[] = {0, 0, 0, 0, 0, 1, 2};
   const auto rows = systemMenuRows({});
   assert(rows.size() == main_rows.size());
-  for (int i = 0; i < 16; ++i) {
+  for (int i = 0; i < 18; ++i) {
     auto plain = rows[i].text;
     plain.erase(std::remove(plain.begin(), plain.end(), char(0x0b)), plain.end());
     assert(plain == main_rows[i]);
@@ -216,7 +216,7 @@ static void system_menu_test(const char *preview_dir) {
   nds_osd::Frame frame("System", charfont);
   reference::OsdSetTitle("System");
   int first = 0;
-  for (int cursor = 0; cursor < 6; ++cursor) {
+  for (int cursor = 0; cursor < 7; ++cursor) {
     auto view = systemMenuView(rows, cursor, first);
     first = view.first;
     assert(first == first_rows[cursor]);
@@ -226,12 +226,12 @@ static void system_menu_test(const char *preview_dir) {
       auto expected_text = main_rows[row];
       if (rows[row].disabled) expected_text.insert(expected_text.begin(), char(0x0b));
       const auto text = view.rows[y].disabled ? std::string(1, char(0x0b)) + view.rows[y].text : view.rows[y].text;
-      const unsigned arrows = row == 15 ? nds_osd::arrow_left : 0;
+      const unsigned arrows = row == 17 ? nds_osd::arrow_left : 0;
       const unsigned char marker = y == 0 && first ? 17 : y == 15 && !arrows ? 16 : 0;
       const auto expected = reference::OsdWrite(y, expected_text.c_str(), y == view.selected, arrows, marker);
       assert(frame.renderRow(y, text, y == view.selected, view.rows[y].arrows, view.markers[y]) == expected);
     }
-    if (preview_dir && (cursor == 0 || cursor == 5)) {
+    if (preview_dir && (cursor == 0 || cursor == 6)) {
       std::ofstream out(std::string(preview_dir) + (cursor ? "/system-bottom.bin" : "/system-top.bin"), std::ios::binary);
       for (int y = 0; y < 16; ++y) {
         const auto &row = view.rows[y];
@@ -243,9 +243,9 @@ static void system_menu_test(const char *preview_dir) {
     }
   }
   const auto locked = systemMenuRows({true, true, "LPF2000_3tap.txt"});
-  assert(locked.size() == 18 && locked[2].text == " Lock OSD" && locked[2].disabled);
+  assert(locked.size() == 20 && locked[2].text == " Lock OSD" && locked[2].disabled);
   assert(locked[10].text == " Audio filter - Custom");
-  assert(systemMenuView(locked, 5, 0).first == 2);
+  assert(systemMenuView(locked, 6, 0).first == 4);
   assert(systemMenuView(locked, 0, 2).first == 0);
   assert(systemMenuView(rows, -1, 0).selected == -1);
   auto ini = systemMenuOptions("osd_lock=ABCD\nosd_lock_time=0\nafilter_default=folder/LPF.txt\n[Other]\nafilter_default=ignore.txt", "/nonexistent-nds-config");
