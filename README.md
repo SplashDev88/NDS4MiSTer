@@ -8,7 +8,6 @@
 
 - **Browse to your ROM folder.** Choose **Load \*.NDS** and use `..` at the top to go up. Keep going up to switch between SD, USB and network storage, then browse down to your games.
 - **Browse to your firmware folder.** **Boot DS firmware** opens the same browser. Point it at `firmware.bin`, with `bios7.bin` and `bios9.bin` beside it.
-- **Everything from rc.1 carries over.** The FPGA core, renderer and 1 GHz ARM clock are unchanged.
 
 ## Install and play
 
