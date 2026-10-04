@@ -15,6 +15,7 @@
 #include <linux/miscdevice.h>
 #include <linux/mm.h>
 #include <linux/module.h>
+#include <linux/version.h>
 
 #define NDS_MEM_WC_NAME "nds_mem_wc"
 #define NDS_PUBLICATION_PHYS_BASE 0x3fd00000UL
@@ -32,7 +33,11 @@ static int nds_mem_wc_mmap(struct file *file, struct vm_area_struct *vma)
 	    offset < NDS_PUBLICATION_PHYS_BASE || offset + size > limit)
 		return -EPERM;
 
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 3, 0)
+	vm_flags_set(vma, VM_IO | VM_DONTEXPAND | VM_DONTDUMP);
+#else
 	vma->vm_flags |= VM_IO | VM_DONTEXPAND | VM_DONTDUMP;
+#endif
 	vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
 	if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff,
 			    size, vma->vm_page_prot))

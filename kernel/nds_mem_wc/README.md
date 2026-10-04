@@ -85,3 +85,29 @@ kernel build is compatible. Never force loading a rejected module.
 The main project license does not replace this module's GPL-2.0 license.
 See `COPYING`. The installer carries that license and links to this complete
 module source in the matching GitHub release's automatic source archives.
+
+## Linux 6.18.38 port (private test)
+
+The new kernel uses the same restricted physical aperture and mapping type.
+Linux 6.3 and later require `vm_flags_set()` instead of direct `vm_flags`
+assignment; the conditional implementation preserves the 5.15 build path.
+
+`BUILD_PROVENANCE-6.18.38.json`, `config-6.18.38-MiSTer` and
+`build-release-6.18.sh` record the new build. Use the same container layout as
+above, with `kernel-6a581bac.tar.gz` and the recorded GCC 10.2 archive in
+`/inputs`. `LOCALVERSION=-MiSTer` is required, matching the installed kernel's
+release string. The running configuration has no symbol versioning; the
+normal module loader resolved all imports without force-loading. Boundary
+mapping tests and the actual pixel-publication readback test passed on hardware.
+
+The standalone test kit retains the 5.15 binary in `support/nds_mem_wc.ko`
+and selects `support/modules/6.18.38-MiSTer/nds_mem_wc.ko` on the new kernel.
+Each has its own checksum, and the supervisor pins the selected binary.
+Other kernel versions still fail preflight rather than silently losing WC.
+
+Clock control is independent of this module. `clock_control.py` loads the
+kernel's `socfpga-cpufreq` driver if needed, snapshots the current policy,
+holds the powersave governor while enabling boost, sets a 1 GHz ceiling,
+and then switches to performance. This avoids briefly choosing the 1.2 GHz
+boost point. Exit restores the previous policy and boost state. There is no
+new overclock menu, replacement kernel, or persistent startup modification.

@@ -19,11 +19,21 @@ if [ -n "$test_root" ]; then
     fi
 fi
 
-support_dir=${test_root}/media/fat/Scripts/.NDS_Standalone/support
+kit_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -n "$test_root" ]; then
+    support_dir=${test_root}/media/fat/Scripts/.NDS_Standalone/support
+else
+    support_dir=${kit_dir}/support
+fi
 service=${support_dir}/nds_hybrid_3d_service
 manifest=${support_dir}/nds_hybrid_3d_service.sha256
 wc_module=${support_dir}/nds_mem_wc.ko
 wc_manifest=${support_dir}/nds_mem_wc.ko.sha256
+# Retain the original 5.15 module; select the rebuilt module on 6.18.
+if [ "$(uname -r)" = 6.18.38-MiSTer ]; then
+    wc_module=${support_dir}/modules/6.18.38-MiSTer/nds_mem_wc.ko
+    wc_manifest=${wc_module}.sha256
+fi
 pidfile=${test_root}/tmp/nds-hybrid-3d-service.pid
 logfile=${test_root}/tmp/nds-hybrid-3d-service.log
 logtmp=${test_root}/tmp/nds-hybrid-3d-service.log.trim
@@ -32,8 +42,6 @@ mister_schedule_tmp=${test_root}/tmp/nds-h3d-mister-scheduling.state.tmp
 mister_schedule_lock=${test_root}/tmp/nds-h3d-mister-scheduling.lock
 mister_watch_lock=${test_root}/tmp/nds-h3d-mister-watch.lock
 core_name_file=${test_root}/tmp/CORENAME
-hps_clock_khz=1000000
-default_hps_clock_khz=800000
 
 start_stop_daemon=start-stop-daemon
 sha256_program=sha256sum
@@ -464,45 +472,14 @@ start_mister_watch()
 
 set_hps_clock()
 {
-    # The desktop regression has no MiSTer cpufreq tree. Production uses the
-    # board's advertised 1 GHz boost point, which is the highest clock proven
-    # stable by extended NSMB play testing on this unit.
     [ -z "$test_root" ] || return 0
-    for cpu in 0 1; do
-        clock_file=/sys/devices/system/cpu/cpu${cpu}/cpufreq/scaling_max_freq
-        [ -w "$clock_file" ] || {
-            restore_hps_clock >/dev/null 2>&1 || true
-            fail "CPU${cpu} clock control is unavailable"
-            return 1
-        }
-        printf '%s\n' "$hps_clock_khz" >"$clock_file" || {
-            restore_hps_clock >/dev/null 2>&1 || true
-            fail "CPU${cpu} rejected the 1 GHz clock"
-            return 1
-        }
-    done
-    sleep 1
-    for cpu in 0 1; do
-        clock_root=/sys/devices/system/cpu/cpu${cpu}/cpufreq
-        [ "$(cat "$clock_root/scaling_max_freq" 2>/dev/null || :)" = "$hps_clock_khz" ] &&
-        [ "$(cat "$clock_root/scaling_cur_freq" 2>/dev/null || :)" = "$hps_clock_khz" ] || {
-            restore_hps_clock >/dev/null 2>&1 || true
-            fail "CPU${cpu} did not reach the requested 1 GHz clock"
-            return 1
-        }
-    done
+    python3 "$kit_dir/clock_control.py" start
 }
 
 restore_hps_clock()
 {
     [ -z "$test_root" ] || return 0
-    restored=1
-    for cpu in 0 1; do
-        clock_file=/sys/devices/system/cpu/cpu${cpu}/cpufreq/scaling_max_freq
-        printf '%s\n' "$default_hps_clock_khz" >"$clock_file" 2>/dev/null ||
-            restored=0
-    done
-    [ "$restored" = 1 ]
+    python3 "$kit_dir/clock_control.py" restore
 }
 
 reject_link()
@@ -790,7 +767,7 @@ stop_service()
     bound_stopped_log || return 1
     unload_wc_module
     restore_hps_clock || {
-        fail "could not restore the default 800 MHz clock"
+        fail "could not restore the previous CPU clock settings"
         return 1
     }
     echo "H3D: stopped"

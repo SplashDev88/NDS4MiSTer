@@ -12,13 +12,15 @@ BEAT = Path("/tmp/nds-standalone-heartbeat")
 KICK = str(KIT / "Kickstart.sh")
 CORE = KIT / "NDS_Standalone.rbf"
 RUNTIME = Path("/tmp/nds-standalone")
+EXPECTED_WC_618 = "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3"
+EXPECTED_CLOCK = "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f"
 EXPECTED_WC = "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113"
 NORMAL_HELPER_SHA = "91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390febe3"
 HELPER = KIT / "support/nds_hybrid_3d_service"
 SD_ROOT = Path("/media/fat")
 EXPECTED_HELPER = "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729"
 EXPECTED_CORE = "0cacd24fd22588fab6cbca20c83077fbea48a6663ff42571f16acfa4c63df0a6"
-EXPECTED_KICKSTART = "8a8b205effdc14fed1d7c479d357dd1b4eaaad2742cea0e93df2d21002801659"
+EXPECTED_KICKSTART = "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b"
 EXPECTED_SPEED_ENV = {
     "NDS4MISTER_GX_MATRIX_PREFIX": "auto",
     "NDS4MISTER_STANDALONE_REUSE_3D": "1",
@@ -374,6 +376,12 @@ def initialize_settings():
         raise
 
 
+def wc_module():
+    if os.uname().release == "6.18.38-MiSTer":
+        return KIT / "support/modules/6.18.38-MiSTer/nds_mem_wc.ko", EXPECTED_WC_618
+    return KIT / "support/nds_mem_wc.ko", EXPECTED_WC
+
+
 def preflight():
     """Check public dependencies and package before core loads or process changes."""
     prerequisite(sys.version_info >= (3, 8), "Python 3.8 or newer is required")
@@ -384,7 +392,7 @@ def preflight():
         prerequisite(path.exists(), "Missing MiSTer system file: " + str(path))
     for path, expected in ((CORE, EXPECTED_CORE), (HELPER, EXPECTED_HELPER),
                            (Path(KICK), EXPECTED_KICKSTART),
-                           (KIT / "support/nds_mem_wc.ko", EXPECTED_WC)):
+                           (KIT / "clock_control.py", EXPECTED_CLOCK), wc_module()):
         prerequisite(path.is_file() and sha(path) == expected,
                      "Package checksum mismatch or missing file: " + path.name)
     manifest = json.loads((KIT / "manifest.json").read_text())
@@ -393,22 +401,10 @@ def preflight():
                  "Standalone menu checksum mismatch")
     prerequisite(os.access(host, os.X_OK) and os.access(HELPER, os.X_OK),
                  "Standalone executables are not executable")
-    for cpu in (0, 1):
-        clock_root = Path("/sys/devices/system/cpu/cpu%d/cpufreq" % cpu)
-        prerequisite(os.access(clock_root / "scaling_max_freq", os.W_OK),
-                     "CPU%d clock control is unavailable; a compatible MiSTer kernel is required" % cpu)
-        advertised = []
-        for name in ("scaling_available_frequencies", "scaling_boost_frequencies"):
-            try:
-                advertised += (clock_root / name).read_text().split()
-            except FileNotFoundError:
-                pass
-        prerequisite("1000000" in advertised,
-                     "CPU%d does not advertise the required 1 GHz frequency" % cpu)
     # Pin the kernel family to the included module. A previously loaded module
     # can disappear when the outgoing renderer stops; do not rely on its node.
     vermagic = next((x[len(b"vermagic="):] for x in
-                     (KIT / "support/nds_mem_wc.ko").read_bytes().split(b"\0")
+                     wc_module()[0].read_bytes().split(b"\0")
                      if x.startswith(b"vermagic=")), b"").decode("ascii", "replace")
     prerequisite(vermagic.split() and vermagic.split()[0] == os.uname().release,
                  "The included write-combining module does not match this kernel")
@@ -417,6 +413,10 @@ def preflight():
                  "A standalone session or recovery is already active")
     validate_previous_renderer()
     validate_settings()
+    # Driver registration is needed before sysfs exists on 6.18. It does not
+    # enable boost or change clock policy; do it after package/ownership checks.
+    subprocess.run([sys.executable, str(KIT / "clock_control.py"), "probe"],
+                   check=True, timeout=15)
     # The shell preflight validates both support manifests without loading the
     # module, changing clocks, touching Wi-Fi or starting/stopping any process.
     subprocess.run(["sh", KICK, "preflight"], check=True, timeout=15,
@@ -532,11 +532,11 @@ def main():
         assert Path("/dev/nds_mem_wc").exists(), "Expected write-combining device"
         for cpu in (0, 1):
             frequency=Path("/sys/devices/system/cpu/cpu%d/cpufreq/scaling_max_freq" % cpu)
-            assert frequency.read_text().strip()=="1000000", "Expected stock 1 GHz"
+            assert frequency.read_text().strip()=="1000000", "Expected 1 GHz"
         state["wc_mapping_present"] = "/dev/nds_mem_wc" in Path("/proc/%d/maps" % release_pid).read_text()
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.2"
+        state["release"] = "v0.9.0-rc.2-linux618-test.1"
         write()
         stage("load standalone core")
         previous = mains()[0]

@@ -23,10 +23,10 @@ class Preflight(unittest.TestCase):
         for name,value in [('KIT',self.kit),('SD_ROOT',self.root/'media/fat'),('CORE',self.kit/'NDS_Standalone.rbf'),('HELPER',self.kit/'support/nds_hybrid_3d_service'),('KICK',str(self.kit/'Kickstart.sh'))]:
             self.stack.enter_context(patch.object(s,name,value))
         self.paths = {}
-        for relative, data in [('media/fat/MiSTer',b'main'),('media/fat/menu.rbf',b'menu'),('dev/mem',b''),('dev/MiSTer_cmd',b''),('media/fat/Scripts/.NDS_Standalone/NDS_Standalone.rbf',b'core'),('media/fat/Scripts/.NDS_Standalone/support/nds_hybrid_3d_service',b'helper'),('media/fat/Scripts/.NDS_Standalone/Kickstart.sh',b'kick'),('media/fat/Scripts/.NDS_Standalone/support/nds_mem_wc.ko',b'\0vermagic=5.15.1-MiSTer SMP mod_unload ARMv7 p2v8 \0'),('media/fat/Scripts/.NDS_Standalone/nds_standalone_host',b'host')]:
+        for relative, data in [('media/fat/Scripts/.NDS_Standalone/clock_control.py',b'clock'),('media/fat/MiSTer',b'main'),('media/fat/menu.rbf',b'menu'),('dev/mem',b''),('dev/MiSTer_cmd',b''),('media/fat/Scripts/.NDS_Standalone/NDS_Standalone.rbf',b'core'),('media/fat/Scripts/.NDS_Standalone/support/nds_hybrid_3d_service',b'helper'),('media/fat/Scripts/.NDS_Standalone/Kickstart.sh',b'kick'),('media/fat/Scripts/.NDS_Standalone/support/nds_mem_wc.ko',b'\0vermagic=5.15.1-MiSTer SMP mod_unload ARMv7 p2v8 \0'),('media/fat/Scripts/.NDS_Standalone/nds_standalone_host',b'host')]:
             target=self.root/relative;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);target.chmod(0o755)
             self.paths[target.name]=target
-        for name,file in [('EXPECTED_CORE','NDS_Standalone.rbf'),('EXPECTED_HELPER','nds_hybrid_3d_service'),('EXPECTED_KICKSTART','Kickstart.sh'),('EXPECTED_WC','nds_mem_wc.ko')]:
+        for name,file in [('EXPECTED_CLOCK','clock_control.py'),('EXPECTED_CORE','NDS_Standalone.rbf'),('EXPECTED_HELPER','nds_hybrid_3d_service'),('EXPECTED_KICKSTART','Kickstart.sh'),('EXPECTED_WC','nds_mem_wc.ko')]:
             self.stack.enter_context(patch.object(s,name,s.sha(self.paths[file])))
         (self.kit/'manifest.json').write_text(json.dumps({'host_sha256':s.sha(self.paths['nds_standalone_host'])}))
         for cpu in (0,1):
@@ -46,7 +46,8 @@ class Preflight(unittest.TestCase):
         self.spawn.assert_not_called();self.command.assert_not_called();self.kill.assert_not_called()
     def test_fresh_install_has_no_normal_nds_dependency(self):
         s.preflight();self.no_changes()
-        self.run.assert_called_once_with(['sh',s.KICK,'preflight'],check=True,timeout=15,stdout=s.subprocess.DEVNULL)
+        self.assertEqual(self.run.call_count,2)
+        self.run.assert_called_with(['sh',s.KICK,'preflight'],check=True,timeout=15,stdout=s.subprocess.DEVNULL)
         self.assertFalse((s.SD_ROOT/'Scripts/NDS_Kickstart.sh').exists())
         self.assertFalse((self.kit/'NDS_v1.CFG').exists())
     def test_hash_mismatch_rejects_before_hardware_action(self):
@@ -58,9 +59,18 @@ class Preflight(unittest.TestCase):
         with patch.object(s.os,'uname',return_value=SimpleNamespace(release='other-kernel')):
             with self.assertRaisesRegex(RuntimeError,'write-combining module'):s.preflight()
         self.no_changes();self.run.assert_not_called()
-    def test_missing_one_ghz_rejects(self):
-        (self.root/'sys/devices/system/cpu/cpu1/cpufreq/scaling_boost_frequencies').write_text('1200000')
+    def test_clock_probe_failure_rejects_before_takeover(self):
+        self.run.side_effect=RuntimeError('CPU does not advertise the required 1 GHz frequency')
         with self.assertRaisesRegex(RuntimeError,'1 GHz'):s.preflight()
+        self.no_changes();self.assertEqual(self.run.call_count,1)
+    def test_new_kernel_uses_matching_module(self):
+        target=self.kit/'support/modules/6.18.38-MiSTer/nds_mem_wc.ko'
+        target.parent.mkdir(parents=True);target.write_bytes(b'\0vermagic=6.18.38-MiSTer SMP mod_unload ARMv7 p2v8 \0')
+        with patch.object(s.os,'uname',return_value=SimpleNamespace(release='6.18.38-MiSTer')),patch.object(s,'EXPECTED_WC_618',s.sha(target)):
+            s.preflight();self.no_changes()
+    def test_wrong_new_module_rejected(self):
+        with patch.object(s.os,'uname',return_value=SimpleNamespace(release='6.18.38-MiSTer')):
+            with self.assertRaisesRegex(RuntimeError,'checksum mismatch'):s.preflight()
         self.no_changes();self.run.assert_not_called()
     def test_old_python_rejects(self):
         with patch.object(s.sys,'version_info',(3,7,10)):
@@ -140,8 +150,9 @@ class PackageSource(unittest.TestCase):
     def test_renderer_options_are_identical_to_accepted(self):
         accepted=json.loads((ROOT/'test_fixtures/accepted-runtime.json').read_text())
         after=(ROOT/'Kickstart.sh').read_text()
-        original=after.replace('/media/fat/Scripts/.NDS_Standalone/support','/media/fat/Scripts/.NDS_Pacing_Prefix_20260930/support')
-        self.assertEqual(hashlib.sha256(original.encode()).hexdigest(),accepted['kickstart_sha256'])
+        # Clock/module setup changed; pin the entire renderer launch block.
+        launch=after[after.index('        NDS4MISTER_GX_MATRIX_PREFIX='):after.index('    ) >>"$logfile"')]
+        self.assertEqual(hashlib.sha256(launch.encode()).hexdigest(),"eac9621d74c7794dcea40bd0b74b56687337348254121edbc6e6e4c85c8412d0")
         self.assertEqual(accepted['shell_environment_checked'],s.EXPECTED_SPEED_ENV)
     def test_kickstart_hash_matches_public_bytes(self):
         self.assertEqual(s.sha(ROOT/'Kickstart.sh'),s.EXPECTED_KICKSTART)

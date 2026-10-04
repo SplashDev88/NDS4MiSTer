@@ -78,14 +78,21 @@ def collect(a):
     add('Scripts/NDS4MiSTer.sh', HOST / 'NDS4MiSTer.sh', 0o755)
     add(SUPPORT + 'supervisor.py', HOST / 'supervisor.py', 0o755)
     add(SUPPORT + 'Kickstart.sh', HOST / 'Kickstart.sh', 0o755)
+    add(SUPPORT + 'clock_control.py', HOST / 'clock_control.py', 0o755)
     add(SUPPORT + 'NDS_Standalone.rbf', a.core)
     add(SUPPORT + 'nds_standalone_host', a.host, 0o755)
     add(SUPPORT + 'support/nds_hybrid_3d_service', a.helper, 0o755)
     add(SUPPORT + 'support/nds_mem_wc.ko', a.module)
+    module_618 = 'support/modules/6.18.38-MiSTer/nds_mem_wc.ko'
+    add(SUPPORT + module_618, a.module_618)
+    add(SUPPORT + 'support/modules/6.18.38-MiSTer/BUILD_PROVENANCE.json',
+        ROOT / 'kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json')
     for name, digest in {
         'NDS_Standalone.rbf': supervisor.EXPECTED_CORE,
         'support/nds_hybrid_3d_service': supervisor.EXPECTED_HELPER,
         'support/nds_mem_wc.ko': supervisor.EXPECTED_WC,
+        module_618: supervisor.EXPECTED_WC_618,
+        'clock_control.py': supervisor.EXPECTED_CLOCK,
         'Kickstart.sh': supervisor.EXPECTED_KICKSTART,
         'nds_standalone_host': HOST_SHA,
     }.items():
@@ -93,6 +100,8 @@ def collect(a):
     for name in ('nds_hybrid_3d_service', 'nds_mem_wc.ko'):
         digest = sha(files[SUPPORT + 'support/' + name])
         files[SUPPORT + 'support/' + name + '.sha256'] = (digest + '  ' + name + '\n').encode()
+    files[SUPPORT + module_618 + '.sha256'] = (
+        supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
             'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC2.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
@@ -110,6 +119,9 @@ def collect(a):
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
+        'clock_control_sha256': supervisor.EXPECTED_CLOCK,
+        'kernel_module_sha256': {'5.15.1-MiSTer': supervisor.EXPECTED_WC,
+                                 '6.18.38-MiSTer': supervisor.EXPECTED_WC_618},
         'supervisor_sha256': sha(files[SUPPORT + 'supervisor.py']),
         'launcher_sha256': sha(files['Scripts/NDS4MiSTer.sh']),
         'runtime_environment': supervisor.EXPECTED_SPEED_ENV, 'hps_clock_khz': 1000000,
@@ -125,7 +137,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Storage frontend with remembered-location firmware boot; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.',
+        'scope': 'Linux 6.18.38 compatibility port on rc.2: rebuilt WC module and boost-aware 1 GHz clock setup; accepted FPGA, host, renderer and runtime speed options unchanged.',
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'
@@ -141,7 +153,7 @@ def collect(a):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ('core', 'helper', 'host', 'module'):
+    for name in ('core', 'helper', 'host', 'module', 'module-618'):
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--out-dir', type=Path)
     parser.add_argument('--docs-dir', type=Path, help='Directory containing README.md, RELEASE_NOTES.md and QUICK_START.txt')
