@@ -1,7 +1,7 @@
 {
   "accepted_host_sha256": "11db1d4167cce8ce1eb52d06318ee8dca7012da1ca87eb33bcdc6ac98298cbc6",
   "accepted_source": "e15b5a7c8bd19142ba833962fdad4dfde3fdb691",
-  "change_since_accepted_candidate": "VERSION and generated CORE_VERSION label only; production C++ implementation unchanged.",
+  "change_since_accepted_candidate": "Release-version label and direct boot from remembered firmware location; first-use/missing-file/missing-drive browsing fallback. FPGA, renderer and gameplay paths unchanged.",
   "command": "arm-linux-gnueabihf-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard host.cpp -o nds_standalone_host",
   "container_image": "sha256:4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
   "inputs": {
@@ -12,7 +12,7 @@
     "tools/standalone_host/font.h": "ac03c9cfac2785c280586db70da6a69f5f2cf1d9b0be3816fcc7b050eb0ad378",
     "tools/standalone_host/framebuffer_metadata.h": "a25c6c8cf2ad9ddd26a1779d7a5ca7f3b97cd03c43e24923657005eabc9a5640",
     "tools/standalone_host/freebios_media.h": "b7deaa7d875445b8831607db00b07d2cf0c6185f67543e3ca93ea3e020af36f2",
-    "tools/standalone_host/host.cpp": "b6a63d17c93ef4429445cd31eaaf55969f031dd8f8dfb56d9efa7ff3cfa82f1a",
+    "tools/standalone_host/host.cpp": "b67fe58a6157eba7d39fc1e994b7942920cf597eed2ce1f839731385db4715e9",
     "tools/standalone_host/menu_model.h": "3a44b6a61ba39249dfce619d9dedca5ac5ba8a5ce4892b5e66d2acc1aab6998d",
     "tools/standalone_host/menu_presentation.h": "5e237b207c7da201e0c372b70d1e3fff284907497443b3528b9eeb565d4941d3",
     "tools/standalone_host/osd_frame.h": "aa835f48d2cc5b5cccde100ea4e0b3205d38827406df77b55b48b577ce31e513",
@@ -27,6 +27,6 @@
     "tools/standalone_host/test_firmware_fixture.h": "fe5ebef20e69615489ae47ac0c06f8c8339f8db618d3a1a51a212999dfde15f9",
     "tools/standalone_host/test_rom_fixture.h": "967c6bde0f1b0bd05de78444d10711b1296fdf5c2834e20a033153ecd31cb8f5"
   },
-  "release_host_sha256": "ae4f9f55a8bda566dc3729567e6cf120bada8a9500c5524c7e70f7413165000b",
+  "release_host_sha256": "d1af47f5dab7cd9edf3491de26fffade33dc172b4f977ff36e6d8f89795b0791",
   "version": "v0.9.0-rc.2"
 }

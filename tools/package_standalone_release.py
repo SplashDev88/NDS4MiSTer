@@ -20,8 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
 VERSION = 'v0.9.0-rc.2'
-HOST_SHA = 'ae4f9f55a8bda566dc3729567e6cf120bada8a9500c5524c7e70f7413165000b'
-FRONTEND_BUILD_SHA = '76883d8551c82980afd717f6fc4bcbd5a165c9e74b2d820729a86bef40197f00'
+HOST_SHA = 'd1af47f5dab7cd9edf3491de26fffade33dc172b4f977ff36e6d8f89795b0791'
+FRONTEND_BUILD_SHA = '4a3c778bd2c2e913f53ce08581b0b2b41068529f1408e528e1ffda3f08665c80'
 FPGA_BUILD_SHA = 'e39fc16cc5cbcfe50e59af2a3c35fe0929f210cdceb6fb4b7a0a5a6ebed5cdb0'
 FPGA_SOURCE_SHA = '17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950'
 ACCEPTED_HOST_SHA = '11db1d4167cce8ce1eb52d06318ee8dca7012da1ca87eb33bcdc6ac98298cbc6'
@@ -106,7 +106,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
-        'host_change': 'Parent-folder browsing on mounted storage, separately remembered game and firmware folders, and cancellable storage reads; renderer and FPGA unchanged.',
+        'host_change': 'Parent-folder browsing, separately remembered game and firmware folders, direct firmware boot from a remembered location, and cancellable storage reads; renderer and FPGA unchanged.',
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
@@ -125,7 +125,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Accepted storage frontend with release-version label; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.',
+        'scope': 'Storage frontend with remembered-location firmware boot; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.',
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'

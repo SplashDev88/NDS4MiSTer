@@ -142,6 +142,10 @@ the four fields shared into games.
 ## Optional user-supplied assets
 
 Originals are read from the folder selected in the `Boot DS firmware` browser.
+When a remembered location contains all three original files, the menu action
+boots it directly. Otherwise it opens the browser; unavailable devices open
+the device list. File availability is checked in the cancellable reader before
+any CPU hold or firmware writes. Original validation still precedes boot.
 The user selects `firmware.bin`; `bios7.bin` and `bios9.bin` must be beside it.
 The browser supports parent navigation across mounted SD, USB and network
 storage and remembers its own folder. That location is independent of the

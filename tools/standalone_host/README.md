@@ -40,7 +40,9 @@ device, `..` opens the mounted-device list, where you can enter SD (`fat`), USB
 or network storage. The device list's `..` returns to the NDS menu. There is no
 separate Storage menu or folder-selection command.
 
-**Boot DS firmware** uses the same browser and remembers its own folder. Select
+**Boot DS firmware** boots directly from its remembered folder when all three
+files are available. Otherwise it opens the browser (or the device list if the
+drive is unavailable), without holding the running game. Select
 `firmware.bin` to boot, with `bios7.bin` and `bios9.bin` alongside it. Its first
 use starts in the games folder. Merely browsing never boots the firmware or
 modifies originals. Normal games retain the built-in BIOS and generated firmware.
@@ -48,8 +50,8 @@ modifies originals. Normal games retain the built-in BIOS and generated firmware
 Each browser saves its location automatically, including across restarts;
 **Save settings** is not needed. On first game use, a single discovered
 `games/NDS` folder on mounted storage opens automatically. Multiple or no matches
-open the device list. An unavailable remembered location offers Retry, Browse
-and Back, and does not erase the preference.
+open the device list. An unavailable remembered games location offers Retry, Browse
+and Back; firmware opens the browser. Neither erases the preference.
 
 Saves and saved personal firmware stay on SD in `/media/fat/saves/NDS`.
 Locations use `/media/fat/config/NDS_storage.cfg`; Recent Files share the MiSTer

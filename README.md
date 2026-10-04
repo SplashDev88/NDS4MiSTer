@@ -7,7 +7,7 @@
 ## What's new
 
 - **Browse to your ROM folder.** Choose **Load \*.NDS** and use `..` at the top to go up. Keep going up to switch between SD, USB and network storage, then browse down to your games.
-- **Browse to your firmware folder.** **Boot DS firmware** opens the same browser. Point it at `firmware.bin`, with `bios7.bin` and `bios9.bin` beside it.
+- **Browse to your firmware folder.** **Boot DS firmware** boots directly from its remembered folder. If no folder is saved or the files are unavailable, it opens the browser. Select `firmware.bin`, with `bios7.bin` and `bios9.bin` beside it.
 
 ## Install and play
 
@@ -23,7 +23,7 @@ The launcher needs a kernel with write-combining and 1 GHz clock control; testin
 
 ## Optional: DS firmware
 
-Games use the built-in BIOS and firmware. You only need your own files to open the original DS menu. Keep `bios7.bin`, `bios9.bin` and `firmware.bin` together in any browsable folder, choose **Boot DS firmware**, and select `firmware.bin`. Tap the touch screen when prompted.
+Games use the built-in BIOS and firmware. You only need your own files to open the original DS menu. Keep `bios7.bin`, `bios9.bin` and `firmware.bin` together in any browsable folder, choose **Boot DS firmware**, and select `firmware.bin` when the browser appears. Later visits boot directly from the remembered folder. Tap the touch screen when prompted.
 
 Your nickname, birthday, favorite color and language carry into games; the default nickname is **MiSTer**. Your original files aren't modified — personal settings are saved to `saves/NDS/firmware.bin`. Requires compatible BIOS files and a **256 KiB DS or DS Lite firmware image**; hashes are in [QUICK_START.txt](docs/STANDALONE_QUICK_START.txt). Nintendo files aren't included.
 

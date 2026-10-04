@@ -33,8 +33,9 @@ External BIOS and firmware files are optional and are not included.
 
 For **Boot DS firmware**, put your compatible **bios7.bin**, **bios9.bin** and
 **firmware.bin** together in a folder on mounted SD, USB or network storage.
-Choose **Boot DS firmware**, browse with `..`, then select **firmware.bin**.
-This browser remembers its own folder separately. The quick start lists supported
+Choose **Boot DS firmware**. It boots directly from a remembered folder when
+the files are available; otherwise browse with `..` and select **firmware.bin**.
+The firmware folder is remembered separately from games. The quick start lists supported
 sizes, reference SHA-256 hashes and limitations. Your original files remain untouched; saved firmware
 changes go directly into **saves/NDS/firmware.bin**. Nickname, birthday, favorite
 color and language are shared with normal games. Touch calibration is not.

@@ -7,8 +7,8 @@ shipped component. Private development paths/history are not prerequisites.
 The accepted standalone-fw1-20261003 FPGA, renderer and WC module are kept
 unchanged. The standalone host adds parent-folder browsing across mounted
 storage, separate remembered game/firmware locations, and cancellable storage
-reads. The user-tested storage candidate is retained with a release-version
-label. Public launch paths remain Scripts/.NDS_Standalone.
+reads. The user-tested storage browser is retained; the menu now boots
+remembered firmware directly when available, with automated test coverage. Public launch paths remain Scripts/.NDS_Standalone.
 Normal Console/Kickstart installations and user files are preserved.
 
 Component identities, build tools and validation limits are recorded in

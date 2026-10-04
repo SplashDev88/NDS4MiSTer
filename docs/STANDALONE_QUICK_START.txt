@@ -111,10 +111,12 @@ To check on MiSTer, enter the folder holding your originals, for example:
   cd /media/fat/games/NDS
   sha256sum bios7.bin bios9.bin firmware.bin
 
-Choose Boot DS firmware, navigate with .., then select firmware.bin. This
-browser remembers its own folder independently of the game browser. On first
-use it starts in the games folder. bios7.bin and bios9.bin must be beside the
-selected firmware.bin. Wait for the health screen and tap/release Touch.
+Choose Boot DS firmware. If its remembered folder and all three files are
+available, it boots directly. Otherwise it opens the browser: navigate with ..
+and select firmware.bin. The firmware folder is remembered independently of
+the game browser. On first use it starts in the games folder; a missing drive
+opens the device list. bios7.bin and bios9.bin must be beside firmware.bin.
+Wait for the health screen and tap/release Touch.
 The firmware GUI starts without a cartridge. Start games from Load *.NDS.
 
 Change your nickname, birthday, favorite color or language in the DS settings.

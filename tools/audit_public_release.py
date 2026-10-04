@@ -198,7 +198,7 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "source_tag": standalone.VERSION, "runtime_baseline": "standalone-fw1-20261003",
-            "host_change": "Parent-folder browsing on mounted storage, separately remembered game and firmware folders, and cancellable storage reads; renderer and FPGA unchanged.",
+            "host_change": "Parent-folder browsing, separately remembered game and firmware folders, direct firmware boot from a remembered location, and cancellable storage reads; renderer and FPGA unchanged.",
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
             "shared_saves": "/media/fat/saves/NDS", "firmware_working_image": "/media/fat/saves/NDS/firmware.bin",
@@ -222,7 +222,7 @@ def audit_standalone(file_data, hashes, environment):
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
             "release_host_sha256": hashes[support + "nds_standalone_host"],
             "runtime_input_receipt_sha256": standalone.RUNTIME_INPUT_SHA,
-            "scope": "Accepted storage frontend with release-version label; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.",
+            "scope": "Storage frontend with remembered-location firmware boot; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.",
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")

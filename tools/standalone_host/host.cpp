@@ -551,7 +551,41 @@ class Host {
           storageFailure(error, [this] { openGames(); });
         });
   }
-  void openFirmwareBrowser() {
+  void openFirmware() {
+    choosing_firmware = true;
+    if (storage_preferences.firmware.empty()) {
+      openFirmwareBrowser(true);
+      return;
+    }
+    const auto location = storage_preferences.firmware;
+    const auto sd = sd_root;
+    // Probe removable/network storage in the cancellable reader, never in
+    // the SPI owner. Missing files open the browser without holding the game.
+    startStorage(
+        [location, sd] {
+          const auto source =
+              nds_storage::resolve(location, nds_storage::volumes(sd));
+          bool ready = true;
+          for (const char *name : {"bios7.bin", "bios9.bin", "firmware.bin"}) {
+            std::error_code ec;
+            if (!fs::is_regular_file(source / name, ec))
+              ready = false;
+          }
+          return nds_storage::pack({source.string(), ready ? "1" : "0"});
+        },
+        [this](const std::string &data) {
+          const auto f = nds_storage::unpack(data);
+          if (f.at(1) == "1")
+            requestFirmware();
+          else
+            browseGames(f.at(0));
+        },
+        [this](const std::string &error) {
+          log("remembered firmware unavailable: " + error);
+          chooseStorageVolumes();
+        });
+  }
+  void openFirmwareBrowser(bool browse_unavailable = false) {
     choosing_firmware = true;
     const auto pref = storage_preferences;
     const auto sd = sd_root;
@@ -566,8 +600,11 @@ class Host {
                            .string();
         },
         [this](const std::string &data) { browseGames(data); },
-        [this](const std::string &error) {
-          storageFailure(error, [this] { openFirmwareBrowser(); });
+        [this, browse_unavailable](const std::string &error) {
+          if (browse_unavailable)
+            chooseStorageVolumes();
+          else
+            storageFailure(error, [this] { openFirmwareBrowser(); });
         });
   }
   void browseGames(const fs::path &path) {
@@ -1430,7 +1467,7 @@ class Host {
           openGames();
           break;
         case 1:
-          openFirmwareBrowser();
+          openFirmware();
           break;
         case 7:
           try { reset(); togglemenu(); }

@@ -15,8 +15,9 @@ struct HostTest {
     const auto deadline=ms()+5000;
     while(host.storage_job){assert(ms()<deadline);host.beat();host.pollStorage();usleep(1000);}
   }
-  static void bootFromMenu(Host &host) {
+  static void bootFromMenu(Host &host, bool browse = false) {
     host.cursor=1;host.action(2);finishStorage(host);
+    if(!browse){assert(!host.browser);return;}
     assert(host.browser&&host.choosing_firmware);
     const auto it=std::find_if(host.roms.begin(),host.roms.end(),[](const auto&e){return e.name=="firmware.bin";});
     assert(it!=host.roms.end());host.cursor=int(it-host.roms.begin());host.action(2);finishStorage(host);
@@ -147,7 +148,7 @@ struct HostTest {
     assert(!host.firmware&&host.roms.size()==2&&host.roms[1].name=="firmware");
     host.action(3);
     writeBytes(sd/"games/NDS/firmware.bin",syntheticFirmware());
-    host.spi.history.clear();bootFromMenu(host);
+    host.spi.history.clear();bootFromMenu(host,true);
     assert(host.storage_choices&&!host.firmware);
     assert(host.firmware_error_text.find((sd/"games/NDS/bios7.bin").string())!=std::string::npos);
     assert(!fs::exists(host.firmwarePath()));
@@ -398,10 +399,60 @@ struct HostTest {
     assert(!fs::exists(sd / "games/NDS") && host.spi.history.empty());
     std::cout << "PASS canonical game-root assets, legacy subdirectory rejected, configured root honored, existing root-level saved profile retained; no nested-save fallback\n";
   }
+  static void rememberedBoot(const fs::path &root) {
+    const auto sd = root / "remembered-sd", kit = root / "remembered-kit";
+    const auto usb = root / "usb0", moved = root / "usb1";
+    const auto games = sd / "games/NDS";
+    fs::create_directories(kit); fs::create_directories(games);
+    sources(usb / "BIOS");
+    const auto original = readBytes(usb / "BIOS/firmware.bin");
+    nds_storage::test_volumes = {{sd,"sd","SD card"},{usb,"uuid:firmware-disk","USB 0"}};
+    {
+      Host host(kit.string(),games.string(),sd); FakeFirmware device(host);
+      // First use browses. Selecting the source remembers it independently.
+      host.cursor=1;host.action(2);finishStorage(host);
+      assert(host.browser&&host.choosing_firmware&&!host.native_firmware);
+      host.browseGames(usb/"BIOS");finishStorage(host);
+      const auto it=std::find_if(host.roms.begin(),host.roms.end(),[](const auto&e){return e.name=="firmware.bin";});
+      assert(it!=host.roms.end());host.cursor=int(it-host.roms.begin());
+      host.action(2);finishStorage(host);
+      assert(host.native_firmware&&!host.menu);
+    }
+    fs::rename(usb,moved);
+    nds_storage::test_volumes.back().path=moved;
+    {
+      Host host(kit.string(),games.string(),sd); FakeFirmware device(host);
+      // A fresh host follows the saved drive identity and boots in one action.
+      bootFromMenu(host);
+      assert(host.native_firmware&&!host.menu&&!host.browser);
+      assert(host.firmware->image()==original);
+      assert(readBytes(host.firmwarePath())==original);
+      host.menu=true;
+      fs::rename(moved/"BIOS/bios9.bin",moved/"BIOS/bios9.missing");
+      host.spi.history.clear();host.cursor=1;host.action(2);finishStorage(host);
+      assert(host.browser&&host.choosing_firmware&&!host.storage_devices);
+      assert(host.currentdir==moved/"BIOS");
+      for(const auto&t:host.spi.history)assert(t.select!=Spi::FIO&&t.command!=0x45);
+      assert(readBytes(host.firmwarePath())==original);
+      host.action(3);
+      const auto preference=host.storage_preferences.encode();
+      // Another disk at the old mount point must never be mistaken for it.
+      fs::create_directories(usb);sources(usb/"BIOS");
+      nds_storage::test_volumes.back()={usb,"uuid:other-disk","USB 0"};
+      host.spi.history.clear();host.action(2);finishStorage(host);
+      assert(host.browser&&host.storage_devices&&host.choosing_firmware);
+      assert(host.storage_preferences.encode()==preference);
+      for(const auto&t:host.spi.history)assert(t.select!=Spi::FIO&&t.command!=0x45);
+      assert(readBytes(host.firmwarePath())==original);
+      assert(readBytes(moved/"BIOS/firmware.bin")==original);
+    }
+    nds_storage::test_volumes.clear();
+    std::cout << "PASS first-use browser, remembered one-action firmware boot after restart/USB renumbering, missing-file and missing-drive browser fallback without CPU hold or saved-data changes\n";
+  }
 };
 int main() {
   char name[] = "/tmp/nds-host-firmware-XXXXXX";
   const auto root = mkdtemp(name); assert(root);
-  try { HostTest::run(root); HostTest::relocatedSources(root); HostTest::directIsolation(root); fs::remove_all(root); }
+  try { HostTest::run(root); HostTest::relocatedSources(root); HostTest::directIsolation(root); HostTest::rememberedBoot(root); fs::remove_all(root); }
   catch (...) { fs::remove_all(root); throw; }
 }
