@@ -143,7 +143,9 @@ the four fields shared into games.
 
 Originals are read from the folder selected in the `Boot DS firmware` browser.
 When a remembered location contains all three original files, the menu action
-boots it directly. Otherwise it opens the browser; unavailable devices open
+boots it directly without the generic storage overlay. File reads remain
+asynchronous and cancellable with Back; repeated Select is ignored while the
+quiet read is pending. Otherwise it opens the browser; unavailable devices open
 the device list. File availability is checked in the cancellable reader before
 any CPU hold or firmware writes. Original validation still precedes boot.
 The user selects `firmware.bin`; `bios7.bin` and `bios9.bin` must be beside it.

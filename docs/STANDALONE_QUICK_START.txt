@@ -112,7 +112,8 @@ To check on MiSTer, enter the folder holding your originals, for example:
   sha256sum bios7.bin bios9.bin firmware.bin
 
 Choose Boot DS firmware. If its remembered folder and all three files are
-available, it boots directly. Otherwise it opens the browser: navigate with ..
+available, it boots directly without a folder picker or Reading storage screen.
+Otherwise it opens the browser: navigate with ..
 and select firmware.bin. The firmware folder is remembered independently of
 the game browser. On first use it starts in the games folder; a missing drive
 opens the device list. bios7.bin and bios9.bin must be beside firmware.bin.

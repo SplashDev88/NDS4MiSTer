@@ -242,6 +242,7 @@ class Host {
   fs::path sd_root;
   nds_storage::Preferences storage_preferences;
   std::unique_ptr<StorageJob> storage_job;
+  bool storage_quiet = false;
   std::function<void(const std::string &)> storage_done;
   std::function<void(const std::string &)> storage_error;
   bool storage_choices = false, choosing_firmware = false,
@@ -432,8 +433,10 @@ class Host {
   }
   void startStorage(const std::function<std::string()> &work,
                     std::function<void(const std::string &)> done,
-                    std::function<void(const std::string &)> error = {}) {
+                    std::function<void(const std::string &)> error = {},
+                    bool quiet = false) {
     storage_job.reset();
+    storage_quiet = quiet;
     storage_done = std::move(done);
     storage_error = std::move(error);
     try {
@@ -583,7 +586,7 @@ class Host {
         [this](const std::string &error) {
           log("remembered firmware unavailable: " + error);
           chooseStorageVolumes();
-        });
+        }, true);
   }
   void openFirmwareBrowser(bool browse_unavailable = false) {
     choosing_firmware = true;
@@ -716,7 +719,7 @@ class Host {
                                }}});
           storage_detail = error;
           firmware_error_text = error;
-        });
+        }, true);
   }
   void drawStorage() {
     frame.setTitle(storage_job ? "Reading storage" : storage_caption);
@@ -743,7 +746,7 @@ class Host {
     if (!storage_job && !storage_choices)
       return false;
     if (storage_job) {
-      if (a == 2 || a == 3 || a == 4) {
+      if ((!storage_quiet && a == 2) || a == 3 || a == 4) {
         storage_job.reset();
         storage_done = {};
         storage_error = {};
@@ -1198,6 +1201,12 @@ class Host {
     if (!menu)
       return;
     if (storage_job || storage_choices) {
+      if (storage_job && storage_quiet) {
+        // Known firmware goes straight from the current menu to its normal
+        // boot progress; do not flash a picker or generic storage overlay.
+        dirty = false;
+        return;
+      }
       drawStorage();
       return;
     }

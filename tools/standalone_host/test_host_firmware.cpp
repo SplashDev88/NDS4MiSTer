@@ -13,7 +13,15 @@ using namespace firmware_fixture;
 struct HostTest {
   static void finishStorage(Host &host) {
     const auto deadline=ms()+5000;
-    while(host.storage_job){assert(ms()<deadline);host.beat();host.pollStorage();usleep(1000);}
+    while(host.storage_job){
+      assert(ms()<deadline);
+      if(host.storage_quiet){
+        const auto previous=host.osd_rows;
+        host.draw();
+        assert(host.osd_rows==previous);
+      }
+      host.beat();host.pollStorage();usleep(1000);
+    }
   }
   static void bootFromMenu(Host &host, bool browse = false) {
     host.cursor=1;host.action(2);finishStorage(host);
@@ -423,6 +431,15 @@ struct HostTest {
     {
       Host host(kit.string(),games.string(),sd); FakeFirmware device(host);
       // A fresh host follows the saved drive identity and boots in one action.
+      host.draw();
+      const auto menu_rows=host.osd_rows;
+      host.cursor=1;host.action(2);
+      assert(host.storage_job&&host.storage_quiet&&!host.browser);
+      host.draw();assert(host.osd_rows==menu_rows);
+      // Repeated Select must not cancel an invisible read; Back still can.
+      host.action(2);assert(host.storage_job);
+      host.action(3);assert(!host.storage_job&&host.menu&&!host.browser);
+      assert(!host.native_firmware&&!host.firmware);
       bootFromMenu(host);
       assert(host.native_firmware&&!host.menu&&!host.browser);
       assert(host.firmware->image()==original);
@@ -447,7 +464,7 @@ struct HostTest {
       assert(readBytes(moved/"BIOS/firmware.bin")==original);
     }
     nds_storage::test_volumes.clear();
-    std::cout << "PASS first-use browser, remembered one-action firmware boot after restart/USB renumbering, missing-file and missing-drive browser fallback without CPU hold or saved-data changes\n";
+    std::cout << "PASS first-use browser, silent remembered firmware boot after restart/USB renumbering, cancellation, missing-file and missing-drive browser fallback without CPU hold or saved-data changes\n";
   }
 };
 int main() {

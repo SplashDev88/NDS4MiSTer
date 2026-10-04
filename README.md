@@ -7,7 +7,7 @@
 ## What's new
 
 - **Browse to your ROM folder.** Choose **Load \*.NDS** and use `..` at the top to go up. Keep going up to switch between SD, USB and network storage, then browse down to your games.
-- **Browse to your firmware folder.** **Boot DS firmware** boots directly from its remembered folder. If no folder is saved or the files are unavailable, it opens the browser. Select `firmware.bin`, with `bios7.bin` and `bios9.bin` beside it.
+- **Browse to your firmware folder.** **Boot DS firmware** boots directly from its remembered folder, without showing the picker or a storage-reading screen. If no folder is saved or the files are unavailable, it opens the browser. Select `firmware.bin`, with `bios7.bin` and `bios9.bin` beside it.
 
 ## Install and play
 
