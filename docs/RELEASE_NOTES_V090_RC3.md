@@ -4,7 +4,7 @@
 
 ## What's new
 
-- **Now supporting Linux 6.18.38.** Linux 5.15.1 is still supported. The launcher automatically selects the matching module, so existing users do not need to update their kernel.
+- **Now supporting Linux 6.18.38.** The launcher automatically selects the matching module, so existing users do not need to update their kernel.
 
 ## Install and play
 
