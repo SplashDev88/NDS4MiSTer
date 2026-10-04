@@ -1,6 +1,6 @@
-# NDS4MiSTer v0.9.0-rc.2
+# NDS4MiSTer v0.9.0-rc.3
 
-**Remembered game and DS firmware folders on mounted SD, USB, or network storage.**
+**Now supporting Linux 6.18.38**
 
 ## Install and play
 
@@ -23,7 +23,9 @@ Both graphics engines are always On. Normal NDS and standalone share cartridge
 saves in **saves/NDS on the SD card**, including for USB/network games; use the same ROM filename to keep its matching save.
 
 The launcher requires a compatible kernel with write-combining and 1 GHz clock
-control. Testing used **Linux 5.15.1-MiSTer**. It does not install a kernel or
+control. It supports **Linux 6.18.38-MiSTer** and retains the matching module
+for **5.15.1-MiSTer**. The matching module is selected automatically; older
+users do not need to update Linux. It does not install a kernel or
 change your INI. If it reports a requirement error, read the quick start below.
 
 ## Optional DS firmware menu

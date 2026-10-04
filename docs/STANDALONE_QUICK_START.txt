@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.2
+NDS4MiSTer v0.9.0-rc.3
 
 START HERE
 
@@ -21,10 +21,14 @@ REQUIREMENTS
 
 An existing working MiSTer installation, a runtime able to execute the
 launcher, and a kernel compatible with the included write-combining module
-and 1 GHz clock control are required. Hardware testing used Linux
-5.15.1-MiSTer. The launcher checks Python 3.8+, required system tools, matching
+and 1 GHz clock control are required. Linux 6.18.38-MiSTer is supported,
+and the matching module for 5.15.1-MiSTer is retained. The launcher checks Python 3.8+, required system tools, matching
 files, clock control and write-combining before takeover. It does not install
 dependencies or force-load a mismatched kernel module.
+
+On Linux 6.18.38, the launcher loads socfpga-cpufreq when needed and uses
+the boost interface to select 1 GHz. It does not select 1.2 GHz or add an
+overclock menu. Exit restores the previous CPU frequency and boost settings.
 
 GAMES AND SAVES
 

@@ -19,12 +19,12 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.2'
-HOST_SHA = '726c3cd6798d1fa0c0dbee454c5de5ed6846a5688c378641db8f1898c40c1e1d'
-FRONTEND_BUILD_SHA = 'dde5e581542025c4e1ca77efdc01651f548e5295aa6fbfdbda8facc927dc00d1'
+VERSION = 'v0.9.0-rc.3'
+HOST_SHA = 'd5314c9ca75d015c3ce4447a04836711aa2d147caec16ef0fdcdf7b91236f151'
+FRONTEND_BUILD_SHA = '47837e7d25a8a6b5133b187914fc4ca13914c8efef8ecc71ae47d2fb2e04724c'
 FPGA_BUILD_SHA = 'e39fc16cc5cbcfe50e59af2a3c35fe0929f210cdceb6fb4b7a0a5a6ebed5cdb0'
 FPGA_SOURCE_SHA = '17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950'
-ACCEPTED_HOST_SHA = '11db1d4167cce8ce1eb52d06318ee8dca7012da1ca87eb33bcdc6ac98298cbc6'
+ACCEPTED_HOST_SHA = '726c3cd6798d1fa0c0dbee454c5de5ed6846a5688c378641db8f1898c40c1e1d'
 RUNTIME_INPUT_SHA = '84ebdbf7376762f87756949040a3cda68dc785f13d3090571d34dac3a678a7da'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
@@ -103,7 +103,7 @@ def collect(a):
     files[SUPPORT + module_618 + '.sha256'] = (
         supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC2.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC3.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
     for name, path in docs.items():
         add(name, a.docs_dir / name if a.docs_dir else path)
@@ -115,7 +115,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
-        'host_change': 'Parent-folder browsing, separately remembered game and firmware folders, direct firmware boot from a remembered location, and cancellable storage reads; renderer and FPGA unchanged.',
+        'host_change': 'Linux 6.18.38 compatibility and release version label; gameplay renderer and FPGA unchanged.',
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
@@ -137,7 +137,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Linux 6.18.38 compatibility port on rc.2: rebuilt WC module and boost-aware 1 GHz clock setup; accepted FPGA, host, renderer and runtime speed options unchanged.',
+        'scope': 'Linux 6.18.38 compatibility port on rc.2: rebuilt WC module and boost-aware 1 GHz clock setup; accepted FPGA, renderer and runtime speed options unchanged; host release label updated.',
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'

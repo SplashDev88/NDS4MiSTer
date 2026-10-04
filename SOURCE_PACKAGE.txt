@@ -1,18 +1,18 @@
-NDS4MiSTer v0.9.0-rc.2 — Standalone
+NDS4MiSTer v0.9.0-rc.3 — Standalone
 
 Local release candidate prepared for review. Not published by packaging.
 The public tree includes complete corresponding project sources for each
 shipped component. Private development paths/history are not prerequisites.
 
-The accepted standalone-fw1-20261003 FPGA, renderer and WC module are kept
-unchanged. The standalone host adds parent-folder browsing across mounted
-storage, separate remembered game/firmware locations, and cancellable storage
-reads. The user-tested storage browser is retained; the menu now boots
-remembered firmware directly when available, with automated test coverage. Public launch paths remain Scripts/.NDS_Standalone.
+The accepted rc.2 FPGA and renderer remain unchanged. The frontend changes
+only its release version label. The Linux 6.18.38 port rebuilds the restricted
+write-combining module and uses the new loadable CPU clock driver and boost
+interface to run at 1 GHz. Exit restores the previous CPU/boost settings.
+The 5.15.1 module is retained. Public launch paths remain Scripts/.NDS_Standalone.
 Normal Console/Kickstart installations and user files are preserved.
 
 Component identities, build tools and validation limits are recorded in
-  docs/RELEASE_BUILD_V090_RC2.json
+  docs/RELEASE_BUILD_V090_RC3.json
 Source content is verified by the top-level SHA256SUMS. It includes every
 tracked source file except itself. The FPGA source manifest and host snapshot
 were combined deliberately: current host sources override the older host
@@ -35,8 +35,9 @@ Build entry points:
   recorded container. generate_menu.py reproduces the standalone Load *.NDS
   label and reads every option bit/row from the matching FPGA CONF_STR.
 - WC module: kernel/nds_mem_wc includes source, config, GPL-2.0 licence,
-  build script and BUILD_PROVENANCE.json. Required kernel vermagic is
-  5.15.1-MiSTer SMP mod_unload ARMv7 p2v8. Do not force-load another ABI.
+  build scripts and BUILD_PROVENANCE*.json for 5.15.1-MiSTer and
+  6.18.38-MiSTer (SMP mod_unload ARMv7 p2v8). The launcher selects the
+  matching binary. Do not force-load another ABI.
 - Installer: tools/package_standalone_release.py accepts matching compiled
   component files and this source tree, verifies pinned identities, and emits
   the public Scripts layout plus documentation and checksums. --check-only

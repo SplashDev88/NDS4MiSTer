@@ -1,0 +1,74 @@
+{
+  "accepted_baseline": "v0.9.0-rc.2 plus hardware-tested Linux 6.18.38 compatibility port",
+  "accepted_frontend": "b6330332173a5041d03482401e2eaea4a901b18e",
+  "components": {
+    "fpga": {
+      "bytes": 4614136,
+      "original_manifest_entries": 1521,
+      "sha256": "0cacd24fd22588fab6cbca20c83077fbea48a6663ff42571f16acfa4c63df0a6",
+      "source_input_manifest_sha256": "17ea1e46d58f02ed040eebd76acb53b4604f9a8456cb2b8f1b1ecba3377c5950",
+      "sources": "Matching FPGA, RTL, MIF, constraints and project files in this tree; embedded build date 260930-LR2 retained. Host sources are separately authoritative. No FPGA rebuild for packaging."
+    },
+    "host": {
+      "accepted_parent_sha256": "726c3cd6798d1fa0c0dbee454c5de5ed6846a5688c378641db8f1898c40c1e1d",
+      "behavior_change": "Release version label only; all other frontend binary bytes except GNU build ID unchanged from the tested beta.",
+      "compiler": "GCC 13.3.0",
+      "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
+      "frontend_build_receipt": "docs/STANDALONE_FRONTEND_BUILD_V090_RC3.json",
+      "frontend_build_receipt_sha256": "47837e7d25a8a6b5133b187914fc4ca13914c8efef8ecc71ae47d2fb2e04724c",
+      "sha256": "d5314c9ca75d015c3ce4447a04836711aa2d147caec16ef0fdcdf7b91236f151",
+      "source": "tools/standalone_host"
+    },
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "source_note": "Original 5.15 binary retained; common source has a version-gated Linux 6.3+ VMA flags API.",
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    },
+    "wc_module_618": {
+      "provenance": "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
+      "sha256": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3",
+      "source": "kernel/nds_mem_wc",
+      "vermagic": "6.18.38-MiSTer SMP mod_unload ARMv7 p2v8"
+    }
+  },
+  "fpga_build": {
+    "device": "5CSEBA6U23I7",
+    "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+    "resources": {
+      "alms_needed": 38400,
+      "block_memory_bits": 4174192,
+      "dsp": 54,
+      "m10k": 551,
+      "total_registers": 44121
+    },
+    "seed": 5,
+    "timing_closed": false,
+    "worst_slack_ns": {
+      "Hold": -0.285,
+      "Minimum Pulse Width": 0.932,
+      "Recovery": -9.707,
+      "Removal": 0.248,
+      "Setup": -20.062
+    }
+  },
+  "publication_status": "Local release candidate; publication requires user approval.",
+  "runtime_scripts": {
+    "Kickstart.sh": "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b",
+    "NDS4MiSTer.sh": "522a8b2fba740f71bc56035cb5c6a2f34b264ec48c2c6faef86e7742f3cfad87",
+    "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f",
+    "supervisor.py": "dab304ceaf2e1e09f8bc6ab1a5f5d37ba4413894002767cc3d31364fdf2286a6"
+  },
+  "validation": {
+    "hardware": "Linux 6.18.38 beta: normal module load/unload, restricted mmap boundaries and publication pixel readback passed. NSMB title, Castlevania opening movie and 512 MiB Pokemon White 2 intro advanced with zero fault samples in their 20-second captures. Three clean exits restored normal MiSTer and original clock/boost settings. Relauch with unloaded clock driver passed. Runtime clock was 1 GHz; no recorded time at 1.2 GHz. In-level speed, audio and controller responsiveness were not measured in these checks.",
+    "host": "34 Python launcher/clock tests, 10 package audit controls and two focused menu suites pass. Release host differs from tested beta only in its version label and GNU build ID.",
+    "packaging": "Public source and archive audits, internal/outer checksums, modes and component identities required before readiness; no user BIOS, firmware, ROMs, saves or settings included."
+  },
+  "version": "v0.9.0-rc.3"
+}

@@ -130,6 +130,9 @@ def standalone_contract():
         "Scripts/NDS4MiSTer.sh": host / "NDS4MiSTer.sh",
         STANDALONE_PREFIX + "supervisor.py": host / "supervisor.py",
         STANDALONE_PREFIX + "Kickstart.sh": host / "Kickstart.sh",
+        STANDALONE_PREFIX + "clock_control.py": host / "clock_control.py",
+        STANDALONE_PREFIX + "support/modules/6.18.38-MiSTer/BUILD_PROVENANCE.json":
+            SOURCE_ROOT / "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
         "LICENSE.txt": SOURCE_ROOT / "LICENSE.txt",
     }
     source_files.update({STANDALONE_PREFIX + "licenses/" + name: SOURCE_ROOT / path
@@ -143,9 +146,12 @@ def standalone_contract():
         "nds_standalone_host": standalone.HOST_SHA,
         "support/nds_hybrid_3d_service": constants["EXPECTED_HELPER"],
         "support/nds_mem_wc.ko": constants["EXPECTED_WC"],
+        "support/modules/6.18.38-MiSTer/nds_mem_wc.ko": constants["EXPECTED_WC_618"],
     }.items()})
     if hashes[STANDALONE_PREFIX + "Kickstart.sh"] != constants["EXPECTED_KICKSTART"]:
         raise ValueError("public source Kickstart does not match supervisor pin")
+    if hashes[STANDALONE_PREFIX + "clock_control.py"] != constants["EXPECTED_CLOCK"]:
+        raise ValueError("public source clock control does not match supervisor pin")
     return hashes, constants["EXPECTED_SPEED_ENV"]
 
 
@@ -169,10 +175,11 @@ def audit_standalone(file_data, hashes, environment):
     for name, expected in hashes.items():
         if name in file_data and sha256(file_data[name]) != expected:
             failures.append("approved standalone input mismatch: " + name)
-    for name in ("nds_hybrid_3d_service", "nds_mem_wc.ko"):
+    for name in ("nds_hybrid_3d_service", "nds_mem_wc.ko",
+                 "modules/6.18.38-MiSTer/nds_mem_wc.ko"):
         path = support + "support/" + name
         if path in file_data and file_data.get(path + ".sha256") != (
-                sha256(file_data[path]) + "  " + name + "\n").encode():
+                sha256(file_data[path]) + "  " + PurePosixPath(name).name + "\n").encode():
             failures.append("standalone component checksum mismatch: " + name)
     if sums_name in file_data:
         try:
@@ -198,7 +205,7 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "source_tag": standalone.VERSION, "runtime_baseline": "standalone-fw1-20261003",
-            "host_change": "Parent-folder browsing, separately remembered game and firmware folders, direct firmware boot from a remembered location, and cancellable storage reads; renderer and FPGA unchanged.",
+            "host_change": "Linux 6.18.38 compatibility and release version label; gameplay renderer and FPGA unchanged.",
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
             "shared_saves": "/media/fat/saves/NDS", "firmware_working_image": "/media/fat/saves/NDS/firmware.bin",
@@ -211,8 +218,13 @@ def audit_standalone(file_data, hashes, environment):
             "host_sha256": "nds_standalone_host", "core_sha256": "NDS_Standalone.rbf",
             "helper_sha256": "support/nds_hybrid_3d_service", "module_sha256": "support/nds_mem_wc.ko",
             "kickstart_sha256": "Kickstart.sh", "supervisor_sha256": "supervisor.py",
+            "clock_control_sha256": "clock_control.py",
         }.items():
             expected_manifest[key] = hashes[support + name]
+        expected_manifest["kernel_module_sha256"] = {
+            "5.15.1-MiSTer": hashes[support + "support/nds_mem_wc.ko"],
+            "6.18.38-MiSTer": hashes[support + "support/modules/6.18.38-MiSTer/nds_mem_wc.ko"],
+        }
         expected_manifest["launcher_sha256"] = hashes["Scripts/NDS4MiSTer.sh"]
         expected_provenance = {
             "release": standalone.VERSION, "source_revision": revision,
@@ -222,7 +234,7 @@ def audit_standalone(file_data, hashes, environment):
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
             "release_host_sha256": hashes[support + "nds_standalone_host"],
             "runtime_input_receipt_sha256": standalone.RUNTIME_INPUT_SHA,
-            "scope": "Storage frontend with remembered-location firmware boot; FPGA/helper/module and speed settings unchanged from v0.9.0-rc.1; public runtime paths preserved.",
+            "scope": "Linux 6.18.38 compatibility port on rc.2: rebuilt WC module and boost-aware 1 GHz clock setup; accepted FPGA, renderer and runtime speed options unchanged; host release label updated.",
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")
@@ -286,7 +298,8 @@ def audit_zip(zip_path: Path, sidecar: Path | None, layout: str = "auto") -> lis
             required = set(hashes) | STANDALONE_DOCS | {
                 STANDALONE_PREFIX + name for name in (
                     "manifest.json", "BUILD_PROVENANCE.json", "SHA256SUMS",
-                    "support/nds_hybrid_3d_service.sha256", "support/nds_mem_wc.ko.sha256")}
+                    "support/nds_hybrid_3d_service.sha256", "support/nds_mem_wc.ko.sha256",
+                    "support/modules/6.18.38-MiSTer/nds_mem_wc.ko.sha256")}
             directories = {str(parent) + "/" for name in required
                            for parent in PurePosixPath(name).parents if str(parent) != "."}
 
@@ -324,7 +337,8 @@ def audit_zip(zip_path: Path, sidecar: Path | None, layout: str = "auto") -> lis
                 continue
             if layout == "standalone":
                 executable = name in {"Scripts/NDS4MiSTer.sh", STANDALONE_PREFIX + "supervisor.py",
-                    STANDALONE_PREFIX + "Kickstart.sh", STANDALONE_PREFIX + "nds_standalone_host",
+                    STANDALONE_PREFIX + "Kickstart.sh", STANDALONE_PREFIX + "clock_control.py",
+                    STANDALONE_PREFIX + "nds_standalone_host",
                     STANDALONE_PREFIX + "support/nds_hybrid_3d_service"}
                 expected_mode = stat.S_IFREG | (0o755 if executable else 0o644)
                 if info.create_system != 3 or (info.external_attr >> 16) != expected_mode:

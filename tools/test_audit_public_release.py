@@ -29,6 +29,7 @@ class ReleaseAudit(TestCase):
             ('host', 'nds_standalone_host', None),
             ('helper', 'support/nds_hybrid_3d_service', 'EXPECTED_HELPER'),
             ('module', 'support/nds_mem_wc.ko', 'EXPECTED_WC'),
+            ('module_618', 'support/modules/6.18.38-MiSTer/nds_mem_wc.ko', 'EXPECTED_WC_618'),
         ):
             path = self.root / option
             path.write_bytes(('synthetic offline ' + option).encode())
@@ -38,6 +39,7 @@ class ReleaseAudit(TestCase):
             if constant:
                 values[constant] = digest
         values['EXPECTED_KICKSTART'] = self.hashes[audit.STANDALONE_PREFIX + 'Kickstart.sh']
+        values['EXPECTED_CLOCK'] = self.hashes[audit.STANDALONE_PREFIX + 'clock_control.py']
         values['EXPECTED_SPEED_ENV'] = self.environment
         docs = self.root / 'docs'; docs.mkdir()
         for name in ('README.md', 'RELEASE_NOTES.md', 'QUICK_START.txt'):
@@ -74,7 +76,7 @@ class ReleaseAudit(TestCase):
             for name,data in sorted(files.items()) if name.startswith(prefix) and name != prefix+'SHA256SUMS').encode()
 
     def test_public_packager_layout_passes_with_sidecar(self):
-        self.assertEqual(len(self.files), 33)
+        self.assertEqual(len(self.files), 37)
         self.assertEqual(self.write(layout='auto'), [])
 
     def test_normal_layout_still_passes(self):
@@ -93,14 +95,16 @@ class ReleaseAudit(TestCase):
         self.assertTrue(any('outer checksum' in x for x in audit.audit_zip(self.zip,self.sidecar)))
 
     def test_rehashed_runtime_and_license_tampering_rejected(self):
-        for name in ('nds_standalone_host','supervisor.py','licenses/FreeBIOS.txt'):
+        for name in ('nds_standalone_host','supervisor.py','licenses/FreeBIOS.txt',
+                     'clock_control.py','support/modules/6.18.38-MiSTer/nds_mem_wc.ko'):
             with self.subTest(name=name):
                 files=dict(self.files);files[audit.STANDALONE_PREFIX+name]+=b'changed'
                 self.resign_inner(files)
                 self.assertTrue(any('approved standalone input mismatch' in x for x in self.write(files)))
 
     def test_internal_and_component_hashes_checked(self):
-        for name in ('SHA256SUMS','support/nds_mem_wc.ko.sha256'):
+        for name in ('SHA256SUMS','support/nds_mem_wc.ko.sha256',
+                     'support/modules/6.18.38-MiSTer/nds_mem_wc.ko.sha256'):
             with self.subTest(name=name):
                 files=dict(self.files);files[audit.STANDALONE_PREFIX+name]=b'0'*64+b'  wrong\n'
                 self.assertTrue(self.write(files))

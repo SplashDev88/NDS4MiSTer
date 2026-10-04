@@ -1,0 +1,32 @@
+{
+  "accepted_host_sha256": "726c3cd6798d1fa0c0dbee454c5de5ed6846a5688c378641db8f1898c40c1e1d",
+  "accepted_source": "b6330332173a5041d03482401e2eaea4a901b18e",
+  "change_since_accepted_candidate": "Release version label only. Binary comparison verifies every byte except that string and the GNU build ID is identical to the hardware-tested Linux beta.",
+  "command": "arm-linux-gnueabihf-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard host.cpp -o nds_standalone_host",
+  "container_image": "sha256:4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+  "inputs": {
+    "tools/standalone_host/VERSION": "db8b99272172ae2047721aa4c203c648dd6728b27938a4dc6e7cdf5dc9f98ff4",
+    "tools/standalone_host/builtin_firmware_profile.h": "50dd46ec3344b2f6d1a82adfa293676a1ac119f605362978bca4ff7ada828f70",
+    "tools/standalone_host/core_menu.h": "3fed8478f61d7806106863b2f955961badc82d2805505adfc933969d8fe8b779",
+    "tools/standalone_host/firmware_media.h": "1eacb776548f6145af5e9e0fa9ff56bc254c379c604b1b208fda6e339ebc7d12",
+    "tools/standalone_host/font.h": "ac03c9cfac2785c280586db70da6a69f5f2cf1d9b0be3816fcc7b050eb0ad378",
+    "tools/standalone_host/framebuffer_metadata.h": "a25c6c8cf2ad9ddd26a1779d7a5ca7f3b97cd03c43e24923657005eabc9a5640",
+    "tools/standalone_host/freebios_media.h": "b7deaa7d875445b8831607db00b07d2cf0c6185f67543e3ca93ea3e020af36f2",
+    "tools/standalone_host/host.cpp": "f3d25ea5546182608ab597dbb5b2010f352f05dafb743d932fcb175e54efc921",
+    "tools/standalone_host/menu_model.h": "3a44b6a61ba39249dfce619d9dedca5ac5ba8a5ce4892b5e66d2acc1aab6998d",
+    "tools/standalone_host/menu_presentation.h": "5e237b207c7da201e0c372b70d1e3fff284907497443b3528b9eeb565d4941d3",
+    "tools/standalone_host/osd_frame.h": "aa835f48d2cc5b5cccde100ea4e0b3205d38827406df77b55b48b577ce31e513",
+    "tools/standalone_host/personal_profile.h": "b052c100d64b06e9ef61b44879f7a99bdf6a77bca28b6a770acc8991f44e28e5",
+    "tools/standalone_host/recent_files.h": "9734230e2532b7783e5d6f126ebf0f8e5a4b09ae0330fec41fd16067a4411a4a",
+    "tools/standalone_host/rom_layout.h": "b9cb82e5dabdf80d9e8862a9048e390c69c91831b70e7472ef7c25be7b16509d",
+    "tools/standalone_host/rom_mapping.h": "6da436bb89abf7a88bbb5192541d3e3160154648f9116bd393c54f9df929e0bf",
+    "tools/standalone_host/rom_reader.h": "e5ffb4cbc6b456d2dd2f8295539417b51b098df6ec29122eadf37c3ee79d44df",
+    "tools/standalone_host/storage_job.h": "d02d019780dabf1549ec0695914e174006cf1a43e1bbf7d65185603f9f46285b",
+    "tools/standalone_host/storage_locations.h": "fc99ec1b6fe6c882cc60fa13a7543aed78d53f926c479ba281cfcb14a2e576eb",
+    "tools/standalone_host/system_menu.h": "9869f18a052ef4517024dff228529f667670e05116f05981731452bda20420d1",
+    "tools/standalone_host/test_firmware_fixture.h": "fe5ebef20e69615489ae47ac0c06f8c8339f8db618d3a1a51a212999dfde15f9",
+    "tools/standalone_host/test_rom_fixture.h": "967c6bde0f1b0bd05de78444d10711b1296fdf5c2834e20a033153ecd31cb8f5"
+  },
+  "release_host_sha256": "d5314c9ca75d015c3ce4447a04836711aa2d147caec16ef0fdcdf7b91236f151",
+  "version": "v0.9.0-rc.3"
+}
