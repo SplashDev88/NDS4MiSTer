@@ -638,9 +638,9 @@ R"({
     // Unavailable System rows cannot become cursor stops. Navigation is
     // OSD-only, fits Reboot/Exit on the same page, and wraps to Core.
     host.action(6);
-    const int main_rows[] = {0, 2, 11, 12, 14, 16, 17};
-    const int scroll_down[] = {0, 0, 0, 0, 0, 1, 2};
-    for (int i = 0; i < 7; ++i) {
+    const int main_rows[] = {0, 2, 11, 12, 14, 15};
+    const int scroll_down[] = {0, 0, 0, 0, 0, 0};
+    for (int i = 0; i < 6; ++i) {
       assert(host.cursor == i && host.system_menu);
       host.spi.history.clear();
       host.draw();
@@ -655,7 +655,7 @@ R"({
     assert(host.cursor == 0 && host.system_first == 0);
     host.action(0);
     host.draw();
-    assert(host.cursor == 6 && host.system_first == 2);
+    assert(host.cursor == 5 && host.system_first == 0);
     host.action(5);
     assert(!host.system_menu && host.cursor == 0);
     // Right opens the adjacent System page from EVERY core row. It must

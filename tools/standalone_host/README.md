@@ -17,7 +17,7 @@ optional settings fall back without modifying the saved copy.
 
 `Boot DS firmware` optionally opens the native GUI using `bios7.bin`,
 `bios9.bin` and `firmware.bin` together in the selected games folder, or a
-separate folder selected through **System → Storage → BIOS/firmware folder**. Originals stay read-only;
+separate folder reached through **Boot DS firmware** and its `..` entries. Originals stay read-only;
 saved personal settings use `/media/fat/saves/NDS/firmware.bin`, directly alongside
 normal game saves. Its preceding copy is `firmware.bin.previous`; the session
 lock is `firmware.bin.lock`. Atomic-write temporary files (`firmware.bin.tmp.*`
@@ -32,41 +32,36 @@ Use the matching release host/core pair; the host refuses to release
 a game if the core lacks the required direct-profile acknowledgement. See
 [the firmware protocol and limitations](../../docs/DS_FIRMWARE_PROTOCOL.md).
 
-## Games and BIOS storage (experimental candidate)
+## Games and BIOS browsing (experimental candidate)
 
-**Load *.NDS** remembers the selected games folder and the last subfolder you
-browsed, across restarts. On first use it checks `games/NDS` on mounted SD, USB
-and network storage. One matching folder is selected automatically; when more
-than one is found you choose once. If none is found, choose a device and browse
-to any folder. You can also select a device's root, such as `/media/usb0`.
+**Load *.NDS** starts in the last games folder you browsed. Select `..` at the
+top to go up, then enter another folder normally. From the root of a storage
+device, `..` opens the mounted-device list, where you can enter SD (`fat`), USB
+or network storage. The device list's `..` returns to the NDS menu. There is no
+separate Storage menu or folder-selection command.
 
-Change it later through **System → Storage → Games folder** or **Change location**
-at the top of the game browser. Choose a device, enter the desired folder and
-select **Use: …**. Choices save automatically; **Save settings** is not needed.
+**Boot DS firmware** uses the same browser and remembers its own folder. Select
+`firmware.bin` to boot, with `bios7.bin` and `bios9.bin` alongside it. Its first
+use starts in the games folder. Merely browsing never boots the firmware or
+modifies originals. Normal games retain the built-in BIOS and generated firmware.
 
-By default, **Boot DS firmware** looks for `bios7.bin`, `bios9.bin` and
-`firmware.bin` together in that games folder. **System → Storage → BIOS/firmware
-folder** selects a separate location; **Use games folder for BIOS** restores the
-default. Normal games continue to use the built-in BIOS and generated firmware.
-The originals are read-only.
+Each browser saves its location automatically, including across restarts;
+**Save settings** is not needed. On first game use, a single discovered
+`games/NDS` folder on mounted storage opens automatically. Multiple or no matches
+open the device list. An unavailable remembered location offers Retry, Browse
+and Back, and does not erase the preference.
 
-Cartridge saves and saved personal firmware remain on the SD card in
-`/media/fat/saves/NDS`, even when a game or original firmware is on USB/network
-storage. No save migration occurs. Locations and the last browsed subfolder
-are stored separately in `/media/fat/config/NDS_storage.cfg`. Recent Files keep
-the shared MiSTer list and a companion `NDS_recent_locations.cfg` in that same
-config directory to remember drive identities.
+Saves and saved personal firmware stay on SD in `/media/fat/saves/NDS`.
+Locations use `/media/fat/config/NDS_storage.cfg`; Recent Files share the MiSTer
+list plus `NDS_recent_locations.cfg` in that config directory for drive identity.
+The previous test candidate's root/last-subfolder preferences remain readable.
 
-USB and network devices must already be mounted by MiSTer. This feature does
-not mount shares or configure networking. When filesystem UUIDs are available
-under `/dev/disk/by-uuid`, the saved location follows a USB disk even if its
-`usb0`/`usb1` number changes. Otherwise it uses the saved mount point. Network
-locations also remember the mounted share source.
+Devices must already be mounted. No shares or network configuration are changed.
+USB UUIDs under `/dev/disk/by-uuid` let a remembered folder follow its drive if
+`usb0`/`usb1` changes; without a UUID it uses the saved mount point. Network
+locations also remember the mounted share source. Missing Recent Files remain
+listed but cannot be loaded.
 
-An unavailable saved location offers **Retry**, **Browse…**, and **Back**. It does
-not erase the saved preference or silently select another drive. Directory and
-original-firmware reads run in a disposable worker so a slow/disconnected share
-does not block the menu or heartbeat. Those reads time out after 15 seconds and
-can be cancelled; normal ROM transfers keep their existing slow-network reader.
-Missing Recent Files stay listed but cannot be loaded. The FPGA, renderer,
-clock setting and gameplay scheduling are unchanged in this candidate.
+Directory and original-firmware reads run in a disposable worker, remain
+cancellable and time out after 15 seconds. ROM transfers keep their existing
+slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged.

@@ -244,14 +244,13 @@ class Host {
   std::unique_ptr<StorageJob> storage_job;
   std::function<void(const std::string &)> storage_done;
   std::function<void(const std::string &)> storage_error;
-  bool storage_panel = false, storage_choices = false,
-       choosing_firmware = false;
+  bool storage_choices = false, choosing_firmware = false,
+       storage_devices = false;
   struct StorageChoice {
     std::string label;
     std::function<void()> select;
   };
   std::vector<StorageChoice> storage_rows;
-  fs::path folder_volume;
   std::vector<fs::path> game_paths;
   std::string storage_caption = "Storage", storage_detail;
   int save = -1, heartbeat = -1;
@@ -413,7 +412,6 @@ class Host {
     storage_caption = std::move(title);
     storage_detail.clear();
     storage_rows = std::move(rows);
-    storage_panel = false;
     storage_choices = true;
     browser = core_browser = recent_view = false;
     cursor = browser_first = 0;
@@ -427,8 +425,7 @@ class Host {
                         {"Browse...", [this] { chooseStorageVolumes(); }},
                         {"Back", [this] {
                            storage_choices = false;
-                           storage_panel = true;
-                           cursor = 0;
+                           closeBrowser();
                            dirty = true;
                          }}});
     storage_detail = error;
@@ -472,93 +469,42 @@ class Host {
         storageFailure(e.what(), [this] { chooseStorageVolumes(); });
     }
   }
-  void selectStorageFolder(const fs::path &path) {
-    const auto sd = sd_root;
-    startStorage(
-        [sd, path] {
-          return nds_storage::pack(
-              nds_storage::locate(path, nds_storage::volumes(sd)).fields());
-        },
-        [this](const std::string &data) {
-          auto location =
-              nds_storage::Location::parse(nds_storage::unpack(data));
-          if (choosing_firmware) {
-            storage_preferences.firmware = location;
-            // Existing GUI sessions keep their open working image until normal
-            // game loading releases it; a new source applies on the next boot.
-          } else {
-            storage_preferences.games = location;
-            storage_preferences.last = ".";
-            romdir = location.path;
-            currentdir = romdir;
-          }
-          saveStorage();
-          storage_choices = false;
-          if (choosing_firmware) {
-            storage_panel = true;
-            cursor = 1;
-          } else {
-            storage_panel = false;
-            browseGames(currentdir);
-          }
-        });
+  // Both Load *.NDS and Boot DS firmware use the normal file browser.
+  // The empty parent at a mounted volume's root leads to the device list;
+  // its own ".." returns to the NDS menu rather than exposing Linux internals.
+  void finishStorageBrowser() {
+    browser = true;
+    core_browser = recent_view = storage_choices = system_menu = false;
+    cursor = browser_first = 0;
+    scroll_offset = 0;
+    next_scroll = ms() + 1000;
+    dirty = true;
   }
   void chooseStorageVolumes() {
     const auto sd = sd_root;
     startStorage(
         [sd] {
-          nds_storage::Fields f;
+          nds_storage::Fields fields;
           for (const auto &v : nds_storage::volumes(sd)) {
-            f.push_back(v.path.string());
-            f.push_back(v.label);
+            fields.push_back(v.path.string());
+            fields.push_back(v.path == sd ? "fat"
+                             : v.path.parent_path() == "/media"
+                                 ? v.path.filename().string()
+                                 : v.path.string());
           }
-          return nds_storage::pack(f);
+          return nds_storage::pack(fields);
         },
         [this](const std::string &data) {
-          auto f = nds_storage::unpack(data);
-          std::vector<StorageChoice> rows;
+          const auto f = nds_storage::unpack(data);
+          roms = {{"..", true}};
+          game_paths = {fs::path{}};
           for (size_t i = 0; i + 1 < f.size(); i += 2) {
-            const fs::path path = f[i];
-            rows.push_back({f[i + 1] + "  " + path.string(), [this, path] {
-                              folder_volume = path;
-                              browseStorageFolder(path);
-                            }});
+            roms.push_back({f[i + 1], true});
+            game_paths.emplace_back(f[i]);
           }
-          rows.push_back({"Back", [this] {
-                            storage_choices = false;
-                            storage_panel = true;
-                            cursor = 0;
-                            dirty = true;
-                          }});
-          showStorageChoices("Choose device", std::move(rows));
-        });
-  }
-  void browseStorageFolder(const fs::path &path) {
-    const auto root = folder_volume;
-    startStorage(
-        [path, root] {
-          return nds_storage::pack(nds_storage::directory(path, root, true));
-        },
-        [this, root](const std::string &data) {
-          auto f = nds_storage::unpack(data);
-          const fs::path dir = f.at(0);
-          std::vector<StorageChoice> rows{
-              {"Use: " + dir.string(),
-               [this, dir] { selectStorageFolder(dir); }},
-              {"Change device", [this] { chooseStorageVolumes(); }}};
-          if (dir != root)
-            rows.push_back({"..", [this, dir] {
-                              browseStorageFolder(dir.parent_path());
-                            }});
-          for (size_t i = 1; i + 1 < f.size(); i += 2) {
-            const auto path = dir / f[i];
-            rows.push_back({f[i], [this, path] { browseStorageFolder(path); }});
-          }
-          showStorageChoices(choosing_firmware ? "BIOS folder" : "Games folder",
-                             std::move(rows));
-        },
-        [this, path](const std::string &error) {
-          storageFailure(error, [this, path] { browseStorageFolder(path); });
+          storage_devices = true;
+          currentdir.clear();
+          finishStorageBrowser();
         });
   }
   void discoverGames() {
@@ -566,31 +512,16 @@ class Host {
     startStorage(
         [sd] {
           nds_storage::Fields f;
-          for (const auto &l :
-               nds_storage::discover(nds_storage::volumes(sd))) {
-            auto e = l.fields();
-            f.insert(f.end(), e.begin(), e.end());
-          }
+          for (const auto &l : nds_storage::discover(nds_storage::volumes(sd)))
+            f.push_back(l.path);
           return nds_storage::pack(f);
         },
         [this](const std::string &data) {
-          auto f = nds_storage::unpack(data);
-          if (f.size() == 4) {
-            selectStorageFolder(f[0]);
-            return;
-          }
-          if (f.empty()) {
+          const auto f = nds_storage::unpack(data);
+          if (f.size() == 1)
+            browseGames(f.front());
+          else
             chooseStorageVolumes();
-            return;
-          }
-          std::vector<StorageChoice> rows;
-          for (size_t i = 0; i + 3 < f.size(); i += 4) {
-            const fs::path path = f[i];
-            rows.push_back(
-                {path.string(), [this, path] { selectStorageFolder(path); }});
-          }
-          rows.push_back({"Browse...", [this] { chooseStorageVolumes(); }});
-          showStorageChoices("Choose games folder", std::move(rows));
         },
         [this](const std::string &error) {
           storageFailure(error, [this] { discoverGames(); });
@@ -608,53 +539,80 @@ class Host {
         [pref, sd] {
           const auto root =
               nds_storage::resolve(pref.games, nds_storage::volumes(sd));
+          // Accept the first candidate's root + last-subfolder format as well.
           auto dir = root / pref.last;
           std::error_code ec;
           if (!fs::is_directory(dir, ec))
             dir = root;
-          return nds_storage::pack({root.string(), dir.string()});
+          return dir.string();
         },
-        [this](const std::string &data) {
-          auto f = nds_storage::unpack(data);
-          romdir = f.at(0);
-          browseGames(f.at(1));
-        },
+        [this](const std::string &data) { browseGames(data); },
         [this](const std::string &error) {
           storageFailure(error, [this] { openGames(); });
         });
   }
-  void browseGames(const fs::path &path) {
-    const fs::path root = romdir;
+  void openFirmwareBrowser() {
+    choosing_firmware = true;
+    const auto pref = storage_preferences;
+    const auto sd = sd_root;
+    const auto fallback = romdir;
     startStorage(
-        [path, root] {
-          return nds_storage::pack(nds_storage::directory(path, root, false));
+        [pref, sd, fallback] {
+          const auto &location =
+              pref.firmware.empty() ? pref.games : pref.firmware;
+          return location.empty()
+                     ? fallback
+                     : nds_storage::resolve(location, nds_storage::volumes(sd))
+                           .string();
         },
-        [this, root](const std::string &data) {
-          auto f = nds_storage::unpack(data);
-          currentdir = f.at(0);
-          roms = {{"Change location", false, true}};
-          game_paths = {fs::path{}};
-          if (currentdir != root) {
-            roms.push_back({"..", true});
-            game_paths.push_back(currentdir.parent_path());
+        [this](const std::string &data) { browseGames(data); },
+        [this](const std::string &error) {
+          storageFailure(error, [this] { openFirmwareBrowser(); });
+        });
+  }
+  void browseGames(const fs::path &path) {
+    const auto sd = sd_root;
+    const bool firmwareMode = choosing_firmware;
+    startStorage(
+        [path, sd, firmwareMode] {
+          const auto volumes = nds_storage::volumes(sd);
+          const auto location = nds_storage::locate(path, volumes);
+          const auto listing = nds_storage::directory(
+              location.path, location.volume, false, firmwareMode);
+          fs::path parent;
+          const auto up = fs::path(location.path).parent_path();
+          try {
+            (void)nds_storage::owner(up, volumes);
+            parent = up;
+          } catch (const std::exception &) {
           }
-          for (size_t i = 1; i + 1 < f.size(); i += 2) {
-            roms.push_back({f[i], f[i + 1] == "1"});
+          auto f = location.fields();
+          f.push_back(parent.string());
+          f.insert(f.end(), listing.begin() + 1, listing.end());
+          return nds_storage::pack(f);
+        },
+        [this, firmwareMode](const std::string &data) {
+          const auto f = nds_storage::unpack(data);
+          const auto location = nds_storage::Location::parse(f);
+          currentdir = location.path;
+          roms = {{"..", true}};
+          game_paths = {fs::path(f.at(4))};
+          for (size_t i = 5; i + 1 < f.size(); i += 2) {
+            roms.push_back({f[i], f[i + 1] == "1", firmwareMode});
             game_paths.push_back(currentdir / f[i]);
           }
-          const auto last = currentdir.lexically_relative(root).string();
-          if (!storage_preferences.games.empty() &&
-              storage_preferences.last != last) {
-            storage_preferences.last = last;
-            saveStorage();
+          const auto previous = storage_preferences.encode();
+          if (firmwareMode)
+            storage_preferences.firmware = location;
+          else {
+            storage_preferences.games = location;
+            storage_preferences.last = ".";
+            romdir = location.path;
           }
-          browser = true;
-          core_browser = recent_view = storage_panel = storage_choices = false;
-          system_menu = false;
-          cursor = browser_first = 0;
-          scroll_offset = 0;
-          next_scroll = ms() + 1000;
-          dirty = true;
+          if (previous != storage_preferences.encode())
+            saveStorage();
+          storage_devices = false;
+          finishStorageBrowser();
         },
         [this, path](const std::string &error) {
           storageFailure(error, [this, path] { browseGames(path); });
@@ -702,7 +660,7 @@ class Host {
           else
             firmware.emplace(nds_firmware::Media::openPrepared(
                 std::move(originals), firmwarePath()));
-          storage_panel = storage_choices = false;
+          storage_choices = false;
           try {
             bootFirmware();
           } catch (const std::exception &e) {
@@ -713,15 +671,10 @@ class Host {
           log("firmware source: " + error);
           showStorageChoices("BIOS/firmware unavailable",
                              {{"Retry", [this] { requestFirmware(); }},
-                              {"Choose BIOS/firmware folder",
-                               [this] {
-                                 choosing_firmware = true;
-                                 chooseStorageVolumes();
-                               }},
+                              {"Browse...", [this] { openFirmwareBrowser(); }},
                               {"Back", [this] {
                                  storage_choices = false;
-                                 system_menu = false;
-                                 cursor = 1;
+                                 closeBrowser();
                                  dirty = true;
                                }}});
           storage_detail = error;
@@ -729,9 +682,7 @@ class Host {
         });
   }
   void drawStorage() {
-    frame.setTitle(storage_job       ? "Reading storage"
-                   : storage_choices ? storage_caption
-                                     : "Storage");
+    frame.setTitle(storage_job ? "Reading storage" : storage_caption);
     if (storage_job) {
       for (int y = 0; y < 16; ++y)
         line(y,
@@ -739,7 +690,7 @@ class Host {
              : y == 15 ? "           Cancel"
                        : "",
              y == 15);
-    } else if (storage_choices && !storage_detail.empty()) {
+    } else {
       std::array<std::string, 16> rows{};
       for (size_t i = 0; i < 8 && i * 28 < storage_detail.size(); ++i)
         rows[i + 1] = " " + storage_detail.substr(i * 28, 28);
@@ -747,40 +698,12 @@ class Host {
         rows[i + 11] = " " + storage_rows[i].label;
       for (int y = 0; y < 16; ++y)
         line(y, rows[y], y == cursor + 11);
-    } else if (storage_choices) {
-      std::vector<BrowserEntry> entries;
-      for (const auto &r : storage_rows)
-        entries.push_back({r.label, false, true});
-      const auto view =
-          browserView(entries, cursor, browser_first, true, false);
-      browser_first = view.first;
-      for (int y = 0; y < 16; ++y)
-        writeRow(y, frame.renderRow(y, view.rows[y], view.selected[y], 0,
-                                    view.markers[y]));
-    } else {
-      std::array<std::string, 16> rows{};
-      rows[1] = " Games folder             >";
-      rows[2] = " " + (storage_preferences.games.empty()
-                           ? std::string("Automatic")
-                           : storage_preferences.games.path.substr(0, 28));
-      rows[5] = " BIOS/firmware folder      >";
-      rows[6] = " " + (storage_preferences.firmware.empty()
-                           ? std::string("Same as games folder")
-                           : storage_preferences.firmware.path.substr(0, 28));
-      rows[9] = " Use games folder for BIOS";
-      rows[15] = "            Back";
-      const int selected = cursor == 0   ? 1
-                           : cursor == 1 ? 5
-                           : cursor == 2 ? 9
-                                         : 15;
-      for (int y = 0; y < 16; ++y)
-        line(y, rows[y], y == selected);
     }
     osd(true);
     dirty = false;
   }
   bool storageAction(int a) {
-    if (!storage_job && !storage_panel && !storage_choices)
+    if (!storage_job && !storage_choices)
       return false;
     if (storage_job) {
       if (a == 2 || a == 3 || a == 4) {
@@ -788,41 +711,25 @@ class Host {
         storage_done = {};
         storage_error = {};
         storage_choices = false;
-        storage_panel = true;
-        cursor = 0;
+        closeBrowser();
         dirty = true;
       }
       return true;
     }
     if (a == 3 || a == 4) {
-      storage_choices = storage_panel = false;
-      system_menu = true;
-      cursor = 4;
+      storage_choices = false;
+      closeBrowser();
       dirty = true;
       return true;
     }
-    const int count = storage_choices ? int(storage_rows.size()) : 4;
+    const auto count = int(storage_rows.size());
     if (a == 0 && count)
       cursor = (cursor + count - 1) % count;
     if (a == 1 && count)
       cursor = (cursor + 1) % count;
-    if (a == 2) {
-      if (storage_choices) {
-        if (count) {
-          auto select = storage_rows.at(cursor).select;
-          select();
-        }
-      } else if (cursor == 0 || cursor == 1) {
-        choosing_firmware = cursor == 1;
-        chooseStorageVolumes();
-      } else if (cursor == 2) {
-        storage_preferences.firmware = {};
-        saveStorage();
-      } else {
-        storage_panel = false;
-        system_menu = true;
-        cursor = 4;
-      }
+    if (a == 2 && count) {
+      auto select = storage_rows.at(cursor).select;
+      select();
     }
     dirty = true;
     return true;
@@ -973,8 +880,7 @@ class Host {
               recent_available.push_back(f[i + 1] == "1");
             }
             browser = recent_view = true;
-            storage_panel = storage_choices = core_browser = system_menu =
-                false;
+            storage_choices = core_browser = system_menu = false;
             cursor = browser_first = 0;
             scroll_offset = 0;
             next_scroll = ms() + 1000;
@@ -1077,10 +983,12 @@ class Host {
     browse(fs::is_directory(console) ? console : core_root);
   }
   void closeBrowser() {
+    const bool was_firmware = choosing_firmware && !core_browser;
+    choosing_firmware = storage_devices = false;
     if (core_browser) currentdir = rom_browser_dir;
     system_menu = core_browser;
     browser = core_browser = recent_view = recent_clear_confirm = false;
-    cursor = 0;
+    cursor = was_firmware ? 1 : 0;
   }
   void selectCore(const fs::path &path) {
     const auto target = fs::canonical(path);
@@ -1182,7 +1090,9 @@ class Host {
       }
       return;
     }
-    frame.setTitle(core_browser ? "Cores" : "Select");
+    frame.setTitle(core_browser        ? "Cores"
+                   : choosing_firmware ? "Firmware"
+                                       : "Select");
     const auto view = browserView(roms, cursor, browser_first, browse_expand, core_browser);
     browser_first = view.first;
     browser_selected_row = view.selected_row;
@@ -1193,9 +1103,8 @@ class Host {
     }
   }
   void animateMenu(uint64_t now) {
-    if (!menu || storage_job || storage_panel || storage_choices ||
-        mapping_step >= 0 || reset_confirm || recent_clear_confirm ||
-        firmware_error_dialog)
+    if (!menu || storage_job || storage_choices || mapping_step >= 0 ||
+        reset_confirm || recent_clear_confirm || firmware_error_dialog)
       return;
     if (browser) {
       if (roms.empty() || browser_selected_row < 0 || now < next_scroll) return;
@@ -1251,7 +1160,7 @@ class Host {
   void draw() {
     if (!menu)
       return;
-    if (storage_job || storage_panel || storage_choices) {
+    if (storage_job || storage_choices) {
       drawStorage();
       return;
     }
@@ -1333,7 +1242,8 @@ class Host {
     menu = !menu;
     if (core_browser) closeBrowser();
     browser = system_menu = reset_confirm = false;
-    recent_view = recent_clear_confirm = false;
+    recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
+        false;
     mapping_step = -1;
     cursor = 0;
     dirty = true;
@@ -1410,7 +1320,9 @@ class Host {
     }
     if (a == 9) {
       if (recent_view) closeBrowser();
-      else if ((browser && !core_browser) || (!system_menu && cursor == 0)) openRecents();
+      else if (!choosing_firmware &&
+               ((browser && !core_browser) || (!system_menu && cursor == 0)))
+        openRecents();
       dirty = true;
       return;
     }
@@ -1418,7 +1330,7 @@ class Host {
     idle_since = ms();
     version_footer.reset(idle_since);
     next_scroll = idle_since + 1000;
-    int count = browser ? (int)roms.size() : system_menu ? 7 : 9;
+    int count = browser ? (int)roms.size() : system_menu ? 6 : 9;
     if (a == 0 && count)
       cursor = (cursor + count - 1) % count;
     if (a == 1 && count)
@@ -1444,10 +1356,14 @@ class Host {
             if (!core_browser && game_paths.size() == roms.size()) {
               path = game_paths.at(cursor);
               if (path.empty()) {
-                choosing_firmware = false;
-                chooseStorageVolumes();
+                if (storage_devices)
+                  closeBrowser();
+                else
+                  chooseStorageVolumes();
               } else if (entry.directory)
                 browseGames(path);
+              else if (choosing_firmware)
+                requestFirmware();
               else {
                 try {
                   load(path.string());
@@ -1488,13 +1404,9 @@ class Host {
             cursor = 0;
             break;
           case 4:
-            storage_panel = true;
-            cursor = 0;
-            break;
-          case 5:
             running = 0;
             break;
-          case 6:
+          case 5:
             togglemenu();
             break;
           }
@@ -1518,7 +1430,7 @@ class Host {
           openGames();
           break;
         case 1:
-          requestFirmware();
+          openFirmwareBrowser();
           break;
         case 7:
           try { reset(); togglemenu(); }
@@ -1557,7 +1469,8 @@ class Host {
     firmware_error_dialog = true;
     menu = true;
     browser = system_menu = false;
-    recent_view = recent_clear_confirm = false;
+    recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
+        false;
     mapping_step = -1;
     neutralInput();
     dirty = true;

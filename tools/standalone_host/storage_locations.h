@@ -195,7 +195,7 @@ struct Entry {
   bool directory;
 };
 inline Fields directory(const fs::path &where, const fs::path &root,
-                        bool foldersOnly) {
+                        bool foldersOnly, bool firmwareOnly = false) {
   const auto dir = fs::canonical(where), base = fs::canonical(root);
   if (!inside(dir, base))
     throw std::runtime_error("Folder is outside the selected storage");
@@ -214,7 +214,10 @@ inline Fields directory(const fs::path &where, const fs::path &root,
       auto ext = e.path().extension().string();
       std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
       const auto n = e.file_size(ec);
-      if (!ec && ext == ".nds" && n >= 512 && n <= 512ull * 1024 * 1024)
+      const bool accepted =
+          firmwareOnly ? name == "firmware.bin"
+                       : ext == ".nds" && n >= 512 && n <= 512ull * 1024 * 1024;
+      if (!ec && accepted)
         entries.push_back({name, false});
     }
     if (entries.size() > 8192)
