@@ -1,24 +1,26 @@
-NDS4MiSTer v0.9.0-rc.3 — Standalone
+NDS4MiSTer v0.9.0-rc.4 — Standalone
 
 Local release candidate prepared for review. Not published by packaging.
 The public tree includes complete corresponding project sources for each
 shipped component. Private development paths/history are not prerequisites.
 
-The accepted rc.2 FPGA and renderer remain unchanged. The frontend changes
-only its release version label. The Linux 6.18.38 port rebuilds the restricted
-write-combining module and uses the new loadable CPU clock driver and boost
-interface to run at 1 GHz. Exit restores the previous CPU/boost settings.
-The 5.15.1 module is retained. Public launch paths remain Scripts/.NDS_Standalone.
-Normal Console/Kickstart installations and user files are preserved.
+The FPGA fixes Engine B bank C/D VRAM address mirroring, correcting the
+Fire Emblem: Shadow Dragon graphics corruption confirmed by the user on MiSTer.
+The exact tested FPGA binary is packaged. The frontend changes only its release
+version label from rc.3. The renderer, both Linux write-combining modules, 1 GHz
+clock setup and runtime speed options remain unchanged. Public launch paths
+remain Scripts/.NDS_Standalone. Normal Console/Kickstart installations and user
+files are preserved.
 
 Component identities, build tools and validation limits are recorded in
-  docs/RELEASE_BUILD_V090_RC3.json
+  docs/RELEASE_BUILD_V090_RC4.json
+  docs/FPGA_BUILD_V090_RC4.json
 Source content is verified by the top-level SHA256SUMS. It includes every
-tracked source file except itself. The FPGA source manifest and host snapshot
-were combined deliberately: current host sources override the older host
-copy present in the FPGA input snapshot. The accepted FPGA remains authoritative
-for every hardware file. The private test plan is not a build input and is
-omitted; the public firmware protocol describes the current paths and contract.
+tracked source file except itself. docs/FPGA_SOURCE_INPUTS_V090_RC4.json records
+the matching FPGA, RTL and third-party inputs from the tested hardware build;
+current frontend sources and their separate receipt describe the release label
+update. Private test data and diagnostic captures are not build inputs and are
+excluded from the public tree.
 
 Build entry points:
 - FPGA: fpga/mister_nitro_console_island/NDS4MiSTer.qpf, Quartus Prime

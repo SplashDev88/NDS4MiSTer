@@ -205,7 +205,7 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "source_tag": standalone.VERSION, "runtime_baseline": "standalone-fw1-20261003",
-            "host_change": "Linux 6.18.38 compatibility and release version label; gameplay renderer and FPGA unchanged.",
+            "host_change": "Release version label only; frontend behavior unchanged from rc.3.",
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
             "shared_saves": "/media/fat/saves/NDS", "firmware_working_image": "/media/fat/saves/NDS/firmware.bin",
@@ -234,7 +234,7 @@ def audit_standalone(file_data, hashes, environment):
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
             "release_host_sha256": hashes[support + "nds_standalone_host"],
             "runtime_input_receipt_sha256": standalone.RUNTIME_INPUT_SHA,
-            "scope": "Linux 6.18.38 compatibility port on rc.2: rebuilt WC module and boost-aware 1 GHz clock setup; accepted FPGA, renderer and runtime speed options unchanged; host release label updated.",
+            "scope": "Fire Emblem Engine B C/D VRAM address-mapping fix on rc.3; accepted FPGA binary retained from the hardware test; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.",
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")

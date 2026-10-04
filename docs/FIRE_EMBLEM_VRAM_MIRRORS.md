@@ -26,5 +26,7 @@ Validation:
   the fix. To reproduce the negative control, set `SOURCE_REVISION` to the
   release commit before running the test.
 - `bash tools/test_vram_hi_mirrors.sh`: 262,144 existing H/I mapping checks.
-- A full FPGA build and physical-board game verification are required before
-  release; simulation alone does not establish hardware acceptance.
+- Quartus map, fit, assembly and timing analysis completed with zero errors.
+  Negative timing slack remains; see `FPGA_BUILD_V090_RC4.json`.
+- The user tested the candidate on MiSTer and confirmed the Fire Emblem
+  corruption is fixed. No new instrumented FPS comparison was reported.

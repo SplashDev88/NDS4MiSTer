@@ -1,6 +1,6 @@
-# NDS4MiSTer v0.9.0-rc.3
+# NDS4MiSTer v0.9.0-rc.4
 
-**Now supporting Linux 6.18.38**
+**Fixed graphical corruption in Fire Emblem: Shadow Dragon.**
 
 ## Install and play
 

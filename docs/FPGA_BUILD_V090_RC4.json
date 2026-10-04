@@ -1,0 +1,35 @@
+{
+  "bytes": 4616608,
+  "device": "5CSEBA6U23I7",
+  "embedded_build_label": "260930-LR2",
+  "hardware_validation": "User confirmed Fire Emblem corruption fixed on MiSTer. No new instrumented FPS comparison reported.",
+  "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+  "resources": {
+    "alms_needed": 38418,
+    "block_memory_bits": 4174192,
+    "dsp": 54,
+    "m10k": 551,
+    "placed_alms": 40468,
+    "total_registers": 44110
+  },
+  "seed": 5,
+  "sha256": "018a29f2b393f1e114685a2f9be6fde0d0bf51b73451639781ad14959e47c7ed",
+  "source_input_count": 1326,
+  "source_input_manifest": "docs/FPGA_SOURCE_INPUTS_V090_RC4.json",
+  "source_input_manifest_sha256": "a95f446e48e4fa15cd34f0e05d87486931bac60816ae75f33b0700dc4d50ce01",
+  "stages": {
+    "asm": "passed, zero errors",
+    "fit": "passed, zero errors",
+    "map": "passed, zero errors",
+    "sta": "completed, zero errors; negative slack remains"
+  },
+  "timing_closed": false,
+  "version": "v0.9.0-rc.4",
+  "worst_slack_ns": {
+    "Hold": -0.418,
+    "Minimum Pulse Width": 0.932,
+    "Recovery": -8.903,
+    "Removal": 0.262,
+    "Setup": -15.056
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "accepted_baseline": "v0.9.0-rc.3 plus hardware-accepted Fire Emblem Engine B C/D VRAM address-mapping fix",
+  "accepted_frontend": "07ae330ddd2e380bf1d1ac2892197c1bbf054c7b",
+  "components": {
+    "fpga": {
+      "build_receipt": "docs/FPGA_BUILD_V090_RC4.json",
+      "build_receipt_sha256": "4639337f86cc0e7e4f8acc7479c30c267fb07de5e6fe184bad858c4152b8b86d",
+      "bytes": 4616608,
+      "sha256": "018a29f2b393f1e114685a2f9be6fde0d0bf51b73451639781ad14959e47c7ed",
+      "source_input_count": 1326,
+      "source_input_manifest": "docs/FPGA_SOURCE_INPUTS_V090_RC4.json",
+      "source_input_manifest_sha256": "a95f446e48e4fa15cd34f0e05d87486931bac60816ae75f33b0700dc4d50ce01",
+      "sources": "All recorded FPGA, RTL and third-party input hashes match this tree. Exact hardware-tested RBF retained; no FPGA rebuild for packaging."
+    },
+    "host": {
+      "accepted_parent_sha256": "d5314c9ca75d015c3ce4447a04836711aa2d147caec16ef0fdcdf7b91236f151",
+      "behavior_change": "Release version label only; all other frontend binary bytes except GNU build ID unchanged from the tested beta.",
+      "compiler": "GCC 13.3.0",
+      "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
+      "frontend_build_receipt": "docs/STANDALONE_FRONTEND_BUILD_V090_RC4.json",
+      "frontend_build_receipt_sha256": "220a4d30bd2c76dc47274036d7f7d93e3c22bedac802bc63de0087e0fb67d850",
+      "sha256": "9a5500dc65f3afafd602e56fcf2b5d73846a1a0cb1ece77dc3fcede06712e361",
+      "source": "tools/standalone_host"
+    },
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "source_note": "Original 5.15 binary retained; common source has a version-gated Linux 6.3+ VMA flags API.",
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    },
+    "wc_module_618": {
+      "provenance": "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
+      "sha256": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3",
+      "source": "kernel/nds_mem_wc",
+      "vermagic": "6.18.38-MiSTer SMP mod_unload ARMv7 p2v8"
+    }
+  },
+  "fpga_build": {
+    "device": "5CSEBA6U23I7",
+    "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+    "resources": {
+      "alms_needed": 38418,
+      "block_memory_bits": 4174192,
+      "dsp": 54,
+      "m10k": 551,
+      "placed_alms": 40468,
+      "total_registers": 44110
+    },
+    "seed": 5,
+    "timing_closed": false,
+    "worst_slack_ns": {
+      "Hold": -0.418,
+      "Minimum Pulse Width": 0.932,
+      "Recovery": -8.903,
+      "Removal": 0.262,
+      "Setup": -15.056
+    }
+  },
+  "publication_status": "Local release candidate; publication requires user approval.",
+  "runtime_scripts": {
+    "Kickstart.sh": "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b",
+    "NDS4MiSTer.sh": "f66d9342a2995ea7e54e349e37324b2da2e52978bcc191059940aa8e8c01a430",
+    "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f",
+    "supervisor.py": "14a7772266ed07ec4a2a8731c22aebc7da0f85506e952f5b1b8368dfbe0c3c80"
+  },
+  "validation": {
+    "hardware": "User confirmed Fire Emblem corruption fixed on MiSTer. No new instrumented FPS comparison reported. Both Linux module binaries and clock-control scripts remain identical to rc.3.",
+    "host": "34 Python launcher/clock tests, 10 package audit controls and two focused menu suites pass. Release host differs from the accepted rc.3 host only in the version label and GNU build ID.",
+    "packaging": "Public source and archive audits, internal/outer checksums, modes and component identities required before readiness; no user BIOS, firmware, ROMs, saves or settings included.",
+    "rtl": "40,960 C/D aperture checks plus CPU/enable/OFS, overlap and backreference cases; 262,144 existing H/I checks. Both suites pass. The C/D negative control fails at 0x06220000 on the pre-fix decoder."
+  },
+  "version": "v0.9.0-rc.4"
+}
