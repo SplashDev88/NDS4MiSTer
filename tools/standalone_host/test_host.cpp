@@ -688,8 +688,8 @@ R"({
       if (!row) text = " " + std::string(LOAD_LABEL);
       else if (row == 1) text = " Boot DS firmware";
       else if (row >= 3 && row <= 7) text = optionLabel(0, CORE_OPTIONS[row-3]);
-      else if (row == 9) text = " Reset";
-      else if (row == 10) text = " Lid: Open (Close)";
+      else if (row == 9) text = " Lid: Open (Close)";
+      else if (row == 11) text = " Reset";
       else if (row == 15) text = "            exit";
       auto bytes = expected.renderRow(row, text, row == 0, nds_osd::arrow_right);
       assert(t.words == std::vector<uint16_t>(bytes.begin(), bytes.end()));

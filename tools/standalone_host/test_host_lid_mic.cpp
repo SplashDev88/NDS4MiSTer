@@ -26,7 +26,7 @@ struct HostTest {
     h.inputs(); assert(h.lastjoy==Host::LID_MASK); // Menus silence mic, retain closed lid.
     h.key(pad,BTN_THUMBL,true); assert(h.lid_closed); // Menu ignores mapped toggle.
     h.key(pad,BTN_THUMBL,false);
-    h.cursor=8; h.action(2); assert(!h.lid_closed && h.menu && !h.lastjoy);
+    h.cursor=7; h.action(2); assert(!h.lid_closed && h.menu && !h.lastjoy);
     h.action(2); assert(h.lid_closed && h.lastjoy==Host::LID_MASK);
     h.draw(); assert(h.status==saved); // Lid isn't a saved display/status option.
     h.togglemenu(); h.inputs(); assert(h.lastjoy==(Host::LID_MASK|Host::MIC_MASK|16));

@@ -1298,14 +1298,14 @@ class Host {
       rows[1] = " Boot DS firmware";
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++)
         rows[i + 3] = optionLabel(status, CORE_OPTIONS[i]);
-      rows[9] = " Reset";
-      rows[10] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      rows[9] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      rows[11] = " Reset";
       rows[12] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
       selected = cursor <= 1 ? cursor
                  : cursor <= 6 ? cursor + 1
                  : cursor == 7 ? 9
-                 : cursor == 8 ? 10
+                 : cursor == 8 ? 11
                                : 15;
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
@@ -1517,11 +1517,11 @@ class Host {
           openFirmware();
           break;
         case 7:
-          try { reset(); togglemenu(); }
-          catch (const std::exception &e) { firmwareError("Cannot reset firmware", e.what()); }
+          toggleLid();
           break;
         case 8:
-          toggleLid();
+          try { reset(); togglemenu(); }
+          catch (const std::exception &e) { firmwareError("Cannot reset firmware", e.what()); }
           break;
         case 9:
           togglemenu();
