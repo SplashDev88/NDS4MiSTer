@@ -40,6 +40,11 @@ device, `..` opens the mounted-device list, where you can enter SD (`fat`), USB
 or network storage. The device list's `..` returns to the NDS menu. There is no
 separate Storage menu or folder-selection command.
 
+While a game is running, **Load *.NDS** instead opens that game's folder with
+the running ROM highlighted and scrolled into view. Other folders start at
+the top. The highlight lasts only for the current session: a fresh core launch
+starts at the top of the remembered folder.
+
 **Boot DS firmware** boots directly from its remembered folder when all three
 files are available. Otherwise it opens the browser (or the device list if the
 drive is unavailable), without holding the running game. Select

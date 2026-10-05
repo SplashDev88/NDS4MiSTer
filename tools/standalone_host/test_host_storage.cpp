@@ -39,6 +39,87 @@ struct HostTest {
         image.write(pixel, 3);
       }
   }
+  static void active_game_selection(const fs::path &root) {
+    const auto sd = root / "selection-sd", kit = root / "selection-kit";
+    const auto folder = sd / "games/NDS", other = folder / "Other";
+    fs::create_directories(kit);
+    fs::create_directories(other);
+    for (int i = 10; i < 50; ++i)
+      std::ofstream(folder / ("Game " + std::to_string(i) + ".nds"))
+          << std::string(512, 'r');
+    const auto active = folder / "Game 45.nds";
+    std::ofstream(other / active.filename()) << std::string(512, 's');
+    nds_storage::test_volumes = {{sd, "sd", "SD card"}};
+    {
+      Host h(kit.string(), folder.string(), sd);
+      h.openGames();
+      finish(h);
+      assert(h.cursor == 0 && h.browser_first == 0 && h.game.empty());
+
+      // Load through Recent Files, then reopen the actual games menu.
+      h.remember(active);
+      h.openRecents();
+      finish(h);
+      h.action(2);
+      finish(h);
+      assert(h.game == active && !h.menu);
+      h.togglemenu();
+      h.action(2);
+      finish(h);
+      assert(h.currentdir == folder && h.game_paths.at(h.cursor) == active);
+      assert(h.cursor > 15);
+      h.draw();
+      assert(h.browser_first > 0 && h.browser_selected_row >= 0 &&
+             h.browser_selected_row < 16);
+      preview(h, "active-game");
+
+      // Moving the cursor and backing out must not replace the active ROM.
+      h.action(1);
+      h.action(3);
+      h.action(2);
+      finish(h);
+      assert(h.game_paths.at(h.cursor) == active);
+
+      // A same-named ROM in another folder is not the running cartridge.
+      select(h, "Other");
+      assert(h.currentdir == other && h.cursor == 0 && h.browser_first == 0);
+      h.action(3);
+      h.action(2);
+      finish(h);
+      assert(h.currentdir == folder && h.game_paths.at(h.cursor) == active);
+
+      select(h, "Game 49.nds");
+      h.togglemenu();
+      h.action(2);
+      finish(h);
+      assert(h.game_paths.at(h.cursor) == folder / "Game 49.nds");
+      fs::remove(folder / "Game 49.nds");
+      h.openGames();
+      finish(h);
+      assert(h.cursor == 0 && h.browser_first == 0);
+
+      // Native firmware is not an active game, even after a ROM was loaded.
+      h.native_firmware = true;
+      h.browseGames(other);
+      finish(h);
+      h.openGames();
+      finish(h);
+      assert(h.currentdir == other && h.cursor == 0);
+      h.openFirmwareBrowser();
+      finish(h);
+      assert(h.choosing_firmware && h.cursor == 0);
+    }
+    // Persisted folders and recents must never restore a session highlight.
+    Host fresh(kit.string(), folder.string(), sd);
+    fresh.openGames();
+    finish(fresh);
+    assert(fresh.currentdir == other && fresh.game.empty() &&
+           fresh.cursor == 0 && fresh.browser_first == 0);
+    nds_storage::test_volumes.clear();
+    std::cout << "PASS: active ROM highlight/scroll, Recent Files launch, "
+                 "folder identity, game switch, missing ROM, native firmware "
+                 "and fresh launch selection\n";
+  }
   static void run(const fs::path &root) {
     const auto sd = root / "sd", kit = root / "kit", usb = root / "usb0",
                renumbered = root / "usb1";
@@ -189,6 +270,7 @@ int main() {
                     ("nds-host-storage-" + std::to_string(getpid()));
   fs::create_directories(root);
   HostTest::run(root);
+  HostTest::active_game_selection(root);
   fs::remove_all(root);
   std::cout << "PASS: parent-only game/firmware browsing, separate remembered "
                "folders, cross-device navigation, no Storage menu, USB "

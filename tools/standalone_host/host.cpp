@@ -532,6 +532,12 @@ class Host {
   }
   void openGames() {
     choosing_firmware = false;
+    // Only this session's running cartridge overrides the remembered folder.
+    // A fresh host has no game and keeps the normal top-of-folder selection.
+    if (!game.empty() && !native_firmware) {
+      browseGames(fs::path(game).parent_path());
+      return;
+    }
     if (storage_preferences.games.empty()) {
       discoverGames();
       return;
@@ -653,6 +659,14 @@ class Host {
             saveStorage();
           storage_devices = false;
           finishStorageBrowser();
+          if (!firmwareMode && !native_firmware && !game.empty()) {
+            const auto active = fs::path(game).lexically_normal();
+            for (size_t i = 0; i < game_paths.size(); ++i)
+              if (!roms[i].directory && game_paths[i].lexically_normal() == active) {
+                cursor = int(i);
+                break;
+              }
+          }
         },
         [this, path](const std::string &error) {
           storageFailure(error, [this, path] { browseGames(path); });
