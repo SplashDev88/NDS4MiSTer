@@ -2487,15 +2487,24 @@ begin
                      tim_wired_done7 or key_wired_done7 or spi_wired_done7 or card_wired_done7 or
                      rtc_wired_done7 or snd_wired_done7 or dma7_wired_done;
 
+   -- Timer overflow outputs are combinational and can remain high when their
+   -- counters are paused at the overflow boundary. Do not turn that frozen
+   -- phase into a new interrupt while the IRQ owner remains live for lid wake.
    irq_in9 <= (0 => irq9_vblank, 1 => irq9_hblank, 2 => irq9_vcount,
-               3 => irp_timer9(0), 4 => irp_timer9(1), 5 => irp_timer9(2), 6 => irp_timer9(3),
+               3 => irp_timer9(0) and not console_sleep,
+               4 => irp_timer9(1) and not console_sleep,
+               5 => irp_timer9(2) and not console_sleep,
+               6 => irp_timer9(3) and not console_sleep,
                8 => irq_dma9(0), 9 => irq_dma9(1), 10 => irq_dma9(2), 11 => irq_dma9(3),
                16 => ipc9_irq_sync, 17 => ipc9_irq_sendempty, 18 => ipc9_irq_recv,
                19 => irq9_card,
                21 => gx_irq_eff,
                others => '0');
    irq_in7 <= (0 => irq7_vblank, 1 => irq7_hblank, 2 => irq7_vcount,
-               3 => irp_timer7(0), 4 => irp_timer7(1), 5 => irp_timer7(2), 6 => irp_timer7(3),
+               3 => irp_timer7(0) and not console_sleep,
+               4 => irp_timer7(1) and not console_sleep,
+               5 => irp_timer7(2) and not console_sleep,
+               6 => irp_timer7(3) and not console_sleep,
                8 => irq_dma7(0), 9 => irq_dma7(1), 10 => irq_dma7(2), 11 => irq_dma7(3),
                16 => ipc7_irq_sync, 17 => ipc7_irq_sendempty, 18 => ipc7_irq_recv,
                19 => irq7_card, 22 => irq7_lid, 23 => irq7_spi,
