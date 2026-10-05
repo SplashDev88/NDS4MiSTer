@@ -1,0 +1,78 @@
+{
+  "accepted_baseline": "Hardware-accepted lid/mic beta.7, retaining rc.4 Fire Emblem fix and runtime performance components",
+  "accepted_frontend": "8266a4c3e835d2dd570a12f62b205ef3835ec7ef",
+  "components": {
+    "fpga": {
+      "build_receipt": "docs/FPGA_BUILD_V090_RC5.json",
+      "build_receipt_sha256": "ab2cee53ebd29c3e59882bcafaa24ad0ca7ab07cb58162daa80970a19ea36bbc",
+      "bytes": 4615740,
+      "sha256": "37e972a0fff85200f229a9cb80f16faefb0399af91b65cad3cd397f9546c9aa3",
+      "source_input_count": 1328,
+      "source_input_manifest": "docs/FPGA_SOURCE_INPUTS_V090_RC5.json",
+      "source_input_manifest_sha256": "d5e67bf7b1833ab62ff659480bce89208f95cd328d0b73bee91247ed6463a0c0",
+      "sources": "All 1328 frozen FPGA inputs verified against this tree. Exact tested beta.7 RBF retained without rebuild."
+    },
+    "host": {
+      "accepted_parent_sha256": "4f964d682ad68d13a985a56bf6eb01351d35da462ea10c01bd926856051b1293",
+      "behavior_change": "Release version label only. Accepted beta.7 host reproduced byte-for-byte with this toolchain; host.cpp and implementation headers are unchanged.",
+      "compiler": "GCC 13.3.0",
+      "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
+      "frontend_build_receipt": "docs/STANDALONE_FRONTEND_BUILD_V090_RC5.json",
+      "frontend_build_receipt_sha256": "4bcb36933b29eaeb036eda6f9d817dcaa37aa1830fa443be82cea94612b68a58",
+      "sha256": "6b38ee4d53c63c83f127f91f6d622a85a6671f22199a2ef7ed08391d91c53f90",
+      "source": "tools/standalone_host"
+    },
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "source_note": "Original 5.15 binary retained; common source has a version-gated Linux 6.3+ VMA flags API.",
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    },
+    "wc_module_618": {
+      "provenance": "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
+      "sha256": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3",
+      "source": "kernel/nds_mem_wc",
+      "vermagic": "6.18.38-MiSTer SMP mod_unload ARMv7 p2v8"
+    }
+  },
+  "fpga_build": {
+    "device": "5CSEBA6U23I7",
+    "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+    "resources": {
+      "alms_needed": 38403,
+      "block_memory_bits": 4174192,
+      "dsp": 54,
+      "m10k": 551,
+      "total_registers": 44083
+    },
+    "seed": 6,
+    "timing_closed": false,
+    "worst_slack_ns": {
+      "Hold": -0.551,
+      "Minimum Pulse Width": 0.932,
+      "Recovery": -8.668,
+      "Removal": 0.304,
+      "Setup": -21.516
+    }
+  },
+  "publication_status": "Local release candidate; publication requires user approval.",
+  "runtime_scripts": {
+    "Kickstart.sh": "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b",
+    "NDS4MiSTer.sh": "c99d274c8cc6c79d0e4332073278ce7ce1c4c641c8fadf556c89e2d471a68b11",
+    "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f",
+    "supervisor.py": "4bf3285ee6fdb0279d46dc65ce7932ab1a44360cef3860cca0ae8d5879d36c51"
+  },
+  "validation": {
+    "hardware": "User accepted the beta.7 microphone test and requested release packaging. Prior user-confirmed lid sleep/wake, DualSense motion and trigger fixes retained. Exact accepted FPGA binary retained without rebuild.",
+    "host": "34 launcher/clock Python tests and six C++ suites pass: menu, presentation, host, lid/mic, motion/trigger input, and storage/browser selection. Accepted beta.7 host reproduced exactly.",
+    "packaging": "Public source/history, archive allowlist, checksums, modes and source correspondence are audited before package readiness; no user data included.",
+    "rtl": "Previously completed beta.7 SPI mic/lid and firmware regressions retained with unchanged FPGA inputs. New waveform and actual VHDL sample replay raised Yoshi in the NSMB software reference; user subsequently accepted physical beta.7 testing."
+  },
+  "version": "v0.9.0-rc.5"
+}

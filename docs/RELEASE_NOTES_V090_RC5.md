@@ -1,8 +1,6 @@
-# NDS4MiSTer
+# NDS4MiSTer v0.9.0-rc.5
 
 **Lid control, microphone blowing, DualSense fixes, and everyday menu improvements.**
-
-[Download v0.9.0-rc.5](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.5) · [Quick start](docs/STANDALONE_QUICK_START.txt)
 
 ## What's new
 
@@ -12,6 +10,8 @@
 - **Remember the playing game.** Reopening **Load \*.NDS** while playing highlights the current ROM. A fresh core launch starts at the top of the remembered folder.
 - **Menu improvements.** Video Rotation now sits directly below Video Layout, lid control is separated from Reset, and the button-mapping confirmation no longer appears in the ROM browser.
 - Retains the **Fire Emblem: Shadow Dragon** graphics fix from rc.4.
+
+The renderer, performance settings and 1 GHz clock are unchanged.
 
 ## Install and play
 
@@ -23,13 +23,13 @@ In the device list, **fat** is the SD card and USB drives show as **usb0**, **us
 
 **Saves stay on the SD card in `saves/NDS`**, even for games on USB or a share. Keep filenames unchanged to keep using existing saves. Your settings, controller maps, games and `MiSTer.ini` are left alone.
 
-The launcher supports **Linux 6.18.38-MiSTer** and retains support for **5.15.1-MiSTer**, with the matching write-combining module and 1 GHz clock control. No kernel is included. See [QUICK_START.txt](docs/STANDALONE_QUICK_START.txt).
+The launcher supports **Linux 6.18.38-MiSTer** and retains support for **5.15.1-MiSTer**, with the matching write-combining module and 1 GHz clock control. No kernel is included. See **QUICK_START.txt**.
 
 ## Optional: DS firmware
 
 Games use the built-in BIOS and firmware. You only need your own files to open the original DS menu. Keep `bios7.bin`, `bios9.bin` and `firmware.bin` together in any browsable folder, choose **Boot DS firmware**, and select `firmware.bin` when the browser appears. Later visits boot directly from the remembered folder. Tap the touch screen when prompted.
 
-Your nickname, birthday, favorite color and language carry into games; the default nickname is **MiSTer**. Your original files aren't modified — personal settings are saved to `saves/NDS/firmware.bin`. Requires compatible BIOS files and a **256 KiB DS or DS Lite firmware image**; hashes are in [QUICK_START.txt](docs/STANDALONE_QUICK_START.txt). Nintendo files aren't included.
+Your nickname, birthday, favorite color and language carry into games; the default nickname is **MiSTer**. Your original files aren't modified — personal settings are saved to `saves/NDS/firmware.bin`. Requires compatible BIOS files and a **256 KiB DS or DS Lite firmware image**; hashes are in **QUICK_START.txt**. Nintendo files aren't included.
 
 ## Menu and TATE
 
@@ -51,13 +51,3 @@ The release assets are the install ZIP and its SHA-256 checksum. Matching source
 ## Thanks
 
 Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to Corn for the standalone suggestion, and to skmp, the DreamSTer developer. Full credits and licenses are in the source tree.
-
-## More information
-
-- [Release notes](docs/RELEASE_NOTES_V090_RC5.md)
-- [Developer guide](docs/DEVELOPMENT.md)
-- [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues)
-
-## License
-
-NDS4MiSTer is distributed under GPLv3; see [LICENSE.txt](LICENSE.txt). The write-combining kernel module is [GPL-2.0](kernel/nds_mem_wc/COPYING). Vendored components retain their own licenses and notices.

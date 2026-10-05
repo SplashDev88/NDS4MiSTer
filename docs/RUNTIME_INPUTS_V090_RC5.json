@@ -1,0 +1,28 @@
+{
+  "baseline": "v0.9.0-rc.4",
+  "change": "Renderer, both write-combining modules, clock scripts and runtime speed settings retained unchanged.",
+  "clock_khz": 1000000,
+  "components": {
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "source_note": "Original 5.15 binary retained; common source has a version-gated Linux 6.3+ VMA flags API.",
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    },
+    "wc_module_618": {
+      "provenance": "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
+      "sha256": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3",
+      "source": "kernel/nds_mem_wc",
+      "vermagic": "6.18.38-MiSTer SMP mod_unload ARMv7 p2v8"
+    }
+  },
+  "runtime_scripts": {
+    "Kickstart.sh": "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b",
+    "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f"
+  }
+}

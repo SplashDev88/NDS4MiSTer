@@ -205,12 +205,12 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "source_tag": standalone.VERSION, "runtime_baseline": "standalone-fw1-20261003",
-            "host_change": "Release version label only; frontend behavior unchanged from rc.3.",
+            "host_change": "Release version label only; frontend behavior unchanged from accepted lid/mic beta.7.",
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
             "shared_saves": "/media/fat/saves/NDS", "firmware_working_image": "/media/fat/saves/NDS/firmware.bin",
             "user_dumps_included": False, "user_settings_included": False,
-            "diagnostic_revision": "native-pc9-memctl-v1",
+            "diagnostic_revision": "native-pc9-pc7-memctl-v2",
             "fpga_source_manifest_sha256": standalone.FPGA_SOURCE_SHA,
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
         }
@@ -234,7 +234,7 @@ def audit_standalone(file_data, hashes, environment):
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
             "release_host_sha256": hashes[support + "nds_standalone_host"],
             "runtime_input_receipt_sha256": standalone.RUNTIME_INPUT_SHA,
-            "scope": "Fire Emblem Engine B C/D VRAM address-mapping fix on rc.3; accepted FPGA binary retained from the hardware test; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.",
+            "scope": "Lid sleep/wake, microphone blowing, DualSense input fixes and browser/menu improvements; accepted beta.7 FPGA binary retained; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.",
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")

@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.4
+NDS4MiSTer v0.9.0-rc.5
 
 START HERE
 
@@ -41,6 +41,8 @@ Games may be on mounted SD, USB or network storage. Use .. at the top of
 Load *.NDS to go up; from the device root, .. shows mounted devices. The SD
 card appears as fat and USB drives as usb0, usb1, etc. Enter folders normally.
 The last browsed games folder is remembered automatically across restarts.
+While a game is running, reopening the browser highlights its ROM. A fresh
+core launch starts at the top of the remembered folder.
 If only one mounted games/NDS exists on first use, it opens automatically;
 otherwise the browser shows the devices. Unmounted USB placeholders are hidden.
 
@@ -64,8 +66,8 @@ configuration had Engine B Off. There is no Engine B On/Off option.
 Browser folders save automatically to /media/fat/config/NDS_storage.cfg.
 Recent Files retain the shared MiSTer list and NDS_recent_locations.cfg beside
 it to remember drive identities. Save settings is not needed for locations.
-USB/HDD and network-share behavior has simulated coverage; real external-drive
-validation is still outstanding. SD browser navigation was tested on hardware.
+SD browser navigation and a mounted CIFS share have been exercised on hardware.
+USB/HDD testing remains limited; external-drive behavior has simulated coverage.
 
 MENU AND CONTROLS
 
@@ -79,8 +81,11 @@ The menu does not pause gameplay; pause inside the game when needed.
   Right / Left        System / core page, or page through the file picker
   Select / backtick   Recent Files at Load *.NDS or in the file picker
 
-System -> Define NDS buttons maps game controls. Its final binding,
-Cycle Video Layout, switches layouts once per press without resetting.
+System -> Define NDS buttons maps game controls. The optional final actions
+are Cycle Video Layout (once per press without resetting) and Blow into Mic
+(hold to blow, release for silence). Existing mappings remain valid; define
+buttons again to add a microphone binding. DualSense motion sensors are
+ignored, and each trigger pull advances only one mapping prompt.
 System -> Save settings stores options for later launches. Standalone's
 saved settings and controller maps remain separate from normal MiSTer.
 Greyed-out System rows are not implemented. Use normal MiSTer for global
@@ -89,6 +94,17 @@ video/audio filters, Bluetooth pairing and other unsupported settings.
 Keyboard gameplay: arrows=D-pad, X/Z=A/B, S/A=X/Y, Q/W=L/R,
 Right Shift=Select, Enter=Start, Space=Touch. Mouse movement/left click and
 a mapped right stick/Touch button control the touch screen.
+
+LID AND MICROPHONE
+
+Use the Lid row on the main menu, above Reset, to close the virtual DS.
+Use the same row to reopen it and wake a game that entered sleep. This is a
+menu-only action; there is no lid key or controller binding.
+
+Hold F11 or your mapped Blow into Mic button to generate blowing noise.
+Release to return to silence. This supports blowing interactions, including
+the tested NSMB Yoshi balloon minigame; it does not provide speech recognition
+or capture audio from a physical microphone.
 
 OPTIONAL: ORIGINAL DS FIRMWARE MENU
 
@@ -147,7 +163,7 @@ for this release. Use a compatible personal dump; do not bypass validation.
 The firmware clock starts from the MiSTer's system time (year 2000-2099).
 Clock edits are session-only, and RTC alarm interrupts are not implemented.
 This feature does not add DS wireless multiplayer, firmware game launching,
-DSi mode, or microphone input.
+DSi mode, or physical microphone capture.
 
 TATE AND OPTIONAL 1080P
 

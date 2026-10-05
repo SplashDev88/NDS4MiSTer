@@ -1,6 +1,6 @@
-# NDS4MiSTer v0.9.0-rc.4
+# NDS4MiSTer v0.9.0-rc.5
 
-**Fixed graphical corruption in Fire Emblem: Shadow Dragon.**
+**Lid control, microphone blowing, DualSense fixes, and everyday menu improvements.**
 
 ## Install and play
 
@@ -27,6 +27,14 @@ control. It supports **Linux 6.18.38-MiSTer** and retains the matching module
 for **5.15.1-MiSTer**. The matching module is selected automatically; older
 users do not need to update Linux. It does not install a kernel or
 change your INI. If it reports a requirement error, read the quick start below.
+
+## Lid, microphone and controller controls
+
+Use the **Lid** row on the main menu, above Reset, to close or reopen the virtual DS.
+Hold **F11** to blow into the microphone, or map **Blow into Mic** through
+**System → Define NDS buttons**. Release for silence. Existing mappings remain
+valid; define buttons again to add a microphone binding. Lid control is menu-only.
+DualSense motion sensors are ignored, and a trigger pull maps one action at a time.
 
 ## Optional DS firmware menu
 

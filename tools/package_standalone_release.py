@@ -19,13 +19,13 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.4'
-HOST_SHA = '9a5500dc65f3afafd602e56fcf2b5d73846a1a0cb1ece77dc3fcede06712e361'
-FRONTEND_BUILD_SHA = '220a4d30bd2c76dc47274036d7f7d93e3c22bedac802bc63de0087e0fb67d850'
-FPGA_BUILD_SHA = '4639337f86cc0e7e4f8acc7479c30c267fb07de5e6fe184bad858c4152b8b86d'
-FPGA_SOURCE_SHA = 'a95f446e48e4fa15cd34f0e05d87486931bac60816ae75f33b0700dc4d50ce01'
-ACCEPTED_HOST_SHA = 'd5314c9ca75d015c3ce4447a04836711aa2d147caec16ef0fdcdf7b91236f151'
-RUNTIME_INPUT_SHA = '84ebdbf7376762f87756949040a3cda68dc785f13d3090571d34dac3a678a7da'
+VERSION = 'v0.9.0-rc.5'
+HOST_SHA = '6b38ee4d53c63c83f127f91f6d622a85a6671f22199a2ef7ed08391d91c53f90'
+FRONTEND_BUILD_SHA = '4bcb36933b29eaeb036eda6f9d817dcaa37aa1830fa443be82cea94612b68a58'
+FPGA_BUILD_SHA = 'ab2cee53ebd29c3e59882bcafaa24ad0ca7ab07cb58162daa80970a19ea36bbc'
+FPGA_SOURCE_SHA = 'd5e67bf7b1833ab62ff659480bce89208f95cd328d0b73bee91247ed6463a0c0'
+ACCEPTED_HOST_SHA = '4f964d682ad68d13a985a56bf6eb01351d35da462ea10c01bd926856051b1293'
+RUNTIME_INPUT_SHA = '69af0c78f60f6a9409743945103264630034c367264907dc2cc8abe66d6e9a21'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
     'WC-GPL-2.0.txt': 'kernel/nds_mem_wc/COPYING',
@@ -103,7 +103,7 @@ def collect(a):
     files[SUPPORT + module_618 + '.sha256'] = (
         supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC4.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC5.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
     for name, path in docs.items():
         add(name, a.docs_dir / name if a.docs_dir else path)
@@ -115,7 +115,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
-        'host_change': 'Release version label only; frontend behavior unchanged from rc.3.',
+        'host_change': 'Release version label only; frontend behavior unchanged from accepted lid/mic beta.7.',
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
@@ -128,7 +128,7 @@ def collect(a):
         'remote_kit': '/media/fat/Scripts/.NDS_Standalone', 'rom_directory': '/media/fat/games/NDS',
         'shared_saves': '/media/fat/saves/NDS', 'firmware_working_image': '/media/fat/saves/NDS/firmware.bin',
         'user_dumps_included': False, 'user_settings_included': False,
-        'diagnostic_revision': 'native-pc9-memctl-v1', 'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
+        'diagnostic_revision': 'native-pc9-pc7-memctl-v2', 'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA,
     }
     files[SUPPORT + 'manifest.json'] = json_bytes(manifest)
@@ -137,7 +137,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Fire Emblem Engine B C/D VRAM address-mapping fix on rc.3; accepted FPGA binary retained from the hardware test; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.',
+        'scope': 'Lid sleep/wake, microphone blowing, DualSense input fixes and browser/menu improvements; accepted beta.7 FPGA binary retained; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.',
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'
@@ -173,7 +173,7 @@ def main():
     a.out_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 10, 4, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 5, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | (0o755 if name in executable else 0o644)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED
