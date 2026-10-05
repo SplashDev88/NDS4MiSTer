@@ -1,12 +1,12 @@
 # NDS4MiSTer v0.9.0-rc.5
 
-**Lid control, mic support, touch rotation, a DualSense fix, ROM browser memory, and menu improvements.**
+**Lid control, mic support, touch rotation, DualSense gyro events fix, ROM browser memory, and menu improvements.**
 
 ## What's new
 
 - **Open/close lid support.** Toggle the virtual DS lid from the main menu, above Reset. Open it again from the same menu to wake games that enter sleep. Lid control is menu-only.
 - **Basic microphone support.** Hold **F11** or map **Blow into Mic** under **System → Define NDS buttons**. Release to stop blowing. The synthetic breath input works with the tested New Super Mario Bros. Yoshi balloon minigame; it does not capture speech or real microphone audio.
-- **DualSense (PS5) fix.** Controller gyro motion controls no longer move or recenter the stylus.
+- **DualSense gyro events fix.** Gyro events from PS5 controllers no longer move or recenter the stylus.
 - **Touch rotation for sideways games.** The new **Touch Rotation** option sits below Video Rotation and rotates right-stick and mouse touch input independently of the picture. **90 CW** corrects the tested *Ninja Gaiden: Dragon Sword* orientation; **90 CCW** handles the opposite direction. Use **Normal** for ordinary DS games and save the choice with **System → Save settings**.
 - **Remember the current game when selecting a ROM.** Reopening **Load \*.NDS** while playing highlights the current ROM. A fresh core launch starts at the top of the remembered folder.
 - **Menu improvements.** Video Rotation now sits directly below Video Layout, Open/Close Lid has its own entry, and the button-mapping confirmation no longer appears in the ROM browser.
