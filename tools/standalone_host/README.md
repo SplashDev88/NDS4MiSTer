@@ -75,7 +75,7 @@ slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged
 
 ## Private lid and microphone beta
 
-The matching `v0.9.0-rc.4-lidmic-beta.1` host/FPGA pair adds **Lid: Open
+The matching `v0.9.0-rc.4-lidmic-beta.2` host/FPGA pair adds **Lid: Open
 (Close)** / **Lid: Closed (Open)** to the NDS menu. Select that row to toggle.
 Alternatively, press **F10**, or assign **Toggle Lid** in System → Define
 NDS buttons. One press closes it; another opens it. Opening the OSD preserves the
