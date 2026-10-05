@@ -228,6 +228,7 @@ struct Pad {
   std::array<bool, 1024> pressed{};
   int right_x = ABS_RX, right_y = ABS_RY;
   std::array<input_absinfo, ABS_CNT> abs{};
+  std::array<bool, 2> digital_trigger{};
   bool disconnected = false;
   int x = 0, y = 0;
   uint16_t analog = 0;
@@ -1896,6 +1897,14 @@ class Host {
         close(p.fd);
         continue;
       }
+      std::array<unsigned long, (KEY_CNT + property_bits - 1) / property_bits>
+          keys{};
+      if (ioctl(p.fd, EVIOCGBIT(EV_KEY, sizeof(keys)), keys.data()) >= 0)
+        for (unsigned side = 0; side < p.digital_trigger.size(); ++side) {
+          unsigned code = side ? BTN_TR2 : BTN_TL2;
+          p.digital_trigger[side] = keys[code / property_bits] &
+                                    (1ul << (code % property_bits));
+        }
       p.system_map = {0x321,      0x320,     0x323,     0x322,  BTN_EAST,
                       BTN_SOUTH,  BTN_NORTH, BTN_WEST,  BTN_TL, BTN_TR,
                       BTN_SELECT, BTN_START, BTN_THUMBR};
@@ -2138,7 +2147,14 @@ class Host {
             if (!menu)
               spi.cmd(Spi::IO, 0x3d, {0, p.analog});
           }
-          if (e.code < ABS_CNT &&
+          // A DualSense trigger reports both a button and an analog axis.
+          // During mapping use the button's press/release edge only: treating
+          // the axis as a centered stick also maps its rest and full-pull ends.
+          // Keep the old axis codes outside the wizard for existing mappings.
+          const bool duplicate_trigger = mapping_step >= 0 &&
+              ((e.code == ABS_Z && p.digital_trigger[0]) ||
+               (e.code == ABS_RZ && p.digital_trigger[1]));
+          if (!duplicate_trigger && e.code < ABS_CNT &&
               p.abs[e.code].maximum > p.abs[e.code].minimum) {
             auto a = p.abs[e.code];
             int center = (a.minimum + a.maximum) / 2;

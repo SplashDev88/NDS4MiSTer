@@ -15,6 +15,11 @@ gamepad, keyboard and mouse remain available; no motion setting is required.
 The filter uses the Linux `INPUT_PROP_ACCELEROMETER` device property, rather
 than excluding a controller by name or USB/Bluetooth ID.
 
+When a trigger exposes both a digital button and an analog axis, the button
+mapping wizard uses its digital press/release events. A DualSense trigger pull
+therefore maps one action; holding or releasing it does not advance to another
+action. Existing analog-axis mappings outside the wizard remain supported.
+
 ## Experimental DS firmware support
 
 In this release, `Load *.NDS` uses the built-in FreeBIOS and
@@ -84,7 +89,7 @@ slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged
 
 ## Private lid and microphone beta
 
-The `v0.9.0-rc.4-lidmic-beta.4` package retains beta.3's FPGA and adds **Lid: Open
+The `v0.9.0-rc.4-lidmic-beta.5` package retains beta.3's FPGA and provides **Lid: Open
 (Close)** / **Lid: Closed (Open)** to the NDS menu. Select that row to toggle.
 Alternatively, press **F10**, or assign **Toggle Lid** in System → Define
 NDS buttons. One press closes it; another opens it. Opening the OSD preserves the

@@ -14,12 +14,21 @@ static int motion_test_ioctl(int fd, unsigned long request, void *argument);
 
 namespace {
 struct Device {
+  static constexpr unsigned word_bits = sizeof(unsigned long) * 8;
   std::string name;
   input_id id{BUS_USB, 0x054c, 0x0ce6, 0x0100};
   unsigned long properties = 0;
   bool properties_supported = true;
   unsigned property_queries = 0;
+  bool keys_supported = true;
+  unsigned key_queries = 0;
+  std::array<unsigned long, (KEY_CNT + word_bits - 1) / word_bits> keys{};
   std::array<input_absinfo, ABS_CNT> axes{};
+  void setKey(unsigned code, bool enabled = true) {
+    const auto mask = 1UL << (code % word_bits);
+    if (enabled) keys[code / word_bits] |= mask;
+    else keys[code / word_bits] &= ~mask;
+  }
 };
 using NodeKey = std::pair<dev_t, ino_t>;
 std::map<NodeKey, Device> devices;
@@ -60,6 +69,11 @@ Device gamepad() {
   for (const int axis : {ABS_X, ABS_Y, ABS_Z, ABS_RX, ABS_RY, ABS_RZ})
     device.axes[axis] = {128, 0, 255, 0, 0, 0};
   device.axes[ABS_HAT0X] = device.axes[ABS_HAT0Y] = {0, -1, 1, 0, 0, 0};
+  device.axes[ABS_Z].value = device.axes[ABS_RZ].value = 0;
+  for (const int key : {BTN_WEST, BTN_NORTH, BTN_EAST, BTN_SOUTH, BTN_TL,
+                        BTN_TR, BTN_TL2, BTN_TR2, BTN_SELECT, BTN_START,
+                        BTN_THUMBL, BTN_THUMBR, BTN_MODE})
+    device.setKey(key);
   return device;
 }
 
@@ -99,6 +113,17 @@ static int motion_test_ioctl(int fd, unsigned long request, void *argument) {
                 std::min(size_t(_IOC_SIZE(request)), sizeof(device.properties)));
     return std::min(size_t(_IOC_SIZE(request)), sizeof(device.properties));
   }
+  if (_IOC_TYPE(request) == 'E' && _IOC_NR(request) == _IOC_NR(EVIOCGBIT(EV_KEY, 1))) {
+    ++device.key_queries;
+    if (!device.keys_supported) {
+      errno = ENOTTY;
+      return -1;
+    }
+    std::memset(argument, 0, _IOC_SIZE(request));
+    std::memcpy(argument, device.keys.data(),
+                std::min(size_t(_IOC_SIZE(request)), sizeof(device.keys)));
+    return std::min(size_t(_IOC_SIZE(request)), sizeof(device.keys));
+  }
   if (_IOC_TYPE(request) == 'E' && _IOC_NR(request) >= _IOC_NR(EVIOCGABS(0)) &&
       _IOC_NR(request) < _IOC_NR(EVIOCGABS(0)) + ABS_CNT) {
     const auto &axis = device.axes[_IOC_NR(request) - _IOC_NR(EVIOCGABS(0))];
@@ -128,6 +153,133 @@ struct HostTest {
       }
     assert(false && "expected a real analog SPI transfer");
     return 0;
+  }
+  static void triggerMappings(const fs::path &root) {
+    unsigned cases = 0;
+    for (const int bus : {BUS_USB, BUS_BLUETOOTH})
+      for (const bool abs_first : {false, true})
+        for (const bool right : {false, true}) {
+          const auto dir = root / std::to_string(cases++);
+          const auto kit = dir / "kit", sd = dir / "sd", input = dir / "input";
+          fs::create_directories(kit);
+          fs::create_directories(input);
+          auto device = gamepad();
+          device.id.bustype = bus;
+          auto &fixture = createNode(input / "event0", device);
+          const auto node = input / "event0";
+          Host host(kit.string(), (sd / "games/NDS").string(), sd);
+          host.scan(input);
+          assert(host.pads.size() == 1);
+          host.mapping_step = 0;
+          const int axis = right ? ABS_RZ : ABS_Z;
+          const int button = right ? BTN_TR2 : BTN_TL2;
+          // A trigger rests at its minimum, not its center. That idle sample
+          // must not map the axis's synthetic negative direction.
+          emit(node, {{EV_ABS, axis, 0}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == 0 &&
+                 "idle/released digital trigger must not map its analog axis");
+          for (int pull = 0; pull < 2; ++pull) {
+            if (abs_first)
+              emit(node, {{EV_ABS, axis, 24}, {EV_ABS, axis, 96},
+                          {EV_KEY, button, 1}, {EV_ABS, axis, 240},
+                          {EV_SYN, SYN_REPORT, 0}});
+            else
+              emit(node, {{EV_KEY, button, 1}, {EV_ABS, axis, 24},
+                          {EV_ABS, axis, 96}, {EV_ABS, axis, 240},
+                          {EV_SYN, SYN_REPORT, 0}});
+            poll(host);
+            assert(host.mapping_step == pull + 1 &&
+                   "one physical trigger pull must advance exactly one prompt");
+            assert(host.new_map[pull] == unsigned(button));
+            // Digital hold/repeat plus analog jitter around both synthesized
+            // direction thresholds must never spill into the following prompt.
+            for (const int value : {255, 250, 192, 188, 194, 190, 96, 62, 65, 63, 240}) {
+              emit(node, {{EV_ABS, axis, value}, {EV_KEY, button, 1},
+                          {EV_KEY, button, 2}, {EV_SYN, SYN_REPORT, 0}});
+              poll(host);
+              assert(host.mapping_step == pull + 1 &&
+                     "held trigger and analog jitter must not advance prompts");
+            }
+            if (abs_first)
+              emit(node, {{EV_ABS, axis, 40}, {EV_ABS, axis, 0},
+                          {EV_KEY, button, 0}, {EV_SYN, SYN_REPORT, 0}});
+            else
+              emit(node, {{EV_KEY, button, 0}, {EV_ABS, axis, 40},
+                          {EV_ABS, axis, 0}, {EV_SYN, SYN_REPORT, 0}});
+            poll(host);
+            assert(host.mapping_step == pull + 1 &&
+                   "trigger release must not advance the following prompt");
+            for (const int value : {1, 2, 0}) {
+              emit(node, {{EV_ABS, axis, value}, {EV_KEY, button, 0},
+                          {EV_SYN, SYN_REPORT, 0}});
+              poll(host);
+              assert(host.mapping_step == pull + 1);
+            }
+          }
+          assert(fixture.key_queries == 1);
+          // A regular stick remains available in the same mapping wizard.
+          emit(node, {{EV_ABS, ABS_X, 255}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == 3 && host.new_map[2] == 0x301);
+
+          // Existing axis-based gameplay mappings must still receive both
+          // trigger directions outside the wizard; buttons retain their edges.
+          host.mapping_step = -1;
+          host.menu = false;
+          auto &pad = host.pads[0];
+          pad.pressed.fill(false);
+          pad.map.fill(0);
+          pad.map[4] = 0x301 + axis * 2;
+          pad.map[5] = 0x300 + axis * 2;
+          pad.map[8] = button;
+          emit(node, {{EV_ABS, axis, 255}, {EV_KEY, button, 1},
+                      {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.lastjoy == ((1u << 4) | (1u << 8)));
+          emit(node, {{EV_KEY, button, 0}, {EV_ABS, axis, 0},
+                      {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.lastjoy == (1u << 5));
+        }
+
+    // Detect each corresponding button independently. Pads with analog-only
+    // triggers, or without the capability ioctl, keep their existing mapping.
+    for (const bool right : {false, true})
+      for (const bool query_supported : {false, true}) {
+        const auto dir = root / std::to_string(cases++);
+        const auto kit = dir / "kit", sd = dir / "sd", input = dir / "input";
+        fs::create_directories(kit);
+        fs::create_directories(input);
+        auto device = gamepad();
+        device.id = {BUS_USB, 0x1234, 0x0200, 1};
+        device.keys_supported = query_supported;
+        const int axis = right ? ABS_RZ : ABS_Z;
+        const int button = right ? BTN_TR2 : BTN_TL2;
+        device.setKey(button, false); // Opposite trigger button stays present.
+        auto &fixture = createNode(input / "event0", device);
+        Host host(kit.string(), (sd / "games/NDS").string(), sd);
+        host.scan(input);
+        host.mapping_step = 0;
+        emit(input / "event0", {{EV_ABS, axis, 255}, {EV_SYN, SYN_REPORT, 0}});
+        poll(host);
+        assert(host.mapping_step == 1 && host.new_map[0] == unsigned(0x301 + axis * 2));
+        assert(fixture.key_queries == 1);
+        if (query_supported) {
+          const int other_axis = right ? ABS_Z : ABS_RZ;
+          const int other_button = right ? BTN_TL2 : BTN_TR2;
+          emit(input / "event0", {{EV_ABS, other_axis, 0},
+                                 {EV_KEY, other_button, 1},
+                                 {EV_ABS, other_axis, 255},
+                                 {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == 2 && host.new_map[1] == unsigned(other_button));
+        }
+      }
+    std::cout << "PASS trigger mapping: " << cases
+              << " USB/Bluetooth, event-order, L2/R2 and capability cases; "
+                 "one prompt per pull, no hold/jitter/release advances, "
+                 "stick mapping and legacy gameplay preserved\n";
   }
   static void run(const fs::path &root) {
     const auto kit = root / "kit", sd = root / "sd", input = root / "input";
@@ -265,5 +417,6 @@ int main() {
   char directory[] = "/tmp/nds-motion-input-XXXXXX";
   assert(mkdtemp(directory));
   HostTest::run(directory);
+  HostTest::triggerMappings(fs::path(directory) / "triggers");
   fs::remove_all(directory);
 }
