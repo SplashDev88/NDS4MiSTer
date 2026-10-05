@@ -75,7 +75,7 @@ slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged
 
 ## Private lid and microphone beta
 
-The matching `v0.9.0-rc.4-lidmic-beta.2` host/FPGA pair adds **Lid: Open
+The matching `v0.9.0-rc.4-lidmic-beta.3` host/FPGA pair adds **Lid: Open
 (Close)** / **Lid: Closed (Open)** to the NDS menu. Select that row to toggle.
 Alternatively, press **F10**, or assign **Toggle Lid** in System → Define
 NDS buttons. One press closes it; another opens it. Opening the OSD preserves the
@@ -93,11 +93,14 @@ mic is silent while the menu is open. Lost input events and disconnected
 controllers release held inputs.
 
 The FPGA supplies ARM7 EXTKEYIN lid state, the lid-open IRQ22, and touchscreen
-ADC channel 6 microphone samples. It retains the existing ARM7 HALTCNT halt
-implementation; exact whole-console power-down/clock gating is outside this
-beta. Renderer, clock, performance settings, and the active-ROM browser
-highlight are unchanged.
+ADC channel 6 microphone samples. HALTCNT Sleep also pauses ARM9, the LCD
+raster and both CPU timers until an enabled ARM7 interrupt wakes the console.
+The memory fabric remains active to finish outstanding transfers and deliver
+wake input. Ordinary ARM7 Halt still leaves ARM9 running. Renderer, clock,
+performance settings, and the active-ROM browser highlight are unchanged.
 
 Run `tools/test_lid_mic_vhdl.sh` for guest SPI/interrupt checks. The authored
 `tools/diagnostics/lid_mic` ROM reports lid state, sleep/wake counts and mic
 sample levels on screen without game assets or save/firmware writes.
+`tools/test_console_sleep.sh` checks ARM9 pause/resume with delayed memory
+responses and includes the previous ARM7-only behavior as a negative control.

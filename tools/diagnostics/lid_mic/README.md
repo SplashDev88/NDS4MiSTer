@@ -8,8 +8,8 @@ ARM7 reads EXTKEYIN, samples TSC microphone channel6 in batches of256, and
 writes HALTCNT=0xC0 when the lid closes. Only IRQ22 is enabled, with IME=0.
 Reopening must resume sampling, increment the wake count once, report IRQ
 `00400000`, and leave wake errors at0. ARM9 draws the mailbox without data
-caching. In melonDS, whole-system sleep freezes display; this core's existing
-HALTCNT implementation only halts ARM7.
+caching. HALTCNT Sleep pauses ARM9 and the LCD/timer cadence until ARM7 wakes,
+so the on-screen mailbox remains frozen while closed, as in melonDS.
 
 Released mic: MIN/MAX/AVG `800`, energy `000`. Held synthetic blow: varying
 MIN/MAX and nonzero energy. Touch channels remain separate. Controls come

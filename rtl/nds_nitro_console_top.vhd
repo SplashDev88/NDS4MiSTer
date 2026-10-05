@@ -901,6 +901,8 @@ architecture arch of nds_nitro_console_top is
    signal error_cpu7    : std_logic;
    signal cpu7_irq, cpu7_unhalt : std_logic;
    signal cpu7_newhalt : std_logic;
+   signal console_sleep : std_logic := '0';
+   signal sleep9_meta, sleep9 : std_logic := '0';
 
    signal bios_addr  : unsigned(13 downto 2);
    signal bios7_data : std_logic_vector(31 downto 0);
@@ -2020,6 +2022,19 @@ begin
       load_be => bios9_load_be, load_we => bios9_load_we
    );
 
+   -- Sleep stops both CPUs on the DS. NitroSDK's ARM9 sleep call relies on
+   -- that stop during a delay loop; leaving ARM9 running times out its power
+   -- management exchange while ARM7 is asleep. Use the CPU's existing DMA
+   -- pause path so in-flight memory responses are consumed and retained.
+   -- Keep the bus fabric, input and IRQ owners running to deliver lid wake.
+   process(clk2x)
+   begin
+      if rising_edge(clk2x) then
+         if resetCpu = '1' then sleep9_meta <= '0'; sleep9 <= '0';
+         else sleep9_meta <= console_sleep; sleep9 <= sleep9_meta; end if;
+      end if;
+   end process;
+
    icpu9 : entity work.nds_cpu9
    generic map ( is_simu => is_simu )
    port map
@@ -2053,7 +2068,7 @@ begin
       gb_bus_done     => cpu9_done,
       gb_bus_lock     => cpu9_lock,
       bus_lowbits     => cpu9_lowbits,
-      dma_on          => dma_on,
+      dma_on          => dma_on or sleep9,
       done            => cpu9_retire,
       CPU_bus_idle    => cpu9_bus_idle,
       PC_in_BIOS      => open,
@@ -2685,7 +2700,7 @@ begin
    generic map ( is_simu => '0' )
    port map
    (
-      clk => clk1x, ce => '1', reset => resetCpu,
+      clk => clk1x, ce => not console_sleep, reset => resetCpu,
       savestate_bus => ss_bus9, ss_wired_out => open, ss_wired_done => open,
       loading_savestate => '0',
       gb_bus => io_bus9, wired_out => timer_wired_out9, wired_done => timer_wired_done9,
@@ -2698,7 +2713,7 @@ begin
    generic map ( is_simu => '0' )
    port map
    (
-      clk => clk1x, ce => '1', reset => resetCpu,
+      clk => clk1x, ce => not console_sleep, reset => resetCpu,
       savestate_bus => ss_bus7, ss_wired_out => open, ss_wired_done => open,
       loading_savestate => '0',
       gb_bus => io_bus7, wired_out => timer_wired_out7, wired_done => timer_wired_done7,
@@ -2728,7 +2743,8 @@ begin
       wramcnt => wramcnt, vramcnt => vramcnt,
       pow_2da => pow_2da, pow_2db => pow_2db, pow_swap => pow_swap,
       exmem_gba7 => open, exmem_card7 => exmem_card7_s, exmem_prio7 => exmem_prio7,
-      halt7 => cpu7_newhalt
+      halt7 => cpu7_newhalt, wake7 => cpu7_unhalt,
+      console_sleep => console_sleep
    );
 
    -- ================= shared memory fabric =================
@@ -2868,7 +2884,7 @@ begin
       -- Preserve the beta93 real-time raster. Frame-event pressure describes
       -- HPS input admission, not completion of a visible 3D plane; using it
       -- as a clock-enable made beta95/beta96 hide 3D for seconds.
-      ce              => '1',
+      ce              => not console_sleep,
       reset           => resetCpu,
       gb_bus9         => io_bus9,
       wired_out9      => tim_wired_out9,

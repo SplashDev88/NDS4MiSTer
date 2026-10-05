@@ -20,8 +20,8 @@
 --   POSTFLG   0x04000300 (both CPUs, independent): bit 0 sticky-set until
 --             reset; ARM9 side also has r/w bit 1.
 --   HALTCNT   0x04000301 (ARM7, write-only): value 0x80/0xC0 halts the
---             ARM7 until IE & IF != 0 (halt7 pulse; sleep = plain halt
---             until POWCNT2/lid exist). Written by the HLE BIOS svcHalt.
+--             ARM7 until IE & IF != 0. Sleep additionally holds the console
+--             until an enabled ARM7 interrupt wakes it.
 --
 -- Register semantics per GBATEK / melonDS.
 
@@ -58,7 +58,9 @@ entity nds_syscnt is
       exmem_gba7   : out std_logic;   -- GBA slot belongs to ARM7
       exmem_card7  : out std_logic;   -- NDS card belongs to ARM7
       exmem_prio7  : out std_logic;   -- main-memory priority to ARM7
-      halt7        : out std_logic := '0'  -- 1-cycle pulse: HALTCNT halt
+      halt7        : out std_logic := '0'; -- 1-cycle pulse: HALTCNT halt
+      wake7        : in  std_logic := '0'; -- IE & IF, independent of IME
+      console_sleep : out std_logic := '0'
    );
 end entity;
 
@@ -121,6 +123,7 @@ begin
       if rising_edge(clk) then
          halt7 <= '0';
          if (reset = '1') then
+            console_sleep <= '0';
             if cold_boot = '1' then exmem9 <= x"6000";
             else exmem9 <= x"6580"; end if;
             exmem7lo  <= (others => '0');
@@ -130,6 +133,7 @@ begin
             postflg7  <= '0';
             postflg9  <= "00";
          else
+            if wake7 = '1' then console_sleep <= '0'; end if;
             if (preset_direct = '1') then
                r_wramcnt <= "11";
                postflg7  <= '1';
@@ -185,6 +189,9 @@ begin
                end if;
                if (bus7.bEna(1) = '1' and bus7.Din(15) = '1') then
                   halt7 <= '1';        -- HALTCNT 0x80 halt / 0xC0 sleep
+                  if bus7.Din(14) = '1' and wake7 = '0' then
+                     console_sleep <= '1';
+                  end if;
                end if;
             end if;
          end if;
