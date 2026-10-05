@@ -6,6 +6,15 @@ Build this frontend using `build.sh`. Its menu options are generated from the in
 
 Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_*.py"` from the repository root, plus the C++ test programs in this directory (including `test_storage.cpp` and `test_host_storage.cpp`). These tests use a fake SPI bus; they do not operate hardware.
 
+## Controller motion sensors
+
+Motion-sensor devices are ignored automatically. This keeps DualSense and
+DualShock 4 gyro reports from overwriting the right-stick stylus position,
+including small sensor changes while the controller is resting. The regular
+gamepad, keyboard and mouse remain available; no motion setting is required.
+The filter uses the Linux `INPUT_PROP_ACCELEROMETER` device property, rather
+than excluding a controller by name or USB/Bluetooth ID.
+
 ## Experimental DS firmware support
 
 In this release, `Load *.NDS` uses the built-in FreeBIOS and
@@ -75,7 +84,7 @@ slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged
 
 ## Private lid and microphone beta
 
-The matching `v0.9.0-rc.4-lidmic-beta.3` host/FPGA pair adds **Lid: Open
+The `v0.9.0-rc.4-lidmic-beta.4` package retains beta.3's FPGA and adds **Lid: Open
 (Close)** / **Lid: Closed (Open)** to the NDS menu. Select that row to toggle.
 Alternatively, press **F10**, or assign **Toggle Lid** in System → Define
 NDS buttons. One press closes it; another opens it. Opening the OSD preserves the

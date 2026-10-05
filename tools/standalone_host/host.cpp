@@ -1849,7 +1849,7 @@ class Host {
     if (save >= 0)
       require(fdatasync(save) == 0, "save flush");
   }
-  void scan() {
+  void scan(const fs::path &input_dir = "/dev/input") {
     nextscan = ms() + 1500;
     for (auto it = pads.begin(); it != pads.end();)
       if (it->disconnected || !fs::exists(it->path)) {
@@ -1863,7 +1863,7 @@ class Host {
         it = pads.erase(it);
       } else
         ++it;
-    for (auto &e : fs::directory_iterator("/dev/input")) {
+    for (auto &e : fs::directory_iterator(input_dir)) {
       auto path = e.path().string();
       if (e.path().filename().string().rfind("event", 0) != 0)
         continue;
@@ -1880,6 +1880,19 @@ class Host {
       char name[256] = {};
       ioctl(p.fd, EVIOCGNAME(sizeof(name)), name);
       if (std::string(name) == "MiSTer virtual input") {
+        close(p.fd);
+        continue;
+      }
+      // DualSense/DS4 sensors use ABS_RX/RY for gyro readings, on a separate
+      // evdev node with the same controller ID. They are not right sticks.
+      // Filter by the kernel property so USB/Bluetooth gamepad nodes remain
+      // usable and sensor noise cannot overwrite touch coordinates or buttons.
+      constexpr unsigned property_bits = sizeof(unsigned long) * 8;
+      std::array<unsigned long, (INPUT_PROP_CNT + property_bits - 1) / property_bits>
+          properties{};
+      if (ioctl(p.fd, EVIOCGPROP(sizeof(properties)), properties.data()) >= 0 &&
+          (properties[INPUT_PROP_ACCELEROMETER / property_bits] &
+           (1ul << (INPUT_PROP_ACCELEROMETER % property_bits)))) {
         close(p.fd);
         continue;
       }
@@ -1973,7 +1986,7 @@ class Host {
                 pad.map = new_map;
           }
           mapping_step = -1;
-          message = "Buttons saved";
+          message.clear();
         }
         dirty = true;
       }
