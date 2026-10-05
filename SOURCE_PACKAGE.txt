@@ -6,7 +6,8 @@ shipped component. Private development paths/history are not prerequisites.
 
 The exact tested beta.7 FPGA binary is packaged, adding lid sleep/wake and
 synthetic microphone blowing. The frontend includes menu-only lid control,
-hold-to-blow input, DualSense motion/trigger fixes and browser/menu improvements.
+hold-to-blow input, DualSense motion/trigger fixes, independent touch rotation
+for sideways games, and browser/menu improvements.
 Only its version label changes for release. The renderer, both Linux
 write-combining modules, 1 GHz clock setup and runtime speed options remain
 unchanged. Public launch paths remain Scripts/.NDS_Standalone. Normal

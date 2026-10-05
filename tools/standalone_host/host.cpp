@@ -15,6 +15,7 @@
 #include "storage_job.h"
 #include "storage_locations.h"
 #include "system_menu.h"
+#include "touch_rotation.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -287,6 +288,9 @@ class Host {
        system_menu = false, dirty = true;
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
+  TouchRotation touch_rotation = TouchRotation::Normal;
+  static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 8,
+                       RESET_CURSOR = 9, EXIT_CURSOR = 10;
   std::vector<SystemMenuRow> system_rows;
   int system_first = 0;
   bool recent_view = false, recent_clear_confirm = false, recents_enabled = true;
@@ -362,6 +366,9 @@ class Host {
     full_status[0] = status;
     atomicFile(fs::path(kit) / "NDS_v1.CFG", full_status.data(),
                sizeof(full_status));
+    const std::string touch_config = "NDS-TouchRotation-v1\n" +
+        std::string(TOUCH_ROTATION_NAMES[unsigned(touch_rotation)]) + "\n";
+    atomicFile(fs::path(kit) / "NDS_touch.cfg", touch_config.data(), touch_config.size());
     message = "Settings saved";
   }
   void serviceFramebufferMetadataRequest() {
@@ -1302,15 +1309,17 @@ class Host {
       rows[0] = " " + std::string(LOAD_LABEL);
       rows[1] = " Boot DS firmware";
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++)
-        rows[i + 3] = optionLabel(status, CORE_OPTIONS[i]);
-      rows[9] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
-      rows[11] = " Reset";
-      rows[12] = message.empty() ? personal_settings_notice : message;
+        rows[i + 3 + (i >= 2)] = optionLabel(status, CORE_OPTIONS[i]);
+      rows[5] = optionLabel(unsigned(touch_rotation),
+          {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
+      rows[10] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      rows[12] = " Reset";
+      rows[13] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
       selected = cursor <= 1 ? cursor
-                 : cursor <= 6 ? cursor + 1
-                 : cursor == 7 ? 9
-                 : cursor == 8 ? 11
+                 : cursor < LID_CURSOR ? cursor + 1
+                 : cursor == LID_CURSOR ? 10
+                 : cursor == RESET_CURSOR ? 12
                                : 15;
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
@@ -1345,7 +1354,7 @@ class Host {
     if (!menu)
       for (const auto &p : pads)
         if (p.touch_analog_valid) {
-          spi.cmd(Spi::IO, 0x3d, {0, p.analog});
+          spi.cmd(Spi::IO, 0x3d, {0, rotateTouchAnalog(p.analog, touch_rotation)});
           break;
         }
     log(menu ? "menu opened" : "menu closed");
@@ -1399,6 +1408,7 @@ class Host {
           // Reset frontend options without pulsing reset; both engines stay on.
           status = REQUIRED_STATUS;
           full_status.fill(0);
+          touch_rotation = TouchRotation::Normal;
           saveSettings();
           sendstatus();
           message = "Defaults restored";
@@ -1419,7 +1429,7 @@ class Host {
     idle_since = ms();
     version_footer.reset(idle_since);
     next_scroll = idle_since + 1000;
-    int count = browser ? (int)roms.size() : system_menu ? 6 : 10;
+    int count = browser ? (int)roms.size() : system_menu ? 6 : EXIT_CURSOR + 1;
     if (a == 0 && count)
       cursor = (cursor + count - 1) % count;
     if (a == 1 && count)
@@ -1508,8 +1518,11 @@ class Host {
         // when an option is selected. Values use Select or +/- instead.
         system_menu = true;
         cursor = 0;
-      } else if ((a == 2 || a == 7 || a == 8) && cursor >= 2 && cursor <= 6) {
-        const auto &o = CORE_OPTIONS[cursor - 2];
+      } else if ((a == 2 || a == 7 || a == 8) && cursor == TOUCH_ROTATION_CURSOR) {
+        touch_rotation = TouchRotation((unsigned(touch_rotation) + (a == 7 ? 2 : 1)) % 3);
+        message.clear();
+      } else if ((a == 2 || a == 7 || a == 8) && cursor >= 2 && cursor < LID_CURSOR) {
+        const auto &o = CORE_OPTIONS[cursor - 2 - (cursor > TOUCH_ROTATION_CURSOR)];
         status = changeOption(status, o, a == 7 ? -1 : 1);
         sendstatus();
         message.clear();
@@ -1521,14 +1534,14 @@ class Host {
         case 1:
           openFirmware();
           break;
-        case 7:
+        case LID_CURSOR:
           toggleLid();
           break;
-        case 8:
+        case RESET_CURSOR:
           try { reset(); togglemenu(); }
           catch (const std::exception &e) { firmwareError("Cannot reset firmware", e.what()); }
           break;
-        case 9:
+        case EXIT_CURSOR:
           togglemenu();
           break;
         }
@@ -2146,7 +2159,7 @@ class Host {
             int shift = e.code == rx ? 0 : 8;
             p.analog = (p.analog & ~(255 << shift)) | (uint8_t(value) << shift);
             if (!menu)
-              spi.cmd(Spi::IO, 0x3d, {0, p.analog});
+              spi.cmd(Spi::IO, 0x3d, {0, rotateTouchAnalog(p.analog, touch_rotation)});
           }
           // A DualSense trigger reports both a button and an analog axis.
           // During mapping use the button's press/release edge only: treating
@@ -2170,7 +2183,11 @@ class Host {
             p.y -= e.value;
         } else if (e.type == EV_SYN && e.code == SYN_REPORT) {
           if (!menu && (p.x || p.y || p.mouse != p.lastmouse)) {
-            int x = std::clamp(p.x, -127, 127), y = std::clamp(p.y, -127, 127);
+            // PS/2 Y points upward; rotate in screen coordinates, then convert
+            // back for the core's mouse protocol. Buttons remain unchanged.
+            auto [dx, dy] = rotateTouch(std::clamp(p.x, -127, 127),
+                                      -std::clamp(p.y, -127, 127), touch_rotation);
+            int x = dx, y = -dy;
             spi.cmd(
                 Spi::IO, 4,
                 {uint16_t(8 | p.mouse | (x < 0 ? 16 : 0) | (y < 0 ? 32 : 0)),
@@ -2220,6 +2237,12 @@ public:
     std::ifstream cfg(cfgpath, std::ios::binary);
     cfg.read((char *)full_status.data(), sizeof(full_status));
     status = cleanStatus(full_status[0]);
+    std::ifstream touch_config(fs::path(kit) / "NDS_touch.cfg");
+    std::string touch_header, touch_value;
+    if (std::getline(touch_config, touch_header) && touch_header == "NDS-TouchRotation-v1" &&
+        std::getline(touch_config, touch_value))
+      for (unsigned i = 0; i < 3; ++i)
+        if (touch_value == TOUCH_ROTATION_NAMES[i]) touch_rotation = TouchRotation(i);
     std::ifstream ini(sd_root / "MiSTer.ini");
     std::string text((std::istreambuf_iterator<char>(ini)),
                      std::istreambuf_iterator<char>());

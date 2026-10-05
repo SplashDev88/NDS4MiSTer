@@ -1,6 +1,6 @@
 {
-  "accepted_baseline": "Hardware-accepted lid/mic beta.7, retaining rc.4 Fire Emblem fix and runtime performance components",
-  "accepted_frontend": "8266a4c3e835d2dd570a12f62b205ef3835ec7ef",
+  "accepted_baseline": "Hardware-accepted touch beta.1 on the accepted lid/mic beta.7 FPGA; retaining rc.4 Fire Emblem fix and runtime performance components",
+  "accepted_frontend": "b3a471a311908b1519ac4d3c2013b334718ea610",
   "components": {
     "fpga": {
       "build_receipt": "docs/FPGA_BUILD_V090_RC5.json",
@@ -13,14 +13,14 @@
       "sources": "All 1328 frozen FPGA inputs verified against this tree. Exact tested beta.7 RBF retained without rebuild."
     },
     "host": {
-      "accepted_parent_sha256": "4f964d682ad68d13a985a56bf6eb01351d35da462ea10c01bd926856051b1293",
-      "behavior_change": "Release version label only. Accepted beta.7 host reproduced byte-for-byte with this toolchain; host.cpp and implementation headers are unchanged.",
+      "accepted_parent_sha256": "34179c89b99c305c049ca3cd292e6a5eb86774e0f8c177570710505918f85275",
+      "behavior_change": "Release version label only. Accepted touch beta.1 host reproduced byte-for-byte with this toolchain; host.cpp and implementation headers are unchanged.",
       "compiler": "GCC 13.3.0",
       "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
       "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
       "frontend_build_receipt": "docs/STANDALONE_FRONTEND_BUILD_V090_RC5.json",
-      "frontend_build_receipt_sha256": "4bcb36933b29eaeb036eda6f9d817dcaa37aa1830fa443be82cea94612b68a58",
-      "sha256": "6b38ee4d53c63c83f127f91f6d622a85a6671f22199a2ef7ed08391d91c53f90",
+      "frontend_build_receipt_sha256": "46cff6046b8ff34a812d668634d635eeaa7c8a294fc27783b0d8da0c0cf030b1",
+      "sha256": "7947819dd23bd5cdd55c7e1fe785505c4ada5b9c233856960b6342738794027d",
       "source": "tools/standalone_host"
     },
     "renderer": {
@@ -69,8 +69,8 @@
     "supervisor.py": "4bf3285ee6fdb0279d46dc65ce7932ab1a44360cef3860cca0ae8d5879d36c51"
   },
   "validation": {
-    "hardware": "User accepted the beta.7 microphone test and requested release packaging. Prior user-confirmed lid sleep/wake, DualSense motion and trigger fixes retained. Exact accepted FPGA binary retained without rebuild.",
-    "host": "34 launcher/clock Python tests and six C++ suites pass: menu, presentation, host, lid/mic, motion/trigger input, and storage/browser selection. Accepted beta.7 host reproduced exactly.",
+    "hardware": "User confirmed Ninja Gaiden touch rotation works in touch beta.1 and requested its inclusion in rc.5. Prior accepted microphone, lid sleep/wake and DualSense fixes retained. The exact accepted FPGA binary remains unchanged.",
+    "host": "Final rc.5 ARM build plus touch-rotation, host/menu and lid/mic C++ regression suites pass. The accepted touch beta.1 binary is reproduced exactly using the pinned toolchain. Prior passing launcher/clock, motion/trigger, storage, menu-model and presentation suites cover unchanged implementations.",
     "packaging": "Public source/history, archive allowlist, checksums, modes and source correspondence are audited before package readiness; no user data included.",
     "rtl": "Previously completed beta.7 SPI mic/lid and firmware regressions retained with unchanged FPGA inputs. New waveform and actual VHDL sample replay raised Yoshi in the NSMB software reference; user subsequently accepted physical beta.7 testing."
   },

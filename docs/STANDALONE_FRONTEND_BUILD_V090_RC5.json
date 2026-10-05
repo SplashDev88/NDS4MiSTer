@@ -1,7 +1,7 @@
 {
-  "accepted_host_sha256": "4f964d682ad68d13a985a56bf6eb01351d35da462ea10c01bd926856051b1293",
-  "accepted_source": "8266a4c3e835d2dd570a12f62b205ef3835ec7ef",
-  "change_since_accepted_candidate": "Release version label only. Accepted beta.7 host reproduced byte-for-byte with this toolchain; host.cpp and implementation headers are unchanged.",
+  "accepted_host_sha256": "34179c89b99c305c049ca3cd292e6a5eb86774e0f8c177570710505918f85275",
+  "accepted_source": "b3a471a311908b1519ac4d3c2013b334718ea610",
+  "change_since_accepted_candidate": "Release version label only. Accepted touch beta.1 host reproduced byte-for-byte with this toolchain; host.cpp and implementation headers are unchanged.",
   "command": "arm-linux-gnueabihf-g++ -std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard host.cpp -o nds_standalone_host",
   "container_image": "sha256:4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
   "inputs": {
@@ -12,7 +12,7 @@
     "tools/standalone_host/font.h": "ac03c9cfac2785c280586db70da6a69f5f2cf1d9b0be3816fcc7b050eb0ad378",
     "tools/standalone_host/framebuffer_metadata.h": "a25c6c8cf2ad9ddd26a1779d7a5ca7f3b97cd03c43e24923657005eabc9a5640",
     "tools/standalone_host/freebios_media.h": "b7deaa7d875445b8831607db00b07d2cf0c6185f67543e3ca93ea3e020af36f2",
-    "tools/standalone_host/host.cpp": "d103be539eaf4bf99fe6e82ed0b9d706555e876d7975fad7b45191e6d1e5851d",
+    "tools/standalone_host/host.cpp": "93c683f384520010b8e3a27b37d13dc3617e7837408cb083a8257799169c00fe",
     "tools/standalone_host/menu_model.h": "3a44b6a61ba39249dfce619d9dedca5ac5ba8a5ce4892b5e66d2acc1aab6998d",
     "tools/standalone_host/menu_presentation.h": "5e237b207c7da201e0c372b70d1e3fff284907497443b3528b9eeb565d4941d3",
     "tools/standalone_host/osd_frame.h": "aa835f48d2cc5b5cccde100ea4e0b3205d38827406df77b55b48b577ce31e513",
@@ -25,8 +25,9 @@
     "tools/standalone_host/storage_locations.h": "fc99ec1b6fe6c882cc60fa13a7543aed78d53f926c479ba281cfcb14a2e576eb",
     "tools/standalone_host/system_menu.h": "9869f18a052ef4517024dff228529f667670e05116f05981731452bda20420d1",
     "tools/standalone_host/test_firmware_fixture.h": "fe5ebef20e69615489ae47ac0c06f8c8339f8db618d3a1a51a212999dfde15f9",
-    "tools/standalone_host/test_rom_fixture.h": "967c6bde0f1b0bd05de78444d10711b1296fdf5c2834e20a033153ecd31cb8f5"
+    "tools/standalone_host/test_rom_fixture.h": "967c6bde0f1b0bd05de78444d10711b1296fdf5c2834e20a033153ecd31cb8f5",
+    "tools/standalone_host/touch_rotation.h": "fa8c2db2a6ace1b16e363e92869e55d495d8364910043a899b89bf49b65e68e3"
   },
-  "release_host_sha256": "6b38ee4d53c63c83f127f91f6d622a85a6671f22199a2ef7ed08391d91c53f90",
+  "release_host_sha256": "7947819dd23bd5cdd55c7e1fe785505c4ada5b9c233856960b6342738794027d",
   "version": "v0.9.0-rc.5"
 }

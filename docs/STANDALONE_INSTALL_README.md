@@ -1,6 +1,6 @@
 # NDS4MiSTer v0.9.0-rc.5
 
-**Lid control, microphone blowing, DualSense fixes, and everyday menu improvements.**
+**Lid control, microphone blowing, touch rotation, DualSense fixes, and menu improvements.**
 
 ## Install and play
 
@@ -35,6 +35,14 @@ Hold **F11** to blow into the microphone, or map **Blow into Mic** through
 **System → Define NDS buttons**. Release for silence. Existing mappings remain
 valid; define buttons again to add a microphone binding. Lid control is menu-only.
 DualSense motion sensors are ignored, and a trigger pull maps one action at a time.
+
+## Sideways games
+
+**Touch Rotation**, directly below Video Rotation, changes right-stick and mouse
+touch directions independently of the picture. Use **90 CW** for the tested
+Ninja Gaiden orientation, **90 CCW** for the opposite direction, and **Normal**
+for ordinary DS games or TATE with a physically rotated monitor.
+**System → Save settings** remembers the choice; switch back to Normal when needed.
 
 ## Optional DS firmware menu
 

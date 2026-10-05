@@ -20,7 +20,7 @@ struct HostTest {
   }
   static void closeThroughMenu(Host &host) {
     if (!host.menu) host.togglemenu();
-    host.cursor = 7;
+    host.cursor = Host::LID_CURSOR;
     if (!host.lid_closed) host.action(2);
     assert(host.lid_closed && host.menu);
     host.togglemenu();
@@ -51,7 +51,7 @@ struct HostTest {
     h.inputs();
     assert(h.menu && h.lastjoy == 0); // Menus silence the microphone.
     ignoredLidShortcuts(h, pad);
-    h.cursor = 7;
+    h.cursor = Host::LID_CURSOR;
     h.action(2);
     h.inputs();
     assert(h.lid_closed && h.menu && h.lastjoy == Host::LID_MASK);
@@ -66,7 +66,7 @@ struct HostTest {
     h.inputs();
     assert(h.lastjoy == (Host::LID_MASK | 16));
     h.togglemenu();
-    h.cursor = 7;
+    h.cursor = Host::LID_CURSOR;
     h.action(2);
     assert(!h.lid_closed && h.menu && !h.lastjoy);
     h.togglemenu();

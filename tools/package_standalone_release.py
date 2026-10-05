@@ -20,11 +20,11 @@ ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
 VERSION = 'v0.9.0-rc.5'
-HOST_SHA = '6b38ee4d53c63c83f127f91f6d622a85a6671f22199a2ef7ed08391d91c53f90'
-FRONTEND_BUILD_SHA = '4bcb36933b29eaeb036eda6f9d817dcaa37aa1830fa443be82cea94612b68a58'
+HOST_SHA = '7947819dd23bd5cdd55c7e1fe785505c4ada5b9c233856960b6342738794027d'
+FRONTEND_BUILD_SHA = '46cff6046b8ff34a812d668634d635eeaa7c8a294fc27783b0d8da0c0cf030b1'
 FPGA_BUILD_SHA = 'ab2cee53ebd29c3e59882bcafaa24ad0ca7ab07cb58162daa80970a19ea36bbc'
 FPGA_SOURCE_SHA = 'd5e67bf7b1833ab62ff659480bce89208f95cd328d0b73bee91247ed6463a0c0'
-ACCEPTED_HOST_SHA = '4f964d682ad68d13a985a56bf6eb01351d35da462ea10c01bd926856051b1293'
+ACCEPTED_HOST_SHA = '34179c89b99c305c049ca3cd292e6a5eb86774e0f8c177570710505918f85275'
 RUNTIME_INPUT_SHA = '69af0c78f60f6a9409743945103264630034c367264907dc2cc8abe66d6e9a21'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
@@ -115,7 +115,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
-        'host_change': 'Release version label only; frontend behavior unchanged from accepted lid/mic beta.7.',
+        'host_change': 'Release version label only; frontend behavior unchanged from accepted touch beta.1.',
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
@@ -137,7 +137,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Lid sleep/wake, microphone blowing, DualSense input fixes and browser/menu improvements; accepted beta.7 FPGA binary retained; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.',
+        'scope': 'Lid sleep/wake, microphone blowing, DualSense input fixes, independent touch rotation and browser/menu improvements; accepted beta.7 FPGA binary retained; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.',
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'

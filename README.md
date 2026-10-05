@@ -1,6 +1,6 @@
 # NDS4MiSTer
 
-**Lid control, microphone blowing, DualSense fixes, and everyday menu improvements.**
+**Lid control, microphone blowing, touch rotation, DualSense fixes, and menu improvements.**
 
 [Download v0.9.0-rc.5](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.5) · [Quick start](docs/STANDALONE_QUICK_START.txt)
 
@@ -9,6 +9,7 @@
 - **Open/close lid support.** Toggle the virtual DS lid from the main menu, above Reset. Open it again from the same menu to wake games that enter sleep. Lid control is menu-only.
 - **Microphone blowing.** Hold **F11** or map **Blow into Mic** under **System → Define NDS buttons**. Release to stop blowing. The synthetic breath input works with the tested New Super Mario Bros. Yoshi balloon minigame; it does not capture speech or a real microphone.
 - **DualSense (PS5) fixes.** Controller motion no longer moves or recenters the stylus. Each trigger pull registers once while mapping buttons.
+- **Touch rotation for sideways games.** The new **Touch Rotation** option sits below Video Rotation and rotates right-stick and mouse touch input independently of the picture. **90 CW** corrects the tested Ninja Gaiden orientation; **90 CCW** handles the opposite direction. Use **Normal** for ordinary DS games and save the choice with **System → Save settings**.
 - **Remember the playing game.** Reopening **Load \*.NDS** while playing highlights the current ROM. A fresh core launch starts at the top of the remembered folder.
 - **Menu improvements.** Video Rotation now sits directly below Video Layout, lid control is separated from Reset, and the button-mapping confirmation no longer appears in the ROM browser.
 - Retains the **Fire Emblem: Shadow Dragon** graphics fix from rc.4.

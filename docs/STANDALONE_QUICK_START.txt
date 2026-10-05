@@ -95,6 +95,19 @@ Keyboard gameplay: arrows=D-pad, X/Z=A/B, S/A=X/Y, Q/W=L/R,
 Right Shift=Select, Enter=Start, Space=Touch. Mouse movement/left click and
 a mapped right stick/Touch button control the touch screen.
 
+SIDEWAYS GAMES AND TOUCH ROTATION
+
+Touch Rotation sits directly below Video Rotation and changes right-stick
+and mouse touch directions independently of the picture and game buttons.
+For the tested Ninja Gaiden orientation, select 90 CW: an Up input that
+previously moved the stylus Left now moves it Up. Use 90 CCW for the opposite
+orientation. Normal preserves ordinary DS and physically rotated TATE input.
+
+Changes apply when you return to the game. System -> Save settings remembers
+the choice across launches; switch back to Normal for games that do not need
+rotation. System -> Reset settings restores Normal. Existing controller
+mappings and display settings remain usable.
+
 LID AND MICROPHONE
 
 Use the Lid row on the main menu, above Reset, to close the virtual DS.
@@ -169,7 +182,9 @@ TATE AND OPTIONAL 1080P
 
 Choose Video Layout -> Top/Bottom. Rotate the picture opposite to the
 physical monitor turn: 90 CCW for clockwise, 90 CW for counterclockwise.
-D-pad, mouse and touch directions follow the rotated display.
+For TATE on a physically rotated monitor, keep Touch Rotation set to Normal.
+For a game that uses the DS sideways on an unrotated monitor, choose the
+appropriate Touch Rotation separately as described above.
 
 The menu rotates separately. For a 1080p-capable portrait screen:
 

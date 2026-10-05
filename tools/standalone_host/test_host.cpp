@@ -667,7 +667,7 @@ R"({
     assert(!host.system_menu && host.cursor == 0);
     // Right opens the adjacent System page from EVERY core row. It must
     // never change an option or pulse reset. Left returns to Load NDS.
-    for (int row = 0; row < 9; ++row) {
+    for (int row = 0; row <= Host::EXIT_CURSOR; ++row) {
       host.cursor = row;
       host.spi.history.clear();
       host.action(6);
@@ -687,27 +687,28 @@ R"({
       std::string text;
       if (!row) text = " " + std::string(LOAD_LABEL);
       else if (row == 1) text = " Boot DS firmware";
-      else if (row >= 3 && row <= 7) text = optionLabel(0, CORE_OPTIONS[row-3]);
-      else if (row == 9) text = " Lid: Open (Close)";
-      else if (row == 11) text = " Reset";
+      else if (row == 5) text = " Touch Rotation:      Normal";
+      else if (row >= 3 && row <= 8) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
+      else if (row == 10) text = " Lid: Open (Close)";
+      else if (row == 12) text = " Reset";
       else if (row == 15) text = "            exit";
       auto bytes = expected.renderRow(row, text, row == 0, nds_osd::arrow_right);
       assert(t.words == std::vector<uint16_t>(bytes.begin(), bytes.end()));
     }
-    host.cursor = 7;
+    host.cursor = Host::LID_CURSOR;
     host.action(1);
-    assert(host.cursor == 8);
+    assert(host.cursor == Host::RESET_CURSOR);
     host.action(1);
-    assert(host.cursor == 9);
+    assert(host.cursor == Host::EXIT_CURSOR);
     host.action(1);
     assert(host.cursor == 0);
     host.action(0);
-    assert(host.cursor == 9);
+    assert(host.cursor == Host::EXIT_CURSOR);
     host.action(2);
     assert(!host.menu);
     host.togglemenu();
     // Native counter option and rotation: no Engine B cursor or reset writes.
-    host.cursor = 6;
+    host.cursor = 7;
     host.action(2);
     assert(host.status == (16 | REQUIRED_STATUS));
     for (const auto &t : host.spi.history)
@@ -840,7 +841,7 @@ R"({
     assert(host.menu);
     host.key(p, BTN_TL, false);
     host.key(p, BTN_TR, false);
-    host.cursor = 6;
+    host.cursor = 7;
     host.key(p, BTN_EAST, true);
     assert(!(host.status & 16));
     host.key(p, BTN_EAST, false);
@@ -917,7 +918,7 @@ R"({
     host.action(1);
     host.draw();
     assert(host.osd_rows[15] == host.frame.renderRow(15, "            exit", false, nds_osd::arrow_right));
-    host.cursor = 9;
+    host.cursor = Host::EXIT_CURSOR;
     host.draw();
     assert(host.osd_rows[15] == host.frame.renderRow(15, "            exit", true, nds_osd::arrow_right));
     host.action(6);
