@@ -1581,15 +1581,15 @@ wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : {
 `ifdef NDS_NATIVE_BOOT_PC_DIAGNOSTIC
 // Evidence-only native memory diagnostic. Header word24 is a type tag;
 // word25 retains all32 payload bits. The existing slow selector repeats
-// PC9, reserved zero, memory state, and CPU9/cache control twice per cycle.
-// PC9/memory/control diagnostic: slot1 is reserved zero; ARM7 is not exposed.
-// The new4C59 namespace prevents mistaking reserved slot1 for a live ARM7 PC.
+// PC9, PC7, memory state, and CPU9/cache control twice per cycle.
+// The 4C5A namespace distinguishes the live ARM7 slot from the older reserved
+// zero slot. This observation helps diagnose guest sleep/wake waits.
 // Keep full raw ARM9 PC and the original probe/control fields for V2 diagnosis.
 // Both words share the control block's existing64-bit header write. Source
 // clock crossings remain non-atomic: only stable repeated observations are
 // evidence, never a single transition or an inferred retired instruction.
 wire [31:0] h3d_diagnostic_heartbeat =
-    32'h4c590000 | {30'd0, h3d_telemetry_index[1:0]};
+    32'h4c5a0000 | {30'd0, h3d_telemetry_index[1:0]};
 `elsif NDS_NSMB_DMA_DIAGNOSTIC
 wire [31:0] h3d_diagnostic_heartbeat = h3d_bg1_scroll_ddr;
 `elsif NDS_SEAM_DIAGNOSTIC
@@ -1654,7 +1654,7 @@ logic [31:0] h3d_public_crash_telemetry;
 always_comb begin
     case (h3d_telemetry_index[1:0])
         2'd0: h3d_public_crash_telemetry = dbg_pc9_diag;
-        2'd1: h3d_public_crash_telemetry = 32'd0;
+        2'd1: h3d_public_crash_telemetry = dbg_pc7_diag;
         2'd2: h3d_public_crash_telemetry = dbg_mem_probe_diag;
         2'd3: h3d_public_crash_telemetry = dbg_cpu9_addr_diag;
     endcase

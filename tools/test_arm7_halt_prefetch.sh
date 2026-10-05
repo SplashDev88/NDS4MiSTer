@@ -14,13 +14,14 @@ tb="$repo/rtl/tb_nds_arm7_halt_prefetch.vhd"
 nvc --std=2008 -a "$p/export.vhd" "$p/proc_bus_gba.vhd" \
     "$p/reg_savestates.vhd" "$p/gba_cpu.vhd" "$p/nds_membus7.vhd" \
     "$p/nds_syscnt.vhd" "$tb"
+for masked in true false; do
 for thumb in false true; do
     for return_thumb in false true; do
         for padding in 0 1 2 3; do
             for dma in false true; do
                 for wake in 0 1 7; do
-                    echo "CASE thumb=$thumb return_thumb=$return_thumb padding=$padding dma=$dma wake=$wake"
-                    nvc --std=2008 -e -gTHUMB="$thumb" \
+                    echo "CASE masked=$masked thumb=$thumb return_thumb=$return_thumb padding=$padding dma=$dma wake=$wake"
+                    nvc --std=2008 -e -gMASK_IRQ="$masked" -gTHUMB="$thumb" \
                         -gRETURN_THUMB="$return_thumb" -gHALT_NOPS="$padding" \
                         -gDMA_PAUSE="$dma" -gWAKE_TICKS="$wake" \
                         tb_nds_arm7_halt_prefetch
@@ -30,6 +31,7 @@ for thumb in false true; do
             done
         done
     done
+done
 done
 # The native-shaped sequence is a masked HALTCNT store, two NOPs, and BX LR.
 nvc --std=2008 -e -gCOUNT_NOPS=false tb_nds_arm7_halt_prefetch
@@ -65,4 +67,4 @@ if nvc --std=2008 -r tb_nds_arm7_halt_prefetch --ieee-warnings=off \
     exit 1
 fi
 grep -F 'HALT wake failed return / skipped BX LR' negative.log
-echo 'PASS: 96 masked HALT side-effect/interworking cases, native NOP sequence, and negative control'
+echo 'PASS: 192 masked/unmasked HALT side-effect/interworking cases, native NOP sequence, and negative control'

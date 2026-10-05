@@ -13,7 +13,8 @@ use work.pProc_bus_gba.all;
 entity tb_nds_arm7_halt_prefetch is
   generic(THUMB:boolean:=false; RETURN_THUMB:boolean:=THUMB;
           HALT_NOPS:natural:=2; COUNT_NOPS:boolean:=true;
-          DMA_PAUSE:boolean:=false; WAKE_TICKS:natural:=50);
+          DMA_PAUSE:boolean:=false; WAKE_TICKS:natural:=50;
+          MASK_IRQ:boolean:=true);
 end;
 architecture sim of tb_nds_arm7_halt_prefetch is
   signal clk:std_logic:='0'; signal reset:std_logic:='1';
@@ -53,7 +54,7 @@ architecture sim of tb_nds_arm7_halt_prefetch is
       when 0 => return x"EA00003E"; -- branch 0x100
       when 16#18# => return x"EA000078"; -- branch IRQ handler 0x200
       when 16#100# =>
-        return x"E321F09F"; -- native-style masked IRQ, unhalt is independent
+        if MASK_IRQ then return x"E321F09F"; else return x"E321F01F"; end if;
       when 16#104# => return x"E3A00301"; -- r0=04000000
       when 16#108# => return x"E2800C03"; -- r0+=300
       when 16#10C# => return x"E3A01080"; -- r1=80
@@ -133,10 +134,15 @@ begin
     report "HALTED pc="&to_hstring(pc)&" lr="&to_hstring(regval);
     for i in 1 to WAKE_TICKS loop wait until falling_edge(clk); end loop; irq<='1'; unhalt<='1';
     wait until halt='0'; wait until falling_edge(clk); unhalt<='0';
+    if not MASK_IRQ then
+      wait until irq_seen for 100 us;
+      assert irq_seen report "Wake IRQ was not taken" severity failure;
+      irq<='0';
+    end if;
     wait until finished or escaped for 100 us;
     report "WAKE pc="&to_hstring(pc)&" lr="&to_hstring(regval)&" irq_seen="&boolean'image(irq_seen);
     assert finished report "HALT wake failed return / skipped BX LR" severity failure;
-    assert not irq_seen report "IRQ mask behavior mismatch" severity failure;
+    assert irq_seen = (not MASK_IRQ) report "IRQ mask behavior mismatch" severity failure;
     report "PASS: HALTCNT wake preserves following operations and BX LR";
     stop; wait;
   end process;

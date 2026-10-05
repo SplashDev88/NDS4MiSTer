@@ -1757,6 +1757,18 @@ begin
                   decode_rdest            <= x"E";
                   if (decode_unhalt = '1' or fetch_done = '1') then
                      decode_PC <= fetch_PC;
+                     -- A branch can retire as HALTCNT reaches decode. Its
+                     -- target then has only one prefetched instruction and
+                     -- no decoded instruction. Refill the missing PC bias
+                     -- for IRQ entry, or SUBS PC,LR,#4 returns one instruction
+                     -- before that target after wake.
+                     if (decode_unhalt = '1' and decode_ready = '0') then
+                        if (thumbmode = '1') then
+                           decode_PC <= fetch_PC + 2;
+                        else
+                           decode_PC <= fetch_PC + 4;
+                        end if;
+                     end if;
                   end if;
                end if;
             end if;
