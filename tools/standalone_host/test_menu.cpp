@@ -19,13 +19,13 @@ int main() {
               ~(((1 << o.width) - 1) << o.shift)) == 0);
     }
   }
-  assert(CORE_OPTIONS[3].shift == 4 &&
-         std::string(CORE_OPTIONS[3].label) == "3D FPS Counter");
-  assert(CORE_OPTIONS[4].shift == 11 &&
-         std::string(CORE_OPTIONS[4].label) == "Video Rotation");
-  assert((changeOption(0, CORE_OPTIONS[4], 1) & 1) == 0);
+  assert(CORE_OPTIONS[4].shift == 4 &&
+         std::string(CORE_OPTIONS[4].label) == "3D FPS Counter");
+  assert(CORE_OPTIONS[1].shift == 11 &&
+         std::string(CORE_OPTIONS[1].label) == "Video Rotation");
+  assert((changeOption(0, CORE_OPTIONS[1], 1) & 1) == 0);
   assert(optionLabel(0, CORE_OPTIONS[0]) == " Video Layout:    Left/Right");
-  assert(optionLabel(0, CORE_OPTIONS[4]) == " Video Rotation:         Off");
+  assert(optionLabel(0, CORE_OPTIONS[1]) == " Video Rotation:         Off");
   for (const auto &o : CORE_OPTIONS)
     for (unsigned value = 0; value < o.count; ++value) {
       const auto label = optionLabel(value << o.shift, o);

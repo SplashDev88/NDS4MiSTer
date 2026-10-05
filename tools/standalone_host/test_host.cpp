@@ -707,13 +707,13 @@ R"({
     assert(!host.menu);
     host.togglemenu();
     // Native counter option and rotation: no Engine B cursor or reset writes.
-    host.cursor = 5;
+    host.cursor = 6;
     host.action(2);
     assert(host.status == (16 | REQUIRED_STATUS));
     for (const auto &t : host.spi.history)
       if (t.select == Spi::IO && t.command == 0x1e)
         assert(!t.words.empty() && !(t.words[0] & 1));
-    host.cursor = 6;
+    host.cursor = 3;
     host.action(7);
     assert((host.status & 6144) == 4096);
     host.full_status[4] = 0xdead;
@@ -840,7 +840,7 @@ R"({
     assert(host.menu);
     host.key(p, BTN_TL, false);
     host.key(p, BTN_TR, false);
-    host.cursor = 5;
+    host.cursor = 6;
     host.key(p, BTN_EAST, true);
     assert(!(host.status & 16));
     host.key(p, BTN_EAST, false);

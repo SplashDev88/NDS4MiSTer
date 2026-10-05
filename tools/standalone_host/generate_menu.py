@@ -18,6 +18,11 @@ for row in re.findall(r'"([^"\n]+)"', conf):
     if row.startswith("FS3,"):
         load = row.split(",")[2]
 assert load and options and len(options) < 10
+# Keep the standalone display controls together without changing FPGA bits.
+rotation = next(option for option in options if option[2] == "Video Rotation")
+options.remove(rotation)
+layout_index = next(i for i, option in enumerate(options) if option[2] == "Video Layout")
+options.insert(layout_index + 1, rotation)
 # The standalone browser uses a file-pattern label; the accepted FPGA keeps
 # its legacy MiSTer FS3 label. This changes no option bits or generated rows.
 load = "Load *.NDS"
