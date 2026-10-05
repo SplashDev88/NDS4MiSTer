@@ -26,7 +26,7 @@ set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
 set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
 set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
 set_global_assignment -name OPTIMIZE_HOLD_TIMING "ALL PATHS"
-set_global_assignment -name SEED 5
+set_global_assignment -name SEED 6
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
 # The FPGA console sound engine drives the normal MiSTer audio cone. Keep the
