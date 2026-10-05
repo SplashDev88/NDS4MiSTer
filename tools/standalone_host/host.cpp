@@ -285,6 +285,7 @@ class Host {
   bool menu = true, browser = false, core_browser = false,
        system_menu = false, dirty = true;
   bool reset_confirm = false;
+  bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
   std::vector<SystemMenuRow> system_rows;
   int system_first = 0;
   bool recent_view = false, recent_clear_confirm = false, recents_enabled = true;
@@ -297,9 +298,13 @@ class Host {
   std::array<uint32_t, 32> new_map{};
   static constexpr unsigned GAME_BUTTON_COUNT = 13;
   static constexpr unsigned VIDEO_LAYOUT_BUTTON = GAME_BUTTON_COUNT;
-  static constexpr std::array<const char *, GAME_BUTTON_COUNT + 1> button_names = {
+  static constexpr unsigned LID_BUTTON = GAME_BUTTON_COUNT + 1;
+  static constexpr unsigned MIC_BUTTON = GAME_BUTTON_COUNT + 2;
+  static constexpr uint32_t LID_MASK = 1u << 13, MIC_MASK = 1u << 14;
+  static constexpr std::array<const char *, GAME_BUTTON_COUNT + 3> button_names = {
       "Right", "Left", "Down", "Up",     "A",     "B",    "X",
-      "Y",     "L",    "R",    "Select", "Start", "Touch", "Cycle Video Layout"};
+      "Y",     "L",    "R",    "Select", "Start", "Touch", "Cycle Video Layout",
+      "Toggle Lid", "Blow into Mic"};
   int cursor = 0, repeat_action = -1, repeat_code = -1;
   std::string repeat_pad;
   uint64_t next_repeat = 0, next_scroll = 0;
@@ -321,9 +326,9 @@ class Host {
   void readCoreMap(Pad &p, const fs::path &config) {
     const auto name = "NDS_input_" + p.id + "_v3.map";
     if (!readmap(config / name, p.map)) readmap(config.parent_path() / name, p.map);
-    // This frontend-only binding has no meaning in an imported Main map.
-    // Existing private maps leave this previously unused slot zero.
-    p.map[VIDEO_LAYOUT_BUTTON] = 0;
+    // These standalone-only bindings have no meaning in an imported Main map.
+    // Existing private maps leave the new optional slots zero.
+    p.map[VIDEO_LAYOUT_BUTTON] = p.map[LID_BUTTON] = p.map[MIC_BUTTON] = 0;
     readmap(fs::path(kit) / "inputs" / name, p.map);
   }
   void atomicFile(const fs::path &path, const void *data, size_t size) {
@@ -1083,13 +1088,30 @@ class Host {
     spi.end();
   }
   void joy(uint32_t j) {
+    if (lid_closed) j |= LID_MASK;
     if (j != lastjoy) {
       spi.cmd(Spi::IO, 2, {uint16_t(j), uint16_t(j >> 16)});
       lastjoy = j;
     }
   }
+  void toggleLid() {
+    lid_closed = !lid_closed;
+    joy(menu ? 0 : (lastjoy & ~LID_MASK));
+    dirty = true;
+    log(lid_closed ? "lid closed" : "lid opened");
+  }
+  void clearConsoleInputs() {
+    lid_closed = false;
+    // A reset/new ROM must not inherit a held microphone or DS button.
+    for (auto &p : pads) {
+      p.pressed.fill(false);
+      p.joy = p.menujoy = p.combo = 0;
+    }
+    neutralInput();
+  }
   void reset() {
     firmwareControl(1);
+    clearConsoleInputs();
     flushFirmware();
     if (native_firmware) uploadNativeFirmwareAssets();
     else uploadDirectGameAssets();
@@ -1277,11 +1299,13 @@ class Host {
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++)
         rows[i + 3] = optionLabel(status, CORE_OPTIONS[i]);
       rows[9] = " Reset";
-      rows[11] = message.empty() ? personal_settings_notice : message;
+      rows[10] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      rows[12] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
       selected = cursor <= 1 ? cursor
                  : cursor <= 6 ? cursor + 1
                  : cursor == 7 ? 9
+                 : cursor == 8 ? 10
                                : 15;
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
@@ -1390,7 +1414,7 @@ class Host {
     idle_since = ms();
     version_footer.reset(idle_since);
     next_scroll = idle_since + 1000;
-    int count = browser ? (int)roms.size() : system_menu ? 6 : 9;
+    int count = browser ? (int)roms.size() : system_menu ? 6 : 10;
     if (a == 0 && count)
       cursor = (cursor + count - 1) % count;
     if (a == 1 && count)
@@ -1497,6 +1521,9 @@ class Host {
           catch (const std::exception &e) { firmwareError("Cannot reset firmware", e.what()); }
           break;
         case 8:
+          toggleLid();
+          break;
+        case 9:
           togglemenu();
           break;
         }
@@ -1675,7 +1702,7 @@ class Host {
   void bootFirmware() {
     ensureFirmware(); // All native source/storage validation precedes CPU hold.
     firmwareControl(1);
-    neutralInput();
+    clearConsoleInputs();
     drain(450);
     flushFirmware();
     mountFirmware();
@@ -1916,6 +1943,7 @@ class Host {
              (hi && hi < p.pressed.size() && p.pressed[hi]);
     };
     const bool layout_was_held = held(p.map[VIDEO_LAYOUT_BUTTON]);
+    const bool lid_was_held = held(p.map[LID_BUTTON]) || p.pressed[KEY_F10];
     bool changed = p.pressed[code] != down;
     p.pressed[code] = down;
     if (!changed)
@@ -1967,6 +1995,7 @@ class Host {
     for (int i = 0; i < 13; i++)
       if (p.pressed[codes[i]])
         p.joy |= 1u << i;
+    if (held(p.map[MIC_BUTTON]) || p.pressed[KEY_F11]) p.joy |= MIC_MASK;
     unsigned oldcombo = p.combo;
     p.combo = 0;
     for (int i = 0; i < 2; i++) {
@@ -1985,6 +2014,8 @@ class Host {
       status = changeOption(status, CORE_OPTIONS[0], 1);
       sendstatus();
     }
+    if (!menu && down && !lid_was_held &&
+        (held(p.map[LID_BUTTON]) || p.pressed[KEY_F10])) toggleLid();
     if (!menu || !down)
       return;
     if (!reset_confirm && !recent_clear_confirm &&
@@ -2192,7 +2223,7 @@ public:
   void load(const std::string &path) {
     log("loading " + path);
     beginLoading(fs::path(path).filename().string());
-    joy(0);
+    clearConsoleInputs();
     drain(450);
     const auto service = [&] {
       if (!running) throw std::runtime_error("ROM load interrupted");
@@ -2297,7 +2328,7 @@ public:
     }
     // Neutral input first; service delayed dirty-sector requests before handing
     // off.
-    joy(0);
+    clearConsoleInputs();
     if (firmware_slot_mounted && !firmware_failed) {
       // A clean exit may follow SIGTERM (running=0); flush still owns SPI.
       const auto previous = running;

@@ -422,7 +422,9 @@ entity nds_nitro_console_top is
       dbg_cmd_arg      : in  std_logic_vector(31 downto 0) := (others => '0');
       dbg_rsp_data     : out std_logic_vector(31 downto 0);
       dbg_rsp_stb      : out std_logic;
-      dbg_hwstat       : out std_logic_vector(17 downto 0)
+      dbg_hwstat       : out std_logic_vector(17 downto 0);
+      -- Optional synthetic microphone input; defaults to silence for old callers.
+      mic_blow         : in std_logic := '0'
    );
 end entity;
 
@@ -938,7 +940,7 @@ architecture arch of nds_nitro_console_top is
    signal io_wired_done7, irq_wired_done7, timer_wired_done7 : std_logic;
    signal spi_wired_out7 : std_logic_vector(31 downto 0);
    signal spi_wired_done7 : std_logic;
-   signal irq7_spi : std_logic;
+   signal irq7_spi, irq7_lid : std_logic;
    signal ipc_wired_out7, sys_wired_out7 : std_logic_vector(31 downto 0);
    signal ipc_wired_done7, sys_wired_done7 : std_logic;
    signal tim_wired_out7 : std_logic_vector(31 downto 0);
@@ -2481,7 +2483,7 @@ begin
                3 => irp_timer7(0), 4 => irp_timer7(1), 5 => irp_timer7(2), 6 => irp_timer7(3),
                8 => irq_dma7(0), 9 => irq_dma7(1), 10 => irq_dma7(2), 11 => irq_dma7(3),
                16 => ipc7_irq_sync, 17 => ipc7_irq_sendempty, 18 => ipc7_irq_recv,
-               19 => irq7_card, 23 => irq7_spi,
+               19 => irq7_card, 22 => irq7_lid, 23 => irq7_spi,
                others => '0');
 
    irq9_any <= '1' when irq_in9 /= x"00000000" else '0';
@@ -2671,7 +2673,8 @@ begin
    (
       clk => clk1x, reset => resetCpu,
       bus7 => io_bus7, wired_out7 => spi_wired_out7, wired_done7 => spi_wired_done7,
-      irq_spi => irq7_spi,
+      irq_spi => irq7_spi, irq_lid => irq7_lid,
+      lid_closed => lid_closed, mic_blow => mic_blow,
       touch_active => touch_active, touch_x => touch_x, touch_y => touch_y,
       fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data,
       fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata,

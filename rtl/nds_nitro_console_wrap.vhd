@@ -285,7 +285,9 @@ entity nds_nitro_console_wrap is
       dbg_rsp_data      : out std_logic_vector(31 downto 0);
       dbg_rsp_stb       : out std_logic;
 
-      dbg_hwstat        : out std_logic_vector(17 downto 0)
+      dbg_hwstat        : out std_logic_vector(17 downto 0);
+      -- Optional synthetic microphone input; defaults to silence for old callers.
+      mic_blow         : in std_logic := '0'
    );
 end entity;
 
@@ -403,6 +405,7 @@ begin
       KeyX             => KeyX,
       KeyY             => KeyY,
       lid_closed       => lid_closed,
+      mic_blow         => mic_blow,
 
       touch_active     => touch_active,
       touch_x          => touch_x,

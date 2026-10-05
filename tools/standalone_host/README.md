@@ -72,3 +72,32 @@ listed but cannot be loaded.
 Directory and original-firmware reads run in a disposable worker, remain
 cancellable and time out after 15 seconds. ROM transfers keep their existing
 slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged.
+
+## Private lid and microphone beta
+
+The matching `v0.9.0-rc.4-lidmic-beta.1` host/FPGA pair adds **Lid: Open
+(Close)** / **Lid: Closed (Open)** to the NDS menu. Select that row to toggle.
+Alternatively, press **F10**, or assign **Toggle Lid** in System → Define
+NDS buttons. One press closes it; another opens it. Opening the OSD preserves the
+lid state so that a closed game can still be reopened from the menu.
+
+Hold **F11**, or the optional **Blow into Mic** controller binding, to produce
+synthetic blowing noise. Release it for silence. This is a button-driven input,
+not speech recognition or a physical microphone. The two optional assignments
+follow Cycle Video Layout in the standalone button wizard; existing mappings
+remain usable and the new controller actions begin unassigned.
+
+Fresh launches, new ROMs, firmware boots and resets start with the lid open
+and the mic released. Lid state is never written into display settings. The
+mic is silent while the menu is open. Lost input events and disconnected
+controllers release held inputs.
+
+The FPGA supplies ARM7 EXTKEYIN lid state, the lid-open IRQ22, and touchscreen
+ADC channel 6 microphone samples. It retains the existing ARM7 HALTCNT halt
+implementation; exact whole-console power-down/clock gating is outside this
+beta. Renderer, clock, performance settings, and the active-ROM browser
+highlight are unchanged.
+
+Run `tools/test_lid_mic_vhdl.sh` for guest SPI/interrupt checks. The authored
+`tools/diagnostics/lid_mic` ROM reports lid state, sleep/wake counts and mic
+sample levels on screen without game assets or save/firmware writes.

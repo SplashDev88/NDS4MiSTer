@@ -13,7 +13,9 @@
 --   device 2: touchscreen TSC (control byte -> 12-bit conversion; touch
 --             coordinates match melonDS: X/Y are the held 8-bit pixel
 --             coordinates shifted left four, while release is X=0/Y=0xFFF;
---             mic reads 0x800 and temperature etc. read 0xFFF)
+--             mic reads 0x800 at rest or synthetic blowing noise while held;
+--             temperature etc. read 0xFFF)
+-- Lid reopening produces a one-cycle ARM7 IRQ22, including while halted.
 --
 -- A byte transfer takes 8*(8<<baud) clk cycles (SPI shifts one bit per
 -- 33 MHz cycle pair set by baud); busy (bit7) is set for the duration and
@@ -77,7 +79,11 @@ entity nds_nitro_spi is
       fw_addr     : out unsigned(17 downto 2) := (others => '0');
       fw_req      : out std_logic := '0';
       fw_done     : in  std_logic;
-      fw_data     : in  std_logic_vector(31 downto 0)
+      fw_data     : in  std_logic_vector(31 downto 0);
+
+      lid_closed  : in std_logic := '0';
+      mic_blow    : in std_logic := '0';
+      irq_lid     : out std_logic := '0'
    );
 end entity;
 
@@ -120,6 +126,11 @@ architecture arch of nds_nitro_spi is
    signal fw_pending_write : std_logic := '0';
    signal fw_pend    : std_logic := '0';   -- backing read/write outstanding
    signal fw_lane    : unsigned(1 downto 0) := (others => '0');
+   signal lid_was_closed : std_logic := '0';
+   -- A maximal-length 16-bit LFSR is advanced once per microphone conversion.
+   -- This produces rate-independent broadband noise with no host audio stream,
+   -- sample ROM, free-running counter or changes to the console's clocking.
+   signal mic_noise : unsigned(15 downto 0) := x"ACE1";
 
    -- touchscreen
    signal tsc_ctrl    : std_logic_vector(7 downto 0) := (others => '0');
@@ -148,8 +159,11 @@ begin
       if rising_edge(clk) then
 
          irq_spi <= '0';
+         irq_lid <= '0';
 
          if (reset = '1') then
+            lid_was_closed <= lid_closed;
+            mic_noise <= x"ACE1";
             cnt        <= (others => '0');
             delay_cnt  <= (others => '0');
             pm_regs    <= (others => (others => '0'));
@@ -169,6 +183,8 @@ begin
             tsc_datapos <= (others => '0');
             tsc_conv   <= (others => '0');
          else
+            lid_was_closed <= lid_closed;
+            irq_lid <= lid_was_closed and not lid_closed;
 
             -- firmware word fetch: request issued at transfer start, byte
             -- lane latched whenever the backing store answers (the busy
@@ -365,7 +381,14 @@ begin
                                  else
                                     conv := (others => '0');              -- released X
                                  end if;
-                              when "110" => conv := x"80" & x"0";         -- mic: silence -> 0x800
+                              when "110" =>
+                                 conv := x"800";
+                                 if mic_blow = '1' then
+                                    conv := mic_noise(11 downto 0);
+                                    mic_noise <= (mic_noise(0) xor mic_noise(2) xor
+                                                  mic_noise(3) xor mic_noise(5)) &
+                                                 mic_noise(15 downto 1);
+                                 end if;
                               when others => conv := x"FF" & x"F";        -- everything else: 0xFFF
                            end case;
                            if (wval(3) = '1') then

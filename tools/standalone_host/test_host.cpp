@@ -491,7 +491,7 @@ R"({
     h.mapping_step = 13;
     h.mapping_pad = p.id;
     h.new_map = private_map;
-    assert(std::string(Host::button_names.back()) == "Cycle Video Layout");
+    assert(std::string(Host::button_names[13]) == "Cycle Video Layout");
     h.key(h.pads[0], KEY_ESC, true);
     h.key(h.pads[0], KEY_ESC, false);
     assert(h.mapping_step == -1);
@@ -500,6 +500,11 @@ R"({
     h.mapping_step = 13;
     h.key(h.pads[0], KEY_SPACE, true);
     h.key(h.pads[0], KEY_SPACE, false);
+    assert(h.mapping_step == 14);
+    for (int step = 14; step < 16; ++step) {
+      h.key(h.pads[0], KEY_SPACE, true);
+      h.key(h.pads[0], KEY_SPACE, false);
+    }
     assert(h.mapping_step == -1 && !h.pads[0].map[13]);
     private_map[13] = 0;
     assert(Host::readmap(kit / "inputs" / map_name, persisted) && persisted == private_map);
@@ -684,6 +689,7 @@ R"({
       else if (row == 1) text = " Boot DS firmware";
       else if (row >= 3 && row <= 7) text = optionLabel(0, CORE_OPTIONS[row-3]);
       else if (row == 9) text = " Reset";
+      else if (row == 10) text = " Lid: Open (Close)";
       else if (row == 15) text = "            exit";
       auto bytes = expected.renderRow(row, text, row == 0, nds_osd::arrow_right);
       assert(t.words == std::vector<uint16_t>(bytes.begin(), bytes.end()));
@@ -692,9 +698,11 @@ R"({
     host.action(1);
     assert(host.cursor == 8);
     host.action(1);
+    assert(host.cursor == 9);
+    host.action(1);
     assert(host.cursor == 0);
     host.action(0);
-    assert(host.cursor == 8);
+    assert(host.cursor == 9);
     host.action(2);
     assert(!host.menu);
     host.togglemenu();
@@ -857,7 +865,7 @@ R"({
     host.mapping_step = 0;
     host.mapping_pad.clear();
     host.new_map.fill(0);
-    for (int i = 0; i < 14; i++) {
+    for (unsigned i = 0; i < Host::button_names.size(); i++) {
       host.key(host.pads[0], BTN_0 + i, true);
       host.key(host.pads[0], BTN_0 + i, false);
     }
