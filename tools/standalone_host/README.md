@@ -89,7 +89,7 @@ slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged
 
 ## Private lid and microphone beta
 
-The private lid and microphone beta retains beta.3's FPGA and provides **Lid:
+The private lid and microphone beta provides **Lid:
 Open (Close)** / **Lid: Closed (Open)** in the NDS menu, above Reset with a blank
 row between them. Select that row to toggle. Lid control is available only in
 the menu; previous controller lid assignments and F10 no longer toggle it.
@@ -97,7 +97,10 @@ Opening the OSD preserves the lid state so that a closed game can still be
 reopened from the menu.
 
 Hold **F11**, or the optional **Blow into Mic** controller binding, to produce
-synthetic blowing noise. Release it for silence. This is a button-driven input,
+synthetic blowing noise. Release it for silence. Beta.7 uses symmetric clipped
+noise held for four ADC conversions, which the NSMB Balloon Racing blow
+detector accepts in a melonDS reference test; the earlier full-range noise
+was rejected. MiSTer gameplay validation is still pending. This is a button-driven input,
 not speech recognition or a physical microphone. Blow into Mic follows Cycle
 Video Layout in the standalone button wizard. Existing microphone and layout
 bindings remain usable: the 32-word mapping format retains layout in slot 13,

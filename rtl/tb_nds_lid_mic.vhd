@@ -50,6 +50,16 @@ begin
       transfer(cmd,dummy); transfer(0,hi); transfer(0,lo);
       sample:=(hi*256+lo)/8;
     end procedure;
+    -- NitroSDK's signed 8-bit microphone path changes HOLD before the final
+    -- byte. Exercise the actual 0xEC command and 2 MHz clock selection.
+    procedure sdk_conversion(variable sample : out integer) is
+      variable dummy,hi,lo : integer;
+    begin
+      wr(x"00001C0",x"00008A01","0011");
+      transfer(16#EC#,dummy); transfer(0,hi);
+      wr(x"00001C0",x"00008201","0011"); transfer(0,lo);
+      sample:=(hi*256+lo)/128-128;
+    end procedure;
   begin
     tick(4); reset<='0'; tick(3);
     assert flags=x"00000000" and lid_irq='0' report "phantom boot lid IRQ" severity failure;
@@ -80,8 +90,9 @@ begin
       if a<minval then minval:=a; end if; if a>maxval then maxval:=a; end if;
       total:=total+a; if a/=last then changes:=changes+1; end if; last:=a;
     end loop;
-    assert minval<256 and maxval>3840 and changes>4000 and total/4096>1850 and total/4096<2250
-      report "blow waveform lacks range, variation or centered average" severity failure;
+    assert minval=16 and maxval=4080 and changes>400 and changes<650
+      and total/4096>1850 and total/4096<2250
+      report "blow waveform lacks symmetric range, lower bandwidth or centered average" severity failure;
     report "mic min="&integer'image(minval)&" max="&integer'image(maxval)&" mean="&integer'image(total/4096);
     for i in 1 to 32 loop conversion(16#E8#,a);
       assert a mod 16=0 report "8-bit ADC mask lost" severity failure; end loop;
@@ -91,6 +102,19 @@ begin
     transfer(16#E0#,n); transfer(0,a); blow<='0'; transfer(0,b);
     conversion(16#E0#,a); assert a=16#800# report "mic remained active after release" severity failure;
     conversion(16#E8#,a); assert a=16#800# report "8-bit silence changed" severity failure;
+    sdk_conversion(a); assert a=0 report "NitroSDK idle mic isn't signed silence" severity failure;
+    blow<='1'; minval:=127; maxval:=-127; changes:=0; last:=0;
+    for i in 1 to 4096 loop
+      sdk_conversion(a);
+      assert a=-127 or a=127 report "8-bit blow is weak or contains rejected -128 peak" severity failure;
+      if a<minval then minval:=a; end if; if a>maxval then maxval:=a; end if;
+      if a/=last then changes:=changes+1; end if; last:=a;
+    end loop;
+    assert minval=-127 and maxval=127 and changes>400 and changes<650
+      report "NitroSDK blowing lost bipolar variation or lower bandwidth" severity failure;
+    blow<='0'; sdk_conversion(a);
+    assert a=0 report "NitroSDK microphone didn't silence on release" severity failure;
+    wr(x"00001C0",x"00008A00","0011");
     touch<='0'; conversion(16#D0#,a); conversion(16#90#,b);
     assert a=0 and b=4095 report "touch release changed" severity failure;
     wr(x"00001C0",x"00000000","0011");

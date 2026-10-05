@@ -127,10 +127,14 @@ architecture arch of nds_nitro_spi is
    signal fw_pend    : std_logic := '0';   -- backing read/write outstanding
    signal fw_lane    : unsigned(1 downto 0) := (others => '0');
    signal lid_was_closed : std_logic := '0';
-   -- A maximal-length 16-bit LFSR is advanced once per microphone conversion.
-   -- This produces rate-independent broadband noise with no host audio stream,
-   -- sample ROM, free-running counter or changes to the console's clocking.
+   -- Clipped, band-limited noise approximates a breath hitting the microphone.
+   -- Hold each random polarity for four conversions; unfiltered LFSR samples
+   -- are rejected by games that classify blowing rather than just loudness.
+   -- Use symmetric +/-127 in 8-bit mode: -128 trips NSMB's peak check.
+   -- No host audio stream, sample ROM or changes to console clocking are needed.
    signal mic_noise : unsigned(15 downto 0) := x"ACE1";
+   signal mic_phase : unsigned(1 downto 0) := (others => '0');
+   signal mic_positive : std_logic := '0';
 
    -- touchscreen
    signal tsc_ctrl    : std_logic_vector(7 downto 0) := (others => '0');
@@ -164,6 +168,8 @@ begin
          if (reset = '1') then
             lid_was_closed <= lid_closed;
             mic_noise <= x"ACE1";
+            mic_phase <= (others => '0');
+            mic_positive <= '0';
             cnt        <= (others => '0');
             delay_cnt  <= (others => '0');
             pm_regs    <= (others => (others => '0'));
@@ -384,10 +390,19 @@ begin
                               when "110" =>
                                  conv := x"800";
                                  if mic_blow = '1' then
-                                    conv := mic_noise(11 downto 0);
+                                    conv := x"010";
+                                    if mic_phase = 0 then
+                                       mic_positive <= mic_noise(0);
+                                       if mic_noise(0) = '1' then conv := x"FF0"; end if;
+                                    elsif mic_positive = '1' then
+                                       conv := x"FF0";
+                                    end if;
+                                    mic_phase <= mic_phase + 1;
                                     mic_noise <= (mic_noise(0) xor mic_noise(2) xor
                                                   mic_noise(3) xor mic_noise(5)) &
                                                  mic_noise(15 downto 1);
+                                 else
+                                    mic_phase <= (others => '0');
                                  end if;
                               when others => conv := x"FF" & x"F";        -- everything else: 0xFFF
                            end case;

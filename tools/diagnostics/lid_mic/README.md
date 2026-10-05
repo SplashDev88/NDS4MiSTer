@@ -11,10 +11,10 @@ Reopening must resume sampling, increment the wake count once, report IRQ
 caching. HALTCNT Sleep pauses ARM9 and the LCD/timer cadence until ARM7 wakes,
 so the on-screen mailbox remains frozen while closed, as in melonDS.
 
-Released mic: MIN/MAX/AVG `800`, energy `000`. Held synthetic blow: varying
-MIN/MAX and nonzero energy. Touch channels remain separate. Controls come
-through the ordinary standalone frontend: F10 toggles lid, F11 blows while
-held, or assign the equivalent optional controller inputs.
+Released mic: MIN/MAX/AVG `800`, energy `000`. Held synthetic blow: MIN `010`, MAX `FF0`, average near `800`, and
+nonzero energy. Touch channels remain separate. Controls come
+through the ordinary standalone frontend: the menu toggles the lid, F11 blows while
+held, or assign the optional Blow into Mic controller input.
 
 Mailbox: guest mainRAM0x023e0000,16little-endian words. A copy is written to
 LCDC VRAM E0x06880000 for read-only renderer inspection. Words0..13 are magic
