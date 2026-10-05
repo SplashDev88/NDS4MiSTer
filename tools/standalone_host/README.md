@@ -89,17 +89,19 @@ slow-network reader. FPGA, renderer, clock and gameplay scheduling are unchanged
 
 ## Private lid and microphone beta
 
-The `v0.9.0-rc.4-lidmic-beta.5` package retains beta.3's FPGA and provides **Lid: Open
-(Close)** / **Lid: Closed (Open)** to the NDS menu. Select that row to toggle.
-Alternatively, press **F10**, or assign **Toggle Lid** in System → Define
-NDS buttons. One press closes it; another opens it. Opening the OSD preserves the
-lid state so that a closed game can still be reopened from the menu.
+The private lid and microphone beta retains beta.3's FPGA and provides **Lid:
+Open (Close)** / **Lid: Closed (Open)** in the NDS menu, above Reset with a blank
+row between them. Select that row to toggle. Lid control is available only in
+the menu; previous controller lid assignments and F10 no longer toggle it.
+Opening the OSD preserves the lid state so that a closed game can still be
+reopened from the menu.
 
 Hold **F11**, or the optional **Blow into Mic** controller binding, to produce
 synthetic blowing noise. Release it for silence. This is a button-driven input,
-not speech recognition or a physical microphone. The two optional assignments
-follow Cycle Video Layout in the standalone button wizard; existing mappings
-remain usable and the new controller actions begin unassigned.
+not speech recognition or a physical microphone. Blow into Mic follows Cycle
+Video Layout in the standalone button wizard. Existing microphone and layout
+bindings remain usable: the 32-word mapping format retains layout in slot 13,
+reserves the former lid slot 14, and retains the microphone in slot 15.
 
 Fresh launches, new ROMs, firmware boots and resets start with the lid open
 and the mic released. Lid state is never written into display settings. The

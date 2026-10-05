@@ -299,13 +299,17 @@ class Host {
   std::array<uint32_t, 32> new_map{};
   static constexpr unsigned GAME_BUTTON_COUNT = 13;
   static constexpr unsigned VIDEO_LAYOUT_BUTTON = GAME_BUTTON_COUNT;
-  static constexpr unsigned LID_BUTTON = GAME_BUTTON_COUNT + 1;
+  static constexpr unsigned RESERVED_LID_SLOT = GAME_BUTTON_COUNT + 1;
   static constexpr unsigned MIC_BUTTON = GAME_BUTTON_COUNT + 2;
   static constexpr uint32_t LID_MASK = 1u << 13, MIC_MASK = 1u << 14;
-  static constexpr std::array<const char *, GAME_BUTTON_COUNT + 3> button_names = {
+  static constexpr std::array<const char *, GAME_BUTTON_COUNT + 2> button_names = {
       "Right", "Left", "Down", "Up",     "A",     "B",    "X",
       "Y",     "L",    "R",    "Select", "Start", "Touch", "Cycle Video Layout",
-      "Toggle Lid", "Blow into Mic"};
+      "Blow into Mic"};
+  // Keep the persisted 32-word mapping ABI: layout remains slot 13 and mic
+  // remains slot 15. Slot 14 held the removed lid shortcut and is now ignored.
+  static constexpr std::array<unsigned, button_names.size()> button_slots = {
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, VIDEO_LAYOUT_BUTTON, MIC_BUTTON};
   int cursor = 0, repeat_action = -1, repeat_code = -1;
   std::string repeat_pad;
   uint64_t next_repeat = 0, next_scroll = 0;
@@ -328,8 +332,8 @@ class Host {
     const auto name = "NDS_input_" + p.id + "_v3.map";
     if (!readmap(config / name, p.map)) readmap(config.parent_path() / name, p.map);
     // These standalone-only bindings have no meaning in an imported Main map.
-    // Existing private maps leave the new optional slots zero.
-    p.map[VIDEO_LAYOUT_BUTTON] = p.map[LID_BUTTON] = p.map[MIC_BUTTON] = 0;
+    // Load private maps unchanged so existing layout/mic slots remain usable.
+    p.map[VIDEO_LAYOUT_BUTTON] = p.map[RESERVED_LID_SLOT] = p.map[MIC_BUTTON] = 0;
     readmap(fs::path(kit) / "inputs" / name, p.map);
   }
   void atomicFile(const fs::path &path, const void *data, size_t size) {
@@ -1965,7 +1969,6 @@ class Host {
              (hi && hi < p.pressed.size() && p.pressed[hi]);
     };
     const bool layout_was_held = held(p.map[VIDEO_LAYOUT_BUTTON]);
-    const bool lid_was_held = held(p.map[LID_BUTTON]) || p.pressed[KEY_F10];
     bool changed = p.pressed[code] != down;
     p.pressed[code] = down;
     if (!changed)
@@ -1983,7 +1986,7 @@ class Host {
       if (code != KEY_SPACE && mapping_pad.empty())
         mapping_pad = p.id;
       if (code == KEY_SPACE || mapping_pad == p.id) {
-        new_map[mapping_step] = code == KEY_SPACE ? 0 : code;
+        new_map[button_slots[mapping_step]] = code == KEY_SPACE ? 0 : code;
         if (++mapping_step == int(button_names.size())) {
           if (!mapping_pad.empty()) {
             fs::create_directories(fs::path(kit) / "inputs");
@@ -2036,8 +2039,6 @@ class Host {
       status = changeOption(status, CORE_OPTIONS[0], 1);
       sendstatus();
     }
-    if (!menu && down && !lid_was_held &&
-        (held(p.map[LID_BUTTON]) || p.pressed[KEY_F10])) toggleLid();
     if (!menu || !down)
       return;
     if (!reset_confirm && !recent_clear_confirm &&

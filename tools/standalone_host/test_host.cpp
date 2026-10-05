@@ -484,7 +484,7 @@ R"({
     h.readCoreMap(p, sd / "config/inputs");
     assert(p.map == private_map);
 
-    // The new final mapping prompt can be cancelled or skipped without changing
+    // The optional mapping prompts can be cancelled or skipped without changing
     // normal MiSTer maps. Skip saves the existing DS controls with no shortcut.
     h.pads.push_back(p);
     h.menu = true;
@@ -501,7 +501,7 @@ R"({
     h.key(h.pads[0], KEY_SPACE, true);
     h.key(h.pads[0], KEY_SPACE, false);
     assert(h.mapping_step == 14);
-    for (int step = 14; step < 16; ++step) {
+    for (unsigned step = 14; step < Host::button_names.size(); ++step) {
       h.key(h.pads[0], KEY_SPACE, true);
       h.key(h.pads[0], KEY_SPACE, false);
     }
@@ -873,6 +873,8 @@ R"({
     assert(fs::file_size(root / "inputs/NDS_input_test_v3.map") == 128);
     assert(host.pads[0].map[12] == BTN_0 + 12);
     assert(host.pads[0].map[13] == BTN_0 + 13);
+    assert(host.pads[0].map[14] == 0);
+    assert(host.pads[0].map[15] == BTN_0 + 14);
     // Actual OSD SPI: shrink the 16-row picker BEFORE writing an 8-row
     // message, use Main's OSD_MSG flag, and restore highres on reopening.
     host.browser = true;
