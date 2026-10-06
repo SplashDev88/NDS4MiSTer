@@ -28,7 +28,7 @@ switch. Older Main versions may use ypbpr=1 instead of vga_mode=ypbpr.
 Preserve other INI options and make a backup before changing the NDS section.
 The experimental package must not overwrite the user's MiSTer.ini.
 After changing INI options, exit to the normal MiSTer menu and relaunch
-Scripts -> NDS Display Beta so Main applies them before the host takes over.
+Scripts -> NDS_Display_Beta so Main applies them before the host takes over.
 
 RetroTINK-4K / DV1
 -----------------
@@ -69,7 +69,9 @@ Space skips the optional prompt if you do not want to assign one.
 
 Private kit defaults
 --------------------
-Launch Scripts -> NDS Display Beta. The test kit starts in CRT 240p with Main selected and both rotations off.
+Launch Scripts -> NDS_Display_Beta. The launcher filename is NDS_Display_Beta.sh;
+spaces in script filenames break Main's unquoted shell launch wrapper.
+The test kit starts in CRT 240p with Main selected and both rotations off.
 NDS_osd.cfg containing 0 gives the private kit an upright menu, independent
 of the regular NDS INI's portrait-monitor menu orientation. A missing file
 retains the regular INI setting. Existing games, saves, production settings,
