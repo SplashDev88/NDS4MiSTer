@@ -65,6 +65,13 @@ source sys/sys_analog.tcl
 source files.qip
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
 
+# Keep the related Nitro clocks on global networks, as in the working rc.5
+# build. Native video adds clock users and otherwise lets the fitter move
+# clk2x onto a regional network. Frequencies and PLL phase settings are unchanged.
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nitro_pll:island_pll|nitro_pll_0002:pll_inst|altera_pll:altera_pll_i|outclk_wire[0]"
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nitro_pll:island_pll|nitro_pll_0002:pll_inst|altera_pll:altera_pll_i|outclk_wire[1]"
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nitro_pll:island_pll|nitro_pll_0002:pll_inst|altera_pll:altera_pll_i|outclk_wire[2]"
+
 # The release is globally area-optimized so the 98% design remains routable.
 # The two small, measured 148.5 MHz display blocks are the exception: give
 # synthesis permission to favor their HDMI timing without bloating the console
