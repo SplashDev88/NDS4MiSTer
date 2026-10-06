@@ -142,7 +142,7 @@ struct HostTest {
     h.inputs();
     assert(!h.lastjoy);
 
-    static_assert(Host::button_names.size() == 15);
+    static_assert(Host::button_names.size() == 16);
     assert(std::string(Host::button_names[13]) == "Cycle Video Layout");
     assert(std::string(Host::button_names[14]) == "Blow into Mic");
     assert(Host::button_slots[13] == 13 && Host::button_slots[14] == 15);
@@ -155,14 +155,20 @@ struct HostTest {
     h.new_map[14] = 0;
     h.key(pad, BTN_TL2, true);
     h.key(pad, BTN_TL2, false);
+    assert(h.mapping_step == 15);
+    h.key(pad, KEY_SPACE, true); // Skip the optional Screen Peek binding.
+    h.key(pad, KEY_SPACE, false);
     assert(h.mapping_step == -1 && pad.map[13] == BTN_TR2 &&
            pad.map[14] == 0 && pad.map[15] == BTN_TL2);
     std::array<uint32_t, 32> persisted{};
     assert(Host::readmap(kit / "inputs" / name, persisted) && persisted == pad.map);
     assert(fs::file_size(kit / "inputs" / name) == 128);
-    // Skipping the new final prompt clears microphone slot 15, not slot 14.
+    // Skipping the microphone prompt clears slot 15, not the legacy lid slot.
     h.mapping_step = 14;
     h.new_map = pad.map;
+    h.key(pad, KEY_SPACE, true);
+    h.key(pad, KEY_SPACE, false);
+    assert(h.mapping_step == 15);
     h.key(pad, KEY_SPACE, true);
     h.key(pad, KEY_SPACE, false);
     assert(h.mapping_step == -1 && !pad.map[14] && !pad.map[15]);

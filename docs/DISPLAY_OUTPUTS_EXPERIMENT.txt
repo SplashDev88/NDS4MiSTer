@@ -55,6 +55,18 @@ Use vga_scaler=1, vga_mode=rgb and a video_mode accepted by the monitor.
 The analog port then mirrors the HDMI scaler, including rotation and OSD.
 forced_scandoubler alone does not double this core's native 15 kHz raster.
 
+Screen Peek (display beta 2)
+---------------------------
+In Define Buttons, assign the optional Screen Peek prompt after Blow into Mic.
+Hold that button (or keyboard F10) to see the other panel while using a Left
+or Right single-screen layout, including CRT Screen Main/Touch. Release it to
+return to the selected panel. Both-screen layouts are unaffected.
+
+Peek does not change saved display settings. Opening the menu, resetting,
+loading another game or disconnecting the controller restores the selection.
+Existing controller mappings remain unchanged until you define a peek button.
+Space skips the optional prompt if you do not want to assign one.
+
 Private kit defaults
 --------------------
 Launch Scripts -> NDS Display Beta. The test kit starts in CRT 240p with Main selected and both rotations off.

@@ -2,7 +2,14 @@
 // Exercise real device discovery and event handling without physical evdev nodes.
 #include <sys/ioctl.h>
 #include <linux/input.h>
+#include <cerrno>
 static int motion_test_ioctl(int fd, unsigned long request, void *argument);
+// The display host also uses integer I2C ioctls. Input fixtures must never
+// access the transmitter, but still need to compile that overload.
+static int motion_test_ioctl(int, unsigned long, int) {
+  errno = ENOTTY;
+  return -1;
+}
 #define ioctl motion_test_ioctl
 #define STANDALONE_TEST
 #define main standalone_unused_main

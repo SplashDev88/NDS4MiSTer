@@ -289,6 +289,7 @@ class Host {
        system_menu = false, dirty = true;
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
+  bool screen_peek = false; // Temporary display override; status keeps the selection.
   TouchRotation touch_rotation = TouchRotation::Normal;
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
                        RESET_CURSOR = 10, EXIT_CURSOR = 11;
@@ -334,15 +335,18 @@ class Host {
   static constexpr unsigned VIDEO_LAYOUT_BUTTON = GAME_BUTTON_COUNT;
   static constexpr unsigned RESERVED_LID_SLOT = GAME_BUTTON_COUNT + 1;
   static constexpr unsigned MIC_BUTTON = GAME_BUTTON_COUNT + 2;
+  static constexpr unsigned SCREEN_PEEK_BUTTON = GAME_BUTTON_COUNT + 3;
   static constexpr uint32_t LID_MASK = 1u << 13, MIC_MASK = 1u << 14;
-  static constexpr std::array<const char *, GAME_BUTTON_COUNT + 2> button_names = {
+  static constexpr std::array<const char *, GAME_BUTTON_COUNT + 3> button_names = {
       "Right", "Left", "Down", "Up",     "A",     "B",    "X",
       "Y",     "L",    "R",    "Select", "Start", "Touch", "Cycle Video Layout",
-      "Blow into Mic"};
+      "Blow into Mic", "Screen Peek"};
   // Keep the persisted 32-word mapping ABI: layout remains slot 13 and mic
-  // remains slot 15. Slot 14 held the removed lid shortcut and is now ignored.
+  // remains slot 15. Slot 14 held the removed lid shortcut and is now ignored;
+  // peek uses the previously unused slot 16.
   static constexpr std::array<unsigned, button_names.size()> button_slots = {
-      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, VIDEO_LAYOUT_BUTTON, MIC_BUTTON};
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, VIDEO_LAYOUT_BUTTON, MIC_BUTTON,
+      SCREEN_PEEK_BUTTON};
   int cursor = 0, repeat_action = -1, repeat_code = -1;
   std::string repeat_pad;
   uint64_t next_repeat = 0, next_scroll = 0;
@@ -366,7 +370,8 @@ class Host {
     if (!readmap(config / name, p.map)) readmap(config.parent_path() / name, p.map);
     // These standalone-only bindings have no meaning in an imported Main map.
     // Load private maps unchanged so existing layout/mic slots remain usable.
-    p.map[VIDEO_LAYOUT_BUTTON] = p.map[RESERVED_LID_SLOT] = p.map[MIC_BUTTON] = 0;
+    p.map[VIDEO_LAYOUT_BUTTON] = p.map[RESERVED_LID_SLOT] = p.map[MIC_BUTTON] =
+        p.map[SCREEN_PEEK_BUTTON] = 0;
     readmap(fs::path(kit) / "inputs" / name, p.map);
   }
   void atomicFile(const fs::path &path, const void *data, size_t size) {
@@ -411,7 +416,7 @@ class Host {
       const auto metadata = FramebufferMetadata::read(spi);
       const auto end_us = monotonic_us();
       auto live_status = full_status;
-      live_status[0] = status;
+      live_status[0] = liveStatus();
       auto data = metadata.json(sequence, unsigned(getpid()), begin_us,
                                 end_us, live_status);
       if (firmware_diagnostics) {
@@ -1130,11 +1135,32 @@ class Host {
       serviceVideoMetadata();
     }
   }
+  uint16_t liveStatus() const {
+    const auto selected = normalizeDisplayStatus(status | REQUIRED_STATUS);
+    // Layouts 2/3 are the individual panels. Flipping bit 5 exchanges them
+    // without changing timing, rotation, screen order or the saved selection.
+    return screen_peek && (selected & (1u << 6)) ? selected ^ (1u << 5) : selected;
+  }
+  void syncScreenPeek() {
+    bool held = false;
+    if (!menu)
+      for (const auto &p : pads) {
+        if (p.disconnected) continue;
+        const auto binding = p.map[SCREEN_PEEK_BUTTON];
+        const unsigned lo = binding & 65535, hi = binding >> 16;
+        held |= p.pressed[KEY_F10] ||
+                (lo && lo < p.pressed.size() && p.pressed[lo]) ||
+                (hi && hi < p.pressed.size() && p.pressed[hi]);
+      }
+    const auto before = liveStatus();
+    screen_peek = held;
+    if (liveStatus() != before) sendstatus();
+  }
   void sendstatus() {
     // Preserve transient reset bit0 while overriding legacy Engine B Off.
     status = normalizeDisplayStatus(status | REQUIRED_STATUS);
     spi.begin(Spi::IO, 0x1e);
-    spi.word(status);
+    spi.word(liveStatus());
     for (int i = 1; i < 8; i++)
       spi.word(full_status[i]);
     spi.end();
@@ -1159,6 +1185,7 @@ class Host {
       p.pressed.fill(false);
       p.joy = p.menujoy = p.combo = 0;
     }
+    syncScreenPeek();
     neutralInput();
   }
   void reset() {
@@ -1387,6 +1414,7 @@ class Host {
   void togglemenu() {
     neutralInput();
     menu = !menu;
+    syncScreenPeek();
     if (core_browser) closeBrowser();
     browser = system_menu = reset_confirm = false;
     recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
@@ -1624,6 +1652,7 @@ class Host {
     firmware_error_text = detail;
     firmware_error_dialog = true;
     menu = true;
+    syncScreenPeek();
     browser = system_menu = false;
     recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
         false;
@@ -2263,6 +2292,7 @@ class Host {
       }
       j |= p.joy;
     }
+    syncScreenPeek();
     joy(menu ? 0 : j);
   }
 
