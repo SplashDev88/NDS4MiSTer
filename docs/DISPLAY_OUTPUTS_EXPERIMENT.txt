@@ -77,6 +77,17 @@ of the regular NDS INI's portrait-monitor menu orientation. A missing file
 retains the regular INI setting. Existing games, saves, production settings,
 renderer, write-combining modules and 1 GHz clock policy are retained.
 
+Display beta 3
+--------------
+Keep all three related Nitro clocks on global networks, matching the working
+rc.5 topology. This repairs the game-boot regression introduced by the native
+video build without changing clock frequencies or renderer settings.
+
+Right-stick touch now has a 3% dead zone on each centered axis. Resting stick
+jitter stays neutral instead of repeatedly revealing the crosshair. Input
+outside the dead zone keeps its original coordinates and full screen reach.
+Mouse input and the touch-press button are unchanged.
+
 Independent HDMI and analog DS panels are not implemented in this beta.
 Both outputs currently display the same selected panel or composed image.
 Separate panel scanout remains the lower-priority next experiment.
