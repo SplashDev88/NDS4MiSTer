@@ -323,8 +323,10 @@ struct HostTest {
     const auto ends = h.spi.end_count;
     h.serviceFramebufferMetadataRequest();
     assert(!framebuffer_metadata_requested && !h.spi.selected);
-    assert(h.spi.end_count == ends + 1 && h.spi.framebuffer_reply_index == 9);
-    assert(h.spi.history.size() == 1);
+    assert(h.spi.end_count == ends + 2 && h.spi.framebuffer_reply_index == 9);
+    assert(h.spi.history.size() == 2);
+    assert(h.spi.history.back().command == 0x23 && h.spi.history.back().words.size() == 18);
+    assert(fs::exists(kit / "video-output-metadata.json"));
     const auto &t = h.spi.history.front();
     assert(t.select == Spi::IO && t.command == 0x40);
     assert(t.words == std::vector<uint16_t>(8, 0));
@@ -344,7 +346,7 @@ struct HostTest {
     assert(number("completed_monotonic_us") <= monotonic_us());
     assert(!fs::exists(file.string() + ".new"));
     h.serviceFramebufferMetadataRequest();
-    assert(h.spi.history.size() == 1 && read() == first);
+    assert(h.spi.history.size() == 2 && read() == first);
 
     // The complete serialization is valid JSON, with the wire order and masks
     // fixed independently of the production decoder. High base bits stay unsigned.
@@ -407,7 +409,7 @@ R"({
     assert(h.lastjoy == 16 && h.message == prior_message && h.dirty == prior_dirty);
     assert(!fs::exists(kit / "NDS_v1.CFG"));
     for (const auto &transaction : h.spi.history)
-      assert(transaction.select == Spi::IO && transaction.command == 0x40);
+      assert(transaction.select == Spi::IO && (transaction.command == 0x40 || transaction.command == 0x23));
     std::cout << "PASS: framebuffer metadata request isolation, exact 0x40 wire fields, JSON, atomic replacement and failure cleanup\n";
   }
   static void layout_hotkey(const fs::path &root) {
@@ -688,9 +690,9 @@ R"({
       if (!row) text = " " + std::string(LOAD_LABEL);
       else if (row == 1) text = " Boot DS firmware";
       else if (row == 5) text = " Touch Rotation:      Normal";
-      else if (row >= 3 && row <= 8) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
-      else if (row == 10) text = " Lid: Open (Close)";
-      else if (row == 12) text = " Reset";
+      else if (row >= 3 && row <= 9) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
+      else if (row == 11) text = " Lid: Open (Close)";
+      else if (row == 13) text = " Reset";
       else if (row == 15) text = "            exit";
       auto bytes = expected.renderRow(row, text, row == 0, nds_osd::arrow_right);
       assert(t.words == std::vector<uint16_t>(bytes.begin(), bytes.end()));

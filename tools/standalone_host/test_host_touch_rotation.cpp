@@ -134,7 +134,7 @@ struct HostTest {
     assert(!fs::exists(kit / "NDS_touch.cfg"));
     host.draw();
     assert(host.osd_rows[5] == host.frame.renderRow(5, " Touch Rotation:       90 CW", true, nds_osd::arrow_right));
-    assert(host.osd_rows[11] == host.frame.renderRow(11, "", false, nds_osd::arrow_right));
+    assert(host.osd_rows[12] == host.frame.renderRow(12, "", false, nds_osd::arrow_right));
     host.saveSettings();
     {
       Host restored(kit.string(), (sd / "games/NDS").string(), sd);

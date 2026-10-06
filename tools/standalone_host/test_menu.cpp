@@ -3,7 +3,7 @@
 #include <cassert>
 #include <iostream>
 int main() {
-  assert(CORE_OPTIONS.size() == 5 && CORE_OPTION_MASK == 0x1bf0);
+  assert(CORE_OPTIONS.size() == 6 && CORE_OPTION_MASK == 0x3bf0);
   for (unsigned original = 0; original < 65536; original++) {
     auto valid = cleanStatus(original);
     assert((valid & ~(CORE_OPTION_MASK | REQUIRED_STATUS)) == 0);

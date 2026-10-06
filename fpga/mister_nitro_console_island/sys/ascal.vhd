@@ -129,7 +129,8 @@ ENTITY ascal IS
 		IHRES        : natural RANGE 1 TO 2048 :=2048;
 		N_DW         : natural RANGE 64 TO 128 := 128;
 		N_AW         : natural RANGE 8 TO 32 := 32;
-		N_BURST      : natural := 256 -- 256 bytes per burst
+		N_BURST      : natural := 256; -- 256 bytes per burst
+		INPUT_BURST_RAM_STYLE : string := "no_rw_check"
 		);
 	PORT (
 		------------------------------------
@@ -381,7 +382,7 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL i_head : unsigned(127 DOWNTO 0);
 	SIGNAL i_acpt : natural RANGE 0 TO 15;
 	SIGNAL i_dpram : arr_dw(0 TO BLEN*2-1);
-	ATTRIBUTE ramstyle OF i_dpram : SIGNAL IS "no_rw_check";
+	ATTRIBUTE ramstyle OF i_dpram : SIGNAL IS INPUT_BURST_RAM_STYLE;
 	SIGNAL i_endframe0,i_endframe1,i_vss : std_logic;
 	SIGNAL i_wad : natural RANGE  0 TO BLEN*2-1;
 	SIGNAL i_dw : unsigned(N_DW-1 DOWNTO 0);

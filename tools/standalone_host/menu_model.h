@@ -19,12 +19,20 @@ inline uint16_t changeOption(uint16_t status, const CoreOption &o,
 }
 // Bit10 is retained on the wire for older cores/configs; both engines are mandatory.
 inline constexpr uint16_t REQUIRED_STATUS = 1u << 10;
+inline constexpr uint16_t CRT_TIMING = 1u << 13;
+inline uint16_t normalizeDisplayStatus(uint16_t value) {
+  // A 240p TV shows one physical DS panel. Existing screen order still
+  // applies; changing the layout switches the first/second panel.
+  if ((value & CRT_TIMING) && !(value & (1u << 6)))
+    value = (value & ~(3u << 5)) | (2u << 5);
+  return value;
+}
 inline uint16_t cleanStatus(uint16_t value) {
   value &= CORE_OPTION_MASK;
   for (const auto &o : CORE_OPTIONS)
     if (((value >> o.shift) & ((1u << o.width) - 1)) >= o.count)
       value &= ~(((1u << o.width) - 1) << o.shift);
-  return value | REQUIRED_STATUS;
+  return normalizeDisplayStatus(value | REQUIRED_STATUS);
 }
 inline std::string optionLabel(uint16_t status, const CoreOption &o) {
   std::string label = " " + std::string(o.label);

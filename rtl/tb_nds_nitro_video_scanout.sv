@@ -11,6 +11,8 @@ module tb_nds_nitro_video_scanout;
     logic screen_order_select = 1'b0;
     logic [1:0] gap_select = 2'd0;
     logic fps_select = 1'b0;
+    logic crt_select = 1'b0;
+    wire crt_active;
     logic touch_pressed = 1'b0;
     logic [7:0] touch_x = 8'd128;
     logic [7:0] touch_y = 8'd96;

@@ -6,6 +6,8 @@ module tb_nds_video_session_clear;
     reg reset=1, session_reset=1;
     reg [1:0] layout_select=0, gap_select=0;
     reg screen_order_select=0, fps_select=0, touch_pressed=0;
+    reg crt_select=0;
+    wire crt_active;
     reg [7:0] touch_x=128, touch_y=96;
     wire [1:0] layout_active, gap_active;
     wire screen_order_active,fps_active,pf_tgl,pf_scr,pf_bank,pf_external;

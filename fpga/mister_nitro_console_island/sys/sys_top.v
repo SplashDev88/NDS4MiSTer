@@ -422,6 +422,11 @@ always@(posedge clk_sys) begin
 `endif
 			if(io_din[7:0] == 'h42) io_dout_sys <= {1'b1, frame_cnt};
 			if(io_din[7:0] == 'h44) io_dout_sys <= 1;
+`ifdef NDS_NATIVE_OUTPUTS
+			// Read-only standalone display handoff: use the actual Main-loaded
+			// flags, including alternate INI selection and per-core overrides.
+			if(io_din[7:0] == 'h46) io_dout_sys <= 16'h4456;
+`endif
 		end
 		else begin
 			cnt <= cnt + 1'd1;
@@ -486,6 +491,9 @@ always@(posedge clk_sys) begin
 					9: LFB_STRIDE      <= io_din[13:0];
 				endcase
 			end
+`ifdef NDS_NATIVE_OUTPUTS
+			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
+`endif
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
 			if(cmd == 'h27) VSET <= io_din[11:0];
@@ -791,6 +799,11 @@ nds_tate_scaler_arbiter #(.TATE_BEATS(TATE_TILE_ROWS/4)) tate_arbiter (
 	ascal 
 	#(
 		.RAMBASE(32'h20000000),
+`ifdef NDS_NATIVE_OUTPUTS
+		// A shallow 32x128 burst buffer is efficient in MLABs. This frees
+		// four M10Ks for the much deeper native-output menu bitmap.
+		.INPUT_BURST_RAM_STYLE("MLAB, no_rw_check"),
+`endif
 	`ifdef MISTER_SMALL_VBUF
 		.RAMSIZE(32'h00200000),
 	`else
@@ -1571,7 +1584,10 @@ scanlines #(0) VGA_scanlines
 `ifndef NDS_HDMI_SCALER_ONLY
 wire [23:0] vga_data_osd;
 wire        vga_vs_osd, vga_hs_osd, vga_de_osd;
-osd vga_osd
+// Preserve the full16-row menu. Native DS modes use at most3200 clock
+// ticks of active video per line;14-bit counters cover their raster and
+// blanking with ample headroom. HDMI keeps the generic22-bit counters.
+osd #(.OSD_COUNTER_BITS(14)) vga_osd
 (
 	.clk_sys(clk_sys),
 

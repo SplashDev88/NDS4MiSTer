@@ -170,7 +170,7 @@ grep -Fq 'set_global_assignment -name VERILOG_MACRO "NDS_FORCE_NEAREST=1"' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.qsf"
 grep -Fq 'set_global_assignment -name VERILOG_MACRO "NDS_FORCE_INTEGER_SCALE=1"' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.qsf"
-grep -Fq 'set_global_assignment -name VERILOG_MACRO "NDS_HDMI_SCALER_ONLY=1"' \
+grep -Fq 'set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_OUTPUTS=1"' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.qsf"
 grep -Fq 'assign hdmi_tx_clk = hdmi_clk_out;' \
     "$repo_dir/fpga/mister_nitro_console_island/sys/sys_top.v"

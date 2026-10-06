@@ -1,0 +1,74 @@
+NDS4MiSTer display experiment (based on v0.9.0-rc.5)
+
+DV1 means MiSTer's Direct Video with crop/pixel-repetition metadata for
+receivers such as RetroTINK-4K. It is distinct from dvi_mode. Use HDMI mode
+(dvi_mode=0) for DV1 metadata and audio.
+
+This branch restores native analog RGB/component and Direct Video routing.
+It also restores the standard vga_scaler path for computer VGA monitors.
+These are experimental paths; simulation is not physical-display validation.
+
+Component CRT
+-------------
+Select Output Timing: CRT 240p. CRT Screen switches Main/Touch; Screen Order
+still reverses the panel order. The 256x192 panel is centered in a 320x240
+canvas. The source line rate is 15.625 kHz and frame rate approximately
+59.83 Hz, matching the existing presentation cadence without changing the
+DS or ARM renderer clocks. The CRT mode cannot select a stacked 31 kHz image.
+
+MiSTer's effective NDS configuration needs:
+  vga_mode=ypbpr
+  composite_sync=1
+  forced_scandoubler=0
+  vga_scaler=0
+  direct_video=0          (ordinary HDMI alongside the component CRT)
+
+Use the analog I/O board's component cable and enable its Sync-on-Green
+switch. Older Main versions may use ypbpr=1 instead of vga_mode=ypbpr.
+Preserve other INI options and make a backup before changing the NDS section.
+The experimental package must not overwrite the user's MiSTer.ini.
+After changing INI options, exit to the normal MiSTer menu and relaunch
+Scripts -> NDS Display Beta so Main applies them before the host takes over.
+
+RetroTINK-4K / DV1
+-----------------
+Connect MiSTer's HDMI port directly to the RetroTINK-4K's digital input.
+Set direct_video=1 and dvi_mode=0 in the effective NDS INI section, keeping
+vga_scaler=0. Output Timing: Standard retains the original native side/stack/
+single raster; CRT 240p supplies the centered single-panel raster instead.
+Video Rotation applies to the MiSTer scaler, not the native DV1/analog path.
+Use the receiver's rotation feature when needed for native output.
+
+For DV1 and component simultaneously, retain vga_mode=ypbpr and
+composite_sync=1. Main then configures the HDMI transmitter for YPbPr; the
+RetroTINK input color range may need YCbCr 709. This combination needs an
+explicit color-bar check on the physical receiver.
+
+The standalone host inherits Main's transmitter bus, reads measured geometry
+via UIO_GET_VRES, and refreshes DV1 SPD packets after two stable samples.
+Menu-open metadata follows the actual OSD, including loading messages.
+No HDMI audio/color configuration is rewritten by the standalone host.
+
+Ordinary VGA monitors
+---------------------
+Use vga_scaler=1, vga_mode=rgb and a video_mode accepted by the monitor.
+The analog port then mirrors the HDMI scaler, including rotation and OSD.
+forced_scandoubler alone does not double this core's native 15 kHz raster.
+
+Private kit defaults
+--------------------
+Launch Scripts -> NDS Display Beta. The test kit starts in CRT 240p with Main selected and both rotations off.
+NDS_osd.cfg containing 0 gives the private kit an upright menu, independent
+of the regular NDS INI's portrait-monitor menu orientation. A missing file
+retains the regular INI setting. Existing games, saves, production settings,
+renderer, write-combining modules and 1 GHz clock policy are retained.
+
+Independent HDMI and analog DS panels are not implemented in this beta.
+Both outputs currently display the same selected panel or composed image.
+Separate panel scanout remains the lower-priority next experiment.
+
+Primary references:
+https://www.retrotink.com/blog/introducing-the-retrotink-4k
+https://mister-devel.github.io/MkDocs_MiSTer/advanced/ini/
+https://mister-devel.github.io/MkDocs_MiSTer/advanced/crt/
+https://github.com/MiSTer-devel/Main_MiSTer/blob/master/video.cpp

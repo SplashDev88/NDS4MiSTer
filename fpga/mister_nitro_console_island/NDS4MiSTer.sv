@@ -12,7 +12,9 @@ module emu
     assign {SD_SCK,SD_MOSI,SD_CS}='Z;
     assign VGA_F1=0;
     assign VGA_SCALER=0;
-    assign VGA_DISABLE=0;
+    // Native stacked video is 31 kHz. Keep it off a 15 kHz analog display
+    // unless the user explicitly selected a computer-monitor configuration.
+    assign VGA_DISABLE=video_layout_active == 1 && !forced_scandoubler;
     assign HDMI_FREEZE=0;
     assign HDMI_BLACKOUT=0;
     assign HDMI_BOB_DEINT=0;
@@ -35,6 +37,7 @@ module emu
         "O[9:8],Screen Gap,8 Pixels,None,16 Pixels,24 Pixels;",
         "O[4],3D FPS Counter,Off,On;",
         "O[12:11],Video Rotation,Off,90 CCW,90 CW;",
+        "O[13],Output Timing,Standard,CRT 240p;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",
@@ -79,6 +82,7 @@ module emu
     wire video_screen_order_active;
     wire [1:0] video_gap_active;
     wire video_fps_active;
+    wire video_crt_active;
     // Translate the menu ordering back to scanout's 0/1/2/3 =
     // 0/8/16/24-pixel ABI.
     wire [1:0] video_gap_select = status[9:8] == 2'd0 ? 2'd1 :
@@ -93,9 +97,9 @@ module emu
     wire [1:0] rotation_select = {status[11] & ~status[12],
                                  status[12] & ~status[11]};
     assign VIDEO_ROTATION = rotation_select;
-    assign VIDEO_SOURCE_WIDTH = video_layout_active == 0
+    assign VIDEO_SOURCE_WIDTH = video_crt_active ? 10'd320 : video_layout_active == 0
         ? 10'd512 + {video_gap_active,3'd0} : 10'd256;
-    assign VIDEO_SOURCE_HEIGHT = (video_layout_active == 1
+    assign VIDEO_SOURCE_HEIGHT = video_crt_active ? 10'd240 : (video_layout_active == 1
         ? 10'd384 + {video_gap_active,3'd0} : 10'd192) +
         (video_fps_active ? 10'd6 : 10'd0);
     (* async_reg = "true" *) reg [1:0] rotation_meta=0, rotation_applied=0;
@@ -103,8 +107,8 @@ module emu
         rotation_meta <= VIDEO_ROTATION_APPLIED;
         rotation_applied <= rotation_meta;
     end
-    assign VIDEO_ARX = rotation_applied != 0 ? rotated_arx : normal_arx;
-    assign VIDEO_ARY = rotation_applied != 0 ? rotated_ary : normal_ary;
+    assign VIDEO_ARX = rotation_applied != 0 ? rotated_arx : video_crt_active ? 13'd4 : normal_arx;
+    assign VIDEO_ARY = rotation_applied != 0 ? rotated_ary : video_crt_active ? 13'd3 : normal_ary;
     nds_tate_scale tate_scale (
         .clk(clk_sys), .reset(RESET), .hdmi_width(HDMI_WIDTH),
         .hdmi_height(HDMI_HEIGHT), .source_width(VIDEO_SOURCE_WIDTH),
@@ -196,6 +200,7 @@ module emu
         .video_screen_order_select(status[7]),
         .video_gap_select(video_gap_select),
         .video_fps_select(status[4]),
+        .video_crt_select(status[13]),.video_crt_active,
         // Both DS engines are required. Ignore the legacy saved Off bit.
         .engine_b_select(1'b1),
         .video_layout_active,.video_screen_order_active,

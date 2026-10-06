@@ -4,6 +4,11 @@ MiSTer Main (GPLv3): https://github.com/MiSTer-devel/Main_MiSTer at 5fb9bd102024
 
 DreamSTer https://github.com/skmp/DreamSTer at f31c15856760460abd8c41356d3ca98468ee4346 informed the process takeover/restart design. No DreamSTer code is copied. Thanks to Corn for the suggestion and skmp for the reference.
 
+The experimental DV1 packet layout, video measurement protocol and ADV7513 SPD
+update sequence in direct_video.h follow MiSTer Main video.cpp at
+6cda9cc546c4b32e256a19931128b82586253812 (GPLv3). The standalone host retains
+Main's selected transmitter bus, color conversion and audio configuration.
+
 The built-in BIOS initialization and host restore arrays come from the pinned
 melonDS FreeBIOS data, licensed BSD-2-Clause, copyright 2013 Gilead Kutnick.
 Retain the full notice in `third_party/melonDS/freebios/drastic_bios_readme.txt`

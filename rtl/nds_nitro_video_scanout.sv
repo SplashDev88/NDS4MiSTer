@@ -94,6 +94,8 @@ module nds_nitro_video_scanout #(
     input  logic        screen_order_select,
     input  logic [1:0]  gap_select,
     input  logic        fps_select,
+    input  tri0         crt_select,
+    output logic        crt_active,
     input  logic        touch_pressed,
     input  logic [7:0]  touch_x,
     input  logic [7:0]  touch_y,
@@ -136,13 +138,12 @@ module nds_nitro_video_scanout #(
     localparam logic [1:0] LAYOUT_STACK  = 2'd1;
     localparam logic [1:0] LAYOUT_LEFT   = 2'd2;
     localparam logic [1:0] LAYOUT_RIGHT  = 2'd3;
-    localparam integer H_TOTAL = 640;
     localparam logic [15:0] V_EXTRA_STEP_NORMAL = 16'd11379;
     localparam logic [15:0] V_EXTRA_STEP_STACK  = 16'd22758;
 
     logic [9:0] hcount;
     logic [9:0] vcount;
-    logic [2:0] pixel_divider;
+    logic [3:0] pixel_divider;
     logic [15:0] frame_phase;
     logic frame_extra;
     (* async_reg = "true" *) logic [1:0] published_toggle_sync;
@@ -191,27 +192,32 @@ module nds_nitro_video_scanout #(
     logic pointer_outline_pixel;
 
     wire [4:0] gap_pixels = {gap_active,3'b000};
-    wire [9:0] screen_top = fps_active ? 10'd6 : 10'd0;
+    // 320x240/384 total at 6 MHz keeps the same 64 us line period as the
+    // normal 640-dot raster. Center the unscaled 256x192 DS panel inside
+    // that 4:3 canvas; no new framebuffer or renderer work is needed.
+    wire [9:0] screen_left = crt_active ? 10'd32 : 10'd0;
+    wire [9:0] screen_top = crt_active ? 10'd24 : (fps_active ? 10'd6 : 10'd0);
     wire [9:0] second_x = 10'd256 + gap_pixels;
     wire [9:0] second_y = screen_top + 10'd192 + gap_pixels;
-    wire [9:0] canvas_width = layout_active == LAYOUT_SIDE ?
+    wire [9:0] canvas_width = crt_active ? 10'd320 : layout_active == LAYOUT_SIDE ?
                               10'd512 + gap_pixels : 10'd256;
-    wire [9:0] canvas_height = layout_active == LAYOUT_STACK ?
+    wire [9:0] canvas_height = crt_active ? 10'd240 : layout_active == LAYOUT_STACK ?
         10'd384 + gap_pixels + (fps_active ? 10'd6 : 10'd0) :
         10'd192 + (fps_active ? 10'd6 : 10'd0);
-    wire [9:0] vertical_total = layout_active == LAYOUT_STACK ?
+    wire [9:0] horizontal_total = crt_active ? 10'd384 : 10'd640;
+    wire [9:0] vertical_total = !crt_active && layout_active == LAYOUT_STACK ?
                                 10'd522 : 10'd261;
-    wire [2:0] pixel_divider_limit = layout_active == LAYOUT_STACK ?
-                                     3'd2 : 3'd5;
+    wire [3:0] pixel_divider_limit = crt_active ? 4'd9 : layout_active == LAYOUT_STACK ?
+                                     4'd2 : 4'd5;
     wire [15:0] frame_step = layout_active == LAYOUT_STACK ?
                              V_EXTRA_STEP_STACK : V_EXTRA_STEP_NORMAL;
     wire [16:0] frame_sum = {1'b0,frame_phase} + {1'b0,frame_step};
     wire frame_end = vcount == vertical_total - 1'b1 + frame_extra;
     wire [9:0] vnext = frame_end ? 10'd0 : vcount + 1'b1;
-    wire [9:0] hsync_begin = canvas_width + 10'd16;
-    wire [9:0] hsync_end = canvas_width + 10'd64;
+    wire [9:0] hsync_begin = crt_active ? 10'd328 : canvas_width + 10'd16;
+    wire [9:0] hsync_end = crt_active ? 10'd356 : canvas_width + 10'd64;
     wire [9:0] vsync_begin = canvas_height + 10'd3;
-    wire [9:0] vsync_end = canvas_height + 10'd9;
+    wire [9:0] vsync_end = canvas_height + (crt_active ? 10'd6 : 10'd9);
     wire publication_event = !session_reset &&
         published_toggle_sync[1] != published_toggle_seen;
     wire effective_3d_frame_event =
@@ -344,10 +350,10 @@ module nds_nitro_video_scanout #(
                 end
             end
             default: begin // Left-only and right-only are one 256x192 slot.
-                if (hcount < 10'd256 && vcount >= screen_top &&
+                if (hcount >= screen_left && hcount < screen_left + 10'd256 && vcount >= screen_top &&
                     vcount < screen_top + 10'd192) begin
                     screen_pixel = 1'b1;
-                    local_x = hcount[7:0];
+                    local_x = hcount - screen_left;
                     local_y = vcount - screen_top;
                     local_screen = layout_active == LAYOUT_RIGHT ?
                         second_screen : first_screen;
@@ -417,7 +423,7 @@ module nds_nitro_video_scanout #(
         .clk(clk_video),
         .reset(reset),
         .frame_boundary(pixel_divider == pixel_divider_limit &&
-                        hcount == H_TOTAL-1 && frame_end),
+                        hcount == horizontal_total-1 && frame_end),
         .touch_pressed,
         .touch_x,
         .touch_y,
@@ -441,6 +447,7 @@ module nds_nitro_video_scanout #(
             screen_order_active <= 1'b0;
             gap_active <= 2'd0;
             fps_active <= 1'b0;
+            crt_active <= 1'b0;
             published_toggle_sync <= 0;
             published_bank_sync_0 <= 0;
             published_bank_sync_1 <= 0;
@@ -639,7 +646,7 @@ module nds_nitro_video_scanout #(
                     pf_tgl <= ~pf_tgl;
                 end
 
-                if (hcount == H_TOTAL-1) begin
+                if (hcount == horizontal_total-1) begin
                     hcount <= 0;
                     vcount <= vnext;
                     if (frame_end) begin
@@ -647,7 +654,9 @@ module nds_nitro_video_scanout #(
                         // controls therefore need no redundant CDC pipeline.
                         {fps_active,gap_active,screen_order_active,
                          layout_active} <= {fps_select,gap_select,
-                                            screen_order_select,layout_select};
+                                            screen_order_select,
+                                            (crt_select && !layout_select[1]) ? LAYOUT_LEFT : layout_select};
+                        crt_active <= crt_select;
                         if (fps_window_frames == FPS_WINDOW_FRAMES-1) begin
                             fps_window_frames <= 0;
                             if (effective_3d_frame_event) begin

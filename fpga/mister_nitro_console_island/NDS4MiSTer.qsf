@@ -34,16 +34,12 @@ set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ALSA=1"
 set_global_assignment -name VERILOG_MACRO "NDS_NO_AUDIO_FILTER=1"
 
-# Use the standard scaled HDMI path because the native NDS raster is not a
-# display-compatible HDMI mode. Keep analog/direct-video presentation out of
-# the first alpha while retaining the OSD and controller-driven ROM picker.
+# Standard HDMI continues through the scaler. The experimental native path
+# is for analog displays and Direct Video receivers such as RetroTINK-4K.
 set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_SHADOWMASK=1"
-# Keep the compact scaler-only shell and its standard MiSTer scaler/OSD path.
-# Like MiSTer's HDMI-only topology, the dedicated sys_top branch wires the
-# selected HDMI PLL clock directly to the transmitter because direct video is
-# fixed off. This removes an unused clock selector from the timing-critical
-# HDMI domain. Sound remains on.
-set_global_assignment -name VERILOG_MACRO "NDS_HDMI_SCALER_ONLY=1"
+# Experimental native analog and Direct Video paths. The standard scaler
+# remains available for ordinary HDMI and VGA monitors (vga_scaler=1).
+set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_OUTPUTS=1"
 set_global_assignment -name VERILOG_MACRO "NDS_TATE=1"
 set_global_assignment -name VERILOG_MACRO "NDS_DISABLE_HDMI_LOW_LATENCY=1"
 

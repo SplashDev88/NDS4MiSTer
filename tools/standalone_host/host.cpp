@@ -16,6 +16,7 @@
 #include "storage_locations.h"
 #include "system_menu.h"
 #include "touch_rotation.h"
+#include "direct_video.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -289,8 +290,36 @@ class Host {
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
   TouchRotation touch_rotation = TouchRotation::Normal;
-  static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 8,
-                       RESET_CURSOR = 9, EXIT_CURSOR = 10;
+  static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
+                       RESET_CURSOR = 10, EXIT_CURSOR = 11;
+  nds_video::Transmitter video_transmitter;
+  nds_video::StablePacket video_packet;
+  bool direct_video_metadata = false, video_osd_visible = false;
+  bool video_write_failed = false;
+  uint16_t video_flags = 0;
+  void initializeVideoMetadata() {
+    const auto signature = spi.begin(Spi::IO, 0x46);
+    const auto flags = spi.word(0);
+    spi.end();
+    if (signature != 0x4456) return;
+    video_flags = flags;
+    if (!(flags & (1u << 10))) return;
+    direct_video_metadata = video_transmitter.openInheritedBus();
+    log(direct_video_metadata ? "DV1 metadata handoff ready" :
+        "DV1 metadata unavailable: Main bus or DV1 packet missing");
+  }
+  void serviceVideoMetadata() {
+    if (!direct_video_metadata) return;
+    std::array<uint8_t, 31> packet{};
+    if (!video_packet.ready(nds_video::readGeometry(spi), video_osd_visible, packet)) return;
+    if (video_transmitter.writePacket(packet)) {
+      video_packet.acknowledge(packet);
+      video_write_failed = false;
+    } else if (!video_write_failed) {
+      log("DV1 metadata write failed; retrying");
+      video_write_failed = true;
+    }
+  }
   std::vector<SystemMenuRow> system_rows;
   int system_first = 0;
   bool recent_view = false, recent_clear_confirm = false, recents_enabled = true;
@@ -413,6 +442,16 @@ class Host {
         data.insert(data.rfind("\n}"), ",\n  \"firmware_diagnostics\": " + diagnostic.str());
       }
       atomicFile(fs::path(kit) / "framebuffer-metadata.json", data.data(), data.size());
+      const auto video = nds_video::readGeometry(spi);
+      std::ostringstream video_json;
+      video_json << "{\"width\":" << video.width << ",\"height\":" << video.height
+                 << ",\"pixel_repeat\":" << video.repeat << ",\"de_h\":" << video.left
+                 << ",\"de_v\":" << video.top << ",\"line_ticks_100mhz\":" << video.line_ticks
+                 << ",\"frame_ticks_100mhz\":" << video.frame_ticks
+                 << ",\"output_flags\":" << video_flags
+                 << ",\"dv1_metadata_active\":" << (direct_video_metadata ? "true" : "false") << "}\n";
+      const auto video_text = video_json.str();
+      atomicFile(fs::path(kit) / "video-output-metadata.json", video_text.data(), video_text.size());
       log("framebuffer metadata snapshot=" + std::to_string(sequence));
     } catch (const std::exception &e) {
       // Diagnostics must not force recovery or repeatedly retry a failed read.
@@ -1088,11 +1127,12 @@ class Host {
               "heartbeat write");
       require(ftruncate(heartbeat, s.size()) == 0, "heartbeat truncate");
       nextbeat = t + 500;
+      serviceVideoMetadata();
     }
   }
   void sendstatus() {
     // Preserve transient reset bit0 while overriding legacy Engine B Off.
-    status |= REQUIRED_STATUS;
+    status = normalizeDisplayStatus(status | REQUIRED_STATUS);
     spi.begin(Spi::IO, 0x1e);
     spi.word(status);
     for (int i = 1; i < 8; i++)
@@ -1139,6 +1179,7 @@ class Host {
     log("reset");
   }
   void osd(bool en, bool message_window = false) {
+    video_osd_visible = en;
     if (!en) osd_row_valid.fill(false); // disable also clears FPGA highres
     spi.begin(Spi::OSD, en ? (message_window ? 0x49 : 0x41) : 0x40);
     if (en) {
@@ -1308,18 +1349,26 @@ class Host {
       frame.setTitle("NDS");
       rows[0] = " " + std::string(LOAD_LABEL);
       rows[1] = " Boot DS firmware";
-      for (size_t i = 0; i < CORE_OPTIONS.size(); i++)
-        rows[i + 3 + (i >= 2)] = optionLabel(status, CORE_OPTIONS[i]);
+      for (size_t i = 0; i < CORE_OPTIONS.size(); i++) {
+        auto option = CORE_OPTIONS[i];
+        if (i == 0 && (status & CRT_TIMING)) {
+          option.label = "CRT Screen";
+          const bool reversed = status & (1u << 7);
+          option.values[2] = reversed ? "Touch" : "Main";
+          option.values[3] = reversed ? "Main" : "Touch";
+        }
+        rows[i + 3 + (i >= 2)] = optionLabel(status, option);
+      }
       rows[5] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
-      rows[10] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
-      rows[12] = " Reset";
-      rows[13] = message.empty() ? personal_settings_notice : message;
+      rows[11] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      rows[13] = " Reset";
+      rows[14] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
       selected = cursor <= 1 ? cursor
                  : cursor < LID_CURSOR ? cursor + 1
-                 : cursor == LID_CURSOR ? 10
-                 : cursor == RESET_CURSOR ? 12
+                 : cursor == LID_CURSOR ? 11
+                 : cursor == RESET_CURSOR ? 13
                                : 15;
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
@@ -1524,6 +1573,8 @@ class Host {
       } else if ((a == 2 || a == 7 || a == 8) && cursor >= 2 && cursor < LID_CURSOR) {
         const auto &o = CORE_OPTIONS[cursor - 2 - (cursor > TOUCH_ROTATION_CURSOR)];
         status = changeOption(status, o, a == 7 ? -1 : 1);
+        if (o.shift == 5 && (status & CRT_TIMING) && !(status & (1u << 6)))
+          status = (status & ~(3u << 5)) | ((a == 7 ? 3u : 2u) << 5);
         sendstatus();
         message.clear();
       } else if (a == 2) {
@@ -2247,6 +2298,13 @@ public:
     std::string text((std::istreambuf_iterator<char>(ini)),
                      std::istreambuf_iterator<char>());
     rotation = osdRotation(text);
+    // A private display kit can use an upright menu on a CRT while the
+    // user's regular NDS setup retains its portrait-monitor INI setting.
+    std::ifstream osd_config(fs::path(kit) / "NDS_osd.cfg");
+    std::string osd_override;
+    if (std::getline(osd_config, osd_override) && osd_override.size() == 1 &&
+        osd_override[0] >= '0' && osd_override[0] <= '2')
+      rotation = osd_override[0] - '0';
     browse_expand = browserExpand(text);
     recents_enabled = recentEnabled(text);
     system_rows = systemMenuRows(systemMenuOptions(text, sd_root / "config/NDS_afilter.cfg"));
@@ -2261,6 +2319,7 @@ public:
     }
     sendstatus();
     joy(0);
+    initializeVideoMetadata();
     log(std::string(CORE_VERSION) + " standalone host ready status=" + std::to_string(status));
   }
   ~Host() {

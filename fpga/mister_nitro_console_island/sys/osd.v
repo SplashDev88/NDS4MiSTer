@@ -22,6 +22,9 @@ module osd
 );
 
 parameter  OSD_COLOR    =  3'd4;
+parameter  OSD_RAM_STYLE = "no_rw_check";
+// Native DS rasters need far fewer counter bits than a general HDMI mode.
+parameter  OSD_COUNTER_BITS = 22;
 
 localparam OSD_WIDTH    = 12'd256;
 localparam OSD_HEIGHT   = 12'd64;
@@ -33,16 +36,16 @@ localparam OSD_HDR      = 12'd0;
 `endif
 
 reg        osd_enable;
-(* ramstyle="no_rw_check" *) reg  [7:0] osd_buffer[OSD_HDR ? (4096+1024) : 4096];
+(* ramstyle=OSD_RAM_STYLE *) reg  [7:0] osd_buffer[OSD_HDR ? (4096+1024) : 4096];
 
 reg        info = 0;
 reg  [8:0] infoh;
 reg  [8:0] infow;
-reg [21:0] infox;
-reg [21:0] infoy;
-reg [21:0] osd_h;
-reg [21:0] osd_t;
-reg [21:0] osd_w;
+reg [OSD_COUNTER_BITS-1:0] infox;
+reg [OSD_COUNTER_BITS-1:0] infoy;
+reg [OSD_COUNTER_BITS-1:0] osd_h;
+reg [OSD_COUNTER_BITS-1:0] osd_t;
+reg [OSD_COUNTER_BITS-1:0] osd_w;
 
 reg  [1:0] rot = 0;
 reg        highres = 0;
@@ -106,8 +109,8 @@ end
 
 (* direct_enable *) reg ce_pix;
 always @(posedge clk_video) begin
-	reg [21:0] cnt = 0;
-	reg [21:0] pixsz, pixcnt;
+	reg [OSD_COUNTER_BITS-1:0] cnt = 0;
+	reg [OSD_COUNTER_BITS-1:0] pixsz, pixcnt;
 	reg deD;
 
 	cnt <= cnt + 1'd1;
@@ -127,12 +130,12 @@ end
 
 reg  [2:0] osd_de;
 reg        osd_pixel;
-reg [21:0] v_cnt;
+reg [OSD_COUNTER_BITS-1:0] v_cnt;
 reg        v_cnt_h, v_cnt_1, v_cnt_2, v_cnt_3, v_cnt_4;
-reg [21:0] v_osd_start_h, v_osd_start_1, v_osd_start_2, v_osd_start_3, v_osd_start_4, v_osd_start_5;
-reg [21:0] v_info_start_h, v_info_start_1, v_info_start_2, v_info_start_3, v_info_start_4, v_info_start_5;
+reg [OSD_COUNTER_BITS-1:0] v_osd_start_h, v_osd_start_1, v_osd_start_2, v_osd_start_3, v_osd_start_4, v_osd_start_5;
+reg [OSD_COUNTER_BITS-1:0] v_info_start_h, v_info_start_1, v_info_start_2, v_info_start_3, v_info_start_4, v_info_start_5;
 
-wire [21:0] osd_h_hdr = (info || rot) ? osd_h : (osd_h + OSD_HDR);
+wire [OSD_COUNTER_BITS-1:0] osd_h_hdr = (info || rot) ? osd_h : (osd_h + OSD_HDR);
 
 // pipeline the comparisons a bit
 always @(posedge clk_video) if(ce_pix) begin
@@ -162,13 +165,13 @@ always @(posedge clk_video) begin
 	reg  [2:0] osd_div;
 	reg  [2:0] multiscan;
 	reg  [7:0] osd_byte; 
-	reg [23:0] h_cnt;
-	reg [21:0] dsp_width;
-	reg [21:0] osd_vcnt;
-	reg [21:0] h_osd_start;
-	reg [21:0] v_osd_start;
-	reg [21:0] osd_hcnt;
-	reg [21:0] osd_hcnt2;
+	reg [OSD_COUNTER_BITS+1:0] h_cnt;
+	reg [OSD_COUNTER_BITS-1:0] dsp_width;
+	reg [OSD_COUNTER_BITS-1:0] osd_vcnt;
+	reg [OSD_COUNTER_BITS-1:0] h_osd_start;
+	reg [OSD_COUNTER_BITS-1:0] v_osd_start;
+	reg [OSD_COUNTER_BITS-1:0] osd_hcnt;
+	reg [OSD_COUNTER_BITS-1:0] osd_hcnt2;
 	reg        frame_gap_long;
 	reg        osd_de1,osd_de2;
 	reg  [1:0] osd_en;
@@ -190,7 +193,7 @@ always @(posedge clk_video) begin
 		if (h_cnt == h_osd_start) begin
 			osd_de[0] <= osd_en[1] && osd_h && (
 		                  osd_vcnt[11] ? (osd_vcnt[7] && (osd_vcnt[6:0] >= 4) && (osd_vcnt[6:0] < 19)) :
-								(info && (rot == 3)) ? !osd_vcnt[21:8] :
+								(info && (rot == 3)) ? !osd_vcnt[OSD_COUNTER_BITS-1:8] :
 			               (osd_vcnt < osd_h)
 								);
 			osd_hcnt <= 0;
@@ -200,7 +203,7 @@ always @(posedge clk_video) begin
 		if (osd_hcnt+1 == osd_w) osd_de[0] <= 0;
 
 		// falling edge of de
-		if(!de_in && deD) dsp_width <= h_cnt[21:0];
+		if(!de_in && deD) dsp_width <= h_cnt[OSD_COUNTER_BITS-1:0];
 
 		// rising edge of de
 		if(de_in && !deD) begin

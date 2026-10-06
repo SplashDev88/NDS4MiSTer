@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.5 standalone launcher and recovery supervisor.
+"""NDS4MiSTer v0.9.0-rc.5-display-beta.1 standalone launcher and recovery supervisor.
 No system binary/init/config overwrites. Independent guard survives supervisor death.
 """
 from pathlib import Path
@@ -19,7 +19,7 @@ NORMAL_HELPER_SHA = "91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390
 HELPER = KIT / "support/nds_hybrid_3d_service"
 SD_ROOT = Path("/media/fat")
 EXPECTED_HELPER = "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729"
-EXPECTED_CORE = "37e972a0fff85200f229a9cb80f16faefb0399af91b65cad3cd397f9546c9aa3"
+EXPECTED_CORE = "def8bcf8368cc5e5b01869fe5617d3933893da28f36d72a1bba07f8ae363fffc"
 EXPECTED_KICKSTART = "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b"
 EXPECTED_SPEED_ENV = {
     "NDS4MISTER_GX_MATRIX_PREFIX": "auto",
@@ -536,7 +536,7 @@ def main():
         state["wc_mapping_present"] = "/dev/nds_mem_wc" in Path("/proc/%d/maps" % release_pid).read_text()
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.5"
+        state["release"] = "v0.9.0-rc.5-display-beta.1"
         write()
         stage("load standalone core")
         previous = mains()[0]
@@ -570,6 +570,21 @@ def main():
             for p in Path("/proc/%d/task" % hp).iterdir()}
         state["helper"] = ident(hp)
         write()
+        # Preserve the transmitter bus selected by Main without probing other
+        # I2C devices after takeover. Stock Main opens its HDMI submaps here.
+        i2c_buses = set()
+        for descriptor in Path("/proc/%d/fd" % main_pid).iterdir():
+            try:
+                device = os.readlink(descriptor)
+                if device.startswith("/dev/i2c-") and device[9:].isdigit():
+                    i2c_buses.add(device[9:])
+            except OSError:
+                pass
+        host_env = os.environ.copy()
+        host_env.pop("NDS_VIDEO_I2C_BUS", None)
+        if len(i2c_buses) == 1:
+            host_env["NDS_VIDEO_I2C_BUS"] = next(iter(i2c_buses))
+        state["video_i2c_bus"] = host_env.get("NDS_VIDEO_I2C_BUS")
         stage("stop normal Main")
         kill(owned[0])
         assert not mains()
@@ -583,6 +598,7 @@ def main():
                 str(a.seconds),
                 str(os.getpid()),
             ],
+            env=host_env,
             stdin=subprocess.DEVNULL,
             stdout=hlog,
             stderr=hlog,
