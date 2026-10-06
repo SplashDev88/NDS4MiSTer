@@ -144,6 +144,76 @@ static int motion_test_ioctl(int fd, unsigned long request, void *argument) {
 }
 
 struct HostTest {
+  static void touchDeadzone(const fs::path &root) {
+    // Exercise the real evdev discovery/normalization/SPI path. Each limit is
+    // specified in controller units, independent of the implementation math.
+    struct AxisCase { int minimum, maximum, center, low, high, outside_low, outside_high; };
+    const std::array<AxisCase, 3> ranges{{
+        {0, 255, 128, 124, 131, 123, 132},
+        {-32768, 32767, 0, -983, 982, -984, 983},
+        {0, 20000, 10000, 9700, 10300, 9699, 10301}}};
+    unsigned count = 0;
+    for (unsigned bus : {BUS_USB, BUS_BLUETOOTH})
+      for (const auto &range : ranges) {
+        const auto directory = root / std::to_string(count++);
+        const auto kit = directory / "kit", sd = directory / "sd";
+        const auto input = directory / "input", stick = input / "event0";
+        fs::create_directories(kit);
+        fs::create_directories(input);
+        auto device = gamepad();
+        device.id.bustype = bus;
+        for (int axis : {ABS_RX, ABS_RY})
+          device.axes[axis] = {range.center, range.minimum, range.maximum, 0, 0, 0};
+        createNode(stick, device);
+        Host host(kit.string(), (sd / "games/NDS").string(), sd);
+        host.scan(input);
+        host.menu = false;
+        host.spi.history.clear();
+        for (int x : {range.low, range.high, range.center})
+          for (int y : {range.low, range.high, range.center}) {
+            emit(stick, {{EV_ABS, ABS_RX, x}, {EV_ABS, ABS_RY, y},
+                         {EV_SYN, SYN_REPORT, 0}});
+            poll(host);
+          }
+        assert(commands(host, 0x3d) == 0 && host.pads[0].analog == 0);
+        assert(host.lastjoy == 0);
+        for (int axis : {ABS_RX, ABS_RY})
+          for (int outside : {range.outside_low, range.outside_high}) {
+            host.spi.history.clear();
+            emit(stick, {{EV_ABS, axis, outside}, {EV_SYN, SYN_REPORT, 0}});
+            poll(host);
+            assert(commands(host, 0x3d) == 1 && lastAnalog(host) != 0);
+            emit(stick, {{EV_ABS, axis, range.center}, {EV_SYN, SYN_REPORT, 0}});
+            poll(host);
+            assert(commands(host, 0x3d) == 2 && lastAnalog(host) == 0);
+            host.spi.history.clear();
+            for (int noise : {range.low, range.high, range.center}) {
+              emit(stick, {{EV_ABS, axis, noise}, {EV_SYN, SYN_REPORT, 0}});
+              poll(host);
+            }
+            assert(commands(host, 0x3d) == 0); // Idle noise cannot re-show the pointer.
+          }
+        emit(stick, {{EV_ABS, ABS_RX, range.maximum}, {EV_ABS, ABS_RY, range.minimum},
+                     {EV_SYN, SYN_REPORT, 0}});
+        poll(host);
+        assert(lastAnalog(host) == 0x807f); // Preserve full-screen reach.
+        host.togglemenu();
+        host.spi.history.clear();
+        emit(stick, {{EV_ABS, ABS_RX, range.low}, {EV_ABS, ABS_RY, range.high},
+                     {EV_SYN, SYN_REPORT, 0}});
+        poll(host);
+        assert(commands(host, 0x3d) == 0);
+        host.togglemenu();
+        assert(lastAnalog(host) == 0); // Menu exit restores the filtered value.
+        // A deliberate touch press still works at the neutral screen center.
+        emit(stick, {{EV_KEY, BTN_THUMBR, 1}, {EV_SYN, SYN_REPORT, 0}});
+        poll(host);
+        assert(host.lastjoy == (1u << 12));
+      }
+    std::cout << "PASS right-stick 3% dead zone: USB/Bluetooth, 8/16-bit and "
+                 "offset ranges, both center values, jitter, threshold edges, "
+                 "full reach, menu restoration and center touch\n";
+  }
   static void poll(Host &host) {
     errno = 0; // Regular fixture files end at EOF rather than EAGAIN.
     host.inputs();
@@ -425,5 +495,6 @@ int main() {
   assert(mkdtemp(directory));
   HostTest::run(directory);
   HostTest::triggerMappings(fs::path(directory) / "triggers");
+  HostTest::touchDeadzone(fs::path(directory) / "deadzone");
   fs::remove_all(directory);
 }

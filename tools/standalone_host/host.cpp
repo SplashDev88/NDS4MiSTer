@@ -2232,13 +2232,18 @@ class Host {
               p.abs[e.code].maximum > p.abs[e.code].minimum) {
             p.touch_analog_valid = true;
             auto a = p.abs[e.code];
-            int value = std::clamp((int)((int64_t(e.value) - a.minimum) * 255 /
-                                         (a.maximum - a.minimum)) -
-                                       128,
-                                   -128, 127);
+            const int64_t range = int64_t(a.maximum) - a.minimum;
+            const int64_t offset = int64_t(e.value) * 2 - a.minimum - a.maximum;
+            // Ignore the inner 3% of each half-axis before rounding to the
+            // core's signed 8-bit coordinates. This also treats both center
+            // values of an even-sized range (DualSense 127/128) as neutral.
+            int value = offset * 100 >= -range * 3 && offset * 100 <= range * 3
+                ? 0 : std::clamp(int((int64_t(e.value) - a.minimum) * 255 / range) -
+                                     128, -128, 127);
             int shift = e.code == rx ? 0 : 8;
+            const auto previous = p.analog;
             p.analog = (p.analog & ~(255 << shift)) | (uint8_t(value) << shift);
-            if (!menu)
+            if (!menu && p.analog != previous)
               spi.cmd(Spi::IO, 0x3d, {0, rotateTouchAnalog(p.analog, touch_rotation)});
           }
           // A DualSense trigger reports both a button and an analog axis.

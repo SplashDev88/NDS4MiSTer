@@ -29,6 +29,11 @@ gamepad, keyboard and mouse remain available; no motion setting is required.
 The filter uses the Linux `INPUT_PROP_ACCELEROMETER` device property, rather
 than excluding a controller by name or USB/Bluetooth ID.
 
+Right-stick touch input has a 3% dead zone around the center of each axis.
+Small stick drift stays neutral and cannot repeatedly reveal the crosshair.
+Movement outside the dead zone retains its existing coordinates and full
+screen reach. Mouse input and the touch-press button are unchanged.
+
 When a trigger exposes both a digital button and an analog axis, the button
 mapping wizard uses its digital press/release events. A DualSense trigger pull
 therefore maps one action; holding or releasing it does not advance to another
