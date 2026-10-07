@@ -1230,10 +1230,11 @@ class Host {
       for (int i = 0; i < 4; i++)
         spi.word(0);
       // Video Rotation values are Off/CCW/CW. The OSD wire values are
-      // 0/1/3 respectively. Use the live choice for every menu and dialog;
+      // 0/3/1 respectively (osd.v wire 1 turns pixels CW, wire 3 CCW).
+      // Use the live choice for every menu and dialog;
       // the old private CRT override must not leave a TATE menu sideways.
       const unsigned rotation = (status >> 11) & 3;
-      spi.word(rotation == 1 ? 1 : rotation == 2 ? 3 : 0);
+      spi.word(rotation == 1 ? 3 : rotation == 2 ? 1 : 0);
     }
     spi.end();
   }

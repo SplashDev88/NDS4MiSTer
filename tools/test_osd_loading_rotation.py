@@ -9,6 +9,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--rtl', type=Path, default=root / 'fpga/mister_nitro_console_island/sys/osd.v')
+parser.add_argument('--host-trace', type=Path, help='Actual commands exported by test_host_osd_direction.cpp')
 args = parser.parse_args()
 source = args.rtl.read_text()
 # Name two anonymous blocks in a temporary copy solely for deterministic
@@ -30,4 +31,7 @@ with tempfile.TemporaryDirectory(prefix='nds-osd-rotation-') as directory:
     subprocess.run([os.environ.get('IVERILOG', 'iverilog'), '-g2012',
                     '-s', 'tb_osd_loading_rotation', '-o', str(binary),
                     str(rtl), str(root / 'rtl/tb_osd_loading_rotation.sv')], check=True)
-    subprocess.run([os.environ.get('VVP', 'vvp'), str(binary)], check=True)
+    command = [os.environ.get('VVP', 'vvp'), str(binary)]
+    if args.host_trace:
+        command.append('+HOST_TRACE=' + str(args.host_trace.resolve()))
+    subprocess.run(command, check=True)

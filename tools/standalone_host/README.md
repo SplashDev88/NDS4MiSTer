@@ -11,6 +11,11 @@ Rotation. The legacy private `NDS_osd.cfg` and INI `osd_rotate` settings no long
 override it. `CRT Mode: On` selects the single-screen CRT raster; it does not
 enable the analog port. CRT Screen sits below that switch, after a blank
 separator from 3D FPS Counter. Turning it off restores the Video Layout row.
+To verify actual rotation geometry, export commands with
+`test_host_osd_direction.cpp`, then run `tools/test_osd_loading_rotation.py`
+with `--host-trace <exported-file>`. This sends the real host's direction choices
+through the FPGA OSD SPI decoder and checks every output pixel against the
+user-facing CW/CCW direction, including CRT mode and loading dialogs.
 
 The main menu's **Touch Rotation** row sits below
 **Video Rotation**. It rotates right-stick and mouse touch input independently

@@ -11,6 +11,8 @@ osd dut(.clk_sys,.io_osd,.io_strobe,.io_din,.clk_video,
  .din(24'h000000),.de_in(1'b0),.vs_in(1'b0),.hs_in(1'b0),
  .dout,.de_out,.vs_out,.hs_out,.osd_status);
 integer errors=0, checks=0, mode, height, width, x,y,sx,sy,i;
+integer trace_file, video_option, crt, host_command, host_rotation, fields, host_cases=0;
+reg [4095:0] trace_path;
 reg [7:0] expected;
 function automatic [7:0] content(input integer col, row);
  content=((row*17) ^ col ^ (col>>3));
@@ -92,6 +94,31 @@ initial begin
     for(x=0;x<(mode==0?width:height);x=x+1)
      sample(x,y,mode,height,width,1);
   end
+ end
+ if($value$plusargs("HOST_TRACE=%s",trace_path)) begin
+  trace_file=$fopen(trace_path,"r");
+  if(!trace_file) $fatal(1,"Cannot read actual host OSD trace");
+  while(!$feof(trace_file)) begin
+   fields=$fscanf(trace_file,"%d %d %d %d\n",video_option,crt,host_command,host_rotation);
+   if(fields==4) begin
+    if(video_option<0 || video_option>2 || (host_command!=65 && host_command!=73))
+     $fatal(1,"Invalid host trace case");
+    height=host_command==65 ? 128 : 64;
+    setup(host_rotation,height/8);
+    start_command(host_command);
+    tx(0);tx(0);tx(0);tx(0);tx(host_rotation);finish_command();
+    // Independent expected geometry from the visible Video Rotation choice:
+    // CCW maps destination (x,y) to source (width-1-y,x); CW to (y,height-1-x).
+    mode=video_option==1 ? 3 : video_option==2 ? 1 : 0;
+    for(y=0;y<(mode==0?height:256);y=y+1)
+     for(x=0;x<(mode==0?256:height);x=x+1)
+      sample(x,y,mode,height,256,0);
+    host_cases=host_cases+1;
+   end
+  end
+  $fclose(trace_file);
+  if(host_cases!=12) $fatal(1,"Expected12 host cases, got%0d",host_cases);
+  $display("Host menu/loading direction checked through real OSD pixels: %0d cases",host_cases);
  end
  if(errors) $fatal(1,"OSD rotation failures=%0d across%0d pixels",errors,checks);
  $display("PASS OSD8/16-row dialogs, menus and info windows, Off/90CW/90CCW: %0d pixels",checks);

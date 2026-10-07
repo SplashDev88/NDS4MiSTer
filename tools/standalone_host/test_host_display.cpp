@@ -72,13 +72,13 @@ struct HostTest {
       osdRotation(host, 0);
       host.cursor = 3; host.action(2);
       assert(((host.status >> 11) & 3) == 1);
-      osdRotation(host, 1); osdRotation(host, 1, true);
+      osdRotation(host, 3); osdRotation(host, 3, true);
       host.action(2);
       assert(((host.status >> 11) & 3) == 2);
-      osdRotation(host, 3); osdRotation(host, 3, true);
+      osdRotation(host, 1); osdRotation(host, 1, true);
       host.saveSettings();
       Host reloaded((root / "kit").string(), (root / "sd/games/NDS").string(), root / "sd");
-      osdRotation(reloaded, 3);
+      osdRotation(reloaded, 1);
       host.action(2); osdRotation(host, 0);
       host.status |= 3u << 11; osdRotation(host, 0);
     }
