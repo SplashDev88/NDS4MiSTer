@@ -10,7 +10,7 @@ These are experimental paths; simulation is not physical-display validation.
 
 Component CRT
 -------------
-Select Output Timing: CRT 240p. CRT Screen switches Main/Touch; Screen Order
+Select CRT 240p: On. CRT Screen switches Main/Touch; Screen Order
 still reverses the panel order. The 256x192 panel is centered in a 320x240
 canvas. The source line rate is 15.625 kHz and frame rate approximately
 59.83 Hz, matching the existing presentation cadence without changing the
@@ -34,8 +34,8 @@ RetroTINK-4K / DV1
 -----------------
 Connect MiSTer's HDMI port directly to the RetroTINK-4K's digital input.
 Set direct_video=1 and dvi_mode=0 in the effective NDS INI section, keeping
-vga_scaler=0. Output Timing: Standard retains the original native side/stack/
-single raster; CRT 240p supplies the centered single-panel raster instead.
+vga_scaler=0. CRT 240p: Off retains the original native side/stack/single
+raster; On supplies the centered single-panel raster instead.
 Video Rotation applies to the MiSTer scaler, not the native DV1/analog path.
 Use the receiver's rotation feature when needed for native output.
 
@@ -72,9 +72,9 @@ Private kit defaults
 Launch Scripts -> NDS_Display_Beta. The launcher filename is NDS_Display_Beta.sh;
 spaces in script filenames break Main's unquoted shell launch wrapper.
 The test kit starts in CRT 240p with Main selected and both rotations off.
-NDS_osd.cfg containing 0 gives the private kit an upright menu, independent
-of the regular NDS INI's portrait-monitor menu orientation. A missing file
-retains the regular INI setting. Existing games, saves, production settings,
+The standalone menu follows Video Rotation, including file browsing and
+loading dialogs. The old NDS_osd.cfg override and MiSTer.ini osd_rotate do
+not override that choice in this beta. Existing games, saves, production settings,
 renderer, write-combining modules and 1 GHz clock policy are retained.
 
 Display beta 3
@@ -87,6 +87,21 @@ Right-stick touch now has a 3% dead zone on each centered axis. Resting stick
 jitter stays neutral instead of repeatedly revealing the crosshair. Input
 outside the dead zone keeps its original coordinates and full screen reach.
 Mouse input and the touch-press button are unchanged.
+
+Display beta 4
+--------------
+Rename Output Timing to CRT 240p: Off/On. This selects the 240p single-screen
+picture; it does not switch the analog port on or off. MiSTer.ini still
+controls analog routing, signal format and Direct Video.
+
+CRT Screen appears directly below CRT 240p when enabled. A blank row
+separates these controls from 3D FPS Counter. Turning CRT 240p off restores
+Video Layout near the top of the menu.
+
+Menus and loading dialogs follow Video Rotation immediately and on relaunch.
+Touch Rotation remains independent. The menu has one shared orientation;
+a portrait HDMI monitor and landscape CRT cannot have independently rotated
+menus in this beta. FPGA, renderer, clocks and controller mappings are unchanged.
 
 Independent HDMI and analog DS panels are not implemented in this beta.
 Both outputs currently display the same selected panel or composed image.

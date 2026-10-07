@@ -690,7 +690,8 @@ R"({
       if (!row) text = " " + std::string(LOAD_LABEL);
       else if (row == 1) text = " Boot DS firmware";
       else if (row == 5) text = " Touch Rotation:      Normal";
-      else if (row >= 3 && row <= 9) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
+      else if (row >= 3 && row <= 8) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
+      else if (row == 10) text = " CRT 240p:               Off";
       else if (row == 11) text = " Lid: Open (Close)";
       else if (row == 13) text = " Reset";
       else if (row == 15) text = "            exit";

@@ -23,6 +23,10 @@ rotation = next(option for option in options if option[2] == "Video Rotation")
 options.remove(rotation)
 layout_index = next(i for i, option in enumerate(options) if option[2] == "Video Layout")
 options.insert(layout_index + 1, rotation)
+# This selects the CRT raster; it does not enable/disable analog routing.
+# Keep the accepted FPGA's wire bits while clarifying the standalone label.
+options = [(lo, width, "CRT 240p", ["Off", "On"]) if lo == 13 else
+           (lo, width, label, values) for lo, width, label, values in options]
 # The standalone browser uses a file-pattern label; the accepted FPGA keeps
 # its legacy MiSTer FS3 label. This changes no option bits or generated rows.
 load = "Load *.NDS"

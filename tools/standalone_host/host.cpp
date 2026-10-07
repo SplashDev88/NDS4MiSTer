@@ -293,6 +293,24 @@ class Host {
   TouchRotation touch_rotation = TouchRotation::Normal;
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
                        RESET_CURSOR = 10, EXIT_CURSOR = 11;
+  int mainMenuRow(int item) const {
+    // Keep cursor identities stable while grouping the single-screen CRT
+    // selector directly below its mode switch. Blank rows separate sections.
+    static constexpr std::array<int, EXIT_CURSOR + 1> standard{
+        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 13, 15};
+    static constexpr std::array<int, EXIT_CURSOR + 1> crt{
+        0, 1, 10, 3, 4, 5, 6, 7, 9, 11, 13, 15};
+    return (status & CRT_TIMING ? crt : standard)[item];
+  }
+  int nextMainMenuItem(int direction) const {
+    int next = cursor;
+    for (int item = 0; item <= EXIT_CURSOR; ++item)
+      if ((mainMenuRow(item) - mainMenuRow(cursor)) * direction > 0 &&
+          (next == cursor ||
+           (mainMenuRow(item) - mainMenuRow(next)) * direction < 0))
+        next = item;
+    return next != cursor ? next : direction > 0 ? 0 : EXIT_CURSOR;
+  }
   nds_video::Transmitter video_transmitter;
   nds_video::StablePacket video_packet;
   bool direct_video_metadata = false, video_osd_visible = false;
@@ -353,7 +371,6 @@ class Host {
   unsigned scroll_offset = 0;
   uint32_t lastjoy = ~0u;
   uint64_t nextscan = 0, nextbeat = 0;
-  int rotation = 0;
   uint64_t reads = 0, writes = 0;
   uint64_t framebuffer_snapshot_sequence = 0;
   std::string message;
@@ -1212,7 +1229,11 @@ class Host {
     if (en) {
       for (int i = 0; i < 4; i++)
         spi.word(0);
-      spi.word(rotation == 1 ? 3 : rotation == 2 ? 1 : 0);
+      // Video Rotation values are Off/CCW/CW. The OSD wire values are
+      // 0/1/3 respectively. Use the live choice for every menu and dialog;
+      // the old private CRT override must not leave a TATE menu sideways.
+      const unsigned rotation = (status >> 11) & 3;
+      spi.word(rotation == 1 ? 1 : rotation == 2 ? 3 : 0);
     }
     spi.end();
   }
@@ -1384,19 +1405,15 @@ class Host {
           option.values[2] = reversed ? "Touch" : "Main";
           option.values[3] = reversed ? "Main" : "Touch";
         }
-        rows[i + 3 + (i >= 2)] = optionLabel(status, option);
+        rows[mainMenuRow(int(i) + 2 + (i >= 2))] = optionLabel(status, option);
       }
-      rows[5] = optionLabel(unsigned(touch_rotation),
+      rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
       rows[11] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
       rows[13] = " Reset";
       rows[14] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
-      selected = cursor <= 1 ? cursor
-                 : cursor < LID_CURSOR ? cursor + 1
-                 : cursor == LID_CURSOR ? 11
-                 : cursor == RESET_CURSOR ? 13
-                               : 15;
+      selected = mainMenuRow(cursor);
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
                             : system_menu ? nds_osd::arrow_left
@@ -1507,10 +1524,12 @@ class Host {
     version_footer.reset(idle_since);
     next_scroll = idle_since + 1000;
     int count = browser ? (int)roms.size() : system_menu ? 6 : EXIT_CURSOR + 1;
-    if (a == 0 && count)
-      cursor = (cursor + count - 1) % count;
-    if (a == 1 && count)
-      cursor = (cursor + 1) % count;
+    if ((a == 0 || a == 1) && count) {
+      if (!browser && !system_menu)
+        cursor = nextMainMenuItem(a == 0 ? -1 : 1);
+      else
+        cursor = (cursor + count + (a == 0 ? -1 : 1)) % count;
+    }
     if (a == 3) {
       if (browser) {
         closeBrowser();
@@ -2332,14 +2351,6 @@ public:
     std::ifstream ini(sd_root / "MiSTer.ini");
     std::string text((std::istreambuf_iterator<char>(ini)),
                      std::istreambuf_iterator<char>());
-    rotation = osdRotation(text);
-    // A private display kit can use an upright menu on a CRT while the
-    // user's regular NDS setup retains its portrait-monitor INI setting.
-    std::ifstream osd_config(fs::path(kit) / "NDS_osd.cfg");
-    std::string osd_override;
-    if (std::getline(osd_config, osd_override) && osd_override.size() == 1 &&
-        osd_override[0] >= '0' && osd_override[0] <= '2')
-      rotation = osd_override[0] - '0';
     browse_expand = browserExpand(text);
     recents_enabled = recentEnabled(text);
     system_rows = systemMenuRows(systemMenuOptions(text, sd_root / "config/NDS_afilter.cfg"));
