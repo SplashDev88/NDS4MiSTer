@@ -27,7 +27,7 @@ struct HostTest {
     host.draw();
     assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Screen:            Main", true, nds_osd::arrow_right));
     assert(host.osd_rows[8] == host.frame.renderRow(8, "", false, nds_osd::arrow_right));
-    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT 240p:                On", false, nds_osd::arrow_right));
+    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Mode:                On", false, nds_osd::arrow_right));
     host.action(2); assert(((host.status>>5)&3)==3);
     host.draw();
     assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Screen:           Touch", true, nds_osd::arrow_right));
@@ -56,7 +56,7 @@ struct HostTest {
     assert(!(host.status & CRT_TIMING) && host.cursor == 8);
     host.draw();
     assert(host.osd_rows[9] == host.frame.renderRow(9, "", false, nds_osd::arrow_right));
-    assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT 240p:               Off", true, nds_osd::arrow_right));
+    assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Mode:               Off", true, nds_osd::arrow_right));
     host.cursor = 0;
     for (int i = 1; i <= 12; ++i) { host.action(1); assert(host.cursor == i % 12); }
     for (int i = 1; i <= 12; ++i) { host.action(0); assert(host.cursor == (12 - i) % 12); }

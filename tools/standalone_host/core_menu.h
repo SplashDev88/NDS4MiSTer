@@ -12,6 +12,6 @@ inline constexpr std::array<CoreOption, 6> CORE_OPTIONS{{
   {7, 1, 2, "Screen Order", {"Main First", "Touch First"}},
   {8, 2, 4, "Screen Gap", {"8 Pixels", "None", "16 Pixels", "24 Pixels"}},
   {4, 1, 2, "3D FPS Counter", {"Off", "On"}},
-  {13, 1, 2, "CRT 240p", {"Off", "On"}},
+  {13, 1, 2, "CRT Mode", {"Off", "On"}},
 }};
 inline constexpr uint16_t CORE_OPTION_MASK = 15344;

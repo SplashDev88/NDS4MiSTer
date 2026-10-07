@@ -10,7 +10,7 @@ These are experimental paths; simulation is not physical-display validation.
 
 Component CRT
 -------------
-Select CRT 240p: On. CRT Screen switches Main/Touch; Screen Order
+Select CRT Mode: On. CRT Screen switches Main/Touch; Screen Order
 still reverses the panel order. The 256x192 panel is centered in a 320x240
 canvas. The source line rate is 15.625 kHz and frame rate approximately
 59.83 Hz, matching the existing presentation cadence without changing the
@@ -34,7 +34,7 @@ RetroTINK-4K / DV1
 -----------------
 Connect MiSTer's HDMI port directly to the RetroTINK-4K's digital input.
 Set direct_video=1 and dvi_mode=0 in the effective NDS INI section, keeping
-vga_scaler=0. CRT 240p: Off retains the original native side/stack/single
+vga_scaler=0. CRT Mode: Off retains the original native side/stack/single
 raster; On supplies the centered single-panel raster instead.
 Video Rotation applies to the MiSTer scaler, not the native DV1/analog path.
 Use the receiver's rotation feature when needed for native output.
@@ -71,7 +71,7 @@ Private kit defaults
 --------------------
 Launch Scripts -> NDS_Display_Beta. The launcher filename is NDS_Display_Beta.sh;
 spaces in script filenames break Main's unquoted shell launch wrapper.
-The test kit starts in CRT 240p with Main selected and both rotations off.
+The test kit starts in CRT Mode with Main selected and both rotations off.
 The standalone menu follows Video Rotation, including file browsing and
 loading dialogs. The old NDS_osd.cfg override and MiSTer.ini osd_rotate do
 not override that choice in this beta. Existing games, saves, production settings,
@@ -90,12 +90,12 @@ Mouse input and the touch-press button are unchanged.
 
 Display beta 4
 --------------
-Rename Output Timing to CRT 240p: Off/On. This selects the 240p single-screen
+Rename Output Timing to CRT Mode: Off/On. This selects the 240p single-screen
 picture; it does not switch the analog port on or off. MiSTer.ini still
 controls analog routing, signal format and Direct Video.
 
-CRT Screen appears directly below CRT 240p when enabled. A blank row
-separates these controls from 3D FPS Counter. Turning CRT 240p off restores
+CRT Screen appears directly below CRT Mode when enabled. A blank row
+separates these controls from 3D FPS Counter. Turning CRT Mode off restores
 Video Layout near the top of the menu.
 
 Menus and loading dialogs follow Video Rotation immediately and on relaunch.

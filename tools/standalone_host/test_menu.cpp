@@ -24,8 +24,8 @@ int main() {
   assert(CORE_OPTIONS[1].shift == 11 &&
          std::string(CORE_OPTIONS[1].label) == "Video Rotation");
   assert(CORE_OPTIONS[5].shift == 13 &&
-         std::string(CORE_OPTIONS[5].label) == "CRT 240p");
-  assert(optionLabel(CRT_TIMING, CORE_OPTIONS[5]) == " CRT 240p:                On");
+         std::string(CORE_OPTIONS[5].label) == "CRT Mode");
+  assert(optionLabel(CRT_TIMING, CORE_OPTIONS[5]) == " CRT Mode:                On");
   assert((changeOption(0, CORE_OPTIONS[1], 1) & 1) == 0);
   assert(optionLabel(0, CORE_OPTIONS[0]) == " Video Layout:    Left/Right");
   assert(optionLabel(0, CORE_OPTIONS[1]) == " Video Rotation:         Off");

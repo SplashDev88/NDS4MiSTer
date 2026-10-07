@@ -8,7 +8,7 @@ Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_
 
 In the display experiment, menu and loading-dialog orientation follows Video
 Rotation. The legacy private `NDS_osd.cfg` and INI `osd_rotate` settings no longer
-override it. `CRT 240p: On` selects the single-screen CRT raster; it does not
+override it. `CRT Mode: On` selects the single-screen CRT raster; it does not
 enable the analog port. CRT Screen sits below that switch, after a blank
 separator from 3D FPS Counter. Turning it off restores the Video Layout row.
 
