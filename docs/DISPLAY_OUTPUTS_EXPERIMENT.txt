@@ -5,6 +5,7 @@ receivers such as RetroTINK-4K. It is distinct from dvi_mode. Use HDMI mode
 (dvi_mode=0) for DV1 metadata and audio.
 
 This branch restores native analog RGB/component and Direct Video routing.
+Beta 7 also enables the standard FPGA composite/S-Video encoder.
 It also restores the standard vga_scaler path for computer VGA monitors.
 These are experimental paths; simulation is not physical-display validation.
 
@@ -133,3 +134,27 @@ https://www.retrotink.com/blog/introducing-the-retrotink-4k
 https://mister-devel.github.io/MkDocs_MiSTer/advanced/ini/
 https://mister-devel.github.io/MkDocs_MiSTer/advanced/crt/
 https://github.com/MiSTer-devel/Main_MiSTer/blob/master/video.cpp
+
+Display beta 7: composite and S-Video color
+-----------------------------------------
+Enable the standard MiSTer YC encoder previously excluded from the FPGA
+build. Main applies the active profile before the standalone host takes over.
+The 60 MHz video clock is unchanged, so its carrier settings remain valid
+when switching between native layouts and CRT Mode.
+
+SuperStation One composite or S-Video, using its FPGA encoder:
+  - Keep switch 3 UP and select the SVID MiSTer INI profile.
+  - For an NTSC CRT, use the manufacturer's NTSC switch positions.
+  - Use CRT Mode: On in NDS.
+  - The SVID profile uses vga_mode=svideo even for the SS1 composite socket.
+    Its hardware combines the Y/C signals; do not change this to cvbs.
+  - Keep forced_scandoubler=0, vga_scaler=0, composite_sync=1 and
+    direct_video=0 for ordinary HDMI alongside the CRT.
+
+Other analog hardware must use the profile expected by its encoder/cable.
+Generic packed-composite adapters can use vga_mode=cvbs. External Sony
+encoder mode on SS1 instead uses switch 3 DOWN with vga_mode=subcarrier.
+The package does not change MiSTer INI profiles or yc.txt.
+
+SS1 setup reference:
+https://github.com/Takiiiiiiii/SuperStation-Documentation#ss1-color-black-and-white-display-issue-over-s-video-or-composite

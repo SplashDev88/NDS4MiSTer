@@ -50,14 +50,16 @@ wire [7:0] red = din[23:16];
 wire [7:0] green = din[15:8];
 wire [7:0] blue = din[7:0];
 
-logic [7:0] red_1, blue_1, red_2, blue_2;
+// Keep the short pixel/sync delay lines in registers. Inferring an M10K
+// for these few bytes leaves no routing margin in the NDS design.
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) logic [7:0] red_1, blue_1, red_2, blue_2;
 
 logic signed [20:0] yr = 0, yb = 0, yg = 0;
-logic [7:0] luma_d0;
-logic [7:0] luma_d1;
-logic [7:0] luma_d2;
-logic [7:0] luma_d3;
-logic [7:0] luma_d4;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) logic [7:0] luma_d0;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) logic [7:0] luma_d1;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) logic [7:0] luma_d2;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) logic [7:0] luma_d3;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) logic [7:0] luma_d4;
 
 typedef struct {
 	logic signed [20:0] y;
@@ -70,9 +72,9 @@ typedef struct {
 
 phase_t phase[5];
 reg unsigned [7:0] Y = 8'd0, C = 8'd128;
-reg [6:0] hsync_dly = '0, vsync_dly = '0, csync_dly = '0;
-reg de_dly0 = 1'b0, de_dly1 = 1'b0, de_dly2 = 1'b0, de_dly3 = 1'b0;
-reg de_dly4 = 1'b0, de_dly5 = 1'b0, de_dly6 = 1'b0;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg [6:0] hsync_dly = '0, vsync_dly = '0, csync_dly = '0;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg de_dly0 = 1'b0, de_dly1 = 1'b0, de_dly2 = 1'b0, de_dly3 = 1'b0;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg de_dly4 = 1'b0, de_dly5 = 1'b0, de_dly6 = 1'b0;
 
 
 reg [10:0]  cburst_phase = 11'd0; // colorburst counter

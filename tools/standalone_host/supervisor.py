@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.5-display-beta.6 standalone launcher and recovery supervisor.
+"""NDS4MiSTer v0.9.0-rc.5-display-beta.7 standalone launcher and recovery supervisor.
 No system binary/init/config overwrites. Independent guard survives supervisor death.
 """
 from pathlib import Path
@@ -19,7 +19,7 @@ NORMAL_HELPER_SHA = "91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390
 HELPER = KIT / "support/nds_hybrid_3d_service"
 SD_ROOT = Path("/media/fat")
 EXPECTED_HELPER = "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729"
-EXPECTED_CORE = "27578ed3fb2f55bf8f1742d2b4de557f3dbc0297d8baec64544a6aad77321888"
+EXPECTED_CORE = "965e0c349026c1d74f616d4ece0c31be7a036adf8e584debc10d3cb2616320fb"
 EXPECTED_KICKSTART = "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b"
 EXPECTED_SPEED_ENV = {
     "NDS4MISTER_GX_MATRIX_PREFIX": "auto",
@@ -536,7 +536,7 @@ def main():
         state["wc_mapping_present"] = "/dev/nds_mem_wc" in Path("/proc/%d/maps" % release_pid).read_text()
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.5-display-beta.6"
+        state["release"] = "v0.9.0-rc.5-display-beta.7"
         write()
         stage("load standalone core")
         previous = mains()[0]

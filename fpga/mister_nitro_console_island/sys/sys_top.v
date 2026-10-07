@@ -1354,14 +1354,15 @@ cyclonev_hps_interface_peripheral_i2c hdmi_i2c
 
 `ifndef MISTER_HDMI_ONLY
 `ifndef NDS_HDMI_SCALER_ONLY
-reg [23:0] dv_data;
-reg        dv_hs, dv_vs, dv_de;
+// These three-cycle delays need registers, not scarce M10K RAM blocks.
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg [23:0] dv_data;
+(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg        dv_hs, dv_vs, dv_de;
 wire [23:0] dv_data_osd;
 wire dv_hs_osd, dv_vs_osd, dv_cs_osd;
 
 always @(posedge clk_vid) begin
-	reg [23:0] dv_d1, dv_d2;
-	reg        dv_de1, dv_de2, dv_hs1, dv_hs2, dv_vs1, dv_vs2;
+	(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg [23:0] dv_d1, dv_d2;
+	(* altera_attribute = "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *) reg        dv_de1, dv_de2, dv_hs1, dv_hs2, dv_vs1, dv_vs2;
 	reg [12:0] vsz, vcnt, vcnt_l, vcnt_ll;
 	reg        old_hs, old_vs;
 	reg        vde;

@@ -43,9 +43,9 @@ set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_OUTPUTS=1"
 set_global_assignment -name VERILOG_MACRO "NDS_TATE=1"
 set_global_assignment -name VERILOG_MACRO "NDS_DISABLE_HDMI_LOW_LATENCY=1"
 
-# Composite/S-video and adaptive/downscale filters are not first-alpha
-# requirements.
-set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_YC=1"
+# Keep the standard YC encoder for composite/S-Video hardware such as the
+# SuperStation One in FPGA encoder mode. Main selects it from vga_mode.
+# Adaptive/downscale filters remain outside this experiment.
 set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_ADAPTIVE=1"
 set_global_assignment -name VERILOG_MACRO "MISTER_DOWNSCALE_NN=1"
 set_global_assignment -name VERILOG_MACRO "NDS_FORCE_NEAREST=1"
