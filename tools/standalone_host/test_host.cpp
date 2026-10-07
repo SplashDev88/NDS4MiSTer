@@ -657,7 +657,8 @@ R"({
       const auto view = systemMenuView(host.system_rows, host.cursor, host.system_first);
       assert(view.selected + view.first == main_rows[i]);
       assert(!view.rows[view.selected].disabled);
-      for (const auto &t : host.spi.history) assert(t.select == Spi::OSD);
+      for (const auto &t : host.spi.history)
+        assert(t.select == Spi::OSD || t.select == Spi::OSD_HDMI || t.select == Spi::OSD_ANALOG);
       host.action(1);
     }
     host.draw();

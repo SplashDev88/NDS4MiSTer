@@ -6,8 +6,9 @@ Build this frontend using `build.sh`. Its menu options are generated from the in
 
 Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_*.py"` from the repository root, plus the C++ test programs in this directory (including `test_storage.cpp` and `test_host_storage.cpp`). These tests use a fake SPI bus; they do not operate hardware.
 
-In the display experiment, menu and loading-dialog orientation follows Video
-Rotation. The legacy private `NDS_osd.cfg` and INI `osd_rotate` settings no longer
+In the display experiment, HDMI menu and loading-dialog orientation follows
+Video Rotation; the native analog menu stays upright. The legacy private
+`NDS_osd.cfg` and INI `osd_rotate` settings no longer
 override it. `CRT Mode: On` selects the single-screen CRT raster; it does not
 enable the analog port. CRT Screen sits below that switch, after a blank
 separator from 3D FPS Counter. Turning it off restores the Video Layout row.
@@ -16,6 +17,11 @@ To verify actual rotation geometry, export commands with
 with `--host-trace <exported-file>`. This sends the real host's direction choices
 through the FPGA OSD SPI decoder and checks every output pixel against the
 user-facing CW/CCW direction, including CRT mode and loading dialogs.
+For simultaneous outputs, export `test_host_dual_osd.cpp` transactions and
+run `tools/test_dual_osd.py --host-trace <exported-file>`. That test uses the
+actual sys_top chip-select decoder and two OSD modules to check HDMI rotation,
+upright native analog, shared row data, independent controls, menu/message
+transitions and exclusion of unrelated SPI functions.
 
 The main menu's **Touch Rotation** row sits below
 **Video Rotation**. It rotates right-stick and mouse touch input independently

@@ -72,8 +72,8 @@ Private kit defaults
 Launch Scripts -> NDS_Display_Beta. The launcher filename is NDS_Display_Beta.sh;
 spaces in script filenames break Main's unquoted shell launch wrapper.
 The test kit starts in CRT Mode with Main selected and both rotations off.
-The standalone menu follows Video Rotation, including file browsing and
-loading dialogs. The old NDS_osd.cfg override and MiSTer.ini osd_rotate do
+The HDMI scaler menu follows Video Rotation; the native analog menu stays
+upright, including file browsing and loading dialogs. The old NDS_osd.cfg override and MiSTer.ini osd_rotate do
 not override that choice in this beta. Existing games, saves, production settings,
 renderer, write-combining modules and 1 GHz clock policy are retained.
 
@@ -99,15 +99,30 @@ separates these controls from 3D FPS Counter. Turning CRT Mode off restores
 Video Layout near the top of the menu.
 
 Menus and loading dialogs follow Video Rotation immediately and on relaunch.
-Touch Rotation remains independent. The menu has one shared orientation;
-a portrait HDMI monitor and landscape CRT cannot have independently rotated
-menus in this beta. FPGA, renderer, clocks and controller mappings are unchanged.
+Touch Rotation remains independent. Beta 4 initially shared one menu
+orientation between outputs; beta 6 separates them. FPGA, renderer, clocks
+and controller mappings are unchanged.
 
 Display beta 5
 --------------
 Correct the swapped CW/CCW menu commands from beta 4 so menus rotate in the
 same direction as the selected video image. Both CRT and standard modes,
 including loading dialogs, are checked through the actual OSD pixel pipeline.
+
+Display beta 6
+--------------
+Use the existing HDMI and native analog OSDs independently. HDMI's scaled
+picture and menu follow Video Rotation, while the native CRT picture and
+menu stay upright. No additional menu setting is needed.
+
+Text updates and hide commands still go to both OSDs; enable/rotation commands
+target each OSD separately. File browsers and loading dialogs follow the same
+rule. This uses the existing qualified FPGA image and changes only the host.
+
+Direct Video uses the native analog video/OSD path, so its menu stays aligned
+with that unrotated picture. VGA scaler mode mirrors the already composed
+HDMI image and menu, including rotation. Independent game-screen selection
+for HDMI and analog remains unimplemented.
 
 Independent HDMI and analog DS panels are not implemented in this beta.
 Both outputs currently display the same selected panel or composed image.

@@ -99,6 +99,9 @@ class Spi {
 
 public:
   static constexpr uint32_t IO = 1u << 20, FIO = 1u << 18, OSD = 1u << 19;
+  // sys_top.v decodes ss1 & !ss0 for HDMI and ss1 & !ss2 for native
+  // analog. With ss1 set, the added bit masks one OSD without selecting IO/FIO.
+  static constexpr uint32_t OSD_HDMI = OSD | IO, OSD_ANALOG = OSD | FIO;
   Spi() {
     std::ifstream core("/tmp/CORENAME");
     std::string core_name;
@@ -165,6 +168,7 @@ public:
 class Spi {
 public:
   static constexpr uint32_t IO = 1u << 20, FIO = 1u << 18, OSD = 1u << 19;
+  static constexpr uint32_t OSD_HDMI = OSD | IO, OSD_ANALOG = OSD | FIO;
   struct Transaction {
     uint32_t select;
     uint16_t command;
@@ -1225,18 +1229,23 @@ class Host {
   void osd(bool en, bool message_window = false) {
     video_osd_visible = en;
     if (!en) osd_row_valid.fill(false); // disable also clears FPGA highres
-    spi.begin(Spi::OSD, en ? (message_window ? 0x49 : 0x41) : 0x40);
-    if (en) {
+    if (!en) {
+      spi.cmd(Spi::OSD, 0x40); // Hide both outputs and reset both row-height latches.
+      return;
+    }
+    // Scaled HDMI follows Video Rotation. Native analog (and native Direct
+    // Video) retains the unrotated game image, so its OSD stays upright.
+    // VGA scaler mode already uses the HDMI image including its HDMI OSD.
+    const unsigned rotation = (status >> 11) & 3;
+    const uint16_t hdmi_rotation = rotation == 1 ? 3 : rotation == 2 ? 1 : 0;
+    for (const auto &output : {std::pair{Spi::OSD_HDMI, hdmi_rotation},
+                              std::pair{Spi::OSD_ANALOG, uint16_t(0)}}) {
+      spi.begin(output.first, message_window ? 0x49 : 0x41);
       for (int i = 0; i < 4; i++)
         spi.word(0);
-      // Video Rotation values are Off/CCW/CW. The OSD wire values are
-      // 0/3/1 respectively (osd.v wire 1 turns pixels CW, wire 3 CCW).
-      // Use the live choice for every menu and dialog;
-      // the old private CRT override must not leave a TATE menu sideways.
-      const unsigned rotation = (status >> 11) & 3;
-      spi.word(rotation == 1 ? 3 : rotation == 2 ? 1 : 0);
+      spi.word(output.second);
+      spi.end();
     }
-    spi.end();
   }
   void writeRow(int y, const nds_osd::Row &bytes) {
     if (osd_row_valid[y] && osd_rows[y] == bytes) return;

@@ -9,10 +9,12 @@ struct HostTest {
   static void osdRotation(Host &host, unsigned expected, bool message = false) {
     host.spi.history.clear();
     host.osd(true, message);
-    const auto &transfer = host.spi.history.back();
-    assert(transfer.select == Spi::OSD);
-    assert(transfer.command == (message ? 0x49 : 0x41));
-    assert(transfer.words == (std::vector<uint16_t>{0, 0, 0, 0, uint16_t(expected)}));
+    assert(host.spi.history.size() == 2);
+    const auto &hdmi = host.spi.history[0], &analog = host.spi.history[1];
+    assert(hdmi.select == Spi::OSD_HDMI && analog.select == Spi::OSD_ANALOG);
+    assert(hdmi.command == (message ? 0x49 : 0x41) && analog.command == hdmi.command);
+    assert(hdmi.words == (std::vector<uint16_t>{0, 0, 0, 0, uint16_t(expected)}));
+    assert(analog.words == (std::vector<uint16_t>{0, 0, 0, 0, 0}));
   }
   static void run(const fs::path &root) {
     fs::create_directories(root / "kit");
@@ -86,6 +88,9 @@ struct HostTest {
     host.status = REQUIRED_STATUS;
     host.cursor = Host::TOUCH_ROTATION_CURSOR; host.action(2);
     osdRotation(host, 0);
+    host.spi.history.clear(); host.osd(false);
+    assert(host.spi.history.size() == 1 && host.spi.history[0].select == Spi::OSD &&
+           host.spi.history[0].command == 0x40 && host.spi.history[0].words.empty());
   }
 };
 int main() {

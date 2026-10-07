@@ -21,8 +21,8 @@ struct HostTest {
           host.status = REQUIRED_STATUS | (crt ? CRT_TIMING : 0) | (video << 11);
           host.spi.history.clear();
           host.osd(true, message);
-          const auto &transfer = host.spi.history.back();
-          assert(transfer.select == Spi::OSD && transfer.words.size() == 5);
+          const auto &transfer = host.spi.history.front();
+          assert(transfer.select == Spi::OSD_HDMI && transfer.words.size() == 5);
           trace << video << ' ' << crt << ' ' << transfer.command << ' '
                 << transfer.words[4] << '\n';
         }
