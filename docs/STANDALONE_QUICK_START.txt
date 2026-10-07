@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.5
+NDS4MiSTer v0.9.0-rc.6
 
 START HERE
 
@@ -82,10 +82,11 @@ The menu does not pause gameplay; pause inside the game when needed.
   Select / backtick   Recent Files at Load *.NDS or in the file picker
 
 System -> Define NDS buttons maps game controls. The optional final actions
-are Cycle Video Layout (once per press without resetting) and Blow into Mic
-(hold to blow, release for silence). Existing mappings remain valid; define
-buttons again to add a microphone binding. DualSense motion sensors are
-ignored, and each trigger pull advances only one mapping prompt.
+are Cycle Video Layout (once per press without resetting), Blow into Mic
+(hold to blow, release for silence), and Screen Peek (hold to view the other
+screen, release to return). Existing mappings remain valid; define buttons
+again to add an optional binding. Space skips an optional prompt.
+DualSense motion sensors are ignored, and each trigger pull advances only one mapping prompt.
 System -> Save settings stores options for later launches. Standalone's
 saved settings and controller maps remain separate from normal MiSTer.
 Greyed-out System rows are not implemented. Use normal MiSTer for global
@@ -94,6 +95,17 @@ video/audio filters, Bluetooth pairing and other unsupported settings.
 Keyboard gameplay: arrows=D-pad, X/Z=A/B, S/A=X/Y, Q/W=L/R,
 Right Shift=Select, Enter=Start, Space=Touch. Mouse movement/left click and
 a mapped right stick/Touch button control the touch screen.
+
+SCREEN PEEK AND STICK DEAD ZONE
+
+In Left Only, Right Only or CRT Mode, hold F10 or your mapped Screen Peek
+button to view the other DS screen. Release to return. Left/Right and
+Top/Bottom layouts are unaffected. Opening the menu, resetting, loading a
+game or disconnecting the controller restores the selected screen. Peek
+does not save a different layout.
+
+A 3% dead zone around the center of each right-stick axis stops small drift
+from revealing the crosshair. Mouse input and the Touch button are unchanged.
 
 SIDEWAYS GAMES AND TOUCH ROTATION
 
@@ -186,18 +198,84 @@ For TATE on a physically rotated monitor, keep Touch Rotation set to Normal.
 For a game that uses the DS sideways on an unrotated monitor, choose the
 appropriate Touch Rotation separately as described above.
 
-The menu rotates separately. For a 1080p-capable portrait screen:
+The HDMI menu and loading dialogs follow Video Rotation automatically.
+The native analog/CRT menu stays upright. Legacy osd_rotate and NDS_osd.cfg
+overrides no longer control the standalone menu. When vga_scaler=1, the analog
+port mirrors the HDMI scaler, including its menu rotation.
 
-  [NDS]
-  video_mode=8
-  osd_rotate=2
+For a compatible 1080p portrait display, set video_mode=8 in the existing
+[NDS] section of the active INI profile. This selects 1920x1080 at 60 Hz;
+omit it if unsupported. Whole-pixel scaling can leave small borders. Return
+to normal MiSTer and relaunch after changing INI options.
 
-video_mode=8 selects 1920x1080 at 60 Hz. Omit it if the display does not
-support that mode. Whole-pixel scaling can leave small borders. Use
-osd_rotate=1 if the menu is upside down, or 0 for an unrotated menu. Edit an
-existing [NDS] section rather than adding a duplicate. Return to normal
-MiSTer and relaunch to apply changes. These NDS settings also affect the
-older normal NDS core; other core sections stay unchanged.
+CRT, ANALOG AND DV1 OUTPUT
+
+CRT Mode: On selects one 256x192 DS screen centered in a 320x240 canvas.
+CRT Screen below it selects Main or Touch; Screen Order can reverse them.
+This changes the HDMI picture too. It does not enable or disable the analog
+port. CRT Mode: Off restores normal Video Layout choices. Fresh settings
+start with CRT Mode Off; existing display settings are preserved.
+
+The native CRT line rate is 15.625 kHz, at approximately 59.8 Hz. This is
+experimental output timing; use a profile compatible with your display and
+encoder. Analog output requires the appropriate hardware and cable.
+
+SuperStation One composite or S-Video with the FPGA encoder:
+  Switch 3 UP; choose the SVID INI profile.
+  vga_mode=svideo         (also correct for the SS1 composite socket)
+  ntsc_mode=0             (for the tested NTSC setup)
+  forced_scandoubler=0
+  composite_sync=1
+  vga_scaler=0
+  direct_video=0          (ordinary HDMI alongside the CRT)
+  Use the manufacturer's NTSC/PAL switch positions for your television.
+
+Composite color is user-confirmed on SS1 with this setup. Its hardware
+combines the Y/C signals, so do not change SVID to cvbs for that socket.
+External Sony encoder mode instead uses switch 3 DOWN with vga_mode=subcarrier.
+Other encoders/adapters need their own profiles; generic packed-composite
+adapters can use vga_mode=cvbs. No INI profile or yc.txt is bundled or changed.
+
+Component CRT with a compatible analog I/O board and component cable:
+  vga_mode=ypbpr
+  composite_sync=1
+  forced_scandoubler=0
+  vga_scaler=0
+  direct_video=0
+  Enable the board's Sync-on-Green switch.
+Older Main versions may use ypbpr=1. RGB CRTs use vga_mode=rgb and sync/cable
+settings appropriate to the display. These paths still need hardware testing.
+
+Computer VGA monitors:
+  vga_mode=rgb
+  vga_scaler=1
+  video_mode=<a mode accepted by your monitor>
+The analog port mirrors the HDMI scaler. forced_scandoubler alone does not
+double this core's native 15 kHz raster.
+
+DV1 / Direct Video for RetroTINK-4K (experimental; physical test pending):
+  Connect HDMI directly to the RetroTINK-4K digital input.
+  direct_video=1
+  dvi_mode=0
+  vga_scaler=0
+DV1 is different from dvi_mode: keep HDMI signaling for metadata and audio.
+CRT Mode On gives a centered single-screen raster; Off uses native layout
+geometry. Native DV1/analog output uses the receiver's rotation controls.
+For simultaneous DV1 and component, retain vga_mode=ypbpr and composite_sync=1;
+the receiver may need YCbCr 709. This combination still needs a color-bar test.
+
+The two outputs share the selected DS picture. Showing Main on HDMI and
+Touch on VGA independently is not implemented. Menu orientation is independent
+when using ordinary scaled HDMI alongside native analog output.
+
+Edit the existing [NDS] section in the active profile, rather than adding
+duplicates. Exit to normal MiSTer and relaunch Scripts -> NDS4MiSTer after
+INI changes. These options can also affect another core using the NDS name.
+
+SS1 reference:
+https://github.com/Takiiiiiiii/SuperStation-Documentation#ss1-color-black-and-white-display-issue-over-s-video-or-composite
+MiSTer output reference:
+https://mister-devel.github.io/MkDocs_MiSTer/advanced/crt/
 
 TROUBLESHOOTING
 

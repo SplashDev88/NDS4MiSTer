@@ -1,12 +1,12 @@
 # NDS4MiSTer standalone frontend
 
-See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC5.md).
+See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC6.md).
 
 Build this frontend using `build.sh`. Its menu options are generated from the included FPGA CONF_STR; the release label comes from `VERSION`. The accepted FPGA and renderer are separate components. `supervisor.py`, `Kickstart.sh` and `NDS4MiSTer.sh` supply the matching launch and recovery behavior. See [THIRD_PARTY.md](THIRD_PARTY.md) for font and MiSTer menu attribution.
 
 Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_*.py"` from the repository root, plus the C++ test programs in this directory (including `test_storage.cpp` and `test_host_storage.cpp`). These tests use a fake SPI bus; they do not operate hardware.
 
-In the display experiment, HDMI menu and loading-dialog orientation follows
+In rc.6, HDMI menu and loading-dialog orientation follows
 Video Rotation; the native analog menu stays upright. The legacy private
 `NDS_osd.cfg` and INI `osd_rotate` settings no longer
 override it. `CRT Mode: On` selects the single-screen CRT raster; it does not

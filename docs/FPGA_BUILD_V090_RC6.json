@@ -1,0 +1,34 @@
+{
+  "bytes": 4645424,
+  "device": "5CSEBA6U23I7",
+  "hardware_validation": "Exact display beta.7 FPGA retained. Castlevania and NSMB boot/capture/clean-exit checks passed at 1 GHz on Linux 6.18.38. User confirmed composite color on SuperStation One. Physical DV1/RetroTINK-4K and other analog hardware testing pending.",
+  "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+  "resources": {
+    "alms_needed": 40697,
+    "block_memory_bits": 4202888,
+    "dsp": 56,
+    "m10k": 551,
+    "total_registers": 45140
+  },
+  "seed": 6,
+  "sha256": "965e0c349026c1d74f616d4ece0c31be7a036adf8e584debc10d3cb2616320fb",
+  "source_commit": "fdd355568063caaf58ba24a1c7cb680da6623bd1",
+  "source_input_count": 1328,
+  "source_input_manifest": "docs/FPGA_SOURCE_INPUTS_V090_RC6.json",
+  "source_input_manifest_sha256": "60cbf7b590fe588b68610bdd56d06997be7a54efc30a5c19d2e6abae0803e348",
+  "stages": {
+    "asm": "passed, zero errors",
+    "fit": "passed, zero errors",
+    "map": "passed, zero errors",
+    "sta": "completed; negative slack remains"
+  },
+  "timing_closed": false,
+  "version": "v0.9.0-rc.6",
+  "worst_slack_ns": {
+    "Hold": -0.06,
+    "Minimum Pulse Width": 0.932,
+    "Recovery": -8.054,
+    "Removal": 0.245,
+    "Setup": -16.493
+  }
+}

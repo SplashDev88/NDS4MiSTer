@@ -1,6 +1,6 @@
-# NDS4MiSTer v0.9.0-rc.5
+# NDS4MiSTer v0.9.0-rc.6
 
-**Lid control, microphone blowing, touch rotation, DualSense fixes, and menu improvements.**
+**Screen Peek, CRT/analog video, composite color, experimental DV1, and display/control improvements.**
 
 ## Install and play
 
@@ -18,7 +18,7 @@ not. Existing normal NDS/Kickstart files remain available.
 
 This update replaces standalone's program files. Games, saves, settings and
 `MiSTer.ini` stay in place. Use all the support files from this release together.
-Fresh settings use Top/Bottom with rotation Off; existing settings take priority.
+Fresh settings use Top/Bottom, rotation Off and CRT Mode Off; existing settings take priority.
 Both graphics engines are always On. Normal NDS and standalone share cartridge
 saves in **saves/NDS on the SD card**, including for USB/network games; use the same ROM filename to keep its matching save.
 
@@ -28,6 +28,19 @@ for **5.15.1-MiSTer**. The matching module is selected automatically; older
 users do not need to update Linux. It does not install a kernel or
 change your INI. If it reports a requirement error, read the quick start below.
 
+## Screen Peek and display options
+
+Hold **F10** or a mapped **Screen Peek** button while viewing Left Only,
+Right Only, or CRT Mode to see the other screen; release to return. Map the
+optional action under **System → Define NDS buttons**, after Blow into Mic.
+
+**CRT Mode: On** selects a single screen in a 320×240 picture on both outputs.
+**CRT Screen** switches Main/Touch. The HDMI menu follows **Video Rotation**;
+the native CRT menu stays upright. Analog output still requires the correct
+MiSTer profile and cable. SuperStation One composite color is confirmed with
+switch 3 UP and the SVID profile. DV1 for RetroTINK-4K is experimental and
+awaits physical testing. Follow **QUICK_START.txt** for output configuration.
+
 ## Lid, microphone and controller controls
 
 Use the **Lid** row on the main menu, above Reset, to close or reopen the virtual DS.
@@ -35,6 +48,7 @@ Hold **F11** to blow into the microphone, or map **Blow into Mic** through
 **System → Define NDS buttons**. Release for silence. Existing mappings remain
 valid; define buttons again to add a microphone binding. Lid control is menu-only.
 DualSense motion sensors are ignored, and a trigger pull maps one action at a time.
+A 3% dead zone on each right-stick axis suppresses small center drift.
 
 ## Sideways games
 

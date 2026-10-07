@@ -1,0 +1,80 @@
+{
+  "accepted_baseline": "User-tested display beta.7 with composite color confirmed on SuperStation One; rc.5 gameplay features retained.",
+  "accepted_frontend": "fdd355568063caaf58ba24a1c7cb680da6623bd1",
+  "components": {
+    "fpga": {
+      "build_receipt": "docs/FPGA_BUILD_V090_RC6.json",
+      "build_receipt_sha256": "bba1e0935a70c98e5bfb5eb8538569ace2c10dfa977239bf317225cb59e35226",
+      "bytes": 4645424,
+      "sha256": "965e0c349026c1d74f616d4ece0c31be7a036adf8e584debc10d3cb2616320fb",
+      "source_input_count": 1328,
+      "source_input_manifest": "docs/FPGA_SOURCE_INPUTS_V090_RC6.json",
+      "source_input_manifest_sha256": "60cbf7b590fe588b68610bdd56d06997be7a54efc30a5c19d2e6abae0803e348",
+      "sources": "All 1328 frozen FPGA inputs verified against this tree. Exact tested display beta.7 RBF retained without rebuild."
+    },
+    "host": {
+      "accepted_parent_sha256": "17f6c2fd6d70e51297001bb3e8f4c2717eb44149c696ec80f15dbb9d279978d5",
+      "behavior_change": "Release version label only. Display beta.7 host reproduced byte-for-byte with the pinned toolchain; host.cpp and implementation headers unchanged except the generated version label.",
+      "compiler": "GCC 13.3.0",
+      "container_image_sha256": "4090d11741911c110a7660eb0ae9b87d6cd104e00ba5496fd1ee98a09dd70474",
+      "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
+      "frontend_build_receipt": "docs/STANDALONE_FRONTEND_BUILD_V090_RC6.json",
+      "frontend_build_receipt_sha256": "dc66a2acd08b35d6540f8570e7aad52cdb8d498fd63f236aa626eb08675efc59",
+      "sha256": "1f82861cdd1db4b74aa3317f990c1a59971de8c8bacebc983661d413ef72eb5d",
+      "source": "tools/standalone_host"
+    },
+    "renderer": {
+      "sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+      "source_commit": "9ba1ee1643acc4c40bd9e4d7fa84a2d90f0711c8",
+      "unchanged_inputs": 913
+    },
+    "wc_module": {
+      "sha256": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "source": "kernel/nds_mem_wc",
+      "source_note": "Original 5.15 binary retained; common source has a version-gated Linux 6.3+ VMA flags API.",
+      "vermagic": "5.15.1-MiSTer SMP mod_unload ARMv7 p2v8"
+    },
+    "wc_module_618": {
+      "provenance": "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
+      "sha256": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3",
+      "source": "kernel/nds_mem_wc",
+      "vermagic": "6.18.38-MiSTer SMP mod_unload ARMv7 p2v8"
+    }
+  },
+  "fpga_build": {
+    "device": "5CSEBA6U23I7",
+    "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+    "resources": {
+      "alms_needed": 40697,
+      "block_memory_bits": 4202888,
+      "dsp": 56,
+      "m10k": 551,
+      "total_registers": 45140
+    },
+    "seed": 6,
+    "timing_closed": false,
+    "worst_slack_ns": {
+      "Hold": -0.06,
+      "Minimum Pulse Width": 0.932,
+      "Recovery": -8.054,
+      "Removal": 0.245,
+      "Setup": -16.493
+    }
+  },
+  "publication_status": "Local release candidate; publication requires user approval.",
+  "runtime_scripts": {
+    "Kickstart.sh": "187ca2b660dcfe30ddc0eb40abb822d7feae8d409bd2a93785845b77773d180b",
+    "NDS4MiSTer.sh": "2c23437daac2ff8cf7e245c3ee6bfa537915567428439a38554e728aed18e497",
+    "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f",
+    "supervisor.py": "6bf6fa4c0814f8a5935444036472276b352663f8291a7c13a9a9fdea5f8468c3"
+  },
+  "validation": {
+    "hardware": "Exact display beta.7 FPGA retained. Castlevania and NSMB boot/capture/clean-exit checks passed at 1 GHz on Linux 6.18.38. User confirmed composite color on SuperStation One. Physical DV1/RetroTINK-4K and other analog hardware testing pending.",
+    "host": "Final rc.6 ARM build, 34 launcher/preflight/clock/recovery tests, and 8 C++ host/menu/display/Screen Peek/motion/touch/lid-mic/DV1 suites passed. Display beta.7 host reproduced byte-for-byte before changing the release label.",
+    "packaging": "10 archive-audit regression tests passed; source/history and final archive audits run before package readiness. No user data included.",
+    "physical_composite_color_confirmed": true,
+    "physical_dv1_tested": false,
+    "rtl": "Standard YC RTL regression passed NTSC/PAL and S-Video/CVBS (372000 active samples). Prior dual OSD and display regressions retained. FPGA inputs unchanged from tested beta.7."
+  },
+  "version": "v0.9.0-rc.6"
+}

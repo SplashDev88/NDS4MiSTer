@@ -1,5 +1,5 @@
 #!/bin/sh
-# NDS4MiSTer v0.9.0-rc.5 standalone launcher. SPDX-License-Identifier: GPL-3.0-only
+# NDS4MiSTer v0.9.0-rc.6 standalone launcher. SPDX-License-Identifier: GPL-3.0-only
 # This install stays separate from existing NDS cores, helpers and settings.
 set -u
 kit=/media/fat/Scripts/.NDS_Standalone
