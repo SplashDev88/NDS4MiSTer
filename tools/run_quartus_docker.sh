@@ -21,6 +21,11 @@ selection=${2:-all}
 project_rel=${QUARTUS_PROJECT_DIR:-fpga/mister}
 runtime_root=${QUARTUS_RUNTIME_ROOT:-$root/.tooling/quartus-17.0.2}
 udev_compat=${QUARTUS_UDEV_COMPAT:-$root/.tooling/quartus_udev_compat.so}
+fit_parallel=${QUARTUS_FIT_PARALLEL:-}
+case "$fit_parallel" in
+    ''|[1-9]|1[0-6]) ;;
+    *) echo "QUARTUS_FIT_PARALLEL must be between 1 and 16" >&2; exit 2 ;;
+esac
 case "$log_stem" in
     *[!A-Za-z0-9._-]*|'') echo "invalid log stem" >&2; exit 2 ;;
 esac
@@ -69,6 +74,17 @@ rm -f "$status"
 
 code=0
 for stage in "${stages[@]}"; do
+    stage_args=(NDS4MiSTer)
+    # Keep mapping at the saved worker count for the Rosetta-safe flow.
+    # A fitter-only override does not change the saved mapper worker count.
+    if [[ $stage == fit && -n $fit_parallel ]]; then
+        stage_args+=("--parallel=$fit_parallel")
+    fi
+    # Keep compilation stages from flattening sourced assignments into the QSF.
+    # TimeQuest does not support this option and does not export these settings.
+    if [[ $stage != sta ]]; then
+        stage_args+=(--write_settings_files=off)
+    fi
     printf '[NDS-QUARTUS-DOCKER] %s BEGIN %s\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$stage" | tee -a "$log"
     set +e
@@ -79,7 +95,7 @@ for stage in "${stages[@]}"; do
         -e LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libudev.so.1 \
         -w "/workspace/$project_rel" \
         --entrypoint "/quartus-runtime/quartus/bin/quartus_$stage" \
-        nds4mister-quartus-runtime:17.0.2 NDS4MiSTer \
+        nds4mister-quartus-runtime:17.0.2 "${stage_args[@]}" \
         2>&1 | tee -a "$log"
     code=${PIPESTATUS[0]}
     set -e

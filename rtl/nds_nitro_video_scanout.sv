@@ -682,7 +682,12 @@ module nds_nitro_video_scanout #(
                             frame_extra <= 1;
                         end else begin
                             frame_phase <= frame_sum[15:0];
-                            frame_extra <= 0;
+                            // Keep CRT sync at a fixed 262 lines. Fractional
+                            // 261/262-line frames make analog receivers move
+                            // the picture origin. Retain the existing 3840-clock
+                            // line and all emulation clocks; only presentation
+                            // becomes a fixed 59.6374 Hz at the 60 MHz shell.
+                            frame_extra <= crt_select;
                         end
                     end
                 end else begin

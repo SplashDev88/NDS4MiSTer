@@ -23,16 +23,42 @@ module tb_nds_crt_video;
     wire ce_pixel,de,hsync,vsync;
     wire [7:0] red,green,blue;
     nds_nitro_video_scanout dut(.*);
-    integer ticks=0, previous_hs=0;
-    reg old_hs=1, monitor=0;
+    integer ticks=0, previous_hs=0, previous_vs=0, vs_end=0, hs_start=0;
+    integer fixed_frames=0, fixed_origins=0;
+    reg old_hs=1, old_vs=1, old_de=0, first_active=0, monitor=0;
     always @(negedge clk_video) begin
         ticks=ticks+1;
         if(monitor && old_hs && !hsync) begin
             if(previous_hs && ticks-previous_hs != 3840)
-                $fatal(1,"CRT line period is not 64 us at the 60 MHz shell clock");
+                $fatal(1,"CRT line period is not 63.55 us at the 60 MHz shell clock");
             previous_hs=ticks;
+            hs_start=ticks;
+        end
+        if(monitor && !old_hs && hsync && ticks-hs_start != 280)
+            $fatal(1,"CRT horizontal sync width changed");
+        if(monitor && old_vs && !vsync) begin
+            if(previous_vs) begin
+                if(ticks-previous_vs != 3840*262)
+                    $fatal(1,"CRT refresh period changed between frames");
+                fixed_frames=fixed_frames+1;
+            end
+            previous_vs=ticks;
+        end
+        if(monitor && !old_vs && vsync && previous_vs) begin
+            if(ticks-previous_vs != 3840*3)
+                $fatal(1,"CRT vertical sync width changed");
+            vs_end=ticks;
+            first_active=1;
+        end
+        if(monitor && first_active && !old_de && de) begin
+            if(ticks-vs_end != 3840*16)
+                $fatal(1,"CRT picture moved relative to vertical sync");
+            first_active=0;
+            fixed_origins=fixed_origins+1;
         end
         old_hs=hsync;
+        old_vs=vsync;
+        old_de=de;
     end
     task frame(input bit touch);
         integer dots,painted,requests, x,y,first_tick;
@@ -63,16 +89,20 @@ module tb_nds_crt_video;
             end
             if(dots != 320*240 || painted != 256*192 || requests != 192)
                 $fatal(1,"CRT frame geometry/fetch mismatch: %0d %0d %0d",dots,painted,requests);
-            if(ticks-first_tick != 3840*261 && ticks-first_tick != 3840*262)
+            if(ticks-first_tick != 3840*262)
                 $fatal(1,"wrong CRT frame cadence %0d",ticks-first_tick);
         end
     endtask
+    integer normal_hs_tick;
     initial begin
         repeat(8) @(negedge clk_video); reset=0;
         published_frame_toggle=1;
         wait(crt_active); repeat(2) @(negedge vsync);
         monitor=1;
         frame(0);
+        // Cover many old extra-line periods: a one-frame geometry check
+        // cannot catch the previous 261/262-line cadence and picture bounce.
+        repeat(30) frame(0);
         // Switch while visible. Selection must not change before blanking.
         wait(de); layout_select=3;
         if(layout_active != 2) $fatal(1,"non-atomic panel selection");
@@ -82,12 +112,23 @@ module tb_nds_crt_video;
         // A stale Top/Bottom setting must still produce a 15 kHz single panel.
         layout_select=1; wait(layout_active==2); frame(1);
         monitor=0; crt_select=0; layout_select=0;
+        if(fixed_frames < 60 || fixed_origins < 60)
+            $fatal(1,"not enough frames checked for stable CRT sync");
         wait(!crt_active);
-        @(negedge clk_video);
-        if(dut.horizontal_total != 640 || dut.pixel_divider_limit != 5)
+        @(negedge hsync); normal_hs_tick=ticks;
+        @(negedge hsync);
+        if(ticks-normal_hs_tick != 640*6)
             $fatal(1,"normal raster not restored");
-        $display("PASS: CRT240p cadence, centered pixels, both panels, screen order, stale stack and normal-mode restore");
+        // Re-enter while the normal raster is using its extra line. It must
+        // never carry a 263rd line into the first CRT frame.
+        wait(dut.frame_extra); crt_select=1;
+        wait(crt_active);
+        @(negedge clk_video);
+        // The following full frame checks CRT timing independently of native phase.
+        previous_hs=0; previous_vs=0; first_active=0; monitor=1;
+        frame(1);
+        $display("PASS: fixed NTSC CRT timing (%0d frames, %0d picture origins), centered pixels, both panels, screen order, stale stack and normal-mode restore",fixed_frames,fixed_origins);
         $finish;
     end
-    initial begin #200000000; $fatal(1,"CRT test timeout"); end
+    initial begin #1500000000; $fatal(1,"CRT test timeout"); end
 endmodule
