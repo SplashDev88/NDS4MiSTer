@@ -101,6 +101,8 @@ USE ieee.numeric_std.ALL;
 -- PALETTE   : Enable palette for framebuffer 8bpp mode
 -- PALETTE2  : Enable palette for framebuffer 8bpp mode supplied by core
 -- DOWNSCALE : True=Support downscaling False=Downscaling disabled
+-- NEAREST_ONLY: MODE[2:0] must be 000, ADAPTIVE=false, DOWNSCALE_NN=true.
+--             Keep the same nearest pipeline using shifts instead of DSPs.
 -- BYTESWAP  : Little/Big endian byte swap
 -- FRAC      : Fractional bits, subpixel resolution
 -- OHRES     : Max. output horizontal resolution. 1024, 2048, 2304, 2560, 4096
@@ -114,6 +116,7 @@ USE ieee.numeric_std.ALL;
 ENTITY ascal IS
 	GENERIC (
 		MASK         : unsigned(7 DOWNTO 0) :=x"FF";
+		NEAREST_ONLY : boolean := false;
 		RAMBASE      : unsigned(31 DOWNTO 0);
 		RAMSIZE      : unsigned(31 DOWNTO 0) := x"0080_0000"; -- =8MB
 		INTER        : boolean := true;
@@ -1056,6 +1059,23 @@ ARCHITECTURE rtl OF ascal IS
 							 p  : arr_pix(0 TO 3)) RETURN type_poly_t IS
 		VARIABLE t : type_poly_t;
 	BEGIN
+		IF NEAREST_ONLY THEN
+			-- poly_cvt(poly_nn(...)) gives t0=t3=0 and t1/t2=0 or
+			-- 32768. Preserve both partial sums and all pipeline registers
+			-- exactly; multiplication by 32768 is a 15-bit left shift.
+			t := (OTHERS => to_signed(0, 27));
+			IF fi.t1(15)='1' THEN
+				t.r0 := shift_left(resize(signed('0' & p(1).r),27),15);
+				t.g0 := shift_left(resize(signed('0' & p(1).g),27),15);
+				t.b0 := shift_left(resize(signed('0' & p(1).b),27),15);
+			END IF;
+			IF fi.t2(15)='1' THEN
+				t.r1 := shift_left(resize(signed('0' & p(2).r),27),15);
+				t.g1 := shift_left(resize(signed('0' & p(2).g),27),15);
+				t.b1 := shift_left(resize(signed('0' & p(2).b),27),15);
+			END IF;
+			RETURN t;
+		END IF;
 		-- 3.15 * 1.8 = 4.23
 		t.r0:=(fi.t0 * signed('0' & p(0).r) +
 					 fi.t1 * signed('0' & p(1).r));

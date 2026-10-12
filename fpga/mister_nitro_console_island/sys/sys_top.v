@@ -799,6 +799,11 @@ nds_tate_scaler_arbiter #(.TATE_BEATS(TATE_TILE_ROWS/4)) tate_arbiter (
 	ascal 
 	#(
 		.RAMBASE(32'h20000000),
+	`ifdef NDS_FORCE_NEAREST
+		// mode is already fixed to nearest below; preserve scaler features
+		// while replacing its nearest-only coefficient products with shifts.
+		.NEAREST_ONLY("true"),
+	`endif
 `ifdef NDS_NATIVE_OUTPUTS
 		// A shallow 32x128 burst buffer is efficient in MLABs. This frees
 		// four M10Ks for the much deeper native-output menu bitmap.
