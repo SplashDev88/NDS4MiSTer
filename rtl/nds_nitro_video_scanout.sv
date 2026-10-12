@@ -96,6 +96,10 @@ module nds_nitro_video_scanout #(
     input  logic        fps_select,
     input  tri0         crt_select,
     output logic        crt_active,
+    input  tri0         split_select,
+    input  tri0         analog_screen_select,
+    output logic        split_active,
+    output logic        analog_screen_active,
     input  logic        touch_pressed,
     input  logic [7:0]  touch_x,
     input  logic [7:0]  touch_y,
@@ -109,6 +113,13 @@ module nds_nitro_video_scanout #(
     output logic        pf_bank,
     output logic [1:0]  pf_frame_bank,
     output logic        pf_external,
+    output logic        pf_slot,
+    output logic        pf_ticket,
+    output logic        split_frame_toggle,
+    input  tri0 [3:0]   pf_completed,
+    output wire [3:0]   lb_acquire,
+    output wire [3:0]   lb_hold,
+    input  tri0 [3:0]   lb_selected_slot,
     input  logic        published_frame_toggle,
     input  logic [1:0]  published_frame_bank,
     input  logic        external_screen_toggle,
@@ -132,7 +143,9 @@ module nds_nitro_video_scanout #(
     output logic        vsync,
     output logic [7:0]  red,
     output logic [7:0]  green,
-    output logic [7:0]  blue
+    output logic [7:0]  blue,
+    output logic        analog_ce, analog_de, analog_hs, analog_vs,
+    output logic [7:0]  analog_r, analog_g, analog_b
 );
     localparam logic [1:0] LAYOUT_SIDE   = 2'd0;
     localparam logic [1:0] LAYOUT_STACK  = 2'd1;
@@ -144,6 +157,32 @@ module nds_nitro_video_scanout #(
     logic [9:0] hcount;
     logic [9:0] vcount;
     logic [3:0] pixel_divider;
+    logic [8:0] analog_hcount, analog_vcount;
+    logic [3:0] analog_divider;
+    logic [3:0] issued;
+    logic [3:0] row_ready;
+    (* async_reg = "true" *) logic [3:0] completed_meta, completed_sync;
+    wire [3:0] busy = issued ^ completed_sync;
+    logic [35:0] digital_pair, analog_pair;
+    logic digital_valid, analog_valid, analog_read_pending, analog_read_done;
+    wire analog_read = split_active && !analog_read_done &&
+                       analog_divider < 6 && pixel_divider != 0;
+    wire [7:0] analog_x = analog_hcount - 9'd32;
+    wire [7:0] analog_y = analog_vcount - 9'd24;
+    wire analog_pixel = analog_hcount >= 32 && analog_hcount < 288 &&
+                        analog_vcount >= 24 && analog_vcount < 216;
+    wire [8:0] analog_vnext = analog_vcount == 261 ? 9'd0 : analog_vcount + 1'b1;
+    wire [7:0] analog_next_y = analog_vnext - 9'd24;
+    wire [1:0] analog_context = {1'b1,analog_screen_active};
+    assign lb_hold = busy;
+    // Acquire before either consumer reads its first dot. Outstanding writes
+    // hold the previous complete line; they can never become a visible slot.
+    assign lb_acquire = !split_active ? 4'b0 :
+        ((hcount == 0 && pixel_divider == 0) ? 4'b0011 : 4'b0000) |
+        ((analog_hcount == 0 && analog_divider == 0) ?
+            (4'b0001 << analog_context) : 4'b0000);
+    wire [35:0] scan_pair = split_active ? digital_pair : lb_q;
+    wire scan_valid = split_active ? digital_valid : lb_valid;
     logic [15:0] frame_phase;
     logic frame_extra;
     (* async_reg = "true" *) logic [1:0] published_toggle_sync;
@@ -206,7 +245,7 @@ module nds_nitro_video_scanout #(
         10'd192 + (fps_active ? 10'd6 : 10'd0);
     wire [9:0] horizontal_total = crt_active ? 10'd384 : 10'd640;
     wire [9:0] vertical_total = !crt_active && layout_active == LAYOUT_STACK ?
-                                10'd522 : 10'd261;
+                                (split_active ? 10'd523 : 10'd522) : 10'd261;
     wire [3:0] pixel_divider_limit = crt_active ? 4'd9 : layout_active == LAYOUT_STACK ?
                                      4'd2 : 4'd5;
     wire [15:0] frame_step = layout_active == LAYOUT_STACK ?
@@ -417,7 +456,93 @@ module nds_nitro_video_scanout #(
         end
     end
 
-    always_comb lb_raddr = {local_y[0], local_screen, local_x[7:1]};
+    always_comb lb_raddr = analog_read ?
+        {analog_context,analog_x[7:1]} :
+        {split_active ? 1'b0 : local_y[0],local_screen,local_x[7:1]};
+
+    wire analog_pointer_white, analog_pointer_red, analog_pointer_outline;
+    nds_nitro_touch_pointer analog_pointer (
+        .clk(clk_video), .reset(reset),
+        .frame_boundary(analog_divider == 9 && analog_hcount == 383 && analog_vcount == 261),
+        .touch_pressed, .touch_x, .touch_y,
+        .pixel_valid(analog_pixel && analog_screen_active),
+        .pixel_x(analog_x), .pixel_y(analog_y), .pointer_visible(),
+        .pointer_white_pixel(analog_pointer_white),
+        .pointer_red_pixel(analog_pointer_red),
+        .pointer_outline_pixel(analog_pointer_outline)
+    );
+
+    wire analog_fps_pixel = fps_active && analog_vcount < 5 &&
+        ((analog_hcount < 3 && (analog_hcount == 0 || analog_vcount == 0 || analog_vcount == 2)) ||
+         (analog_hcount >= 4 && analog_hcount < 7 && three_by_five_segment_pixel(
+             analog_hcount-9'd4,analog_vcount[2:0],digit_segments(fps_display_tens))) ||
+         (analog_hcount >= 8 && analog_hcount < 11 && three_by_five_segment_pixel(
+             analog_hcount-9'd8,analog_vcount[2:0],digit_segments(fps_display_ones))));
+
+    always_ff @(posedge clk_video or posedge reset) begin
+        if (reset) begin
+            completed_meta <= 0; completed_sync <= 0;
+            digital_pair <= 0; analog_pair <= 0;
+            digital_valid <= 0; analog_valid <= 0;
+            analog_read_pending <= 0; analog_read_done <= 0;
+            analog_hcount <= 0; analog_vcount <= 0; analog_divider <= 0;
+            analog_ce <= 0; analog_de <= 0; analog_hs <= 1; analog_vs <= 1;
+            analog_r <= 0; analog_g <= 0; analog_b <= 0;
+        end else begin
+            completed_meta <= pf_completed;
+            completed_sync <= completed_meta;
+            // Digital owns the RAM at phase zero, including the 20 MHz
+            // stacked raster. Analog uses a free clock early in its 10-clock
+            // dot, then captures the synchronous result on the next clock.
+            if (pixel_divider == 1) begin
+                digital_pair <= lb_q;
+                digital_valid <= lb_valid;
+            end
+            analog_read_pending <= analog_read;
+            if (analog_read) analog_read_done <= 1;
+            if (analog_read_pending) begin
+                analog_pair <= lb_q;
+                analog_valid <= lb_valid;
+            end
+            analog_ce <= split_active && analog_divider == 9;
+            if (!split_active) begin
+                analog_hcount <= 0; analog_vcount <= 0; analog_divider <= 0;
+                analog_read_done <= 0;
+                analog_de <= 0; analog_hs <= 1; analog_vs <= 1;
+                analog_r <= 0; analog_g <= 0; analog_b <= 0;
+            end else if (analog_divider == 9) begin
+                analog_divider <= 0;
+                analog_read_done <= 0;
+                analog_hs <= !(analog_hcount >= 328 && analog_hcount < 356);
+                analog_vs <= !(analog_vcount >= 243 && analog_vcount < 246);
+                analog_de <= analog_hcount < 320 && analog_vcount < 240;
+                if (session_reset || (analog_pixel && (!analog_valid ||
+                    !(active_screen_external[analog_screen_active] ?
+                    (external_enable && active_external_valid) : normal_frame_valid)))) begin
+                    analog_r <= 0; analog_g <= 0; analog_b <= 0;
+                end else if (analog_fps_pixel || analog_pointer_white) begin
+                    analog_r <= 255; analog_g <= 255; analog_b <= 255;
+                end else if (analog_pointer_red) begin
+                    analog_r <= 255; analog_g <= 0; analog_b <= 0;
+                end else if (analog_pixel && !analog_pointer_outline) begin
+                    {analog_b,analog_g,analog_r} <= analog_x[0] ?
+                        {analog_pair[35:30],analog_pair[35:34],analog_pair[29:24],analog_pair[29:28],analog_pair[23:18],analog_pair[23:22]} :
+                        {analog_pair[17:12],analog_pair[17:16],analog_pair[11:6],analog_pair[11:10],analog_pair[5:0],analog_pair[5:4]};
+                end else begin
+                    analog_r <= 0; analog_g <= 0; analog_b <= 0;
+                end
+                if (analog_hcount == 383) begin
+                    analog_hcount <= 0;
+                    analog_vcount <= analog_vnext;
+                end else analog_hcount <= analog_hcount + 1'b1;
+            end else analog_divider <= analog_divider + 1'b1;
+            if (pixel_divider == pixel_divider_limit &&
+                hcount == horizontal_total-1 && frame_end) begin
+                analog_hcount <= 0; analog_vcount <= 0; analog_divider <= 0;
+                analog_read_done <= 0;
+            end
+        end
+    end
 
     nds_nitro_touch_pointer touch_pointer (
         .clk(clk_video),
@@ -448,6 +573,13 @@ module nds_nitro_video_scanout #(
             gap_active <= 2'd0;
             fps_active <= 1'b0;
             crt_active <= 1'b0;
+            split_active <= 0;
+            analog_screen_active <= 0;
+            issued <= 0;
+            row_ready <= 0;
+            pf_slot <= 0;
+            pf_ticket <= 0;
+            split_frame_toggle <= 0;
             published_toggle_sync <= 0;
             published_bank_sync_0 <= 0;
             published_bank_sync_1 <= 0;
@@ -494,6 +626,31 @@ module nds_nitro_video_scanout #(
             pf_frame_bank <= 0;
             pf_external <= 0;
         end else begin
+            // A completion after row acquisition must wait for the next row
+            // before another request can reuse its slot. This preserves the
+            // latest complete line even if the next job expires at a frame.
+            row_ready <= (row_ready & ~lb_acquire) | (lb_acquire & ~busy);
+            if (!split_active || session_reset) begin
+                issued <= 0;
+                row_ready <= 0;
+            end
+            // Analog prefetch uses a clock position distinct from digital's
+            // h=16/64 requests in all three pixel cadences (3/6/10 clocks).
+            if (split_active && !session_reset && analog_divider == 9 &&
+                analog_hcount == 96 && analog_vnext >= 24 && analog_vnext < 216 &&
+                row_ready[analog_context] && !busy[analog_context] &&
+                (request_is_external(analog_screen_active) ? active_external_valid : normal_frame_valid)) begin
+                pf_scr <= analog_screen_active;
+                pf_line <= analog_next_y;
+                pf_bank <= 1;
+                pf_frame_bank <= request_frame_bank(analog_screen_active);
+                pf_external <= request_is_external(analog_screen_active);
+                pf_slot <= ~lb_selected_slot[analog_context];
+                row_ready[analog_context] <= 0;
+                pf_ticket <= ~issued[analog_context];
+                issued[analog_context] <= ~issued[analog_context];
+                pf_tgl <= ~pf_tgl;
+            end
             published_toggle_sync <= {published_toggle_sync[0],
                                       published_frame_toggle};
             published_bank_sync_0 <= published_frame_bank;
@@ -558,7 +715,7 @@ module nds_nitro_video_scanout #(
                 vsync <= !(vcount >= vsync_begin && vcount < vsync_end);
                 de <= hcount < canvas_width && vcount < canvas_height;
                 if (session_reset ||
-                    (screen_pixel && (!lb_valid || !(active_screen_external[local_screen] ?
+                    (screen_pixel && (!scan_valid || !(active_screen_external[local_screen] ?
                         (external_enable && active_external_valid) :
                         normal_frame_valid)))) begin
                     red <= 0; green <= 0; blue <= 0;
@@ -572,15 +729,18 @@ module nds_nitro_video_scanout #(
                     red <= 8'h00; green <= 8'h00; blue <= 8'h00;
                 end else if (screen_pixel) begin
                     {blue, green, red} <= lb_half
-                        ? {lb_q[35:30],lb_q[35:34],lb_q[29:24],lb_q[29:28],
-                           lb_q[23:18],lb_q[23:22]}
-                        : {lb_q[17:12],lb_q[17:16],lb_q[11:6],lb_q[11:10],
-                           lb_q[5:0],lb_q[5:4]};
+                        ? {scan_pair[35:30],scan_pair[35:34],scan_pair[29:24],scan_pair[29:28],
+                           scan_pair[23:18],scan_pair[23:22]}
+                        : {scan_pair[17:12],scan_pair[17:16],scan_pair[11:6],scan_pair[11:10],
+                           scan_pair[5:0],scan_pair[5:4]};
                 end else begin
                     red <= 0; green <= 0; blue <= 0;
                 end
 
                 if (hcount == 0 && frame_end) begin
+                    // Expire old-frame read jobs before acknowledging the new
+                    // shared publication. DDR still drains issued commands.
+                    if (split_active) split_frame_toggle <= ~split_frame_toggle;
                     if (publication_available) begin
                         active_normal_bank <= publication_bank;
                         normal_frame_valid <= 1'b1;
@@ -622,23 +782,37 @@ module nds_nitro_video_scanout #(
                         end
                     end
                 end
-                if (!session_reset && hcount == 0 && next_screen_line &&
+                if (!session_reset && hcount == (split_active ? 16 : 0) && next_screen_line &&
+                    (!split_active || (row_ready[{1'b0,next_local_screen}] && !busy[{1'b0,next_local_screen}])) &&
                     (request_is_external(next_local_screen) ?
                         (active_external_valid || (frame_end && external_available)) :
                         (normal_frame_valid || (frame_end && publication_available)))) begin
                     pf_scr <= next_local_screen;
                     pf_line <= next_local_y;
-                    pf_bank <= next_local_y[0];
+                    pf_bank <= split_active ? 1'b0 : next_local_y[0];
+                    if (split_active) begin
+                        row_ready[{1'b0,next_local_screen}] <= 0;
+                        pf_slot <= ~lb_selected_slot[{1'b0,next_local_screen}];
+                        pf_ticket <= ~issued[{1'b0,next_local_screen}];
+                        issued[{1'b0,next_local_screen}] <= ~issued[{1'b0,next_local_screen}];
+                    end
                     pf_frame_bank <= request_frame_bank(next_local_screen);
                     pf_external <= request_is_external(next_local_screen);
                     pf_tgl <= ~pf_tgl;
                 end else if (!session_reset && hcount == 64 &&
                              next_second_screen_line &&
+                             (!split_active || (row_ready[{1'b0,next_second_local_screen}] && !busy[{1'b0,next_second_local_screen}])) &&
                     (request_is_external(next_second_local_screen) ?
                         active_external_valid : normal_frame_valid)) begin
                     pf_scr <= next_second_local_screen;
                     pf_line <= next_local_y;
-                    pf_bank <= next_local_y[0];
+                    pf_bank <= split_active ? 1'b0 : next_local_y[0];
+                    if (split_active) begin
+                        row_ready[{1'b0,next_second_local_screen}] <= 0;
+                        pf_slot <= ~lb_selected_slot[{1'b0,next_second_local_screen}];
+                        pf_ticket <= ~issued[{1'b0,next_second_local_screen}];
+                        issued[{1'b0,next_second_local_screen}] <= ~issued[{1'b0,next_second_local_screen}];
+                    end
                     pf_frame_bank <=
                         request_frame_bank(next_second_local_screen);
                     pf_external <=
@@ -655,8 +829,10 @@ module nds_nitro_video_scanout #(
                         {fps_active,gap_active,screen_order_active,
                          layout_active} <= {fps_select,gap_select,
                                             screen_order_select,
-                                            (crt_select && !layout_select[1]) ? LAYOUT_LEFT : layout_select};
-                        crt_active <= crt_select;
+                                            (crt_select && !split_select && !layout_select[1]) ? LAYOUT_LEFT : layout_select};
+                        crt_active <= split_select ? layout_select[1] : crt_select;
+                        split_active <= split_select;
+                        analog_screen_active <= analog_screen_select;
                         if (fps_window_frames == FPS_WINDOW_FRAMES-1) begin
                             fps_window_frames <= 0;
                             if (effective_3d_frame_event) begin
@@ -687,7 +863,7 @@ module nds_nitro_video_scanout #(
                             // the picture origin. Retain the existing 3840-clock
                             // line and all emulation clocks; only presentation
                             // becomes a fixed 59.6374 Hz at the 60 MHz shell.
-                            frame_extra <= crt_select;
+                            frame_extra <= crt_select || split_select;
                         end
                     end
                 end else begin

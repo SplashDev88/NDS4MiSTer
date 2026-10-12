@@ -78,6 +78,12 @@ set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nitro_pl
 set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to hdmi_osd
 set_instance_assignment -name OPTIMIZATION_TECHNIQUE SPEED -to ascal
 
+# The extra analog menu uses the remaining four M10Ks. Keep its short RGB
+# and sync delay chains in registers rather than inferring tiny shift RAMs.
+# This changes storage implementation only; all pipeline cycles are retained.
+set_instance_assignment -name AUTO_SHIFT_REGISTER_RECOGNITION OFF -to "*nds_analog_scanlines*"
+set_instance_assignment -name AUTO_SHIFT_REGISTER_RECOGNITION OFF -to "*nds_analog_csync*"
+
 # The alpha prioritizes a routable RBF over final timing closure. Use three
 # spare global networks for the measured high-fanout reset controls.
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "*|nds_nitro_console_top:inds|resetCpu"

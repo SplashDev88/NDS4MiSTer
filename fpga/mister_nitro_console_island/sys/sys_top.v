@@ -493,6 +493,7 @@ always@(posedge clk_sys) begin
 			end
 `ifdef NDS_NATIVE_OUTPUTS
 			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
+            if(cmd == 'h46 && cnt == 1) io_dout_sys <= 16'h5350; // split-output ABI v1
 `endif
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
@@ -1410,7 +1411,7 @@ always @(posedge clk_vid) begin
 end
 
 `ifndef MISTER_DISABLE_YC
-	assign {dv_data_osd, dv_hs_osd, dv_vs_osd, dv_cs_osd } = ~yc_en ? {vga_data_osd, vga_hs_osd, vga_vs_osd, vga_cs_osd } : {yc_o, yc_hs, yc_vs, yc_cs };
+	assign {dv_data_osd, dv_hs_osd, dv_vs_osd, dv_cs_osd } = (nds_split_active || ~yc_en) ? {vga_data_osd, vga_hs_osd, vga_vs_osd, vga_cs_osd } : {yc_o, yc_hs, yc_vs, yc_cs };
 `else
 	assign {dv_data_osd, dv_hs_osd, dv_vs_osd, dv_cs_osd } = {vga_data_osd, vga_hs_osd, vga_vs_osd, vga_cs_osd };
 `endif
@@ -1566,6 +1567,9 @@ assign HDMI_TX_D  = hdmi_out_d;
 	`endif
 `endif
 
+wire nds_split_active;
+wire [23:0] nds_analog_data;
+wire nds_analog_hs, nds_analog_vs, nds_analog_de, nds_analog_ce;
 wire [23:0] vga_data_sl;
 wire        vga_de_sl, vga_ce_sl, vga_vs_sl, vga_hs_sl;
 scanlines #(0) VGA_scanlines
@@ -1617,6 +1621,32 @@ osd #(.OSD_COUNTER_BITS(14)) vga_osd
 wire vga_cs_osd;
 csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 
+wire [23:0] nds_analog_data_sl, nds_analog_data_osd;
+wire nds_analog_hs_sl, nds_analog_vs_sl, nds_analog_de_sl;
+wire nds_analog_hs_osd, nds_analog_vs_osd, nds_analog_de_osd, nds_analog_cs_osd;
+scanlines #(0) nds_analog_scanlines (
+    .clk(clk_vid), .scanlines(scanlines),
+    .din(nds_analog_de ? nds_analog_data : 24'd0),
+    .hs_in(~nds_analog_hs), .vs_in(~nds_analog_vs), .de_in(nds_analog_de),
+    .ce_in(nds_analog_ce), .dout(nds_analog_data_sl),
+    .hs_out(nds_analog_hs_sl), .vs_out(nds_analog_vs_sl),
+    .de_out(nds_analog_de_sl), .ce_out()
+);
+osd #(.OSD_COUNTER_BITS(14)) nds_analog_osd (
+    .clk_sys(clk_sys), .io_osd(io_osd_vga), .io_strobe(io_strobe), .io_din(io_din),
+    .osd_status(), .clk_video(clk_vid), .din(nds_analog_data_sl),
+    .hs_in(nds_analog_hs_sl), .vs_in(nds_analog_vs_sl), .de_in(nds_analog_de_sl),
+    .dout(nds_analog_data_osd), .hs_out(nds_analog_hs_osd),
+    .vs_out(nds_analog_vs_osd), .de_out(nds_analog_de_osd)
+);
+csync nds_analog_csync(clk_vid, nds_analog_hs_osd, nds_analog_vs_osd, nds_analog_cs_osd);
+wire [23:0] native_analog_data = nds_split_active ? nds_analog_data_osd : vga_data_osd;
+wire native_analog_hs = nds_split_active ? nds_analog_hs_osd : vga_hs_osd;
+wire native_analog_vs = nds_split_active ? nds_analog_vs_osd : vga_vs_osd;
+wire native_analog_de = nds_split_active ? nds_analog_de_osd : vga_de_osd;
+wire native_analog_cs = nds_split_active ? nds_analog_cs_osd : vga_cs_osd;
+
+
 `ifndef MISTER_DISABLE_YC
 	reg         pal_en;
 	reg         yc_en;
@@ -1632,12 +1662,12 @@ csync csync_vga(clk_vid, vga_hs_osd, vga_vs_osd, vga_cs_osd);
 		.CVBS(cvbs),
 		.PHASE_INC(PhaseInc),
 		.COLORBURST_RANGE(ColorBurst_Range),
-		.hsync(vga_hs_osd),
-		.vsync(vga_vs_osd),
-		.csync(vga_cs_osd),
-		.de(vga_de_osd),
+		.hsync(native_analog_hs),
+		.vsync(native_analog_vs),
+		.csync(native_analog_cs),
+		.de(native_analog_de),
 		.dout(yc_o),
-		.din(vga_data_osd),
+		.din(native_analog_data),
 		.hsync_o(yc_hs),
 		.vsync_o(yc_vs),
 		.csync_o(yc_cs),
@@ -1719,12 +1749,12 @@ reg  [39:0] PhaseInc;
 	(
 		.clk(clk_vid),
 		.ypbpr_en(ypbpr_en),
-		.hsync(vga_hs_osd),
-		.vsync(vga_vs_osd),
-		.csync(vga_cs_osd),
-		.de(vga_de_osd),
+		.hsync(native_analog_hs),
+		.vsync(native_analog_vs),
+		.csync(native_analog_cs),
+		.de(native_analog_de),
 		.dout(vga_o_t),
-		.din(vga_data_osd),
+		.din(native_analog_data),
 		.hsync_o(vga_hs_t),
 		.vsync_o(vga_vs_t),
 		.csync_o(vga_cs_t),
@@ -2004,6 +2034,21 @@ emu emu
 				 ce_hpix, hde_emu, hhs_fix, hvs_fix, 
 				 io_wait, clk_sys, io_fpga, io_uio, io_strobe, io_wide, io_din, io_dout}),
 
+`ifdef MISTER_DUAL_SDRAM
+    .NDS_NATIVE_OUTPUT_ALLOWED(1'b0),
+`elsif MISTER_HDMI_ONLY
+    .NDS_NATIVE_OUTPUT_ALLOWED(1'b0),
+`elsif NDS_HDMI_SCALER_ONLY
+    .NDS_NATIVE_OUTPUT_ALLOWED(1'b0),
+`else
+    .NDS_NATIVE_OUTPUT_ALLOWED(~vga_fb & ~vga_scaler),
+`endif
+    .NDS_SPLIT_ACTIVE(nds_split_active),
+    .NDS_ANALOG_R(nds_analog_data[23:16]),
+    .NDS_ANALOG_G(nds_analog_data[15:8]),
+    .NDS_ANALOG_B(nds_analog_data[7:0]),
+    .NDS_ANALOG_HS(nds_analog_hs), .NDS_ANALOG_VS(nds_analog_vs),
+    .NDS_ANALOG_DE(nds_analog_de), .NDS_ANALOG_CE(nds_analog_ce),
 	.VGA_R(r_out),
 	.VGA_G(g_out),
 	.VGA_B(b_out),

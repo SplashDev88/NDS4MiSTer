@@ -89,6 +89,17 @@ module nds_nitro_fb_ddr3 #(
 	input       [1:0] pf_frame_bank,
 	input             pf_external,
 
+    // Independent outputs reuse the four row contexts as {output,screen}.
+    // Each context has one outstanding request and two complete-line slots.
+    input  tri0       split_mode,
+    input  tri0       pf_slot,
+    input  tri0       pf_ticket,
+    input  tri0       split_frame_toggle,
+    output reg [3:0]  pf_completed = 0,
+    input  tri0 [3:0] lb_acquire,
+    input  tri0 [3:0] lb_hold,
+    output wire [3:0] lb_selected_slot,
+
 	// Last completely drained, order-valid top+bottom frame pair (clk_sys).
 	// Scanout synchronizes and adopts this bank only at its own frame boundary.
 	output reg        published_frame_toggle,
@@ -912,6 +923,29 @@ reg [35:0] linebuf[0:1023]; // 2 parities x 2 screens x 2 slots x 128 pairs
 // scanout emits exactly A then B for each target row.
 reg [12:0] pf_q0, pf_q1;
 reg  [2:0] pf_count = 0;
+reg [14:0] split_jobs[0:3];
+reg [3:0] split_pending = 0;
+reg [1:0] split_rr = 0;
+reg [1:0] split_pick;
+reg split_found;
+(* async_reg = "true" *) reg [1:0] split_sync = 0;
+reg split_seen = 0;
+(* async_reg = "true" *) reg [1:0] split_frame_sync = 0;
+reg split_frame_seen = 0;
+wire split_change = split_sync[1] != split_seen;
+wire split_ddr = split_sync[1];
+wire split_frame_change = split_ddr && (split_frame_sync[1] != split_frame_seen);
+reg r_ticket, r_split;
+always @* begin
+    split_pick = split_rr;
+    split_found = 0;
+    for (integer k=0; k<4; k=k+1) begin
+        if (!split_found && split_pending[(split_rr+k)&3]) begin
+            split_pick = (split_rr+k)&3;
+            split_found = 1;
+        end
+    end
+end
 reg        rbusy = 0;
 reg        rscr;
 reg  [7:0] rline;
@@ -947,20 +981,29 @@ assign bank_diagnostic = {
 // expires the in-flight fetch; so does replacement of the same screen from a
 // different source bank.
 wire scanout_request_replaces_inflight =
-	(pf_line != rline) ||
+	(!split_ddr || ({pf_bank,pf_scr} == {rbank,rscr})) &&
+    ((pf_line != rline) ||
 	((pf_scr == rscr) &&
-	 ((pf_external != rexternal) || (pf_frame_bank != rframe_bank)));
-wire scanout_prefetch_allowed = !reset_sys && scanout_prefetch_event &&
+	 ((pf_external != rexternal) || (pf_frame_bank != rframe_bank))));
+wire scanout_prefetch_allowed = !reset_sys && !split_change && !split_frame_change && scanout_prefetch_event &&
     (!(pf_external || external_frame_mode) || external_enable);
 wire scanout_read_late = scanout_prefetch_allowed && rbusy &&
 	scanout_request_replaces_inflight;
-wire scanout_dequeue = !reset_sys && (pf_count != 0) && !rbusy;
+wire scanout_dequeue = !reset_sys && !split_ddr && !split_change && (pf_count != 0) && !rbusy;
+wire split_dequeue = !reset_sys && split_ddr && !split_change && !split_frame_change && split_found && !rbusy;
+wire [14:0] read_job = split_ddr ? split_jobs[split_pick] : {2'b00,pf_q0};
+wire split_external_pending =
+    (split_pending[0] && split_jobs[0][12]) ||
+    (split_pending[1] && split_jobs[1][12]) ||
+    (split_pending[2] && split_jobs[2][12]) ||
+    (split_pending[3] && split_jobs[3][12]);
 
 // A pulse already presented to ch6 remains owned even before physical DDR
 // acceptance. rbusy spans that entire interval through the final ready.
 assign external_quiescent = !(rbusy && (rexternal || external_frame_mode)) &&
     !(pf_count != 0 && (pf_q0[12] || external_frame_mode)) &&
-    !(pf_count > 1 && (pf_q1[12] || external_frame_mode));
+    !(pf_count > 1 && (pf_q1[12] || external_frame_mode)) &&
+    !split_external_pending && !(external_frame_mode && (|split_pending));
 
 assign fb6_req  = fb6_req_r;
 assign fb6_addr = (rexternal ?
@@ -971,6 +1014,16 @@ assign fb6_addr = (rexternal ?
 always @(posedge clk_sys or posedge reset_read) begin
 	if (reset_read) begin
 		pf_sync <= 0;
+        split_sync <= 0;
+        split_seen <= 0;
+        split_frame_sync <= 0;
+        split_frame_seen <= 0;
+        split_pending <= 0;
+        split_rr <= 0;
+        pf_completed <= 0;
+        r_ticket <= 0;
+        r_split <= 0;
+        for (integer k=0; k<4; k=k+1) split_jobs[k] <= 0;
 		scanout_frame_bank <= 0;
 		scanout_bank_valid <= 0;
 		scanout_write_collision <= 0;
@@ -998,6 +1051,10 @@ always @(posedge clk_sys or posedge reset_read) begin
 		active_line_valid <= 0;
 	end else begin
 	pf_sync <= {pf_sync[1:0], pf_tgl};
+    split_sync <= {split_sync[0],split_mode};
+    split_seen <= split_sync[1];
+    split_frame_sync <= {split_frame_sync[0],split_frame_toggle};
+    split_frame_seen <= split_frame_sync[1];
 	fb6_req_r <= 0;
 	if (fb5_req_r && (tjob_kind == TJ_NORMAL) &&
 	    scanout_bank_valid && (dframe_bank == scanout_frame_bank))
@@ -1036,9 +1093,51 @@ always @(posedge clk_sys or posedge reset_read) begin
             r_obsolete <= 1;
         end
     end
+
+    // Do not reinterpret a legacy parity context as a split-output context.
+    // Outstanding DDR commands still drain, but cannot publish into the new
+    // mode. No console/game clock or renderer reset is involved.
+    if (reset_sys || split_change) begin
+        split_pending <= 0;
+        pf_count <= 0;
+        pf_completed <= 0;
+        active_line_valid <= 0;
+        if (rbusy) begin
+            r_session_cancel <= 1;
+            r_obsolete <= 1;
+        end
+    end else if (split_frame_change) begin
+        // A frame publication releases the previous DDR bank for reuse. Never
+        // promote a read that straddled that handoff. Return queued tickets;
+        // the issued burst keeps ownership until its final response arrives.
+        split_pending <= 0;
+        for (integer k=0; k<4; k=k+1)
+            if (split_pending[k]) pf_completed[k] <= split_jobs[k][14];
+        if (scanout_prefetch_event) pf_completed[{pf_bank,pf_scr}] <= pf_ticket;
+        if (rbusy && r_split) r_obsolete <= 1;
+    end else if (split_ddr) begin
+        if (split_dequeue) begin
+            split_pending[split_pick] <= 0;
+            split_rr <= split_pick + 1'b1;
+        end
+        if (scanout_prefetch_allowed) begin
+            split_jobs[{pf_bank,pf_scr}] <=
+                {pf_ticket,pf_slot,pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
+            split_pending[{pf_bank,pf_scr}] <= 1;
+        end
+        // A withdrawn external session must also return queued ownership.
+        for (integer k=0; k<4; k=k+1) begin
+            if (split_pending[k] && (split_jobs[k][12] || external_frame_mode) && !external_enable) begin
+                split_pending[k] <= 0;
+                pf_completed[k] <= split_jobs[k][14];
+            end
+        end
+        if (scanout_prefetch_event && (pf_external || external_frame_mode) && !external_enable)
+            pf_completed[{pf_bank,pf_scr}] <= pf_ticket;
+    end
 	if (scanout_read_late || (rbusy && (rexternal || external_frame_mode) && !external_enable))
 		r_obsolete <= 1;
-	case ({scanout_prefetch_allowed, scanout_dequeue})
+	case ({scanout_prefetch_allowed && !split_ddr, scanout_dequeue})
 		2'b10: begin
 			if (pf_count == 0) begin
 				pf_q0 <= {pf_external,pf_frame_bank,pf_bank,pf_line,pf_scr};
@@ -1078,9 +1177,12 @@ always @(posedge clk_sys or posedge reset_read) begin
 		scanout_frame_bank <= pf_frame_bank;
 		scanout_bank_valid <= 1;
 	end
-	if (scanout_dequeue && (!(pf_q0[12] || external_frame_mode) || external_enable)) begin
-		{rexternal,rframe_bank,rbank,rline,rscr} <= pf_q0;
-		rslot <= ~active_line_slot[{pf_q0[9], pf_q0[0]}];
+	if ((scanout_dequeue || split_dequeue) &&
+        (!(read_job[12] || external_frame_mode) || external_enable)) begin
+		{rexternal,rframe_bank,rbank,rline,rscr} <= read_job[12:0];
+		rslot <= split_ddr ? read_job[13] : ~active_line_slot[{read_job[9], read_job[0]}];
+        r_ticket <= read_job[14];
+        r_split <= split_ddr;
 		r_obsolete <= 0;
 		r_session_cancel <= 0;
 		rwidx     <= 0;
@@ -1098,10 +1200,12 @@ always @(posedge clk_sys or posedge reset_read) begin
             reset_sys || r_session_cancel ||
             ((rexternal || external_frame_mode) && !external_enable)) begin
 			rbusy <= 0;
+            if (r_split && !reset_sys && !split_change && !r_session_cancel)
+                pf_completed[{rbank,rscr}] <= r_ticket;
 			// A newer target row makes this completed fetch obsolete. Keep
 			// the previously promoted complete line rather than expose stale
 			// data at the new row's parity slot.
-			if (!reset_sys &&
+            if (!reset_sys && !split_change && !split_frame_change &&
                 !r_obsolete && !scanout_read_late &&
                 (!(rexternal || external_frame_mode) || external_enable) &&
                 rsent + FB_BURST >= 8'd128) begin
@@ -1122,6 +1226,7 @@ end
 (* async_reg = "true" *) reg [3:0] active_line_slot_sync = 0;
 reg [3:0] video_line_slot = 0;
 reg [3:0] video_line_valid = 0;
+assign lb_selected_slot = video_line_slot;
 (* async_reg = "true" *) reg [3:0] line_valid_meta = 0;
 (* async_reg = "true" *) reg [3:0] line_valid_sync = 0;
 reg [35:0] lb_data_q;
@@ -1132,7 +1237,9 @@ reg lb_valid_q = 0;
 assign lb_q = lb_data_q;
 assign lb_valid = lb_valid_q;
 wire [1:0] lb_line_index = lb_raddr[8:7];
-wire lb_slot = (lb_raddr[6:0] == 7'd0) ?
+wire lb_take = split_mode ? (lb_acquire[lb_line_index] && !lb_hold[lb_line_index]) :
+                           (lb_raddr[6:0] == 7'd0);
+wire lb_slot = lb_take ?
 	active_line_slot_sync[lb_line_index] : video_line_slot[lb_line_index];
 always @(posedge CLK_VIDEO or posedge reset_video) begin
 	if (reset_video) begin
@@ -1155,14 +1262,22 @@ always @(posedge CLK_VIDEO or posedge reset_video) begin
 		// Hold the chosen complete slot for the full visible row. A DDR
 		// completion in the middle of scanout takes effect at the next x=0
 		// instead of creating a horizontal seam.
-		if (lb_raddr[6:0] == 7'd0) begin
+		if (!split_mode && lb_raddr[6:0] == 7'd0) begin
 			video_line_slot[lb_line_index] <=
 				active_line_slot_sync[lb_line_index];
 			video_line_valid[lb_line_index] <= line_valid_sync[lb_line_index];
 		end
+        if (split_mode) begin
+            for (integer k=0; k<4; k=k+1) begin
+                if (lb_acquire[k] && !lb_hold[k]) begin
+                    video_line_slot[k] <= active_line_slot_sync[k];
+                    video_line_valid[k] <= line_valid_sync[k];
+                end
+            end
+        end
 		lb_data_q <= linebuf[{lb_raddr[8:7], lb_slot, lb_raddr[6:0]}];
 		lb_valid_q <= line_valid_sync[lb_line_index] &&
-            ((lb_raddr[6:0] == 7'd0) || video_line_valid[lb_line_index]);
+            (lb_take || video_line_valid[lb_line_index]);
 	end
 end
 

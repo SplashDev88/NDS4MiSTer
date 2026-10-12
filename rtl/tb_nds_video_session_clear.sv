@@ -23,7 +23,7 @@ module tb_nds_video_session_clear;
     reg lb_valid=1;
     wire ce_pixel,de,hsync,vsync;
     wire [7:0] red,green,blue;
-    nds_nitro_video_scanout dut(.*);
+    nds_nitro_video_scanout dut(.split_select(1'b0), .analog_screen_select(1'b0), .split_active(), .analog_screen_active(), .pf_slot(), .pf_ticket(), .split_frame_toggle(), .pf_completed(4'b0), .lb_acquire(), .lb_hold(), .lb_selected_slot(4'b0), .analog_ce(), .analog_de(), .analog_hs(), .analog_vs(), .analog_r(), .analog_g(), .analog_b(), .*);
     integer pixels=0,requests=0;
     reg old_pf=0;
     always @(negedge clk_video) if(!reset) begin

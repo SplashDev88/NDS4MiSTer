@@ -296,19 +296,24 @@ class Host {
   bool screen_peek = false; // Temporary display override; status keeps the selection.
   TouchRotation touch_rotation = TouchRotation::Normal;
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
-                       RESET_CURSOR = 10, EXIT_CURSOR = 11;
+                       RESET_CURSOR = 10, EXIT_CURSOR = 11,
+                       SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, LAST_MAIN_CURSOR = 13;
   int mainMenuRow(int item) const {
     // Keep cursor identities stable while grouping the single-screen CRT
     // selector directly below its mode switch. Blank rows separate sections.
-    static constexpr std::array<int, EXIT_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 10, 11, 13, 15};
-    static constexpr std::array<int, EXIT_CURSOR + 1> crt{
-        0, 1, 10, 3, 4, 5, 6, 7, 9, 11, 13, 15};
-    return (status & CRT_TIMING ? crt : standard)[item];
+    static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11};
+    static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11};
+    return ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) ? crt : standard)[item];
   }
+  static int optionCursor(size_t option) {
+    return option < 6 ? int(option) + 2 + (option >= 2) : int(option) + 6;
+  }
+
   int nextMainMenuItem(int direction) const {
     int next = cursor;
-    for (int item = 0; item <= EXIT_CURSOR; ++item)
+    for (int item = 0; item <= LAST_MAIN_CURSOR; ++item)
       if ((mainMenuRow(item) - mainMenuRow(cursor)) * direction > 0 &&
           (next == cursor ||
            (mainMenuRow(item) - mainMenuRow(next)) * direction < 0))
@@ -320,10 +325,13 @@ class Host {
   bool direct_video_metadata = false, video_osd_visible = false;
   bool video_write_failed = false;
   uint16_t video_flags = 0;
+  bool independent_outputs_supported = false;
   void initializeVideoMetadata() {
     const auto signature = spi.begin(Spi::IO, 0x46);
     const auto flags = spi.word(0);
+    const auto capability = spi.word(0);
     spi.end();
+    independent_outputs_supported = signature == 0x4456 && capability == 0x5350;
     if (signature != 0x4456) return;
     video_flags = flags;
     if (!(flags & (1u << 10))) return;
@@ -1157,10 +1165,17 @@ class Host {
     }
   }
   uint16_t liveStatus() const {
-    const auto selected = normalizeDisplayStatus(status | REQUIRED_STATUS);
+    auto requested = uint16_t(status | REQUIRED_STATUS);
+    if (!independent_outputs_supported) requested &= ~INDEPENDENT_OUTPUTS;
+    const auto selected = normalizeDisplayStatus(requested);
     // Layouts 2/3 are the individual panels. Flipping bit 5 exchanges them
     // without changing timing, rotation, screen order or the saved selection.
-    return screen_peek && (selected & (1u << 6)) ? selected ^ (1u << 5) : selected;
+    auto live = selected;
+    if (screen_peek) {
+      if (selected & (1u << 6)) live ^= 1u << 5;
+      if (selected & INDEPENDENT_OUTPUTS) live ^= ANALOG_TOUCH;
+    }
+    return live;
   }
   void syncScreenPeek() {
     bool held = false;
@@ -1409,17 +1424,27 @@ class Host {
       rows[1] = " Boot DS firmware";
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++) {
         auto option = CORE_OPTIONS[i];
-        if (i == 0 && (status & CRT_TIMING)) {
+        if (i == 0 && (status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS)) {
           option.label = "CRT Screen";
           const bool reversed = status & (1u << 7);
           option.values[2] = reversed ? "Touch" : "Main";
           option.values[3] = reversed ? "Main" : "Touch";
         }
-        rows[mainMenuRow(int(i) + 2 + (i >= 2))] = optionLabel(status, option);
+        if (i == 0 && (status & INDEPENDENT_OUTPUTS)) {
+          option.label = "Digital Layout";
+          option.values = {"Side-by-side", "Top/bottom",
+              (status & (1u << 7)) ? "Touch" : "Main",
+              (status & (1u << 7)) ? "Main" : "Touch"};
+        }
+        if (option.shift == 13 && (status & INDEPENDENT_OUTPUTS)) {
+          option.label = "Analog Timing";
+          option.values = {"240p", "240p", "", ""};
+        }
+        rows[mainMenuRow(optionCursor(i))] = optionLabel(status, option);
       }
       rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
-      rows[11] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
       rows[13] = " Reset";
       rows[14] = message.empty() ? personal_settings_notice : message;
       rows[15] = "            exit";
@@ -1627,10 +1652,18 @@ class Host {
       } else if ((a == 2 || a == 7 || a == 8) && cursor == TOUCH_ROTATION_CURSOR) {
         touch_rotation = TouchRotation((unsigned(touch_rotation) + (a == 7 ? 2 : 1)) % 3);
         message.clear();
-      } else if ((a == 2 || a == 7 || a == 8) && cursor >= 2 && cursor < LID_CURSOR) {
-        const auto &o = CORE_OPTIONS[cursor - 2 - (cursor > TOUCH_ROTATION_CURSOR)];
+      } else if ((a == 2 || a == 7 || a == 8) && ((cursor >= 2 && cursor < LID_CURSOR) ||
+                 cursor == SPLIT_CURSOR || cursor == ANALOG_CURSOR)) {
+        const auto &o = CORE_OPTIONS[cursor >= SPLIT_CURSOR ? cursor - 6 :
+                                    cursor - 2 - (cursor > TOUCH_ROTATION_CURSOR)];
+        if (o.shift == 13 && (status & INDEPENDENT_OUTPUTS)) return;
+        if (o.shift == 14 && !independent_outputs_supported) {
+          message = "Core lacks split output support";
+          dirty = true;
+          return;
+        }
         status = changeOption(status, o, a == 7 ? -1 : 1);
-        if (o.shift == 5 && (status & CRT_TIMING) && !(status & (1u << 6)))
+        if (o.shift == 5 && (status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) && !(status & (1u << 6)))
           status = (status & ~(3u << 5)) | ((a == 7 ? 3u : 2u) << 5);
         sendstatus();
         message.clear();

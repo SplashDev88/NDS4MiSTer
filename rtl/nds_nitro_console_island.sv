@@ -23,6 +23,10 @@ module nds_nitro_console_island (
     input  logic [1:0]  video_gap_select,
     input  logic        video_fps_select,
     input  tri0         video_crt_select,
+    input  tri0         video_split_select,
+    input  tri0         video_analog_screen_select,
+    output logic        video_split_active,
+    output logic        video_analog_screen_active,
     // Pending OSD choice, sampled only at Reset / completed ROM load.
     input  logic        engine_b_select,
     output logic [1:0]  video_layout_active,
@@ -74,6 +78,8 @@ module nds_nitro_console_island (
     output logic [7:0]  video_r,
     output logic [7:0]  video_g,
     output logic [7:0]  video_b,
+    output logic        analog_ce, analog_de, analog_hs, analog_vs,
+    output logic [7:0]  analog_r, analog_g, analog_b,
     output logic        boundary_fault,
     output logic [15:0] audio_left,
     output logic [15:0] audio_right,
@@ -1197,6 +1203,9 @@ wire [63:0] fb5_din, fb6_dout;
 wire fb5_req, fb5_next, fb5_ready;
 wire fb6_req, fb6_valid, fb6_ready;
 logic pf_tgl, pf_scr, pf_bank, pf_external;
+logic pf_slot, pf_ticket, split_frame_toggle;
+wire [3:0] pf_completed, lb_selected_slot;
+wire [3:0] lb_acquire, lb_hold;
 logic [1:0] pf_frame_bank;
 logic [7:0] pf_line;
 logic [8:0] lb_raddr;
@@ -1516,6 +1525,8 @@ nds_nitro_fb_ddr3 #(
     .dbg4(18'd0),.dbg5(18'd0),.dbg6(18'd0),.dbg7(18'd0),
     .dbg8(18'd0),.dbg9(18'd0),.dbg10(18'd0),.dbg11(18'd0),
     .pf_tgl,.pf_scr,.pf_line,.pf_bank,.pf_frame_bank,.pf_external,
+    .split_mode(video_split_active), .pf_slot, .pf_ticket, .split_frame_toggle, .pf_completed,
+    .lb_acquire, .lb_hold, .lb_selected_slot,
     .published_frame_toggle(fb_published_frame_toggle),
     .published_frame_bank(fb_published_frame_bank),
     .scanout_late_count(h3d_scanout_late_count),
@@ -1535,6 +1546,11 @@ nds_nitro_video_scanout scanout (
     .screen_order_select(video_screen_order_select),
     .gap_select(video_gap_select),.fps_select(video_fps_select),
     .crt_select(video_crt_select),.crt_active(video_crt_active),
+    .split_select(video_split_select), .split_active(video_split_active),
+    .analog_screen_select(video_analog_screen_select),
+    .analog_screen_active(video_analog_screen_active),
+    .pf_slot, .pf_ticket, .split_frame_toggle, .pf_completed, .lb_acquire, .lb_hold, .lb_selected_slot,
+    .analog_ce, .analog_de, .analog_hs, .analog_vs, .analog_r, .analog_g, .analog_b,
     .touch_pressed(joystick_sync[12]),.touch_x,.touch_y,
     .layout_active(video_layout_active),
     .screen_order_active(video_screen_order_active),

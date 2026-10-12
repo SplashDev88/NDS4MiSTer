@@ -27,18 +27,17 @@ struct HostTest {
     host.cursor=2;
     assert(((host.status>>5)&3)==2);
     host.draw();
-    assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Screen:            Main", true, nds_osd::arrow_right));
-    assert(host.osd_rows[8] == host.frame.renderRow(8, "", false, nds_osd::arrow_right));
-    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Mode:                On", false, nds_osd::arrow_right));
+    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Screen:            Main", true, nds_osd::arrow_right));
+    assert(host.osd_rows[8] == host.frame.renderRow(8, " CRT Mode:                On", false, nds_osd::arrow_right));
     host.action(2); assert(((host.status>>5)&3)==3);
     host.draw();
-    assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Screen:           Touch", true, nds_osd::arrow_right));
+    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Screen:           Touch", true, nds_osd::arrow_right));
     host.action(2); assert(((host.status>>5)&3)==2);
     host.action(7); assert(((host.status>>5)&3)==3);
     host.status |= 1u<<7;
     host.draw();
-    assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Screen:            Main", true, nds_osd::arrow_right));
-    assert(host.osd_rows[12] == host.frame.renderRow(12, "", false, nds_osd::arrow_right));
+    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Screen:            Main", true, nds_osd::arrow_right));
+    assert(host.osd_rows[12] == host.frame.renderRow(12, " Lid: Open (Close)", false, nds_osd::arrow_right));
     host.cursor=Host::LID_CURSOR; host.action(2); assert(host.lid_closed);
     host.saveSettings();
     Host restored((root / "kit").string(), (root / "sd/games/NDS").string(), root / "sd");
@@ -46,7 +45,7 @@ struct HostTest {
 
     // Follow visual order in both directions, skip blank separators, wrap,
     // and retain the selected control when CRT mode changes the row order.
-    const std::array<int, 12> crt_order{0, 1, 3, 4, 5, 6, 7, 8, 2, 9, 10, 11};
+    const std::array<int, 14> crt_order{0, 1, 3, 4, 5, 6, 7, 8, 2, 12, 13, 9, 10, 11};
     host.cursor = 0;
     for (unsigned i = 1; i <= crt_order.size(); ++i) {
       host.action(1); assert(host.cursor == crt_order[i % crt_order.size()]);
@@ -57,11 +56,11 @@ struct HostTest {
     host.cursor = 8; host.action(2);
     assert(!(host.status & CRT_TIMING) && host.cursor == 8);
     host.draw();
-    assert(host.osd_rows[9] == host.frame.renderRow(9, "", false, nds_osd::arrow_right));
-    assert(host.osd_rows[10] == host.frame.renderRow(10, " CRT Mode:               Off", true, nds_osd::arrow_right));
+    assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Mode:               Off", true, nds_osd::arrow_right));
     host.cursor = 0;
-    for (int i = 1; i <= 12; ++i) { host.action(1); assert(host.cursor == i % 12); }
-    for (int i = 1; i <= 12; ++i) { host.action(0); assert(host.cursor == (12 - i) % 12); }
+    const std::array<int,14> standard_order{0,1,2,3,4,5,6,7,8,12,13,9,10,11};
+    for (int i=1;i<=14;++i) { host.action(1); assert(host.cursor==standard_order[i%14]); }
+    for (int i=1;i<=14;++i) { host.action(0); assert(host.cursor==standard_order[(14-i)%14]); }
     host.cursor = 8; host.action(2); host.action(1);
     assert(host.cursor == 2 && (host.status & CRT_TIMING));
     const auto before = host.status;

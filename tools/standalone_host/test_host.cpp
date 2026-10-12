@@ -670,7 +670,7 @@ R"({
     assert(!host.system_menu && host.cursor == 0);
     // Right opens the adjacent System page from EVERY core row. It must
     // never change an option or pulse reset. Left returns to Load NDS.
-    for (int row = 0; row <= Host::EXIT_CURSOR; ++row) {
+    for (int row = 0; row <= Host::LAST_MAIN_CURSOR; ++row) {
       host.cursor = row;
       host.spi.history.clear();
       host.action(6);
@@ -692,8 +692,10 @@ R"({
       else if (row == 1) text = " Boot DS firmware";
       else if (row == 5) text = " Touch Rotation:      Normal";
       else if (row >= 3 && row <= 8) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
-      else if (row == 10) text = " CRT Mode:               Off";
-      else if (row == 11) text = " Lid: Open (Close)";
+      else if (row == 9) text = " CRT Mode:               Off";
+      else if (row == 10) text = optionLabel(0, CORE_OPTIONS[6]);
+      else if (row == 11) text = optionLabel(0, CORE_OPTIONS[7]);
+      else if (row == 12) text = " Lid: Open (Close)";
       else if (row == 13) text = " Reset";
       else if (row == 15) text = "            exit";
       auto bytes = expected.renderRow(row, text, row == 0, nds_osd::arrow_right);

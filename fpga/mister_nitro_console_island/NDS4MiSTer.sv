@@ -14,7 +14,7 @@ module emu
     assign VGA_SCALER=0;
     // Native stacked video is 31 kHz. Keep it off a 15 kHz analog display
     // unless the user explicitly selected a computer-monitor configuration.
-    assign VGA_DISABLE=video_layout_active == 1 && !forced_scandoubler;
+    assign VGA_DISABLE=!video_split_active && video_layout_active == 1 && !forced_scandoubler;
     assign HDMI_FREEZE=0;
     assign HDMI_BLACKOUT=0;
     assign HDMI_BOB_DEINT=0;
@@ -38,6 +38,8 @@ module emu
         "O[4],3D FPS Counter,Off,On;",
         "O[12:11],Video Rotation,Off,90 CCW,90 CW;",
         "O[13],Output Timing,Standard,CRT 240p;",
+        "O[14],Independent Outputs,Off,On;",
+        "O[15],Analog Screen,Main,Touch;",
         "T[0],Reset;",
         "J1,A,B,X,Y,L,R,Select,Start,Touch;",
         "v,1;",
@@ -83,6 +85,8 @@ module emu
     wire [1:0] video_gap_active;
     wire video_fps_active;
     wire video_crt_active;
+    wire video_split_active;
+    assign NDS_SPLIT_ACTIVE=video_split_active;
     // Translate the menu ordering back to scanout's 0/1/2/3 =
     // 0/8/16/24-pixel ABI.
     wire [1:0] video_gap_select = status[9:8] == 2'd0 ? 2'd1 :
@@ -201,6 +205,12 @@ module emu
         .video_gap_select(video_gap_select),
         .video_fps_select(status[4]),
         .video_crt_select(status[13]),.video_crt_active,
+        .video_split_select(status[14] && NDS_NATIVE_OUTPUT_ALLOWED),
+        .video_analog_screen_select(status[15]), .video_split_active,
+        .video_analog_screen_active(),
+        .analog_ce(NDS_ANALOG_CE), .analog_de(NDS_ANALOG_DE),
+        .analog_hs(NDS_ANALOG_HS), .analog_vs(NDS_ANALOG_VS),
+        .analog_r(NDS_ANALOG_R), .analog_g(NDS_ANALOG_G), .analog_b(NDS_ANALOG_B),
         // Both DS engines are required. Ignore the legacy saved Off bit.
         .engine_b_select(1'b1),
         .video_layout_active,.video_screen_order_active,
