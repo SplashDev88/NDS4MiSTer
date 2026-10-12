@@ -205,12 +205,12 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "source_tag": standalone.VERSION, "runtime_baseline": "standalone-fw1-20261003",
-            "host_change": "Release version label only; frontend behavior unchanged from tested display beta.7.",
+            "host_change": standalone.HOST_CHANGE,
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
             "shared_saves": "/media/fat/saves/NDS", "firmware_working_image": "/media/fat/saves/NDS/firmware.bin",
             "user_dumps_included": False, "user_settings_included": False,
-            "diagnostic_revision": "native-pc9-pc7-memctl-v2",
+            "diagnostic_revision": standalone.DIAGNOSTIC_REVISION,
             "fpga_source_manifest_sha256": standalone.FPGA_SOURCE_SHA,
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
         }
@@ -234,7 +234,7 @@ def audit_standalone(file_data, hashes, environment):
             "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
             "release_host_sha256": hashes[support + "nds_standalone_host"],
             "runtime_input_receipt_sha256": standalone.RUNTIME_INPUT_SHA,
-            "scope": "Screen Peek, native CRT/analog outputs, composite/S-Video color, experimental DV1, independent HDMI/native menu rotation and right-stick dead zone; tested display beta.7 FPGA retained; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.",
+            "scope": standalone.RELEASE_SCOPE,
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")

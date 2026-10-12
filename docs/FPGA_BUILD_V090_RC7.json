@@ -1,0 +1,40 @@
+{
+  "bytes": 4647184,
+  "device": "5CSEBA6U23I7",
+  "fit_elapsed": "00:45:55",
+  "fitter_parallel": 1,
+  "hardware_validation": "Bounded native RGBS240p and direct HDMI DV1 tests through RetroTINK-4K passed; NSMB gameplay/audio/Peek/lid, normal HDMI scaling, TATE/menu rotation and scaled RGBHV VGA passed. Physical CRT acceptance pending. See docs/HARDWARE_VALIDATION_V090_RC7.json.",
+  "quartus": "17.0.2 Build 602 07/19/2017 SJ Lite Edition",
+  "rebuild_for_release": false,
+  "resources": {
+    "alms_needed": 40611,
+    "dsp": 44,
+    "m10k": 549,
+    "total_registers": 44924
+  },
+  "route_elapsed": "00:18:58",
+  "routing_average_percent": 45,
+  "routing_peak_percent": 67,
+  "seed": 7,
+  "sha256": "9a5b0ac8dfe7dab4bbc7d75a7d66b5d57f9586ef03190073ce3fbf5c318dd80e",
+  "source_commit": "e0f49e111bb901ae3c4c99372db89ca0ccbcd68b",
+  "source_input_count": 1328,
+  "source_input_manifest": "docs/FPGA_SOURCE_INPUTS_V090_RC7.json",
+  "source_input_manifest_sha256": "de1682eb884b5769a8af189164fe403529c9e940fd6fabbe4268e826124d7505",
+  "stages": {
+    "asm": "PASS",
+    "fit": "PASS",
+    "map": "PASS",
+    "sta": "Completed; diagnostic only"
+  },
+  "static_timing_release_gate": false,
+  "timing_closed": false,
+  "version": "v0.9.0-rc.7",
+  "worst_slack_ns": {
+    "Hold": -1.115,
+    "Minimum Pulse Width": 0.932,
+    "Recovery": -8.963,
+    "Removal": 0.262,
+    "Setup": -20.548
+  }
+}

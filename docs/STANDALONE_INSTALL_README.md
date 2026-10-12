@@ -1,6 +1,6 @@
-# NDS4MiSTer v0.9.0-rc.6
+# NDS4MiSTer v0.9.0-rc.7
 
-**Screen Peek, CRT/analog video, composite color, experimental DV1, and display/control improvements.**
+**Stable native 240p output, tested DV1, and full display features retained.**
 
 ## Install and play
 
@@ -37,9 +37,10 @@ optional action under **System → Define NDS buttons**, after Blow into Mic.
 **CRT Mode: On** selects a single screen in a 320×240 picture on both outputs.
 **CRT Screen** switches Main/Touch. The HDMI menu follows **Video Rotation**;
 the native CRT menu stays upright. Analog output still requires the correct
-MiSTer profile and cable. SuperStation One composite color is confirmed with
-switch 3 UP and the SVID profile. DV1 for RetroTINK-4K is experimental and
-awaits physical testing. Follow **QUICK_START.txt** for output configuration.
+MiSTer profile and cable. SuperStation One composite color was confirmed on rc.6 with
+switch 3 UP and the SVID profile; it has not been requalified on this build.
+Native RGBS240p and direct HDMI DV1 passed on RetroTINK-4K. Physical CRT
+acceptance remains pending. Follow **QUICK_START.txt** for output configuration.
 
 ## Lid, microphone and controller controls
 
@@ -71,6 +72,10 @@ The firmware folder is remembered separately from games. The quick start lists s
 sizes, reference SHA-256 hashes and limitations. Your original files remain untouched; saved firmware
 changes go directly into **saves/NDS/firmware.bin**. Nickname, birthday, favorite
 color and language are shared with normal games. Touch calibration is not.
+
+The exact tested rc.6 host is retained; its compiled version label still reads
+rc.6. The rc.7 release manifest identifies the new FPGA. This package does not
+include the separate newer all-controller mapping beta.
 
 ## More information
 

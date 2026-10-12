@@ -1,6 +1,6 @@
 # NDS4MiSTer standalone frontend
 
-See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC6.md).
+See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC7.md).
 
 Build this frontend using `build.sh`. Its menu options are generated from the included FPGA CONF_STR; the release label comes from `VERSION`. The accepted FPGA and renderer are separate components. `supervisor.py`, `Kickstart.sh` and `NDS4MiSTer.sh` supply the matching launch and recovery behavior. See [THIRD_PARTY.md](THIRD_PARTY.md) for font and MiSTer menu attribution.
 
@@ -159,3 +159,7 @@ Run `tools/test_lid_mic_vhdl.sh` for guest SPI/interrupt checks. The authored
 sample levels on screen without game assets or save/firmware writes.
 `tools/test_console_sleep.sh` checks ARM9 pause/resume with delayed memory
 responses and includes the previous ARM7-only behavior as a negative control.
+
+The rc.7 release intentionally retains the exact rc.6 host binary and VERSION.
+Only the launcher release identifier and expected FPGA hash change. The
+packager records HOST_VERSION separately from the package VERSION.

@@ -19,13 +19,17 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.6'
+VERSION = 'v0.9.0-rc.7'
+HOST_VERSION = 'v0.9.0-rc.6'
 HOST_SHA = '1f82861cdd1db4b74aa3317f990c1a59971de8c8bacebc983661d413ef72eb5d'
 FRONTEND_BUILD_SHA = 'dc66a2acd08b35d6540f8570e7aad52cdb8d498fd63f236aa626eb08675efc59'
-FPGA_BUILD_SHA = 'bba1e0935a70c98e5bfb5eb8538569ace2c10dfa977239bf317225cb59e35226'
-FPGA_SOURCE_SHA = '60cbf7b590fe588b68610bdd56d06997be7a54efc30a5c19d2e6abae0803e348'
-ACCEPTED_HOST_SHA = '17f6c2fd6d70e51297001bb3e8f4c2717eb44149c696ec80f15dbb9d279978d5'
-RUNTIME_INPUT_SHA = '5cbbabcb40433592c82c451d77eb3246eb0aff916e825580e99f2a6df609fc9c'
+FPGA_BUILD_SHA = '93dc45166e7c11b3ab390a09eb9d02ee9f3de3bb016a28d46509313557f63b3b'
+FPGA_SOURCE_SHA = 'de1682eb884b5769a8af189164fe403529c9e940fd6fabbe4268e826124d7505'
+ACCEPTED_HOST_SHA = '1f82861cdd1db4b74aa3317f990c1a59971de8c8bacebc983661d413ef72eb5d'
+RUNTIME_INPUT_SHA = '5632b5eacf07479f65edb075ca08c67ea364fe25f4d2e2128f54da291dcca74a'
+HOST_CHANGE = 'None. Exact rc.6 host retained; compiled OSD version label remains rc.6.'
+RELEASE_SCOPE = 'Fixed262 native analog/DV1 presentation; temporary FPGA probes removed; bit-exact nearest-scaler refactor. All display and gameplay features retained. Exact rc.6 host/renderer/modules and gameplay clocks; release metadata and supervisor core pin updated.'
+DIAGNOSTIC_REVISION = 'temporary-probes-removed-functional-status-retained'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
     'WC-GPL-2.0.txt': 'kernel/nds_mem_wc/COPYING',
@@ -59,7 +63,7 @@ def json_bytes(value):
 
 
 def collect(a):
-    need((HOST / 'VERSION').read_text().strip() == VERSION, 'Unexpected frontend VERSION')
+    need((HOST / 'VERSION').read_text().strip() == HOST_VERSION, 'Unexpected frontend VERSION')
     spec = importlib.util.spec_from_file_location('supervisor', HOST / 'supervisor.py')
     supervisor = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(supervisor)
@@ -103,7 +107,7 @@ def collect(a):
     files[SUPPORT + module_618 + '.sha256'] = (
         supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC6.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC7.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
     for name, path in docs.items():
         add(name, a.docs_dir / name if a.docs_dir else path)
@@ -115,7 +119,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
-        'host_change': 'Release version label only; frontend behavior unchanged from tested display beta.7.',
+        'host_change': HOST_CHANGE,
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
         'kickstart_sha256': supervisor.EXPECTED_KICKSTART,
@@ -128,7 +132,7 @@ def collect(a):
         'remote_kit': '/media/fat/Scripts/.NDS_Standalone', 'rom_directory': '/media/fat/games/NDS',
         'shared_saves': '/media/fat/saves/NDS', 'firmware_working_image': '/media/fat/saves/NDS/firmware.bin',
         'user_dumps_included': False, 'user_settings_included': False,
-        'diagnostic_revision': 'native-pc9-pc7-memctl-v2', 'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
+        'diagnostic_revision': DIAGNOSTIC_REVISION, 'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA,
     }
     files[SUPPORT + 'manifest.json'] = json_bytes(manifest)
@@ -137,7 +141,7 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
         'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
         'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
-        'scope': 'Screen Peek, native CRT/analog outputs, composite/S-Video color, experimental DV1, independent HDMI/native menu rotation and right-stick dead zone; tested display beta.7 FPGA retained; renderer, both kernel modules, 1 GHz clock and runtime speed options unchanged; host release label updated.',
+        'scope': RELEASE_SCOPE,
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'
@@ -173,7 +177,7 @@ def main():
     a.out_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 10, 7, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 12, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | (0o755 if name in executable else 0o644)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED

@@ -1,17 +1,15 @@
 # NDS4MiSTer
 
-**Screen Peek, CRT/analog video, composite color, experimental DV1, and display/control improvements.**
+**Stable native 240p output, tested DV1, and full display features retained.**
 
-[Download v0.9.0-rc.6](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.6) · [Quick start](docs/STANDALONE_QUICK_START.txt)
+[Download v0.9.0-rc.7](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.7) · [Quick start](docs/STANDALONE_QUICK_START.txt)
 
 ## What's new
 
-- **Screen Peek.** In **Left Only**, **Right Only**, or CRT Mode, hold **F10** or a mapped **Screen Peek** button to see the other DS screen. Release to return. Two-screen layouts are unaffected. Add the optional binding under **System → Define NDS buttons**; existing mappings remain valid.
-- **CRT and analog video.** Adds native RGB/component output and the composite/S-Video encoder. **CRT Mode: On** selects one DS screen centered in a 320×240 picture; **CRT Screen** below it switches Main/Touch. This changes the picture on HDMI too; it does not switch the analog port on or off. Composite color is confirmed on SuperStation One.
-- **Experimental DV1 / Direct Video.** Adds the native video path and display metadata for receivers such as the RetroTINK-4K. Physical RetroTINK-4K testing is still pending.
-- **Menus that follow the display.** The HDMI menu and loading dialogs follow **Video Rotation**, while the native CRT menu stays upright. No separate `osd_rotate` adjustment is needed. CRT controls are grouped below 3D FPS Counter with a blank separator.
-- **3% right-stick dead zone.** Small center drift no longer repeatedly reveals the touch crosshair. This complements the existing DualSense gyro events and trigger-mapping fixes.
-- Retains rc.5 lid open/close, hold-to-blow microphone, independent touch rotation, current-game ROM highlighting, and the rc.4 Fire Emblem graphics fix.
+- **Stable native CRT video.** Fixes the alternating frame length that caused vertical shaking. Native CRT output now uses a fixed 262-line frame at approximately 59.64 Hz.
+- **DV1 verified on RetroTINK-4K.** Direct HDMI video and stereo audio passed with New Super Mario Bros. Use a direct connection when troubleshooting; a splitter in the test setup prevented DV1 from locking.
+- **All display and gameplay features retained.** 3D FPS, TATE and menu rotation, HDMI scaling, scaled VGA, RGB/component, composite/S-video, Screen Peek, synthetic microphone blowing and lid sleep/wake remain available.
+- Temporary FPGA diagnostic probes are removed. The scaler arithmetic refactor preserves its output and pipeline. Gameplay clocks, renderer, performance settings and the 1 GHz ARM clock are unchanged.
 
 ## Install and play
 
@@ -41,15 +39,15 @@ For portrait, select **Video Layout → Top/Bottom** and rotate opposite the mon
 
 For a CRT, use **CRT Mode: On** and select **CRT Screen: Main/Touch**. Keep the MiSTer profile appropriate to your cable and hardware; the package does not edit `MiSTer.ini` or `yc.txt`.
 
-On **SuperStation One composite or S-Video using its FPGA encoder**, keep **switch 3 UP** and use the **SVID profile**. That profile uses `vga_mode=svideo` for the SS1 composite socket too. Composite color was confirmed on SuperStation One with an NTSC CRT. See [Quick start](docs/STANDALONE_QUICK_START.txt) for component, RGB/VGA, and external-encoder guidance.
+On **SuperStation One composite or S-Video using its FPGA encoder**, keep **switch 3 UP** and use the **SVID profile**. That profile uses `vga_mode=svideo` for the SS1 composite socket too. Composite color was confirmed on SuperStation One with rc.6; this build retains the encoder but has not been physically requalified on that setup. See [Quick start](docs/STANDALONE_QUICK_START.txt) for component, RGB/VGA, and external-encoder guidance.
 
-For **DV1**, connect HDMI to the RetroTINK-4K and use `direct_video=1`, `dvi_mode=0`, and `vga_scaler=0` in the active NDS profile. Exit to normal MiSTer and relaunch after INI changes. DV1 is experimental and has not yet been physically tested on a RetroTINK-4K. Native outputs use the receiver's rotation, rather than the HDMI scaler's Video Rotation.
+For **DV1**, connect HDMI to the RetroTINK-4K and use `direct_video=1`, `dvi_mode=0`, and `vga_scaler=0` in the active NDS profile. Exit to normal MiSTer and relaunch after INI changes. DV1 video and stereo audio passed on RetroTINK-4K with a direct HDMI connection. A splitter in the test setup prevented lock; bypass splitters when troubleshooting. Native outputs use the receiver's rotation, rather than the HDMI scaler's Video Rotation.
 
 Separate Main-on-HDMI and Touch-on-VGA output is not implemented. Both ports share the selected DS picture; their menus can have different orientations.
 
 ## Known issues
 
-- **Display validation is limited.** SuperStation One composite color is confirmed; other analog hardware and DV1 still need physical testing.
+- **Display validation is limited.** RGBS240p, direct HDMI DV1, HDMI/TATE/menu rotation and scaled RGBHV VGA passed on RetroTINK-4K. Physical CRT acceptance and composite/S-video requalification on this build remain pending. See the release notes for receiver mode-switching behavior.
 - **USB/HDD testing is limited.** SD browsing and a mounted CIFS network share have been exercised on hardware; external-drive behavior also has simulated coverage.
 - **Slowdown and uneven animation remain.** Not every game hits 60 FPS, and movies or audio can hitch.
 - **Firmware boot doesn't work with every dump.** Clock edits don't persist between launches, and RTC alarms aren't implemented.
@@ -63,9 +61,11 @@ The release assets are the install ZIP and its SHA-256 checksum. Matching source
 
 Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to Corn for the standalone suggestion, and to skmp, the DreamSTer developer. Full credits and licenses are in the source tree.
 
+The exact tested rc.6 host binary is retained, so its compiled version label still reads rc.6. The rc.7 manifest identifies the new FPGA. The separate all-controller mapping beta is not included.
+
 ## More information
 
-- [Release notes](docs/RELEASE_NOTES_V090_RC6.md)
+- [Release notes](docs/RELEASE_NOTES_V090_RC7.md)
 - [Developer guide](docs/DEVELOPMENT.md)
 - [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues)
 

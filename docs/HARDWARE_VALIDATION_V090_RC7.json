@@ -1,0 +1,56 @@
+{
+  "analog": {
+    "game_frame_rate": 59.86698345680734,
+    "gameplay": "New Super Mario Bros. World2-5 run/jump; Peek returns on release; audio captured; 3D FPS visible; lid closes and wakes",
+    "measured_displacement_pixels": 0,
+    "metadata_snapshots": 48,
+    "native_active_lines": 240,
+    "native_lines": 262,
+    "receiver_refresh_hz": 59.64,
+    "shared_faults": 0,
+    "stable_frames": 497
+  },
+  "dv1": {
+    "audio": "48kHz stereo LPCM; NSMB audio captured",
+    "game_frame_rate": 59.798920914512266,
+    "measured_displacement_pixels": 0,
+    "metadata_snapshots": 48,
+    "native_active_lines": 240,
+    "native_lines": 262,
+    "receiver_refresh_hz": 59.64,
+    "shared_faults": 0,
+    "splitter_note": "An intervening HDMI splitter prevented DV1 lock. Removing it restored DV1 with the same earlier native FPGA/host; full release candidate also passed directly.",
+    "stable_frames": 499
+  },
+  "gameplay_clocks_changed": false,
+  "host_renderer_changed": false,
+  "limits": [
+    "Physical CRT acceptance pending; current release tested through RetroTINK.",
+    "Composite/S-video encoder retained in fitted core; physical cable output not requalified on this build. Prior rc.6 SS1 composite color confirmation is historical.",
+    "Bounded tests do not establish long-term reliability or universal game compatibility.",
+    "3D FPS counter can include reused images; game frame counters are not unique rendered FPS."
+  ],
+  "microphone": "Synthetic F11 blowing stimulus delivered with no fault; mic/lid RTL regression passed. No acoustic microphone capture feature exists. Game-specific blowing interaction was not requalified in this run.",
+  "nearest_scaler_equivalence_vectors": 327680,
+  "other_outputs": {
+    "hdmi": "PASS1920x1080p60,dual screens",
+    "scaled_vga": "PASS1920x1080p60 using RGBHV and composite_sync=0",
+    "tate_menu": "PASS upright/90CCW/90CW"
+  },
+  "receiver_transition": "After DV1->normalHDMI, receiver profile restart and temporary AutoLoadDV1Off recovered capture with same core/host. Original startup settings restored.",
+  "regressions": {
+    "control_sessions": "PASS 12 cases",
+    "mic_lid": "PASS IRQ/ack/wake/noise/touch/ADC",
+    "tate_rotation": "PASS controls plus CW/CCW pixel/stall/bank tests",
+    "video": "PASS fixed CRT, standard layouts/FPS, session reset, native OSD12053760 comparisons",
+    "zero_probe_fields": "PASS 2 cases"
+  },
+  "removed_user_features": [],
+  "rig": "MiSTer -> RetroTINK-4K firmware1.9.9.7 -> HDMI capture; VGA RGBS and direct HDMI separately tested",
+  "static_timing_release_gate": false,
+  "test_date": "2026-10-12",
+  "tested_core_sha256": "9a5b0ac8dfe7dab4bbc7d75a7d66b5d57f9586ef03190073ce3fbf5c318dd80e",
+  "tested_host_sha256": "1f82861cdd1db4b74aa3317f990c1a59971de8c8bacebc983661d413ef72eb5d",
+  "user_data": "Original save/configuration hashes unchanged; unattended tests used a separate NSMB save copy.",
+  "version": "v0.9.0-rc.7"
+}
