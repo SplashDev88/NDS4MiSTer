@@ -3010,18 +3010,9 @@ begin
       );
    end generate;
 
-   -- Private QW1 observer: no path from these outputs to console control.
-   iquery_watch : entity work.nds_h3d_query_watch
-   port map (
-      clk => clk1x, reset => resetCpu or not gx_readback_enabled,
-      read_busy => gx_readback_busy,
-      request_valid => gx_readback_request_i,
-      request_ready => h3d_readback_ready,
-      complete => gx_readback_complete,
-      gpu_blocked => h3d_gpu_source_valid and not h3d_gpu_source_ready,
-      sample_data => dbg_bg1_scroll_triplet,
-      sample_toggle => dbg_query_sample_toggle
-   );
+   -- Temporary query observation is absent; retain the wrapper port ABI.
+   dbg_bg1_scroll_triplet <= (others => '0');
+   dbg_query_sample_toggle <= '0';
 
    -- ================= engine B =================
    -- register window 0x1000-0x106C: engine B sees the bus with bit 12

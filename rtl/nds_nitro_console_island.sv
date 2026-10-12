@@ -1190,92 +1190,6 @@ wire [17:0] fb_pixb_d = pixel_fifo_read[68:51];
 wire [7:0] fb_pixb_y = pixel_fifo_read[50:43];
 wire [7:0] fb_pixb_x = pixel_fifo_read[42:35];
 
-// The production image keeps all telemetry off.  A temporary diagnostic image
-// can enable NDS_BOOT_DIAGNOSTIC together with the framebuffer's legacy debug
-// lane.  Snapshot the live clk1x signals slowly, then hold them across a normal
-// two-stage DDR-domain synchronizer so the twelve published pixels are coherent
-// enough to distinguish reset/loader state from a running CPU.  This cone is
-// absent when NDS_BOOT_DIAGNOSTIC is not defined.
-wire [31:0] dbg_pc9_diag, dbg_pc7_diag, dbg_r0_diag;
-wire [31:0] dbg_mem_probe_diag, dbg_cpu9_addr_diag;
-wire [31:0] dbg_lr_diag, dbg_cpsr_diag, dbg_vfy_addr_unused;
-wire [17:0] dbg_vfy_bad_unused, dbg_hwstat_diag;
-wire [31:0] dbg_rsp_unused;
-wire dbg_rsp_stb_unused;
-`ifdef NDS_BOOT_DIAGNOSTIC
-logic [15:0] diag_sample_div9, diag_sample_div7;
-logic [31:0] diag_pc9_hold, diag_pc7_hold, diag_r0_hold;
-logic [31:0] diag_lr_hold;
-logic [17:0] diag_hwstat_hold;
-logic [17:0] diag_heartbeat;
-(* async_reg = "true" *) logic [31:0] diag_pc9_meta, diag_pc9_ddr;
-(* async_reg = "true" *) logic [31:0] diag_pc7_meta, diag_pc7_ddr;
-(* async_reg = "true" *) logic [31:0] diag_r0_meta, diag_r0_ddr;
-(* async_reg = "true" *) logic [31:0] diag_lr_meta, diag_lr_ddr;
-(* async_reg = "true" *) logic [17:0] diag_hwstat_meta, diag_hwstat_ddr;
-
-// ARM9 taps originate on clk2x. Latch the complete bundle in that source
-// domain before it enters the slow, held snapshot crossing.
-always_ff @(posedge clk2x or posedge console_reset_2x) begin
-    if (console_reset_2x) begin
-        diag_sample_div9 <= '0;
-        diag_pc9_hold <= '0;
-        diag_r0_hold <= '0;
-        diag_lr_hold <= '0;
-    end else begin
-        diag_sample_div9 <= diag_sample_div9 + 1'b1;
-        if (&diag_sample_div9) begin
-            diag_pc9_hold <= dbg_pc9_diag;
-            diag_r0_hold <= dbg_r0_diag;
-            diag_lr_hold <= dbg_lr_diag;
-        end
-    end
-end
-
-always_ff @(posedge clk1x or posedge console_reset_1x) begin
-    if (console_reset_1x) begin
-        diag_sample_div7 <= '0;
-        diag_pc7_hold <= '0;
-        diag_hwstat_hold <= '0;
-    end else begin
-        diag_sample_div7 <= diag_sample_div7 + 1'b1;
-        if (&diag_sample_div7) begin
-            diag_pc7_hold <= dbg_pc7_diag;
-            diag_hwstat_hold <= dbg_hwstat_diag;
-        end
-    end
-end
-
-// The diagnostic publisher and heartbeat intentionally use bridge_reset_ddr,
-// which stays released during CART_DOWNLOAD/CART_FLUSH. This makes a reset or
-// flush stall observable instead of silencing the diagnostic channel.
-always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
-    if (bridge_reset_ddr) begin
-        diag_heartbeat <= '0;
-        diag_pc9_meta <= '0; diag_pc9_ddr <= '0;
-        diag_pc7_meta <= '0; diag_pc7_ddr <= '0;
-        diag_r0_meta <= '0; diag_r0_ddr <= '0;
-        diag_lr_meta <= '0; diag_lr_ddr <= '0;
-        diag_hwstat_meta <= '0; diag_hwstat_ddr <= '0;
-    end else begin
-        diag_heartbeat <= diag_heartbeat + 1'b1;
-        diag_pc9_meta <= diag_pc9_hold; diag_pc9_ddr <= diag_pc9_meta;
-        diag_pc7_meta <= diag_pc7_hold; diag_pc7_ddr <= diag_pc7_meta;
-        diag_r0_meta <= diag_r0_hold; diag_r0_ddr <= diag_r0_meta;
-        diag_lr_meta <= diag_lr_hold; diag_lr_ddr <= diag_lr_meta;
-        diag_hwstat_meta <= diag_hwstat_hold;
-        diag_hwstat_ddr <= diag_hwstat_meta;
-    end
-end
-
-wire [17:0] diag_lifecycle = {
-    cart_state, flush_probe_count, flush_complete,
-    cart_download_raw, cart_download_ddr, cart_loaded_ddr,
-    cart_loaded_sync[1], nds_on, console_reset_request, console_reset_1x,
-    bridge_reset_ddr, pll_locked, enable, shell_reset, boot_done, boot_error
-};
-`endif
-
 localparam [27:1] FB_HW_BASE = 27'h7f00000;
 localparam [7:0] FB_BURST = 8'd128;
 wire [27:1] fb5_addr, fb6_addr;
@@ -1325,8 +1239,6 @@ assign h3d_external_video_enable =
     h3d_engine_b_applied && h3d_control_release && !bridge_reset_ddr;
 `endif
 wire [31:0] h3d_active_session, h3d_control_fault_bits;
-wire [2:0] h3d_telemetry_index;
-wire h3d_diagnostic_hold_ddr;
 wire h3d_control_read, h3d_control_write;
 wire [7:0] h3d_control_burst;
 wire [28:0] h3d_control_addr;
@@ -1335,39 +1247,6 @@ wire [7:0] h3d_control_be;
 wire h3d_control_busy, h3d_control_command_accepted;
 wire [63:0] h3d_control_dout;
 wire h3d_control_dout_ready;
-
-// The public crash hold is a bounded DDR-domain lease. Synchronize the level
-// independently into each CPU domain; release is guaranteed by the control
-// block even if the requesting HPS process disappears during capture.
-(* async_reg = "true" *) logic [1:0] h3d_hold_sync_1x;
-(* async_reg = "true" *) logic [1:0] h3d_hold_sync_2x;
-logic h3d_hold_previous_1x, h3d_hold_previous_2x;
-always_ff @(posedge clk1x or posedge bridge_reset_request) begin
-    if (bridge_reset_request) begin
-        h3d_hold_sync_1x <= 2'b00;
-        h3d_hold_previous_1x <= 1'b0;
-    end else begin
-        h3d_hold_sync_1x <= {
-            h3d_hold_sync_1x[0], h3d_diagnostic_hold_ddr
-        };
-        h3d_hold_previous_1x <= h3d_hold_sync_1x[1];
-    end
-end
-always_ff @(posedge clk2x or posedge bridge_reset_request) begin
-    if (bridge_reset_request) begin
-        h3d_hold_sync_2x <= 2'b00;
-        h3d_hold_previous_2x <= 1'b0;
-    end else begin
-        h3d_hold_sync_2x <= {
-            h3d_hold_sync_2x[0], h3d_diagnostic_hold_ddr
-        };
-        h3d_hold_previous_2x <= h3d_hold_sync_2x[1];
-    end
-end
-wire h3d_diagnostic_release_1x =
-    h3d_hold_previous_1x && !h3d_hold_sync_1x[1];
-wire h3d_diagnostic_release_2x =
-    h3d_hold_previous_2x && !h3d_hold_sync_2x[1];
 
 wire h3d_raw_record_valid, h3d_raw_record_ready;
 wire [127:0] h3d_raw_record;
@@ -1506,224 +1385,6 @@ wire [31:0] h3d_frame_number, h3d_current_frame;
 wire [63:0] h3d_frame_timestamp, h3d_timestamp_live;
 wire h3d_console_source_fault;
 wire h3d_core_line_drop;
-wire [31:0] h3d_bg1_scroll_triplet;
-wire h3d_query_sample_toggle;
-wire [31:0] h3d_bg1_scroll_ddr;
-nds_h3d_probe_cdc query_probe_cdc (
-    .clk(ddr_clk), .reset(console_reset_ddr),
-    .source_data(h3d_bg1_scroll_triplet),
-    .source_toggle(h3d_query_sample_toggle),
-    .sample_data(h3d_bg1_scroll_ddr)
-);
-
-logic [7:0] h3d_line_drop_count_1x;
-logic [7:0] h3d_plane_deadline_count_1x;
-(* async_reg = "true" *) logic [7:0] h3d_line_drop_meta_ddr;
-(* async_reg = "true" *) logic [7:0] h3d_line_drop_count_ddr;
-(* async_reg = "true" *) logic [7:0] h3d_plane_deadline_meta_ddr;
-(* async_reg = "true" *) logic [7:0] h3d_plane_deadline_count_ddr;
-(* async_reg = "true" *) logic [27:0] h3d_plane_frame_diagnostic_meta_ddr;
-(* async_reg = "true" *) logic [27:0] h3d_plane_frame_diagnostic_ddr;
-logic [7:0] h3d_plane_miss_count_ddr;
-
-always_ff @(posedge clk1x or posedge console_reset_1x) begin
-    if (console_reset_1x) begin
-        h3d_line_drop_count_1x <= 8'd0;
-        h3d_plane_deadline_count_1x <= 8'd0;
-    end else if (h3d_core_line_drop && h3d_line_drop_count_1x != 8'hff) begin
-        h3d_line_drop_count_1x <= h3d_line_drop_count_1x + 1'b1;
-    end else if (h3d_plane_pixel_line_missed &&
-                 h3d_plane_deadline_count_1x != 8'hff) begin
-        h3d_plane_deadline_count_1x <=
-            h3d_plane_deadline_count_1x + 1'b1;
-    end
-end
-
-always_ff @(posedge ddr_clk or posedge console_reset_ddr) begin
-    if (console_reset_ddr) begin
-        h3d_line_drop_meta_ddr <= 8'd0;
-        h3d_line_drop_count_ddr <= 8'd0;
-        h3d_plane_deadline_meta_ddr <= 8'd0;
-        h3d_plane_deadline_count_ddr <= 8'd0;
-        h3d_plane_frame_diagnostic_meta_ddr <= 28'd0;
-        h3d_plane_frame_diagnostic_ddr <= 28'd0;
-        h3d_plane_miss_count_ddr <= 8'd0;
-    end else begin
-        h3d_line_drop_meta_ddr <= h3d_line_drop_count_1x;
-        h3d_line_drop_count_ddr <= h3d_line_drop_meta_ddr;
-        h3d_plane_deadline_meta_ddr <= h3d_plane_deadline_count_1x;
-        h3d_plane_deadline_count_ddr <= h3d_plane_deadline_meta_ddr;
-        h3d_plane_frame_diagnostic_meta_ddr <=
-            h3d_plane_frame_diagnostic;
-        h3d_plane_frame_diagnostic_ddr <=
-            h3d_plane_frame_diagnostic_meta_ddr;
-        if (h3d_plane_descriptor_valid && h3d_plane_line_missed &&
-            h3d_plane_miss_count_ddr != 8'hff)
-            h3d_plane_miss_count_ddr <= h3d_plane_miss_count_ddr + 1'b1;
-    end
-end
-
-// White-screen diagnostic: publish the live architectural ARM9 PC through
-// the already-polled FPGA heartbeat word. This changes no CPU, renderer,
-// packet, or display behavior and lets the read-only board monitor identify
-// the exact stuck control-flow location.
-// A running CPU publishes its architectural PC exactly as before.  If the PC
-// is still zero, use the same word as a compact boot-stall receipt instead of
-// losing every upstream state bit behind an indistinguishable zero.  The 0xd
-// signature cannot be a valid ARM9 PC in this core's mapped execution regions.
-wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : {
-    4'hd,
-    h3d_control_release, h3d_record_source_active, h3d_console_release,
-    console_reset_request, console_reset_1x, cart_loaded_ddr,
-    cart_loaded_sync[1], nds_on, bridge_reset_ddr, h3d_path_reset,
-    dbg_hwstat_diag
-};
-// QW1 passive query counters replace the old line-30 receipt. Existing
-// periodic header writes carry them without extra DDR traffic.
-`ifdef NDS_MINIMAL_TELEMETRY
-// Keep only the existing ARM9 PC progress tap. The older boot-state fallback
-// would retain otherwise unused error/status logic through dbg_hwstat.
-// Protocol and liveness faults remain in their dedicated header fields.
-wire [31:0] h3d_diagnostic_heartbeat = dbg_pc9_diag;
-`elsif NDS_NATIVE_BOOT_PC_DIAGNOSTIC
-// Evidence-only native memory diagnostic. Header word24 is a type tag;
-// word25 retains all32 payload bits. The existing slow selector repeats
-// PC9, PC7, memory state, and CPU9/cache control twice per cycle.
-// The 4C5A namespace distinguishes the live ARM7 slot from the older reserved
-// zero slot. This observation helps diagnose guest sleep/wake waits.
-// Keep full raw ARM9 PC and the original probe/control fields for V2 diagnosis.
-// Both words share the control block's existing64-bit header write. Source
-// clock crossings remain non-atomic: only stable repeated observations are
-// evidence, never a single transition or an inferred retired instruction.
-wire [31:0] h3d_diagnostic_heartbeat =
-    32'h4c5a0000 | {30'd0, h3d_telemetry_index[1:0]};
-`elsif NDS_NSMB_DMA_DIAGNOSTIC
-wire [31:0] h3d_diagnostic_heartbeat = h3d_bg1_scroll_ddr;
-`elsif NDS_SEAM_DIAGNOSTIC
-// Sound bring-up diagnostic: Beta 78 proved the H3D transport, return plane,
-// and framebuffer were live while the console emitted empty frames. Publish
-// the existing architectural ARM9 PC tap so the next board run identifies the
-// exact upstream boot wait without changing any emulation behavior.
-wire [31:0] h3d_diagnostic_heartbeat = {4'h9, dbg_pc9_diag[27:0]};
-`else
-wire [31:0] h3d_diagnostic_heartbeat = fb_runtime_heartbeat;
-`endif
-
-// Slowly rotating, tagged public crash telemetry. The control block retains
-// each selection across 8192 complete header sweeps, allowing the HPS's low-
-// overhead 100 ms recorder to collect full CPU/subsystem context over time.
-// PC/address values use their architecturally meaningful low 28 bits. CPSR
-// keeps NZCV plus bits 23:0; ARMv5 bits 27:24 are unused/reserved here.
-wire [127:0] sound_diagnostic;
-wire [63:0] sound_stream_diagnostic;
-`ifdef NDS_SOUND_DIAGNOSTIC
-// Observation only. Results retain their own tags through selector and data
-// crossings, so a transition cannot label the previous selection as new data.
-logic [2:0] sound_select_meta, sound_select_sync, sound_select_last;
-logic [31:0] sound_word_1x, sound_word_meta_ddr, sound_word_ddr;
-always_ff @(posedge clk1x) begin
-    if (console_reset_1x) begin
-        sound_select_meta <= 0; sound_select_sync <= 0; sound_select_last <= 0; sound_word_1x <= 0;
-    end else begin
-        sound_select_meta <= h3d_telemetry_index;
-        sound_select_sync <= sound_select_meta;
-        // Capture a coherent source-clock snapshot only when selection changes;
-        // keep the bundle stable for the long telemetry dwell.
-        if (sound_select_sync != sound_select_last) begin
-        sound_select_last <= sound_select_sync;
-        case (sound_select_sync)
-`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
-            3'd0: sound_word_1x <= sound_stream_diagnostic[63:32];
-            3'd5: sound_word_1x <= sound_stream_diagnostic[31:0];
-`endif
-            3'd1: sound_word_1x <= sound_diagnostic[127:96];
-            3'd2: sound_word_1x <= sound_diagnostic[95:64];
-            3'd3: sound_word_1x <= sound_diagnostic[63:32];
-            3'd4: sound_word_1x <= sound_diagnostic[31:0];
-            default: sound_word_1x <= 0;
-        endcase
-        end
-    end
-end
-always_ff @(posedge ddr_clk) begin
-    if (h3d_path_reset) begin
-        sound_word_meta_ddr <= 0; sound_word_ddr <= 0;
-    end else begin
-        sound_word_meta_ddr <= sound_word_1x;
-        sound_word_ddr <= sound_word_meta_ddr;
-    end
-end
-`endif
-`ifdef NDS_MINIMAL_TELEMETRY
-// Preserve the shared-header layout and write cadence with a reserved zero.
-wire [31:0] h3d_public_crash_telemetry = 32'd0;
-`elsif NDS_NATIVE_BOOT_PC_DIAGNOSTIC
-// Passive wires/mux only: no capture hold, debug command, memory request,
-// or new telemetry transactions. The source domains continue running.
-logic [31:0] h3d_public_crash_telemetry;
-always_comb begin
-    case (h3d_telemetry_index[1:0])
-        2'd0: h3d_public_crash_telemetry = dbg_pc9_diag;
-        2'd1: h3d_public_crash_telemetry = dbg_pc7_diag;
-        2'd2: h3d_public_crash_telemetry = dbg_mem_probe_diag;
-        2'd3: h3d_public_crash_telemetry = dbg_cpu9_addr_diag;
-    endcase
-end
-`elsif NDS_PRIVATE_RENDER_TRACE_OFF
-// Reserved telemetry payload only: retain the PC heartbeat, control-header
-// transactions and all fault/session handling. Unobserved stall counters prune.
-wire [31:0] h3d_public_crash_telemetry = 32'd0;
-`else
-logic [31:0] h3d_public_crash_telemetry;
-always_comb begin
-    case (h3d_telemetry_index)
-`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
-        3'd0: h3d_public_crash_telemetry = sound_word_ddr;
-`else
-        3'd0: h3d_public_crash_telemetry =
-            {4'h1, dbg_pc7_diag[27:0]};
-`endif
-`ifdef NDS_SOUND_DIAGNOSTIC
-        3'd1, 3'd2, 3'd3, 3'd4: h3d_public_crash_telemetry = sound_word_ddr;
-`else
-        3'd1: h3d_public_crash_telemetry =
-            {4'h2, dbg_r0_diag[27:0]};
-        3'd2: h3d_public_crash_telemetry =
-            {4'h3, dbg_lr_diag[27:0]};
-        3'd3: h3d_public_crash_telemetry =
-            {4'h4, dbg_cpsr_diag[31:28], dbg_cpsr_diag[23:0]};
-        3'd4: h3d_public_crash_telemetry = {
-            4'h5, h3d_gx_fifo_full, h3d_gx_fifo_level,
-            dbg_hwstat_diag
-        };
-`endif
-`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
-        3'd5: h3d_public_crash_telemetry = sound_word_ddr;
-`else
-        3'd5: h3d_public_crash_telemetry = {
-            4'h6, 9'd0,
-            boundary_fault, h3d_fabric_protocol_error,
-            h3d_fabric_epoch_quiescent, h3d_control_fault,
-            h3d_control_release, h3d_record_source_active,
-            h3d_record_source_fault, h3d_record_ddr_active,
-            h3d_record_ddr_fault, h3d_packet_active,
-            h3d_packet_full, h3d_packet_fault,
-            h3d_plane_busy_state, h3d_plane_descriptor_busy,
-            h3d_plane_line_fetch_busy, h3d_plane_descriptor_valid,
-            h3d_pixel_descriptor_pending, h3d_diagnostic_hold_ddr,
-            cart_loaded_ddr
-        };
-`endif
-        3'd6: h3d_public_crash_telemetry =
-            {4'h7, h3d_fabric_debug[27:0]};
-        default: h3d_public_crash_telemetry = {
-            4'h8, h3d_line_drop_count_ddr,
-            h3d_plane_deadline_count_ddr, h3d_plane_miss_count_ddr,
-            h3d_record_ddr_fault_reason
-        };
-    endcase
-end
-`endif
 // The return plane is derived display data and may complete after its source
 // frame has advanced.  Once a current-session descriptor crosses, keep its
 // complete plane visible until a newer descriptor replaces it; the reader's
@@ -1821,29 +1482,20 @@ always_comb effective_3d_frame_toggle = fb_published_frame_toggle;
 
 nds_nitro_fb_ddr3 #(
     .FB_HW_BASE(FB_HW_BASE), .FB_BURST(FB_BURST),
-    // Keep the large per-pixel content-hash telemetry cone out of this nearly
-    // full device; the two compact counters above are the live diagnostic.
+    // Temporary per-pixel tracing is absent. The user-facing 3D FPS
+    // counter still uses effective_3d_frame_toggle in the scanout below.
     .RUNTIME_TELEMETRY(1'b0)
 ) framebuffer (
     .clk_sys(ddr_clk), .CLK_VIDEO(clk_video),
 `ifdef NDS_HYBRID_3D
     // Legacy channel 6 owns already-issued reads across CPU/session resets.
     .reset_read(h3d_fabric_boot_reset),
-`elsif NDS_BOOT_DIAGNOSTIC
-    .reset_read(bridge_reset_ddr),
 `else
     .reset_read(console_reset_ddr),
 `endif
     .external_enable(h3d_external_video_enable),
     .external_quiescent(h3d_fb_external_quiescent),
-`ifdef NDS_BOOT_DIAGNOSTIC
-    .reset_sys(bridge_reset_ddr),
-`else
     .reset_sys(console_reset_ddr), .reset_video(video_output_reset),
-`endif
-`ifdef NDS_BOOT_DIAGNOSTIC
-    .reset_video(video_output_reset),
-`endif
     .pix_x(fb_pix_x), .pix_y(fb_pix_y), .pix_d(fb_pix_d), .pix_we(fb_pix_we),
     .pixb_x(fb_pixb_x), .pixb_y(fb_pixb_y),
     .pixb_d(fb_pixb_d), .pixb_we(fb_pixb_we),
@@ -1860,18 +1512,9 @@ nds_nitro_fb_ddr3 #(
     .external_frame_mode(1'b0), .external_frame_publish(1'b0),
     .external_frame_bank(2'd0), .external_frame_adopted(),
 `endif
-`ifdef NDS_BOOT_DIAGNOSTIC
-    .dbg0(18'h2d15a),.dbg1(diag_heartbeat),.dbg2(diag_lifecycle),
-    .dbg3(diag_hwstat_ddr),
-    .dbg4(diag_pc9_ddr[17:0]),.dbg5({4'h9,diag_pc9_ddr[31:18]}),
-    .dbg6(diag_pc7_ddr[17:0]),.dbg7({4'h7,diag_pc7_ddr[31:18]}),
-    .dbg8(diag_r0_ddr[17:0]),.dbg9({4'h0,diag_r0_ddr[31:18]}),
-    .dbg10(diag_lr_ddr[17:0]),.dbg11({4'he,diag_lr_ddr[31:18]}),
-`else
     .dbg0(18'd0),.dbg1(18'd0),.dbg2(18'd0),.dbg3(18'd0),
     .dbg4(18'd0),.dbg5(18'd0),.dbg6(18'd0),.dbg7(18'd0),
     .dbg8(18'd0),.dbg9(18'd0),.dbg10(18'd0),.dbg11(18'd0),
-`endif
     .pf_tgl,.pf_scr,.pf_line,.pf_bank,.pf_frame_bank,.pf_external,
     .published_frame_toggle(fb_published_frame_toggle),
     .published_frame_bank(fb_published_frame_bank),
@@ -1950,9 +1593,7 @@ assign h3d_full_frame_screen = 1'b0;
 nds_h3d_control_init #(
     .BASE_WORD(H3D_CONTROL_WORD), .ENTRY_COUNT(16384),
     .PACKET_MODE(1'b1), .SESSION_POLICY_ENABLE(1'b1)
-`ifdef NDS_MINIMAL_TELEMETRY
     , .DIAGNOSTIC_HOLD_ENABLE(1'b0)
-`endif
 `ifdef NDS_MATCHED_DISPLAY_TEST
     , .MATCHED_DISPLAY_TEST(1'b1), .MATCHED_ENGINE_B_OPTIONAL(1'b1)
 `endif
@@ -1963,10 +1604,10 @@ nds_h3d_control_init #(
     .video_quiescent(h3d_scanout_external_quiescent &&
                      h3d_fb_external_quiescent),
     .external_fault_bits(h3d_external_fault_bits),
-    .fpga_heartbeat_value(h3d_diagnostic_heartbeat),
-    .fpga_telemetry_value(h3d_public_crash_telemetry),
-    .telemetry_index(h3d_telemetry_index),
-    .diagnostic_hold(h3d_diagnostic_hold_ddr),
+    // Retain the ABI and existing DDR write cadence, with zero in the
+    // temporary CPU/probe fields. Session, HPS liveness and faults stay live.
+    .fpga_heartbeat_value(32'd0), .fpga_telemetry_value(32'd0),
+    .telemetry_index(), .diagnostic_hold(),
     .active(h3d_control_active),
     .initialized(h3d_control_initialized),
     .console_release(h3d_control_release),
@@ -2439,27 +2080,7 @@ nds_nitro_console_wrap #(
     .H3D_MATCHED_DISPLAY_TEST(1),
 `endif
     .CLKMEM_RATIO(CLKMEM_RATIO),
-`ifdef NDS_PRIVATE_SOUND_TRACE_OFF
-    // Omit passive private movie counters in the release-size candidate.
-    // Keep telemetry slots reserved; no emulation or sample path changes.
-    .SOUND_STREAM_DIAGNOSTICS(0),
-    .SOUND_DIAGNOSTICS(0)
-`else
-`ifdef NDS_SOUND_STREAM_DIAGNOSTIC
-    .SOUND_STREAM_DIAGNOSTICS(1),
-`else
-    .SOUND_STREAM_DIAGNOSTICS(0),
-`endif
-`ifdef NDS_SOUND_DIAGNOSTIC
-`ifdef NDS_SOUND_DIAGNOSTIC_SLIM
-    .SOUND_DIAGNOSTICS(2)
-`else
-    .SOUND_DIAGNOSTICS(1)
-`endif
-`else
-    .SOUND_DIAGNOSTICS(0)
-`endif
-`endif
+    .SOUND_STREAM_DIAGNOSTICS(0), .SOUND_DIAGNOSTICS(0)
 ) console (
     .clk1x(clk1x),.clk2x(clk2x),.clkMem(clk_mem),
     .clkMemIndex(clkMemIndex),
@@ -2526,8 +2147,8 @@ nds_nitro_console_wrap #(
     .pixel_out_data(pix_d),.pixel_out_we(pix_we),
     .pixelb_out_x(pixb_x),.pixelb_out_y(pixb_y),
     .pixelb_out_data(pixb_d),.pixelb_out_we(pixb_we),.vblank_out(),
-    .sound_diagnostic(sound_diagnostic),
-    .sound_stream_diagnostic(sound_stream_diagnostic),
+    .sound_diagnostic(),
+    .sound_stream_diagnostic(),
     .sound_out_left(sound_left),.sound_out_right(sound_right),
 `ifdef NDS_HYBRID_3D
     .h3d_pixel_valid(h3d_plane_pixel_valid),
@@ -2539,8 +2160,8 @@ nds_nitro_console_wrap #(
     .h3d_merge_pixel_x(h3d_core_merge_x),
     .h3d_merge_pixel_y(h3d_core_merge_y),
     .h3d_line_drop(h3d_core_line_drop),
-    .h3d_bg1_scroll_triplet(h3d_bg1_scroll_triplet),
-    .h3d_query_sample_toggle(h3d_query_sample_toggle),
+    .h3d_bg1_scroll_triplet(),
+    .h3d_query_sample_toggle(),
     .h3d_service_ready(h3d_console_release),
     .h3d_readback_request(h3d_readback_request),
     .h3d_readback_ready(h3d_readback_ready),
@@ -2603,17 +2224,17 @@ nds_nitro_console_wrap #(
     .h3d_frame_number(h3d_frame_number),
     .h3d_frame_timestamp(h3d_frame_timestamp),
 `endif
-    .dbg_pc9(dbg_pc9_diag),.dbg_pc7(dbg_pc7_diag),
-    .dbg_mem_probe(dbg_mem_probe_diag),.dbg_cpu9_addr(dbg_cpu9_addr_diag),
-    .dbg_r0_9(dbg_r0_diag),.dbg_lr9(dbg_lr_diag),
-    .dbg_cpsr9(dbg_cpsr_diag),.dbg_vfy_bad(dbg_vfy_bad_unused),
-    .diagnostic_hold9(h3d_hold_sync_2x[1]),
-    .diagnostic_hold7(h3d_hold_sync_1x[1]),
-    .diagnostic_release9(h3d_diagnostic_release_2x),
-    .diagnostic_release7(h3d_diagnostic_release_1x),
-    .dbg_vfy_addr(dbg_vfy_addr_unused),
+    .dbg_pc9(),.dbg_pc7(),
+    .dbg_mem_probe(),.dbg_cpu9_addr(),
+    .dbg_r0_9(),.dbg_lr9(),
+    .dbg_cpsr9(),.dbg_vfy_bad(),
+    .diagnostic_hold9(1'b0),
+    .diagnostic_hold7(1'b0),
+    .diagnostic_release9(1'b0),
+    .diagnostic_release7(1'b0),
+    .dbg_vfy_addr(),
     .dbg_cmd_stb(1'b0),.dbg_cmd_op(8'd0),.dbg_cmd_arg(32'd0),
-    .dbg_rsp_data(dbg_rsp_unused),.dbg_rsp_stb(dbg_rsp_stb_unused),
-    .dbg_hwstat(dbg_hwstat_diag)
+    .dbg_rsp_data(),.dbg_rsp_stb(),
+    .dbg_hwstat()
 );
 endmodule
