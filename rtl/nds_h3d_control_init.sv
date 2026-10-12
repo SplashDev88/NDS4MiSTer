@@ -58,7 +58,10 @@ module nds_h3d_control_init #(
     parameter integer HPS_HEARTBEAT_TIMEOUT_CYCLES = 60_000_000,
     // A manual public crash capture briefly holds both CPUs so their register
     // taps are coherent, then releases them even if the HPS process dies.
-    parameter integer DIAGNOSTIC_HOLD_CYCLES = 6_000_000
+    parameter integer DIAGNOSTIC_HOLD_CYCLES = 6_000_000,
+    // Public reports are read-only. Compile out their unused CPU-hold path
+    // in minimal telemetry builds; retain the legacy diagnostic option.
+    parameter bit DIAGNOSTIC_HOLD_ENABLE = 1'b1
 ) (
     input  logic        clk,
     input  logic        reset,
@@ -505,7 +508,7 @@ module nds_h3d_control_init #(
             // A manual hold is a bounded diagnostic lease, never a persistent
             // mode. This guarantees that a dead/crashed HPS cannot strand a
             // public user's game in debugger halt.
-            if (diagnostic_hold) begin
+            if (DIAGNOSTIC_HOLD_ENABLE && diagnostic_hold) begin
                 if (diagnostic_hold_cycles == 0)
                     diagnostic_hold <= 1'b0;
                 else
@@ -622,7 +625,7 @@ module nds_h3d_control_init #(
                     heartbeat_seen <= 1'b1;
                     last_hps_heartbeat <= ddram_read_data[31:0];
                 end
-                if (current_poll_word == 5'd13 &&
+                if (DIAGNOSTIC_HOLD_ENABLE && current_poll_word == 5'd13 &&
                     ddram_read_data[63:32] != 0 &&
                     ddram_read_data[63:32] != last_diagnostic_token) begin
                     last_diagnostic_token <= ddram_read_data[63:32];

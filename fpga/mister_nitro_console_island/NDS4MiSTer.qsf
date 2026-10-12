@@ -439,3 +439,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_probe_cdc.sv
 
 # Isolated passive native BIOS boot localization, full PCs in H3D1 words24/25.
 set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_BOOT_PC_DIAGNOSTIC=1"
+
+# Area-measurement candidate: keep video geometry, faults and ARM9 progress.
+# This overrides the older alternative probes together so removing the native
+# PC selection cannot accidentally enable the QW1 query observer instead.
+set_global_assignment -name VERILOG_MACRO "NDS_MINIMAL_TELEMETRY=1"

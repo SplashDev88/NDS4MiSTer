@@ -2,7 +2,8 @@
 module tb_nds_h3d_session_policy #(
     parameter bit ZERO_LATENCY = 1'b0,
     parameter bit MATCHED_DISPLAY_TEST = 1'b0,
-    parameter bit MATCHED_ENGINE_B_OPTIONAL = 1'b0
+    parameter bit MATCHED_ENGINE_B_OPTIONAL = 1'b0,
+    parameter bit DIAGNOSTIC_HOLD_ENABLE = 1'b1
 );
     localparam logic [28:0] BASE = 29'h00010000;
     localparam logic [63:0] HEADER = 64'h00800001_31443348;
@@ -51,6 +52,7 @@ module tb_nds_h3d_session_policy #(
         .BASE_WORD(BASE), .ENTRY_COUNT(8), .PACKET_MODE(1),
         .SESSION_POLICY_ENABLE(1), .MATCHED_DISPLAY_TEST(MATCHED_DISPLAY_TEST),
         .MATCHED_ENGINE_B_OPTIONAL(MATCHED_ENGINE_B_OPTIONAL),
+        .DIAGNOSTIC_HOLD_ENABLE(DIAGNOSTIC_HOLD_ENABLE),
         .HPS_HEARTBEAT_TIMEOUT_CYCLES(100000)
     ) dut (
         .clk, .reset, .requested_session, .engine_b_pixels_enable,

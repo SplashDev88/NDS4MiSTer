@@ -1,6 +1,7 @@
 module tb_nds_h3d_control_init #(
     parameter integer ENTRY_COUNT = 8,
-    parameter bit PACKET_MODE = 1'b0
+    parameter bit PACKET_MODE = 1'b0,
+    parameter bit DIAGNOSTIC_HOLD_ENABLE = 1'b1
 );
     localparam logic [28:0] BASE = 29'h00370000;
     localparam integer HEADER_WORDS64 = 16;
@@ -31,6 +32,9 @@ module tb_nds_h3d_control_init #(
     logic [31:0] fpga_telemetry_value = 32'h89abcdef;
     logic [2:0] telemetry_index;
     logic diagnostic_hold;
+    always @(posedge clk)
+        if (!reset && !DIAGNOSTIC_HOLD_ENABLE && diagnostic_hold)
+            $fatal(1, "disabled diagnostic path halted the CPUs");
 
     logic active;
     logic initialized;
@@ -107,7 +111,8 @@ module tb_nds_h3d_control_init #(
         .PACKET_MODE(PACKET_MODE),
         .HEADER_WORDS64(HEADER_WORDS64),
         .HPS_HEARTBEAT_TIMEOUT_CYCLES(512),
-        .DIAGNOSTIC_HOLD_CYCLES(32)
+        .DIAGNOSTIC_HOLD_CYCLES(32),
+        .DIAGNOSTIC_HOLD_ENABLE(DIAGNOSTIC_HOLD_ENABLE)
     ) dut (
         .*
     );
@@ -648,10 +653,16 @@ module tb_nds_h3d_control_init #(
         // hold. It is diagnostic data, not a malformed counter reserve.
         @(negedge clk);
         memory[13][63:32] = 32'h00000042;
-        wait (diagnostic_hold);
-        if (fault || !console_release)
-            $fatal(1, "diagnostic hold token faulted the active session");
-        wait (!diagnostic_hold);
+        if (DIAGNOSTIC_HOLD_ENABLE) begin
+            wait (diagnostic_hold);
+            if (fault || !console_release)
+                $fatal(1, "diagnostic hold token faulted the active session");
+            wait (!diagnostic_hold);
+        end else begin
+            repeat (160) @(posedge clk);
+            if (fault || !console_release)
+                $fatal(1, "ignored diagnostic token disturbed the active session");
+        end
         repeat (40) @(posedge clk);
         if (diagnostic_hold)
             $fatal(1, "diagnostic hold did not release itself");

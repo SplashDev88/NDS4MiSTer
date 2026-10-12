@@ -1580,7 +1580,11 @@ wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : {
 };
 // QW1 passive query counters replace the old line-30 receipt. Existing
 // periodic header writes carry them without extra DDR traffic.
-`ifdef NDS_NATIVE_BOOT_PC_DIAGNOSTIC
+`ifdef NDS_MINIMAL_TELEMETRY
+// Keep the ARM9 progress/boot-state heartbeat. Omit the rotating CPU7,
+// memory and CP15 observation buses; protocol faults remain separate.
+wire [31:0] h3d_diagnostic_heartbeat = fb_runtime_heartbeat;
+`elsif NDS_NATIVE_BOOT_PC_DIAGNOSTIC
 // Evidence-only native memory diagnostic. Header word24 is a type tag;
 // word25 retains all32 payload bits. The existing slow selector repeats
 // PC9, PC7, memory state, and CPU9/cache control twice per cycle.
@@ -1649,7 +1653,10 @@ always_ff @(posedge ddr_clk) begin
     end
 end
 `endif
-`ifdef NDS_NATIVE_BOOT_PC_DIAGNOSTIC
+`ifdef NDS_MINIMAL_TELEMETRY
+// Preserve the shared-header layout and write cadence with a reserved zero.
+wire [31:0] h3d_public_crash_telemetry = 32'd0;
+`elsif NDS_NATIVE_BOOT_PC_DIAGNOSTIC
 // Passive wires/mux only: no capture hold, debug command, memory request,
 // or new telemetry transactions. The source domains continue running.
 logic [31:0] h3d_public_crash_telemetry;
@@ -1942,6 +1949,9 @@ assign h3d_full_frame_screen = 1'b0;
 nds_h3d_control_init #(
     .BASE_WORD(H3D_CONTROL_WORD), .ENTRY_COUNT(16384),
     .PACKET_MODE(1'b1), .SESSION_POLICY_ENABLE(1'b1)
+`ifdef NDS_MINIMAL_TELEMETRY
+    , .DIAGNOSTIC_HOLD_ENABLE(1'b0)
+`endif
 `ifdef NDS_MATCHED_DISPLAY_TEST
     , .MATCHED_DISPLAY_TEST(1'b1), .MATCHED_ENGINE_B_OPTIONAL(1'b1)
 `endif
