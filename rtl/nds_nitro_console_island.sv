@@ -1581,9 +1581,10 @@ wire [31:0] fb_runtime_heartbeat = dbg_pc9_diag != 0 ? dbg_pc9_diag : {
 // QW1 passive query counters replace the old line-30 receipt. Existing
 // periodic header writes carry them without extra DDR traffic.
 `ifdef NDS_MINIMAL_TELEMETRY
-// Keep the ARM9 progress/boot-state heartbeat. Omit the rotating CPU7,
-// memory and CP15 observation buses; protocol faults remain separate.
-wire [31:0] h3d_diagnostic_heartbeat = fb_runtime_heartbeat;
+// Keep only the existing ARM9 PC progress tap. The older boot-state fallback
+// would retain otherwise unused error/status logic through dbg_hwstat.
+// Protocol and liveness faults remain in their dedicated header fields.
+wire [31:0] h3d_diagnostic_heartbeat = dbg_pc9_diag;
 `elsif NDS_NATIVE_BOOT_PC_DIAGNOSTIC
 // Evidence-only native memory diagnostic. Header word24 is a type tag;
 // word25 retains all32 payload bits. The existing slow selector repeats
