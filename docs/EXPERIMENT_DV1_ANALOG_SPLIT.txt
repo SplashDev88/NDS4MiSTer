@@ -52,7 +52,9 @@ Each pixel path captures the synchronous RAM result before its pixel enable.
 No new framebuffer, renderer or scaler is instantiated.
 
 Four pending descriptors and one ticket per context arbitrate the existing
-DDR reader. One job per context may be outstanding. Each output acquires its
+DDR reader. Completion tickets have an extra video-domain settling clock
+after slot metadata synchronization. One job per context may be outstanding.
+Each output acquires its
 last completed slot only at a row boundary; it cannot request the next line
 until this acquisition occurs. The writer always targets the other slot.
 A delayed read holds a whole old line, rather than changing slots mid-row.

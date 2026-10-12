@@ -162,7 +162,11 @@ module nds_nitro_video_scanout #(
     logic [3:0] issued;
     logic [3:0] row_ready;
     (* async_reg = "true" *) logic [3:0] completed_meta, completed_sync;
-    wire [3:0] busy = issued ^ completed_sync;
+    // The completion ticket and slot metadata originate on the same DDR
+    // edge. Let the metadata's two-stage crossing settle for one extra video
+    // clock before using the ticket to acquire or reuse a slot.
+    logic [3:0] completed_settled;
+    wire [3:0] busy = issued ^ completed_settled;
     logic [35:0] digital_pair, analog_pair;
     logic digital_valid, analog_valid, analog_read_pending, analog_read_done;
     wire analog_read = split_active && !analog_read_done &&
@@ -481,7 +485,7 @@ module nds_nitro_video_scanout #(
 
     always_ff @(posedge clk_video or posedge reset) begin
         if (reset) begin
-            completed_meta <= 0; completed_sync <= 0;
+            completed_meta <= 0; completed_sync <= 0; completed_settled <= 0;
             digital_pair <= 0; analog_pair <= 0;
             digital_valid <= 0; analog_valid <= 0;
             analog_read_pending <= 0; analog_read_done <= 0;
@@ -491,6 +495,7 @@ module nds_nitro_video_scanout #(
         end else begin
             completed_meta <= pf_completed;
             completed_sync <= completed_meta;
+            completed_settled <= completed_sync;
             // Digital owns the RAM at phase zero, including the 20 MHz
             // stacked raster. Analog uses a free clock early in its 10-clock
             // dot, then captures the synchronous result on the next clock.
