@@ -10,19 +10,69 @@ This is technically plausible and worth a small prototype. MiSTer has separate
 HDMI and analog output pins, and this core already produces both DS screens.
 The present limitation is that the framework feeds DV1 and native analog from
 the same pixel stream. A shared native raster with two pixel streams is the
-preferred design. Fitting, DDR service deadlines, and hardware behavior remain
-unproven for the proposed change.
+preferred starting design. The user also requires side-by-side and top/bottom
+layouts. Independent combined layouts need additional source-row scheduling
+and cache analysis beyond the original one-screen-per-output prototype.
+Fitting, DDR service deadlines, and hardware behavior remain unproven.
 
 Proposed default:
   Main/top screen -> HDMI DV1 -> RetroTINK-4K -> digital display
   Touch/bottom screen -> analog I/O -> appropriate cable/encoder -> CRT
   Swap exchanges the two physical DS screens between outputs.
 
-Each output contains one unscaled 256x192 screen centered at (32,24) in a
-320x240 active canvas. Both use the existing fixed 262-line native raster.
+In that default arrangement, each output contains one unscaled 256x192 screen
+centered at (32,24) in a 320x240 active canvas. Both use the existing fixed
+262-line native raster.
 The RetroTINK may scale its HDMI output to 1080p/4K without changing the CRT's
 240p input. Both pictures originate at one scanout boundary, although the
 RetroTINK and digital display can add latency relative to the CRT.
+
+Layout requirement: added 2026-10-12
+==================================
+Retain side-by-side and top/bottom as first-class choices alongside separate
+screens. The proposed menu has independent DV1 Layout and Analog Layout:
+  Main only
+  Touch only
+  Side-by-side (both screens)
+  Top/bottom (both screens)
+Main on DV1 and Touch on analog remains the default experimental arrangement,
+not the only available arrangement. The current single-output/scaled HDMI
+layouts, order, gap and rotation options must continue to work as before.
+
+Distinguish a layout from an electrical video mode. In a fixed 320x240 native
+canvas, two full 256x192 screens do not fit at 1:1. Combined layouts require
+downsampling to show both complete screens. With zero gap and preserved
+aspect ratio, the largest common scale is 5/8:
+  Side-by-side: 320x120 total, two 160x120 images, centered vertically.
+  Top/bottom:   160x240 total, two 160x120 images, centered horizontally.
+Those are proposed target geometries, not an implemented scaler. A simpler
+1/2 nearest-neighbor prototype would produce two 128x96 images. Compare
+readability and cost before choosing; account for the selected screen gap.
+Native combined output necessarily loses fine detail. Existing normal HDMI
+combined layouts keep their current source resolution and scaling path.
+RetroTINK output scaling cannot recover pixels discarded before DV1 output.
+
+Do not reuse the existing 522-line stacked scanout on a 15 kHz CRT. Preserve
+the fixed 262-line raster for all experimental native layouts, fitting the
+images inside it. Independently changing DV1's source raster to retain full
+combined-screen resolution is a larger, separate architecture decision.
+
+Mixed layouts alter the buffer problem. For example, a full-size Main image
+on one output and a reduced side-by-side image on the other can require two
+different rows of Main plus one row of Touch at the same output scanline.
+The existing RAM keys rows by parity/screen, not a full row tag, and its queue
+assumes two requests for the same source row. It cannot safely serve arbitrary
+mixed layouts merely by changing pixel addresses: same-parity rows can alias
+and a request for another row can invalidate useful queued work.
+
+Before implementing the full layout matrix, derive and test the union of
+source-row requests for each output scanline. Deduplicate identical requests,
+allocate/tag independent visible and incoming row contexts, and preserve
+complete-line publication. Evaluate reusing the existing four slots per
+physical screen with revised allocation before adding any block RAM. The
+23.45 MB/s calculation below describes the original single/single arrangement;
+it does not prove the bandwidth, slot capacity or service deadline of mixed
+layouts. No claim of full matrix support until that analysis and fit succeed.
 
 Observed source facts
 =====================
@@ -93,13 +143,15 @@ or the rendering-update profile to conceal missed scanout deadlines.
 
 Implementation outline
 ======================
-1. Add an explicit experimental split enable, default Off. Activate only
+1. Add an explicit experimental independent-output enable, default Off. Activate only
    with native CRT timing, direct_video=1 and vga_scaler=0, without the Linux
    framebuffer override. Hand the actual framework mode to the core so a
    persisted option cannot accidentally create split output in another mode.
    Existing scaled HDMI/VGA and dual-panel layouts retain their normal path.
-2. Extend the existing scanout to request both physical screens for each
-   visible DS row. Keep its common h/v counters, fixed frame length, session
+2. First extend the existing scanout to request both physical screens for each
+   visible DS row. Then add per-output layout coordinate mapping and the tagged
+   row scheduling needed for combined/mixed layouts. Keep common h/v counters,
+   fixed frame length, session
    reset rules, publication boundary, external-bank selection and single ACK.
    Address physical Main/Touch screens, not a permanently assigned GPU A/B:
    games can change which engine/3D content is on each screen.
@@ -120,19 +172,24 @@ Implementation outline
    outside split mode. Check host/transmitter color configuration as well as
    RTL, and confirm DV1 metadata still describes the HDMI image correctly.
 7. Add a matching experimental host menu and capability/version handling.
-   Suggested choices: Split Outputs Off/On and DV1 Screen Main/Touch, with
-   the analog assignment visibly shown as the opposite screen. Do not consume
+   Proposed choices: Independent Outputs Off/On, DV1 Layout and Analog Layout,
+   each with Main, Touch, Side-by-side and Top/bottom. Preserve screen order
+   and gap behavior. The host's existing normalizeDisplayStatus deliberately
+   forces CRT to a single screen, so update normalization only for a core
+   advertising the new fixed-240p combined-layout capability. Do not consume
    a status bit until the configuration/host ABI is audited. Generate the menu
    through the existing tooling instead of hand-editing generated headers.
 
 Behavior to preserve
 ====================
-- Screen Peek temporarily exchanges outputs while held, restoring them on
-  release. Use the existing temporary status override and add split coverage
-  for release, menu entry, controller disconnect and session reset. Never save
-  the temporary assignment.
+- Screen Peek temporarily exchanges Main/Touch on single-screen outputs while
+  held, restoring them on release. A combined layout already shows both screens
+  and remains unchanged, matching existing combined-layout behavior. Add
+  coverage for mixed layouts, release, menu entry, controller disconnect and
+  session reset. Never save a temporary assignment.
 - Touch coordinates remain DS coordinates. Draw the pointer only on the
-  output currently showing Touch; retain the user's touch rotation controls.
+  Touch panel on each output that includes it, applying that panel's placement
+  and scale; retain the user's touch rotation controls.
 - Keep the 3D FPS counter available, with the current meaning. No claim that
   it measures unique rendered frames. Retain mic, lid, audio and all rendering
   features. There is one DS audio mix; the screen split adds no new audio mix.
@@ -152,6 +209,10 @@ A. Simulate distinct pixel patterns on Main and Touch through the actual
    external-screen movement, frame adoption, and DDR stalls near deadlines.
    Assert one frame owner/ACK and no mid-row slot changes or stale-session
    data. Compare normal-mode output against rc.7 and check fixed 262 lines.
+   Cover all 16 pairs of output layout selections, order/gap settings, scaled
+   panel boundaries, same-parity row collisions, deduplicated reads, touch
+   placement and mixed-layout Peek. Measure each layout's service deadline
+   and row-slot high-water mark rather than extrapolating from single/single.
 B. Verify shared-menu blending and matching pipeline latency for both
    backgrounds; confirm composite/S-video selection cannot alter DV1 RGB.
    Run relevant existing video, host Peek/display, rotation and reset tests.
@@ -176,4 +237,5 @@ Current result
 The isolated branch and this design exist. No RTL or host code was changed,
 no FPGA build was started, no MiSTer settings or saves were accessed, and
 nothing from this experiment was pushed or published. The next concrete
-milestone is a simulated two-image scanout using the existing line RAM.
+milestone is a simulated two-image scanout using the existing line RAM,
+followed by proving the combined-layout row scheduling and resource budget.
