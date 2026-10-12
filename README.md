@@ -9,7 +9,6 @@
 - **Stable native CRT video.** Fixes the alternating frame length that caused vertical shaking. Native CRT output now uses a fixed 262-line frame at approximately 59.64 Hz.
 - **DV1 verified on RetroTINK-4K.** Direct HDMI video and stereo audio passed with New Super Mario Bros. Use a direct connection when troubleshooting; a splitter in the test setup prevented DV1 from locking.
 - **All display and gameplay features retained.** 3D FPS, TATE and menu rotation, HDMI scaling, scaled VGA, RGB/component, composite/S-video, Screen Peek, synthetic microphone blowing and lid sleep/wake remain available.
-- Temporary FPGA diagnostic probes are removed. The scaler arithmetic refactor preserves its output and pipeline. Gameplay clocks, renderer, performance settings and the 1 GHz ARM clock are unchanged.
 
 ## Install and play
 
