@@ -1,0 +1,179 @@
+NDS4MiSTer: separate DS screens over DV1 and native analog
+2026-10-12 — design investigation; no implementation or new hardware result
+
+Branch: experiment/dv1-analog-split
+Base: v0.9.0-rc.7 / dc020c6fb9ba794a98f4a92a2f9c2fd48919f9d5
+
+Assessment
+==========
+This is technically plausible and worth a small prototype. MiSTer has separate
+HDMI and analog output pins, and this core already produces both DS screens.
+The present limitation is that the framework feeds DV1 and native analog from
+the same pixel stream. A shared native raster with two pixel streams is the
+preferred design. Fitting, DDR service deadlines, and hardware behavior remain
+unproven for the proposed change.
+
+Proposed default:
+  Main/top screen -> HDMI DV1 -> RetroTINK-4K -> digital display
+  Touch/bottom screen -> analog I/O -> appropriate cable/encoder -> CRT
+  Swap exchanges the two physical DS screens between outputs.
+
+Each output contains one unscaled 256x192 screen centered at (32,24) in a
+320x240 active canvas. Both use the existing fixed 262-line native raster.
+The RetroTINK may scale its HDMI output to 1080p/4K without changing the CRT's
+240p input. Both pictures originate at one scanout boundary, although the
+RetroTINK and digital display can add latency relative to the CRT.
+
+Observed source facts
+=====================
+1. fpga/mister_nitro_console_island/NDS4MiSTer.sv:252 currently exposes one
+   nitro_r/g/b stream through VGA_R/G/B, with a common CLK_VIDEO and CE_PIXEL.
+2. rtl/nds_nitro_video_scanout.sv:420 reads the line RAM using
+   {row_parity, physical_screen, x_pair}. The side-by-side mode already issues
+   two independent screen-line prefetches per source row (hcount 0 and 64).
+   The single-panel CRT mode currently issues only one.
+3. rtl/nds_nitro_fb_ddr3.sv:906 already holds both screens in a 1024x36-bit
+   line RAM: two row parities, two screens, two complete-line slots, 128 pairs.
+   One synchronous read port returns two neighboring 18-bit pixels. It does
+   not return the two screens at once. A second output therefore needs an
+   explicit read schedule or a memory change; connecting a second RGB wire
+   alone is insufficient.
+4. The reader queues two requests and promotes only complete fetched lines.
+   Each physical screen/parity has its own selected slot and validity state.
+   Frame publication, external-renderer ownership, and adoption ACKs are
+   shared state in the scanout and island. They must remain one owner.
+5. sys/sys_top.v:1413 selects vga_data_osd or yc_o for DV1. Native analog
+   also derives from vga_data_osd, then applies RGB/YPbPr or composite/S-video
+   conversion. DV1 currently shares the analog image and YC selection.
+6. sys/osd.v:273 applies the menu with a small color pipeline following a
+   shared bitmap/timing generator. Two same-raster backgrounds could share
+   that generator and bitmap while using separate, matched color pipelines.
+
+Upstream comparison (primary sources, inspected 2026-10-12)
+=========================================================
+Template, SNES and GBA use the same DV1 selection from vga_data_osd/yc_o.
+They confirm the current framework topology; they are NOT evidence of an
+already-working independent-screen DV1 implementation to copy.
+
+https://github.com/MiSTer-devel/Template_MiSTer/blob/9c8eadb40067c8ce3aef90899844f62d688ac73a/sys/sys_top.v#L1257
+https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/sys/sys_top.v#L1257
+https://github.com/MiSTer-devel/GBA_MiSTer/blob/93790a023395bbd90e5eaf4dfb2cb5910afd55f5/sys/sys_top.v#L1257
+
+Budget: recorded baseline and calculated estimates
+=================================================
+The rc.7 fitter report, recorded in docs/FPGA_BUILD_V090_RC7.json, reports
+40,611 ALMs, 549 M10Ks and 44 DSPs. The target has 41,910 ALMs and 553 M10Ks:
+only 1,299 ALMs and four M10Ks remain. Placement/routing margin is not implied
+by those arithmetic totals. A duplicated framebuffer, scaler, renderer or
+full OSD instance is a poor starting point.
+
+At the nominal 60 MHz video clock, the existing CRT raster calculates to:
+  10 clocks/dot; 6 MHz logical pixel rate
+  384 dots/line; 3,840 clocks/line; 64 microseconds; 15,625 Hz
+  262 lines/frame; 59.63740458 frames/s
+
+Two screen reads can be time-multiplexed inside those ten clocks, with
+separate data/valid capture registers and one shared final pixel enable.
+The implementation must allow for the synchronous RAM read latency and
+keep each selected screen's row slot stable. The goal is zero additional
+block RAM; that is a design goal, not a synthesis result.
+
+DDR pixels occupy 32 bits each (two per 64-bit beat). One displayed pair of
+256x192 screens therefore reads 393,216 bytes/frame, about 23.45 MB/s at the
+native rate. Single-screen CRT reads about 11.73 MB/s. The paired data volume
+is comparable to existing side-by-side output, but the deadlines differ.
+
+Reusing hcount 64 for the second request leaves only 53.33 microseconds until
+the next row's hcount-0 request can obsolete it. Both screens must now be
+ready at the same horizontal position. Average bandwidth does not establish
+that DDR arbitration will meet this requirement. Exercise contention and
+consider issuing the second request earlier within the existing two-entry
+queue if the measured deadline margin calls for it. Do not change CPU clocks
+or the rendering-update profile to conceal missed scanout deadlines.
+
+Implementation outline
+======================
+1. Add an explicit experimental split enable, default Off. Activate only
+   with native CRT timing, direct_video=1 and vga_scaler=0, without the Linux
+   framebuffer override. Hand the actual framework mode to the core so a
+   persisted option cannot accidentally create split output in another mode.
+   Existing scaled HDMI/VGA and dual-panel layouts retain their normal path.
+2. Extend the existing scanout to request both physical screens for each
+   visible DS row. Keep its common h/v counters, fixed frame length, session
+   reset rules, publication boundary, external-bank selection and single ACK.
+   Address physical Main/Touch screens, not a permanently assigned GPU A/B:
+   games can change which engine/3D content is on each screen.
+3. Time-multiplex the current line-RAM read port. Capture both screen pairs
+   and matching valid bits before CE_PIXEL; emit two RGB values with one set
+   of sync/DE signals. Sample the output assignment at a frame boundary.
+   Retain complete-line selection and invalid-session blanking on both buses.
+4. Carry the extra native RGB bus and split-active flag through the island,
+   emu_ports.vh, NDS4MiSTer.sv and sys_top.v. Keep the normal scaler input
+   intact. Route DV1's chosen image through the existing DV1 reconstruction
+   and HDMI transmitter path, preserving register stages and crop geometry.
+5. Share native menu bitmap/timing. Add only the second background/blend
+   pipeline and matched scanline processing as needed. Display the same
+   upright menu on both outputs. Verify pixel and sync latency explicitly;
+   equal source raster does not eliminate downstream pipeline offsets.
+6. In split mode, feed DV1 clean RGB while analog alone follows RGB, YPbPr,
+   composite or S-video settings. Preserve legacy YC-over-direct-video behavior
+   outside split mode. Check host/transmitter color configuration as well as
+   RTL, and confirm DV1 metadata still describes the HDMI image correctly.
+7. Add a matching experimental host menu and capability/version handling.
+   Suggested choices: Split Outputs Off/On and DV1 Screen Main/Touch, with
+   the analog assignment visibly shown as the opposite screen. Do not consume
+   a status bit until the configuration/host ABI is audited. Generate the menu
+   through the existing tooling instead of hand-editing generated headers.
+
+Behavior to preserve
+====================
+- Screen Peek temporarily exchanges outputs while held, restoring them on
+  release. Use the existing temporary status override and add split coverage
+  for release, menu entry, controller disconnect and session reset. Never save
+  the temporary assignment.
+- Touch coordinates remain DS coordinates. Draw the pointer only on the
+  output currently showing Touch; retain the user's touch rotation controls.
+- Keep the 3D FPS counter available, with the current meaning. No claim that
+  it measures unique rendered frames. Retain mic, lid, audio and all rendering
+  features. There is one DS audio mix; the screen split adds no new audio mix.
+- Preserve existing TATE and menu rotation outside split mode. Native split
+  initially follows the rc.7 native policy: upright CRT raster and receiver
+  controls for rotation on DV1. Independent FPGA rotation of each native
+  output would be a separate feature with a different buffer/resource cost.
+- Use a separate experimental launcher/settings directory and test ROM/save
+  alias for hardware tests. Preserve the normal install, MiSTer.ini, maps and
+  the original NSMB saves. No experimental release publication is authorized.
+
+Evidence needed before calling it playable
+=========================================
+A. Simulate distinct pixel patterns on Main and Touch through the actual
+   line reader and scanout, not only a stand-in RAM: all pixels, odd/even
+   pairs, first/last pixels and rows, independent validity, swap/Peek, reset,
+   external-screen movement, frame adoption, and DDR stalls near deadlines.
+   Assert one frame owner/ACK and no mid-row slot changes or stale-session
+   data. Compare normal-mode output against rc.7 and check fixed 262 lines.
+B. Verify shared-menu blending and matching pipeline latency for both
+   backgrounds; confirm composite/S-video selection cannot alter DV1 RGB.
+   Run relevant existing video, host Peek/display, rotation and reset tests.
+C. Inspect synthesis memory inference and resource growth before fitting.
+   Keep all functionality; prefer local refactors if fit pressure increases.
+   Static timing remains diagnostic only, never a reason by itself to withhold
+   a build or hardware test.
+D. Install a private build and capture both assignments. Compare DV1 crop,
+   raster/lock and audio with rc.7; measure analog displacement again. Exercise
+   NSMB movement, touch/Peek, menu, audio and a game that moves 3D between the
+   physical screens. Compare game cadence, unique image changes where useful,
+   and existing late/fault receipts under the same load.
+E. Test the real CRT while DV1 feeds the RetroTINK. The current one-card rig
+   can capture each path sequentially through the RetroTINK, but cannot prove
+   simultaneous display timing that way. A camera view of both displays can
+   verify pairing/relative latency; a second independent capture path is useful
+   for instrumentation but is not required to play. Physical CRT acceptance
+   is still required, including the analog format actually used by the user.
+
+Current result
+==============
+The isolated branch and this design exist. No RTL or host code was changed,
+no FPGA build was started, no MiSTer settings or saves were accessed, and
+nothing from this experiment was pushed or published. The next concrete
+milestone is a simulated two-image scanout using the existing line RAM.
