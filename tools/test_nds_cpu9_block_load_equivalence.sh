@@ -5,7 +5,7 @@ set -euo pipefail
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/nds-block-load-equiv.XXXXXX")"
 trap 'rm -rf "$test_tmp"' EXIT
-reference="${REFERENCE_REVISION:-d3878fe89883ee95ebd0d9f6b156fe3d606352f7}"
+reference="${REFERENCE_REVISION:-86c173dba4186990ab4f94aad9f16428b2d15ce7}"
 cpu_rel=third_party/Nitro_DarkSide/d2dabe/rtl/nds_cpu9.vhd
 git -C "$repo_dir" show "$reference:$cpu_rel" > "$test_tmp/reference.vhd"
 python3 - "$repo_dir" "$test_tmp" <<'PYSCRIPT'
@@ -18,7 +18,7 @@ if os.environ.get('EQUIV_NEGATIVE_CONTROL')=='1':
     assert s.count(anchor)==1
     s=s.replace(anchor,'load_result := gb_bus_din xor x"00000001";')
 (tmp/'reference.vhd').write_text(s)
-for name in ['load_retire','load_base']:
+for name in ['load_retire','load_base','load_registers']:
     path=repo/f'rtl/tb_nds_cpu9_{name}.vhd'
     s=path.read_text().replace(f'tb_nds_cpu9_{name}',f'tb_block_equiv_{name}')
     s=s.replace('use work.pProc_bus_gba.all;','use work.pProc_bus_gba.all;\nuse work.pexport.all;')
@@ -63,8 +63,8 @@ run_tests() {
     local p="$repo/third_party/Nitro_DarkSide/d2dabe/rtl"
     nvc --std=2008 -a "$p/export.vhd" "$p/proc_bus_gba.vhd" \
         "$p/reg_savestates.vhd" \
-        reference.vhd "$p/nds_cpu9.vhd" tb_load_retire.vhd tb_load_base.vhd
-    for name in load_retire load_base; do
+        reference.vhd "$p/nds_cpu9.vhd" tb_load_retire.vhd tb_load_base.vhd tb_load_registers.vhd
+    for name in load_retire load_base load_registers; do
         for delay in 1 3 11; do
             for step in 1 2 5; do
                 for dma in false true; do
@@ -88,4 +88,4 @@ else
         -v "$test_tmp:/test" -w /test nds4mister-nvc-arm64:1.22.1 \
         bash -lc "set -euo pipefail; $(declare -f run_tests); run_tests /workspace"
 fi
-echo 'PASS: block-load refactor matches every bus cycle, register sample and retirement'
+echo 'PASS: load-return refactors match every bus cycle, register sample and retirement'

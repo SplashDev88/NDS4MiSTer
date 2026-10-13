@@ -3556,6 +3556,32 @@ begin
                   report "LDM direct write differs from architectural writeback"
                   severity failure;
                -- synthesis translate_on
+            elsif execute_load_retire_early then
+               -- Returning scalar loads have a known Rd and format. Keep
+               -- them off the shared ALU/base-update writeback mux, just as
+               -- the LDM return above. This retains the existing retire edge.
+               -- Hardware: LDR sp loaded 06FF7DC0 instead of 02FF7DC0; the
+               -- same-address LDR r8 / MOV sp,r8 control passed 8192 pushes.
+               case decode_datareceivetype is
+                  when RECEIVETYPE_BYTE =>
+                     regs(to_integer(unsigned(decode_rdest))) <= x"000000" & unsigned(gb_bus_din(7 downto 0));
+                  when RECEIVETYPE_WORD =>
+                     regs(to_integer(unsigned(decode_rdest))) <= x"0000" & unsigned(gb_bus_din(15 downto 0));
+                  when RECEIVETYPE_DWORD =>
+                     regs(to_integer(unsigned(decode_rdest))) <= unsigned(gb_bus_din);
+                  when RECEIVETYPE_SIGNEDBYTE =>
+                     regs(to_integer(unsigned(decode_rdest))) <= unsigned(resize(signed(gb_bus_din(7 downto 0)), 32));
+                  when RECEIVETYPE_SIGNEDWORD =>
+                     if execute_RW_addr_last(0) = '0' then
+                        regs(to_integer(unsigned(decode_rdest))) <= unsigned(resize(signed(gb_bus_din(15 downto 0)), 32));
+                     else
+                        regs(to_integer(unsigned(decode_rdest))) <= unsigned(resize(signed(gb_bus_din(7 downto 0)), 32));
+                     end if;
+               end case;
+               -- synthesis translate_off
+               assert execute_writeback = '1' and execute_writereg = unsigned(decode_rdest)
+                  report "scalar direct write differs from architectural destination" severity failure;
+               -- synthesis translate_on
             elsif (execute_writeback = '1' and execute_writereg /= 15) then
                regs(to_integer(execute_writereg)) <= execute_writedata;
             end if;

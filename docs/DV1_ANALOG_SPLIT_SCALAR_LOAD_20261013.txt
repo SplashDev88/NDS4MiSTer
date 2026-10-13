@@ -1,0 +1,56 @@
+Private split-output experiment: scalar-load return refactor (2026-10-13)
+
+SPLIT3 (86c173d) compiled and its original direct LDM/register, LDM/STM copy,
+and LDM/scalar-store copy hardware diagnostics now pass exactly like rc.7.
+The full SDK CPU/2D program and NSMB still fail to execute visibly. This is
+not a playable build, and static timing is not used as an acceptance gate.
+
+New measured failure
+The original no-SDK stack diagnostic performs 8192 six-register PUSH/POP
+iterations on the SDK DTCM stack, checking every stored word with scalar
+loads before POP. It passes the unchanged release FPGA and fails SPLIT3
+on the first stored-word readback: expected E58C1214, observed zero.
+A variant records SP as 06FF7DA8 instead of the expected 02FF7DA8.
+Replacing POP with scalar loads does not help; the failure precedes POP.
+
+The same-address capture variant preserves the initial SP in r9, without
+moving any instructions or literals. It reports 06FF7DC0 immediately after
+LDR sp and 06FF7DA8 after PUSH. The corruption therefore precedes PUSH.
+The matched same-address control changes LDR sp to LDR r8 and moves that
+value into SP in the following instruction. All 8192 stack iterations pass.
+Only three instruction words differ; code size and literal addresses match.
+Evidence is in BLOCKSTACK{,SP,CAPTURE,MOVSP}_SPLIT3_20261013 and
+BLOCKSTACK_REFERENCE_20261013 receipts in the private testing-rig archive.
+
+Diagnostic caveat
+The older multi-checkpoint SDK variants stop at marker 3 on SPLIT3, but this
+is not evidence of an IPC handshake fault. New variants restore every
+original ARM9 executable byte and replace only one target instruction with
+a branch to a nonreturning stackless marker. Both the actual IPC handshake
+and TCM-copy milestones pass. Pure ITCM readback sees 48 exact IRQ words;
+20 words are outside the current packet sampler's first-48-event limit.
+The single application-main checkpoint still fails. Intermediate diagnostic
+calls may themselves exercise the faulty stack, so they are not definitive
+startup boundaries on this image.
+
+Refactor
+Give already-qualified early scalar loads their own register-file return
+path, using the known destination and existing byte/halfword/sign-extension
+rules. The result no longer passes through the generic ALU/base-update data
+and destination muxes. The original early-retire qualifier, clock edge,
+latency, CE/DMA/IRQ rules, PC handling, double-load and fallback paths stay
+unchanged. This is a hardware-supported hypothesis pending a new FPGA image.
+
+Validation
+- Existing scalar-load regression: 36 cases, 37741 CPU ticks, PASS.
+- New SP/LR/r12 formats regression: 36 cases, 49277 CPU ticks, PASS.
+- Cycle equivalence against 86c173d: 108 cases, 277206 CPU ticks, PASS.
+  Three programs, read delays 1/3/11, CE periods 1/2/5, DMA and IRQ overlap.
+  Compares bus address/data/control, PC, rotating register samples and full
+  architectural retirement state. No additional CPU cycles are introduced.
+- Negative control: deliberately flipping one reference load bit is detected
+  as a bus mismatch at 230 ns. Expected failure.
+
+No gameplay clocks, video features, host, renderer, user data or maps changed.
+Next hardware acceptance starts with the exact original failing stack ROM,
+then LDM tests, unmodified SDK application, NSMB and independent outputs.
