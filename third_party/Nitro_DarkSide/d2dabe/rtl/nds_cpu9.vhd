@@ -507,6 +507,7 @@ architecture arch of nds_cpu9 is
    signal execute_stall                   : std_logic := '0';
    signal execute_done                    : std_logic;
    signal execute_load_retire_early       : boolean;
+   signal execute_block_load_live         : boolean;
    signal execute_load_base_start         : boolean;
    signal execute_load_base_early         : std_logic := '0';
    signal execute_load_base_value         : unsigned(31 downto 0);
@@ -3115,6 +3116,21 @@ begin
       decode_datatransfer_double = '0' and decode_datatransfer_swap = '0' and
       decode_rdest /= x"F" and dma_on = '0' and dma_on_1 = '0';
 
+   -- A returning LDM beat already carries its destination and full word.
+   -- Give that word a direct register-file path rather than sending it through
+   -- the shared ALU/DSP/base-update result and destination muxes. This is the
+   -- same edge, enable and live-bank rule as the block_read writeback below;
+   -- PC interworking and user-bank redirects retain their existing paths.
+   -- Hardware reproducer: a cached LDM/STM copy loses instruction bits on the
+   -- split-output fit; replacing only LDM with LDR preserves all copied words.
+   execute_block_load_live <= execute_stall = '1' and
+      decode_functions_detail = block_read and
+      busState = BUSSTATE_WAITDATA and gb_bus_done = '1' and
+      (decode_block_usermoderegs = '0' or cpu_mode = CPUMODE_USER or
+       cpu_mode = CPUMODE_SYSTEM or execute_blockRW_writereg < 8 or
+       execute_blockRW_writereg > 14 or
+       (execute_blockRW_writereg <= 12 and cpu_mode /= CPUMODE_FIQ));
+
    -- register writeback
    process (all)
       variable load_result : std_logic_vector(31 downto 0);
@@ -3531,7 +3547,16 @@ begin
             end if;
             cache_op_ena <= '0';
             
-            if (execute_writeback = '1' and execute_writereg /= 15) then
+            if execute_block_load_live and execute_blockRW_writereg /= 15 then
+               regs(to_integer(execute_blockRW_writereg)) <= unsigned(gb_bus_din);
+               -- synthesis translate_off
+               assert execute_writeback = '1' and
+                      execute_writereg = execute_blockRW_writereg and
+                      execute_writedata = unsigned(gb_bus_din)
+                  report "LDM direct write differs from architectural writeback"
+                  severity failure;
+               -- synthesis translate_on
+            elsif (execute_writeback = '1' and execute_writereg /= 15) then
                regs(to_integer(execute_writereg)) <= execute_writedata;
             end if;
 

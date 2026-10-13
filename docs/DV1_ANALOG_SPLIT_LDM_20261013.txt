@@ -1,0 +1,54 @@
+Private split-output experiment: LDM return-path refactor (2026-10-13)
+
+SPLIT2 d3878fe, RBF f07da60b50c263e6a8f7fe59b356230a0a9569c86f1ff541ca535ac4542308bd,
+fails game execution with both the release host and experimental host, including
+split output disabled from cold startup. The release FPGA runs the same inputs.
+
+Hardware isolation used original homebrew diagnostics and isolated blank saves.
+No game ROM was modified and no original NSMB save was opened. Existing renderer
+packets and published image planes supplied measurements; no FPGA probes added.
+
+The SDK copies its IRQ instructions into ITCM using single-register LDM/STM.
+An early readback, before C startup/interrupt installation, found E58C1214 changed
+to E48C1214 at 010002E8. This clears ARM's P bit, consistent with the later repeated
+04000000 writes carrying 00040000 instead of an IRQ acknowledgement at 04000214.
+Other copied words also lost bits. This was not inferred from a timing report.
+
+Changing only the diagnostic's LDM to scalar LDR removes observed corruption.
+Changing only STM to scalar STR does not. An original 8192-word copy test using
+E58C1214 XOR rotate-right(index,8) passes on the release FPGA and fails on SPLIT2:
+word1 expected E48C1214, read 84841214. LDM+STR also fails; LDR+STM passes.
+A direct-register LDM comparison fails before any destination write, excluding
+ITCM stores as a necessary cause. Basic CPU/IPC/FIFO IRQ/cache/TCM tests pass.
+These tests localize the hardware failure to the LDM return path; they do not
+establish universal memory correctness or prove a particular timing arc causes it.
+
+The refactor gives eligible live-bank block-load beats a direct data/destination
+route into the register file, bypassing the shared ALU/DSP/base-update muxes.
+It preserves the original write edge and live-bank qualification. PC writes,
+interworking, user-bank redirects and base updates retain their existing paths.
+No clock, cycle accounting, gameplay feature or video geometry is changed.
+Static timing remains diagnostic only. Hardware acceptance is still required.
+
+Validation before fitting:
+- Existing scalar-load suite: 36 cases, 37741 aggregate CPU ticks, PASS.
+- Existing load-base suite: 36 cases, 229368 aggregate CPU ticks, PASS.
+- New comparison against d3878fe: 72 cases, 227929 aggregate CPU ticks, PASS.
+  Compares every bus cycle, a rotating architectural register, retirement timing
+  and full retired architectural state. Covers variable bus latency, CE pauses,
+  DMA and IRQ overlap across both existing programs.
+- Negative control flips a returned load bit in the reference only; comparison
+  detects a bus mismatch at230ns and fails, as required.
+- Simulation-only assertion also checks each direct write matches the original
+  architectural writeback qualification, destination and data.
+
+Source: third_party/Nitro_DarkSide/d2dabe/rtl/nds_cpu9.vhd (active vendored copy).
+Run: bash tools/test_nds_cpu9_block_load_equivalence.sh
+The comparison needs git history containing d3878fe; NVC runs locally or in the
+existing nds4mister-nvc-arm64:1.22.1 container. No network needed.
+
+Next acceptance: original LDM register/copy diagnostics, unmodified SDK app,
+unmodified NSMB using its isolated save, then independent 240p analog plus DV1
+Main/Touch/Side/Top, audio, Peek, TATE/menu, 3D FPS, lid and retained features.
+Do not call the refactor fixed until the assembled image passes hardware tests.
+No publication is authorized for this experiment.
