@@ -3556,31 +3556,33 @@ begin
                   report "LDM direct write differs from architectural writeback"
                   severity failure;
                -- synthesis translate_on
-            elsif execute_load_retire_early then
-               -- Returning scalar loads have a known Rd and format. Keep
-               -- them off the shared ALU/base-update writeback mux, just as
-               -- the LDM return above. This retains the existing retire edge.
+            elsif execute_load_retire_early and decode_rdest = x"D" then
+               -- Give the measured SP load failure a fixed-register return
+               -- path. A variable destination here adds another data/enable
+               -- mux to every live register and the all-register fit did not
+               -- route. Other scalar loads retain the existing writeback.
+               -- The format, qualification and retire edge stay unchanged.
                -- Hardware: LDR sp loaded 06FF7DC0 instead of 02FF7DC0; the
                -- same-address LDR r8 / MOV sp,r8 control passed 8192 pushes.
                case decode_datareceivetype is
                   when RECEIVETYPE_BYTE =>
-                     regs(to_integer(unsigned(decode_rdest))) <= x"000000" & unsigned(gb_bus_din(7 downto 0));
+                     regs(13) <= x"000000" & unsigned(gb_bus_din(7 downto 0));
                   when RECEIVETYPE_WORD =>
-                     regs(to_integer(unsigned(decode_rdest))) <= x"0000" & unsigned(gb_bus_din(15 downto 0));
+                     regs(13) <= x"0000" & unsigned(gb_bus_din(15 downto 0));
                   when RECEIVETYPE_DWORD =>
-                     regs(to_integer(unsigned(decode_rdest))) <= unsigned(gb_bus_din);
+                     regs(13) <= unsigned(gb_bus_din);
                   when RECEIVETYPE_SIGNEDBYTE =>
-                     regs(to_integer(unsigned(decode_rdest))) <= unsigned(resize(signed(gb_bus_din(7 downto 0)), 32));
+                     regs(13) <= unsigned(resize(signed(gb_bus_din(7 downto 0)), 32));
                   when RECEIVETYPE_SIGNEDWORD =>
                      if execute_RW_addr_last(0) = '0' then
-                        regs(to_integer(unsigned(decode_rdest))) <= unsigned(resize(signed(gb_bus_din(15 downto 0)), 32));
+                        regs(13) <= unsigned(resize(signed(gb_bus_din(15 downto 0)), 32));
                      else
-                        regs(to_integer(unsigned(decode_rdest))) <= unsigned(resize(signed(gb_bus_din(7 downto 0)), 32));
+                        regs(13) <= unsigned(resize(signed(gb_bus_din(7 downto 0)), 32));
                      end if;
                end case;
                -- synthesis translate_off
-               assert execute_writeback = '1' and execute_writereg = unsigned(decode_rdest)
-                  report "scalar direct write differs from architectural destination" severity failure;
+               assert execute_writeback = '1' and execute_writereg = 13
+                  report "SP direct write differs from architectural destination" severity failure;
                -- synthesis translate_on
             elsif (execute_writeback = '1' and execute_writereg /= 15) then
                regs(to_integer(execute_writereg)) <= execute_writedata;

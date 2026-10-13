@@ -1,0 +1,41 @@
+Private split-output experiment: fixed SP return path (2026-10-13)
+
+SPLIT4 at 3998616 passed placement but failed routing after 47m33s because
+of congestion. No new FPGA image was assembled or tested. The failure
+archive is failed-routing-3998616 in the private evidence directory.
+Static timing is diagnostic and was not an acceptance gate.
+
+Measured resource change
+The all-register scalar return raised ARM9 synthesis logic from 5575 to
+5830 combinational ALUTs compared with SPLIT3. Total fitted logic rose
+from 40966 to 41075 ALMs. Fitter packing and duplication differ between
+a successful and failed route, so the synthesis counts are the cleaner
+comparison. The extra variable-destination write added another possible
+data/enable path to every live register.
+
+Smaller equivalent implementation
+Restrict the dedicated scalar return to fixed register 13 (SP). This keeps
+the existing scalar writeback for other registers and the SPLIT3 direct
+LDM path. All load widths/sign rules, original early-return eligibility,
+DMA exclusions, base updates, bank-switch priority and retire edge remain
+unchanged. There are no extra CPU cycles or clock changes.
+
+The choice of SP is grounded in the matched hardware control: LDR SP
+captured 06FF7DC0 instead of 02FF7DC0, while the same-address LDR r8 then
+MOV SP,r8 variant passed 8192 six-register PUSH/POP iterations. It does
+not establish that every other register is free of physical faults.
+Full SDK and game tests remain required on a newly routed image.
+
+Validation before fit
+108 old/new cycle-equivalence cases pass against the all-register SPLIT4
+implementation: three programs, read delays 1/3/11, CE periods 1/2/5,
+DMA and IRQ overlap. The programs also check expected architectural
+results, including all SP load formats, LR and r12. Every bus/control/PC
+cycle, rotating register sample and full retirement state is compared.
+The existing equivalence harness previously detected its deliberate
+load-bit negative control; that harness was not changed here.
+
+No display feature, renderer, host, game profile, save or map is changed.
+First hardware acceptance remains the original failing stack programs,
+the earlier LDM reproductions, unmodified SDK CPU2D, isolated NSMB, then
+the complete independent DV1/analog output matrix.
