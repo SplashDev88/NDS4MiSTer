@@ -293,7 +293,13 @@ module nds_nitro_video_scanout #(
         begin
             normal_bank = publication_available ?
                 publication_bank : active_normal_bank;
-            if (!external_enable)
+            // Split prefetch is delayed until h=16, after the h=0 adoption
+            // edge. A publication arriving in that interval belongs to the
+            // next frame; both consumers must keep the already-adopted bank.
+            if (split_active)
+                request_frame_bank = external_enable ?
+                    active_screen_bank[requested_screen] : active_normal_bank;
+            else if (!external_enable)
                 request_frame_bank = frame_end && publication_available ?
                     publication_bank : active_normal_bank;
             else if (frame_end && external_available)
@@ -315,6 +321,8 @@ module nds_nitro_video_scanout #(
         begin
             if (!external_enable)
                 request_is_external = 1'b0;
+            else if (split_active)
+                request_is_external = active_screen_external[requested_screen];
             else if (frame_end && external_available)
                 request_is_external =
                     requested_screen == external_screen_for_boundary;
@@ -790,8 +798,8 @@ module nds_nitro_video_scanout #(
                 if (!session_reset && hcount == (split_active ? 16 : 0) && next_screen_line &&
                     (!split_active || (row_ready[{1'b0,next_local_screen}] && !busy[{1'b0,next_local_screen}])) &&
                     (request_is_external(next_local_screen) ?
-                        (active_external_valid || (frame_end && external_available)) :
-                        (normal_frame_valid || (frame_end && publication_available)))) begin
+                        (active_external_valid || (!split_active && frame_end && external_available)) :
+                        (normal_frame_valid || (!split_active && frame_end && publication_available)))) begin
                     pf_scr <= next_local_screen;
                     pf_line <= next_local_y;
                     pf_bank <= split_active ? 1'b0 : next_local_y[0];

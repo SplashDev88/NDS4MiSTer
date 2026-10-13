@@ -64,6 +64,8 @@ or recycled frame data. Session withdrawal drains both output contexts and
 blanks stale pixels. Legacy parity-cache behavior is unchanged with split Off.
 
 Digital requests use h=16 and h=64; analog prefetch uses its own h=96.
+Split requests use only already-adopted banks. Publications arriving between
+the h=0 adoption edge and h=16 prefetch stay pending until the next boundary.
 Those request clocks do not collide across the three digital pixel cadences.
 A third panel read (paired digital plus one analog) costs about 35.18 MB/s
 before bus overhead, versus 23.45 MB/s for two panels. Average bandwidth is

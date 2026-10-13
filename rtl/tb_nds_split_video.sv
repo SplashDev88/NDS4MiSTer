@@ -134,7 +134,7 @@ module tb_nds_split_video #(parameter MATCHED=0);
     integer x,y,scr,sx,sy,second_x,second_y;
     reg in_panel;
     reg [1:0] stalled_context;
-    reg stalled_slot, stalled_ticket;
+    reg stalled_slot, stalled_ticket, before_request;
     always @(negedge clk) begin
         clock_count=clock_count+1;
         if(split_active && dut.analog_hcount==0 && dut.analog_vcount==0 && dut.analog_divider==0) begin
@@ -196,6 +196,24 @@ module tb_nds_split_video #(parameter MATCHED=0);
             checking=1;frame();checking=0;
             $display("PASS layout=%0d analog=%0d order=%0d gap=%0d",layout,analog_screen,order,gap);
         end
+        // Publish AFTER the shared h=0 adoption edge but BEFORE h=16
+        // prefetch. Neither normal nor external pending data may be consumed
+        // early, even though the request is on the final raster line.
+        layout=0;order=0;gap=0;normal_bank=0;published=~published;
+        frame();frame();frame();
+        for(integer k=0;k<2;k=k+1) begin
+            while(!(dut.frame_end && dut.hcount==1 && dut.pixel_divider==0)) @(negedge clk);
+            before_request=pf_tgl;
+            if(k==0) begin normal_bank=1;published=~published;end
+            else begin external_screen=0;external_bank=1;external_toggle=~external_toggle;end
+            wait(pf_tgl!=before_request);@(negedge clk);
+            if(pf_external!==dut.active_screen_external[pf_scr] ||
+               pf_frame_bank!==dut.active_screen_bank[pf_scr])
+                $fatal(1,"unadopted publication used for first digital row, kind=%0d",k);
+            frame();frame();frame();checking=1;frame();checking=0;
+        end
+        $display("PASS normal/external late publications wait for shared adoption");
+
         // Late responses must hold a complete line, never a partially replaced
         // row. Repeat in the two digital geometries with concurrent source rows.
         for(integer k=0;k<2;k=k+1) begin
