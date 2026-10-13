@@ -25,7 +25,11 @@ set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
 # measured together and rejected because they enlarged this design.
 set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
 set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
-set_global_assignment -name OPTIMIZE_HOLD_TIMING "ALL PATHS"
+# Private routing experiment: both full-feature attempts failed congestion
+# after the fitter inserted ~3000ns of aggregate hold-delay routing. Keep
+# RTL, clocks and setup optimization unchanged; assess the assembled image
+# on hardware. TimeQuest remains diagnostic and records the resulting holds.
+set_global_assignment -name OPTIMIZE_HOLD_TIMING OFF
 set_global_assignment -name SEED 7
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 

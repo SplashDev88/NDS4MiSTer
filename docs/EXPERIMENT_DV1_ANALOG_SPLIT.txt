@@ -119,6 +119,20 @@ combined-layout geometries. These passed8,048,640 and12,065,280 pixel/control
 comparisons respectively, with a further12,053,760 comparisons passing for
 the generic-default native configuration after the parameter additions.
 
+The a64b292 follow-up also placed but failed routing, after14m02s of routing.
+It needed41,042 ALMs,32 fewer than the first attempt, with553 RAM blocks.
+The compiler again reported severe congestion and approximately3000ns of
+aggregate routing delay added for hold optimization. The next controlled
+compiler experiment sets OPTIMIZE_HOLD_TIMING OFF, leaving all RTL, clocks,
+seed, setup optimization and features unchanged. This may relieve routing
+demand but is not proof of functional operation; any assembled image must
+be tested on the rig. Hold reports remain diagnostic and are retained.
+Intel's routing-failure guidance explicitly lists disabling hold optimization
+as a way to determine whether timing constraints are contributing to congestion:
+https://www.intel.com/content/www/us/en/programmable/quartushelp/current/msgs/msgs/wvpr20ka10_vpr_no_route_suggestion_message.htm
+The Standard Edition optimization guide describes the inserted delay:
+https://www.intel.com/programmable/technical-pdfs/683230.pdf
+
 Upstream comparison (primary sources, inspected 2026-10-12)
 =========================================================
 Template, SNES and GBA use the same DV1 selection from vga_data_osd/yc_o.
