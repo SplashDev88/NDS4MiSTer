@@ -25,6 +25,11 @@ parameter  OSD_COLOR    =  3'd4;
 parameter  OSD_RAM_STYLE = "no_rw_check";
 // Native DS rasters need far fewer counter bits than a general HDMI mode.
 parameter  OSD_COUNTER_BITS = 22;
+// Fixed native outputs can discard unreachable geometry without changing
+// bitmap storage, SPI commands, or the pixel pipeline. Zero keeps generic
+// behavior for HDMI and the existing native raster.
+parameter  OSD_FIXED_UPRIGHT = 0;
+parameter  OSD_MAX_LINES = 0;
 
 localparam OSD_WIDTH    = 12'd256;
 localparam OSD_HEIGHT   = 12'd64;
@@ -95,7 +100,7 @@ always@(posedge clk_sys) begin
 					if(bcnt == 1) infoy <= io_din[11:0];
 					if(bcnt == 2) infow <= {io_din[5:0], 3'b000};
 					if(bcnt == 3) infoh <= {io_din[5:0], 3'b000};
-					if(bcnt == 4) rot   <= io_din[1:0];
+					if(bcnt == 4 && !OSD_FIXED_UPRIGHT) rot <= io_din[1:0];
 				end
 
 				// command 0x20: OSDCMDWRITE
@@ -140,10 +145,10 @@ wire [OSD_COUNTER_BITS-1:0] osd_h_hdr = (info || rot) ? osd_h : (osd_h + OSD_HDR
 // pipeline the comparisons a bit
 always @(posedge clk_video) if(ce_pix) begin
 	v_cnt_h <= v_cnt <= osd_t;
-	v_cnt_1 <= v_cnt < 320;
-	v_cnt_2 <= v_cnt < 640;
-	v_cnt_3 <= v_cnt < 960;
-	v_cnt_4 <= v_cnt < 1280;
+	v_cnt_1 <= (OSD_MAX_LINES > 0 && OSD_MAX_LINES < 320) ? 1'b1 : v_cnt < 320;
+	v_cnt_2 <= (OSD_MAX_LINES > 0 && OSD_MAX_LINES < 640) ? 1'b1 : v_cnt < 640;
+	v_cnt_3 <= (OSD_MAX_LINES > 0 && OSD_MAX_LINES < 960) ? 1'b1 : v_cnt < 960;
+	v_cnt_4 <= (OSD_MAX_LINES > 0 && OSD_MAX_LINES < 1280) ? 1'b1 : v_cnt < 1280;
 
 	v_osd_start_h <= (v_cnt-(osd_h_hdr>>1))>>1;
 	v_osd_start_1 <= (v_cnt-osd_h_hdr)>>1;

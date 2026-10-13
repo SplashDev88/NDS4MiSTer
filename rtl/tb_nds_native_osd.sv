@@ -13,7 +13,7 @@ wire [23:0] full_rgb,small_rgb;
 wire [3:0] full_ctl,small_ctl;
 osd full(.clk_sys,.io_osd,.io_strobe,.io_din,.clk_video,.din,.de_in,.hs_in,.vs_in,
  .dout(full_rgb),.de_out(full_ctl[0]),.hs_out(full_ctl[1]),.vs_out(full_ctl[2]),.osd_status(full_ctl[3]));
-osd #(.OSD_COUNTER_BITS(14)) bounded(.clk_sys,.io_osd,.io_strobe,.io_din,.clk_video,.din,.de_in,.hs_in,.vs_in,
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512)) bounded(.clk_sys,.io_osd,.io_strobe,.io_din,.clk_video,.din,.de_in,.hs_in,.vs_in,
  .dout(small_rgb),.de_out(small_ctl[0]),.hs_out(small_ctl[1]),.vs_out(small_ctl[2]),.osd_status(small_ctl[3]));
 integer checks=0, pixels=0;
 reg checking=0;
@@ -74,9 +74,9 @@ initial begin
  raster(320,240,384,262,10,0);
  raster(320,240,384,261,10,1);
  raster(320,240,384,262,10,3);
- raster(512,192,640,261,6,0);
+ raster(536,198,640,262,6,0);
  raster(256,192,640,262,6,0);
- raster(256,408,640,523,3,0);
+ raster(256,414,640,524,3,0);
  $display("PASS native OSD equivalent across %0d samples",checks);
  $finish;
 end

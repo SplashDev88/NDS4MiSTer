@@ -74,7 +74,7 @@ hardware measurements must check cadence/faults. Game clocks and NSMB's
 existing alternate rendering-update profile are unchanged.
 
 Framework routing gives analog its own scanline pipeline, native OSD timing
-and csync. The same OSD commands feed a second 14-bit-counter OSD instance;
+and csync. The same OSD commands feed a second fixed upright240p OSD instance;
 the bitmap consumes four additional M10Ks. This deliberate cost supports
 independent raster geometry. DV1 continues through the existing digital OSD
 and reconstruction/transmitter path. In split mode DV1 always carries RGB;
@@ -91,6 +91,33 @@ constrained to registers so tiny inferred shift RAMs do not waste blocks.
 Actual placement/routing remains required; no functionality is trimmed.
 Static timing reports are diagnostic only. Hardware behavior determines
 acceptance, and timing violations alone do not withhold a build or test.
+
+The first completed fit attempt (807370f) placed but failed routing after
+91m48s of routing. It needed41,074/41,910 ALMs and553/553 M10Ks, with4,181
+of4,191 LABs occupied. The router reported1,834 multiply-used interconnect
+resources and2,358 unrouted signals in its progress sample. This is a
+congestion failure, not rejection of a bitstream for static timing violations.
+
+The follow-up specializes only unreachable OSD geometry. The new analog OSD
+is always upright320x240, so it uses12-bit counters and a240-active-line bound.
+The14-bit line-gap counter still spans the23 line periods from the last
+active-line start to the next frame. All12-bit SPI positions and the full
+16-row bitmap remain. The existing native OSD keeps rotation support and
+14-bit counters, but uses a512-active-line bound: the maximum source height
+is414 with stacked screens,24-pixel gap and FPS row. HDMI's generic OSD stays
+unchanged. No renderer, game clock, cache arbitration or display feature is
+removed. The analog-only specialization saved239 ALUTs and118 registers in
+synthesis. Combined synthesis uses60,832 ALUTs and43,809 registers, a whole-
+design reduction of202 ALUTs and188 registers versus807370f. Memory is
+unchanged. The individual native OSD instances use292 and395 ALUTs; Quartus
+also reorganized unrelated shared logic, so their local savings should not
+be mistaken for the whole-design reduction. Routing remains to be retried.
+Run tools/test_nds_fixed_analog_osd.py for pixel/control equivalence of full
+menus, loading messages, information windows and clipped information windows
+against the generic OSD. The native OSD test covers rotations and maximum
+combined-layout geometries. These passed8,048,640 and12,065,280 pixel/control
+comparisons respectively, with a further12,053,760 comparisons passing for
+the generic-default native configuration after the parameter additions.
 
 Upstream comparison (primary sources, inspected 2026-10-12)
 =========================================================

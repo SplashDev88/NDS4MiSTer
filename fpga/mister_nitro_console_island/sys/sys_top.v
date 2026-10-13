@@ -1596,8 +1596,10 @@ wire [23:0] vga_data_osd;
 wire        vga_vs_osd, vga_hs_osd, vga_de_osd;
 // Preserve the full16-row menu. Native DS modes use at most3200 clock
 // ticks of active video per line;14-bit counters cover their raster and
-// blanking with ample headroom. HDMI keeps the generic22-bit counters.
-osd #(.OSD_COUNTER_BITS(14)) vga_osd
+// blanking with ample headroom. The tallest source is414 active lines
+// (stacked screens,24-pixel gap,FPS row), so larger multiscan modes are
+// unreachable. HDMI keeps the generic22-bit counters and all geometries.
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512)) vga_osd
 (
 	.clk_sys(clk_sys),
 
@@ -1632,7 +1634,10 @@ scanlines #(0) nds_analog_scanlines (
     .hs_out(nds_analog_hs_sl), .vs_out(nds_analog_vs_sl),
     .de_out(nds_analog_de_sl), .ce_out()
 );
-osd #(.OSD_COUNTER_BITS(14)) nds_analog_osd (
+// This independent raster is always upright320x240. Twelve bits retain all
+// SPI position values and the3200-clock active line; the14-bit gap counter
+// still covers its22-line vertical blank. HDMI TATE uses hdmi_osd unchanged.
+osd #(.OSD_COUNTER_BITS(12), .OSD_FIXED_UPRIGHT(1), .OSD_MAX_LINES(240)) nds_analog_osd (
     .clk_sys(clk_sys), .io_osd(io_osd_vga), .io_strobe(io_strobe), .io_din(io_din),
     .osd_status(), .clk_video(clk_vid), .din(nds_analog_data_sl),
     .hs_in(nds_analog_hs_sl), .vs_in(nds_analog_vs_sl), .de_in(nds_analog_de_sl),
