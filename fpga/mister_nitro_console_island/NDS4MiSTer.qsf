@@ -100,12 +100,15 @@ set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_cons
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|nds_h3d_frame_record_cdc:h3d_record_cdc|source_reset_pipe[2]"
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|console_reset_sync_2x[1]"
 
-# Prepared routing fallback: the preceding full fit reports this registered
-# reset on 584 non-global loads, with one of 16 global networks still free.
-# Equivalent reset registers may merge under this palette instance name.
-# This is a physical routing assignment only; reset logic and cycles stay
-# unchanged. Verify that the fitter applies the assignment before testing.
-set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|nds_nitro_console_wrap:console|nds_nitro_console_top:inds|nds_palette_readback:palette_readback|reset_d"
+# Prepared alternative for the last global network: the post-map netlist
+# verifies this synthesized control has 1,304 loads (1,010 in the plane
+# reader). Its inputs are the DDR bridge reset and H3D session-release cone;
+# it is shared reset/load control, despite the packet-buffer-generated name.
+# Cyclone V global networks support internally generated clear/load controls.
+# Replace the smaller 584-load reset promotion; retain all reset logic/cycles.
+# This synthesized name is tied to the frozen RTL. Require an explicit
+# applied-assignment message from the fitter before accepting a build.
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|nds_h3d_frame_packet_writer:h3d_packet_writer|buf_record~640"
 
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
 set_location_assignment PIN_U9 -to ADC_CONVST
