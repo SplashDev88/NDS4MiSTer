@@ -435,3 +435,5 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_adoption_window
 
 # Temporary CPU/query/sound/render probes are removed at the product boundary.
 # Keep 3D FPS, TATE/menu rotation, YC encoding, microphone and lid controls.
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_native_osd_memory.sv

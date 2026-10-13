@@ -169,6 +169,47 @@ successfully promoted console_reset_sync_1x reset. No RTL changes accompany
 this correction. Verify that the fitter actually promotes both new nets
 before interpreting its routing result; assignment text alone is insufficient.
 
+Prepared memory-sharing fallback (not yet fitted or tested on hardware)
+---------------------------------------------------------------------
+The two native OSDs now share one4096x8 true-dual-port bitmap. Inspection
+of NDS4MiSTer.sv and hps_io.sv confirms that CLK_VIDEO and HPS_BUS[36]
+carry the same60MHz clk_sys, so this needs no additional clock crossing.
+The digital read port stays dedicated. The other port multiplexes analog
+reads and queued bitmap writes; its read and write address are explicitly
+the same port address so Quartus infers true dual-port storage rather than
+silently replicating the RAM. The ordinary HDMI OSD remains independent.
+
+Analog reads are enabled only while split output is active and the OSD
+pixel scheduler has a nonzero interval. The fixed320x240/10-clock raster
+settles to one OSD read in six video clocks. Four register entries buffer
+writes. At two occupied entries, the existing HPS acknowledgement gate
+waits for room after accepting the current word. It neither drops words
+nor repeats a strobe. Startup and a forced500-clock read-port blockage
+are covered by a test that verifies the resulting bitmap and both read
+ports. No game, renderer, audio, display geometry or rotation is removed.
+
+Full-core synthesis passed:60,707 ALUTs versus60,832,43,900 registers
+versus43,809, and4,202,580 block-memory bits versus4,235,348. The bitmap
+is reported as one32,768-bit True Dual Port RAM. DSP usage remains44.
+This should free four M10Ks, but the final physical count and routing
+result still require fitting. These numbers alone do not qualify a build.
+
+tools/test_nds_shared_osd.py compares both outputs against the frozen
+pre-sharing OSD fixture. It passed12,072,960 pixel/control comparisons
+per output, with22,528 bitmap writes, all native layout sizes, clockwise
+and counterclockwise rotation, full/loading menus and information windows.
+Comparisons cover settled complete frames after geometry acquisition;
+they do not claim identical transient pixels during asynchronous menu
+updates. The separate four-state queue test passed128 writes, peak depth2
+and494 acknowledgement-stall clocks. Existing host-driven loading/rotation
+and dual-OSD tests passed595,968 and589,824 pixels respectively.
+
+The fallback is prepared in an independent checkout while the corrected
+global-reset candidate routes. It is not installed or published. If adopted,
+it needs a frozen full build and the same hardware acceptance matrix.
+Intel's documented true-dual-port inference model is the primary reference:
+https://www.intel.com/content/www/us/en/support/programmable/support-resources/design-examples/horizontal/ver-true-dual-port-ram-sclk.html
+
 Upstream comparison (primary sources, inspected 2026-10-12)
 =========================================================
 Template, SNES and GBA use the same DV1 selection from vga_data_osd/yc_o.

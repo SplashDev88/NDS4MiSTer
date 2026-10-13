@@ -28,10 +28,10 @@ endtask
 task automatic sample(input integer px,py,is_analog);
  @(negedge clk_video);
  if(is_analog) begin
-  analog_osd.scan.osd_hcnt=px;analog_osd.scan.osd_hcnt2=px;analog_osd.scan.osd_vcnt=py;
+  analog_osd.osd_hcnt=px;analog_osd.osd_hcnt2=px;analog_osd.osd_vcnt=py;
   analog_osd.scan.h_cnt=10000;analog_osd.scan.h_osd_start=0;analog_osd.scan.deD=0;
  end else begin
-  hdmi.scan.osd_hcnt=px;hdmi.scan.osd_hcnt2=px;hdmi.scan.osd_vcnt=py;
+  hdmi.osd_hcnt=px;hdmi.osd_hcnt2=px;hdmi.osd_vcnt=py;
   hdmi.scan.h_cnt=10000;hdmi.scan.h_osd_start=0;hdmi.scan.deD=0;
  end
  // Expected geometry follows the image on each path, independently of commands.
@@ -40,7 +40,7 @@ task automatic sample(input integer px,py,is_analog);
  else begin source_x=py;source_y=height-1-px;end
  expected=content(source_x,source_y/8);
  @(posedge clk_video);#1;
- if((is_analog ? analog_osd.scan.osd_byte : hdmi.scan.osd_byte)!==expected)
+ if((is_analog ? analog_osd.osd_byte : hdmi.osd_byte)!==expected)
   $fatal(1,"OSD BYTE output=%0d video=%0d crt=%0d xy=%0d,%0d",is_analog,video_option,crt,px,py);
  @(posedge clk_video);#1;
  if((is_analog ? analog_osd.osd_pixel : hdmi.osd_pixel)!==expected[source_y%8])

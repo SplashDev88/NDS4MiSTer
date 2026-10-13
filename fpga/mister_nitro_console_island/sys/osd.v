@@ -18,9 +18,18 @@ module osd
 	(* preserve *) output reg vs_out,
 	(* preserve *) output reg hs_out,
 
-	output reg    osd_status
+	output reg    osd_status,
+    output wire buffer_we,
+    output wire [12:0] buffer_waddr,
+    output wire [7:0] buffer_wdata,
+    output wire buffer_re,
+    output wire [12:0] buffer_raddr,
+    input wire [7:0] buffer_q,
+    output wire buffer_scheduled
 );
 
+// Optional shared bitmap ports. The default keeps the original private RAM.
+parameter  OSD_EXTERNAL_BUFFER = 0;
 parameter  OSD_COLOR    =  3'd4;
 parameter  OSD_RAM_STYLE = "no_rw_check";
 // Native DS rasters need far fewer counter bits than a general HDMI mode.
@@ -60,11 +69,13 @@ reg        highres = 0;
 // Info windows use their existing128-pixel origin adjustment below.
 wire [3:0] rot_row_mask = {4{~rot[1]}} & {highres | info, 3'b111};
 
+reg [12:0] bcnt;
+reg [7:0] cmd;
+reg has_cmd,old_strobe;
+assign buffer_we = io_osd && !old_strobe && io_strobe && has_cmd && cmd[7:5] == 3'b001;
+assign buffer_waddr = bcnt;
+assign buffer_wdata = io_din[7:0];
 always@(posedge clk_sys) begin
-	reg [12:0] bcnt;
-	reg  [7:0] cmd;
-	reg        has_cmd;
-	reg        old_strobe;
 
 	osd_t <= rot[0] ? OSD_WIDTH : (OSD_HEIGHT<<1);
 	osd_h <= rot[0] ? (info ? infow : OSD_WIDTH) : info ? infoh : (OSD_HEIGHT<<highres);
@@ -104,7 +115,7 @@ always@(posedge clk_sys) begin
 				end
 
 				// command 0x20: OSDCMDWRITE
-				if(cmd[7:5] == 'b001) osd_buffer[bcnt] <= io_din[7:0];
+				if(!OSD_EXTERNAL_BUFFER && cmd[7:5] == 'b001) osd_buffer[bcnt] <= io_din[7:0];
 
 				bcnt <= bcnt + 1'd1;
 			end
@@ -113,9 +124,12 @@ always@(posedge clk_sys) begin
 end
 
 (* direct_enable *) reg ce_pix;
+reg [OSD_COUNTER_BITS-1:0] pixsz;
+assign buffer_re = ce_pix;
+assign buffer_scheduled = pixsz != 0;
+reg [OSD_COUNTER_BITS-1:0] cnt = 0;
 always @(posedge clk_video) begin
-	reg [OSD_COUNTER_BITS-1:0] cnt = 0;
-	reg [OSD_COUNTER_BITS-1:0] pixsz, pixcnt;
+	reg [OSD_COUNTER_BITS-1:0] pixcnt;
 	reg deD;
 
 	cnt <= cnt + 1'd1;
@@ -165,18 +179,18 @@ always @(posedge clk_video) if(ce_pix) begin
 	v_info_start_5 <= rot[0] ? (infox + (infox << 2)) : (infoy + (infoy << 2));
 end
 
+reg [7:0] osd_byte;
+reg [OSD_COUNTER_BITS-1:0] osd_vcnt,osd_hcnt,osd_hcnt2;
+wire [7:0] bitmap_byte = OSD_EXTERNAL_BUFFER ? buffer_q : osd_byte;
+assign buffer_raddr = rot[0] ? ({osd_hcnt2[6:3],osd_vcnt[7:0]} ^ {rot_row_mask,{8{rot[1]}}}) : {osd_vcnt[7:3],osd_hcnt[7:0]};
 always @(posedge clk_video) begin
 	reg        deD;
 	reg  [2:0] osd_div;
 	reg  [2:0] multiscan;
-	reg  [7:0] osd_byte; 
 	reg [OSD_COUNTER_BITS+1:0] h_cnt;
 	reg [OSD_COUNTER_BITS-1:0] dsp_width;
-	reg [OSD_COUNTER_BITS-1:0] osd_vcnt;
 	reg [OSD_COUNTER_BITS-1:0] h_osd_start;
 	reg [OSD_COUNTER_BITS-1:0] v_osd_start;
-	reg [OSD_COUNTER_BITS-1:0] osd_hcnt;
-	reg [OSD_COUNTER_BITS-1:0] osd_hcnt2;
 	reg        frame_gap_long;
 	reg        osd_de1,osd_de2;
 	reg  [1:0] osd_en;
@@ -266,8 +280,8 @@ always @(posedge clk_video) begin
 			end
 		end
 
-		osd_byte  <= osd_buffer[rot[0] ? ({osd_hcnt2[6:3], osd_vcnt[7:0]} ^ {rot_row_mask, {8{rot[1]}}}) : {osd_vcnt[7:3], osd_hcnt[7:0]}];
-		osd_pixel <= osd_byte[rot[0] ? ((osd_hcnt2[2:0]-1'd1) ^ {3{~rot[1]}}) : osd_vcnt[2:0]];
+		if(!OSD_EXTERNAL_BUFFER) osd_byte <= osd_buffer[rot[0] ? ({osd_hcnt2[6:3], osd_vcnt[7:0]} ^ {rot_row_mask, {8{rot[1]}}}) : {osd_vcnt[7:3], osd_hcnt[7:0]}];
+		osd_pixel <= bitmap_byte[rot[0] ? ((osd_hcnt2[2:0]-1'd1) ^ {3{~rot[1]}}) : osd_vcnt[2:0]];
 		osd_de[2:1] <= osd_de[1:0];
 	end
 end

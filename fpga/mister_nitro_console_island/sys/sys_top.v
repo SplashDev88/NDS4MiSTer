@@ -236,6 +236,12 @@ wire [31:0] gp_out;
 
 wire  [1:0] io_ver = 1; // 0 - obsolete. 1 - optimized HPS I/O. 2,3 - reserved for future.
 wire        io_wait;
+wire        nds_osd_wait;
+`ifdef MISTER_HDMI_ONLY
+assign nds_osd_wait = 1'b0;
+`elsif NDS_HDMI_SCALER_ONLY
+assign nds_osd_wait = 1'b0;
+`endif
 wire        io_wide;
 wire [15:0] io_dout;
 wire [15:0] io_din = gp_outr[15:0];
@@ -256,7 +262,7 @@ reg  rack;
 wire io_strobe = ~rack & io_clk;
 
 always @(posedge clk_sys) begin
-	if(~(io_wait | vs_wait) | io_strobe) begin
+	if(~(io_wait | vs_wait | nds_osd_wait) | io_strobe) begin
 		rack <= io_clk;
 		io_ack <= rack;
 	end
@@ -1594,12 +1600,28 @@ scanlines #(0) VGA_scanlines
 `ifndef NDS_HDMI_SCALER_ONLY
 wire [23:0] vga_data_osd;
 wire        vga_vs_osd, vga_hs_osd, vga_de_osd;
+wire nds_osd_write, nds_osd_digital_read, nds_osd_analog_read, nds_osd_analog_scheduled;
+wire [12:0] nds_osd_write_address, nds_osd_digital_address, nds_osd_analog_address;
+wire [7:0] nds_osd_write_data, nds_osd_digital_q, nds_osd_analog_q;
+// NDS drives both HPS_BUS[36] (clk_sys) and CLK_VIDEO (clk_vid) from the
+// same60MHz source. One true-dual-port bitmap can therefore serve both
+// native menus, with a short synchronous write queue. The HDMI OSD keeps
+// its own bitmap/clock. Busy delays HPS acknowledgement after acceptance;
+// it never drops or repeats a received bitmap word.
+nds_native_osd_memory nds_osd_memory (
+    .clk(clk_vid), .write_enable(nds_osd_write), .write_address(nds_osd_write_address),
+    .write_data(nds_osd_write_data), .busy(nds_osd_wait),
+    .digital_read(nds_osd_digital_read), .digital_address(nds_osd_digital_address),
+    .digital_q(nds_osd_digital_q),
+    .analog_read(nds_split_active && nds_osd_analog_scheduled && nds_osd_analog_read),
+    .analog_address(nds_osd_analog_address), .analog_q(nds_osd_analog_q)
+);
 // Preserve the full16-row menu. Native DS modes use at most3200 clock
 // ticks of active video per line;14-bit counters cover their raster and
 // blanking with ample headroom. The tallest source is414 active lines
 // (stacked screens,24-pixel gap,FPS row), so larger multiscan modes are
 // unreachable. HDMI keeps the generic22-bit counters and all geometries.
-osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512)) vga_osd
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1)) vga_osd
 (
 	.clk_sys(clk_sys),
 
@@ -1617,7 +1639,10 @@ osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512)) vga_osd
 	.dout(vga_data_osd),
 	.hs_out(vga_hs_osd),
 	.vs_out(vga_vs_osd),
-	.de_out(vga_de_osd)
+	.de_out(vga_de_osd),
+    .buffer_we(nds_osd_write), .buffer_waddr(nds_osd_write_address), .buffer_wdata(nds_osd_write_data),
+    .buffer_re(nds_osd_digital_read), .buffer_raddr(nds_osd_digital_address),
+    .buffer_q(nds_osd_digital_q), .buffer_scheduled()
 );
 
 wire vga_cs_osd;
@@ -1637,12 +1662,15 @@ scanlines #(0) nds_analog_scanlines (
 // This independent raster is always upright320x240. Twelve bits retain all
 // SPI position values and the3200-clock active line; the14-bit gap counter
 // still covers its22-line vertical blank. HDMI TATE uses hdmi_osd unchanged.
-osd #(.OSD_COUNTER_BITS(12), .OSD_FIXED_UPRIGHT(1), .OSD_MAX_LINES(240)) nds_analog_osd (
+osd #(.OSD_COUNTER_BITS(12), .OSD_FIXED_UPRIGHT(1), .OSD_MAX_LINES(240), .OSD_EXTERNAL_BUFFER(1)) nds_analog_osd (
     .clk_sys(clk_sys), .io_osd(io_osd_vga), .io_strobe(io_strobe), .io_din(io_din),
     .osd_status(), .clk_video(clk_vid), .din(nds_analog_data_sl),
     .hs_in(nds_analog_hs_sl), .vs_in(nds_analog_vs_sl), .de_in(nds_analog_de_sl),
     .dout(nds_analog_data_osd), .hs_out(nds_analog_hs_osd),
-    .vs_out(nds_analog_vs_osd), .de_out(nds_analog_de_osd)
+    .vs_out(nds_analog_vs_osd), .de_out(nds_analog_de_osd),
+    .buffer_we(), .buffer_waddr(), .buffer_wdata(),
+    .buffer_re(nds_osd_analog_read), .buffer_raddr(nds_osd_analog_address),
+    .buffer_q(nds_osd_analog_q), .buffer_scheduled(nds_osd_analog_scheduled)
 );
 csync nds_analog_csync(clk_vid, nds_analog_hs_osd, nds_analog_vs_osd, nds_analog_cs_osd);
 wire [23:0] native_analog_data = nds_split_active ? nds_analog_data_osd : vga_data_osd;

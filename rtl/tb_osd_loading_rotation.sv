@@ -48,9 +48,9 @@ task automatic sample(input integer px,py,rot,h,w,is_info);
  // All memory/control traffic uses the real SPI decoder. Only anonymous
  // always blocks are named in the evidence copy for stable test references.
  @(negedge clk_video);
- dut.scan.osd_hcnt=px;
- dut.scan.osd_hcnt2=px+((is_info && rot==1)?128-h:0);
- dut.scan.osd_vcnt=py+((is_info && rot==3)?256-w:0);
+ dut.osd_hcnt=px;
+ dut.osd_hcnt2=px+((is_info && rot==1)?128-h:0);
+ dut.osd_vcnt=py+((is_info && rot==3)?256-w:0);
  dut.scan.h_cnt=10000;
  dut.scan.h_osd_start=0;
  dut.scan.deD=0;
@@ -59,8 +59,8 @@ task automatic sample(input integer px,py,rot,h,w,is_info);
  else begin sx=w-1-py;sy=px;end
  expected=content(sx,sy/8);
  @(posedge clk_video); #1;
- if(dut.scan.osd_byte !== expected) begin
-  if(errors<4) $display("BAD BYTE rot=%0d height=%0d xy=%0d,%0d actual=%h expected=%h source=%0d,%0d",rot,h,px,py,dut.scan.osd_byte,expected,sx,sy);
+ if(dut.osd_byte !== expected) begin
+  if(errors<4) $display("BAD BYTE rot=%0d height=%0d xy=%0d,%0d actual=%h expected=%h source=%0d,%0d",rot,h,px,py,dut.osd_byte,expected,sx,sy);
   errors=errors+1;
  end
  @(posedge clk_video); #1;
