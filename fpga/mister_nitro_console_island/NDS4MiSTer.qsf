@@ -19,17 +19,16 @@ set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_DUPLICATION OFF
 set_global_assignment -name PHYSICAL_SYNTHESIS_REGISTER_RETIMING OFF
 set_global_assignment -name PLACEMENT_EFFORT_MULTIPLIER 2.0
 set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
-# Remove equivalent redundant logic before placement. Unlike the rejected
-# seed-2 experiment, normal routing and hold repair remain enabled for a
-# hardware-safe image. Mux restructuring and pre-mapping resynthesis were
-# measured together and rejected because they enlarged this design.
+# Remove equivalent redundant logic before placement. Keep normal setup and
+# default hold repair, as in the working rc.7 build. Mux
+# restructuring and pre-mapping resynthesis were tested together and rejected
+# because they enlarged this design.
 set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
 set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
-# Private routing experiment: both full-feature attempts failed congestion
-# after the fitter inserted ~3000ns of aggregate hold-delay routing. Keep
-# RTL, clocks and setup optimization unchanged; assess the assembled image
-# on hardware. TimeQuest remains diagnostic and records the resulting holds.
-set_global_assignment -name OPTIMIZE_HOLD_TIMING OFF
+# The hold-repair-disabled experiment routed, but NSMB remained black even
+# with the rc.7 host and split mode disabled. Restore the previous default
+# All Paths repair; use the measured global-reset assignments below to ease
+# routing pressure. Timing reports remain diagnostic; test the image on hardware.
 set_global_assignment -name SEED 7
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
@@ -93,6 +92,13 @@ set_instance_assignment -name AUTO_SHIFT_REGISTER_RECOGNITION OFF -to "*nds_anal
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "*|nds_nitro_console_top:inds|resetCpu"
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|console_reset_sync_1x[1]"
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_console_island:island|console_reset_sync_ddr[1]}
+
+# Private split experiment: the prior fit used 13/16 global networks. These
+# existing registered resets drove 935 and 663 non-global loads respectively.
+# Promote them to spare global networks to reduce general routing demand;
+# no reset logic, clocks, or gameplay/display functionality changes.
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {emu:emu|nds_nitro_console_island:island|nds_h3d_frame_record_cdc:h3d_record_cdc|source_reset_pipe[2]}
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {emu:emu|nds_nitro_console_island:island|console_reset_sync_2x[1]}
 
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
 set_location_assignment PIN_U9 -to ADC_CONVST

@@ -1,5 +1,5 @@
 NDS4MiSTer: independent digital layouts and single-screen native analog
-2026-10-12 — private implementation; hardware acceptance pending
+2026-10-13 — private experiment; first hardware image failed game startup
 
 Branch: experiment/dv1-analog-split
 Base: v0.9.0-rc.7 / dc020c6fb9ba794a98f4a92a2f9c2fd48919f9d5
@@ -132,6 +132,34 @@ as a way to determine whether timing constraints are contributing to congestion:
 https://www.intel.com/content/www/us/en/programmable/quartushelp/current/msgs/msgs/wvpr20ka10_vpr_no_route_suggestion_message.htm
 The Standard Edition optimization guide describes the inserted delay:
 https://www.intel.com/programmable/technical-pdfs/683230.pdf
+
+The b484807 hold-repair-disabled build completed routing in2h20m56s and
+passed fitting and assembly. It used41,009 ALMs and553 M10Ks. The exact RBF
+SHA-256 is41ed0f808f1365488e45fce4d875ce83e5bcd20ee09bdc0b91dfc5404da78aec.
+It was installed and tested, rather than rejected for its timing reports.
+The native analog menu and240p sync worked, but NSMB was black on both
+analog and1080p HDMI. Both Main and Touch were black; disabling split and
+resetting the game did not recover it.
+
+Mixed-binary tests isolated this to the FPGA image: the new split host with
+the exact rc.7 FPGA ran NSMB visibly, with~59.76 frame-counter increments/s
+and1115 packet-producer increments/s over30s. The rc.7 host with b484807,
+with split Off from cold startup, remained black, with~59.80 frame-counter
+increments/s but only~59.83 packet-producer increments/s. Both bounded
+samples had zero protocol faults. Frame progress alone therefore does not
+establish successful game execution. The same renderer and isolated NSMB
+ROM/save alias were used; original saves and MiSTer.ini were preserved.
+
+The timing reports provide a hypothesis, not a proven cause: slow100C hold
+slack on the33.5/67MHz domains changed from+0.032/+0.311ns in working rc.7
+to-3.909/-3.803ns with hold repair disabled. The next build restores the
+previous default All Paths hold repair. To reduce general routing demand,
+it promotes two existing registered resets to spare global networks:
+h3d_record_cdc|source_reset_pipe[2] (935 loads) and
+console_reset_sync_2x[1] (663 loads). The prior fit used13/16 global networks.
+These fanouts already existed in rc.7, so they are not proof of the original
+congestion cause. No RTL, gameplay clock, renderer or feature is changed by
+this follow-up. Acceptance still depends on the next image's hardware tests.
 
 Upstream comparison (primary sources, inspected 2026-10-12)
 =========================================================
