@@ -100,6 +100,13 @@ set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_cons
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|nds_h3d_frame_record_cdc:h3d_record_cdc|source_reset_pipe[2]"
 set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|console_reset_sync_2x[1]"
 
+# Prepared routing fallback: the preceding full fit reports this registered
+# reset on 584 non-global loads, with one of 16 global networks still free.
+# Equivalent reset registers may merge under this palette instance name.
+# This is a physical routing assignment only; reset logic and cycles stay
+# unchanged. Verify that the fitter applies the assignment before testing.
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|nds_nitro_console_wrap:console|nds_nitro_console_top:inds|nds_palette_readback:palette_readback|reset_d"
+
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
 set_location_assignment PIN_U9 -to ADC_CONVST
 set_location_assignment PIN_V10 -to ADC_SCK
