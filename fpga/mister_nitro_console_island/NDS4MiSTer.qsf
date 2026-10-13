@@ -97,8 +97,8 @@ set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {*|nds_nitro_cons
 # existing registered resets drove 935 and 663 non-global loads respectively.
 # Promote them to spare global networks to reduce general routing demand;
 # no reset logic, clocks, or gameplay/display functionality changes.
-set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {emu:emu|nds_nitro_console_island:island|nds_h3d_frame_record_cdc:h3d_record_cdc|source_reset_pipe[2]}
-set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to {emu:emu|nds_nitro_console_island:island|console_reset_sync_2x[1]}
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|nds_h3d_frame_record_cdc:h3d_record_cdc|source_reset_pipe[2]"
+set_instance_assignment -name GLOBAL_SIGNAL "GLOBAL CLOCK" -to "emu:emu|nds_nitro_console_island:island|console_reset_sync_2x[1]"
 
 set_global_assignment -name PRE_FLOW_SCRIPT_FILE "quartus_sh:sys/build_id.tcl"
 set_location_assignment PIN_U9 -to ADC_CONVST

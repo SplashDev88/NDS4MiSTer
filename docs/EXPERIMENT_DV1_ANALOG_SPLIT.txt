@@ -161,6 +161,14 @@ These fanouts already existed in rc.7, so they are not proof of the original
 congestion cause. No RTL, gameplay clock, renderer or feature is changed by
 this follow-up. Acceptance still depends on the next image's hardware tests.
 
+The first reset-global attempt (b814667) was stopped during routing after
+the fitter explicitly reported both new assignments as invalid node names:
+Quartus retained literal braces in those QSF destinations. The corrected
+attempt uses the same double-quoted destination syntax as the existing
+successfully promoted console_reset_sync_1x reset. No RTL changes accompany
+this correction. Verify that the fitter actually promotes both new nets
+before interpreting its routing result; assignment text alone is insufficient.
+
 Upstream comparison (primary sources, inspected 2026-10-12)
 =========================================================
 Template, SNES and GBA use the same DV1 selection from vga_data_osd/yc_o.
