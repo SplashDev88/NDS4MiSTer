@@ -204,9 +204,14 @@ updates. The separate four-state queue test passed128 writes, peak depth2
 and494 acknowledgement-stall clocks. Existing host-driven loading/rotation
 and dual-OSD tests passed595,968 and589,824 pixels respectively.
 
-The fallback is prepared in an independent checkout while the corrected
-global-reset candidate routes. It is not installed or published. If adopted,
-it needs a frozen full build and the same hardware acceptance matrix.
+This fallback was prepared in an independent checkout while the corrected
+global-reset candidate routed. That4cc032c candidate failed from congestion
+after25m20s of routing. Its applied reset globals reduced the fit to40,912
+ALMs, but it still used all553 M10Ks and reached69% peak routing demand.
+All Paths hold repair was verified in its final report. No RBF was produced.
+The current attempt adopts the tested shared bitmap in a fresh frozen full
+build. It is not installed or published and still needs the same hardware
+acceptance matrix.
 Intel's documented true-dual-port inference model is the primary reference:
 https://www.intel.com/content/www/us/en/support/programmable/support-resources/design-examples/horizontal/ver-true-dual-port-ram-sclk.html
 
