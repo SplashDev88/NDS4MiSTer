@@ -1,0 +1,41 @@
+Private split-output experiment: fixed-index VRAM arbitration
+
+SPLIT6 passed placement but failed routing after 42m39s. It used 40,677
+ALMs, 381 fewer than SPLIT5; estimated average/peak interconnect fell from
+45/65% to 43/62%. The failure did not report an individual unrouted-net
+list. Exact inputs and reports are archived privately in
+failed-routing-47c55b1. No new FPGA image was assembled or tested.
+
+The previous successful area reduction remains. The next candidate changes
+only the two combinational request selectors in rtl/nds_nitro_vram.vhd.
+They previously scanned circular order by computing a variable index and
+rereading the request vector or queue at each possible offset. Each now
+uses fixed-index reads to find the lowest pending entry, then overrides
+it with the lowest pending entry at or above the starting position.
+This selects precisely the same circular order, including wraparound,
+empty masks and the selected queue entry's pending-bank bits.
+
+No pipeline registers, queue depths, memories, request gates, completion
+behavior or clocks change. The proposed fixed-SP CPU return is unchanged
+and still requires its original hardware reproducer on a new routed image.
+No features are removed; one-screen analog 240p and all digital layouts
+remain, as do TATE/menu rotation, 3D FPS, composite/S-video, mic and lid.
+
+Validation against exact SPLIT6 revision 47c55b1699ebdb795c6f842dd743efbf341f49be:
+- Complete-module equivalence passed six runs totaling 6,662,351 cycles,
+  seeds 1/29/137, posted writes enabled and disabled. Every output,
+  canonical cache contents and all eight accumulators match every cycle.
+  The existing coverage assertions passed without testbench changes.
+- A new test extracts both actual arbiter processes from each revision
+  into a small VHDL harness. It checks all 256 binary masks and eight
+  starting indices, with 16 bank-word patterns and four valid-bit
+  arrangements: 131,072 cases. This isolates wraparound and empty/invalid
+  selection from the complete-module traffic stimulus.
+- Changing the extracted candidate's >= priority comparison to > is
+  correctly rejected at 193 ns (head 0, mask 3). The mutant is test-only.
+
+Synthesis will determine whether this removes useful logic. A successful
+full fit and assembly are still required before original blockstack and
+blockstackcapture, previous block-load tests, SDK CPU2D, isolated NSMB,
+and the output/retained-feature matrix can establish hardware acceptance.
+Static timing reports remain diagnostic only. This experiment is private.

@@ -910,10 +910,17 @@ begin
    begin
       idx := 0;
       got := '0';
-      for k in 0 to 7 loop
-         if (got = '0' and rreq_vec((rr_pri + k) mod 8) = '1') then
-            idx := (rr_pri + k) mod 8;
+      -- First find the lowest pending channel, then prefer the lowest at or
+      -- above rr_pri. This is the same circular order with static bit reads.
+      for i in 7 downto 0 loop
+         if rreq_vec(i) = '1' then
+            idx := i;
             got := '1';
+         end if;
+      end loop;
+      for i in 7 downto 0 loop
+         if i >= rr_pri and rreq_vec(i) = '1' then
+            idx := i;
          end if;
       end loop;
       rpick       <= idx;
@@ -1044,12 +1051,17 @@ begin
    begin
       idx   := 0;
       found := false;
-      for k in 0 to RQ_DEPTH-1 loop
-         if (not found) then
-            idx := (rq_head + k) mod RQ_DEPTH;
-            if (rq(idx).valid = '1' and rq(idx).ad_todo /= "0000") then
-               found := true;
-            end if;
+      -- Preserve head-first circular priority without rereading the entire
+      -- queue through a variable index for each possible offset.
+      for i in RQ_DEPTH-1 downto 0 loop
+         if rq(i).valid = '1' and rq(i).ad_todo /= "0000" then
+            idx := i;
+            found := true;
+         end if;
+      end loop;
+      for i in RQ_DEPTH-1 downto 0 loop
+         if i >= rq_head and rq(i).valid = '1' and rq(i).ad_todo /= "0000" then
+            idx := i;
          end if;
       end loop;
       if (found) then
