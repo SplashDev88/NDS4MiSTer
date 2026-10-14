@@ -89,10 +89,11 @@ architecture arch of nds_nitro_rtc is
    signal seed_seen : std_logic := '0';
    signal seed_valid : std_logic := '0';
    signal date_toggle : std_logic := '0';
-   attribute ASYNC_REG : string;
-   attribute ASYNC_REG of seed_toggle_sync : signal is "TRUE";
-   attribute ASYNC_REG of seed_meta : signal is "TRUE";
-   attribute ASYNC_REG of seed_sync : signal is "TRUE";
+   attribute preserve : boolean;
+   attribute preserve of seed_toggle_sync, seed_meta, seed_sync : signal is true;
+   attribute altera_attribute : string;
+   attribute altera_attribute of seed_toggle_sync, seed_meta, seed_sync : signal is
+      "-name AUTO_SHIFT_REGISTER_RECOGNITION OFF; -name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS";
    signal alarm1     : t_dt := (others => (others => '0'));    -- 0..2 used
    signal alarm2     : t_dt := (others => (others => '0'));    -- 0..2 used
    signal clockadj   : std_logic_vector(7 downto 0) := x"00";

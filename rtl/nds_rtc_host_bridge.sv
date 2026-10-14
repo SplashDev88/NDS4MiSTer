@@ -4,6 +4,9 @@
 // then four date words (seven BCD bytes + zero), then two write-sequence words.
 // A request's immediate response is not its completion. Poll with operation 0.
 // The per-transaction latch stays immutable, including across a new completion.
+// Quartus otherwise merges even a 3-bit CDC chain into a RAM shift register
+// shared with unrelated video delays. Keep this mailbox's pipelines as FFs.
+(* altera_attribute="-name AUTO_SHIFT_REGISTER_RECOGNITION OFF" *)
 module nds_rtc_host_bridge (
     input wire clk, rtc_clk,
     input wire [55:0] rtc_datetime,
@@ -16,9 +19,11 @@ module nds_rtc_host_bridge (
     logic request = 0, acknowledge = 0, date_seen = 0;
     logic [31:0] write_sequence = 0;
     wire [31:0] current_sequence = write_sequence + {31'd0, rtc_date_written != date_seen};
-    (* async_reg="true" *) logic [2:0] request_sync = 0, ack_sync = 0;
+    (* preserve, altera_attribute="-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS" *)
+    logic [2:0] request_sync = 0, ack_sync = 0;
     logic [87:0] snapshot_rtc = 0;
-    (* async_reg="true" *) logic [87:0] snapshot_meta = 0, snapshot_sync = 0;
+    (* preserve, altera_attribute="-name SYNCHRONIZER_IDENTIFICATION FORCED_IF_ASYNCHRONOUS" *)
+    logic [87:0] snapshot_meta = 0, snapshot_sync = 0;
     logic valid = 0, selected = 0;
     logic [3:0] io_count = 0;
     logic [95:0] transaction = 0;
