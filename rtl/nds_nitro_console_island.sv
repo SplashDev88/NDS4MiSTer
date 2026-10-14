@@ -2137,7 +2137,7 @@ nds_nitro_console_wrap #(
     .profile_data(firmware_profile_data),.profile_fw_offset(firmware_profile_offset),
     .profile_fw_checksums(firmware_profile_checksums),
     .rtc_seed(host_rtc[55:0]),.rtc_seed_toggle(host_rtc[64]),
-    .rtc_datetime,.rtc_date_written,
+    .rtc_datetime(rtc_datetime),.rtc_date_written(rtc_date_written),
     .KeyA(joystick_sync[4]),.KeyB(joystick_sync[5]),
     .KeySelect(joystick_sync[10]),.KeyStart(joystick_sync[11]),
     .KeyRight(joystick_sync[0]),.KeyLeft(joystick_sync[1]),
