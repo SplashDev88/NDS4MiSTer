@@ -30,7 +30,7 @@ struct HostTest {
     assert(first != h.spi.history.end());
     assert((first->words[0] & (CRT_TIMING | (1u<<6))) == (CRT_TIMING | (1u<<6)));
     discover(h, 1u<<10);
-    assert(h.direct_video_crt && h.mainMenuRow(Host::DV_TARGET_CURSOR)==2);
+    assert(h.direct_video_crt && h.mainMenuRow(Host::DV_TARGET_CURSOR)==3);
     assert(h.status==original[0] && bytes(kit/"NDS_v1.CFG")==saved);
     assert(!fs::exists(kit/"NDS_video.cfg"));
     for(unsigned layout=0; layout<4; ++layout) for(unsigned order=0; order<2; ++order)
@@ -55,13 +55,14 @@ struct HostTest {
         assert(((h.liveStatus()>>5)&3)==layout);
         h.action(2);assert(h.direct_video_crt && h.status==selected);
       }
-    // Every existing row stays at the exact old position; only blank row2 is added.
-    const std::array<int,14> oldRows{0,1,3,4,5,6,7,8,-1,12,13,15,-1,9};
+    // Keep the firmware separator and option order; only the video block moves.
+    const std::array<int,14> oldRows{0,1,4,5,6,7,8,9,-1,12,13,15,-1,10};
     for(unsigned i=0;i<oldRows.size();++i) assert(h.mainMenuRow(i)==oldRows[i]);
     h.cursor=1;h.action(1);assert(h.cursor==Host::DV_TARGET_CURSOR);
     h.action(1);assert(h.cursor==2);h.action(0);assert(h.cursor==Host::DV_TARGET_CURSOR);
     h.direct_video_crt=false;h.draw();
-    assert(h.osd_rows[2]==h.frame.renderRow(2," DV Target: RetroTINK/Scaler",true,nds_osd::arrow_right));
+    assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
+    assert(h.osd_rows[3]==h.frame.renderRow(3," DV Target: RetroTINK/Scaler",true,nds_osd::arrow_right));
     h.saveSettings();
     assert(bytes(kit/"NDS_video.cfg")=="NDS-DirectVideo-v1\nretrotink\n");
     Host reloaded(kit.string(),(sd/"games/NDS").string(),sd);
@@ -84,7 +85,7 @@ struct HostTest {
       h.key(h.pads[0],BTN_TR,true);h.key(h.pads[0],BTN_TR,false);
       assert(((h.liveStatus()>>5)&3)==(i%2 ? 2 : 3));
     }
-    std::cout << "PASS: CRT-safe first write, all DV1 layouts/order/analog combinations, Peek, target persistence, unchanged menu rows, HDMI/scaled VGA and mapped layout trigger\n";
+    std::cout << "PASS: CRT-safe first write, all DV1 layouts/order/analog combinations, Peek, target persistence, menu order and firmware separator, HDMI/scaled VGA and mapped layout trigger\n";
   }
 };
 int main() {

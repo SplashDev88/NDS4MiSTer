@@ -312,8 +312,14 @@ class Host {
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
         0, 1, 3, 4, 5, 6, 7, 8, -1, 12, 13, 15, -1, 9, 2};
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
-    if (independent_outputs_supported)
-      return item == ANALOG_CURSOR && (video_flags & (1u << 2)) ? -1 : independent[item];
+    if (independent_outputs_supported) {
+      if (item == ANALOG_CURSOR && (video_flags & (1u << 2))) return -1;
+      const auto row = independent[item];
+      // Retain the blank line after Boot DS firmware. Only the contiguous
+      // video block moves down when DV Target is present; System is unchanged.
+      if ((video_flags & (1u << 10)) && row >= 2 && row <= 9) return row + 1;
+      return row;
+    }
     return ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) ? crt : standard)[item];
   }
   static int optionCursor(size_t option) {
@@ -1497,10 +1503,10 @@ class Host {
         rows[mainMenuRow(optionCursor(i))] = optionLabel(i == 0 ? selectedDisplayStatus() : status, option);
       }
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
-        rows[2] = optionLabel(direct_video_crt ? 0 : 1,
+        rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
             {0, 1, 2, "DV Target", {"CRT", "RetroTINK/Scaler"}});
       if (independent_outputs_supported)
-        rows[10] = optionLabel(0, {0, 1, 1, "Analog Output",
+        rows[(video_flags & (1u << 10)) ? 11 : 10] = optionLabel(0, {0, 1, 1, "Analog Output",
             {(video_flags & (1u << 2)) ? "HDMI scaler" : "240p"}});
       rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});

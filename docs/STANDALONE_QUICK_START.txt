@@ -242,8 +242,9 @@ The existing NDS core menu gains one DV Target row when Direct Video is active:
   RetroTINK/Scaler: HDMI -> compatible external scaler. All four digital
     layouts remain available, with independent native analog Main/Touch.
 
-Use System -> Save settings to retain the target. Existing menu rows and the
-System page keep their positions and behavior. Switching target alone does
+Use System -> Save settings to retain the target. Existing options keep their
+order, with a blank line after Boot DS firmware; the System page is unchanged.
+Switching target alone does
 not overwrite your saved digital layout. Selecting a new Digital Layout does.
 
 At script launch, F4 opens Advanced Options before the core loads. It edits
