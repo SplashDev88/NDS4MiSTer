@@ -178,6 +178,7 @@ def startup_menu(kit, force=False, seconds=3):
             raise RuntimeError("Advanced Options requires an interactive terminal")
         return
     if force:
+        print("\033[2J\033[H", end="", flush=True)
         return advanced_menu(kit)
     fd = sys.stdin.fileno()
     original = termios.tcgetattr(fd)
@@ -187,9 +188,11 @@ def startup_menu(kit, force=False, seconds=3):
     mode[6][termios.VTIME] = 0
     keys = StartupKeys()
     action = None
-    print("\nNDS4MiSTer\n\n[F4] Advanced Options    [Enter] Start\n", flush=True)
     try:
-        termios.tcsetattr(fd, termios.TCSANOW, mode)
+        # Main's script console may contain navigation keys queued before it
+        # handed us the terminal. Discard those before displaying the prompt.
+        termios.tcsetattr(fd, termios.TCSAFLUSH, mode)
+        print("\033[2J\033[HNDS4MiSTer\n\n[F4] Advanced Options    [Enter] Start\n", flush=True)
         deadline = time.monotonic() + seconds
         shown = None
         while time.monotonic() < deadline:

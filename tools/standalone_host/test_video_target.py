@@ -129,6 +129,8 @@ class VideoTarget(unittest.TestCase):
         for sequence, answer, expected in [(b"\x1b[[D", b"2\n", "retrotink"),
                                             (b"\x1bOS", b"\n", "retrotink")]:
             master, slave = pty.openpty()
+            # Reproduce Main's queued script-selection input before startup.
+            os.write(master, b"\x1b[B\r\n")
             program = (
                 "import sys,termios,video_target as v; "
                 "v.shutil.which=lambda _:None; "
@@ -149,6 +151,7 @@ class VideoTarget(unittest.TestCase):
                 self.assertIn(marker, output)
             try:
                 until(b"Starting in")
+                self.assertIn(b"\x1b[2J\x1b[H", output)
                 os.write(master, sequence)
                 until(b"Enter to cancel")
                 os.write(master, answer)
