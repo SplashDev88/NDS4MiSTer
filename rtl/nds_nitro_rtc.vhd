@@ -264,6 +264,17 @@ begin
          seed_toggle_sync <= seed_toggle_sync(1 downto 0) & rtc_seed_toggle;
          next_dt := datetime;
 
+         -- The battery clock keeps running while the CPUs are held for reset,
+         -- ROM loading or sleep. Only the bus interface belongs to reset.
+         if ce = '1' then
+            if sec_div = CYCLES_PER_SECOND - 1 then
+               sec_div <= 0;
+               next_dt := tick_second(datetime);
+            else
+               sec_div <= sec_div + 1;
+            end if;
+         end if;
+
          if (reset = '1') then
 
             io_reg  <= (others => '0');
@@ -280,15 +291,6 @@ begin
             out_buf <= (others => (others => '0'));
 
          elsif (ce = '1') then
-
-            -- ce must represent a 33,513,982 Hz DS clock enable (or use
-            -- the generic for the actual qualified clock rate).
-            if sec_div = CYCLES_PER_SECOND - 1 then
-               sec_div <= 0;
-               next_dt := tick_second(datetime);
-            else
-               sec_div <= sec_div + 1;
-            end if;
 
             -- ---------------- bus protocol ----------------
             if (bus7.ena = '1' and bus7.rnw = '0' and bus7.Adr = ADR_RTC) then

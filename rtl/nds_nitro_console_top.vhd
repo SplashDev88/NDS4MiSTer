@@ -156,6 +156,8 @@ entity nds_nitro_console_top is
       profile_fw_checksums : in std_logic_vector(31 downto 0) := x"00000000";
       rtc_seed         : in std_logic_vector(55 downto 0) := (others => '0');
       rtc_seed_toggle  : in std_logic := '0';
+      rtc_datetime     : out std_logic_vector(55 downto 0);
+      rtc_date_written : out std_logic;
       -- keys (active high) — X/Y/lid are NDS additions routed via ARM7 side
       KeyA             : in  std_logic;
       KeyB             : in  std_logic;
@@ -2636,14 +2638,12 @@ begin
    port map (
       clk => clk1x, ce => '1', reset => resetCpu, fw_boot => fw_boot,
       rtc_seed => rtc_seed, rtc_seed_toggle => rtc_seed_toggle,
-      rtc_datetime => open, date_written => open,
+      rtc_datetime => rtc_datetime, date_written => rtc_date_written,
       bus7 => io_bus7, wired_out7 => rtc_native_out7,
       wired_done7 => rtc_wired_done7
    );
-   -- Imported personal fields do not change the accepted game RTC behavior.
-   -- The native calendar belongs only to the optional firmware GUI.
-   rtc_wired_out7 <= rtc_native_out7 when fw_boot = '1'
-                     else (others => '0');
+   -- Firmware and direct games share the same retained, host-seeded calendar.
+   rtc_wired_out7 <= rtc_native_out7;
 
    -- Private Chrono movie measurement only: count actual completed writes to
    -- the two PCM buffers observed in the software reference and AUDD1 D tags.

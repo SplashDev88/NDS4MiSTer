@@ -184,6 +184,16 @@ wire boot_ready_ddr=!firmware_hold && !firmware_fault &&
 wire host_save_ready;
 wire [31:0] host_save_code;
 wire [3:0] host_save_type;
+wire [55:0] rtc_datetime;
+wire rtc_date_written, rtc_io_override, lifecycle_io_override;
+wire [15:0] rtc_io_dout, lifecycle_io_dout;
+assign firmware_io_override = rtc_io_override | lifecycle_io_override;
+assign firmware_io_dout = rtc_io_override ? rtc_io_dout : lifecycle_io_dout;
+nds_rtc_host_bridge rtc_host_bridge (
+    .clk(ddr_clk), .rtc_clk(clk1x), .rtc_datetime, .rtc_date_written,
+    .io_enable(firmware_io_enable), .io_strobe(firmware_io_strobe),
+    .io_din(firmware_io_din), .io_override(rtc_io_override), .io_dout(rtc_io_dout)
+);
 (* async_reg="true" *) logic [2:0] host_save_ready_sync=0;
 always_ff @(posedge clk1x) host_save_ready_sync <= {host_save_ready_sync[1:0],host_save_ready};
 // The bundled code/type are immutable from profile commit until the next ROM
@@ -199,7 +209,7 @@ nds_firmware_control #(
     .cart_download(cart_download_raw),.cart_profile_ready(host_save_ready),
     .cart_profile_code(host_save_code),.cart_profile_type(host_save_type),
     .io_enable(firmware_io_enable),.io_strobe(firmware_io_strobe),
-    .io_din(firmware_io_din),.io_override(firmware_io_override),.io_dout(firmware_io_dout),
+    .io_din(firmware_io_din),.io_override(lifecycle_io_override),.io_dout(lifecycle_io_dout),
     .ioctl_download,.ioctl_wr,.ioctl_index,.ioctl_dout,.ioctl_addr,.ioctl_wait,
     .mounted(firmware_mounted),.clean(firmware_clean),.cache_fault(firmware_cache_fault),
     .persist_pending(firmware_persist_pending),.persist_sequence(firmware_persist_sequence),
@@ -2127,6 +2137,7 @@ nds_nitro_console_wrap #(
     .profile_data(firmware_profile_data),.profile_fw_offset(firmware_profile_offset),
     .profile_fw_checksums(firmware_profile_checksums),
     .rtc_seed(host_rtc[55:0]),.rtc_seed_toggle(host_rtc[64]),
+    .rtc_datetime,.rtc_date_written,
     .KeyA(joystick_sync[4]),.KeyB(joystick_sync[5]),
     .KeySelect(joystick_sync[10]),.KeyStart(joystick_sync[11]),
     .KeyRight(joystick_sync[0]),.KeyLeft(joystick_sync[1]),

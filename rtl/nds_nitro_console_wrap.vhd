@@ -61,6 +61,8 @@ entity nds_nitro_console_wrap is
       profile_fw_checksums : in std_logic_vector(31 downto 0) := x"0000FFFF";
       rtc_seed         : in std_logic_vector(55 downto 0) := (others => '0');
       rtc_seed_toggle  : in std_logic := '0';
+      rtc_datetime     : out std_logic_vector(55 downto 0);
+      rtc_date_written : out std_logic;
       -- keys (active high)
       KeyA             : in  std_logic;
       KeyB             : in  std_logic;
@@ -400,6 +402,8 @@ begin
       profile_fw_checksums => profile_fw_checksums,
       rtc_seed         => rtc_seed,
       rtc_seed_toggle  => rtc_seed_toggle,
+      rtc_datetime     => rtc_datetime,
+      rtc_date_written => rtc_date_written,
 
       KeyA             => KeyA,
       KeyB             => KeyB,

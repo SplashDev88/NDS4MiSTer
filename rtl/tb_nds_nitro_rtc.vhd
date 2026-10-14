@@ -242,6 +242,19 @@ begin
       ce <= '1'; cycles(2);
       bus7.Adr <= x"0000134"; cycles(1);
       assert done = '0' and dout = x"00000000" report "RTC leaks into other bus address" severity failure;
+      -- A game load/reset can hold the guest for seconds; battery time must
+      -- continue in both direct and firmware boot modes, with no write event.
+      ce <= '1'; fw_boot <= '0'; reset <= '1';
+      seed(x"59592304311226"); toggle_before := date_written;
+      cycles(8192 * 3);
+      expect_date(x"02000005010127", "direct game reset must not stop the clock");
+      assert date_written = toggle_before severity failure;
+      fw_boot <= '1'; cycles(8192 * 2);
+      expect_date(x"04000005010127", "firmware reset must not stop the clock");
+      reset <= '0'; bus7.Adr <= x"0000138"; cycles(2);
+      read_register(x"65", result);
+      assert result = bytes_t'(x"27", x"01", x"01", x"05", x"00", x"00", x"04")
+         report "retained time unreadable after reset" severity failure;
       report "PASS: native RTC GPIO, seed/reset, Gregorian rollovers, BCD validation, hour modes, write notifications" severity note;
       stop;
       wait;

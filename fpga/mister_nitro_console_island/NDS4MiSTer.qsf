@@ -384,6 +384,7 @@ set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_bootbios9.vhd
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_bootbios7.mif
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_bootbios9.mif
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_rtc.vhd
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_rtc_host_bridge.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_control.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_cache.sv
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios7.mif
