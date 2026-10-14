@@ -1,20 +1,22 @@
-> Private candidate v0.9.0-rc.7-split.8.4.2: automatic independent native analog
-> and digital output. This branch is not the published rc.7 release.
-
 # NDS4MiSTer
 
-**Stable native 240p output, tested DV1, and full display features retained.**
+**Beta v0.9.0-rc.7-split.8.6: controller mapping fixes, a persistent DS game clock, and independent analog/digital displays.**
 
-[Download v0.9.0-rc.7](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.7) · [Quick start](docs/STANDALONE_QUICK_START.txt)
+[Releases and previous stable version](https://github.com/SplashDev88/NDS4MiSTer/releases) · [Quick start](docs/STANDALONE_QUICK_START.txt)
 
 ## What's new
+
+- **Controller mapping waits for release.** Held or jittering triggers cannot skip successive prompts. Cancel and disconnect retain the previous map.
+- **RTC / game clock.** Games and DS firmware share MiSTer local time. DS clock edits persist and include elapsed time between launches.
+- **Independent displays.** Analog uses one native 240p Main/Touch screen; digital has its own layout and Direct Video target.
 
 - **Stable native CRT video.** Fixes the alternating frame length that caused vertical shaking. Native CRT output now uses a fixed 262-line frame at approximately 59.64 Hz.
 - **DV1 verified on RetroTINK-4K.** Direct HDMI video and stereo audio passed with New Super Mario Bros. Use a direct connection when troubleshooting; a splitter in the test setup prevented DV1 from locking.
 - **All display and gameplay features retained.** 3D FPS, TATE and menu rotation, HDMI scaling, scaled VGA, RGB/component, composite/S-video, Screen Peek, synthetic microphone blowing and lid sleep/wake remain available.
-- Temporary FPGA diagnostic probes are removed. The scaler arithmetic refactor preserves its output and pipeline. Gameplay clocks, renderer, performance settings and the 1 GHz ARM clock are unchanged.
 
 ## Install and play
+
+This beta updates the normal standalone installation. Before updating, back up `Scripts/NDS4MiSTer.sh`, the entire hidden `Scripts/.NDS_Standalone` folder, `saves/NDS`, and `config/NDS_storage.cfg`. See [upgrade and rollback](docs/STANDALONE_INSTALL_README.md).
 
 1. Exit standalone with **System → Reboot**, then unzip to the root of your SD card, merging the **Scripts** folder. The hidden **Scripts/.NDS_Standalone** folder has to come with it — turn on "show hidden files" if you're copying by hand.
 2. Run **Scripts → NDS4MiSTer**.
@@ -50,7 +52,11 @@ For **DV1**, connect HDMI to the RetroTINK-4K and use `direct_video=1`, `dvi_mod
 
 Main on HDMI and Touch on native VGA can run independently. Digital Main, Touch, Side-by-side and Top/bottom remain available while analog shows one 240p screen. Explicit `vga_scaler=1` continues to mirror the HDMI scaler for computer monitors.
 
+If a game shows a black screen, try **Analog Screen: Main/Touch**, **Digital Layout: Main/Touch**, or hold **Screen Peek / F10**. Some games deliberately leave one DS screen blank. Native output is approximately **59.64 Hz**; a PAL television must accept that timing. This is not a 50 Hz PAL mode.
+
 ## Known issues
+
+- **Experimental FPGA timing.** Routing and bounded hardware tests passed, but static timing still reports violations. Longer sessions and additional boards remain unqualified.
 
 - **Display validation is limited.** RGBS240p, direct HDMI DV1, HDMI/TATE/menu rotation and scaled RGBHV VGA passed on RetroTINK-4K. Physical CRT acceptance and composite/S-video requalification on this build remain pending. See the release notes for receiver mode-switching behavior.
 - **USB/HDD testing is limited.** SD browsing and a mounted CIFS network share have been exercised on hardware; external-drive behavior also has simulated coverage.
@@ -66,11 +72,11 @@ The release assets are the install ZIP and its SHA-256 checksum. Matching source
 
 Built on work from the MiSTer community, FPGAzumSpass, the Nitro_DarkSide and melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to Corn for the standalone suggestion, and to skmp, the DreamSTer developer. Full credits and licenses are in the source tree.
 
-The exact tested rc.6 host binary is retained, so its compiled version label still reads rc.6. The rc.7 manifest identifies the new FPGA. The separate all-controller mapping beta is not included.
+The archive contains the matching split.8.6 FPGA and ARM host. The renderer and 1 GHz ARM setting are retained. Keep the files from one release together.
 
 ## More information
 
-- [Release notes](docs/RELEASE_NOTES_V090_RC7.md)
+- [Release notes](docs/RELEASE_NOTES_SPLIT86.md)
 - [Developer guide](docs/DEVELOPMENT.md)
 - [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues)
 

@@ -17,7 +17,7 @@ import package_standalone_release as standalone
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1]
 STANDALONE_PREFIX = standalone.SUPPORT
-STANDALONE_DOCS = {"LICENSE.txt", "README.md", "RELEASE_NOTES.md", "QUICK_START.txt"}
+STANDALONE_DOCS = {"LICENSE.txt", "README.md", "RELEASE_NOTES.md", "QUICK_START.txt", "GAME_CLOCK.md"}
 
 ROOT_FILES = {"LICENSE.txt", "README.txt", "SHA256SUMS"}
 SUPPORT_FILES = {
@@ -131,6 +131,8 @@ def standalone_contract():
         STANDALONE_PREFIX + "supervisor.py": host / "supervisor.py",
         STANDALONE_PREFIX + "Kickstart.sh": host / "Kickstart.sh",
         STANDALONE_PREFIX + "clock_control.py": host / "clock_control.py",
+        STANDALONE_PREFIX + "video_target.py": host / "video_target.py",
+        STANDALONE_PREFIX + "FPGA_SOURCE_INPUTS.json": SOURCE_ROOT / "docs/release/FPGA_SOURCE_INPUTS_SPLIT86.json",
         STANDALONE_PREFIX + "support/modules/6.18.38-MiSTer/BUILD_PROVENANCE.json":
             SOURCE_ROOT / "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
         "LICENSE.txt": SOURCE_ROOT / "LICENSE.txt",
@@ -204,7 +206,8 @@ def audit_standalone(file_data, hashes, environment):
             raise ValueError("standalone source_revision must be a full commit hash")
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
-            "source_tag": standalone.VERSION, "runtime_baseline": "standalone-fw1-20261003",
+            "release_channel": "beta", "runtime_source_revision": standalone.RUNTIME_REVISION,
+            "host_source_revision": standalone.RUNTIME_REVISION, "fpga_source_revision": standalone.RUNTIME_REVISION, "runtime_baseline": "standalone-fw1-20261003",
             "host_change": standalone.HOST_CHANGE,
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
@@ -212,7 +215,11 @@ def audit_standalone(file_data, hashes, environment):
             "user_dumps_included": False, "user_settings_included": False,
             "diagnostic_revision": standalone.DIAGNOSTIC_REVISION,
             "fpga_source_manifest_sha256": standalone.FPGA_SOURCE_SHA,
-            "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
+            "video_target_sha256": hashes[support + "video_target.py"],
+            "required_firmware_capability": 0x400,
+            "rtc_snapshot_signature": 0x5254, "rtc_snapshot_version": 1,
+            "rtc_persistence": "kit/NDS_rtc.cfg", "rtc_alarm_interrupts": False,
+            "static_timing_clean": False,
         }
         for key, name in {
             "host_sha256": "nds_standalone_host", "core_sha256": "NDS_Standalone.rbf",
@@ -227,14 +234,17 @@ def audit_standalone(file_data, hashes, environment):
         }
         expected_manifest["launcher_sha256"] = hashes["Scripts/NDS4MiSTer.sh"]
         expected_provenance = {
-            "release": standalone.VERSION, "source_revision": revision,
-            "fpga_build_sha256": standalone.FPGA_BUILD_SHA,
+            "release": standalone.VERSION, "packaging_source_revision": revision,
+            "runtime_source_revision": standalone.RUNTIME_REVISION,
             "fpga_source_manifest_sha256": standalone.FPGA_SOURCE_SHA,
-            "accepted_host_sha256": standalone.ACCEPTED_HOST_SHA,
-            "frontend_build_sha256": standalone.FRONTEND_BUILD_SHA,
-            "release_host_sha256": hashes[support + "nds_standalone_host"],
-            "runtime_input_receipt_sha256": standalone.RUNTIME_INPUT_SHA,
+            "core_sha256": hashes[support + "NDS_Standalone.rbf"],
+            "host_sha256": hashes[support + "nds_standalone_host"],
+            "renderer_sha256": hashes[support + "support/nds_hybrid_3d_service"],
+            "runtime_binaries_changed_for_packaging": False,
             "scope": standalone.RELEASE_SCOPE,
+            "static_timing": {"clean": False, "setup_slack_ns": -13.834,
+                              "recovery_slack_ns": -14.351,
+                              "constraints_complete": False},
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")
@@ -338,6 +348,7 @@ def audit_zip(zip_path: Path, sidecar: Path | None, layout: str = "auto") -> lis
             if layout == "standalone":
                 executable = name in {"Scripts/NDS4MiSTer.sh", STANDALONE_PREFIX + "supervisor.py",
                     STANDALONE_PREFIX + "Kickstart.sh", STANDALONE_PREFIX + "clock_control.py",
+                    STANDALONE_PREFIX + "video_target.py",
                     STANDALONE_PREFIX + "nds_standalone_host",
                     STANDALONE_PREFIX + "support/nds_hybrid_3d_service"}
                 expected_mode = stat.S_IFREG | (0o755 if executable else 0o644)

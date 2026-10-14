@@ -1,4 +1,4 @@
-# Game clock — private split.8.6
+# Game clock — split.8.6 beta
 
 Games and the DS firmware menu use the same RTC calendar. At the first game
 or firmware boot, it starts from the MiSTer's local date and time. Set the
@@ -29,6 +29,26 @@ for retry and shows an error; clean exit captures once more with the CPUs held.
 A sudden power loss before a pending edit reaches disk can still lose that edit.
 Changing MiSTer local time or timezone affects the next launch's clock basis;
 it does not periodically overwrite the running DS clock.
+
+## Offline time, synchronization and timezone changes
+
+Internet access is not required. The clock uses the local date/time MiSTer
+already has; a valid but incorrect system date is accepted as the starting
+point. Dates outside 2000–2099 produce an error. Set MiSTer correctly before
+launching. If it synchronizes later, exit and relaunch to adopt the correction.
+
+The running DS clock does not jump when the host time or timezone changes.
+On the next launch it uses the new MiSTer local time plus any saved offset.
+Consequently a timezone or daylight-saving change can shift the next launch's
+DS time, even if the core was stopped throughout the change. This is local
+civil-clock behavior, not an independent UTC battery-clock model. Games may
+apply their own rules or delays after clock changes. In White 2, an existing
+save can initially show its previous season; the season refreshed when leaving
+a building in the controlled retail-game tests.
+
+Back up `NDS_rtc.cfg` before changing or removing it. A pre-RTC release ignores
+this file; keep it for a later return to this beta. The supported workflow is
+to exit cleanly before updating, restoring files, or changing clock settings.
 
 ## FPGA/host contract
 

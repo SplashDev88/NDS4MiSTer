@@ -78,7 +78,44 @@ struct HostTest {
       h.game_clock_now=[&]{return now;};
       rejects([&]{h.seedGameClock();});assert(d.seeds==0 && !h.game_clock_seeded);
     }
-    std::cout<<"PASS RTC matched core, single seed, edit capture, durable offset, storage failure/retry, restart and malformed config\n";
+    {
+      // A late host time correction does not reseed the running DS. Without a
+      // guest clock edit it must not fabricate a persistent offset, either.
+      const auto kit=base/"late-sync";fs::create_directories(kit);
+      nds_clock::Date wall{20,1,1,3,0,0,0};
+      {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        h.game_clock_now=[&]{return wall;};h.seedGameClock();
+        const auto initial=d.live;
+        for(const auto &corrected:{nds_clock::Date{26,10,14,3,13,0,0},
+                                  nds_clock::Date{26,10,14,3,8,0,0}}) {
+          wall=corrected;h.seedGameClock();h.flushGameClock();
+          assert(d.seeds==1 && d.live==initial);
+          assert(!fs::exists(h.gameClockPath()));
+        }
+      }
+      Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+      h.game_clock_now=[&]{return wall;};h.seedGameClock();
+      assert(d.live==wall && d.seeds==1);
+    }
+    {
+      // A long offline interval and a host timezone/DST adjustment apply to
+      // the next launch's local-clock basis without modifying stored settings.
+      const auto kit=base/"long-offline";fs::create_directories(kit);
+      const std::string saved="NDS-RTC-v1\n3600\n0\n";
+      std::ofstream(kit/"NDS_rtc.cfg")<<saved;
+      for(const auto &wall:{nds_clock::Date{26,10,14,3,13,0,0},
+                           nds_clock::Date{27,4,12,1,13,0,0},
+                           nds_clock::Date{27,4,12,1,12,0,0}}) {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        h.game_clock_now=[&]{return wall;};h.seedGameClock();
+        auto expected=wall;++expected[4];assert(d.live==expected);
+        h.flushGameClock();
+        std::ifstream in(kit/"NDS_rtc.cfg");
+        assert(std::string(std::istreambuf_iterator<char>(in),{})==saved);
+      }
+    }
+    std::cout<<"PASS RTC matched core, single seed, edit capture, durable offset, storage failure/retry, restart, malformed config, late synchronization, timezone shift and 180-day offline interval\n";
   }
 };
 int main(){auto root=fs::temp_directory_path()/("nds-clock-"+std::to_string(getpid()));

@@ -1,90 +1,77 @@
-# NDS4MiSTer v0.9.0-rc.7
+# NDS4MiSTer v0.9.0-rc.7-split.8.6 beta
 
-**Stable native 240p output, tested DV1, and full display features retained.**
+This beta adds controller mapping that waits for a complete release, a persistent
+DS game clock, and independent native analog and digital output.
 
-## Install and play
+## Install or update
 
-1. Exit any running standalone session. Extract this ZIP to the root of your
-   SD card, merging **Scripts**. Include the hidden **Scripts/.NDS_Standalone**
-   folder; enable “show hidden files” if copying extracted files manually.
-2. Run **Scripts → NDS4MiSTer** and wait for the NDS menu.
-3. Choose **Load *.NDS**. Use `..` at the top to browse up to other folders or mounted devices, then select a game. Your last game folder is remembered automatically.
-4. Use **System → Save settings** to keep your options.
+1. Exit the core through **System → Reboot**. This returns to normal MiSTer.
+2. Before updating, back up `Scripts/NDS4MiSTer.sh`, the entire hidden
+   `Scripts/.NDS_Standalone` folder, `saves/NDS`, and `config/NDS_storage.cfg`.
+3. Extract the entire ZIP to the SD card root, merging **Scripts** and replacing
+   its program files. Include hidden files. Keep existing settings and maps;
+   the archive contains none. Do not delete the old folder before merging.
+4. Run **Scripts → NDS4MiSTer**, choose **Load *.NDS**, and select a game.
 
-There is no separate Kickstart step, Console launch or five-minute window.
-**System → Reboot** returns to normal MiSTer without power-cycling the board.
-The normal MiSTer installation is still required, but an older NDS release is
-not. Existing normal NDS/Kickstart files remain available.
+A fresh install requires normal MiSTer but no earlier NDS release. Linux
+6.18.38-MiSTer and 5.15.1-MiSTer have matching included support modules. The
+launcher checks prerequisites; it does not install a kernel or change your INI.
+Use the FPGA, host, supervisor and support files from one package together.
 
-This update replaces standalone's program files. Games, saves, settings and
-`MiSTer.ini` stay in place. Use all the support files from this release together.
-Fresh settings use Top/Bottom, rotation Off and CRT Mode Off; existing settings take priority.
-Both graphics engines are always On. Normal NDS and standalone share cartridge
-saves in **saves/NDS on the SD card**, including for USB/network games; use the same ROM filename to keep its matching save.
+Games use cartridge saves in **saves/NDS on the SD card**, even when ROMs are
+on USB or a network share. Keep ROM filenames unchanged to keep using their
+matching saves. Save inside the game; save states are not included.
 
-The launcher requires a compatible kernel with write-combining and 1 GHz clock
-control. It supports **Linux 6.18.38-MiSTer** and retains the matching module
-for **5.15.1-MiSTer**. The matching module is selected automatically; older
-users do not need to update Linux. It does not install a kernel or
-change your INI. If it reports a requirement error, read the quick start below.
+## Return to the previous release
 
-## Screen Peek and display options
+Exit through **System → Reboot**, move the beta's launcher and entire hidden
+support folder aside, and restore the backed-up launcher and folder together.
+Leave cartridge saves in place to retain current progress. Keep a backup of
+the beta's `NDS_rtc.cfg`; older releases ignore it. Restoring an older save
+backup also restores older game progress, so do that only intentionally.
 
-Hold **F10** or a mapped **Screen Peek** button while viewing Left Only,
-Right Only, or CRT Mode to see the other screen; release to return. Map the
-optional action under **System → Define NDS buttons**, after Blow into Mic.
+The backup method restores the exact previous installation and avoids mixing
+support files. Retain the previous release ZIP and its checksum as well.
 
-**CRT Mode: On** selects a single screen in a 320×240 picture on both outputs.
-**CRT Screen** switches Main/Touch. The HDMI menu follows **Video Rotation**;
-the native CRT menu stays upright. Analog output still requires the correct
-MiSTer profile and cable. SuperStation One composite color was confirmed on rc.6 with
-switch 3 UP and the SVID profile; it has not been requalified on this build.
-Native RGBS240p and direct HDMI DV1 passed on RetroTINK-4K. Physical CRT
-acceptance remains pending. Follow **QUICK_START.txt** for output configuration.
+## Displays and a black screen
 
-## Lid, microphone and controller controls
+Native analog automatically shows one 240p screen. **Analog Screen** selects
+Main or Touch; **Digital Layout** independently selects Main, Touch,
+Side-by-side, or Top/bottom. Explicit `vga_scaler=1` still uses scaled VGA.
 
-Use the **Lid** row on the main menu, above Reset, to close or reopen the virtual DS.
-Hold **F11** to blow into the microphone, or map **Blow into Mic** through
-**System → Define NDS buttons**. Release for silence. Existing mappings remain
-valid; define buttons again to add a microphone binding. Lid control is menu-only.
-DualSense motion sensors are ignored, and a trigger pull maps one action at a time.
-A 3% dead zone on each right-stick axis suppresses small center drift.
+For DV1, use `direct_video=1`, `dvi_mode=0`, and `vga_scaler=0` with a compatible
+receiver. **Direct Video Target: CRT** limits DV1 to one screen; **Scaler**
+enables combined layouts. This option is also available through **F4: Advanced
+Options** during startup. Normal HDMI uses `direct_video=0`.
 
-## Sideways games
+If a game shows black, try the other Main/Touch screen or hold **F10 / Screen
+Peek**. Some games intentionally leave one screen blank. Native output is
+approximately 59.64 Hz; a PAL television must accept that timing. This beta
+does not add PAL 50 Hz output. Cable, adapter and MiSTer profile requirements
+still apply. See **QUICK_START.txt** for details.
 
-**Touch Rotation**, directly below Video Rotation, changes right-stick and mouse
-touch directions independently of the picture. Use **90 CW** for the tested
-Ninja Gaiden orientation, **90 CCW** for the opposite direction, and **Normal**
-for ordinary DS games or TATE with a physically rotated monitor.
-**System → Save settings** remembers the choice; switch back to Normal when needed.
+## Controller mapping and clock
 
-## Optional DS firmware menu
+Use **System → Define NDS buttons**. Each input needs a full press and release
+before advancing. **Esc/OSD** cancels; **Space/USER** skips. Existing maps remain
+valid. **Cycle Video Layout** changes the layout once per press; **Screen Peek**
+shows the other screen only while held. Choose the intended action when mapping.
 
-Normal games use built-in firmware with **MiSTer** as the default nickname.
-External BIOS and firmware files are optional and are not included.
+Set MiSTer's local date, time and timezone before launching. The DS clock is
+seeded once per session and continues through menus, reset and lid sleep.
+Clock edits made inside DS firmware persist automatically in the hidden kit's
+**NDS_rtc.cfg**; keep it during upgrades. If MiSTer synchronizes time after the
+core starts, exit and relaunch to adopt the correction. See **GAME_CLOCK.md**
+for timezone behavior and how to return to the default clock.
 
-For **Boot DS firmware**, put your compatible **bios7.bin**, **bios9.bin** and
-**firmware.bin** together in a folder on mounted SD, USB or network storage.
-Choose **Boot DS firmware**. It boots directly from a remembered folder when
-the files are available; otherwise browse with `..` and select **firmware.bin**.
-The firmware folder is remembered separately from games. The quick start lists supported
-sizes, reference SHA-256 hashes and limitations. Your original files remain untouched; saved firmware
-changes go directly into **saves/NDS/firmware.bin**. Nickname, birthday, favorite
-color and language are shared with normal games. Touch calibration is not.
+## Scope
 
-The exact tested rc.6 host is retained; its compiled version label still reads
-rc.6. The rc.7 release manifest identifies the new FPGA. This package does not
-include the separate newer all-controller mapping beta.
+RTC alarms/periodic interrupts and save-state clock restoration are unsupported.
+Static FPGA timing still reports violations. Physical controllers, CRTs/adapters,
+long sessions and all game-specific timed events are not fully qualified.
+Games may slow down, hitch, glitch or crash; this is not a 60 FPS guarantee.
 
-## More information
-
-- [Release notes](RELEASE_NOTES.md): changes and known issues.
-- [Quick start](QUICK_START.txt): controls, TATE/1080p, firmware requirements,
-  slow network loading and troubleshooting.
-- [License](LICENSE.txt): component notices are also inside the hidden support
-  folder's **licenses** directory.
-
-This is a release candidate. Games may slow down, hitch, glitch or crash.
-It is not a promise of 60 FPS. For matching source and issue reporting, use the
-[NDS4MiSTer repository](https://github.com/SplashDev88/NDS4MiSTer).
+Read **RELEASE_NOTES.md** and the accompanying qualification report. Licenses
+and third-party notices are included. ROMs, BIOS, user firmware, saves, maps,
+settings and a Linux kernel are not included. Source and issue reporting:
+[NDS4MiSTer](https://github.com/SplashDev88/NDS4MiSTer).

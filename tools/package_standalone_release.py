@@ -19,17 +19,14 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.7'
-HOST_VERSION = 'v0.9.0-rc.6'
-HOST_SHA = '1f82861cdd1db4b74aa3317f990c1a59971de8c8bacebc983661d413ef72eb5d'
-FRONTEND_BUILD_SHA = 'dc66a2acd08b35d6540f8570e7aad52cdb8d498fd63f236aa626eb08675efc59'
-FPGA_BUILD_SHA = '93dc45166e7c11b3ab390a09eb9d02ee9f3de3bb016a28d46509313557f63b3b'
-FPGA_SOURCE_SHA = 'de1682eb884b5769a8af189164fe403529c9e940fd6fabbe4268e826124d7505'
-ACCEPTED_HOST_SHA = '1f82861cdd1db4b74aa3317f990c1a59971de8c8bacebc983661d413ef72eb5d'
-RUNTIME_INPUT_SHA = '5632b5eacf07479f65edb075ca08c67ea364fe25f4d2e2128f54da291dcca74a'
-HOST_CHANGE = 'None. Exact rc.6 host retained; compiled OSD version label remains rc.6.'
-RELEASE_SCOPE = 'Fixed262 native analog/DV1 presentation; temporary FPGA probes removed; bit-exact nearest-scaler refactor. All display and gameplay features retained. Exact rc.6 host/renderer/modules and gameplay clocks; release metadata and supervisor core pin updated.'
-DIAGNOSTIC_REVISION = 'temporary-probes-removed-functional-status-retained'
+VERSION = 'v0.9.0-rc.7-split.8.6'
+HOST_VERSION = VERSION
+HOST_SHA = 'fdc38e045648ec7253cce3ae8620bc4c6f2c8695a7cddc4427eacf54aaa90fef'
+FPGA_SOURCE_SHA = 'f605f09b24c7fc2870b347b528d612a17f5575275177b0cce03bd4a75afee64d'
+RUNTIME_REVISION = '9add3a7818832558f8e41ebb1ab722babdeba026'
+HOST_CHANGE = 'Complete-release controller mapping; shared RTC calendar and durable guest clock offsets.'
+RELEASE_SCOPE = 'Independent analog/digital output, controller mapping and RTC. Exact qualified split.8.6 host/FPGA and retained renderer/modules; public installation paths and documentation.'
+DIAGNOSTIC_REVISION = 'functional-status-and-coherent-rtc-snapshots'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
     'WC-GPL-2.0.txt': 'kernel/nds_mem_wc/COPYING',
@@ -64,6 +61,8 @@ def json_bytes(value):
 
 def collect(a):
     need((HOST / 'VERSION').read_text().strip() == HOST_VERSION, 'Unexpected frontend VERSION')
+    import sys
+    sys.path.insert(0, str(HOST))
     spec = importlib.util.spec_from_file_location('supervisor', HOST / 'supervisor.py')
     supervisor = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(supervisor)
@@ -83,6 +82,11 @@ def collect(a):
     add(SUPPORT + 'supervisor.py', HOST / 'supervisor.py', 0o755)
     add(SUPPORT + 'Kickstart.sh', HOST / 'Kickstart.sh', 0o755)
     add(SUPPORT + 'clock_control.py', HOST / 'clock_control.py', 0o755)
+    add(SUPPORT + 'video_target.py', HOST / 'video_target.py', 0o755)
+    add(SUPPORT + 'FPGA_SOURCE_INPUTS.json', ROOT / 'docs/release/FPGA_SOURCE_INPUTS_SPLIT86.json')
+    need(sha(files[SUPPORT + 'FPGA_SOURCE_INPUTS.json']) == FPGA_SOURCE_SHA, 'FPGA provenance mismatch')
+    for name, digest in json.loads(files[SUPPORT + 'FPGA_SOURCE_INPUTS.json']).items():
+        need(sha((ROOT / name).read_bytes()) == digest, 'FPGA source differs: ' + name)
     add(SUPPORT + 'NDS_Standalone.rbf', a.core)
     add(SUPPORT + 'nds_standalone_host', a.host, 0o755)
     add(SUPPORT + 'support/nds_hybrid_3d_service', a.helper, 0o755)
@@ -107,8 +111,9 @@ def collect(a):
     files[SUPPORT + module_618 + '.sha256'] = (
         supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC7.md',
-            'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt'}
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_SPLIT86.md',
+            'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt',
+            'GAME_CLOCK.md': ROOT / 'docs/GAME_CLOCK.md'}
     for name, path in docs.items():
         add(name, a.docs_dir / name if a.docs_dir else path)
     add('LICENSE.txt', ROOT / 'LICENSE.txt')
@@ -118,7 +123,8 @@ def collect(a):
         add(SUPPORT + 'licenses/runtime/' + name, ROOT / 'licenses/runtime' / name)
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
-        'source_tag': VERSION, 'runtime_baseline': 'standalone-fw1-20261003',
+        'release_channel': 'beta', 'runtime_source_revision': RUNTIME_REVISION,
+        'host_source_revision': RUNTIME_REVISION, 'fpga_source_revision': RUNTIME_REVISION, 'runtime_baseline': 'standalone-fw1-20261003',
         'host_change': HOST_CHANGE,
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
@@ -133,15 +139,24 @@ def collect(a):
         'shared_saves': '/media/fat/saves/NDS', 'firmware_working_image': '/media/fat/saves/NDS/firmware.bin',
         'user_dumps_included': False, 'user_settings_included': False,
         'diagnostic_revision': DIAGNOSTIC_REVISION, 'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
-        'frontend_build_sha256': FRONTEND_BUILD_SHA,
+        'video_target_sha256': sha(files[SUPPORT + 'video_target.py']),
+        'required_firmware_capability': 0x400,
+        'rtc_snapshot_signature': 0x5254, 'rtc_snapshot_version': 1,
+        'rtc_persistence': 'kit/NDS_rtc.cfg', 'rtc_alarm_interrupts': False,
+        'static_timing_clean': False,
     }
     files[SUPPORT + 'manifest.json'] = json_bytes(manifest)
     files[SUPPORT + 'BUILD_PROVENANCE.json'] = json_bytes({
-        'release': VERSION, 'source_revision': revision, 'fpga_build_sha256': FPGA_BUILD_SHA,
-        'fpga_source_manifest_sha256': FPGA_SOURCE_SHA, 'accepted_host_sha256': ACCEPTED_HOST_SHA,
-        'frontend_build_sha256': FRONTEND_BUILD_SHA, 'release_host_sha256': HOST_SHA,
-        'runtime_input_receipt_sha256': RUNTIME_INPUT_SHA,
+        'release': VERSION, 'packaging_source_revision': revision,
+        'runtime_source_revision': RUNTIME_REVISION,
+        'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
+        'core_sha256': supervisor.EXPECTED_CORE, 'host_sha256': HOST_SHA,
+        'renderer_sha256': supervisor.EXPECTED_HELPER,
+        'runtime_binaries_changed_for_packaging': False,
         'scope': RELEASE_SCOPE,
+        'static_timing': {'clean': False, 'setup_slack_ns': -13.834,
+                          'recovery_slack_ns': -14.351,
+                          'constraints_complete': False},
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'
@@ -160,7 +175,7 @@ def main():
     for name in ('core', 'helper', 'host', 'module', 'module-618'):
         parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--out-dir', type=Path)
-    parser.add_argument('--docs-dir', type=Path, help='Directory containing README.md, RELEASE_NOTES.md and QUICK_START.txt')
+    parser.add_argument('--docs-dir', type=Path, help='Directory containing README.md, RELEASE_NOTES.md, QUICK_START.txt and GAME_CLOCK.md')
     parser.add_argument('--source-revision', help='Full corresponding-source commit; otherwise use checkout HEAD')
     parser.add_argument('--check-only', action='store_true')
     a = parser.parse_args()
@@ -177,7 +192,7 @@ def main():
     a.out_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 10, 12, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 14, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | (0o755 if name in executable else 0o644)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED

@@ -42,7 +42,7 @@ class ReleaseAudit(TestCase):
         values['EXPECTED_CLOCK'] = self.hashes[audit.STANDALONE_PREFIX + 'clock_control.py']
         values['EXPECTED_SPEED_ENV'] = self.environment
         docs = self.root / 'docs'; docs.mkdir()
-        for name in ('README.md', 'RELEASE_NOTES.md', 'QUICK_START.txt'):
+        for name in ('README.md', 'RELEASE_NOTES.md', 'QUICK_START.txt', 'GAME_CLOCK.md'):
             (docs / name).write_text('Synthetic documentation for an offline audit test.\n')
         args = SimpleNamespace(**components, docs_dir=docs, source_revision='a'*40)
         # Independently create the fixture with the public packager. Only binary
@@ -76,7 +76,7 @@ class ReleaseAudit(TestCase):
             for name,data in sorted(files.items()) if name.startswith(prefix) and name != prefix+'SHA256SUMS').encode()
 
     def test_public_packager_layout_passes_with_sidecar(self):
-        self.assertEqual(len(self.files), 37)
+        self.assertEqual(len(self.files), 40)
         self.assertEqual(self.write(layout='auto'), [])
 
     def test_normal_layout_still_passes(self):
@@ -96,7 +96,7 @@ class ReleaseAudit(TestCase):
 
     def test_rehashed_runtime_and_license_tampering_rejected(self):
         for name in ('nds_standalone_host','supervisor.py','licenses/FreeBIOS.txt',
-                     'clock_control.py','support/modules/6.18.38-MiSTer/nds_mem_wc.ko'):
+                     'clock_control.py','video_target.py','FPGA_SOURCE_INPUTS.json','support/modules/6.18.38-MiSTer/nds_mem_wc.ko'):
             with self.subTest(name=name):
                 files=dict(self.files);files[audit.STANDALONE_PREFIX+name]+=b'changed'
                 self.resign_inner(files)
@@ -111,7 +111,9 @@ class ReleaseAudit(TestCase):
 
     def test_rehashed_metadata_contract_rejected(self):
         for field,value in (('firmware_working_image','/media/fat/games/NDS/firmware.bin'),
-                            ('hps_clock_khz',1200000),('user_settings_included',True)):
+                            ('hps_clock_khz',1200000),('user_settings_included',True),
+                            ('rtc_snapshot_signature',0),('runtime_source_revision','0'*40),
+                            ('static_timing_clean',True)):
             with self.subTest(field=field):
                 files=dict(self.files);name=audit.STANDALONE_PREFIX+'manifest.json'
                 manifest=json.loads(files[name]);manifest[field]=value;files[name]=json.dumps(manifest).encode()
