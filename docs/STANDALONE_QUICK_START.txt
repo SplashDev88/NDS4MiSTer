@@ -1,9 +1,10 @@
-NDS4MiSTer v0.9.0-rc.7
+NDS4MiSTer v0.9.0-rc.7-split.8.3 (private candidate)
 
 START HERE
 
 Extract the install ZIP to the SD card root, merging Scripts. Include the
-hidden Scripts/.NDS_Standalone folder. Run Scripts -> NDS4MiSTer.
+hidden Scripts/.NDS_Split_Test folder. Run Scripts -> NDS_Split_Test.
+This private package installs separately from the public standalone kit.
 Choose Load *.NDS. Use .. at the top to browse to your game folder.
 
 There is no separate Kickstart step or five-minute launch window. This
@@ -233,6 +234,7 @@ scaled resolution with direct_video=0, including the startup menu.
 With vga_scaler=1 the analog port intentionally follows the HDMI scaler for
 computer monitors. The menu reports Analog Output: HDMI scaler and hides the
 native Analog Screen selector. With vga_scaler=0 it reports Analog Output:240p.
+Old saved CRT-On flags do not restrict the scaled VGA digital layout.
 Boot transitions can briefly interrupt sync while MiSTer loads the core; the
 standalone menu no longer remains in the legacy stacked/blank analog mode.
 

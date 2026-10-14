@@ -17,7 +17,7 @@ struct HostTest {
     h.initializeVideoMetadata();
     assert(h.independent_outputs_supported);
     assert(h.spi.history.back().command == 0x1e);
-    assert(h.spi.history.back().words[0] == h.status);
+    assert(h.spi.history.back().words[0] == h.liveStatus());
   }
   static std::string bytes(const fs::path &p) {
     std::ifstream f(p,std::ios::binary);
@@ -91,6 +91,24 @@ struct HostTest {
     assert(h.osd_rows[10]==h.frame.renderRow(10," Analog Output:  HDMI scaler",false,nds_osd::arrow_right));
     h.cursor=7;h.action(1);assert(h.cursor==Host::LID_CURSOR);
     const auto scaled=h.status;h.cursor=Host::ANALOG_CURSOR;h.action(2);assert(h.status==scaled);
+    // Regression from the rig: a saved CRT-On bit must not override the
+    // selected digital layout when the FPGA disables split for vga_scaler.
+    for(unsigned crt=0;crt<2;++crt) for(unsigned layout=0;layout<4;++layout) {
+      h.status=REQUIRED_STATUS|INDEPENDENT_OUTPUTS|ANALOG_TOUCH|(crt<<13)|(layout<<5);
+      const auto saved=h.status;
+      for(bool peek : {false,true}) {
+        h.screen_peek=peek;h.sendstatus();
+        const auto wire=h.spi.history.back().words[0];
+        assert(!(wire & CRT_TIMING));
+        // Model the FPGA's NDS_NATIVE_OUTPUT_ALLOWED=0 path: split is ignored.
+        const auto effective=normalizeDisplayStatus(wire & ~INDEPENDENT_OUTPUTS);
+        assert(((effective>>5)&3)==(peek && layout>=2 ? layout^1 : layout));
+        assert(h.status==saved);
+      }
+      h.screen_peek=false;h.saveSettings();
+      const auto cfg_status=uint16_t(uint8_t(bytes(cfg)[0])|(uint8_t(bytes(cfg)[1])<<8));
+      assert(cfg_status==saved);
+    }
     // Explicit Reset settings also returns to automatic independent output.
     h.reset_confirm=true;h.cursor=0;h.action(2);
     assert(h.status & INDEPENDENT_OUTPUTS);

@@ -1,4 +1,4 @@
-> Private candidate v0.9.0-rc.7-split.8.2: automatic independent native analog
+> Private candidate v0.9.0-rc.7-split.8.3: automatic independent native analog
 > and digital output. This branch is not the published rc.7 release.
 
 # NDS4MiSTer

@@ -1188,6 +1188,11 @@ class Host {
       if (selected & (1u << 6)) live ^= 1u << 5;
       if (selected & INDEPENDENT_OUTPUTS) live ^= ANALOG_TOUCH;
     }
+    // vga_scaler disables the FPGA's split scanout. In that mode the legacy
+    // CRT flag would clamp the shared HDMI/scaled-VGA image to one panel.
+    // Ignore it on the wire while keeping saved settings intact.
+    if (independent_outputs_supported && (video_flags & (1u << 2)))
+      live &= ~CRT_TIMING;
     return live;
   }
   void syncScreenPeek() {
