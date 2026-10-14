@@ -61,10 +61,10 @@ struct HostTest {
     h.action(1);assert(h.cursor==Host::DISPLAY_CURSOR);
     h.action(2);assert(h.display_menu && h.cursor==3);
     for(int i=0;i<5;++i)h.action(1);
-    assert(h.cursor==Host::DV_TARGET_CURSOR && h.mainMenuRow(h.cursor)==6);
+    assert(h.cursor==Host::DV_TARGET_CURSOR && h.mainMenuRow(h.cursor)==7);
     h.direct_video_crt=false;h.draw();
-    assert(h.osd_rows[5]==h.frame.renderRow(5,"",false,nds_osd::arrow_left));
-    assert(h.osd_rows[6]==h.frame.renderRow(6," Direct Video Target: Scaler",true,nds_osd::arrow_left));
+    assert(h.osd_rows[6]==h.frame.renderRow(6,"",false,nds_osd::arrow_left));
+    assert(h.osd_rows[7]==h.frame.renderRow(7," Direct Video Target: Scaler",true,nds_osd::arrow_left));
     h.saveSettings();
     assert(bytes(kit/"NDS_video.cfg")=="NDS-DirectVideo-v1\nretrotink\n");
     Host reloaded(kit.string(),(sd/"games/NDS").string(),sd);

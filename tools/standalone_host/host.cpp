@@ -315,7 +315,7 @@ class Host {
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
         0, 1, 3, -1, -1, -1, -1, -1, -1, 7, 8, 15, -1, 4, -1, 5};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
-        -1, -1, -1, 0, 1, 2, 3, 4, -1, -1, -1, 15, -1, -1, 6, -1};
+        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
     if (independent_outputs_supported) {
