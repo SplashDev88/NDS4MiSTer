@@ -19,8 +19,19 @@ struct HostTest {
       if(cmd!=0x46) return uint16_t(0);
       return uint16_t(index==0 ? 0x4456 : index==1 ? 0 : 0x5350);
     };
+    // A saved split selection was initially masked before capability discovery.
+    // Discovery must apply it without requiring a menu change or a DS reset,
+    // including ordinary HDMI where the DV1 metadata flag is absent.
+    h.status = before | INDEPENDENT_OUTPUTS | ANALOG_TOUCH;
+    h.sendstatus();
+    assert(!(h.spi.history.back().words[0] & INDEPENDENT_OUTPUTS));
+    h.spi.history.clear();
     h.initializeVideoMetadata();
     assert(h.independent_outputs_supported);
+    assert(h.spi.history.back().command == 0x1e);
+    assert(h.spi.history.back().words[0] == h.status);
+    assert(!h.direct_video_metadata);
+    h.status = before;
     h.spi.response={};
     h.action(2);
     assert(h.status & INDEPENDENT_OUTPUTS);

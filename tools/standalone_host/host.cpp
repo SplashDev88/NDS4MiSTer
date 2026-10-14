@@ -333,6 +333,10 @@ class Host {
     const auto capability = spi.word(0);
     spi.end();
     independent_outputs_supported = signature == 0x4456 && capability == 0x5350;
+    // The initial status write masks split output until capability is known.
+    // Apply the saved selection now, including non-DV1 sessions, so startup
+    // does not depend on a later menu change or reset.
+    sendstatus();
     if (signature != 0x4456) return;
     video_flags = flags;
     if (!(flags & (1u << 10))) return;
