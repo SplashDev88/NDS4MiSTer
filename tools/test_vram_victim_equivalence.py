@@ -15,13 +15,17 @@ ap.add_argument('--output', type=Path, required=True)
 ap.add_argument('--seeds', default='1,29,137')
 ap.add_argument('--cycles', type=int, default=12000)
 ap.add_argument('--mutant', action='store_true')
+ap.add_argument('--reference-revision', help='Compare current physical-slot VRAM with this local git revision')
 args = ap.parse_args()
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=False)
 original = (ROOT / 'tools/fixtures/beta14/nds_vram_before_victim.vhd').read_text()
+if args.reference_revision:
+    BASE = args.reference_revision + ':rtl/nds_nitro_vram.vhd'
+    original = subprocess.check_output(['git', '-C', str(ROOT), 'show', BASE], text=True)
 candidate = (ROOT / 'rtl/nds_nitro_vram.vhd').read_text()
 assert 'adglobal2_mru' in candidate
-assert 'adglobal2_mru' not in original
+assert ('adglobal2_mru' in original) == bool(args.reference_revision)
 entity = original.split('   port\n', 1)[1].split('end entity;', 1)[0]
 entity = re.sub(r'--[^\n]*', '', entity)
 ports = re.findall(r'(\w+)\s*:\s*(in|out)\s+((?:std_logic_vector|unsigned)\([^\n;]+?\)|std_logic)(?:\s*:=\s*[^;\n]+)?\s*[;\n]', entity)
@@ -29,6 +33,8 @@ assert len(ports) >= 75, len(ports)
 ports += [('audit_victims', 'out', 'std_logic_vector(161 downto 0)'),
           ('audit_primary', 'out', 'std_logic_vector(647 downto 0)'),
           ('audit_events', 'out', 'std_logic_vector(11 downto 0)')]
+if args.reference_revision:
+    ports.append(('audit_accumulators', 'out', 'std_logic_vector(255 downto 0)'))
 
 def once(text, old, new):
     assert text.count(old) == 1, (old, text.count(old))
@@ -47,6 +53,11 @@ def instrument(text, name, physical):
         probes.append(f'   audit_victims({81*i+80} downto {81*i}) <= {record("adglobal2("+idx+")")};')
     for i in range(8):
         probes.append(f'   audit_primary({81*i+80} downto {81*i}) <= {record("adline("+str(i)+")")};')
+    if args.reference_revision:
+        text = once(text, "audit_events : out std_logic_vector(11 downto 0) := (others => '0')",
+                    "audit_events : out std_logic_vector(11 downto 0) := (others => '0');\n      audit_accumulators : out std_logic_vector(255 downto 0)")
+        for i in range(8):
+            probes.append(f'   audit_accumulators({32*i+31} downto {32*i}) <= rq({i}).acc;')
     text = once(text, '\nbegin\n', '\nbegin\n' + '\n'.join(probes) + '\n')
     text = once(text, "         rdone_int <= (others => '0');", "         audit_events <= (others => '0');\n         rdone_int <= (others => '0');")
     text = once(text, '                  v_old_line := v_adl(v_adq(v_adh).chan);',
@@ -66,9 +77,12 @@ def instrument(text, name, physical):
     text = once(text, "                     rsrv_req  <= '1';", "                     audit_events(10) <= '1';\n                     rsrv_req  <= '1';")
     return text
 
-ref = instrument(original, 'nds_vram_reference', False)
+ref = instrument(original, 'nds_vram_reference', bool(args.reference_revision))
 can = instrument(candidate, 'nds_vram_candidate', True)
-if args.mutant:
+if args.mutant and args.reference_revision:
+    can = once(can, 'v_acc := v_acc or v_br_word;',
+               'v_acc := (v_acc or v_br_word) xor x"00000001";')
+elif args.mutant:
     can = once(can, 'idx := 1 - mru;', 'idx := mru;') if 'idx := 1 - mru;' in can else can
     # Corrupt a real reset-independent operation, not the passive observation.
     anchor = 'mru := 1 - mru;'
@@ -111,7 +125,7 @@ completed=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT
 (out/'driver.log').write_text(completed.stdout)
 result={'command':command,'baseline_fixture':BASE,'baseline_rtl_sha256':hashlib.sha256(original.encode()).hexdigest(),
         'candidate_rtl_sha256':hashlib.sha256(candidate.encode()).hexdigest(),'mutant':args.mutant,'returncode':completed.returncode,
-        'port_count':len(ports)-3,'runs':{tag:(out/(tag+'.log')).read_text() if (out/(tag+'.log')).exists() else None for tag in runs},
+        'port_count':len(ports)-3-int(bool(args.reference_revision)),'runs':{tag:(out/(tag+'.log')).read_text() if (out/(tag+'.log')).exists() else None for tag in runs},
         'limits':'Simulation uses the existing portable dual-port RAM model. Passive test-only probes and event pulses observe canonical caches; product RTL has no test ports. The synthetic shared backing model preloads nonzero fixture data only after the complete real reset-clear pass.'}
 result['passed'] = completed.returncode == 0 and all(v and 'PASS: full VRAM' in v for v in result['runs'].values())
 if args.mutant:

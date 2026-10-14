@@ -1071,6 +1071,7 @@ begin
       variable v_head  : integer range 0 to RQ_DEPTH-1;
       variable v_tail  : integer range 0 to RQ_DEPTH-1;
       variable v_acc   : std_logic_vector(31 downto 0);
+      variable v_br_word, v_rsp_word : std_logic_vector(31 downto 0);
       variable v_adcnt : integer range 0 to AD_DEPTH;
       variable v_adh   : integer range 0 to AD_DEPTH-1;
       variable v_adt   : integer range 0 to AD_DEPTH-1;
@@ -1258,19 +1259,44 @@ begin
                end loop;
             end if;
 
+            -- Collect the three return sources into each physical queue slot.
+            -- Static slot writes avoid cascaded variable-index read/modify/write
+            -- muxes across the entire accumulator array. OR is associative, so
+            -- simultaneous BRAM, SDRAM and cached returns retain their values.
+            -- Dispatch clears its slot last, matching the original S0 priority.
+            v_br_word := (others => '0');
+            for i in BANK_E to BANK_I loop
+               if br_hit(i) = '1' then
+                  v_br_word := v_br_word or bram_dout_b(i);
+               end if;
+            end loop;
+            v_rsp_word := rsp_data(31 downto 0);
+            if v_adq(v_adh).hi = '1' then
+               v_rsp_word := rsp_data(63 downto 32);
+            end if;
+            for i in 0 to RQ_DEPTH-1 loop
+               v_acc := rq(i).acc;
+               if br_valid = '1' and br_slot = i then
+                  v_acc := v_acc or v_br_word;
+               end if;
+               if rsp_valid = '1' and v_adcnt > 0 and v_adq(v_adh).slot = i then
+                  v_acc := v_acc or v_rsp_word;
+               end if;
+               if adhit_valid = '1' and adhit_slot = i then
+                  v_acc := v_acc or adhit_word;
+               end if;
+               if rdispatch = '1' and v_tail = i then
+                  v_acc := (others => '0');
+               end if;
+               v_rq(i).acc := v_acc;
+            end loop;
+
             -- ---- S1: the BRAM stage. port-B q is valid the cycle after the
             -- address was presented, so this collects the request issued last
             -- cycle. It runs before the new issue below, which re-drives the
             -- port for the NEXT request - the two do not conflict because the
             -- address register and q are one cycle apart.
             if (br_valid = '1') then
-               v_acc := v_rq(br_slot).acc;
-               for i in BANK_E to BANK_I loop
-                  if (br_hit(i) = '1') then
-                     v_acc := v_acc or bram_dout_b(i);
-                  end if;
-               end loop;
-               v_rq(br_slot).acc     := v_acc;
                v_rq(br_slot).need_br := '0';
             end if;
             br_valid <= '0';
@@ -1281,12 +1307,6 @@ begin
             -- channel, which is where the other half gets used for free.
             if (rsp_valid = '1' and v_adcnt > 0) then
                v_slot := v_adq(v_adh).slot;
-               if (v_adq(v_adh).hi = '1') then
-                  v_word := rsp_data(63 downto 32);
-               else
-                  v_word := rsp_data(31 downto 0);
-               end if;
-               v_rq(v_slot).acc     := v_rq(v_slot).acc or v_word;
                v_rq(v_slot).ad_owed := v_rq(v_slot).ad_owed - 1;
                -- Keep the second word staged, like the ordinary cache-hit
                -- response. Both clients still retire in their original order.
@@ -1344,7 +1364,6 @@ begin
             -- Nothing can queue up behind it - the issue stage produces at most
             -- one hit per cycle and this consumes one per cycle.
             if (adhit_valid = '1') then
-               v_rq(adhit_slot).acc     := v_rq(adhit_slot).acc or adhit_word;
                v_rq(adhit_slot).ad_owed := v_rq(adhit_slot).ad_owed - 1;
             end if;
 
@@ -1498,7 +1517,6 @@ begin
                v_rq(v_tail).chan    := rpick;
                v_rq(v_tail).lcdc    := '0';
                if rpick = 0 then v_rq(v_tail).lcdc := rdr_bg_lcdc; end if;
-               v_rq(v_tail).acc     := (others => '0');
                v_rq(v_tail).ad_owed := v_nad;
                for i in BANK_A to BANK_D loop
                   v_rq(v_tail).ad_todo(i) := rchosen_hit(i);

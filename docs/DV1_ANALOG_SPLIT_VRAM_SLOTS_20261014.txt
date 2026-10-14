@@ -1,0 +1,52 @@
+Private split-output experiment: local VRAM completion accumulators
+
+SPLIT5 (6261ecd) passed placement but failed physical routing after
+2h32m32s in the router, leaving 328 signals unrouted. It used 41058 ALMs
+and 549 M10Ks. No new FPGA image was assembled or tested. Static timing
+was not used as an acceptance gate. Exact reports, inputs and logs are
+archived privately in failed-routing-6261ecd.
+
+Measured basis
+109 unrouted signals belong directly to ARM9 and 97 to VRAM. The VRAM
+list includes queue accumulators, their temporary copies, slot selectors
+and related multiplexers. This does not prove one net caused congestion;
+it identifies a substantial affected block with an area refactor available.
+
+Equivalent refactor
+Previously BRAM completion, SDRAM completion and cached completion each
+read one dynamically indexed queue accumulator, ORed in their result,
+then wrote that dynamically indexed slot. Each following update saw the
+entire modified array, creating cascaded read/modify/write multiplexers.
+
+The new code forms the BRAM and SDRAM result words once, then applies the
+same enabled OR terms locally to each of the eight physical slots. A new
+dispatch clears its slot last, exactly as before. No accumulator is read
+between this calculation and the original dispatch/retirement sequence.
+Outstanding counts, cache invalidation/fill, posted writes, queue depth,
+request acceptance, response staging and retirement order are unchanged.
+There are no added cycles, clock changes or reduced cache functionality.
+
+Validation
+The existing complete-instance VRAM equivalence harness now also accepts
+a local reference revision. Against exact SPLIT5 it compares every output,
+canonical primary/victim cache contents, event pulses, and all eight
+32-bit accumulators on every cycle. Product RTL has no new diagnostic ports.
+
+All six runs pass: seeds 1, 29 and 137, posted writes both enabled and
+disabled, totaling 6662351 cycles. Coverage assertions require all eight
+renderer channels, paired LCDC reads, direct/MRU/LRU hits, CPU writes,
+posted/live invalidation, fill/write and fill/hit collisions, backing
+stalls, and reset with outstanding traffic. The original memory-clear
+pass and portable dual-port RAM simulation model remain in the test.
+
+Negative control: flipping bit 0 of a real BRAM completion result is
+detected at cycle 541539 as an accumulator mismatch. The injected change
+exists only in the generated test copy, not in product RTL.
+
+Synthesis and routing measurements are recorded in the private SPLIT6
+attempt receipt. The CPU's proposed fixed-SP return remains unchanged
+from SPLIT5 and still needs the original stack hardware reproducer,
+SDK CPU2D and NSMB tests on a successfully routed FPGA image.
+
+No video mode, 3D FPS feature, rotation, composite/S-video, mic, lid,
+audio, controller mapping, renderer, host, game profile or save is removed.
