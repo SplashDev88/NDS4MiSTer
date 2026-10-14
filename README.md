@@ -38,6 +38,8 @@ Open the menu with your controller's menu combo, the OSD button, or **F12**. Rig
 
 For portrait, select **Digital Layout → Top/bottom** and use **Display options → Video Rotation** opposite the monitor: **90 CCW** for a clockwise turn, **90 CW** for counterclockwise. The HDMI menu follows Video Rotation automatically; the native analog/CRT menu remains upright. The old `osd_rotate` and private menu-rotation override no longer control this frontend. On a compatible 1080p display, `video_mode=8` gives a wider portrait picture.
 
+Games and DS firmware share the game clock, seeded from the MiSTer's local time. Date/time edits in DS firmware persist across launches and continue while powered off. See [clock behavior](docs/GAME_CLOCK.md).
+
 ## CRT and DV1 setup
 
 Native analog automatically uses **240p**; select **Analog Screen: Main/Touch**. HDMI/DV1 has its own **Digital Layout**. For Direct Video through HDMI, **Display options → Direct Video Target: CRT** (default) limits that output to one 240p screen; choose **Scaler** for a RetroTINK or other compatible scaler to enable all four layouts. The same target is available under **F4: Advanced Options** during script startup. Older CRT-Off settings activate independent output at startup. Keep the MiSTer profile appropriate to your cable and hardware; the package does not edit `MiSTer.ini` or `yc.txt`.
@@ -53,7 +55,7 @@ Main on HDMI and Touch on native VGA can run independently. Digital Main, Touch,
 - **Display validation is limited.** RGBS240p, direct HDMI DV1, HDMI/TATE/menu rotation and scaled RGBHV VGA passed on RetroTINK-4K. Physical CRT acceptance and composite/S-video requalification on this build remain pending. See the release notes for receiver mode-switching behavior.
 - **USB/HDD testing is limited.** SD browsing and a mounted CIFS network share have been exercised on hardware; external-drive behavior also has simulated coverage.
 - **Slowdown and uneven animation remain.** Not every game hits 60 FPS, and movies or audio can hitch.
-- **Firmware boot doesn't work with every dump.** Clock edits don't persist between launches, and RTC alarms aren't implemented.
+- **Firmware boot doesn't work with every dump.** RTC alarm interrupts are not implemented.
 - **Shin Megami Tensei: Strange Journey** can freeze in its intro; **GTA: Chinatown Wars** can clip near the camera. Other games may glitch or crash — testing doesn't cover every game or full playthroughs.
 
 ## Files

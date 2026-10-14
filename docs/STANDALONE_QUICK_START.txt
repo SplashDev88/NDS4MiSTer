@@ -197,8 +197,13 @@ may not match. The launcher rejects unsupported calibration while preserving
 the original. The DS calibration utility is not a supported setup procedure
 for this release. Use a compatible personal dump; do not bypass validation.
 
-The firmware clock starts from the MiSTer's system time (year 2000-2099).
-Clock edits are session-only, and RTC alarm interrupts are not implemented.
+Games and firmware share a clock that starts from the MiSTer's local time
+(year 2000-2099). Set the MiSTer time correctly before launch. The clock
+continues through loading, reset and sleep. DS date/time edits are saved
+automatically in the kit's NDS_rtc.cfg and advance while powered off.
+To return to MiSTer time, exit the core, remove NDS_rtc.cfg, and relaunch.
+The file is shared by all games in that kit; it never sets the MiSTer clock.
+RTC alarm interrupts are not implemented.
 This feature does not add DS wireless multiplayer, firmware game launching,
 DSi mode, or physical microphone capture.
 

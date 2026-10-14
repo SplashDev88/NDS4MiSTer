@@ -101,6 +101,11 @@ struct HostTest {
         }
         return error;
       }
+      if (cmd == 0x47) {
+        if (!position) return 0x5254;
+        if (position == 1) return 0x101;
+        return position <= 5 ? clock_words[position - 2] : 0;
+      }
       if (cmd == 0x22 && position) {
         assert(position <= 4);
         clock_words[position - 1] = value;
@@ -176,7 +181,7 @@ struct HostTest {
     assert(readBytes(sd / "saves/NDS/firmware.bin") == original);
     assert(fs::exists(sd / "saves/NDS/firmware.bin.lock"));
     assert(!fs::exists(sd / "saves/NDS/firmware"));
-    assert(host.firmware_rtc_seeded && device.clock_seeds == 1);
+    assert(host.game_clock_seeded && device.clock_seeds == 1);
     std::array<unsigned, 8> clock{};
     for (unsigned i = 0; i < 8; ++i) {
       const auto byte = uint8_t(device.clock_words[i / 2] >> (8 * (i % 2)));
@@ -198,14 +203,23 @@ struct HostTest {
     // Diagnostics off: explicit video metadata never adds a firmware query.
     host.spi.history.clear(); framebuffer_metadata_requested = 1;
     host.serviceFramebufferMetadataRequest();
-    assert(host.spi.history.size() == 2 && host.spi.history[0].command == 0x40 &&
-           host.spi.history[1].command == 0x23);
+    const auto videoCommands = [&] {
+      std::vector<uint16_t> commands;
+      for (const auto &transaction : host.spi.history) {
+        assert(transaction.select == Spi::IO);
+        if (transaction.command != 0x47) commands.push_back(transaction.command);
+      }
+      return commands;
+    };
+    assert(videoCommands() == std::vector<uint16_t>({0x40,0x23}));
     const auto metadataPath = kit / "framebuffer-metadata.json";
     const auto metadataText = [&] {
       const auto bytes = readBytes(metadataPath);
       return std::string(bytes.begin(), bytes.end());
     };
     assert(metadataText().find("firmware_diagnostics") == std::string::npos);
+    assert(metadataText().find("\"game_clock\":") != std::string::npos);
+    assert(!fs::exists(host.gameClockPath()));
     // Readback is served from the same durable work image; opt-in must not
     // change even one SD transaction or insert a status query into servicing.
     host.spi.history.clear();
@@ -227,8 +241,7 @@ struct HostTest {
     assert(host.firmware_last_lba == 0 && host.firmware_unique_lbas_logged == 1);
     host.spi.history.clear(); framebuffer_metadata_requested = 1;
     host.serviceFramebufferMetadataRequest();
-    assert(host.spi.history.size() == 3 && host.spi.history[0].command == 0x40 &&
-           host.spi.history[1].command == 0x45 && host.spi.history[2].command == 0x23);
+    assert(videoCommands() == std::vector<uint16_t>({0x40,0x45,0x23}));
     assert(metadataText().find("\"controller_status_available\":true") != std::string::npos);
     assert(metadataText().find("\"reads_completed\":1") != std::string::npos);
     assert(metadataText().find("\"flags\":" + std::to_string(device.flags)) != std::string::npos);
@@ -304,8 +317,7 @@ struct HostTest {
     assert(host.firmware_write_requests == 2 && host.firmware_writes_durable == 1);
     host.spi.history.clear(); framebuffer_metadata_requested = 1;
     host.serviceFramebufferMetadataRequest();
-    assert(host.spi.history.size() == 3 && host.spi.history[1].command == 0x45 &&
-           host.spi.history[2].command == 0x23);
+    assert(videoCommands() == std::vector<uint16_t>({0x40,0x45,0x23}));
     assert(metadataText().find("\"error\":6") != std::string::npos);
     assert(metadataText().find("\"writes_durable\":1") != std::string::npos);
     assert(device.durable_acks == 1 && (device.flags & 0x100));
@@ -339,7 +351,7 @@ struct HostTest {
     Host host(kit.string(), games.string(), sd); FakeFirmware device(host);
     const auto verify = [&] {
       assert(!host.firmware && !host.native_firmware && !host.firmware_slot_mounted);
-      assert(!host.firmware_error_dialog && !host.menu && !device.clock_seeds);
+      assert(!host.firmware_error_dialog && !host.menu && device.clock_seeds == 1);
       for (const auto &t : host.spi.history) {
         assert(!(t.select == Spi::IO && t.command == 0x1c && t.words == std::vector<uint16_t>{2}));
         assert(!(t.select == Spi::FIO && t.command == 0x55 && t.words == std::vector<uint16_t>{6}));
@@ -398,7 +410,7 @@ struct HostTest {
     assert(readBytes(legacy) == legacySaved);
     for (const auto &t : host.spi.history)
       assert(!(t.select == Spi::IO && t.command == 0x45 && !t.words.empty() && t.words[0] == 3));
-    std::cout << "PASS direct games use built-in BIOS/FIO7 without original files, native Media, calibration or RTC; old-core readiness rejected\n";
+    std::cout << "PASS direct games use built-in BIOS/FIO7 without original files, native Media, calibration; game RTC seeded once; old-core readiness rejected\n";
   }
   static void relocatedSources(const fs::path &root) {
     const auto sd = root / "relocated-sd", kit = root / "relocated-kit";

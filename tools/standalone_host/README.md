@@ -182,3 +182,10 @@ responses and includes the previous ARM7-only behavior as a negative control.
 The rc.7 release intentionally retains the exact rc.6 host binary and VERSION.
 Only the launcher release identifier and expected FPGA hash change. The
 packager records HOST_VERSION separately from the package VERSION.
+
+Private split.8.6 enables a shared game/firmware clock. `NDS_rtc.cfg` stores only
+DS clock edits as an offset from MiSTer local time, with atomic durable writes.
+The host requires the matching FPGA's IO 0x47 protocol, seeds once, polls at
+500 ms intervals, and flushes the final edit after holding the CPUs on exit.
+Explicit SIGUSR1 metadata requests include a coherent `game_clock` snapshot.
+See [Game clock](../../docs/GAME_CLOCK.md) for scope and persistence behavior.

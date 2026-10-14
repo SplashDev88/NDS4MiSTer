@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // NDS experimental standalone host. Protocol derived from MiSTer Main (GPLv3).
 // See THIRD_PARTY.md. Copyright 2026 NDS4MiSTer contributors.
+#if defined(__linux__) && !defined(_TIME_BITS)
+#define _TIME_BITS 64
+#define _FILE_OFFSET_BITS 64
+#endif
 #include "firmware_media.h"
+#include "game_clock.h"
 #include "save_profiles.h"
 #include "font.h"
 #include "framebuffer_metadata.h"
@@ -44,6 +49,7 @@
 #include <unistd.h>
 #include <vector>
 namespace fs = std::filesystem;
+static_assert(sizeof(std::time_t) >= 8, "Game clock needs 64-bit host time");
 using Clock = std::chrono::steady_clock;
 static volatile sig_atomic_t running = 1;
 static volatile sig_atomic_t framebuffer_metadata_requested = 0;
@@ -186,11 +192,13 @@ public:
   bool selected = false;
   unsigned end_count = 0;
   uint16_t default_firmware_flags = 0xe3c, default_firmware_op = 0;
+  std::array<uint16_t,4> default_clock_words{{0x0100,0x0601,0,0}};
   uint16_t begin(uint32_t select, uint16_t command) {
     history.push_back({select, command, {}});
     selected = true;
     if (response) return response(select, command, 0, command);
     if (command == 0x45) return 0x4657;
+    if (command == 0x47) return 0x5254;
     if (command == 0x40) {
       framebuffer_reply_index = 0;
       return framebufferWord();
@@ -200,6 +208,14 @@ public:
   uint16_t word(uint16_t value) {
     history.back().words.push_back(value);
     if (response) return response(history.back().select, history.back().command, history.back().words.size(), value);
+    if (history.back().command == 0x22) {
+      const auto position=history.back().words.size();
+      if(position<=4) default_clock_words[position-1]=value;
+    }
+    if (history.back().command == 0x47) {
+      const auto position=history.back().words.size();
+      return position==1 ? 0x101 : position>=2 && position<=5 ? default_clock_words[position-2] : 0;
+    }
     if (history.back().command == 0x45) {
       if (history.back().words.size() == 1) { default_firmware_op = value; return default_firmware_flags; }
       if (history.back().words.size() == 2) {
@@ -270,7 +286,11 @@ class Host {
   std::string game;
   std::optional<nds_firmware::Media> firmware;
   bool native_firmware = false, firmware_slot_mounted = false;
-  bool firmware_rtc_seeded = false;
+  bool game_clock_seeded = false, game_clock_pending = false, game_clock_failed = false;
+  uint32_t game_clock_sequence = 0;
+  uint64_t game_clock_request_ms = 0;
+  nds_clock::Date game_clock_request_time{};
+  std::function<nds_clock::Date()> game_clock_now = nds_clock::localNow;
   bool firmware_failed = false, firmware_error_dialog = false;
   std::string firmware_error_title, firmware_error_text, personal_settings_notice;
   uint64_t next_firmware_poll = 0;
@@ -482,6 +502,19 @@ class Host {
       live_status[0] = liveStatus();
       auto data = metadata.json(sequence, unsigned(getpid()), begin_us,
                                 end_us, live_status);
+      if (game_clock_seeded) {
+        // An explicitly requested diagnostic snapshot runs through the owner;
+        // no second process competes for GPIO/SPI or changes the DS clock.
+        const auto clock_begin=monotonic_us();
+        const auto clock=flushGameClock();
+        const auto date=nds_clock::unpack(clock.bytes);
+        std::ostringstream diagnostic;
+        diagnostic << "{\"date\":[";
+        for(unsigned i=0;i<date.size();++i) diagnostic << (i ? "," : "") << date[i];
+        diagnostic << "],\"write_sequence\":" << clock.sequence
+                   << ",\"begin_us\":" << clock_begin << ",\"end_us\":" << monotonic_us() << '}';
+        data.insert(data.rfind("\n}"), ",\n  \"game_clock\": " + diagnostic.str());
+      }
       if (firmware_diagnostics) {
         // This explicit snapshot runs inside the SPI owner's normal loop.
         // A diagnostic failure must not change firmware state or block video metadata.
@@ -1198,6 +1231,13 @@ class Host {
       require(ftruncate(heartbeat, s.size()) == 0, "heartbeat truncate");
       nextbeat = t + 500;
       serviceVideoMetadata();
+      if (game_clock_seeded) {
+        try { serviceGameClock(); }
+        catch (const std::exception &e) {
+          if (!game_clock_failed) firmwareError("Game clock save failed", e.what());
+          game_clock_failed = true;
+        }
+      }
     }
   }
   bool crtDirectVideo() const {
@@ -1951,27 +1991,113 @@ class Host {
     // An older core cannot release with an ignored upload/stale native profile.
     waitFirmware(0x21c, 0x21c, 3000, "built-in BIOS and personal settings upload");
   }
-  void seedFirmwareClock() {
-    if (firmware_rtc_seeded) return;
-    const auto now = std::time(nullptr);
-    std::tm date{};
-    if (now == std::time_t(-1) || !localtime_r(&now, &date) ||
-        date.tm_year < 100 || date.tm_year > 199)
-      throw std::runtime_error("Set the MiSTer clock to a date between 2000 and 2099 before booting DS firmware");
-    const auto bcd = [](unsigned value) { return uint8_t((value / 10) * 16 + value % 10); };
-    const std::array<uint8_t, 8> bytes{{bcd(unsigned(date.tm_year - 100)),
-        bcd(unsigned(date.tm_mon + 1)), bcd(unsigned(date.tm_mday)),
-        bcd(unsigned(date.tm_wday)), bcd(unsigned(date.tm_hour)),
-        bcd(unsigned(date.tm_min)), bcd(unsigned(std::min(date.tm_sec, 59))), 0}};
+  fs::path gameClockPath() const { return fs::path(kit) / "NDS_rtc.cfg"; }
+  nds_clock::Snapshot clockTransfer(bool request) {
+    nds_clock::Snapshot snapshot;
+    try {
+      if (spi.begin(Spi::IO, 0x47) != 0x5254)
+        throw std::runtime_error("Game clock requires the host and FPGA from the same RTC beta kit");
+      const auto flags = spi.word(request ? 1 : 0);
+      if ((flags & 0xfffe) != 0x100)
+        throw std::runtime_error("Unsupported game clock protocol");
+      snapshot.ready = flags & 1;
+      for (unsigned i=0;i<4;++i) {
+        const auto word=spi.word(0);
+        snapshot.bytes[i*2]=uint8_t(word);snapshot.bytes[i*2+1]=uint8_t(word>>8);
+      }
+      snapshot.sequence=spi.word(0);
+      snapshot.sequence|=uint32_t(spi.word(0))<<16;
+      spi.end();
+      return snapshot;
+    } catch (...) {spi.end();throw;}
+  }
+  void requestGameClock() {
+    // Reference the wall clock at capture request, not at the later host poll.
+    const auto now=game_clock_now();
+    clockTransfer(true);
+    game_clock_request_time=now;
+    game_clock_request_ms=ms();
+    game_clock_pending=true;
+  }
+  nds_clock::Snapshot waitGameClock() {
+    const auto deadline=ms()+100;
+    for (;;) {
+      const auto snapshot=clockTransfer(false);
+      if (snapshot.ready) return snapshot;
+      if (ms()>=deadline) throw std::runtime_error("Game clock did not acknowledge its snapshot");
+      usleep(100);
+    }
+  }
+  void persistGameClock(const nds_clock::Snapshot &snapshot) {
+    if (snapshot.sequence == game_clock_sequence) return;
+    const auto date=nds_clock::unpack(snapshot.bytes);
+    const auto offset=nds_clock::Offset::between(date,game_clock_request_time);
+    const auto contents=offset.serialize();
+    atomicFile(gameClockPath(), contents.data(), contents.size());
+    // Advance only after durable replacement. A failed write is retried using
+    // the same timestamp/snapshot, rather than losing or skewing the edit.
+    game_clock_sequence=snapshot.sequence;
+    game_clock_failed=false;
+    log("game clock edit saved sequence="+std::to_string(snapshot.sequence)+
+        " offset_seconds="+std::to_string(offset.seconds));
+  }
+  void serviceGameClock() {
+    if (game_clock_pending) {
+      const auto snapshot=clockTransfer(false);
+      if (!snapshot.ready) {
+        if (ms()-game_clock_request_ms>2000)
+          throw std::runtime_error("Game clock snapshot timed out");
+        return;
+      }
+      persistGameClock(snapshot);
+      game_clock_pending=false;
+    }
+    requestGameClock();
+  }
+  nds_clock::Snapshot flushGameClock() {
+    if (!game_clock_seeded) return {};
+    if (game_clock_pending) {
+      persistGameClock(waitGameClock());
+      game_clock_pending=false;
+    }
+    requestGameClock();
+    const auto snapshot=waitGameClock();
+    persistGameClock(snapshot);
+    game_clock_pending=false;
+    return snapshot;
+  }
+  void seedGameClock() {
+    if (game_clock_seeded) return;
+    // Reject an old core before sending a seed or claiming functional RTC.
+    clockTransfer(false);
+    nds_clock::Offset offset;
+    if (fs::exists(gameClockPath())) {
+      std::ifstream file(gameClockPath());
+      if (!file) throw std::runtime_error("Cannot read NDS_rtc.cfg");
+      const std::string text((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
+      if (file.bad()) throw std::runtime_error("Cannot read NDS_rtc.cfg");
+      offset=nds_clock::Offset::parse(text);
+    }
+    const auto date=offset.apply(game_clock_now());
+    const auto bytes=nds_clock::pack(date);
     try {
       spi.begin(Spi::IO, 0x22);
-      for (unsigned i = 0; i < bytes.size(); i += 2)
-        spi.word(uint16_t(bytes[i]) | uint16_t(bytes[i + 1]) << 8);
+      for (unsigned i=0;i<bytes.size();i+=2)
+        spi.word(uint16_t(bytes[i]) | uint16_t(bytes[i+1])<<8);
       spi.end();
-    } catch (...) { spi.end(); throw; }
-    // Native date edits remain authoritative for this standalone session.
-    // Guest resets and subsequent game/native transitions never reseed RTC.
-    firmware_rtc_seeded = true;
+    } catch (...) {spi.end();throw;}
+    requestGameClock();
+    const auto snapshot=waitGameClock();
+    const auto observed=nds_clock::seconds(nds_clock::unpack(snapshot.bytes));
+    const auto expected=nds_clock::seconds(date);
+    if (observed != expected && observed != (expected+1)%nds_clock::century_seconds)
+      throw std::runtime_error("FPGA did not accept the game clock seed");
+    game_clock_sequence=snapshot.sequence;
+    game_clock_pending=false;
+    game_clock_seeded=true;
+    log("game clock seeded " + std::to_string(date[0]+2000)+"-"+std::to_string(date[1])+"-"+
+        std::to_string(date[2])+" "+std::to_string(date[4])+":"+std::to_string(date[5])+":"+
+        std::to_string(date[6])+" offset_seconds="+std::to_string(offset.seconds));
   }
   void bootFirmware() {
     ensureFirmware(); // All native source/storage validation precedes CPU hold.
@@ -1983,7 +2109,7 @@ class Host {
     mountFirmware();
     beginLoading("DS firmware");
     uploadNativeFirmwareAssets();
-    seedFirmwareClock();
+    seedGameClock();
     firmwareControl(2);
     waitFirmware(0x43, 0x42, 3000, "native firmware release");
     native_firmware = true;
@@ -2700,6 +2826,7 @@ public:
     firmwareControl(1);
     flushFirmware();
     uploadDirectGameAssets();
+    seedGameClock();
     spi.cmd(Spi::FIO, 0x55, {RomLayout::index(file_size)});
     spi.cmd(Spi::FIO, 0x56, {0x2e4e, 0x4453});
     spi.cmd(Spi::FIO, 0x53, {255, uint16_t(file_size), uint16_t(file_size >> 16)});
@@ -2788,6 +2915,7 @@ public:
     // Neutral input first; service delayed dirty-sector requests before handing
     // off.
     clearConsoleInputs();
+    if (game_clock_seeded) { firmwareControl(1); flushGameClock(); }
     if (firmware_slot_mounted && !firmware_failed) {
       // A clean exit may follow SIGTERM (running=0); flush still owns SPI.
       const auto previous = running;

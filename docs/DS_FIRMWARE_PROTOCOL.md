@@ -131,13 +131,16 @@ toggle commits the bundle. A seed clears RTC power-loss bit 7, following
 melonDS. Keeping that bit set was verified to force first-time setup and
 discard the host date. Subsequent guest resets preserve the seeded clock.
 
-RTC date changes survive guest reset, but are not retained across standalone
-relaunch. Alarm interrupt generation and arbitrary physical touch-calibration
-curves are not implemented in this release. The GUI guard requires the
-supported ADC=pixel*16 calibration and preserves unsupported input unchanged.
-This restriction does not apply to game loading: games use generated calibration.
-The GUI RTC is selected only in native mode; its date/settings are not among
-the four fields shared into games.
+Games and the native GUI share this calendar. Its oscillator continues while
+CPUs are held for reset or loading. Host seeds occur before the first game or
+firmware release, and never replace guest edits on later loads or resets.
+The host preserves guest date/time edits as a durable civil-time offset in the
+kit's `NDS_rtc.cfg`; a later session adds the elapsed host time. See
+[Game clock](GAME_CLOCK.md) for the file and IO 0x47 snapshot protocol.
+
+Alarm interrupt generation and arbitrary physical touch-calibration curves
+are not implemented. The GUI guard requires ADC=pixel*16 calibration and
+preserves unsupported input unchanged. Game loading uses generated calibration.
 
 ## Optional user-supplied assets
 
