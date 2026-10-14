@@ -181,8 +181,23 @@ wire [31:0] firmware_profile_data,firmware_profile_offset,firmware_profile_check
 wire boot_ready_ddr=!firmware_hold && !firmware_fault &&
     (firmware_native ? (firmware_bios7_ready && firmware_bios9_ready &&
                        firmware_profile_ready && firmware_mounted) : cart_loaded_ddr);
-nds_firmware_control firmware_control (
+wire host_save_ready;
+wire [31:0] host_save_code;
+wire [3:0] host_save_type;
+(* async_reg="true" *) logic [2:0] host_save_ready_sync=0;
+always_ff @(posedge clk1x) host_save_ready_sync <= {host_save_ready_sync[1:0],host_save_ready};
+// The bundled code/type are immutable from profile commit until the next ROM
+// download, with CPUs held through both edges and a three-clock valid delay.
+nds_firmware_control #(
+`ifdef NDS_ARM_AREA
+    .HOST_SAVE_PROFILE(1)
+`else
+    .HOST_SAVE_PROFILE(0)
+`endif
+) firmware_control (
     .clk(ddr_clk),.clk7(clk1x),.clk9(clk2x),.reset(media_reset),
+    .cart_download(cart_download_raw),.cart_profile_ready(host_save_ready),
+    .cart_profile_code(host_save_code),.cart_profile_type(host_save_type),
     .io_enable(firmware_io_enable),.io_strobe(firmware_io_strobe),
     .io_din(firmware_io_din),.io_override(firmware_io_override),.io_dout(firmware_io_dout),
     .ioctl_download,.ioctl_wr,.ioctl_index,.ioctl_dout,.ioctl_addr,.ioctl_wait,
@@ -2089,6 +2104,9 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
 );
 
 nds_nitro_console_wrap #(
+`ifdef NDS_ARM_AREA
+    .GPU2D_A_ENABLE(0),.HOST_SAVE_PROFILE(1),
+`endif
 `ifdef NDS_HYBRID_3D
     .H3D_GX_READBACK_ENABLE(1'b1),
 `endif
@@ -2103,6 +2121,8 @@ nds_nitro_console_wrap #(
     .reset(console_reset_1x),.nds_on(nds_on),
     .direct_boot(!firmware_native_sync[1]),.fw_boot(firmware_native_sync[1]),
     .cart_present(!firmware_native_sync[1]),
+    .host_save_valid(host_save_ready_sync[2]),.host_save_code(host_save_code),
+    .host_save_type(host_save_type),
     .profile_valid(firmware_profile_sync[1]),.profile_addr(firmware_profile_addr),
     .profile_data(firmware_profile_data),.profile_fw_offset(firmware_profile_offset),
     .profile_fw_checksums(firmware_profile_checksums),

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Native firmware lifecycle and BIOS upload channel. All new control paths
 // remain idle during normal cartridge play. Assets change only while held.
-module nds_firmware_control #(parameter bit SIMULATE = 0) (
+// HOST_SAVE_PROFILE advertises flags[10]; FIO8 commits game code/type with a
+// protocol marker, and flags[11] gates direct release. See ARM_AREA_EXPERIMENT.
+module nds_firmware_control #(parameter bit SIMULATE = 0, parameter bit HOST_SAVE_PROFILE = 0) (
     input logic clk, clk7, clk9, reset,
     input logic io_enable, io_strobe,
     input logic [15:0] io_din,
@@ -11,6 +13,10 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
     input logic [15:0] ioctl_index, ioctl_dout,
     input logic [26:0] ioctl_addr,
     output logic ioctl_wait,
+    input logic cart_download,
+    output logic cart_profile_ready,
+    output logic [31:0] cart_profile_code,
+    output logic [3:0] cart_profile_type,
     input logic mounted, clean, cache_fault, persist_pending,
     input logic [15:0] persist_sequence,
     output logic hold_console, native_mode,
@@ -39,12 +45,13 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
     logic [2:0] io_count=0;
     logic selected=0;
     logic active=0, finishing=0, transfer_bad=0;
-    logic [2:0] asset=0;
+    logic [3:0] asset=0;
+    logic cart_download_d=0;
     logic [14:0] received=0;
-    wire asset_index=ioctl_index==4 || ioctl_index==5 || ioctl_index==6 || ioctl_index==7;
+    wire asset_index=ioctl_index==4 || ioctl_index==5 || ioctl_index==6 || ioctl_index==7 || (HOST_SAVE_PROFILE && ioctl_index==8);
     wire asset_download=ioctl_download && asset_index;
-    wire [14:0] expected=asset==4?15'd16384:asset==5?15'd4096:asset==7?15'd512:15'd120;
-    wire [15:0] flags={6'd0,direct_profile_ready,persist_pending,fault,mounted,clean,
+    wire [14:0] expected=asset==8?15'd8:asset==4?15'd16384:asset==5?15'd4096:asset==7?15'd512:15'd120;
+    wire [15:0] flags={4'd0,cart_profile_ready,HOST_SAVE_PROFILE,direct_profile_ready,persist_pending,fault,mounted,clean,
         profile_ready,bios9_ready,bios7_ready,native_mode,hold_console};
     assign fault=control_fault | cache_fault;
     assign io_override=io_enable && selected;
@@ -76,7 +83,7 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
     // accepts one host halfword and returns one little-endian loader word.
     // Explicit RAM avoids Quartus implementing the partial-write array as FFs.
     wire profile_write=active && !transfer_bad && ioctl_wr &&
-        ioctl_download && ioctl_index=={13'd0,asset} && ioctl_addr=={12'd0,received} &&
+        ioctl_download && ioctl_index=={12'd0,asset} && ioctl_addr=={12'd0,received} &&
         ((asset==6 && received>=8 && received<120) ||
          (asset==7 && received<112)) && hold_console;
     wire [5:0] profile_write_addr=asset==7?received[6:1]:received[6:1]-6'd4;
@@ -112,6 +119,7 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
     always_ff @(posedge clk) begin
         send7<=0;send9<=0;send_builtin<=0;flush_req<=0;commit_ack<=0;
         if(reset) begin
+            cart_profile_ready<=0;cart_profile_code<=0;cart_profile_type<=0;cart_download_d<=0;
             hold_console<=0;native_mode<=0;bios7_ready<=0;bios9_ready<=0;
             profile_ready<=0;direct_profile_ready<=0;control_fault<=0;error_code<=0;
             io_count<=0;selected<=0;io_dout<=0;operation<=0;
@@ -119,6 +127,11 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
             profile_fw_offset<=32'h0001fe00;profile_fw_checksums<=32'h00000000;
             commit_sequence<=0;upload_addr<=0;upload_data<=0;
         end else begin
+            cart_download_d<=cart_download;
+            // A reset of the guest retains the current cartridge's metadata;
+            // every new ROM download invalidates it, even for the same code.
+            if(HOST_SAVE_PROFILE && cart_download && !cart_download_d)
+                cart_profile_ready<=0;
             if(!io_enable) begin io_count<=0;selected<=0;io_dout<=0;end
             else if(io_strobe) begin
                 if(io_count!=7) io_count<=io_count+1'b1;
@@ -142,6 +155,7 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
                             3: begin
                                 if(hold_console && !fault && !active && !ioctl_wait &&
                                    bios7_ready && bios9_ready && direct_profile_ready &&
+                                   (!HOST_SAVE_PROFILE || cart_profile_ready) &&
                                    (!mounted || clean)) begin
                                     native_mode<=0;hold_console<=0;
                                 end else begin control_fault<=1;error_code<=16'd3;end
@@ -157,9 +171,10 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
                 endcase
             end
             if(!active && !finishing && asset_download) begin
-                active<=1;asset<=ioctl_index[2:0];received<=0;
+                active<=1;asset<=ioctl_index[3:0];received<=0;
                 transfer_bad<=!hold_console;
                 case(ioctl_index)
+                    8: cart_profile_ready<=0;
                     4: bios7_ready<=0;
                     5: bios9_ready<=0;
                     6: begin profile_ready<=0;direct_profile_ready<=0;end
@@ -174,7 +189,7 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
                 if(!hold_console) begin control_fault<=1;error_code<=16'd8;end
             end
             if(active && ioctl_wr && ioctl_download) begin
-                if(!hold_console || ioctl_index!={13'd0,asset} ||
+                if(!hold_console || ioctl_index!={12'd0,asset} ||
                    ioctl_addr!={12'd0,received} || received>=expected ||
                    busy7 || busy9 || busy_builtin || send7 || send9 || send_builtin) begin
                     transfer_bad<=1;control_fault<=1;error_code<=16'd9;
@@ -184,6 +199,19 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
                     if(asset==4) send7<=1;
                     else if(asset==5) send9<=1;
                     else if(asset==7) send_builtin<=1;
+                    else if(asset==8) begin
+                        case(received)
+                            0: cart_profile_code[15:0]<=ioctl_dout;
+                            2: cart_profile_code[31:16]<=ioctl_dout;
+                            4: begin
+                                cart_profile_type<=ioctl_dout[3:0];
+                                if(ioctl_dout>7) begin transfer_bad<=1;control_fault<=1;error_code<=16'd11;end
+                            end
+                            6: if(ioctl_dout!=16'h5351) begin
+                                transfer_bad<=1;control_fault<=1;error_code<=16'd11;
+                            end
+                        endcase
+                    end
                     else case(received)
                         0: profile_fw_offset[15:0]<=ioctl_dout;
                         2: profile_fw_offset[31:16]<=ioctl_dout;
@@ -196,6 +224,7 @@ module nds_firmware_control #(parameter bit SIMULATE = 0) (
             if(finishing && !busy7 && !busy9 && !busy_builtin && !send7 && !send9 && !send_builtin) begin
                 finishing<=0;
                 if(!transfer_bad && received==expected) case(asset)
+                    8: cart_profile_ready<=1;
                     4: bios7_ready<=1;
                     5: bios9_ready<=1;
                     6: profile_ready<=1;

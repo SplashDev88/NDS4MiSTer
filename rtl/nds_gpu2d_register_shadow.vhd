@@ -20,8 +20,11 @@ use work.pProc_bus_gba.all;
 -- MASTER_BRIGHT is readable too: retain its programmed factor and mode so
 -- a software fade can change one field without clearing the other.
 -- This module does not enable rendering or transport for Engine B. The
--- 0xC0B1FFF7 mask matches melonDS's Engine-B register semantics.
+-- 0xC0B1FFF7 mask matches melonDS's Engine-B register semantics. Engine A
+-- retains the original GPU's full DISPCNT, full address decode and bus reset.
+-- This allows its private drawers to disappear when ARM owns the full frame.
 entity nds_gpu2d_register_shadow is
+   generic (is_engine_b : boolean := true);
    port
    (
       clk        : in  std_logic;
@@ -33,24 +36,33 @@ entity nds_gpu2d_register_shadow is
 end entity;
 
 architecture rtl of nds_gpu2d_register_shadow is
+   function display_mask return std_logic_vector is
+   begin
+      if is_engine_b then return x"C0B1FFF7"; end if;
+      return x"FFFFFFFF";
+   end function;
+   signal address_selected : boolean;
    signal disp_cnt : std_logic_vector(31 downto 0) := (others => '0');
    signal bg01_cnt, bg23_cnt : std_logic_vector(31 downto 0) := (others => '0');
    signal win_cnt, blend_cnt : std_logic_vector(31 downto 0) := (others => '0');
    signal master_bright : std_logic_vector(15 downto 0) := (others => '0');
 begin
+   -- Engine A must decode the full address like the original eProcReg bank.
+   -- Engine B keeps its existing translated-window behavior.
+   address_selected <= is_engine_b or gb_bus.Adr(27 downto 12) = x"0000";
    process (clk)
       variable next_disp_cnt : std_logic_vector(31 downto 0);
       variable next_effect_cnt : std_logic_vector(31 downto 0);
    begin
       if rising_edge(clk) then
-         if reset = '1' or gb_bus.rst = '1' then
+         if (is_engine_b and reset = '1') or gb_bus.rst = '1' then
             disp_cnt <= (others => '0');
             bg01_cnt <= (others => '0');
             bg23_cnt <= (others => '0');
             win_cnt <= (others => '0');
             blend_cnt <= (others => '0');
             master_bright <= (others => '0');
-         elsif gb_bus.ena = '1' and gb_bus.rnw = '0' and
+         elsif address_selected and gb_bus.ena = '1' and gb_bus.rnw = '0' and
                gb_bus.Adr(11 downto 0) = x"06C" then
             if gb_bus.bEna(0) = '1' then
                master_bright(7 downto 0) <= gb_bus.Din(7 downto 0) and x"1F";
@@ -58,7 +70,7 @@ begin
             if gb_bus.bEna(1) = '1' then
                master_bright(15 downto 8) <= gb_bus.Din(15 downto 8) and x"C0";
             end if;
-         elsif gb_bus.ena = '1' and gb_bus.rnw = '0' and
+         elsif address_selected and gb_bus.ena = '1' and gb_bus.rnw = '0' and
                (gb_bus.Adr(11 downto 0) = x"048" or
                 gb_bus.Adr(11 downto 0) = x"050") then
             if gb_bus.Adr(4) = '0' then
@@ -79,7 +91,7 @@ begin
                -- Rendering clamps them to 16 separately in the ARM helper.
                blend_cnt <= next_effect_cnt and x"1F1F3FFF";
             end if;
-         elsif gb_bus.ena = '1' and gb_bus.rnw = '0' and
+         elsif address_selected and gb_bus.ena = '1' and gb_bus.rnw = '0' and
                (gb_bus.Adr(11 downto 0) = x"008" or
                 gb_bus.Adr(11 downto 0) = x"00C") then
             for lane in 0 to 3 loop
@@ -93,7 +105,7 @@ begin
                   end if;
                end if;
             end loop;
-         elsif gb_bus.ena = '1' and gb_bus.rnw = '0' and
+         elsif address_selected and gb_bus.ena = '1' and gb_bus.rnw = '0' and
                gb_bus.Adr(11 downto 0) = x"000" then
             next_disp_cnt := disp_cnt;
             for lane in 0 to 3 loop
@@ -102,7 +114,7 @@ begin
                      gb_bus.Din(lane * 8 + 7 downto lane * 8);
                end if;
             end loop;
-            disp_cnt <= next_disp_cnt and x"C0B1FFF7";
+            disp_cnt <= next_disp_cnt and display_mask;
          end if;
       end if;
    end process;
@@ -111,24 +123,26 @@ begin
    begin
       wired_out <= (others => '0');
       wired_done <= '0';
-      if gb_bus.Adr(11 downto 0) = x"000" then
-         wired_out <= disp_cnt;
-         wired_done <= '1';
-      elsif gb_bus.Adr(11 downto 0) = x"008" then
-         wired_out <= bg01_cnt;
-         wired_done <= '1';
-      elsif gb_bus.Adr(11 downto 0) = x"00C" then
-         wired_out <= bg23_cnt;
-         wired_done <= '1';
-      elsif gb_bus.Adr(11 downto 0) = x"048" then
-         wired_out <= win_cnt;
-         wired_done <= '1';
-      elsif gb_bus.Adr(11 downto 0) = x"050" then
-         wired_out <= blend_cnt;
-         wired_done <= '1';
-      elsif gb_bus.Adr(11 downto 0) = x"06C" then
-         wired_out <= x"0000" & master_bright;
-         wired_done <= '1';
+      if address_selected then
+         if gb_bus.Adr(11 downto 0) = x"000" then
+            wired_out <= disp_cnt;
+            wired_done <= '1';
+         elsif gb_bus.Adr(11 downto 0) = x"008" then
+            wired_out <= bg01_cnt;
+            wired_done <= '1';
+         elsif gb_bus.Adr(11 downto 0) = x"00C" then
+            wired_out <= bg23_cnt;
+            wired_done <= '1';
+         elsif gb_bus.Adr(11 downto 0) = x"048" then
+            wired_out <= win_cnt;
+            wired_done <= '1';
+         elsif gb_bus.Adr(11 downto 0) = x"050" then
+            wired_out <= blend_cnt;
+            wired_done <= '1';
+         elsif gb_bus.Adr(11 downto 0) = x"06C" then
+            wired_out <= x"0000" & master_bright;
+            wired_done <= '1';
+         end if;
       end if;
    end process;
 end architecture;

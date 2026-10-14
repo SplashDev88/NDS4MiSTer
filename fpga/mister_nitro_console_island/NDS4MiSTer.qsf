@@ -1,3 +1,4 @@
+set_global_assignment -name VERILOG_MACRO "NDS_ARM_AREA=1"
 set_global_assignment -name TOP_LEVEL_ENTITY sys_top
 # Isolated paired-display experiment, not a production default.
 set_global_assignment -name VERILOG_MACRO "NDS_MATCHED_DISPLAY_TEST=1"

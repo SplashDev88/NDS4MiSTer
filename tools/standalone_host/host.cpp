@@ -2,6 +2,7 @@
 // NDS experimental standalone host. Protocol derived from MiSTer Main (GPLv3).
 // See THIRD_PARTY.md. Copyright 2026 NDS4MiSTer contributors.
 #include "firmware_media.h"
+#include "save_profiles.h"
 #include "font.h"
 #include "framebuffer_metadata.h"
 #include "freebios_media.h"
@@ -181,7 +182,7 @@ public:
   std::function<uint16_t(uint32_t, uint16_t, size_t, uint16_t)> response;
   bool selected = false;
   unsigned end_count = 0;
-  uint16_t default_firmware_flags = 0x23c, default_firmware_op = 0;
+  uint16_t default_firmware_flags = 0xe3c, default_firmware_op = 0;
   uint16_t begin(uint32_t select, uint16_t command) {
     history.push_back({select, command, {}});
     selected = true;
@@ -1225,6 +1226,7 @@ class Host {
     neutralInput();
   }
   void reset() {
+    requireHostSaveProfile();
     firmwareControl(1);
     clearConsoleInputs();
     flushFirmware();
@@ -1709,6 +1711,16 @@ class Host {
       return result;
     } catch (...) { spi.end(); throw; }
   }
+  void requireHostSaveProfile() {
+    if (!(firmwareControl().flags & 0x400))
+      throw std::runtime_error("This host requires the matching ARM-area FPGA core. Load the host and core from the same beta kit.");
+  }
+  void uploadSaveProfile(uint32_t code) {
+    const std::array<uint8_t, 8> bytes = {uint8_t(code), uint8_t(code >> 8),
+      uint8_t(code >> 16), uint8_t(code >> 24), nds_save_profile::lookup(code), 0, 0x51, 0x53};
+    uploadAsset(8, bytes);
+    waitFirmware(0xc00, 0xc00, 3000, "cartridge save profile upload");
+  }
   void firmwareError(const std::string &title, const std::string &detail) {
     firmware_error_title = title;
     firmware_error_text = detail;
@@ -1861,6 +1873,7 @@ class Host {
   }
   void bootFirmware() {
     ensureFirmware(); // All native source/storage validation precedes CPU hold.
+    requireHostSaveProfile();
     firmwareControl(1);
     clearConsoleInputs();
     drain(450);
@@ -2438,6 +2451,7 @@ public:
     const auto storage_size = RomLayout::storageSize(file_size);
     // Reserve every destination before touching FIO. Large files use the
     // separate rotated bank; graphics/control memory keeps its existing owner.
+    requireHostSaveProfile();
     RomMapping mapping(file_size);
     firmwareControl(1);
     flushFirmware();
@@ -2468,9 +2482,13 @@ public:
     }
     service();
     __sync_synchronize();
+    const auto *header = static_cast<const uint8_t *>(mapping.at(0).data);
+    const uint32_t game_code = uint32_t(header[12]) | uint32_t(header[13]) << 8 |
+                               uint32_t(header[14]) << 16 | uint32_t(header[15]) << 24;
     mapping.reset();
     mount(path);
     spi.cmd(Spi::FIO, 0x53, {0});
+    uploadSaveProfile(game_code);
     firmwareControl(3);
     waitFirmware(3, 0, 3000, "direct game boot release");
     native_firmware = false;

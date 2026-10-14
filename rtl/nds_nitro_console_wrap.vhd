@@ -29,6 +29,8 @@ entity nds_nitro_console_wrap is
       -- build from silently using the 3x phase gate under a 4x PLL.
       CLKMEM_RATIO     : integer := 3;
       H3D_GX_READBACK_ENABLE : std_logic := '0';
+      GPU2D_A_ENABLE : integer := 1;
+      HOST_SAVE_PROFILE : integer := 0;
       H3D_MATCHED_DISPLAY_TEST : integer := 0;
       SOUND_DIAGNOSTICS : integer := 0;
       SOUND_STREAM_DIAGNOSTICS : integer := 0
@@ -46,6 +48,10 @@ entity nds_nitro_console_wrap is
       -- instead of HLE direct boot. See the header note on ARCHITECTURE.md.
       fw_boot          : in  std_logic;
       cart_present     : in  std_logic := '1';
+      -- Immutable per-cartridge host metadata; validity is synchronized outside.
+      host_save_valid : in std_logic := '0';
+      host_save_code : in std_logic_vector(31 downto 0) := (others => '0');
+      host_save_type : in std_logic_vector(3 downto 0) := (others => '0');
       -- Selected effective firmware user settings, 28 little-endian words.
       -- profile_data may have one clk1x cycle of latency.
       profile_valid    : in  std_logic := '0';
@@ -366,6 +372,7 @@ begin
    -- whole of nds_sound, and it stays the reference the daemon is judged
    -- against until 1-4 in that document are proved.
    generic map (
+      GPU2D_A_ENABLE => GPU2D_A_ENABLE, HOST_SAVE_PROFILE => HOST_SAVE_PROFILE,
       GPU_FAST => 0, GPU2D_B_ENABLE => 0,
       H3D_MATCHED_DISPLAY_TEST => H3D_MATCHED_DISPLAY_TEST,
       SOUND_ENABLE => 1, SOUND_DIAGNOSTICS => SOUND_DIAGNOSTICS,
@@ -384,6 +391,8 @@ begin
       direct_boot      => direct_boot,
       fw_boot          => fw_boot,
       cart_present     => cart_present,
+      host_save_valid => host_save_valid, host_save_code => host_save_code,
+      host_save_type => host_save_type,
       profile_valid    => profile_valid,
       profile_addr     => profile_addr,
       profile_data     => profile_data,

@@ -59,8 +59,8 @@ struct HostTest {
       if (t.select == Spi::FIO && t.command == 0x53) downloads.push_back(t.words);
       if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
     }
-    assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 512, 0}, {0}}));
-    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {3}}));
+    assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 512, 0}, {0}, {1, 0, 0}, {0}}));
+    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {3}, {8}}));
     uint64_t age, maximum_age = 0;
     std::ifstream observer(rom_test_observer);
     while (observer >> age) maximum_age = std::max(maximum_age, age);
@@ -217,8 +217,8 @@ struct HostTest {
       if (t.select == Spi::FIO && t.command == 0x53) downloads.push_back(t.words);
       if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
     }
-    assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 0, 0x2000}, {0}}));
-    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {0x303}}));
+    assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 0, 0x2000}, {0}, {1, 0, 0}, {0}}));
+    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {0x303}, {8}}));
     assert(h.game == large && h.loading_progress == 167);
     std::ifstream saved_file(sd / "saves/NDS/loader.sav", std::ios::binary);
     assert(std::string(std::istreambuf_iterator<char>(saved_file), {}) == saved_bytes);
@@ -240,7 +240,7 @@ struct HostTest {
         if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
       const uint16_t expected_index = size > 256ull * 1024 * 1024 ? 0x303 :
                                       size > 128ull * 1024 * 1024 ? 0x103 : 3;
-      assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {expected_index}}));
+      assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {expected_index}, {8}}));
     }
     std::cout << "PASS: legacy/LR1/512 protocol modes at both capacity boundaries\n";
     // Exercise actual Host::load against persistent file-backed physical DDR:

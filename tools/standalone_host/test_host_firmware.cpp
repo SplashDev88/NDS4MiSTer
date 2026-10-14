@@ -34,9 +34,9 @@ struct HostTest {
     struct Request { unsigned slot, op; uint32_t lba; nds_firmware::Sector data; };
     Host &host;
     std::deque<Request> requests;
-    uint16_t flags = 0x20, sequence = 7, error = 0, operation = 0;
+    uint16_t flags = 0x420, sequence = 7, error = 0, operation = 0;
     uint16_t index = 0;
-    nds_firmware::Bytes asset, profile, game_pages;
+    nds_firmware::Bytes asset, profile, game_pages, save_profile;
     unsigned durable_acks = 0, clock_seeds = 0;
     std::array<uint16_t, 4> clock_words{};
     bool write_transferred = false, fail_upload = false, suppress_direct_ready = false;
@@ -53,13 +53,18 @@ struct HostTest {
         if (cmd == 0x53 && position == 1) {
           if (value) {
             asset.clear();
+            if (index == 3 || index == 0xc0 || index == 8) flags &= ~0x800;
             if (index == 4) flags &= ~4;
             if (index == 5) flags &= ~8;
             if (index == 6 || index == 7) flags &= ~0x210;
-          } else if (index >= 4 && index <= 7) {
-            const size_t expected = index == 4 ? 16384 : index == 5 ? 4096 : index == 6 ? 120 : 512;
+          } else if (index >= 4 && index <= 8) {
+            const size_t expected = index == 8 ? 8 : index == 4 ? 16384 : index == 5 ? 4096 : index == 6 ? 120 : 512;
             if (asset.size() == expected) {
-              if (index == 7) {
+              if (index == 8) {
+                assert(asset[4] <= 7 && asset[5] == 0 && asset[6] == 0x51 && asset[7] == 0x53);
+                save_profile = asset;
+                flags |= 0x800;
+              } else if (index == 7) {
                 game_pages = asset;
                 flags |= suppress_direct_ready ? 0x10 : 0x210;
               } else {
@@ -82,7 +87,7 @@ struct HostTest {
         if (position == 2) {
           if (operation == 1) { flags = (flags | 1) & ~0x80; error = 0; }
           if (operation == 2) { assert(clock_seeds == 1); assert((flags & 0x5c) == 0x5c); flags = (flags | 2) & ~1; }
-          if (operation == 3) { assert((flags & 0x23c) == 0x23c); flags &= ~3; }
+          if (operation == 3) { assert((flags & 0xa3c) == 0xa3c); flags &= ~3; }
           if (operation == 4 && requests.empty()) flags |= 0x20;
           if (operation == 5) {
             assert(value == sequence && (flags & 0x100) && write_transferred);
@@ -193,7 +198,8 @@ struct HostTest {
     // Diagnostics off: explicit video metadata never adds a firmware query.
     host.spi.history.clear(); framebuffer_metadata_requested = 1;
     host.serviceFramebufferMetadataRequest();
-    assert(host.spi.history.size() == 1 && host.spi.history[0].command == 0x40);
+    assert(host.spi.history.size() == 2 && host.spi.history[0].command == 0x40 &&
+           host.spi.history[1].command == 0x23);
     const auto metadataPath = kit / "framebuffer-metadata.json";
     const auto metadataText = [&] {
       const auto bytes = readBytes(metadataPath);
@@ -221,8 +227,8 @@ struct HostTest {
     assert(host.firmware_last_lba == 0 && host.firmware_unique_lbas_logged == 1);
     host.spi.history.clear(); framebuffer_metadata_requested = 1;
     host.serviceFramebufferMetadataRequest();
-    assert(host.spi.history.size() == 2 && host.spi.history[0].command == 0x40 &&
-           host.spi.history[1].command == 0x45);
+    assert(host.spi.history.size() == 3 && host.spi.history[0].command == 0x40 &&
+           host.spi.history[1].command == 0x45 && host.spi.history[2].command == 0x23);
     assert(metadataText().find("\"controller_status_available\":true") != std::string::npos);
     assert(metadataText().find("\"reads_completed\":1") != std::string::npos);
     assert(metadataText().find("\"flags\":" + std::to_string(device.flags)) != std::string::npos);
@@ -298,7 +304,8 @@ struct HostTest {
     assert(host.firmware_write_requests == 2 && host.firmware_writes_durable == 1);
     host.spi.history.clear(); framebuffer_metadata_requested = 1;
     host.serviceFramebufferMetadataRequest();
-    assert(host.spi.history.size() == 2 && host.spi.history[1].command == 0x45);
+    assert(host.spi.history.size() == 3 && host.spi.history[1].command == 0x45 &&
+           host.spi.history[2].command == 0x23);
     assert(metadataText().find("\"error\":6") != std::string::npos);
     assert(metadataText().find("\"writes_durable\":1") != std::string::npos);
     assert(device.durable_acks == 1 && (device.flags & 0x100));
@@ -339,7 +346,20 @@ struct HostTest {
       }
       assert(device.game_pages.size() == 512 && (device.flags & 0x200));
     };
+    // New host rejects an old core before any firmware/ROM upload or CPU hold.
+    device.flags &= ~0x400; host.spi.history.clear();
+    bool incompatible = false;
+    try { host.load(rom.string()); } catch (const std::exception &e) {
+      incompatible = std::string(e.what()).find("matching ARM-area") != std::string::npos;
+    }
+    assert(incompatible);
+    for (const auto &t : host.spi.history) {
+      assert(t.select != Spi::FIO);
+      if (t.command == 0x45) assert(t.words[0] == 0);
+    }
+    device.flags |= 0x400;
     host.load(rom.string()); verify();
+    assert(device.save_profile == nds_firmware::Bytes({0x5a,0x5a,0x5a,0x5a,1,0,0x51,0x53}));
     assert(std::equal(device.game_pages.begin(), device.game_pages.end(), nds_firmware::builtin_user_pages.begin()));
     assert(!fs::exists(host.firmwarePath()) && readBytes(legacy) == legacySaved);
     // Supplied files existing (even invalid) are irrelevant to a normal game.

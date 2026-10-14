@@ -62,6 +62,8 @@ entity nds_nitro_console_top is
       -- the renderer 6390 cycles per scanline instead of 2130. A rendered line
       -- measures 5829 cycles, so it only fits the former. See nds_gpu2d_fast.
       GPU_FAST                 : integer   := 0;
+      GPU2D_A_ENABLE : integer := 1;
+      HOST_SAVE_PROFILE : integer := 0;
       H3D_MATCHED_DISPLAY_TEST  : integer   := 0;
       -- Diagnostic area split: 0 removes engine B and mirrors engine A onto
       -- both physical screens.  This keeps NSMB's main-screen BG2/HDMA and
@@ -141,6 +143,10 @@ entity nds_nitro_console_top is
       -- Booting the firmware addresses the cause rather than the symptoms.
       fw_boot          : in  std_logic := '0';
       cart_present     : in  std_logic := '1';
+      -- Immutable per-cartridge host metadata; validity is synchronized outside.
+      host_save_valid : in std_logic := '0';
+      host_save_code : in std_logic_vector(31 downto 0) := (others => '0');
+      host_save_type : in std_logic_vector(3 downto 0) := (others => '0');
       -- Selected effective firmware user settings, 28 little-endian words.
       -- profile_data may have one clk1x cycle of latency.
       profile_valid    : in  std_logic := '0';
@@ -586,6 +592,7 @@ architecture arch of nds_nitro_console_top is
    signal ld_save_is_64k : std_logic;
    signal ld_save_gamecode : std_logic_vector(31 downto 0);
    signal ld_save_gamecode_valid : std_logic;
+   signal save_profile_error : std_logic := '0';
    signal save_profile_busy : std_logic;
    signal save_profile_valid_s : std_logic;
    signal save_profile_type_s : std_logic_vector(3 downto 0);
@@ -1283,7 +1290,7 @@ begin
                   boot_state <= B_LDWAIT;
 
                when B_LDWAIT =>
-                  if (ld_error = '1') then
+                  if (ld_error = '1' or save_profile_error = '1') then
                      boot_state <= B_ERROR;
                   elsif (ld_done = '1' and ld_busy = '0' and
                          vclr_busy = '0' and pclr_busy_a = '0' and pclr_busy_b = '0' and
@@ -1422,21 +1429,35 @@ begin
       vfy_bad => dbg_vfy_bad, vfy_addr => dbg_vfy_addr
    );
 
-   isaveprofile : nds_nitro_save_profile
-   generic map
-   (
-      PREFIX_COUNT => 368
-   )
-   port map
-   (
-      clk => clk1x,
-      reset => reset_boot,
-      start => ld_save_gamecode_valid,
-      game_code => ld_save_gamecode,
-      busy => save_profile_busy,
-      valid => save_profile_valid_s,
-      save_type => save_profile_type_s
-   );
+   g_fpga_save_profile : if HOST_SAVE_PROFILE = 0 generate
+   begin
+      save_profile_error <= '0';
+      isaveprofile : nds_nitro_save_profile
+      generic map
+      (
+         PREFIX_COUNT => 368
+      )
+      port map
+      (
+         clk => clk1x,
+         reset => reset_boot,
+         start => ld_save_gamecode_valid,
+         game_code => ld_save_gamecode,
+         busy => save_profile_busy,
+         valid => save_profile_valid_s,
+         save_type => save_profile_type_s
+      );
+
+   end generate;
+   g_host_save_profile : if HOST_SAVE_PROFILE /= 0 generate
+   begin
+      profile : entity work.nds_host_save_profile
+         port map(clk => clk1x, reset => reset_boot, start => ld_save_gamecode_valid,
+                  game_code => ld_save_gamecode, host_valid => host_save_valid,
+                  host_code => host_save_code, host_type => host_save_type,
+                  busy => save_profile_busy, valid => save_profile_valid_s,
+                  save_type => save_profile_type_s, fault => save_profile_error);
+   end generate;
 
    arm9_entry_eff <= x"FFFF0000" when (fw_boot = '1') else arm9_entry;
    arm7_entry_eff <= x"00000000" when (fw_boot = '1') else arm7_entry;
@@ -2930,7 +2951,7 @@ begin
    -- directly in that branch so its registered H3D seam stays in clk1x.  The
    -- superseded experimental fast branch is retained for diagnostic builds;
    -- it intentionally receives no H3D plane and exports an idle seam.
-   g_gpu2d_a_slow : if GPU_FAST = 0 generate
+   g_gpu2d_a_slow : if GPU2D_A_ENABLE /= 0 and GPU_FAST = 0 generate
    begin
       igpu2d_a : entity work.nds_gpu2d
       generic map ( is_simu => is_simu )
@@ -2972,7 +2993,7 @@ begin
       );
    end generate;
 
-   g_gpu2d_a_fast : if GPU_FAST /= 0 generate
+   g_gpu2d_a_fast : if GPU2D_A_ENABLE /= 0 and GPU_FAST /= 0 generate
    begin
       g_bg_lcdc <= '0';
       h3d_line_request <= '0';
@@ -3008,6 +3029,28 @@ begin
          pixel_out_data => pxa_data, pixel_out_we => pxa_we,
          dbg_bg1_scroll_triplet => bg1_scroll_renderer_diag
       );
+   end generate;
+
+   g_no_gpu2d_a : if GPU2D_A_ENABLE = 0 generate
+   begin
+      assert H3D_MATCHED_DISPLAY_TEST /= 0
+         report "Engine A drawer removal requires complete ARM frame ownership" severity failure;
+      registers : entity work.nds_gpu2d_register_shadow
+         generic map (is_engine_b => false)
+         port map (clk1x, resetCpu, io_bus9, g2d_wired_out, g2d_wired_done);
+      -- Only private drawer memories disappear. Architectural palette readback,
+      -- VRAM, event capture, LCD/IRQ/DMA timing and frame publication stay live.
+      pclr_busy_a <= '0';
+      line_busy <= '0'; epfill_busy <= '0';
+      r_bg_req <= '0'; r_obj_req <= '0';
+      r_bgep_req <= '0'; r_objep_req <= '0';
+      g_bg_addr <= 0; g_obj_addr <= 0;
+      g_bgep_addr <= 0; g_objep_addr <= 0; g_bg_lcdc <= '0';
+      pxa_x <= 0; pxa_y <= 0; pxa_data <= (others => '0'); pxa_we <= '0';
+      h3d_line_request <= '0'; h3d_line_request_y <= 0;
+      h3d_merge_line_start <= '0'; h3d_merge_line_end <= '0';
+      h3d_merge_pixel_x <= 0; h3d_merge_pixel_y <= 0;
+      bg1_scroll_renderer_diag <= (others => '0');
    end generate;
 
    -- Temporary query observation is absent; retain the wrapper port ABI.
