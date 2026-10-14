@@ -1,54 +1,59 @@
-NDS4MiSTer v0.9.0-rc.7 — Standalone
+NDS4MiSTer v0.9.0-rc.7-split.8.6 — Experimental standalone beta
 
-Prepared locally for release review. Packaging does not publish anything.
-The source tree contains corresponding sources, licences and build scripts
-for all shipped components; private development data is not required.
+This tree contains corresponding source, licences and build scripts for the
+tested split.8.6 package. Private development data is not a build dependency.
+The release retains the tested install ZIP without rebuilding its binaries.
 
-The exact full-featured CLEAN1 FPGA tested on 2026-10-12 is retained. It fixes
-native CRT presentation at 262 lines, removes temporary FPGA probes, and retains
-all display/gameplay features with a bit-exact nearest-scaler refactor.
-The exact public rc.6 host and renderer binaries remain unchanged. The host's
-compiled version label and tools/standalone_host/VERSION therefore stay rc.6.
-The rc.7 package and supervisor identify the release; EXPECTED_CORE pins the
-new hardware-tested FPGA. No gameplay clocks or runtime speed options change.
+Source identities
+- Runtime / FPGA source: 9add3a7818832558f8e41ebb1ab722babdeba026.
+- Install ZIP packaging source: 9e5a37a6415cbc29e75f15b183d746a77991d48f.
+- The release tag adds the current bug form, publication documentation and
+  refreshed source checksums. Runtime inputs are unchanged from those revisions.
+- Historical rc.6/rc.7 build records describe their named older releases.
+  Use docs/release/RELEASE_SPLIT86.json for this beta's binary identities.
 
-Build and validation records:
-  docs/RELEASE_BUILD_V090_RC7.json
-  docs/FPGA_BUILD_V090_RC7.json
-  docs/FPGA_SOURCE_INPUTS_V090_RC7.json (all 1,328 frozen FPGA inputs)
-  docs/HARDWARE_VALIDATION_V090_RC7.json
-  docs/STANDALONE_FRONTEND_BUILD_V090_RC6.json (unchanged host inputs)
-  docs/RUNTIME_INPUTS_V090_RC7.json
+Build and validation records
+  docs/release/FPGA_SOURCE_INPUTS_SPLIT86.json (frozen FPGA input hashes)
+  docs/release/RELEASE_SPLIT86.json (package, components and build results)
+  docs/release/VALIDATION_SPLIT86.md (bounded hardware/software results)
+  docs/RELEASE_NOTES_SPLIT86.md (installation and known limits)
+  docs/GAME_CLOCK.md (clock behavior and persistence)
 Top-level SHA256SUMS covers every tracked source file except itself.
 
-Build entry points:
+Build entry points
 - FPGA: fpga/mister_nitro_console_island/NDS4MiSTer.qpf; Quartus Prime
-  17.0.2 Build 602 Lite, Cyclone V 5CSEBA6U23I7, seed 7,one fitter worker.
-  The fixed input manifest identifies the accepted RBF; no release rebuild.
+  17.0.2 Build 602 Lite, Cyclone V 5CSEBA6U23I7. Use the checked-in QSF
+  and frozen input manifest. Routing and assembly succeeded; timing is NOT
+  closed. tools/check_rtc_synthesis.py checks retained RTC synchronizers.
 - Host: tools/standalone_host/build.sh; GCC 13.3.0, static C++17 -O2,
-  Cortex-A9 NEON hard-float. VERSION remains rc.6 for exact correspondence.
-  See docs/STANDALONE_FRONTEND_BUILD_V090_RC6.json for compiler/source pins.
-- Renderer: tools/build_hybrid_3d_service_armhf.sh; GCC 13.3.0, static Release
-  -O3/LTO,Cortex-A9 NEON hard-float. Accepted 913 inputs retained.
-- Kernel modules: kernel/nds_mem_wc ; source/config/build provenance for
-  5.15.1-MiSTer and 6.18.38-MiSTer. Matching ABI selected automatically.
-- Installer: tools/package_standalone_release.py;provide matching core,
-  host,helper and both modules. --check-only verifies inputs without a ZIP.
-  tools/audit_public_release.py checks the ZIP and checksum against source.
+  Cortex-A9 NEON hard-float. VERSION identifies split.8.6.
+- Renderer: tools/build_hybrid_3d_service_armhf.sh; GCC 13.3.0, static
+  Release -O3/LTO, Cortex-A9 NEON hard-float. The accepted renderer is retained.
+- Kernel modules: kernel/nds_mem_wc, including configuration and provenance
+  for 5.15.1-MiSTer and 6.18.38-MiSTer. The launcher selects the matching ABI.
+- Installer: tools/package_standalone_release.py. Supply the matching core,
+  host, renderer and both modules. --check-only checks those inputs.
+  To reproduce the tested ZIP, use packaging revision 9e5a37a6415cbc29e75f15b183d746a77991d48f
+  and its qualified binary inputs; newer release documentation changes ZIP bytes.
+  tools/audit_public_release.py checks the ZIP and sidecar against source pins.
 
-Native RGBS 240p, DV1, ordinary HDMI, TATE/menu rotation, scaled RGBHV VGA and bounded
-NSMB gameplay, audio, Peek and lid checks passed. Physical CRT acceptance remains
-pending. Composite/S-video physical output and game-specific synthetic mic
-interaction were not requalified. See the hardware record for limits.
-Static timing is diagnostic only; negative slack does not block this package.
+This beta adds independent native analog/digital displays, complete-release
+controller mapping and a shared persistent game clock. DS CPU execution,
+audio and DS timing stay in FPGA; the existing ARM graphics renderer remains.
+Matched-frame drawing blocks are pruned and save-profile lookup is supplied by
+the host. These changes do not add save states, DS wireless or DSi mode.
 
-Public launch paths remain Scripts/NDS4MiSTer.sh and Scripts/.NDS_Standalone.
-Merge the archive without deleting the existing directory. No personal
-settings, controller maps, ROMs, BIOS/firmware dumps, saves, credentials or diagnostic
-captures are bundled. Normal MiSTer/Console/Kickstart installations remain.
-The separate newer all-controller mapping beta is not included.
+Static timing reports setup -13.834 ns and recovery -14.351 ns, with incomplete
+constraints. Bounded hardware results do not establish timing closure or broad
+stability. Physical CRT/controller/adapter coverage, long sessions and multiple
+boards remain incomplete. Native output is approximately 59.64 Hz, not PAL 50 Hz.
+RTC alarms/periodic interrupts and save-state clock restoration are unsupported.
 
-Only the install ZIP and SHA-256 companion are release assets. Matching
-source will use GitHub's automatic source ZIP/tar.gz at the release tag.
-No duplicate source ZIP asset is needed. Retain all included licences and
-attributions, including FreeBIOS and tools/standalone_host/THIRD_PARTY.md.
+Public launch paths are Scripts/NDS4MiSTer.sh and Scripts/.NDS_Standalone.
+Merge the ZIP into an existing installation without deleting saved settings.
+No ROMs, BIOS/firmware dumps, saves, maps, personal settings, credentials, test
+captures or kernel image are bundled. Keep all files from one release together.
+
+Upload assets: the tested install ZIP and its SHA-256 companion. Corresponding
+source uses GitHub's automatic source archives at the release tag. Retain all
+licences and notices, including FreeBIOS and tools/standalone_host/THIRD_PARTY.md.

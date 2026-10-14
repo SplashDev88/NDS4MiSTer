@@ -1,0 +1,52 @@
+{
+  "version": "v0.9.0-rc.7-split.8.6",
+  "channel": "experimental prerelease",
+  "install_archive": "NDS4MiSTer_v0.9.0-rc.7-split.8.6_Standalone.zip",
+  "install_archive_sha256": "fb385cd79536062930ac8f4f7286409a14e992e15180c21458dec22bdf633dc4",
+  "install_packaging_source_revision": "9e5a37a6415cbc29e75f15b183d746a77991d48f",
+  "runtime_source_revision": "9add3a7818832558f8e41ebb1ab722babdeba026",
+  "host_source_revision": "9add3a7818832558f8e41ebb1ab722babdeba026",
+  "fpga_source_revision": "9add3a7818832558f8e41ebb1ab722babdeba026",
+  "publication_changes": "Current bug form, release documentation, public validation summary and refreshed source checksums only; tested install ZIP retained byte-for-byte.",
+  "components": {
+    "core_sha256": "068280194fbb5dcce77072f7b66632b945b402b71dd08cb2db6c70ed956f755d",
+    "host_sha256": "fdc38e045648ec7253cce3ae8620bc4c6f2c8695a7cddc4427eacf54aaa90fef",
+    "helper_sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+    "supervisor_sha256": "b594aa15265087be88284b488a182fca4fdf11afdc86d462e3efb60a6c51445e",
+    "launcher_sha256": "bc3e9b3ff9453acc2efc45267aae8de80587dc0ba384bfe62117210130a6669a",
+    "kernel_module_sha256": {
+      "5.15.1-MiSTer": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "6.18.38-MiSTer": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3"
+    },
+    "fpga_source_manifest_sha256": "f605f09b24c7fc2870b347b528d612a17f5575275177b0cce03bd4a75afee64d",
+    "hps_clock_khz": 1000000
+  },
+  "fpga": {
+    "route_and_assembly_passed": true,
+    "tool": "Quartus Prime 17.0.2 Build 602 Lite",
+    "device": "5CSEBA6U23I7",
+    "logic_alms": 33985,
+    "logic_alms_total": 41910,
+    "ram_blocks": 530,
+    "ram_blocks_total": 553,
+    "synthesis_gate": {
+      "status": "PASS",
+      "protected_pipeline_registers": {
+        "nds_rtc_host_bridge:rtc_host_bridge|request_sync": 3,
+        "nds_rtc_host_bridge:rtc_host_bridge|ack_sync": 3,
+        "nds_rtc_host_bridge:rtc_host_bridge|snapshot_meta": 88,
+        "nds_rtc_host_bridge:rtc_host_bridge|snapshot_sync": 88,
+        "nds_nitro_rtc:irtc|seed_toggle_sync": 3,
+        "nds_nitro_rtc:irtc|seed_meta": 56,
+        "nds_nitro_rtc:irtc|seed_sync": 56
+      },
+      "rtc_cdc_shift_ram": false
+    },
+    "static_timing_clean": false,
+    "worst_setup_slack_ns": -13.834,
+    "worst_recovery_slack_ns": -14.351,
+    "constraints_complete": false
+  },
+  "validation": "VALIDATION_SPLIT86.md",
+  "firmware_and_user_data_included": false
+}

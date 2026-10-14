@@ -2,7 +2,7 @@
 
 **Beta v0.9.0-rc.7-split.8.6: controller mapping fixes, a persistent DS game clock, and independent analog/digital displays.**
 
-[Releases and previous stable version](https://github.com/SplashDev88/NDS4MiSTer/releases) · [Quick start](docs/STANDALONE_QUICK_START.txt)
+[Releases and previous version](https://github.com/SplashDev88/NDS4MiSTer/releases) · [Quick start](docs/STANDALONE_QUICK_START.txt)
 
 ## What's new
 
@@ -58,7 +58,7 @@ If a game shows a black screen, try **Analog Screen: Main/Touch**, **Digital Lay
 
 - **Experimental FPGA timing.** Routing and bounded hardware tests passed, but static timing still reports violations. Longer sessions and additional boards remain unqualified.
 
-- **Display validation is limited.** RGBS240p, direct HDMI DV1, HDMI/TATE/menu rotation and scaled RGBHV VGA passed on RetroTINK-4K. Physical CRT acceptance and composite/S-video requalification on this build remain pending. See the release notes for receiver mode-switching behavior.
+- **Display validation is limited.** RGBS240p, direct HDMI DV1, HDMI/TATE/menu rotation and scaled RGBHV VGA passed on RetroTINK-4K. Physical CRT acceptance and composite/S-video requalification on this build remain pending. See the [validation details](docs/release/VALIDATION_SPLIT86.md) for coverage and limits.
 - **USB/HDD testing is limited.** SD browsing and a mounted CIFS network share have been exercised on hardware; external-drive behavior also has simulated coverage.
 - **Slowdown and uneven animation remain.** Not every game hits 60 FPS, and movies or audio can hitch.
 - **Firmware boot doesn't work with every dump.** RTC alarm interrupts are not implemented.
@@ -77,6 +77,7 @@ The archive contains the matching split.8.6 FPGA and ARM host. The renderer and 
 ## More information
 
 - [Release notes](docs/RELEASE_NOTES_SPLIT86.md)
+- [Beta validation](docs/release/VALIDATION_SPLIT86.md)
 - [Developer guide](docs/DEVELOPMENT.md)
 - [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues)
 
