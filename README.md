@@ -1,3 +1,6 @@
+> Private candidate v0.9.0-rc.7-split.8.2: automatic independent native analog
+> and digital output. This branch is not the published rc.7 release.
+
 # NDS4MiSTer
 
 **Stable native 240p output, tested DV1, and full display features retained.**
@@ -33,17 +36,17 @@ Your nickname, birthday, favorite color and language carry into games; the defau
 
 Open the menu with your controller's menu combo, the OSD button, or **F12**. Right for System, Left to go back. **The menu doesn't pause the game.** **System → Save settings** keeps display options; browser folders save on their own.
 
-For portrait, select **Video Layout → Top/Bottom** and rotate opposite the monitor: **90 CCW** for a clockwise turn, **90 CW** for counterclockwise. The HDMI menu follows Video Rotation automatically; the native analog/CRT menu remains upright. The old `osd_rotate` and private menu-rotation override no longer control this frontend. On a compatible 1080p display, `video_mode=8` gives a wider portrait picture.
+For portrait, select **Digital Layout → Top/bottom** and rotate opposite the monitor: **90 CCW** for a clockwise turn, **90 CW** for counterclockwise. The HDMI menu follows Video Rotation automatically; the native analog/CRT menu remains upright. The old `osd_rotate` and private menu-rotation override no longer control this frontend. On a compatible 1080p display, `video_mode=8` gives a wider portrait picture.
 
 ## CRT and DV1 setup
 
-For a CRT, use **CRT Mode: On** and select **CRT Screen: Main/Touch**. Keep the MiSTer profile appropriate to your cable and hardware; the package does not edit `MiSTer.ini` or `yc.txt`.
+Native analog automatically uses **240p**; select **Analog Screen: Main/Touch**. HDMI/DV1 has its own **Digital Layout**. Older CRT-Off settings activate independent output at startup. Keep the MiSTer profile appropriate to your cable and hardware; the package does not edit `MiSTer.ini` or `yc.txt`.
 
 On **SuperStation One composite or S-Video using its FPGA encoder**, keep **switch 3 UP** and use the **SVID profile**. That profile uses `vga_mode=svideo` for the SS1 composite socket too. Composite color was confirmed on SuperStation One with rc.6; this build retains the encoder but has not been physically requalified on that setup. See [Quick start](docs/STANDALONE_QUICK_START.txt) for component, RGB/VGA, and external-encoder guidance.
 
 For **DV1**, connect HDMI to the RetroTINK-4K and use `direct_video=1`, `dvi_mode=0`, and `vga_scaler=0` in the active NDS profile. Exit to normal MiSTer and relaunch after INI changes. DV1 video and stereo audio passed on RetroTINK-4K with a direct HDMI connection. A splitter in the test setup prevented lock; bypass splitters when troubleshooting. Native outputs use the receiver's rotation, rather than the HDMI scaler's Video Rotation.
 
-Separate Main-on-HDMI and Touch-on-VGA output is not implemented. Both ports share the selected DS picture; their menus can have different orientations.
+Main on HDMI and Touch on native VGA can run independently. Digital Main, Touch, Side-by-side and Top/bottom remain available while analog shows one 240p screen. Explicit `vga_scaler=1` continues to mirror the HDMI scaler for computer monitors.
 
 ## Known issues
 

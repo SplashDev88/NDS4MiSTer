@@ -9,9 +9,12 @@ Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_
 In rc.6, HDMI menu and loading-dialog orientation follows
 Video Rotation; the native analog menu stays upright. The legacy private
 `NDS_osd.cfg` and INI `osd_rotate` settings no longer
-override it. `CRT Mode: On` selects the single-screen CRT raster; it does not
-enable the analog port. CRT Screen sits below that switch, after a blank
-separator from 3D FPS Counter. Turning it off restores the Video Layout row.
+override it. On the matched split-capable core, independent routing is automatic:
+native analog stays at 240p while digital layout is independent. Legacy CRT-Off
+settings are upgraded in memory after capability discovery; existing digital
+preferences and other config words are preserved. The menu exposes Analog Screen
+and a read-only Analog Output indicator. The old switches remain only in the
+unsupported-core fallback. Explicit vga_scaler=1 retains scaled VGA output.
 To verify actual rotation geometry, export commands with
 `test_host_osd_direction.cpp`, then run `tools/test_osd_loading_rotation.py`
 with `--host-trace <exported-file>`. This sends the real host's direction choices

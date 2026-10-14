@@ -22,6 +22,16 @@ inline constexpr uint16_t REQUIRED_STATUS = 1u << 10;
 inline constexpr uint16_t CRT_TIMING = 1u << 13;
 inline constexpr uint16_t INDEPENDENT_OUTPUTS = 1u << 14;
 inline constexpr uint16_t ANALOG_TOUCH = 1u << 15;
+inline uint16_t independentDisplayStatus(uint16_t value) {
+  if (!(value & INDEPENDENT_OUTPUTS)) {
+    // Import the physical panel previously shown by a single-screen layout.
+    // For a combined layout, keep its first panel on analog. Do not change
+    // digital layout, order, rotation, gap, FPS or the other status words.
+    const bool touch = (((value >> 5) & 3) == 3) ^ bool(value & (1u << 7));
+    value = (value & ~ANALOG_TOUCH) | (touch ? ANALOG_TOUCH : 0);
+  }
+  return value | INDEPENDENT_OUTPUTS;
+}
 inline uint16_t normalizeDisplayStatus(uint16_t value) {
   // A 240p TV shows one physical DS panel. Existing screen order still
   // applies; changing the layout switches the first/second panel.

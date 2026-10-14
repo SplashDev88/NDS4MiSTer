@@ -306,6 +306,10 @@ class Host {
         0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
         0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11};
+    static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
+        0, 1, 3, 4, 5, 6, 7, 8, -1, 12, 13, 15, -1, 9};
+    if (independent_outputs_supported)
+      return item == ANALOG_CURSOR && (video_flags & (1u << 2)) ? -1 : independent[item];
     return ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) ? crt : standard)[item];
   }
   static int optionCursor(size_t option) {
@@ -315,7 +319,8 @@ class Host {
   int nextMainMenuItem(int direction) const {
     int next = cursor;
     for (int item = 0; item <= LAST_MAIN_CURSOR; ++item)
-      if ((mainMenuRow(item) - mainMenuRow(cursor)) * direction > 0 &&
+      if (mainMenuRow(item) >= 0 &&
+          (mainMenuRow(item) - mainMenuRow(cursor)) * direction > 0 &&
           (next == cursor ||
            (mainMenuRow(item) - mainMenuRow(next)) * direction < 0))
         next = item;
@@ -333,9 +338,10 @@ class Host {
     const auto capability = spi.word(0);
     spi.end();
     independent_outputs_supported = signature == 0x4456 && capability == 0x5350;
+    video_flags = signature == 0x4456 ? flags : 0;
     // The initial status write masks split output until capability is known.
-    // Apply the saved selection now, including non-DV1 sessions, so startup
-    // does not depend on a later menu change or reset.
+    // Select independent native analog immediately, including old CRT-Off
+    // settings and non-DV1 sessions, without waiting for a menu change.
     sendstatus();
     if (signature != 0x4456) return;
     video_flags = flags;
@@ -430,6 +436,7 @@ class Host {
     require(ok, "sync config directory");
   }
   void saveSettings() {
+    if (independent_outputs_supported) status = independentDisplayStatus(status);
     status = cleanStatus(status);
     full_status[0] = status;
     atomicFile(fs::path(kit) / "NDS_v1.CFG", full_status.data(),
@@ -1171,7 +1178,8 @@ class Host {
   }
   uint16_t liveStatus() const {
     auto requested = uint16_t(status | REQUIRED_STATUS);
-    if (!independent_outputs_supported) requested &= ~INDEPENDENT_OUTPUTS;
+    if (independent_outputs_supported) requested = independentDisplayStatus(requested);
+    else requested &= ~INDEPENDENT_OUTPUTS;
     const auto selected = normalizeDisplayStatus(requested);
     // Layouts 2/3 are the individual panels. Flipping bit 5 exchanges them
     // without changing timing, rotation, screen order or the saved selection.
@@ -1199,6 +1207,7 @@ class Host {
   }
   void sendstatus() {
     // Preserve transient reset bit0 while overriding legacy Engine B Off.
+    if (independent_outputs_supported) status = independentDisplayStatus(status);
     status = normalizeDisplayStatus(status | REQUIRED_STATUS);
     spi.begin(Spi::IO, 0x1e);
     spi.word(liveStatus());
@@ -1429,6 +1438,7 @@ class Host {
       rows[0] = " " + std::string(LOAD_LABEL);
       rows[1] = " Boot DS firmware";
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++) {
+        if (mainMenuRow(optionCursor(i)) < 0) continue;
         auto option = CORE_OPTIONS[i];
         if (i == 0 && (status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS)) {
           option.label = "CRT Screen";
@@ -1448,6 +1458,9 @@ class Host {
         }
         rows[mainMenuRow(optionCursor(i))] = optionLabel(status, option);
       }
+      if (independent_outputs_supported)
+        rows[10] = optionLabel(0, {0, 1, 1, "Analog Output",
+            {(video_flags & (1u << 2)) ? "HDMI scaler" : "240p"}});
       rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
       rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
@@ -1662,6 +1675,9 @@ class Host {
                  cursor == SPLIT_CURSOR || cursor == ANALOG_CURSOR)) {
         const auto &o = CORE_OPTIONS[cursor >= SPLIT_CURSOR ? cursor - 6 :
                                     cursor - 2 - (cursor > TOUCH_ROTATION_CURSOR)];
+        if (independent_outputs_supported &&
+            (o.shift == 13 || o.shift == 14 ||
+             (o.shift == 15 && (video_flags & (1u << 2))))) return;
         if (o.shift == 13 && (status & INDEPENDENT_OUTPUTS)) return;
         if (o.shift == 14 && !independent_outputs_supported) {
           message = "Core lacks split output support";

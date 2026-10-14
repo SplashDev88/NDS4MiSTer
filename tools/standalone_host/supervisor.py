@@ -340,8 +340,10 @@ def initialize_settings():
     if validate_settings() is not None:
         return
     path = KIT / "NDS_v1.CFG"
-    # Top/Bottom, Engine B On; rotation/FPS Off. No per-controller input maps.
-    payload = bytes((0x20, 0x04)) + bytes(14)
+    # Digital Top/Bottom, independent native analog Main, both engines On.
+    # The host also upgrades legacy CRT-Off settings after capability discovery.
+    # Rotation/FPS Off. No per-controller input maps.
+    payload = bytes((0x20, 0x44)) + bytes(14)
     try:
         fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     except FileExistsError:

@@ -58,7 +58,8 @@ use its matching .sav. Save using
 the game itself; save states are not included. Exit through System -> Reboot
 when finished so outstanding writes can complete.
 
-The initial default is Top/Bottom, rotation Off and FPS counter Off. Existing
+The initial default is digital Top/bottom, analog Main at 240p, rotation Off
+and FPS counter Off. Independent outputs activate automatically. Existing
 standalone settings, or normal NDS settings when standalone has none, take
 priority. Both DS graphics engines are always On, including when an older
 configuration had Engine B Off. There is no Engine B On/Off option.
@@ -101,9 +102,10 @@ a mapped right stick/Touch button control the touch screen.
 
 SCREEN PEEK AND STICK DEAD ZONE
 
-In Left Only, Right Only or CRT Mode, hold F10 or your mapped Screen Peek
+In digital Main or Touch, hold F10 or your mapped Screen Peek
 button to view the other DS screen. Release to return. Left/Right and
-Top/Bottom layouts are unaffected. Opening the menu, resetting, loading a
+Top/bottom digital layouts are unaffected. Analog exchanges Main/Touch while
+Peek is held and returns on release. Opening the menu, resetting, loading a
 game or disconnecting the controller restores the selected screen. Peek
 does not save a different layout.
 
@@ -195,7 +197,7 @@ DSi mode, or physical microphone capture.
 
 TATE AND OPTIONAL 1080P
 
-Choose Video Layout -> Top/Bottom. Rotate the picture opposite to the
+Choose Digital Layout -> Top/bottom. Rotate the picture opposite to the
 physical monitor turn: 90 CCW for clockwise, 90 CW for counterclockwise.
 For TATE on a physically rotated monitor, keep Touch Rotation set to Normal.
 For a game that uses the DS sideways on an unrotated monitor, choose the
@@ -213,11 +215,26 @@ to normal MiSTer and relaunch after changing INI options.
 
 CRT, ANALOG AND DV1 OUTPUT
 
-CRT Mode: On selects one 256x192 DS screen centered in a 320x240 canvas.
-CRT Screen below it selects Main or Touch; Screen Order can reverse them.
-This changes the HDMI picture too. It does not enable or disable the analog
-port. CRT Mode: Off restores normal Video Layout choices. Fresh settings
-start with CRT Mode Off; existing display settings are preserved.
+Native analog always uses one 256x192 DS screen centered in a 320x240 canvas.
+Analog Screen selects Main or Touch. Digital Layout independently offers
+Main, Touch, Side-by-side and Top/bottom on HDMI/DV1. No CRT Mode or Independent
+Outputs switch is needed; the supported host/core pair activates this routing
+at startup, including when existing settings have CRT Mode Off.
+
+Existing digital layout, rotation, screen order, gap, FPS and input maps remain.
+Existing split settings retain their analog selection. Legacy single-screen
+settings carry the previously selected physical panel to analog; combined
+layouts initially send their first panel to analog. Settings are interpreted
+in memory and only written when Save settings is selected. Fresh installations
+start with digital Top/bottom and analog Main. The automatic routing changes
+no gameplay clocks or rendering profile. Normal HDMI still uses its configured
+scaled resolution with direct_video=0, including the startup menu.
+
+With vga_scaler=1 the analog port intentionally follows the HDMI scaler for
+computer monitors. The menu reports Analog Output: HDMI scaler and hides the
+native Analog Screen selector. With vga_scaler=0 it reports Analog Output:240p.
+Boot transitions can briefly interrupt sync while MiSTer loads the core; the
+standalone menu no longer remains in the legacy stacked/blank analog mode.
 
 The native CRT line rate is 15.625 kHz with a fixed 262-line frame,
 approximately 59.6374 Hz. RGBS240p passed through RetroTINK-4K; physical CRT
@@ -271,14 +288,16 @@ troubleshooting. After switching from DV1 to ordinary HDMI, receiver profile
 reload and temporarily turning AutoLoad DV1 off recovered capture. Check the receiver
 input/profile if a mode change loses signal.
 DV1 is different from dvi_mode: keep HDMI signaling for metadata and audio.
-CRT Mode On gives a centered single-screen raster; Off uses native layout
-geometry. Native DV1/analog output uses the receiver's rotation controls.
+Digital Main/Touch uses a centered single-screen raster; combined digital
+layouts use their native geometry. Native DV1/analog output uses the receiver's
+rotation controls. For DV1 Side-by-side on RetroTINK, choose Aspect Correction
+1:1 (Sq. Pixel); an inherited 4:3 (PAR) setting can stretch it vertically.
 For simultaneous DV1 and component, retain vga_mode=ypbpr and composite_sync=1;
 the receiver may need YCbCr 709. This combination still needs a color-bar test.
 
-The two outputs share the selected DS picture. Showing Main on HDMI and
-Touch on VGA independently is not implemented. Menu orientation is independent
-when using ordinary scaled HDMI alongside native analog output.
+Main on HDMI and Touch on native VGA can run independently, including combined
+digital layouts with one analog panel. Normal HDMI menu orientation follows
+Video Rotation; native analog menus stay upright.
 
 Edit the existing [NDS] section in the active profile, rather than adding
 duplicates. Exit to normal MiSTer and relaunch Scripts -> NDS4MiSTer after

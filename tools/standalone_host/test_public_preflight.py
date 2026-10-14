@@ -101,7 +101,7 @@ class Settings(unittest.TestCase):
         self.stack.enter_context(patch.object(s,'SD_ROOT',self.root))
     def test_fresh_install_initializes_only_private_defaults(self):
         s.initialize_settings()
-        self.assertEqual(self.private.read_bytes(),bytes((0x20,0x04))+bytes(14))
+        self.assertEqual(self.private.read_bytes(),bytes((0x20,0x44))+bytes(14))
         self.assertFalse(self.normal.exists())
     def test_existing_normal_config_is_imported_without_copy_or_change(self):
         data=bytes(range(16));self.normal.write_bytes(data)
