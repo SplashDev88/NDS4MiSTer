@@ -73,6 +73,7 @@ struct HostTest {
             key(h, 0, BTN_THUMBL, false);
             assert(statusWrites(h) == count + 1);
             key(h, 0, BTN_THUMBR, false);
+    h.finishMappingReport();
             assert(wireStatus(h) == selected && statusWrites(h) == count + 2);
             assert(bytes(kit / "NDS_v1.CFG") == saved && h.lastjoy == 16);
             key(h, 0, BTN_SOUTH, false);
@@ -176,6 +177,7 @@ struct HostTest {
     h.new_map = map;
     key(h, 0, BTN_THUMBR, true);
     key(h, 0, BTN_THUMBR, false);
+    h.finishMappingReport();
     assert(h.mapping_step == -1 && pad.map[16] == BTN_THUMBR);
     for (unsigned i = 0; i < 32; ++i) if (i != 16) assert(pad.map[i] == map[i]);
     std::array<uint32_t, 32> persisted{};
@@ -187,6 +189,7 @@ struct HostTest {
     h.new_map = pad.map;
     key(h, 0, KEY_SPACE, true);
     key(h, 0, KEY_SPACE, false);
+    h.finishMappingReport();
     assert(h.mapping_step == -1 && !pad.map[16]);
 
     // Even an explicit save during a peek persists the chosen panel, and

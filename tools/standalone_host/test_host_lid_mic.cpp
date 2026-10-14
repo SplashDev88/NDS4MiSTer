@@ -63,6 +63,7 @@ struct HostTest {
     assert(h.lastjoy == (Host::LID_MASK | Host::MIC_MASK | 16));
     ignoredLidShortcuts(h, pad);
     h.key(pad, BTN_TL2, false);
+    h.finishMappingReport();
     h.inputs();
     assert(h.lastjoy == (Host::LID_MASK | 16));
     h.togglemenu();
@@ -139,6 +140,7 @@ struct HostTest {
     h.inputs();
     assert(!h.lid_closed && h.lastjoy == Host::MIC_MASK);
     h.key(pad, BTN_TL2, false);
+    h.finishMappingReport();
     h.inputs();
     assert(!h.lastjoy);
 
@@ -155,9 +157,11 @@ struct HostTest {
     h.new_map[14] = 0;
     h.key(pad, BTN_TL2, true);
     h.key(pad, BTN_TL2, false);
+    h.finishMappingReport();
     assert(h.mapping_step == 15);
     h.key(pad, KEY_SPACE, true); // Skip the optional Screen Peek binding.
     h.key(pad, KEY_SPACE, false);
+    h.finishMappingReport();
     assert(h.mapping_step == -1 && pad.map[13] == BTN_TR2 &&
            pad.map[14] == 0 && pad.map[15] == BTN_TL2);
     std::array<uint32_t, 32> persisted{};
@@ -168,9 +172,11 @@ struct HostTest {
     h.new_map = pad.map;
     h.key(pad, KEY_SPACE, true);
     h.key(pad, KEY_SPACE, false);
+    h.finishMappingReport();
     assert(h.mapping_step == 15);
     h.key(pad, KEY_SPACE, true);
     h.key(pad, KEY_SPACE, false);
+    h.finishMappingReport();
     assert(h.mapping_step == -1 && !pad.map[14] && !pad.map[15]);
     assert(Host::readmap(kit / "inputs" / name, persisted) && persisted == pad.map);
     ignoredLidShortcuts(h, pad);

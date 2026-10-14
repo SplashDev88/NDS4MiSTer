@@ -18,6 +18,7 @@ struct HostTest {
   }
   static void wizard(Host &h) {
     h.menu = h.system_menu = true;
+    h.mapping_pending = false; h.mapping_ready = h.mappingNeutral();
     h.mapping_step = 0; h.mapping_pad.clear(); h.new_map.fill(0); h.cursor = 1;
   }
   static void run(const fs::path &root) {
@@ -63,11 +64,11 @@ struct HostTest {
     Pad b; b.id="controller-b"; b.map=original;
     h.pads.push_back(a); h.pads.push_back(b);
     wizard(h); tap(h,2); // The first real input, not USER, selects a device.
-    h.key(h.pads[0],BTN_SOUTH,true); h.key(h.pads[0],BTN_SOUTH,false);
+    h.key(h.pads[0],BTN_SOUTH,true); h.key(h.pads[0],BTN_SOUTH,false); h.finishMappingReport();
     assert(h.mapping_pad==a.id && h.mapping_step==2 && h.new_map[1]==BTN_SOUTH);
-    h.key(h.pads[1],BTN_EAST,true); h.key(h.pads[1],BTN_EAST,false);
+    h.key(h.pads[1],BTN_EAST,true); h.key(h.pads[1],BTN_EAST,false); h.finishMappingReport();
     assert(h.mapping_step==2); // Other pads cannot steal a started mapping.
-    h.key(h.pads[1],KEY_SPACE,true); h.key(h.pads[1],KEY_SPACE,false);
+    h.key(h.pads[1],KEY_SPACE,true); h.key(h.pads[1],KEY_SPACE,false); h.finishMappingReport();
     assert(h.mapping_step==3 && h.new_map[2]==0);
     while(h.mapping_step<int(Host::button_names.size())-1) tap(h,2);
     h.new_map[Host::SCREEN_PEEK_BUTTON]=BTN_TR;
@@ -78,6 +79,17 @@ struct HostTest {
     std::array<uint32_t,32> stored{};
     assert(Host::readmap(private_map,stored) && stored==h.pads[0].map);
     const auto committed = bytes(private_map);
+
+    // USER cannot skip a pending held input or spill into the next prompt.
+    wizard(h); h.key(h.pads[0],BTN_SOUTH,true);
+    tap(h,2); assert(h.mapping_step==0 && h.mapping_pending);
+    h.key(h.pads[0],BTN_SOUTH,false); h.finishMappingReport();
+    assert(h.mapping_step==1);
+    wizard(h); h.boardButtons(2);
+    h.key(h.pads[0],BTN_SOUTH,true); h.key(h.pads[0],BTN_SOUTH,false);
+    h.finishMappingReport(); assert(h.mapping_step==1);
+    h.boardButtons(0); assert(h.mapping_step==1);
+    assert(bytes(private_map)==committed);
 
     wizard(h); h.mapping_pad=a.id; h.new_map.fill(123);
     h.boardButtons(3); h.boardButtons(1);

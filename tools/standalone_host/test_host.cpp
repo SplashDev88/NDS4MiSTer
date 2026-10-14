@@ -470,6 +470,8 @@ R"({
     std::ifstream unchanged(kit / "NDS_v1.CFG", std::ios::binary);
     assert(std::string(std::istreambuf_iterator<char>(unchanged), {}) == saved_config);
 
+    h.key(p, BTN_SOUTH, false); // Release the gameplay hold before defining buttons.
+
     // Import existing controls without treating unused Main slots as shortcuts.
     const auto map_name = "NDS_input_layout_v3.map";
     auto normal_map = p.map;
@@ -502,10 +504,12 @@ R"({
     h.mapping_step = 13;
     h.key(h.pads[0], KEY_SPACE, true);
     h.key(h.pads[0], KEY_SPACE, false);
+    h.finishMappingReport();
     assert(h.mapping_step == 14);
     for (unsigned step = 14; step < Host::button_names.size(); ++step) {
       h.key(h.pads[0], KEY_SPACE, true);
       h.key(h.pads[0], KEY_SPACE, false);
+      h.finishMappingReport();
     }
     assert(h.mapping_step == -1 && !h.pads[0].map[13]);
     private_map[13] = 0;
@@ -882,6 +886,7 @@ R"({
     for (unsigned i = 0; i < Host::button_names.size(); i++) {
       host.key(host.pads[0], BTN_0 + i, true);
       host.key(host.pads[0], BTN_0 + i, false);
+      host.finishMappingReport();
     }
     assert(host.mapping_step == -1);
     assert(fs::file_size(root / "inputs/NDS_input_test_v3.map") == 128);

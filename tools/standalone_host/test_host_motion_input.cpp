@@ -30,6 +30,7 @@ struct Device {
   bool keys_supported = true;
   unsigned key_queries = 0;
   std::array<unsigned long, (KEY_CNT + word_bits - 1) / word_bits> keys{};
+  std::array<unsigned long, (KEY_CNT + word_bits - 1) / word_bits> held{};
   std::array<input_absinfo, ABS_CNT> axes{};
   void setKey(unsigned code, bool enabled = true) {
     const auto mask = 1UL << (code % word_bits);
@@ -131,6 +132,12 @@ static int motion_test_ioctl(int fd, unsigned long request, void *argument) {
                 std::min(size_t(_IOC_SIZE(request)), sizeof(device.keys)));
     return std::min(size_t(_IOC_SIZE(request)), sizeof(device.keys));
   }
+  if (_IOC_TYPE(request) == 'E' && _IOC_NR(request) == _IOC_NR(EVIOCGKEY(1))) {
+    std::memset(argument, 0, _IOC_SIZE(request));
+    std::memcpy(argument, device.held.data(),
+                std::min(size_t(_IOC_SIZE(request)), sizeof(device.held)));
+    return std::min(size_t(_IOC_SIZE(request)), sizeof(device.held));
+  }
   if (_IOC_TYPE(request) == 'E' && _IOC_NR(request) >= _IOC_NR(EVIOCGABS(0)) &&
       _IOC_NR(request) < _IOC_NR(EVIOCGABS(0)) + ABS_CNT) {
     const auto &axis = device.axes[_IOC_NR(request) - _IOC_NR(EVIOCGABS(0))];
@@ -144,6 +151,142 @@ static int motion_test_ioctl(int fd, unsigned long request, void *argument) {
 }
 
 struct HostTest {
+  static void mappingCycles(const fs::path &root) {
+    struct Range { int lo, hi, rest, pull, halfway; unsigned axis; };
+    const std::array<Range, 5> ranges{{
+        {0, 255, 0, 255, 128, ABS_Z},
+        {-32768, 32767, -32768, 32767, 0, ABS_RZ},
+        {0, 1023, 0, 1023, 512, ABS_BRAKE},
+        {0, 255, 255, 0, 128, ABS_GAS},
+        {-32768, 32767, 0, 32767, 16000, ABS_Z}}};
+    unsigned cases = 0;
+    for (unsigned bus : {BUS_USB, BUS_BLUETOOTH})
+      for (bool advertised_button : {false, true})
+       for (const auto &range : ranges) {
+        const auto dir = root / std::to_string(cases++);
+        const auto kit = dir / "kit", sd = dir / "sd", input = dir / "input";
+        fs::create_directories(kit); fs::create_directories(input);
+        auto device = gamepad();
+        device.id = {uint16_t(bus), 0x2dc8, 0x6001, 1};
+        device.name = "Generic analog-only gamepad fixture";
+        device.setKey(BTN_TL2, advertised_button);
+        device.setKey(BTN_TR2, advertised_button);
+        device.axes[range.axis] = {range.rest, range.lo, range.hi, 0, 0, 0};
+        const auto node = input / "event0";
+        createNode(node, device);
+        Host host(kit.string(), (sd / "games/NDS").string(), sd);
+        host.scan(input); host.menu = true; host.system_menu = true;
+        host.cursor = 1; host.action(2); // Enter through the actual menu.
+        const auto mapfile = kit / "inputs/NDS_input_2dc8_6001_v3.map";
+        emit(node, {{EV_ABS, int(range.axis), range.rest}, {EV_SYN, SYN_REPORT, 0}});
+        poll(host);
+        assert(host.mapping_step == 0 && host.new_map[0] == 0 &&
+               "resting trigger must not choose a mapping");
+        const unsigned expected = 0x300 + 2 * range.axis + (range.pull > range.rest);
+        for (unsigned step = 0; step < Host::button_names.size(); ++step) {
+          emit(node, {{EV_ABS, int(range.axis), range.pull}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == int(step) &&
+                 "prompt must wait for the release, including the final prompt");
+          assert(host.new_map[Host::button_slots[step]] == expected);
+          assert(!fs::exists(mapfile));
+          // Extra digital aliases and partial trigger release cannot select
+          // the next prompt. Repeat notifications also remain harmless.
+          emit(node, {{EV_KEY, BTN_TRIGGER_HAPPY1, 1},
+                      {EV_KEY, BTN_TRIGGER_HAPPY1, 2},
+                      {EV_ABS, int(range.axis), range.halfway},
+                      {EV_SYN, SYN_REPORT, 0}});
+          poll(host); assert(host.mapping_step == int(step));
+          emit(node, {{EV_ABS, int(range.axis), range.rest}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host); assert(host.mapping_step == int(step)); // alias held
+          emit(node, {{EV_KEY, BTN_TRIGGER_HAPPY1, 0}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == (step + 1 == Host::button_names.size() ? -1 : int(step + 1)));
+          emit(node, {{EV_ABS, int(range.axis), range.rest}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+        }
+        std::array<uint32_t, 32> saved{};
+        assert(Host::readmap(mapfile, saved));
+        for (unsigned slot : Host::button_slots) assert(saved[slot] == expected);
+        assert(saved[Host::RESERVED_LID_SLOT] == 0 && fs::file_size(mapfile) == 128);
+      }
+    // Digital controls, duplicate button aliases, Skip and a held key used
+    // to enter the wizard all obey the same full-release rule.
+    const auto dir = root / "buttons", input = dir / "input", kit = dir / "kit";
+    fs::create_directories(input); fs::create_directories(kit);
+    auto device = gamepad();
+    device.held[BTN_SOUTH / Device::word_bits] |= 1ul << (BTN_SOUTH % Device::word_bits);
+    const auto node = input / "event0";createNode(node, device);
+    Host host(kit.string(), (dir / "sd/games/NDS").string(), dir / "sd");
+    host.scan(input);host.menu = host.system_menu = true;host.cursor = 1;host.action(2);
+    emit(node, {{EV_KEY, BTN_SOUTH, 1}, {EV_KEY, BTN_TRIGGER_HAPPY1, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0 && !host.new_map[0]);
+    emit(node, {{EV_KEY, BTN_SOUTH, 0}, {EV_KEY, BTN_TRIGGER_HAPPY1, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0);
+    emit(node, {{EV_KEY, BTN_SOUTH, 1}, {EV_KEY, BTN_TRIGGER_HAPPY1, 1}, {EV_KEY, BTN_SOUTH, 2}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0 && host.new_map[0] == BTN_SOUTH);
+    emit(node, {{EV_KEY, BTN_SOUTH, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0);
+    emit(node, {{EV_KEY, BTN_TRIGGER_HAPPY1, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 1);
+    emit(node, {{EV_KEY, KEY_SPACE, 1}, {EV_KEY, KEY_SPACE, 2}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 1);
+    emit(node, {{EV_KEY, KEY_SPACE, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 2 && !host.new_map[1]);
+    emit(node, {{EV_KEY, BTN_EAST, 1}, {EV_SYN, SYN_REPORT, 0}, {EV_KEY, KEY_ESC, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == -1 && !fs::exists(kit / "inputs"));
+    emit(node, {{EV_KEY, BTN_EAST, 0}, {EV_KEY, KEY_ESC, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);
+    host.system_menu = true;host.cursor = 1;host.action(2);
+    // Full axis deflection can precede its digital alias in another packet.
+    emit(node, {{EV_ABS, ABS_Z, 255}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0 && host.new_map[0] == 0x301 + ABS_Z * 2);
+    emit(node, {{EV_KEY, BTN_TL2, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0 && host.new_map[0] == BTN_TL2);
+    emit(node, {{EV_KEY, BTN_TL2, 0}, {EV_ABS, ABS_Z, 64}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0);
+    emit(node, {{EV_ABS, ABS_Z, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 1);
+    // A direct hat-direction reversal is still one gesture until centered.
+    emit(node, {{EV_ABS, ABS_HAT0X, 1}, {EV_SYN, SYN_REPORT, 0},
+                {EV_ABS, ABS_HAT0X, -1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 1 && host.new_map[1] == 0x321);
+    emit(node, {{EV_ABS, ABS_HAT0X, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 2);
+    emit(node, {{EV_KEY, BTN_NORTH, 1}, {EV_SYN, SYN_REPORT, 0},
+                {EV_SYN, SYN_DROPPED, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == -1 && !fs::exists(kit / "inputs"));
+    host.system_menu = true;host.cursor = 1;host.action(2);
+    emit(node, {{EV_KEY, BTN_NORTH, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(host);assert(host.mapping_step == 0);
+    fs::remove(node);host.scan(input);
+    assert(host.mapping_step == -1 && !fs::exists(kit / "inputs"));
+    // Entering the wizard with a stick/hat held must not leave a synthesized
+    // direction or pre-wizard joy state stuck after saving and closing OSD.
+    const auto held_dir = root / "held-axis", held_input = held_dir / "input";
+    fs::create_directories(held_input);fs::create_directories(held_dir / "kit");
+    const auto held_node = held_input / "event0";createNode(held_node, gamepad());
+    Host held((held_dir / "kit").string(), (held_dir / "sd/games/NDS").string(), held_dir / "sd");
+    held.scan(held_input);
+    emit(held_node, {{EV_ABS, ABS_HAT0X, -1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(held);assert(held.pads[0].pressed[0x320]);
+    held.system_menu = true;held.cursor = 1;held.action(2);
+    emit(held_node, {{EV_ABS, ABS_HAT0X, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(held);assert(held.mapping_step == 0 && !held.pads[0].pressed[0x320]);
+    emit(held_node, {{EV_ABS, ABS_HAT0X, -1}, {EV_SYN, SYN_REPORT, 0},
+                     {EV_ABS, ABS_HAT0X, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(held);assert(held.mapping_step == 1);
+    for (unsigned i = 1; i < Host::button_names.size(); ++i) {
+      emit(held_node, {{EV_KEY, KEY_SPACE, 1}, {EV_SYN, SYN_REPORT, 0},
+                       {EV_KEY, KEY_SPACE, 0}, {EV_SYN, SYN_REPORT, 0}});
+      poll(held);
+    }
+    assert(held.mapping_step == -1 && !held.pads[0].joy);
+    held.togglemenu();poll(held);assert(!held.lastjoy);
+    std::cout << "PASS generic mapping cycles: " << cases
+              << " USB/Bluetooth analog-only ranges, endpoint/centered/inverted triggers,"
+                 " aliases, full-release gate, final save, held entry, repeat, skip and cancel\n";
+  }
   static void touchDeadzone(const fs::path &root) {
     // Exercise the real evdev discovery/normalization/SPI path. Each limit is
     // specified in controller units, independent of the implementation math.
@@ -266,8 +409,8 @@ struct HostTest {
                           {EV_ABS, axis, 96}, {EV_ABS, axis, 240},
                           {EV_SYN, SYN_REPORT, 0}});
             poll(host);
-            assert(host.mapping_step == pull + 1 &&
-                   "one physical trigger pull must advance exactly one prompt");
+            assert(host.mapping_step == pull &&
+                   "one physical trigger pull waits for full release");
             assert(host.new_map[pull] == unsigned(button));
             // Digital hold/repeat plus analog jitter around both synthesized
             // direction thresholds must never spill into the following prompt.
@@ -275,7 +418,7 @@ struct HostTest {
               emit(node, {{EV_ABS, axis, value}, {EV_KEY, button, 1},
                           {EV_KEY, button, 2}, {EV_SYN, SYN_REPORT, 0}});
               poll(host);
-              assert(host.mapping_step == pull + 1 &&
+              assert(host.mapping_step == pull &&
                      "held trigger and analog jitter must not advance prompts");
             }
             if (abs_first)
@@ -294,9 +437,12 @@ struct HostTest {
               assert(host.mapping_step == pull + 1);
             }
           }
-          assert(fixture.key_queries == 1);
+          assert(fixture.key_queries == 0);
           // A regular stick remains available in the same mapping wizard.
           emit(node, {{EV_ABS, ABS_X, 255}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == 2 && host.new_map[2] == 0x301);
+          emit(node, {{EV_ABS, ABS_X, 128}, {EV_SYN, SYN_REPORT, 0}});
           poll(host);
           assert(host.mapping_step == 3 && host.new_map[2] == 0x301);
 
@@ -320,8 +466,8 @@ struct HostTest {
           assert(host.lastjoy == (1u << 5));
         }
 
-    // Detect each corresponding button independently. Pads with analog-only
-    // triggers, or without the capability ioctl, keep their existing mapping.
+    // Axis-only triggers work without button capabilities. Reported trigger
+    // buttons can still replace their corresponding analog binding.
     for (const bool right : {false, true})
       for (const bool query_supported : {false, true}) {
         const auto dir = root / std::to_string(cases++);
@@ -340,14 +486,21 @@ struct HostTest {
         host.mapping_step = 0;
         emit(input / "event0", {{EV_ABS, axis, 255}, {EV_SYN, SYN_REPORT, 0}});
         poll(host);
+        assert(host.mapping_step == 0 && host.new_map[0] == unsigned(0x301 + axis * 2));
+        emit(input / "event0", {{EV_ABS, axis, 0}, {EV_SYN, SYN_REPORT, 0}});
+        poll(host);
         assert(host.mapping_step == 1 && host.new_map[0] == unsigned(0x301 + axis * 2));
-        assert(fixture.key_queries == 1);
+        assert(fixture.key_queries == 0);
         if (query_supported) {
           const int other_axis = right ? ABS_Z : ABS_RZ;
           const int other_button = right ? BTN_TL2 : BTN_TR2;
           emit(input / "event0", {{EV_ABS, other_axis, 0},
                                  {EV_KEY, other_button, 1},
                                  {EV_ABS, other_axis, 255},
+                                 {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          assert(host.mapping_step == 1 && host.new_map[1] == unsigned(other_button));
+          emit(input / "event0", {{EV_KEY, other_button, 0}, {EV_ABS, other_axis, 0},
                                  {EV_SYN, SYN_REPORT, 0}});
           poll(host);
           assert(host.mapping_step == 2 && host.new_map[1] == unsigned(other_button));
@@ -493,6 +646,7 @@ struct HostTest {
 int main() {
   char directory[] = "/tmp/nds-motion-input-XXXXXX";
   assert(mkdtemp(directory));
+  HostTest::mappingCycles(fs::path(directory) / "mapping-cycles");
   HostTest::run(directory);
   HostTest::triggerMappings(fs::path(directory) / "triggers");
   HostTest::touchDeadzone(fs::path(directory) / "deadzone");
