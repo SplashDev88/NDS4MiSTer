@@ -73,7 +73,7 @@ struct HostTest {
       assert(h.osd_rows[3]==h.frame.renderRow(3,
           optionLabel(saved,{5,2,4,"Digital Layout",{"Side-by-side","Top/bottom","Main","Touch"}}),
           true,nds_osd::arrow_right));
-      assert(h.osd_rows[10]==h.frame.renderRow(10," Analog Output:         240p",false,nds_osd::arrow_right));
+      assert(h.osd_rows[10]==h.frame.renderRow(10,"",false,nds_osd::arrow_right));
       for(int cursor : {8,Host::SPLIT_CURSOR}) {
         h.cursor=cursor;h.action(2);assert(h.status==saved);
       }
@@ -88,7 +88,7 @@ struct HostTest {
     h.cursor=2;h.draw();
     assert(((h.status>>5)&3)==1);
     assert(h.mainMenuRow(Host::ANALOG_CURSOR)<0);
-    assert(h.osd_rows[10]==h.frame.renderRow(10," Analog Output:  HDMI scaler",false,nds_osd::arrow_right));
+    assert(h.osd_rows[10]==h.frame.renderRow(10,"",false,nds_osd::arrow_right));
     h.cursor=7;h.action(1);assert(h.cursor==Host::LID_CURSOR);
     const auto scaled=h.status;h.cursor=Host::ANALOG_CURSOR;h.action(2);assert(h.status==scaled);
     // Regression from the rig: a saved CRT-On bit must not override the

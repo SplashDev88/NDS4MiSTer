@@ -163,7 +163,10 @@ public:
       word(d);
     end();
   }
-  uint32_t buttons() { return (m[5] >> 29) & 3; }
+  uint32_t buttons() {
+    const auto value = m[5];
+    return value & 0x80000000 ? 0 : (value >> 29) & 3;
+  }
 };
 #else
 class Spi {
@@ -383,6 +386,9 @@ class Host {
   int mapping_step = -1;
   std::string mapping_pad;
   std::array<uint32_t, 32> new_map{};
+  bool board_buttons_initialized = false, board_press_menu = false,
+       board_press_mapping = false;
+  uint32_t board_buttons_previous = 0, board_buttons_gesture = 0;
   static constexpr unsigned GAME_BUTTON_COUNT = 13;
   static constexpr unsigned VIDEO_LAYOUT_BUTTON = GAME_BUTTON_COUNT;
   static constexpr unsigned RESERVED_LID_SLOT = GAME_BUTTON_COUNT + 1;
@@ -1462,7 +1468,8 @@ class Host {
     } else if (mapping_step >= 0) {
       frame.setTitle("Define buttons");
       rows[3] = " Press: " + std::string(button_names[mapping_step]);
-      rows[7] = " Space: Skip    Esc: Cancel";
+      rows[7] = " Space/User: Skip";
+      rows[8] = " Esc/OSD: Cancel";
       rows[10] = " Saved for standalone only";
       rows[12] = " System mappings are retained";
     } else if (recent_clear_confirm) {
@@ -1504,10 +1511,7 @@ class Host {
       }
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
         rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
-            {0, 1, 2, "DV Target", {"CRT", "RetroTINK/Scaler"}});
-      if (independent_outputs_supported)
-        rows[(video_flags & (1u << 10)) ? 11 : 10] = optionLabel(0, {0, 1, 1, "Analog Output",
-            {(video_flags & (1u << 2)) ? "HDMI scaler" : "240p"}});
+            {0, 1, 2, "Direct Video Target", {"CRT", "Scaler"}});
       rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
       rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
@@ -2200,6 +2204,65 @@ class Host {
       pads.push_back(p);
     }
   }
+  void mappingInput(uint32_t code) {
+    if (mapping_step < 0) return;
+    new_map[button_slots[mapping_step]] = code;
+    if (++mapping_step == int(button_names.size())) {
+      // Skips never select a controller. An entirely skipped wizard must not
+      // overwrite any existing map or create a map for an empty device ID.
+      if (!mapping_pad.empty()) {
+        fs::create_directories(fs::path(kit) / "inputs");
+        atomicFile(fs::path(kit) / "inputs" /
+                       ("NDS_input_" + mapping_pad + "_v3.map"),
+                   new_map.data(), sizeof(new_map));
+        for (auto &pad : pads)
+          if (pad.id == mapping_pad) pad.map = new_map;
+      }
+      mapping_step = -1;
+      message.clear();
+    }
+    dirty = true;
+  }
+  void boardButtons(uint32_t buttons) {
+    // MiSTer GPIO bits: OSD=1, USER=2. Like Main's short-button gestures,
+    // act on release. OSD toggles the menu; USER shares Space's unassigned-
+    // input operation in the mapper and resets the console during gameplay.
+    buttons &= 3;
+    if (!board_buttons_initialized) {
+      board_buttons_initialized = true;
+      board_buttons_previous = buttons;
+      return; // Ignore a button already held at standalone takeover.
+    }
+    if (buttons == board_buttons_previous) return;
+    if (!board_buttons_previous && buttons) {
+      board_buttons_gesture = buttons;
+      board_press_menu = menu;
+      board_press_mapping = mapping_step >= 0;
+    } else if (buttons && board_buttons_gesture) {
+      board_buttons_gesture |= buttons;
+    }
+    board_buttons_previous = buttons;
+    if (buttons || !board_buttons_gesture) return;
+    const auto gesture = board_buttons_gesture;
+    board_buttons_gesture = 0;
+    // Do not apply a release to a different menu/wizard entered while held.
+    if (board_press_menu != menu || board_press_mapping != (mapping_step >= 0)) return;
+    if (mapping_step >= 0) {
+      if (gesture & 1) { // OSD wins a chord; cancel without saving the draft.
+        mapping_step = -1;
+        dirty = true;
+      } else if (gesture & 2) {
+        mappingInput(0);
+      }
+    } else if (gesture & 1) {
+      action(4);
+    } else if (!menu && (gesture & 2)) {
+      // Use the same save/firmware-safe reset as the existing core menu.
+      // Never forward a USER reset while the OSD owns input.
+      try { reset(); }
+      catch (const std::exception &e) { firmwareError("Cannot reset firmware", e.what()); }
+    }
+  }
   void key(Pad &p, int code, bool down) {
     if (code < 0 || code >= (int)p.pressed.size())
       return;
@@ -2225,23 +2288,8 @@ class Host {
       }
       if (code != KEY_SPACE && mapping_pad.empty())
         mapping_pad = p.id;
-      if (code == KEY_SPACE || mapping_pad == p.id) {
-        new_map[button_slots[mapping_step]] = code == KEY_SPACE ? 0 : code;
-        if (++mapping_step == int(button_names.size())) {
-          if (!mapping_pad.empty()) {
-            fs::create_directories(fs::path(kit) / "inputs");
-            atomicFile(fs::path(kit) / "inputs" /
-                           ("NDS_input_" + mapping_pad + "_v3.map"),
-                       new_map.data(), sizeof(new_map));
-            for (auto &pad : pads)
-              if (pad.id == mapping_pad)
-                pad.map = new_map;
-          }
-          mapping_step = -1;
-          message.clear();
-        }
-        dirty = true;
-      }
+      if (code == KEY_SPACE || mapping_pad == p.id)
+        mappingInput(code == KEY_SPACE ? 0 : code);
       return;
     }
     uint32_t oldmenu = p.menujoy;
@@ -2580,7 +2628,6 @@ public:
   }
   void run(unsigned seconds) {
     uint64_t end = seconds ? ms() + seconds * 1000ull : ~0ull;
-    uint32_t oldbuttons = 0;
     unsigned loops = 0;
     while (running && ms() < end) {
       beat();
@@ -2603,10 +2650,7 @@ public:
             throw std::runtime_error("Firmware controller error " + std::to_string(state.error));
         } catch (const std::exception &e) { firmwareStorageFailure(e); }
       }
-      uint32_t b = spi.buttons();
-      if ((b & 1) && !(oldbuttons & 1))
-        action(4);
-      oldbuttons = b;
+      boardButtons(spi.buttons());
       if (menu && repeat_action >= 0 && ms() >= next_repeat) {
         action(repeat_action);
         next_repeat = ms() + 90;

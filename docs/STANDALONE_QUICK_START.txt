@@ -74,6 +74,12 @@ USB/HDD testing remains limited; external-drive behavior has simulated coverage.
 MENU AND CONTROLS
 
 Open with F12, the OSD button or your controller's configured menu combination.
+The physical OSD button opens/closes the menu on release. In Define NDS buttons,
+USER or Space skips the current input; OSD or Esc cancels without saving the
+unfinished mapping. A held USER button skips only once when released. Skipping
+does not select a controller, and an entirely skipped wizard saves no mapping.
+Outside the menu, USER resets the DS using the same save-safe reset path as the
+core menu. Inside the menu it never resets the game. Hardware RESET is unchanged.
 Select + Start or Guide can open it on an unmapped controller.
 The menu does not pause gameplay; pause inside the game when needed.
 
@@ -235,11 +241,11 @@ DIRECT VIDEO TARGET (most users do not need to change this)
 
 This setting applies only to Direct Video through HDMI. The native analog
 outputs are supported automatically; standard scaled HDMI is unaffected.
-The existing NDS core menu gains one DV Target row when Direct Video is active:
+The NDS core menu shows Direct Video Target when Direct Video is active:
 
   CRT (default): HDMI-to-VGA adapter -> RGB CRT / SCART. One 240p screen,
     Main or Touch. Screen Peek and Cycle Video Layout stay within those panels.
-  RetroTINK/Scaler: HDMI -> compatible external scaler. All four digital
+  Scaler (RetroTINK / Scaler): HDMI -> compatible external scaler. All four digital
     layouts remain available, with independent native analog Main/Touch.
 
 Use System -> Save settings to retain the target. Existing options keep their
@@ -265,8 +271,9 @@ Physical HDMI-to-VGA-to-SCART acceptance still requires a compatible adapter
 and a real CRT; RetroTINK measurements do not establish every DAC's behavior.
 
 With vga_scaler=1 the analog port intentionally follows the HDMI scaler for
-computer monitors. The menu reports Analog Output: HDMI scaler and hides the
-native Analog Screen selector. With vga_scaler=0 it reports Analog Output:240p.
+computer monitors and the native Analog Screen selector is hidden.
+With vga_scaler=0 native analog is always one240p screen, selected by Analog
+Screen. There is no redundant analog-output timing row in the menu.
 Old saved CRT-On flags do not restrict the scaled VGA digital layout.
 Boot transitions can briefly interrupt sync while MiSTer loads the core; the
 standalone menu no longer remains in the legacy stacked/blank analog mode.

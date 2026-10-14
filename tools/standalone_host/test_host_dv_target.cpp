@@ -62,7 +62,7 @@ struct HostTest {
     h.action(1);assert(h.cursor==2);h.action(0);assert(h.cursor==Host::DV_TARGET_CURSOR);
     h.direct_video_crt=false;h.draw();
     assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
-    assert(h.osd_rows[3]==h.frame.renderRow(3," DV Target: RetroTINK/Scaler",true,nds_osd::arrow_right));
+    assert(h.osd_rows[3]==h.frame.renderRow(3," Direct Video Target: Scaler",true,nds_osd::arrow_right));
     h.saveSettings();
     assert(bytes(kit/"NDS_video.cfg")=="NDS-DirectVideo-v1\nretrotink\n");
     Host reloaded(kit.string(),(sd/"games/NDS").string(),sd);

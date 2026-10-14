@@ -147,7 +147,7 @@ def advanced_menu(kit):
         "Standard HDMI is unaffected.\n\n"
         "CRT: HDMI-to-VGA adapter -> RGB CRT / SCART.\n"
         "RetroTINK / Scaler: HDMI -> compatible scaler.\n\n"
-        "Also available as DV Target in the NDS core menu."
+        "Also available as Direct Video Target in the NDS core menu."
     )
     if shutil.which("dialog"):
         result = subprocess.run([
