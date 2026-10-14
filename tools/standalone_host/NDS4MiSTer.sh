@@ -15,4 +15,4 @@ fail()
 command -v python3 >/dev/null 2>&1 || fail 'Python 3.8 or newer is required. No files or settings were changed.'
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || fail 'Python 3.8 or newer is required. No files or settings were changed.'
 [ -f "$kit/supervisor.py" ] || fail 'Support files are missing. Extract the whole release ZIP to the SD card root, including hidden files.'
-python3 "$kit/supervisor.py" || fail 'Launch failed. See the message above; session logs are in /tmp/nds-standalone.'
+python3 "$kit/supervisor.py" "$@" || fail 'Launch failed. See the message above; session logs are in /tmp/nds-standalone.'

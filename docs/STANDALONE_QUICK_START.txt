@@ -218,7 +218,7 @@ CRT, ANALOG AND DV1 OUTPUT
 
 Native analog always uses one 256x192 DS screen centered in a 320x240 canvas.
 Analog Screen selects Main or Touch. Digital Layout independently offers
-Main, Touch, Side-by-side and Top/bottom on HDMI/DV1. No CRT Mode or Independent
+Main, Touch, Side-by-side and Top/bottom on standard HDMI or scaler-target DV1. No CRT Mode or Independent
 Outputs switch is needed; the supported host/core pair activates this routing
 at startup, including when existing settings have CRT Mode Off.
 
@@ -230,6 +230,38 @@ in memory and only written when Save settings is selected. Fresh installations
 start with digital Top/bottom and analog Main. The automatic routing changes
 no gameplay clocks or rendering profile. Normal HDMI still uses its configured
 scaled resolution with direct_video=0, including the startup menu.
+
+DIRECT VIDEO TARGET (most users do not need to change this)
+
+This setting applies only to Direct Video through HDMI. The native analog
+outputs are supported automatically; standard scaled HDMI is unaffected.
+The existing NDS core menu gains one DV Target row when Direct Video is active:
+
+  CRT (default): HDMI-to-VGA adapter -> RGB CRT / SCART. One 240p screen,
+    Main or Touch. Screen Peek and Cycle Video Layout stay within those panels.
+  RetroTINK/Scaler: HDMI -> compatible external scaler. All four digital
+    layouts remain available, with independent native analog Main/Touch.
+
+Use System -> Save settings to retain the target. Existing menu rows and the
+System page keep their positions and behavior. Switching target alone does
+not overwrite your saved digital layout. Selecting a new Digital Layout does.
+
+At script launch, F4 opens Advanced Options before the core loads. It edits
+the SAME target preference and explains the two connection types. Save and
+Start remembers the choice; Cancel leaves it unchanged. The prompt lasts
+three seconds; Enter starts immediately. It uses the normal script terminal
+(fb_terminal=1); noninteractive launches use the saved choice without waiting.
+The source launcher also accepts --advanced or --direct-video-target crt|retrotink.
+
+MiSTer.ini still needs the appropriate adapter/sync profile, including
+direct_video=1 and vga_scaler=0 for Direct Video. This choice does not edit INI.
+A brief single-screen 240p bootstrap protects the interval before the host
+reads Main's active output flags. Normal NDS CFG bytes are backed up durably,
+temporarily staged for Main, then restored before the host starts. The recovery
+guard and next launch also restore an interrupted transaction. Do not delete
+bootstrap-video-restore.json if one remains after an interrupted launch.
+Physical HDMI-to-VGA-to-SCART acceptance still requires a compatible adapter
+and a real CRT; RetroTINK measurements do not establish every DAC's behavior.
 
 With vga_scaler=1 the analog port intentionally follows the HDMI scaler for
 computer monitors. The menu reports Analog Output: HDMI scaler and hides the

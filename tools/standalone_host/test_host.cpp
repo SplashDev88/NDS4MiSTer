@@ -622,8 +622,15 @@ R"({
       }
       Host h(kit.string(), (root / "roms").string(), sd);
       assert(h.status == (legacy[0] | REQUIRED_STATUS));
+      bool first_status = true;
       for (const auto &t : h.spi.history)
-        if (t.command == 0x1e) assert(t.words[0] == h.status);
+        if (t.command == 0x1e) {
+          // Before output discovery, the initial write is a CRT-safe raster.
+          const auto safe = (h.status & ~(3u << 5)) | CRT_TIMING | (2u << 5);
+          assert(t.words[0] == (first_status ? safe : h.status));
+          for (unsigned i = 1; i < 8; ++i) assert(t.words[i] == legacy[i]);
+          first_status = false;
+        }
       h.spi.history.clear();
       h.status = 1; h.sendstatus(); // Required bit must not eat transient reset.
       assert(h.spi.history.back().words[0] == (1 | REQUIRED_STATUS));

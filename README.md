@@ -1,4 +1,4 @@
-> Private candidate v0.9.0-rc.7-split.8.3: automatic independent native analog
+> Private candidate v0.9.0-rc.7-split.8.4: automatic independent native analog
 > and digital output. This branch is not the published rc.7 release.
 
 # NDS4MiSTer
@@ -40,7 +40,7 @@ For portrait, select **Digital Layout → Top/bottom** and rotate opposite the m
 
 ## CRT and DV1 setup
 
-Native analog automatically uses **240p**; select **Analog Screen: Main/Touch**. HDMI/DV1 has its own **Digital Layout**. Older CRT-Off settings activate independent output at startup. Keep the MiSTer profile appropriate to your cable and hardware; the package does not edit `MiSTer.ini` or `yc.txt`.
+Native analog automatically uses **240p**; select **Analog Screen: Main/Touch**. HDMI/DV1 has its own **Digital Layout**. For Direct Video through HDMI, **DV Target: CRT** (default) limits that output to one 240p screen; choose **RetroTINK/Scaler** for all four layouts. The same target is available under **F4: Advanced Options** during script startup. Older CRT-Off settings activate independent output at startup. Keep the MiSTer profile appropriate to your cable and hardware; the package does not edit `MiSTer.ini` or `yc.txt`.
 
 On **SuperStation One composite or S-Video using its FPGA encoder**, keep **switch 3 UP** and use the **SVID profile**. That profile uses `vga_mode=svideo` for the SS1 composite socket too. Composite color was confirmed on SuperStation One with rc.6; this build retains the encoder but has not been physically requalified on that setup. See [Quick start](docs/STANDALONE_QUICK_START.txt) for component, RGB/VGA, and external-encoder guidance.
 

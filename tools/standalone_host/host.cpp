@@ -295,19 +295,23 @@ class Host {
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
   bool screen_peek = false; // Temporary display override; status keeps the selection.
+  bool direct_video_crt = true; // Shared with startup Advanced Options; CRT-safe default.
+  bool video_flags_known = false;
   TouchRotation touch_rotation = TouchRotation::Normal;
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
                        RESET_CURSOR = 10, EXIT_CURSOR = 11,
-                       SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, LAST_MAIN_CURSOR = 13;
+                       SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, DV_TARGET_CURSOR = 14,
+                       LAST_MAIN_CURSOR = 14;
   int mainMenuRow(int item) const {
     // Keep cursor identities stable while grouping the single-screen CRT
     // selector directly below its mode switch. Blank rows separate sections.
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11};
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
-        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11};
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, 4, 5, 6, 7, 8, -1, 12, 13, 15, -1, 9};
+        0, 1, 3, 4, 5, 6, 7, 8, -1, 12, 13, 15, -1, 9, 2};
+    if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
     if (independent_outputs_supported)
       return item == ANALOG_CURSOR && (video_flags & (1u << 2)) ? -1 : independent[item];
     return ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) ? crt : standard)[item];
@@ -339,6 +343,7 @@ class Host {
     spi.end();
     independent_outputs_supported = signature == 0x4456 && capability == 0x5350;
     video_flags = signature == 0x4456 ? flags : 0;
+    video_flags_known = true;
     // The initial status write masks split output until capability is known.
     // Select independent native analog immediately, including old CRT-Off
     // settings and non-DV1 sessions, without waiting for a menu change.
@@ -444,6 +449,9 @@ class Host {
     const std::string touch_config = "NDS-TouchRotation-v1\n" +
         std::string(TOUCH_ROTATION_NAMES[unsigned(touch_rotation)]) + "\n";
     atomicFile(fs::path(kit) / "NDS_touch.cfg", touch_config.data(), touch_config.size());
+    const std::string video_config = std::string("NDS-DirectVideo-v1\n") +
+        (direct_video_crt ? "crt\n" : "retrotink\n");
+    atomicFile(fs::path(kit) / "NDS_video.cfg", video_config.data(), video_config.size());
     message = "Settings saved";
   }
   void serviceFramebufferMetadataRequest() {
@@ -495,6 +503,8 @@ class Host {
                  << ",\"de_v\":" << video.top << ",\"line_ticks_100mhz\":" << video.line_ticks
                  << ",\"frame_ticks_100mhz\":" << video.frame_ticks
                  << ",\"output_flags\":" << video_flags
+                 << ",\"direct_video_target\":\"" << (direct_video_crt ? "crt" : "retrotink") << "\""
+                 << ",\"selected_display_status\":" << selectedDisplayStatus()
                  << ",\"dv1_metadata_active\":" << (direct_video_metadata ? "true" : "false") << "}\n";
       const auto video_text = video_json.str();
       atomicFile(fs::path(kit) / "video-output-metadata.json", video_text.data(), video_text.size());
@@ -1176,11 +1186,34 @@ class Host {
       serviceVideoMetadata();
     }
   }
-  uint16_t liveStatus() const {
+  bool crtDirectVideo() const {
+    return (video_flags & (1u << 10)) && direct_video_crt;
+  }
+  uint16_t selectedDisplayStatus() const {
     auto requested = uint16_t(status | REQUIRED_STATUS);
     if (independent_outputs_supported) requested = independentDisplayStatus(requested);
     else requested &= ~INDEPENDENT_OUTPUTS;
-    const auto selected = normalizeDisplayStatus(requested);
+    // Keep the first host write safe before output discovery. Later, restrict
+    // only HDMI Direct Video aimed at a CRT. Saved combined layouts survive
+    // this wire-only override and return when the target is changed to Scaler.
+    if (!video_flags_known || crtDirectVideo()) {
+      requested |= CRT_TIMING;
+      if (!(requested & (1u << 6))) requested = (requested & ~(3u << 5)) | (2u << 5);
+    }
+    return normalizeDisplayStatus(requested);
+  }
+  void changeDigitalLayout(int direction) {
+    if (crtDirectVideo()) {
+      const auto selected = selectedDisplayStatus();
+      status = (status & ~(3u << 5)) | ((selected ^ (1u << 5)) & (3u << 5));
+    } else {
+      status = changeOption(status, CORE_OPTIONS[0], direction);
+      if ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) && !(status & (1u << 6)))
+        status = (status & ~(3u << 5)) | ((direction < 0 ? 3u : 2u) << 5);
+    }
+  }
+  uint16_t liveStatus() const {
+    const auto selected = selectedDisplayStatus();
     // Layouts 2/3 are the individual panels. Flipping bit 5 exchanges them
     // without changing timing, rotation, screen order or the saved selection.
     auto live = selected;
@@ -1191,7 +1224,7 @@ class Host {
     // vga_scaler disables the FPGA's split scanout. In that mode the legacy
     // CRT flag would clamp the shared HDMI/scaled-VGA image to one panel.
     // Ignore it on the wire while keeping saved settings intact.
-    if (independent_outputs_supported && (video_flags & (1u << 2)))
+    if (video_flags_known && independent_outputs_supported && (video_flags & (1u << 2)) && !crtDirectVideo())
       live &= ~CRT_TIMING;
     return live;
   }
@@ -1461,8 +1494,11 @@ class Host {
           option.label = "Analog Timing";
           option.values = {"240p", "240p", "", ""};
         }
-        rows[mainMenuRow(optionCursor(i))] = optionLabel(status, option);
+        rows[mainMenuRow(optionCursor(i))] = optionLabel(i == 0 ? selectedDisplayStatus() : status, option);
       }
+      if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
+        rows[2] = optionLabel(direct_video_crt ? 0 : 1,
+            {0, 1, 2, "DV Target", {"CRT", "RetroTINK/Scaler"}});
       if (independent_outputs_supported)
         rows[10] = optionLabel(0, {0, 1, 1, "Analog Output",
             {(video_flags & (1u << 2)) ? "HDMI scaler" : "240p"}});
@@ -1562,6 +1598,7 @@ class Host {
           status = REQUIRED_STATUS;
           full_status.fill(0);
           touch_rotation = TouchRotation::Normal;
+          direct_video_crt = true;
           saveSettings();
           sendstatus();
           message = "Defaults restored";
@@ -1673,6 +1710,11 @@ class Host {
         // when an option is selected. Values use Select or +/- instead.
         system_menu = true;
         cursor = 0;
+      } else if ((a == 2 || a == 7 || a == 8) && cursor == DV_TARGET_CURSOR) {
+        if (mainMenuRow(DV_TARGET_CURSOR) < 0) return;
+        direct_video_crt = !direct_video_crt;
+        sendstatus();
+        message = " System > Save settings";
       } else if ((a == 2 || a == 7 || a == 8) && cursor == TOUCH_ROTATION_CURSOR) {
         touch_rotation = TouchRotation((unsigned(touch_rotation) + (a == 7 ? 2 : 1)) % 3);
         message.clear();
@@ -1689,9 +1731,8 @@ class Host {
           dirty = true;
           return;
         }
-        status = changeOption(status, o, a == 7 ? -1 : 1);
-        if (o.shift == 5 && (status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) && !(status & (1u << 6)))
-          status = (status & ~(3u << 5)) | ((a == 7 ? 3u : 2u) << 5);
+        if (o.shift == 5) changeDigitalLayout(a == 7 ? -1 : 1);
+        else status = changeOption(status, o, a == 7 ? -1 : 1);
         sendstatus();
         message.clear();
       } else if (a == 2) {
@@ -2229,7 +2270,7 @@ class Host {
     if (!menu && down && !layout_was_held && held(p.map[VIDEO_LAYOUT_BUTTON])) {
       // Only update the live Video Layout field. No reset, config writes,
       // OSD traffic, or extra DS button bit is needed for this host action.
-      status = changeOption(status, CORE_OPTIONS[0], 1);
+      changeDigitalLayout(1);
       sendstatus();
     }
     if (!menu || !down)
@@ -2423,6 +2464,10 @@ public:
     std::ifstream cfg(cfgpath, std::ios::binary);
     cfg.read((char *)full_status.data(), sizeof(full_status));
     status = cleanStatus(full_status[0]);
+    std::ifstream video_config(fs::path(kit) / "NDS_video.cfg", std::ios::binary);
+    const std::string video_contents((std::istreambuf_iterator<char>(video_config)),
+                                     std::istreambuf_iterator<char>());
+    direct_video_crt = video_contents != "NDS-DirectVideo-v1\nretrotink\n";
     std::ifstream touch_config(fs::path(kit) / "NDS_touch.cfg");
     std::string touch_header, touch_value;
     if (std::getline(touch_config, touch_header) && touch_header == "NDS-TouchRotation-v1" &&

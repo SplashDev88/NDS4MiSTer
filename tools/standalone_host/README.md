@@ -6,6 +6,22 @@ Build this frontend using `build.sh`. Its menu options are generated from the in
 
 Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_*.py"` from the repository root, plus the C++ test programs in this directory (including `test_storage.cpp` and `test_host_storage.cpp`). These tests use a fake SPI bus; they do not operate hardware.
 
+Private split.8.4 adds the existing-menu `DV Target` row and F4 startup Advanced
+Options. Both use `NDS_video.cfg` (`NDS-DirectVideo-v1` followed by `crt` or
+`retrotink`). Missing/unrecognized preferences safely default to CRT without a
+disk write. Only an active Direct Video connection applies this restriction.
+Standard HDMI and native analog retain their existing behavior. The target
+overrides combined digital layouts on the wire only; Peek and mapped layout
+cycling remain one-screen in CRT mode. Save settings persists the shared target.
+
+`video_target.py` journals Main's temporary 16-byte bootstrap CFG on the SD
+before changing it. The normal file is restored before host construction, on
+guard recovery, and on the next launch after power loss. Unexpected concurrent
+changes are never overwritten; the journal is retained for recovery. The first
+host status write also stays at 240p until actual output flags are known.
+`test_video_target.py` checks interrupted transactions and all 65,536 initial
+status values; `test_host_dv_target.cpp` checks the real host SPI/menu paths.
+
 In rc.6, HDMI menu and loading-dialog orientation follows
 Video Rotation; the native analog menu stays upright. The legacy private
 `NDS_osd.cfg` and INI `osd_rotate` settings no longer

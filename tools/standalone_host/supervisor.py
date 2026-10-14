@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 """NDS4MiSTer v0.9.0-rc.7 standalone launcher and recovery supervisor.
-No system binary/init/config overwrites. Independent guard survives supervisor death.
+No system binary/init changes. Bootstrap display settings are journaled/restored.
 """
 from pathlib import Path
 import argparse, fcntl, hashlib, json, os, signal, subprocess, sys, time, shutil
+from video_target import restore_bootstrap, stage_bootstrap, startup_menu, save_target
 
 KIT = Path(__file__).resolve().parent
 LEASE = Path("/tmp/nds-standalone-lease.json")
@@ -183,6 +184,7 @@ def recover(state):
             stderr=subprocess.DEVNULL,
             timeout=15,
         )
+        restore_bootstrap(KIT, SD_ROOT)
         started_main = not mains()
         if started_main:
             with open(RUNTIME / "recovery-main.log", "wb", buffering=0) as log:
@@ -446,15 +448,22 @@ def main():
     ap.add_argument("--rom")
     ap.add_argument("--seconds", type=int, default=0)
     ap.add_argument("--guard", action="store_true")
+    ap.add_argument("--advanced", action="store_true", help="Open startup Advanced Options")
+    ap.add_argument("--direct-video-target", choices=("crt", "retrotink"),
+                    help="Save the same preference used by the core's DV Target row")
     a = ap.parse_args()
     if a.guard:
         return guard()
-    preflight()
-    initialize_settings()
-    RUNTIME.mkdir(mode=0o700, exist_ok=True)
-    os.sched_setaffinity(0, {0, 1})
     lock = open("/tmp/nds-standalone-supervisor.lock", "w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    preflight()
+    restore_bootstrap(KIT, SD_ROOT)
+    initialize_settings()
+    if a.direct_video_target:
+        save_target(KIT, a.direct_video_target)
+    startup_menu(KIT, force=a.advanced)
+    RUNTIME.mkdir(mode=0o700, exist_ok=True)
+    os.sched_setaffinity(0, {0, 1})
     assert (
         sha(CORE) == EXPECTED_CORE and sha(HELPER) == EXPECTED_HELPER
     ), "Standalone core/helper mismatch; nothing changed"
@@ -541,6 +550,9 @@ def main():
         state["release"] = "v0.9.0-rc.7"
         write()
         stage("load standalone core")
+        stage_bootstrap(KIT, SD_ROOT, validate_settings().read_bytes())
+        state["bootstrap_video"] = "single-screen-240p"
+        write()
         previous = mains()[0]
         cmd("load_core " + str(CORE))
         wait_for(lambda: core_name() == "NDS" and not alive(previous))
@@ -590,6 +602,9 @@ def main():
         stage("stop normal Main")
         kill(owned[0])
         assert not mains()
+        restore_bootstrap(KIT, SD_ROOT)
+        state["bootstrap_settings_restored"] = True
+        write()
         hlog = open(RUNTIME / "host.log", "wb", buffering=0)
         host = subprocess.Popen(
             [
