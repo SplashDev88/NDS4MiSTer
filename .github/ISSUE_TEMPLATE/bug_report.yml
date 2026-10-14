@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible NDS4MiSTer problem without sharing copyrighted or private data
+description: Something not working? Tell us what happened.
 title: "[Bug]: "
 labels:
   - bug
@@ -7,100 +7,45 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for testing NDS4MiSTer. Do not upload or link to commercial
-        ROMs, BIOS/firmware dumps, personal save files, credentials, or other
-        private data. A game title, region, revision, and game code are enough.
+        A short description is enough to get started. Everything else is optional.
+        Please do not upload or link to ROMs, BIOS/firmware dumps, saves,
+        credentials, or private information.
 
-  - type: input
-    id: beta
+  - type: textarea
+    id: actual
     attributes:
-      label: Beta or build
-      description: Enter the public beta name or source commit.
-      placeholder: Public Save Beta B (2026-08-27)
-    validations:
-      required: true
-
-  - type: input
-    id: core_hash
-    attributes:
-      label: FPGA core SHA-256
-      description: Enter the SHA-256 of the dated NDS RBF.
-    validations:
-      required: true
-
-  - type: input
-    id: service_hash
-    attributes:
-      label: HPS service SHA-256
-      description: Enter the SHA-256 from nds_hybrid_3d_service.sha256.
+      label: What went wrong?
+      description: Tell us what happened and what you expected. Include any error message you saw.
+      placeholder: When I..., the core... I expected...
     validations:
       required: true
 
   - type: input
     id: game
     attributes:
-      label: Game identification
-      description: Give the title, region, revision, and game code when known. Do not attach the ROM.
-      placeholder: New Super Mario Bros. (USA), revision 1, game code A2DE
-    validations:
-      required: true
+      label: Game (optional)
+      description: If this affects a game, give its title. Add the region or revision if you know it.
+      placeholder: New Super Mario Bros. (USA)
+
+  - type: input
+    id: beta
+    attributes:
+      label: NDS4MiSTer version (optional)
+      description: The release name or ZIP filename is enough. Leave blank if unsure.
+      placeholder: v0.9.0-rc.7
 
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction steps
-      description: List the shortest reliable sequence from a fresh core load.
+      label: Steps to reproduce (optional)
+      description: What were you doing when it happened? Mention whether it happens every time or only sometimes, if you know.
       placeholder: |
-        1. Start the H3D service.
-        2. Load the NDS core and select the game.
+        1. Launch NDS4MiSTer.
+        2. Load the game and...
         3. ...
-    validations:
-      required: true
-
-  - type: textarea
-    id: expected
-    attributes:
-      label: Expected behavior
-    validations:
-      required: true
-
-  - type: textarea
-    id: actual
-    attributes:
-      label: Actual behavior
-    validations:
-      required: true
-
-  - type: dropdown
-    id: frequency
-    attributes:
-      label: Reproduction frequency
-      options:
-        - Every time
-        - Often
-        - Sometimes
-        - Once
-    validations:
-      required: true
-
-  - type: input
-    id: display
-    attributes:
-      label: Display and video mode
-      description: Include the TV/monitor model and MiSTer output mode for video problems.
-      placeholder: LG C3, 1080p60
 
   - type: textarea
     id: crash_report
     attributes:
-      label: Crash report or diagnostic output
-      description: Paste or attach the generated NDS4MiSTer crash text report. Review it before uploading. Do not attach ROMs or saves.
-      render: text
-
-  - type: checkboxes
-    id: safety
-    attributes:
-      label: Public-data confirmation
-      options:
-        - label: I have not attached or linked to ROMs, BIOS/firmware dumps, saves, credentials, or private data.
-          required: true
+      label: Anything else? (optional)
+      description: Add screenshots, video, or a crash report if available. For display problems, your TV, connection, and CRT Mode setting can help. Share only what you know.
