@@ -30,7 +30,7 @@ struct HostTest {
     assert(first != h.spi.history.end());
     assert((first->words[0] & (CRT_TIMING | (1u<<6))) == (CRT_TIMING | (1u<<6)));
     discover(h, 1u<<10);
-    assert(h.direct_video_crt && h.mainMenuRow(Host::DV_TARGET_CURSOR)==3);
+    assert(h.direct_video_crt && h.mainMenuRow(Host::DV_TARGET_CURSOR)<0);
     assert(h.status==original[0] && bytes(kit/"NDS_v1.CFG")==saved);
     assert(!fs::exists(kit/"NDS_video.cfg"));
     for(unsigned layout=0; layout<4; ++layout) for(unsigned order=0; order<2; ++order)
@@ -50,19 +50,21 @@ struct HostTest {
         h.cursor=2;h.action(2);assert((h.liveStatus()&(3u<<5))==((wire^(1u<<5))&(3u<<5)));
         h.action(7);assert((h.liveStatus()&(3u<<5))==(wire&(3u<<5)));
         h.status=selected;
-        h.cursor=Host::DV_TARGET_CURSOR;h.action(2);
+        h.display_menu=true;h.cursor=Host::DV_TARGET_CURSOR;h.action(2);
         assert(!h.direct_video_crt && h.status==selected);
         assert(((h.liveStatus()>>5)&3)==layout);
-        h.action(2);assert(h.direct_video_crt && h.status==selected);
+        h.action(2);assert(h.direct_video_crt && h.status==selected);h.display_menu=false;
       }
-    // Keep the firmware separator and option order; only the video block moves.
-    const std::array<int,14> oldRows{0,1,4,5,6,7,8,9,-1,12,13,15,-1,10};
-    for(unsigned i=0;i<oldRows.size();++i) assert(h.mainMenuRow(i)==oldRows[i]);
-    h.cursor=1;h.action(1);assert(h.cursor==Host::DV_TARGET_CURSOR);
-    h.action(1);assert(h.cursor==2);h.action(0);assert(h.cursor==Host::DV_TARGET_CURSOR);
+    // Main keeps quick selectors; Direct Video Target lives in Display options.
+    h.cursor=1;h.action(1);assert(h.cursor==2);
+    h.action(1);assert(h.cursor==Host::ANALOG_CURSOR);
+    h.action(1);assert(h.cursor==Host::DISPLAY_CURSOR);
+    h.action(2);assert(h.display_menu && h.cursor==3);
+    for(int i=0;i<5;++i)h.action(1);
+    assert(h.cursor==Host::DV_TARGET_CURSOR && h.mainMenuRow(h.cursor)==6);
     h.direct_video_crt=false;h.draw();
-    assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
-    assert(h.osd_rows[3]==h.frame.renderRow(3," Direct Video Target: Scaler",true,nds_osd::arrow_right));
+    assert(h.osd_rows[5]==h.frame.renderRow(5,"",false,nds_osd::arrow_left));
+    assert(h.osd_rows[6]==h.frame.renderRow(6," Direct Video Target: Scaler",true,nds_osd::arrow_left));
     h.saveSettings();
     assert(bytes(kit/"NDS_video.cfg")=="NDS-DirectVideo-v1\nretrotink\n");
     Host reloaded(kit.string(),(sd/"games/NDS").string(),sd);

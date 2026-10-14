@@ -121,7 +121,7 @@ from revealing the crosshair. Mouse input and the Touch button are unchanged.
 
 SIDEWAYS GAMES AND TOUCH ROTATION
 
-Touch Rotation sits directly below Video Rotation and changes right-stick
+In Display options, Touch Rotation sits directly below Video Rotation and changes right-stick
 and mouse touch directions independently of the picture and game buttons.
 For the tested Ninja Gaiden orientation, select 90 CW: an Up input that
 previously moved the stylus Left now moves it Up. Use 90 CCW for the opposite
@@ -204,7 +204,7 @@ DSi mode, or physical microphone capture.
 
 TATE AND OPTIONAL 1080P
 
-Choose Digital Layout -> Top/bottom. Rotate the picture opposite to the
+Choose Digital Layout -> Top/bottom. In Display options, rotate opposite to the
 physical monitor turn: 90 CCW for clockwise, 90 CW for counterclockwise.
 For TATE on a physically rotated monitor, keep Touch Rotation set to Normal.
 For a game that uses the DS sideways on an unrotated monitor, choose the
@@ -241,7 +241,7 @@ DIRECT VIDEO TARGET (most users do not need to change this)
 
 This setting applies only to Direct Video through HDMI. The native analog
 outputs are supported automatically; standard scaled HDMI is unaffected.
-The NDS core menu shows Direct Video Target when Direct Video is active:
+Display options shows Direct Video Target when Direct Video is active:
 
   CRT (default): HDMI-to-VGA adapter -> RGB CRT / SCART. One 240p screen,
     Main or Touch. Screen Peek and Cycle Video Layout stay within those panels.

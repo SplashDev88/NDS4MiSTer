@@ -294,7 +294,7 @@ class Host {
   fs::path currentdir, rom_browser_dir, core_root = "/media/fat";
   std::string selected_core;
   bool menu = true, browser = false, core_browser = false,
-       system_menu = false, dirty = true;
+       system_menu = false, display_menu = false, dirty = true;
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
   bool screen_peek = false; // Temporary display override; status keeps the selection.
@@ -304,24 +304,23 @@ class Host {
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
                        RESET_CURSOR = 10, EXIT_CURSOR = 11,
                        SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, DV_TARGET_CURSOR = 14,
-                       LAST_MAIN_CURSOR = 14;
+                       DISPLAY_CURSOR = 15, LAST_MAIN_CURSOR = 15;
   int mainMenuRow(int item) const {
-    // Keep cursor identities stable while grouping the single-screen CRT
-    // selector directly below its mode switch. Blank rows separate sections.
+    // Stable option identities keep status bits and saved settings unchanged.
+    // Only the visible rows differ between the main and Display options pages.
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1};
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
-        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1};
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, 4, 5, 6, 7, 8, -1, 12, 13, 15, -1, 9, 2};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 7, 8, 15, -1, 4, -1, 5};
+    static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
+        -1, -1, -1, 0, 1, 2, 3, 4, -1, -1, -1, 15, -1, -1, 6, -1};
+    if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
     if (independent_outputs_supported) {
       if (item == ANALOG_CURSOR && (video_flags & (1u << 2))) return -1;
-      const auto row = independent[item];
-      // Retain the blank line after Boot DS firmware. Only the contiguous
-      // video block moves down when DV Target is present; System is unchanged.
-      if ((video_flags & (1u << 10)) && row >= 2 && row <= 9) return row + 1;
-      return row;
+      return (display_menu ? display : independent)[item];
     }
     return ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) ? crt : standard)[item];
   }
@@ -337,7 +336,7 @@ class Host {
           (next == cursor ||
            (mainMenuRow(item) - mainMenuRow(next)) * direction < 0))
         next = item;
-    return next != cursor ? next : direction > 0 ? 0 : EXIT_CURSOR;
+    return next != cursor ? next : direction > 0 ? (display_menu ? 3 : 0) : EXIT_CURSOR;
   }
   nds_video::Transmitter video_transmitter;
   nds_video::StablePacket video_packet;
@@ -601,7 +600,7 @@ class Host {
   // its own ".." returns to the NDS menu rather than exposing Linux internals.
   void finishStorageBrowser() {
     browser = true;
-    core_browser = recent_view = storage_choices = system_menu = false;
+    core_browser = recent_view = storage_choices = system_menu = display_menu = false;
     cursor = browser_first = 0;
     scroll_offset = 0;
     next_scroll = ms() + 1000;
@@ -1058,7 +1057,7 @@ class Host {
               recent_available.push_back(f[i + 1] == "1");
             }
             browser = recent_view = true;
-            storage_choices = core_browser = system_menu = false;
+            storage_choices = core_browser = system_menu = display_menu = false;
             cursor = browser_first = 0;
             scroll_offset = 0;
             next_scroll = ms() + 1000;
@@ -1390,7 +1389,7 @@ class Host {
       next_scroll = now + 10;
       writeRow(browser_selected_row, frame.scrollRow(browser_selected_row, browser_base,
                name, scroll_offset, entry.directory ? 176 : 232, true));
-    } else if (!system_menu) { // Main's System page sets helptext_idx = 0.
+    } else if (!system_menu && !display_menu) { // Keep the submenu Back footer visible.
       if (auto footer = version_footer.advance(frame, footer_base, CORE_VERSION, now))
         writeRow(15, *footer);
     }
@@ -1470,8 +1469,6 @@ class Host {
       rows[3] = " Press: " + std::string(button_names[mapping_step]);
       rows[7] = " Space/User: Skip";
       rows[8] = " Esc/OSD: Cancel";
-      rows[10] = " Saved for standalone only";
-      rows[12] = " System mappings are retained";
     } else if (recent_clear_confirm) {
       frame.setTitle("Recent Files");
       rows[6] = "        Clear the List?";
@@ -1485,9 +1482,11 @@ class Host {
       rows[4] = "             no";
       selected = cursor == 0 ? 3 : 4;
     } else {
-      frame.setTitle("NDS");
-      rows[0] = " " + std::string(LOAD_LABEL);
-      rows[1] = " Boot DS firmware";
+      frame.setTitle(display_menu ? "Display options" : "NDS");
+      if (!display_menu) {
+        rows[0] = " " + std::string(LOAD_LABEL);
+        rows[1] = " Boot DS firmware";
+      }
       for (size_t i = 0; i < CORE_OPTIONS.size(); i++) {
         if (mainMenuRow(optionCursor(i)) < 0) continue;
         auto option = CORE_OPTIONS[i];
@@ -1512,16 +1511,21 @@ class Host {
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
         rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
             {0, 1, 2, "Direct Video Target", {"CRT", "Scaler"}});
-      rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
+      if (mainMenuRow(TOUCH_ROTATION_CURSOR) >= 0)
+        rows[mainMenuRow(TOUCH_ROTATION_CURSOR)] = optionLabel(unsigned(touch_rotation),
           {0, 2, 3, "Touch Rotation", {"Normal", "90 CCW", "90 CW"}});
-      rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
-      rows[13] = " Reset";
+      if (mainMenuRow(DISPLAY_CURSOR) >= 0)
+        rows[mainMenuRow(DISPLAY_CURSOR)] = " Display options            " + std::string(1, char(0x16));
+      if (mainMenuRow(LID_CURSOR) >= 0)
+        rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
+      if (mainMenuRow(RESET_CURSOR) >= 0)
+        rows[mainMenuRow(RESET_CURSOR)] = " Reset";
       rows[14] = message.empty() ? personal_settings_notice : message;
-      rows[15] = "            exit";
+      rows[15] = display_menu ? "            back" : "            exit";
       selected = mainMenuRow(cursor);
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
-                            : system_menu ? nds_osd::arrow_left
+                            : (system_menu || display_menu) ? nds_osd::arrow_left
                                           : nds_osd::arrow_right;
     for (int i = 0; i < 16; i++)
       line(i, rows[i], i == selected, arrows);
@@ -1538,7 +1542,7 @@ class Host {
     menu = !menu;
     syncScreenPeek();
     if (core_browser) closeBrowser();
-    browser = system_menu = reset_confirm = false;
+    browser = system_menu = display_menu = reset_confirm = false;
     recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
         false;
     mapping_step = -1;
@@ -1565,7 +1569,7 @@ class Host {
       if (a == 2 || a == 3 || a == 4) {
         firmware_error_dialog = false;
         menu = true;
-        browser = system_menu = false;
+        browser = system_menu = display_menu = false;
         cursor = 1;
         dirty = true;
       }
@@ -1620,7 +1624,7 @@ class Host {
     if (a == 9) {
       if (recent_view) closeBrowser();
       else if (!choosing_firmware &&
-               ((browser && !core_browser) || (!system_menu && cursor == 0)))
+               ((browser && !core_browser) || (!system_menu && !display_menu && cursor == 0)))
         openRecents();
       dirty = true;
       return;
@@ -1639,6 +1643,9 @@ class Host {
     if (a == 3) {
       if (browser) {
         closeBrowser();
+      } else if (display_menu) {
+        display_menu = false;
+        cursor = DISPLAY_CURSOR;
       } else if (system_menu) {
         system_menu = false;
         cursor = 0;
@@ -1715,11 +1722,21 @@ class Host {
           system_menu = false;
           cursor = 0;
         }
+      } else if (display_menu && (a == 5 || (a == 2 && cursor == EXIT_CURSOR))) {
+        display_menu = false;
+        cursor = DISPLAY_CURSOR;
       } else if (a == 6) {
+        if (display_menu) return;
         // Main's generic core menu treats Right as page navigation even
         // when an option is selected. Values use Select or +/- instead.
         system_menu = true;
         cursor = 0;
+      } else if (independent_outputs_supported && mainMenuRow(cursor) < 0) {
+        return;
+      } else if (a == 2 && cursor == DISPLAY_CURSOR) {
+        display_menu = true;
+        cursor = 3;
+        message.clear();
       } else if ((a == 2 || a == 7 || a == 8) && cursor == DV_TARGET_CURSOR) {
         if (mainMenuRow(DV_TARGET_CURSOR) < 0) return;
         direct_video_crt = !direct_video_crt;
@@ -1768,6 +1785,7 @@ class Host {
     }
     log("menu selection=" + std::to_string(cursor) + " browser=" +
         std::to_string(browser) + " system=" + std::to_string(system_menu) +
+        " display=" + std::to_string(display_menu) +
         " status=" + std::to_string(status));
     dirty = true;
   }
@@ -1803,7 +1821,7 @@ class Host {
     firmware_error_dialog = true;
     menu = true;
     syncScreenPeek();
-    browser = system_menu = false;
+    browser = system_menu = display_menu = false;
     recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
         false;
     mapping_step = -1;
@@ -1961,7 +1979,7 @@ class Host {
     firmwareControl(2);
     waitFirmware(0x43, 0x42, 3000, "native firmware release");
     native_firmware = true;
-    menu = browser = system_menu = false;
+    menu = browser = system_menu = display_menu = false;
     recent_view = recent_clear_confirm = false;
     osd(false);
     log("native DS firmware CPUs released; firmware menu progress not yet verified");
@@ -2621,7 +2639,7 @@ public:
     try { remember(path); }
     catch (const std::exception &e) { log(std::string("recent files: ") + e.what()); }
     menu = false;
-    browser = system_menu = false;
+    browser = system_menu = display_menu = false;
     recent_view = recent_clear_confirm = false;
     osd(false);
     log("ROM started " + path);
