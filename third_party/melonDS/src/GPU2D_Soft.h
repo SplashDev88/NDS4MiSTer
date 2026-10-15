@@ -162,6 +162,7 @@ private:
     template<bool mosaic, bool cached> void DrawBG_TextImpl(u32 line, u32 bgnum);
     template<bool mosaic> void DrawBG_Affine(u32 line, u32 bgnum);
     template<bool mosaic> void DrawBG_Extended(u32 line, u32 bgnum);
+    template<bool mosaic, bool cached> void DrawBG_ExtendedImpl(u32 line, u32 bgnum);
     template<bool mosaic> void DrawBG_Large(u32 line);
 
     void ApplySpriteMosaicX();

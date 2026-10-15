@@ -529,7 +529,11 @@ void SoftRenderer2D::DrawPalettePixel(u32* dst, u32 color, u32 flag)
 template<bool mosaic>
 void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
 {
-    if (StandardPaletteCache) DrawBG_TextImpl<mosaic, true>(line, bgnum);
+    // Converted standard colors also serve 8bpp tile rows. Extended palettes
+    // have separate banks; keep those and the 8bpp mosaic path unchanged.
+    const bool eligible = !(GPU2D.BGCnt[bgnum] & (1u << 7)) ||
+        (!mosaic && !(GPU2D.DispCnt & (1u << 30)));
+    if (StandardPaletteCache && eligible) DrawBG_TextImpl<mosaic, true>(line, bgnum);
     else DrawBG_TextImpl<mosaic, false>(line, bgnum);
 }
 
@@ -585,7 +589,7 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
 
     const u32* converted = nullptr;
     if constexpr (cached)
-        if (!(bgcnt & (1u << 7))) converted = GetStandardBGColors(pal);
+        converted = GetStandardBGColors(pal);
 
     // adjust Y position in tilemap
     if (bgcnt & (1<<15))
@@ -617,8 +621,10 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
 
             if (bgcnt & (1<<7))
             {
-                u16* const curpal = extpal ?
-                    GPU2D.GetBGExtPal(extpalslot, curtile >> 12) : pal;
+                const auto* curpal = [&]() {
+                    if constexpr (cached) return converted;
+                    else return extpal ? GPU2D.GetBGExtPal(extpalslot, curtile >> 12) : pal;
+                }();
                 const u32 pixelsaddr =
                     tilesetaddr + ((curtile & 0x03FF) << 6) +
                     (((curtile & (1<<11)) ?
@@ -652,7 +658,7 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
                         const u32 outputX = screenX + outputOffset;
                         const u32 color = (packed >> shift) & 0xFFu;
                         if (color && (WindowMask[outputX] & windowBit))
-                            DrawPixel(&BGOBJLine[outputX], curpal[color],
+                            DrawPalettePixel<cached>(&BGOBJLine[outputX], curpal[color],
                                       layerFlag);
                     };
                     if (curtile & (1u << 10))
@@ -679,7 +685,7 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
                     const u8 color =
                         bgvram[(pixelsaddr + tileX) & bgvrammask];
                     if (color)
-                        DrawPixel(&BGOBJLine[outputX], curpal[color],
+                        DrawPalettePixel<cached>(&BGOBJLine[outputX], curpal[color],
                                   0x01000000<<bgnum);
                 }
             }
@@ -972,6 +978,18 @@ void SoftRenderer2D::DrawBG_Affine(u32 line, u32 bgnum)
 template<bool mosaic>
 void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
 {
+    // Only standard-palette tiled affine backgrounds use expanded colors.
+    // Bitmap/direct-color and extended palette paths retain their old work.
+    if (StandardPaletteCache && !(GPU2D.BGCnt[bgnum] & (1u << 7)) &&
+        !(GPU2D.DispCnt & (1u << 30)))
+        DrawBG_ExtendedImpl<mosaic, true>(line, bgnum);
+    else
+        DrawBG_ExtendedImpl<mosaic, false>(line, bgnum);
+}
+
+template<bool mosaic, bool cached>
+void SoftRenderer2D::DrawBG_ExtendedImpl(u32 line, u32 bgnum)
+{
     u16 bgcnt = GPU2D.BGCnt[bgnum];
 
     u32 tilesetaddr, tilemapaddr;
@@ -1127,8 +1145,12 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
             pal = (u16*)&GPU.Palette[0];
         }
 
+        const auto* colors = [&]() {
+            if constexpr (cached) return GetStandardBGColors(pal);
+            else return pal;
+        }();
         u16 curtile;
-        u16* curpal;
+        const auto* curpal = colors;
         u8 color;
 
         yshift -= 3;
@@ -1162,14 +1184,15 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
                         // Tile rows and the VRAM wrap boundary are aligned
                         // to eight bytes, so this row cannot cross the wrap.
                         const u8* pixels = &bgvram[rowAddress];
-                        const u16* palette = extpal ?
-                            GPU2D.GetBGExtPal(bgnum, tile >> 12) : pal;
+                        const auto* palette = colors;
+                        if constexpr (!cached)
+                            if (extpal) palette = GPU2D.GetBGExtPal(bgnum, tile >> 12);
                         for (int j = 0; j < run; ++j)
                         {
                             if (!(WindowMask[i + j] & windowBit)) continue;
                             const u8 index = pixels[(tileX + j) ^ flipX];
                             if (index)
-                                DrawPixel(&BGOBJLine[i + j], palette[index], layer);
+                                DrawPalettePixel<cached>(&BGOBJLine[i + j], palette[index], layer);
                         }
                     }
                     i += run;
@@ -1187,7 +1210,7 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
             // start with an empty cache; all pixel fetches remain live.
             u32 previousMapAddress = ~0u;
             u32 tileBase = 0, tileFlip = 0;
-            u16* tilePalette = pal;
+            const auto* tilePalette = colors;
             for (int i = 0; i < 256; ++i)
             {
                 if (WindowMask[i] & (1<<bgnum))
@@ -1207,13 +1230,14 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
                             tileBase = tilesetaddr + ((tile & 0x03FF) << 6);
                             tileFlip = (tile & (1<<10) ? 7u : 0u) |
                                 (tile & (1<<11) ? 56u : 0u);
-                            tilePalette = extpal ? GPU2D.GetBGExtPal(bgnum, tile >> 12) : pal;
+                            if constexpr (!cached)
+                                tilePalette = extpal ? GPU2D.GetBGExtPal(bgnum, tile >> 12) : pal;
                         }
                         const u32 offset = (((finalY >> 5) & 56) |
                             ((finalX >> 8) & 7)) ^ tileFlip;
                         const u8 index = bgvram[(tileBase + offset) & bgvrammask];
                         if (index)
-                            DrawPixel(&BGOBJLine[i], tilePalette[index], 0x01000000<<bgnum);
+                            DrawPalettePixel<cached>(&BGOBJLine[i], tilePalette[index], 0x01000000<<bgnum);
                     }
                 }
                 rotX += rotA;
@@ -1243,8 +1267,8 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
                 {
                     curtile = *(u16*)&bgvram[(tilemapaddr + (((((finalY & coordmask) >> 11) << yshift) + ((finalX & coordmask) >> 11)) << 1)) & bgvrammask];
 
-                    if (extpal) curpal = GPU2D.GetBGExtPal(bgnum, curtile>>12);
-                    else        curpal = pal;
+                    if constexpr (!cached)
+                        curpal = extpal ? GPU2D.GetBGExtPal(bgnum, curtile>>12) : pal;
 
                     // draw pixel
                     u32 tilexoff = (finalX >> 8) & 0x7;
@@ -1256,7 +1280,7 @@ void SoftRenderer2D::DrawBG_Extended(u32 line, u32 bgnum)
                     color = bgvram[(tilesetaddr + ((curtile & 0x03FF) << 6) + (tileyoff << 3) + tilexoff) & bgvrammask];
 
                     if (color)
-                        DrawPixel(&BGOBJLine[i], curpal[color], 0x01000000<<bgnum);
+                        DrawPalettePixel<cached>(&BGOBJLine[i], curpal[color], 0x01000000<<bgnum);
                 }
             }
 
