@@ -2,6 +2,7 @@
 
 module tb_nds_h3d_sparse_phase_cdc;
     logic source_clk = 0;
+    logic lcd_vblank = 0;
     logic ddr_clk = 0;
     logic reset = 1;
     logic session_flush = 0;

@@ -271,3 +271,31 @@ Star Fox, Knights in the Nightmare, GoldenEye and C.O.R.E. have not yet received
 new hardware reproduction runs in this experiment. The current 3D FPS display
 still measures publication activity and must not be used as a unique-frame or
 game-speed acceptance criterion.
+
+## SWAP/VBlank retirement candidate
+
+The Mushroom Men trace motivates a separate architectural FIFO-retirement
+queue. Delivering a command to ARM no longer automatically releases its FIFO
+credit when it is waiting behind SWAP_BUFFERS. SWAP retirement waits for the
+next native console VBlank, while the transport continues to deliver records
+and LCD events in order. CPU/DMA backpressure and GXSTAT FIFO thresholds use
+the larger outstanding count from transport and retirement. The added queue
+stores one bit per normalized command; payloads and queue capacities are
+unchanged. Each consecutive SWAP requires a separate VBlank.
+
+The product enables this behavior explicitly. The transport-only parameter
+setting remains available for regression controls. Ordered readback fences
+wait for transport and autonomous normalization, not the retirement barrier.
+POWCNT1 low-byte writes qualify new SWAP waits; disabled VBlanks do not release
+an existing geometry flush. Session reset clears both queues.
+
+`tools/test_gx_swap_retirement.sh` checks CPU/DMA full stalls after transport
+drains, consecutive and same-edge SWAPs, packed commands, transport stalls,
+power transitions, reset, and the product CDC with 257 ordered readbacks and
+LCD progress. The transport-only negative control fails the intended missing
+SWAP-credit assertion. Existing clip/readback tests pass.
+
+This is a minimum SWAP barrier, not cycle-accurate geometry execution. It does
+not implement command-specific latency or change GXSTAT busy/matrix timing.
+Hardware compatibility, speed and route/timing validation remain pending;
+Mushroom Men is not yet confirmed fixed. Keep this candidate experimental.

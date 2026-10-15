@@ -1299,6 +1299,7 @@ wire h3d_record_source_fault, h3d_record_ddr_fault;
 wire [3:0] h3d_record_source_fault_reason, h3d_record_ddr_fault_reason;
 wire [8:0] h3d_gx_fifo_level;
 wire h3d_gx_fifo_empty, h3d_gx_fifo_below_half, h3d_gx_fifo_full;
+wire h3d_lcd_vblank;
 wire [6:0] h3d_gx_stack_status;
 wire h3d_gx_stack_ack;
 
@@ -1680,10 +1681,12 @@ nds_h3d_frame_record_cdc #(
 `else
     .SPARSE_HBLANK(1'b1),
 `endif
-    .SCANLINE_TAGS(1'b1)
+    .SCANLINE_TAGS(1'b1),
+    .SWAP_VBLANK_RETIREMENT(1'b1)
 ) h3d_record_cdc (
     .source_clk(clk1x), .ddr_clk(ddr_clk),
     .reset(bridge_reset_ddr), .session_flush(~h3d_control_release),
+    .lcd_vblank(h3d_lcd_vblank),
     .gpu_valid(h3d_gpu_write_valid), .gpu_ready(h3d_gpu_write_ready),
     .gpu_address(h3d_gpu_write_address),
     .gpu_access(h3d_gpu_write_access),
@@ -2199,7 +2202,7 @@ nds_nitro_console_wrap #(
     .pixel_out_x(pix_x),.pixel_out_y(pix_y),
     .pixel_out_data(pix_d),.pixel_out_we(pix_we),
     .pixelb_out_x(pixb_x),.pixelb_out_y(pixb_y),
-    .pixelb_out_data(pixb_d),.pixelb_out_we(pixb_we),.vblank_out(),
+    .pixelb_out_data(pixb_d),.pixelb_out_we(pixb_we),.vblank_out(h3d_lcd_vblank),
     .sound_diagnostic(),
     .sound_stream_diagnostic(),
     .sound_out_left(sound_left),.sound_out_right(sound_right),

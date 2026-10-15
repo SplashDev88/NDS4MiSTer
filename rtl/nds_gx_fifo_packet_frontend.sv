@@ -2,10 +2,10 @@
 //
 // Accepted ARM9 GXFIFO and direct-command writes are normalized with the same
 // packed-command rules as nds_gx_command_frontend, then retained in a real
-// 256-entry FIFO until the packet sink accepts them.  Occupancy is therefore
-// the number of normalized command records pending downstream, not raw bus
-// writes.  The input ready signal may stall both CPU and DMA sources; a source
-// must hold valid and payload until acceptance.
+// 256-entry FIFO until the packet sink accepts them. With optional SWAP
+// retirement, occupancy also retains commands waiting behind a SWAP until
+// native VBlank. Counts represent normalized command records, not bus writes.
+// Input ready may stall CPU and DMA; sources hold their payload until accepted.
 //
 // Packet ABI:
 //   [  7:  0] kind = 1 (GX_COMMAND)
@@ -20,10 +20,14 @@
 // record.  A downstream writer closes the frame only after accepting that
 // record; no separate marker is allowed to pass it.
 module nds_gx_fifo_packet_frontend #(
-    parameter integer FIFO_DEPTH = 256
+    parameter integer FIFO_DEPTH = 256,
+    parameter bit SWAP_VBLANK_RETIREMENT = 0
 ) (
     input  logic         clk,
     input  logic         reset,
+    // Native source-clock pulse, independent of queued transport markers.
+    input  logic         lcd_vblank,
+    input  logic         geometry_enabled,
 
     input  logic         write_valid,
     output logic         write_ready,
@@ -183,15 +187,30 @@ module nds_gx_fifo_packet_frontend #(
         record_valid && record_ready &&
         command_memory[read_pointer] == 8'h50;
 
-    assign fifo_level = 9'(count);
-    assign fifo_empty = count == 0;
-    assign fifo_below_half = count <= COUNT_WIDTH'(127);
-    assign fifo_full = count == FIFO_DEPTH_COUNT;
+    // Transport acceptance is not geometry retirement. A SWAP stalls the
+    // geometry engine until the next native VBlank, even if ARM has already
+    // received its record. Keep a separate one-bit command-order queue for
+    // this minimum architectural barrier. Ordinary command execution latency
+    // is not modeled here. Never hold transport at SWAP: doing so can block
+    // the ordered LCD events needed by the renderer to complete that SWAP.
+    logic [COUNT_WIDTH-1:0] retirement_count;
+    logic retirement_pop;
+
+    // Both readers consume ordered prefixes of the same accepted stream, so
+    // the larger occupancy is exactly the union of their outstanding slots.
+    wire [COUNT_WIDTH-1:0] visible_count =
+        count > retirement_count ? count : retirement_count;
+    assign fifo_level = 9'(visible_count);
+    assign fifo_empty = visible_count == 0;
+    assign fifo_below_half = visible_count <= COUNT_WIDTH'(127);
+    assign fifo_full = visible_count == FIFO_DEPTH_COUNT;
     assign packed_active = packed_command_count != 0;
 
     wire output_pop = record_valid && record_ready;
     wire swap_output_pop = record_frame_end;
-    wire fifo_has_space = !fifo_full || output_pop;
+    wire fifo_has_space =
+        (count != FIFO_DEPTH_COUNT || output_pop) &&
+        (retirement_count != FIFO_DEPTH_COUNT || retirement_pop);
     wire packed_zero_phase =
         packed_command_count != 0 &&
         packed_parameters_remaining == 0;
@@ -247,6 +266,40 @@ module nds_gx_fifo_packet_frontend #(
     assign swap_pending = swap_count != 0;
     assign oldest_swap_timestamp = swap_pending
         ? swap_timestamp_memory[swap_read_pointer] : 64'd0;
+
+    generate if (SWAP_VBLANK_RETIREMENT) begin : swap_retirement
+        logic swap_memory [0:FIFO_DEPTH-1];
+        logic [POINTER_WIDTH-1:0] pointer;
+        logic waiting_vblank;
+        assign retirement_pop = retirement_count != 0 && !waiting_vblank;
+        always_ff @(posedge clk) begin
+            if (reset) begin
+                pointer <= 0;
+                retirement_count <= 0;
+                waiting_vblank <= 0;
+            end else begin
+                if (enqueue)
+                    swap_memory[write_pointer] <=
+                        enqueue_command == 8'h50 && geometry_enabled;
+                if (waiting_vblank && lcd_vblank && geometry_enabled)
+                    waiting_vblank <= 0;
+                if (retirement_pop) begin
+                    // A SWAP starting on VBlank waits for the NEXT pulse.
+                    if (swap_memory[pointer]) waiting_vblank <= 1;
+                    if (pointer == LAST_POINTER) pointer <= 0;
+                    else pointer <= pointer + 1'b1;
+                end
+                case ({enqueue, retirement_pop})
+                    2'b10: retirement_count <= retirement_count + 1'b1;
+                    2'b01: retirement_count <= retirement_count - 1'b1;
+                    default: ;
+                endcase
+            end
+        end
+    end else begin : transport_only
+        assign retirement_count = 0;
+        assign retirement_pop = 0;
+    end endgenerate
 
     initial begin
         if (FIFO_DEPTH != 256)

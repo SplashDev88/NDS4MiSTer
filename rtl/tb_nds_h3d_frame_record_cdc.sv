@@ -4,6 +4,7 @@ module tb_nds_h3d_frame_record_cdc;
     localparam integer MAX_EXPECTED = 256;
 
     logic source_clk = 0;
+    logic lcd_vblank = 0;
     logic ddr_clk = 0;
     logic source_clock_enable = 1;
     logic ddr_clock_enable = 0;

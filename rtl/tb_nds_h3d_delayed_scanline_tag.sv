@@ -9,6 +9,7 @@
 // The record must retain the posting line, not acquire the drain-time line.
 module tb_nds_h3d_delayed_scanline_tag;
     logic source_clk = 0;
+    logic lcd_vblank = 0;
     logic ddr_clk = 0;
     always #5 source_clk = ~source_clk;
     always #7 ddr_clk = ~ddr_clk;

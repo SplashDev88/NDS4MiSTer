@@ -4,6 +4,8 @@ module tb_nds_gx_fifo_packet_frontend;
 
     logic clk = 0;
     logic reset = 1;
+    logic lcd_vblank = 0;
+    logic geometry_enabled = 1;
     logic write_valid = 0;
     logic write_ready;
     logic write_is_dma = 0;

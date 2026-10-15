@@ -13,12 +13,14 @@ module nds_h3d_frame_record_cdc #(
     // best-effort basis; per-record scanline tags recover exact ordering once
     // transport resumes, so timing pulses never backpressure the console.
     parameter bit SPARSE_HBLANK = 0,
-    parameter bit SCANLINE_TAGS = 0
+    parameter bit SCANLINE_TAGS = 0,
+    parameter bit SWAP_VBLANK_RETIREMENT = 0
 ) (
     input  logic         source_clk,
     input  logic         ddr_clk,
     input  logic         reset,
     input  logic         session_flush,
+    input  logic         lcd_vblank,
 
     input  logic         gpu_valid,
     output logic         gpu_ready,
@@ -241,9 +243,22 @@ module nds_h3d_frame_record_cdc #(
     logic gx_protocol_error;
     logic [31:0] logical_frame;
 
-    nds_gx_fifo_packet_frontend gx_frontend (
+    // POWCNT1 low byte, in the same accepted source order as GX commands.
+    // Writes while geometry is disabled must not create phantom SWAP waits.
+    logic geometry_enabled;
+    always_ff @(posedge source_clk) begin
+        if (source_reset_local) geometry_enabled <= 0;
+        else if (gpu_valid && gpu_ready && gpu_powcnt1 && gpu_byte_enable[0])
+            geometry_enabled <= gpu_data[3];
+    end
+
+    nds_gx_fifo_packet_frontend #(
+        .SWAP_VBLANK_RETIREMENT(SWAP_VBLANK_RETIREMENT)
+    ) gx_frontend (
         .clk(source_clk),
         .reset(source_reset_local),
+        .lcd_vblank(lcd_vblank),
+        .geometry_enabled(geometry_enabled),
         .write_valid(gx_write_valid),
         .write_ready(gx_write_ready),
         .write_is_dma(1'b0),
@@ -453,7 +468,10 @@ module nds_h3d_frame_record_cdc #(
                             // including packed zero-param expansion not yet
                             // in the FIFO. A partial command awaiting future
                             // input must NOT block the executed-prefix query.
-                            if (fifo_empty && !gx_normalization_pending) begin
+                            // This fences delivered records, not geometry retirement.
+                            // Waiting for the SWAP barrier here could block the
+                            // LCD events required to finish an ordered query.
+                            if (!gx_record_valid && !gx_normalization_pending) begin
                                 gpu_ready = gpu_data == 0 || async_write_ready;
                                 async_write_valid = gpu_valid && gpu_data != 0;
                                 async_write_data = {
