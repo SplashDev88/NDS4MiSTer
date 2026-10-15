@@ -262,7 +262,8 @@ three main-menu buttons, while the top logo and button frames draw correctly.
 The save-plus-VRAM core with the release renderer has the same defect. Native
 paired-screen captures agree with an eight-second RetroTINK lower-screen
 capture; neither run faults. Opening credits do render text. Full flicker
-verification and the responsible BG/OBJ/window state remain unresolved.
+verification remains open. The OAM readback investigation below identifies a
+cause of the missing New Game label.
 
 King Kong (USA AKQE revision 0) created a separate 512-byte profile on rc.8.
 The save-plus-VRAM core cold-loaded an exact copy and rendered the same opening
@@ -367,6 +368,15 @@ It reaches Mushroom Men's main menu and opening story without transport faults,
 with bounded renderer memory, but still reproduces the corrupted menu graphics.
 This opt-in core is an experimental hardware candidate, not a release artifact.
 
+Longer follow-up testing rejects this core for stability. Mushroom Men later
+stops in its menu with `0x00400100` (HBlank exhaustion), while the HPS fault
+word remains zero. A separate longer run of the diagnostic core without the
+DMA pause correction also reaches HBlank exhaustion. The shorter progression
+checks above remain valid observations but do not establish stable gameplay.
+The last four retained packets in each fault capture are mostly packed
+geometry commands, with no SWAP command. This alone does not identify the
+ordering or pacing cause. SWAP retirement remains disabled in normal builds.
+
 Its matched NSMB World 2-5 run advances 194 game-timer units in 153.94 seconds
 (1.260 units/s). A fresh rc.8 repeat advances 179 in 141.94 seconds (1.261
 units/s), within 0.1% of the candidate. Both use the identical save and scene
@@ -404,3 +414,33 @@ opt-in core containing this correction passes the bounded Mushroom Men
 progression and NSMB speed checks above. The diagnostic core without this DMA
 change also advances both games, so these runs do not establish it as the cause
 of a game-specific improvement. SWAP retirement remains disabled in normal builds.
+
+## OAM readback and Wizard of Oz menu labels
+
+ARM9 CPU and DMA reads from OAM previously returned zero. Games that read a
+sprite attribute, change one field and write it back therefore lost the other
+fields. This includes its position, shape and palette selection.
+
+A full software-reference run of Wizard of Oz displays **New Game** in the
+otherwise blank first menu button. Forcing only ARM9 OAM reads to zero in a
+private reference build removes that label. All 72 bytes of the nine affected
+sprite entries then match the hardware capture exactly, in the same alternating
+screen phase. Isolating the hardware's OBJ layer and disabling blending did not
+restore the label. This identifies a cause independently of layer composition;
+it does not yet establish a tested hardware fix or resolve every menu/flicker
+report.
+
+The correction adds a 2 KiB OAM readback shadow beside the existing palette
+shadow. Reads use the existing synchronous video-memory wait state and read
+rotator, including completion-cycle requests. Engine power gating and ROM-reset
+clearing apply to both banks; byte stores are ignored by the OAM shadow.
+Reads need no ARM service round trip. Geometry pacing, renderer code and clock
+rates are unchanged, but fitting, hardware tests and matched speed measurements
+remain required before accepting the candidate.
+
+`tools/test_nds_oam_readback.sh` fails on the preceding bus implementation's
+zero result and passes with the correction. It covers all 512 words, both
+engines, CPU/DMA reads, halfword and byte reads, mirrors, unaligned rotation,
+sprite attribute updates, ignored byte stores, power-off behavior, reset and
+back-to-back requests. The existing palette and GX DMA suites and complete
+console VHDL analysis also pass.

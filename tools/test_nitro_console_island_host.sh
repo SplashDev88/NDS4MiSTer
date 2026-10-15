@@ -24,6 +24,7 @@ bash "$script_dir/test_h3d_console_event_gate.sh"
 bash "$script_dir/test_h3d_session_policy.sh"
 bash "$script_dir/test_nds_extpal_remap.sh"
 bash "$script_dir/test_nds_palette_readback.sh"
+bash "$script_dir/test_nds_oam_readback.sh"
 
 "$script_dir/test_extract_melonds_freebios.sh"
 freebios7_before="$(shasum -a 256 "$repo_dir/rtl/nds_nitro_freebios7.vhd")"

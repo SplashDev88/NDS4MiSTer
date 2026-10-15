@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: GPL-3.0-or-later
--- Standard (not extended) palette shadow for ARM9 CPU/DMA reads. Both engine
+-- Standard (not extended) palette or OAM shadow for ARM9 CPU/DMA reads. Both engine
 -- banks exist even when Engine B's pixel renderer is disabled. The existing
 -- GPU write ports and their IO completion handshake are unchanged.
 library ieee;
@@ -7,7 +7,10 @@ use ieee.std_logic_1164.all;
 library MEM;
 
 entity nds_palette_readback is
-   generic (is_simu : std_logic := '0');
+   generic (
+      is_simu : std_logic := '0';
+      ignore_byte_writes : boolean := false
+   );
    port (
       clk, reset : in std_logic;
       power_a, power_b : in std_logic;
@@ -24,7 +27,7 @@ architecture rtl of nds_palette_readback is
    signal clear_run : std_logic := '1';
    signal reset_d : std_logic := '0';
    signal clear_addr : integer range 0 to 511 := 0;
-   signal clearing, write_enable, read_power : std_logic;
+   signal clearing, write_enable, read_power, write_width_valid : std_logic;
    signal read_power_q : std_logic := '0';
    signal write_addr : integer range 0 to 511;
    signal write_data, ram_q : std_logic_vector(31 downto 0);
@@ -53,7 +56,11 @@ begin
    write_addr <= clear_addr when clearing = '1' else addr;
    write_data <= x"00000000" when clearing = '1' else data;
    write_be <= "1111" when clearing = '1' else be;
-   write_enable <= clearing or (we and read_power and not reset);
+   -- OAM accepts halfword/word stores only. A byte store still completes on
+   -- the bus, but must not change a later CPU/DMA read or sprite attribute.
+   write_width_valid <= '1' when not ignore_byte_writes or
+      be = "0011" or be = "1100" or be = "1111" else '0';
+   write_enable <= clearing or (we and read_power and not reset and write_width_valid);
    q <= ram_q when read_power_q = '1' else x"00000000";
 
    ram : entity MEM.SyncRamDualByteEnable

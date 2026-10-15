@@ -634,6 +634,8 @@ architecture arch of nds_nitro_console_top is
    signal pclr_busy_a : std_logic;
    signal pclr_busy_b : std_logic;
    signal pal_read_data : std_logic_vector(31 downto 0);
+   signal oam_read_data : std_logic_vector(31 downto 0);
+   signal oam_read_busy : std_logic;
    signal pal_read_busy : std_logic;
    signal pal_read_busy_meta, pal_read_busy_1x : std_logic := '1';
 
@@ -2158,6 +2160,7 @@ begin
       pal_we => i9_pal_we, pal_addr => pal_addr, pal_din => pal_din, pal_be => pal_be,
       pal_readdata => pal_read_data,
       oam_we => i9_oam_we, oam_addr => oam_addr, oam_din => oam_din, oam_be => oam_be,
+      oam_readdata => oam_read_data,
       mr_ena => i9_mr_ena, mr_rnw => mr9_rnw, mr_addr => mr9_addr, mr_be => mr9_be,
       mr_writedata => mr9_writedata, mr_done => i9_mr_done, mr_readdata => mr9_readdata,
       mr_pair => mr9_pair, mr_readdata_hi => mr9_readdata_hi,
@@ -3075,17 +3078,22 @@ begin
    -- palette/OAM 2 KB mirrors: low half engine A, high half engine B;
    -- writes are dropped while the owning engine is powered off (melonDS)
    -- Readback stays in the ARM9 island. IO completion already serializes the
-   -- POWCNT write before the next CPU/DMA palette access; use the same power
-   -- qualification as the actual GPU palette stores. No additional HPS events.
+   -- POWCNT write before the next CPU/DMA palette or OAM access; use the same
+   -- power qualification as the GPU stores. No additional HPS events.
    palette_readback : entity work.nds_palette_readback
       generic map (is_simu => is_simu)
       port map (clk => clk2x, reset => resetCpu, power_a => pow_2da, power_b => pow_2db,
                 addr => pal_addr, we => i9_pal_we, be => pal_be, data => pal_din,
                 q => pal_read_data, clear_busy => pal_read_busy);
+   oam_readback : entity work.nds_palette_readback
+      generic map (is_simu => is_simu, ignore_byte_writes => true)
+      port map (clk => clk2x, reset => resetCpu, power_a => pow_2da, power_b => pow_2db,
+                addr => oam_addr, we => i9_oam_we, be => oam_be, data => oam_din,
+                q => oam_read_data, clear_busy => oam_read_busy);
    process (clk1x)
    begin
       if rising_edge(clk1x) then
-         pal_read_busy_meta <= pal_read_busy;
+         pal_read_busy_meta <= pal_read_busy or oam_read_busy;
          pal_read_busy_1x <= pal_read_busy_meta;
       end if;
    end process;
