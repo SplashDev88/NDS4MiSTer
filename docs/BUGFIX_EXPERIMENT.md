@@ -104,5 +104,40 @@ same rate and did not expose that difference. This candidate is held for speed
 regression; it is not accepted for release. A follow-up moves the new overflow
 storage after the existing geometry fields, preserving their original offsets.
 Command retention and overflow limits are unchanged. Its ordering, renderer
-self-tests and fake-memory lifecycle checks pass; ARM gameplay comparison is
-required before drawing a performance conclusion.
+self-tests and fake-memory lifecycle checks pass. The follow-up ARM build
+recovers the observed NSMB loss in the bounded comparison below; other games
+remain required before release acceptance.
+
+At World 2-5's spawn (USA A2DE revision 0, fire Mario, 11 lives), all runs used
+1 GHz and the same host, save data and display settings. Timer readings come
+from captured game HUDs against monotonic wall time, including idle animation
+and bounded stationary-jump checks. These are game-timer units, not FPS.
+
+| Candidate | Seconds sampled | Game timer units/s |
+| --- | ---: | ---: |
+| rc.8 before | 108.65 | 1.2517 |
+| Original overflow renderer | 143.28 | 1.2214 |
+| rc.8 repeat | 115.69 | 1.2534 |
+| Overflow renderer with original geometry offsets | 119.49 | 1.2637 |
+| Save-only FPGA, rc.8 renderer | 121.11 | 1.2551 |
+
+No transport faults occurred in these runs. The first overflow renderer is
+about 2.5% slower than the two release controls. The revised renderer and
+save-only FPGA are within about 1% of the controls in this scene. Integer HUD
+resolution, finite samples and one scene limit this result; this is not a
+claim of general speed equivalence or unique displayed 3D FPS.
+
+Both save-only and save-plus-VRAM FPGA builds route. The save-only build has
+33,811 ALMs and 530 M10Ks; worst reported setup slack is -15.400 ns versus
+-13.834 ns for rc.8. Its worst path runs from the source reset synchronizer
+through ARM9 math state. Neither baseline nor candidate is timing-clean;
+hardware smoke tests do not establish timing closure. The save-plus-VRAM build
+uses 33,955 ALMs and the same 530 M10Ks; worst reported setup slack is
+-14.264 ns. Neither build changes the configured clock rates.
+
+The new queue-reason tests and control-header publication check pass. The
+product SystemVerilog boundaries elaborate, and the diagnostic build passes
+Quartus mapping and the RTC CDC synthesis gate. The broad island test script
+still stops at an obsolete FS3 menu-string assertion on both old and new
+sources; its input-boundary fixture was repaired for rc.8's added interfaces.
+
