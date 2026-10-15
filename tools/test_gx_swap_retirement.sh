@@ -21,15 +21,26 @@ iverilog -g2012 -s tb_nds_h3d_swap_retirement -o "$tmp/cdc" \
     "$root/rtl/nds_gx_fifo_packet_frontend.sv" "$root/rtl/nds_h3d_frame_record_cdc.sv" \
     "$root/rtl/tb_nds_h3d_swap_retirement.sv"
 vvp "$tmp/cdc"
-# Guard the native-clock connection and product opt-in; a passing standalone
-# frontend fixture alone does not establish that the core enables the barrier.
+# Check both preprocessed product configurations. Hardware rejected the first
+# enabled candidate; normal builds must retain the transport-only behavior.
 python3 - "$root" <<'PYCODE'
 from pathlib import Path
+import re
+import subprocess
 import sys
 root = Path(sys.argv[1])
-s = (root / "rtl/nds_nitro_console_island.sv").read_text()
-assert ".SWAP_VBLANK_RETIREMENT(1'b1)" in s
-assert ".lcd_vblank(h3d_lcd_vblank)" in s
-assert ".vblank_out(h3d_lcd_vblank)" in s
-print("PASS: product uses the native console VBlank for SWAP retirement")
+island = root / "rtl/nds_nitro_console_island.sv"
+for enabled in (0, 1):
+    command = ["iverilog", "-g2012", "-DNDS_HYBRID_3D=1", "-E", "-o", "-"]
+    if enabled:
+        command.append("-DNDS_GX_SWAP_RETIREMENT_EXPERIMENT=1")
+    command.append(str(island))
+    s = subprocess.check_output(command, text=True)
+    instance = re.search(r"nds_h3d_frame_record_cdc #\((.*?)\) h3d_record_cdc", s, re.S)
+    assert instance and f".SWAP_VBLANK_RETIREMENT(1'b{enabled})" in instance[1]
+    assert ".lcd_vblank(h3d_lcd_vblank)" in s
+    assert ".vblank_out(h3d_lcd_vblank)" in s
+qsf = (root / "fpga/mister_nitro_console_island/NDS4MiSTer.qsf").read_text()
+assert not re.search(r"^\s*set_global_assignment.*NDS_GX_SWAP_RETIREMENT_EXPERIMENT", qsf, re.M)
+print("PASS: normal product disables the rejected SWAP candidate; explicit experiment uses native VBlank")
 PYCODE

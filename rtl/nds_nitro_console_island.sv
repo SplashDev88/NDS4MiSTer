@@ -1682,7 +1682,12 @@ nds_h3d_frame_record_cdc #(
     .SPARSE_HBLANK(1'b1),
 `endif
     .SCANLINE_TAGS(1'b1),
+`ifdef NDS_GX_SWAP_RETIREMENT_EXPERIMENT
+    // Investigation only: the first hardware candidate stalled game menus.
     .SWAP_VBLANK_RETIREMENT(1'b1)
+`else
+    .SWAP_VBLANK_RETIREMENT(1'b0)
+`endif
 ) h3d_record_cdc (
     .source_clk(clk1x), .ddr_clk(ddr_clk),
     .reset(bridge_reset_ddr), .session_flush(~h3d_control_release),

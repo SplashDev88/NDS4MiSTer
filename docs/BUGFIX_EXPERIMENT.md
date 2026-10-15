@@ -83,6 +83,14 @@ observations do not establish full-game save reliability or validate the
 reported original saves; the issues remain open. All tests use separate save
 files, with original files checked for changes.
 
+A later test of the combined save/VRAM/renderer candidate selected **Save** in
+Spyro's pause menu, exited cleanly, relaunched with the same separate 8 KiB save,
+and resumed playable opening-room content with working movement and pause.
+The saved bytes matched across the cold relaunch. This extends coverage beyond
+startup, but the original reporter's save-write error has not been reproduced
+and issue #21 remains open. Lunar Knights retained its language setting and
+64 KiB save across relaunch; an in-game save checkpoint has not yet been verified.
+
 ## Identifying source queue failures
 
 Both Mushroom Men and NFS reproduced the generic FPGA source fault `0x100`
@@ -283,8 +291,9 @@ the larger outstanding count from transport and retirement. The added queue
 stores one bit per normalized command; payloads and queue capacities are
 unchanged. Each consecutive SWAP requires a separate VBlank.
 
-The product enables this behavior explicitly. The transport-only parameter
-setting remains available for regression controls. Ordered readback fences
+Normal builds leave this behavior **disabled**. It can be selected only with
+`NDS_GX_SWAP_RETIREMENT_EXPERIMENT`; it is retained for investigation, not accepted
+for a release. Ordered readback fences
 wait for transport and autonomous normalization, not the retirement barrier.
 The initial geometry-enable state matches direct boot and the ARM renderer.
 POWCNT1 low-byte writes qualify new SWAP waits; disabled VBlanks do not release
@@ -301,5 +310,17 @@ SWAP-credit assertion. Existing clip/readback tests pass.
 
 This is a minimum SWAP barrier, not cycle-accurate geometry execution. It does
 not implement command-specific latency or change GXSTAT busy/matrix timing.
-Hardware compatibility, speed and route/timing validation remain pending;
-Mushroom Men is not yet confirmed fixed. Keep this candidate experimental.
+The first routed hardware candidate reduced Mushroom Men's renderer memory
+usage and kept transport advancing without fault bits, but both screens were
+black and new SWAP submissions stopped. NSMB also stopped responding at its
+menu. These are compatibility regressions, so this candidate is rejected;
+flat memory usage and a live transport do not establish a fix.
+
+That candidate routed and assembled with 34,047 ALMs and 531/553 RAM blocks.
+Worst setup slack was -15.483 ns, compared with -14.031 ns for the preceding
+diagnostic build and -13.834 ns for rc.8. It is not timing clean, and no speed
+acceptance is claimed. The follow-up power-off/full-FIFO correction passes the
+focused tests and synthesis but has not passed hardware validation. A bounded
+ARM replay log kept geometry enabled throughout the observed early stall;
+this does not establish the FPGA's internal wait state. Native FIFO/VBlank and
+CPU-state diagnostics are still needed before choosing a further pacing change.
