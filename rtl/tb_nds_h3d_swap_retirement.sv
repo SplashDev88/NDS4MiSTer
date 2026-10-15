@@ -48,7 +48,7 @@ module tb_nds_h3d_swap_retirement;
                     commands = commands + 1;
                 end
             end
-            2: if (record[63:32] != 32'h04000304) $fatal(1, "unexpected register");
+            2: if (record[63:34] != (32'h04000304 >> 2)) $fatal(1, "unexpected register");
             8: phases = phases + 1;
             10: begin
                 if (record[63:32] != 32'(fences+1) || commands != fences+1)
@@ -83,7 +83,8 @@ module tb_nds_h3d_swap_retirement;
     initial begin
         #1 reset = 1; repeat (4) @(negedge source_clk); reset = 0;
         wait (source_active && ddr_active);
-        send(28'h304, 8); send(28'h540, 0);
+        // Direct boot already enables geometry; no POWCNT write is required.
+        send(28'h540, 0);
         // Each fence flushes the untagged transport packer while architectural
         // occupancy accumulates behind SWAP. Even the 256th fence must pass.
         for (integer i=0; i<256; i=i+1) begin
@@ -109,10 +110,24 @@ module tb_nds_h3d_swap_retirement;
         repeat (400) @(negedge source_clk);
         if (fifo_level || commands != 257 || fences != 257 || phases != 2)
             $fatal(1, "native VBlank failed to release ordered stream");
+        // Low-byte power-off suppresses new waits. A high-byte write must
+        // not re-enable geometry. Low-byte enable restores SWAP retirement.
+        send(28'h304, 0);
+        @(negedge source_clk);
+        gpu_address = 28'h304; gpu_byte_enable = 4'b0010;
+        gpu_access = 0; gpu_data = 32'h00000800; gpu_valid = 1;
+        do @(posedge source_clk); while (!gpu_ready);
+        @(negedge source_clk); gpu_valid = 0; gpu_timestamp = gpu_timestamp + 1;
+        send(28'h540, 0); send(28'h480, 257); send(28'h7f0, 258);
+        repeat (30) @(negedge source_clk);
+        if (fifo_level) $fatal(1, "high-byte POWCNT write enabled geometry");
+        send(28'h304, 8); send(28'h540, 0); send(28'h480, 258);
+        send(28'h7f0, 259); repeat (30) @(negedge source_clk);
+        if (fifo_level != 1) $fatal(1, "low-byte POWCNT enable failed");
         session_flush = 1; repeat (4) @(negedge source_clk); session_flush = 0;
         wait (source_active && ddr_active);
         if (fifo_level || source_fault || ddr_fault) $fatal(1, "session reset");
-        $display("PASS: product CDC SWAP barrier, 257 ordered readbacks, LCD progress, native VBlank and session reset");
+        $display("PASS: product CDC SWAP barrier, 259 ordered readbacks, LCD progress, native VBlank and session reset");
         $finish;
     end
     initial begin #200000; $fatal(1, "watchdog"); end

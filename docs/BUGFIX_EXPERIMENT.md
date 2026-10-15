@@ -286,12 +286,13 @@ unchanged. Each consecutive SWAP requires a separate VBlank.
 The product enables this behavior explicitly. The transport-only parameter
 setting remains available for regression controls. Ordered readback fences
 wait for transport and autonomous normalization, not the retirement barrier.
+The initial geometry-enable state matches direct boot and the ARM renderer.
 POWCNT1 low-byte writes qualify new SWAP waits; disabled VBlanks do not release
 an existing geometry flush. Session reset clears both queues.
 
 `tools/test_gx_swap_retirement.sh` checks CPU/DMA full stalls after transport
 drains, consecutive and same-edge SWAPs, packed commands, transport stalls,
-power transitions, reset, and the product CDC with 257 ordered readbacks and
+power transitions, reset, and the product CDC with 259 ordered readbacks and
 LCD progress. The transport-only negative control fails the intended missing
 SWAP-credit assertion. Existing clip/readback tests pass.
 

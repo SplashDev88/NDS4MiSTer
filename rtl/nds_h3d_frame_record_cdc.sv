@@ -247,7 +247,8 @@ module nds_h3d_frame_record_cdc #(
     // Writes while geometry is disabled must not create phantom SWAP waits.
     logic geometry_enabled;
     always_ff @(posedge source_clk) begin
-        if (source_reset_local) geometry_enabled <= 0;
+        // Match the direct-boot renderer and matrix-prefix initial state.
+        if (source_reset_local) geometry_enabled <= 1;
         else if (gpu_valid && gpu_ready && gpu_powcnt1 && gpu_byte_enable[0])
             geometry_enabled <= gpu_data[3];
     end
