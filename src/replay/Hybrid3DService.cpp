@@ -6496,7 +6496,7 @@ void run_matched_display_test(bool full_rate = false, bool engine_a_only = false
         const auto input=service->timeline_->intake.snapshot(~0ull);
         const auto replay=service->timeline_->replay.snapshot(~0ull);
         const auto upload=service->timeline_->publication.snapshot(~0ull);
-        const auto count=[](const auto& events, TimelineKind kind) {
+        const auto count=[](const auto& events, TimelineKind kind) -> std::size_t {
             return std::count_if(events.records.begin(),events.records.end(),
                 [kind](const auto& r){return r.kind==static_cast<unsigned>(kind);});
         };

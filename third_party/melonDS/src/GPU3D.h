@@ -20,6 +20,7 @@
 #define GPU3D_H
 
 #include <array>
+#include <deque>
 #include <memory>
 #include <vector>
 
@@ -268,6 +269,15 @@ public:
     // stray-polygon corruption. Size the queue so the overrun is buffered
     // instead of lost. CmdFIFOEntry is 8 bytes, so 16384 entries is 128 KiB.
     FIFO<CmdFIFOEntry, 16384> CmdStallQueue {};
+    // External replay only: commands behind a full stall queue. Need for Speed
+    // Carbon submits 25k-42k commands per frame, so a SWAP_BUFFERS waiting for
+    // VBlank can hold back more than the FIFOs and stall queue together. The
+    // stream is authoritative and must never be dropped: a lost MTX_POP or
+    // G3X_ResetMtxStack header leaves the matrix stack permanently unbalanced.
+    // Entries drain strictly behind the stall queue, preserving order.
+    std::deque<CmdFIFOEntry> ExternalOverflow {};
+    static constexpr std::size_t ExternalOverflowLimit = 1u << 22; // 32 MiB
+    std::size_t ExternalOverflowPeak = 0;
     // Hybrid diagnostic: geometry commands discarded because the stall queue
     // was full. Real hardware stalls the ARM9 on a full GX FIFO; the FPGA CPU
     // has no such signal, so an overrun silently loses commands here.

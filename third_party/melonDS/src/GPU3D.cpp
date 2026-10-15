@@ -215,6 +215,8 @@ void GPU3D::Reset() noexcept
     CmdPIPE.Clear();
 
     CmdStallQueue.Clear();
+    ExternalOverflow.clear();
+    ExternalOverflowPeak = 0;
 
     ZeroDotWLimit = 0xFFFFFF;
 
@@ -1879,6 +1881,19 @@ void GPU3D::CmdFIFOWrite(const CmdFIFOEntry& entry) noexcept
             // worst case is if a STMxx opcode causes this, which is why our stall queue
             // has 64 entries. this is less complicated than trying to make STMxx stall-able.
 
+            if (ExternalCommandReplay &&
+                (CmdStallQueue.IsFull() || !ExternalOverflow.empty()))
+            {
+                if (ExternalOverflow.size() >= ExternalOverflowLimit)
+                    GXCommandDrops++;
+                else
+                {
+                    ExternalOverflow.push_back(entry);
+                    if (ExternalOverflow.size() > ExternalOverflowPeak)
+                        ExternalOverflowPeak = ExternalOverflow.size();
+                }
+                return;
+            }
             if (CmdStallQueue.IsFull()) GXCommandDrops++;
             CmdStallQueue.Write(entry);
             NDS.GXFIFOStall();
@@ -1917,11 +1932,23 @@ GPU3D::CmdFIFOEntry GPU3D::CmdFIFORead() noexcept
         // CmdFIFO should not be full at this point.
         if (!CmdStallQueue.IsEmpty())
         {
-            while (!CmdStallQueue.IsEmpty())
+            // External overflow queues strictly behind the stall queue. Keep
+            // the invariants "overflow non-empty => stall queue full" and
+            // "stall queue non-empty => FIFO full", so a later direct write
+            // can never overtake either older tail.
+            for (;;)
             {
-                if (CmdFIFO.IsFull()) break;
-                CmdFIFOEntry entry = CmdStallQueue.Read();
-                CmdFIFOWrite(entry);
+                while (!CmdStallQueue.IsEmpty() && !CmdFIFO.IsFull())
+                {
+                    CmdFIFOEntry entry = CmdStallQueue.Read();
+                    CmdFIFOWrite(entry);
+                }
+                while (!ExternalOverflow.empty() && !CmdStallQueue.IsFull())
+                {
+                    CmdStallQueue.Write(ExternalOverflow.front());
+                    ExternalOverflow.pop_front();
+                }
+                if (CmdFIFO.IsFull() || CmdStallQueue.IsEmpty()) break;
             }
 
             if (CmdStallQueue.IsEmpty())

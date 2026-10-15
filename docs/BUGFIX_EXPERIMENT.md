@@ -28,6 +28,30 @@ timing and clock rates are unchanged. This is not yet a claim of hardware speed
 equivalence or resolution of any particular game's save issue. FPGA routing,
 hardware comparison and game-specific save/reload tests remain required.
 
-The old Jackass/King Kong/NFS bundle remains excluded. Any reused change needs
+The old combined Jackass/King Kong/NFS bundle remains excluded. Any reused change needs
 its own regression evidence, including the recorded geometry timing counterexample
 and matched NSMB/Castlevania gameplay checks.
+
+## Geometry commands behind an ordinary FIFO tail
+
+An external replay burst can arrive while the ordinary FIFO still contains work.
+That bypasses the existing growable contiguous bank and fills the 16K stall
+queue. The previous code then overwrote commands. A 30K-command test reproduces
+the loss: command 16644 is replaced by command 30000.
+
+The isolated overflow correction preserves those commands in a bounded deque,
+strictly behind the stall queue. The contiguous fast bank remains the usual
+external path. Reset clears both queued commands and the diagnostic peak. This
+ports InsaneFriend (saneFriend)'s original fix `4c48874`, previously adapted in
+`fd437999531df3a909264c240a1cd41ba286d9d8`. It does not include the Jackass geometry
+debt/timing changes or the King Kong RTL change from that earlier bundle.
+
+The GX ordering test covers the reproduced ordinary-tail loss, reset, deferred
+swaps and bursts through 70K commands. It and the matrix-prefix oracle pass,
+as do the complete renderer self-tests and fake-memory lifecycle checks. A
+self-test counter now explicitly returns `std::size_t` so Clang's sign-compare
+warning does not prevent these checks from compiling.
+
+This is a command-retention correction, not yet a verified fix for issue #38.
+ARM build validation, the reported NFS race and matched gameplay speed checks
+are still required before accepting it for a release.

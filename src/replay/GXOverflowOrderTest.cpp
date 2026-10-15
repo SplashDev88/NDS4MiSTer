@@ -22,12 +22,18 @@ std::unique_ptr<melonDS::NDS> make_nds(bool external)
     return nds;
 }
 
-bool color_order(bool external, unsigned initial)
+bool color_order(bool external, unsigned initial, bool ordinary_tail = false)
 {
     auto nds = make_nds(external);
     auto& gx = nds->GPU.GPU3D;
-    for (unsigned i = 0; i < initial; ++i)
+    if (ordinary_tail) gx.SetExternalCommandReplay(false);
+    for (unsigned i = 0; i < initial; ++i) {
+        // A pre-existing ordinary FIFO tail prevents the contiguous replay
+        // bank from accepting this burst. Preserve every command in order.
+        if (ordinary_tail && i == 100) gx.SetExternalCommandReplay(true);
         gx.WriteExternalNormalizedCommand(0x20, i);
+    }
+    if (ordinary_tail && gx.ExternalOverflowPeak == 0) return false;
     for (unsigned i = 0; i < initial + 3; ++i)
     {
         if (i == 512)
@@ -44,7 +50,30 @@ bool color_order(bool external, unsigned initial)
         }
     }
     return gx.GXCommandDrops == 0 && gx.CmdPIPE.IsEmpty() &&
-           gx.CmdFIFO.IsEmpty() && gx.CmdStallQueue.IsEmpty();
+           gx.CmdFIFO.IsEmpty() && gx.CmdStallQueue.IsEmpty() &&
+           gx.ExternalOverflow.empty();
+}
+
+bool overflow_reset()
+{
+    auto nds = make_nds(false);
+    auto& gx = nds->GPU.GPU3D;
+    for (unsigned i = 0; i < 30000; ++i) {
+        if (i == 100) gx.SetExternalCommandReplay(true);
+        gx.WriteExternalNormalizedCommand(0x20, i);
+    }
+    if (gx.ExternalOverflow.empty()) return false;
+    gx.Reset();
+    if (!gx.ExternalOverflow.empty() || gx.ExternalOverflowPeak != 0 ||
+        !gx.CmdPIPE.IsEmpty() || !gx.CmdFIFO.IsEmpty() ||
+        !gx.CmdStallQueue.IsEmpty()) return false;
+    gx.SetEnabled(true, true);
+    gx.SetExternalCommandReplay(true);
+    gx.WriteExternalNormalizedCommand(0x20, 123);
+    gx.ExecuteCommand();
+    const u32 color = gx.VertexColor[0] | (gx.VertexColor[1] << 5) |
+                      (gx.VertexColor[2] << 10);
+    return color == 123 && gx.CmdPIPE.IsEmpty() && gx.ExternalOverflow.empty();
 }
 
 bool deferred_matrix(bool external)
@@ -153,7 +182,9 @@ int main()
         if (!color_order(external, 600) || !color_order(external, 1400) ||
             !color_order(external, 2048) ||
             !deferred_matrix(external)) return 1;
-    for (unsigned colors : {17155u, 35000u, 70000u})
+    if (!color_order(true, 30000) || !color_order(true, 30000, true)) return 1;
+    if (!overflow_reset()) return 1;
+    for (unsigned colors : {17155u, 30000u, 35000u, 42000u, 70000u})
         if (!large_deferred_burst(colors)) return 1;
-    std::puts("GX_OVERFLOW_ORDER_PASS ordinary_and_external=1 spill_and_stall=1 deferred_swap=1 partial_matrix=1 large_burst=70000 reset=1");
+    std::puts("GX_OVERFLOW_ORDER_PASS ordinary_and_external=1 spill_and_stall=1 deferred_swap=1 partial_matrix=1 large_burst=70000 ordinary_tail_overflow=1 overflow_reset=1 reset=1");
 }
