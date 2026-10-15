@@ -987,7 +987,15 @@ begin
                   end if;
 
                when GX_PAUSE =>
-                  ch(active).pend <= '0';
+                  -- The FIFO can become ready on this very edge. Clearing
+                  -- pend unconditionally would overwrite the common trigger
+                  -- latch and strand the remaining words while trig_gx stays
+                  -- high. Consume the old request, but retain a ready FIFO.
+                  if (gx_supported = '1' and trig_gx = '1') then
+                     ch(active).pend <= '1';
+                  else
+                     ch(active).pend <= '0';
+                  end if;
                   dma_bus_on <= '0';
                   dma_on     <= '0';
                   state      <= IDLE;

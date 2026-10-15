@@ -22,6 +22,7 @@ architecture sim of tb_nds_h3d_dma9_gx is
    signal gx_write_ready : std_logic := '1';
    signal gx_write_valid : std_logic;
    signal dma_on, dma_bus_on : std_logic;
+   signal dma_state : std_logic_vector(3 downto 0);
    signal cpu_bus_idle_s : std_logic := '1';
 
    signal mb_ena, mb_rnw, mb_done : std_logic := '0';
@@ -80,6 +81,7 @@ begin
          vram_fast_done => '0', vram_fast_wpost => vr_wpost,
          vram_fast_welig => vr_welig, vram_fast_wok => vr_wok,
          vram_write_valid => vr_write_valid,
+         dbg_state => dma_state,
          irq_dma => irq_dma
       );
 
@@ -431,6 +433,50 @@ begin
       wait until rising_edge(clk);
       wait until rising_edge(clk);
       reset <= '0';
+
+      -- A resumed below-half request can arrive on the GX_PAUSE edge
+      -- itself. The common trigger latch must not be cleared by that state.
+      -- Cover every channel and requests on the pause edge, next IDLE edge,
+      -- and a later idle edge; each must finish the same six-word remainder.
+      for channel in 0 to 3 loop
+         for request_delay in 0 to 2 loop
+            gx_supported <= '1';
+            trig_gx <= '0';
+            gx_write_ready <= '1';
+            write_reg(std_logic_vector(to_unsigned(16#B0# + channel*12, 28)), x"02000000");
+            write_reg(std_logic_vector(to_unsigned(16#B4# + channel*12, 28)), x"04000400");
+            write_reg(std_logic_vector(to_unsigned(16#B8# + channel*12, 28)), x"FC400076");
+            trig_gx <= '1';
+            cycles := 0;
+            while dma_state /= x"9" loop
+               wait until falling_edge(clk);
+               if gx_writes >= 110 then trig_gx <= '0'; end if;
+               cycles := cycles + 1;
+               assert cycles < 10000 report "GX pause fixture did not reach slice boundary" severity failure;
+            end loop;
+            assert gx_writes = 112 and irq_count = 0
+               report "GX pause fixture has wrong continuation" severity failure;
+            for delay in 1 to request_delay loop
+               wait until falling_edge(clk);
+            end loop;
+            trig_gx <= '1';
+            cycles := 0;
+            while irq_count = 0 loop
+               wait until falling_edge(clk);
+               cycles := cycles + 1;
+               assert cycles < 1000
+                  report "GX below-half request coincident with pause was lost" severity failure;
+            end loop;
+            for i in 0 to 30 loop wait until falling_edge(clk); end loop;
+            assert gx_writes = 118 and mem_reads = 118 and irq_count = 1 and dma_on = '0'
+               report "GX resumed request lost/duplicated data or restarted completed DMA" severity failure;
+            reset <= '1';
+            wait until rising_edge(clk);
+            wait until falling_edge(clk);
+            reset <= '0';
+            trig_gx <= '0';
+         end loop;
+      end loop;
 
       -- Unrelated immediate DMA behavior remains intact.
       write_reg(x"00000B0", x"02001000");

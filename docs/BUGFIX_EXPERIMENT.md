@@ -324,3 +324,23 @@ focused tests and synthesis but has not passed hardware validation. A bounded
 ARM replay log kept geometry enabled throughout the observed early stall;
 this does not establish the FPGA's internal wait state. Native FIFO/VBlank and
 CPU-state diagnostics are still needed before choosing a further pacing change.
+
+
+## GX DMA pause-edge request loss
+
+A new below-half FIFO request on the `GX_PAUSE` clock edge was overwritten by
+that state's unconditional pending-bit clear. The channel kept its enable bit
+and remaining words, but never resumed while the request stayed high. This can
+strand software waiting for DMA completion even after the FIFO has emptied.
+The pause state now retains an active, supported GX request before releasing
+the bus; transfer counts and the 112-word arbitration interval are unchanged.
+
+`tools/test_dma9_gx.sh` reproduces the lost request against the previous DMA
+implementation. With the correction, all four channels finish the same
+118-word transfer for requests arriving on the pause edge, the next idle edge
+and a later idle edge, without lost/duplicate words or repeated completion.
+The existing GX/VRAM backpressure, channel preemption, CPU yield and repeat-DMA
+checks pass, as do the query-overlap and main-RAM transfer suites. Hardware
+validation is pending; this is a possible explanation for the SWAP candidate's
+stall, not yet a verified game-specific fix. SWAP retirement remains disabled
+in normal builds.
