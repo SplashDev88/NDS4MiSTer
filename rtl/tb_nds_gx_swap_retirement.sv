@@ -11,6 +11,7 @@ module tb_nds_gx_swap_retirement;
     logic [127:0] record;
     logic [8:0] fifo_level;
     logic fifo_full, fifo_empty, fifo_below_half, protocol_error;
+    logic geometry_busy;
     logic [39:0] expected [0:8191];
     integer queued = 0, delivered = 0;
     always #5 clk = ~clk;
@@ -24,6 +25,7 @@ module tb_nds_gx_swap_retirement;
         .record_valid(record_valid), .record_ready(record_ready), .record(record),
         .fifo_level(fifo_level), .fifo_full(fifo_full), .fifo_empty(fifo_empty),
         .fifo_below_half(fifo_below_half), .protocol_error(protocol_error),
+        .geometry_busy(geometry_busy),
         .stack_ack(1'b0)
     );
     always @(posedge clk) if (!reset) begin
@@ -64,6 +66,7 @@ module tb_nds_gx_swap_retirement;
         tick(600);
         if (!fifo_empty || delivered != queued)
             $fatal(1, "drain failed level=%0d delivered=%0d/%0d", fifo_level, delivered, queued);
+        if (ENABLE && geometry_busy) $fatal(1, "busy remained after completed drain");
     endtask
     initial begin
         tick(3); reset = 0;
@@ -71,6 +74,10 @@ module tb_nds_gx_swap_retirement;
         for (integer i=0; i<1024; i=i+1) send(8'h20, 32'(i));
         drained();
         send(8'h50, 0); tick(4);
+        // The transport has delivered the sole SWAP and both FIFO counts
+        // are empty. Software must still wait for its native VBlank.
+        if (ENABLE && (!fifo_empty || !geometry_busy))
+            $fatal(1, "empty FIFO lost the pending SWAP busy state");
         for (integer i=0; i<256; i=i+1) begin
             write_is_dma = i[0]; send(8'h20, 32'(i));
         end
@@ -118,6 +125,7 @@ module tb_nds_gx_swap_retirement;
         send(8'h50, 0); send(8'h20, 0); tick(8);
         geometry_enabled = 0; pulse(); tick(8);
         if (fifo_level != 1) $fatal(1, "disabled VBlank retired a pending SWAP");
+        if (ENABLE && !geometry_busy) $fatal(1, "power-off falsely completed busy wait");
         geometry_enabled = 1; pulse(); drained();
         // Power-off while full: ignored writes still reach transport and do
         // not overwrite the older retirement queue. Resume the old wait on
@@ -142,6 +150,7 @@ module tb_nds_gx_swap_retirement;
         send(8'h50, 0); send(8'h20, 789); tick(8);
         reset = 1; tick(3); reset = 0;
         if (!fifo_empty) $fatal(1, "reset retained SWAP credits");
+        if (geometry_busy) $fatal(1, "reset retained geometry busy");
         send(8'h20, 999); drained();
         $display("PASS: SWAP/VBlank FIFO credits, CPU/DMA full stall, packed commands, transport order, power and reset (%0d records)", delivered);
         $finish;

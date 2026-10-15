@@ -52,6 +52,10 @@ module nds_gx_fifo_packet_frontend #(
     output logic         fifo_empty,
     output logic         fifo_below_half,
     output logic         fifo_full,
+    // Minimum architectural busy state, including an empty FIFO whose SWAP
+    // is still waiting for native VBlank. Ordinary command latency is not
+    // modeled by this experiment. Power-off freezes an existing wait.
+    output logic         geometry_busy,
     output logic         packed_active,
     // Autonomous packed-command expansion still owed for accepted input.
     // Unlike packed_active, this excludes commands waiting for future params.
@@ -272,6 +276,7 @@ module nds_gx_fifo_packet_frontend #(
         logic swap_memory [0:FIFO_DEPTH-1];
         logic [POINTER_WIDTH-1:0] pointer, tail;
         logic waiting_vblank;
+        assign geometry_busy = waiting_vblank || retirement_count != 0;
         wire retirement_enqueue = enqueue && geometry_enabled;
         assign retirement_pop =
             retirement_count != 0 && !waiting_vblank && geometry_enabled;
@@ -305,6 +310,7 @@ module nds_gx_fifo_packet_frontend #(
     end else begin : transport_only
         assign retirement_count = 0;
         assign retirement_pop = 0;
+        assign geometry_busy = 0;
     end endgenerate
 
     initial begin

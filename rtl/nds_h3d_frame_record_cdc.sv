@@ -70,6 +70,9 @@ module nds_h3d_frame_record_cdc #(
     output logic         fifo_empty,
     output logic         fifo_below_half,
     output logic         fifo_full,
+    // This is a source-clock status signal, like fifo_level; it does not
+    // cross through the DDR transport or depend on record consumption.
+    output logic         gx_geometry_busy,
     // GXSTAT matrix stacks: {error, projection level, position level[4:0]}.
     input  logic         gx_stack_ack,
     output logic [6:0]   gx_stack_status,
@@ -278,6 +281,7 @@ module nds_h3d_frame_record_cdc #(
         .swap_pending(gx_swap_pending),
         .oldest_swap_timestamp(gx_oldest_swap_timestamp),
         .fifo_level(fifo_level),
+        .geometry_busy(gx_geometry_busy),
         .fifo_empty(fifo_empty),
         .fifo_below_half(fifo_below_half),
         .fifo_full(fifo_full),

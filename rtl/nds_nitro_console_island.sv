@@ -1298,6 +1298,7 @@ wire h3d_record_source_active, h3d_record_ddr_active;
 wire h3d_record_source_fault, h3d_record_ddr_fault;
 wire [3:0] h3d_record_source_fault_reason, h3d_record_ddr_fault_reason;
 wire [8:0] h3d_gx_fifo_level;
+wire h3d_gx_geometry_busy;
 wire h3d_gx_fifo_empty, h3d_gx_fifo_below_half, h3d_gx_fifo_full;
 wire h3d_lcd_vblank;
 wire [6:0] h3d_gx_stack_status;
@@ -1735,6 +1736,7 @@ nds_h3d_frame_record_cdc #(
     .ddr_fault(h3d_record_ddr_fault),
     .ddr_fault_reason(h3d_record_ddr_fault_reason),
     .fifo_level(h3d_gx_fifo_level),
+    .gx_geometry_busy(h3d_gx_geometry_busy),
     .fifo_empty(h3d_gx_fifo_empty),
     .fifo_below_half(h3d_gx_fifo_below_half),
     .fifo_full(h3d_gx_fifo_full),
@@ -2254,6 +2256,11 @@ nds_nitro_console_wrap #(
     .h3d_engine_b_enable(1'b0),
 `endif
     .h3d_gx_fifo_level(h3d_gx_fifo_level),
+`ifdef NDS_GX_BUSY_STATUS_EXPERIMENT
+    .h3d_gx_geometry_busy(h3d_gx_geometry_busy),
+`else
+    .h3d_gx_geometry_busy(1'b0),
+`endif
     .h3d_gx_stack_status(h3d_gx_stack_status),
     .h3d_gx_stack_ack(h3d_gx_stack_ack),
     .h3d_timestamp(h3d_timestamp_live),

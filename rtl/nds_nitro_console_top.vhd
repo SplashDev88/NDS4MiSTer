@@ -324,6 +324,7 @@ entity nds_nitro_console_top is
       h3d_readback_data       : in  std_logic_vector(31 downto 0) := (others => '0');
       h3d_engine_b_enable     : in  std_logic := '0';
       h3d_gx_fifo_level       : in  std_logic_vector(8 downto 0) := (others => '0');
+      h3d_gx_geometry_busy    : in  std_logic := '0';
       -- {error, projection level, position level[4:0]} from the GX frontend.
       h3d_gx_stack_status     : in  std_logic_vector(6 downto 0) := (others => '0');
       h3d_gx_stack_ack        : out std_logic := '0';
@@ -2625,6 +2626,7 @@ begin
       reset => resetCpu,
       service_ready => h3d_service_ready,
       fifo_level => h3d_gx_fifo_level,
+      geometry_busy => h3d_gx_geometry_busy,
       stack_status => h3d_gx_stack_status,
       stack_ack => h3d_gx_stack_ack,
       test_result_bits => gx_test_status,

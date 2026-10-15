@@ -12,6 +12,7 @@ module tb_nds_h3d_swap_retirement;
     logic source_active, ddr_active, source_fault, ddr_fault;
     logic [8:0] fifo_level;
     logic fifo_full, record_valid, boundary_valid;
+    logic geometry_busy;
     logic [127:0] record;
     integer commands = 0, fences = 0, swaps = 0, phases = 0;
     always #5 source_clk = ~source_clk;
@@ -34,6 +35,7 @@ module tb_nds_h3d_swap_retirement;
         .source_active(source_active), .ddr_active(ddr_active),
         .source_fault(source_fault), .ddr_fault(ddr_fault),
         .fifo_level(fifo_level), .fifo_full(fifo_full), .gx_stack_ack(1'b0),
+        .gx_geometry_busy(geometry_busy),
         .record_valid(record_valid), .record_ready(1'b1), .record(record),
         .boundary_valid(boundary_valid), .boundary_ready(1'b1)
     );
@@ -85,6 +87,9 @@ module tb_nds_h3d_swap_retirement;
         wait (source_active && ddr_active);
         // Direct boot already enables geometry; no POWCNT write is required.
         send(28'h540, 0);
+        repeat (20) @(negedge source_clk);
+        if (fifo_level != 0 || !geometry_busy)
+            $fatal(1, "source status lost empty-FIFO SWAP busy");
         // Each fence flushes the untagged transport packer while architectural
         // occupancy accumulates behind SWAP. Even the 256th fence must pass.
         for (integer i=0; i<256; i=i+1) begin
@@ -94,7 +99,8 @@ module tb_nds_h3d_swap_retirement;
         if (!fifo_full || fifo_level != 256 || commands != 256 || fences != 256 || swaps != 1)
             $fatal(1, "SWAP credits/readback transport mismatch");
         phase(); repeat (20) @(negedge source_clk);
-        if (phases != 1 || !fifo_full) $fatal(1, "queued marker retired native SWAP");
+        if (phases != 1 || !fifo_full || !geometry_busy)
+            $fatal(1, "queued marker retired native SWAP");
         // Full FIFO can hold an older write in front of an LCD marker. The
         // independent native VBlank releases it, preserving source order.
         fork
@@ -110,6 +116,7 @@ module tb_nds_h3d_swap_retirement;
         repeat (400) @(negedge source_clk);
         if (fifo_level || commands != 257 || fences != 257 || phases != 2)
             $fatal(1, "native VBlank failed to release ordered stream");
+        if (geometry_busy) $fatal(1, "source status stayed busy after VBlank drain");
         // Low-byte power-off suppresses new waits. A high-byte write must
         // not re-enable geometry. Low-byte enable restores SWAP retirement.
         send(28'h304, 0);
@@ -126,7 +133,7 @@ module tb_nds_h3d_swap_retirement;
         if (fifo_level != 1) $fatal(1, "low-byte POWCNT enable failed");
         session_flush = 1; repeat (4) @(negedge source_clk); session_flush = 0;
         wait (source_active && ddr_active);
-        if (fifo_level || source_fault || ddr_fault) $fatal(1, "session reset");
+        if (fifo_level || geometry_busy || source_fault || ddr_fault) $fatal(1, "session reset");
         $display("PASS: product CDC SWAP barrier, 259 ordered readbacks, LCD progress, native VBlank and session reset");
         $finish;
     end

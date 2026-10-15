@@ -16,8 +16,9 @@
 -- Bits 8..13 (position/projection stack levels) and 15 (stack error) come
 -- from the packet frontend, which tracks MTX_MODE/PUSH/POP in submission
 -- order. Writing 1 to bit 15 pulses stack_ack to clear the error and reset
--- the projection/texture pointers. Matrix-stack/geometry busy and the
--- polygon/vertex counts still read zero here. The separate result owner also
+-- the projection/texture pointers. Bit 27 accepts the optional source-clock
+-- geometry busy state. Matrix-stack busy and polygon/vertex counts still
+-- read zero here. The separate result owner also
 -- handles clip-matrix reads.
 --
 -- DISP3DCNT at 0x04000060 is a CPU-visible read/modify/write register even
@@ -40,6 +41,7 @@ entity nds_h3d_gx_status is
       reset          : in  std_logic;
       service_ready  : in  std_logic;
       fifo_level     : in  std_logic_vector(8 downto 0) := (others => '0');
+      geometry_busy  : in  std_logic := '0';
       -- {error, projection level, position level[4:0]}
       stack_status   : in  std_logic_vector(6 downto 0) := (others => '0');
       stack_ack      : out std_logic := '0';
@@ -79,6 +81,7 @@ begin
       gxstat_word(24 downto 16) <= fifo_level;
       gxstat_word(25) <= fifo_below_half;
       gxstat_word(26) <= fifo_empty;
+      gxstat_word(27) <= geometry_busy;
       gxstat_word(31 downto 30) <= irq_mode;
    end process;
 

@@ -18,6 +18,7 @@ architecture sim of tb_nds_h3d_gx_status is
    signal fifo_level : std_logic_vector(8 downto 0) := (others => '0');
    signal stack_status : std_logic_vector(6 downto 0) := (others => '0');
    signal stack_ack : std_logic;
+   signal geometry_busy : std_logic := '0';
 begin
    clk <= not clk after 5 ns;
 
@@ -26,6 +27,7 @@ begin
       (
          clk => clk, reset => reset, service_ready => service_ready,
          fifo_level => fifo_level, test_result_bits => test_bits,
+         geometry_busy => geometry_busy,
          stack_status => stack_status, stack_ack => stack_ack,
          gb_bus => regs_bus, wired_out => wired_out, wired_done => wired_done,
          trig_gx => trig_gx, irq_gxfifo => irq_gxfifo
@@ -87,6 +89,29 @@ begin
          severity failure;
       assert irq_gxfifo = '0' and trig_gx = '0'
          report "GX reset levels were incorrect" severity failure;
+
+      -- An empty command FIFO can still have a SWAP waiting for VBlank.
+      -- Bit 27 is independent of empty/below-half and is read-only.
+      geometry_busy <= '1';
+      wait for 1 ns;
+      assert wired_out(27) = '1' and wired_out(26) = '1' and wired_out(25) = '1'
+         report "empty FIFO hid pending geometry busy" severity failure;
+      write_lane(x"00000000", "1111");
+      assert wired_out(27) = '1'
+         report "GXSTAT write cleared source busy" severity failure;
+      regs_bus.acc <= ACCESS_16BIT;
+      wait for 1 ns;
+      assert wired_out(27) = '1'
+         report "aligned halfword bus did not expose busy in high lane" severity failure;
+      regs_bus.acc <= ACCESS_8BIT;
+      wait for 1 ns;
+      assert wired_out(27) = '1'
+         report "aligned byte bus did not expose busy in high lane" severity failure;
+      regs_bus.acc <= ACCESS_32BIT;
+      geometry_busy <= '0';
+      wait for 1 ns;
+      assert wired_out(27) = '0' and wired_out(26) = '1'
+         report "source completion did not release busy" severity failure;
 
       -- NSMB updates DISP3DCNT through read/modify/write sequences. Preserve
       -- the writable low state, including texture-enable bit 0, while the

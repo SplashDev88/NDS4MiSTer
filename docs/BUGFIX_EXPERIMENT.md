@@ -7,14 +7,21 @@ Reported game failures must be reproduced and checked individually before closur
 
 ## Latest validation status
 
-The follow-up hardware pass checks Mushroom Men, Ninja Reflex, Wizard of Oz,
-Need for Speed Carbon and Shrek racing, with Final Fantasy Tactics A2 and
-Pokémon White 2 as additional regression workloads. The detailed observations
-below distinguish earlier findings from the latest tests.
+The latest pass follows the earlier InsaneFriend fix and identifies a
+geometry-busy status mismatch that can reproduce Mushroom Men's late display
+updates in the software reference. It also extends Jackass progression checks
+and tests a small DMA prefetch optimization. Earlier coverage includes Ninja
+Reflex, Wizard of Oz, Need for Speed Carbon and Shrek racing, with Final
+Fantasy Tactics A2 and Pokémon White 2 as additional regression workloads.
 
 - Mushroom Men's first checkpoint survives a cold reload and can be saved
-  again. Its graphics defect remains: the sampled display updates already
-  carry visible-line timing at the FPGA source.
+  again. RUN1's menu defect originates before ARM rendering. A new optional
+  geometry-busy status path removes the bands in initial menu captures and
+  preserves a new checkpoint save through cold reload. The bounded NSMB,
+  White 2, Tactics A2 and Jackass checks below pass within their stated limits;
+  this is not full-game acceptance.
+- Jackass completes its tutorial and reaches player control and another NPC
+  conversation on RUN1. The old geometry-debt extension remains excluded.
 - Ninja's tested category menus and completed Firefly Catch challenge work;
   Oz's tested labels, movement and temporary save/reload work. Selected label
   regions remain visible in the physical rotation checks.
@@ -23,13 +30,17 @@ below distinguish earlier findings from the latest tests.
   Skate's reported Flickit scene also retains its full view on rc.8, including
   the rotated HDMI output.
 - Tactics and White 2 preserve progress across cold reloads. The limited
-  matched measurements demonstrate no slowdown, but do not establish distinct
-  displayed FPS or broad performance acceptance.
+  matched RUN1 measurements show no measured slowdown against rc.8, but do not
+  establish distinct displayed FPS or broad performance acceptance. Newer
+  candidate measurements are recorded separately below.
 
 These findings do not close the backlog or qualify RUN1 for release. The
 experimental SWAP retirement and HBlank storage options remain off by default,
-and RUN1 still fails FPGA timing. This follow-up adds validation evidence;
-it does not introduce another source-code fix.
+and RUN1 still fails FPGA timing. The DMA optimization is held separately
+after a small lower FFTA publication-rate result. The new opt-in SWAP-busy
+status candidate passes the bounded hardware checks below without that DMA
+change. It remains an opt-in experiment, with ordinary geometry latency
+still unmodeled and broader game coverage required.
 
 ## Save transaction boundaries
 
@@ -309,28 +320,27 @@ gameplay progression and speed acceptance remain separate and incomplete.
 ## Remaining acceptance work
 
 Issue #42 remains excluded. No game issue has been closed from these tests.
-The next work follows the approved priority order:
+Later sections record the completed follow-up checks. The remaining work is:
 
-1. Finish game-specific save/reload coverage and identify why Mushroom Men's
-   deferred geometry backlog grows across display frames, preserving ordered
-   SWAP/query behavior and the established speed controls.
-2. Investigate Jackass's long automatic phone transition while preserving the
-   known ordered-query counterexample. The longer rc.8 control advances without
-   input; Zelda's exact lid puzzle is still unknown.
-3. Finish Wizard of Oz's physical-display/flicker checks after the verified
-   label correction below. Investigate Ninja Reflex's source backpressure and
-   verify later menus/minigames after the memory controls below. Spectral Force needs
-   the original failing power/ROM details if the tested path continues to pass.
-4. Validate the revised renderer through an actual NFS race and retain matched
-   NSMB/Castlevania speed controls. Finish King Kong's matched texture check.
+1. Extend Mushroom Men's successful geometry-busy menu and checkpoint checks
+   to later gameplay and the original reported save operation. Preserve the
+   matched speed controls and ordinary-geometry timing limitations.
+2. Extend Jackass beyond the verified tutorial, player control and next NPC
+   conversation. Preserve the ordered-query counterexample; Zelda still needs
+   the exact reported lid puzzle.
+3. Extend Ninja Reflex beyond the tested category menus and Firefly Catch,
+   and Wizard of Oz beyond the tested labels and temporary save/reload.
+   Spectral Force needs the original failing setup if the tested path keeps passing.
+4. Complete NFS/Shrek races and Skate's challenge, which the bounded driving
+   and reported-scene checks do not cover. Finish King Kong's matched texture check.
 5. Continue the remaining graphics reports, distinct displayed-frame counter
    and measured performance work after these correctness checks.
 
-Skate It, Shrek, both Prince of Persia titles, Lost in Blue, Linda Hyde,
-Star Fox, Knights in the Nightmare, GoldenEye and C.O.R.E. have not yet received
-new hardware reproduction runs in this experiment. The current 3D FPS display
-still measures publication activity and must not be used as a unique-frame or
-game-speed acceptance criterion.
+Both Prince of Persia titles, Lost in Blue, Linda Hyde, Star Fox,
+Knights in the Nightmare, GoldenEye and C.O.R.E. still need new hardware
+reproduction runs. The current 3D FPS display measures publication activity
+and must not be used as a unique-frame or game-speed acceptance criterion.
+FPGA static timing closure is outside this pass; prior failures remain recorded.
 
 ## SWAP/VBlank retirement candidate
 
@@ -360,8 +370,9 @@ power transitions, reset, and the product CDC with 259 ordered readbacks and
 LCD progress. The transport-only negative control fails the intended missing
 SWAP-credit assertion. Existing clip/readback tests pass.
 
-This is a minimum SWAP barrier, not cycle-accurate geometry execution. It does
-not implement command-specific latency or change GXSTAT busy/matrix timing.
+This initial candidate is a minimum SWAP barrier, not cycle-accurate geometry
+execution. It does not implement command-specific latency or change GXSTAT
+busy/matrix timing. The later optional busy-status extension is described below.
 The first routed hardware candidate reduced Mushroom Men's renderer memory
 usage and kept transport advancing without fault bits, but both screens were
 black and new SWAP submissions stopped. NSMB also stopped responding at its
@@ -420,7 +431,6 @@ starting health/battle state. These short, unmatched samples cannot establish
 speed equivalence or a small regression. A longer idle attempt returns to the
 title screen after the low-health battle and is excluded from timing analysis.
 Broader performance acceptance remains open.
-
 
 ## GX DMA pause-edge request loss
 
@@ -542,7 +552,6 @@ points toward source geometry backpressure as a useful lead, but the compared
 cores contain multiple changes, so it is not an isolated causal toggle or a
 speed test. It does not validate every menu or minigame, and it does not reverse
 the SWAP core's longer Mushroom Men failure. That experiment remains disabled.
-
 
 ## Opt-in compact HBlank event storage
 
@@ -828,3 +837,255 @@ their recorded hashes. The original core session and test-save hash are
 restored, along with the RetroTINK's HD15 RGBS input at 59.64 Hz native 240p.
 No recording or software-reference container remains running. Private game
 assets, saves, diagnostic binaries and captures remain outside this repository.
+
+## Jackass and the earlier InsaneFriend fix
+
+InsaneFriend (saneFriend)'s original Jackass change, `b598be4`, identified
+large geometry bursts behind SWAP as a reason fast matrix queries become
+unavailable for the rest of a session. Its geometry-debt extension remains
+excluded. The earlier production-clock counterexample shows that nominal LCD
+scanlines can clear that debt while authoritative geometry work is still
+unfinished; passing an oracle that advances geometry time on every scanline
+does not cover the service's actual clock. The combined old build also had
+a user-reported NSMB slowdown, whose exact cause was not established.
+
+A new three-configuration check uses separate copies of the same Jackass
+(USA YJKE revision 0) save, selects Heavyset Hills and sends no input during
+the phone transition. The release FPGA with the release renderer loses the
+fast prefix: a later sample has 44,583 unavailable-prefix fallbacks, with its
+fast-reply total fixed at 10,626. The release FPGA with the revised renderer
+also loses it, already recording 9,114 fallbacks at the first phone capture.
+RUN1 with that same revised renderer retains the fast path through the phone
+conversation and illustrated tutorial: all 1,752,805 cumulative queries use
+fast replies, with zero busy or unavailable fallbacks.
+
+The prefix source itself is unchanged from rc.8. Thus the renderer-only
+change does not explain the difference; the experimental FPGA set avoids
+this fallback in the observed run. This is consistent with SWAP/FIFO
+retirement limiting the deferred burst, but is not a hardware isolation of
+that one change from every other FPGA correction. It does not justify
+restoring the old debt model.
+
+Both rc.8 and RUN1 reach the conversation automatically. Measured from the
+initial loading capture, RUN1 still shows the phone icon at 29.67 seconds
+and shows the conversation by 64.74 seconds. The matched rc.8 control still
+shows the icon at 75.21 seconds and shows the conversation by 98.75 seconds.
+Earlier rc.8 observations were longer, so these spaced samples establish
+bounded progression and a difference in this pair, not a general speed ratio.
+The corresponding cumulative ARM work averages about 1.05 ms per ordered
+reply on rc.8 and 0.05 ms per fast reply on RUN1. Those counters exclude
+earlier queue waits and are not distinct-frame FPS or end-to-end latency.
+Mission completion and broader speed acceptance remain unverified; issue
+#40 remains open.
+
+A subsequent cold-launch RUN1 session completes the illustrated tutorial,
+reaches the playable Heavyset Hills world, and responds to movement and
+interaction input by entering another NPC conversation. All 2,215,071
+cumulative queries in that session use fast replies, with no ordered or
+unavailable-prefix fallback and no transport fault. This extends the check
+past the tutorial into player control; it does not complete a mission or
+establish a matched gameplay-speed comparison.
+
+## Mushroom Men interrupt and DMA investigation
+
+A private passive FPGA probe captures the VBlank interrupt, its ARM9
+acknowledgement and the later screen-select write in one coherent snapshot.
+Across 61 complete snapshots from two main-menu samples, both interrupt
+assertion and acknowledgement occur on line 192 every time. The sampled
+acknowledgement PC agrees with the software reference after allowing for the
+CPU pipeline's PC convention. This rules out late interrupt delivery or
+acknowledgement in those captured contexts.
+
+The screen-select write still arrives during visible scanlines in 28 of the
+61 snapshots. The largest elapsed interval from VBlank is 339,279 source
+clock cycles. One captured interval contains 193,723 cycles of DMA bus
+ownership, exceeding the native blanking interval's 151,230 cycles. The
+ordered graphics-readback busy signal is inactive throughout all 61
+intervals. That arbitration signal is separate from the CPU-visible GXSTAT
+geometry-busy bit investigated below. Some late writes have no DMA ownership
+in their interval, so DMA
+occupancy alone does not explain every late write.
+
+A matching software-reference trace identifies frequent immediate,
+32-bit channel-3 transfers from main RAM into the fixed geometry FIFO
+address. Five complete traced frames contain roughly 21,000–39,000 geometry
+words each, split into hundreds of short transfers; 118-word transfers are
+common. The reference's screen-select writes remain on line 192. This
+narrows the next measurement to RAM read time, geometry-write backpressure
+and CPU posted-write waits after interrupt service. It does not establish
+that one DMA transfer or one transport stage causes the graphics fault.
+
+A second passive build separates DMA read states, blocked geometry writes
+and CPU posted-write waits. Its 59 complete snapshots again assert and
+acknowledge VBlank on line 192; 37 screen-select writes occur in the visible
+period. In those late intervals, DMA holds the CPU for 72,224–198,454 source
+cycles, with roughly 78% spent in read states. Geometry-write backpressure
+accounts for only 0–44 cycles, and CPU posted-write waits account for none.
+This makes read-side DMA throughput a useful optimization target for the
+captured main-menu workload. It does not account for all time outside DMA
+or establish whole-game behavior.
+
+A synthetic software-reference control multiplies only main-RAM-to-geometry
+DMA unit cost after the matched main-menu checkpoint. A display-only trace
+covers 240 emulated frames: the 1x control writes screen selection 240 times,
+and the 8x control writes it 160 times. Every write remains on line 192.
+Twenty consecutive final captures per control have no black screen rows or
+within-frame screen/VRAM/display-mode changes. The slower run skips some
+updates without reproducing the FPGA corruption. This is not a
+cycle-equivalent model of FPGA arbitration. Read throughput remains an
+optimization target, not yet a complete causal explanation.
+
+These diagnostic builds and software traces are excluded from speed
+acceptance. The probes, commercial game data and captures are private; no
+diagnostic instrumentation is enabled by this branch. Issue #31 remains
+open for graphics even though checkpoint save and reload work.
+
+## Geometry-busy status investigation
+
+The game polls GXSTAT bit 27 before its screen-switch routine. The current
+FPGA owner reports that bit as zero. In a matched software-reference control,
+forcing only that readback bit clear after reaching the main menu reproduces
+the defect: 121 of 241 screen-select writes occur during visible scanlines,
+and 10 of 20 consecutive final captures contain black screen rows. The
+unmodified control performs 240 screen-select writes, all on line 192, with
+intact captures. This establishes a specific status mismatch that can cause
+the observed type of corruption; it does not alone validate an FPGA fix.
+
+A second control exposes busy only while the reference's existing SWAP is
+waiting for VBlank. It again performs 240 screen-select writes on line 192,
+with no visible-phase changes or black screen rows in its 20 final captures.
+An opt-in FPGA candidate now exposes the existing native SWAP/retirement wait
+as GXSTAT busy, including the case where its FIFO is already empty. It adds
+no geometry-debt clock or estimated instruction credits. Ordinary geometry
+execution latency remains unmodeled. This candidate uses RUN1's DMA
+implementation to isolate the status correction.
+
+`NDS_GX_BUSY_STATUS_EXPERIMENT` enables the status path; it also requires the
+existing `NDS_GX_SWAP_RETIREMENT_EXPERIMENT` to provide nonzero retirement
+state. Both remain disabled in normal builds. The busy signal stays in the
+source clock domain and does not wait on DDR record consumption. GXSTAT's
+FIFO-empty bit remains independent. Power-off freezes an existing SWAP wait,
+and reset clears it.
+
+`tools/test_gx_busy_status.sh` covers an empty FIFO with a pending SWAP,
+native VBlank versus queued LCD markers, CPU/DMA full stalls, consecutive
+SWAPs, packed commands, power transitions, session reset, read-only bit 27
+and aligned register lanes. Existing ordered-readback regressions and full
+console VHDL analysis pass. The source/RTC synthesis checks and map, fit and
+assembly pass with 34,260 ALMs and 534 M10Ks. No standalone timing analysis
+or timing-closure work is included in this pass.
+
+Initial hardware captures show the main menu correctly placed across both
+screens. A repeat samples 30 menu publications without near-black rows in
+either plane; inspected frames show readable labels and continuous scene
+placement. The first capture also contains an automatic fade into attract
+mode, which is excluded from stationary-menu defect measurements. One short
+capture failed to collect 60 publications within ten seconds; subsequent
+captures and health checks confirm continued execution without fault bits.
+The analog RGB recording shows readable save-slot graphics through the
+RetroTINK-4K. The existing first checkpoint loads with matching location,
+weapon and health, and movement and the save prompt respond. A new save then
+survives a complete exit and relaunch with identical bytes and restores the
+saved position and character state. A five-minute checkpoint observation has
+zero transport faults, unchanged save bytes and constant renderer RSS of
+66,020 KiB; the full candidate session exceeds 13 minutes. A fresh RUN1
+control with the same starting save, renderer, settings and 1 GHz ARM clock
+again shows displaced screen content, duplicate menu-title bands and stale
+attract imagery. This strengthens attribution to the isolated status path.
+The animation frames are not exactly aligned, and near-black-row counts alone
+do not detect all of the control's misplaced imagery. The regression checks
+below do not establish full-game graphics acceptance.
+
+A matched NSMB control–candidate–control check initially advances 172, 171
+and 172 timer units over approximately 129 seconds each. The candidate's
+-0.80% difference is within integer-HUD quantization, so a longer pair follows.
+Both longer runs advance 339 units: RUN1 over 254.15 seconds and the candidate
+over 254.29 seconds, a -0.05% rate difference. The earlier difference is not
+sustained. All runs use the same World 2-5 save/scene, renderer settings and
+1 GHz ARM clock, remain fault-free, preserve their saves and respond to pause.
+This shows no measurable slowdown in the longer scene check, not exact speed
+equality, distinct displayed FPS or whole-game performance acceptance.
+
+The new candidate's Pokémon White 2 check advances 417 saved seconds over
+416.64 real seconds, versus 417 over 416.87 on RUN1. The rates agree within
+one-second resolution. Both play-time blocks have valid checksums, and the
+new save survives a full exit and relaunch with identical bytes before
+returning to its saved Pokémon Center position. Starting saves and input
+sequences match, but NPC/player movement leaves slightly different camera
+positions; this is a save-clock and persistence check, not pixel-matched
+rendered FPS. Both runs remain fault-free at 1 GHz.
+
+FFTA's new candidate publishes 20.55 buffers per second in a visibly settled
+Luso command menu, versus 20.61 on RUN1, a -0.27% difference in this pair.
+An earlier candidate interval began with the menu still sliding into place
+and is excluded. A new quicksave completes, survives a cold launch with
+identical bytes, and restores the same battle state, HP and MP without
+faults. This remains publication throughput, not distinct FPS or broad
+game-speed acceptance.
+
+Jackass also completes the phone transition and illustrated tutorial on the
+new status candidate, reaches player control and responds to movement and an
+NPC interaction. All 1,277,247 cumulative matrix queries use fast replies,
+with zero ordered/unavailable fallbacks or transport faults over the
+13.26-minute session. This preserves the tested RUN1 progression and query
+behavior; it does not complete a mission or establish a gameplay-speed ratio.
+
+After this pass, the original core/ROM test setup is restored. All 53 protected
+save/configuration paths and the original test-save hash remain unchanged.
+The RetroTINK-4K is verified on HD15 RGBS at native 240p/59.64 Hz with its menus
+closed; OBS recording is stopped. No reference/build container remains running.
+
+## Held main-RAM prefetch experiment
+
+A separate ARM9 DMA candidate removes an extra read-state cycle when
+promoting a completed prefetch into its current block buffer. It consumes
+the first unit on the promotion edge and can request the following block on
+the same edge. This adds no buffer, port or clock. Transfer ordering,
+remaining counts, priority arbitration, write acceptance and cache invalidation
+remain in their existing paths.
+
+The private candidate tests check the exact accepted geometry
+stream under three RAM latencies, both pair alignments, fixed/incrementing/
+decrementing sources and destination backpressure. It also checks priority
+preemption that changes prefetched RAM, and mutable overlapping RAM copies
+across source/destination modes, widths and offsets. The existing main-RAM,
+GX/VRAM acceptance and production grant-overlap regressions pass too.
+
+In matched simulations, a 39,375-word incrementing transfer without destination
+stalls uses 6.7–20% fewer cycles at the three tested RAM latencies, with the
+same read count and exact data. Backpressure can hide the gain. No complete
+transfer in the paired geometry-stream matrix gets slower. Two priority-test
+positions add one or four cycles to priority-service latency under periodic
+backpressure, while their total transfer time improves. These results do not
+establish a whole-game speedup or a complete Mushroom Men graphics fix.
+
+The uninstrumented prefetch build passes map, fit and assembly, using 34,229
+ALMs and 534 M10Ks. Timing closure is outside this pass. A matched NSMB
+control–candidate–control check advances its World 2-5 timer by 172 units in
+each roughly 129-second interval. The candidate differs by about -0.09%
+from the weighted controls, within integer HUD quantization; all runs use
+the same renderer settings and 1 GHz ARM clock, keep the fixture save
+unchanged and record zero transport faults. This is one scene's game-clock
+check, not a distinct-frame rate or general performance claim.
+
+In the matched Pokémon White 2 Pokémon Center check, the candidate advances
+415 saved seconds over 415.04 real seconds; RUN1 advances 416 over 415.99.
+The rates agree within the saved clock's one-second resolution. Both
+play-time blocks have valid checksums, and the candidate's new save survives
+a complete exit and relaunch with identical bytes before returning to the
+same room. This measures save-clock progression and persistence, not distinct
+rendered FPS. No transport faults occur.
+
+FFTA's matched settled first-battle command menu publishes 20.43 and 20.46
+buffers per second in two candidate intervals, compared with 20.84 and 20.57
+in the before/after RUN1 controls. The weighted difference is -1.28%, or
+-0.63% against the later control. The new quicksave survives a cold launch
+with identical bytes, then reloads the same Luso command menu and character
+state without faults. Publication throughput is not distinct FPS or game
+speed, and the controls vary, so this does not establish a broad slowdown.
+The difference remains unresolved: the DMA source change and its tests are
+held privately and are excluded from the SWAP-busy candidate. A ten-minute
+Mushroom Men observation spans automatic menu/attract transitions with zero
+transport faults, unchanged save bytes and renderer RSS of 65,308–65,820 KiB.
+The pre-observation menu still has displaced screens and black bands. Thus
+this optimization does not resolve the reported graphics defect.

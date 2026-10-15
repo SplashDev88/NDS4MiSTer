@@ -208,6 +208,7 @@ entity nds_nitro_console_wrap is
       h3d_readback_data       : in  std_logic_vector(31 downto 0) := (others => '0');
       h3d_engine_b_enable     : in  std_logic := '0';
       h3d_gx_fifo_level       : in  std_logic_vector(8 downto 0) := (others => '0');
+      h3d_gx_geometry_busy    : in  std_logic := '0';
       h3d_gx_stack_status     : in  std_logic_vector(6 downto 0) := (others => '0');
       h3d_gx_stack_ack        : out std_logic;
       h3d_timestamp           : out std_logic_vector(63 downto 0);
@@ -530,6 +531,7 @@ begin
       h3d_readback_data       => h3d_readback_data,
       h3d_engine_b_enable     => h3d_engine_b_enable,
       h3d_gx_fifo_level       => h3d_gx_fifo_level,
+      h3d_gx_geometry_busy    => h3d_gx_geometry_busy,
       h3d_gx_stack_status     => h3d_gx_stack_status,
       h3d_gx_stack_ack        => h3d_gx_stack_ack,
       h3d_timestamp           => h3d_timestamp,
