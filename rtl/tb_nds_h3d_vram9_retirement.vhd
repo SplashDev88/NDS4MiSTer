@@ -80,7 +80,7 @@ begin
       irq_dma => open);
    gate : entity work.nds_h3d_console_event_gate port map (
       clk => clk, reset => reset, service_ready => h3d_service_ready,
-      timestamp => open, current_frame => open, source_fault => open,
+      timestamp => open, current_frame => open, source_fault => open, source_fault_reason => open,
       gpu_source_valid => '0', gpu_source_is_cpu => '1', gpu_source_address => (others => '0'),
       gpu_source_access => "10", gpu_source_be => "1111", gpu_source_data => (others => '0'),
       gpu_source_ready => open, gpu_cpu_complete => open, gpu_event_valid => open,

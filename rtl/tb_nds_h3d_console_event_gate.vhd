@@ -62,6 +62,7 @@ architecture sim of tb_nds_h3d_console_event_gate is
    signal frame_pulse, frame_event_valid, frame_event_ready : std_logic := '0';
    signal frame_event_number : std_logic_vector(31 downto 0);
    signal frame_event_timestamp : std_logic_vector(63 downto 0);
+   signal source_fault_reason : std_logic_vector(1 downto 0);
    signal frame_pending_level : std_logic_vector(8 downto 0);
 begin
    clk <= not clk after 5 ns;
@@ -72,6 +73,7 @@ begin
       clk => clk, reset => reset, service_ready => service_ready,
       timestamp => timestamp, current_frame => current_frame,
       source_fault => source_fault,
+      source_fault_reason => source_fault_reason,
       gpu_source_valid => gpu_source_valid,
       gpu_source_is_cpu => gpu_source_is_cpu,
       gpu_source_address => gpu_source_address,
@@ -863,7 +865,7 @@ begin
       wait until falling_edge(clk);
       frame_pulse <= '0';
       wait for 1 ns;
-      assert source_fault = '1' and frame_event_valid = '1' and
+      assert source_fault = '1' and source_fault_reason = "10" and frame_event_valid = '1' and
              unsigned(frame_pending_level) = to_unsigned(256, 9) and
              frame_event_number = x"00000001"
          report "deep boundary overflow did not fail closed"
@@ -944,13 +946,33 @@ begin
       hblank_pulse <= '0';
       assert hblank_event_valid = '1' and
              hblank_event_line = std_logic_vector(to_unsigned(247, 9)) and
-             source_fault = '1'
+             source_fault = '1' and source_fault_reason = "01"
          report "full HBlank queue did not fail closed on overflow"
+         severity failure;
+      -- Reasons accumulate independently and survive service stop. This is
+      -- diagnostic state only; the first retained queue heads stay intact.
+      frame_event_ready <= '0';
+      for n in 1 to 257 loop
+         frame_pulse <= '1';
+         wait until rising_edge(clk);
+         wait until falling_edge(clk);
+         frame_pulse <= '0';
+         wait until rising_edge(clk);
+         wait until falling_edge(clk);
+      end loop;
+      assert source_fault = '1' and source_fault_reason = "11"
+         report "overflow reasons did not accumulate independently"
+         severity failure;
+      service_ready <= '0';
+      wait until rising_edge(clk);
+      wait until falling_edge(clk);
+      assert source_fault = '1' and source_fault_reason = "11"
+         report "service stop erased the sticky overflow reason"
          severity failure;
       reset <= '1';
       wait until rising_edge(clk);
       wait until falling_edge(clk);
-      assert source_fault = '0' and current_frame = x"00000000" and
+      assert source_fault = '0' and source_fault_reason = "00" and current_frame = x"00000000" and
              frame_event_valid = '0'
          report "H3D source fault/FIFO/counters did not clear on reset"
          severity failure;

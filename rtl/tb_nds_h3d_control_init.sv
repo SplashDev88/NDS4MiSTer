@@ -692,10 +692,11 @@ module tb_nds_h3d_control_init #(
         memory[5] = {active8, 32'd2};
         wait_for_release();
         @(negedge clk);
-        external_fault_bits = 32'h00000100;
+        // Preserve both queue-reason bits together with the legacy summary.
+        external_fault_bits = 32'h00c00100;
         wait_for_fault();
-        if ((fault_bits & 32'h00000100) == 0 ||
-            (memory[4][31:0] & 32'h00000100) == 0)
+        if ((fault_bits & 32'h00c00100) != 32'h00c00100 ||
+            (memory[4][31:0] & 32'h00c00100) != 32'h00c00100)
             $fatal(1, "external product fault was not published");
         external_fault_bits = 32'd0;
         wait (dut.state == STATE_FAULT_HOLD);

@@ -366,7 +366,7 @@ console_ports=$(sed -n '/nds_nitro_console_wrap #(/,/^);/p' \
     "$repo_dir/rtl/nds_nitro_console_island.sv")
 for required_port in \
     h3d_pixel_valid h3d_line_request h3d_service_ready \
-    h3d_gx_fifo_level h3d_current_frame h3d_source_fault \
+    h3d_gx_fifo_level h3d_current_frame h3d_source_fault h3d_source_fault_reason \
     diagnostic_hold9 diagnostic_hold7 \
     diagnostic_release9 diagnostic_release7 \
     h3d_gpu_write_valid \

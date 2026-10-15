@@ -26,6 +26,8 @@ entity nds_h3d_console_event_gate is
       timestamp     : out std_logic_vector(63 downto 0);
       current_frame : out std_logic_vector(31 downto 0);
       source_fault  : out std_logic;
+      -- Sticky diagnostic bits: 0 = HBlank queue, 1 = frame queue.
+      source_fault_reason : out std_logic_vector(1 downto 0);
 
       -- Unified ARM9 GPU-I/O source. gpu_source_is_cpu distinguishes the
       -- bridged CPU request (which needs an IO-completion toggle) from the
@@ -196,11 +198,12 @@ architecture arch of nds_h3d_console_event_gate is
 
    signal gpu_valid_i, vram9_valid_i, vram7_valid_i : std_logic;
    signal hblank_valid_i, frame_valid_i : std_logic;
-   signal source_fault_i : std_logic := '0';
+   signal source_fault_reason_i : std_logic_vector(1 downto 0) := "00";
 begin
    timestamp     <= std_logic_vector(timestamp_counter);
    current_frame <= std_logic_vector(frame_counter);
-   source_fault  <= source_fault_i;
+   source_fault <= source_fault_reason_i(0) or source_fault_reason_i(1);
+   source_fault_reason <= source_fault_reason_i;
    frame_pending_level <= std_logic_vector(frame_pending_count);
 
    gpu_queue_read <= gpu_queue(to_integer(gpu_read_pointer));
@@ -351,7 +354,7 @@ begin
             timestamp_counter <= (others => '0');
             frame_counter <= (others => '0');
             hblank_frame_counter <= (others => '0');
-            source_fault_i <= '0';
+            source_fault_reason_i <= "00";
             gpu_pending <= '0';
             gpu_pending_cpu <= '0';
             gpu_read_pointer <= (others => '0');
@@ -480,7 +483,7 @@ begin
                      hblank_write_pointer <= hblank_write_pointer + 1;
                      hblank_pending_count <= hblank_pending_count + 1;
                   else
-                     source_fault_i <= '1';
+                     source_fault_reason_i(0) <= '1';
                   end if;
                end if;
 
@@ -519,7 +522,7 @@ begin
                      -- A timing boundary cannot be backpressured. Never
                      -- replace an older ownership marker with a newer one;
                      -- expose the capacity failure before corrupting order.
-                     source_fault_i <= '1';
+                     source_fault_reason_i(1) <= '1';
                   end if;
                end if;
             end if;

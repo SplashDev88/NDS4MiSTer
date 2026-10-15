@@ -84,7 +84,22 @@ module tb_nds_nitro_input_boundary;
         .controller_pressed,.controller_analog,.ps2_mouse,
         .touch_pressed,.touch_analog
     );
-    nds_nitro_console_island dut (.*);
+    // Tie off later display/firmware interfaces while exercising the input
+    // boundary. Wildcard ports alone stopped elaborating after those additions.
+    nds_nitro_console_island dut (
+        .*,
+        .video_split_select(1'b0), .video_analog_screen_select(1'b0),
+        .video_split_active(), .video_analog_screen_active(),
+        .ioctl_addr(27'd0), .ioctl_dout(16'd0), .ioctl_wr(1'b0),
+        .firmware_io_enable(1'b0), .firmware_io_strobe(1'b0),
+        .firmware_io_din(16'd0), .firmware_io_override(), .firmware_io_dout(),
+        .host_rtc(65'd0), .firmware_img_mounted(1'b0),
+        .firmware_img_readonly(1'b0), .firmware_img_size(64'd0),
+        .firmware_sd_lba(), .firmware_sd_rd(), .firmware_sd_wr(),
+        .firmware_sd_ack(1'b0), .firmware_sd_buff_din(),
+        .analog_ce(), .analog_de(), .analog_hs(), .analog_vs(),
+        .analog_r(), .analog_g(), .analog_b()
+    );
 
     task automatic clk1x_fall;
         @(negedge clk1x);

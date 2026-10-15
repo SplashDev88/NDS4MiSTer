@@ -82,3 +82,15 @@ save initialization and reached its opening gameplay with a fresh save. These
 observations do not establish full-game save reliability or validate the
 reported original saves; the issues remain open. All tests use separate save
 files, with original files checked for changes.
+
+## Identifying source queue failures
+
+Both Mushroom Men and NFS reproduced the generic FPGA source fault `0x100`
+on rc.8, while the HPS fault word remained zero. The source has two possible
+causes: exhaustion of its 512 HBlank markers or its 256 frame boundaries.
+The experiment preserves the aggregate bit and adds sticky detail bits:
+`0x00400000` for HBlank overflow, `0x00800000` for frame overflow. The reason
+bits cross through two synchronizer stages and are published with the aggregate
+bit. Queue sizes, event ordering, CPU clocks and LCD pacing remain unchanged.
+The gate regression checks each cause, combined reasons, service stop and reset.
+This diagnostic does not itself fix either game's stall.

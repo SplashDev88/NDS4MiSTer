@@ -1418,6 +1418,7 @@ wire h3d_frame_valid, h3d_frame_ready;
 wire [31:0] h3d_frame_number, h3d_current_frame;
 wire [63:0] h3d_frame_timestamp, h3d_timestamp_live;
 wire h3d_console_source_fault;
+wire [1:0] h3d_console_source_fault_reason;
 wire h3d_core_line_drop;
 // The return plane is derived display data and may complete after its source
 // frame has advanced.  Once a current-session descriptor crosses, keep its
@@ -1431,23 +1432,27 @@ wire [31:0] h3d_plane_display_frame = h3d_pixel_descriptor_valid
 // dropped 2D render line is already represented by a transparent/old pixel
 // and can recover on a later line or frame.  Resetting both CPUs for such a
 // display miss turns recoverable backpressure into a permanent boot failure.
-(* async_reg = "true" *) logic [1:0] h3d_source_fault_sync_ddr;
+// Synchronize each sticky reason before publishing the aggregate fault and
+// its detail together. No clocks, queue capacities or backpressure change.
+(* async_reg = "true" *) logic [1:0] h3d_source_reason_meta_ddr;
+(* async_reg = "true" *) logic [1:0] h3d_source_reason_sync_ddr;
 (* async_reg = "true" *) logic [1:0] h3d_readback_fault_sync_ddr;
 always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
     if (bridge_reset_ddr) begin
-        h3d_source_fault_sync_ddr <= 2'b00;
+        h3d_source_reason_meta_ddr <= 2'b00;
+        h3d_source_reason_sync_ddr <= 2'b00;
         h3d_readback_fault_sync_ddr <= 2'b00;
         h3d_external_fault_bits <= 32'd0;
     end else begin
-        h3d_source_fault_sync_ddr <= {
-            h3d_source_fault_sync_ddr[0], h3d_console_source_fault
-        };
+        h3d_source_reason_meta_ddr <= h3d_console_source_fault_reason;
+        h3d_source_reason_sync_ddr <= h3d_source_reason_meta_ddr;
         h3d_readback_fault_sync_ddr <= {h3d_readback_fault_sync_ddr[0], h3d_readback_source_fault};
         if (h3d_cart_ready_rise) begin
             h3d_external_fault_bits <= 32'd0;
         end else begin
             h3d_external_fault_bits <= h3d_external_fault_bits |
-                (h3d_source_fault_sync_ddr[1] ? 32'h00000100 : 32'd0) |
+                ((|h3d_source_reason_sync_ddr) ?
+                    (32'h00000100 | {8'd0, h3d_source_reason_sync_ddr, 22'd0}) : 32'd0) |
                 (h3d_record_ddr_fault ?
                     (32'h00000200 |
                      {16'd0, h3d_record_ddr_fault_reason, 12'd0}) : 32'd0) |
@@ -1456,7 +1461,8 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
                      {11'd0, h3d_packet_fault_reason, 16'd0}) : 32'd0) |
                 (h3d_fabric_protocol_error ? 32'h00000800 : 32'd0) |
                 // Bits 12..15/16..20 hold record/packet fault reasons;
-                // bit 21 is the first unused external-fault bit.
+                // bit 21 reports readback faults, bits 22/23 identify
+                // console HBlank/frame queue overflow respectively.
                 (h3d_readback_fault_sync_ddr[1] ? 32'h00200000 : 32'd0);
         end
     end
@@ -2235,6 +2241,7 @@ nds_nitro_console_wrap #(
     .h3d_timestamp(h3d_timestamp_live),
     .h3d_current_frame(h3d_current_frame),
     .h3d_source_fault(h3d_console_source_fault),
+    .h3d_source_fault_reason(h3d_console_source_fault_reason),
     .h3d_gpu_write_valid(h3d_gpu_write_valid),
     .h3d_gpu_write_ready(h3d_gpu_write_ready),
     .h3d_gpu_write_address(h3d_gpu_write_address),

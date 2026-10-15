@@ -329,6 +329,7 @@ entity nds_nitro_console_top is
       h3d_timestamp           : out std_logic_vector(63 downto 0) := (others => '0');
       h3d_current_frame       : out std_logic_vector(31 downto 0) := (others => '0');
       h3d_source_fault        : out std_logic := '0';
+      h3d_source_fault_reason : out std_logic_vector(1 downto 0) := "00";
 
       h3d_gpu_write_valid       : out std_logic := '0';
       h3d_gpu_write_ready       : in  std_logic := '1';
@@ -1180,6 +1181,7 @@ begin
       timestamp => h3d_timestamp,
       current_frame => h3d_current_frame,
       source_fault => h3d_source_fault,
+      source_fault_reason => h3d_source_fault_reason,
 
       gpu_source_valid => h3d_gpu_source_valid,
       gpu_source_is_cpu => h3d_gpu_source_is_cpu,
