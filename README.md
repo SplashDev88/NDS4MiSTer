@@ -18,7 +18,7 @@ Keep all files from this package together.
 1. Exit the core with **System → Reboot**.
 2. Back up `Scripts/NDS4MiSTer.sh`, the hidden `Scripts/.NDS_Standalone` folder, `saves/NDS` and `config/NDS_storage.cfg`.
 3. Extract **NDS4MiSTer_v0.9.0-rc.8_Standalone.zip** to the SD card root. Include hidden files, merge the `Scripts` folder and overwrite program files. Your settings and maps are kept.
-4. Run **Scripts → NDS4MiSTer**, then **Load *.NDS**.
+4. Run **Scripts → NDS4MiSTer**, then **Load \*.NDS**.
 
 Saves stay in `saves/NDS`, including for games loaded from USB or a network share. Don't rename ROMs. No ROMs, BIOS/firmware, settings or kernel are included. Support modules are included for Linux 6.18.38-MiSTer and 5.15.1-MiSTer.
 
