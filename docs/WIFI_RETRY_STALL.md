@@ -10,9 +10,11 @@ Raising the renderer priority cannot preempt this kernel work.
 The FPGA retains 512 HBlank events, approximately 32.5 ms at the current
 line cadence. A longer interruption can exhaust that queue and latch
 source fault `0x100`, stopping the game. The same fault bit also covers the
-256-entry frame queue, so a public crash report alone cannot identify the
-individual queue. The much larger private ARM replay queue does not protect
-the FPGA from an interruption before packets reach ARM memory.
+256-entry frame queue, so an rc.8 or older public crash report cannot identify
+the individual queue. The experimental bug-fix core adds reason bits described
+in the [ABI documentation](hybrid-3d-abi.md#source-queue-fault-details).
+The much larger private ARM replay queue does not protect the FPGA from an
+interruption before packets reach ARM memory.
 
 ## Reproduction and mitigation
 

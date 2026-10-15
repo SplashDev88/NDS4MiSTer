@@ -24,9 +24,8 @@ the rc.8 card implementation and passes with the correction. The existing save
 cache, EEPROM/flash, IR and loader suites also pass.
 
 These changes affect cartridge backup SPI. Renderer settings, CPU/cartridge-ROM
-timing and clock rates are unchanged. This is not yet a claim of hardware speed
-equivalence or resolution of any particular game's save issue. FPGA routing,
-hardware comparison and game-specific save/reload tests remain required.
+timing and clock rates are unchanged. Game-specific hardware findings and the
+limited speed comparison are recorded below; this does not establish resolution of any particular game's save issue.
 
 The old combined Jackass/King Kong/NFS bundle remains excluded. Any reused change needs
 its own regression evidence, including the recorded geometry timing counterexample
@@ -53,8 +52,9 @@ self-test counter now explicitly returns `std::size_t` so Clang's sign-compare
 warning does not prevent these checks from compiling.
 
 This is a command-retention correction, not yet a verified fix for issue #38.
-ARM build validation, the reported NFS race and matched gameplay speed checks
-are still required before accepting it for a release.
+ARM build validation and the initial speed checks are recorded below. The
+reported NFS race and broader matched gameplay checks are still required
+before accepting it for a release.
 
 ## VRAM bank register readback
 
@@ -120,12 +120,17 @@ and bounded stationary-jump checks. These are game-timer units, not FPS.
 | rc.8 repeat | 115.69 | 1.2534 |
 | Overflow renderer with original geometry offsets | 119.49 | 1.2637 |
 | Save-only FPGA, rc.8 renderer | 121.11 | 1.2551 |
+| Save-plus-VRAM FPGA, rc.8 renderer | 76.66 | 1.2392 |
+| Combined diagnostic FPGA and revised overflow renderer | 141.72 | 1.2490 |
 
 No transport faults occurred in these runs. The first overflow renderer is
 about 2.5% slower than the two release controls. The revised renderer and
-save-only FPGA are within about 1% of the controls in this scene. Integer HUD
-resolution, finite samples and one scene limit this result; this is not a
-claim of general speed equivalence or unique displayed 3D FPS.
+save-only FPGA are within about 1% of the controls in this scene. The combined
+candidate is 0.28% below the control mean, with an unchanged test save and no
+faults throughout four 30-second header observations. This does not resolve the
+shorter VRAM-only result discussed below. Integer HUD resolution, finite samples
+and one scene limit these results; they do not establish general speed
+equivalence or unique displayed 3D FPS.
 
 Both save-only and save-plus-VRAM FPGA builds route. The save-only build has
 33,811 ALMs and 530 M10Ks; worst reported setup slack is -15.400 ns versus
@@ -141,3 +146,110 @@ Quartus mapping and the RTC CDC synthesis gate. The broad island test script
 still stops at an obsolete FS3 menu-string assertion on both old and new
 sources; its input-boundary fixture was repaired for rc.8's added interfaces.
 
+The save-plus-VRAM core completed a shorter, 76.66-second NSMB check with no
+transport faults or save changes. Timer progression was 1.2392 units/s, 1.06%
+below the release controls. That is near the roughly 1% integer-HUD resolution
+of this sample; a small regression is not excluded and a longer comparison
+is still required. The revised renderer also passed a Castlevania opening
+street-combat smoke test (ground attacks, a defeated skeleton, soul acquisition
+and working pause menu), without transport faults. Those combat runs were not
+sufficiently matched to support a quantitative speed claim.
+
+NFS's existing 1-KiB save was also traced to a separate initialization problem:
+its detected chip profile expects 8 KiB. The save bridge deliberately preserves
+mismatched files and disables persistence instead of overwriting them. An empty
+isolated file initializes to the expected 8 KiB and permits profile creation.
+This explains that file's write warning; it does not resolve the race-view issue
+or justify changing an original user save automatically.
+
+## Progression blocker reproduction
+
+On rc.8, Jackass (USA YJKE revision 0) passes profile creation and map selection,
+then remains on a black first-level screen with a phone icon. It did not
+advance through a roughly 91-second observation window including Start/A
+input. Packet consumption and frame publication continued, FPGA/HPS fault
+words stayed zero, and the 1,024-sample manual report showed a replay backlog
+between zero and nine packets. Product CPU telemetry is disabled, so this
+report cannot identify the exact instruction wait. The old geometry-credit
+change remains excluded because its ordering counterexample is unresolved.
+
+The diagnostic FPGA build also completes map, fit, assembly and timing analysis,
+with 33,897 ALMs, 530 M10Ks and worst setup slack of -14.031 ns. It preserves
+rc.8's clock configuration but, like rc.8, does not meet timing. Hardware checks
+of its reason bits are recorded below; wider validation of the combined
+candidate remains required.
+
+Spectral Force: Genesis (USA YW4E revision 0) passed New Game and power selection
+into the Unicorn Flag opening dialogue on rc.8. Both screens remained drawn,
+multiple dialogue pages responded to A, and no transport faults occurred over
+about 89 seconds after selection. The old report does not specify its chosen
+power or ROM revision; this bounded path does not establish a general fix.
+
+Both the diagnostic core with the rc.8 renderer and the combined core/renderer
+candidate reproduced Mushroom Men with fault `0x00400100`: HBlank exhaustion,
+with HPS fault zero. The first header check preceded framebuffer capture, and
+both runs stopped at producer packet 5831. The rc.8-renderer flight recorder
+shows the ARM replay queue filling to 512 packets while rendering is in
+progress. It subsequently drains after the FPGA has stopped. A completed draw
+interval reaches about 606 ms and replay-packet work about 501 ms. This narrows
+the investigation to a rendering/replay backlog; it does not yet identify the
+expensive operation or fix the incorrect menu graphics or save behavior.
+
+The combined renderer's Mushroom Men run still faults at the same packet,
+with a longest replay-packet interval around 365 ms (longest completed draw
+around 54 ms). The long-work diagnosis must therefore distinguish replay
+from raster drawing; increasing queue capacity alone would not establish a
+correct or timely rendering path.
+
+## Menu and scene checks
+
+Ninja Reflex (USA YNIE revision 0) draws all four profile slots and their labels
+on rc.8. A input creates/selects the default profile and displays its name and
+1 Player Start. The original screenshot matches the initially blank title/lower
+screen, from which Start/A reaches the visible profile menu. Whether an expected title
+prompt is missing and whether all later options work remain unverified.
+
+The Wizard of Oz (USA COZE revision 0) reproduces the missing labels on all
+three main-menu buttons, while the top logo and button frames draw correctly.
+The save-plus-VRAM core with the release renderer has the same defect. Native
+paired-screen captures agree with an eight-second RetroTINK lower-screen
+capture; neither run faults. Opening credits do render text. Full flicker
+verification and the responsible BG/OBJ/window state remain unresolved.
+
+King Kong (USA AKQE revision 0) created a separate 512-byte profile on rc.8.
+The save-plus-VRAM core cold-loaded an exact copy and rendered the same opening
+boat scene without faults. That opening view does not show a decisive texture
+difference. The original local video shows white/untextured polygons in an
+interactive first-person view; that scene and a motion/speed comparison remain
+required before claiming the texture issue is fixed.
+
+The combined candidate cold-loads NFS's valid isolated profile and draws the
+track and car through the race introduction, but it only reaches countdown 3
+after a long observation window; the race timer remains zero. A follow-up rc.8
+control using that same valid profile also draws the race scene. Therefore
+visible race graphics in the candidate are not evidence that this patch fixed
+issue #38. Command retention is proven by the failing/passing regression;
+gameplay progression and speed acceptance remain separate and incomplete.
+
+## Remaining acceptance work
+
+Issue #42 remains excluded. No game issue has been closed from these tests.
+The next work follows the approved priority order:
+
+1. Finish game-specific save/reload coverage and isolate Mushroom Men's costly
+   replay operation without dropping ordered events or throttling LCD time.
+2. Identify Jackass's CPU/query wait with a bounded diagnostic, preserving the
+   known ordered-query counterexample. Zelda's exact lid puzzle is still unknown.
+3. Trace Wizard of Oz's missing label layer. Compare Ninja Reflex's blank title
+   state with reference behavior and verify later menus. Spectral Force needs
+   the original failing power/ROM details if the tested path continues to pass.
+4. Validate the revised renderer through an actual NFS race and retain matched
+   NSMB/Castlevania speed controls. Finish King Kong's matched texture check.
+5. Continue the remaining graphics reports, distinct displayed-frame counter
+   and measured performance work after these correctness checks.
+
+Skate It, Shrek, both Prince of Persia titles, Lost in Blue, Linda Hyde,
+Star Fox, Knights in the Nightmare, GoldenEye and C.O.R.E. have not yet received
+new hardware reproduction runs in this experiment. The current 3D FPS display
+still measures publication activity and must not be used as a unique-frame or
+game-speed acceptance criterion.

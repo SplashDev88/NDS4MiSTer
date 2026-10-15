@@ -62,7 +62,7 @@ All fields are little-endian. All 64-bit fields are naturally aligned.
 | `0x30` | 32-bit published frame sequence plus zero reserved word |
 | `0x38` | 32-bit acknowledged frame sequence plus zero reserved word |
 | `0x40` | published frame descriptor |
-| `0x60` | FPGA heartbeat and one slowly rotating tagged telemetry word |
+| `0x60` | optional FPGA CPU/telemetry words; zero in the current product core |
 | `0x68` | HPS heartbeat and a normally-zero manual snapshot token |
 | `0x70` | 32-bit FPGA quiesce generation plus zero reserved word |
 | `0x78` | 32-bit HPS quiesce acknowledgement plus zero reserved word |
@@ -93,22 +93,36 @@ overwriting the active plane bank. A quiesce-generation mismatch makes an old
 service read-only even if a prior session number is repeated after FPGA
 reconfiguration.
 
+### Source queue fault details
+
+The experimental bug-fix core retains aggregate source-fault bit `0x00000100`
+and adds sticky reason bits in the FPGA fault word: `0x00400000` identifies
+HBlank queue exhaustion; `0x00800000` identifies frame-boundary queue exhaustion.
+Both reasons may be set. Aggregate and reason bits are published from the same
+synchronized sample. Older cores report only the aggregate bit, so their crash
+reports cannot identify which queue filled. The header layout and ABI version
+are unchanged, and existing readers still treat any nonzero fault word as a
+failure. These details identify the exhausted queue, not the cause of the
+upstream stall; they do not authorize dropping records or changing LCD pacing.
+
 ### Public crash reports
 
-The HPS service keeps a 128-sample flight recorder at 10 Hz. Each sample reads
-the existing 128-byte control header; it creates no new FPGA DDR command and
+The HPS service keeps a 128-sample flight recorder at 10 Hz by default;
+standalone pacing tracing extends it to 1,024 samples. Each sample reads the
+existing 128-byte control header; it creates no new FPGA DDR command and
 runs in a `SCHED_IDLE` thread behind renderer work. A packet-consumer stall,
 frame-acknowledgement stall, or sticky FPGA fault writes a versioned
-`NDS4MISTER_FPGA_CRASH_V1` text report under `/media/fat`. The report contains
-counters, ownership state, frame metadata, CPU progress, and tagged FPGA
-subsystem telemetry. It never contains ROM, save, texture, framebuffer, or
+`NDS4MISTER_FPGA_CRASH_V2` text report under `/media/fat`. The report contains
+counters, ownership state, frame metadata, and fields for optional CPU progress
+and tagged FPGA subsystem telemetry. It never contains ROM, save, texture, framebuffer, or
 other game payload data.
 
-`SIGUSR1` requests a manual snapshot. HPS publishes a fresh token in control
-word `0x68`; FPGA detects it through the normal header poll and holds ARM9 and
-ARM7 for at most about 100 ms. During that bounded hold the HPS recorder takes
-a short high-rate burst, writes the report, and clears the token. FPGA releases
-the CPUs on its own even if HPS dies. Ordinary gameplay never enters this hold.
+`SIGUSR1` requests a manual snapshot from the renderer process. The current
+implementation takes a short read-only sample burst and writes the report;
+it does not publish a diagnostic token or halt the emulated CPUs. The older
+token/hold path is disabled because it could itself latch `BAD_HEADER` during
+healthy gameplay. CPU PC/telemetry fields remain zero in the product core,
+so their presence in the report format does not prove CPU instruction progress.
 
 Fatal HPS signals write `NDS4MISTER_ARM_CRASH_V1`, including native ARM
 registers, a small stack snapshot, and the same shared control state. Automatic
