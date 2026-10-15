@@ -1,8 +1,18 @@
-# split.8.6 beta validation
+# rc.8 validation and split.8.6 hardware results
 
-Completed 2026-10-14 on one MiSTer capture rig. These results apply to the exact
-component hashes in [RELEASE_SPLIT86.json](RELEASE_SPLIT86.json). Publication
-preparation changes documentation and source checksums, not the tested install ZIP.
+Hardware qualification was completed 2026-10-14 on the split.8.6 candidate,
+identified in [RELEASE_SPLIT86.json](RELEASE_SPLIT86.json). The rc.8 package retains
+that FPGA, renderer and support modules. Its host was rebuilt only to change
+CORE_VERSION to v0.9.0-rc.8; the implementation is unchanged. The launcher and
+supervisor release labels and package documentation were also updated.
+
+A control build reproduced the hardware-tested host byte-for-byte. The new host
+passed the menu/version-footer tests; all 45 launcher and 10 package-auditor tests
+passed. Component hashes and source revisions are in
+[RELEASE_V090_RC8.json](RELEASE_V090_RC8.json). Hardware results below apply to the
+pre-relabel candidate; no physical rc.8 retest is claimed. The final rc.8 ZIP is
+separately checked for integrity, source correspondence, repeatable packaging,
+and filesystem upgrade/rollback preservation.
 
 ## Installation and preservation
 

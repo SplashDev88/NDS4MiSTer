@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.7-split.8.6 standalone launcher and recovery supervisor.
+"""NDS4MiSTer v0.9.0-rc.8 standalone launcher and recovery supervisor.
 No system binary/init changes. Bootstrap display settings are journaled/restored.
 """
 from pathlib import Path
@@ -547,7 +547,7 @@ def main():
         state["wc_mapping_present"] = "/dev/nds_mem_wc" in Path("/proc/%d/maps" % release_pid).read_text()
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.7-split.8.6"
+        state["release"] = "v0.9.0-rc.8"
         write()
         stage("load standalone core")
         stage_bootstrap(KIT, SD_ROOT, validate_settings().read_bytes())

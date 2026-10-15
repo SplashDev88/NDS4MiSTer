@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.7-split.8.6 beta
+NDS4MiSTer v0.9.0-rc.8
 
 START HERE
 
@@ -303,7 +303,7 @@ SuperStation One composite or S-Video with the FPGA encoder:
   Use the manufacturer's NTSC/PAL switch positions for your television.
 
 Composite color was user-confirmed on SS1 with rc.6 using this setup. The
-encoder is retained, but its physical output was not requalified on rc.7. Its hardware
+encoder is retained, but its physical output was not requalified on rc.8. Its hardware
 combines the Y/C signals, so do not change SVID to cvbs for that socket.
 External Sony encoder mode instead uses switch 3 DOWN with vga_mode=subcarrier.
 Other encoders/adapters need their own profiles; generic packed-composite
@@ -328,7 +328,7 @@ Computer VGA monitors (scaled RGBHV tested at 1080p60):
 The analog port mirrors the HDMI scaler. forced_scandoubler alone does not
 double this core's native 15 kHz raster.
 
-DV1 / Direct Video for RetroTINK-4K (video/audio tested on rc.7):
+DV1 / Direct Video for RetroTINK-4K (video/audio tested on the split.8.6 candidate):
   Connect HDMI directly to the RetroTINK-4K digital input.
   direct_video=1
   dvi_mode=0
@@ -417,10 +417,10 @@ are not implemented. No claim of universal full-speed operation is made.
 
 RELEASE IDENTIFICATION
 
-The exact tested rc.6 host binary remains unchanged. Its compiled version
-label still says rc.6; the release manifest and supervisor identify rc.7.
-The new FPGA hash is recorded in the manifest. No gameplay clock or renderer
-change is part of this release.
+The launcher, release manifest and host menu identify v0.9.0-rc.8. The host
+was rebuilt only to change its version label from split.8.6; its implementation
+is unchanged. The FPGA, renderer and support modules retain their tested hashes.
+See the linked validation details for hardware coverage and remaining limits.
 
 SOURCE AND CREDITS
 

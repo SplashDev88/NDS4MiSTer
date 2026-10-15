@@ -19,13 +19,14 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.7-split.8.6'
+VERSION = 'v0.9.0-rc.8'
 HOST_VERSION = VERSION
-HOST_SHA = 'fdc38e045648ec7253cce3ae8620bc4c6f2c8695a7cddc4427eacf54aaa90fef'
+HOST_SHA = '07bd1b9e2a5826e5a5c5769f2c59bc34780aad9668a693f8a3df6831fb18c381'
+HOST_REVISION = 'b1614064c3dd18dcade502303cac7390dcdf2c6c'
 FPGA_SOURCE_SHA = 'f605f09b24c7fc2870b347b528d612a17f5575275177b0cce03bd4a75afee64d'
 RUNTIME_REVISION = '9add3a7818832558f8e41ebb1ab722babdeba026'
-HOST_CHANGE = 'Complete-release controller mapping; shared RTC calendar and durable guest clock offsets.'
-RELEASE_SCOPE = 'Independent analog/digital output, controller mapping and RTC. Exact qualified split.8.6 host/FPGA and retained renderer/modules; public installation paths and documentation.'
+HOST_CHANGE = 'Same qualified split.8.6 implementation; version label rebuilt as v0.9.0-rc.8.'
+RELEASE_SCOPE = 'Independent analog/digital output, controller mapping and RTC. Qualified split.8.6 FPGA and retained renderer/modules; version-only host rebuild as rc.8 and user-reviewed release notes.'
 DIAGNOSTIC_REVISION = 'functional-status-and-coherent-rtc-snapshots'
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
@@ -111,7 +112,7 @@ def collect(a):
     files[SUPPORT + module_618 + '.sha256'] = (
         supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_SPLIT86.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC8.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt',
             'GAME_CLOCK.md': ROOT / 'docs/GAME_CLOCK.md'}
     for name, path in docs.items():
@@ -124,7 +125,7 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'release_channel': 'beta', 'runtime_source_revision': RUNTIME_REVISION,
-        'host_source_revision': RUNTIME_REVISION, 'fpga_source_revision': RUNTIME_REVISION, 'runtime_baseline': 'standalone-fw1-20261003',
+        'host_source_revision': HOST_REVISION, 'fpga_source_revision': RUNTIME_REVISION, 'runtime_baseline': 'standalone-fw1-20261003',
         'host_change': HOST_CHANGE,
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
@@ -152,7 +153,8 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
         'core_sha256': supervisor.EXPECTED_CORE, 'host_sha256': HOST_SHA,
         'renderer_sha256': supervisor.EXPECTED_HELPER,
-        'runtime_binaries_changed_for_packaging': False,
+        'runtime_binaries_changed_for_packaging': True,
+        'host_source_revision': HOST_REVISION,
         'scope': RELEASE_SCOPE,
         'static_timing': {'clean': False, 'setup_slack_ns': -13.834,
                           'recovery_slack_ns': -14.351,

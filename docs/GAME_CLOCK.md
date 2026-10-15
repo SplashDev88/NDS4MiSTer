@@ -1,4 +1,4 @@
-# Game clock — split.8.6 beta
+# Game clock — v0.9.0-rc.8
 
 Games and the DS firmware menu use the same RTC calendar. At the first game
 or firmware boot, it starts from the MiSTer's local date and time. Set the

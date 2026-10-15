@@ -207,7 +207,7 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "release_channel": "beta", "runtime_source_revision": standalone.RUNTIME_REVISION,
-            "host_source_revision": standalone.RUNTIME_REVISION, "fpga_source_revision": standalone.RUNTIME_REVISION, "runtime_baseline": "standalone-fw1-20261003",
+            "host_source_revision": standalone.HOST_REVISION, "fpga_source_revision": standalone.RUNTIME_REVISION, "runtime_baseline": "standalone-fw1-20261003",
             "host_change": standalone.HOST_CHANGE,
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
@@ -240,7 +240,8 @@ def audit_standalone(file_data, hashes, environment):
             "core_sha256": hashes[support + "NDS_Standalone.rbf"],
             "host_sha256": hashes[support + "nds_standalone_host"],
             "renderer_sha256": hashes[support + "support/nds_hybrid_3d_service"],
-            "runtime_binaries_changed_for_packaging": False,
+            "runtime_binaries_changed_for_packaging": True,
+            "host_source_revision": standalone.HOST_REVISION,
             "scope": standalone.RELEASE_SCOPE,
             "static_timing": {"clean": False, "setup_slack_ns": -13.834,
                               "recovery_slack_ns": -14.351,

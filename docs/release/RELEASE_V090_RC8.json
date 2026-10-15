@@ -1,0 +1,63 @@
+{
+  "version": "v0.9.0-rc.8",
+  "install_archive": "NDS4MiSTer_v0.9.0-rc.8_Standalone.zip",
+  "packaging_source_revision": "Recorded in the install manifest and BUILD_PROVENANCE.json.",
+  "runtime_implementation_revision": "9add3a7818832558f8e41ebb1ab722babdeba026",
+  "fpga_source_revision": "9add3a7818832558f8e41ebb1ab722babdeba026",
+  "host_source_revision": "b1614064c3dd18dcade502303cac7390dcdf2c6c",
+  "host_rebuild": {
+    "host_source_revision": "b1614064c3dd18dcade502303cac7390dcdf2c6c",
+    "host_sha256": "07bd1b9e2a5826e5a5c5769f2c59bc34780aad9668a693f8a3df6831fb18c381",
+    "hardware_tested_predecessor_sha256": "fdc38e045648ec7253cce3ae8620bc4c6f2c8695a7cddc4427eacf54aaa90fef",
+    "changed_compilation_inputs": [
+      "VERSION",
+      "core_menu.h"
+    ],
+    "change": "CORE_VERSION literal only; VERSION is its source. No host implementation change.",
+    "fpga_rebuilt": false,
+    "hardware_retest_performed": false,
+    "control_rebuild_sha256": "fdc38e045648ec7253cce3ae8620bc4c6f2c8695a7cddc4427eacf54aaa90fef",
+    "control_reproduces_hardware_tested_binary": true
+  },
+  "components": {
+    "core_sha256": "068280194fbb5dcce77072f7b66632b945b402b71dd08cb2db6c70ed956f755d",
+    "host_sha256": "07bd1b9e2a5826e5a5c5769f2c59bc34780aad9668a693f8a3df6831fb18c381",
+    "helper_sha256": "f944454751764bc6b1fde45b07a0e9ba4935ac0cae5cc256b377ed6d056ff729",
+    "supervisor_sha256": "59c11c779d27c83478bf47cdd54ac8d50d11262e75386e373ae0186d23d22c22",
+    "launcher_sha256": "8ad20cee1a5b2618085dfab70a383694b2287393dda2911ea29bb34d43317a76",
+    "kernel_module_sha256": {
+      "5.15.1-MiSTer": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
+      "6.18.38-MiSTer": "c613e032ff795422453178d58bc89f5c282f3681ef0c5ecf303cb39807f81fe3"
+    },
+    "fpga_source_manifest_sha256": "f605f09b24c7fc2870b347b528d612a17f5575275177b0cce03bd4a75afee64d",
+    "hps_clock_khz": 1000000
+  },
+  "fpga": {
+    "route_and_assembly_passed": true,
+    "tool": "Quartus Prime 17.0.2 Build 602 Lite",
+    "device": "5CSEBA6U23I7",
+    "logic_alms": 33985,
+    "logic_alms_total": 41910,
+    "ram_blocks": 530,
+    "ram_blocks_total": 553,
+    "synthesis_gate": {
+      "status": "PASS",
+      "protected_pipeline_registers": {
+        "nds_rtc_host_bridge:rtc_host_bridge|request_sync": 3,
+        "nds_rtc_host_bridge:rtc_host_bridge|ack_sync": 3,
+        "nds_rtc_host_bridge:rtc_host_bridge|snapshot_meta": 88,
+        "nds_rtc_host_bridge:rtc_host_bridge|snapshot_sync": 88,
+        "nds_nitro_rtc:irtc|seed_toggle_sync": 3,
+        "nds_nitro_rtc:irtc|seed_meta": 56,
+        "nds_nitro_rtc:irtc|seed_sync": 56
+      },
+      "rtc_cdc_shift_ram": false
+    },
+    "static_timing_clean": false,
+    "worst_setup_slack_ns": -13.834,
+    "worst_recovery_slack_ns": -14.351,
+    "constraints_complete": false
+  },
+  "validation": "VALIDATION_SPLIT86.md",
+  "user_reviewed_notes": "../RELEASE_NOTES_V090_RC8.md"
+}

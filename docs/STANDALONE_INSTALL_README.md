@@ -1,4 +1,4 @@
-# NDS4MiSTer v0.9.0-rc.7-split.8.6 beta
+# NDS4MiSTer v0.9.0-rc.8
 
 This beta adds controller mapping that waits for a complete release, a persistent
 DS game clock, and independent native analog and digital output.
