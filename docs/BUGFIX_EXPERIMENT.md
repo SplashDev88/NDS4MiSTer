@@ -540,6 +540,80 @@ full-queue simultaneous reads/writes, randomized stalls, overflow, service stop
 and reset. Its integrated source gate retains 4,096 regular scanline markers
 and all 15 independent VBlank tokens exactly. The legacy gate fails on marker
 513 under the same test. Existing event-gate, VRAM retirement, SWAP/readback CDC
-checks and complete console VHDL analysis pass. Routing, extended game testing
-and matched speed measurements remain required; this is not an accepted fix
-for Mushroom Men or Ninja Reflex.
+checks and complete console VHDL analysis pass.
+
+The combined OAM/SWAP/compact-queue core completes mapping, fitting, assembly
+and timing analysis with 34,364 ALMs, 534 of 553 M10Ks and 27 DSPs. Synthesis
+confirms both opt-in experiments are active, the old scanline queue is absent,
+and the descriptor RAM is 512 × 122 bits. Frozen source-input and RTC CDC
+checks pass. Worst setup slack is -14.649 ns versus -13.834 ns for rc.8;
+neither build meets timing. Extended game tests remain required; this is not an
+accepted fix for Mushroom Men or Ninja Reflex.
+
+A fresh matched NSMB World 2-5 check at 1 GHz advances 172 timer units in
+128.87 seconds on the combined core and revised renderer, versus 171 in 128.94
+seconds on rc.8 (1.335 versus 1.326 units/s). Both use the same save, fire Mario
+with 11 lives, and the same stationary interval without diagnostic sampling
+between captures. Both remain fault-free, respond to pause and preserve the
+save. The 0.64% difference is within integer-HUD sampling resolution; this pair
+shows no measurable slowdown, not a general speed improvement or acceptance
+of every workload.
+
+Mushroom Men completes a ten-minute observation on the combined core with no
+FPGA or HPS transport fault. Resident renderer memory stays between 63.6 and
+64.4 MiB. The test holds the **Startup Game** menu for about six minutes,
+continues through character selection and the opening story, and advances
+the story with touch input. A follow-up reaches the playable village, moves
+the character/camera with Right input and opens Pause. No save checkpoint is
+reached. This exceeds the previous candidate's failure window, but the main
+screen still has a black band and missing text pixels; RetroTINK output
+confirms those defects. Full gameplay and save/reload remain unverified, and
+#31 stays open. Both experiments remain disabled by default.
+
+A separate software-reference control increases ARM9 instruction costs by
+four or eight times only after reaching the same menu pixels as the normal
+run. Twenty consecutive sampled frames per condition retain stable screen
+and VRAM-bank mappings throughout visible lines, with no near-black full-width
+rows. The hardware trace instead changes the mapping at visible lines 6–7.
+Uniform instruction slowdown alone does not reproduce the sampled defect.
+This synthetic control leaves DMA and ARM7 timing unchanged and does not model
+specific FPGA bus stalls or replay ordering; those remain investigation leads.
+
+Ninja Reflex also completes a ten-minute observation with no FPGA/HPS fault
+and resident renderer memory between 62.7 and 63.4 MiB. Its profile labels are
+visible at the first capture. Touch input creates an isolated profile,
+selects **1 Player Start**, advances the rendered sensei introduction and
+welcome screen, and reaches the six labelled game choices. Selecting
+**Hotaru** opens its readable instructions and minigame choices. After a
+clean exit and cold relaunch, the newly created profile remains visible in
+slot 1. This validates those menus, named-profile persistence and the bounded
+memory behavior, not every minigame or a full playthrough. Issue #24 remains
+open pending the remaining menu and flicker checks.
+
+The Wizard of Oz's **New Game** label also passes on this combined core:
+the label pixels in all 60 sampled native publications match the software
+reference exactly, and selecting the option opens the story. The top logo and button-region
+images match the reference's two alternating phases. The label is also visible
+through the RetroTINK. This confirms the OAM correction survives integration;
+it does not settle reported physical/TATE flicker or later save-dependent
+options, so #34 remains open.
+
+## Further race-view checks
+
+Skate It (USA CSVE revision 0) reaches **Tutorial → Basic → Flickit!** on
+unmodified rc.8 with a new isolated save. The skater and park render at the
+reported introduction prompt and after entering the active board tutorial.
+Two separate captures each contain 60 consecutive native publications over
+about 3.7 seconds, with a detailed, changing top-screen image in every sample.
+Neither shows the mostly flat grey output reported in #37, and no transport
+fault occurs. These are bounded native captures, not physical/TATE validation
+or a complete playthrough. The reporter's region/revision remains unknown;
+this is an unreproduced older-release symptom, not a new candidate fix.
+
+Need for Speed Carbon (USA AN7E revision 0) also draws its car and track on
+the unprobed SWAP-retirement experiment using the existing valid isolated
+8 KiB profile. Pause responds, and the dashboard animates with no transport
+fault or substantial memory growth. However, the final captures still show
+zero speed and timer values after repeated A-button holds. Driving remains
+unverified, as in the earlier rc.8 comparison. Issue #38 stays open; visible
+race scenery alone is insufficient gameplay acceptance.
