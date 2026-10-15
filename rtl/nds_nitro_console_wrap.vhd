@@ -29,6 +29,7 @@ entity nds_nitro_console_wrap is
       -- build from silently using the 3x phase gate under a 4x PLL.
       CLKMEM_RATIO     : integer := 3;
       H3D_GX_READBACK_ENABLE : std_logic := '0';
+      H3D_COMPRESS_HBLANK : std_logic := '0';
       GPU2D_A_ENABLE : integer := 1;
       HOST_SAVE_PROFILE : integer := 0;
       H3D_MATCHED_DISPLAY_TEST : integer := 0;
@@ -381,6 +382,7 @@ begin
       SOUND_ENABLE => 1, SOUND_DIAGNOSTICS => SOUND_DIAGNOSTICS,
       SOUND_STREAM_DIAGNOSTICS => SOUND_STREAM_DIAGNOSTICS, DEBUG_ENABLE => 0,
       H3D_GX_READBACK_ENABLE => H3D_GX_READBACK_ENABLE = '1',
+      H3D_COMPRESS_HBLANK => H3D_COMPRESS_HBLANK = '1',
       CLKMEM_RATIO => CLKMEM_RATIO
    )
    port map

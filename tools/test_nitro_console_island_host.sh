@@ -21,6 +21,7 @@ python3 "$script_dir/test_cache_tag_packing.py"
 bash "$script_dir/test_nds_gpu2d_register_shadow.sh"
 bash "$script_dir/test_h3d_vram9_retirement.sh"
 bash "$script_dir/test_h3d_console_event_gate.sh"
+bash "$script_dir/test_hblank_run_queue.sh"
 bash "$script_dir/test_h3d_session_policy.sh"
 bash "$script_dir/test_nds_extpal_remap.sh"
 bash "$script_dir/test_nds_palette_readback.sh"
@@ -178,7 +179,7 @@ grep -Fq 'assign hdmi_tx_clk = hdmi_clk_out;' \
 grep -Fq 'set_global_assignment -name VERILOG_MACRO "NDS_HYBRID_3D=1"' \
     "$repo_dir/fpga/mister_nitro_console_island/NDS4MiSTer.qsf"
 for h3d_source in \
-    nds_h3d_console_event_gate.vhd nds_h3d_gx_status.vhd \
+    nds_hblank_run_queue.vhd nds_h3d_console_event_gate.vhd nds_h3d_gx_status.vhd \
     nds_h3d_ddr_fabric.sv nds_h3d_control_init.sv \
     nds_h3d_event_async_fifo.sv nds_gx_fifo_packet_frontend.sv \
     nds_h3d_frame_record_cdc.sv nds_h3d_frame_packet_writer.sv \

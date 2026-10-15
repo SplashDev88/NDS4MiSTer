@@ -15,7 +15,9 @@ entity nds_h3d_console_event_gate is
    generic
    (
       SPARSE_HBLANK : boolean := false;
-      GPU_QUEUE_ADDRESS_BITS : positive := 5
+      GPU_QUEUE_ADDRESS_BITS : positive := 5;
+      -- Opt-in storage experiment; normal builds retain the original queue.
+      COMPRESS_HBLANK : boolean := false
    );
    port
    (
@@ -198,12 +200,13 @@ architecture arch of nds_h3d_console_event_gate is
 
    signal gpu_valid_i, vram9_valid_i, vram7_valid_i : std_logic;
    signal hblank_valid_i, frame_valid_i : std_logic;
+   signal hblank_run_fault : std_logic := '0';
    signal source_fault_reason_i : std_logic_vector(1 downto 0) := "00";
 begin
    timestamp     <= std_logic_vector(timestamp_counter);
    current_frame <= std_logic_vector(frame_counter);
-   source_fault <= source_fault_reason_i(0) or source_fault_reason_i(1);
-   source_fault_reason <= source_fault_reason_i;
+   source_fault <= source_fault_reason_i(0) or source_fault_reason_i(1) or hblank_run_fault;
+   source_fault_reason <= source_fault_reason_i(1) & (source_fault_reason_i(0) or hblank_run_fault);
    frame_pending_level <= std_logic_vector(frame_pending_count);
 
    gpu_queue_read <= gpu_queue(to_integer(gpu_read_pointer));
@@ -313,7 +316,7 @@ begin
       hblank_event_timestamp <= std_logic_vector(timestamp_counter);
    end generate;
 
-   queued_hblank_output : if not SPARSE_HBLANK generate
+   queued_hblank_output : if not SPARSE_HBLANK and not COMPRESS_HBLANK generate
       hblank_valid_i <= '1' when service_ready = '1' and
          (hblank_pending_count /=
              to_unsigned(0, hblank_pending_count'length) or
@@ -330,6 +333,24 @@ begin
          when hblank_pending_count /=
             to_unsigned(0, hblank_pending_count'length) else
          std_logic_vector(timestamp_counter);
+   end generate;
+
+   uncompressed_fault : if SPARSE_HBLANK or not COMPRESS_HBLANK generate
+      hblank_run_fault <= '0';
+   end generate;
+   compressed_hblank_output : if not SPARSE_HBLANK and COMPRESS_HBLANK generate
+      hblank_queue_read <= (others => '0');
+      run_queue : entity work.nds_hblank_run_queue
+      port map (
+         clk => clk, reset => reset, service_ready => service_ready,
+         source_pulse => hblank_pulse, source_line => hblank_line,
+         source_frame => std_logic_vector(hblank_frame_counter),
+         source_timestamp => std_logic_vector(timestamp_counter),
+         event_valid => hblank_valid_i, event_ready => hblank_event_ready,
+         event_line => hblank_event_line, event_frame => hblank_event_frame,
+         event_timestamp => hblank_event_timestamp,
+         pending_level => open, fault => hblank_run_fault
+      );
    end generate;
 
    frame_valid_i <= '1' when service_ready = '1' and
@@ -453,7 +474,7 @@ begin
                   vram7_pending_time <= std_logic_vector(timestamp_counter);
                end if;
 
-               if SPARSE_HBLANK then
+               if SPARSE_HBLANK or COMPRESS_HBLANK then
                   hblank_pending_count <= (others => '0');
                   hblank_read_pointer <= (others => '0');
                   hblank_write_pointer <= (others => '0');

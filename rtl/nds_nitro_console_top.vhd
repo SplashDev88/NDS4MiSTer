@@ -65,6 +65,7 @@ entity nds_nitro_console_top is
       GPU2D_A_ENABLE : integer := 1;
       HOST_SAVE_PROFILE : integer := 0;
       H3D_MATCHED_DISPLAY_TEST  : integer   := 0;
+      H3D_COMPRESS_HBLANK       : boolean   := false;
       -- Diagnostic area split: 0 removes engine B and mirrors engine A onto
       -- both physical screens.  This keeps NSMB's main-screen BG2/HDMA and
       -- the ARM 3D merge in FPGA while measuring whether one 2D engine fits.
@@ -1173,7 +1174,8 @@ begin
       SPARSE_HBLANK => H3D_MATCHED_DISPLAY_TEST = 0,
       -- Preserve beta.11's 32-entry posting window and empty-queue bypass.
       -- Engine B On admits additional writes through the same lossless gate.
-      GPU_QUEUE_ADDRESS_BITS => 5
+      GPU_QUEUE_ADDRESS_BITS => 5,
+      COMPRESS_HBLANK => H3D_COMPRESS_HBLANK
    )
    port map
    (

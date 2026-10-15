@@ -516,3 +516,30 @@ points toward source geometry backpressure as a useful lead, but the compared
 cores contain multiple changes, so it is not an isolated causal toggle or a
 speed test. It does not validate every menu or minigame, and it does not reverse
 the SWAP core's longer Mushroom Men failure. That experiment remains disabled.
+
+
+## Opt-in compact HBlank event storage
+
+The next candidate addresses the short scanline-marker queue that overflows
+during Mushroom Men's extended replay/render stalls. It stores a regular run
+implicitly and records every discontinuity in timestamp, scanline or display
+frame. Only received pulses increase its count; output still expands every
+individual event in its original order, with its original timestamp. Nothing
+coalesces or drops VBlank ownership tokens, and this does not gate LCD timing
+or change CPU, renderer or clock settings.
+
+Normal builds leave it disabled. `NDS_HBLANK_RUN_QUEUE_EXPERIMENT` selects it
+for a separate hardware experiment. The queue holds up to 131,071 received
+events and 512 discontinuity descriptors. Descriptor/event exhaustion remains
+a sticky HBlank source fault, including after service stop; reset clears it.
+Irregular cadence is retained explicitly rather than assumed to be periodic.
+
+`tools/test_hblank_run_queue.sh` compares literal input records against expanded
+output through long stalls, timestamp/frame/index wraparound, line jumps,
+full-queue simultaneous reads/writes, randomized stalls, overflow, service stop
+and reset. Its integrated source gate retains 4,096 regular scanline markers
+and all 15 independent VBlank tokens exactly. The legacy gate fails on marker
+513 under the same test. Existing event-gate, VRAM retirement, SWAP/readback CDC
+checks and complete console VHDL analysis pass. Routing, extended game testing
+and matched speed measurements remain required; this is not an accepted fix
+for Mushroom Men or Ninja Reflex.

@@ -10,7 +10,7 @@ run_tests() {
     nvc --std=2008 -a \
         "$1/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd" \
         "$1/third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd" \
-        "$1/rtl/nds_h3d_console_event_gate.vhd" test.vhd
+        "$1/rtl/nds_hblank_run_queue.vhd" "$1/rtl/nds_h3d_console_event_gate.vhd" test.vhd
     for engine_b in false true; do
     for local_only in false true; do
       for id in 0 1 2 3 4; do

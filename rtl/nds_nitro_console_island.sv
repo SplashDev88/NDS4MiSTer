@@ -2133,6 +2133,11 @@ nds_nitro_console_wrap #(
 `endif
 `ifdef NDS_HYBRID_3D
     .H3D_GX_READBACK_ENABLE(1'b1),
+`ifdef NDS_HBLANK_RUN_QUEUE_EXPERIMENT
+    .H3D_COMPRESS_HBLANK(1'b1),
+`else
+    .H3D_COMPRESS_HBLANK(1'b0),
+`endif
 `endif
 `ifdef NDS_MATCHED_DISPLAY_TEST
     .H3D_MATCHED_DISPLAY_TEST(1),
