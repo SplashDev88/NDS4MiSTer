@@ -263,7 +263,10 @@ architecture arch of nds_card is
    signal sram_wd_r   : std_logic_vector(7 downto 0) := (others => '0');
    signal spi_data    : std_logic_vector(7 downto 0) := (others => '0');  -- AUXSPIDATA readback
    signal spi_hold    : std_logic := '0';
-   signal spi_pos     : unsigned(15 downto 0) := (others => '0');
+   -- Only the command/address/dummy prefix needs an exact byte position.
+   -- Saturate after it: wrapping a full-length save read back to zero would
+   -- reinterpret a data byte as a new command. Includes the IR prefix byte.
+   signal spi_pos     : unsigned(2 downto 0) := (others => '0');
    signal spi_busy    : unsigned(9 downto 0) := (others => '0');          -- busy countdown, bit7 readback
    signal sram_cmd    : std_logic_vector(7 downto 0) := (others => '0');
    signal ir_cmd      : std_logic_vector(7 downto 0) := (others => '0');  -- IR passthrough selector
@@ -380,10 +383,10 @@ begin
       variable v_pfcnt   : integer range 0 to CARDPREFETCH;
       variable v_inflt   : std_logic;
       variable v_spival  : std_logic_vector(7 downto 0);
-      variable v_spipos  : unsigned(15 downto 0);
+      variable v_spipos  : unsigned(2 downto 0);
       variable v_spilast : std_logic;
       variable v_addrbytes : integer range 1 to 3;
-      variable v_eff_pos : unsigned(15 downto 0);
+      variable v_eff_pos : unsigned(2 downto 0);
       variable v_flash   : boolean;
       variable v_next_sram_addr : unsigned(19 downto 0);
       variable v_pop     : std_logic;
@@ -503,10 +506,12 @@ begin
                       (backup_access_r = '0' or backup_cache_ready = '1')) then
                      v_spival := owner_bus.Din(23 downto 16);
                      -- pos/last bookkeeping (melonDS WriteSPIData)
+                     v_spipos := spi_pos;
+                     if (spi_pos /= 7) then
+                        v_spipos := spi_pos + 1;
+                     end if;
                      if (spicnt(6) = '0') then
-                        if (spi_hold = '1') then
-                           v_spipos := spi_pos + 1;
-                        else
+                        if (spi_hold = '0') then
                            v_spipos := (others => '0');
                         end if;
                         v_spilast := '1';
@@ -516,7 +521,6 @@ begin
                         v_spipos := (others => '0');
                         v_spilast := '0';
                      else
-                        v_spipos := spi_pos + 1;
                         v_spilast := '0';
                      end if;
                      spi_pos <= v_spipos;
@@ -638,8 +642,15 @@ begin
                                           sram_wd_r <= v_spival;
                                        end if;
                                     end if;
-                                    sram_addr <= masked_save_addr(sram_addr + 1,
-                                                                  backup_save_type);
+                                    if (unsigned(backup_save_type) >= 5) then
+                                       -- Both flash program (02h) and page write
+                                       -- (0Ah) wrap within the selected 256-byte
+                                       -- page. Reads and EEPROM writes stay linear.
+                                       sram_addr(7 downto 0) <= sram_addr(7 downto 0) + 1;
+                                    else
+                                       sram_addr <= masked_save_addr(sram_addr + 1,
+                                                                     backup_save_type);
+                                    end if;
                                  end if;
                                  if (v_spilast = '1') then
                                     sram_status(1) <= '0';
