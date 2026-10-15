@@ -2202,7 +2202,12 @@ nds_nitro_console_wrap #(
     .pixel_out_x(pix_x),.pixel_out_y(pix_y),
     .pixel_out_data(pix_d),.pixel_out_we(pix_we),
     .pixelb_out_x(pixb_x),.pixelb_out_y(pixb_y),
-    .pixelb_out_data(pixb_d),.pixelb_out_we(pixb_we),.vblank_out(h3d_lcd_vblank),
+    .pixelb_out_data(pixb_d),.pixelb_out_we(pixb_we),
+`ifdef NDS_HYBRID_3D
+    .vblank_out(h3d_lcd_vblank),
+`else
+    .vblank_out(),
+`endif
     .sound_diagnostic(),
     .sound_stream_diagnostic(),
     .sound_out_left(sound_left),.sound_out_right(sound_right),

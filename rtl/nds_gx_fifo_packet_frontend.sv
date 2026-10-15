@@ -196,8 +196,9 @@ module nds_gx_fifo_packet_frontend #(
     logic [COUNT_WIDTH-1:0] retirement_count;
     logic retirement_pop;
 
-    // Both readers consume ordered prefixes of the same accepted stream, so
-    // the larger occupancy is exactly the union of their outstanding slots.
+    // Report the larger pressure from the two queues. Disabled-geometry
+    // writes still travel to ARM, which ignores them; they consume no new
+    // retirement slots and must not be blocked by an older geometry wait.
     wire [COUNT_WIDTH-1:0] visible_count =
         count > retirement_count ? count : retirement_count;
     assign fifo_level = 9'(visible_count);
@@ -210,7 +211,7 @@ module nds_gx_fifo_packet_frontend #(
     wire swap_output_pop = record_frame_end;
     wire fifo_has_space =
         (count != FIFO_DEPTH_COUNT || output_pop) &&
-        (retirement_count != FIFO_DEPTH_COUNT || retirement_pop);
+        (!geometry_enabled || retirement_count != FIFO_DEPTH_COUNT || retirement_pop);
     wire packed_zero_phase =
         packed_command_count != 0 &&
         packed_parameters_remaining == 0;
@@ -269,18 +270,23 @@ module nds_gx_fifo_packet_frontend #(
 
     generate if (SWAP_VBLANK_RETIREMENT) begin : swap_retirement
         logic swap_memory [0:FIFO_DEPTH-1];
-        logic [POINTER_WIDTH-1:0] pointer;
+        logic [POINTER_WIDTH-1:0] pointer, tail;
         logic waiting_vblank;
-        assign retirement_pop = retirement_count != 0 && !waiting_vblank;
+        wire retirement_enqueue = enqueue && geometry_enabled;
+        assign retirement_pop =
+            retirement_count != 0 && !waiting_vblank && geometry_enabled;
         always_ff @(posedge clk) begin
             if (reset) begin
                 pointer <= 0;
+                tail <= 0;
                 retirement_count <= 0;
                 waiting_vblank <= 0;
             end else begin
-                if (enqueue)
-                    swap_memory[write_pointer] <=
-                        enqueue_command == 8'h50 && geometry_enabled;
+                if (retirement_enqueue) begin
+                    swap_memory[tail] <= enqueue_command == 8'h50;
+                    if (tail == LAST_POINTER) tail <= 0;
+                    else tail <= tail + 1'b1;
+                end
                 if (waiting_vblank && lcd_vblank && geometry_enabled)
                     waiting_vblank <= 0;
                 if (retirement_pop) begin
@@ -289,7 +295,7 @@ module nds_gx_fifo_packet_frontend #(
                     if (pointer == LAST_POINTER) pointer <= 0;
                     else pointer <= pointer + 1'b1;
                 end
-                case ({enqueue, retirement_pop})
+                case ({retirement_enqueue, retirement_pop})
                     2'b10: retirement_count <= retirement_count + 1'b1;
                     2'b01: retirement_count <= retirement_count - 1'b1;
                     default: ;

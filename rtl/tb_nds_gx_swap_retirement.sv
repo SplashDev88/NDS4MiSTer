@@ -119,6 +119,21 @@ module tb_nds_gx_swap_retirement;
         geometry_enabled = 0; pulse(); tick(8);
         if (fifo_level != 1) $fatal(1, "disabled VBlank retired a pending SWAP");
         geometry_enabled = 1; pulse(); drained();
+        // Power-off while full: ignored writes still reach transport and do
+        // not overwrite the older retirement queue. Resume the old wait on
+        // power-on, then release it at the next enabled VBlank.
+        send(8'h50, 0);
+        for (integer i=0; i<256; i=i+1) send(8'h20, 32'(i));
+        tick(8); if (!fifo_full) $fatal(1, "power-off setup not full");
+        geometry_enabled = 0; tick(2);
+        if (!write_ready) $fatal(1, "disabled geometry must accept ignored writes at full FIFO");
+        for (integer i=0; i<300; i=i+1) send(8'h20, 32'(i));
+        pulse(); tick(8);
+        if (fifo_level != 256 || delivered != queued)
+            $fatal(1, "disabled writes corrupted old retirement credits");
+        geometry_enabled = 1; tick(2);
+        if (write_ready) $fatal(1, "power-on lost pending SWAP barrier");
+        pulse(); drained();
         // Session reset cancels the virtual wait as well as transport state.
         send(8'h50, 0); send(8'h20, 789); tick(8);
         reset = 1; tick(3); reset = 0;

@@ -288,7 +288,10 @@ setting remains available for regression controls. Ordered readback fences
 wait for transport and autonomous normalization, not the retirement barrier.
 The initial geometry-enable state matches direct boot and the ARM renderer.
 POWCNT1 low-byte writes qualify new SWAP waits; disabled VBlanks do not release
-an existing geometry flush. Session reset clears both queues.
+an existing geometry flush. While geometry is disabled, ignored commands
+still pass through transport without consuming retirement slots. The separate
+retirement tail preserves older queued work across power-off, even when full.
+Session reset clears both queues.
 
 `tools/test_gx_swap_retirement.sh` checks CPU/DMA full stalls after transport
 drains, consecutive and same-edge SWAPs, packed commands, transport stalls,
