@@ -94,3 +94,15 @@ bits cross through two synchronizer stages and are published with the aggregate
 bit. Queue sizes, event ordering, CPU clocks and LCD pacing remain unchanged.
 The gate regression checks each cause, combined reasons, service stop and reset.
 This diagnostic does not itself fix either game's stall.
+
+## Renderer performance gate
+
+The first overflow candidate rendered the NFS track and car and passed profile
+creation, but a matched NSMB World 2-5 A/B/A check at 1 GHz measured about a
+2–3% reduction in game-timer progression. Publication counters stayed near the
+same rate and did not expose that difference. This candidate is held for speed
+regression; it is not accepted for release. A follow-up moves the new overflow
+storage after the existing geometry fields, preserving their original offsets.
+Command retention and overflow limits are unchanged. Its ordering, renderer
+self-tests and fake-memory lifecycle checks pass; ARM gameplay comparison is
+required before drawing a performance conclusion.
