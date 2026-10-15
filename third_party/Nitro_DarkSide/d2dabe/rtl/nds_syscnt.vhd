@@ -10,9 +10,10 @@
 --   WRAMCNT   0x04000247 (ARM9, r/w 8 bit, [1:0] used) - shared-WRAM mapping,
 --             wired straight to nds_wram.
 --   WRAMSTAT  0x04000241 (ARM7, read-only view of WRAMCNT).
---   VRAMCNT_A..I 0x240..0x246 / 0x248..0x249 (ARM9, write-only bytes) -
+--   VRAMCNT_A..I 0x240..0x246 / 0x248..0x249 (ARM9, r/w bytes) -
 --             bank mapping, wired straight to nds_vram/nds_vram_map
---             (vramcnt(8k+7 downto 8k) = bank k, A = 0). Reads return 0.
+--             (vramcnt(8k+7 downto 8k) = bank k, A = 0). Reads return the
+--             bank's implemented bits; reserved bits read as zero.
 --   VRAMSTAT  0x04000240 (ARM7, read-only): bit0/1 = bank C/D mapped as
 --             ARM7 WRAM (MST=2).
 --   POWCNT1   0x04000304 (ARM9, r/w, stored bits masked 0x820F) - 2D/3D
@@ -83,14 +84,21 @@ architecture arch of nds_syscnt is
 
    signal exmem9_rd, exmem7_rd : std_logic_vector(15 downto 0);
    signal vramstat  : std_logic_vector(1 downto 0);
+   signal vramcnt_rd : std_logic_vector(71 downto 0);
 
 begin
 
    exmem9_rd <= exmem9(15 downto 14) & '1' & exmem9(12 downto 0);
    exmem7_rd <= exmem9(15 downto 14) & '1' & exmem9(12 downto 7) & exmem7lo;
 
+   -- Games save a bank's VRAMCNT, map it to LCDC for a texture upload,
+   -- then restore the saved byte (King Kong). Match melonDS's per-bank
+   -- masks while retaining the existing mapping outputs and write timing.
+   vramcnt_rd <= r_vramcnt and x"83839F9F879F9F9B9B";
    wired_out9 <= x"0000" & exmem9_rd when (bus9.Adr = ADR_EXMEM) else
-                 "000000" & r_wramcnt & x"000000" when (bus9.Adr = ADR_WRAM9) else -- 0x247 = byte 3
+                 vramcnt_rd(31 downto 0) when (bus9.Adr = ADR_WRAM) else
+                 "000000" & r_wramcnt & vramcnt_rd(55 downto 32) when (bus9.Adr = ADR_WRAM9) else -- 0x247 = byte 3
+                 x"0000" & vramcnt_rd(71 downto 56) when (bus9.Adr = ADR_VRAMHI) else
                  x"0000" & r_powcnt when (bus9.Adr = ADR_POWCNT) else
                  x"000000" & "000000" & postflg9 when (bus9.Adr = ADR_POSTFLG) else
                  (others => '0');

@@ -55,3 +55,30 @@ warning does not prevent these checks from compiling.
 This is a command-retention correction, not yet a verified fix for issue #38.
 ARM build validation, the reported NFS race and matched gameplay speed checks
 are still required before accepting it for a release.
+
+## VRAM bank register readback
+
+ARM9 VRAMCNT A-I reads previously returned zero, so software could not save a
+bank mapping before a texture upload and restore it afterward. The register
+read mux now returns the implemented bits for each bank. The masks match
+`GPU::MapVRAM_AB/CD/E/FG/H/I` and the ARM9 byte/halfword/word read handlers in
+the vendored melonDS source. Existing mapping outputs and write timing remain
+unchanged; this adds no state machine or gameplay pacing rule.
+
+This adapts InsaneFriend (saneFriend)'s King Kong fix `6041052`, previously
+ported in `204098d6ca62001a90e65f15d23fe9651d62decd`. Unlike that earlier port,
+reserved bits read as zero. `tools/test_nds_syscnt_vram_readback.sh` reproduces
+the original zero-read failure and verifies all 256 values for all nine banks,
+byte lanes, texture upload/restore sequences, ARM7 status/write protection,
+WRAM sharing and reset. The 27-case console sleep/wake suite also passes.
+The King Kong issue remains open until a routed build passes gameplay testing.
+
+## Initial rc.8 save triage
+
+Bounded tests on the unmodified release have not reproduced the reported
+Mage Knight or Spyro startup warnings (USA revision 0). Mage Knight created a
+profile and resumed it into the world map after a cold relaunch. Spyro passed
+save initialization and reached its opening gameplay with a fresh save. These
+observations do not establish full-game save reliability or validate the
+reported original saves; the issues remain open. All tests use separate save
+files, with original files checked for changes.
