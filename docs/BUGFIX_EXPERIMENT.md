@@ -5,6 +5,32 @@ backlog excludes issue #42 (SS1 launcher detection). Save integrity comes first,
 followed by progression, graphics correctness, frame measurement and performance.
 Reported game failures must be reproduced and checked individually before closure.
 
+## Latest validation status
+
+The follow-up hardware pass checks Mushroom Men, Ninja Reflex, Wizard of Oz,
+Need for Speed Carbon and Shrek racing, with Final Fantasy Tactics A2 and
+Pokémon White 2 as additional regression workloads. The detailed observations
+below distinguish earlier findings from the latest tests.
+
+- Mushroom Men's first checkpoint survives a cold reload and can be saved
+  again. Its graphics defect remains: the sampled display updates already
+  carry visible-line timing at the FPGA source.
+- Ninja's tested category menus and completed Firefly Catch challenge work;
+  Oz's tested labels, movement and temporary save/reload work. Selected label
+  regions remain visible in the physical rotation checks.
+- NFS and Shrek respond to acceleration and retain their race views on both
+  rc.8 and RUN1 in the tested opening scenes. Neither test completes a race.
+  Skate's reported Flickit scene also retains its full view on rc.8, including
+  the rotated HDMI output.
+- Tactics and White 2 preserve progress across cold reloads. The limited
+  matched measurements demonstrate no slowdown, but do not establish distinct
+  displayed FPS or broad performance acceptance.
+
+These findings do not close the backlog or qualify RUN1 for release. The
+experimental SWAP retirement and HBlank storage options remain off by default,
+and RUN1 still fails FPGA timing. This follow-up adds validation evidence;
+it does not introduce another source-code fix.
+
 ## Save transaction boundaries
 
 Two failures are reproducible through the actual cartridge register interface:
@@ -617,3 +643,188 @@ fault or substantial memory growth. However, the final captures still show
 zero speed and timer values after repeated A-button holds. Driving remains
 unverified, as in the earlier rc.8 comparison. Issue #38 stays open; visible
 race scenery alone is insufficient gameplay acceptance.
+
+## Follow-up investigation and regression coverage
+
+The next pass covers Mushroom Men, the remaining Ninja Reflex and Wizard of Oz
+menus, and the NFS/Shrek race reports. Final Fantasy Tactics A2 and Pokémon
+White 2 provide additional regression workloads. Every hardware run uses an
+isolated save, with 53 original save/configuration paths checked for changes.
+
+Mushroom Men's display-capture control register is another ruled-out cause of
+the sampled menu defect. The software reference performs no reads of that
+register in the tested sequence, and forcing its reads to zero leaves all
+sampled pixels unchanged. In a separate 20-frame software trace, all 160
+capture-control, VRAM C/D mapping, screen-swap and Engine B display-control
+writes occur on VCOUNT 192. VBlank interrupt acknowledgement precedes the
+screen-swap write by 1,495–1,559 emulated ARM9 cycles. This establishes the
+reference's update phase; the earlier hardware trace's changes on visible
+lines 6–7 still require a source-versus-replay explanation.
+
+White 2 (USA/Europe IRDO revision 0) cold-loads the copied Pokémon Center save
+on rc.8, responds to movement, and performs explicit in-game saves. A matched
+endpoint procedure records the game's saved play clock after each save, with
+a six-minute quiet interval between the save sequences. The first release run
+advances by 415 saved seconds across 415.47 wall seconds between save-confirm
+inputs. Both copies of the player-data block pass their checksums. Renderer
+resident memory remains 63.0 MiB, the ARM clock stays at 1 GHz, and no FPGA/HPS
+transport fault occurs. Main-screen output is also visible through the
+RetroTINK using Screen Peek. This measures saved-clock progression in one room,
+not distinct displayed FPS or general gameplay speed.
+
+The combined RUN1 core and revised renderer repeat the same room, movement
+and save sequence at 1 GHz. The saved clock advances by 415 seconds over
+414.94 wall seconds, with both player-data checksums valid and no transport
+faults. Resident memory changes from 63.01 to 63.07 MiB. The 0.13% difference
+from the release control is within the one-second saved-clock resolution; no
+clock-progression slowdown is demonstrated in this scene. The starting native
+captures have the same player/camera position and room, with only 194
+top-screen animation pixels differing and an identical bottom screen.
+
+Final Fantasy Tactics A2 (USA A6FE revision 0) reaches its first battle on rc.8
+and creates a normal Quick Save. RUN1 cold-loads a separate copy of that save,
+moves units, executes a Fire spell, advances multiple turns and creates a
+second Quick Save at Luso's turn. The battlefield and menus are visible through
+the RetroTINK. This is a bounded opening-battle check, not a complete battle
+or playthrough.
+
+An idle first-turn comparison uses identical copies of the original battle
+checkpoint. With the same White Mage, command menu and camera, rc.8 publishes
+2,008 framebuffers in 94.39 seconds (21.27/s); RUN1 publishes 2,029 in 94.01
+seconds (21.58/s). Both runs remain at 1 GHz with zero transport faults.
+Renderer resident memory is 64.93–64.95 MiB on rc.8 and 65.00 MiB on RUN1.
+The candidate's publication throughput is 1.45% higher in this one pair. This
+is an endpoint counter measurement without continuous probes, not distinct
+rendered FPS or a general emulated-game-speed benchmark.
+
+A further Mushroom Men software-reference trace observes both CPUs' byte,
+halfword and word writes overlapping VCOUNT throughout 4,443 boot/menu frames.
+It sees no such writes. Software-directed VCOUNT changes therefore do not
+explain the reference sequence's display phase; the hardware phase still
+requires direct investigation.
+
+Both candidate persistence checks also pass after clean shutdown and a cold
+relaunch. Tactics restores the progressed unit positions and Luso's turn,
+then creates another Quick Save successfully. White 2 returns to the Pokémon
+Center after switching to Tactics and back; the saved file hash and both valid
+player-data blocks exactly match its last explicit save. Basic blackout checks
+of both White 2 RetroTINK recordings find no blank or low-detail game-region
+frames in 969 captured frames per clip; this does not measure fine flicker
+or subjective audio quality.
+
+A one-frame diagnostic on the combined core now separates Mushroom Men's
+source tags from ARM replay. All ten captured VRAM-map/display-control writes
+carry visible-line source tags 85–86 and arrive immediately after replay
+phases 85–86. The register transitions therefore already have the wrong
+visible-line phase at the FPGA source; this sample does not show ARM replay
+reordering them. The earlier 6–7-line sample was a different session, so the
+phase is not fixed. Why the source reaches these updates during visible scanout
+remains unresolved. The private trace helper is excluded from speed acceptance.
+
+Mushroom Men's save check now reaches the first Reminiscent checkpoint through
+normal play: shoulder-button jumping, stylus drag to equip the stick, melee
+combat and the paper obstacle. Touching the checkpoint and confirming Yes
+changes the isolated 8 KiB save. After a clean exit, normal RUN1 cold-loads the
+saved location with the weapon and health state retained, and another explicit
+save succeeds. No transport fault occurs. The first save used the combined
+core with the private one-shot trace helper; reload and the subsequent save
+used the normal RUN1 helper. This does not reproduce the unspecified save
+failure at that checkpoint, but the graphics band and duplicated menu content
+remain. Issue #31 is still open.
+
+The Ninja Reflex follow-up opens all six category instruction screens and
+unlocked-choice lists, plus Meditation, and revisits the menus. The tested
+Koi and Nunchaku choices show their descriptions. Firefly Catch completes
+through normal touchscreen inputs, receives its completion checkmark and
+retains that mark after a clean exit and cold launch. The session lasts
+56 minutes with no transport fault and final renderer resident memory of
+65.06 MiB. This covers menu navigation and one completed challenge, not
+every minigame or a full playthrough.
+
+Ninja's main-menu labels are also readable through analog RGB and normal
+HDMI with 90-degree counterclockwise core rotation. Selected label regions
+have no abrupt dropout in the two approximately 16-second recordings
+(973 and 981 captured frames respectively). Their minimum correlations to
+the median image are 0.962 and 0.964. These compressed-capture checks do not
+establish whole-game pixel equivalence or subjective audio quality. The
+core's original layout and rotation are restored after the test.
+
+Wizard of Oz also displays **Continue** with an isolated temporary-save
+fixture. Both New Game and Continue label regions exactly match the software
+reference in all 60 sampled native publications. The middle button remains
+blank in the matching software reference, so this save state is not evidence
+of a missing middle label. The fixture was created by the reference's normal
+Quit Game operation; loading it alone does not validate hardware save writes.
+
+The same Oz menu is readable through HDMI with 90-degree counterclockwise
+core rotation. In an 8.37-second recording, both label regions remain stable
+across 503 captured frames, with a minimum correlation of 0.998 to the median
+image. The title's idle attract sequence is excluded from this menu check.
+This is a bounded label-region test, not every save state or whole-game
+flicker acceptance.
+
+Oz's Continue option resumes Yellow Brick Road A, trackball strokes move
+Dorothy, and the normal Quit Game command creates a new temporary save on
+RUN1. A clean exit and cold relaunch preserve the exact saved file at the
+title screen, and Continue restores the progressed road position. The
+11-minute pre-reload session has no transport fault and finishes at
+62.16 MiB renderer resident memory. The regular permanent-save Load option
+and later gameplay remain untested.
+
+The NFS start sequence is now resolved: A leaves the cycling race
+introduction, then R accelerates. R alone leaves the introduction cycling
+in the software reference too, even across an extended run. On rc.8 and
+RUN1, the corrected sequence moves the car into the tunnel and advances
+the odometer and minimap. Earlier A-only or intro-only captures therefore
+do not establish a gameplay freeze.
+
+Both builds retain the car and track through HDMI with 90-degree
+counterclockwise rotation. Each native capture contains 60 consecutive
+publications with no near-black full-width rows; both physical recordings
+retain image detail in the selected race-view region. RUN1's recording
+shows movement through the city, followed by a collision. The old flat-grey
+race-view symptom is not reproduced in these bounded checks. Neither run
+completes a lap, and the moving-city and collided-wall samples are different
+workloads, so their publication rates must not be used as a speed comparison
+or proof that this branch caused a graphics fix.
+
+Shrek Smash n' Crash Racing (USA A4IE revision 0) also draws its first
+Swamp track on both rc.8 and RUN1. Quick Race with Shrek and the default
+profile responds to A acceleration: the racer moves, the minimap advances
+and the race timer runs. The racer and track remain visible in normal native
+captures and HDMI with 90-degree counterclockwise rotation. Each build's
+60 consecutive native publications contains a detailed top image with no
+near-black full-width rows. Neither reproduces the reported streaked upper
+band with a missing lower race view. Both bounded drives end at a track
+barrier before completing a lap; this is not full-race or speed acceptance.
+
+Skate It (USA CSVE revision 0) also retains its full skater/park view on
+unmodified rc.8 at the reported Flickit introduction and after entering the
+board tutorial. The HDMI 90-degree counterclockwise introduction recording
+has no abrupt blackout across 975 captured frames. The next recording spans
+the scripted trick demonstration and its transition to player control. Its
+single 0.43-second dark interval is a scene fade; the images before and after
+show the demonstration changing to the player's board and three objectives.
+It does not reproduce the reported mostly grey gameplay view. This checks
+the reported scene, not completion of the challenge or a new candidate fix.
+
+A separate cold-launch repeat waits for the demonstration to finish and
+visually confirms the player's board and objectives before sampling. All
+60 consecutive native publications retain image detail without near-black
+full-width rows. The settled player-view recording retains the scene through
+981 HDMI capture frames over 16.33 seconds; the selected skater/park region
+has no abrupt blackout. An earlier repeat accidentally reached a location
+menu and is excluded from these gameplay results.
+
+The next graphics investigation is Mushroom Men's VBlank delivery and ARM9
+interrupt-service timing before the display-register writes. Matching source
+and replay tags narrow the location of the problem but do not establish its
+cause. Full race/challenge coverage, broader matched performance tests and
+the unresolved timing failures remain acceptance limits. No GitHub issue is
+closed by this follow-up.
+
+After testing, all 53 protected original save/configuration paths still match
+their recorded hashes. The original core session and test-save hash are
+restored, along with the RetroTINK's HD15 RGBS input at 59.64 Hz native 240p.
+No recording or software-reference container remains running. Private game
+assets, saves, diagnostic binaries and captures remain outside this repository.
