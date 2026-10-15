@@ -291,8 +291,9 @@ The next work follows the approved priority order:
 2. Investigate Jackass's long automatic phone transition while preserving the
    known ordered-query counterexample. The longer rc.8 control advances without
    input; Zelda's exact lid puzzle is still unknown.
-3. Trace Wizard of Oz's missing label layer. Compare Ninja Reflex's blank title
-   state with reference behavior and verify later menus. Spectral Force needs
+3. Finish Wizard of Oz's physical-display/flicker checks after the verified
+   label correction below. Investigate Ninja Reflex's source backpressure and
+   verify later menus/minigames after the memory controls below. Spectral Force needs
    the original failing power/ROM details if the tested path continues to pass.
 4. Validate the revised renderer through an actual NFS race and retain matched
    NSMB/Castlevania speed controls. Finish King Kong's matched texture check.
@@ -427,16 +428,15 @@ private reference build removes that label. All 72 bytes of the nine affected
 sprite entries then match the hardware capture exactly, in the same alternating
 screen phase. Isolating the hardware's OBJ layer and disabling blending did not
 restore the label. This identifies a cause independently of layer composition;
-it does not yet establish a tested hardware fix or resolve every menu/flicker
-report.
+the routed hardware result below confirms the label correction. It does not
+resolve every menu/flicker report.
 
 The correction adds a 2 KiB OAM readback shadow beside the existing palette
 shadow. Reads use the existing synchronous video-memory wait state and read
 rotator, including completion-cycle requests. Engine power gating and ROM-reset
 clearing apply to both banks; byte stores are ignored by the OAM shadow.
 Reads need no ARM service round trip. Geometry pacing, renderer code and clock
-rates are unchanged, but fitting, hardware tests and matched speed measurements
-remain required before accepting the candidate.
+rates are unchanged. Broader game and performance acceptance remain required.
 
 `tools/test_nds_oam_readback.sh` fails on the preceding bus implementation's
 zero result and passes with the correction. It covers all 512 words, both
@@ -444,3 +444,75 @@ engines, CPU/DMA reads, halfword and byte reads, mirrors, unaligned rotation,
 sprite attribute updates, ignored byte stores, power-off behavior, reset and
 back-to-back requests. The existing palette and GX DMA suites and complete
 console VHDL analysis also pass.
+
+The core completes mapping, fitting, assembly and timing analysis with 33,999
+ALMs, 532 of 553 M10Ks and 27 DSPs. Its source-input and RTC CDC checks pass.
+Worst reported setup slack is -14.326 ns versus -13.834 ns for rc.8; neither
+build meets timing. This build contains no private probes and leaves the SWAP
+retirement experiment disabled.
+
+On hardware, **New Game** is now visible and selecting it opens the story.
+Across 60 distinct sampled native publications, the label pixels are identical
+and match the full software reference exactly at the DS's 6-bit channel depth.
+The sampled top-logo and button regions each alternate between two images;
+both images also match the reference exactly. Thus the native output agrees
+with the reference in these regions, but this does not establish flicker-free
+physical/TATE output or original-DS behavior. The other two buttons are blank
+in the matching fresh-save reference state too; later save-dependent options
+remain unverified. Issue #34 stays open.
+
+A matched NSMB World 2-5 check at 1 GHz advances 171 timer units in 128.79
+seconds on this core with the revised renderer, versus 172 in 128.86 seconds
+on rc.8 (1.328 versus 1.335 units/s, a 0.53% reduction). Both use the same save,
+fire Mario with 11 lives, and a stationary interval without diagnostic sampling
+between the endpoint captures. Both remain fault-free, respond to pause and
+preserve the test save. The difference is within integer-HUD sampling uncertainty;
+one pair does not exclude a small regression or establish general speed
+acceptance. An earlier control that ran past the level timer was discarded.
+
+Mushroom Men's menu corruption has a separate cause. Its normal and forced-zero
+OAM-read software controls produce identical menu pixels. The captured hardware
+changes screen/VRAM phase during visible scanlines, unlike the stable per-frame
+mapping in the sampled software reference. Display/capture timing remains an
+investigation lead; the OAM correction is not claimed to fix those bands.
+
+## Extended Ninja Reflex investigation
+
+A full software-reference run displays the title artwork, **Touch to Start**
+and the profile-selection labels. Private controls that force OAM or VRAM bank
+register reads to zero still render those sampled screens. Later hardware runs
+also show the title and profile labels on the combined candidate and on the
+rc.8 core with a private trace helper. The uninstrumented startup controls below
+reproduce an early blank lower screen followed by readable profile slots; a
+short blank capture alone is not evidence of a permanent rendering failure.
+
+After about ten minutes, the latter diagnostic session exhausts memory and the
+Linux OOM killer terminates its renderer; the watchdog returns to the menu and
+the host exits cleanly. The renderer's anonymous resident memory was about
+325 MiB at termination. Because this helper contains both the command-retention
+change and private tracing, this is not yet a clean attribution to either the
+release or a candidate change. It blocks extended stability acceptance until an
+uninstrumented control isolates it. Original saves and settings remain unchanged.
+
+The uninstrumented comparison reproduces substantial early memory growth in
+both helpers with the same rc.8 FPGA, host, settings and identical starting save
+copies. Resident memory grows from about 124 MiB to 190 MiB in both runs, with
+nearly identical readings at the first two observation points. The runs stop
+before another OOM; neither reports a transport fault. The release's initially
+blank lower screen later shows four readable profile slots without additional
+input. This establishes that memory growth and the early blank capture are not
+unique to the new helper or private trace instrumentation. It does not identify
+the allocation or establish which build reaches a later OOM first. Game-created
+save bytes differ between runs after initialization, but each test save remains
+unchanged over its observation window. Original files remain unchanged.
+
+A five-minute check of the unprobed SWAP-retirement core with the same revised
+helper and starting save copy keeps resident memory between 62.7 and 63.4 MiB,
+with no transport faults. The profile labels are visible at the first capture.
+Touch input creates a separate profile, selects **1 Player Start**, advances
+the introductory prompt and reaches the rendered sensei scene with **Ready!**
+visible. The isolated save changes as expected from profile creation. This
+points toward source geometry backpressure as a useful lead, but the compared
+cores contain multiple changes, so it is not an isolated causal toggle or a
+speed test. It does not validate every menu or minigame, and it does not reverse
+the SWAP core's longer Mushroom Men failure. That experiment remains disabled.
