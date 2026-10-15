@@ -201,6 +201,23 @@ around 54 ms). The long-work diagnosis must therefore distinguish replay
 from raster drawing; increasing queue capacity alone would not establish a
 correct or timely rendering path.
 
+Saved causal timelines identify packet 5315 as the long replay in both runs:
+500.75 ms with the release renderer and 365.06 ms with the revised renderer.
+An additional run with the existing optional profiler attributes a 481.53 ms
+interval to packed geometry records; the longest geometry execution flush is
+only 0.36 ms. A separate private allocation probe confirms a 365.49 ms resize
+from 2,097,152 to 4,194,304 eight-byte command entries, with no consumed prefix
+and a pending SWAP. Smaller compactions also copy nearly full buffers.
+
+This establishes a concrete allocation/copy stall and an accumulating deferred
+geometry backlog. It does not establish why the authoritative source and replay
+allow that backlog to grow: SWAP release, FIFO fullness and geometry-busy behavior
+need an ordered comparison. Increasing capacity or dropping commands would not
+resolve that correctness question. The instrumented run faults earlier, at
+packet 4839; its extra profiling and log writes mean it cannot serve as a speed
+control. The allocation probe remains private and is absent from this branch's
+renderer. The game issue remains open.
+
 ## Menu and scene checks
 
 Ninja Reflex (USA YNIE revision 0) draws all four profile slots and their labels
@@ -236,8 +253,9 @@ gameplay progression and speed acceptance remain separate and incomplete.
 Issue #42 remains excluded. No game issue has been closed from these tests.
 The next work follows the approved priority order:
 
-1. Finish game-specific save/reload coverage and isolate Mushroom Men's costly
-   replay operation without dropping ordered events or throttling LCD time.
+1. Finish game-specific save/reload coverage and identify why Mushroom Men's
+   deferred geometry backlog grows across display frames, preserving ordered
+   SWAP/query behavior and the established speed controls.
 2. Identify Jackass's CPU/query wait with a bounded diagnostic, preserving the
    known ordered-query counterexample. Zelda's exact lid puzzle is still unknown.
 3. Trace Wizard of Oz's missing label layer. Compare Ninja Reflex's blank title
