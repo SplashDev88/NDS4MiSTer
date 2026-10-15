@@ -5,6 +5,12 @@
 #undef main
 #include <cassert>
 #include <iostream>
+// Only this executable overrides wall time; never change the machine clock.
+static std::time_t clock_fixture=1792000800LL;
+extern "C" std::time_t time(std::time_t *out) noexcept {
+  if(out) *out=clock_fixture;
+  return clock_fixture;
+}
 struct HostTest {
   struct Device {
     Host &h;
@@ -115,7 +121,96 @@ struct HostTest {
         assert(std::string(std::istreambuf_iterator<char>(in),{})==saved);
       }
     }
-    std::cout<<"PASS RTC matched core, single seed, edit capture, durable offset, storage failure/retry, restart, malformed config, late synchronization, timezone shift and 180-day offline interval\n";
+    assert(setenv("TZ","UTC0",1)==0);tzset();
+    {
+      const auto kit=base/"fallback-damaged";fs::create_directories(kit);
+      clock_fixture=0;
+      for(const auto &text:{"damaged", "NDS-RTC-v2\noffline\n26 2 29 0 0 0 0\n"}) {
+        std::ofstream(kit/"NDS_rtc.cfg")<<text;
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        rejects([&]{h.seedGameClock();});assert(!d.seeds && !h.game_clock_seeded);
+        std::ifstream in(h.gameClockPath());assert(std::string(std::istreambuf_iterator<char>(in),{})==text);
+      }
+    }
+    for (const auto unavailable:{-1LL,0LL,946684799LL,4102444800LL}) {
+      const auto kit=base/("fallback-"+std::to_string(unavailable));fs::create_directories(kit);
+      clock_fixture=unavailable;
+      {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        uint64_t elapsed=100;h.game_clock_millis=[&]{return elapsed;};
+        h.seedGameClock();assert(d.live==nds_clock::date(0) && h.game_clock_fallback);
+        elapsed+=86401000;d.live=nds_clock::date(86401);
+        assert(h.gameClockNow()==d.live);
+        clock_fixture=1792000800LL; // NTP arrives during the fallback session.
+        h.seedGameClock();h.flushGameClock();
+        assert(d.seeds==1 && d.live==nds_clock::date(86401));
+        assert(!fs::exists(h.gameClockPath()));
+      }
+      Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+      h.seedGameClock();assert(d.live==nds_clock::localNow() && !h.game_clock_fallback);
+    }
+    {
+      // Offline boot preserves an existing legacy offset byte-for-byte until
+      // the guest explicitly edits the clock. Valid-clock boot still applies it.
+      const auto kit=base/"fallback-legacy";fs::create_directories(kit);
+      const std::string saved="NDS-RTC-v1\n3600\n0\n";
+      std::ofstream(kit/"NDS_rtc.cfg")<<saved;
+      clock_fixture=0;
+      {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        h.seedGameClock();assert(d.live==nds_clock::date(3600));h.flushGameClock();
+        std::ifstream in(h.gameClockPath());assert(std::string(std::istreambuf_iterator<char>(in),{})==saved);
+      }
+      clock_fixture=1792000800LL;
+      Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+      h.seedGameClock();assert(d.live==nds_clock::date(nds_clock::seconds(nds_clock::localNow())+3600));
+    }
+    {
+      const auto kit=base/"fallback-edited";fs::create_directories(kit);
+      const auto path=kit/"NDS_rtc.cfg";
+      const auto read=[&]{std::ifstream f(path);return std::string(std::istreambuf_iterator<char>(f),{});};
+      clock_fixture=0;nds_clock::Date last;
+      {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        uint64_t elapsed=0;h.game_clock_millis=[&]{return elapsed;};
+        h.seedGameClock();elapsed=60000;d.live=edit;d.sequence=2;h.flushGameClock();
+        assert(nds_clock::Setting::parse(read()).clock==edit);
+        const auto saved=read();
+        d.live=nds_clock::date(nds_clock::seconds(edit)+10,1);h.serviceGameClock();h.serviceGameClock();
+        assert(read()==saved); // No disk write on ordinary ticks/polls.
+        fs::create_directory(path.string()+".new");++d.sequence;
+        rejects([&]{h.flushGameClock();});assert(read()==saved && h.game_clock_sequence==2);
+        clock_fixture=1792000800LL;elapsed+=120000;
+        fs::remove(path.string()+".new");h.serviceGameClock();
+        assert(nds_clock::Setting::parse(read()).clock==d.live && h.game_clock_sequence==3);
+        d.live=nds_clock::date(nds_clock::seconds(d.live)+120,1);last=d.live;
+        const auto before_checkpoint=read();fs::create_directory(path.string()+".new");
+        rejects([&]{h.flushGameClock();});
+        assert(read()==before_checkpoint && h.game_clock_checkpoint_pending);
+        fs::remove(path.string()+".new");h.serviceGameClock();
+        assert(nds_clock::Setting::parse(read()).clock==last && !h.game_clock_checkpoint_pending);
+      }
+      clock_fixture=0;
+      {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        h.seedGameClock();assert(d.live==last && h.game_clock_fallback);
+        h.flushGameClock();assert(nds_clock::Setting::parse(read()).clock==last);
+      }
+      clock_fixture=1792000800LL;
+      {
+        Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+        const auto saved=read();fs::create_directory(path.string()+".new");
+        rejects([&]{h.seedGameClock();});assert(read()==saved && !h.game_clock_seeded);
+        fs::remove(path.string()+".new");h.seedGameClock();
+        assert(d.live==last && !h.game_clock_fallback);
+        assert(nds_clock::Offset::parse(read()).apply(nds_clock::localNow())==last);
+      }
+      clock_fixture+=86400;
+      Host h(kit.string(),(base/"roms").string(),base/"sd");Device d(h);
+      h.seedGameClock();const auto offset=nds_clock::Offset::between(last,nds_clock::date(nds_clock::seconds(nds_clock::localNow())-86400));
+      assert(d.live==offset.apply(nds_clock::localNow()));
+    }
+    std::cout<<"PASS RTC matched core, single seed, edit capture, durable offset, failure/retry, restart, malformed config, DST/offline elapsed time, invalid-clock fallback, late sync and offline-edit migration\n";
   }
 };
 int main(){auto root=fs::temp_directory_path()/("nds-clock-"+std::to_string(getpid()));

@@ -56,10 +56,13 @@ inline Date unpack(const std::array<uint8_t,8> &bytes) {
   }
   validate(d);return d;
 }
+struct Unavailable : std::runtime_error {
+  Unavailable() : std::runtime_error("MiSTer clock is unavailable or outside 2000–2099") {}
+};
 inline Date localNow() {
   const auto now=std::time(nullptr);std::tm t{};
   if(now==std::time_t(-1) || !localtime_r(&now,&t) || t.tm_year<100 || t.tm_year>199)
-    throw std::runtime_error("Set the MiSTer clock to a date between 2000 and 2099");
+    throw Unavailable();
   return Date{unsigned(t.tm_year-100),unsigned(t.tm_mon+1),unsigned(t.tm_mday),
               unsigned(t.tm_wday),unsigned(t.tm_hour),unsigned(t.tm_min),unsigned(t.tm_sec>59?59:t.tm_sec)};
 }
@@ -81,6 +84,35 @@ struct Offset {
        value.seconds<=-century_seconds || value.seconds>=century_seconds || value.weekday>6)
       throw std::runtime_error("Invalid NDS_rtc.cfg; restore it or remove it to use the MiSTer clock");
     return value;
+  }
+};
+// Existing offsets remain v1. A guest edit made without a usable wall clock
+// needs an absolute calendar instead: it cannot safely be applied to a later
+// synchronized wall clock as an offset from the fallback year 2000.
+struct Setting {
+  Offset offset;
+  bool offline = false;
+  Date clock{};
+  static Setting savedOffline(const Date &value) {
+    validate(value);return {{},true,value};
+  }
+  std::string serialize() const {
+    if (!offline) return offset.serialize();
+    validate(clock);
+    std::ostringstream out;out<<"NDS-RTC-v2\noffline\n";
+    for (unsigned v:clock) out<<v<<' ';
+    out<<'\n';return out.str();
+  }
+  static Setting parse(const std::string &text) {
+    std::istringstream in(text);std::string header,mode,extra;Setting value;
+    std::getline(in,header);
+    if (header!="NDS-RTC-v2") {value.offset=Offset::parse(text);return value;}
+    if (!std::getline(in,mode) || mode!="offline")
+      throw std::runtime_error("Invalid NDS_rtc.cfg offline clock");
+    for (auto &v:value.clock)
+      if (!(in>>v)) throw std::runtime_error("Invalid NDS_rtc.cfg offline date");
+    if (in>>extra) throw std::runtime_error("Invalid NDS_rtc.cfg offline fields");
+    validate(value.clock);value.offline=true;return value;
   }
 };
 struct Snapshot {

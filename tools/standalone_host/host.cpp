@@ -291,6 +291,10 @@ class Host {
   uint64_t game_clock_request_ms = 0;
   nds_clock::Date game_clock_request_time{};
   std::function<nds_clock::Date()> game_clock_now = nds_clock::localNow;
+  std::function<uint64_t()> game_clock_millis = ms;
+  bool game_clock_fallback = false, game_clock_offline_saved = false;
+  bool game_clock_checkpoint_pending = false;
+  uint64_t game_clock_fallback_ms = 0;
   bool firmware_failed = false, firmware_error_dialog = false;
   std::string firmware_error_title, firmware_error_text, personal_settings_notice;
   uint64_t next_firmware_poll = 0;
@@ -2011,9 +2015,15 @@ class Host {
       return snapshot;
     } catch (...) {spi.end();throw;}
   }
+  nds_clock::Date gameClockNow() const {
+    if (!game_clock_fallback) return game_clock_now();
+    // Keep one reference basis for the entire offline session, even if NTP
+    // corrects the system clock later. Never change MiSTer's system clock.
+    return nds_clock::date(int64_t((game_clock_millis()-game_clock_fallback_ms)/1000));
+  }
   void requestGameClock() {
     // Reference the wall clock at capture request, not at the later host poll.
-    const auto now=game_clock_now();
+    const auto now=gameClockNow();
     clockTransfer(true);
     game_clock_request_time=now;
     game_clock_request_ms=ms();
@@ -2028,18 +2038,26 @@ class Host {
       usleep(100);
     }
   }
-  void persistGameClock(const nds_clock::Snapshot &snapshot) {
-    if (snapshot.sequence == game_clock_sequence) return;
+  void persistGameClock(const nds_clock::Snapshot &snapshot, bool checkpoint=false) {
+    const bool save_checkpoint=game_clock_fallback && game_clock_offline_saved &&
+                               (checkpoint || game_clock_checkpoint_pending);
+    if (snapshot.sequence == game_clock_sequence &&
+        !save_checkpoint) return;
     const auto date=nds_clock::unpack(snapshot.bytes);
     const auto offset=nds_clock::Offset::between(date,game_clock_request_time);
-    const auto contents=offset.serialize();
+    const auto contents=game_clock_fallback ? nds_clock::Setting::savedOffline(date).serialize()
+                                            : offset.serialize();
+    game_clock_checkpoint_pending=save_checkpoint;
     atomicFile(gameClockPath(), contents.data(), contents.size());
     // Advance only after durable replacement. A failed write is retried using
     // the same timestamp/snapshot, rather than losing or skewing the edit.
     game_clock_sequence=snapshot.sequence;
+    game_clock_offline_saved=game_clock_fallback;
+    game_clock_checkpoint_pending=false;
     game_clock_failed=false;
-    log("game clock edit saved sequence="+std::to_string(snapshot.sequence)+
-        " offset_seconds="+std::to_string(offset.seconds));
+    log(std::string(save_checkpoint ? "game clock checkpoint saved sequence=" : "game clock edit saved sequence=")+
+        std::to_string(snapshot.sequence)+(game_clock_fallback ? " offline_calendar=1" :
+        " offset_seconds="+std::to_string(offset.seconds)));
   }
   void serviceGameClock() {
     if (game_clock_pending) {
@@ -2062,7 +2080,7 @@ class Host {
     }
     requestGameClock();
     const auto snapshot=waitGameClock();
-    persistGameClock(snapshot);
+    persistGameClock(snapshot,true);
     game_clock_pending=false;
     return snapshot;
   }
@@ -2070,15 +2088,22 @@ class Host {
     if (game_clock_seeded) return;
     // Reject an old core before sending a seed or claiming functional RTC.
     clockTransfer(false);
-    nds_clock::Offset offset;
+    nds_clock::Setting setting;
     if (fs::exists(gameClockPath())) {
       std::ifstream file(gameClockPath());
       if (!file) throw std::runtime_error("Cannot read NDS_rtc.cfg");
       const std::string text((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
       if (file.bad()) throw std::runtime_error("Cannot read NDS_rtc.cfg");
-      offset=nds_clock::Offset::parse(text);
+      setting=nds_clock::Setting::parse(text);
     }
-    const auto date=offset.apply(game_clock_now());
+    nds_clock::Date basis;
+    try {basis=game_clock_now();game_clock_fallback=false;}
+    catch (const nds_clock::Unavailable &) {
+      game_clock_fallback=true;game_clock_fallback_ms=game_clock_millis();
+      basis=nds_clock::date(0);
+    }
+    const auto date=setting.offline ? setting.clock : setting.offset.apply(basis);
+    const auto offset=nds_clock::Offset::between(date,basis);
     const auto bytes=nds_clock::pack(date);
     try {
       spi.begin(Spi::IO, 0x22);
@@ -2092,9 +2117,18 @@ class Host {
     const auto expected=nds_clock::seconds(date);
     if (observed != expected && observed != (expected+1)%nds_clock::century_seconds)
       throw std::runtime_error("FPGA did not accept the game clock seed");
+    if (setting.offline && !game_clock_fallback) {
+      // The first valid-clock launch preserves the offline guest edit, then
+      // resumes normal offset/elapsed-time behavior. Retain v2 on write failure.
+      const auto contents=offset.serialize();
+      atomicFile(gameClockPath(),contents.data(),contents.size());
+    }
+    game_clock_offline_saved=setting.offline && game_clock_fallback;
     game_clock_sequence=snapshot.sequence;
     game_clock_pending=false;
     game_clock_seeded=true;
+    if (game_clock_fallback)
+      log("MiSTer clock unavailable: using offline DS clock (default 2000-01-01 00:00:00); relaunch after setting MiSTer time");
     log("game clock seeded " + std::to_string(date[0]+2000)+"-"+std::to_string(date[1])+"-"+
         std::to_string(date[2])+" "+std::to_string(date[4])+":"+std::to_string(date[5])+":"+
         std::to_string(date[6])+" offset_seconds="+std::to_string(offset.seconds));

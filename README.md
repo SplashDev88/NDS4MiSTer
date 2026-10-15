@@ -4,6 +4,10 @@
 
 Back up your installation and saves before updating.
 
+This experimental branch also adds an [offline clock fallback](docs/GAME_CLOCK.md):
+an unset MiSTer clock starts the DS at January 1, 2000 instead of blocking launch.
+This change is not included in the published rc.8 download yet.
+
 ## What's new
 
 - **Separate screen layouts on HDMI and analog outputs.** HDMI and the analog RCA outputs can show different screens, such as Main on HDMI and Touch on analog. HDMI can also show both screens together while analog shows one. Analog runs at native 240p automatically. With `vga_scaler=1`, analog copies HDMI instead.

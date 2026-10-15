@@ -7,6 +7,16 @@ Reported game failures must be reproduced and checked individually before closur
 
 ## Latest validation status
 
+The standalone host now also permits startup with an unavailable/out-of-range
+MiSTer clock. Its fallback basis is January 1, 2000 at midnight, with existing
+offsets preserved. Offline guest edits use an absolute saved calendar and
+convert to normal offsets on the first valid-clock launch. Native Linux and
+Cortex-A9 tests with a simulated SPI device cover fallback, late synchronization,
+restart, legacy settings, offline edits, checkpoint failures and migration.
+General frontend and firmware-launch tests pass. This host-only change needs
+no new FPGA or renderer build; see [Game clock](GAME_CLOCK.md) for persistence
+and rollback details. These automated tests do not change MiSTer's system time.
+
 The latest pass follows the earlier InsaneFriend fix and identifies a
 geometry-busy status mismatch that can reproduce Mushroom Men's late display
 updates in the software reference. It also extends Jackass progression checks

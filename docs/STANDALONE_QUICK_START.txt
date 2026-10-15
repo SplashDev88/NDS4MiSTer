@@ -204,7 +204,9 @@ for this release. Use a compatible personal dump; do not bypass validation.
 Games and firmware share a clock that starts from the MiSTer's local time
 (year 2000-2099). Set the MiSTer time correctly before launch. The clock
 continues through loading, reset and sleep. DS date/time edits are saved
-automatically in the kit's NDS_rtc.cfg and advance while powered off.
+automatically in the kit's NDS_rtc.cfg and advance while powered off when
+MiSTer has a usable clock. The experimental beta also permits an unset clock;
+see GAME CLOCK / RTC below for fallback behavior.
 To return to MiSTer time, exit the core, remove NDS_rtc.cfg, and relaunch.
 The file is shared by all games in that kit; it never sets the MiSTer clock.
 RTC alarm interrupts are not implemented.
@@ -438,12 +440,21 @@ GAME CLOCK / RTC
 The DS clock starts from MiSTer local time once per standalone session. Set
 MiSTer date, time and timezone before launching. A valid but incorrect system
 clock gives an incorrect game clock; internet access is not checked or required.
-Dates outside 2000-2099 are rejected. If MiSTer synchronizes time later, exit
+In this experimental beta, unavailable dates or dates outside 2000-2099 use
+January 1, 2000 at midnight, plus any saved offset. The published rc.8 instead
+rejects those dates. If MiSTer synchronizes time later, exit
 and relaunch to use the corrected time. The running DS clock keeps ticking
 through menu, lid, game reset and game loading without reseeding.
 
 DS firmware/game clock edits save automatically in the hidden kit's
 NDS_rtc.cfg. Keep it during upgrades. All games in the kit share that clock.
+An edit made during fallback is stored as an absolute offline calendar and
+checkpointed on clean exit/game switching. It resumes at that checkpoint;
+powered-off elapsed time cannot be recovered without a usable MiSTer clock.
+The first valid-clock launch preserves the saved offline date and converts it
+to the usual offset. With no offline edit, relaunching adopts MiSTer time.
+Before rolling back to rc.8, restore the old NDS_rtc.cfg backup or move a v2
+offline file aside; rc.8 cannot read that new format.
 Changing MiSTer local time or timezone, including daylight-saving changes,
 affects the next launch. To return to MiSTer time, exit, back up and remove
 NDS_rtc.cfg, then relaunch. RTC alarms and periodic interrupts are unsupported.

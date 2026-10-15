@@ -24,6 +24,11 @@ int main() {
   assert(saved.apply(now)==edited);
   assert(Offset::parse(saved.serialize()).apply(date(seconds(now)+2))==(Date{45,3,1,2,0,0,1}));
   assert(Offset{}.apply(now)==now);
+  const auto offline=Setting::savedOffline(edited);
+  assert(Setting::parse(offline.serialize()).clock==edited);
+  assert(Setting::parse(offline.serialize()).offline);
+  const auto legacy=Setting::parse(saved.serialize());
+  assert(!legacy.offline && legacy.offset.apply(now)==edited);
   rejects([]{unpack({0x26,0x02,0x29,0,0,0,0,0});});
   rejects([]{unpack({0x26,0x10,0x1a,0,0,0,0,0});});
   rejects([]{unpack({0x26,0x10,0x14,7,0,0,0,0});});
@@ -31,5 +36,11 @@ int main() {
   for(const auto &bad:{"","NDS-RTC-v1\n0","NDS-RTC-v1\n0\n7\n","NDS-RTC-v1\n0\n-1\n",
       "NDS-RTC-v1\n3155760000\n0\n","NDS-RTC-v1\n-3155760000\n0\n","NDS-RTC-v1\n0\n0\nextra"})
     rejects([&]{Offset::parse(bad);});
+  for(const auto &bad:{"NDS-RTC-v2\n", "NDS-RTC-v2\nunknown\n",
+      "NDS-RTC-v2\noffline\n26 2 29 0 0 0 0\n",
+      "NDS-RTC-v2\noffline\n100 1 1 0 0 0 0\n",
+      "NDS-RTC-v2\noffline\n0 1 1 6 0 0\n",
+      "NDS-RTC-v2\noffline\n0 1 1 6 0 0 0 extra\n"})
+    rejects([&]{Setting::parse(bad);});
   std::cout<<"PASS 36525 civil days, BCD validation, 2099 wrap, offline elapsed time and persistent offsets beyond 2038\n";
 }
