@@ -88,8 +88,16 @@ Spyro's pause menu, exited cleanly, relaunched with the same separate 8 KiB save
 and resumed playable opening-room content with working movement and pause.
 The saved bytes matched across the cold relaunch. This extends coverage beyond
 startup, but the original reporter's save-write error has not been reproduced
-and issue #21 remains open. Lunar Knights retained its language setting and
-64 KiB save across relaunch; an in-game save checkpoint has not yet been verified.
+and issue #21 remains open.
+
+Lunar Knights (USA ALKE revision 0) saved slot 1 at Hunting Mansion/Forecourt
+on rc.8. The combined candidate cold-loaded that checkpoint, accepted movement
+and dialogue input, and saved a previously empty slot 3 in its separate 64 KiB
+file. The new file bytes matched across a clean exit and cold relaunch, and the
+new slot resumed the same playable checkpoint. No transport faults occurred.
+This verifies an explicit in-game write and reload beyond language settings;
+the original startup write-error report remains unreproduced, so issue #22
+remains open.
 
 ## Identifying source queue failures
 
@@ -181,6 +189,21 @@ between zero and nine packets. Product CPU telemetry is disabled, so this
 report cannot identify the exact instruction wait. The old geometry-credit
 change remains excluded because its ordering counterexample is unresolved.
 
+A longer follow-up changes the classification of this observation. A private
+CPU/FIFO diagnostic core samples repeated reads of GXSTAT's test-busy/result
+fields, but the CPU also visits other addresses, both FIFOs remain empty and
+VBlank advances. After a longer A/Start/X/Y input sequence, its phone scene
+continues. The same sequence on unmodified rc.8 also reaches the phone
+conversation, about 138 seconds after the first phone-icon capture, and further
+A input reaches a rendered street/tutorial view. Thus the initial 91-second
+window does not establish a permanent freeze, and this is not evidence of a new
+core fix. The cause of the long delay and the contribution of input versus elapsed
+time were initially unresolved. A subsequent rc.8 control with the identical save
+and no further synthetic input still shows the phone icon at about 115 seconds,
+then reaches the conversation by 153 seconds. This establishes automatic
+progression after a long transition in this case. The cause of that delay remains
+unresolved; issue #40 stays open.
+
 The diagnostic FPGA build also completes map, fit, assembly and timing analysis,
 with 33,897 ALMs, 530 M10Ks and worst setup slack of -14.031 ns. It preserves
 rc.8's clock configuration but, like rc.8, does not meet timing. Hardware checks
@@ -264,8 +287,9 @@ The next work follows the approved priority order:
 1. Finish game-specific save/reload coverage and identify why Mushroom Men's
    deferred geometry backlog grows across display frames, preserving ordered
    SWAP/query behavior and the established speed controls.
-2. Identify Jackass's CPU/query wait with a bounded diagnostic, preserving the
-   known ordered-query counterexample. Zelda's exact lid puzzle is still unknown.
+2. Investigate Jackass's long automatic phone transition while preserving the
+   known ordered-query counterexample. The longer rc.8 control advances without
+   input; Zelda's exact lid puzzle is still unknown.
 3. Trace Wizard of Oz's missing label layer. Compare Ninja Reflex's blank title
    state with reference behavior and verify later menus. Spectral Force needs
    the original failing power/ROM details if the tested path continues to pass.
@@ -319,11 +343,46 @@ flat memory usage and a live transport do not establish a fix.
 That candidate routed and assembled with 34,047 ALMs and 531/553 RAM blocks.
 Worst setup slack was -15.483 ns, compared with -14.031 ns for the preceding
 diagnostic build and -13.834 ns for rc.8. It is not timing clean, and no speed
-acceptance is claimed. The follow-up power-off/full-FIFO correction passes the
-focused tests and synthesis but has not passed hardware validation. A bounded
-ARM replay log kept geometry enabled throughout the observed early stall;
-this does not establish the FPGA's internal wait state. Native FIFO/VBlank and
-CPU-state diagnostics are still needed before choosing a further pacing change.
+acceptance is claimed. A bounded ARM replay log kept geometry enabled throughout
+the observed early stall; this alone did not establish the FPGA's internal state.
+
+A later private diagnostic core contains the power-off/full-FIFO correction
+and passive CPU/FIFO snapshots, but not the DMA pause-edge correction below.
+It reaches Mushroom Men's New Game, hero selection and opening story scene.
+Across a 30-second sample, native VBlank advances, the CPU visits 17 different
+sampled addresses, transport is empty and retirement levels vary from 129 to
+256 entries. Renderer resident memory stays around 64 MiB through the observed
+menus and story, without transport faults. The menu graphics remain corrupted.
+This is progress beyond the previous fault/stall, not a complete game fix or a
+speed acceptance result. The source changes, added probes and physical build
+also differ, so this run alone does not isolate the cause of that improvement.
+The same diagnostic core passes NSMB's menu, enters World 2-5, advances its
+game timer and responds to pause without transport faults or save changes.
+Its diagnostic observations are kept separate from the non-probe speed gate.
+
+The subsequent core includes the DMA pause correction and removes the private
+probes. It completes map, fit, assembly and timing analysis with 34,110 ALMs,
+531 M10Ks and worst setup slack of -13.945 ns. Like rc.8, it is not timing clean.
+It reaches Mushroom Men's main menu and opening story without transport faults,
+with bounded renderer memory, but still reproduces the corrupted menu graphics.
+This opt-in core is an experimental hardware candidate, not a release artifact.
+
+Its matched NSMB World 2-5 run advances 194 game-timer units in 153.94 seconds
+(1.260 units/s). A fresh rc.8 repeat advances 179 in 141.94 seconds (1.261
+units/s), within 0.1% of the candidate. Both use the identical save and scene
+at 1 GHz, with no transport faults or save changes. An earlier control was
+1.277 units/s; the adjacent repeat avoids mistaking that control variation for
+a small regression. This supports no measurable loss in this bounded scene,
+not general speed equivalence.
+
+Castlevania's opening street battle accepts attack input, advances its game
+clock and returns to pause without transport faults on this core. Its short
+clock sample advances 21 integer seconds over 21.83 seconds of active input;
+the earlier release sample advanced 22 over 21.87 seconds, with a different
+starting health/battle state. These short, unmatched samples cannot establish
+speed equivalence or a small regression. A longer idle attempt returns to the
+title screen after the low-health battle and is excluded from timing analysis.
+Broader performance acceptance remains open.
 
 
 ## GX DMA pause-edge request loss
@@ -340,7 +399,8 @@ implementation. With the correction, all four channels finish the same
 118-word transfer for requests arriving on the pause edge, the next idle edge
 and a later idle edge, without lost/duplicate words or repeated completion.
 The existing GX/VRAM backpressure, channel preemption, CPU yield and repeat-DMA
-checks pass, as do the query-overlap and main-RAM transfer suites. Hardware
-validation is pending; this is a possible explanation for the SWAP candidate's
-stall, not yet a verified game-specific fix. SWAP retirement remains disabled
-in normal builds.
+checks pass, as do the query-overlap and main-RAM transfer suites. The routed
+opt-in core containing this correction passes the bounded Mushroom Men
+progression and NSMB speed checks above. The diagnostic core without this DMA
+change also advances both games, so these runs do not establish it as the cause
+of a game-specific improvement. SWAP retirement remains disabled in normal builds.
