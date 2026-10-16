@@ -284,6 +284,7 @@ using EventPayloadSnapshotTestHook = void (*)(Event*);
 inline EventPayloadSnapshotTestHook event_payload_snapshot_test_hook = nullptr;
 using SessionSnapshotTestHook = void (*)(Header*);
 inline SessionSnapshotTestHook session_snapshot_test_hook = nullptr;
+inline SessionSnapshotTestHook full_frame_before_commit_test_hook = nullptr;
 
 inline void reset_device_barrier_test_count()
 {
@@ -441,10 +442,49 @@ constexpr std::uint32_t pack_melonds_framebuffer_pixel(std::uint32_t pixel)
         ((pixel << 10) & 0x0003f000u);
 }
 
+// The caller owns an inactive WC bank and immutable cached source pixels.
+// Finish both screens and issue publication_barrier() before committing its
+// descriptor. Keep Device mappings on the established staged-copy path.
+template<bool PackedInput>
+inline void pack_full_frame_screen(
+    std::uint32_t* destination, const std::uint32_t* source) noexcept
+{
+#if defined(__ARM_NEON)
+    const auto red_mask = vdupq_n_u32(0x0000003fu);
+    const auto green_mask = vdupq_n_u32(0x00000fc0u);
+    const auto blue_mask = vdupq_n_u32(0x0003f000u);
+    for (std::size_t i = 0; i < PlanePixels; i += 4) {
+        const auto pixels = vld1q_u32(source + i);
+        uint32x4_t red, green, blue;
+        if constexpr (PackedInput) {
+            red = pixels;
+            green = vshrq_n_u32(pixels, 2);
+            blue = vshrq_n_u32(pixels, 4);
+        } else {
+            red = vshrq_n_u32(pixels, 18);
+            green = vshrq_n_u32(pixels, 4);
+            blue = vshlq_n_u32(pixels, 10);
+        }
+        const auto packed = vorrq_u32(vandq_u32(red, red_mask),
+            vorrq_u32(vandq_u32(green, green_mask),
+                      vandq_u32(blue, blue_mask)));
+        vst1q_u32(destination + i, packed);
+    }
+#else
+    for (std::size_t i = 0; i < PlanePixels; ++i)
+        destination[i] = PackedInput ?
+            pack_melonds_pixel(source[i]) & 0x0003ffffu :
+            pack_melonds_framebuffer_pixel(source[i]);
+#endif
+}
+
 class FullFramePublisher {
 public:
-    FullFramePublisher(Header& header, std::uint32_t* framebuffer)
-        : header_(header), framebuffer_(framebuffer)
+    FullFramePublisher(Header& header, std::uint32_t* framebuffer,
+                       bool write_combined = false)
+        : header_(header), framebuffer_(framebuffer),
+          packed_frame_(write_combined ? nullptr :
+              new std::uint32_t[PlanePixels * 2] {})
     {
     }
 
@@ -476,30 +516,38 @@ public:
             published > std::numeric_limits<std::uint32_t>::max() - 2)
             return false;
 
-        // Build the complete packed frame in private cached RAM first. The
-        // old per-pixel volatile loop mixed color conversion with uncached
-        // DDR stores, preventing the compiler from vectorizing either part.
-        // Two bulk copies then push the already-complete screens to the
-        // inactive shared bank; the descriptor is still committed only after
-        // both copies and the device barrier, so partial output is invisible.
+        // Convert directly into an inactive WC bank. Device fallback retains
+        // cached conversion followed by bulk memcpy. Neither path exposes
+        // either screen until both are complete and the descriptor commits.
         const auto bank = next_bank_;
         auto* shared_bank =
             framebuffer_ + bank * (FullFrameBankStride / 4);
         const std::uint32_t* screens[2] {top, bottom};
         for (std::size_t screen = 0; screen < 2; ++screen) {
-            auto* packed = packed_frame_.get() + screen * PlanePixels;
-            for (std::size_t index = 0; index < PlanePixels; ++index) {
-                packed[index] = packed_input ?
-                    pack_melonds_pixel(screens[screen][index]) &
-                        0x0003ffffu :
-                    pack_melonds_framebuffer_pixel(screens[screen][index]);
-            }
             auto* destination = shared_bank +
                 screen * (FullFrameScreenStride / 4);
-            std::memcpy(destination, packed, PlaneBytes);
+            if (!packed_frame_) {
+                if (packed_input)
+                    pack_full_frame_screen<true>(destination, screens[screen]);
+                else
+                    pack_full_frame_screen<false>(destination, screens[screen]);
+            } else {
+                auto* packed = packed_frame_.get() + screen * PlanePixels;
+                for (std::size_t index = 0; index < PlanePixels; ++index) {
+                    packed[index] = packed_input ?
+                        pack_melonds_pixel(screens[screen][index]) &
+                            0x0003ffffu :
+                        pack_melonds_framebuffer_pixel(screens[screen][index]);
+                }
+                std::memcpy(destination, packed, PlaneBytes);
+            }
             last_store_count_ += PlanePixels;
         }
         publication_barrier();
+#if defined(NDS4MISTER_H3D_TEST_INSTRUMENTATION)
+        if (full_frame_before_commit_test_hook)
+            full_frame_before_commit_test_hook(&header_);
+#endif
 
         if (load_acquire(&header_.magic) != Magic ||
             load_acquire(&header_.fpga_session) != session ||
@@ -553,8 +601,7 @@ private:
     // starts in bank one and never reuses any bank before descriptor ACK.
     std::uint32_t next_bank_ = 1;
     std::size_t last_store_count_ = 0;
-    std::unique_ptr<std::uint32_t[]> packed_frame_ {
-        new std::uint32_t[PlanePixels * 2] {}};
+    std::unique_ptr<std::uint32_t[]> packed_frame_;
 };
 
 class PlanePublisher {

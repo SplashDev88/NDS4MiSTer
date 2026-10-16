@@ -38,6 +38,12 @@ if(BUILD_TESTING)
     add_test(NAME nds_matched_recovery COMMAND nds_matched_recovery_test)
 endif()
 
+add_executable(nds_full_frame_publication_bench EXCLUDE_FROM_ALL
+    tools/benchmark_full_frame_publication.cpp)
+target_include_directories(nds_full_frame_publication_bench PRIVATE src)
+target_compile_options(nds_full_frame_publication_bench PRIVATE
+    -Wall -Wextra -Wpedantic)
+
 if(NDS4MISTER_FPGA_AUDIO_OFFLOAD AND NDS4MISTER_NO_AUDIO_MIX)
     message(FATAL_ERROR
         "NDS4MISTER_FPGA_AUDIO_OFFLOAD preserves SPU status timing and cannot be combined with NDS4MISTER_NO_AUDIO_MIX")
@@ -119,6 +125,15 @@ if(BUILD_TESTING)
     target_compile_options(nds_h3d_memory_mapping_test PRIVATE
         -Wall -Wextra -Wpedantic)
     add_test(NAME nds_h3d_memory_mapping COMMAND nds_h3d_memory_mapping_test)
+
+    add_executable(nds_full_frame_publication_test
+        src/replay/FullFramePublicationTest.cpp)
+    target_include_directories(nds_full_frame_publication_test PRIVATE src)
+    target_compile_definitions(nds_full_frame_publication_test PRIVATE
+        NDS4MISTER_H3D_TEST_INSTRUMENTATION)
+    target_compile_options(nds_full_frame_publication_test PRIVATE
+        -Wall -Wextra -Wpedantic)
+    add_test(NAME nds_full_frame_publication COMMAND nds_full_frame_publication_test)
 
     add_executable(nds_headless_save_test
         src/replay/HeadlessSaveManagerTest.cpp)

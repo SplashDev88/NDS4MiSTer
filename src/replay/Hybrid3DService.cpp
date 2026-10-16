@@ -749,7 +749,8 @@ public:
               publication_write_combined,
               publication_pointer(EngineBFramebufferOffset)),
           full_frame_publisher_(
-              header_, publication_pointer(FramebufferOffset)),
+              header_, publication_pointer(FramebufferOffset),
+              publication_write_combined),
           asynchronous_plane_publication_(asynchronous_plane_publication),
           plane_stats_enabled_(plane_stats_enabled),
           full_video_stats_enabled_(pipeline_profile_enabled &&

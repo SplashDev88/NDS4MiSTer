@@ -1,5 +1,8 @@
 # Graphics performance experiment — 15 October 2026
 
+The subsequent [complete-frame publication experiment](PUBLICATION_PERFORMANCE_20261015.md)
+retains this palette change and measures an additional WC upload improvement.
+
 This experiment retains a small ARM background-rendering optimization. It does
 not establish a whole-game FPS increase. Two 3D batching prototypes were slower
 on the physical Cortex-A9 and were removed. The FPGA, ARM clock, frame-pair
