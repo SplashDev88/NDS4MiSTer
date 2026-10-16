@@ -1864,6 +1864,12 @@ private:
                         packet.records.data() + index, run_end - index,
                         geometry_command_count))
                     return false;
+            } else if (integral_texture_spans_ &&
+                       kind == frame_packet::RecordKind::VramWritePair) {
+                for (std::size_t record_index = index;
+                     record_index < run_end; ++record_index)
+                    if (!apply_castlevania_vram_pair(packet.records[record_index]))
+                        return false;
             } else {
                 for (std::size_t record_index = index;
                      record_index < run_end; ++record_index) {
@@ -2511,6 +2517,73 @@ private:
             }
         }
         return true;
+    }
+
+    bool apply_same_block_vram_pair(const frame_packet::Record& record)
+    {
+        // Both words lie in one mapped segment and dirty block. A pair of
+        // u32 fields preserves four-byte alignment: using u64 here would
+        // incorrectly require eight-byte alignment on the ARM target.
+        // No renderer phase or guest command can observe the pair halfway.
+        struct Words { melonDS::u32 low, high; };
+        static_assert(sizeof(Words) == 8 && alignof(Words) == alignof(melonDS::u32));
+        static_assert(melonDS::VRAMDirtyGranularity % 8 == 0);
+        if (!set_timestamp(packet_write_event(
+                record, EventType::Arm9VramWrite, packet_timestamp_)))
+            return false;
+        auto& gpu = nds_->GPU;
+        const auto address = record.address_or_aux;
+        const Words words {static_cast<melonDS::u32>(record.data),
+                           static_cast<melonDS::u32>(record.data >> 32)};
+        switch (address & 0x00e00000u) {
+        case 0x00000000u:
+            pending_external_vram_mask_ |= gpu.VRAMMap_ABG[(address >> 14) & 0x1fu];
+            gpu.WriteVRAM_ABG<Words>(address, words);
+            break;
+        case 0x00200000u:
+            pending_external_vram_mask_ |= gpu.VRAMMap_BBG[(address >> 14) & 0x07u];
+            gpu.WriteVRAM_BBG<Words>(address, words);
+            break;
+        case 0x00400000u:
+            pending_external_vram_mask_ |= gpu.VRAMMap_AOBJ[(address >> 14) & 0x0fu];
+            gpu.WriteVRAM_AOBJ<Words>(address, words);
+            break;
+        case 0x00600000u:
+            pending_external_vram_mask_ |= gpu.VRAMMap_BOBJ[(address >> 14) & 0x07u];
+            gpu.WriteVRAM_BOBJ<Words>(address, words);
+            break;
+        default:
+            pending_external_vram_mask_ |= gpu.VRAMMap_LCDC;
+            gpu.WriteVRAM_LCDC<Words>(address, words);
+            break;
+        }
+        return true;
+    }
+
+    bool apply_castlevania_vram_pair(const frame_packet::Record& record)
+    {
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        // Dispatch once per run from replay, so the ordinary apply() body
+        // keeps its original compiled path for every other cartridge.
+        if (!arm_video_engine_b_only_ &&
+            frame_packet::record_tag(record) == 2u &&
+            frame_packet::record_byte_enable(record) == 15u &&
+            !(record.address_or_aux & 3u) &&
+            record.address_or_aux % melonDS::VRAMDirtyGranularity <=
+                melonDS::VRAMDirtyGranularity - 8 &&
+            virtual_vram_range(record.address_or_aux)) {
+            if (packet_timestamp_ >
+                (std::numeric_limits<std::uint64_t>::max() >> nds_->ARM9ClockShift))
+                return fail(FaultBadEvent, "record timestamp overflow");
+            if (!advance_engine_b_before_write(record)) return false;
+            flush_pending_geometry();
+            if (packet_saw_swap_)
+                return fail(FaultBadEvent,
+                    "record followed SWAP_BUFFERS in one frame packet");
+            return apply_same_block_vram_pair(record);
+        }
+#endif
+        return apply(record);
     }
 
     void flush_external_vram_revisions()
@@ -6297,7 +6370,7 @@ void run_matched_display_test(bool full_rate = false, bool engine_a_only = false
     auto service = std::make_unique<Hybrid3DService>(
         fixture.bytes.data(), fixture.bytes.size(), std::string{},
         true, false, true, true, reuse_test, false, nullptr, nullptr,
-        true, false, false, true, full_rate, 0, reuse_test, recovery_test);
+        true, false, false, true, full_rate, 0, reuse_test, recovery_test, true);
     if (reuse_test) service->matched_reuse_3d_ = true;
     if (const char* trace = std::getenv("NDS4MISTER_STANDALONE_PACING_TRACE")) {
         if (std::strcmp(trace, "1") == 0) {
@@ -7584,6 +7657,80 @@ void run_texture_remap_coherence_test()
 
 void run_self_test()
 {
+    {
+        // Compare packed replay against the two original word writes over
+        // every bank mask, aliases, dirty/mapping boundaries and remaps.
+        // This explicitly enables the otherwise cartridge-gated shortcut.
+        Fixture candidate_fixture(0x71a001), oracle_fixture(0x71a002);
+        auto candidate = std::make_unique<Hybrid3DService>(
+            candidate_fixture.bytes.data(), candidate_fixture.bytes.size());
+        auto oracle = std::make_unique<Hybrid3DService>(
+            oracle_fixture.bytes.data(), oracle_fixture.bytes.size());
+        if (!candidate->initialize() || !oracle->initialize())
+            self_test_fail("VRAM pair initialization");
+        candidate->integral_texture_spans_ = true;
+        const std::size_t sizes[] = {
+            131072, 131072, 131072, 131072, 65536, 16384, 16384, 32768, 16384};
+        std::uint64_t pairs = 0;
+        for (std::uint32_t mask = 0; mask < 512; ++mask) {
+            for (auto* service : {candidate.get(), oracle.get()}) {
+                auto& gpu = service->nds_->GPU;
+                std::fill(std::begin(gpu.VRAMMap_ABG), std::end(gpu.VRAMMap_ABG), mask & 0x7fu);
+                std::fill(std::begin(gpu.VRAMMap_BBG), std::end(gpu.VRAMMap_BBG), mask & 0x184u);
+                std::fill(std::begin(gpu.VRAMMap_AOBJ), std::end(gpu.VRAMMap_AOBJ), mask & 0x73u);
+                std::fill(std::begin(gpu.VRAMMap_BOBJ), std::end(gpu.VRAMMap_BOBJ), mask & 0x108u);
+                gpu.VRAMMap_LCDC = mask;
+                for (unsigned bank = 0; bank < 9; ++bank)
+                    gpu.VRAMDirty[bank] = {};
+                service->packet_timestamp_ = 1000u + mask;
+            }
+            Hybrid3DService::ReplayPacket packed;
+            packed.header.packet_sequence = mask + 1;
+            packed.header.flags = frame_packet::FlagContinuation;
+            for (std::uint32_t base : {
+                    0x06000000u, 0x06200000u, 0x06400000u, 0x06600000u,
+                    0x06800000u, 0x06820000u, 0x06840000u, 0x06860000u,
+                    0x06880000u, 0x06890000u, 0x06894000u, 0x06898000u,
+                    0x068a0000u, 0x068b0000u, 0x06900000u, 0x06f00000u}) {
+                for (std::uint32_t offset : {
+                        0u, 4u, 504u, 508u, 512u, 0x3ff8u, 0x3ffcu,
+                        0x4000u, 0xfff8u, 0xfffcu, 0x1fff8u, 0x1fffcu}) {
+                    const std::uint64_t value =
+                        (std::uint64_t{0x76543210u ^ (mask * 9871u) ^ offset} << 32) |
+                        (0xfedcba98u ^ base ^ (mask * 1237u) ^ offset);
+                    const frame_packet::Record record {
+                        frame_packet::make_record_metadata(
+                            frame_packet::RecordKind::VramWritePair, 2, 15),
+                        base + offset, value};
+                    packed.records.push_back(record);
+                    for (unsigned word = 0; word < 2; ++word)
+                        if (!oracle->apply(frame_packet::unpack_vram_pair(record, word)))
+                            self_test_fail("VRAM pair oracle rejected valid words");
+                    ++pairs;
+                }
+            }
+            if (!candidate->apply_replay_packet(packed))
+                self_test_fail("VRAM pair candidate rejected valid words");
+            candidate->flush_external_vram_revisions();
+            oracle->flush_external_vram_revisions();
+            const auto& a = candidate->nds_->GPU;
+            const auto& b = oracle->nds_->GPU;
+            for (unsigned bank = 0; bank < 9; ++bank) {
+                if (std::memcmp(a.VRAM[bank], b.VRAM[bank], sizes[bank]) ||
+                    std::memcmp(a.VRAMDirty[bank].Data, b.VRAMDirty[bank].Data,
+                        sizeof(a.VRAMDirty[bank].Data)) ||
+                    a.ExternalRenderVRAMRevision[bank] != b.ExternalRenderVRAMRevision[bank])
+                    self_test_fail("VRAM pair changed bytes, dirty bits or revisions");
+            }
+            if (a.ExternalRenderMemorySequence != b.ExternalRenderMemorySequence ||
+                candidate->last_timestamp_ != oracle->last_timestamp_ ||
+                candidate->nds_->ARM9Timestamp != oracle->nds_->ARM9Timestamp ||
+                candidate->nds_->ARM7Timestamp != oracle->nds_->ARM7Timestamp)
+                self_test_fail("VRAM pair changed ordering state");
+        }
+        std::cout << "H3D_VRAM_PAIR_REPLAY_PASS pairs=" << pairs
+                  << " masks=512 full_vram=1 dirty_bits=1 revisions=1 timestamps=1\n";
+    }
     run_texture_remap_coherence_test();
     run_gx_readback_self_test();
     run_gx_readback_swap_self_test();
