@@ -2229,6 +2229,10 @@ private:
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes);
 #endif
+    [[gnu::hot, gnu::noinline]] void
+    RenderCachedContiguousTextureSpan(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        const u32* texture, s32 constantSpanDepth);
     template<u8 WrapMode>
     [[gnu::hot, gnu::noinline]] void
     RenderCachedModulateIntegralTextureDispatch(
@@ -2252,6 +2256,7 @@ private:
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
+    template<bool FrontFacing>
     void RenderFlatRectangleScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX,

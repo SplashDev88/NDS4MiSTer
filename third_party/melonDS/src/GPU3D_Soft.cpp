@@ -1157,7 +1157,8 @@ void SoftRenderer3D::SetupPolygon(
         (firstColor[0] >> 3) == 63 && (firstColor[1] >> 3) == 63 &&
         (firstColor[2] >> 3) == 63 &&
         !polygon->IsShadow && !polygon->IsShadowMask &&
-        rp->DepthTest == DepthTest_LessThan_FrontFacing &&
+        (rp->DepthTest == DepthTest_LessThan_FrontFacing ||
+         rp->DepthTest == DepthTest_LessThan) &&
         !(polygon->FinalW[0] & 0x7F) &&
         rp->SlopeL.Increment == 0 && rp->SlopeR.Increment == 0)
     {
@@ -1770,6 +1771,78 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
     }
 }
 
+[[gnu::hot, gnu::noinline]] void
+SoftRenderer3D::RenderCachedContiguousTextureSpan(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    const u32* texture, s32 constantSpanDepth)
+{
+    const u32 polyattr = rp->PolyAttr;
+    const u32 alphaRef = GPU3D.RenderAlphaRef;
+    const bool writeTranslucentDepth = rp->PolyData->Attr & (1u << 11);
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+    while (firstX < endX)
+    {
+        const s32 count = std::min<s32>(4, endX - firstX);
+#if defined(__arm__) && defined(__ARM_NEON)
+        if (count == 4 && alphaRef < 31)
+        {
+            const u32 address = rowAddress + firstX;
+            const uint32x4_t texels = vld1q_u32(texture);
+            const uint32x4_t depthPass = vcgtq_s32(
+                vreinterpretq_s32_u32(vld1q_u32(DepthBuffer + address)),
+                vdupq_n_s32(constantSpanDepth));
+            const uint32x4_t opaque = vceqq_u32(
+                vshrq_n_u32(texels, 24), vdupq_n_u32(31));
+            const uint32x4_t passing = vandq_u32(depthPass, opaque);
+            uint32x2_t all = vand_u32(vget_low_u32(passing), vget_high_u32(passing));
+            all = vand_u32(all, vrev64_u32(all));
+            if (vget_lane_u32(all, 0) == 0xffffffffu)
+            {
+                // Every lane writes only its own opaque front pixel. There
+                // is no alpha blend or edge push in an interior span.
+                vst1q_u32(ColorBuffer + address,
+                    vandq_u32(texels, vdupq_n_u32(0xff3f3f3fu)));
+                vst1q_u32(DepthBuffer + address,
+                    vreinterpretq_u32_s32(vdupq_n_s32(constantSpanDepth)));
+                vst1q_u32(AttrBuffer + address, vdupq_n_u32(polyattr));
+                firstX += 4;
+                texture += 4;
+                continue;
+            }
+        }
+#endif
+        // Equal depth, transparency and both AA layers retain the exact
+        // original selection and blend sequence, in increasing X order.
+        for (s32 lane = 0; lane < count; ++lane, ++firstX, ++texture)
+        {
+            u32 pixeladdr = rowAddress + firstX;
+            s32 z = constantSpanDepth;
+            if (!NDS4MiSTerSelectCachedDepthPixel(
+                    DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                continue;
+            u32 color;
+            if (!NDS4MiSTerNeutralOpaqueCachedPixel(*texture, alphaRef, color))
+                continue;
+            if ((color >> 24) == 31)
+            {
+                DepthBuffer[pixeladdr] = z;
+                ColorBuffer[pixeladdr] = color;
+                AttrBuffer[pixeladdr] = polyattr;
+            }
+            else
+            {
+                if (!writeTranslucentDepth) z = -1;
+                PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
+                if (NDS4MiSTerCachedPixelHasLowerLayer(
+                        AttrBuffer, BufferSize, pixeladdr))
+                    PlotTranslucentPixel(
+                        pixeladdr + BufferSize, color, z, polyattr, 0);
+            }
+        }
+    }
+}
+
+
 template<u8 WrapMode>
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedModulateIntegralTextureDispatch(
@@ -1804,6 +1877,24 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
     const u32 alphaRef = GPU3D.RenderAlphaRef;
     const bool writeTranslucentDepth = polygon->Attr & (1<<11);
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+
+    // The qualified game path already proved exact integral S/T steps.
+    // An in-bounds, forward unit S step is a contiguous decoded texture row:
+    // no wrap/clamp boundary or signed texcoord rollover is crossed.
+    const s32 textureX = static_cast<s16>(textureS) >> 4;
+    if (stepS == 16 && stepT == 0 && endX - firstX >= 4 &&
+        textureX >= 0 && textureX + (endX - firstX) <= pixelState.TextureWidth)
+    {
+        const u32 textureIndex = NDS4MiSTerCachedTextureIndexForMode<WrapMode>(
+            static_cast<s16>(textureS), static_cast<s16>(textureT),
+            pixelState.TextureWidth, pixelState.TextureHeight,
+            pixelState.TextureWidthMask, pixelState.TextureHeightMask,
+            pixelState.TextureWrapFlags, pixelState.TextureWidthShift);
+        RenderCachedContiguousTextureSpan(
+            rp, y, firstX, endX, pixelState.TexturePixels + textureIndex,
+            constantSpanDepth);
+        return;
+    }
 
     for (s32 x = firstX; x < endX; ++x, textureS += stepS, textureT += stepT)
     {
@@ -1853,8 +1944,12 @@ void SoftRenderer3D::RenderPolygonScanline(
 {
     if (rp->PixelState.FlatRectangle)
     {
-        RenderFlatRectangleScanline(rp, y, prevIsShadowMask, stencilBuffer,
-            clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
+        if (rp->DepthTest == DepthTest_LessThan_FrontFacing)
+            RenderFlatRectangleScanline<true>(rp, y, prevIsShadowMask, stencilBuffer,
+                clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
+        else
+            RenderFlatRectangleScanline<false>(rp, y, prevIsShadowMask, stencilBuffer,
+                clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
         return;
     }
     Polygon* polygon = rp->PolyData;
@@ -2396,6 +2491,7 @@ void SoftRenderer3D::RenderPolygonScanline(
 // output tests but regressed NSMB by about 5% on the stock Cortex-A9.
 // Changes to these loops require the cross-build full-buffer oracle and the
 // live-scene/other-game controls; a synthetic visible-only check is insufficient.
+template<bool FrontFacing>
 void SoftRenderer3D::RenderFlatRectangleScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
@@ -2405,7 +2501,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
     const u32 polyattr = rp->PolyAttr;
     constexpr u32 polyalpha = 31;
     constexpr bool wireframe = false;
-    const auto fnDepthTest = DepthTest_LessThan_FrontFacing;
+    const auto fnDepthTest = FrontFacing ? DepthTest_LessThan_FrontFacing : DepthTest_LessThan;
     prevIsShadowMask = false;
     const s32 xstart = rp->XL, xend = rp->XR - 1;
     constexpr bool l_filledge = true, r_filledge = true;
@@ -2475,7 +2571,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
     {
         return LookupCachedTexel(rp->PixelState, s, t) & 0xff3f3f3fu;
     };
-    const bool cachedModulateInterior = yedge == 0;
+    const bool cachedModulateInterior = FrontFacing && yedge == 0;
 
     const s32 visibleStart = std::max<s32>(xstart, 0);
     const s32 visibleEnd = std::min<s32>(xend + 1, 256);

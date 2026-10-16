@@ -55,6 +55,8 @@ static void push(NDS& n,u8 command,u32 value)
 static u32 vertex(int x,int y,int z) { return (u32(x)&1023)|((u32(y)&1023)<<10)|((u32(z)&1023)<<20); }
 static void frame(NDS& n,unsigned scenario)
 {
+    const bool contiguousTexture = scenario & 65536u;
+    const unsigned contiguousVariant = (scenario >> 17) & 7u;
     const bool integralTexture = scenario & 32768u;
     const bool quad = scenario & 16384u;
     const bool neutralWhite = scenario & 8192u;
@@ -84,7 +86,7 @@ static void frame(NDS& n,unsigned scenario)
     g.RenderDispCnt=1u|8u|((scenario&1)?48u:0u);
     g.RenderAlphaRef=scenario==2?15:0;
     g.RenderClearAttr1=0x0712254a; g.RenderClearAttr2=0x7fff;
-    for(u32 i=0;i<128;++i) n.GPU.VRAM_A[i]=u8((i*37+scenario*17)&255);
+    for(u32 i=0;i<(contiguousTexture ? 4096u : 128u);++i) n.GPU.VRAM_A[i]=u8((i*37+scenario*17)&255);
     // Alternating empty/nonempty texture-row cases exercise row-summary
     // invalidation with the same TexParam/palette binding. The uncached
     // reference still fetches and alpha-tests each individual texel.
@@ -100,6 +102,7 @@ static void frame(NDS& n,unsigned scenario)
         const u32 polyAlpha=(scenario&32u)?15u:31u;
         p->Attr=0xc0|((i+17)<<24)|(polyAlpha<<16)|((scenario&1)<<11);
         p->TexParam=(fmt<<26)|((clampOnly?0u:repeatOnly || scenario==0?3u:15u)<<16)|(1u<<29);
+        if (contiguousTexture) p->TexParam |= 4u << 20;
         p->TexPalette=0; p->FacingView=true; p->Translucent=polyAlpha<31;
         p->IsShadowMask=false; p->IsShadow=false; p->WBuffer=!(scenario&8u);
         for(u32 v=0;v<p->NumVertices;++v) {
@@ -118,6 +121,18 @@ static void frame(NDS& n,unsigned scenario)
                 p->Vertices[v]->TexCoords[0] = s16(sign * p->Vertices[v]->FinalPosition[0] * 16 - 2048);
                 p->Vertices[v]->TexCoords[1] = s16(p->Vertices[v]->FinalPosition[1] * 16 - 1536);
             }
+            if (contiguousTexture) {
+                p->Vertices[v]->TexCoords[0]=s16((p->Vertices[v]->FinalPosition[0]-64)*16 + int(contiguousVariant)*3);
+                p->Vertices[v]->TexCoords[1]=16;
+            }
+        }
+        if ((contiguousVariant & 4u) && (i % 2 == 0)) {
+            p->FacingView=false;
+            std::reverse(p->Vertices,p->Vertices+p->NumVertices);
+            std::reverse(p->FinalZ,p->FinalZ+p->NumVertices);
+            std::reverse(p->FinalW,p->FinalW+p->NumVertices);
+            p->VTop=p->NumVertices-1-p->VTop;
+            p->VBottom=p->NumVertices-1-p->VBottom;
         }
     }
 }
@@ -153,9 +168,14 @@ int main(int argc,char** argv) try
     // The selected workload is always independently rendered and hash-checked
     // outside the timed interval, including after every timed sample.
     std::printf("CHECK_MODE %s\n",timingOnly?"selected-workload":"full-matrix");
-    for(unsigned fixture=0;fixture<(timingOnly?1u:3084u);++fixture) {
+    for(unsigned fixture=0;fixture<(timingOnly?1u:4108u);++fixture) {
         const unsigned row=fixture%1414u;
-        const unsigned s=(!timingOnly && fixture>=2828u) ?
+        // Additional in-bounds forward texture rows and mixed front/back
+        // winding retain the independent uncached color/depth/attribute oracle.
+        const unsigned s=(!timingOnly && fixture>=3084u) ?
+            (65536u | (((fixture-3084u)/128u)<<17) | 32768u | 16384u |
+             8192u | 16u | ((fixture-3084u)&127u)) :
+            (!timingOnly && fixture>=2828u) ?
             (32768u | 16384u | 8192u | 16u | ((fixture-2828u)&127u) |
              (fixture>=2956u ? (4096u | 256u) : 0u)) :
             (fixture>=1414u ? 16384u : 0u) | (timingOnly ? benchmarkScenario : row>=1286 ? (8192u | 128u | (row-1286u)) : row>=1030 ? (8192u | (row-1030u) | (row>=1158 ? 256u : 0u)) : row<128 ? row : row<134 ?
