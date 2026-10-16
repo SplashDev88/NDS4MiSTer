@@ -1,5 +1,8 @@
 # Raster edge performance — 16 October 2026
 
+The later [gameplay pacing and ARM profile study](GAMEPLAY_PACING_PROFILE_20261016.md)
+uses calibrated physical recordings to investigate the remaining bottlenecks.
+
 Baseline: Performance Beta 3, `dd0dc0ea88850175c5166eaba386653812dbe563`.
 The selected ARM renderer extends the exact white-color modulation shortcut
 to eligible polygon edges. A fixed Castlevania: Dawn of Sorrow USA combat

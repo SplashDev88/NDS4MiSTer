@@ -667,7 +667,7 @@ start_service()
         # MiSTer's main loop is continuously runnable on CPU1. Give the
         # bounded H3D replay/render work precedence without killing MiSTer,
         # which preserves the normal menu, input, and core lifecycle.
-        NDS4MISTER_GX_MATRIX_PREFIX=auto NDS4MISTER_STANDALONE_FRAME_SKIP=nsmb-half NDS4MISTER_STANDALONE_REUSE_3D=1 \
+        NDS4MISTER_GX_MATRIX_PREFIX=auto NDS4MISTER_STANDALONE_FRAME_SKIP=off NDS4MISTER_STANDALONE_REUSE_3D=1 \
         NDS4MISTER_GX_QUERY_FAST_POLL=1 \
         NDS4MISTER_PACKET_NC=0 \
         NDS_GPU_STANDARD_PALETTE_CACHE=1 \
