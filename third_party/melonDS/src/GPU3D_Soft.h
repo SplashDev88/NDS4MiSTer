@@ -649,6 +649,18 @@ inline constexpr bool NDS4MiSTerUseCachedModulateInterior(
         !isShadow && !isShadowMask && frontFacingLessThan;
 }
 
+// A constant white vertex color and polygon alpha 31 are the identity for
+// the DS modulate equations. Texture alpha still controls rejection and
+// blending; clear unused RGB bits just as the generic channel packing does.
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerNeutralOpaqueCachedPixel(u32 texel, u32 alphaRef, u32& color) noexcept
+{
+    if ((texel >> 24) <= alphaRef)
+        return false;
+    color = texel & 0xff3f3f3fu;
+    return true;
+}
+
 // A texture-cache lookup is entered only for enabled, nonzero formats.  That
 // makes TexParam nonzero, while the frame-local binding starts with a zero
 // TexParam.  Every installed binding comes from GetTexture(), whose new[]
@@ -2179,7 +2191,7 @@ private:
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes);
-    template<u8 WrapMode, bool ConstantColor = false, bool ConstantLinearDepth = false>
+    template<u8 WrapMode, bool ConstantColor = false, bool ConstantLinearDepth = false, bool NeutralOpaque = false>
     [[gnu::hot, gnu::noinline]] void
     RenderCachedModulateInteriorSpanMode(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,

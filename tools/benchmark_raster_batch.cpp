@@ -54,6 +54,8 @@ static void push(NDS& n,u8 command,u32 value)
 static u32 vertex(int x,int y,int z) { return (u32(x)&1023)|((u32(y)&1023)<<10)|((u32(z)&1023)<<20); }
 static void frame(NDS& n,unsigned scenario)
 {
+    const bool neutralWhite = scenario & 8192u;
+    const bool fourBitTexture = scenario & 4096u;
     const bool constantTextureRow = scenario & 512u;
     const bool transparentTextureRow = scenario & 1024u;
     const bool twoBitTexture = scenario & 2048u;
@@ -73,7 +75,7 @@ static void frame(NDS& n,unsigned scenario)
     push(n,0x50,0); n.GPU.GPU3D.VBlank();
     auto& g=n.GPU.GPU3D;
     require(g.RenderNumPolygons==10,"polygon fixture");
-    const u32 formats[]={4,6,1,7}; const u32 fmt=twoBitTexture ? 2 : formats[scenario&3u];
+    const u32 formats[]={4,6,1,7}; const u32 fmt=fourBitTexture ? 3 : twoBitTexture ? 2 : formats[scenario&3u];
     g.RenderDispCnt=1u|8u|((scenario&1)?48u:0u);
     g.RenderAlphaRef=scenario==2?15:0;
     g.RenderClearAttr1=0x0712254a; g.RenderClearAttr2=0x7fff;
@@ -83,7 +85,7 @@ static void frame(NDS& n,unsigned scenario)
     // reference still fetches and alpha-tests each individual texel.
     if (constantTextureRow && transparentTextureRow)
     {
-        const u32 rowBytes = fmt == 7 ? 16u : fmt == 2 ? 2u : 8u;
+        const u32 rowBytes = fmt == 7 ? 16u : fmt == 2 ? 2u : fmt == 3 ? 4u : 8u;
         std::memset(n.GPU.VRAM_A + rowBytes, 0, rowBytes);
     }
     std::memset(n.GPU.VRAMDirty[0].Data,255,sizeof(n.GPU.VRAMDirty[0].Data));
@@ -99,7 +101,7 @@ static void frame(NDS& n,unsigned scenario)
             p->FinalZ[v]=0x100000+(scenario&1 ? (i%3)*0x5000 : -int(i)*0x1000);
             if (varyingDepth) p->FinalZ[v] += v * 0x40000;
             p->FinalW[v]=0x800+((scenario&16u)?0:v*0x500)+i*0x40;
-            for(u32 c=0;c<3;++c) p->Vertices[v]->FinalColor[c]=((i*(5+4*c)+((scenario&4u)?0:v*(17-5*c))+3+4*c)&63)<<3;
+            for(u32 c=0;c<3;++c) p->Vertices[v]->FinalColor[c]=neutralWhite ? 63<<3 : ((i*(5+4*c)+((scenario&4u)?0:v*(17-5*c))+3+4*c)&63)<<3;
             p->Vertices[v]->TexCoords[0]=s16(int(v)*93-41);
             p->Vertices[v]->TexCoords[1]=s16(151-int(v)*77);
             if (constantTextureRow) p->Vertices[v]->TexCoords[1]=16;
@@ -120,7 +122,7 @@ int main(int argc,char** argv) try
     const unsigned benchmarkScenario=argc>3?std::strtoul(argv[3],nullptr,10):0;
     const bool timingOnly=argc==5 && std::strcmp(argv[4],"--timing-only")==0;
     require(argc<=5 && (argc<5 || timingOnly),"usage: [frames samples scenario [--timing-only]]");
-    require(frames>0 && frames<=512 && samples>0 && samples<=16 && benchmarkScenario<4096,"bounds");
+    require(frames>0 && frames<=512 && samples>0 && samples<=16 && benchmarkScenario<16384,"bounds");
     auto ref=machine(false), test=machine(true);
     // Cross product: four texture formats, flat/gradient color, W/Z depth,
     // perspective/linear spans, opaque/translucent polygons, constant/varying
@@ -133,14 +135,16 @@ int main(int argc,char** argv) try
     constexpr unsigned extraScenarios[]={132,136,140,196,200,204};
     // Castlevania's profile also exercises clamp/clamp mode (0). Repeat the
     // full 128-case matrix with clamping, preserving all prior 134 hashes.
+    // Also cover 4-bit constant rows and white-color identity dispatch.
     // Full qualification remains the default. Repeated native timing can
     // check only its workload after BOTH binaries passed the full matrix.
     // The selected workload is always independently rendered and hash-checked
     // outside the timed interval, including after every timed sample.
     std::printf("CHECK_MODE %s\n",timingOnly?"selected-workload":"full-matrix");
-    for(unsigned fixture=0;fixture<(timingOnly?1u:774u);++fixture) {
-        const unsigned s=timingOnly ? benchmarkScenario : fixture<128 ? fixture : fixture<134 ?
-            extraScenarios[fixture-128] : fixture<262 ? 256+fixture-134 :
+    for(unsigned fixture=0;fixture<(timingOnly?1u:1414u);++fixture) {
+        const unsigned s=timingOnly ? benchmarkScenario : fixture>=1286 ? (8192u | 128u | (fixture-1286u)) : fixture>=1030 ? (8192u | (fixture-1030u) | (fixture>=1158 ? 256u : 0u)) : fixture<128 ? fixture : fixture<134 ?
+            extraScenarios[fixture-128] : fixture<262 ? 256+fixture-134 : fixture>=774 ?
+            (4096u | 512u | (((fixture-774u)%256u)/2u) | ((fixture&1u) ? 1024u : 0u)) :
             (512u | (((fixture-262u)%256u)/2u) | ((fixture&1u) ? 1024u : 0u) |
              (fixture>=518 ? 2048u : 0u));
         frame(*ref,s); frame(*test,s); render(*ref); render(*test);

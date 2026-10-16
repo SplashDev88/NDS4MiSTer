@@ -1574,10 +1574,16 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     s32 constantSpanDepth = 0;
     const bool constantLinearDepth = constantColor &&
         spanDepth.GetLinearConstantDepth(constantSpanDepth);
+    const bool neutralOpaque = constantLinearDepth &&
+        packedSpanColor == 0x003f3f3fu && rp->PixelState.PolyAlpha == 31;
     switch (rp->PixelState.TextureWrapFlags)
     {
     case 0x0u:
-        if (constantLinearDepth)
+        if (neutralOpaque)
+            RenderCachedModulateInteriorSpanMode<0x0u, true, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantLinearDepth)
             RenderCachedModulateInteriorSpanMode<0x0u, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1589,7 +1595,11 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     case 0x3u:
-        if (constantLinearDepth)
+        if (neutralOpaque)
+            RenderCachedModulateInteriorSpanMode<0x3u, true, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantLinearDepth)
             RenderCachedModulateInteriorSpanMode<0x3u, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1601,7 +1611,11 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     default:
-        if (constantLinearDepth)
+        if (neutralOpaque)
+            RenderCachedModulateInteriorSpanMode<0xFFu, true, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantLinearDepth)
             RenderCachedModulateInteriorSpanMode<0xFFu, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1615,7 +1629,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     }
 }
 
-template<u8 WrapMode, bool ConstantColor, bool ConstantLinearDepth>
+template<u8 WrapMode, bool ConstantColor, bool ConstantLinearDepth, bool NeutralOpaque>
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -1665,7 +1679,13 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
                 pixelState.TextureWrapFlags,
                 pixelState.TextureWidthShift)];
         u32 color;
-        if (!NDS4MiSTerModulateVisibleCachedPixel(
+        if constexpr (NeutralOpaque)
+        {
+            static_assert(ConstantColor && ConstantLinearDepth);
+            if (!NDS4MiSTerNeutralOpaqueCachedPixel(texel, alphaRef, color))
+                continue;
+        }
+        else if (!NDS4MiSTerModulateVisibleCachedPixel(
                 texel, vertexColor, polyAlpha, alphaRef, color))
             continue;
         const u8 alpha = color >> 24;

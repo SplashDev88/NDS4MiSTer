@@ -1,5 +1,8 @@
 # Complete-frame publication experiment — 15 October 2026
 
+The later [Castlevania raster experiment](CASTLEVANIA_RASTER_PERFORMANCE_20261016.md)
+retains this publication change and adds a measured raster optimization.
+
 This experiment converts complete screen pairs directly into an inactive
 write-combined output bank. The native Cortex-A9 benchmark reduces publication
 time by about 35%, or 0.47 ms per pair, with exact pixels. This is a reduction
