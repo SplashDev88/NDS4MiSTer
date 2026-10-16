@@ -3,7 +3,7 @@
 The selected ARM change checks whether every vertex of a polygon has the
 same final color, then reuses that exact color along both edges instead of
 repeating six interpolation checks on every scanline. The fixed Castlevania
-Dawn of Sorrow combat snapshot takes about 1.6% less renderer CPU time than
+Dawn of Sorrow intro-combat snapshot takes about 1.6% less renderer CPU time than
 Performance Beta 5. Bounded gameplay checks below pass; this is not a
 whole-game FPS claim.
 
@@ -39,7 +39,7 @@ verified after the benchmark.
 
 | Fixed scene | Beta 5 median CPU ms | Candidate median CPU ms | Change |
 | --- | ---: | ---: | ---: |
-| Castlevania combat, 614 polygons | 36.911 | 36.329 | −1.58% |
+| Castlevania intro combat, 614 polygons | 36.911 | 36.329 | −1.58% |
 | NSMB castle, 384 polygons | 12.092 | 11.971 | −1.00% |
 | NSMB castle, left view, 384 polygons | 11.875 | 11.744 | −1.11% |
 | Mario Kart heavy, 1,226 polygons | 35.990 | 35.789 | −0.56% |

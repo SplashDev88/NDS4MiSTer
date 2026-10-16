@@ -29,6 +29,7 @@ static std::unique_ptr<NDS> machine(bool cached)
     nds->GPU.GPU3D.SetEnabled(true, true);
     nds->GPU.GPU3D.SetExternalCommandReplay(true);
     nds->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+    nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(cached);
     RendererSettings settings {1, true, false, false, false, false, false, true, true};
     auto& r = nds->GPU.GetRenderer();
     r.SetRenderSettings(settings);
@@ -54,6 +55,8 @@ static void push(NDS& n,u8 command,u32 value)
 static u32 vertex(int x,int y,int z) { return (u32(x)&1023)|((u32(y)&1023)<<10)|((u32(z)&1023)<<20); }
 static void frame(NDS& n,unsigned scenario)
 {
+    const bool integralTexture = scenario & 32768u;
+    const bool quad = scenario & 16384u;
     const bool neutralWhite = scenario & 8192u;
     const bool fourBitTexture = scenario & 4096u;
     const bool constantTextureRow = scenario & 512u;
@@ -67,10 +70,12 @@ static void frame(NDS& n,unsigned scenario)
     push(n,0x10,1); push(n,0x15,0); push(n,0x20,0x001f00c0); push(n,0x29,0x001f00c0);
     for(int i=0;i<10;++i) {
         int dx=(i%5-2)*12,dy=(i/5)*16;
-        push(n,0x40,0);
+        push(n,0x40,quad ? 1u : 0u);
         push(n,0x24,vertex(-256+dx,-256+dy,0));
         push(n,0x24,vertex(256+dx,-256+dy,0));
-        push(n,0x24,vertex(dx,256+dy,0)); push(n,0x41,0);
+        push(n,0x24,vertex((quad ? 256 : 0)+dx,256+dy,0));
+        if (quad) push(n,0x24,vertex(-256+dx,256+dy,0));
+        push(n,0x41,0);
     }
     push(n,0x50,0); n.GPU.GPU3D.VBlank();
     auto& g=n.GPU.GPU3D;
@@ -106,6 +111,13 @@ static void frame(NDS& n,unsigned scenario)
             p->Vertices[v]->TexCoords[1]=s16(151-int(v)*77);
             if (constantTextureRow) p->Vertices[v]->TexCoords[1]=16;
             if(scenario==3 && i==1) p->Vertices[v]->FinalPosition[0]-=192;
+            if (integralTexture) {
+                // Deliberately exact one-texel screen-space steps, with
+                // descending/negative coordinates and every wrap mode.
+                const s32 sign = (scenario & 8u) ? -1 : 1;
+                p->Vertices[v]->TexCoords[0] = s16(sign * p->Vertices[v]->FinalPosition[0] * 16 - 2048);
+                p->Vertices[v]->TexCoords[1] = s16(p->Vertices[v]->FinalPosition[1] * 16 - 1536);
+            }
         }
     }
 }
@@ -122,7 +134,7 @@ int main(int argc,char** argv) try
     const unsigned benchmarkScenario=argc>3?std::strtoul(argv[3],nullptr,10):0;
     const bool timingOnly=argc==5 && std::strcmp(argv[4],"--timing-only")==0;
     require(argc<=5 && (argc<5 || timingOnly),"usage: [frames samples scenario [--timing-only]]");
-    require(frames>0 && frames<=512 && samples>0 && samples<=16 && benchmarkScenario<16384,"bounds");
+    require(frames>0 && frames<=512 && samples>0 && samples<=16 && benchmarkScenario<65536,"bounds");
     auto ref=machine(false), test=machine(true);
     // Cross product: four texture formats, flat/gradient color, W/Z depth,
     // perspective/linear spans, opaque/translucent polygons, constant/varying
@@ -141,12 +153,16 @@ int main(int argc,char** argv) try
     // The selected workload is always independently rendered and hash-checked
     // outside the timed interval, including after every timed sample.
     std::printf("CHECK_MODE %s\n",timingOnly?"selected-workload":"full-matrix");
-    for(unsigned fixture=0;fixture<(timingOnly?1u:1414u);++fixture) {
-        const unsigned s=timingOnly ? benchmarkScenario : fixture>=1286 ? (8192u | 128u | (fixture-1286u)) : fixture>=1030 ? (8192u | (fixture-1030u) | (fixture>=1158 ? 256u : 0u)) : fixture<128 ? fixture : fixture<134 ?
-            extraScenarios[fixture-128] : fixture<262 ? 256+fixture-134 : fixture>=774 ?
-            (4096u | 512u | (((fixture-774u)%256u)/2u) | ((fixture&1u) ? 1024u : 0u)) :
-            (512u | (((fixture-262u)%256u)/2u) | ((fixture&1u) ? 1024u : 0u) |
-             (fixture>=518 ? 2048u : 0u));
+    for(unsigned fixture=0;fixture<(timingOnly?1u:3084u);++fixture) {
+        const unsigned row=fixture%1414u;
+        const unsigned s=(!timingOnly && fixture>=2828u) ?
+            (32768u | 16384u | 8192u | 16u | ((fixture-2828u)&127u) |
+             (fixture>=2956u ? (4096u | 256u) : 0u)) :
+            (fixture>=1414u ? 16384u : 0u) | (timingOnly ? benchmarkScenario : row>=1286 ? (8192u | 128u | (row-1286u)) : row>=1030 ? (8192u | (row-1030u) | (row>=1158 ? 256u : 0u)) : row<128 ? row : row<134 ?
+            extraScenarios[row-128] : row<262 ? 256+row-134 : row>=774 ?
+            (4096u | 512u | (((row-774u)%256u)/2u) | ((row&1u) ? 1024u : 0u)) :
+            (512u | (((row-262u)%256u)/2u) | ((row&1u) ? 1024u : 0u) |
+             (row>=518 ? 2048u : 0u)));
         frame(*ref,s); frame(*test,s); render(*ref); render(*test);
         auto& a=ref->GPU.GetRenderer(); auto& b=test->GPU.GetRenderer();
         for(u32 y=0;y<192;++y) require(!std::memcmp(a.Get3DScanline(y),b.Get3DScanline(y),256*4),"visible mismatch");

@@ -26,22 +26,32 @@ int main(int argc, char** argv)
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
     check(game_query_prefix_mode(select_game_query_profile(known)) == 0, "known identity");
+    check(castlevania_integral_texture_profile({GameQueryProfile::Fast, known, true}),
+          "Castlevania raster choice is independent of query mode");
+    check(!castlevania_integral_texture_profile({GameQueryProfile::CastlevaniaDosUsRevision0, known, false}),
+          "unidentified raster choice defaults off");
     for (unsigned i = 0; i < 4; ++i) {
         auto other = known; other.code[i] ^= 1;
         check(select_game_query_profile(other) == GameQueryProfile::Fast, "code mismatch");
+        check(!castlevania_integral_texture_profile({GameQueryProfile::CastlevaniaDosUsRevision0, other, true}),
+              "code mismatch must not inherit Castlevania raster choice");
     }
     auto other = known; ++other.revision;
     check(select_game_query_profile(other) == GameQueryProfile::Fast, "revision mismatch");
+    check(!castlevania_integral_texture_profile({GameQueryProfile::Fast, other, true}), "raster revision mismatch");
     other = known; other.header_crc32 ^= 1;
     check(select_game_query_profile(other) == GameQueryProfile::Fast, "header mismatch");
+    check(!castlevania_integral_texture_profile({GameQueryProfile::Fast, other, true}), "raster header mismatch");
     check(read_game_query_profile([](GameQueryHeader&) { return false; }).profile ==
           GameQueryProfile::Fast, "read failure default");
     unsigned calls = 0;
     auto raced = read_game_query_profile([&](GameQueryHeader& h) { h[0] = ++calls; return true; });
     check(!raced.identified && raced.profile == GameQueryProfile::Fast, "changing header default");
+    check(!castlevania_integral_texture_profile(raced), "changing header disables raster shortcut");
     calls = 0;
     auto short_second = read_game_query_profile([&](GameQueryHeader&) { return ++calls == 1; });
     check(!short_second.identified && short_second.profile == GameQueryProfile::Fast, "second read failure");
+    check(!castlevania_integral_texture_profile(short_second), "failed second read disables raster shortcut");
 
     // Optional private fixtures stay outside the source tree and release.
     if (argc == 3) {
@@ -52,6 +62,7 @@ int main(int argc, char** argv)
             auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = *header; return true; });
             check(selected.identified, "stable header read");
             check(game_query_prefix_mode(selected.profile) == (header == &cast ? 0u : 2u), "reload/reset choice");
+            check(castlevania_integral_texture_profile(selected) == (header == &cast), "reload/reset raster choice");
         }
         for (std::size_t byte = 0; byte < cast.size(); ++byte) {
             auto changed = cast; changed[byte] ^= 1;

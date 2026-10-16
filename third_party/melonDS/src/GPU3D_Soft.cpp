@@ -1594,7 +1594,11 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     switch (rp->PixelState.TextureWrapFlags)
     {
     case 0x0u:
-        if (neutralOpaque)
+        if (neutralOpaque && GPU3D.IntegralTextureSpansEnabled())
+            RenderCachedModulateIntegralTextureDispatch<0x0u>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (neutralOpaque)
             RenderCachedModulateInteriorSpanMode<0x0u, true, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1610,7 +1614,11 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     case 0x3u:
-        if (neutralOpaque)
+        if (neutralOpaque && GPU3D.IntegralTextureSpansEnabled())
+            RenderCachedModulateIntegralTextureDispatch<0x3u>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (neutralOpaque)
             RenderCachedModulateInteriorSpanMode<0x3u, true, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1626,7 +1634,11 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     default:
-        if (neutralOpaque)
+        if (neutralOpaque && GPU3D.IntegralTextureSpansEnabled())
+            RenderCachedModulateIntegralTextureDispatch<0xFFu>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (neutralOpaque)
             RenderCachedModulateInteriorSpanMode<0xFFu, true, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1702,6 +1714,82 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
         }
         else if (!NDS4MiSTerModulateVisibleCachedPixel(
                 texel, vertexColor, polyAlpha, alphaRef, color))
+            continue;
+        const u8 alpha = color >> 24;
+
+        if (alpha == 31)
+        {
+            DepthBuffer[pixeladdr] = z;
+            ColorBuffer[pixeladdr] = color;
+            AttrBuffer[pixeladdr] = polyattr;
+        }
+        else
+        {
+            if (!writeTranslucentDepth) z = -1;
+            PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
+
+            if (NDS4MiSTerCachedPixelHasLowerLayer(
+                    AttrBuffer, BufferSize, pixeladdr))
+                PlotTranslucentPixel(
+                    pixeladdr + BufferSize, color, z, polyattr, 0);
+        }
+    }
+}
+
+template<u8 WrapMode>
+[[gnu::hot, gnu::noinline]] void
+SoftRenderer3D::RenderCachedModulateIntegralTextureDispatch(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    Interpolator<0>& interpX,
+    Interpolator<0>::SpanDepthInterpolator& spanDepth,
+    Interpolator<0>::SpanInterpolator& spanAttributes,
+    u32 packedSpanColor, s32 constantSpanDepth)
+{
+    s32 textureS, textureT, stepS, stepT;
+    if (spanAttributes.PrepareIntegralTextureSpan(
+            firstX, textureS, textureT, stepS, stepT))
+        RenderCachedModulateIntegralTextureSpan<WrapMode>(
+            rp, y, firstX, endX, textureS, textureT, stepS, stepT,
+            constantSpanDepth);
+    else
+        RenderCachedModulateInteriorSpanMode<WrapMode, true, true, true>(
+            rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+            packedSpanColor, constantSpanDepth);
+}
+
+template<u8 WrapMode>
+[[gnu::hot, gnu::noinline]] void
+SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    s32 textureS, s32 textureT, s32 stepS, s32 stepT,
+    s32 constantSpanDepth)
+{
+    Polygon* polygon = rp->PolyData;
+    const auto& pixelState = rp->PixelState;
+    const u32 polyattr = rp->PolyAttr;
+    const u32 alphaRef = GPU3D.RenderAlphaRef;
+    const bool writeTranslucentDepth = polygon->Attr & (1<<11);
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+
+    for (s32 x = firstX; x < endX; ++x, textureS += stepS, textureT += stepT)
+    {
+        u32 pixeladdr = rowAddress + x;
+
+        s32 z = constantSpanDepth;
+
+        if (!NDS4MiSTerSelectCachedDepthPixel(
+                DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+            continue;
+
+        const u32 texel = pixelState.TexturePixels[
+            NDS4MiSTerCachedTextureIndexForMode<WrapMode>(
+                static_cast<s16>(textureS), static_cast<s16>(textureT),
+                pixelState.TextureWidth, pixelState.TextureHeight,
+                pixelState.TextureWidthMask, pixelState.TextureHeightMask,
+                pixelState.TextureWrapFlags,
+                pixelState.TextureWidthShift)];
+        u32 color;
+        if (!NDS4MiSTerNeutralOpaqueCachedPixel(texel, alphaRef, color))
             continue;
         const u8 alpha = color >> 24;
 

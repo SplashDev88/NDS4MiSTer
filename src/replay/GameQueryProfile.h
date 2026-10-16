@@ -61,6 +61,15 @@ struct GameQuerySelection {
     bool identified = false;
 };
 
+// The measured sprite-raster shortcut is selected independently of query
+// reply policy. Unknown/revised headers retain the established raster path.
+inline bool castlevania_integral_texture_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        select_game_query_profile(selected.identity) ==
+            GameQueryProfile::CastlevaniaDosUsRevision0;
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&

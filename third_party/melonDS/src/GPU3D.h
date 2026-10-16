@@ -141,6 +141,17 @@ public:
         return ExternalGeometryDiscardActive ||
             ExternalGeometryDiscardTainted;
     }
+    // Host raster policy, selected before starting this instance's workers.
+    // It is not guest state and is never restored from a GPU savestate.
+    void SetIntegralTextureSpansEnabled(bool enabled) noexcept
+    {
+        UseIntegralTextureSpans = enabled;
+    }
+    bool IntegralTextureSpansEnabled() const noexcept
+    {
+        return UseIntegralTextureSpans;
+    }
+
     // Native-resolution software rendering consumes FinalPosition only.
     // OpenGL/compute renderers additionally consume HiresPosition.
     void SetHighResolutionCoordinatesEnabled(bool enabled) noexcept
@@ -324,6 +335,7 @@ public:
     bool ExternalGeometryDiscardActive = false;
     bool ExternalGeometryDiscardTainted = false;
     bool HighResolutionCoordinatesEnabled = true;
+    bool UseIntegralTextureSpans = false;
 
     u32 DispCnt = 0;
     u8 AlphaRefVal = 0;

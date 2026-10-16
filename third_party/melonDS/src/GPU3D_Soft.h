@@ -1547,6 +1547,25 @@ private:
                 return Parent.xdiff > 0 && !Parent.linear;
             }
 
+            // An integral step has no quotient/remainder rounding at any X.
+            // Keep coordinates in registers across depth-rejected pixels;
+            // the following generic edge must recompute its own recurrence.
+            [[gnu::always_inline]] inline bool
+            PrepareIntegralTextureSpan(
+                s32 firstX, s32& s, s32& t, s32& stepS, s32& stepT) noexcept
+            {
+                if (!Parent.linear || Parent.xdiff <= 0 ||
+                    StepRemainder[3] || StepRemainder[4])
+                    return false;
+                const s32 relativeX = firstX - Parent.x0;
+                stepS = StepQuotient[3];
+                stepT = StepQuotient[4];
+                s = Base[3] + (Ascending[3] ? 0 : static_cast<s32>(Delta[3])) + stepS * relativeX;
+                t = Base[4] + (Ascending[4] ? 0 : static_cast<s32>(Delta[4])) + stepT * relativeX;
+                Valid = false;
+                return true;
+            }
+
             struct PerspectiveBatchCoefficients
             {
                 s32 Origin256[5];
@@ -2209,6 +2228,20 @@ private:
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes);
 #endif
+    template<u8 WrapMode>
+    [[gnu::hot, gnu::noinline]] void
+    RenderCachedModulateIntegralTextureDispatch(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        Interpolator<0>& interpX,
+        Interpolator<0>::SpanDepthInterpolator& spanDepth,
+        Interpolator<0>::SpanInterpolator& spanAttributes,
+        u32 packedSpanColor, s32 constantSpanDepth);
+    template<u8 WrapMode>
+    [[gnu::hot, gnu::noinline]] void
+    RenderCachedModulateIntegralTextureSpan(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        s32 textureS, s32 textureT, s32 stepS, s32 stepT,
+        s32 constantSpanDepth);
     void PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow);
     void SetupPolygonLeftEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygonRightEdge(RendererPolygon* rp, s32 y) const;

@@ -733,7 +733,8 @@ public:
         bool matched_full_rate = false,
         unsigned matrix_prefix_mode = 0,
         bool timing_profile_only = false,
-        bool matched_recovery_skip = false)
+        bool matched_recovery_skip = false,
+        bool integral_texture_spans = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -763,6 +764,7 @@ public:
           matched_full_rate_(matched_display_test && matched_full_rate),
           matched_recovery_skip_enabled_(matched_display_test && matched_full_rate &&
                                          asynchronous_arm_video_replay && matched_recovery_skip),
+          integral_texture_spans_(matched_display_test && integral_texture_spans),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -1242,6 +1244,7 @@ private:
         // calculating it costs two 64-bit divisions for every accepted
         // vertex on the Cortex-A9.
         nds_->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+        nds_->GPU.GPU3D.SetIntegralTextureSpansEnabled(integral_texture_spans_);
         matrix_prefix_.reset();
         active_prefix_snapshot_ = nullptr;
         active_prefix_published_ = false;
@@ -5433,6 +5436,7 @@ private:
     // Opt-in: remove only the cadence ceiling, retaining line-zero admission.
     bool matched_full_rate_ = false;
     bool matched_recovery_skip_enabled_ = false;
+    bool integral_texture_spans_ = false;
     nds4mister::replay::MatchedDisplayRecovery matched_recovery_pacer_;
     std::uint32_t matched_next_line_ = 0;
     bool asynchronous_arm_video_replay_ = false;
@@ -10970,11 +10974,12 @@ try {
             const bool half_rate_requested = frame_skip_requested &&
                 std::strcmp(frame_skip_requested, "nsmb-half") == 0;
             bool nsmb_recovery = false;
+            bool integral_texture_spans = false;
             unsigned matrix_prefix_mode = !prefix_requested ? 0u :
                 std::strcmp(prefix_requested, "verify") == 0 ? 1u :
                 std::strcmp(prefix_requested, "fast") == 0 || automatic_query_profile ? 2u : 0u;
             std::uint32_t profile_session = 0;
-            if ((automatic_query_profile || recovery_requested || half_rate_requested) && matched_display) {
+            if (matched_display) {
                 const auto selected_session = load_acquire(&header.fpga_session);
                 const auto selected = read_cartridge_query_profile(memory_path);
                 // Loading another ROM/resetting during identification must
@@ -10983,6 +10988,7 @@ try {
                     load_acquire(&header.fpga_session) != selected_session)
                     continue;
                 profile_session = selected_session;
+                integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected);
                 if (automatic_query_profile)
                     matrix_prefix_mode = nds4mister::replay::game_query_prefix_mode(selected.profile);
                 // Controlled NSMB-only comparison: reuse the existing tested
@@ -10999,6 +11005,7 @@ try {
                     << " prefix_mode=" << matrix_prefix_mode
                     << " identified=" << selected.identified
                     << " recovery_skip=" << nsmb_recovery
+                    << " integral_texture_spans=" << integral_texture_spans
                     << " display_cadence=" << (matched_full_rate ? 1 : 2)
                     << " header_crc32=" << std::hex << selected.identity.header_crc32;
                 std::cout << profile_log.str() << std::endl;
@@ -11030,7 +11037,8 @@ try {
                 matched_full_rate,
                 matrix_prefix_mode,
                 timing_profile_only,
-                nsmb_recovery);
+                nsmb_recovery,
+                integral_texture_spans);
             const bool initialized = candidate->initialize(profile_session);
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.
