@@ -2076,6 +2076,7 @@ private:
             bool Highlight;
             bool Wireframe;
             bool CachedModulate;
+            bool ConstantVertexColor;
         };
 
         Polygon* PolyData;

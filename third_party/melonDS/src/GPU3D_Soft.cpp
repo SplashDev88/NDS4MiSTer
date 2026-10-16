@@ -1038,6 +1038,21 @@ void SoftRenderer3D::SetupPolygon(
         pixelState.BlendMode == 0 && !pixelState.Highlight &&
         !pixelState.Wireframe;
 
+    // Equal vertex colors stay equal through both edge and span interpolation.
+    // Check once per polygon so every covered row can reuse the exact input.
+    pixelState.ConstantVertexColor = true;
+    const auto* firstColor = polygon->Vertices[0]->FinalColor;
+    for (u32 i = 1; i < nverts; ++i)
+    {
+        const auto* color = polygon->Vertices[i]->FinalColor;
+        if (color[0] != firstColor[0] || color[1] != firstColor[1] ||
+            color[2] != firstColor[2])
+        {
+            pixelState.ConstantVertexColor = false;
+            break;
+        }
+    }
+
     rp->PolyAttr = polygon->Attr & 0x3F008000;
     if (!polygon->FacingView) rp->PolyAttr |= (1<<4);
     if (polygon->Attr & (1<<14))
@@ -1839,16 +1854,25 @@ void SoftRenderer3D::RenderPolygonScanline(
 
     // interpolate attributes along Y
 
-    s32 rl = interp_start->Interpolate(vlcur->FinalColor[0], vlnext->FinalColor[0]);
-    s32 gl = interp_start->Interpolate(vlcur->FinalColor[1], vlnext->FinalColor[1]);
-    s32 bl = interp_start->Interpolate(vlcur->FinalColor[2], vlnext->FinalColor[2]);
+    s32 rl, gl, bl, rr, gr, br;
+    if (rp->PixelState.ConstantVertexColor)
+    {
+        rl = rr = vlcur->FinalColor[0];
+        gl = gr = vlcur->FinalColor[1];
+        bl = br = vlcur->FinalColor[2];
+    }
+    else
+    {
+        rl = interp_start->Interpolate(vlcur->FinalColor[0], vlnext->FinalColor[0]);
+        gl = interp_start->Interpolate(vlcur->FinalColor[1], vlnext->FinalColor[1]);
+        bl = interp_start->Interpolate(vlcur->FinalColor[2], vlnext->FinalColor[2]);
+        rr = interp_end->Interpolate(vrcur->FinalColor[0], vrnext->FinalColor[0]);
+        gr = interp_end->Interpolate(vrcur->FinalColor[1], vrnext->FinalColor[1]);
+        br = interp_end->Interpolate(vrcur->FinalColor[2], vrnext->FinalColor[2]);
+    }
 
     s32 sl = interp_start->Interpolate(vlcur->TexCoords[0], vlnext->TexCoords[0]);
     s32 tl = interp_start->Interpolate(vlcur->TexCoords[1], vlnext->TexCoords[1]);
-
-    s32 rr = interp_end->Interpolate(vrcur->FinalColor[0], vrnext->FinalColor[0]);
-    s32 gr = interp_end->Interpolate(vrcur->FinalColor[1], vrnext->FinalColor[1]);
-    s32 br = interp_end->Interpolate(vrcur->FinalColor[2], vrnext->FinalColor[2]);
 
     s32 sr = interp_end->Interpolate(vrcur->TexCoords[0], vrnext->TexCoords[0]);
     s32 tr = interp_end->Interpolate(vrcur->TexCoords[1], vrnext->TexCoords[1]);
