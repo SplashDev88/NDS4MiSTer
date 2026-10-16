@@ -709,6 +709,26 @@ NDS4MiSTerSelectCachedDepthPixel(
         (lowerAttr & 0x00400010u) == 0x00000010u;
 }
 
+template<bool FrontFacing>
+[[gnu::always_inline, gnu::hot]] inline bool
+NDS4MiSTerSelectIntegralDepthPixel(
+    const u32* depthBuffer, const u32* attrBuffer, u32 bufferSize,
+    s32 sourceZ, u32& pixelAddress) noexcept
+{
+    if constexpr (FrontFacing)
+        return NDS4MiSTerSelectCachedDepthPixel(
+            depthBuffer, attrBuffer, bufferSize, sourceZ, pixelAddress);
+
+    // Back faces never use the front face's equal-Z exception, including
+    // when falling through an antialiased edge to the lower pixel layer.
+    if (sourceZ < static_cast<s32>(depthBuffer[pixelAddress]))
+        return true;
+    if (pixelAddress >= bufferSize || !(attrBuffer[pixelAddress] & 0xFu))
+        return false;
+    pixelAddress += bufferSize;
+    return sourceZ < static_cast<s32>(depthBuffer[pixelAddress]);
+}
+
 [[gnu::always_inline, gnu::hot]] inline bool
 NDS4MiSTerCachedPixelHasLowerLayer(
     const u32* attrBuffer, u32 bufferSize, u32 pixelAddress) noexcept
@@ -2229,6 +2249,7 @@ private:
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes);
 #endif
+    template<bool FrontFacing = true>
     [[gnu::hot, gnu::noinline]] void
     RenderCachedContiguousTextureSpan(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -2241,12 +2262,16 @@ private:
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes,
         u32 packedSpanColor, s32 constantSpanDepth);
-    template<u8 WrapMode>
+    template<u8 WrapMode, bool FrontFacing = true>
     [[gnu::hot, gnu::noinline]] void
     RenderCachedModulateIntegralTextureSpan(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
         s32 textureS, s32 textureT, s32 stepS, s32 stepT,
         s32 constantSpanDepth);
+    [[gnu::hot, gnu::noinline]] bool
+    TryRenderBackfaceRectangleInterior(
+        RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+        Interpolator<0>::SpanInterpolator& spanAttributes);
     void PlotTranslucentPixel(u32 pixeladdr, u32 color, u32 z, u32 polyattr, u32 shadow);
     void SetupPolygonLeftEdge(RendererPolygon* rp, s32 y) const;
     void SetupPolygonRightEdge(RendererPolygon* rp, s32 y) const;

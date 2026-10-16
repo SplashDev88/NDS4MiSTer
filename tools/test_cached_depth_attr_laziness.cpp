@@ -18,14 +18,16 @@ struct Result
     bool PlotLower;
 };
 
+template<bool FrontFacing>
 constexpr bool referenceDepthPass(
     s32 destinationZ, s32 sourceZ, u32 destinationAttr) noexcept
 {
     return sourceZ < destinationZ ||
-        (sourceZ == destinationZ &&
+        (FrontFacing && sourceZ == destinationZ &&
          (destinationAttr & 0x00400010u) == 0x00000010u);
 }
 
+template<bool FrontFacing>
 Result referenceResult(
     const std::array<u32, 4>& depths,
     const std::array<u32, 4>& attributes,
@@ -34,7 +36,7 @@ Result referenceResult(
 {
     u32 pixelAddress = initialAddress;
     u32 destinationAttr = attributes[pixelAddress];
-    if (!referenceDepthPass(
+    if (!referenceDepthPass<FrontFacing>(
             static_cast<s32>(depths[pixelAddress]),
             sourceZ, destinationAttr))
     {
@@ -43,7 +45,7 @@ Result referenceResult(
 
         pixelAddress += bufferSize;
         destinationAttr = attributes[pixelAddress];
-        if (!referenceDepthPass(
+        if (!referenceDepthPass<FrontFacing>(
                 static_cast<s32>(depths[pixelAddress]),
                 sourceZ, destinationAttr))
             return {false, pixelAddress, false};
@@ -55,6 +57,7 @@ Result referenceResult(
     return {true, pixelAddress, plotLower};
 }
 
+template<bool FrontFacing>
 Result candidateResult(
     const std::array<u32, 4>& depths,
     const std::array<u32, 4>& attributes,
@@ -62,7 +65,7 @@ Result candidateResult(
     u32 alpha, u32 alphaRef) noexcept
 {
     u32 pixelAddress = initialAddress;
-    if (!melonDS::NDS4MiSTerSelectCachedDepthPixel(
+    if (!melonDS::NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
             depths.data(), attributes.data(), bufferSize,
             sourceZ, pixelAddress))
         return {false, pixelAddress, false};
@@ -102,6 +105,7 @@ bool proveStrictNearerSkipsAttributes(std::uint64_t& comparisons)
         pixelAddress == 0;
 }
 
+template<bool FrontFacing>
 bool exhaustiveBoundaryDomain(std::uint64_t& comparisons)
 {
     constexpr s32 depthValues[] = {
@@ -147,10 +151,10 @@ bool exhaustiveBoundaryDomain(std::uint64_t& comparisons)
             attributes[initialAddress + 2] = lowerAttr;
         }
 
-        const Result expected = referenceResult(
+        const Result expected = referenceResult<FrontFacing>(
             depths, attributes, 2, initialAddress, sourceZ,
             alpha, alphaRef);
-        const Result actual = candidateResult(
+        const Result actual = candidateResult<FrontFacing>(
             depths, attributes, 2, initialAddress, sourceZ,
             alpha, alphaRef);
         ++comparisons;
@@ -171,6 +175,7 @@ bool exhaustiveBoundaryDomain(std::uint64_t& comparisons)
     return true;
 }
 
+template<bool FrontFacing>
 bool randomDomain(std::uint64_t& comparisons)
 {
     u32 randomState = 0xD37A9E51u;
@@ -194,10 +199,10 @@ bool randomDomain(std::uint64_t& comparisons)
         const s32 sourceZ = static_cast<s32>(randomWord());
         const u32 alpha = randomWord() & 31u;
         const u32 alphaRef = randomWord() & 31u;
-        const Result expected = referenceResult(
+        const Result expected = referenceResult<FrontFacing>(
             depths, attributes, 2, initialAddress, sourceZ,
             alpha, alphaRef);
-        const Result actual = candidateResult(
+        const Result actual = candidateResult<FrontFacing>(
             depths, attributes, 2, initialAddress, sourceZ,
             alpha, alphaRef);
         ++comparisons;
@@ -222,11 +227,13 @@ int main()
 {
     std::uint64_t comparisons = 0;
     if (!proveStrictNearerSkipsAttributes(comparisons)) return 1;
-    if (!exhaustiveBoundaryDomain(comparisons)) return 2;
-    if (!randomDomain(comparisons)) return 3;
+    if (!exhaustiveBoundaryDomain<true>(comparisons)) return 2;
+    if (!exhaustiveBoundaryDomain<false>(comparisons)) return 4;
+    if (!randomDomain<true>(comparisons)) return 3;
+    if (!randomDomain<false>(comparisons)) return 5;
     std::printf(
         "PASS: cached depth lazy-attribute oracle comparisons=%llu "
-        "strict-nearer-null-attr=1\n",
+        "strict-nearer-null-attr=1 front-and-back=1\n",
         static_cast<unsigned long long>(comparisons));
     return 0;
 }

@@ -1771,6 +1771,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
     }
 }
 
+template<bool FrontFacing>
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedContiguousTextureSpan(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -1817,7 +1818,7 @@ SoftRenderer3D::RenderCachedContiguousTextureSpan(
         {
             u32 pixeladdr = rowAddress + firstX;
             s32 z = constantSpanDepth;
-            if (!NDS4MiSTerSelectCachedDepthPixel(
+            if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
                     DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
                 continue;
             u32 color;
@@ -1864,7 +1865,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureDispatch(
             packedSpanColor, constantSpanDepth);
 }
 
-template<u8 WrapMode>
+template<u8 WrapMode, bool FrontFacing>
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -1890,7 +1891,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
             pixelState.TextureWidth, pixelState.TextureHeight,
             pixelState.TextureWidthMask, pixelState.TextureHeightMask,
             pixelState.TextureWrapFlags, pixelState.TextureWidthShift);
-        RenderCachedContiguousTextureSpan(
+        RenderCachedContiguousTextureSpan<FrontFacing>(
             rp, y, firstX, endX, pixelState.TexturePixels + textureIndex,
             constantSpanDepth);
         return;
@@ -1902,7 +1903,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
 
         s32 z = constantSpanDepth;
 
-        if (!NDS4MiSTerSelectCachedDepthPixel(
+        if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
                 DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
             continue;
 
@@ -1935,6 +1936,46 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
                     pixeladdr + BufferSize, color, z, polyattr, 0);
         }
     }
+}
+
+[[gnu::hot, gnu::noinline]] bool
+SoftRenderer3D::TryRenderBackfaceRectangleInterior(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
+    Interpolator<0>::SpanInterpolator& spanAttributes)
+{
+    s32 textureS, textureT, stepS, stepT;
+    if (!spanAttributes.PrepareIntegralTextureSpan(
+            firstX, textureS, textureT, stepS, stepT))
+        return false;
+    const auto& state = rp->PixelState;
+    if (stepT == 0)
+    {
+        const u32 row = NDS4MiSTerCachedTextureIndex(
+            0, static_cast<s16>(textureT), state.TextureWidth, state.TextureHeight,
+            state.TextureWidthMask, state.TextureHeightMask,
+            state.TextureWrapFlags, state.TextureWidthShift) >> state.TextureWidthShift;
+        if (state.TexturePixels[state.TextureWidth * state.TextureHeight + row] <=
+            GPU3D.RenderAlphaRef)
+            return true;
+    }
+    // SetupPolygon proved constant white RGB, alpha 31 and equal depth/W.
+    // Nonintegral interpolation and boundary scanlines retain the old loop.
+    switch (state.TextureWrapFlags)
+    {
+    case 0x0u:
+        RenderCachedModulateIntegralTextureSpan<0x0u, false>(
+            rp, y, firstX, endX, textureS, textureT, stepS, stepT, rp->PolyData->FinalZ[0]);
+        break;
+    case 0x3u:
+        RenderCachedModulateIntegralTextureSpan<0x3u, false>(
+            rp, y, firstX, endX, textureS, textureT, stepS, stepT, rp->PolyData->FinalZ[0]);
+        break;
+    default:
+        RenderCachedModulateIntegralTextureSpan<0xFFu, false>(
+            rp, y, firstX, endX, textureS, textureT, stepS, stepT, rp->PolyData->FinalZ[0]);
+        break;
+    }
+    return true;
 }
 
 void SoftRenderer3D::RenderPolygonScanline(
@@ -2701,6 +2742,11 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         RenderCachedModulateInteriorSpan(
             rp, y, x, xlimit, interpX, spanDepth,
             spanAttributes);
+        x = xlimit;
+    }
+    else if (!FrontFacing && yedge == 0 &&
+        TryRenderBackfaceRectangleInterior(rp, y, x, xlimit, spanAttributes))
+    {
         x = xlimit;
     }
     else
