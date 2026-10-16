@@ -4,6 +4,8 @@ Status: focused Castlevania test candidate. Exact-output and short live
 compatibility checks pass; a live speed gain has not been demonstrated.
 Beta6 remains the accepted general runtime.
 
+Follow-up: [rectangle rendering experiment](CASTLEVANIA_RECTANGLE_PERFORMANCE_20261016.md), with new native controls and live room measurements.
+
 ## Scope
 
 The requested routes are the cave directly left of a save room, with a

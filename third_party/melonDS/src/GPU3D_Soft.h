@@ -2096,6 +2096,7 @@ private:
             bool Wireframe;
             bool CachedModulate;
             bool ConstantVertexColor;
+            bool FlatRectangle;
         };
 
         Polygon* PolyData;
@@ -2251,6 +2252,10 @@ private:
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
+    void RenderFlatRectangleScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     void RenderPolygonScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX,

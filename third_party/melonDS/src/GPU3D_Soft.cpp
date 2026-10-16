@@ -1146,6 +1146,40 @@ void SoftRenderer3D::SetupPolygon(
         SetupPolygonLeftEdge(rp, ytop);
         SetupPolygonRightEdge(rp, ytop);
     }
+    // Prove all corners and their order: a quad bounding box alone also
+    // accepts crossed or degenerate polygons. The session policy limits
+    // this specialization to the qualified Castlevania cartridge.
+    pixelState.FlatRectangle = false;
+    if (GPU3D.IntegralTextureSpansEnabled() && nverts == 4 &&
+        ytop < ybot && rp->XL < rp->XR &&
+        pixelState.CachedModulate && pixelState.PolyAlpha == 31 &&
+        pixelState.ConstantVertexColor &&
+        (firstColor[0] >> 3) == 63 && (firstColor[1] >> 3) == 63 &&
+        (firstColor[2] >> 3) == 63 &&
+        !polygon->IsShadow && !polygon->IsShadowMask &&
+        rp->DepthTest == DepthTest_LessThan_FrontFacing &&
+        !(polygon->FinalW[0] & 0x7F) &&
+        rp->SlopeL.Increment == 0 && rp->SlopeR.Increment == 0)
+    {
+        bool rectangle = true;
+        unsigned corners = 0;
+        for (u32 i = 0; i < 4; ++i)
+        {
+            const auto* v = polygon->Vertices[i];
+            const auto* next = polygon->Vertices[(i + 1) & 3];
+            const s32 x = v->FinalPosition[0], y = v->FinalPosition[1];
+            rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
+            rectangle &= (x == next->FinalPosition[0]) != (y == next->FinalPosition[1]);
+            rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
+                         polygon->FinalZ[i] == polygon->FinalZ[0];
+            corners |= 1u << ((x == rp->XR ? 1 : 0) | (y == ybot ? 2 : 0));
+        }
+        rectangle &= polygon->Vertices[rp->CurVL]->FinalPosition[1] == ytop &&
+                     polygon->Vertices[rp->CurVR]->FinalPosition[1] == ytop &&
+                     polygon->Vertices[rp->NextVL]->FinalPosition[1] == ybot &&
+                     polygon->Vertices[rp->NextVR]->FinalPosition[1] == ybot;
+        pixelState.FlatRectangle = rectangle && corners == 15;
+    }
 }
 
 void SoftRenderer3D::RenderShadowMaskScanline(
@@ -1817,6 +1851,12 @@ void SoftRenderer3D::RenderPolygonScanline(
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
+    if (rp->PixelState.FlatRectangle)
+    {
+        RenderFlatRectangleScanline(rp, y, prevIsShadowMask, stencilBuffer,
+            clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
+        return;
+    }
     Polygon* polygon = rp->PolyData;
 
     const u32 polyattr = rp->PolyAttr;
@@ -2343,6 +2383,405 @@ void SoftRenderer3D::RenderPolygonScanline(
             // blend with bottom pixel too, if needed
             if ((dstattr & 0xF) && (pixeladdr < BufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
+        }
+    }
+
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
+// Only selected for verified linear, front-facing, neutral-color rectangles.
+// The three pixel loops below retain the generic edge/layer/blending rules.
+// Keep the fallback's compiled body separate: a shared templated body passed
+// output tests but regressed NSMB by about 5% on the stock Cortex-A9.
+// Changes to these loops require the cross-build full-buffer oracle and the
+// live-scene/other-game controls; a synthetic visible-only check is insufficient.
+void SoftRenderer3D::RenderFlatRectangleScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
+{
+    Polygon* polygon = rp->PolyData;
+    const u32 polyattr = rp->PolyAttr;
+    constexpr u32 polyalpha = 31;
+    constexpr bool wireframe = false;
+    const auto fnDepthTest = DepthTest_LessThan_FrontFacing;
+    prevIsShadowMask = false;
+    const s32 xstart = rp->XL, xend = rp->XR - 1;
+    constexpr bool l_filledge = true, r_filledge = true;
+    constexpr s32 l_edgelen = 1, r_edgelen = 1;
+    constexpr s32 l_edgecov = 31, r_edgecov = 31;
+    const auto* vlcur = polygon->Vertices[rp->CurVL];
+    const auto* vlnext = polygon->Vertices[rp->NextVL];
+    const auto* vrcur = polygon->Vertices[rp->CurVR];
+    const auto* vrnext = polygon->Vertices[rp->NextVR];
+    const auto* interp_start = &rp->SlopeL.Interp;
+    const auto* interp_end = &rp->SlopeR.Interp;
+    const s32 wl = polygon->FinalW[0], wr = wl;
+    const s32 zl = polygon->FinalZ[0], zr = zl;
+    const s32 rl = vlcur->FinalColor[0], rr = rl;
+    const s32 gl = vlcur->FinalColor[1], gr = gl;
+    const s32 bl = vlcur->FinalColor[2], br = bl;
+    const s32 sl = interp_start->Interpolate(vlcur->TexCoords[0], vlnext->TexCoords[0]);
+    const s32 tl = interp_start->Interpolate(vlcur->TexCoords[1], vlnext->TexCoords[1]);
+    const s32 sr = interp_end->Interpolate(vrcur->TexCoords[0], vrnext->TexCoords[0]);
+    const s32 tr = interp_end->Interpolate(vrcur->TexCoords[1], vrnext->TexCoords[1]);
+
+    // in wireframe mode, there are special rules for equal Z (TODO)
+
+    int yedge = 0;
+    if (y == polygon->YTop)           yedge = 0x4;
+    else if (y == polygon->YBottom-1) yedge = 0x8;
+    int edge;
+
+    s32 x = xstart;
+    Interpolator<0> interpX(xstart, xend+1, wl, wr, polygon->WBuffer);
+    Interpolator<0>::SpanDepthInterpolator spanDepth(interpX, zl, zr);
+    Interpolator<0>::SpanInterpolator spanAttributes(
+        interpX, rl, rr, gl, gr, bl, br, sl, sr, tl, tr);
+    // Equal RGB endpoints make color invariant across this entire row,
+    // including antialiased edges and the generic/shadow pixel paths. The
+    // cached interior already skips these three interpolators; keep the
+    // same exact optimization when returning to either edge. RGB recurrence
+    // state stays at its constant base, so skipped/depth-rejected pixels and
+    // transitions between generic and cached spans need no resynchronizing.
+    constexpr bool constantSpanColor = true;
+    s32 spanValues[5] = {rl, gl, bl, 0, 0};
+    const auto interpolateSpanValues = [&]()
+    {
+        if (constantSpanColor)
+            spanAttributes.Interpolate<3>(spanValues);
+        else
+            spanAttributes.Interpolate(spanValues);
+    };
+    const s32 constantDepth = polygon->FinalZ[0];
+    constexpr bool constantLinearDepth = true;
+    const auto interpolateSpanDepth = [&](s32 pixelX) -> s32
+    {
+        // Linear attributes and equal depth endpoints never consume the
+        // perspective factor, even on antialiased/shadow edge pixels.
+        // Invalidate it exactly as the cached interior does, so the next
+        // consumer that needs it takes the normal exact resync path.
+        if (constantLinearDepth)
+        {
+            interpX.SetLinearX(pixelX);
+            return constantDepth;
+        }
+        interpX.SetX(pixelX);
+        return spanDepth.Interpolate();
+    };
+    const auto renderSpanPixel = [this, rp](u32, u32, u32, s16 s, s16 t)
+        __attribute__((always_inline)) -> u32
+    {
+        return LookupCachedTexel(rp->PixelState, s, t) & 0xff3f3f3fu;
+    };
+    const bool cachedModulateInterior = yedge == 0;
+
+    const s32 visibleStart = std::max<s32>(xstart, 0);
+    const s32 visibleEnd = std::min<s32>(xend + 1, 256);
+    if (visibleStart < visibleEnd)
+    {
+        finalPassMinX[y] = std::min<u16>(
+            finalPassMinX[y], static_cast<u16>(visibleStart));
+        finalPassMaxX[y] = std::max<u16>(
+            finalPassMaxX[y], static_cast<u16>(visibleEnd));
+    }
+
+    if (x < clipStartX) x = clipStartX;
+    s32 xlimit;
+
+    s32 xcov = 0;
+
+    // part 1: left edge
+    edge = yedge | 0x1;
+    xlimit = xstart+l_edgelen;
+    if (xlimit > xend+1) xlimit = xend+1;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
+    if (l_edgecov & (1<<31))
+    {
+        xcov = (l_edgecov >> 12) & 0x3FF;
+        if (xcov == 0x3FF) xcov = 0;
+    }
+
+    if (!l_filledge) x = xlimit;
+    else
+    for (; x < xlimit; x++)
+    {
+        u32 pixeladdr = FirstPixelOffset + (y*ScanlineWidth) + x;
+        u32 dstattr = AttrBuffer[pixeladdr];
+
+        // check stencil buffer for shadows
+        if (false)
+        {
+            u8 stencil = stencilBuffer[256*(y&0x1) + x];
+            if (!stencil)
+                continue;
+            if (!(stencil & 0x1))
+                pixeladdr += BufferSize;
+            if (!(stencil & 0x2))
+                dstattr &= ~0xF; // quick way to prevent drawing the shadow under antialiased edges
+        }
+
+        s32 z = interpolateSpanDepth(x);
+
+        // if depth test against the topmost pixel fails, test
+        // against the pixel underneath
+        if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
+        {
+            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+
+            pixeladdr += BufferSize;
+            dstattr = AttrBuffer[pixeladdr];
+            if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
+                continue;
+        }
+
+        interpolateSpanValues();
+        const u32 vr = spanValues[0];
+        const u32 vg = spanValues[1];
+        const u32 vb = spanValues[2];
+        const s16 s = spanValues[3];
+        const s16 t = spanValues[4];
+
+        u32 color = renderSpanPixel(vr, vg, vb, s, t);
+        u8 alpha = color >> 24;
+
+        // alpha test
+        if (alpha <= GPU3D.RenderAlphaRef) continue;
+
+        if (alpha == 31)
+        {
+            u32 attr = polyattr | edge;
+
+            if (GPU3D.RenderDispCnt & (1<<4))
+            {
+                // anti-aliasing: all edges are rendered
+
+                // calculate coverage
+                s32 cov = l_edgecov;
+                if (cov & (1<<31))
+                {
+                    cov = xcov >> 5;
+                    if (cov > 31) cov = 31;
+                    xcov += (l_edgecov & 0x3FF);
+                }
+                attr |= (cov << 8);
+
+                // push old pixel down if needed
+                if (pixeladdr < BufferSize)
+                {
+                    ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
+                    DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
+                    AttrBuffer[pixeladdr+BufferSize] = AttrBuffer[pixeladdr];
+                }
+            }
+
+            DepthBuffer[pixeladdr] = z;
+            ColorBuffer[pixeladdr] = color;
+            AttrBuffer[pixeladdr] = attr;
+        }
+        else
+        {
+            if (!(polygon->Attr & (1<<11))) z = -1;
+            PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
+
+            // blend with bottom pixel too, if needed
+            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
+        }
+    }
+
+    // part 2: polygon inside
+    edge = yedge;
+    xlimit = xend-r_edgelen+1;
+    if (xlimit > xend+1) xlimit = xend+1;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
+
+    if (wireframe && !edge) x = std::max(x, xlimit);
+    else if (cachedModulateInterior)
+    {
+        RenderCachedModulateInteriorSpan(
+            rp, y, x, xlimit, interpX, spanDepth,
+            spanAttributes);
+        x = xlimit;
+    }
+    else
+    for (; x < xlimit; x++)
+    {
+        u32 pixeladdr = FirstPixelOffset + (y*ScanlineWidth) + x;
+        u32 dstattr = AttrBuffer[pixeladdr];
+
+        // check stencil buffer for shadows
+        if (false)
+        {
+            u8 stencil = stencilBuffer[256*(y&0x1) + x];
+            if (!stencil)
+                continue;
+            if (!(stencil & 0x1))
+                pixeladdr += BufferSize;
+            if (!(stencil & 0x2))
+                dstattr &= ~0xF; // quick way to prevent drawing the shadow under antialiased edges
+        }
+
+        s32 z = interpolateSpanDepth(x);
+
+        // if depth test against the topmost pixel fails, test
+        // against the pixel underneath
+        if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
+        {
+            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+
+            pixeladdr += BufferSize;
+            dstattr = AttrBuffer[pixeladdr];
+            if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
+                continue;
+        }
+
+        interpolateSpanValues();
+        const u32 vr = spanValues[0];
+        const u32 vg = spanValues[1];
+        const u32 vb = spanValues[2];
+        const s16 s = spanValues[3];
+        const s16 t = spanValues[4];
+
+        u32 color = renderSpanPixel(vr, vg, vb, s, t);
+        u8 alpha = color >> 24;
+
+        // alpha test
+        if (alpha <= GPU3D.RenderAlphaRef) continue;
+
+        if (alpha == 31)
+        {
+            u32 attr = polyattr | edge;
+
+            if ((GPU3D.RenderDispCnt & (1<<4)) && (attr & 0xF))
+            {
+                // anti-aliasing: all edges are rendered
+
+                // set coverage to avoid black lines from anti-aliasing
+                attr |= (0x1F << 8);
+
+                // push old pixel down if needed
+                if (pixeladdr < BufferSize)
+                {
+                    ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
+                    DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
+                    AttrBuffer[pixeladdr+BufferSize] = AttrBuffer[pixeladdr];
+                }
+            }
+
+            DepthBuffer[pixeladdr] = z;
+            ColorBuffer[pixeladdr] = color;
+            AttrBuffer[pixeladdr] = attr;
+        }
+        else
+        {
+            if (!(polygon->Attr & (1<<11))) z = -1;
+            PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
+
+            // blend with bottom pixel too, if needed
+            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
+        }
+    }
+
+    // part 3: right edge
+    edge = yedge | 0x2;
+    xlimit = xend+1;
+    if (xlimit < clipStartX) xlimit = clipStartX;
+    if (xlimit > clipEndX) xlimit = clipEndX;
+    if (r_edgecov & (1<<31))
+    {
+        xcov = (r_edgecov >> 12) & 0x3FF;
+        if (xcov == 0x3FF) xcov = 0;
+    }
+
+    if (r_filledge)
+    for (; x < xlimit; x++)
+    {
+        u32 pixeladdr = FirstPixelOffset + (y*ScanlineWidth) + x;
+        u32 dstattr = AttrBuffer[pixeladdr];
+
+        // check stencil buffer for shadows
+        if (false)
+        {
+            u8 stencil = stencilBuffer[256*(y&0x1) + x];
+            if (!stencil)
+                continue;
+            if (!(stencil & 0x1))
+                pixeladdr += BufferSize;
+            if (!(stencil & 0x2))
+                dstattr &= ~0xF; // quick way to prevent drawing the shadow under antialiased edges
+        }
+
+        s32 z = interpolateSpanDepth(x);
+
+        // if depth test against the topmost pixel fails, test
+        // against the pixel underneath
+        if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
+        {
+            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+
+            pixeladdr += BufferSize;
+            dstattr = AttrBuffer[pixeladdr];
+            if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
+                continue;
+        }
+
+        interpolateSpanValues();
+        const u32 vr = spanValues[0];
+        const u32 vg = spanValues[1];
+        const u32 vb = spanValues[2];
+        const s16 s = spanValues[3];
+        const s16 t = spanValues[4];
+
+        u32 color = renderSpanPixel(vr, vg, vb, s, t);
+        u8 alpha = color >> 24;
+
+        // alpha test
+        if (alpha <= GPU3D.RenderAlphaRef) continue;
+
+        if (alpha == 31)
+        {
+            u32 attr = polyattr | edge;
+
+            if (GPU3D.RenderDispCnt & (1<<4))
+            {
+                // anti-aliasing: all edges are rendered
+
+                // calculate coverage
+                s32 cov = r_edgecov;
+                if (cov & (1<<31))
+                {
+                    cov = 0x1F - (xcov >> 5);
+                    if (cov < 0) cov = 0;
+                    xcov += (r_edgecov & 0x3FF);
+                }
+                attr |= (cov << 8);
+
+                // push old pixel down if needed
+                if (pixeladdr < BufferSize)
+                {
+                    ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
+                    DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
+                    AttrBuffer[pixeladdr+BufferSize] = AttrBuffer[pixeladdr];
+                }
+            }
+
+            DepthBuffer[pixeladdr] = z;
+            ColorBuffer[pixeladdr] = color;
+            AttrBuffer[pixeladdr] = attr;
+        }
+        else
+        {
+            if (!(polygon->Attr & (1<<11))) z = -1;
+            PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
+
+            // blend with bottom pixel too, if needed
+            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
 
