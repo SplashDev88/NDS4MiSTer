@@ -1896,12 +1896,22 @@ void SoftRenderer3D::RenderPolygonScanline(
         interpX.SetX(pixelX);
         return spanDepth.Interpolate();
     };
-    const auto renderSpanPixel = [this, rp](
+    // White constant RGB and opaque polygon alpha leave cached texels
+    // unchanged, including their texture alpha. Apply the same identity
+    // used by the interior span to generic top/bottom and side-edge pixels.
+    // Coverage, alpha rejection, blending and both depth layers below are
+    // still handled by the original edge paths.
+    const bool neutralCachedSpan = rp->PixelState.CachedModulate &&
+        constantSpanColor && polyalpha == 31 &&
+        (rl >> 3) == 63 && (gl >> 3) == 63 && (bl >> 3) == 63;
+    const auto renderSpanPixel = [this, rp, neutralCachedSpan](
         u32 vr, u32 vg, u32 vb, s16 s, s16 t)
         __attribute__((always_inline)) -> u32
     {
         if (rp->PixelState.CachedModulate)
         {
+            if (neutralCachedSpan)
+                return LookupCachedTexel(rp->PixelState, s, t) & 0xff3f3f3fu;
             const u32 vertexColor = (vr >> 3) |
                 ((vg >> 3) << 8) | ((vb >> 3) << 16);
             return RenderPixelCachedModulate(

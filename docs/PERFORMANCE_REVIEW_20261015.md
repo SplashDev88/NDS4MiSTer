@@ -4,6 +4,8 @@ The subsequent [complete-frame publication experiment](PUBLICATION_PERFORMANCE_2
 retains this palette change and measures an additional WC upload improvement.
 The [Castlevania raster experiment](CASTLEVANIA_RASTER_PERFORMANCE_20261016.md)
 retains both changes and adds a measured neutral-white modulation shortcut.
+The [raster edge follow-up](RASTER_EDGE_PERFORMANCE_20261016.md) extends that
+shortcut and calibrates the physical capture path.
 
 This experiment retains a small ARM background-rendering optimization. It does
 not establish a whole-game FPS increase. Two 3D batching prototypes were slower

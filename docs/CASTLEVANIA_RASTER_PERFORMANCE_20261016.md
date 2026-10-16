@@ -1,5 +1,8 @@
 # Castlevania raster experiment — 16 October 2026
 
+The [raster edge follow-up](RASTER_EDGE_PERFORMANCE_20261016.md) builds on
+this result and resolves the capture's 30 Hz input limitation.
+
 Baseline: Performance Beta 2, `8be7105f5cd586f17a74752c162e2615be0568bd`.
 This experiment retains an exact neutral-white modulation shortcut that
 reduces rendering CPU time by 4.1% in a fixed Castlevania combat scene. It also
