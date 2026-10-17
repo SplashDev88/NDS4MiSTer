@@ -33,6 +33,24 @@
 namespace melonDS
 {
 
+// Equal signed vertical deltas preserve the horizontal difference after
+// either direction of DS linear rounding. An integral horizontal difference
+// can therefore be prepared once, even when vertical steps are fractional.
+inline bool NDS4MiSTerPrepareRectangleTextureStep(
+    s16 topLeft, s16 bottomLeft, s16 topRight, s16 bottomRight,
+    s32 width, s32& step) noexcept
+{
+    const s32 delta = s32(topRight) - topLeft;
+    if (width <= 0 || delta != s32(bottomRight) - bottomLeft)
+        return false;
+    const u32 magnitude = static_cast<u32>(delta < 0 ? -delta : delta);
+    const u32 quotient = NDS4MiSTerDivideU32Exact(magnitude, width);
+    if (quotient * static_cast<u32>(width) != magnitude)
+        return false;
+    step = delta < 0 ? -static_cast<s32>(quotient) : static_cast<s32>(quotient);
+    return true;
+}
+
 // Four disjoint, nonempty jobs, balanced by projected pixel work rather than
 // fixed height. Keep the established job count and fall back to equal heights
 // for empty frames. The sums are widened for adversarial estimator inputs.
@@ -2117,6 +2135,7 @@ private:
             bool CachedModulate;
             bool ConstantVertexColor;
             bool FlatRectangle;
+            bool PreparedRectangle;
         };
 
         Polygon* PolyData;
@@ -2129,6 +2148,7 @@ private:
         s32 XL, XR;
         u32 CurVL, CurVR;
         u32 NextVL, NextVR;
+        s32 RectangleStepS, RectangleStepT;
 
     };
 
@@ -2281,6 +2301,11 @@ private:
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
+    template<bool FrontFacing>
+    void RenderPreparedRectangleScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     template<bool FrontFacing>
     void RenderFlatRectangleScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,

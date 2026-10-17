@@ -1150,6 +1150,7 @@ void SoftRenderer3D::SetupPolygon(
     // accepts crossed or degenerate polygons. The session policy limits
     // this specialization to the qualified Castlevania cartridge.
     pixelState.FlatRectangle = false;
+    pixelState.PreparedRectangle = false;
     if (GPU3D.IntegralTextureSpansEnabled() && nverts == 4 &&
         ytop < ybot && rp->XL < rp->XR &&
         pixelState.CachedModulate && pixelState.PolyAlpha == 31 &&
@@ -1180,6 +1181,25 @@ void SoftRenderer3D::SetupPolygon(
                      polygon->Vertices[rp->NextVL]->FinalPosition[1] == ybot &&
                      polygon->Vertices[rp->NextVR]->FinalPosition[1] == ybot;
         pixelState.FlatRectangle = rectangle && corners == 15;
+        if (pixelState.FlatRectangle)
+        {
+            const auto* tl = polygon->Vertices[rp->CurVL]->TexCoords;
+            const auto* bl = polygon->Vertices[rp->NextVL]->TexCoords;
+            const auto* tr = polygon->Vertices[rp->CurVR]->TexCoords;
+            const auto* br = polygon->Vertices[rp->NextVR]->TexCoords;
+            // A one-pixel rectangle has overlapping left/right boundaries.
+            // The fallback can revisit that pixel through its empty interior
+            // dispatch, affecting the hidden AA layer even when visible color
+            // is identical. Keep that established ordering unchanged.
+            pixelState.PreparedRectangle =
+                rp->XR - rp->XL > 1 &&
+                NDS4MiSTerPrepareRectangleTextureStep(
+                    tl[0], bl[0], tr[0], br[0], rp->XR - rp->XL,
+                    rp->RectangleStepS) &&
+                NDS4MiSTerPrepareRectangleTextureStep(
+                    tl[1], bl[1], tr[1], br[1], rp->XR - rp->XL,
+                    rp->RectangleStepT);
+        }
     }
 }
 
@@ -2526,7 +2546,124 @@ void SoftRenderer3D::RenderPolygonScanline(
     rp->XR = rp->SlopeR.Step();
 }
 
-// Only selected for verified linear, front-facing, neutral-color rectangles.
+// The setup proof fixes both horizontal texture steps for the whole polygon.
+// Keep the original vertical interpolator and its signed rounding, but avoid
+// rebuilding five attribute recurrences and depth/X interpolators per row.
+template<bool FrontFacing>
+void SoftRenderer3D::RenderPreparedRectangleScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
+{
+    const auto* polygon = rp->PolyData;
+    const auto& state = rp->PixelState;
+    prevIsShadowMask = false;
+    const s32 xstart = rp->XL, xend = rp->XR;
+    const s32 visibleStart = std::max<s32>(xstart, 0);
+    const s32 visibleEnd = std::min<s32>(xend, 256);
+    if (visibleStart < visibleEnd)
+    {
+        finalPassMinX[y] = std::min<u16>(finalPassMinX[y], visibleStart);
+        finalPassMaxX[y] = std::max<u16>(finalPassMaxX[y], visibleEnd);
+    }
+    const auto* top = polygon->Vertices[rp->CurVL]->TexCoords;
+    const auto* bottom = polygon->Vertices[rp->NextVL]->TexCoords;
+    const s32 sl = rp->SlopeL.Interp.Interpolate(top[0], bottom[0]);
+    const s32 tl = rp->SlopeL.Interp.Interpolate(top[1], bottom[1]);
+    const s32 stepS = rp->RectangleStepS, stepT = rp->RectangleStepT;
+    const s32 depth = polygon->FinalZ[0];
+    const u32 polyattr = rp->PolyAttr;
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+    const bool antialias = GPU3D.RenderDispCnt & (1 << 4);
+    const bool writeTranslucentDepth = polygon->Attr & (1 << 11);
+    const u32 yedge = y == polygon->YTop ? 4 : y == polygon->YBottom - 1 ? 8 : 0;
+    s32 x = std::max(xstart, clipStartX);
+    const s32 end = std::min(xend, clipEndX);
+
+    // This is the same full-coverage boundary rule as the rectangle fallback,
+    // including the lower layer and translucent polygon-ID/depth semantics.
+    const auto edgePixel = [&](s32 pixelX, u32 edge)
+    {
+        u32 address = rowAddress + pixelX;
+        if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
+                DepthBuffer, AttrBuffer, BufferSize, depth, address))
+            return;
+        const u32 dstattr = AttrBuffer[address];
+        const s16 s = static_cast<s16>(sl + (pixelX - xstart) * stepS);
+        const s16 t = static_cast<s16>(tl + (pixelX - xstart) * stepT);
+        const u32 color = LookupCachedTexel(state, s, t) & 0xff3f3f3fu;
+        const u32 alpha = color >> 24;
+        if (alpha <= GPU3D.RenderAlphaRef) return;
+        if (alpha == 31)
+        {
+            u32 attr = polyattr | edge;
+            if (antialias)
+            {
+                attr |= 31 << 8;
+                if (address < BufferSize)
+                {
+                    ColorBuffer[address + BufferSize] = ColorBuffer[address];
+                    DepthBuffer[address + BufferSize] = DepthBuffer[address];
+                    AttrBuffer[address + BufferSize] = AttrBuffer[address];
+                }
+            }
+            DepthBuffer[address] = depth;
+            ColorBuffer[address] = color;
+            AttrBuffer[address] = attr;
+        }
+        else
+        {
+            const s32 z = writeTranslucentDepth ? depth : -1;
+            PlotTranslucentPixel(address, color, z, polyattr, false);
+            if ((dstattr & 0xF) && address < BufferSize)
+                PlotTranslucentPixel(address + BufferSize, color, z, polyattr, false);
+        }
+    };
+
+    bool emptyRow = false;
+    if (stepT == 0)
+    {
+        const u32 row = NDS4MiSTerCachedTextureIndex(
+            0, static_cast<s16>(tl), state.TextureWidth, state.TextureHeight,
+            state.TextureWidthMask, state.TextureHeightMask,
+            state.TextureWrapFlags, state.TextureWidthShift) >> state.TextureWidthShift;
+        emptyRow = state.TexturePixels[state.TextureWidth * state.TextureHeight + row] <=
+            GPU3D.RenderAlphaRef;
+    }
+    if (!emptyRow)
+    {
+        if (x < std::min(xstart + 1, end)) edgePixel(x++, yedge | 1);
+        const s32 insideEnd = std::min(xend - 1, end);
+        if (yedge)
+            for (; x < insideEnd; ++x) edgePixel(x, yedge);
+        else if (x < insideEnd)
+        {
+            const s32 s = sl + (x - xstart) * stepS;
+            const s32 t = tl + (x - xstart) * stepT;
+            switch (state.TextureWrapFlags)
+            {
+            case 0:
+                RenderCachedModulateIntegralTextureSpan<0, FrontFacing>(
+                    rp, y, x, insideEnd, s, t, stepS, stepT, depth);
+                break;
+            case 3:
+                RenderCachedModulateIntegralTextureSpan<3, FrontFacing>(
+                    rp, y, x, insideEnd, s, t, stepS, stepT, depth);
+                break;
+            default:
+                RenderCachedModulateIntegralTextureSpan<0xFF, FrontFacing>(
+                    rp, y, x, insideEnd, s, t, stepS, stepT, depth);
+                break;
+            }
+            x = insideEnd;
+        }
+        for (; x < end; ++x) edgePixel(x, yedge | 2);
+    }
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
+// Only selected for verified linear, neutral-color rectangles.
 // The three pixel loops below retain the generic edge/layer/blending rules.
 // Keep the fallback's compiled body separate: a shared templated body passed
 // output tests but regressed NSMB by about 5% on the stock Cortex-A9.
@@ -2538,6 +2675,13 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
+    if (rp->PixelState.PreparedRectangle)
+    {
+        RenderPreparedRectangleScanline<FrontFacing>(
+            rp, y, prevIsShadowMask, clipStartX, clipEndX,
+            finalPassMinX, finalPassMaxX);
+        return;
+    }
     Polygon* polygon = rp->PolyData;
     const u32 polyattr = rp->PolyAttr;
     constexpr u32 polyalpha = 31;
