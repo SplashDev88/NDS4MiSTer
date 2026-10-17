@@ -425,13 +425,21 @@ void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
         ((((GPU2D.BlendCnt >> 6) & 0x3) == 0) ||
          ((GPU2D.BlendCnt & 0x003F) == 0)))
     {
-        u64 specialFlags = 0;
-        for (int i = 0; i < 256; i += 2)
-            specialFlags |= *(const u64*)&BGOBJLine[i];
-        if ((specialFlags & 0xC0000000C0000000ULL) == 0)
+        // Without second targets, neither forced OBJ nor forced 3D
+        // blending can change a pixel. Ordinary effects are already ruled
+        // out by the enclosing condition.
+        if ((GPU2D.BlendCnt & 0x3F00) == 0)
             compositePassthrough = true;
         else
-            compositeMixed = true;
+        {
+            u64 specialFlags = 0;
+            for (int i = 0; i < 256; i += 2)
+                specialFlags |= *(const u64*)&BGOBJLine[i];
+            if ((specialFlags & 0xC0000000C0000000ULL) == 0)
+                compositePassthrough = true;
+            else
+                compositeMixed = true;
+        }
     }
 
     if (compositePassthrough)
@@ -445,7 +453,11 @@ void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
         for (int i = 0; i < 256; i += 2)
         {
             const u64 top = *(const u64*)&BGOBJLine[i];
-            if ((top & 0xC0000000C0000000ULL) == 0)
+            // An opaque 3D pixel also survives forced ColorBlend5
+            // unchanged (including metadata). Bit 7 excludes translucent
+            // OBJ; ordinary effects remain disabled on this mixed path.
+            if ((top & 0xC0000000C0000000ULL) == 0 ||
+                (top & 0xDF000000DF000000ULL) == 0x5F0000005F000000ULL)
                 *(u64*)&dst[i] = top;
             else
             {
