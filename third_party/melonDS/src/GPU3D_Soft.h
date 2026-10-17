@@ -33,6 +33,39 @@
 namespace melonDS
 {
 
+// One exact DS linear color recurrence. A descending span rounds toward its
+// lower endpoint, so its initial numerator includes width-1. Advancing every
+// pixel also keeps clipped or depth-rejected pixels in the same sequence.
+class NDS4MiSTerGraySpan
+{
+public:
+    NDS4MiSTerGraySpan(s32 left, s32 right, u32 width, u32 firstX) noexcept
+        : Sign(left < right ? 1 : -1), Width(width)
+    {
+        assert(width > 0 && firstX <= width);
+        const u32 delta = left < right ? right - left : left - right;
+        const u32 numerator = delta * firstX + (left < right ? 0 : width - 1);
+        const u32 progress = NDS4MiSTerDivideU32Exact(numerator, width);
+        Value = left + Sign * static_cast<s32>(progress);
+        Remainder = numerator - progress * width;
+        Quotient = NDS4MiSTerDivideU32Exact(delta, width);
+        StepRemainder = delta - Quotient * width;
+    }
+
+    [[gnu::always_inline]] s32 Get() const noexcept { return Value; }
+    [[gnu::always_inline]] void Advance() noexcept
+    {
+        Remainder += StepRemainder;
+        const u32 carry = Remainder >= Width;
+        Remainder -= carry * Width;
+        Value += Sign * static_cast<s32>(Quotient + carry);
+    }
+
+private:
+    s32 Value, Sign;
+    u32 Width, Remainder, Quotient, StepRemainder;
+};
+
 // Equal signed vertical deltas preserve the horizontal difference after
 // either direction of DS linear rounding. An integral horizontal difference
 // can therefore be prepared once, even when vertical steps are fractional.
@@ -2136,6 +2169,7 @@ private:
             bool ConstantVertexColor;
             bool FlatRectangle;
             bool PreparedRectangle;
+            bool GrayRectangle;
         };
 
         Polygon* PolyData;
@@ -2301,6 +2335,11 @@ private:
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
+    template<bool FrontFacing>
+    void RenderGrayRectangleScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     template<bool FrontFacing>
     void RenderPreparedRectangleScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,

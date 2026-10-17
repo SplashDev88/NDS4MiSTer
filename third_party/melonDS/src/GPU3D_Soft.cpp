@@ -1151,6 +1151,7 @@ void SoftRenderer3D::SetupPolygon(
     // this specialization to the qualified Castlevania cartridge.
     pixelState.FlatRectangle = false;
     pixelState.PreparedRectangle = false;
+    pixelState.GrayRectangle = false;
     if (GPU3D.IntegralTextureSpansEnabled() && nverts == 4 &&
         ytop < ybot && rp->XL < rp->XR &&
         pixelState.CachedModulate && pixelState.PolyAlpha == 31 &&
@@ -1200,6 +1201,46 @@ void SoftRenderer3D::SetupPolygon(
                     tl[1], bl[1], tr[1], br[1], rp->XR - rp->XL,
                     rp->RectangleStepT);
         }
+    }
+    // Dawn of Sorrow's full-screen gray gradient is untextured and
+    // translucent. Prove its actual corners, depth and equal RGB channels;
+    // a bounding box alone would also accept crossed or slanted quads.
+    // Alpha blending guarantees filled edges for this translucent path.
+    if (GPU3D.IntegralTextureSpansEnabled() && nverts == 4 &&
+        ytop < ybot && rp->XR - rp->XL > 1 &&
+        !pixelState.TextureEnabled && pixelState.BlendMode == 0 &&
+        pixelState.PolyAlpha > 0 && pixelState.PolyAlpha < 31 &&
+        (GPU3D.RenderDispCnt & (1 << 3)) &&
+        !polygon->IsShadow && !polygon->IsShadowMask &&
+        (rp->DepthTest == DepthTest_LessThan_FrontFacing ||
+         rp->DepthTest == DepthTest_LessThan) &&
+        !(polygon->FinalW[0] & 0x7F) &&
+        rp->SlopeL.Increment == 0 && rp->SlopeR.Increment == 0)
+    {
+        bool rectangle = true;
+        unsigned corners = 0;
+        for (u32 i = 0; i < 4; ++i)
+        {
+            const auto* v = polygon->Vertices[i];
+            const auto* next = polygon->Vertices[(i + 1) & 3];
+            const s32 x = v->FinalPosition[0], y = v->FinalPosition[1];
+            rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
+            rectangle &= (x == next->FinalPosition[0]) != (y == next->FinalPosition[1]);
+            rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
+                         polygon->FinalZ[i] == polygon->FinalZ[0];
+            rectangle &= v->FinalColor[0] >= 0 && v->FinalColor[0] <= 511 &&
+                         v->FinalColor[0] == v->FinalColor[1] &&
+                         v->FinalColor[0] == v->FinalColor[2];
+            corners |= 1u << ((x == rp->XR ? 1 : 0) | (y == ybot ? 2 : 0));
+        }
+        rectangle &= polygon->Vertices[rp->CurVL]->FinalPosition[1] == ytop &&
+                     polygon->Vertices[rp->CurVR]->FinalPosition[1] == ytop &&
+                     polygon->Vertices[rp->NextVL]->FinalPosition[1] == ybot &&
+                     polygon->Vertices[rp->NextVR]->FinalPosition[1] == ybot;
+        pixelState.GrayRectangle = rectangle && corners == 15;
+        // Reuse the established rectangle dispatch. Adding a second test to
+        // every generic polygon row measurably regressed NSMB on Cortex-A9.
+        pixelState.FlatRectangle |= pixelState.GrayRectangle;
     }
 }
 
@@ -2546,6 +2587,58 @@ void SoftRenderer3D::RenderPolygonScanline(
     rp->XR = rp->SlopeR.Step();
 }
 
+// A translucent untextured gray rectangle needs one color recurrence and no
+// texture or depth interpolation. Keep both original vertical interpolators,
+// and retain the existing blend operation and lower-AA-layer ordering.
+template<bool FrontFacing>
+[[gnu::hot, gnu::noinline]] void SoftRenderer3D::RenderGrayRectangleScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
+{
+    const auto* polygon = rp->PolyData;
+    prevIsShadowMask = false;
+    const s32 xstart = rp->XL, xend = rp->XR;
+    const s32 visibleStart = std::max<s32>(xstart, 0);
+    const s32 visibleEnd = std::min<s32>(xend, 256);
+    if (visibleStart < visibleEnd)
+    {
+        finalPassMinX[y] = std::min<u16>(finalPassMinX[y], visibleStart);
+        finalPassMaxX[y] = std::max<u16>(finalPassMaxX[y], visibleEnd);
+    }
+    const s32 first = std::max(xstart, clipStartX);
+    const s32 end = std::min(xend, clipEndX);
+    const u32 alpha = rp->PixelState.PolyAlpha;
+    if (first < end && alpha > GPU3D.RenderAlphaRef)
+    {
+        const s32 left = rp->SlopeL.Interp.Interpolate(
+            polygon->Vertices[rp->CurVL]->FinalColor[0],
+            polygon->Vertices[rp->NextVL]->FinalColor[0]);
+        const s32 right = rp->SlopeR.Interp.Interpolate(
+            polygon->Vertices[rp->CurVR]->FinalColor[0],
+            polygon->Vertices[rp->NextVR]->FinalColor[0]);
+        NDS4MiSTerGraySpan gray(left, right, xend - xstart, first - xstart);
+        const s32 depth = polygon->FinalZ[0];
+        const u32 writeDepth = polygon->Attr & (1 << 11) ? depth : u32(-1);
+        const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+        for (s32 x = first; x < end; ++x, gray.Advance())
+        {
+            u32 address = rowAddress + x;
+            if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
+                    DepthBuffer, AttrBuffer, BufferSize, depth, address))
+                continue;
+            const u32 dstattr = AttrBuffer[address];
+            const u32 color = (u32(gray.Get()) >> 3) * 0x010101u | (alpha << 24);
+            PlotTranslucentPixel(address, color, writeDepth, rp->PolyAttr, false);
+            if ((dstattr & 0xF) && address < BufferSize)
+                PlotTranslucentPixel(address + BufferSize, color, writeDepth,
+                    rp->PolyAttr, false);
+        }
+    }
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
 // The setup proof fixes both horizontal texture steps for the whole polygon.
 // Keep the original vertical interpolator and its signed rounding, but avoid
 // rebuilding five attribute recurrences and depth/X interpolators per row.
@@ -2663,7 +2756,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     rp->XR = rp->SlopeR.Step();
 }
 
-// Only selected for verified linear, neutral-color rectangles.
+// Only selected for verified linear textured or gray translucent rectangles.
 // The three pixel loops below retain the generic edge/layer/blending rules.
 // Keep the fallback's compiled body separate: a shared templated body passed
 // output tests but regressed NSMB by about 5% on the stock Cortex-A9.
@@ -2675,6 +2768,12 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
+    if (rp->PixelState.GrayRectangle)
+    {
+        RenderGrayRectangleScanline<FrontFacing>(rp, y, prevIsShadowMask,
+            clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
+        return;
+    }
     if (rp->PixelState.PreparedRectangle)
     {
         RenderPreparedRectangleScanline<FrontFacing>(
