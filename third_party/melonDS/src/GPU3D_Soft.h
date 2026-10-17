@@ -803,6 +803,28 @@ NDS4MiSTerCachedPixelHasLowerLayer(
         ((delta * static_cast<s32>(alpha)) >> 5));
 }
 
+// Exact enabled-alpha blend for a proven 6-bit gray source. Red and blue
+// occupy separate 16-bit lanes: each weighted sum is at most 63*32, so
+// neither multiplication nor addition can carry into the other lane.
+// Keep the transparent-destination bypass and maximum-alpha rule intact.
+[[gnu::always_inline, gnu::hot]] inline u32 NDS4MiSTerBlendGrayPixel(
+    u32 gray, u32 destination, u32 alpha) noexcept
+{
+    const u32 destinationAlpha = destination >> 24;
+    if (destinationAlpha == 0)
+        return gray * 0x010101u | (alpha << 24);
+
+    const u32 sourceWeight = gray * (alpha + 1);
+    const u32 destinationWeight = 31 - alpha;
+    const u32 redBlue = (destination & 0x003F003Fu) * destinationWeight +
+        sourceWeight * 0x00010001u;
+    const u32 green = ((destination >> 8) & 0x3Fu) * destinationWeight +
+        sourceWeight;
+    const u32 resultAlpha = std::max(alpha, destinationAlpha);
+    return ((redBlue >> 5) & 0x003F003Fu) |
+        ((green >> 5) << 8) | (resultAlpha << 24);
+}
+
 [[gnu::always_inline, gnu::hot]] inline void
 NDS4MiSTerPackCachedSpanValues(
     const s32* values, u32& vertexColor,

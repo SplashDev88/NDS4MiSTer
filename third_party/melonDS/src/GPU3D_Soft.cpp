@@ -2590,8 +2590,10 @@ void SoftRenderer3D::RenderPolygonScanline(
 // A translucent untextured gray rectangle needs one color recurrence and no
 // texture or depth interpolation. Keep both original vertical interpolators,
 // and retain the existing blend operation and lower-AA-layer ordering.
+// Keep the cartridge-specific body out of the explicitly hot function group.
+// Its larger blend loop otherwise displaces shared span routines on ARM.
 template<bool FrontFacing>
-[[gnu::hot, gnu::noinline]] void SoftRenderer3D::RenderGrayRectangleScanline(
+[[gnu::noinline]] void SoftRenderer3D::RenderGrayRectangleScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
     s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
@@ -2621,6 +2623,25 @@ template<bool FrontFacing>
         const s32 depth = polygon->FinalZ[0];
         const u32 writeDepth = polygon->Attr & (1 << 11) ? depth : u32(-1);
         const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+        const u32 polyattr = rp->PolyAttr;
+        const u32 translucentId = ((polyattr >> 8) & 0x003F0000u) | (1u << 22);
+        const auto plotGray = [&](u32 address, u32 dstattr, u32 shade)
+        {
+            // This path's setup proof excludes shadows and disabled blending.
+            // Reuse the already-loaded pre-blend attributes for both the ID
+            // rejection and the caller's lower-AA-layer decision.
+            if ((dstattr & 0x007F0000u) == translucentId)
+                return;
+            u32 attr = NDS4MiSTerComposeTranslucentAttr(polyattr, dstattr);
+            if (!(dstattr & (1u << 15)))
+                attr &= ~(1u << 15);
+            const u32 color = NDS4MiSTerBlendGrayPixel(
+                shade, ColorBuffer[address], alpha);
+            if (writeDepth != u32(-1))
+                DepthBuffer[address] = writeDepth;
+            ColorBuffer[address] = color;
+            AttrBuffer[address] = attr;
+        };
         for (s32 x = first; x < end; ++x, gray.Advance())
         {
             u32 address = rowAddress + x;
@@ -2628,11 +2649,10 @@ template<bool FrontFacing>
                     DepthBuffer, AttrBuffer, BufferSize, depth, address))
                 continue;
             const u32 dstattr = AttrBuffer[address];
-            const u32 color = (u32(gray.Get()) >> 3) * 0x010101u | (alpha << 24);
-            PlotTranslucentPixel(address, color, writeDepth, rp->PolyAttr, false);
+            const u32 shade = u32(gray.Get()) >> 3;
+            plotGray(address, dstattr, shade);
             if ((dstattr & 0xF) && address < BufferSize)
-                PlotTranslucentPixel(address + BufferSize, color, writeDepth,
-                    rp->PolyAttr, false);
+                plotGray(address + BufferSize, AttrBuffer[address + BufferSize], shade);
         }
     }
     rp->XL = rp->SlopeL.Step();
