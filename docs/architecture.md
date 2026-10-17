@@ -1,236 +1,206 @@
-# Architecture
+# Architecture — standalone and private performance beta
 
-Status: Public Cumulative Beta, 2026-08-29.
+Updated 17 October 2026. This describes the current matched-screen design and
+accepted final Castlevania worker-range runtime. See [the private beta freeze](PRIVATE_BETA_20261017.md)
+for the exact package, component identities and final experiment decision.
+The published release remains v0.9.0-rc.8. Historical experiment reports describe
+their named builds, not necessarily the selected runtime.
 
-## Goal
+## Hardware and software responsibilities
 
-NDS4MiSTer is an experimental Nintendo DS implementation for the MiSTer
-DE10-Nano. The current design keeps the timing-sensitive console in FPGA logic
-and uses the HPS only for the part that has proved too expensive to fit and run
-well in the fabric: Nintendo DS 3D geometry and software rasterization.
+NDS4MiSTer runs DS CPU execution and console timing in the FPGA. The dual-core
+Cortex-A9 HPS runs ordered graphics replay, both 2D engines, 3D geometry and
+software rasterization. It composes complete Main/Touch pictures for FPGA
+scanout. It does not run the DS CPUs in a headless melonDS emulator.
 
-This replaces the project's original HPS-first benchmark architecture. The
-shipping beta does **not** run the two DS CPUs, DMA, 2D engines, sound, or
-cartridge emulation in a headless melonDS instance.
-
-## Current hardware/software split
-
-| Subsystem | Current owner | Notes |
+| Subsystem | Owner | Contract |
 | --- | --- | --- |
-| ARM9 and ARM7 CPUs | FPGA | FPGAzumSpass's GBA ARM7 implementation was the basis for the ARM9 work. |
-| System timing, interrupts, IPC, timers, and DMA | FPGA | The FPGA remains the time authority. |
-| Main memory, cartridge, VRAM mapping, palette, and OAM | FPGA | ROM data lives in MiSTer DDR; architectural memory behavior remains in the core. |
-| Engine A 2D and HBlank/HDMA effects | FPGA | Includes the per-scanline effects used by games such as New Super Mario Bros. |
-| Engine B 2D | Not in this beta | It is synthesized out to fit the device; both logical screen positions currently show Engine A. |
-| 3D geometry and rasterization | HPS | A small service replays ordered FPGA events into melonDS's 3D engine and publishes completed 3D planes. |
-| 2D/3D composition and final frame publication | FPGA | The 3D plane enters Engine A as BG0 and is merged using DS priority, window, and blend rules. |
-| Sound | FPGA | GPL-licensed Nitro_DarkSide sound engine, built with `SOUND_ENABLE=1`. |
-| Cartridge saves | FPGA plus MiSTer file interface | Profiles are generated from the vendored melonDS ROM database. |
-| Input, OSD, scaling, and HDMI | FPGA/MiSTer framework | The current path is designed for reliable scaled HDMI output, including LG C-series TVs. |
+| ARM9/ARM7 execution, interrupts, IPC, timers, DMA | FPGA | Console time and architectural ordering remain in hardware. |
+| Cartridge, RAM, VRAM, palette and OAM interfaces | FPGA, with ordered graphics mirrors on ARM | ARM replay must preserve mapping, access width, byte enables and LCD-phase dependencies. |
+| Engine A and Engine B 2D, windows, blending, display capture | ARM renderer | Both screens are composed from the same ordered state; capture memory effects remain active. |
+| 3D command execution, matrices, clipping, geometry, rasterization | ARM renderer | Vendored melonDS with exact-output optimizations and guarded per-game policies. |
+| Sound synthesis | FPGA | Nitro_DarkSide sound engine; the ARM graphics service does not mix audio. |
+| Screen-pair publication | ARM writes, FPGA validates/adopts | Complete banks and ownership fences prevent partially updated pictures. |
+| Video timing, scaling, OSD and analog/digital routing | FPGA/MiSTer video framework | Digital and native analog layouts can differ. |
+| Menus, evdev input, ROM loading, save-file I/O | Standalone ARM host | Sole frontend/SPI owner after ordinary MiSTer exits. |
+| DS RTC calendar and serial interface | FPGA | Host seeds local time and persists guest clock edits. |
+| Launch, hash checks, clock setup and recovery | Launcher, supervisor, Kickstart and recovery guard | Matching components are an indivisible installation. |
 
-## High-level data flow
+The earlier architecture with FPGA Engine A and no Engine B is historical.
+It is not the standalone package's rendering path.
 
-```text
-                     MiSTer HPS/Linux
-               +-------------------------+
-               | hybrid 3D service       |
-               | melonDS GPU3D + software|
-               | rasterizer only         |
-               +------------+------------+
-                            ^ |
-            ordered GPU/VRAM| |complete 3D planes
-                      packets| v
-                    +--------+--------+
-                    | shared DDR/H3D1 |
-                    +--------+--------+
-                             ^
-                             |
-+----------------------------+-----------------------------+
-| FPGA Nintendo DS console                                 |
-| ARM9/ARM7 -> memory/DMA/cart -> Engine A 2D + 3D merge   |
-|                         -> sound -> saves -> video/input  |
-+----------------------------------------------------------+
-                             |
-                             v
-                   MiSTer scaler, OSD, HDMI
+## Data flow
+
+```mermaid
+flowchart LR
+    Host[Standalone host: input, menus, ROM and save I/O] --> FPGA[FPGA: DS CPUs, memory, DMA and console timing]
+    FPGA -->|Ordered graphics packets and LCD phases| Intake[ARM packet intake and validation]
+    Intake --> Replay[ARM ordered replay and query replies]
+    Replay --> Render[ARM Engine A/B composition and dual-core 3D raster]
+    Render -->|Complete paired pixels| Banks[Shared DDR publication banks]
+    Banks -->|Validated bank at video boundary| Video[FPGA scanout, OSD, HDMI and analog]
+    FPGA --> Audio[FPGA sound and MiSTer audio output]
 ```
 
-The HPS renderer is a coprocessor, not the console's clock or memory owner. A
-slow 3D result must not reorder CPU-visible writes or change the FPGA's DS
-timeline.
+The host uploads a selected ROM and the FPGA creates the direct-boot environment.
+Built-in FreeBIOS/generated firmware support normal game loading; optional native
+firmware boot is a separate path. ROMs up to 256 MiB require all-FF padding above
+252 MiB; larger supported layouts up to 512 MiB require it above 316 MiB. File
+size alone is not compatibility. See [development](DEVELOPMENT.md) and
+[firmware protocol](DS_FIRMWARE_PROTOCOL.md).
 
-## ROM loading and boot
+## Ordered graphics pipeline
 
-The MiSTer file picker loads an `.nds` image into HPS DDR at physical address
-`0x30000000`. The current file interface supports images up to 128 MiB.
+1. FPGA captures GX commands, graphics registers, VRAM mapping/writes,
+   palette/OAM writes and LCD phase records. It commits packet contents before
+   their sequence. Backpressure must not drop, repeat or reorder accepted work.
+2. Intake validates packet headers, bounds, records, session and commit state,
+   copies accepted input into a reserved private ring slot, returns shared-packet
+   credit, and release-publishes that owned copy to ordered replay. Transport
+   acknowledgement does not mean replay, native GX retirement or display is done.
+3. Replay advances the GPU state and query responses in order. Delayed replay,
+   readback queries and geometry backlog can stall the guest even if rendering
+   alone appears fast. A publication counter cannot measure guest CPU progress.
+4. The renderer prepares 3D and 2D work while preserving phase-dependent sprite
+   preparation, display capture, windows, palette/VRAM coherence and screen identity.
+5. An owned output slot receives both final screens. The current direct-output
+   path fuses conversion into write-combined framebuffer banks where eligible.
+   Unchanged 3D reuse does not permit arbitrary whole-frame state reuse.
+6. Publication waits for completed work, checks ownership and commits metadata
+   after pixels. FPGA changes the display bank only at a video frame boundary.
 
-The FPGA reads the cartridge header, copies the ARM9 and ARM7 program sections,
-creates the direct-boot environment, writes the initial CPU state, and then
-releases both CPUs. Redistributable melonDS FreeBIOS implementations provide
-the direct-boot software interrupts; commercial Nintendo BIOS or firmware
-dumps are neither required nor distributed.
+The code retains older 3D-plane and split-renderer modes for tests/compatibility.
+The normal matched-screen path publishes complete screen pairs. A late frame can
+repeat an older complete picture; do not describe it as independently full-speed
+FPGA 2D with only a transparent missing 3D line.
 
-After boot, the FPGA cartridge interface continues to read the ROM image from
-DDR. Its bounded sequential read-ahead fetches 64 words with eight DDR commands
-instead of the prior 32 in the focused host regression. Cartridge-access
-latency remains a known bottleneck and can still cause assets or effects to
-appear late or fail to load in some games.
+## Threads and scheduling
 
-## Hybrid 3D path
+These affinities describe the accepted package, not every environment override.
 
-The Hybrid 3D ABI is named H3D1. The complete wire contract is documented in
-[`hybrid-3d-abi.md`](hybrid-3d-abi.md).
-The service ownership, launcher, and guarded-update procedure are documented
-in [`hybrid-3d-hps-lifecycle.md`](hybrid-3d-hps-lifecycle.md).
+| Work | CPU placement | Reason to audit |
+| --- | --- | --- |
+| Packet intake and primary raster worker | CPU0 | They contend for the same Cortex-A9 under live load. |
+| Ordered replay and secondary raster worker | CPU1 | Renderer overlap and query dependencies affect available time. |
+| Bounded publication worker | CPU0, elevated publication priority | A completed image needs prompt display-facing progress. |
+| Low-rate flight recorder | Idle scheduling priority | Diagnostic work must not be confused with free instrumentation. |
 
-### Command transport
+`Hybrid3DService.cpp` establishes ownership and affinity. `GPU3D_Soft.cpp` owns
+raster partitioning, completion fences and policy selection. The verified
+Castlevania profile uses the existing completion-adaptive two-way split; ordinary
+games retain the four-band policy, warm-up/hysteresis and shadow/AA safety gates.
+Both worker completion and final-pass ownership remain mandatory.
 
-1. The FPGA captures normalized GX commands, GPU register writes, virtual VRAM
-   writes, and VRAMCNT writes.
-2. Events are merged in DS-clock order and placed into committed packets. The
-   transport cannot legally drop, duplicate, or reorder an accepted event.
-3. The HPS service applies each packet to a ROM-less melonDS GPU/VRAM mirror.
-4. At the terminal packet for a frame, melonDS runs geometry and the software
-   rasterizer for a complete 256x192 3D plane.
-5. HPS writes an inactive plane bank, performs cache maintenance and a release
-   barrier, then publishes its descriptor last.
-6. FPGA adopts only a complete descriptor, prefetches tagged lines, and feeds
-   valid pixels into Engine A as BG0.
+The accepted controller starts with a 50% primary share, bounded to 40–80% for
+the verified Castlevania profile and 44–80% for other games. Profile transitions
+reset its timing history before the next work plan.
+Instrumented live Castlevania runs frequently reached the 44% floor while CPU0
+finished later. That supports an investigation, not a performance guarantee;
+consult the final lower-floor experiment decision before reusing its patch.
 
-The production service does not render a shadow copy of the FPGA 2D engines.
-That keeps the high-volume 2D and HDMA work in hardware and limits the HPS
-workload to 3D.
+## Per-game paths and exact reuse
 
-### Shared DDR layout
+Profiles are selected at a fresh session from two matching cartridge-header reads,
+not filenames. Dawn of Sorrow USA revision 0 requires code `ACVE`, revision 0 and
+header CRC32 `c51a7d99`. Unknown, changed and unsupported headers retain their
+established paths. Query policy and raster eligibility are distinct decisions.
+See `src/replay/GameQueryProfile.h` and session initialization in the service.
 
-| Region | HPS physical address | Size and use |
-| --- | ---: | --- |
-| H3D1 control header | `0x3FC00000` | Session, ownership, packet/frame sequences, faults, and heartbeats. |
-| Four packet slots | `0x3FC10000..0x3FC4FFFF` | Four 64 KiB ordered event packets. |
-| 3D plane bank 0 | `0x3FD00000` | 256 KiB inactive/active 3D image bank. |
-| 3D plane bank 1 | `0x3FD40000` | 256 KiB inactive/active 3D image bank. |
-| Final framebuffer banks | `0x3FE00000..0x3FFFFFFF` | Four 512 KiB banks for complete paired-screen frames. |
+The accepted Castlevania paths include exact integral texture steps, rectangle
+setup, back-facing spans and gray overlays; inactive color composition is skipped
+only when proved unnecessary. Engine B can reuse composition when the actual
+prepared sprite pixels, OBJ-window bytes and count match, with the remaining
+register, mapping, VRAM and palette dependencies intact. Sprite preparation still
+occurs at its original phase. Unchanged background stores are compared per
+physical bank before suppressing a write and revision update.
 
-The four packet slots provide frame-scale slack. Backpressure propagates to the
-original GPU or VRAM source if all slots are occupied, preserving lossless
-architectural ordering.
+The prepared-sprite cache costs about 247 KB for the selected profile. Frequently
+changing sprites/VRAM can make comparisons more expensive; observed scene gains
+do not make this a universal optimization. Display capture and disabled-engine
+transitions require the existing fallback paths.
 
-### 3D composition
+Full-rate matched drawing and `NDS4MISTER_STANDALONE_FRAME_SKIP=off` are selected
+in this private package, including NSMB. Full rate allows every eligible frame;
+backlog admission can still suppress obsolete drawing while all state replays.
+Older half-rate/recovery experiment modes
+remain in source but are not its runtime configuration. Read the package manifest
+and BUILD_PROVENANCE.json before interpreting an environment variable or old note.
 
-When Engine A enables 3D BG0, the published plane replaces the normal BG0
-pixel input. Engine A still applies background priority, window masks, alpha
-blending, color effects, and master brightness. A pixel with zero alpha is
-transparent.
+## Shared DDR and memory attributes
 
-A line is accepted only when its session, frame, bank, and Y tags match the
-current descriptor. A late or stale line becomes transparent rather than
-stalling the 2D engine or displaying data from the wrong frame. This protects
-2D correctness, although heavy 3D scenes can still show missing geometry or
-fall behind.
+| Region | HPS physical range | Accepted use |
+| --- | --- | --- |
+| Control, policy, readback and packet window | `0x3FC00000..0x3FCFFFFF` | Device mapping; four 64 KiB packet slots begin at `0x3FC10000`. |
+| Pixel-publication window | `0x3FD00000..0x3FFFFFFF` | Separate 3 MiB write-combined/Normal-NC mapping when supported; Device fallback. |
+| Legacy 3D banks | `0x3FD00000`, `0x3FD40000` | Retained ABI modes, not the complete-pair path. |
+| Legacy Engine B area | `0x3FD80000..0x3FDFFFFF` | Retained split-renderer modes. |
+| Complete paired framebuffer banks | `0x3FE00000..0x3FFFFFFF` | Four 512 KiB bank slots; Main and Touch pixels. |
 
-## Frame publication and video
+`Hybrid3DMemoryMapping.h` deliberately maps control and pixels separately. Never
+leave simultaneous Device and Normal mappings of the same physical pages. The
+matching `nds_mem_wc` kernel module exposes the publication region; its ABI must
+match the running kernel. Barriers, packet snapshots and descriptor commits are
+still needed with write combining.
 
-The FPGA drains a completed screen pair into one of four final-framebuffer
-banks. Scanout changes banks only at a video frame boundary, so HPS or FPGA
-writers cannot overwrite the displayed frame.
+The packet-input Normal-NC prototype is **excluded**. Its live NSMB regression
+failed the acceptance gate despite modest Castlevania gains. The freeze retains
+Device packet input and `NDS4MISTER_PACKET_NC=0`; it includes no input-NC module
+or experimental module manager. See [the rejected experiment](CASTLEVANIA_PACKET_MEMORY_EXPERIMENT_20261017.md).
 
-The release uses MiSTer's scaled HDMI path with nearest-neighbor integer
-scaling and a compact scaler-only shell. The HDMI clock is independent from
-the Nintendo DS console clock. This configuration was selected through tests
-on LG C-series displays as well as other TVs.
+## Session and frontend ownership
 
-Runtime video controls are:
+Only one helper may own a session. A restarted process requests a new session
+instead of resuming an old packet fence with empty renderer state. On `H3DQ`,
+workers quiesce before ARM acknowledges the exact generation as its final old-
+session write. FPGA initializes fresh state, publishes `H3D1` last and releases
+the console only after matching Ready/policy acknowledgements. Heartbeat loss,
+malformed input and ownership faults fail closed.
 
-- Video Layout: Left/Right, Top/Bottom, Left Only, or Right Only.
-- Screen Order: Main First or Touch First.
-- Screen Gap: 0, 8, 16, or 24 pixels.
-- 3D FPS Counter: Off or On. This reports distinct completed 3D frames
-  delivered to FPGA scanout, not the fixed DS/HDMI refresh rate.
+The standalone launcher verifies a matching kit, coordinates ordinary MiSTer
+shutdown/bootstrap, starts the helper and native host, and restores Main on a
+handled exit. It is not the old separately launched H3D script. A kernel/FPGA
+hang can still require reboot. See [lifecycle](hybrid-3d-hps-lifecycle.md),
+[ABI](hybrid-3d-abi.md) and [frontend](../tools/standalone_host/README.md).
 
-Because Engine B is absent, the current beta duplicates Engine A in both
-logical screen positions. The FPS counter reports completed HPS 3D frame
-publications; it is not the ARM9 instruction rate or the HDMI refresh rate.
+Saves stay in `saves/NDS`, including games from USB or mounted network storage.
+Private kits have independent display/controller/RTC configuration but share
+those saves. The host persists DS clock edits; an unavailable/out-of-range local
+clock starts at 2000-01-01, without an internet test. Offline elapsed time while
+powered off cannot be recovered without usable host time. See [Game clock](GAME_CLOCK.md).
 
-## Sound and input
+## Display, clocks and limits
 
-Sound is generated in FPGA logic by the Nitro_DarkSide Nintendo DS sound
-engine and is sent through MiSTer's normal audio path. The HPS 3D service does
-not emulate or mix audio.
+Digital Layout and Analog Screen are independent with native analog output.
+`vga_scaler=1` mirrors the digital result instead. DV1 CRT target is one-screen;
+Scaler target supports combined layouts. Native analog is approximately 59.64 Hz,
+not PAL 50 Hz. Screen Peek, rotation, touch rotation and synthetic microphone input
+remain available; a physical microphone is not implemented.
 
-Controller buttons and MiSTer mouse packets are mapped through `hps_io`. The
-right stick selects an absolute native DS coordinate and the remappable
-`Touch` action holds pen-down. Relative mouse deltas update a saturated native
-DS coordinate and the left mouse button holds pen-down. The most recently
-active source owns the stylus. The SPI touch controller returns
-melonDS-compatible 12-bit X/Y samples and direct boot installs matching
-calibration data. A scanout-only crosshair is white while hovering and red
-while pressed; it does not modify either framebuffer or generate DDR traffic.
+The DS clock family remains 134.055928/67.027964/33.513982 MHz. Gameplay ARM uses
+1 GHz; ordinary stopped/menu recovery restores the standard limit. The private
+FPGA includes the three recorded SWAP-retirement, HBlank-run-queue and GX-busy
+build overrides. Source defaults alone do not reproduce that bitstream. Routing
+and assembly passed, but static timing closure remains unresolved; no new FPGA
+build or timing-closure claim accompanies the performance freeze.
 
-## Cartridge saves
+Save states, DS wireless, NAND cartridge saves, DSi mode and RTC alarm/periodic
+interrupts remain unsupported. Short selected-game checks do not establish full
+playthrough compatibility. Slowdown, uneven animation, audio hitches and crashes
+remain possible.
 
-The FPGA selects the save-device profile from the game code using a compact
-table generated from melonDS's ROM database. Supported profiles are:
+## Evidence and next audit
 
-- 512-byte, 8 KiB, 64 KiB, and 128 KiB EEPROM/FRAM.
-- 256 KiB, 512 KiB, and 1 MiB Flash.
+The final live comparison observed about 22.64 cave and 21.88
+combat **publication pairs/s**, with NSMB about 44.84. These are complete output
+publications, not distinct animation FPS; the 60 fps objective remains unmet.
+Stage wall times overlap and cannot be summed. Audio presence and zero capture
+drops do not prove audio fidelity or low input latency.
 
-A 512-byte sector cache connects these devices to MiSTer's mounted-save
-interface. Save files are stored in MiSTer's standard `/media/fat/saves/NDS`
-location and persist across ROM reloads and power cycles. NAND saves and
-emulator save states are not implemented.
-
-## Clocks and performance policy
-
-The current console clock family is 134.055928 MHz for memory, 67.027964 MHz
-for the 2x domain, and 33.513982 MHz for the 1x DS domain. Moving the family
-together preserves its 4:2:1 phase relationship. The HPS service requests the
-board's tested 1 GHz operating point and launches at high scheduling priority
-while leaving the main MiSTer process active for menus, input, and lifecycle
-control.
-
-The 2026-08-29 PSX-efficiency candidate fitted in Quartus Prime 17.0.2 at:
-
-- 41,299 of 41,910 ALMs (99%).
-- 44,947 registers.
-- 468 of 553 RAM blocks (85%).
-- 69 DSP blocks.
-- Four PLLs.
-
-The project is therefore strongly area-constrained. New hardware features must
-be judged by both their benefit and their effect on fitting/routing. Static
-timing is useful diagnostic information, but a timing warning alone is not a
-deployment gate for this experimental project; successful TV and gameplay
-testing is required.
-
-## Ownership, restart, and failure rules
-
-The FPGA and HPS exchange an explicit session number and producer/consumer
-sequences. A newly started service cannot silently inherit the renderer state
-of an older process. Restart uses a quiesce handshake so HPS stops writing
-before FPGA clears and reuses shared DDR.
-
-The launcher verifies the installed service against its SHA-256 manifest. The
-service has a singleton lock and publishes a heartbeat after it accepts a fresh
-session. Missing service, heartbeat timeout, malformed packet, ownership
-violation, or an impossible sequence sets a sticky fault and fails closed
-instead of continuing with untrusted shared state.
-
-Low-rate crash telemetry reuses the existing control header and is designed
-not to touch the CPU, GPU, DMA, audio, cartridge, renderer, or display fast
-paths. Reports contain counters and subsystem state, not ROM, save, texture,
-or framebuffer payloads.
-
-## Current limitations
-
-- Engine B is disabled, so both displayed screen positions show Engine A.
-- Heavy 3D scenes can slow down, fall behind, lose geometry, or crash.
-- Cartridge latency can cause missing or late objects and effects.
-- The Reset menu command can hang; reselecting the ROM is the current restart
-  workaround.
-- Controller and mouse touchscreen input are present, but Engine B is not
-  displayed, so precise touch-screen games remain limited. NAND saves, save
-  states, Wi-Fi, and microphone support are not implemented.
-- Chrono Trigger has a separate boot failure under investigation.
-
-The first public compatibility target is New Super Mario Bros.; this release
-is an experimental beta, not yet a general Nintendo DS compatibility claim.
+Start a new audit with [the freeze](PRIVATE_BETA_20261017.md),
+[Beta11 qualification](CASTLEVANIA_SCOPED_ADAPTIVE_PERFORMANCE_20261017.md),
+[post-cache profiling](CASTLEVANIA_POST_CACHE_PROFILE_20261017.md) and
+[worker-balance profiling](CASTLEVANIA_ADAPTIVE_BALANCE_PROFILE_20261017.md).
+Reprofile the exact frozen binary before ranking new work. The existing profile
+points to raster/gray-rectangle work, packet intake, geometry/replay and CPU0
+contention. Matrix multiplication alone occupied about 0.112% of cave leaf
+samples, so matrix-only FPGA offload is not the leading measured opportunity.

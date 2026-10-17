@@ -1,5 +1,8 @@
 NDS4MiSTer v0.9.0-rc.8 — Standalone
 
+This file records the published rc.8 package. For the later private performance
+freeze, use docs/PRIVATE_BETA_20261017.md and its packaged BUILD_PROVENANCE.json.
+
 Corresponding source, licences and build scripts for the rc.8 package.
 Private development data is not a build dependency.
 
@@ -20,7 +23,8 @@ Build and validation records
   docs/release/VALIDATION_SPLIT86.md (inherited hardware coverage and rc.8 checks)
   docs/RELEASE_NOTES_V090_RC8.md (reviewed release notes)
   docs/GAME_CLOCK.md (clock behavior and persistence)
-Top-level SHA256SUMS covers every tracked source file except itself.
+At the rc.8 tag, top-level SHA256SUMS covers the release source except itself.
+It is a historical release inventory, not an automatically updated branch index.
 
 Build entry points
 - FPGA: fpga/mister_nitro_console_island/NDS4MiSTer.qpf; Quartus Prime

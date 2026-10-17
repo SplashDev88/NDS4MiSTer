@@ -4248,8 +4248,9 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     // hysteresis. The delayed-worker oracle bypasses the production warm-up.
     // The verified Castlevania profile uses completion-based adaptive splitting.
     // Other games retain the established four-band policy and hysteresis.
-    const bool queuedRaster =
-        RasterBandQueue && !GPU3D.IntegralTextureSpansEnabled();
+    const bool castlevaniaProfile = GPU3D.IntegralTextureSpansEnabled();
+    RasterBalance.SetCastlevaniaProfile(castlevaniaProfile);
+    const bool queuedRaster = RasterBandQueue && !castlevaniaProfile;
     const bool bandQueueHeavy = queuedRaster &&
         (RasterBandQueueTestDelayWorker ||
          polygonsPrepared > RasterBandPolygonThreshold);

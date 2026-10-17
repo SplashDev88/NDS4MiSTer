@@ -1,5 +1,7 @@
 # Castlevania adaptive raster scheduling, 2026-10-17
 
+Follow-up: the optimization series has ended at the [private freeze](PRIVATE_BETA_20261017.md). See the [final live worker-range comparison](CASTLEVANIA_LIVE_BALANCE_FOLLOWUP_20261017.md); the measurements and native decisions below remain historical evidence.
+
 The private Beta11 candidate improves completed picture-pair delivery versus Beta10 by 2.386% in the cave and 3.935% in Warg combat. The NSMB control changes by +0.762%. These are repeated short scene observations, not distinct displayed animation FPS. The 60 fps goal remains unmet.
 
 The existing exact Dawn of Sorrow USA revision-0 profile selects the existing completion-adaptive two-way raster path. Other games retain the established four-band queue and its hysteresis. Shadow, antialiasing, depth, blending, geometry, worker fences, frame admission and pixel arithmetic are unchanged. The core, host, stock 1 GHz clock and prior Beta10 functionality are retained. The earlier global queue-disabled experiment was rejected because its Mario Kart saved-scene control slowed down; this scoped implementation was built and measured separately.

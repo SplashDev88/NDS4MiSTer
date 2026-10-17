@@ -1,5 +1,7 @@
 # Castlevania Beta10: the next measured bottleneck
 
+Follow-up: the optimization series has ended at the [private freeze](PRIVATE_BETA_20261017.md). See the [final live worker-range comparison](CASTLEVANIA_LIVE_BALANCE_FOLLOWUP_20261017.md); the measurements and native decisions below remain historical evidence.
+
 Beta10's Engine B cache now hits on about 97.5% of sampled lines in both target rooms. A new diagnostic pass puts 3D raster work ahead of map-screen redraw as the next optimization target. These measurements select experiments; they do not establish another speed improvement.
 
 The accepted runtime is `f8fdb6948fee428958ff50606a96919025e9b7aa`, helper SHA-256 `a0ef8246dbdffd15cc861018f2604a969c0af18cd14ccec93de9d3eba56fd4dd`. Two separate methods were used: a private helper with frame-level renderer timers, and external CPU-clock sampling of the exact accepted helper with matching binary symbols. No private diagnostic helper replaces Beta10.

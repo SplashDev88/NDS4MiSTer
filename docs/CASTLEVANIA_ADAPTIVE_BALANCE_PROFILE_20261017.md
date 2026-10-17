@@ -1,5 +1,7 @@
 # Castlevania adaptive worker balance, 2026-10-17
 
+Follow-up: the optimization series has ended at the [private freeze](PRIVATE_BETA_20261017.md). See the [final live worker-range comparison](CASTLEVANIA_LIVE_BALANCE_FOLLOWUP_20261017.md); the measurements and native decisions below remain historical evidence.
+
 Private C51 diagnostics on the accepted Castlevania Beta11 renderer show that
 the primary worker is usually slower while the adaptive controller is at its
 44% minimum estimated work share. This supports testing a lower minimum for

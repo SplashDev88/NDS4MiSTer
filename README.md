@@ -4,9 +4,11 @@
 
 Back up your installation and saves before updating.
 
-This experimental branch also adds an [offline clock fallback](docs/GAME_CLOCK.md):
-an unset MiSTer clock starts the DS at January 1, 2000 instead of blocking launch.
-This change is not included in the published rc.8 download yet.
+This branch also contains a [private performance beta frozen on 17 October](docs/PRIVATE_BETA_20261017.md),
+with Castlevania rendering improvements, full-rate NSMB drawing, bug fixes and
+[offline clock fallback](docs/GAME_CLOCK.md). It is separate from the published
+rc.8 download described below. See the [updated architecture](docs/architecture.md)
+and [audit handoff](docs/CLAUDE_AUDIT_HANDOFF_20261017.md) for the development snapshot.
 
 ## What's new
 

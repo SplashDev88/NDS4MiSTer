@@ -1,6 +1,14 @@
 # Engine B session policy
 
-## Matched renderer experiment (260925-EBO1)
+## Current matched-screen policy
+
+The standalone and private performance packages use this matched ARM-screen
+path. The original experiment identifier was 260925-EBO1. Consult the package
+manifest for the exact core/helper pair and [architecture](architecture.md) for
+thread ownership and publication; later sections explicitly marked historical
+describe the earlier FPGA Engine-A path.
+
+### Matched renderer contract
 
 The current matched ARM renderer composes both physical screens. In EBO1,
 On preserves the v0.5.0 rendering path; Off renders Engine A only and copies
@@ -93,6 +101,8 @@ session requires a fresh publication.
 - `tools/test_nitro_console_island_host.sh` and
   `tools/test_nitro_console_vhdl_analyze.sh`: integration and prior regressions.
 
-Simulation and host tests do not establish MiSTer performance. The candidate
-still needs FPGA fit and TV/gameplay checks against beta.11 at the same clocks.
-The deferred Pokémon GX readback protocol is not part of this policy.
+Simulation and host tests alone do not establish MiSTer performance. Current
+package qualification is recorded in the [private freeze](PRIVATE_BETA_20261017.md)
+and named release records. The earlier beta.11 here is an August historical
+version, not the October Castlevania Beta11. Query/readback behavior is a
+separate contract from this Engine-B session policy.

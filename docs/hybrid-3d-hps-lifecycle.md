@@ -1,7 +1,46 @@
 # Hybrid 3D HPS lifecycle and beta deployment
 
-Status: deployed in Public Save Beta B, 2026-08-27. This document describes
-the current manual launcher, service ownership, and guarded update procedure.
+Updated 17 October 2026. The standalone package uses one launcher and an
+indivisible matching kit. The old August manual helper workflow is retained
+below as historical implementation reference, not current installation advice.
+
+## Current standalone lifecycle
+
+Run `Scripts/NDS4MiSTer.sh` for the public package, or the named private-beta
+launcher for its separate kit. The public kit is `Scripts/.NDS_Standalone`;
+private kit paths are recorded in the package manifest. Do not start a separate
+H3D helper or replace individual binaries from another beta.
+
+`NDS4MiSTer.sh` invokes `supervisor.py`. Preflight checks the fixed component
+hashes and expected runtime configuration. The supervisor coordinates Main's
+bootstrap/exit, temporary video-state journaling, helper startup and the native
+standalone host. The native host becomes the frontend/SPI owner for menu, input,
+ROM and save transactions. A recovery guard can restore Main after handled
+failures; a kernel/FPGA hang may still require reboot.
+
+`Kickstart.sh` starts the singleton helper from the same kit's `support` folder,
+selects the matching publication WC module for Linux 5.15.1 or 6.18.38, sets the
+accepted runtime environment and requests the tested 1 GHz ARM operating point.
+On clean shutdown the host flushes saves/clock edits while holding the guest,
+then the supervisor stops its processes and restores frontend/clock state.
+PID/start-time identity checks prevent stale cleanup from targeting a new process.
+
+The current physical mappings are separate: 1 MiB of Device control/packet pages
+at `0x3FC00000` and 3 MiB of publication pixels at `0x3FD00000`, preferably through
+the WC module. There is no overlapping Device mapping of the publication pages.
+The rejected packet-input NC experiment and its lifecycle draft are not shipped.
+
+The H3DQ/fresh-H3D1 ownership handshake, one-second heartbeat deadline and strict
+packet acknowledgement rules remain required. A restarted helper cannot resume
+an old session. See [the architecture](architecture.md),
+[ABI](hybrid-3d-abi.md), [frontend details](../tools/standalone_host/README.md) and
+[private freeze](PRIVATE_BETA_20261017.md).
+
+## Historical manual helper deployment (August 2026)
+
+Everything below describes the earlier independently launched helper. Its fixed
+paths, monolithic mapping, MiSTer affinity watcher and separate RBF/helper update
+instructions are not the standalone package's current deployment procedure.
 
 ## User-launched process contract
 

@@ -1007,9 +1007,25 @@ public:
     // for the controller to reach the heavy-scene balance point.
     static constexpr u32 DefaultPrimaryPermille = 500;
     static constexpr u32 MinimumPrimaryPermille = 440;
+    static constexpr u32 CastlevaniaMinimumPrimaryPermille = 400;
     static constexpr u32 MaximumPrimaryPermille = 800;
     static constexpr u32 MaximumCorrectionPermille = 16;
     static constexpr u64 MinimumSampleNs = 200000;
+
+    // Live Castlevania cave/combat traces reach the ordinary 44% floor while
+    // the primary worker still finishes later. Permit the matched cartridge
+    // to seek a lower share. A profile change discards the previous game's
+    // timing history before the next frame plan is published.
+    void SetCastlevaniaProfile(bool enabled) noexcept
+    {
+        const u32 minimum = enabled ?
+            CastlevaniaMinimumPrimaryPermille : MinimumPrimaryPermille;
+        if (MinimumPrimaryPermille_ != minimum)
+        {
+            MinimumPrimaryPermille_ = minimum;
+            Reset();
+        }
+    }
 
     void Reset() noexcept
     {
@@ -1076,8 +1092,8 @@ public:
         u32 target = static_cast<u32>(
             (primaryWeighted * 1000u + totalWeighted / 2u) /
             totalWeighted);
-        if (target < MinimumPrimaryPermille)
-            target = MinimumPrimaryPermille;
+        if (target < MinimumPrimaryPermille_)
+            target = MinimumPrimaryPermille_;
         else if (target > MaximumPrimaryPermille)
             target = MaximumPrimaryPermille;
 
@@ -1105,6 +1121,7 @@ private:
     }
 
     u32 PrimaryPermille_ = DefaultPrimaryPermille;
+    u32 MinimumPrimaryPermille_ = MinimumPrimaryPermille;
     u64 PrimaryEmaNs_ = 0;
     u64 SecondaryEmaNs_ = 0;
     u32 Samples_ = 0;

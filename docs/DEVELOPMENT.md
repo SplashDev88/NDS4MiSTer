@@ -3,6 +3,9 @@
 For installation and everyday use, start with the [README](../README.md) or
 the [quick start](STANDALONE_QUICK_START.txt).
 
+Current private build: [17 October freeze](PRIVATE_BETA_20261017.md).
+Architecture and ownership: [current design](architecture.md).
+
 ## Compatibility and performance details
 
 
@@ -22,12 +25,14 @@ Known limitations include slowdown, surging, uneven animation, movie/audio
 hitches and incomplete compatibility. Strange Journey can still freeze in its
 intro; GTA: Chinatown Wars can show near-camera clipping. The later Jackass,
 King Kong and NFS Carbon bundle is not included. NAND cartridge saves, save
-states, DS wireless multiplayer and microphone input are not implemented.
+states, DS wireless multiplayer and physical microphone input are not implemented.
+Button-driven synthetic blowing input is available.
 DSi-enhanced game compatibility does not add DSi mode.
 
-The tested USA revision 0 of NSMB uses alternate drawing updates to reduce
-work while game state and graphics commands advance. This is not a global FPS
-cap. The **3D FPS Counter** reports publication activity, including reused
+The current private beta uses full-rate matched drawing, including NSMB, with
+frame skipping disabled. Older half-rate/recovery comparison modes remain in
+source but are not selected by this package. The **3D FPS Counter** reports
+publication activity, including reused
 planes, rather than unique animation frames or input latency. No universal
 60 FPS or percentage speedup is claimed.
 
@@ -58,8 +63,9 @@ Wi-Fi startup returns after reboot. This does not implement DS wireless.
 ## Source and builds
 
 The release tag must contain the source matching every shipped component.
-See [SOURCE_PACKAGE.txt](../SOURCE_PACKAGE.txt) for exact source revisions,
-binary identities, validation and timing limits. Focused tests and user
+For published rc.8, see [SOURCE_PACKAGE.txt](../SOURCE_PACKAGE.txt) for source revisions;
+for the private freeze, use its package manifest and [component record](PRIVATE_BETA_20261017.md).
+These record binary identities, validation and timing limits. Focused tests and user
 acceptance do not establish full playthrough coverage or FPGA timing closure.
 
 The Quartus Prime 17.0.2 project is:

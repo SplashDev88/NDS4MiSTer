@@ -1,5 +1,7 @@
 # Castlevania adaptive range experiments, 2026-10-17
 
+Follow-up: the optimization series has ended at the [private freeze](PRIVATE_BETA_20261017.md). See the [final live worker-range comparison](CASTLEVANIA_LIVE_BALANCE_FOLLOWUP_20261017.md); the measurements and native decisions below remain historical evidence.
+
 The first lower-bound experiment, C52, is rejected. Allowing the verified
 Castlevania profile to reduce its primary worker share from 44% to 35% did not
 improve the cave snapshot and increased combat rendering wall time by 1.679%.
