@@ -1,4 +1,4 @@
-# NDS4MiSTer v0.9.0-rc.9 — Beta12
+# NDS4MiSTer v0.9.0-rc.9
 
 **Smoother Castlevania play, improved rendering and frame delivery, and offline DS clock support.**
 

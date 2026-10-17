@@ -1,4 +1,4 @@
-# NDS4MiSTer v0.9.0-rc.9 — Beta12
+# NDS4MiSTer v0.9.0-rc.9
 
 This release packages the tested Beta12 rendering improvements, compatibility
 fixes and offline DS clock support. The gameplay ARM clock remains 1 GHz.
