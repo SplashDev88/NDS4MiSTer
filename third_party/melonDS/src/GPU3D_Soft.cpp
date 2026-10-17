@@ -4246,10 +4246,14 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     // alternate scheduling latency every frame. Shadow/stencil safety still
     // selects the adaptive path for the affected frame without resetting this
     // hysteresis. The delayed-worker oracle bypasses the production warm-up.
-    const bool bandQueueHeavy = RasterBandQueue &&
+    // The verified Castlevania profile uses completion-based adaptive splitting.
+    // Other games retain the established four-band policy and hysteresis.
+    const bool queuedRaster =
+        RasterBandQueue && !GPU3D.IntegralTextureSpansEnabled();
+    const bool bandQueueHeavy = queuedRaster &&
         (RasterBandQueueTestDelayWorker ||
          polygonsPrepared > RasterBandPolygonThreshold);
-    if (!RasterBandQueue)
+    if (!queuedRaster)
     {
         RasterBandQueueActive = false;
         RasterBandHeavyFrames = 0;
