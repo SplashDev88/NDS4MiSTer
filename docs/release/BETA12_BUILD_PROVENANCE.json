@@ -1,0 +1,142 @@
+{
+  "accepted_general_beta": false,
+  "core_sha256": "3d0516778d0805ddef8da30e3ef01d55d4d6fed5ed677fb16036ca56ef1fdfee",
+  "core_source_revision": "32c31cd94b5a5734b6c034e8647d2a4924e990ae",
+  "final_live_summary": {
+    "BAT": {
+      "baseline_mean": 22.085934520962383,
+      "candidate_mean": 22.636547644796593,
+      "change_percent": 2.493048792260111,
+      "samples": {
+        "BASE": [
+          21.946109409033756,
+          22.22575963289101
+        ],
+        "CAND": [
+          22.61718249226362,
+          22.65591279732957
+        ]
+      }
+    },
+    "FIGHT": {
+      "baseline_mean": 21.482987299496948,
+      "candidate_mean": 21.877427265844243,
+      "change_percent": 1.8360573455095341,
+      "samples": {
+        "BASE": [
+          21.047848635482016,
+          21.918125963511883
+        ],
+        "CAND": [
+          21.706870254116513,
+          22.047984277571974
+        ]
+      }
+    },
+    "NSMB": {
+      "baseline_mean": 44.37642059030022,
+      "candidate_mean": 44.844782929093085,
+      "change_percent": 1.0554306376284073,
+      "samples": {
+        "BASE": [
+          44.22125753996472,
+          44.53158364063572
+        ],
+        "CAND": [
+          44.48328162363189,
+          45.206284234554275
+        ]
+      }
+    }
+  },
+  "fpga_build": {
+    "processors": 1,
+    "quartus": "17.0.2",
+    "route_and_assembly_passed": true,
+    "seed": 7,
+    "static_timing_assessed": false
+  },
+  "fpga_qsf_override": {
+    "appended_text": "\n# Private isolated SWAP busy experiment; source defaults remain off.\nset_global_assignment -name VERILOG_MACRO \"NDS_GX_SWAP_RETIREMENT_EXPERIMENT=1\"\nset_global_assignment -name VERILOG_MACRO \"NDS_HBLANK_RUN_QUEUE_EXPERIMENT=1\"\nset_global_assignment -name VERILOG_MACRO \"NDS_GX_BUSY_STATUS_EXPERIMENT=1\"\n",
+    "base_sha256": "510e15c2951a107ff4f9ad2269f3ba20ad2e9c04d9e71f42683d15da3aea270f",
+    "build_sha256": "d72de4c0efab96737314ad7db950403a65b0e0dc5cd27b9f4563ab43ae7fecfa"
+  },
+  "fpga_source_manifest_sha256": "927c76ad39990e59c2ea505f9ef4b7d7e729bbec55617d6a022195b2b3027118",
+  "frame_skip_changed": false,
+  "freeze_source_revision": "1d3a33361730ca0d2f9123c578378bca40463aad",
+  "freeze_stops_optimization": true,
+  "host_sha256": "6b63736edbe4b82821edd2dfe460a731281ddfd5ae0d27f51cb88d0a4cdf192f",
+  "host_source_revision": "db09fc5cee49ccca4e9e3b9b71e65ba303836607",
+  "native_control_change_percent": {
+    "bat-live": {
+      "cpu_seconds": 0.5100384847220418,
+      "wall_seconds": 0.3810809714060115
+    },
+    "combat-live": {
+      "cpu_seconds": 1.2083665312266234,
+      "wall_seconds": 1.2810822484111917
+    },
+    "mario-kart-heavy": {
+      "cpu_seconds": 0.2909938405194046,
+      "wall_seconds": -0.12537226863574835
+    },
+    "nsmb-castle": {
+      "cpu_seconds": 0.24274221185072165,
+      "wall_seconds": 0.5056953072948067
+    },
+    "nsmb-castle-left": {
+      "cpu_seconds": 0.12959663048759396,
+      "wall_seconds": 1.051410435963862
+    }
+  },
+  "non_runtime_test_changes_after_build": [
+    "src/replay/GameQueryProfileTest.cpp"
+  ],
+  "packaging_changes": "Dedicated launcher path and release metadata, reviewed documentation; supervisor helper hash pin generated for the selected exact binary. No runtime rebuild for documentation.",
+  "qualification": "Exact C53 full ARM service and 1088 complete-buffer comparisons with192 delayed wakeups inherited; 851 inputs rechecked. New live cave/combat/NSMB ABBA passes; original native combat and NSMB-left costs retained. Fresh public-range tests and package smoke are separate required gates. Fresh published scheduler/range sources passed 768 complete-buffer comparisons and192 delayed wakeups.",
+  "rejected_prototypes_included": false,
+  "renderer_build": {
+    "abi": "hard",
+    "compiler": "GCC 13.3 arm-linux-gnueabihf",
+    "cpu": "cortex-a9",
+    "fpu": "neon",
+    "no_audio_mix": true,
+    "optimization": "-O3 -DNDEBUG, LTO, static"
+  },
+  "renderer_change": "Lower the verified Castlevania primary raster share floor from 44% to 40%, resetting timing history on profile transitions. Retain ordinary-game 44% floor, existing policies and all Beta11 features.",
+  "renderer_sha256": "5510089f11be99c2bf56e80bca4cc784ccbbc418ce951514d78d352140a151a8",
+  "renderer_source_revision": "1d3a33361730ca0d2f9123c578378bca40463aad",
+  "rtc_offline_fallback_included": true,
+  "runtime_environment": {
+    "NDS4MISTER_ADAPTIVE_RASTER_SPLIT": "1",
+    "NDS4MISTER_BLACK_EVENT_TRACE": "0",
+    "NDS4MISTER_DIRECT_PLANE_PUBLICATION": "1",
+    "NDS4MISTER_DUAL_CORE_3D": "1",
+    "NDS4MISTER_GX_MATRIX_PREFIX": "auto",
+    "NDS4MISTER_GX_QUERY_FAST_POLL": "1",
+    "NDS4MISTER_H3D_DIAGNOSTICS": "0",
+    "NDS4MISTER_H3D_DISABLE_WC": "0",
+    "NDS4MISTER_H3D_UPLOAD_SNAPSHOT": "1",
+    "NDS4MISTER_MATCHED_DISPLAY_FULL_RATE": "1",
+    "NDS4MISTER_MATCHED_DISPLAY_TEST": "1",
+    "NDS4MISTER_PACKET_NC": "0",
+    "NDS4MISTER_RASTER_BAND_QUEUE": "1",
+    "NDS4MISTER_RASTER_X_PARTITION": "1",
+    "NDS4MISTER_STANDALONE_CAUSAL_TRACE": "1",
+    "NDS4MISTER_STANDALONE_FRAME_SKIP": "off",
+    "NDS4MISTER_STANDALONE_LOW_TIMER_SLACK": "1",
+    "NDS4MISTER_STANDALONE_PACING_PACKETS": "16",
+    "NDS4MISTER_STANDALONE_PACING_TRACE": "1",
+    "NDS4MISTER_STANDALONE_QUERY_BURST": "0",
+    "NDS4MISTER_STANDALONE_QUERY_PRIORITY": "1",
+    "NDS4MISTER_STANDALONE_REUSE_3D": "1",
+    "NDS4MISTER_STANDALONE_UPLOAD_CPU0": "1",
+    "NDS4MISTER_WEIGHTED_RASTER_BANDS": "1",
+    "NDS_GPU_STANDARD_PALETTE_CACHE": "1"
+  },
+  "runtime_overrides": "Beta10 runtime environment, core, host, clocks and frame admission retained. Separate focused experiment.",
+  "runtime_selection": "Castlevania Beta12 (C55 worker range)",
+  "source_revision": "1d3a33361730ca0d2f9123c578378bca40463aad",
+  "static_timing_clean": false,
+  "version": "v0.9.0-rc.8-private-beta-20261017"
+}

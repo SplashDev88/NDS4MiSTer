@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.8
+NDS4MiSTer v0.9.0-rc.9 (Beta12)
 
 START HERE
 
@@ -8,7 +8,9 @@ This beta updates the normal standalone kit. Back up the existing launcher,
 entire hidden kit, saves/NDS and config/NDS_storage.cfg before updating.
 For rollback, exit the core and restore the complete backed-up launcher and
 kit together. Keep your saves; restore saved data only if you intend to undo
-game progress. Retain a copy of NDS_rtc.cfg when returning to a pre-RTC release.
+game progress. Retain a copy of NDS_rtc.cfg. rc.8 cannot read an offline NDS-RTC-v2 file;
+restore its clock-file backup or move the v2 file aside and set MiSTer time
+before returning to rc.8. See GAME_CLOCK.md for offline clock behavior.
 Choose Load *.NDS. Use .. at the top to browse to your game folder.
 
 There is no separate Kickstart step or five-minute launch window. This
@@ -205,7 +207,7 @@ Games and firmware share a clock that starts from the MiSTer's local time
 (year 2000-2099). Set the MiSTer time correctly before launch. The clock
 continues through loading, reset and sleep. DS date/time edits are saved
 automatically in the kit's NDS_rtc.cfg and advance while powered off when
-MiSTer has a usable clock. The experimental beta also permits an unset clock;
+MiSTer has a usable clock. rc.9 / Beta12 also permits an unset clock;
 see GAME CLOCK / RTC below for fallback behavior.
 To return to MiSTer time, exit the core, remove NDS_rtc.cfg, and relaunch.
 The file is shared by all games in that kit; it never sets the MiSTer clock.
@@ -305,7 +307,7 @@ SuperStation One composite or S-Video with the FPGA encoder:
   Use the manufacturer's NTSC/PAL switch positions for your television.
 
 Composite color was user-confirmed on SS1 with rc.6 using this setup. The
-encoder is retained, but its physical output was not requalified on rc.8. Its hardware
+encoder is retained, but its physical output was not requalified for rc.9. Its hardware
 combines the Y/C signals, so do not change SVID to cvbs for that socket.
 External Sony encoder mode instead uses switch 3 DOWN with vga_mode=subcarrier.
 Other encoders/adapters need their own profiles; generic packed-composite
@@ -404,10 +406,11 @@ kernel, controller and the exact error; do not attach ROMs or BIOS dumps.
 PERFORMANCE AND KNOWN LIMITATIONS
 
 Both ARM cores stay at 1 GHz with write-combining, overclocked from the
-standard 800 MHz. This clock setting is unchanged from the accepted build. No overclock setting
-is exposed. The accepted renderer/pacing settings are retained. The tested
-USA revision0 of NSMB uses alternate drawing updates to reduce work; this is
-not a global FPS cap. The 3D FPS Counter reports publication activity, which
+standard 800 MHz. This clock setting is unchanged from the tested Beta12 build.
+No overclock setting is exposed. Beta12's renderer/pacing settings are retained,
+including full-rate NSMB drawing with frame skipping off. Reusing unchanged
+work reduces cost but does not guarantee every frame finishes on time.
+The 3D FPS Counter reports publication activity, which
 can include reused images; it is not proof of 60 unique frames per second.
 
 Some slowdown, surging, uneven animation, movie/audio hitches and graphical
@@ -419,10 +422,12 @@ are not implemented. No claim of universal full-speed operation is made.
 
 RELEASE IDENTIFICATION
 
-The launcher, release manifest and host menu identify v0.9.0-rc.8. The host
-was rebuilt only to change its version label from split.8.6; its implementation
-is unchanged. The FPGA, renderer and support modules retain their tested hashes.
-See the linked validation details for hardware coverage and remaining limits.
+The launcher and release manifest identify v0.9.0-rc.9 / Beta12. The retained
+host still identifies v0.9.0-rc.8 internally. The host, FPGA, renderer, support
+modules and runtime settings are unchanged from the frozen Beta12 package;
+none were rebuilt for this release. The public kit uses .NDS_Standalone rather
+than the dated private kit's folder. See the release validation details for
+inherited hardware coverage, offline package checks and remaining limits.
 
 SOURCE AND CREDITS
 
@@ -440,8 +445,8 @@ GAME CLOCK / RTC
 The DS clock starts from MiSTer local time once per standalone session. Set
 MiSTer date, time and timezone before launching. A valid but incorrect system
 clock gives an incorrect game clock; internet access is not checked or required.
-In this experimental beta, unavailable dates or dates outside 2000-2099 use
-January 1, 2000 at midnight, plus any saved offset. The published rc.8 instead
+In rc.9 / Beta12, unavailable dates or dates outside 2000-2099 use
+January 1, 2000 at midnight, plus any saved offset. The older rc.8 instead
 rejects those dates. If MiSTer synchronizes time later, exit
 and relaunch to use the corrected time. The running DS clock keeps ticking
 through menu, lid, game reset and game loading without reseeding.

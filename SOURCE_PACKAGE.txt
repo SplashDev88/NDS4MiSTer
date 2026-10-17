@@ -1,69 +1,74 @@
-NDS4MiSTer v0.9.0-rc.8 — Standalone
+NDS4MiSTer v0.9.0-rc.9 — Beta12 Standalone
 
-This file records the published rc.8 package. For the later private performance
-freeze, use docs/PRIVATE_BETA_20261017.md and its packaged BUILD_PROVENANCE.json.
-
-Corresponding source, licences and build scripts for the rc.8 package.
-Private development data is not a build dependency.
+Corresponding source, licences and build scripts for the frozen Beta12 runtime.
+No compiled binaries were rebuilt for public packaging. Private development
+data is not a build dependency. Historical release records describe their
+named artifacts; use the Beta12 records below for this package.
 
 Source identities
-- Qualified FPGA/runtime implementation: 9add3a7818832558f8e41ebb1ab722babdeba026.
-- Host version-label revision: b1614064c3dd18dcade502303cac7390dcdf2c6c.
-  The only changed compilation inputs are VERSION and the generated CORE_VERSION
-  literal. The host was rebuilt as rc.8 with the same GCC 13.3.0 build recipe.
-  Rebuilding the prior label reproduced the hardware-tested split.8.6 binary.
-- The package manifest records its exact packaging-source revision. The release
-  tag contains the corresponding source, current bug form and reviewed notes.
-- Historical rc.6/rc.7/split.8.6 records describe their named artifacts. Use
-  docs/release/RELEASE_V090_RC8.json for current component identities.
+- Frozen renderer: 1d3a33361730ca0d2f9123c578378bca40463aad.
+- Host with offline RTC: db09fc5cee49ccca4e9e3b9b71e65ba303836607.
+  The tested binary retains the v0.9.0-rc.8 internal version label.
+- FPGA: 32c31cd94b5a5734b6c034e8647d2a4924e990ae plus the exact QSF
+  overrides in docs/release/BETA12_BUILD_PROVENANCE.json. Source defaults
+  leave these experiments off. Append the recorded text when rebuilding:
+    NDS_GX_SWAP_RETIREMENT_EXPERIMENT=1
+    NDS_HBLANK_RUN_QUEUE_EXPERIMENT=1
+    NDS_GX_BUSY_STATUS_EXPERIMENT=1
+- The package manifest records its exact packaging-source revision separately
+  from those component revisions. Documentation does not change the binaries.
 
 Build and validation records
-  docs/release/FPGA_SOURCE_INPUTS_SPLIT86.json (1,345 frozen FPGA input hashes)
-  docs/release/RELEASE_V090_RC8.json (component identities and version-only rebuild)
-  docs/release/VALIDATION_SPLIT86.md (inherited hardware coverage and rc.8 checks)
-  docs/RELEASE_NOTES_V090_RC8.md (reviewed release notes)
-  docs/GAME_CLOCK.md (clock behavior and persistence)
-At the rc.8 tag, top-level SHA256SUMS covers the release source except itself.
-It is a historical release inventory, not an automatically updated branch index.
+  docs/release/BETA12_FPGA_SOURCE_INPUTS.json
+  docs/release/BETA12_BUILD_SOURCE_INPUTS.json
+  docs/release/BETA12_RENDERER_SOURCE_INPUTS.json
+  docs/release/BETA12_BUILD_PROVENANCE.json
+  docs/release/BETA12_PUBLIC_TEST_QUALIFICATION.json
+  docs/release/VALIDATION_BETA12_RC9.md
+  docs/RELEASE_NOTES_V090_RC9.md
+  docs/GAME_CLOCK.md
+The original renderer inventory and reviewed inventory contain 851 entries;
+their sole difference is an unlinked test. The FPGA inventory is a historical
+1,872-file tree snapshot, not a list of 1,872 compiled HDL files. Packaging
+checks the 552 HDL/configuration entries, with the recorded QSF override.
+See validation for the two noncompiled historical inventory differences.
+Top-level SHA256SUMS covers this release source except itself. It is a release
+inventory, not an automatically updated development-branch index.
 
 Build entry points
 - FPGA: fpga/mister_nitro_console_island/NDS4MiSTer.qpf; Quartus Prime
-  17.0.2 Build 602 Lite, Cyclone V 5CSEBA6U23I7. Use the checked-in QSF
-  and frozen input manifest. The FPGA was not rebuilt for rc.8.
-  tools/check_rtc_synthesis.py checks retained RTC synchronizers.
+  17.0.2 Build 602 Lite, Cyclone V 5CSEBA6U23I7, seed 7, one processor.
+  Use the corresponding source and QSF overrides above, not the defaults alone.
 - Host: tools/standalone_host/build.sh; GCC 13.3.0, static C++17 -O2,
-  Cortex-A9 NEON hard-float. VERSION and the menu identify v0.9.0-rc.8.
+  Cortex-A9 NEON hard-float. VERSION and the host menu retain v0.9.0-rc.8.
 - Renderer: tools/build_hybrid_3d_service_armhf.sh; GCC 13.3.0, static
-  Release -O3/LTO, Cortex-A9 NEON hard-float. The accepted renderer is retained.
+  Release -O3/LTO, Cortex-A9 NEON hard-float. JIT and audio mixing disabled.
 - Kernel modules: kernel/nds_mem_wc, including configuration and provenance
   for 5.15.1-MiSTer and 6.18.38-MiSTer. The launcher selects the matching ABI.
-- Installer: tools/package_standalone_release.py. Supply the matching core,
-  host, renderer and both modules. --check-only checks those inputs. To reproduce
-  the ZIP, use the packaging-source revision recorded in its manifest and the
-  exact pinned binary inputs. A source archive accepts --source-revision.
-  tools/audit_public_release.py checks the ZIP and sidecar against source pins.
+- Installer: tools/package_standalone_release.py. Supply the exact core,
+  host, renderer and both modules. --check-only verifies inputs and layout.
+  To reproduce the ZIP, use its packaging-source revision and pinned binaries.
+  A source archive accepts --source-revision. tools/audit_public_release.py
+  checks the resulting ZIP and sidecar against source pins and metadata.
 
-The release contains separate analog/digital screens, complete-release controller
-mapping and a persistent DS game clock. DS CPU execution, audio and DS timing
-remain in FPGA; the ARM graphics renderer is retained. Matched-frame drawing
-blocks are pruned and the host supplies save-profile lookup. Save states, DS
-wireless and DSi mode are not added.
+This release retains the 1 GHz ARM clock and frame skipping off. It includes
+Castlevania-specific rendering/scheduling improvements, full-rate NSMB drawing,
+offline RTC startup and the inherited save/graphics compatibility fixes. DS
+CPU execution, audio and DS timing remain in FPGA; graphics run on ARM. Separate
+analog/digital layouts and release-aware controller mapping are retained.
 
-Static timing remains unresolved: setup -13.834 ns and recovery -14.351 ns, with
-incomplete constraints. Routing and bounded tests do not establish timing closure
-or broad stability. Physical CRT/controller/adapter coverage, long sessions and
-multiple boards remain incomplete. Native output is approximately 59.64 Hz,
-not PAL 50 Hz. RTC alarms/periodic interrupts are unsupported.
-
-The rc.8 host has software/build checks; hardware qualification was performed
-on the split.8.6 host before its version-label-only rebuild. See validation
-for that distinction. No physical hardware retest is claimed for relabeling.
+Routing and assembly passed; static timing closure remains unresolved. No new
+timing analysis or hardware test was performed for public packaging. Earlier
+Beta12 live checks and private-kit installation smoke are inherited. The public
+layout has offline archive/merge/rollback checks, not a new physical launch.
+Long sessions, all games, physical adapters and multiple boards remain incompletely
+tested. Native analog is approximately 59.64 Hz, with no PAL 50 Hz mode. Save
+states, persistent lid-close resume, wireless, DSi and RTC alarms are unsupported.
 
 Public launch paths: Scripts/NDS4MiSTer.sh and Scripts/.NDS_Standalone.
 Merge the ZIP without deleting saved settings. No ROMs, BIOS/firmware dumps,
 saves, maps, personal settings, credentials, captures or kernel image are bundled.
-Keep all files from one release together.
-
-Upload the install ZIP and SHA-256 companion. Corresponding source uses GitHub's
-automatic archives at the release tag. Retain included licences and notices,
-including FreeBIOS and tools/standalone_host/THIRD_PARTY.md.
+Keep all files from one release together. The install ZIP and SHA-256 companion
+are the release assets; corresponding source uses GitHub's archives at the tag.
+Retain included licences and notices, including FreeBIOS and
+tools/standalone_host/THIRD_PARTY.md.

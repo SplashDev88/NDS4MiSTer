@@ -1,7 +1,9 @@
-# NDS4MiSTer v0.9.0-rc.8
+# NDS4MiSTer v0.9.0-rc.9 — Beta12
 
-This beta adds controller mapping that waits for a complete release, a persistent
-DS game clock, and independent native analog and digital output.
+This release packages the tested Beta12 rendering improvements, compatibility
+fixes and offline DS clock support. The gameplay ARM clock remains 1 GHz.
+The unchanged host binary may display rc.8 internally; the release launcher
+and manifest identify rc.9 / Beta12.
 
 ## Install or update
 
@@ -22,12 +24,23 @@ Games use cartridge saves in **saves/NDS on the SD card**, even when ROMs are
 on USB or a network share. Keep ROM filenames unchanged to keep using their
 matching saves. Save inside the game; save states are not included.
 
+## Moving from the dated private Beta12
+
+The private launcher uses `Scripts/.NDS_Private_Beta_20261017`; the public
+launcher uses `Scripts/.NDS_Standalone`. Shared game saves remain available,
+but kit-specific settings do not move automatically. With both kits stopped
+and backed up, copy only your chosen compatible display/controller settings
+and `NDS_rtc.cfg` if wanted. Do not copy binaries, the supervisor or manifests
+between packages. Leaving the public kit's settings alone is also supported.
+
 ## Return to the previous release
 
 Exit through **System → Reboot**, move the beta's launcher and entire hidden
 support folder aside, and restore the backed-up launcher and folder together.
 Leave cartridge saves in place to retain current progress. Keep a backup of
-the beta's `NDS_rtc.cfg`; older releases ignore it. Restoring an older save
+the beta's `NDS_rtc.cfg`. rc.8 cannot read an offline `NDS-RTC-v2` file:
+restore the old clock-file backup, or move the v2 file aside and set MiSTer's
+local time before rolling back. Pre-RTC releases ignore that file. Restoring an older save
 backup also restores older game progress, so do that only intentionally.
 
 The backup method restores the exact previous installation and avoids mixing
@@ -57,7 +70,10 @@ before advancing. **Esc/OSD** cancels; **Space/USER** skips. Existing maps remai
 valid. **Cycle Video Layout** changes the layout once per press; **Screen Peek**
 shows the other screen only while held. Choose the intended action when mapping.
 
-Set MiSTer's local date, time and timezone before launching. The DS clock is
+Set MiSTer's local date, time and timezone before launching when possible. If
+the date is unavailable or outside 2000–2099, the clock starts at January 1,
+2000. Offline edits persist, but powered-off elapsed time requires usable
+system time. The DS clock is
 seeded once per session and continues through menus, reset and lid sleep.
 Clock edits made inside DS firmware persist automatically in the hidden kit's
 **NDS_rtc.cfg**; keep it during upgrades. If MiSTer synchronizes time after the

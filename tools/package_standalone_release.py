@@ -19,15 +19,26 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 HOST = ROOT / 'tools/standalone_host'
 SUPPORT = 'Scripts/.NDS_Standalone/'
-VERSION = 'v0.9.0-rc.8'
-HOST_VERSION = VERSION
-HOST_SHA = '07bd1b9e2a5826e5a5c5769f2c59bc34780aad9668a693f8a3df6831fb18c381'
-HOST_REVISION = 'b1614064c3dd18dcade502303cac7390dcdf2c6c'
-FPGA_SOURCE_SHA = 'f605f09b24c7fc2870b347b528d612a17f5575275177b0cce03bd4a75afee64d'
-RUNTIME_REVISION = '9add3a7818832558f8e41ebb1ab722babdeba026'
-HOST_CHANGE = 'Same qualified split.8.6 implementation; version label rebuilt as v0.9.0-rc.8.'
-RELEASE_SCOPE = 'Independent analog/digital output, controller mapping and RTC. Qualified split.8.6 FPGA and retained renderer/modules; version-only host rebuild as rc.8 and user-reviewed release notes.'
+VERSION = 'v0.9.0-rc.9'
+HOST_VERSION = 'v0.9.0-rc.8'
+HOST_SHA = '6b63736edbe4b82821edd2dfe460a731281ddfd5ae0d27f51cb88d0a4cdf192f'
+HOST_REVISION = 'db09fc5cee49ccca4e9e3b9b71e65ba303836607'
+FPGA_SOURCE_SHA = '927c76ad39990e59c2ea505f9ef4b7d7e729bbec55617d6a022195b2b3027118'
+FPGA_REVISION = '32c31cd94b5a5734b6c034e8647d2a4924e990ae'
+RUNTIME_REVISION = '1d3a33361730ca0d2f9123c578378bca40463aad'
+RUNTIME_BASELINE = 'Castlevania Beta12 (C55 worker range)'
+HOST_CHANGE = 'Exact Beta12 host with offline RTC fallback; retained rc.8 internal version label.'
+RELEASE_SCOPE = 'Exact frozen Beta12 core, renderer, host and modules at 1 GHz. Public launcher layout, release metadata and documentation only; no binary rebuild.'
 DIAGNOSTIC_REVISION = 'functional-status-and-coherent-rtc-snapshots'
+SOURCE_RECORDS = {
+    'FPGA_SOURCE_INPUTS.json': ('docs/release/BETA12_FPGA_SOURCE_INPUTS.json', FPGA_SOURCE_SHA),
+    'BUILD_SOURCE_INPUTS.json': ('docs/release/BETA12_BUILD_SOURCE_INPUTS.json', '0bdfe3f976d451a95c4f3e78ddf1404cd0b16fae45f248c6189c2a9eacc19c4f'),
+    'RENDERER_SOURCE_INPUTS.json': ('docs/release/BETA12_RENDERER_SOURCE_INPUTS.json', 'da8239c9b9b81c98a8a0d10fbe35f46328e5aac8e9a4b3ee5a4c3547d7ff37f0'),
+    'PUBLIC_TEST_QUALIFICATION.json': ('docs/release/BETA12_PUBLIC_TEST_QUALIFICATION.json', '66e9b9520925923a2ad508a1e401403083d9248f4101996b44126f56accc12db'),
+    'FROZEN_BUILD_PROVENANCE.json': ('docs/release/BETA12_BUILD_PROVENANCE.json', '636842280c28d7710d5b041ba620a87ccfd91ceb7b4dcac82a0944f5244a9f67'),
+}
+STATIC_TIMING = {'clean': False, 'route_and_assembly_passed': True,
+                 'new_timing_analysis_performed': False}
 LICENSES = {
     'GPL-3.0.txt': 'LICENSE.txt',
     'WC-GPL-2.0.txt': 'kernel/nds_mem_wc/COPYING',
@@ -60,6 +71,34 @@ def json_bytes(value):
     return (json.dumps(value, indent=2, sort_keys=True) + '\n').encode()
 
 
+def verify_source_inputs(records):
+    """Verify frozen build records and current compiled inputs, without Git/network."""
+    for name, (_, digest) in SOURCE_RECORDS.items():
+        need(sha(records[name]) == digest, 'Frozen source record mismatch: ' + name)
+    original = json.loads(records['BUILD_SOURCE_INPUTS.json'])
+    reviewed = json.loads(records['RENDERER_SOURCE_INPUTS.json'])
+    need(len(original) == len(reviewed) == 851 and original.keys() == reviewed.keys(),
+         'Renderer source inventory mismatch')
+    need([n for n in original if original[n] != reviewed[n]] ==
+         ['src/replay/GameQueryProfileTest.cpp'], 'Unexpected post-build renderer differences')
+    for name, digest in reviewed.items():
+        need(sha((ROOT / name).read_bytes()) == digest, 'Renderer source differs: ' + name)
+    fpga = json.loads(records['FPGA_SOURCE_INPUTS.json'])
+    provenance = json.loads(records['FROZEN_BUILD_PROVENANCE.json'])
+    suffixes = {'.v', '.sv', '.vhd', '.vhdl', '.vh', '.svh', '.sdc', '.qsf',
+                '.qip', '.tcl', '.mif', '.hex', '.mem'}
+    hardware = {n: h for n, h in fpga.items() if Path(n).suffix.lower() in suffixes}
+    need(len(hardware) == 552, 'Unexpected FPGA HDL/config inventory')
+    for name, digest in hardware.items():
+        data = (ROOT / name).read_bytes()
+        if name == 'fpga/mister_nitro_console_island/NDS4MiSTer.qsf':
+            override = provenance['fpga_qsf_override']
+            need(sha(data) == override['base_sha256'], 'FPGA base QSF differs')
+            data += override['appended_text'].encode()
+            need(sha(data) == override['build_sha256'], 'FPGA build override differs')
+        need(sha(data) == digest, 'FPGA HDL/config source differs: ' + name)
+
+
 def collect(a):
     need((HOST / 'VERSION').read_text().strip() == HOST_VERSION, 'Unexpected frontend VERSION')
     import sys
@@ -84,10 +123,9 @@ def collect(a):
     add(SUPPORT + 'Kickstart.sh', HOST / 'Kickstart.sh', 0o755)
     add(SUPPORT + 'clock_control.py', HOST / 'clock_control.py', 0o755)
     add(SUPPORT + 'video_target.py', HOST / 'video_target.py', 0o755)
-    add(SUPPORT + 'FPGA_SOURCE_INPUTS.json', ROOT / 'docs/release/FPGA_SOURCE_INPUTS_SPLIT86.json')
-    need(sha(files[SUPPORT + 'FPGA_SOURCE_INPUTS.json']) == FPGA_SOURCE_SHA, 'FPGA provenance mismatch')
-    for name, digest in json.loads(files[SUPPORT + 'FPGA_SOURCE_INPUTS.json']).items():
-        need(sha((ROOT / name).read_bytes()) == digest, 'FPGA source differs: ' + name)
+    for name, (path, _) in SOURCE_RECORDS.items():
+        add(SUPPORT + name, ROOT / path)
+    verify_source_inputs({name: files[SUPPORT + name] for name in SOURCE_RECORDS})
     add(SUPPORT + 'NDS_Standalone.rbf', a.core)
     add(SUPPORT + 'nds_standalone_host', a.host, 0o755)
     add(SUPPORT + 'support/nds_hybrid_3d_service', a.helper, 0o755)
@@ -112,7 +150,7 @@ def collect(a):
     files[SUPPORT + module_618 + '.sha256'] = (
         supervisor.EXPECTED_WC_618 + '  nds_mem_wc.ko\n').encode()
     docs = {'README.md': ROOT / 'docs/STANDALONE_INSTALL_README.md',
-            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC8.md',
+            'RELEASE_NOTES.md': ROOT / 'docs/RELEASE_NOTES_V090_RC9.md',
             'QUICK_START.txt': ROOT / 'docs/STANDALONE_QUICK_START.txt',
             'GAME_CLOCK.md': ROOT / 'docs/GAME_CLOCK.md'}
     for name, path in docs.items():
@@ -125,7 +163,9 @@ def collect(a):
     manifest = {
         'name': 'NDS4MiSTer', 'version': VERSION, 'source_revision': revision,
         'release_channel': 'beta', 'runtime_source_revision': RUNTIME_REVISION,
-        'host_source_revision': HOST_REVISION, 'fpga_source_revision': RUNTIME_REVISION, 'runtime_baseline': 'standalone-fw1-20261003',
+        'host_source_revision': HOST_REVISION, 'fpga_source_revision': FPGA_REVISION, 'runtime_baseline': RUNTIME_BASELINE,
+        'host_internal_version': HOST_VERSION,
+        'renderer_source_revision': RUNTIME_REVISION,
         'host_change': HOST_CHANGE,
         'host_sha256': HOST_SHA, 'core_sha256': supervisor.EXPECTED_CORE,
         'helper_sha256': supervisor.EXPECTED_HELPER, 'module_sha256': supervisor.EXPECTED_WC,
@@ -145,6 +185,7 @@ def collect(a):
         'rtc_snapshot_signature': 0x5254, 'rtc_snapshot_version': 1,
         'rtc_persistence': 'kit/NDS_rtc.cfg', 'rtc_alarm_interrupts': False,
         'static_timing_clean': False,
+        'frozen_build_provenance_sha256': SOURCE_RECORDS['FROZEN_BUILD_PROVENANCE.json'][1],
     }
     files[SUPPORT + 'manifest.json'] = json_bytes(manifest)
     files[SUPPORT + 'BUILD_PROVENANCE.json'] = json_bytes({
@@ -153,12 +194,13 @@ def collect(a):
         'fpga_source_manifest_sha256': FPGA_SOURCE_SHA,
         'core_sha256': supervisor.EXPECTED_CORE, 'host_sha256': HOST_SHA,
         'renderer_sha256': supervisor.EXPECTED_HELPER,
-        'runtime_binaries_changed_for_packaging': True,
+        'runtime_binaries_changed_for_packaging': False,
         'host_source_revision': HOST_REVISION,
+        'fpga_source_revision': FPGA_REVISION,
+        'renderer_source_revision': RUNTIME_REVISION,
+        'frozen_build_provenance_sha256': SOURCE_RECORDS['FROZEN_BUILD_PROVENANCE.json'][1],
         'scope': RELEASE_SCOPE,
-        'static_timing': {'clean': False, 'setup_slack_ns': -13.834,
-                          'recovery_slack_ns': -14.351,
-                          'constraints_complete': False},
+        'static_timing': STATIC_TIMING,
     })
     files[SUPPORT + 'SHA256SUMS'] = ''.join(
         sha(data) + '  ' + name[len(SUPPORT):] + '\n'
@@ -194,7 +236,7 @@ def main():
     a.out_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for name, data in sorted(files.items()):
-            info = zipfile.ZipInfo(name, (2026, 10, 14, 0, 0, 0))
+            info = zipfile.ZipInfo(name, (2026, 10, 17, 0, 0, 0))
             info.create_system = 3
             info.external_attr = (stat.S_IFREG | (0o755 if name in executable else 0o644)) << 16
             info.compress_type = zipfile.ZIP_DEFLATED

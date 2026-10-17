@@ -76,7 +76,7 @@ class ReleaseAudit(TestCase):
             for name,data in sorted(files.items()) if name.startswith(prefix) and name != prefix+'SHA256SUMS').encode()
 
     def test_public_packager_layout_passes_with_sidecar(self):
-        self.assertEqual(len(self.files), 40)
+        self.assertEqual(len(self.files), 44)
         self.assertEqual(self.write(layout='auto'), [])
 
     def test_normal_layout_still_passes(self):
@@ -96,7 +96,10 @@ class ReleaseAudit(TestCase):
 
     def test_rehashed_runtime_and_license_tampering_rejected(self):
         for name in ('nds_standalone_host','supervisor.py','licenses/FreeBIOS.txt',
-                     'clock_control.py','video_target.py','FPGA_SOURCE_INPUTS.json','support/modules/6.18.38-MiSTer/nds_mem_wc.ko'):
+                     'clock_control.py','video_target.py','FPGA_SOURCE_INPUTS.json',
+                     'BUILD_SOURCE_INPUTS.json','RENDERER_SOURCE_INPUTS.json',
+                     'PUBLIC_TEST_QUALIFICATION.json','FROZEN_BUILD_PROVENANCE.json',
+                     'support/modules/6.18.38-MiSTer/nds_mem_wc.ko'):
             with self.subTest(name=name):
                 files=dict(self.files);files[audit.STANDALONE_PREFIX+name]+=b'changed'
                 self.resign_inner(files)
@@ -113,7 +116,9 @@ class ReleaseAudit(TestCase):
         for field,value in (('firmware_working_image','/media/fat/games/NDS/firmware.bin'),
                             ('hps_clock_khz',1200000),('user_settings_included',True),
                             ('rtc_snapshot_signature',0),('runtime_source_revision','0'*40),
-                            ('static_timing_clean',True)):
+                            ('static_timing_clean',True),('host_internal_version','v0.9.0-rc.9'),
+                            ('renderer_source_revision','0'*40),
+                            ('fpga_source_revision',package.RUNTIME_REVISION)):
             with self.subTest(field=field):
                 files=dict(self.files);name=audit.STANDALONE_PREFIX+'manifest.json'
                 manifest=json.loads(files[name]);manifest[field]=value;files[name]=json.dumps(manifest).encode()

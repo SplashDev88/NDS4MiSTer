@@ -1,10 +1,10 @@
-# Game clock — experimental beta
+# Game clock — rc.9 / Beta12
 
 Games and the DS firmware menu use the same RTC calendar. At the first game
 or firmware boot, it starts from the MiSTer's local date and time. Set the
 MiSTer clock correctly before launching; supported dates are 2000–2099.
-The experimental beta falls back to January 1, 2000 at midnight if MiSTer's
-clock is unavailable or outside that range. The published rc.8 build instead
+rc.9 / Beta12 falls back to January 1, 2000 at midnight if MiSTer's
+clock is unavailable or outside that range. The older rc.8 build instead
 reports an error in that case.
 No original BIOS or firmware dump is needed for games to read the clock.
 
@@ -66,7 +66,7 @@ apply their own rules or delays after clock changes. In White 2, an existing
 save can initially show its previous season; the season refreshed when leaving
 a building in the controlled retail-game tests.
 
-Back up `NDS_rtc.cfg` before changing or removing it. The published rc.8 cannot
+Back up `NDS_rtc.cfg` before changing or removing it. rc.8 cannot
 read a v2 offline setting: when rolling back, restore your rc.8 clock-file
 backup or move the v2 file aside and set MiSTer's time first. A pre-RTC release ignores
 this file; keep it for a later return to this beta. The supported workflow is

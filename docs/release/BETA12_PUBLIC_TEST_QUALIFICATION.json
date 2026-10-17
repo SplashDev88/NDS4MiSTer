@@ -1,0 +1,20 @@
+{
+  "actual_delayed_wakeups": 192,
+  "binary_sha256": {
+    "range": "71e2a826518c95e8efdd8c6a0ba7f778b1bc7023023d4aeac79255ad64ccf9b4",
+    "scheduler": "0b4d9895abeececf2b88036744a0a7810aeaf4ef331c30a0a0f806ea16df9e46"
+  },
+  "full_service_qualification": "Inherited exact C53 helper; not rerun on MiSTer",
+  "helper_sha256": "5510089f11be99c2bf56e80bca4cc784ccbbc418ce951514d78d352140a151a8",
+  "public_source_inputs": {
+    "src/melonds/HeadlessPlatform.cpp": "44eeb6c659dbe3f19b9cb9385f2c3d553a2e33bb49bdac9fbe0a8a0c1ddf2324",
+    "tools/benchmark_raster_batch.cpp": "8a04b280858a035d6994e4c13759fd3fc1b183ad4698f335dc83300f897e19f3",
+    "tools/test_castlevania_raster_range.cpp": "ac3456f81a0dfc48415da6b87dc0ada57e737f4bbd5807076053580ce2d22cd2",
+    "tools/test_castlevania_raster_scheduler.cpp": "38310c83cc267c2d692faad6e79afa0a62ae05e2321fbc751911d8d33e1b2d84",
+    "tools/test_castlevania_raster_scheduler_platform.cpp": "64d40323f1bb21805629e0afda7e5093cd9f9ea9e5e6c192e204b812017631e6"
+  },
+  "range_buffers": 384,
+  "scheduler_buffers": 384,
+  "source_inputs_checked": 851,
+  "status": "PASS"
+}

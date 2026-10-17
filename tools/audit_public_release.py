@@ -132,11 +132,15 @@ def standalone_contract():
         STANDALONE_PREFIX + "Kickstart.sh": host / "Kickstart.sh",
         STANDALONE_PREFIX + "clock_control.py": host / "clock_control.py",
         STANDALONE_PREFIX + "video_target.py": host / "video_target.py",
-        STANDALONE_PREFIX + "FPGA_SOURCE_INPUTS.json": SOURCE_ROOT / "docs/release/FPGA_SOURCE_INPUTS_SPLIT86.json",
         STANDALONE_PREFIX + "support/modules/6.18.38-MiSTer/BUILD_PROVENANCE.json":
             SOURCE_ROOT / "kernel/nds_mem_wc/BUILD_PROVENANCE-6.18.38.json",
         "LICENSE.txt": SOURCE_ROOT / "LICENSE.txt",
     }
+    for name, (path, digest) in standalone.SOURCE_RECORDS.items():
+        source = SOURCE_ROOT / path
+        if sha256(source.read_bytes()) != digest:
+            raise ValueError("frozen source record differs: " + name)
+        source_files[STANDALONE_PREFIX + name] = source
     source_files.update({STANDALONE_PREFIX + "licenses/" + name: SOURCE_ROOT / path
                          for name, path in standalone.LICENSES.items()})
     source_files.update({STANDALONE_PREFIX + "licenses/runtime/" + name:
@@ -207,7 +211,9 @@ def audit_standalone(file_data, hashes, environment):
         expected_manifest = {
             "name": "NDS4MiSTer", "version": standalone.VERSION, "source_revision": revision,
             "release_channel": "beta", "runtime_source_revision": standalone.RUNTIME_REVISION,
-            "host_source_revision": standalone.HOST_REVISION, "fpga_source_revision": standalone.RUNTIME_REVISION, "runtime_baseline": "standalone-fw1-20261003",
+            "host_source_revision": standalone.HOST_REVISION, "fpga_source_revision": standalone.FPGA_REVISION, "runtime_baseline": standalone.RUNTIME_BASELINE,
+            "host_internal_version": standalone.HOST_VERSION,
+            "renderer_source_revision": standalone.RUNTIME_REVISION,
             "host_change": standalone.HOST_CHANGE,
             "runtime_environment": environment, "hps_clock_khz": 1000000,
             "remote_kit": "/media/fat/Scripts/.NDS_Standalone", "rom_directory": "/media/fat/games/NDS",
@@ -220,6 +226,7 @@ def audit_standalone(file_data, hashes, environment):
             "rtc_snapshot_signature": 0x5254, "rtc_snapshot_version": 1,
             "rtc_persistence": "kit/NDS_rtc.cfg", "rtc_alarm_interrupts": False,
             "static_timing_clean": False,
+            "frozen_build_provenance_sha256": standalone.SOURCE_RECORDS['FROZEN_BUILD_PROVENANCE.json'][1],
         }
         for key, name in {
             "host_sha256": "nds_standalone_host", "core_sha256": "NDS_Standalone.rbf",
@@ -240,12 +247,13 @@ def audit_standalone(file_data, hashes, environment):
             "core_sha256": hashes[support + "NDS_Standalone.rbf"],
             "host_sha256": hashes[support + "nds_standalone_host"],
             "renderer_sha256": hashes[support + "support/nds_hybrid_3d_service"],
-            "runtime_binaries_changed_for_packaging": True,
+            "runtime_binaries_changed_for_packaging": False,
             "host_source_revision": standalone.HOST_REVISION,
+            "fpga_source_revision": standalone.FPGA_REVISION,
+            "renderer_source_revision": standalone.RUNTIME_REVISION,
+            "frozen_build_provenance_sha256": standalone.SOURCE_RECORDS['FROZEN_BUILD_PROVENANCE.json'][1],
             "scope": standalone.RELEASE_SCOPE,
-            "static_timing": {"clean": False, "setup_slack_ns": -13.834,
-                              "recovery_slack_ns": -14.351,
-                              "constraints_complete": False},
+            "static_timing": standalone.STATIC_TIMING,
         }
         if json.dumps(manifest, sort_keys=True) != json.dumps(expected_manifest, sort_keys=True):
             failures.append("standalone manifest fields do not match approved runtime/source contract")
