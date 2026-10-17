@@ -41,6 +41,9 @@ public:
     void GetOBJBufferHashes(u64& lineHash, u64& windowHash) const;
 
 private:
+    // The paired output cache compares these buffers before X mosaic changes
+    // them, after sprite preparation and any parallel worker have completed.
+    friend class SoftRenderer;
     SoftRenderer& Parent;
 
     // Experimental, opt-in B-only cache of the pre-mosaic sprite result.

@@ -1277,6 +1277,7 @@ private:
                 pipeline_profile_enabled_, FullFrame3D,
                 arm_video_engine_b_only_, engine_b_pixels_enabled_,
                 matched_display_test_, matched_engine_a_only_};
+            settings.PreparedSpriteLineReuse = integral_texture_spans_;
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
@@ -2481,6 +2482,19 @@ private:
                 bank_mask = nds_->GPU.VRAMMap_BOBJ[(address >> 14) & 0x07u];
             else
                 bank_mask = nds_->GPU.VRAMMap_LCDC;
+            // The exact Castlevania profile repeats large unchanged BG
+            // uploads. Retain normal capture synchronization and all other
+            // profiles; invalidate only physical banks whose bytes changed.
+            if (integral_texture_spans_ && !arm_video_engine_b_only_ &&
+                region == 0x00200000u) {
+                bank_mask = access->bytes == 2
+                    ? nds_->GPU.WriteVRAM_BBGChanged<melonDS::u16>(
+                        address, static_cast<melonDS::u16>(access->value))
+                    : nds_->GPU.WriteVRAM_BBGChanged<melonDS::u32>(
+                        address, access->value);
+                pending_external_vram_mask_ |= bank_mask;
+                return true;
+            }
             pending_external_vram_mask_ |= bank_mask;
             if (arm_video_engine_b_only_) {
                 if (access->bytes == 2)
@@ -2541,8 +2555,8 @@ private:
             gpu.WriteVRAM_ABG<Words>(address, words);
             break;
         case 0x00200000u:
-            pending_external_vram_mask_ |= gpu.VRAMMap_BBG[(address >> 14) & 0x07u];
-            gpu.WriteVRAM_BBG<Words>(address, words);
+            pending_external_vram_mask_ |=
+                gpu.WriteVRAM_BBGChanged<Words>(address, words);
             break;
         case 0x00400000u:
             pending_external_vram_mask_ |= gpu.VRAMMap_AOBJ[(address >> 14) & 0x0fu];

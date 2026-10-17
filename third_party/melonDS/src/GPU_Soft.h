@@ -134,6 +134,7 @@ private:
     bool PackedOutput = false;
     bool LineCache = false;
     bool PairedBCache = false;
+    bool PreparedSpriteLineReuse = false;
     bool EngineBOnly = false;
     bool EngineAOnly = false;
     bool EngineBPixelsEnabled = true;
@@ -202,9 +203,22 @@ private:
         u32 Line = 0;
         u32 OBJEnable = 0;
     };
+    static_assert(sizeof(PreparedBSpriteKey) == 32);
     PreparedBSpriteKey PreparedBSprites {};
     PreparedBSpriteKey CachedBSprites[192] {};
     bool PreparedBSpritesValid = false;
+
+    struct PreparedSpriteIdentity
+    {
+        alignas(8) u32 Pixels[256];
+        u8 Window[256];
+        u32 Count = 0;
+        bool Valid = false;
+    };
+    // Allocate only for the opt-in game profile. This stores pre-mosaic
+    // inputs corresponding to a committed cached output, never just a prep.
+    std::unique_ptr<std::array<PreparedSpriteIdentity, 192>> BSpriteIdentity;
+    void InvalidateBSpriteIdentity();
 
     enum class Parallel2DTask
     {
@@ -239,7 +253,7 @@ private:
 
     void DrawScanlineA(u32 line, u32* dst);
     void DrawScanlineB(u32 line, u32* dst);
-    EngineLineState CaptureLineState(u32 engine) const;
+    EngineLineState CaptureLineState(u32 engine, bool ignoreOAM = false) const;
 
     void SetParallel2D(bool enabled);
     void Parallel2DThreadFunc();

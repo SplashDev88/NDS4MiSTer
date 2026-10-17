@@ -20,6 +20,7 @@
 #define GPU_H
 
 #include <memory>
+#include <cstring>
 
 #include "GPU2D.h"
 #include "GPU3D.h"
@@ -442,6 +443,54 @@ public:
             VRAMDirty[8][(addr & 0x3FFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_I[addr & 0x3FFF] = val;
         }
+    }
+
+
+    // Ordered external replay can avoid invalidating a bank for a write
+    // whose bytes already match. Compare each physical target separately:
+    // the OR of overlapping read mappings is not proof that each bank matches.
+    // The caller guarantees an aligned access within one dirty block.
+    template<typename T>
+    u32 WriteVRAM_BBGChanged(u32 addr, T val)
+    {
+        const u32 mask = VRAMMap_BBG[(addr >> 14) & 0x7];
+        u32 changed = 0;
+        const auto write = [&](u32 bank, u8* bytes, u32 offset) {
+            // Fixed-width comparisons keep this tiny operation inlined on
+            // Cortex-A9; the generic byte comparison calls __memcmpeq.
+            // memcpy retains the four-byte alignment allowed for word pairs.
+            static_assert(sizeof(T) == 2 || sizeof(T) == 4 || sizeof(T) == 8);
+            bool equal;
+            if constexpr (sizeof(T) == 2)
+            {
+                u16 oldValue, newValue;
+                std::memcpy(&oldValue, bytes + offset, sizeof(oldValue));
+                std::memcpy(&newValue, &val, sizeof(newValue));
+                equal = oldValue == newValue;
+            }
+            else if constexpr (sizeof(T) == 4)
+            {
+                u32 oldValue, newValue;
+                std::memcpy(&oldValue, bytes + offset, sizeof(oldValue));
+                std::memcpy(&newValue, &val, sizeof(newValue));
+                equal = oldValue == newValue;
+            }
+            else
+            {
+                u32 oldValue[2], newValue[2];
+                std::memcpy(oldValue, bytes + offset, sizeof(oldValue));
+                std::memcpy(newValue, &val, sizeof(newValue));
+                equal = oldValue[0] == newValue[0] && oldValue[1] == newValue[1];
+            }
+            if (equal) return;
+            std::memcpy(bytes + offset, &val, sizeof(T));
+            VRAMDirty[bank][offset / VRAMDirtyGranularity] = true;
+            changed |= 1u << bank;
+        };
+        if (mask & (1u << 2)) write(2, VRAM_C, addr & 0x1FFFF);
+        if (mask & (1u << 7)) write(7, VRAM_H, addr & 0x7FFF);
+        if (mask & (1u << 8)) write(8, VRAM_I, addr & 0x3FFF);
+        return changed;
     }
 
 
@@ -948,6 +997,10 @@ struct RendererSettings
     // Matched MiSTer single-engine mode: draw A and mirror its completed
     // output on both physical screens. Preserve LCD lifecycle and capture.
     bool EngineAOnly = false;
+
+    // Opt-in paired composition reuse based on exact prepared sprite pixels.
+    // Sprite preparation still runs at its original phase.
+    bool PreparedSpriteLineReuse = false;
 };
 
 struct ExternalRendererStageProfile

@@ -67,8 +67,15 @@ SoftRenderer::~SoftRenderer()
     delete[] Framebuffer[1][1];
 }
 
+void SoftRenderer::InvalidateBSpriteIdentity()
+{
+    if (BSpriteIdentity)
+        for (auto& entry : *BSpriteIdentity) entry.Valid = false;
+}
+
 void SoftRenderer::Reset()
 {
+    InvalidateBSpriteIdentity();
     SetExternalFramebuffers(nullptr, nullptr);
     const size_t len = 256 * 192 * sizeof(u32);
     memset(Framebuffer[0][0], 0, len);
@@ -117,6 +124,7 @@ void SoftRenderer::PreSavestate()
 
 void SoftRenderer::PostSavestate()
 {
+    InvalidateBSpriteIdentity();
     PreparedBSpritesValid = false;
     auto rend3d = dynamic_cast<SoftRenderer3D*>(Rend3D.get());
     if (rend3d->IsThreaded())
@@ -135,8 +143,19 @@ void SoftRenderer::SetRenderSettings(RendererSettings& settings)
     // The general cache already owns B's line keys and can omit sprite work.
     // Keep its contract separate from the composition-only paired cache.
     const bool pairedBCache = settings.PairedBCache && !settings.LineCache && !EngineAOnly;
-    if (LineCache != settings.LineCache || PairedBCache != pairedBCache)
+    const bool preparedSpriteLineReuse = settings.PreparedSpriteLineReuse &&
+        pairedBCache && !EngineBOnly;
+    if (preparedSpriteLineReuse)
     {
+        if (!BSpriteIdentity)
+            BSpriteIdentity = std::make_unique<std::array<PreparedSpriteIdentity, 192>>();
+        InvalidateBSpriteIdentity();
+    }
+    else BSpriteIdentity.reset();
+    if (LineCache != settings.LineCache || PairedBCache != pairedBCache ||
+        PreparedSpriteLineReuse != preparedSpriteLineReuse)
+    {
+        PreparedSpriteLineReuse = preparedSpriteLineReuse;
         LineCache = settings.LineCache;
         PairedBCache = pairedBCache;
         memset(LineCacheStateValid, 0, sizeof(LineCacheStateValid));
@@ -280,7 +299,7 @@ void SoftRenderer::SetExternalLineCacheReuse(
 }
 
 SoftRenderer::EngineLineState SoftRenderer::CaptureLineState(
-    u32 engine) const
+    u32 engine, bool ignoreOAM) const
 {
     EngineLineState state{};
     const GPU2D& source = engine == 0 ? GPU.GPU2D_A : GPU.GPU2D_B;
@@ -369,8 +388,9 @@ SoftRenderer::EngineLineState SoftRenderer::CaptureLineState(
     {
         state.MemoryRevision = std::max(
             state.MemoryRevision, GPU.ExternalRenderPaletteRevision[page]);
-        state.MemoryRevision = std::max(
-            state.MemoryRevision, GPU.ExternalRenderOAMRevision[page]);
+        if (!ignoreOAM)
+            state.MemoryRevision = std::max(
+                state.MemoryRevision, GPU.ExternalRenderOAMRevision[page]);
     }
     if (engine == 0 && ((source.DispCnt >> 16) & 3u) == 2u)
         bankMask |= GPU.VRAMMap_LCDC;
@@ -611,19 +631,48 @@ void SoftRenderer::DrawScanline(u32 line)
         // lookahead, preserving the OBJ inputs latched at the preceding
         // sprite phase separately from the current composition registers.
         const bool pairedBEligible = PairedBCache && cacheCommon &&
+            (!PreparedSpriteLineReuse || GPU.GPU2D_B.Enabled) &&
             PreparedBSpritesValid && PreparedBSprites.Line == line &&
             ((GPU.GPU2D_B.DispCnt >> 16) & 1u) == 1u;
         EngineLineState pairedBState {};
+        auto* preparedB = static_cast<SoftRenderer2D*>(Rend2D_B.get());
+        auto* spriteIdentity = BSpriteIdentity ? &(*BSpriteIdentity)[line] : nullptr;
         bool pairedBReuse = false;
         if (pairedBEligible)
         {
-            pairedBState = CaptureLineState(1);
+            pairedBState = CaptureLineState(1,
+                PreparedSpriteLineReuse);
             pairedBReuse = LineCacheStateValid[1][line] &&
                 ExternalLineCacheValid[1][line] &&
                 memcmp(&CachedBSprites[line], &PreparedBSprites,
                        sizeof(PreparedBSpriteKey)) == 0 &&
                 memcmp(&LineCacheState[1][line], &pairedBState,
-                       sizeof(EngineLineState)) == 0;
+                       sizeof(EngineLineState)) == 0 &&
+                (!spriteIdentity || (spriteIdentity->Valid &&
+                 spriteIdentity->Count == preparedB->NumSprites &&
+                 // An enabled zero-count preparation cleared both buffers.
+                 (!preparedB->NumSprites ||
+                  (memcmp(spriteIdentity->Pixels, preparedB->OBJLine,
+                          sizeof(spriteIdentity->Pixels)) == 0 &&
+                   memcmp(spriteIdentity->Window, preparedB->OBJWindow,
+                          sizeof(spriteIdentity->Window)) == 0))));
+        }
+        // Snapshot raw inputs before DrawScanline/AdvanceLineCacheState can
+        // apply X mosaic. A snapshot is valid only after its output commits.
+        if (spriteIdentity && !pairedBReuse)
+        {
+            spriteIdentity->Valid = false;
+            if (pairedBEligible)
+            {
+                if (preparedB->NumSprites)
+                {
+                    memcpy(spriteIdentity->Pixels, preparedB->OBJLine,
+                           sizeof(spriteIdentity->Pixels));
+                    memcpy(spriteIdentity->Window, preparedB->OBJWindow,
+                           sizeof(spriteIdentity->Window));
+                }
+                spriteIdentity->Count = preparedB->NumSprites;
+            }
         }
         const bool reuseB = pairedBReuse || (cacheEligible &&
             (automaticReuse[1] ||
@@ -766,6 +815,7 @@ void SoftRenderer::DrawScanline(u32 line)
             CachedBSprites[line] = PreparedBSprites;
             LineCacheStateValid[1][line] = true;
             ExternalLineCacheValid[1][line] = true;
+            if (spriteIdentity) spriteIdentity->Valid = true;
         }
         if (StageProfileEnabled)
             StageProfile.CacheCommitNs += profileElapsedNs(cacheCommitStarted);
@@ -960,11 +1010,13 @@ void SoftRenderer::DrawSprites(u32 line)
         // No GetLine call belongs here: matched 3D starts only at line zero.
         PreparedBSpritesValid = line < 192 && GPU.GPU2D_B.Enabled;
         if (PreparedBSpritesValid)
+        {
             PreparedBSprites = {
-                std::max(GPU.ExternalRenderOAMRevision[2],
-                         GPU.ExternalRenderOAMRevision[3]),
+                PreparedSpriteLineReuse ? 0 : std::max(GPU.ExternalRenderOAMRevision[2],
+                                     GPU.ExternalRenderOAMRevision[3]),
                 GPU.BOBJCoherencyEpoch, GPU.GPU2D_B.DispCnt,
                 GPU.GPU2D_B.OBJMosaicLine, line, GPU.GPU2D_B.OBJEnable};
+        }
     }
 }
 
