@@ -15,7 +15,10 @@ The current private beta is frozen; do not change that baseline or publish a
 release as part of the audit.
 
 Repository: https://github.com/SplashDev88/NDS4MiSTer
-Branch: `experiment/castlevania-rooms-20261016`.
+Branch: `experiment/postfreeze-performance-20261017`.
+The runtime source remains the frozen Beta12 implementation; post-freeze
+reports on this branch describe separate private diagnostic/rejected prototypes.
+The original freeze branch remains `experiment/castlevania-rooms-20261016`.
 Use the freeze/source revision from the supplied package manifest. If reviewing
 branch HEAD instead, report its exact commit and any difference from that freeze.
 The renderer, host and FPGA have separate source identities and binary hashes.
@@ -29,6 +32,18 @@ larger architecture changes or FPGA/ARM repartitioning if measurements justify
 them. Distinguish low-risk exact optimizations from compatibility compromises.
 
 Read first:
+
+Read the post-freeze measurement reports before proposing the same experiments:
+`docs/PERFORMANCE_AUDIT_FOLLOWUP_20261017.md`,
+`docs/PUBLICATION_PLACEMENT_20261017.md`,
+`docs/RENDERER_CPU_PROFILE_20261017.md`,
+`docs/PARALLEL_PHASES_20261017.md` and
+`docs/PACKET_MAPPING_CONTROLS_20261017.md`. They supersede hypotheses about moving
+publication to CPU1 and the expected benefit of parallel clear/final processing.
+Instrumented setup CPU time is substantial, but a new setup optimization still
+needs a breakdown of texture lookup/decode, polygon/edge preparation and
+scanline-list construction. Do not assume setup is safe to parallelize: its
+texture cache can mutate and decode textures.
 
 1. `docs/PRIVATE_BETA_20261017.md`: final experiment decision, selected runtime,
    package/provenance, install and rollback, measured improvements and limitations.
@@ -118,6 +133,14 @@ Please investigate, without treating these as proven wins:
 
 Do not repeat these unchanged:
 
+- Publication on CPU1: the exact frozen helper lost about 1.75% cave, 1.24%
+  combat and 3.98% NSMB throughput across four runs per setting per scene.
+- Parallel clear/final processing: exact-output checks passed, but none of the
+  three option combinations met native gates. NSMB final-only saved-scene
+  improvements remain an unvalidated game-specific hypothesis.
+- The fresh same-binary packet-input NC experiment: cave improved about 2.30%
+  against OFF, combat fell 0.31%, and OFF did not agree with the frozen baseline
+  in those rooms. Preserve the inconclusive baseline decision and all samples.
 - Global adaptive scheduling: a Mario Kart control regressed about 5.7%.
 - Packet-input NC: cave +1.510%, combat +1.243%, NSMB -1.179%; failed the declared
   NSMB limit. The NSMB comparison did not isolate mapping from binary layout.
@@ -140,8 +163,11 @@ Validation expectations for each proposed change:
    Docker environment. Never run the aggregate service self-test on the MiSTer;
    it can exhaust memory. Existing build/test entry points are in DEVELOPMENT.md.
 4. Separate stock-clock native cost tests from unprofiled live comparisons.
-   Use fresh suspend copies for every launch and baseline/candidate/candidate/
-   baseline order. Retain every valid sample; disclose exclusions and variable
+   Use fresh suspend copies for every launch, at least four runs per arm and
+   balanced order. Prefer same-binary switches, with exact frozen-helper controls
+   and a predeclared option-off baseline-agreement gate for rebuilt helpers.
+   Improve combat start-state repeatability before chasing small effects.
+   Retain every valid sample; disclose exclusions and variable
    enemy/timer states. Existing target gate is >1% improvement in both scenes,
    with NSMB mean no worse than -1%, plus correctness and health checks. These
    engineering gates are not statistical confidence intervals.

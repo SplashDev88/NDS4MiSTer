@@ -91,6 +91,24 @@ Castlevania profile uses the existing completion-adaptive two-way split; ordinar
 games retain the four-band policy, warm-up/hysteresis and shadow/AA safety gates.
 Both worker completion and final-pass ownership remain mandatory.
 
+Post-freeze measurements preserve this placement. Moving publication to CPU1
+with the exact frozen helper reduced throughput in both Castlevania rooms and
+NSMB; see [the placement comparison](PUBLICATION_PLACEMENT_20261017.md).
+A separate [CPU/wall profile](RENDERER_CPU_PROFILE_20261017.md) measures about
+2.65–2.84 ms of polygon-setup CPU time and 1.02–1.07 ms of clear/final CPU time
+per rerendered pair in the two target rooms. Instrumented phase costs cannot
+be converted directly into an unprofiled frame-rate saving. A private
+[parallel-phase prototype](PARALLEL_PHASES_20261017.md) passed output and worker
+ordering checks but did not meet native performance gates; the accepted runtime
+keeps clear/setup and final processing in their established order.
+
+The [same-binary packet-mapping comparison](PACKET_MAPPING_CONTROLS_20261017.md)
+also did not qualify for promotion: option-off baseline agreement failed, and
+combat did not improve against the identical helper with the option disabled.
+Packet input therefore remains Device-mapped. See the
+[audit follow-up](PERFORMANCE_AUDIT_FOLLOWUP_20261017.md) for remaining hypotheses
+and measurement limits.
+
 The accepted controller starts with a 50% primary share, bounded to 40–80% for
 the verified Castlevania profile and 44–80% for other games. Profile transitions
 reset its timing history before the next work plan.

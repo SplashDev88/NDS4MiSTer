@@ -10,6 +10,10 @@ with Castlevania rendering improvements, full-rate NSMB drawing, bug fixes and
 rc.8 download described below. See the [updated architecture](docs/architecture.md)
 and [audit handoff](docs/CLAUDE_AUDIT_HANDOFF_20261017.md) for the development snapshot.
 
+The [post-freeze audit follow-up](docs/PERFORMANCE_AUDIT_FOLLOWUP_20261017.md)
+records CPU placement, renderer profiling, parallel-phase and packet-mapping
+experiments. None qualified to replace the frozen private installer.
+
 ## What's new
 
 - **Separate screen layouts on HDMI and analog outputs.** HDMI and the analog RCA outputs can show different screens, such as Main on HDMI and Touch on analog. HDMI can also show both screens together while analog shows one. Analog runs at native 240p automatically. With `vga_scaler=1`, analog copies HDMI instead.
