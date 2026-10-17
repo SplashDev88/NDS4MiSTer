@@ -1,5 +1,9 @@
 # rc.8 bug-fix experiment
 
+This is the chronological investigation record, including rejected intermediate
+builds. For what is included in rc.9 and the limits of each game claim, see
+[rc.9 game fixes](release/RC9_GAME_FIXES.md).
+
 This branch starts from rc.8 plus its README formatting correction. The approved
 backlog excludes issue #42 (SS1 launcher detection). Save integrity comes first,
 followed by progression, graphics correctness, frame measurement and performance.

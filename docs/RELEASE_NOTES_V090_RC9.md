@@ -1,6 +1,6 @@
 # NDS4MiSTer v0.9.0-rc.9
 
-**Smoother Castlevania play, improved rendering and frame delivery, and offline DS clock support.**
+**Smoother Castlevania and NSMB play, game compatibility fixes, and offline DS clock support.**
 
 This packages the tested Beta12 runtime at **1 GHz**. Back up your installation and saves before updating.
 
@@ -9,9 +9,31 @@ This packages the tested Beta12 runtime at **1 GHz**. Back up your installation 
 - **Castlevania: Dawn of Sorrow performance improvements.** Rendering and CPU work distribution have been optimized, with particular testing in the cave/bat area and the enemy-heavy combat room near the Lost Village save room. Improvements vary by scene and game.
 - **Improved graphics delivery, including New Super Mario Bros.** Rendering reuses unchanged work where it is safe and reduces unnecessary pixel conversion. Frame skipping remains off; this does not guarantee that every frame finishes on time.
 - **Offline DS clock startup.** If MiSTer's date is unavailable or outside 2000–2099, the DS clock starts from January 1, 2000. Date/time edits persist. Set MiSTer's local time and timezone when possible, then relaunch. Without usable system time, time spent powered off cannot be recovered.
-- **Save and compatibility fixes.** Includes flash-save page wrapping and long-transfer fixes, ARM9 VRAM/OAM readback fixes, and graphics-command/DMA ordering work. This does not resolve every game issue.
+- **Game compatibility and save fixes.** Includes Wizard of Oz menu-label and Mushroom Men menu corrections, Ninja Reflex and Jackass improvements, and shared save/graphics fixes detailed below.
 
 Independent HDMI/analog layouts, controller mapping that waits for button release, touch rotation, Screen Peek, microphone blowing input and persistent clock edits are retained.
+
+## Game fixes and compatibility
+
+- **The Wizard of Oz: Beyond the Yellow Brick Road ([#34](https://github.com/SplashDev88/NDS4MiSTer/issues/34)):** fixed the missing **New Game** and **Continue** labels in the tested menus by correcting sprite-memory reads. Movement and temporary save/reload also passed. Later menus, permanent saves and every reported flicker case are not fully verified.
+- **Mushroom Men: Rise of the Fungi ([#31](https://github.com/SplashDev88/NDS4MiSTer/issues/31)):** corrected the misplaced screens, duplicated menu bands and missing menu pixels in the tested sequence. Graphics backpressure and event-queue changes also kept memory bounded during the recorded checks. The first checkpoint saved and reloaded correctly; later gameplay and the original unspecified save failure need more coverage.
+- **Ninja Reflex ([#24](https://github.com/SplashDev88/NDS4MiSTer/issues/24)):** improved the tested geometry-backlog behavior. A 56-minute session reached all six category menus, completed **Firefly Catch** and retained its completion mark after a cold restart, with no transport faults. This does not establish that every reported invisible-menu case is fixed.
+- **Jackass the Game ([#40](https://github.com/SplashDev88/NDS4MiSTer/issues/40)):** preserves fast geometry-query handling through the tested phone transition and tutorial. Testing reached player control and another NPC conversation. Long transitions can still occur; mission completion is not verified.
+
+**Shared fixes:** corrected flash-save page wrapping and long save-chip reads;
+restored VRAM bank-register reads used when games restore texture mappings;
+preserved graphics commands during large bursts; and fixed a lost graphics-DMA
+request at a pause boundary. The VRAM correction includes the earlier King Kong
+fix, but its original texture report is not yet verified as resolved.
+
+**Save/reload checks** also passed for Spyro: Shadow Legacy and Lunar Knights,
+with Final Fantasy Tactics A2 and Pokémon White 2 used as regression checks.
+Their original reported save errors were not all reproduced, so these are
+validation results rather than claims that every save issue is fixed.
+
+These checks were recorded during the bug-fix work inherited by this runtime;
+the final Beta12 renderer did not receive a new full sweep of every listed game.
+[Issue-by-issue scope and remaining work](https://github.com/SplashDev88/NDS4MiSTer/blob/v0.9.0-rc.9/docs/release/RC9_GAME_FIXES.md).
 
 ## Measured scene improvements
 

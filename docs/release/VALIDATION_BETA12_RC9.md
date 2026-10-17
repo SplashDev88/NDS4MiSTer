@@ -41,6 +41,10 @@ release-wide percentage. 60 FPS has not been established across these games.
 
 ## Inherited runtime qualification
 
+The [game-fix inventory](RC9_GAME_FIXES.md) maps the inherited save, graphics
+and progression work to the reported issues. Earlier game checks are identified
+as inherited coverage, not a new sweep with the final Beta12 renderer.
+
 - The [Beta12 live comparison](../CASTLEVANIA_LIVE_BALANCE_FOLLOWUP_20261017.md)
   used baseline/candidate/candidate/baseline ordering, fresh isolated saves,
   analog RGBS through RetroTINK-4K and an unchanged capture setup. All twelve
