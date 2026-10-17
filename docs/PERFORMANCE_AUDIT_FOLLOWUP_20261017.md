@@ -1,10 +1,15 @@
 # Performance audit follow-up — 17 October 2026
 
-The approved post-freeze comparisons are complete. **Frozen private Beta12
+The earlier approved post-freeze comparisons are complete. **Frozen private Beta12
 remains the selected runtime.** No accepted pointer, ZIP, FPGA image, host
 binary or public Release was changed. This branch adds measurement reports
 and updates the architecture/audit notes; the diagnostic and rejected prototype
 sources remain preserved privately with build receipts and exact patches.
+
+A subsequent [clock experiment and process survey](CLOCK_AND_PROCESS_SURVEY_20261017.md)
+found a promising first 1.2 GHz sample, then lost video and network access on
+the repeat. It is not qualified; physical recovery and post-failure checks are
+pending. No background service shutdown was justified. Beta12 remains at 1 GHz.
 
 ## What the measurements changed
 
