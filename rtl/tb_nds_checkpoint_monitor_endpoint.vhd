@@ -7,7 +7,7 @@ use ieee.numeric_std.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_checkpoint_monitor_endpoint is
-  generic(CANCEL_PHASE:natural:=0; STEP_PERIOD:positive:=1; READ_DELAY:positive:=1;
+  generic(SLEEP_MODE:boolean:=false;CANCEL_PHASE:natural:=0; STEP_PERIOD:positive:=1; READ_DELAY:positive:=1;
     EXPIRE_LEASE:boolean:=false; HOLD_RETURN:boolean:=false; ACQUIRE_TIMEOUT:boolean:=false);
 end;
 architecture sim of tb_nds_checkpoint_monitor_endpoint is
@@ -51,7 +51,7 @@ begin
       monitor_active=>active,monitor_paused=>paused,monitor_ready=>return_ready,monitor_error=>err,
       return_permission=>permit,monitor_request=>mon_req,monitor_continue=>mon_continue,
       monitor_release=>mon_release,capture_paused=>ack,request_seen=>seen);
-  cpu:entity work.nds_arm7_monitor_probe
+  cpu:entity work.nds_arm7_monitor_probe generic map(SLEEP_ENABLED=>SLEEP_MODE)
     port map(clk=>clk,ce=>ce,reset=>reset,preset=>ss,addr=>addr,rnw=>rnw,ena=>ena,seq=>open,
       code=>open,acc=>open,dout=>dout,din=>din,bus_done=>done,dma=>'0',irq=>'0',new_halt=>'0',unhalt=>'0',
       idle=>open,halted=>open,request=>mon_req,continue_run=>mon_continue,restore=>'0',

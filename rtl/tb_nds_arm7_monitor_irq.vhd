@@ -8,7 +8,7 @@ use std.textio.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_arm7_monitor_irq is
-  generic(OPERATION:string:="capture"; THUMB:boolean:=false; MASKED:boolean:=false;
+  generic(SLEEP_MODE:boolean:=false; OPERATION:string:="capture"; THUMB:boolean:=false; MASKED:boolean:=false;
     IRQ_PHASE:natural:=0; STEP_PERIOD:positive:=1; READ_DELAY:positive:=1);
 end;
 architecture sim of tb_nds_arm7_monitor_irq is
@@ -20,7 +20,7 @@ architecture sim of tb_nds_arm7_monitor_irq is
   signal irq,raise_irq,irq_acked:std_logic:='0';
   signal counter,initial_count,irq_count,traffic:natural:=0;
   signal saved_cpsr,saved_pc:std_logic_vector(31 downto 0):=(others=>'0');
-  type snapshot_type is array(0 to 44) of std_logic_vector(31 downto 0);
+  type snapshot_type is array(0 to 44+14*boolean'pos(SLEEP_MODE)) of std_logic_vector(31 downto 0);
   function instruction(a:std_logic_vector(31 downto 0)) return std_logic_vector is
   begin
     case a is
@@ -57,7 +57,7 @@ begin
       wait until falling_edge(clk);if i=STEP_PERIOD then ce<='1';else ce<='0';end if;
     end loop;
   end process;
-  dut:entity work.nds_arm7_monitor_probe
+  dut:entity work.nds_arm7_monitor_probe generic map(SLEEP_ENABLED=>SLEEP_MODE)
     port map(clk=>clk,ce=>ce,reset=>reset,preset=>ss,addr=>addr,rnw=>rnw,ena=>ena,seq=>open,
       code=>code,acc=>open,dout=>dout,din=>din,bus_done=>done,dma=>'0',irq=>irq,
       new_halt=>'0',unhalt=>'0',idle=>idle,halted=>open,request=>req,continue_run=>cont,

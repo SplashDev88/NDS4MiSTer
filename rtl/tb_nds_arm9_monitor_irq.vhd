@@ -8,19 +8,19 @@ use std.textio.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_arm9_monitor_irq is
-  generic(OPERATION:string:="capture"; THUMB:boolean:=false; MASKED:boolean:=false;
+  generic(SLEEP_MODE:boolean:=false; OPERATION:string:="capture"; THUMB:boolean:=false; MASKED:boolean:=false;
     HIGH_VECTOR:boolean:=true; IRQ_PHASE:natural:=0; STEP_PERIOD:positive:=1; READ_DELAY:positive:=1);
 end;
 architecture sim of tb_nds_arm9_monitor_irq is
   signal clk:std_logic:='0';signal ce:std_logic:='0';signal reset:std_logic:='1';
   signal ss:proc_bus_gb_type:=((others=>'0'),(others=>'0'),'0','0',"10","1111",'0');
   signal addr,din,dout,hdin,hdout:std_logic_vector(31 downto 0):=(others=>'0');
-  signal ha:unsigned(5 downto 0):=(others=>'0');
+  signal ha:unsigned(5+boolean'pos(SLEEP_MODE) downto 0):=(others=>'0');
   signal ena,rnw,code,done,req,cont,restoring,active,paused,err,idle,hw,ready,release_run:std_logic:='0';
   signal irq,raise_irq,irq_acked:std_logic:='0';
   signal counter,initial_count,irq_count,traffic:natural:=0;
   signal saved_cpsr,saved_pc:std_logic_vector(31 downto 0):=(others=>'0');
-  type snapshot_type is array(0 to 63) of std_logic_vector(31 downto 0);
+  type snapshot_type is array(0 to 63+14*boolean'pos(SLEEP_MODE)) of std_logic_vector(31 downto 0);
   function instruction(a:std_logic_vector(31 downto 0)) return std_logic_vector is
   begin
     case a is
@@ -60,7 +60,7 @@ begin
       wait until falling_edge(clk);if i=STEP_PERIOD then ce<='1';else ce<='0';end if;
     end loop;
   end process;
-  dut:entity work.nds_arm9_monitor_probe
+  dut:entity work.nds_arm9_monitor_probe generic map(SLEEP_ENABLED=>SLEEP_MODE)
     port map(clk=>clk,ce=>ce,reset=>reset,preset=>ss,addr=>addr,rnw=>rnw,ena=>ena,seq=>open,
       code=>code,acc=>open,dout=>dout,din=>din,bus_done=>done,dma=>'0',irq=>irq,
       new_halt=>'0',unhalt=>'0',idle=>idle,halted=>open,request=>req,continue_run=>cont,
@@ -136,7 +136,7 @@ begin
       for i in 1 to 50000*STEP_PERIOD loop clocks(1);exit when paused='1';end loop;
       assert paused='1' report "capture failed to park" severity failure;
       if IRQ_PHASE=1 then raise_irq<='1';end if;
-      for i in image'range loop ha<=to_unsigned(i,6);clocks(2);image(i):=hdout;end loop;
+      for i in image'range loop ha<=to_unsigned(i,ha'length);clocks(2);image(i):=hdout;end loop;
       file_open(f,"irq.state",write_mode);
       for i in image'range loop hwrite(l,image(i));writeline(f,l);end loop;file_close(f);
       saved_pc<=image(42);saved_cpsr<=image(43);base_count:=counter;
@@ -144,7 +144,7 @@ begin
     else
       file_open(f,"irq.state",read_mode);restoring<='1';clocks(2);
       for i in image'range loop
-        readline(f,l);hread(l,image(i));ha<=to_unsigned(i,6);hdin<=image(i);hw<='1';clocks(1);
+        readline(f,l);hread(l,image(i));ha<=to_unsigned(i,ha'length);hdin<=image(i);hw<='1';clocks(1);
       end loop;hw<='0';file_close(f);
       saved_pc<=image(42);saved_cpsr<=image(43);initial_count<=to_integer(unsigned(image(1)));
       base_count:=to_integer(unsigned(image(1)));clocks(4);reset<='0';clocks(1);restoring<='0';

@@ -11,7 +11,7 @@ import hashlib,json,shutil,sys
 r,o=map(Path,sys.argv[1:])
 files=['third_party/Nitro_DarkSide/d2dabe/rtl/'+n for n in
        ['export.vhd','proc_bus_gba.vhd','reg_savestates.vhd','nds_cpu9.vhd']]
-files+=['rtl/nds_arm9_monitor_rom.vhd','rtl/nds_arm9_monitor_probe.vhd',
+files+=['rtl/nds_monitor_pipeline_transfer.vhd','rtl/nds_arm9_monitor_rom.vhd','rtl/nds_arm9_monitor_probe.vhd',
         'rtl/tb_nds_arm9_monitor_irq.vhd','tools/test_arm9_monitor_irq.sh']
 h={}
 for n in files:
@@ -20,15 +20,16 @@ for n in files:
 data=json.dumps(h,sort_keys=True).encode();(o/'INPUTS.json').write_bytes(data)
 print('ARM9_MONITOR_IRQ_INPUT_SHA256',hashlib.sha256(data).hexdigest())
 PY
-  docker run --rm --network none -v "$test_tmp:/test" -w /test nds4mister-nvc-arm64:1.22.1 \
+  docker run --rm --network none -e MONITOR_SLEEP="${MONITOR_SLEEP:-false}" -v "$test_tmp:/test" -w /test nds4mister-nvc-arm64:1.22.1 \
     bash /test/source/tools/test_arm9_monitor_irq.sh --inside
   exit
 fi
 p="$repo/third_party/Nitro_DarkSide/d2dabe/rtl"
+nvc --std=2008 -a "$repo/rtl/nds_monitor_pipeline_transfer.vhd"
 nvc --std=2008 -a "$p/export.vhd" "$p/proc_bus_gba.vhd" "$p/reg_savestates.vhd" "$p/nds_cpu9.vhd" \
   "$repo/rtl/nds_arm9_monitor_rom.vhd" "$repo/rtl/nds_arm9_monitor_probe.vhd" "$repo/rtl/tb_nds_arm9_monitor_irq.vhd"
 run() {
-  nvc --std=2008 -e "$@" tb_nds_arm9_monitor_irq
+  nvc --std=2008 -e -gSLEEP_MODE="${MONITOR_SLEEP:-false}" "$@" tb_nds_arm9_monitor_irq
   nvc --std=2008 -r tb_nds_arm9_monitor_irq --ieee-warnings=off --exit-severity=error
 }
 for high in false true; do

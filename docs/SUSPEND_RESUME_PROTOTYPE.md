@@ -50,12 +50,14 @@ ARM instructions in private maintenance memory. ARM9 includes all writable
 CP15 context and CPSR.Q, and waits for the real memory owner to drain before
 running private code. Fresh-process CPU continuation, pending IRQs and common
 return holds pass; the real memory-island fixture also retains dirty cache and
-TCM contents through maintenance and CPU-only reset. These monitors do not yet
-capture sleeping pipelines or provide whole-machine memory persistence. See
-the CPU-assisted sections below for validation scope and full-shell area costs.
+TCM contents through maintenance and CPU-only reset. An optional sequential
+transfer now preserves idle HALT/WFI pipelines in that same snapshot RAM, with
+138 capture/fresh-process restore pairs passing. Whole-machine memory persistence
+is still missing. See the CPU-assisted sections below for validation scope and
+full-shell area costs.
 
 `EXPERIMENTAL_CHECKPOINT`, `EXPERIMENTAL_HALT_CHECKPOINT` and
-`EXPERIMENTAL_CPU_MONITOR` default to `false`
+`EXPERIMENTAL_CPU_MONITOR` / `EXPERIMENTAL_MONITOR_SLEEP` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
 `false`; no shipping wrapper or ARM9 adapter enables it. The released FPGA,
 host, renderer, settings and 1 GHz operating point are unchanged.
@@ -2309,9 +2311,9 @@ status, boot-preset response, debug and simulation-export ports needed by the
 console. Its product option remains disabled; no shipping QIP instantiates
 the wrapper or the adapter. The 45-word image still needs an explicit format
 identity, address-range validation and complete/checksummed host load before
-it can replace the older 60-word halted CPU image. Sleeping CPUs remain a
-bounded refusal in this monitor; a playable integration must address that
-coverage rather than assume every game's ARM7 remains out of HALT.
+it can replace the older 60-word halted CPU image. The original branch-only monitor refuses sleeping CPUs. The optional hybrid
+extension described below now covers idle HALT/WFI; it requires an extended
+image and does not change the original 45-word format.
 
 The full-shell area tool's `--prepare --arm7-monitor` option substitutes this
 complete ARM7 wrapper only in the generated connected copy. It retains the
@@ -2402,9 +2404,9 @@ Reproduce with `tools/test_arm9_monitor.sh`,
 Each freezes its source inputs before running. The existing ARM7 monitor,
 direct CPU checkpoint and ordinary WFI/console regressions are also retained.
 
-This monitor is disabled in the product. It does not capture WFI or a prefetched
-sleep pipeline; the direct checkpoint implementation remains the reference for
-that work. The wrapper still depends on a future host protocol to validate a
+This monitor is disabled in the product. Its original branch-only configuration
+does not capture WFI; the optional hybrid extension below adds the prefetched
+sleep pipeline. The direct checkpoint remains the sleep-semantics reference. The wrapper still depends on a future host protocol to validate a
 complete, exact-identity, checksummed image before reset release. Cache/TCM and
 other memory serialization, common-owner restore wiring and renderer ownership
 remain necessary before a whole game can resume.
@@ -2447,6 +2449,115 @@ again records 733 audio samples, 729 varied samples, 644 fetches, 25,664 ARM9
 DMA words and 26,368 ARM7 DMA words. All of this remains simulation/synthesis
 validation; no hardware installation or game save was changed.
 
+### Hybrid CPU-assisted HALT/WFI context
+
+The optional `EXPERIMENTAL_MONITOR_SLEEP` path combines ordinary ARM register
+save/load with a sequential copy of the stopped pipeline into the monitor's
+existing block RAM. It does not add a second 384-bit pipeline shadow bank.
+`SLEEP_ENABLED=true` in each experimental wrapper enables the extension;
+product defaults remain off. This is component qualification, not a usable
+whole-machine image format or game resume feature.
+
+The image appends 14 words to each original architectural image:
+
+| Word offset from extension base | Meaning |
+| --- | --- |
+| 0 | Sleep flag: 0 for a branch boundary, 1 for idle HALT/WFI |
+| 1–12 | Existing live decode/fetch pipeline fields |
+| 13 | Visible R15, separate from the saved fetch PC |
+
+ARM7 uses words 45–58, for **59 words** total in its existing 64-word RAM.
+ARM9 uses words 64–77, for **78 words** total; its RAM grows to 128 words and
+its host address becomes seven bits. A branch capture writes zero to all 14
+extension words. The ARM save/load routines still handle their original 45/64
+words; a small hardware sequencer transfers the extension through the same
+single physical RAM port. This is deliberately not silently compatible with
+an old 45/64-word image.
+
+At an eligible idle sleep boundary, the CPU stops before maintenance changes
+its pipeline. The sequencer copies all extension words, then redirects execution
+to private ARM code. ARM9 also retains its separate real-memory drain gate.
+On return, the CPU remains stopped after the ARM load routine while the
+sequencer restores each live pipeline field. The core checks ordered transfer,
+the sleep flag and enum encodings; an incomplete or rejected load retains the
+hold. Only a complete pipeline load raises return-ready, and guest execution
+still requires the common explicit release. Capture acknowledgement is not
+asserted during this final reload. The host must still validate complete,
+checksummed, exact-identity images before any load; these local guards do not
+replace that protocol.
+
+Expanded DMA tests found that allowing external DMA to pause private
+maintenance could lose its PARK branch and issue an illegal private fetch.
+Both wrappers now apply guest DMA ownership only while the monitor is inactive.
+The initial guest boundary still requires DMA to settle, and whole-machine
+release must still coordinate DMA with the other owners. A fault control
+reintroducing the old private-DMA connection detects the failure.
+
+`bash tools/test_cpu_monitor_sleep.sh` passes **138 native sleep capture and
+fresh-process restore pairs**:
+
+- ARM7: 96 combinations of ARM/Thumb entry and return, masked/unmasked IRQ,
+  DMA overlap, three HALT positions and two wake delays; 16 more cases deliver
+  wake/IRQ during loading or the final return hold.
+- ARM9: 18 WFI cases with three memory delays, three wake delays and enabled
+  or disabled IRQ; eight more deliver wake/IRQ during loading or the final hold.
+- Masked cases change backing memory after prefetch. Continued guest execution
+  must use the retained instruction or decoded branch. The ARM7 functional
+  corruption changes a live fetch word; the ARM9 corruption changes the already
+  decoded BX source register. Corrupting an unused fetch word would not provide
+  a meaningful ARM9 continuation oracle.
+- Ten fault controls detect four invalid header/enum images, two functionally
+  corrupted instructions, two omitted final pipeline writes, private DMA
+  interference and premature return-ready.
+
+With `MONITOR_SLEEP=true`, both existing 36-pair branch suites, the ARM7
+64-pair and ARM9 128-pair pending-IRQ suites, the 36 three-attempt coordinator
+cases, and four real-cache/TCM isolation cases also pass, including their fault
+controls. The memory fixture retains its RAM/cache across CPU-only reset; it
+still does not serialize dirty memory or prove exit/power-cycle persistence.
+The original direct CPU checkpoint and ordinary WFI regressions, complete
+VHDL closure, and connected DMA/audio smoke pass. The latter records 733 audio
+samples, 729 varied samples, 644 fetches, 25,664 ARM9 DMA words and 26,368 ARM7
+DMA words. These authored simulations do not establish gameplay performance.
+
+#### Full-shell hybrid sleep area result
+
+The fresh v17 disabled control remains **34,290 ALMs**, matching the earlier
+baseline exactly. With this revision's control/DMA wiring and sleep disabled,
+both monitors estimate **42,406 ALMs**. The v18 sleep-enabled build uses the
+same production inputs, with only the generated monitor-sleep option changed:
+
+| Resource | Disabled | Both monitors, branch only | Both monitors, including sleep |
+| --- | ---: | ---: | ---: |
+| Estimated ALMs | 34,290 | 42,406 | **42,972** |
+| Logic ALUTs | 52,271 | 62,856 | **64,013** |
+| Dedicated logic registers | 39,376 | 42,135 | 42,205 |
+| Block-memory bits | 4,113,236 | 4,144,740 | 4,146,788 |
+| DSP blocks | 27 | 27 | 27 |
+
+The sleep extension costs **566 estimated ALMs, 1,157 ALUTs, 70 registers and
+2,048 memory bits** against the matched branch-only control. This replaces the
+previous branch-only estimate as the relevant resource gate. The complete
+probe remains **1,062 ALMs above the device's 41,910**, before the remaining
+memory serialization, real endpoint/host transport and renderer ownership.
+No fitter or timing run was started for this over-capacity probe.
+
+Both connected maps retain 145 physical pins and 224 accepted virtual pins.
+Production RTL/QIP/QSF/SDC inputs match the frozen mapped copies; subsequent
+test/documentation edits are outside their synthesis closure. The v18 map
+report SHA-256 is
+`1b14430f4f4b83f6cc38e99d4be8c8beaae5d42b11088c8f71ab4bded549a3f5`;
+the v17 branch-only report is
+`accc9dfe73372234257c17c35f0873b27605f952ed94f572f40aeb85c646b16e`.
+
+Reproduce preparation with
+`measure_connected_area.py --prepare --arm7-monitor --arm9-monitor --monitor-sleep`
+and a new output directory. The raw probe still carries the old image/read
+coordinator; enabling the new image widths does not implement a safe transport.
+It must not be assembled or deployed. Further area work must preserve these
+continuation tests and default-runtime behavior, then be measured in the full
+shell. There have been no hardware actions or game-save changes.
+
 ## Remaining state coverage
 
 | Owner | Needed before a game can resume | Current status |
@@ -2470,9 +2581,10 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 1. Establish a viable full-shell resource budget with checkpoint capture and
    restore observable before adding the remaining memory serializers. Use the
    connected probe and capacity failure to target the largest measured costs.
-   The CPU-assisted monitors now reduce the estimate to 42,583 ALMs,
-   still 673 above capacity before missing work. Add the required HALT/WFI
-   pipeline coverage, measure its full cost, then target further area savings.
+   The CPU-assisted monitors including HALT/WFI now estimate 42,972 ALMs,
+   still 1,062 above capacity before missing work. Target the largest measured
+   checkpoint costs, including audio-state handling and the control/read muxes;
+   check local hierarchy comparisons carefully when CPU wrappers rename paths.
    Keep the direct checkpoint path as the sleep-semantics reference.
    Preserve component continuation proofs when changing their implementation.
 2. Implement the real external owner behind the optional common barrier and

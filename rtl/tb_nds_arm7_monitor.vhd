@@ -8,7 +8,7 @@ use std.textio.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_arm7_monitor is
-  generic(OPERATION:string:="baseline"; READ_DELAY:positive:=1;
+  generic(SLEEP_MODE:boolean:=false; OPERATION:string:="baseline"; READ_DELAY:positive:=1;
     STEP_PERIOD:positive:=1; EARLY_CAPTURE:boolean:=false;
     CORRUPT_WORD:integer:=-1; CANCEL_DMA:boolean:=false;
     EXPECT_REJECT:boolean:=false);
@@ -31,7 +31,7 @@ architecture sim of tb_nds_arm7_monitor is
   signal write_count,initial_count:natural:=0;
   signal release_run,ready:std_logic:='0';
   signal pending_bus:boolean:=false;
-  type snapshot_type is array(0 to 44) of std_logic_vector(31 downto 0);
+  type snapshot_type is array(0 to 44+14*boolean'pos(SLEEP_MODE)) of std_logic_vector(31 downto 0);
 begin
   clk<=not clk after 5 ns;
   process begin
@@ -40,7 +40,7 @@ begin
       if i=STEP_PERIOD then ce<='1';else ce<='0';end if;
     end loop;
   end process;
-  dut:entity work.nds_arm7_monitor_probe generic map(ENABLED=>OPERATION/="baseline")
+  dut:entity work.nds_arm7_monitor_probe generic map(ENABLED=>OPERATION/="baseline",SLEEP_ENABLED=>SLEEP_MODE)
     port map(clk=>clk,ce=>ce,reset=>reset,preset=>ss,addr=>addr,rnw=>rnw,ena=>ena,seq=>open,
       code=>code,acc=>open,dout=>dout,din=>din,bus_done=>done,dma=>dma,
       irq=>'0',new_halt=>'0',unhalt=>'0',idle=>idle,halted=>halted,

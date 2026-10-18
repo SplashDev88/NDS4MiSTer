@@ -30,7 +30,7 @@ def main():
     (output/'source').mkdir(parents=True, exist_ok=False)
     files = ['third_party/Nitro_DarkSide/d2dabe/rtl/' + n for n in
              ['export.vhd', 'proc_bus_gba.vhd', 'reg_savestates.vhd', 'gba_cpu.vhd']]
-    files += ['rtl/nds_arm7_monitor_rom.vhd', 'rtl/nds_arm7_monitor_probe.vhd',
+    files += ['rtl/nds_monitor_pipeline_transfer.vhd', 'rtl/nds_arm7_monitor_rom.vhd', 'rtl/nds_arm7_monitor_probe.vhd',
               'tools/suspend_resume/arm7_monitor_area.vhd']
     manifest = {}
     for name in files + ['tools/suspend_resume/measure_arm7_monitor.py',

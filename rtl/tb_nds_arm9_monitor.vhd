@@ -8,7 +8,7 @@ use std.textio.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_arm9_monitor is
-  generic(OPERATION:string:="baseline"; READ_DELAY:positive:=1;
+  generic(SLEEP_MODE:boolean:=false; OPERATION:string:="baseline"; READ_DELAY:positive:=1;
     STEP_PERIOD:positive:=1; EARLY_CAPTURE:boolean:=false;
     CORRUPT_WORD:integer:=-1; CANCEL_DMA:boolean:=false;
     EXPECT_REJECT:boolean:=false);
@@ -26,13 +26,13 @@ architecture sim of tb_nds_arm9_monitor is
   signal clk:std_logic:='0';signal ce:std_logic:='0';signal reset:std_logic:='1';
   signal ss:proc_bus_gb_type:=((others=>'0'),(others=>'0'),'0','0',"10","1111",'0');
   signal addr,din,dout,hdin,hdout:std_logic_vector(31 downto 0):=(others=>'0');
-  signal ha:unsigned(5 downto 0):=(others=>'0');
+  signal ha:unsigned(5+boolean'pos(SLEEP_MODE) downto 0):=(others=>'0');
   signal ena,rnw,code,done,req,cont,restoring,active,paused,err,idle,hw,dma,halted:std_logic:='0';
   signal write_count,initial_count:natural:=0;
   signal release_run,ready:std_logic:='0';
   signal pending_bus:boolean:=false;
   signal memory_idle:std_logic:='1';signal cache_busy,cache_ena:std_logic:='0';
-  type snapshot_type is array(0 to 63) of std_logic_vector(31 downto 0);
+  type snapshot_type is array(0 to 63+14*boolean'pos(SLEEP_MODE)) of std_logic_vector(31 downto 0);
 begin
   clk<=not clk after 5 ns;
   process begin
@@ -41,7 +41,7 @@ begin
       if i=STEP_PERIOD then ce<='1';else ce<='0';end if;
     end loop;
   end process;
-  dut:entity work.nds_arm9_monitor_probe generic map(ENABLED=>OPERATION/="baseline")
+  dut:entity work.nds_arm9_monitor_probe generic map(ENABLED=>OPERATION/="baseline",SLEEP_ENABLED=>SLEEP_MODE)
     port map(clk=>clk,ce=>ce,reset=>reset,preset=>ss,addr=>addr,rnw=>rnw,ena=>ena,seq=>open,
       code=>code,acc=>open,dout=>dout,din=>din,bus_done=>done,dma=>dma,
       irq=>'0',new_halt=>'0',unhalt=>'0',idle=>idle,halted=>halted,
@@ -106,7 +106,7 @@ begin
     procedure clocks(n:natural) is
     begin for i in 1 to n loop wait until falling_edge(clk);end loop;end;
     procedure read_snapshot(variable v:out snapshot_type) is
-    begin for i in v'range loop ha<=to_unsigned(i,6);clocks(2);v(i):=hdout;end loop;end;
+    begin for i in v'range loop ha<=to_unsigned(i,ha'length);clocks(2);v(i):=hdout;end loop;end;
     procedure pause_cpu is
     begin
       req<='1';
@@ -145,7 +145,7 @@ begin
           elsif i=45 then saved(i):=saved(i) xor x"00001000";
           else saved(i):=saved(i) xor x"00000100";end if;
         end if;
-        ha<=to_unsigned(i,6);hdin<=saved(i);hw<='1';clocks(1);
+        ha<=to_unsigned(i,ha'length);hdin<=saved(i);hw<='1';clocks(1);
       end loop;hw<='0';file_close(f);clocks(4);
       memory_idle<='0';reset<='0';clocks(1);restoring<='0';
       clocks(5000*STEP_PERIOD);
@@ -205,7 +205,7 @@ begin
         file_open(f,"monitor.state",write_mode);write(l,position);writeline(f,l);
         for i in saved'range loop hwrite(l,saved(i));writeline(f,l);end loop;file_close(f);
         -- An accidental live host write must not modify a captured slot.
-        ha<=to_unsigned(0,6);hdin<=x"DEADBEEF";hw<='1';clocks(2);hw<='0';read_snapshot(reread);
+        ha<=to_unsigned(0,ha'length);hdin<=x"DEADBEEF";hw<='1';clocks(2);hw<='0';read_snapshot(reread);
         assert saved=reread report "live host write changed snapshot" severity failure;
         req<='0';cont<='1';clocks(1);cont<='0';
         release_return;

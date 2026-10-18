@@ -263,7 +263,7 @@ assign cp_area_out = cp_area_math_selected ?
         f.write('set_instance_assignment -name VIRTUAL_PIN ON -to "cp_area_out[*]"\n')
 
 
-def instrument_arm7_monitor(root):
+def instrument_arm7_monitor(root, sleep_enabled=False):
     """Replace only ARM7 in the generated area copy; never a deployable core.
 
     Keep every actual guest bus/debug/export connection. Raw controls separately
@@ -312,16 +312,19 @@ def instrument_arm7_monitor(root):
       host_din => cp_area_in(45 downto 14), host_dout => checkpoint_data7);
    checkpoint_paused7 <= cp_mon_paused;
 '''
+        if sleep_enabled:
+            replacement = once(replacement, 'ENABLED => true, is_simu => is_simu)', 'ENABLED => true, is_simu => is_simu, SLEEP_ENABLED => true)')
         return s[:a]+replacement+s[b:]
     edit(root, 'rtl/nds_nitro_console_top.vhd', console)
     edit(root, PROJECT/'files.qip', lambda s: once(s,
         'set_global_assignment -name VHDL_FILE $nitro_rtl/gba_cpu.vhd',
         'set_global_assignment -name VHDL_FILE $nitro_rtl/gba_cpu.vhd\n'
+        'set_global_assignment -name VHDL_FILE ../../rtl/nds_monitor_pipeline_transfer.vhd\n'
         'set_global_assignment -name VHDL_FILE ../../rtl/nds_arm7_monitor_rom.vhd\n'
         'set_global_assignment -name VHDL_FILE ../../rtl/nds_arm7_monitor_probe.vhd'))
 
 
-def instrument_arm9_monitor(root):
+def instrument_arm9_monitor(root, sleep_enabled=False):
     """Raw area-only ARM9 substitution; preserves actual CP15/cache interfaces.
 
     Requires the ARM7 substitution. The common image protocol is still the old
@@ -369,6 +372,15 @@ def instrument_arm9_monitor(root):
             "      ready => cp_area_ready(0), error => cp_area_error(0),\n"
             "      host_addr => cp_mon9_address, host_write => cp_area_write(0),\n"
             "      host_din => cp_area_in(45 downto 14)")
+        if sleep_enabled:
+            replacement = once(replacement, 'ENABLED => true, is_simu => is_simu)', 'ENABLED => true, is_simu => is_simu, SLEEP_ENABLED => true)')
+            s = once(s, '   signal cp_mon_address, cp_mon9_address : unsigned(5 downto 0);',
+                     '   signal cp_mon_address : unsigned(5 downto 0);\n   signal cp_mon9_address : unsigned(6 downto 0);')
+            s = once(s, "cp_mon9_address <= unsigned(checkpoint_addr9(5 downto 0)) when cp_area_in(89) = '0' else unsigned(cp_area_in(10 downto 5));",
+                     "cp_mon9_address <= unsigned(checkpoint_addr9(6 downto 0)) when cp_area_in(89) = '0' else unsigned(cp_area_in(11 downto 5));")
+            # Earlier declarations grew; relocate the original instance before replacement.
+            a = s.index('   icpu9 : entity work.nds_cpu9')
+            b = s.index('\n   imembus9 :', a)
         return s[:a] + replacement + s[b:]
     edit(root, 'rtl/nds_nitro_console_top.vhd', console)
     edit(root, PROJECT/'files.qip', lambda s: once(s,
@@ -378,7 +390,7 @@ def instrument_arm9_monitor(root):
         'set_global_assignment -name VHDL_FILE ../../rtl/nds_arm9_monitor_probe.vhd'))
 
 
-def prepare(repo, output, arm7_monitor=False, arm9_monitor=False):
+def prepare(repo, output, arm7_monitor=False, arm9_monitor=False, monitor_sleep=False):
     output.mkdir(parents=True, exist_ok=False)
     files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=repo).decode().split('\0')
     files = [n for n in files if n and (repo/n).is_file()]
@@ -400,9 +412,9 @@ def prepare(repo, output, arm7_monitor=False, arm9_monitor=False):
         if variant == 'connected':
             instrument(root)
             if arm7_monitor:
-                instrument_arm7_monitor(root)
+                instrument_arm7_monitor(root, monitor_sleep)
             if arm9_monitor:
-                instrument_arm9_monitor(root)
+                instrument_arm9_monitor(root, monitor_sleep)
         manifest = {name: digest(root/name) for name in files}
         (output/(variant.upper()+'_SOURCE.json')).write_text(json.dumps(manifest, sort_keys=True, indent=2)+'\n')
     receipt = {
@@ -413,7 +425,7 @@ def prepare(repo, output, arm7_monitor=False, arm9_monitor=False):
         'scope': 'Full shell synthesis with existing component capture/restore and acquisition connected to raw observable virtual pins. Not a usable transport, complete machine state, fit, timing or gameplay proof.',
         'unimplemented': ['RAM/cache/TCM serialization', 'downstream writer/renderer ownership', 'safe host transport/CDC', 'complete restore boot path'],
         'components': {'0':'ARM9', '1':'ARM7', **{str(n):label for n,label,_ in COMPONENTS}, '20':'math', '21':'CDC with packet frontend'},
-        'arm7_monitor': arm7_monitor, 'arm9_monitor': arm9_monitor,
+        'arm7_monitor': arm7_monitor, 'arm9_monitor': arm9_monitor, 'monitor_sleep': monitor_sleep,
     }
     (output/'INPUTS.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
 
@@ -448,6 +460,7 @@ def summarize(output, baseline_output=None):
     result = {'scope':'Matched full-shell synthesis, not whole-machine fit or gameplay qualification.'}
     result['arm7_monitor'] = json.loads((output/'INPUTS.json').read_text()).get('arm7_monitor',False)
     result['arm9_monitor'] = json.loads((output/'INPUTS.json').read_text()).get('arm9_monitor',False)
+    result['monitor_sleep'] = json.loads((output/'INPUTS.json').read_text()).get('monitor_sleep',False)
     if baseline_output:
         old = json.loads((baseline_output/'INPUTS.json').read_text())
         new = json.loads((output/'INPUTS.json').read_text())
@@ -543,6 +556,8 @@ def main():
                         help='During prepare, substitute complete ARM7 monitor in the generated connected area probe only')
     parser.add_argument('--arm9-monitor', action='store_true',
                         help='Substitute ARM9 monitor too; requires --arm7-monitor')
+    parser.add_argument('--monitor-sleep', action='store_true',
+                        help='Include hybrid HALT/WFI pipeline transfers in both monitors')
     parser.add_argument('--summarize', action='store_true')
     parser.add_argument('--baseline-output', type=Path,
                         help='Reuse a completed baseline after verifying identical hardware inputs')
@@ -559,7 +574,9 @@ def main():
     if args.prepare:
         if args.arm9_monitor and not args.arm7_monitor:
             parser.error('--arm9-monitor requires --arm7-monitor')
-        prepare(repo, output, args.arm7_monitor, args.arm9_monitor)
+        if args.monitor_sleep and not (args.arm7_monitor and args.arm9_monitor):
+            parser.error('--monitor-sleep requires both CPU monitor flags')
+        prepare(repo, output, args.arm7_monitor, args.arm9_monitor, args.monitor_sleep)
     if args.summarize:
         summarize(output, args.baseline_output.resolve() if args.baseline_output else None)
     if args.variant:

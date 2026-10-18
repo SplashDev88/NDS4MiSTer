@@ -11,7 +11,7 @@ import hashlib,json,shutil,sys
 r,o=map(Path,sys.argv[1:])
 files=['third_party/Nitro_DarkSide/d2dabe/rtl/'+n for n in
        ['export.vhd','proc_bus_gba.vhd','reg_savestates.vhd','gba_cpu.vhd']]
-files+=['rtl/'+n for n in ['nds_arm7_monitor_rom.vhd','nds_arm7_monitor_probe.vhd',
+files+=['rtl/'+n for n in ['nds_monitor_pipeline_transfer.vhd','nds_arm7_monitor_rom.vhd','nds_arm7_monitor_probe.vhd',
         'nds_checkpoint_endpoint.vhd','nds_checkpoint_coordinator.vhd',
         'nds_checkpoint_monitor_endpoint.vhd','tb_nds_checkpoint_monitor_endpoint.vhd']]
 files+=['tools/test_checkpoint_monitor_endpoint.sh']
@@ -22,17 +22,18 @@ for n in files:
 data=json.dumps(h,sort_keys=True).encode();(o/'INPUTS.json').write_bytes(data)
 print('MONITOR_ENDPOINT_INPUT_SHA256',hashlib.sha256(data).hexdigest())
 PY
-  docker run --rm --network none -v "$test_tmp:/test" -w /test nds4mister-nvc-arm64:1.22.1 \
+  docker run --rm --network none -e MONITOR_SLEEP="${MONITOR_SLEEP:-false}" -v "$test_tmp:/test" -w /test nds4mister-nvc-arm64:1.22.1 \
     bash /test/source/tools/test_checkpoint_monitor_endpoint.sh --inside
   exit
 fi
 p="$repo/third_party/Nitro_DarkSide/d2dabe/rtl"
+nvc --std=2008 -a "$repo/rtl/nds_monitor_pipeline_transfer.vhd"
 nvc --std=2008 -a "$p/export.vhd" "$p/proc_bus_gba.vhd" "$p/reg_savestates.vhd" "$p/gba_cpu.vhd" \
   "$repo/rtl/nds_arm7_monitor_rom.vhd" "$repo/rtl/nds_arm7_monitor_probe.vhd" \
   "$repo/rtl/nds_checkpoint_endpoint.vhd" "$repo/rtl/nds_checkpoint_coordinator.vhd" \
   "$repo/rtl/nds_checkpoint_monitor_endpoint.vhd" "$repo/rtl/tb_nds_checkpoint_monitor_endpoint.vhd"
 run() {
-  nvc --std=2008 -e "$@" tb_nds_checkpoint_monitor_endpoint
+  nvc --std=2008 -e -gSLEEP_MODE="${MONITOR_SLEEP:-false}" "$@" tb_nds_checkpoint_monitor_endpoint
   nvc --std=2008 -r tb_nds_checkpoint_monitor_endpoint --ieee-warnings=off --exit-severity=error
 }
 cases=0

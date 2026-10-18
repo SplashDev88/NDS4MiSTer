@@ -11,7 +11,7 @@ import hashlib,json,shutil,sys
 r,o=map(Path,sys.argv[1:])
 files=['third_party/Nitro_DarkSide/d2dabe/rtl/'+n for n in
        ['export.vhd','proc_bus_gba.vhd','reg_savestates.vhd','gba_cpu.vhd','nds_membus7.vhd','nds_syscnt.vhd']]
-files+=['rtl/nds_arm7_monitor_rom.vhd','rtl/nds_arm7_monitor_probe.vhd',
+files+=['rtl/nds_monitor_pipeline_transfer.vhd','rtl/nds_arm7_monitor_rom.vhd','rtl/nds_arm7_monitor_probe.vhd',
         'rtl/tb_nds_arm7_monitor.vhd','rtl/tb_nds_arm7_halt_prefetch.vhd',
         'tools/suspend_resume/arm7_monitor_rom.py','tools/suspend_resume/arm7_monitor_rom.lst',
         'tools/suspend_resume/arm7_monitor_fixture.py','tools/test_arm7_monitor.sh']
@@ -23,17 +23,18 @@ manifest=json.dumps(hashes,sort_keys=True).encode()
 (o/'INPUTS.json').write_bytes(manifest)
 print('ARM7_MONITOR_INPUT_SHA256',hashlib.sha256(manifest).hexdigest())
 PY
-  docker run --rm --network none -v "$test_tmp:/test" -w /test \
+  docker run --rm --network none -e MONITOR_SLEEP="${MONITOR_SLEEP:-false}" -v "$test_tmp:/test" -w /test \
     nds4mister-nvc-arm64:1.22.1 bash /test/source/tools/test_arm7_monitor.sh --inside "${1:-all}"
   exit
 fi
 p="$repo/third_party/Nitro_DarkSide/d2dabe/rtl"
+nvc --std=2008 -a "$repo/rtl/nds_monitor_pipeline_transfer.vhd"
 python3 "$repo/tools/suspend_resume/arm7_monitor_rom.py" --check
 nvc --std=2008 -a "$p/export.vhd" "$p/proc_bus_gba.vhd" "$p/reg_savestates.vhd" \
   "$p/gba_cpu.vhd" "$repo/rtl/nds_arm7_monitor_rom.vhd" \
   "$repo/rtl/nds_arm7_monitor_probe.vhd" "$repo/rtl/tb_nds_arm7_monitor.vhd"
 run() {
-  nvc --std=2008 -e "$@" tb_nds_arm7_monitor
+  nvc --std=2008 -e -gSLEEP_MODE="${MONITOR_SLEEP:-false}" "$@" tb_nds_arm7_monitor
   nvc --std=2008 -r tb_nds_arm7_monitor --ieee-warnings=off --exit-severity=error
 }
 if [[ ${2:-all} != --negative-only ]]; then

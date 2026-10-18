@@ -208,8 +208,12 @@ instructions, and a bounded CPU-pair barrier/read transport with host-lease
 expiry in simulation. Optional console wiring also stops/drains DMA admissions
 and observes ARM9 cache/TCM quiescence; it is disabled by default. An alternative
 CPU-assisted prototype saves both CPUs through private ARM maintenance code,
-including ARM9 CP15/Q state, without invalidating guest caches. CPU and device
-component restore tests pass, but memory/cache serialization, renderer ownership,
+including ARM9 CP15/Q state, without invalidating guest caches. Its optional
+hybrid extension transfers the idle HALT/WFI pipeline through the same snapshot
+RAM and passes 138 native sleep capture/fresh-process restore pairs. The full
+experimental shell estimates 42,972 ALMs, still 1,062 above device capacity
+before missing integration; it has not been fitted or tested in gameplay. CPU
+and device component restore tests pass, but memory/cache serialization, renderer ownership,
 safe host restore and whole-game resume remain incomplete. Short selected-game
 checks do not establish full
 playthrough compatibility. Slowdown, uneven animation, audio hitches and crashes

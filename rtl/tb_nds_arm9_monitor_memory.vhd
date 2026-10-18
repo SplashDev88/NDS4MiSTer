@@ -7,7 +7,7 @@ use ieee.numeric_std.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_arm9_monitor_memory is
-  generic(MEMORY_DELAY:natural:=2;
+  generic(SLEEP_MODE:boolean:=false; MEMORY_DELAY:natural:=2;
           ITCM_OVERLAY:boolean:=true; LOSE_CACHE:boolean:=false);
 end;
 architecture sim of tb_nds_arm9_monitor_memory is
@@ -24,7 +24,7 @@ architecture sim of tb_nds_arm9_monitor_memory is
   signal sel_its,sel_ds:std_logic_vector(4 downto 0);signal sel_db:std_logic_vector(31 downto 12);
   signal op:std_logic_vector(3 downto 0);signal op_addr:std_logic_vector(31 downto 0);
   signal req,cont,restore,release_run,ready,active,paused,err,hw:std_logic:='0';
-  signal ha:unsigned(5 downto 0):=(others=>'0');signal hdi,hdo:std_logic_vector(31 downto 0):=(others=>'0');
+  signal ha:unsigned(5+boolean'pos(SLEEP_MODE) downto 0):=(others=>'0');signal hdi,hdo:std_logic_vector(31 downto 0):=(others=>'0');
   signal ia,ba:unsigned(14 downto 2);signal da,da_b:unsigned(13 downto 2);
   signal iw,dw:std_logic;signal ibe,dbe:std_logic_vector(3 downto 0);
   signal idata,ddata,iq,dq,bq:std_logic_vector(31 downto 0);
@@ -35,7 +35,7 @@ architecture sim of tb_nds_arm9_monitor_memory is
   signal mbe:std_logic_vector(3 downto 0);signal mdata,mq,mqhi:std_logic_vector(31 downto 0);
   signal reads,writes,guest_fetches:natural:=0;
   signal change_backing:std_logic:='0';
-  type snapshot_type is array(0 to 63) of std_logic_vector(31 downto 0);
+  type snapshot_type is array(0 to 63+14*boolean'pos(SLEEP_MODE)) of std_logic_vector(31 downto 0);
   function bios(i:natural) return std_logic_vector is
   begin
     case i is
@@ -70,7 +70,7 @@ begin
   sel_db<=x"0F000" when manual='1' else db;
   sel_ci<='1' when manual='1' else ci;sel_cd<='1' when manual='1' else cd;
   sel_wb<='0' when manual='1' else wb;sel_denied<='0' when manual='1' else denied;
-  cpu:entity work.nds_arm9_monitor_probe
+  cpu:entity work.nds_arm9_monitor_probe generic map(SLEEP_ENABLED=>SLEEP_MODE)
     port map(clk=>clk,ce=>ce,reset=>cpu_reset,preset=>ss,addr=>ca,rnw=>cr,ena=>cg,seq=>open,
       code=>cc,acc=>open,dout=>cw,din=>rd,bus_done=>done,dma=>'0',irq=>'0',new_halt=>'0',unhalt=>'0',
       idle=>open,halted=>open,request=>req,continue_run=>cont,restore=>restore,
@@ -191,7 +191,7 @@ begin
     req<='1';
     for i in 1 to 50000*STEP_PERIOD loop clocks(1);exit when paused='1';end loop;
     assert paused='1' report "memory fixture capture timed out" severity failure;
-    for i in image'range loop ha<=to_unsigned(i,6);clocks(2);image(i):=hdo;end loop;
+    for i in image'range loop ha<=to_unsigned(i,ha'length);clocks(2);image(i):=hdo;end loop;
     req<='0';cont<='1';clocks(1);cont<='0';await_ready;
     release_run<='1';clocks(1);release_run<='0';
     clocks(100*STEP_PERIOD);cpu_enable<='0';clocks(STEP_PERIOD+2);idle_memory;manual<='1';clocks(2);
@@ -200,7 +200,7 @@ begin
     -- CPU-only cold instance with unchanged memory owners. No memory dump or
     -- power-cycle claim: separate memory-state serialization remains required.
     cpu_reset<='1';restore<='1';clocks(4);
-    for i in image'range loop ha<=to_unsigned(i,6);hdi<=image(i);hw<='1';clocks(1);end loop;
+    for i in image'range loop ha<=to_unsigned(i,ha'length);hdi<=image(i);hw<='1';clocks(1);end loop;
     hw<='0';clocks(4);manual<='0';cpu_reset<='0';cpu_enable<='1';clocks(1);restore<='0';await_ready;
     release_run<='1';clocks(1);release_run<='0';clocks(100*STEP_PERIOD);
     cpu_enable<='0';clocks(STEP_PERIOD+2);idle_memory;manual<='1';clocks(2);verify_memory;

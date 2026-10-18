@@ -113,7 +113,8 @@ entity nds_cpu9 is
       -- Component prototype only. No shipped top level enables this path.
       EXPERIMENTAL_CHECKPOINT : boolean := false;
       EXPERIMENTAL_HALT_CHECKPOINT : boolean := false;
-      EXPERIMENTAL_CPU_MONITOR : boolean := false
+      EXPERIMENTAL_CPU_MONITOR : boolean := false;
+      EXPERIMENTAL_MONITOR_SLEEP : boolean := false
    );
    port 
    (
@@ -210,6 +211,16 @@ entity nds_cpu9 is
       -- Private branch-boundary maintenance experiment. Never enabled by the
       -- console; architectural state travels through normal ARM instructions.
       monitor_request : in std_logic := '0';
+      -- Fourteen stopped-pipeline words: sleep flag, twelve live pipeline
+      -- words, and the visible R15. The wrapper owns the same snapshot RAM.
+      monitor_pipeline_address : in unsigned(3 downto 0) := (others => '0');
+      monitor_pipeline_dout : out std_logic_vector(31 downto 0) := (others => '0');
+      monitor_pipeline_din : in std_logic_vector(31 downto 0) := (others => '0');
+      monitor_pipeline_write : in std_logic := '0';
+      monitor_pipeline_capture : out std_logic := '0';
+      monitor_pipeline_restore : out std_logic := '0';
+      monitor_pipeline_copied : in std_logic := '0';
+      monitor_pipeline_loaded : in std_logic := '0';
       monitor_memory_idle : in std_logic := '0';
       monitor_continue : in std_logic := '0';
       monitor_restore : in std_logic := '0';
@@ -238,6 +249,10 @@ architecture arch of nds_cpu9 is
    signal mon_pc, mon_cpsr, mon_lastread : std_logic_vector(31 downto 0) := (others => '0');
    signal mon_coverage : std_logic_vector(2 downto 0) := (others => '0');
    signal mon_valid : std_logic;
+   signal mon_branch_enter, mon_sleep_enter, mon_start : std_logic;
+   signal mon_capture_hold, mon_return_copy, mon_saved_sleep : std_logic := '0';
+   signal mon_pipe_count : unsigned(3 downto 0) := (others => '0');
+   signal mon_pipe_valid, mon_pipe_accept, mon_pipe_apply : std_logic;
    signal bus_lastread : std_logic_vector(31 downto 0);
    signal checkpoint_held : std_logic := '0';
    signal checkpoint_branch_take, checkpoint_halt_take : std_logic;
@@ -701,7 +716,7 @@ begin
 
    -- A taken B/BL/BX retires before the hold. Suppress its target fetch and
    -- leave the pipeline empty so both cancel and restore refill at that PC.
-   cpu_ce <= ce and not mon_paused and not mon_draining when EXPERIMENTAL_CPU_MONITOR else
+   cpu_ce <= ce and not mon_paused and not mon_capture_hold and not mon_draining when EXPERIMENTAL_CPU_MONITOR else
              ce and not checkpoint_held when EXPERIMENTAL_CHECKPOINT else ce;
    checkpoint_paused <= checkpoint_held;
    lastread <= bus_lastread;
@@ -755,8 +770,19 @@ begin
          dma_on = '0' and dma_on_1 = '0' and gb_bus_saved = '0' and
          execute_RW_ena = '0' and decode_halt = '0' and decode_unhalt = '0' and
          cache_op_busy = '0' and execute_cacheop_wait = '0' else '0';
-      mon_enter <= mon_retire and monitor_request and not mon_active and
+      mon_branch_enter <= mon_retire and monitor_request and not mon_active and
          not new_halt and not unhalt and not (IRQ_in and not IRQ_disable);
+      mon_sleep_enter <= '1' when EXPERIMENTAL_MONITOR_SLEEP and
+         reset = '0' and cpu_ce = '1' and mon_active = '0' and monitor_request = '1' and
+         decode_halt = '1' and decode_unhalt = '0' and unhalt = '0' and
+         new_halt = '0' and IRQ_in = '0' and decode_functions_detail /= IRQ and
+         execute_stall = '0' and execute_done = '0' and execute_RW_ena = '0' and
+         execute_RW_State = DATARW_IDLE and execute_MUL_State = MUL_IDLE and
+         alu_wait_shift = '0' and execute_switchmode_now = '0' and
+         busState = BUSSTATE_IDLE and gb_bus_saved = '0' and
+         dma_on = '0' and dma_on_1 = '0' and cache_op_busy = '0' and execute_cacheop_wait = '0' else '0';
+      mon_enter <= mon_branch_enter or mon_sleep_enter;
+      mon_start <= monitor_pipeline_copied and mon_capture_hold when EXPERIMENTAL_MONITOR_SLEEP else mon_enter;
       mon_park_take <= mon_retire when mon_active = '1' and mon_loading = '0' and
          execute_branchPC_masked = MON_PARK else '0';
       mon_valid <= '1' when mon_coverage = "111" and mon_pc(0) = '0' and
@@ -767,7 +793,7 @@ begin
           mon_cpsr(3 downto 0) = CPUMODE_SYSTEM) and cpu_mode = mon_cpsr(3 downto 0) else '0';
       mon_exit_take <= mon_retire when mon_active = '1' and mon_loading = '1' and
          execute_branchPC_masked = MON_EXIT and mon_valid = '1' and mon_error = '0' else '0';
-      mon_redirect <= mon_enter or mon_park_take or mon_exit_take;
+      mon_redirect <= mon_start or mon_park_take or mon_exit_take;
       monitor_meta_dout <= mon_pc when monitor_meta_address = 0 else
                            mon_cpsr when monitor_meta_address = 1 else
                            mon_lastread when monitor_meta_address = 2 else (others => '0');
@@ -777,15 +803,19 @@ begin
                mon_active <= monitor_restore; mon_loading <= monitor_restore;
                mon_draining <= monitor_restore;
                mon_paused <= '0'; mon_error <= '0'; mon_coverage <= (others => '0');
-               mon_ready <= '0';
+               mon_ready <= '0'; mon_capture_hold <= '0'; mon_return_copy <= '0';
+               mon_saved_sleep <= '0'; mon_pipe_count <= (others => '0');
                mon_pc <= (others => '0'); mon_cpsr <= (others => '0'); mon_lastread <= (others => '0');
             else
                if mon_enter = '1' then
                   mon_active <= '1'; mon_loading <= '0'; mon_coverage <= (others => '0');
                   mon_draining <= '1';
                   mon_pc <= std_logic_vector(execute_branchPC_masked);
+                  mon_saved_sleep <= mon_sleep_enter;
+                  if EXPERIMENTAL_MONITOR_SLEEP then mon_capture_hold <= '1'; end if;
+                  if mon_sleep_enter = '1' then mon_pc <= std_logic_vector(fetch_PC); end if;
                   mon_cpsr <= std_logic_vector(CPSR);
-                  mon_cpsr(5) <= execute_nextIsthumb;
+                  if mon_sleep_enter = '0' then mon_cpsr(5) <= execute_nextIsthumb; end if;
                   mon_lastread <= bus_lastread;
                   if gb_bus_done = '1' then
                      if thumbmode = '1' then mon_lastread <= gb_bus_din(15 downto 0) & gb_bus_din(15 downto 0);
@@ -798,8 +828,9 @@ begin
                if mon_draining = '1' and monitor_memory_idle = '1' and cache_op_busy = '0' then
                   mon_draining <= '0';
                end if;
+               if mon_start = '1' then mon_capture_hold <= '0'; end if;
                if mon_park_take = '1' then mon_paused <= '1'; end if;
-               if mon_paused = '1' and mon_ready = '0' and mon_error = '0' and monitor_continue = '1' then
+               if mon_paused = '1' and mon_ready = '0' and mon_error = '0' and mon_return_copy = '0' and monitor_continue = '1' then
                   mon_paused <= '0'; mon_loading <= '1'; mon_coverage <= (others => '0');
                end if;
                -- A completed load remains isolated until the common machine
@@ -815,9 +846,24 @@ begin
                      when others => mon_error <= '1'; mon_paused <= '1';
                   end case;
                end if;
+               if mon_return_copy = '1' and mon_error = '0' then
+                  if monitor_pipeline_write = '1' then
+                     if mon_pipe_valid = '1' then
+                        mon_pipe_count <= mon_pipe_count + 1;
+                        if monitor_pipeline_address = 0 then mon_saved_sleep <= monitor_pipeline_din(0); end if;
+                     else mon_error <= '1'; end if;
+                  end if;
+                  if monitor_pipeline_loaded = '1' then
+                     if mon_pipe_count = 14 then mon_return_copy <= '0'; mon_ready <= '1';
+                     else mon_error <= '1'; end if;
+                  end if;
+               end if;
                if mon_retire = '1' and mon_active = '1' and mon_loading = '1' and execute_branchPC_masked = MON_EXIT then
                   if mon_valid = '1' and mon_error = '0' then
-                     mon_ready <= '1'; mon_paused <= '1'; mon_loading <= '0';
+                     mon_paused <= '1'; mon_loading <= '0';
+                     if EXPERIMENTAL_MONITOR_SLEEP then
+                        mon_return_copy <= '1'; mon_pipe_count <= (others => '0');
+                     else mon_ready <= '1'; end if;
                   else mon_error <= '1'; mon_paused <= '1'; end if;
                end if;
             end if;
@@ -825,13 +871,38 @@ begin
       end process;
    end generate;
    gno_monitor : if not EXPERIMENTAL_CPU_MONITOR generate
-      mon_retire <= '0'; mon_enter <= '0'; mon_park_take <= '0'; mon_exit_take <= '0'; mon_redirect <= '0';
+      mon_retire <= '0'; mon_enter <= '0'; mon_branch_enter <= '0'; mon_sleep_enter <= '0'; mon_start <= '0'; mon_park_take <= '0'; mon_exit_take <= '0'; mon_redirect <= '0';
       mon_active <= '0'; mon_paused <= '0'; mon_loading <= '0'; mon_error <= '0'; mon_valid <= '0';
       mon_ready <= '0'; mon_draining <= '0';
       monitor_meta_dout <= (others => '0');
+      mon_capture_hold <= '0'; mon_return_copy <= '0'; mon_saved_sleep <= '0'; mon_pipe_count <= (others => '0');
    end generate;
-   monitor_active <= mon_active; monitor_paused <= mon_paused; monitor_error <= mon_error;
+   monitor_active <= mon_active; monitor_paused <= mon_paused and not mon_return_copy; monitor_error <= mon_error;
    monitor_ready <= mon_ready;
+   assert not EXPERIMENTAL_MONITOR_SLEEP or EXPERIMENTAL_CPU_MONITOR
+      report "monitor sleep requires the private monitor" severity failure;
+   monitor_pipeline_capture <= mon_capture_hold;
+   monitor_pipeline_restore <= mon_return_copy;
+   mon_pipe_valid <= '1' when mon_pipe_count < 14 and monitor_pipeline_address = mon_pipe_count and
+      (mon_pipe_count /= 0 or unsigned(monitor_pipeline_din) <= 1) and
+      (mon_pipe_count /= 4 or
+       (unsigned(monitor_pipeline_din(4 downto 0)) <= tFunctions_detail'pos(tFunctions_detail'high) and
+        unsigned(monitor_pipeline_din(7 downto 5)) <= tdatareceivetype'pos(tdatareceivetype'high))) else '0';
+   mon_pipe_accept <= monitor_pipeline_write and mon_return_copy and mon_pipe_valid and not mon_error
+      when EXPERIMENTAL_MONITOR_SLEEP else '0';
+   mon_pipe_apply <= mon_pipe_accept and mon_saved_sleep;
+   process(all) begin
+      monitor_pipeline_dout <= (others => '0');
+      if EXPERIMENTAL_MONITOR_SLEEP and mon_saved_sleep = '1' then
+         case to_integer(monitor_pipeline_address) is
+            when 0 => monitor_pipeline_dout <= x"00000001";
+            when 1 to 12 => monitor_pipeline_dout <= checkpoint_pipeline(to_integer(monitor_pipeline_address)-1);
+            when 13 => monitor_pipeline_dout <= std_logic_vector(regs(15));
+            when others => null;
+         end case;
+      end if;
+   end process;
+
 
    -- The ordinary 32-bit MLA sum consumes registered product/accumulator
    -- operands. Commit this sum on the same edge as a plain MUL result;
@@ -1050,7 +1121,7 @@ begin
    assert not EXPERIMENTAL_HALT_CHECKPOINT or EXPERIMENTAL_CHECKPOINT
       report "halt checkpoint requires architectural checkpoint support" severity failure;
 -- BEGIN CHECKPOINT PIPELINE READBACK
-   gcheckpoint_pipeline : if EXPERIMENTAL_HALT_CHECKPOINT generate
+   gcheckpoint_pipeline : if EXPERIMENTAL_HALT_CHECKPOINT or EXPERIMENTAL_MONITOR_SLEEP generate
       process(all) begin
          checkpoint_pipeline <= (others => (others => '0'));
          checkpoint_pipeline(0)(3 downto 0) <= decode_condition;
@@ -1122,7 +1193,7 @@ begin
          checkpoint_pipeline(11)(1) <= fetch_first;
       end process;
    end generate;
-   gno_checkpoint_pipeline : if not EXPERIMENTAL_HALT_CHECKPOINT generate
+   gno_checkpoint_pipeline : if not EXPERIMENTAL_HALT_CHECKPOINT and not EXPERIMENTAL_MONITOR_SLEEP generate
       checkpoint_pipeline <= (others => (others => '0'));
    end generate;
 -- END CHECKPOINT PIPELINE READBACK
@@ -1383,7 +1454,7 @@ begin
             gb_bus_ena   <= '1';
          end if;
 
-         if checkpoint_take = '1' or mon_redirect = '1' then gb_bus_ena <= '0'; end if;
+         if checkpoint_take = '1' or mon_redirect = '1' or mon_enter = '1' then gb_bus_ena <= '0'; end if;
 
       end if;
          
@@ -1602,12 +1673,6 @@ begin
                end if;
             end if;
 
-            if mon_redirect = '1' then
-               fetch_ready <= '0'; fetch_first <= '1';
-               if mon_enter = '1' then fetch_PC <= MON_SAVE;
-               elsif mon_park_take = '1' then fetch_PC <= MON_LOAD;
-               else fetch_PC <= unsigned(mon_pc); end if;
-            end if;
             if (jump_out = '1') then
                SAVESTATE_PC_out <= std_logic_vector(bus_AddrFetch_eff);
             end if;
@@ -1618,6 +1683,20 @@ begin
 
          end if;
          
+         if reset = '0' then
+            if mon_redirect = '1' then
+               fetch_ready <= '0'; fetch_first <= '1';
+               if mon_start = '1' then fetch_PC <= MON_SAVE;
+               elsif mon_park_take = '1' then fetch_PC <= MON_LOAD;
+               else fetch_PC <= unsigned(mon_pc); end if;
+            end if;
+            if mon_pipe_apply = '1' then
+               if monitor_pipeline_address = 11 then fetch_data <= monitor_pipeline_din; end if;
+               if monitor_pipeline_address = 12 then
+                  fetch_ready <= monitor_pipeline_din(0); fetch_first <= monitor_pipeline_din(1);
+               end if;
+            end if;
+         end if;
       end if;
    end process;
    
@@ -2843,6 +2922,93 @@ begin
          
          end if; -- ce
          
+         if reset = '0' then
+            if mon_start = '1' and EXPERIMENTAL_MONITOR_SLEEP then
+               decode_halt <= '0'; decode_unhalt <= '0'; decode_ready <= '0';
+            end if;
+            if mon_pipe_apply = '1' then
+                  case to_integer(monitor_pipeline_address) is
+                     when 1 =>
+                        decode_condition <= monitor_pipeline_din(3 downto 0);
+                        decode_ready <= monitor_pipeline_din(4);
+                     when 2 =>
+                        decode_PC <= unsigned(monitor_pipeline_din(31 downto 0));
+                     when 3 =>
+                        decode_data_1 <= monitor_pipeline_din(31 downto 0);
+                     when 4 =>
+                        decode_functions_detail <= tFunctions_detail'val(to_integer(unsigned(monitor_pipeline_din(4 downto 0))));
+                        decode_datareceivetype <= tdatareceivetype'val(to_integer(unsigned(monitor_pipeline_din(7 downto 5))));
+                        decode_clearbit1 <= monitor_pipeline_din(8);
+                        decode_rdest <= monitor_pipeline_din(12 downto 9);
+                        decode_rdest_save <= monitor_pipeline_din(16 downto 13);
+                        decode_Rn_op1 <= monitor_pipeline_din(20 downto 17);
+                        decode_Rn_op1_save <= monitor_pipeline_din(24 downto 21);
+                        decode_RM_op2 <= monitor_pipeline_din(28 downto 25);
+                        decode_alu_use_immi <= monitor_pipeline_din(29);
+                        decode_alu_use_shift <= monitor_pipeline_din(30);
+                     when 5 =>
+                        decode_immidiate <= unsigned(monitor_pipeline_din(31 downto 0));
+                     when 6 =>
+                        decode_shift_regbased <= monitor_pipeline_din(0);
+                        decode_shift_mode <= monitor_pipeline_din(2 downto 1);
+                        decode_shift_amount <= to_integer(unsigned(monitor_pipeline_din(10 downto 3)));
+                        decode_shift_RRX <= monitor_pipeline_din(11);
+                        decode_shiftcarry <= monitor_pipeline_din(12);
+                        decode_useoldcarry <= monitor_pipeline_din(13);
+                        decode_updateflags <= monitor_pipeline_din(14);
+                        decode_mul_signed <= monitor_pipeline_din(15);
+                        decode_mul_useadd <= monitor_pipeline_din(16);
+                        decode_mul_long <= monitor_pipeline_din(17);
+                        decode_writeback <= monitor_pipeline_din(18);
+                        decode_switch_op <= monitor_pipeline_din(19);
+                        decode_set_thumbmode <= monitor_pipeline_din(20);
+                        decode_branch_usereg <= monitor_pipeline_din(21);
+                        decode_branch_link <= monitor_pipeline_din(22);
+                        decode_branch_long <= monitor_pipeline_din(23);
+                     when 7 =>
+                        decode_branch_immi <= signed(monitor_pipeline_din(25 downto 0));
+                        decode_datatransfer_type <= monitor_pipeline_din(27 downto 26);
+                        decode_datatransfer_preadd <= monitor_pipeline_din(28);
+                        decode_datatransfer_addup <= monitor_pipeline_din(29);
+                        decode_datatransfer_writeback <= monitor_pipeline_din(30);
+                     when 8 =>
+                        decode_datatransfer_addvalue <= unsigned(monitor_pipeline_din(11 downto 0));
+                        decode_datatransfer_shiftval <= monitor_pipeline_din(12);
+                        decode_datatransfer_regoffset <= monitor_pipeline_din(13);
+                        decode_datatransfer_swap <= monitor_pipeline_din(14);
+                        decode_block_usermoderegs <= monitor_pipeline_din(15);
+                        decode_block_switchmode <= monitor_pipeline_din(16);
+                        decode_block_addrmod <= to_integer(signed(monitor_pipeline_din(24 downto 17)));
+                     when 9 =>
+                        decode_block_endmod <= to_integer(signed(monitor_pipeline_din(7 downto 0)));
+                        decode_block_addrmod_baseRlist <= to_integer(signed(monitor_pipeline_din(15 downto 8)));
+                        decode_block_reglist <= monitor_pipeline_din(31 downto 16);
+                     when 10 =>
+                        decode_block_emptylist <= monitor_pipeline_din(0);
+                        decode_psr_with_spsr <= monitor_pipeline_din(1);
+                        decode_leaveirp <= monitor_pipeline_din(2);
+                        decode_sat_sub <= monitor_pipeline_din(3);
+                        decode_sat_double <= monitor_pipeline_din(4);
+                        decode_dsp_x <= monitor_pipeline_din(5);
+                        decode_dsp_y <= monitor_pipeline_din(6);
+                        decode_dsp_acc <= monitor_pipeline_din(7);
+                        decode_dsp_long <= monitor_pipeline_din(8);
+                        decode_dsp_word <= monitor_pipeline_din(9);
+                        decode_dsp_acchi <= monitor_pipeline_din(13 downto 10);
+                        decode_cp15_mrc <= monitor_pipeline_din(14);
+                        decode_cp15_crn <= monitor_pipeline_din(18 downto 15);
+                        decode_cp15_crm <= monitor_pipeline_din(22 downto 19);
+                        decode_cp15_op2 <= monitor_pipeline_din(25 downto 23);
+                        decode_datatransfer_double <= monitor_pipeline_din(26);
+                        decode_branch_forcethumb <= monitor_pipeline_din(27);
+                        decode_branch_forcearm <= monitor_pipeline_din(28);
+                     when others => null;
+                  end case;
+            end if;
+            if mon_return_copy = '1' and monitor_pipeline_loaded = '1' and mon_pipe_count = 14 and mon_error = '0' then
+               decode_halt <= mon_saved_sleep; decode_unhalt <= '0';
+            end if;
+         end if;
       end if; -- clk
    
    end process;
@@ -4793,7 +4959,6 @@ begin
 
             end if;
          
-            if mon_enter = '1' then thumbmode <= '0'; end if;
             if mon_exit_take = '1' then
                thumbmode <= mon_cpsr(5); FIQ_disable <= mon_cpsr(6); IRQ_disable <= mon_cpsr(7);
                Flag_Negative <= mon_cpsr(31); Flag_Zero <= mon_cpsr(30);
@@ -4801,6 +4966,10 @@ begin
             end if;
          end if;
          
+         if mon_start = '1' then thumbmode <= '0'; end if;
+         if mon_pipe_apply = '1' and monitor_pipeline_address = 13 then
+            regs(15) <= unsigned(monitor_pipeline_din);
+         end if;
       end if;
    end process;
    
