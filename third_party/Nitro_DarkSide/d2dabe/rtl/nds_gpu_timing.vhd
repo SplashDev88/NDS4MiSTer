@@ -77,7 +77,15 @@ entity nds_gpu_timing is
       vcount_out        : out unsigned(8 downto 0);  -- live line, for compose/debug
       dbg_vbl_ena9      : out std_logic := '0';      -- diagnostic-only persistent ARM9 DISPSTAT bit 3
       checkpoint_stop  : in std_logic := '0';
-      checkpoint_stopped : out std_logic := '0'
+      checkpoint_stopped : out std_logic := '0';
+      checkpoint_address : in unsigned(2 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -131,10 +139,64 @@ architecture arch of nds_gpu_timing is
 
    type t_vmatch is array (0 to 1) of unsigned(8 downto 0);
    signal vmatch : t_vmatch;
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_count : unsigned(2 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+
+   function valid_word(a : unsigned(2 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 => return unsigned(d(11 downto 0)) < LINE_CYCLES and unsigned(d(20 downto 12)) < 263;
+         when 1 => return unsigned(d(31 downto 21)) = 0 and unsigned(d(20 downto 12)) < 263;
+         when 2 => return unsigned(d(31 downto 16)) = 0 and unsigned(d(7 downto 0)) < 192 and unsigned(d(15 downto 8)) < 192;
+         when 3 | 4 => return (d and x"FFFF0047") = x"00000000";
+         when others => return false;
+      end case;
+   end function;
 
 begin
 
    stop_timing <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   restore_write_valid <= '1' when restore_active = '1' and stop_timing = '1' and
+      gb_bus9.ena = '0' and gb_bus7.ena = '0' and restore_error = '0' and checkpoint_write = '1' and
+      restore_count < 5 and checkpoint_address = restore_count and valid_word(checkpoint_address,checkpoint_write_data) else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and stop_timing = '1' and
+      gb_bus9.ena = '0' and gb_bus7.ena = '0' and restore_error = '0' and restore_count = 5 and checkpoint_write = '0' else '0';
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_count <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' or stop_timing = '0' or gb_bus9.ena = '1' or gb_bus7.ena = '1' then restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+   process(all)
+      variable c : natural range 0 to 1;
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < 5 and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data <= hblank_flag & vblank_flag & std_logic_vector(vcnt) &
+               std_logic_vector(to_unsigned(line,9)) & std_logic_vector(to_unsigned(cycles,12));
+            when 1 => checkpoint_data(20 downto 0) <= std_logic_vector(lcd_phase_line) & vmatch_flag(1) & vmatch_flag(0) &
+               std_logic_vector(vcnt_wr_val) & vcnt_wr_pend;
+            when 2 => checkpoint_data(15 downto 0) <= std_logic_vector(to_unsigned(linecounter_obj,8)) & std_logic_vector(to_unsigned(linecounter,8));
+            when 3 | 4 =>
+               c := to_integer(checkpoint_address) - 3;
+               checkpoint_data(15 downto 7) <= R_vmatch_low(c) & R_vmatch_msb(c);
+               checkpoint_data(5 downto 3) <= R_vcnt_irq_ena(c) & R_hbl_irq_ena(c) & R_vbl_irq_ena(c);
+            when others => null;
+         end case;
+      end if;
+   end process;
    process(clk) begin
       if rising_edge(clk) then
          if reset = '1' then stop_seen <= '0';
@@ -145,15 +207,29 @@ begin
    -- acknowledgement. Register access remains live until the CPU buses drain.
    checkpoint_stopped <= '1' when EXPERIMENTAL_CHECKPOINT and
       reset = '0' and stop_timing = '1' and stop_seen = '1' and
-      gb_bus9.ena = '0' and gb_bus7.ena = '0' and
+      gb_bus9.ena = '0' and gb_bus7.ena = '0' and gb_bus9.rst = '0' and gb_bus7.rst = '0' and
       irq9_vblank = '0' and irq9_hblank = '0' and irq9_vcount = '0' and
       irq7_vblank = '0' and irq7_hblank = '0' and irq7_vcount = '0' and
       drawline = '0' and drawObj = '0' and line_trigger = '0' and
       hblank_trigger = '0' and lcd_phase = '0' and vblank_trigger = '0' and
       refpoint_update = '0' else '0';
 
-   busses(0) <= gb_bus9;
-   busses(1) <= gb_bus7;
+   -- Reuse the existing DISPSTAT register storage, with no shadow bank.
+   -- Suppress its bus reset throughout restore and inject only lower-half
+   -- writes; never generate a VCOUNT write as a side effect of loading flags.
+   process(all)
+   begin
+      busses(0) <= gb_bus9; busses(1) <= gb_bus7;
+      if restore_active = '1' then
+         for c in 0 to 1 loop
+            busses(c).rst <= '0'; busses(c).ena <= '0'; busses(c).rnw <= '1';
+            if restore_write_valid = '1' and checkpoint_address = 3+c then
+               busses(c).Adr <= x"0000004"; busses(c).Din <= checkpoint_write_data;
+               busses(c).rnw <= '0'; busses(c).ena <= '1'; busses(c).bEna <= "0011";
+            end if;
+         end loop;
+      end if;
+   end process;
 
    vblf_in(0) <= vblank_flag;
    hblf_in(0) <= hblank_flag;
@@ -229,7 +305,25 @@ begin
             vcnt_wr_val  <= unsigned(vcount_wrval(1)(24 downto 16));
          end if;
 
-         if (reset = '1') then
+         if restore_active = '1' then
+            if restore_write_valid = '1' then
+               case to_integer(checkpoint_address) is
+                  when 0 =>
+                     cycles <= to_integer(unsigned(checkpoint_write_data(11 downto 0)));
+                     line <= to_integer(unsigned(checkpoint_write_data(20 downto 12)));
+                     vcnt <= unsigned(checkpoint_write_data(29 downto 21));
+                     vblank_flag <= checkpoint_write_data(30); hblank_flag <= checkpoint_write_data(31);
+                  when 1 =>
+                     vcnt_wr_pend <= checkpoint_write_data(0); vcnt_wr_val <= unsigned(checkpoint_write_data(9 downto 1));
+                     vmatch_flag(0) <= checkpoint_write_data(10); vmatch_flag(1) <= checkpoint_write_data(11);
+                     lcd_phase_line <= unsigned(checkpoint_write_data(20 downto 12));
+                  when 2 =>
+                     linecounter <= to_integer(unsigned(checkpoint_write_data(7 downto 0)));
+                     linecounter_obj <= to_integer(unsigned(checkpoint_write_data(15 downto 8)));
+                  when others => null;
+               end case;
+            end if;
+         elsif (reset = '1') then
 
             cycles       <= 0;
             line         <= 0;

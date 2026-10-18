@@ -37,8 +37,9 @@ The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
 state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
-transactions, completed arithmetic, system-control registers and the RTC's
-calendar/partial serial state across fresh simulator processes. These ports remain unconnected to the console control
+transactions, completed arithmetic, system-control registers, raster timing and
+the RTC's calendar/partial serial state across fresh simulator processes. These
+ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
@@ -855,6 +856,53 @@ virtual-clock warnings are expected, and no timing or gameplay-speed result is
 inferred. The remaining cost still needs a complete-core resource check before
 this can be accepted for a gameplay beta.
 
+## Raster timing component persistence
+
+`nds_gpu_timing.vhd` now exposes five ordered words behind its existing
+default-off checkpoint option. The physical raster line is retained separately
+from software-writable VCOUNT. Capture waits until the previous enabled edge's
+IRQ/draw/phase pulses have been delivered and cleared; those pulses are not
+replayed after restore. Both CPU buses and their register resets must be quiet.
+
+| Word | Live state retained |
+| --- | --- |
+| 0 | Cycle 11:0, physical line 20:12, VCOUNT 29:21, VBlank flag 30, HBlank flag 31 |
+| 1 | Delayed VCOUNT-write pending bit 0 and value 9:1, ARM9/ARM7 match flags 10/11, last published physical phase line 20:12 |
+| 2 | Last draw line 7:0 and object line 15:8 |
+| 3, 4 | ARM9 and ARM7 writable DISPSTAT bits: IRQ enables 5:3, match MSB 7, match low byte 15:8 |
+
+The cycle must be below 2130, physical/phase lines below 263 and draw/object
+lines below 192. VCOUNT and its pending value retain the full nine-bit range.
+Reserved bits must be zero. A stopped, reset-held restore writes counters and
+flags directly and loads the existing `eProcReg_gba` DISPSTAT storage through
+private lower-half writes. No duplicate register bank is added. Register reset
+is suppressed throughout that explicit restore, including idle gaps; the
+injected writes cannot queue a VCOUNT write. The original CPU register/reset
+path is unchanged outside restore.
+
+All five words must arrive in ascending order. A duplicate, skip, extra or
+invalid word, live restore, bus activity or missing stop poisons the attempt
+until withdrawal and a complete reload. After a complete image is verified,
+release the component and register resets together, keep the event stop asserted
+until the other owners are restored, then release through the common
+coordinator. Pending VCOUNT writes apply at the original next scanline boundary,
+including ARM7's existing precedence for simultaneous writes. This component
+does not preserve the separate GPU event queue, renderer, memory or display
+publication state.
+
+`tools/test_checkpoint_raster_restore.sh` captures 20 boundaries and restores
+each in two fresh simulator processes, with zero or variable load gaps. Capture
+and normal continuation match immutable pre-image revision `d6e6d8c` at every
+clock phase. Fresh continuations compare all thirteen IRQ/render pulses,
+readback, line/object counters, physical phase, VCOUNT and bus responses through
+visible-line, HBlank, VBlank, line 215 and frame-wrap transitions. Other cases
+retain delayed and simultaneous VCOUNT writes, a nine-bit VCOUNT wrap, CE gaps
+and both CPUs' byte-enabled control writes. Twelve injected faults must fail;
+eight lost fields are detected by continuation with image comparison disabled.
+The existing four timing-stop/prescaler configurations and their three fault
+controls also pass. These are component simulations; console restore transport
+and real display/renderer qualification remain missing.
+
 ## RTC component persistence
 
 `rtl/nds_nitro_rtc.vhd` now has a nine-word image behind its existing default-off
@@ -1603,7 +1651,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC component restore tested; raster/display and other state plus real external ownership still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster component restore tested; graphics event/display and other state plus real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; calendar/partial serial component restore tested; elapsed-time restore and host integration missing |
