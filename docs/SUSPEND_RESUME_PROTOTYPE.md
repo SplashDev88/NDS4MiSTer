@@ -27,7 +27,9 @@ status, audio drain/pause, raster/timer event stopping and memory-owner drain
 observers, including the ARM7 bus and shared WRAM. IRQ and IPC observations
 also verify that accepted events have settled without clearing pending flags
 or messages. Cartridge/SPI stops retain partial transactions and drain issued
-backing requests. Remaining crossings, devices and the renderer still lack a common
+backing requests. Input levels can be held, the live RTC can produce a coherent
+calendar/subsecond sample, and the product DIV/SQRT unit exposes retirement
+status. Remaining crossings, devices and the renderer still lack a common
 freeze boundary; these partial signals do not authorize a whole-machine checkpoint.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
@@ -256,12 +258,53 @@ acquisition and immediately withdraw the corresponding acknowledgement.
 - SPI holds the last observed lid state. After release it samples the current
   physical lid and emits the usual reopen IRQ if appropriate. Transient lid
   changes entirely inside the hold are not replayed as an event log. The
-  console's other input reads and RTC still need a common input/freeze policy.
+  console now holds the corresponding key/touch/microphone levels too, as
+  described below. Common acquisition/release ordering still needs integration.
 
 A missing backing response prevents acknowledgement. Cancelling the stop
 preserves the outstanding request and permits normal progress when the real
 response arrives. Common reset invalidates the acknowledgement. No complete
 cartridge/SPI serializer or persistent restore path is implemented yet.
+
+### RTC, physical inputs and math retirement
+
+The clock is a battery-time exception to the gameplay hold. The default-off
+RTC extension **does not stop or rewind the running calendar**. It samples all
+seven date/time bytes and the subsecond divider on one edge, after four quiet
+bus edges and a settled seed synchronizer. Both values describe the state
+before that sampling edge. The sample remains stable even across midnight;
+reset, request withdrawal, any guest bus access or a newly synchronized seed
+revokes it. Serial commands, partial input/output bytes, guest date edits,
+reset retention and offline startup retain their original behavior.
+
+This is a local timestamp, not a machine-wide capture epoch. The current console
+wiring requests it during acquisition. The eventual machine coordinator must
+request the final sample at its selected boundary and pair it with an elapsed
+real-time reference. Host seed ownership must be held separately: this observer
+cannot prevent a seed from arriving after synchronization. RTC serial/status
+state still needs serialization, including a partial read buffer that must not
+be replaced by the later live time. Restore catch-up and the existing offline
+clock policy have not yet been joined to a suspend image.
+
+`nds_checkpoint_inputs.vhd` captures one 31-bit word containing all twelve
+buttons, touch X/Y and activity, lid and microphone-blow levels. The console
+uses that word for KEYINPUT, EXTKEYIN and SPI. Normal operation and the disabled
+configuration remain combinational. During a hold the sampled levels are
+stable. Withdrawal exposes the current physical controls immediately; changes
+made entirely during the hold are not replayed. SPI retains its own previous-lid
+history so reopening after release follows its existing interrupt behavior.
+The request must be low for a clock edge between captures; the CPU coordinator's
+release handshake provides this interval. No persistent input restore is wired.
+
+The live product uses `nds_nitro_arm9_math_unit.sv`, not the older
+`nds_arm9_math_unit.sv`. Its observation-only `checkpoint_idle` excludes new
+requests, outstanding MMIO replies, completion pulses, transaction-signature
+guards and both running arithmetic engines. The engines finish using their
+original clock/credit path; zero or invalid credits keep architectural BUSY
+asserted. The island already supplies real credits continuously, so stopping
+CPUs need not strand accepted arithmetic. No arithmetic or bus timing changes.
+The new clk2x status is only an internal island wire; it still needs a qualified
+crossing into the common machine barrier. Math state read/restore is missing.
 
 ### IRQ and IPC retirement observations
 
@@ -590,6 +633,37 @@ These prove component stop/drain and resume-after-cancellation behavior, not
 persistent cartridge/SPI state restoration, cache durability, timing closure
 or gameplay suspend/resume.
 
+RTC/input and math checks:
+
+```sh
+bash tools/test_checkpoint_rtc_inputs.sh
+bash tools/test_checkpoint_math.sh
+bash tools/test_nitro_rtc_vhdl.sh
+```
+
+- Six RTC configurations vary simulated second length and host seed timing.
+  They compare every original output against immutable revision `62a5907`
+  through leap-day/midnight rollover, a multi-second hold, host seeding during
+  acquisition, partial serial reads/writes, reset and CE changes. Each accepts
+  77 or 78 timestamp samples; calendar and fraction are checked against the
+  reference's same pre-edge state. Samples remain stable until revoked.
+- 128 input holds exercise every bit, disabled bypass, immediate release,
+  reset and recapture. These prove the helper, not a full-console game session.
+  Full-console VHDL analysis and the existing island input-boundary simulation
+  also pass; the latter does not simulate the VHDL console internals.
+- Both math interface modes compare cycle by cycle against `62a5907`, including
+  reply tails, concurrent arithmetic, zero/invalid credits, restarts, random
+  operand/control accesses, continuous product DMA transactions and reset.
+  A temporal check requires architectural state to stay fixed after idle.
+  The existing compact DIV/SQRT numeric/timing regression also passes.
+- Six negative controls stop the live clock, move a valid timestamp, tear its
+  fraction, let held controls change, or report math idle before a reply or
+  calculation retires. All are detected. Existing Gregorian/BCD/hour-mode RTC
+  tests also pass with the feature disabled.
+
+These checks do not implement RTC/math serialization, elapsed-time restoration,
+full-machine capture or a gameplay beta. They make no hardware speed claim.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -664,10 +738,10 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC retirement tested; backing caches, remaining owners, coherent freeze and serializers missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; backing caches, remaining owners, coherent freeze and serializers missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
-| RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
+| RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
 | Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | CPU-pair barrier, lease and read transport tested; device freeze, host connection and restore ordering missing |
 
 Current H3D lifecycle quiesce **destroys the renderer** before acknowledgement;
@@ -679,7 +753,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 1. Extend the optional CPU-only console wiring into a coherent machine freeze.
    Combine the tested CPU/DMA/audio/event stops and memory-owner idle
-   signals, card/SPI stops and IRQ/IPC retirement with the remaining
+   signals, card/SPI/input stops, RTC sampling and IRQ/IPC/math retirement with the remaining
    CDC/debug/loader/backing-cache owners, device events and lid-sleep control,
    verifying no pending
    access or interrupt is dropped. Connect the bounded read transport and host

@@ -16,7 +16,7 @@ module tb_nds_nitro_arm9_math_unit;
     logic [31:0] write_data = '0;
     wire selected;
     wire [31:0] read_data;
-    wire done, div_busy, sqrt_busy;
+    wire done, div_busy, sqrt_busy, checkpoint_idle;
 
     nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) dut (.*);
 

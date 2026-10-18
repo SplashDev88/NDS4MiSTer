@@ -454,6 +454,9 @@ entity nds_nitro_console_top is
       checkpoint_arm7_memory_idle, checkpoint_shared_wram_idle : out std_logic := '0';
       checkpoint_irq_idle, checkpoint_ipc_idle : out std_logic := '0';
       checkpoint_card_stopped, checkpoint_spi_stopped : out std_logic := '0';
+      checkpoint_inputs_held, checkpoint_rtc_ready : out std_logic := '0';
+      checkpoint_rtc_datetime : out std_logic_vector(55 downto 0) := (others => '0');
+      checkpoint_rtc_subsecond : out unsigned(31 downto 0) := (others => '0');
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
       checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
       checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
@@ -479,6 +482,7 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_memory7_idle_s, checkpoint_shared_wram_idle_s : std_logic;
    signal checkpoint_irq9_idle_s, checkpoint_irq7_idle_s, checkpoint_ipc_idle_s : std_logic;
    signal checkpoint_card_stop : std_logic;
+   signal checkpoint_live_inputs, checkpoint_inputs : std_logic_vector(30 downto 0);
    signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
    signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
    attribute async_reg : string;
@@ -2682,9 +2686,19 @@ begin
 
    -- KEYINPUT (0x130, both CPUs) + EXTKEYIN (0x136, ARM7): wired directly
    -- until a keypad module (KEYCNT/key IRQ) exists; active low, released = 1
-   keyinput <= not (KeyL & KeyR & KeyDown & KeyUp & KeyLeft & KeyRight &
-                    KeyStart & KeySelect & KeyB & KeyA);
-   extkeyin <= lid_closed & (not touch_active) & "11" & "11" & (not KeyY) & (not KeyX);
+   -- One input word for both key registers and SPI conversions. Normal reads
+   -- remain combinational. On release current physical levels take effect;
+   -- changes made entirely during the hold are not replayed as input events.
+   checkpoint_live_inputs <= mic_blow & lid_closed & touch_active & touch_y & touch_x &
+      KeyY & KeyX & KeyL & KeyR & KeyDown & KeyUp & KeyLeft & KeyRight &
+      KeyStart & KeySelect & KeyB & KeyA;
+   checkpoint_input_owner : entity work.nds_checkpoint_inputs
+      generic map(ENABLE => CHECKPOINT_CPU_ENABLE)
+      port map(clk => clk1x, reset => resetCpu, hold => checkpoint_hold_request,
+         live => checkpoint_live_inputs, value => checkpoint_inputs, held => checkpoint_inputs_held);
+   keyinput <= not checkpoint_inputs(9 downto 0);
+   extkeyin <= checkpoint_inputs(29) & (not checkpoint_inputs(28)) & "1111" &
+      (not checkpoint_inputs(11)) & (not checkpoint_inputs(10));
 
    key_wired_out9  <= x"0000" & "000000" & keyinput when (io_bus9.Adr = x"0000130") else (others => '0');
    key_wired_done9 <= '1' when (io_bus9.Adr = x"0000130") else '0';
@@ -2780,12 +2794,15 @@ begin
    -- A native BIOS boot reads the serial RTC before loading firmware. Seed
    -- once from the host; guest reset leaves the calendar and edited date intact.
    irtc : entity work.nds_nitro_rtc
+   generic map(EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE)
    port map (
       clk => clk1x, ce => '1', reset => resetCpu, fw_boot => fw_boot,
       rtc_seed => rtc_seed, rtc_seed_toggle => rtc_seed_toggle,
       rtc_datetime => rtc_datetime, date_written => rtc_date_written,
       bus7 => io_bus7, wired_out7 => rtc_native_out7,
-      wired_done7 => rtc_wired_done7
+      wired_done7 => rtc_wired_done7,
+      checkpoint_request => checkpoint_hold_request, checkpoint_ready => checkpoint_rtc_ready,
+      checkpoint_datetime => checkpoint_rtc_datetime, checkpoint_subsecond => checkpoint_rtc_subsecond
    );
    -- Firmware and direct games share the same retained, host-seeded calendar.
    rtc_wired_out7 <= rtc_native_out7;
@@ -2869,8 +2886,9 @@ begin
       checkpoint_stop => checkpoint_hold_request, checkpoint_stopped => checkpoint_spi_stopped,
       bus7 => io_bus7, wired_out7 => spi_wired_out7, wired_done7 => spi_wired_done7,
       irq_spi => irq7_spi, irq_lid => irq7_lid,
-      lid_closed => lid_closed, mic_blow => mic_blow,
-      touch_active => touch_active, touch_x => touch_x, touch_y => touch_y,
+      lid_closed => checkpoint_inputs(29), mic_blow => checkpoint_inputs(30),
+      touch_active => checkpoint_inputs(28), touch_x => checkpoint_inputs(19 downto 12),
+      touch_y => checkpoint_inputs(27 downto 20),
       fw_addr => fw_addr, fw_req => fw_req, fw_done => fw_done, fw_data => fw_data,
       fw_wr => fw_wr, fw_wlane => fw_wlane, fw_wdata => fw_wdata,
       fw_busy => fw_busy, fw_release => fw_release

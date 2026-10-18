@@ -42,7 +42,9 @@ module nds_nitro_arm9_math_unit #(
     output logic        done,
 
     output logic        div_busy,
-    output logic        sqrt_busy
+    output logic        sqrt_busy,
+    // Observation only; producers and the IO crossing must be held separately.
+    output logic        checkpoint_idle
 );
     localparam logic [31:0] DIVCNT      = 32'h04000280;
     localparam logic [31:0] DIV_NUMER_L = 32'h04000290;
@@ -346,6 +348,12 @@ module nds_nitro_arm9_math_unit #(
 
     assign div_busy = div_cnt[15];
     assign sqrt_busy = sqrt_cnt[15];
+    // A low architectural BUSY alone does not retire a registered MMIO reply
+    // or the product's deduplication signature. Let issued arithmetic finish
+    // using its original clock/credit path; never fabricate extra credits.
+    assign checkpoint_idle = !reset && !request && !bus_active &&
+        !bus_response_pending && !done && !product_signature_valid &&
+        !div_running && !sqrt_running && !div_busy && !sqrt_busy;
 
     always_ff @(posedge clk) begin
         if (reset) begin

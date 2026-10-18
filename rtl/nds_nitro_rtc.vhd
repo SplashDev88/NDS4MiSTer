@@ -32,7 +32,8 @@ use IEEE.numeric_std.all;
 use work.pProc_bus_gba.all;
 
 entity nds_nitro_rtc is
-   generic (CYCLES_PER_SECOND : positive := 33513982);
+   generic (CYCLES_PER_SECOND : positive := 33513982;
+            EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk         : in  std_logic;
@@ -55,7 +56,14 @@ entity nds_nitro_rtc is
 
       bus7        : in  proc_bus_gb_type;
       wired_out7  : out std_logic_vector(31 downto 0);
-      wired_done7 : out std_logic
+      wired_done7 : out std_logic;
+
+      -- Coherent calendar/subsecond sample only; live battery time continues.
+      -- The caller must hold guest bus and host seed ownership separately.
+      checkpoint_request : in std_logic := '0';
+      checkpoint_ready : out std_logic := '0';
+      checkpoint_datetime : out std_logic_vector(55 downto 0) := (others => '0');
+      checkpoint_subsecond : out unsigned(31 downto 0) := (others => '0')
    );
 end entity;
 
@@ -243,6 +251,43 @@ architecture arch of nds_nitro_rtc is
    end function;
 
 begin
+
+   gcheckpoint : if EXPERIMENTAL_CHECKPOINT generate
+      signal valid : std_logic := '0';
+      signal quiet : integer range 0 to 3 := 0;
+      signal generation : std_logic := '0';
+      signal seed_settled : std_logic;
+   begin
+      seed_settled <= '1' when seed_toggle_sync = (seed_seen & seed_seen & seed_seen) else '0';
+      -- Revoke before any guest bus edge or synchronized seed delivery can
+      -- mutate the captured context. A new host seed after capture requires
+      -- another sample; a host must not send seeds during a machine lease.
+      checkpoint_ready <= valid and checkpoint_request and not reset and
+         not bus7.ena and seed_settled and not (generation xor seed_seen);
+      process(clk) begin
+         if rising_edge(clk) then
+            if reset = '1' or checkpoint_request = '0' or bus7.ena = '1' or
+               seed_settled = '0' or (valid = '1' and generation /= seed_seen) then
+               valid <= '0'; quiet <= 0;
+            elsif valid = '0' then
+               if quiet = 3 then
+                  -- Both values describe the state before this edge. Reading
+                  -- two words across midnight must not mix two calendar days.
+                  for i in 0 to 6 loop
+                     checkpoint_datetime(i*8+7 downto i*8) <= datetime(i);
+                  end loop;
+                  checkpoint_subsecond <= to_unsigned(sec_div, 32);
+                  generation <= seed_seen; valid <= '1';
+               else quiet <= quiet + 1; end if;
+            end if;
+         end if;
+      end process;
+   end generate;
+   gno_checkpoint : if not EXPERIMENTAL_CHECKPOINT generate
+      checkpoint_ready <= '0';
+      checkpoint_datetime <= (others => '0');
+      checkpoint_subsecond <= (others => '0');
+   end generate;
 
    datetime_pack : for i in 0 to 6 generate
       rtc_datetime(i * 8 + 7 downto i * 8) <= datetime(i);

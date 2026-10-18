@@ -93,6 +93,7 @@ set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_endpoint.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_coordinator.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_read_port.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_cpu_capture.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_inputs.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
 

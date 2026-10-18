@@ -2118,6 +2118,7 @@ wire [31:0] math_read_data;
 wire [1:0] math_access;
 wire math_request, math_rnw, math_selected;
 wire math_done_unused, div_busy_unused, sqrt_busy_unused;
+wire checkpoint_math_idle_2x; // Partial owner status, not yet a host capture gate.
 
 nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
     .clk(clk2x),.reset(console_reset_2x),
@@ -2126,7 +2127,8 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
     .read_not_write(math_rnw),.access(math_access),
     .write_data(math_write_data),.selected(math_selected),
     .read_data(math_read_data),.done(math_done_unused),
-    .div_busy(div_busy_unused),.sqrt_busy(sqrt_busy_unused)
+    .div_busy(div_busy_unused),.sqrt_busy(sqrt_busy_unused),
+    .checkpoint_idle(checkpoint_math_idle_2x)
 );
 
 nds_nitro_console_wrap #(
