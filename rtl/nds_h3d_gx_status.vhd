@@ -35,6 +35,7 @@ use IEEE.numeric_std.all;
 use work.pProc_bus_gba.all;
 
 entity nds_h3d_gx_status is
+   generic(EXPERIMENTAL_CHECKPOINT:boolean:=false);
    port
    (
       clk            : in  std_logic;
@@ -54,7 +55,16 @@ entity nds_h3d_gx_status is
       -- Level outputs. service_ready gates DMA startup, while the IRQ level is
       -- architectural and remains derived solely from the programmed mode.
       trig_gx        : out std_logic := '0';
-      irq_gxfifo     : out std_logic := '0'
+      irq_gxfifo     : out std_logic := '0';
+      checkpoint_idle : out std_logic := '0';
+      checkpoint_address : in unsigned(0 downto 0) := (others=>'0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others=>'0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others=>'0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -67,7 +77,33 @@ architecture arch of nds_h3d_gx_status is
    signal gxstat_word : std_logic_vector(31 downto 0);
    signal fifo_below_half : std_logic;
    signal fifo_empty      : std_logic;
+   signal restore_active,restore_write_valid : std_logic;
+   signal restore_loaded,restore_error : std_logic := '0';
 begin
+   checkpoint_idle<='1' when EXPERIMENTAL_CHECKPOINT and reset='0' and gb_bus.rst='0' and gb_bus.ena='0' and stack_ack='0' else '0';
+   restore_active<='1' when EXPERIMENTAL_CHECKPOINT and reset='1' and checkpoint_restore='1' else '0';
+   restore_write_valid<='1' when restore_active='1' and gb_bus.ena='0' and restore_error='0' and restore_loaded='0' and
+      checkpoint_write='1' and checkpoint_address=0 and (checkpoint_write_data and x"FFFE3000")=x"00000000" else '0';
+   checkpoint_restore_error<=restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready<='1' when restore_active='1' and gb_bus.ena='0' and restore_error='0' and restore_loaded='1' and checkpoint_write='0' else '0';
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore='0' then restore_loaded<='0';restore_error<='0';
+         elsif reset='0' or gb_bus.ena='1' then restore_error<='1';
+         elsif checkpoint_write='1' then
+            if restore_write_valid='1' then restore_loaded<='1';else restore_error<='1';end if;
+         end if;
+      end if;
+   end process;
+   process(all)
+   begin
+      checkpoint_data<=(others=>'0');checkpoint_valid<='0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address=0 and
+         ((checkpoint_idle='1' and checkpoint_restore='0') or checkpoint_restore_ready='1') then
+         checkpoint_valid<='1';checkpoint_data(16 downto 0)<=irq_mode & disp3dcnt;
+      end if;
+   end process;
    fifo_below_half <= '1' when unsigned(fifo_level) <= to_unsigned(127, 9)
                       else '0';
    fifo_empty <= '1' when unsigned(fifo_level) = to_unsigned(0, 9) else '0';
@@ -102,7 +138,11 @@ begin
    begin
       if rising_edge(clk) then
          stack_ack <= '0';
-         if (reset = '1') then
+         if restore_active='1' then
+            if restore_write_valid='1' then
+               disp3dcnt<=checkpoint_write_data(14 downto 0);irq_mode<=checkpoint_write_data(16 downto 15);
+            end if;
+         elsif (reset = '1') then
             irq_mode <= "00";
             disp3dcnt <= (others => '0');
          elsif (gb_bus.ena = '1' and gb_bus.rnw = '0') then

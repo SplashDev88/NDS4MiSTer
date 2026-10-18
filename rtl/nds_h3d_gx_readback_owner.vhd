@@ -10,7 +10,8 @@ entity nds_h3d_gx_readback_owner is
    generic (
       -- Nonzero seeds are for bounded exhaustion verification. Production
       -- starts at zero and never resets this sequence on a guest reset.
-      INITIAL_REQUEST_SEQUENCE : std_logic_vector(31 downto 0) := x"00000000"
+      INITIAL_REQUEST_SEQUENCE : std_logic_vector(31 downto 0) := x"00000000";
+      EXPERIMENTAL_CHECKPOINT : boolean := false
    );
    port (
       clk, reset, service_ready : in std_logic;
@@ -33,7 +34,18 @@ entity nds_h3d_gx_readback_owner is
       response_valid : in std_logic;
       response_id, response_status : in std_logic_vector(31 downto 0);
       cache_index : out std_logic_vector(4 downto 0);
-      cache_data : in std_logic_vector(31 downto 0)
+      cache_data : in std_logic_vector(31 downto 0);
+      checkpoint_idle : out std_logic := '0';
+      checkpoint_address : in unsigned(2 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      -- The external reply cache must carry the same restored generation.
+      checkpoint_cache_ready : in std_logic := '0';
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -58,6 +70,17 @@ architecture arch of nds_h3d_gx_readback_owner is
    signal packed_count : natural range 0 to 4 := 0;
    signal parameters_left : natural range 0 to 32 := 0;
    signal test_event : std_logic;
+   signal source_quiet,restore_active,restore_write_valid : std_logic;
+   signal restore_count : unsigned(2 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+   function valid_word(a:unsigned(2 downto 0);d:std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 to 4 => return true;
+         when 5 => return unsigned(d(31 downto 21))=0 and unsigned(d(14 downto 12))<=4 and unsigned(d(20 downto 15))<=32;
+         when others => return false;
+      end case;
+   end function;
    function parameters(command : std_logic_vector(7 downto 0)) return natural is
    begin
       case to_integer(unsigned(command)) is
@@ -75,6 +98,44 @@ architecture arch of nds_h3d_gx_readback_owner is
       end case;
    end function;
 begin
+   source_quiet <= '1' when cpu_read='0' and geometry_write='0' and gx_write='0' and response_valid='0' else '0';
+   checkpoint_idle <= '1' when EXPERIMENTAL_CHECKPOINT and reset='0' and service_ready='1' and
+      state=IDLE and complete='0' and source_quiet='1' else '0';
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset='1' and checkpoint_restore='1' else '0';
+   restore_write_valid <= '1' when restore_active='1' and source_quiet='1' and restore_error='0' and checkpoint_write='1' and
+      restore_count<6 and checkpoint_address=restore_count and valid_word(checkpoint_address,checkpoint_write_data) else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active='1' and source_quiet='1' and service_ready='1' and
+      (cached_valid='0' or checkpoint_cache_ready='1') and restore_error='0' and restore_count=6 and checkpoint_write='0' else '0';
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore='0' then restore_count<=(others=>'0');restore_error<='0';
+         elsif reset='0' or source_quiet='0' then restore_error<='1';
+         elsif checkpoint_write='1' then
+            if restore_write_valid='1' then restore_count<=restore_count+1;else restore_error<='1';end if;
+         end if;
+      end if;
+   end process;
+   process(all)
+   begin
+      checkpoint_data<=(others=>'0');checkpoint_valid<='0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address<6 and
+         ((checkpoint_idle='1' and checkpoint_restore='0') or checkpoint_restore_ready='1') then
+         checkpoint_valid<='1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data<=std_logic_vector(request_sequence);
+            when 1 => checkpoint_data<=token;
+            when 2 => checkpoint_data<=cached_status;
+            when 3 => checkpoint_data<=data;
+            when 4 => checkpoint_data<=packed_commands;
+            when 5 => checkpoint_data(20 downto 0)<=std_logic_vector(to_unsigned(parameters_left,6)) &
+               std_logic_vector(to_unsigned(packed_count,3)) & test_bits & status_read & test_invalidated & test_dirty &
+               request_invalidated & cached_valid & std_logic_vector(index);
+            when others => null;
+         end case;
+      end if;
+   end process;
    selected_i <= '1' when service_ready='1' and
       ((unsigned(address)>=16#640# and unsigned(address)<=16#6a0#) or
        (address=x"0000600" and (test_dirty='1' or test_event='1' or
@@ -103,7 +164,15 @@ begin
       variable remaining : natural range 0 to 32;
    begin
       if rising_edge(clk) then
-         if reset='1' or service_ready='0' then
+         if restore_active='1' then
+            if restore_write_valid='1' then
+               if checkpoint_address=4 then packed_commands<=checkpoint_write_data;
+               elsif checkpoint_address=5 then
+                  packed_count<=to_integer(unsigned(checkpoint_write_data(14 downto 12)));
+                  parameters_left<=to_integer(unsigned(checkpoint_write_data(20 downto 15)));
+               end if;
+            end if;
+         elsif reset='1' or service_ready='0' then
             packed_commands<=(others=>'0'); packed_count<=0; parameters_left<=0;
          elsif gx_write='1' and gx_access="10" and gx_address(1 downto 0)="00" and
                unsigned(gx_address)>=16#400# and unsigned(gx_address)<16#440# then
@@ -131,7 +200,22 @@ begin
    begin
       if rising_edge(clk) then
          complete <= '0';
-         if reset='1' or service_ready='0' then
+         if restore_active='1' then
+            state<=IDLE;
+            if restore_write_valid='1' then
+               case to_integer(checkpoint_address) is
+                  when 0 => request_sequence<=unsigned(checkpoint_write_data);
+                  when 1 => token<=checkpoint_write_data;
+                  when 2 => cached_status<=checkpoint_write_data;
+                  when 3 => data<=checkpoint_write_data;
+                  when 5 =>
+                     index<=unsigned(checkpoint_write_data(4 downto 0));cached_valid<=checkpoint_write_data(5);
+                     request_invalidated<=checkpoint_write_data(6);test_dirty<=checkpoint_write_data(7);
+                     test_invalidated<=checkpoint_write_data(8);status_read<=checkpoint_write_data(9);test_bits<=checkpoint_write_data(11 downto 10);
+                  when others => null;
+               end case;
+            end if;
+         elsif reset='1' or service_ready='0' then
             state<=IDLE;
             cached_valid<='0';
             request_invalidated<='0';

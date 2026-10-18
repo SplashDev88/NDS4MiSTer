@@ -38,8 +38,9 @@ formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
 state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
 transactions, completed arithmetic, system-control registers, raster timing,
-the RTC's calendar/partial serial state, both display readback banks and the
-drained graphics gate's epochs across fresh simulator processes. These
+the RTC's calendar/partial serial state, both display readback banks, the
+drained graphics gate's epochs and geometry query/status registers across fresh
+simulator processes. These
 ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
@@ -914,14 +915,74 @@ the original GPU bank and Engine B register contract also pass.
 The source survey distinguishes `nds_h3d_query_watch.vhd`, a passive diagnostic
 that is currently absent from the product (the top's diagnostic ports remain
 tied off), from the gameplay-facing `nds_h3d_gx_readback_owner.vhd` and
-`nds_h3d_gx_status.vhd`. The latter owners still need coverage: partial packed
-commands, test-result state, retained request sequence and response/cache
-generations must agree with the restored ARM service. The packet frontend behind
+`nds_h3d_gx_status.vhd`. Their component images are described below; external
+response/cache generations must still agree with the restored ARM service.
+The packet frontend behind
 `nds_h3d_frame_record_cdc.sv`, its normalized command FIFO, stack tracking and
 readback-reply cache are also separate owners; draining the source gate alone
 does not establish their state coverage. The image ports above
 remain unconnected to console transport, and no hardware/gameplay resume or
 combined FPGA resource result is claimed.
+
+## Geometry query and status component persistence
+
+`nds_h3d_gx_readback_owner.vhd` now exports a six-word image behind default-off
+`EXPERIMENTAL_CHECKPOINT`. It acknowledges only IDLE, with its completion pulse
+drained, a live service and no CPU read, geometry write, packed-command write or
+response pulse. It does not cancel an outstanding query to create a checkpoint.
+ISSUE, WAIT_REPLY and the synchronous cache-return stages must finish normally.
+EXHAUSTED is not a capture boundary; the whole-machine coordinator must time out
+and cancel that attempt. An IDLE image with the last request ID already consumed
+is supported and must still reject a new uncached request after restore.
+
+| Word | State retained |
+| --- | --- |
+| 0 | Request sequence, including values retained across guest resets |
+| 1 | Last request token |
+| 2 | Cached response status, all 32 bits |
+| 3 | Last CPU read result |
+| 4 | Partial packed-command word |
+| 5 | Cache index 4:0, cached-valid 5, request-invalidated 6, test-dirty 7, test-invalidated 8, status-read 9, test bits 11:10, packed-command count 14:12, remaining parameters 20:15 |
+
+Packed count may be 0–4 and remaining parameters 0–32; upper word-5 bits are
+reserved zero. All six addresses must be written in order while reset is held
+and the inputs above are quiet. State loads directly into existing registers;
+ordinary reset/service-loss clearing is bypassed only during explicit restore.
+No request, fence or completion is emitted during loading. Invalid order,
+duplicates, extra/reserved/range-invalid words, live loads or incoming activity
+poison the attempt until withdrawal and a complete retry.
+
+Restore readiness also requires a live service and, if `cached_valid` is set,
+`checkpoint_cache_ready=1`. That indication must represent the matching restored
+external reply-cache generation; it is not authorization to reuse arbitrary
+RAM or a newly initialized cache. The component does not independently verify
+that cache's bytes or identity. Keeping the request sequence prevents a stale
+reply from satisfying a later query after relaunch. Preserving partial packed
+commands retains the point at which BOX/POS tests make GXSTAT require an ordered
+response. The real reply-cache serializer, host epoch and ownership connection
+remain missing.
+
+`nds_h3d_gx_status.vhd` has a one-word image: DISP3DCNT storage in bits 14:0
+(13:12 must be zero) and FIFO IRQ mode in 16:15; upper bits must be zero. Capture
+requires a quiet bus and drained stack-ack pulse. Its reset-held load suppresses
+stack acknowledgements and retains the existing IRQ-level semantics. FIFO
+occupancy, geometry-busy, matrix-stack and test-result inputs belong to other
+owners. Keep DMA/IRQ consumers held until those inputs and both local images
+are restored together; local readiness is not a whole-machine barrier.
+
+`tools/test_checkpoint_gx_owner_restore.sh` tests 16 captures and 32 fresh
+restores against immutable revision `7ae587b`, with zero/variable load gaps and
+a separately persisted 32-word model of the external cache. The 51,372
+continuation observations cover cached and uncached matrix reads, delayed and
+stale responses, busy-result refresh, invalidation during a query, direct and
+partial packed BOX/POS commands, a four-command packet with all 32 SHININESS
+parameters pending, retained request IDs near exhaustion, and ordinary reset.
+Both FIFO IRQ thresholds/modes, byte-access rules and stack-ack pulses are also
+checked. Fourteen injected faults are detected, including eight lost-state
+faults through continuation with image comparisons disabled. The existing
+query/status regression and full-console analysis also pass. The new component
+ports remain unconnected to the console control plane; no hardware resume is
+claimed.
 
 ## Raster timing component persistence
 
@@ -1718,7 +1779,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks and drained graphics-gate epochs tested; gameplay geometry-query/status state and real external ownership still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks, geometry query/status and drained graphics-gate epochs tested; packet frontend, reply cache and real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; calendar/partial serial component restore tested; elapsed-time restore and host integration missing |
