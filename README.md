@@ -27,7 +27,7 @@ Their original reported save errors were not all reproduced, so these are
 validation results rather than claims that every save issue is fixed.
 
 These checks were recorded during the bug-fix work inherited by this runtime;
-the final Beta12 renderer did not receive a new full sweep of every listed game.
+the final rc9 renderer did not receive a new full sweep of every listed game.
 [Issue-by-issue scope and remaining work](https://github.com/SplashDev88/NDS4MiSTer/blob/v0.9.0-rc.9/docs/release/RC9_GAME_FIXES.md).
 
 ## Measured scene improvements
@@ -36,8 +36,8 @@ Recorded at **1 GHz**, during the optimization work included in this release:
 
 | Game and scene | Earlier measurement | Later measurement | What was counted |
 | --- | ---: | ---: | --- |
-| Castlevania: cave/bat room left of the save room | 14.5–14.8/sec | **22.6/sec in Beta12** | Completed screen updates |
-| Castlevania: upper-right Warg combat room | 12.7/sec | **21.9/sec in Beta12** | Completed screen updates |
+| Castlevania: cave/bat room left of the save room | 14.5–14.8/sec | **22.6/sec in rc9** | Completed screen updates |
+| Castlevania: upper-right Warg combat room | 12.7/sec | **21.9/sec in rc9** | Completed screen updates |
 | NSMB: World 2-5, repeated jumping | About 30/sec | **54.5–55.5/sec** | Visible changes around Mario |
 
 These are development milestones, **not a direct rc.8-to-rc.9 FPS benchmark**.
@@ -52,7 +52,7 @@ on animation and the image detector. Neither is a guarantee of whole-game FPS.
 3. Extract **NDS4MiSTer_v0.9.0-rc.9_Standalone.zip** to the SD card root. Include hidden files, merge `Scripts` and overwrite program files. Existing settings and maps are kept.
 4. Run **Scripts → NDS4MiSTer**, then **Load \*.NDS**.
 
-Keep the launcher and all support files from this package together. The retained host may still display **rc.8** internally; the release launcher and manifest identify **rc.9 / Beta12**.
+Keep the launcher and all support files from this package together. The retained host may still display **rc.8** internally; the release launcher and manifest identify **rc9**.
 
 Saves stay in `saves/NDS`, including for games loaded from USB or a network share. Do not rename ROMs. No ROMs, BIOS/firmware dumps, saves, settings or kernel image are included. Support modules for Linux **6.18.38-MiSTer** and **5.15.1-MiSTer** are included.
 
@@ -73,4 +73,4 @@ Download the **Standalone ZIP** and its **SHA-256 checksum** from [Releases](htt
 
 Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend (saneFriend), Corn and skmp. Full credits and licenses are included.
 
-For developers: [architecture](docs/architecture.md), [Beta12 evidence](docs/PRIVATE_BETA_20261017.md) and [post-freeze audit](docs/PERFORMANCE_AUDIT_FOLLOWUP_20261017.md).
+For developers: [architecture](docs/architecture.md), [rc9 evidence](docs/PRIVATE_BETA_20261017.md) and [post-freeze audit](docs/PERFORMANCE_AUDIT_FOLLOWUP_20261017.md).
