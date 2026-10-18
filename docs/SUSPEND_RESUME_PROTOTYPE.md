@@ -15,6 +15,12 @@ architectural state, and restart that state in a fresh simulator process. The
 program continues its counter stores without skipping or duplicating them.
 Tests use authored instructions; no commercial ROM or user save is required.
 
+A second component milestone coordinates those CPU holds across clock domains,
+with a deadline, cancellation and acknowledgement draining. It is tested with
+both real CPU implementations together. Sleeping CPUs are currently **refused
+by timeout**, not captured; their pending instruction/prefetch state still needs
+coverage. This coordinator is not yet connected to the console or host.
+
 `EXPERIMENTAL_CHECKPOINT` defaults to `false` in both CPUs. No console top level
 or ARM9 adapter enables it. The released FPGA, host, renderer, settings and
 1 GHz operating point are unchanged.
@@ -50,11 +56,45 @@ Set `EXPERIMENTAL_CHECKPOINT=true` and `SS_PRESET_ONLY='0'` explicitly.
    every other subsystem is restored too.
 
 The caller must impose a bounded deadline and cancel on timeout. This component
-has no global timeout controller. It cannot yet acknowledge a CPU already in
+has no internal timeout controller. It cannot yet acknowledge a CPU already in
 HALT/WFI/sleep, or a path with no taken branch. Arbitrary mid-instruction capture,
 IRQ/exception-entry capture, and cache/RAM/device-state restoration are not
 provided. A failed partial restore must stay in reset and use a clean boot;
 releasing reset with a partially loaded image is invalid.
+
+### CPU-pair coordinator
+
+`rtl/nds_checkpoint_coordinator.vhd` and `rtl/nds_checkpoint_endpoint.vhd`
+provide an isolated CPU-pair barrier. They do not freeze console devices, RAM,
+graphics or audio and cannot authorize writing a whole-machine state file.
+
+- The caller waits for `ready`, then holds `request` high. An accepted request
+  increments a 32-bit attempt `epoch`. It is a control-domain label, not a
+  persisted common machine timestamp; reset clears it and it can wrap.
+- Each endpoint synchronizes the request in its own CPU clock domain and
+  returns both delivery receipt and the CPU's actual pause acknowledgement.
+  Only both CPU acknowledgements establish `pair_paused`.
+- If both CPUs cannot pause within `TIMEOUT_CYCLES` control clocks (including
+  crossing latency), the attempt fails with sticky `timed_out`. Withdrawal of
+  `request` also cancels immediately from the caller's perspective.
+- Cleanup finishes delivery of the high request to both endpoints, then
+  withdraws it and waits for both request receipts and CPU acknowledgements to
+  return low. This four-phase handshake prevents a late acknowledgement from
+  being mistaken for a new attempt. Cleanup never waits for an unsupported CPU
+  to reach a capture boundary.
+- Keeping a failed caller request high cannot retry it. A new request requires
+  withdrawal and completed cleanup. A stopped endpoint clock or stuck receipt
+  raises `release_stalled`; `ready` stays low. Actual release cannot be promised
+  while a CPU clock is stopped. Once clocks/receipts recover, cleanup completes.
+- Coordinator, endpoints and CPUs require a common reset spanning at least
+  three rising edges in every domain. Clocks stay running during a hold; CPU
+  enables stop internally. Host transport must synchronize its request before
+  this interface, and future integration still needs a host-liveness watchdog
+  for a caller that disappears while a successful hold is active.
+
+Do not force a sleeping CPU awake to obtain a branch checkpoint or discard its
+prefetched instructions. Those would change the guest state. The present
+barrier safely refuses such a snapshot and releases any peer that did pause.
 
 The state bus uses **word addresses**, not byte addresses:
 
@@ -123,6 +163,31 @@ with DMA/IRQ/clock-enable overlap, ARM9 WFI return, and ARM7 HALT/prefetch
 interworking. These are component/simulation checks, not a gameplay or sound
 qualification of persistent suspend.
 
+Run the paired-CPU barrier checks separately:
+
+```sh
+bash tools/test_checkpoint_coordinator.sh
+```
+
+The 108 cases use three unrelated clock periods, memory delays 1 and 11,
+CPU-enable periods 1 and 5, and three request offsets. They cover successful
+hold/release/retry, DMA blocking either CPU, ARM9 WFI, ARM7 HALT, a branchless
+ARM9 path, cancellation before delivery, stale release acknowledgements and a
+stopped endpoint clock. Counter stores check continued execution without
+duplicates or omissions. Sleeping paths retain their original halt and wake
+after cancellation. The HALTCNT fixture is a toy adapter with NOP padding, not
+a cycle-accurate console IO model. Existing dedicated HALT tests retain their
+separate scope. A negative control that skips delivery acknowledgement must
+fail the stopped-clock test. Simulation does not model physical metastability
+or establish CDC placement/timing closure.
+
+The capsule code also passed its nine tests on the MiSTer's Python 3.9.6, then
+wrote, synced, atomically replaced and read a test slot from a fresh process on
+the SD-card filesystem. Temporary test folders were removed. The FAT mount
+reports mode `0755` despite `fchmod(0600)`; POSIX per-file permissions cannot be
+assumed there. This verifies file operations only, not power-loss durability or
+capture/restore of a live FPGA. No NDS session or ordinary game save was used.
+
 ## FPGA resource measurement
 
 Use `tools/suspend_resume/measure_area.py --runtime QUARTUS_ROOT
@@ -167,7 +232,7 @@ evidence, not as a second maintained implementation in this branch.
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
-| Coordinator | Common epoch across clock domains, bounded pause/abort, restore ordering, capability gate | Missing |
+| Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | CPU-pair pause/abort simulation proof; console/device freeze and host transport missing |
 
 Current H3D lifecycle quiesce **destroys the renderer** before acknowledgement;
 it is a session-exit operation, not a checkpoint. A full melonDS emulator state
@@ -176,8 +241,10 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 ## Next acceptance gates
 
-1. Provide a top-level pause/abort and state-read transport with a common epoch,
-   including already-halted CPUs. Verify no pending access or IRQ is dropped.
+1. Integrate a top-level pause/abort and state-read transport with a common
+   machine epoch, extending the CPU-pair proof to already-halted CPUs without
+   losing prefetch state. Verify no pending access or IRQ is dropped. Preserve
+   the coordinator's delivery/release handshake and add a host-liveness limit.
 2. Add memory/cache and device coverage, then a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
