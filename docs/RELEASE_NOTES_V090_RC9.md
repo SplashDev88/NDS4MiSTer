@@ -4,9 +4,8 @@
 
 ## What's new since rc.8
 
-- **Castlevania: Dawn of Sorrow performance improvements.** Rendering and CPU work distribution have been optimized. Improvements vary by scene.
-- **Improved graphics delivery, including New Super Mario Bros.** Rendering reuses unchanged work where it is safe and reduces unnecessary pixel conversion.
-- **Offline DS clock startup.** If MiSTer's date is unavailable or outside 2000–2099, the DS clock starts from January 1, 2000. Date/time edits persist. Set MiSTer's local time and timezone when possible, then relaunch. Without usable system time, time spent powered off cannot be recovered.
+- **Faster rendering and graphics.** Better CPU load balancing, plus skipping redundant rendering and pixel conversion. Improves Castlevania: Dawn of Sorrow and New Super Mario Bros.; gains vary by scene.
+- **DS clock fallback.** If MiSTer's date is missing or outside 2000–2099, the clock starts at Jan 1, 2000. Changes you make to the date/time are saved. For accurate time, set MiSTer's local time and timezone, then relaunch. Without a valid system clock, time spent powered off can't be tracked.
 - **Game compatibility and save fixes.** Includes Wizard of Oz menu-label and Mushroom Men menu corrections, Ninja Reflex and Jackass improvements, and shared save/graphics fixes detailed below. Huge thanks to Insanefriend for these.
 
 ## Game fixes and compatibility
