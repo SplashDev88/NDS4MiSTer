@@ -26,7 +26,7 @@ PYCODE
 nvc --std=2008 -a "$rtl/proc_bus_gba.vhd" nds_irq-reference.vhd nds_ipc-reference.vhd "$rtl/nds_irq.vhd" "$rtl/nds_ipc.vhd" "$repo/rtl/tb_nds_checkpoint_irq_ipc.vhd"
 for enabled in false true; do
  for seed in 1 29 137; do
-  nvc --std=2008 -e -gSEED=$seed -gENABLE_IRQ_CAPTURE="$enabled" tb_nds_checkpoint_irq_ipc
+  nvc --std=2008 -e -gSEED=$seed -gENABLE_IRQ_CAPTURE="$enabled" -gENABLE_IPC_CAPTURE="$enabled" tb_nds_checkpoint_irq_ipc
   nvc --std=2008 -r tb_nds_checkpoint_irq_ipc --ieee-warnings=off --exit-severity=error
  done
 done

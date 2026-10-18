@@ -36,7 +36,7 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
-state and complete timer state across fresh simulator processes. These ports
+state, complete timer state and IPC queues across fresh simulator processes. These ports
 remain unconnected to the console control plane; whole-machine persistence
 still needs the other owners.
 
@@ -426,9 +426,9 @@ Neither observation stops sources, blocks bus accesses or authorizes capture.
 
 The outputs describe a fixed point under the **current** inputs. All remaining
 event sources and bus masters must be stopped before treating that fixed point
-as a stable checkpoint boundary. The IRQ component now has the optional fixed-point
-image described below; IPC queue/state serialization and restoration remain
-missing. Pending guest events must be part of the eventual complete image.
+as a stable checkpoint boundary. IRQ and IPC now have the optional fixed-point
+component images described below. Pending guest events and every other owner
+must still be part of the eventual complete image.
 
 ### Memory-owner drain observations
 
@@ -595,6 +595,63 @@ erase registers between writes, accept partial coverage or allow live writes;
 each is detected. The existing timing/event-stop comparison and complete console
 VHDL analysis remain required. This is component persistence, not whole-console
 or on-device resume.
+
+### IPC component capture and restore
+
+`nds_ipc(EXPERIMENTAL_CHECKPOINT=true)` adds a default-off, 36-word component
+image. The console does not yet enable or connect this interface. Capture is
+valid only at the existing fixed point: both buses quiet, all six emitted IRQ
+pulses retired and four FIFO interrupt histories settled. Nonempty and full
+queues remain valid capture states.
+
+| Address | State |
+| --- | --- |
+| 0 | Sync outputs 7/9 in bits 3:0/7:4; sync IRQ enables 8/9; FIFO enables 10/11; send-empty IRQ enables 12/13; receive IRQ enables 14/15; error flags 16/17 |
+| 1 | Counts 79/97 in bits 4:0/9:5; read/write pointers 79 in 13:10/17:14 and 97 in 21:18/25:22 |
+| 2, 3 | Last-read words for ARM7 and ARM9 |
+| 4–19 | All sixteen physical words in the ARM7-to-ARM9 FIFO |
+| 20–35 | All sixteen physical words in the ARM9-to-ARM7 FIFO |
+
+Reserved bits must be zero. Counts must be 0–16 and each ring must satisfy
+`write = (read + count) mod 16`. Every word is required, including zero values
+and currently unoccupied slots. The current RTL can expose an old unoccupied
+slot when an ARM7 send and an ARM9 empty-queue receive share an edge. Zeroing
+those slots would therefore change the resumed execution. This implementation
+preserves that existing behavior; it does not change the IPC hardware model.
+The fixture initializes all physical cells through ordinary guest sends/pops,
+not forced state, because uninitialized simulation cells are otherwise unknown.
+
+Reset-held restore writes the live registers and FIFO arrays directly. Words
+can arrive in any order with gaps; ordinary bus traffic is ignored under reset.
+All IRQ outputs remain zero during loading. The four settled edge-history bits
+are reconstructed from counts/enables before ready, so releasing reset does not
+invent a new FIFO interrupt. The separate IRQ controllers restore their own IF,
+IE and IME values. The common caller must validate and hold every machine owner
+before releasing the CPUs.
+
+Unsupported addresses, reserved bits, impossible ring metadata and live restore
+attempts poison the attempt until restore is withdrawn for an edge. Ready
+requires all 36 distinct words, settled edge history, no error and no active
+write. An invalid image never authorizes CPU release. As with other components,
+whole-image identity/checksum validation and the reset policy belong to the
+future host/console integration.
+
+`tools/test_checkpoint_ipc_restore.sh` records normal IPC execution with both
+real IRQ controllers, then restores their combined 42 words in fresh processes.
+Twenty-seven restores cover ascending, descending and interleaved writes, full
+and wrapped queues, empty retained data, disabled FIFO access, queue clear,
+errors, all-zero state and three random traffic seeds. Each compares 4,106
+observations at both sides of the bus clock edge, preserving the intentional
+ARM7/ARM9 receive sampling difference. Live bus noise during reset, rejected
+writes, failed attempts and fresh coverage are also checked.
+
+Nine negative controls detect lost queue data, last-read data or pointers,
+premature ready, an extra wake-up, live writes, stale coverage, invalid ring
+metadata and zeroed empty slots. The empty-slot corruption passes structural
+checks/readback and fails the first resumed send/pop, demonstrating why the
+physical storage is part of the image. The default-off and enabled-unrequested
+IRQ/IPC paths also match the pinned pre-experiment RTL. This is joined IPC/IRQ
+component persistence; no whole-game resume or hardware beta is provided yet.
 
 ## Persistence proof
 
@@ -1037,7 +1094,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers have component restore; other serializers and real external ownership missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC have component restore; other serializers and real external ownership missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -1058,7 +1115,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend IRQ/timer component coverage to IPC and remaining devices,
+2. Extend IRQ/timer/IPC component coverage to the remaining devices,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.

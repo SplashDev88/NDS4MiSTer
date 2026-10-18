@@ -21,6 +21,7 @@ use IEEE.numeric_std.all;
 use work.pProc_bus_gba.all;
 
 entity nds_ipc is
+   generic(EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk             : in  std_logic;
@@ -45,7 +46,17 @@ entity nds_ipc is
       dbg_ipc         : out std_logic_vector(31 downto 0) := (others => '0');
       irq9_recv       : out std_logic := '0';
       -- Observation only; nonempty queues are state, not work to discard.
-      checkpoint_idle : out std_logic := '0'
+      checkpoint_idle : out std_logic := '0';
+      -- Fixed-point image: control, ring metadata, last7, last9, then both
+      -- complete 16-word FIFO arrays. The common owner holds both bus masters.
+      checkpoint_address : in unsigned(5 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -80,6 +91,20 @@ architecture arch of nds_ipc is
    signal p7_sendemp, p9_sendemp : std_logic := '0';
    signal p7_recvpend, p9_recvpend : std_logic := '0';
 
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_loaded : std_logic_vector(35 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+   signal expected_sendemp7, expected_sendemp9, expected_recvpend7, expected_recvpend9 : std_logic;
+
+   function valid_ring_metadata(v : std_logic_vector(31 downto 0)) return boolean is
+      variable n79, n97 : natural range 0 to 31;
+   begin
+      n79 := to_integer(unsigned(v(4 downto 0)));
+      n97 := to_integer(unsigned(v(9 downto 5)));
+      return v(31 downto 26) = "000000" and n79 <= 16 and n97 <= 16 and
+         to_integer(unsigned(v(17 downto 14))) = (to_integer(unsigned(v(13 downto 10)))+n79) mod 16 and
+         to_integer(unsigned(v(25 downto 22))) = (to_integer(unsigned(v(21 downto 18)))+n97) mod 16;
+   end;
 begin
 
    -- Enabling an IRQ can leave an edge pending for the following clock,
@@ -103,6 +128,59 @@ begin
          p7_sendemp = sendemp7 and p9_sendemp = sendemp9 and
          p7_recvpend = recvpend7 and p9_recvpend = recvpend9 then
          checkpoint_idle <= '1';
+      end if;
+   end process;
+
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   expected_sendemp7 <= '1' when cnt79 = 0 and sirq7 = '1' else '0';
+   expected_sendemp9 <= '1' when cnt97 = 0 and sirq9 = '1' else '0';
+   expected_recvpend7 <= '1' when cnt97 /= 0 and rirq7 = '1' else '0';
+   expected_recvpend9 <= '1' when cnt79 /= 0 and rirq9 = '1' else '0';
+   process(all) begin
+      restore_write_valid <= '0';
+      if restore_active = '1' and restore_error = '0' and checkpoint_write = '1' and checkpoint_address < 36 then
+         if (checkpoint_address = 0 and checkpoint_write_data(31 downto 18) = (31 downto 18 => '0')) or
+            (checkpoint_address = 1 and valid_ring_metadata(checkpoint_write_data)) or checkpoint_address >= 2 then
+            restore_write_valid <= '1';
+         end if;
+      end if;
+   end process;
+   process(clk) begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_loaded <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' then restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_loaded(to_integer(checkpoint_address)) <= '1';
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and restore_loaded = (35 downto 0 => '1') and
+      restore_error = '0' and checkpoint_write = '0' and
+      p7_sendemp = expected_sendemp7 and p9_sendemp = expected_sendemp9 and
+      p7_recvpend = expected_recvpend7 and p9_recvpend = expected_recvpend9 else '0';
+   process(all) begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < 36 and
+         ((checkpoint_idle = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data <= (31 downto 18 => '0') & err9 & err7 & rirq9 & rirq7 &
+               sirq9 & sirq7 & en9 & en7 & sync9_ien & sync7_ien & sync9_out & sync7_out;
+            when 1 => checkpoint_data <= "000000" &
+               std_logic_vector(to_unsigned(wr97,4)) & std_logic_vector(to_unsigned(rd97,4)) &
+               std_logic_vector(to_unsigned(wr79,4)) & std_logic_vector(to_unsigned(rd79,4)) &
+               std_logic_vector(to_unsigned(cnt97,5)) & std_logic_vector(to_unsigned(cnt79,5));
+            when 2 => checkpoint_data <= last7;
+            when 3 => checkpoint_data <= last9;
+            -- Retain even unoccupied cells: the current same-edge send/pop
+            -- behavior can expose their old contents. Do not canonicalize.
+            when 4 to 19 => checkpoint_data <= fifo79(to_integer(checkpoint_address)-4);
+            when 20 to 35 => checkpoint_data <= fifo97(to_integer(checkpoint_address)-20);
+            when others => null;
+         end case;
       end if;
    end process;
 
@@ -188,13 +266,43 @@ begin
          irq9_recv      <= '0';
 
          if (reset = '1') then
-            cnt79 <= 0; cnt97 <= 0; rd79 <= 0; wr79 <= 0; rd97 <= 0; wr97 <= 0;
-            sync7_out <= (others => '0'); sync9_out <= (others => '0');
-            sync7_ien <= '0'; sync9_ien <= '0';
-            en7 <= '0'; en9 <= '0'; sirq7 <= '0'; sirq9 <= '0';
-            rirq7 <= '0'; rirq9 <= '0'; err7 <= '0'; err9 <= '0';
-            p7_sendemp <= '0'; p9_sendemp <= '0';
-            p7_recvpend <= '0'; p9_recvpend <= '0';
+            if restore_active = '1' then
+               if restore_write_valid = '1' then
+                  case to_integer(checkpoint_address) is
+                     when 0 =>
+                        sync7_out <= checkpoint_write_data(3 downto 0); sync9_out <= checkpoint_write_data(7 downto 4);
+                        sync7_ien <= checkpoint_write_data(8); sync9_ien <= checkpoint_write_data(9);
+                        en7 <= checkpoint_write_data(10); en9 <= checkpoint_write_data(11);
+                        sirq7 <= checkpoint_write_data(12); sirq9 <= checkpoint_write_data(13);
+                        rirq7 <= checkpoint_write_data(14); rirq9 <= checkpoint_write_data(15);
+                        err7 <= checkpoint_write_data(16); err9 <= checkpoint_write_data(17);
+                     when 1 =>
+                        cnt79 <= to_integer(unsigned(checkpoint_write_data(4 downto 0)));
+                        cnt97 <= to_integer(unsigned(checkpoint_write_data(9 downto 5)));
+                        rd79 <= to_integer(unsigned(checkpoint_write_data(13 downto 10)));
+                        wr79 <= to_integer(unsigned(checkpoint_write_data(17 downto 14)));
+                        rd97 <= to_integer(unsigned(checkpoint_write_data(21 downto 18)));
+                        wr97 <= to_integer(unsigned(checkpoint_write_data(25 downto 22)));
+                     when 2 => last7 <= checkpoint_write_data;
+                     when 3 => last9 <= checkpoint_write_data;
+                     when 4 to 19 => fifo79(to_integer(checkpoint_address)-4) <= checkpoint_write_data;
+                     when 20 to 35 => fifo97(to_integer(checkpoint_address)-20) <= checkpoint_write_data;
+                     when others => null;
+                  end case;
+               end if;
+               -- Capture excludes transient IRQ edges. Rebuild that fixed
+               -- point under reset so release cannot synthesize a new pulse.
+               p7_sendemp <= expected_sendemp7; p9_sendemp <= expected_sendemp9;
+               p7_recvpend <= expected_recvpend7; p9_recvpend <= expected_recvpend9;
+            else
+               cnt79 <= 0; cnt97 <= 0; rd79 <= 0; wr79 <= 0; rd97 <= 0; wr97 <= 0;
+               sync7_out <= (others => '0'); sync9_out <= (others => '0');
+               sync7_ien <= '0'; sync9_ien <= '0';
+               en7 <= '0'; en9 <= '0'; sirq7 <= '0'; sirq9 <= '0';
+               rirq7 <= '0'; rirq9 <= '0'; err7 <= '0'; err9 <= '0';
+               p7_sendemp <= '0'; p9_sendemp <= '0';
+               p7_recvpend <= '0'; p9_recvpend <= '0';
+            end if;
          else
             v_cnt79 := cnt79;
             v_cnt97 := cnt97;

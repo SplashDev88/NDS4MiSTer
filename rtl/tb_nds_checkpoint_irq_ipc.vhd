@@ -7,7 +7,7 @@ use std.env.all;
 use work.pProc_bus_gba.all;
 
 entity tb_nds_checkpoint_irq_ipc is
-   generic(ENABLE_IRQ_CAPTURE : boolean := false; SEED : positive := 1; RANDOM_CYCLES : positive := 20000);
+   generic(ENABLE_IPC_CAPTURE : boolean := false; ENABLE_IRQ_CAPTURE : boolean := false; SEED : positive := 1; RANDOM_CYCLES : positive := 20000);
 end;
 architecture sim of tb_nds_checkpoint_irq_ipc is
    constant EMPTY_BUS : proc_bus_gb_type := ((others=>'0'),(others=>'0'),'1','0',ACCESS_32BIT,"1111",'0');
@@ -39,7 +39,7 @@ begin
          wired_out=>refirq_data(i),wired_done=>refirq_done(i),irq_in=>irq_in(i),cpu_irq=>refirq(i),cpu_unhalt=>refunhalt(i),
          dbg_ime=>refime(i),dbg_ie=>refie(i),dbg_if=>refflags(i));
    end generate;
-   ipc : entity work.nds_ipc port map(clk=>clk,reset=>reset,
+   ipc : entity work.nds_ipc generic map(EXPERIMENTAL_CHECKPOINT => ENABLE_IPC_CAPTURE) port map(clk=>clk,reset=>reset,
       bus7=>io(0),wired_out7=>ipc_data(0),wired_done7=>ipc_done(0),
       irq7_sync=>pulse(0),irq7_sendempty=>pulse(1),irq7_recv=>pulse(2),
       bus9=>io(1),wired_out9=>ipc_data(1),wired_done9=>ipc_done(1),
