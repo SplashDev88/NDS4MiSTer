@@ -4,6 +4,7 @@ use IEEE.numeric_std.all;
 use std.env.all;
 
 entity tb_nds_h3d_console_event_gate is
+   generic(CHECKPOINT_TEST : boolean := false);
 end entity;
 
 architecture sim of tb_nds_h3d_console_event_gate is
@@ -68,6 +69,7 @@ begin
    clk <= not clk after 5 ns;
 
    dut : entity work.nds_h3d_console_event_gate
+   generic map(CHECKPOINT_ENABLE => CHECKPOINT_TEST)
    port map
    (
       clk => clk, reset => reset, service_ready => service_ready,

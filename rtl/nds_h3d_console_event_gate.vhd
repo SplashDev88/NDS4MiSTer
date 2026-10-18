@@ -17,13 +17,21 @@ entity nds_h3d_console_event_gate is
       SPARSE_HBLANK : boolean := false;
       GPU_QUEUE_ADDRESS_BITS : positive := 5;
       -- Opt-in storage experiment; normal builds retain the original queue.
-      COMPRESS_HBLANK : boolean := false
+      COMPRESS_HBLANK : boolean := false;
+      CHECKPOINT_ENABLE : boolean := false
    );
    port
    (
       clk           : in  std_logic;
       reset         : in  std_logic;
       service_ready : in  std_logic;
+
+      -- Producers stop first; already posted records still drain through the
+      -- original ready/valid paths. Never use service_ready=0 to checkpoint:
+      -- that is the destructive session-reset path, not a pause.
+      checkpoint_request : in std_logic := '0';
+      checkpoint_producers_stopped : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0';
 
       timestamp     : out std_logic_vector(63 downto 0);
       current_frame : out std_logic_vector(31 downto 0);
@@ -201,8 +209,44 @@ architecture arch of nds_h3d_console_event_gate is
    signal gpu_valid_i, vram9_valid_i, vram7_valid_i : std_logic;
    signal hblank_valid_i, frame_valid_i : std_logic;
    signal hblank_run_fault : std_logic := '0';
+   signal hblank_run_pending : std_logic_vector(16 downto 0) := (others => '0');
    signal source_fault_reason_i : std_logic_vector(1 downto 0) := "00";
+   signal checkpoint_clock_hold, checkpoint_drained : std_logic;
+   signal checkpoint_invalid : std_logic := '0';
+   signal checkpoint_quiet : natural range 0 to 2 := 0;
 begin
+   -- Clock hold is independent of downstream completion: the host may need
+   -- the source clock stopped before it can finish its own checkpoint. Late
+   -- source work revokes the hold and is processed normally, never discarded.
+   checkpoint_clock_hold <= '1' when CHECKPOINT_ENABLE and
+      reset = '0' and checkpoint_request = '1' and checkpoint_producers_stopped = '1' and
+      gpu_source_valid = '0' and vram9_source_valid = '0' and vram7_source_valid = '0' and
+      hblank_pulse = '0' and frame_pulse = '0' else '0';
+   checkpoint_drained <= '1' when service_ready = '1' and
+      gpu_pending = '0' and gpu_pending_count = 0 and vram9_pending = '0' and vram7_pending = '0' and
+      hblank_pending_count = 0 and unsigned(hblank_run_pending) = 0 and frame_pending_count = 0 and
+      source_fault_reason_i = "00" and hblank_run_fault = '0' else '0';
+   checkpoint_stopped <= '1' when CHECKPOINT_ENABLE and checkpoint_clock_hold = '1' and
+      checkpoint_drained = '1' and checkpoint_invalid = '0' and checkpoint_quiet = 2 else '0';
+   checkpoint_owner : process(clk)
+   begin
+      if rising_edge(clk) then
+         if reset = '1' or checkpoint_request = '0' or not CHECKPOINT_ENABLE then
+            checkpoint_invalid <= '0';
+            checkpoint_quiet <= 0;
+         else
+            -- Even a transient session reset poisons this attempt. A later
+            -- empty queue cannot certify that discarded records were drained.
+            if service_ready = '0' then checkpoint_invalid <= '1'; end if;
+            if checkpoint_clock_hold = '0' or checkpoint_drained = '0' or checkpoint_invalid = '1' then
+               checkpoint_quiet <= 0;
+            elsif checkpoint_quiet < 2 then
+               checkpoint_quiet <= checkpoint_quiet + 1;
+            end if;
+         end if;
+      end if;
+   end process;
+
    timestamp     <= std_logic_vector(timestamp_counter);
    current_frame <= std_logic_vector(frame_counter);
    source_fault <= source_fault_reason_i(0) or source_fault_reason_i(1) or hblank_run_fault;
@@ -337,6 +381,7 @@ begin
 
    uncompressed_fault : if SPARSE_HBLANK or not COMPRESS_HBLANK generate
       hblank_run_fault <= '0';
+      hblank_run_pending <= (others => '0');
    end generate;
    compressed_hblank_output : if not SPARSE_HBLANK and COMPRESS_HBLANK generate
       hblank_queue_read <= (others => '0');
@@ -349,7 +394,7 @@ begin
          event_valid => hblank_valid_i, event_ready => hblank_event_ready,
          event_line => hblank_event_line, event_frame => hblank_event_frame,
          event_timestamp => hblank_event_timestamp,
-         pending_level => open, fault => hblank_run_fault
+         pending_level => hblank_run_pending, fault => hblank_run_fault
       );
    end generate;
 
@@ -390,7 +435,9 @@ begin
             frame_read_pointer <= (others => '0');
             frame_write_pointer <= (others => '0');
          else
-            timestamp_counter <= timestamp_counter + 1;
+            if checkpoint_clock_hold = '0' then
+               timestamp_counter <= timestamp_counter + 1;
+            end if;
 
             if (service_ready = '0') then
                gpu_pending <= '0';

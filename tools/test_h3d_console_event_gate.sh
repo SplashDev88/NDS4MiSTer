@@ -6,8 +6,10 @@ trap 'rm -rf "$test_tmp"' EXIT
 run_test() {
     nvc --std=2008 -a "$1/rtl/nds_hblank_run_queue.vhd" "$1/rtl/nds_h3d_console_event_gate.vhd"
     nvc --std=2008 -a "$1/rtl/tb_nds_h3d_console_event_gate.vhd"
-    nvc --std=2008 -e -O2 tb_nds_h3d_console_event_gate
-    nvc --std=2008 -r tb_nds_h3d_console_event_gate --exit-severity=error
+    for checkpoint in false true; do
+        nvc --std=2008 -e -gCHECKPOINT_TEST="$checkpoint" -O2 tb_nds_h3d_console_event_gate
+        nvc --std=2008 -r tb_nds_h3d_console_event_gate --exit-severity=error
+    done
 }
 if command -v nvc >/dev/null 2>&1; then
     cd "$test_tmp"

@@ -465,6 +465,7 @@ entity nds_nitro_console_top is
       checkpoint_math_idle_2x : in std_logic := '0';
       checkpoint_owner_request, checkpoint_owners_paused : out std_logic := '0';
       checkpoint_local_idle : out std_logic := '0';
+      checkpoint_graphics_stopped : out std_logic := '0';
       checkpoint_rtc_datetime : out std_logic_vector(55 downto 0) := (others => '0');
       checkpoint_rtc_subsecond : out unsigned(31 downto 0) := (others => '0');
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
@@ -494,7 +495,7 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_card_stop : std_logic;
    signal checkpoint_cpus_observed, checkpoint_rtc_request : std_logic;
    signal checkpoint_extra_paused, checkpoint_extra_seen : std_logic_vector(1 downto 0);
-   signal checkpoint_local_ready : std_logic_vector(13 downto 0);
+   signal checkpoint_local_ready : std_logic_vector(14 downto 0);
    signal checkpoint_fabric1_idle, checkpoint_fabric2_idle : std_logic;
    signal checkpoint_live_inputs, checkpoint_inputs : std_logic_vector(30 downto 0);
    signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
@@ -1237,13 +1238,18 @@ begin
       -- Preserve beta.11's 32-entry posting window and empty-queue bypass.
       -- Engine B On admits additional writes through the same lossless gate.
       GPU_QUEUE_ADDRESS_BITS => 5,
-      COMPRESS_HBLANK => H3D_COMPRESS_HBLANK
+      COMPRESS_HBLANK => H3D_COMPRESS_HBLANK,
+      CHECKPOINT_ENABLE => CHECKPOINT_OWNERS_ENABLE
    )
    port map
    (
       clk => clk1x,
       reset => reset_boot,
       service_ready => h3d_service_ready,
+      checkpoint_request => checkpoint_hold_request,
+      checkpoint_producers_stopped => checkpoint_cpus_observed and checkpoint_dma_stopped and
+         checkpoint_timing_stopped and checkpoint_fabric1_idle,
+      checkpoint_stopped => checkpoint_graphics_stopped,
       timestamp => h3d_timestamp,
       current_frame => h3d_current_frame,
       source_fault => h3d_source_fault,
@@ -2210,8 +2216,9 @@ begin
          checkpoint_timing_stopped & checkpoint_mainram_idle & checkpoint_vram_idle &
          checkpoint_arm7_memory_idle & checkpoint_shared_wram_idle & checkpoint_irq_idle &
          checkpoint_ipc_idle & checkpoint_card_stopped & checkpoint_spi_stopped &
-         checkpoint_inputs_held & checkpoint_arm9_memory_idle & checkpoint_fabric1_idle;
+         checkpoint_inputs_held & checkpoint_arm9_memory_idle & checkpoint_fabric1_idle & checkpoint_graphics_stopped;
       guard : entity work.nds_checkpoint_console_guard
+         generic map(LOCAL_OWNERS => 15)
          port map(clk => clk1x, reset => resetCpu, hold => checkpoint_hold_request,
             cpus_observed => checkpoint_cpus_observed, local_ready => checkpoint_local_ready,
             island_idle_async => checkpoint_fabric2_idle and checkpoint_math_idle_2x,

@@ -149,8 +149,8 @@ controller to both actual CPUs. The ARM9 reader uses clk2x, the ARM7 reader uses
 clk1x, and the host side uses clk1x. Reset preserves the existing boot preset
 buses; during execution only the CPU read mux addresses are borrowed. Timer
 state buses retain their original owners. There are **no restore writes** and
-no user-facing control. The source closure analyzes successfully, but a full
-console simulation or hardware capture has not yet qualified this wiring.
+no user-facing control. An authored-console simulation now exercises this
+wiring under common ownership; hardware capture remains unqualified.
 
 `checkpoint_pair_paused` says only that both CPUs acknowledged. Caches can
 finish posted work after CPU retirement; audio/event stopping has separate
@@ -191,14 +191,16 @@ save-state capability.
   attempt before the coordinator receives it. Lost receipt/status aborts the
   shared hold; a high caller request cannot silently retry it.
 - The local group combines CPU-memory, DMA, audio, timer/raster, cartridge/SPI,
-  IRQ/IPC and input status. Additional console predicates include related-clock
+  IRQ/IPC, input and graphics-source status. Additional console predicates include related-clock
   request/return toggles **and** their receiver pulses, DMA fast lanes, IO/GX
   and H3D source completions, boot/loader/debug/BIOS writes, palette/OAM clearing
   and sleep propagation. The clk2x predicate includes the product math idle
   input and crosses through two registers. These are observations, not new
-  admission gates. The predicates have source/compile review but still need an
-  enabled full-console transaction test; component checks do not prove their
-  complete coverage.
+  admission gates. The enabled authored-console test now exercises CPU memory
+  and IO traffic, graphics backpressure and common capture through these
+  predicates. Active DMA/audio/cartridge/SPI/math work and a real external
+  renderer/storage owner still require joined-console coverage; individual
+  component tests do not establish that coverage.
 - `nds_checkpoint_console_guard` waits for both CPUs, all local observations,
   external receipt/stopped status and three quiet control-clock edges before
   requesting the RTC sample. The RTC's own settled-sample acknowledgement then
@@ -362,6 +364,38 @@ CPUs need not strand accepted arithmetic. No arithmetic or bus timing changes.
 The new clk2x status is still only an internal island wire. The console now
 has a qualified crossing for its corresponding input, but the mixed-language
 wrapper has not yet connected that wire to the optional common barrier. Math state read/restore is missing.
+
+### Graphics event clock and queue drain
+
+The default-off `CHECKPOINT_ENABLE` option in `nds_h3d_console_event_gate`
+provides a separate source-owner contract. A checkpoint request alone does not
+stop its timestamp: both CPUs, DMA, raster/timers and the console source fabric
+must first report stopped. Any live GPU/VRAM source or timing pulse keeps the
+clock advancing and revokes readiness immediately. Accepted records continue
+through the original ready/valid paths; acquisition does not clear a queue or
+change architectural posting credit.
+
+`checkpoint_stopped` requires empty GPU posting and overflow-skid stages, both
+VRAM stages, the frame queue and the selected HBlank queue. The compressed
+HBlank queue's real pending count participates, rather than its unused legacy
+counter. Two quiet edges allow empty-queue housekeeping to settle before
+acknowledgement. The timestamp stays frozen while the queues drain and during
+the hold; cancellation resumes it immediately. Frame/scanline epochs retain
+normal accepted-pulse behavior.
+
+A stream fault prevents acquisition even after surviving records drain.
+`service_ready=0` is the existing **destructive session reset**, not a pause.
+It withdraws readiness and poisons the current request until release, including
+a one-cycle interruption followed by apparently empty queues. The external
+owner must keep the service alive and consume already posted records until
+`checkpoint_local_idle` qualifies, before acknowledging its own held state.
+It must also exclude destructive host commands for the entire attempt.
+
+The console's optional common barrier includes this fifteenth local owner and
+exports `checkpoint_graphics_stopped`. This does not freeze or serialize the
+external packet writer, partial GX parser, ARM renderer, publication buffers or
+backing memory. A drained local event source is only one part of that larger
+ownership contract. No graphics state restore has been implemented.
 
 ### IRQ and IPC retirement observations
 
@@ -746,8 +780,65 @@ bash tools/test_checkpoint_coordinator.sh
   coordinator/transport cases and their three fault controls remain passing.
 
 These tests establish the common controller and timestamp ordering. They do
-not qualify all console-fabric predicates or implement actual host/renderer
-freeze, device serialization, restoration or a gameplay beta.
+not alone qualify console-fabric predicates or implement actual host/renderer
+freeze, device serialization, restoration or a gameplay beta. The separate
+enabled-console test below exercises the connected local path.
+
+Enabled console checks:
+
+```sh
+ALTERA_MF_COMPONENTS=/path/to/quartus/eda/sim_lib/altera_mf_components.vhd \
+  bash tools/test_checkpoint_console.sh
+```
+
+This bench instantiates the actual `nds_nitro_console_top`, CPU cores, loader,
+simulation RAM primitives and local devices with both checkpoint options on.
+`tools/suspend_resume/console_fixture.py` supplies an authored direct-boot ROM;
+there are no game/BIOS dumps. The loader copies and verifies both programs.
+ARM9 verifies main RAM, LCDC VRAM, palette and OAM; ARM7 verifies main RAM,
+private WRAM and shared WRAM. Both start a timer and exercise keys and IPCSYNC;
+ARM7 also reads the RTC port. Counter stores must increase exactly once and a
+bad read enters a distinct failure loop, which fails progress/PC checks.
+
+External SDRAM/VRAM/card backing and the host event sink are explicit behavioral
+fixtures. The external delivery receipt is independent of host completion.
+The host fixture keeps consuming records until local idle and then acknowledges
+its hold. The math idle input is justified only by asserting that these authored
+programs never request DIV/SQRT; no SystemVerilog math engine is bound here.
+Firmware operations and renderer VRAM reads are also asserted absent.
+
+The matrix varies 1.5x/2x ARM9 clocks and two memory latencies. Each run makes
+four common captures, reads all 80 ARM9 and 60 ARM7 words twice, compares the
+stable images, checks PC/R0/R1 against committed memory and requires resumed
+progress. It also holds the graphics sink, lets it drain, times out an absent
+host and a withheld real SDRAM reply, and expires an acquired host lease.
+Cancellation must retain the accepted memory transaction and resume execution.
+
+This is a **connected local acquisition/read/release test**, not persistent
+restore or a real ARM renderer test. Audio is instantiated but no voice is
+started; DMA is idle; card traffic is the loader's authored ROM reads. Active
+DMA/SPU/card/SPI/math, native boot, mixed-language backing/cache ownership,
+host exclusion and serialization still require integrated qualification.
+
+Graphics source checks:
+
+```sh
+bash tools/test_checkpoint_graphics.sh
+bash tools/test_h3d_console_event_gate.sh
+bash tools/test_hblank_run_queue.sh
+```
+
+- 24 configurations cover enabled/disabled checkpoint logic, raw/compressed/
+  sparse HBlank, 4/32-entry GPU queues and two request spacings. Independent
+  output scoreboards check exact payload, order and original timestamps through
+  a full GPU queue plus overflow skid, both stalled VRAM stages, timing queues,
+  late producers, cancellation, service loss, reset and frame overflow.
+- Seven deliberate defects keep virtual time running, stop it prematurely,
+  omit a frame or compressed-HBlank queue, forget a destructive interruption,
+  ignore a stream fault or clear work on pause. Each is detected.
+- Existing event-gate behavior passes with checkpoint support disabled and
+  enabled but unrequested. The compressed-HBlank backlog regression also
+  passes. These are simulation results, not routed performance measurements.
 
 Run the sleeping-CPU persistence checks:
 
@@ -827,7 +918,7 @@ evidence, not as a second maintained implementation in this branch.
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
-| Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | Optional common-owner barrier, lease/read guards and final RTC ordering tested; external ownership, enabled console proof, host connection and restore ordering missing |
+| Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | Optional common-owner barrier, lease/read guards and final RTC ordering tested; authored enabled-console acquisition/read/release passes; real external ownership, host connection and restore ordering missing |
 
 Current H3D lifecycle quiesce **destroys the renderer** before acknowledgement;
 it is a session-exit operation, not a checkpoint. A full melonDS emulator state
@@ -837,8 +928,9 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 ## Next acceptance gates
 
 1. Implement the real external owner behind the optional common barrier and
-   qualify its enabled full-console path. Verify the new local CDC predicates
-   against accepted transactions; exclude host loader/debug/seed changes and
+   extend enabled-console coverage beyond the authored CPU/IO fixture to active
+   DMA/audio/card/SPI/math and actual mixed-language backing. Exclude host
+   loader/debug/seed changes and
    use real backing-cache persistence acknowledgements. Ensure no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
