@@ -816,6 +816,25 @@ stereo pairs to uninterrupted playback. DMA-yield and direct-boot bias checks
 also remain required. These are simulation results, not routed timing,
 performance or whole-game resume qualification.
 
+A Quartus 17.0.2 audio-only synthesis probe at `7e94517` exposes every checkpoint
+port as a virtual pin, using the Cyclone V target and area optimization:
+
+| Audio configuration | Estimated ALMs | Combinational ALUTs | Registers |
+| --- | ---: | ---: | ---: |
+| Previous hold-only implementation (`41d4351`) | 6,107 | 9,414 | 5,188 |
+| Capture only; restore inputs tied off | 7,935 | 11,112 | 5,258 |
+| Restore only; capture outputs disconnected | 8,486 | 11,729 | 5,485 |
+| Complete component interface | 10,700 | 14,193 | 5,787 |
+
+All four retain 2,704 used block-memory bits and seven DSP blocks. The complete
+interface adds **4,593 estimated ALMs** to this probe; reducing that overhead
+is the next implementation priority before expanding device coverage. The
+isolated-path results identify both capture and restore as contributors; they
+are not additive. These mappings are not full-console utilization, fitting or
+routing results. Virtual-pin and virtual-clock warnings are expected, and no
+timing result is inferred. The source and normal playback tests remain valid,
+but the current interface cost is not accepted for the eventual gameplay beta.
+
 ## Persistence proof
 
 `tools/suspend_resume/capsule.py` wraps the captured CPU words in a bounded,
