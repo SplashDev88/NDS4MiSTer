@@ -29,6 +29,7 @@ architecture sim of tb_nds_arm7_monitor is
   signal ha:unsigned(5 downto 0):=(others=>'0');
   signal ena,rnw,code,done,req,cont,restoring,active,paused,err,idle,hw,dma,halted:std_logic:='0';
   signal write_count,initial_count:natural:=0;
+  signal release_run,ready:std_logic:='0';
   signal pending_bus:boolean:=false;
   type snapshot_type is array(0 to 44) of std_logic_vector(31 downto 0);
 begin
@@ -44,7 +45,7 @@ begin
       code=>code,acc=>open,dout=>dout,din=>din,bus_done=>done,dma=>dma,
       irq=>'0',new_halt=>'0',unhalt=>'0',idle=>idle,halted=>halted,
       request=>req,continue_run=>cont,restore=>restoring,active=>active,paused=>paused,error=>err,
-      host_addr=>ha,host_write=>hw,host_din=>hdin,host_dout=>hdout);
+      host_addr=>ha,host_write=>hw,host_din=>hdin,host_dout=>hdout,release_run=>release_run,ready=>ready);
   process
     file trace:text;
     variable l:line;variable ea,ev:std_logic_vector(31 downto 0);
@@ -111,6 +112,20 @@ begin
       assert active='1' and idle='1' and ena='0' and not pending_bus
         report "park before bus drained" severity failure;
     end;
+    procedure release_return is
+      variable held_count:natural;
+    begin
+      for i in 1 to 50000*STEP_PERIOD loop clocks(1);exit when ready='1';end loop;
+      assert ready='1' and paused='1' and active='1' and idle='1' and not pending_bus
+        report "restored context was not held for common release" severity failure;
+      held_count:=write_count;
+      -- Continue is only a load command; it must not release a ready context.
+      cont<='1';clocks(100*STEP_PERIOD);cont<='0';
+      assert ready='1' and paused='1' and active='1' and write_count=held_count and ena='0'
+        report "guest escaped before common release" severity failure;
+      release_run<='1';clocks(1);release_run<='0';clocks(1);
+      assert ready='0' and active='0' report "common release failed" severity failure;
+    end;
   begin
     ss.rst<='1';clocks(4);ss.rst<='0';clocks(2);
     ss.Adr<=(others=>'0');ss.Din<=x"02000000";ss.rnw<='0';ss.ena<='1';clocks(1);ss.ena<='0';clocks(4);
@@ -136,6 +151,7 @@ begin
         report "PASS: invalid return metadata rejected before guest execution";
         stop;wait;
       end if;
+      release_return;
       for i in 1 to 500000*STEP_PERIOD loop clocks(1);exit when write_count>=position+800;end loop;
       assert write_count>=position+800 report "fresh restore made no progress" severity failure;
       report "PASS: fresh-process CPU-assisted restore matched 800 guest stores";
@@ -170,12 +186,14 @@ begin
         ha<=to_unsigned(0,6);hdin<=x"DEADBEEF";hw<='1';clocks(2);hw<='0';read_snapshot(reread);
         assert saved=reread report "live host write changed snapshot" severity failure;
         req<='0';cont<='1';clocks(1);cont<='0';
+        release_return;
         for i in 1 to 500000*STEP_PERIOD loop clocks(1);exit when write_count>=position+800;end loop;
         assert write_count>=position+800 report "continue made no progress" severity failure;
         pause_cpu;before:=write_count;read_snapshot(reread);
         assert saved(42)=reread(42) and saved(1)/=reread(1)
           report "second capture did not refresh its context" severity failure;
         req<='0';cont<='1';clocks(1);cont<='0';
+        release_return;
         for i in 1 to 50000*STEP_PERIOD loop clocks(1);exit when write_count>=before+80;end loop;
         assert write_count>=before+80 report "second continue lost progress" severity failure;
         report "PASS: capture/continue matched disabled guest trace; snapshot stable and isolated";

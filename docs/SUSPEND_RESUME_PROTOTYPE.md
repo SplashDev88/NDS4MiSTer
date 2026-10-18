@@ -45,12 +45,13 @@ transport epochs across fresh simulator processes. These
 ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
-An isolated CPU-assisted ARM7 alternative now captures and reloads context with
-ordinary ARM instructions in private maintenance memory. It passes 36 ARM/Thumb
-fresh-process continuations and costs 3,337 estimated ALMs including its ROM,
-RAM and transport, versus 4,035 for the isolated direct branch-checkpoint path.
-This is a component feasibility result; it has no console integration, HALT
-capture or hardware timing result. See the CPU-assisted section below.
+A CPU-assisted ARM7 alternative now captures and reloads context with ordinary
+ARM instructions in private maintenance memory. It passes 36 ARM/Thumb
+fresh-process continuations, 64 pending-IRQ continuation pairs and coordinated
+return/cancellation checks. Substituting it in the complete area probe reduces
+the estimate from 44,845 to 43,985 ALMs. This remains above device capacity;
+there is no functional console integration, HALT capture or hardware timing
+result. See the CPU-assisted section below.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
@@ -2185,8 +2186,11 @@ a fresh restore starts that same routine from reset after loading all 45
 words. The routine writes all three return-metadata fields, restores banked
 registers/SPSRs, selects the original mode with interrupts masked and Thumb
 disabled, then reloads the original visible registers. The final private
-branch restores flags, interrupt masks, Thumb state and last-read, and refills
-at the original target PC. Hardware requires complete metadata coverage,
+branch restores flags, interrupt masks, Thumb state and last-read, then holds
+the prepared target PC with `monitor_ready=1`, `monitor_paused=1` and guest
+access still isolated. Only `monitor_release` can leave this final hold;
+`monitor_continue` is a load command and cannot release a ready context.
+The release input defaults low. Hardware requires complete metadata coverage,
 legal mode, matching selected bank and aligned PC before returning. Invalid
 metadata or an illegal private access leaves the guest bus isolated and
 reports an error; recovery requires reset.
@@ -2246,14 +2250,104 @@ An initial dual-write-buffer version inferred 2,048 snapshot flops and cost
 infer block RAM and removed that regression. The ROM, buffer and host transport
 are included in both measurements, not optimized away from the estimate.
 
-These isolated counts cannot be subtracted from the 44,845-ALM connected result
-to claim a new full-shell total. No monitor full-shell map, fitter, timing run
-or hardware/gameplay test has completed. The next checks are integration with
-real console ownership and transports, a matched connected map, pending-IRQ
-delivery across maintenance, and then ARM9 with a cache/TCM-safe private path.
+This table records the initial `342c53a` implementation before the explicit
+return hold and complete optional guest/debug/export interface were added.
+These isolated counts cannot be subtracted from the connected result to claim
+a new full-shell total. The separately measured full-shell comparison follows
+below. No monitor fitter, timing run or hardware/gameplay test has completed.
+The next checks are integration with real console ownership and transports,
+sleep coverage, and ARM9 with a cache/TCM-safe private path.
 General memory/cache persistence, renderer state, elapsed RTC policy and the
 atomic whole-machine capsule remain separate work. Callers still need a
 bounded entry deadline and must keep peers/devices stopped during maintenance.
+
+### Coordinated return and interrupt delivery
+
+The prepared return hold now separates completing the ARM7 load from releasing
+the whole machine. A fresh load can execute its private routine while other
+owners remain held; guest fetches cannot start until the common owner supplies
+`monitor_release`. The capture/continue tests also use this hold, leave it
+asserted for 100 CPU-enable periods, and verify that an extra Continue command
+does not release it. All 36 branch/Thumb fresh-process cases, repeated captures,
+corruption and cancellation controls still pass.
+
+`bash tools/test_arm7_monitor_irq.sh` adds 64 capture/fresh-process restore
+pairs with a pending IRQ arriving during capture, at capture park, during
+reload, or during the final return hold. It varies ARM/Thumb, IRQ masking, CPU
+enable period and guest-bus delay. Each resumed unmasked handler runs exactly
+once, observes the saved target PC plus four in IRQ LR and the saved CPSR in
+SPSR, then returns through real `SUBS PC,LR,#4`. Twenty subsequent guest counter
+updates must neither skip nor duplicate a value. Masked IRQs remain asserted
+and unserviced. Deliberately disconnecting IRQ or bypassing the return hold
+fails the functional checks. This does not yet cover arbitrary guest exception
+handler nesting or whole-console IRQ ownership.
+
+`rtl/nds_checkpoint_monitor_endpoint.vhd` adapts maintenance to the existing
+four-phase barrier. It exports capture acknowledgement only at the capture
+park, not at final return-ready. Its registered delivery receipt remains high
+while maintenance is active, even after the request is withdrawn. Without this
+receipt, an early cancellation could let the coordinator rearm while the CPU
+was still copying or reloading context. Cancellation starts the private load
+routine; release then also requires the explicit `return_permission` input.
+Normal cancellation can permit return immediately; a fresh whole-machine
+restore must withhold permission until every owner is ready. Errors retain
+the active receipt and require reset, rather than resuming partial context.
+
+`bash tools/test_checkpoint_monitor_endpoint.sh` passes 36 scenarios, each
+with three consecutive attempts using the real ARM7 monitor and existing
+coordinator: cancellation before delivery, during capture and at capture park,
+host lease expiry, another owner's acquisition timeout, delayed return
+permission, and varied CPU enables and memory response delays. The other CPU
+owner is a handshake fixture. A deliberate early receipt withdrawal fails
+because the barrier rearms before maintenance has finished. This is adapter
+qualification, not a product-console connection.
+
+The wrapper also retains the actual guest last-read, bus lock/low bits, CPU
+status, boot-preset response, debug and simulation-export ports needed by the
+console. Its product option remains disabled; no shipping QIP instantiates
+the wrapper or the adapter. The 45-word image still needs an explicit format
+identity, address-range validation and complete/checksummed host load before
+it can replace the older 60-word halted CPU image. Sleeping CPUs remain a
+bounded refusal in this monitor; a playable integration must address that
+coverage rather than assume every game's ARM7 remains out of HALT.
+
+The full-shell area tool's `--prepare --arm7-monitor` option substitutes this
+complete ARM7 wrapper only in the generated connected copy. It retains the
+real guest wiring and exposes independent raw controls for snapshot loading,
+running the private load routine while other blocks remain in reset, and
+final release. The previous capture coordinator remains in the measured cone.
+The old read protocol is **not** converted to the 45-word format by this
+substitution; the new endpoint adapter and safe host/restore flow are not
+connected or included in this probe. Generated copies must not be deployed.
+Their VHDL dependency closure analyzes successfully.
+
+Matched full-shell synthesis, with all mapped hardware inputs frozen, gives:
+
+| Resource | Disabled control | Existing connected checkpoints | ARM7 monitor substitution |
+| --- | ---: | ---: | ---: |
+| Estimated ALMs | 34,290 | 44,845 | **43,985** |
+| Combinational ALUTs | 52,271 | 66,072 | **64,849** |
+| Dedicated logic registers | 39,376 | 41,975 | 42,065 |
+| Block-memory bits | 4,113,236 | 4,112,996 | 4,128,356 |
+| DSP blocks | 27 | 27 | 27 |
+
+The freshly mapped disabled and existing-checkpoint controls reproduce the
+previous v12 counts exactly. The monitor substitution saves **860 estimated
+ALMs and 1,223 ALUTs**, adding 90 registers and 15,360 block-memory bits. Both
+connected probes retain 145 physical pins and 224 accepted virtual pins.
+The substitution report SHA-256 is
+`a898869324a85d1f3801ecf9dc1e894a2186bc64b967f7b48465dd9006542b3e`;
+the matched existing-checkpoint report is
+`6e13057fc0dd5525e783a502485760d8e729e8b47501020a0035862dff9a171f`.
+
+The estimate is still **2,075 ALMs above the device's 41,910**, before missing
+state and safe transport are added. This comparison also trades the original
+ARM7 HALT capture for branch-only maintenance; the remaining sleep coverage
+must be included in later resource measurements. No fitter run was started
+for this over-capacity probe. The ordinary integrated DMA/audio smoke passes
+again with 733 samples, 729 varied samples, 644 fetches, 25,664 ARM9 DMA words
+and 26,368 ARM7 DMA words; legacy CPU checkpoint, cold-reset and capsule tests
+also pass. These checks do not qualify whole-game resume or routed performance.
 
 ## Remaining state coverage
 
@@ -2279,7 +2373,8 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    restore observable before adding the remaining memory serializers. Use the
    connected probe and capacity failure to target the largest measured costs.
    Integrate and measure the isolated CPU-assisted ARM7 experiment above, then ARM9;
-   compare capture and restore against the current 44,845-ALM connected probe.
+   compare capture and restore against the 44,845-ALM direct control and
+   43,985-ALM ARM7-monitor probe, including required sleep coverage.
    Preserve component continuation proofs when changing their implementation.
 2. Implement the real external owner behind the optional common barrier and
    extend enabled-console coverage beyond the authored CPU/IO/DMA/audio fixture

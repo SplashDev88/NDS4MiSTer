@@ -12,12 +12,16 @@ entity arm7_monitor_area is
     ss_addr:in std_logic_vector(27 downto 0);ss_data:in std_logic_vector(31 downto 0);
     ss_rnw,ss_ena,ss_rst:in std_logic;ss_be:in std_logic_vector(3 downto 0);
     state_data:out std_logic_vector(31 downto 0);state_done:out std_logic;
-    req,restore,continue_run:in std_logic;active,paused,error:out std_logic;
+    req,restore,continue_run,release_run:in std_logic;active,paused,error,ready:out std_logic;
     mem_addr,mem_data:out std_logic_vector(31 downto 0);
     mem_read,mem_ena,mem_seq,mem_code:out std_logic;
     mem_acc:out std_logic_vector(1 downto 0);
     mem_input:in std_logic_vector(31 downto 0);mem_done:in std_logic;
     cpu_idle,halt:out std_logic;
+    cpu_error,mem_lock,cpu_done,in_bios,jump:out std_logic;
+    mem_low:out std_logic_vector(1 downto 0);
+    last_read,dbg_pc:out std_logic_vector(31 downto 0);
+    regsel:in unsigned(4 downto 0);regval:out std_logic_vector(31 downto 0);
     host_addr:in unsigned(5 downto 0);host_write:in std_logic;
     host_data:in std_logic_vector(31 downto 0);host_q:out std_logic_vector(31 downto 0));
 end;
@@ -34,8 +38,10 @@ begin
         din=>mem_input,bus_done=>mem_done,dma=>dma,irq=>irq,new_halt=>new_halt,unhalt=>unhalt,
         idle=>cpu_idle,halted=>halt,request=>req,continue_run=>continue_run,restore=>restore,
         active=>active,paused=>paused,error=>error,host_addr=>host_addr,host_write=>host_write,
-        host_din=>host_data,host_dout=>host_q);
-    state_data<=(others=>'0');state_done<='0';
+        host_din=>host_data,host_dout=>host_q,release_run=>release_run,ready=>ready,
+        cpu_error=>cpu_error,lock=>mem_lock,cpu_done=>cpu_done,pc_in_bios=>in_bios,jump=>jump,
+        lowbits=>mem_low,lastread=>last_read,dbg_pc=>dbg_pc,preset_q=>state_data,preset_done=>state_done,
+        dbg_regsel=>regsel,dbg_regval=>regval);
   end generate;
   direct:if MODE/=3 generate
     dut:entity work.gba_cpu
@@ -46,9 +52,11 @@ begin
         gb_bus_Adr=>mem_addr,gb_bus_dout=>mem_data,gb_bus_din=>mem_input,
         gb_bus_done=>mem_done,gb_bus_rnw=>mem_read,gb_bus_ena=>mem_ena,
         gb_bus_seq=>mem_seq,gb_bus_code=>mem_code,gb_bus_acc=>mem_acc,
-        dma_on=>dma,CPU_bus_idle=>cpu_idle,PC_in_BIOS=>open,cpu_halt=>halt,
-        lastread=>open,jump_out=>open,error_cpu=>error,IRQ_in=>irq,unhalt=>unhalt,new_halt=>new_halt,
+        dma_on=>dma,CPU_bus_idle=>cpu_idle,PC_in_BIOS=>in_bios,cpu_halt=>halt,
+        lastread=>last_read,jump_out=>jump,error_cpu=>cpu_error,IRQ_in=>irq,unhalt=>unhalt,new_halt=>new_halt,
+        gb_bus_lock=>mem_lock,bus_lowbits=>mem_low,done=>cpu_done,
+        dbg_pc=>dbg_pc,dbg_regsel=>regsel,dbg_regval=>regval,
         checkpoint_req=>req,checkpoint_paused=>paused,checkpoint_restore=>restore);
-    host_q<=(others=>'0');active<='0';
+    host_q<=(others=>'0');active<='0';ready<='0';error<='0';
   end generate;
 end;

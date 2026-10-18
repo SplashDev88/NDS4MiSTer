@@ -263,7 +263,65 @@ assign cp_area_out = cp_area_math_selected ?
         f.write('set_instance_assignment -name VIRTUAL_PIN ON -to "cp_area_out[*]"\n')
 
 
-def prepare(repo, output):
+def instrument_arm7_monitor(root):
+    """Replace only ARM7 in the generated area copy; never a deployable core.
+
+    Keep every actual guest bus/debug/export connection. Raw controls separately
+    expose reset-held snapshot loading, maintenance execution and final release.
+    The old read coordinator remains costed, but its image protocol is NOT the
+    new 45-word format and this substitution is not functional integration.
+    """
+    def console(s):
+        s = once(s, '   signal cp_area_sound_write_ready : std_logic;', '''   signal cp_area_sound_write_ready : std_logic;
+   signal cp_mon_active, cp_mon_paused : std_logic;
+   signal cp_mon_address : unsigned(5 downto 0);''')
+        s = once(s, '   cp_area_ready(1 downto 0) <= "00"; cp_area_error(1 downto 0) <= "00";', '''   cp_area_ready(0) <= '0'; cp_area_error(0) <= '0';
+   checkpoint_valid7 <= cp_mon_paused;
+   cp_mon_address <= unsigned(checkpoint_addr7(5 downto 0)) when cp_area_in(89) = '0' else unsigned(cp_area_in(10 downto 5));''')
+        s = once(s, '      cp_area_out(35) <= cp_area_sound_write_ready;', '''      cp_area_out(111) <= cp_mon_active;
+      cp_area_out(112) <= cp_mon_paused;
+      cp_area_out(35) <= cp_area_sound_write_ready;''')
+        a = s.index('   icpu7 : entity work.gba_cpu')
+        b = s.index('\n   ibios7 :', a)
+        old = s[a:b]
+        # Check the actual guest interface before replacing it in the copy.
+        for name in ('cpu7_adr','cpu7_rnw','cpu7_ena','cpu7_acc','cpu7_dout','cpu7_din',
+                     'cpu7_done','cpu7_lock','cpu7_lowbits','cpu7_pause','cpu7_bus_idle',
+                     'cpu7_lastread','cpu7_irq','cpu7_unhalt','cpu7_newhalt','error_cpu7',
+                     'pc7_s','dbg_regval7','dbg_export7_done','dbg_export7'):
+            if name not in old:
+                raise ValueError('ARM7 guest interface changed: '+name)
+        replacement = '''   -- Generated synthesis probe, NOT a functional console restore path.
+   icpu7 : entity work.nds_arm7_monitor_probe
+   generic map(ENABLED => true, is_simu => is_simu)
+   port map(clk => clk1x, ce => '1', reset => resetCpu and not cp_area_in(91),
+      preset => cpu_save7, addr => cpu7_adr, rnw => cpu7_rnw, ena => cpu7_ena,
+      seq => open, code => open, acc => cpu7_acc, dout => cpu7_dout,
+      din => cpu7_din, bus_done => cpu7_done, lock => cpu7_lock, lowbits => cpu7_lowbits,
+      dma => cpu7_pause, idle => cpu7_bus_idle, halted => open, lastread => cpu7_lastread,
+      irq => cpu7_irq, unhalt => cpu7_unhalt or dbg_rel7 or diagnostic_release7,
+      new_halt => cpu7_newhalt or dbg_hold7 or diagnostic_hold7,
+      cpu_error => error_cpu7, dbg_pc => pc7_s, dbg_regsel => dbg_regsel_s, dbg_regval => dbg_regval7,
+      -- synthesis translate_off
+      cpu_export_done => dbg_export7_done, cpu_export => dbg_export7,
+      -- synthesis translate_on
+      request => checkpoint_req7, paused => cp_mon_paused, active => cp_mon_active,
+      continue_run => cp_area_in(90), restore => cp_area_restore(1),
+      release_run => cp_area_in(92), ready => cp_area_ready(1), error => cp_area_error(1),
+      host_addr => cp_mon_address, host_write => cp_area_write(1),
+      host_din => cp_area_in(45 downto 14), host_dout => checkpoint_data7);
+   checkpoint_paused7 <= cp_mon_paused;
+'''
+        return s[:a]+replacement+s[b:]
+    edit(root, 'rtl/nds_nitro_console_top.vhd', console)
+    edit(root, PROJECT/'files.qip', lambda s: once(s,
+        'set_global_assignment -name VHDL_FILE $nitro_rtl/gba_cpu.vhd',
+        'set_global_assignment -name VHDL_FILE $nitro_rtl/gba_cpu.vhd\n'
+        'set_global_assignment -name VHDL_FILE ../../rtl/nds_arm7_monitor_rom.vhd\n'
+        'set_global_assignment -name VHDL_FILE ../../rtl/nds_arm7_monitor_probe.vhd'))
+
+
+def prepare(repo, output, arm7_monitor=False):
     output.mkdir(parents=True, exist_ok=False)
     files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=repo).decode().split('\0')
     files = [n for n in files if n and (repo/n).is_file()]
@@ -284,6 +342,8 @@ def prepare(repo, output):
             f.write(overrides)
         if variant == 'connected':
             instrument(root)
+            if arm7_monitor:
+                instrument_arm7_monitor(root)
         manifest = {name: digest(root/name) for name in files}
         (output/(variant.upper()+'_SOURCE.json')).write_text(json.dumps(manifest, sort_keys=True, indent=2)+'\n')
     receipt = {
@@ -294,6 +354,7 @@ def prepare(repo, output):
         'scope': 'Full shell synthesis with existing component capture/restore and acquisition connected to raw observable virtual pins. Not a usable transport, complete machine state, fit, timing or gameplay proof.',
         'unimplemented': ['RAM/cache/TCM serialization', 'downstream writer/renderer ownership', 'safe host transport/CDC', 'complete restore boot path'],
         'components': {'0':'ARM9', '1':'ARM7', **{str(n):label for n,label,_ in COMPONENTS}, '20':'math', '21':'CDC with packet frontend'},
+        'arm7_monitor': arm7_monitor,
     }
     (output/'INPUTS.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
 
@@ -326,6 +387,7 @@ def validate_probe_pins(root, variant):
 
 def summarize(output, baseline_output=None):
     result = {'scope':'Matched full-shell synthesis, not whole-machine fit or gameplay qualification.'}
+    result['arm7_monitor'] = json.loads((output/'INPUTS.json').read_text()).get('arm7_monitor',False)
     if baseline_output:
         old = json.loads((baseline_output/'INPUTS.json').read_text())
         new = json.loads((output/'INPUTS.json').read_text())
@@ -417,6 +479,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--arm7-monitor', action='store_true',
+                        help='During prepare, substitute complete ARM7 monitor in the generated connected area probe only')
     parser.add_argument('--summarize', action='store_true')
     parser.add_argument('--baseline-output', type=Path,
                         help='Reuse a completed baseline after verifying identical hardware inputs')
@@ -431,7 +495,7 @@ def main():
     if output == repo or repo in output.parents:
         parser.error('Generated projects must be outside the source checkout')
     if args.prepare:
-        prepare(repo, output)
+        prepare(repo, output, args.arm7_monitor)
     if args.summarize:
         summarize(output, args.baseline_output.resolve() if args.baseline_output else None)
     if args.variant:

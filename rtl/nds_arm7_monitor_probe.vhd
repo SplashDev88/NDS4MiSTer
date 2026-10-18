@@ -6,9 +6,10 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.pProc_bus_gba.all;
+use work.pexport.all;
 use work.nds_arm7_monitor_rom.all;
 entity nds_arm7_monitor_probe is
-  generic(ENABLED:boolean:=true);
+  generic(ENABLED:boolean:=true; is_simu:std_logic:='0');
   port(clk,ce,reset:in std_logic;
     preset:in proc_bus_gb_type;
     addr:out std_logic_vector(31 downto 0);
@@ -22,7 +23,18 @@ entity nds_arm7_monitor_probe is
     host_addr:in unsigned(5 downto 0);
     host_write:in std_logic;
     host_din:in std_logic_vector(31 downto 0);
-    host_dout:out std_logic_vector(31 downto 0));
+    host_dout:out std_logic_vector(31 downto 0);
+    release_run:in std_logic:='0';ready:out std_logic:='0';
+    cpu_error,lock,cpu_done,pc_in_bios,jump:out std_logic:='0';
+    lowbits:out std_logic_vector(1 downto 0):=(others=>'0');
+    lastread,dbg_pc,preset_q:out std_logic_vector(31 downto 0):=(others=>'0');
+    preset_done:out std_logic:='0';
+    dbg_regsel:in unsigned(4 downto 0):=(others=>'0');
+    dbg_regval:out std_logic_vector(31 downto 0):=(others=>'0')
+    -- synthesis translate_off
+    ;cpu_export_done:out std_logic:='0';cpu_export:out cpu_export_type:=export_init
+    -- synthesis translate_on
+  );
 end;
 architecture rtl of nds_arm7_monitor_probe is
   type ram_type is array(0 to 63) of std_logic_vector(31 downto 0);
@@ -43,14 +55,20 @@ architecture rtl of nds_arm7_monitor_probe is
 begin
   cpu_ce<=ce and not local_error;
   cpu:entity work.gba_cpu
-    generic map(is_simu=>'0',SS_PRESET_ONLY=>'1',EXPERIMENTAL_CPU_MONITOR=>ENABLED)
+    generic map(is_simu=>is_simu,SS_PRESET_ONLY=>'1',EXPERIMENTAL_CPU_MONITOR=>ENABLED)
     port map(clk=>clk,ce=>cpu_ce,reset=>reset,savestate_bus=>preset,
-      ss_wired_done=>open,gb_bus_Adr=>a,gb_bus_rnw=>wr,gb_bus_ena=>go,
+      ss_wired_done=>preset_done,ss_wired_out=>preset_q,gb_bus_Adr=>a,gb_bus_rnw=>wr,gb_bus_ena=>go,
       gb_bus_seq=>seq,gb_bus_code=>isc,gb_bus_acc=>acc,gb_bus_dout=>wd,
       gb_bus_din=>rd,gb_bus_done=>complete,dma_on=>dma,CPU_bus_idle=>idle,
-      PC_in_BIOS=>open,cpu_halt=>halted,lastread=>open,jump_out=>open,
+      PC_in_BIOS=>pc_in_bios,cpu_halt=>halted,lastread=>lastread,jump_out=>jump,
+      error_cpu=>cpu_error,gb_bus_lock=>lock,bus_lowbits=>lowbits,done=>cpu_done,
+      dbg_pc=>dbg_pc,dbg_regsel=>dbg_regsel,dbg_regval=>dbg_regval,
+      -- synthesis translate_off
+      cpu_export_done=>cpu_export_done,cpu_export=>cpu_export,
+      -- synthesis translate_on
       IRQ_in=>irq,unhalt=>unhalt,new_halt=>new_halt,
       monitor_request=>request,monitor_continue=>continue_run,monitor_restore=>restore,
+      monitor_release=>release_run,monitor_ready=>ready,
       monitor_active=>act,monitor_paused=>park,monitor_error=>core_error,
       monitor_meta_address=>meta_address,monitor_meta_write=>meta_write,
       monitor_meta_din=>wd,monitor_meta_dout=>md);

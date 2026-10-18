@@ -74,6 +74,8 @@ entity gba_cpu is
       monitor_request : in std_logic := '0';
       monitor_continue : in std_logic := '0';
       monitor_restore : in std_logic := '0';
+      monitor_release : in std_logic := '0';
+      monitor_ready : out std_logic := '0';
       monitor_active : out std_logic := '0';
       monitor_paused : out std_logic := '0';
       monitor_error : out std_logic := '0';
@@ -92,6 +94,7 @@ architecture arch of gba_cpu is
    constant MON_PARK : unsigned(31 downto 0) := x"0F000F00";
    constant MON_EXIT : unsigned(31 downto 0) := x"0F000F04";
    signal mon_active, mon_paused, mon_loading, mon_error : std_logic := '0';
+   signal mon_ready : std_logic := '0';
    signal mon_retire, mon_enter, mon_park_take, mon_exit_take, mon_redirect : std_logic;
    signal mon_pc, mon_cpsr, mon_lastread : std_logic_vector(31 downto 0) := (others => '0');
    signal mon_coverage : std_logic_vector(2 downto 0) := (others => '0');
@@ -540,6 +543,7 @@ begin
             if reset = '1' then
                mon_active <= monitor_restore; mon_loading <= monitor_restore;
                mon_paused <= '0'; mon_error <= '0'; mon_coverage <= (others => '0');
+               mon_ready <= '0';
                mon_pc <= (others => '0'); mon_cpsr <= (others => '0'); mon_lastread <= (others => '0');
             else
                if mon_enter = '1' then
@@ -554,8 +558,13 @@ begin
                   end if;
                end if;
                if mon_park_take = '1' then mon_paused <= '1'; end if;
-               if mon_paused = '1' and mon_error = '0' and monitor_continue = '1' then
+               if mon_paused = '1' and mon_ready = '0' and mon_error = '0' and monitor_continue = '1' then
                   mon_paused <= '0'; mon_loading <= '1'; mon_coverage <= (others => '0');
+               end if;
+               -- A completed load remains isolated until the common machine
+               -- owner releases it. This applies to fresh loads and continue.
+               if mon_ready = '1' and mon_error = '0' and monitor_release = '1' then
+                  mon_active <= '0'; mon_ready <= '0'; mon_paused <= '0';
                end if;
                if mon_active = '1' and mon_loading = '1' and monitor_meta_write = '1' then
                   case to_integer(monitor_meta_address) is
@@ -566,7 +575,8 @@ begin
                   end case;
                end if;
                if mon_retire = '1' and mon_active = '1' and mon_loading = '1' and execute_branchPC_masked = MON_EXIT then
-                  if mon_valid = '1' and mon_error = '0' then mon_active <= '0'; mon_loading <= '0';
+                  if mon_valid = '1' and mon_error = '0' then
+                     mon_ready <= '1'; mon_paused <= '1'; mon_loading <= '0';
                   else mon_error <= '1'; mon_paused <= '1'; end if;
                end if;
             end if;
@@ -576,9 +586,11 @@ begin
    gno_monitor : if not EXPERIMENTAL_CPU_MONITOR generate
       mon_retire <= '0'; mon_enter <= '0'; mon_park_take <= '0'; mon_exit_take <= '0'; mon_redirect <= '0';
       mon_active <= '0'; mon_paused <= '0'; mon_loading <= '0'; mon_error <= '0'; mon_valid <= '0';
+      mon_ready <= '0';
       monitor_meta_dout <= (others => '0');
    end generate;
    monitor_active <= mon_active; monitor_paused <= mon_paused; monitor_error <= mon_error;
+   monitor_ready <= mon_ready;
 
    -- Synthesizable one-wire-bundle tap for temporary live-hardware
    -- diagnosis. Unlike cpu_export, this remains present when is_simu='0'.
