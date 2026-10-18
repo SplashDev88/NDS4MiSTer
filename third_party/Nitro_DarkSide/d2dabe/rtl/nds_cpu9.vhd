@@ -112,7 +112,8 @@ entity nds_cpu9 is
       SS_PRESET_ONLY : std_logic := '1';
       -- Component prototype only. No shipped top level enables this path.
       EXPERIMENTAL_CHECKPOINT : boolean := false;
-      EXPERIMENTAL_HALT_CHECKPOINT : boolean := false
+      EXPERIMENTAL_HALT_CHECKPOINT : boolean := false;
+      EXPERIMENTAL_CPU_MONITOR : boolean := false
    );
    port 
    (
@@ -205,13 +206,38 @@ entity nds_cpu9 is
       checkpoint_req     : in std_logic := '0';
       checkpoint_paused  : out std_logic := '0';
       -- Assert with reset only after writing the complete state image.
-      checkpoint_restore : in std_logic := '0'
+      checkpoint_restore : in std_logic := '0';
+      -- Private branch-boundary maintenance experiment. Never enabled by the
+      -- console; architectural state travels through normal ARM instructions.
+      monitor_request : in std_logic := '0';
+      monitor_memory_idle : in std_logic := '0';
+      monitor_continue : in std_logic := '0';
+      monitor_restore : in std_logic := '0';
+      monitor_release : in std_logic := '0';
+      monitor_ready : out std_logic := '0';
+      monitor_active : out std_logic := '0';
+      monitor_paused : out std_logic := '0';
+      monitor_error : out std_logic := '0';
+      monitor_meta_address : in unsigned(1 downto 0) := (others => '0');
+      monitor_meta_write : in std_logic := '0';
+      monitor_meta_din : in std_logic_vector(31 downto 0) := (others => '0');
+      monitor_meta_dout : out std_logic_vector(31 downto 0) := (others => '0')
    );
 end entity;
 
 architecture arch of nds_cpu9 is
 
    signal cpu_ce, checkpoint_take : std_logic;
+   constant MON_SAVE : unsigned(31 downto 0) := x"0F000000";
+   constant MON_LOAD : unsigned(31 downto 0) := x"0F000400";
+   constant MON_PARK : unsigned(31 downto 0) := x"0F000F00";
+   constant MON_EXIT : unsigned(31 downto 0) := x"0F000F04";
+   signal mon_active, mon_paused, mon_loading, mon_error : std_logic := '0';
+   signal mon_ready, mon_draining : std_logic := '0';
+   signal mon_retire, mon_enter, mon_park_take, mon_exit_take, mon_redirect : std_logic;
+   signal mon_pc, mon_cpsr, mon_lastread : std_logic_vector(31 downto 0) := (others => '0');
+   signal mon_coverage : std_logic_vector(2 downto 0) := (others => '0');
+   signal mon_valid : std_logic;
    signal bus_lastread : std_logic_vector(31 downto 0);
    signal checkpoint_held : std_logic := '0';
    signal checkpoint_branch_take, checkpoint_halt_take : std_logic;
@@ -675,7 +701,8 @@ begin
 
    -- A taken B/BL/BX retires before the hold. Suppress its target fetch and
    -- leave the pipeline empty so both cancel and restore refill at that PC.
-   cpu_ce <= ce and not checkpoint_held when EXPERIMENTAL_CHECKPOINT else ce;
+   cpu_ce <= ce and not mon_paused and not mon_draining when EXPERIMENTAL_CPU_MONITOR else
+             ce and not checkpoint_held when EXPERIMENTAL_CHECKPOINT else ce;
    checkpoint_paused <= checkpoint_held;
    lastread <= bus_lastread;
    gcheckpoint : if EXPERIMENTAL_CHECKPOINT generate
@@ -714,6 +741,97 @@ begin
       checkpoint_halt_take <= '0';
       checkpoint_held <= '0';
    end generate;
+
+   -- Entry redirects a fully retired branch; it does not take a guest
+   -- exception, borrow its stack, or overwrite an exception-bank LR/SPSR.
+   -- The original bank stays selected until software saves its visible regs.
+   gmonitor : if EXPERIMENTAL_CPU_MONITOR generate
+      assert not EXPERIMENTAL_CHECKPOINT and SS_PRESET_ONLY = '1'
+         report "monitor must exclude the wide architectural checkpoint port" severity failure;
+      mon_retire <= '1' when reset = '0' and cpu_ce = '1' and
+         decode_functions_detail = branch_all and execute_branch = '1' and
+         execute_done = '1' and execute_stall = '0' and
+         (busState = BUSSTATE_IDLE or fetch_done = '1') and
+         dma_on = '0' and dma_on_1 = '0' and gb_bus_saved = '0' and
+         execute_RW_ena = '0' and decode_halt = '0' and decode_unhalt = '0' and
+         cache_op_busy = '0' and execute_cacheop_wait = '0' else '0';
+      mon_enter <= mon_retire and monitor_request and not mon_active and
+         not new_halt and not unhalt and not (IRQ_in and not IRQ_disable);
+      mon_park_take <= mon_retire when mon_active = '1' and mon_loading = '0' and
+         execute_branchPC_masked = MON_PARK else '0';
+      mon_valid <= '1' when mon_coverage = "111" and mon_pc(0) = '0' and
+         (mon_cpsr(5) = '1' or mon_pc(1) = '0') and mon_cpsr(4) = '1' and
+         (mon_cpsr(3 downto 0) = CPUMODE_USER or mon_cpsr(3 downto 0) = CPUMODE_FIQ or
+          mon_cpsr(3 downto 0) = CPUMODE_IRQ or mon_cpsr(3 downto 0) = CPUMODE_SUPERVISOR or
+          mon_cpsr(3 downto 0) = CPUMODE_ABORT or mon_cpsr(3 downto 0) = CPUMODE_UNDEFINED or
+          mon_cpsr(3 downto 0) = CPUMODE_SYSTEM) and cpu_mode = mon_cpsr(3 downto 0) else '0';
+      mon_exit_take <= mon_retire when mon_active = '1' and mon_loading = '1' and
+         execute_branchPC_masked = MON_EXIT and mon_valid = '1' and mon_error = '0' else '0';
+      mon_redirect <= mon_enter or mon_park_take or mon_exit_take;
+      monitor_meta_dout <= mon_pc when monitor_meta_address = 0 else
+                           mon_cpsr when monitor_meta_address = 1 else
+                           mon_lastread when monitor_meta_address = 2 else (others => '0');
+      process(clk) begin
+         if rising_edge(clk) then
+            if reset = '1' then
+               mon_active <= monitor_restore; mon_loading <= monitor_restore;
+               mon_draining <= monitor_restore;
+               mon_paused <= '0'; mon_error <= '0'; mon_coverage <= (others => '0');
+               mon_ready <= '0';
+               mon_pc <= (others => '0'); mon_cpsr <= (others => '0'); mon_lastread <= (others => '0');
+            else
+               if mon_enter = '1' then
+                  mon_active <= '1'; mon_loading <= '0'; mon_coverage <= (others => '0');
+                  mon_draining <= '1';
+                  mon_pc <= std_logic_vector(execute_branchPC_masked);
+                  mon_cpsr <= std_logic_vector(CPSR);
+                  mon_cpsr(5) <= execute_nextIsthumb;
+                  mon_lastread <= bus_lastread;
+                  if gb_bus_done = '1' then
+                     if thumbmode = '1' then mon_lastread <= gb_bus_din(15 downto 0) & gb_bus_din(15 downto 0);
+                     else mon_lastread <= gb_bus_din; end if;
+                  end if;
+               end if;
+               -- Retire/suppress the target first, then drain the external
+               -- memory owner. Its strict idle includes the completing fetch,
+               -- so gating entry with that receipt would miss every branch.
+               if mon_draining = '1' and monitor_memory_idle = '1' and cache_op_busy = '0' then
+                  mon_draining <= '0';
+               end if;
+               if mon_park_take = '1' then mon_paused <= '1'; end if;
+               if mon_paused = '1' and mon_ready = '0' and mon_error = '0' and monitor_continue = '1' then
+                  mon_paused <= '0'; mon_loading <= '1'; mon_coverage <= (others => '0');
+               end if;
+               -- A completed load remains isolated until the common machine
+               -- owner releases it. This applies to fresh loads and continue.
+               if mon_ready = '1' and mon_error = '0' and monitor_release = '1' then
+                  mon_active <= '0'; mon_ready <= '0'; mon_paused <= '0';
+               end if;
+               if mon_active = '1' and mon_loading = '1' and monitor_meta_write = '1' then
+                  case to_integer(monitor_meta_address) is
+                     when 0 => mon_pc <= monitor_meta_din; mon_coverage(0) <= '1';
+                     when 1 => mon_cpsr <= monitor_meta_din; mon_coverage(1) <= '1';
+                     when 2 => mon_lastread <= monitor_meta_din; mon_coverage(2) <= '1';
+                     when others => mon_error <= '1'; mon_paused <= '1';
+                  end case;
+               end if;
+               if mon_retire = '1' and mon_active = '1' and mon_loading = '1' and execute_branchPC_masked = MON_EXIT then
+                  if mon_valid = '1' and mon_error = '0' then
+                     mon_ready <= '1'; mon_paused <= '1'; mon_loading <= '0';
+                  else mon_error <= '1'; mon_paused <= '1'; end if;
+               end if;
+            end if;
+         end if;
+      end process;
+   end generate;
+   gno_monitor : if not EXPERIMENTAL_CPU_MONITOR generate
+      mon_retire <= '0'; mon_enter <= '0'; mon_park_take <= '0'; mon_exit_take <= '0'; mon_redirect <= '0';
+      mon_active <= '0'; mon_paused <= '0'; mon_loading <= '0'; mon_error <= '0'; mon_valid <= '0';
+      mon_ready <= '0'; mon_draining <= '0';
+      monitor_meta_dout <= (others => '0');
+   end generate;
+   monitor_active <= mon_active; monitor_paused <= mon_paused; monitor_error <= mon_error;
+   monitor_ready <= mon_ready;
 
    -- The ordinary 32-bit MLA sum consumes registered product/accumulator
    -- operands. Commit this sum on the same edge as a plain MUL result;
@@ -1265,7 +1383,7 @@ begin
             gb_bus_ena   <= '1';
          end if;
 
-         if checkpoint_take = '1' then gb_bus_ena <= '0'; end if;
+         if checkpoint_take = '1' or mon_redirect = '1' then gb_bus_ena <= '0'; end if;
 
       end if;
          
@@ -1338,6 +1456,7 @@ begin
             end if;
 
          end if;
+         if mon_exit_take = '1' then bus_lastread <= mon_lastread; end if;
          
       end if;
    end process;
@@ -1433,6 +1552,7 @@ begin
          if (reset = '1') then
          
             fetch_PC <= unsigned(SAVESTATE_PC_in);
+            if EXPERIMENTAL_CPU_MONITOR and monitor_restore = '1' then fetch_PC <= MON_LOAD; end if;
             if EXPERIMENTAL_HALT_CHECKPOINT and checkpoint_restore = '1' then
                if savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
                   savestate_bus.bEna = "1111" then
@@ -1482,6 +1602,12 @@ begin
                end if;
             end if;
 
+            if mon_redirect = '1' then
+               fetch_ready <= '0'; fetch_first <= '1';
+               if mon_enter = '1' then fetch_PC <= MON_SAVE;
+               elsif mon_park_take = '1' then fetch_PC <= MON_LOAD;
+               else fetch_PC <= unsigned(mon_pc); end if;
+            end if;
             if (jump_out = '1') then
                SAVESTATE_PC_out <= std_logic_vector(bus_AddrFetch_eff);
             end if;
@@ -1705,7 +1831,7 @@ begin
                decode_ready <= '0';
             end if;
             
-            if (new_halt = '1') then
+            if (new_halt = '1' and mon_active = '0') then
                decode_halt <= '1';
             elsif (decode_halt = '1' and unhalt = '1') then
                decode_halt   <= '0';
@@ -2685,7 +2811,7 @@ begin
                
             end if; -- update decode
             
-            if (IRQ_in = '1' and IRQ_disable = '0' and (busState /= BUSSTATE_WAITFETCH or gb_bus_done = '1') and (decode_functions_detail /= IRQ or execute_now = '0')) then
+            if (IRQ_in = '1' and IRQ_disable = '0' and mon_active = '0' and (busState /= BUSSTATE_WAITFETCH or gb_bus_done = '1') and (decode_functions_detail /= IRQ or execute_now = '0')) then
                if (decode_unhalt = '1') then
                   decode_ready  <= '1';
                end if;
@@ -3363,7 +3489,7 @@ begin
       
          if (decode_psr_with_spsr = '0') then -- cpsr only
             execute_msr_setvalue_ena <= execute_now;
-            if (cpu_mode /= CPUMODE_USER) then
+            if (cpu_mode /= CPUMODE_USER or mon_active = '1') then
                if (decode_Rn_op1(0) = '1') then execute_msr_setvalue( 7 downto  0) <= execute_msr_fetchvalue( 7 downto  0); execute_switchmode_now <= execute_now; end if;
                if (decode_Rn_op1(1) = '1') then execute_msr_setvalue(15 downto  8) <= execute_msr_fetchvalue(15 downto  8); end if;
                if (decode_Rn_op1(2) = '1') then execute_msr_setvalue(23 downto 16) <= execute_msr_fetchvalue(23 downto 16); end if;
@@ -4667,6 +4793,12 @@ begin
 
             end if;
          
+            if mon_enter = '1' then thumbmode <= '0'; end if;
+            if mon_exit_take = '1' then
+               thumbmode <= mon_cpsr(5); FIQ_disable <= mon_cpsr(6); IRQ_disable <= mon_cpsr(7);
+               Flag_Negative <= mon_cpsr(31); Flag_Zero <= mon_cpsr(30);
+               Flag_Carry <= mon_cpsr(29); Flag_V_Overflow <= mon_cpsr(28); Flag_Q_Sticky <= mon_cpsr(27);
+            end if;
          end if;
          
       end if;

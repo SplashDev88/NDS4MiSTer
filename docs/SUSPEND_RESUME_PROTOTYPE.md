@@ -45,15 +45,17 @@ transport epochs across fresh simulator processes. These
 ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
-A CPU-assisted ARM7 alternative now captures and reloads context with ordinary
-ARM instructions in private maintenance memory. It passes 36 ARM/Thumb
-fresh-process continuations, 64 pending-IRQ continuation pairs and coordinated
-return/cancellation checks. Substituting it in the complete area probe reduces
-the estimate from 44,845 to 43,985 ALMs. This remains above device capacity;
-there is no functional console integration, HALT capture or hardware timing
-result. See the CPU-assisted section below.
+CPU-assisted alternatives now capture and reload both CPUs with ordinary
+ARM instructions in private maintenance memory. ARM9 includes all writable
+CP15 context and CPSR.Q, and waits for the real memory owner to drain before
+running private code. Fresh-process CPU continuation, pending IRQs and common
+return holds pass; the real memory-island fixture also retains dirty cache and
+TCM contents through maintenance and CPU-only reset. These monitors do not yet
+capture sleeping pipelines or provide whole-machine memory persistence. See
+the CPU-assisted sections below for validation scope and full-shell area costs.
 
-`EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
+`EXPERIMENTAL_CHECKPOINT`, `EXPERIMENTAL_HALT_CHECKPOINT` and
+`EXPERIMENTAL_CPU_MONITOR` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
 `false`; no shipping wrapper or ARM9 adapter enables it. The released FPGA,
 host, renderer, settings and 1 GHz operating point are unchanged.
@@ -2349,6 +2351,102 @@ again with 733 samples, 729 varied samples, 644 fetches, 25,664 ARM9 DMA words
 and 26,368 ARM7 DMA words; legacy CPU checkpoint, cold-reset and capsule tests
 also pass. These checks do not qualify whole-game resume or routed performance.
 
+### ARM9 CPU-assisted context and memory isolation
+
+The ARM9 counterpart now uses the same private code/snapshot arrangement,
+with a **64-word image**. Words 0–44 have the ARM7 layout. Words 45–63 contain
+all 19 writable CP15 fields: control, DTCM/ITCM configuration, eight protection
+regions, cache/write-buffer maps, extended data/instruction permissions, cache
+lock registers and trace PID. CPSR.Q is restored with the other flags. The
+software accesses CP15 through MRC/MCR; it never issues a c7 cache operation,
+invalidates guest caches, uses a guest stack or takes a guest exception.
+`arm9_monitor_rom.py` shares the authored emitter with ARM7; its default ARM7
+output remains byte-for-byte unchanged.
+
+ARM9 requires a two-stage entry. First, a completed branch is retired and its
+target fetch suppressed. The CPU then stays stopped until the **actual memory
+owner's idle receipt** arrives. Requiring strict memory idle on the branch
+edge itself prevented entry against the real decoder: the completing fetch
+still owned that edge. Only after draining does the CPU run private code.
+Fresh restore has the same drain gate. The wrapper intercepts maintenance
+fetches and data **before** the guest cache/TCM decoder, including when CP15
+would remap or deny those addresses. Completed loading retains the existing
+explicit common-release hold.
+
+Component validation:
+
+- **36 capture/fresh-process restore pairs**, with 800 subsequent guest stores
+  compared to the disabled CPU's trace, cover seven modes, ARM/Thumb, initial
+  BX entry, two CE periods and two bus delays. Further capture/continue checks
+  refresh the image. Ordinary instructions read every CP15 field back into the
+  observable guest trace. **33 functional corruption controls**, three invalid
+  metadata cases and an early-memory-drain fault are detected. Four no-branch
+  requests cancel without losing progress. **12 WFI cancellation/wake cases**
+  refuse sleep capture safely; masked cases change backing memory after the
+  prefetched BX and still return correctly. These are authored programs.
+- **128 pending-IRQ capture/restore pairs** cover both low and high CP15 vector
+  bases, ARM/Thumb, masked/unmasked IRQs, four arrival phases, two CE periods
+  and two memory delays. Resumed IRQ LR/SPSR and subsequent counters match;
+  lost-IRQ and premature-release controls fail as intended.
+- **Four real-memory-island cases** use the production cache and TCM decoder,
+  at its continuous ARM9 CE, with two backing delays and either DTCM or ITCM
+  overlaying the private addresses. Dirty D-cache data, I-cache instructions
+  deliberately different from backing RAM, and both TCM contents survive
+  capture/continue and a CPU-only reset/load. Maintenance causes no guest
+  memory request or TCM write. Injected cache loss and a leaked private request
+  are detected. Memory stays alive in this fixture: it does **not** demonstrate
+  cache serialization, process-exit persistence or power-cycle resume.
+
+Reproduce with `tools/test_arm9_monitor.sh`,
+`tools/test_arm9_monitor_irq.sh` and `tools/test_arm9_monitor_memory.sh`.
+Each freezes its source inputs before running. The existing ARM7 monitor,
+direct CPU checkpoint and ordinary WFI/console regressions are also retained.
+
+This monitor is disabled in the product. It does not capture WFI or a prefetched
+sleep pipeline; the direct checkpoint implementation remains the reference for
+that work. The wrapper still depends on a future host protocol to validate a
+complete, exact-identity, checksummed image before reset release. Cache/TCM and
+other memory serialization, common-owner restore wiring and renderer ownership
+remain necessary before a whole game can resume.
+
+The full-shell area tool accepts `--arm7-monitor --arm9-monitor` to substitute
+both complete wrappers in its generated synthesis copy. Raw ARM9 controls use
+bits 93 (continue), 94 (CPU reset override) and 95 (final release); it shares
+bit 89's snapshot-address selection. All actual CPU, debug, CP15 and memory
+interfaces remain connected. The old image/read coordinator is still costed
+but is not converted to the monitor formats. This raw probe has no safe host
+transport and must never be assembled or deployed.
+
+#### Full-shell ARM9 monitor area result
+
+Fresh v15 controls reproduce the disabled and ARM7-only estimates exactly;
+v16 then substitutes both monitors with the same production inputs and flags.
+The disabled baseline is reused only after the tool verifies those inputs.
+
+| Resource | Disabled | ARM7 monitor / direct ARM9 | Both monitors |
+| --- | ---: | ---: | ---: |
+| Estimated ALMs | 34,290 | 43,985 | **42,583** |
+| Logic ALUTs | 52,271 | 64,849 | **62,949** |
+| Dedicated logic registers | 39,376 | 42,065 | 42,135 |
+| Block-memory bits | 4,113,236 | 4,128,356 | 4,144,740 |
+| DSP blocks | 27 | 27 | 27 |
+
+The ARM9 substitution saves **1,402 estimated ALMs and 1,900 ALUTs**, adding
+70 registers and 16,384 memory bits. Both monitors together are 2,262 ALMs below
+the earlier 44,845-ALM direct checkpoint probe. The current estimate is still
+**673 ALMs above the device's 41,910**, before the missing sleep, memory and
+safe transport work. There is no fitter or timing result for this probe.
+145 physical pins and all 224 virtual probe pins are retained.
+
+The v16 report SHA-256 is
+`5d8c32cf45265e9a1ff5f8f368f24d4fd17052cc35581ae61e55e49a05b8f2da`;
+the matched ARM7-only control is
+`8469ffacc07064358cfb65fc43ac267ec6de81707fb8e96e5f2b53df8309238a`.
+The generated complete VHDL closure passes. The ordinary console regression
+again records 733 audio samples, 729 varied samples, 644 fetches, 25,664 ARM9
+DMA words and 26,368 ARM7 DMA words. All of this remains simulation/synthesis
+validation; no hardware installation or game save was changed.
+
 ## Remaining state coverage
 
 | Owner | Needed before a game can resume | Current status |
@@ -2372,9 +2470,10 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 1. Establish a viable full-shell resource budget with checkpoint capture and
    restore observable before adding the remaining memory serializers. Use the
    connected probe and capacity failure to target the largest measured costs.
-   Integrate and measure the isolated CPU-assisted ARM7 experiment above, then ARM9;
-   compare capture and restore against the 44,845-ALM direct control and
-   43,985-ALM ARM7-monitor probe, including required sleep coverage.
+   The CPU-assisted monitors now reduce the estimate to 42,583 ALMs,
+   still 673 above capacity before missing work. Add the required HALT/WFI
+   pipeline coverage, measure its full cost, then target further area savings.
+   Keep the direct checkpoint path as the sleep-semantics reference.
    Preserve component continuation proofs when changing their implementation.
 2. Implement the real external owner behind the optional common barrier and
    extend enabled-console coverage beyond the authored CPU/IO/DMA/audio fixture

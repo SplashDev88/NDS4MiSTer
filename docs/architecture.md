@@ -206,8 +206,11 @@ interrupts remain unsupported. The [bounded suspend/resume experiment](SUSPEND_R
 currently proves branch and idle HALT/WFI CPU persistence, including prefetched
 instructions, and a bounded CPU-pair barrier/read transport with host-lease
 expiry in simulation. Optional console wiring also stops/drains DMA admissions
-and observes ARM9 cache/TCM quiescence; it is disabled by default. Coherent device
-freeze, state serialization and whole-game resume remain unimplemented. Short selected-game
+and observes ARM9 cache/TCM quiescence; it is disabled by default. An alternative
+CPU-assisted prototype saves both CPUs through private ARM maintenance code,
+including ARM9 CP15/Q state, without invalidating guest caches. CPU and device
+component restore tests pass, but memory/cache serialization, renderer ownership,
+safe host restore and whole-game resume remain incomplete. Short selected-game
 checks do not establish full
 playthrough compatibility. Slowdown, uneven animation, audio hitches and crashes
 remain possible.

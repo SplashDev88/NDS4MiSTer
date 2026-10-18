@@ -10,7 +10,7 @@ use std.textio.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_cpu9_wfi_return is
   generic(READ_DELAY: positive:=1; WAKE_DELAY: natural:=4;
-          IRQ_ENABLED: boolean:=true; CHECKPOINT_OPERATION:string:="none";
+          IRQ_ENABLED: boolean:=true; MONITOR_CANCEL:boolean:=false; CHECKPOINT_OPERATION:string:="none";
           OMIT_PIPELINE_RESTORE:boolean:=false; MUTATE_PREFETCH:boolean:=false);
 end;
 architecture sim of tb_nds_cpu9_wfi_return is
@@ -23,6 +23,7 @@ architecture sim of tb_nds_cpu9_wfi_return is
   signal finished,vector_seen: boolean:=false;
   signal changed_memory:boolean:=false;
   signal checkpoint_req,checkpoint_paused,checkpoint_restore,cpu_idle:std_logic:='0';
+  signal monitor_req,monitor_active,monitor_paused:std_logic:='0';
   signal ssout:std_logic_vector(31 downto 0);signal ssdone:std_logic;
   type checkpoint_words is array(0 to 79) of std_logic_vector(31 downto 0);
   function checkpoint_preset return std_logic is
@@ -36,7 +37,8 @@ begin
   dut: entity work.nds_cpu9
     generic map(is_simu=>'0',SS_PRESET_ONLY=>checkpoint_preset,
       EXPERIMENTAL_CHECKPOINT=>CHECKPOINT_OPERATION/="none",
-      EXPERIMENTAL_HALT_CHECKPOINT=>CHECKPOINT_OPERATION/="none")
+      EXPERIMENTAL_HALT_CHECKPOINT=>CHECKPOINT_OPERATION/="none",
+      EXPERIMENTAL_CPU_MONITOR=>MONITOR_CANCEL)
     port map(clk=>clk,ce=>'1',reset=>reset,dbg_pc=>pc,
       savestate_bus=>ss,ss_wired_out=>ssout,ss_wired_done=>ssdone,gb_bus_Adr=>addr,gb_bus_rnw=>rnw,
       gb_bus_ena=>ena,gb_bus_seq=>open,gb_bus_code=>code,gb_bus_acc=>open,
@@ -47,7 +49,8 @@ begin
       cp15_dtcm_ena=>open,cp15_dtcm_load=>open,cp15_dtcm_base=>open,cp15_dtcm_size=>open,
       cp15_itcm_size=>open,bus_cacheable_i=>open,bus_cacheable_d=>open,cache_op_busy=>'0',
       checkpoint_req=>checkpoint_req,checkpoint_paused=>checkpoint_paused,
-      checkpoint_restore=>checkpoint_restore);
+      checkpoint_restore=>checkpoint_restore,monitor_request=>monitor_req,
+      monitor_memory_idle=>'1',monitor_active=>monitor_active,monitor_paused=>monitor_paused);
   process(clk)
     variable remaining:natural:=0;
     variable pending:std_logic_vector(31 downto 0);
@@ -150,6 +153,14 @@ begin
       for i in saved'range loop hwrite(linebuf,saved(i));writeline(state_file,linebuf);end loop;
       file_close(state_file);changed_memory<=MUTATE_PREFETCH;
       checkpoint_req<='0';clocks(8);
+    end if;
+    if MONITOR_CANCEL then
+      assert CHECKPOINT_OPERATION="none" report "incompatible monitor/direct fixture modes" severity failure;
+      monitor_req<='1';clocks(100);
+      assert monitor_active='0' and monitor_paused='0' and halt='1'
+        report "branch-only monitor accepted WFI" severity failure;
+      changed_memory<=MUTATE_PREFETCH;
+      monitor_req<='0';clocks(2);
     end if;
     wake<='1';irq<='1';
     if IRQ_ENABLED then

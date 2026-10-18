@@ -16,7 +16,21 @@ BANKS = [(0x1F, 15, 0x7F00), (0x11, 22, 0x7F00),
          (0x17, 36, 0x6000), (0x1B, 39, 0x6000)]
 
 
-def generate():
+# Writable CP15 state, using the full permission form (op2=2/3).
+# Snapshot words 45..63; no c7 cache operation or WFI is ever issued.
+CP15_FIELDS = [(1, 0, 0), (9, 1, 0), (9, 1, 1)] + \
+              [(6, n, 0) for n in range(8)] + \
+              [(2, 0, 0), (2, 0, 1), (3, 0, 0), (5, 0, 2),
+               (5, 0, 3), (9, 0, 0), (9, 0, 1), (13, 0, 0)]
+
+
+def cp15_instruction(read, reg, field):
+    crn, crm, op2 = field
+    assert crn != 7
+    return 0xEE000F10 | int(read) << 20 | crn << 16 | reg << 12 | op2 << 5 | crm
+
+
+def generate(arm9=False):
     words = {}
     listing = []
     pc = 0
@@ -55,6 +69,11 @@ def generate():
         if mode != 0x1F:
             emit(0xE14F1000, 'mrs r1, spsr')
             emit(0xE5801000, 'str r1, [r0]')
+    if arm9:
+        literal(0, BUF + 45 * 4)
+        for index, field in enumerate(CP15_FIELDS):
+            emit(cp15_instruction(True, 1, field), f'mrc p15, 0, r1, c{field[0]}, c{field[1]}, {field[2]}')
+            emit(0xE5801000 | index * 4, f'str r1, [r0, #{index * 4}]')
     literal(0, META)
     emit(0xE890000E, 'ldmia r0, {r1-r3}')
     literal(0, BUF + 42 * 4)
@@ -75,6 +94,11 @@ def generate():
         if mode != 0x1F:
             emit(0xE5901000, 'ldr r1, [r0]')
             emit(0xE16FF001, 'msr spsr_fsxc, r1')
+    if arm9:
+        literal(0, BUF + 45 * 4)
+        for index, field in enumerate(CP15_FIELDS):
+            emit(0xE5901000 | index * 4, f'ldr r1, [r0, #{index * 4}]')
+            emit(cp15_instruction(False, 1, field), f'mcr p15, 0, r1, c{field[0]}, c{field[1]}, {field[2]}')
     literal(0, BUF + 43 * 4)
     emit(0xE5901000, 'ldr r1, [r0]')
     emit(0xE38110C0, 'orr r1, r1, #0xC0 ; mask interrupts during bank restore')
@@ -100,6 +124,8 @@ package nds_arm7_monitor_rom is
     vhdl += '    others => x"EAFFFFFE");\nend package;\n'
     asm = '; Generated authored ARM instruction listing (hex address / opcode).\n'
     asm += ''.join(f'{BASE+a:08X}  {words[a]:08X}  {description}\n' for a, description in listing)
+    if arm9:
+        vhdl = vhdl.replace('arm7_monitor', 'arm9_monitor')
     return vhdl, asm
 
 
