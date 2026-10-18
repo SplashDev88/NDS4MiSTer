@@ -36,8 +36,8 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
-state, complete timer state and IPC queues across fresh simulator processes. These ports
-remain unconnected to the console control plane; whole-machine persistence
+state, timers, IPC queues and both DMA controllers across fresh simulator
+processes. These ports remain unconnected to the console control plane; whole-machine persistence
 still needs the other owners.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
@@ -653,6 +653,75 @@ physical storage is part of the image. The default-off and enabled-unrequested
 IRQ/IPC paths also match the pinned pre-experiment RTL. This is joined IPC/IRQ
 component persistence; no whole-game resume or hardware beta is provided yet.
 
+### DMA component capture and restore
+
+Both `nds_dma7` and `nds_dma9` now expose component images under the existing
+`EXPERIMENTAL_CHECKPOINT` switch. The console leaves these read/restore ports
+unconnected. Capture requires their drained **IDLE** boundary, no memory or bus
+ownership, retired completion/IRQ pulses, no guest register access and quiet
+trigger inputs. ARM9 also requires its GX edge history to match the held GX
+level. The caller must hold those sources for the entire image read; the older
+`checkpoint_stopped` acknowledgement alone does not stop incoming triggers or
+CPU register writes.
+
+The first 24 words contain six words for each of four channels:
+
+| Address within channel | State |
+| --- | --- |
+| 0, 1 | Programmed source and destination, bits 27:0 |
+| 2 | Full guest count/control register, including enable, repeat and trigger mode |
+| 3, 4 | Current source and destination, bits 27:0 |
+| 5 | Pending request in bit 31; remaining count in bits 16:0 (ARM7) or 21:0 (ARM9) |
+
+ARM7's 26-word image finishes with the active-channel index at 24 and data-read
+latch at 25. ARM9's 37-word image additionally preserves:
+
+| Address | State |
+| --- | --- |
+| 24–27 | Four DMA FILL registers |
+| 28 | Active index 1:0; GX edge history 2; current/next prefetch valid flags 3/4; GX slice count 11:5; remembered RAM read/prefetch kind 12/13 |
+| 29 | Data-read latch |
+| 30, 31–32 | Current prefetch block address and its 64-bit data |
+| 33, 34–35 | Next prefetch block address and its 64-bit data |
+| 36 | Remembered fast-RAM request block address |
+
+Prefetch block addresses occupy 19 bits. No request remains active at capture;
+remembered request metadata does not recreate an outstanding transaction.
+These images retain both prefetch buffers rather than assuming cached bytes
+can be discarded. Bus payload outputs with no asserted enable are not image
+state; each new transaction rebuilds those outputs before use.
+
+Restore writes the existing channel registers and buffers directly while reset
+is held. It does not replay ordinary enable writes, which would relatch addresses
+and clear transfer progress. All image words, including zero values, are required.
+Unsupported addresses, reserved bits, out-of-range remaining counts or GX slice
+counts, and live restore attempts are rejected. A failed attempt stays invalid
+until restore is withdrawn for a clock edge and a fresh complete image is loaded.
+The caller must keep the complete machine held after failure or reload the core.
+During loading, ownership, memory requests and IRQs stay inactive. ARM9's GX
+history is retained through load gaps even if the live input differs; restore
+that external source before the common release.
+
+`tools/test_checkpoint_dma_restore.sh` compares 84 fresh-process restores, each
+with 16,384 observations of register reads, enabled memory/IO transactions,
+ownership and interrupts. Cases include all channels, halfword/word copies,
+increment/fixed/decrement addressing, address wrap, queued and repeated
+VBlank/card/HBlank work, all-zero state, ARM9 prefetch, posted RAM completion,
+credit stalls, and a GX transfer captured after 112 words with 118 still pending.
+Ascending, descending and interleaved image writes run at two response latencies.
+An independent copy scoreboard checks addresses, data and byte lanes as well as
+the recorded continuation. Fifteen deliberate faults cover lost pending requests,
+pointers/progress/prefetch/GX history, premature ready, invalid images, live
+mutation and capture during an unsettled trigger.
+
+This testing exposed ARM7's existing use of `unsigned + integer` for a negative
+DMA step, which selects a nonnegative operand in `numeric_std` and fails in
+simulation. Both ARM7 address updates now use the same explicitly signed,
+width-limited step as ARM9. Independent decrement and modulo-2^28 wrap checks
+cover that correction. Existing DMA stop/drain, ARM9 fast/fallback and graphics
+backpressure tests remain required. No gameplay speed or routed timing result
+is implied by these component checks.
+
 ## Persistence proof
 
 `tools/suspend_resume/capsule.py` wraps the captured CPU words in a bounded,
@@ -1094,7 +1163,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC have component restore; other serializers and real external ownership missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA have component restore; other serializers and real external ownership missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -1115,7 +1184,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend IRQ/timer/IPC component coverage to the remaining devices,
+2. Extend IRQ/timer/IPC/DMA component coverage to audio and the remaining devices,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.

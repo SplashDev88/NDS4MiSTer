@@ -49,6 +49,15 @@ entity nds_dma9 is
       -- channels/triggers are retained; this is not a frozen state image.
       checkpoint_stop : in std_logic := '0';
       checkpoint_stopped : out std_logic := '0';
+      checkpoint_address : in unsigned(5 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0';
+
 
       gb_bus       : in  proc_bus_gb_type;
       wired_out    : out std_logic_vector(31 downto 0) := (others => '0');
@@ -195,6 +204,9 @@ end entity;
 
 architecture arch of nds_dma9 is
    signal stop_admission : std_logic;
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_loaded : std_logic_vector(36 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
 
    constant ADR_BASE : unsigned(27 downto 0) := x"00000B0";
 
@@ -356,6 +368,86 @@ begin
       dma_bus_on = '0' and mb_ena = '0' and irq_dma = "0000" and mr_busy = '0' and mr_fast_ena = '0' and io_fast_ena = '0' and vram_fast_ena = '0'
       else '0';
 
+   -- Fixed-IDLE component image. Six words per channel preserve the live
+   -- registers and pending continuation without replaying enable writes.
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   process(all)
+      variable a : natural range 0 to 63;
+      variable c : natural range 0 to 3;
+      variable allowed : std_logic_vector(31 downto 0);
+      variable shape_valid : boolean;
+   begin
+      a := to_integer(checkpoint_address); c := 0;
+      allowed := (others => '0'); shape_valid := true;
+      if a < 24 then
+         c := a/6;
+         case a mod 6 is
+            when 0 | 1 | 3 | 4 => allowed := x"0FFFFFFF";
+            when 2 =>
+                  allowed := x"FFFFFFFF";
+            when others =>
+               allowed := x"803FFFFF";
+                  shape_valid := unsigned(checkpoint_write_data(21 downto 0)) <= 16#200000#;
+         end case;
+      else
+         if a >= 24 and a <= 27 then allowed := x"FFFFFFFF"; end if;
+         if a = 28 then
+            allowed := x"00003FFF";
+            shape_valid := unsigned(checkpoint_write_data(11 downto 5)) <= 112;
+         end if;
+         if a = 29 or a = 31 or a = 32 or a = 34 or a = 35 then allowed := x"FFFFFFFF"; end if;
+         if a = 30 or a = 33 or a = 36 then allowed := x"0007FFFF"; end if;
+      end if;
+      restore_write_valid <= '0';
+      if restore_active = '1' and restore_error = '0' and checkpoint_write = '1' and a < 37 and
+         shape_valid and (checkpoint_write_data and not allowed) = x"00000000" then restore_write_valid <= '1'; end if;
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and a < 37 and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0' and gb_bus.ena = '0' and
+           trig_vblank = '0' and trig_card = '0' and mb_done = '0' and trig_hblank = '0' and trig_gx = trig_gx_d and mr_fast_done = '0' and vram_fast_done = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         if a < 24 then
+            case a mod 6 is
+               when 0 => checkpoint_data <= "0000" & ch(c).sad;
+               when 1 => checkpoint_data <= "0000" & ch(c).dad;
+               when 2 => checkpoint_data <= ch(c).enable & ch(c).irqena & ch(c).timing & ch(c).word32 & ch(c).repeat & ch(c).srcctl & ch(c).dstctl & ch(c).count;
+               when 3 => checkpoint_data <= "0000" & std_logic_vector(ch(c).cur_src);
+               when 4 => checkpoint_data <= "0000" & std_logic_vector(ch(c).cur_dst);
+               when others => checkpoint_data <= ch(c).pend & (30 downto 22 => '0') & std_logic_vector(ch(c).remain);
+            end case;
+         else
+            case a is
+               when 24 to 27 => checkpoint_data <= fill(a-24);
+               when 28 => checkpoint_data <= (31 downto 14 => '0') & mr_req_pref & mr_op_read &
+                  std_logic_vector(gx_chunk_rem) & pn_valid & pf_valid & trig_gx_d & std_logic_vector(to_unsigned(active,2));
+               when 29 => checkpoint_data <= rdval;
+               when 30 => checkpoint_data <= (31 downto 19 => '0') & std_logic_vector(pf_blk);
+               when 31 => checkpoint_data <= pf_data(31 downto 0);
+               when 32 => checkpoint_data <= pf_data(63 downto 32);
+               when 33 => checkpoint_data <= (31 downto 19 => '0') & std_logic_vector(pn_blk);
+               when 34 => checkpoint_data <= pn_data(31 downto 0);
+               when 35 => checkpoint_data <= pn_data(63 downto 32);
+               when 36 => checkpoint_data <= (31 downto 19 => '0') & std_logic_vector(mr_req_blk);
+               when others => null;
+            end case;
+         end if;
+      end if;
+   end process;
+   process(clk) begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_loaded <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' then restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_loaded(to_integer(checkpoint_address)) <= '1';
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and restore_loaded = (36 downto 0 => '1') and
+      restore_error = '0' and checkpoint_write = '0' else '0';
+
    -- ================= per-access cost census (sim only) =================
    -- [04-02] DMA PRIORITY requires a 16-bit unit to cost 2 clk1x cycles and this
    -- FSM costs 20 (11 even into palette, the lowest-latency target in the core).
@@ -500,6 +592,8 @@ begin
 
    -- ================= main FSM + register writes =================
    process (clk)
+      variable checkpoint_word : natural range 0 to 63;
+      variable checkpoint_channel : natural range 0 to 3;
       variable v_ena   : std_logic;
       variable v_pick  : integer range 0 to 3;
       variable v_got   : std_logic;
@@ -592,16 +686,62 @@ begin
          trig_gx_d     <= trig_gx;
 
          if (reset = '1') then
-            ch     <= (others => CHAN_INIT);
+            if restore_active = '1' then
+               trig_gx_d <= trig_gx_d; -- retain the image through reset-held load gaps
+               if restore_write_valid = '1' then
+                  checkpoint_word := to_integer(checkpoint_address);
+                  if checkpoint_word < 24 then
+                     checkpoint_channel := checkpoint_word/6;
+                     case checkpoint_word mod 6 is
+                        when 0 => ch(checkpoint_channel).sad <= checkpoint_write_data(27 downto 0);
+                        when 1 => ch(checkpoint_channel).dad <= checkpoint_write_data(27 downto 0);
+                        when 2 =>
+                        ch(checkpoint_channel).count <= checkpoint_write_data(20 downto 0);
+                        ch(checkpoint_channel).timing <= checkpoint_write_data(29 downto 27);
+                           ch(checkpoint_channel).dstctl <= checkpoint_write_data(22 downto 21);
+                           ch(checkpoint_channel).srcctl <= checkpoint_write_data(24 downto 23);
+                           ch(checkpoint_channel).repeat <= checkpoint_write_data(25);
+                           ch(checkpoint_channel).word32 <= checkpoint_write_data(26);
+                           ch(checkpoint_channel).irqena <= checkpoint_write_data(30);
+                           ch(checkpoint_channel).enable <= checkpoint_write_data(31);
+                        when 3 => ch(checkpoint_channel).cur_src <= unsigned(checkpoint_write_data(27 downto 0));
+                        when 4 => ch(checkpoint_channel).cur_dst <= unsigned(checkpoint_write_data(27 downto 0));
+                        when others =>
+                           ch(checkpoint_channel).remain <= unsigned(checkpoint_write_data(21 downto 0));
+                           ch(checkpoint_channel).pend <= checkpoint_write_data(31);
+                     end case;
+                  else
+                  case checkpoint_word is
+                     when 24 to 27 => fill(checkpoint_word-24) <= checkpoint_write_data;
+                     when 28 =>
+                        active <= to_integer(unsigned(checkpoint_write_data(1 downto 0)));
+                        trig_gx_d <= checkpoint_write_data(2); pf_valid <= checkpoint_write_data(3); pn_valid <= checkpoint_write_data(4);
+                        gx_chunk_rem <= unsigned(checkpoint_write_data(11 downto 5));
+                        mr_op_read <= checkpoint_write_data(12); mr_req_pref <= checkpoint_write_data(13);
+                     when 29 => rdval <= checkpoint_write_data;
+                     when 30 => pf_blk <= unsigned(checkpoint_write_data(18 downto 0));
+                     when 31 => pf_data(31 downto 0) <= checkpoint_write_data;
+                     when 32 => pf_data(63 downto 32) <= checkpoint_write_data;
+                     when 33 => pn_blk <= unsigned(checkpoint_write_data(18 downto 0));
+                     when 34 => pn_data(31 downto 0) <= checkpoint_write_data;
+                     when 35 => pn_data(63 downto 32) <= checkpoint_write_data;
+                     when 36 => mr_req_blk <= unsigned(checkpoint_write_data(18 downto 0));
+                     when others => null;
+                  end case;
+                  end if;
+               end if;
+            else
+               ch <= (others => CHAN_INIT);
+               pf_valid <= '0'; pn_valid <= '0';
+               gx_chunk_rem <= (others => '0'); trig_gx_d <= '0';
+            end if;
             state  <= IDLE;
-            pf_valid <= '0';
-            pn_valid <= '0';
+
             mr_busy  <= '0';
             dma_on <= '0';
             dma_bus_on <= '0';
             io_read_overlap <= '0';
-            gx_chunk_rem <= (others => '0');
-            trig_gx_d <= '0';
+
          else
 
             -- -------- CPU register writes --------

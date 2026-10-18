@@ -43,8 +43,9 @@ python3 - "$p/nds_dma7.vhd" <<'PYCODE'
 from pathlib import Path
 import sys
 s=Path(sys.argv[1]).read_text()
-assert s.count('if EXPERIMENTAL_CHECKPOINT and')==1
-Path('lost-latch-event.vhd').write_text(s.replace('if EXPERIMENTAL_CHECKPOINT and','if false and'))
+needle='if EXPERIMENTAL_CHECKPOINT and\n                     ((trig_vblank'
+assert s.count(needle)==1
+Path('lost-latch-event.vhd').write_text(s.replace(needle,'if false and\n                     ((trig_vblank'))
 PYCODE
 nvc --std=2008 -a lost-latch-event.vhd "$repo/rtl/tb_nds_checkpoint_dma.vhd"
 nvc --std=2008 -e -gARM9=false tb_nds_checkpoint_dma
