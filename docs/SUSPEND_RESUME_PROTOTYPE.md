@@ -37,8 +37,8 @@ The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
 state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
-transactions, completed arithmetic and system-control registers across fresh
-simulator processes. These ports remain unconnected to the console control
+transactions, completed arithmetic, system-control registers and the RTC's
+calendar/partial serial state across fresh simulator processes. These ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
@@ -336,7 +336,7 @@ owners' external backing-cache restore contracts remain missing.
 ### RTC, physical inputs and math retirement
 
 The clock is a battery-time exception to the gameplay hold. The default-off
-RTC extension **does not stop or rewind the running calendar**. It samples all
+RTC capture extension **does not stop or rewind the running calendar**. It samples all
 seven date/time bytes and the subsecond divider on one edge, after four quiet
 bus edges and a settled seed synchronizer. Both values describe the state
 before that sampling edge. The sample remains stable even across midnight;
@@ -348,10 +348,10 @@ In CPU-only mode this remains a local timestamp requested during acquisition.
 The optional common-owner mode now requests it after the other owners settle.
 The host still needs to pair that final sample with an elapsed real-time
 reference. Host seed ownership must be held separately: this observer
-cannot prevent a seed from arriving after synchronization. RTC serial/status
-state still needs serialization, including a partial read buffer that must not
-be replaced by the later live time. Restore catch-up and the existing offline
-clock policy have not yet been joined to a suspend image.
+cannot prevent a seed from arriving after synchronization. The component image
+described below now preserves RTC serial/status state, including a partial read
+buffer that must not be replaced by the later live time. Restore catch-up and
+the existing offline clock policy have not yet been joined to a suspend image.
 
 `nds_checkpoint_inputs.vhd` captures one 31-bit word containing all twelve
 buttons, touch X/Y and activity, lid and microphone-blow levels. The console
@@ -855,6 +855,73 @@ virtual-clock warnings are expected, and no timing or gameplay-speed result is
 inferred. The remaining cost still needs a complete-core resource check before
 this can be accepted for a gameplay beta.
 
+## RTC component persistence
+
+`rtl/nds_nitro_rtc.vhd` now has a nine-word image behind its existing default-off
+`EXPERIMENTAL_CHECKPOINT` generic. Capture combines the coherent pre-edge
+calendar/fraction sample with serial state that is stable under the quiet-bus
+and host-seed ownership contract. Image reads do not stop the battery clock.
+An in-progress date read retains the original reply buffer even when the live
+calendar advances during the hold.
+
+| Word | Live state retained |
+| --- | --- |
+| 0 | GPIO latch 15:0, partial input byte 23:16, current command 31:24 |
+| 1 | Input bit 2:0 and byte 6:3; output bit 9:7 and byte 12:10; status1 20:13, status2 28:21; seed phase 29, seed-valid 30, guest-write toggle 31 |
+| 2 | Reply bytes 0–3, least significant byte first |
+| 3 | Reply bytes 4–6 in 23:0, clock-adjust storage 31:24 |
+| 4 | Alarm1 bytes 0–2 in 23:0, free register 31:24 |
+| 5 | Alarm2 bytes 0–2 in 23:0; upper byte zero |
+| 6 | Sampled year/month/day/weekday, least significant byte first |
+| 7 | Sampled canonical 24-hour hour/minute/second in 23:0; upper byte zero |
+| 8 | Sampled subsecond divider; must be below `CYCLES_PER_SECOND` |
+
+Restore writes the live state directly while reset and `checkpoint_restore`
+are both asserted; **only this explicit restore freezes calendar advancement**.
+Ordinary guest reset and checkpoint capture continue to tick as before. Every
+word must arrive in ascending order, with the guest bus inactive. Duplicates,
+skips, extra words, invalid fields, bus activity or a live restore attempt poison
+the attempt until withdrawal and a complete retry. Reset must remain held on
+any failure. Missing words cannot produce a ready image, and readback is only
+valid for a captured image or a complete reset-held restore.
+
+Calendar validation checks BCD and individual field ranges. It deliberately
+accepts February 31 or February 29 in a non-leap year when left temporarily by
+a partial guest date write; normalizing that intermediate state would change
+the remainder of the guest command. The existing guest field-write and tick
+logic decide the later result. Alarm storage is preserved; this adds no alarm
+interrupt or oscillator-trim behavior.
+
+The seed synchronizer continues running during restore, but seed commands are
+suppressed. Readiness additionally requires its phase to match the restored
+`seed_seen` and remain settled for three edges after the load. The host must
+restore and hold the matching sender phase. Merely rebasing to a new phase
+could discard a real seed or overwrite restored time. An inactive seed payload
+does not need to match the old payload; the next real seed uses the normal CDC
+path. The external guest-write sequence/consumer phase must also be restored
+coherently; the local toggle is not a substitute for that host bridge state.
+
+`tools/test_checkpoint_rtc_restore.sh` captures 20 scenarios and restores each
+in two fresh simulator processes, with zero or variable load gaps. Each capture
+matches immutable pre-image revision `574ec66`. Continuations compare the
+calendar, exact fractional phase, GPIO response, bus acknowledgement and
+guest-write toggle. Coverage includes offline/unseeded startup, both host seed
+phases, both notification phases, 12/24-hour reads, partial command/input/output
+bytes, all register selectors, partial invalid calendar dates, saturated serial
+positions, leap-day/year rollover, software reset and ordinary guest reset.
+The restore test uses a different dormant host seed payload, rejects a wrong
+sender phase, then verifies a new real seed after release.
+
+The golden clock continues while its image is read. The fixture records that
+known quiet-cycle delay separately and advances the restored clock by exactly
+that many cycles before comparing continuations. It never replays the prior
+serial command prefix or substitutes a new seed. This simulation alignment
+**does not implement time elapsed during a real suspend**. Twelve deliberate
+faults are detected, including eight lost fields detected from continuation
+with image readback comparisons disabled. Existing RTC/input and calendar
+regressions also pass. Console ports remain unconnected; elapsed-time/offline
+policy, host epochs and whole-machine restore remain required before a beta.
+
 ## Arithmetic and system-control component persistence
 
 The product `nds_nitro_arm9_math_unit.sv` and `nds_syscnt.vhd` now expose ordered
@@ -1354,8 +1421,9 @@ bash tools/test_nitro_rtc_vhdl.sh
   calculation retires. All are detected. Existing Gregorian/BCD/hour-mode RTC
   tests also pass with the feature disabled.
 
-These checks do not implement RTC/math serialization, elapsed-time restoration,
-full-machine capture or a gameplay beta. They make no hardware speed claim.
+These observer checks are separate from the RTC/math component restore proofs
+above. They do not implement elapsed-time restoration, full-machine capture or
+a gameplay beta, and make no hardware speed claim.
 
 Common-owner acquisition checks:
 
@@ -1535,10 +1603,10 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control component restore tested; raster/RTC and other state plus real external ownership still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC component restore tested; raster/display and other state plus real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
-| RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
+| RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; calendar/partial serial component restore tested; elapsed-time restore and host integration missing |
 | Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | Optional common-owner barrier, lease/read guards and final RTC ordering tested; authored enabled-console acquisition/read/release passes; real external ownership, host connection and restore ordering missing |
 
 Current H3D lifecycle quiesce **destroys the renderer** before acknowledgement;

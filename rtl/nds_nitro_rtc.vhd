@@ -63,7 +63,17 @@ entity nds_nitro_rtc is
       checkpoint_request : in std_logic := '0';
       checkpoint_ready : out std_logic := '0';
       checkpoint_datetime : out std_logic_vector(55 downto 0) := (others => '0');
-      checkpoint_subsecond : out unsigned(31 downto 0) := (others => '0')
+      checkpoint_subsecond : out unsigned(31 downto 0) := (others => '0');
+      -- Nine ordered words; calendar/fraction use the coherent sample above.
+      -- Host seed ownership and its toggle phase must be restored separately.
+      checkpoint_address : in unsigned(3 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -108,6 +118,10 @@ architecture arch of nds_nitro_rtc is
    signal freereg    : std_logic_vector(7 downto 0) := x"00";
 
    signal sec_div    : integer range 0 to CYCLES_PER_SECOND - 1 := 0;
+   signal seed_settled, restore_active, restore_write_valid : std_logic;
+   signal restore_count : unsigned(3 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+   signal restore_quiet : natural range 0 to 3 := 0;
 
    -- bit-reverse table for the 0x6X command form (melonDS rev[])
    type t_rev is array (0 to 15) of std_logic_vector(7 downto 0);
@@ -250,15 +264,88 @@ architecture arch of nds_nitro_rtc is
       return r;
    end function;
 
+   function valid_word(a : unsigned(3 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 | 2 | 3 | 4 => return true;
+         when 1 => return unsigned(d(12 downto 10)) < 7;
+         when 5 => return d(31 downto 24) = x"00";
+         when 6 =>
+            -- A partial guest date write can temporarily leave February 31.
+            -- Validate individual fields, not a completed Gregorian date.
+            return sanitize(d(7 downto 0),0,99) = d(7 downto 0) and
+               sanitize(d(15 downto 8),1,12) = d(15 downto 8) and
+               sanitize(d(23 downto 16),1,31) = d(23 downto 16) and
+               sanitize(d(31 downto 24),0,6) = d(31 downto 24);
+         when 7 => return d(31 downto 24) = x"00" and
+            sanitize(d(7 downto 0),0,23) = d(7 downto 0) and
+            sanitize(d(15 downto 8),0,59) = d(15 downto 8) and
+            sanitize(d(23 downto 16),0,59) = d(23 downto 16);
+         when 8 => return unsigned(d) < to_unsigned(CYCLES_PER_SECOND,32);
+         when others => return false;
+      end case;
+   end function;
+
 begin
+
+   seed_settled <= '1' when seed_toggle_sync = (seed_seen & seed_seen & seed_seen) else '0';
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   restore_write_valid <= '1' when restore_active = '1' and bus7.ena = '0' and restore_error = '0' and checkpoint_write = '1' and
+      restore_count < 9 and checkpoint_address = restore_count and valid_word(checkpoint_address,checkpoint_write_data) else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and bus7.ena = '0' and restore_error = '0' and
+      restore_count = 9 and checkpoint_write = '0' and seed_settled = '1' and restore_quiet = 3 else '0';
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_count <= (others => '0'); restore_error <= '0'; restore_quiet <= 0;
+         elsif reset = '0' or bus7.ena = '1' then
+            restore_error <= '1'; restore_quiet <= 0;
+         elsif checkpoint_write = '1' then
+            restore_quiet <= 0;
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         elsif restore_count = 9 and seed_settled = '1' then
+            if restore_quiet < 3 then restore_quiet <= restore_quiet + 1; end if;
+         else restore_quiet <= 0;
+         end if;
+      end if;
+   end process;
+
+   process(all)
+      variable sampled : std_logic_vector(55 downto 0);
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      sampled := checkpoint_datetime;
+      if checkpoint_restore_ready = '1' then sampled := rtc_datetime; end if;
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < 9 and
+         ((checkpoint_ready = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data <= cur_cmd & in_byte & io_reg;
+            when 1 => checkpoint_data <= date_toggle & seed_valid & seed_seen & status2 & status1 &
+               std_logic_vector(to_unsigned(out_pos,3)) & std_logic_vector(to_unsigned(out_bit,3)) &
+               std_logic_vector(to_unsigned(in_pos,4)) & std_logic_vector(to_unsigned(in_bit,3));
+            when 2 => checkpoint_data <= out_buf(3) & out_buf(2) & out_buf(1) & out_buf(0);
+            when 3 => checkpoint_data <= clockadj & out_buf(6) & out_buf(5) & out_buf(4);
+            when 4 => checkpoint_data <= freereg & alarm1(2) & alarm1(1) & alarm1(0);
+            when 5 => checkpoint_data(23 downto 0) <= alarm2(2) & alarm2(1) & alarm2(0);
+            when 6 => checkpoint_data <= sampled(31 downto 0);
+            when 7 => checkpoint_data(23 downto 0) <= sampled(55 downto 32);
+            when 8 =>
+               if checkpoint_restore_ready = '1' then checkpoint_data <= std_logic_vector(to_unsigned(sec_div,checkpoint_data'length));
+               else checkpoint_data <= std_logic_vector(checkpoint_subsecond); end if;
+            when others => null;
+         end case;
+      end if;
+   end process;
 
    gcheckpoint : if EXPERIMENTAL_CHECKPOINT generate
       signal valid : std_logic := '0';
       signal quiet : integer range 0 to 3 := 0;
       signal generation : std_logic := '0';
-      signal seed_settled : std_logic;
    begin
-      seed_settled <= '1' when seed_toggle_sync = (seed_seen & seed_seen & seed_seen) else '0';
       -- Revoke before any guest bus edge or synchronized seed delivery can
       -- mutate the captured context. A new host seed after capture requires
       -- another sample; a host must not send seeds during a machine lease.
@@ -308,6 +395,34 @@ begin
          seed_meta <= rtc_seed;
          seed_sync <= seed_meta;
          seed_toggle_sync <= seed_toggle_sync(1 downto 0) & rtc_seed_toggle;
+         if restore_active = '1' then
+            -- Only explicit reset-held restore stops calendar advancement.
+            -- Ordinary capture/reset keeps battery time running as before.
+            -- Keep the CDC synchronizer running, but suppress seed commands;
+            -- readiness requires its phase to match the restored sender epoch.
+            if restore_write_valid = '1' then
+               case to_integer(checkpoint_address) is
+                  when 0 => io_reg <= checkpoint_write_data(15 downto 0); in_byte <= checkpoint_write_data(23 downto 16); cur_cmd <= checkpoint_write_data(31 downto 24);
+                  when 1 =>
+                     in_bit <= to_integer(unsigned(checkpoint_write_data(2 downto 0))); in_pos <= to_integer(unsigned(checkpoint_write_data(6 downto 3)));
+                     out_bit <= to_integer(unsigned(checkpoint_write_data(9 downto 7))); out_pos <= to_integer(unsigned(checkpoint_write_data(12 downto 10)));
+                     status1 <= checkpoint_write_data(20 downto 13); status2 <= checkpoint_write_data(28 downto 21);
+                     seed_seen <= checkpoint_write_data(29); seed_valid <= checkpoint_write_data(30); date_toggle <= checkpoint_write_data(31);
+                  when 2 => for i in 0 to 3 loop out_buf(i) <= checkpoint_write_data(i*8+7 downto i*8); end loop;
+                  when 3 =>
+                     for i in 0 to 2 loop out_buf(i+4) <= checkpoint_write_data(i*8+7 downto i*8); end loop;
+                     clockadj <= checkpoint_write_data(31 downto 24);
+                  when 4 =>
+                     for i in 0 to 2 loop alarm1(i) <= checkpoint_write_data(i*8+7 downto i*8); end loop;
+                     freereg <= checkpoint_write_data(31 downto 24);
+                  when 5 => for i in 0 to 2 loop alarm2(i) <= checkpoint_write_data(i*8+7 downto i*8); end loop;
+                  when 6 => for i in 0 to 3 loop datetime(i) <= checkpoint_write_data(i*8+7 downto i*8); end loop;
+                  when 7 => for i in 0 to 2 loop datetime(i+4) <= checkpoint_write_data(i*8+7 downto i*8); end loop;
+                  when 8 => sec_div <= to_integer(unsigned(checkpoint_write_data));
+                  when others => null;
+               end case;
+            end if;
+         else
          next_dt := datetime;
 
          -- The battery clock keeps running while the CPUs are held for reset,
@@ -474,6 +589,7 @@ begin
             status1(7) <= '0';
          end if;
          datetime <= next_dt;
+         end if;
 
       end if;
    end process;
