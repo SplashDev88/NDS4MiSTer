@@ -453,6 +453,7 @@ entity nds_nitro_console_top is
       checkpoint_mainram_idle, checkpoint_vram_idle : out std_logic := '0';
       checkpoint_arm7_memory_idle, checkpoint_shared_wram_idle : out std_logic := '0';
       checkpoint_irq_idle, checkpoint_ipc_idle : out std_logic := '0';
+      checkpoint_card_stopped, checkpoint_spi_stopped : out std_logic := '0';
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
       checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
       checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
@@ -477,6 +478,7 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_mainram_idle_s, checkpoint_vram_idle_s : std_logic;
    signal checkpoint_memory7_idle_s, checkpoint_shared_wram_idle_s : std_logic;
    signal checkpoint_irq9_idle_s, checkpoint_irq7_idle_s, checkpoint_ipc_idle_s : std_logic;
+   signal checkpoint_card_stop : std_logic;
    signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
    signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
    attribute async_reg : string;
@@ -1533,11 +1535,13 @@ begin
    (
       -- 4x the cart bus. Not hardware-faithful and deliberately so: see the
       -- Timing note in nds_card.vhd. Set to 0 to get NTR pacing back.
-      CARDSPEED_SHIFT => 2
+      CARDSPEED_SHIFT => 2,
+      EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE
    )
    port map
    (
       clk => clk1x, ce => '1', reset => resetCpu,
+      checkpoint_stop => checkpoint_card_stop, checkpoint_stopped => checkpoint_card_stopped,
       card7 => exmem_card7_s,
       fw_boot => fw_boot,
       chipid => ld_cartid,
@@ -2100,6 +2104,10 @@ begin
       checkpoint_shared_wram_idle <= checkpoint_shared_wram_idle_s and not resetCpu;
       checkpoint_irq_idle <= checkpoint_irq9_idle_s and checkpoint_irq7_idle_s;
       checkpoint_ipc_idle <= checkpoint_ipc_idle_s;
+      -- An admitted card DMA must still receive its remaining words. Stop the
+      -- card only after both DMA controllers have drained; new DMA admissions
+      -- have already been blocked by checkpoint_hold_request.
+      checkpoint_card_stop <= checkpoint_hold_request and checkpoint_dma9_stopped and checkpoint_dma7_stopped;
       checkpoint_timing_stopped <= checkpoint_timer9_stopped and checkpoint_timer7_stopped and checkpoint_raster_stopped;
       process(clk1x) begin
          if rising_edge(clk1x) then
@@ -2133,6 +2141,7 @@ begin
       checkpoint_mainram_idle <= '0'; checkpoint_vram_idle <= '0';
       checkpoint_arm7_memory_idle <= '0'; checkpoint_shared_wram_idle <= '0';
       checkpoint_irq_idle <= '0'; checkpoint_ipc_idle <= '0';
+      checkpoint_card_stop <= '0';
       checkpoint_ready <= '0'; checkpoint_busy <= '0'; checkpoint_pair_paused <= '0';
       checkpoint_timed_out <= '0'; checkpoint_release_stalled <= '0'; checkpoint_lease_expired <= '0';
       checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
@@ -2853,9 +2862,11 @@ begin
    -- Product-local derivative: adds the firmware write-back path the donor
    -- lacks (its image is a read-only fixture). See rtl/nds_nitro_spi.vhd.
    ispi : entity work.nds_nitro_spi
+   generic map (EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE)
    port map
    (
       clk => clk1x, reset => resetCpu,
+      checkpoint_stop => checkpoint_hold_request, checkpoint_stopped => checkpoint_spi_stopped,
       bus7 => io_bus7, wired_out7 => spi_wired_out7, wired_done7 => spi_wired_done7,
       irq_spi => irq7_spi, irq_lid => irq7_lid,
       lid_closed => lid_closed, mic_blow => mic_blow,

@@ -99,7 +99,8 @@ entity nds_card is
       -- Image words fetched ahead of the cart bus. 1 = the old behaviour with
       -- the fetch merely moved off the critical path. Max 7: the queue depth is
       -- reported in the 3-bit dbg_card field.
-      CARDPREFETCH    : integer := 4
+      CARDPREFETCH    : integer := 4;
+      EXPERIMENTAL_CHECKPOINT : boolean := false
    );
    port
    (
@@ -160,7 +161,9 @@ entity nds_card is
       card_ena     : out std_logic := '0';
       card_addr    : out std_logic_vector(28 downto 2) := (others => '0');
       card_din     : in  std_logic_vector(31 downto 0);
-      card_done    : in  std_logic
+      card_done    : in  std_logic;
+      checkpoint_stop : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0'
    );
 end entity;
 
@@ -278,6 +281,7 @@ architecture arch of nds_card is
    signal erase_remaining : unsigned(16 downto 0) := (others => '0');
    signal auxspi_rd   : std_logic_vector(31 downto 0);
    signal spi_busy_bit : std_logic;
+   signal stop_card : std_logic;
 
    function masked_save_addr(
       addr : unsigned(19 downto 0);
@@ -308,6 +312,19 @@ architecture arch of nds_card is
    end function;
 
 begin
+
+   stop_card <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   -- Partial owner boundary, not a durable save-cache acknowledgement.
+   -- A transfer may still be busy with queued/unconsumed words, or an erase
+   -- may have bytes remaining. Those are retained state for serialization.
+   checkpoint_stopped <= '1' when stop_card = '1' and reset = '0' and
+      bus9.ena = '0' and bus7.ena = '0' and pf_inflt = '0' and
+      card_ena = '0' and card_done = '0' and spi_busy = 0 and
+      sram_we_r = '0' and pop_req = '0' and
+      (backup_access_r = '0' or backup_cache_ready = '1') and
+      (erase_active = '0' or backup_cache_ready = '1') and
+      irq9_xfer = '0' and irq7_xfer = '0' and dma9_card = '0' and dma7_card = '0'
+      else '0';
 
    backup_addr <= std_logic_vector(masked_save_addr(sram_wa_r, backup_save_type)) when
                      sram_we_r = '1' else
@@ -450,7 +467,7 @@ begin
             -- byte port as program/write.  Page erase covers 256 bytes and
             -- sector erase 64 KiB; crossing a 512-byte cache boundary naturally
             -- stalls here until the bridge flushes and loads the next sector.
-            if (erase_active = '1' and backup_cache_ready = '1') then
+            if (erase_active = '1' and backup_cache_ready = '1' and stop_card = '0') then
                sram_we_r <= '1';
                sram_wa_r <= erase_addr;
                sram_wd_r <= x"FF";
@@ -883,6 +900,10 @@ begin
             end if;
 
             -- -------- transfer FSM --------
+            -- Freeze virtual pacing and word publication, but consume a data
+            -- read already accepted from a still-draining bus master. Register
+            -- writes above remain live too. A landing prefetch is always kept.
+            if stop_card = '0' or v_pop = '1' then
             case state is
 
                when IDLE => null;
@@ -972,13 +993,14 @@ begin
                   state <= IDLE;
 
             end case;
+            end if;
 
             -- -------- prefetch queue: fetch engine --------
             -- Runs on its own, ahead of the cart bus, one request in flight
             -- (NDS.sv's pager and ddram ch2 both serve exactly one) and never
             -- past the end of the block. This is the whole speedup: the pacing
             -- delays now cover the image fetches instead of following them.
-            if (busy = '1' and cmd_b7 = '1' and v_inflt = '0' and
+            if (stop_card = '0' and busy = '1' and cmd_b7 = '1' and v_inflt = '0' and
                 v_pfcnt < CARDPREFETCH and pf_asked < xferlen) then
                card_ena  <= '1';
                card_addr <= std_logic_vector(eff_addr(b7_addr, cmd_redir)(28 downto 2));

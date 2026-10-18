@@ -26,7 +26,8 @@ component steps add DMA admission stopping/draining, ARM9 memory-island idle
 status, audio drain/pause, raster/timer event stopping and memory-owner drain
 observers, including the ARM7 bus and shared WRAM. IRQ and IPC observations
 also verify that accepted events have settled without clearing pending flags
-or messages. Remaining crossings, devices and the renderer still lack a common
+or messages. Cartridge/SPI stops retain partial transactions and drain issued
+backing requests. Remaining crossings, devices and the renderer still lack a common
 freeze boundary; these partial signals do not authorize a whole-machine checkpoint.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
@@ -223,6 +224,44 @@ The console exports `checkpoint_sound_stopped` and `checkpoint_timing_stopped`
 for the CPU hold, memory-owner drain or IRQ/CDC/renderer freeze. None of these
 devices has a complete serializer/restore interface yet. Audio output muting
 and restoration of the physical output path also remain integration work.
+
+### Cartridge and SPI stopping
+
+Both owners have default-disabled `EXPERIMENTAL_CHECKPOINT` support. The
+console exposes `checkpoint_card_stopped` and `checkpoint_spi_stopped` as
+partial owner acknowledgements. New register accesses remain live during
+acquisition and immediately withdraw the corresponding acknowledgement.
+
+- The cartridge freezes ROM pacing, new word publication and new prefetch
+  requests. An issued backing request still lands in its original queue slot.
+  Busy transfers, queued words and a published but unconsumed word are retained;
+  no fake data-port read is used to finish a block. A data-port read already
+  accepted during acquisition still consumes exactly one word and emits its
+  ordinary completion IRQ if it was the final word.
+- A flash erase pauses between byte issues. Its address/count remain intact,
+  while an already emitted write commits and its write notification retires.
+  An accepted AUXSPI byte finishes its busy countdown. The observer also waits
+  for the active backup-cache address to become ready. This is a **local**
+  boundary: dirty backing-cache contents and external persistence transactions
+  still need their own snapshot/durability contract.
+- The console stops the cartridge only after both DMA controllers acknowledge
+  their admission stop/drain. This lets an admitted DMA finish receiving data;
+  a word-ready trigger arriving during acquisition remains pending for resume.
+  Cartridge clock enable must remain active while accepted work drains.
+- Product SPI finishes an accepted byte, including its real firmware read/write
+  response, chip-select release pulse and IRQ. Command/address, PM registers,
+  touchscreen conversion and microphone history survive the stop. `fw_busy`
+  belongs to the external firmware cache; local SPI acknowledgement does not
+  mean its dirty data is durable or its host traffic has stopped.
+- SPI holds the last observed lid state. After release it samples the current
+  physical lid and emits the usual reopen IRQ if appropriate. Transient lid
+  changes entirely inside the hold are not replayed as an event log. The
+  console's other input reads and RTC still need a common input/freeze policy.
+
+A missing backing response prevents acknowledgement. Cancelling the stop
+preserves the outstanding request and permits normal progress when the real
+response arrives. Common reset invalidates the acknowledgement. No complete
+cartridge/SPI serializer or persistent restore path is implemented yet.
 
 ### IRQ and IPC retirement observations
 
@@ -516,6 +555,41 @@ bash tools/test_checkpoint_irq_ipc.sh
 This verifies retirement and behavioral equivalence only. IRQ sources and
 bus masters still need a common freeze, and no IRQ/IPC image is restored yet.
 
+Cartridge/SPI checks:
+
+```sh
+bash tools/test_checkpoint_card.sh
+bash tools/test_checkpoint_spi.sh
+bash tools/test_checkpoint_card_dma.sh
+```
+
+- 36 cartridge configurations cover both CPU owners, prefetch depths 1/4/7,
+  backing latencies 1/17/97 clocks and checkpoint exercises on/off. Unrequested
+  runs compare every original output with the pre-change `372cba7` RTL at both
+  clock phases. Paused runs cover all six transfer FSM states, accepted register
+  writes/data reads while held, withheld replies, cancel/retry, page programs,
+  a partial 256-byte erase, backing-cache readiness and reset. Independent
+  patterns verify every resumed word/address and every erase byte in order.
+- 18 SPI configurations cover backing delays 1/97/1500, baud settings 0/3 and
+  stop offsets 0/17/63. Every byte drains against the original source's output
+  timing, including program 02h/0Ah, delayed reads, RDSR persistence status,
+  chip-select release, PM registers, touchscreen and microphone transactions.
+  Missing replies/cancellation and held/released lid transitions are checked.
+- Six actual DMA/cartridge combinations cover both CPUs and response latencies
+  1/17/97. Each transfers 128 independently checked words through repeated
+  holds, retaining exact read/write/IRQ counts. An unavailable memory response
+  prevents DMA acknowledgement and keeps the cartridge's stop deasserted.
+  This uses a modeled ARM7 memory-bus response and actual ARM9 fast IO;
+  it is not an enabled full-console simulation.
+- Seven negative controls run pacing/prefetch/erase while held, drop a card or
+  firmware reply, allow a held lid wake, or stop the cartridge before DMA drain.
+  All are detected. Existing back-to-back card and save-transaction regressions
+  also pass with the feature disabled.
+
+These prove component stop/drain and resume-after-cancellation behavior, not
+persistent cartridge/SPI state restoration, cache durability, timing closure
+or gameplay suspend/resume.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -590,7 +664,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA drain, timer/raster stop and IRQ/IPC retirement tested; remaining owners, coherent freeze and serializers missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC retirement tested; backing caches, remaining owners, coherent freeze and serializers missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
@@ -605,8 +679,9 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 1. Extend the optional CPU-only console wiring into a coherent machine freeze.
    Combine the tested CPU/DMA/audio/event stops and memory-owner idle
-   signals and IRQ/IPC retirement with the remaining CDC/debug/loader owners,
-   device events and lid-sleep control, verifying no pending
+   signals, card/SPI stops and IRQ/IPC retirement with the remaining
+   CDC/debug/loader/backing-cache owners, device events and lid-sleep control,
+   verifying no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.

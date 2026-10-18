@@ -43,6 +43,7 @@ use work.pProc_bus_gba.all;
 -- outright and boots the game, so this follows melonDS rather than the
 -- stricter hardware behaviour.
 entity nds_nitro_spi is
+   generic (EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk         : in  std_logic;
@@ -83,7 +84,9 @@ entity nds_nitro_spi is
 
       lid_closed  : in std_logic := '0';
       mic_blow    : in std_logic := '0';
-      irq_lid     : out std_logic := '0'
+      irq_lid     : out std_logic := '0';
+      checkpoint_stop : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0'
    );
 end entity;
 
@@ -141,8 +144,18 @@ architecture arch of nds_nitro_spi is
    signal tsc_data    : std_logic_vector(7 downto 0) := (others => '0');
    signal tsc_datapos : unsigned(1 downto 0) := (others => '0');
    signal tsc_conv    : unsigned(11 downto 0) := (others => '0');
+   signal stop_spi : std_logic;
 
 begin
+
+   stop_spi <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   -- Byte completion drains its actual backing response and IRQ. Chip-select
+   -- and command state remain intact. fw_busy belongs to the external cache,
+   -- whose dirty data/host transactions require a separate capture contract.
+   checkpoint_stopped <= '1' when stop_spi = '1' and reset = '0' and
+      bus7.ena = '0' and cnt(7) = '0' and fw_pend = '0' and fw_done = '0' and
+      fw_req = '0' and fw_wr = '0' and fw_release = '0' and
+      irq_spi = '0' and irq_lid = '0' else '0';
 
    rdata <= x"00"   when (cnt(15) = '0' or cnt(7) = '1') else
             pm_data when (cnt(9 downto 8) = "00") else
@@ -189,8 +202,13 @@ begin
             tsc_datapos <= (others => '0');
             tsc_conv   <= (others => '0');
          else
+            -- Preserve the last observed lid while stopped. On release the
+            -- current physical state is sampled, producing at most the normal
+            -- reopen pulse. Input changes while stopped are not an event log.
+            if stop_spi = '0' then
             lid_was_closed <= lid_closed;
             irq_lid <= lid_was_closed and not lid_closed;
+            end if;
 
             -- firmware word fetch: request issued at transfer start, byte
             -- lane latched whenever the backing store answers (the busy
