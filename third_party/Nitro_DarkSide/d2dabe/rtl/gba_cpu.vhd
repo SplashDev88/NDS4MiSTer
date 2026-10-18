@@ -15,7 +15,8 @@ entity gba_cpu is
       -- actually writes and ties the rest to their startVal. See the
       -- "savestates" block below for why that is bit-exact. '0' restores the
       -- full bus, which is what a real savestate implementation would need.
-      SS_PRESET_ONLY : std_logic := '1'
+      SS_PRESET_ONLY : std_logic := '1';
+      EXPERIMENTAL_CHECKPOINT : boolean := false
    );
    port 
    (
@@ -62,11 +63,20 @@ entity gba_cpu is
       
       IRQ_in           : in    std_logic;
       unhalt           : in    std_logic;
-      new_halt         : in    std_logic
+      new_halt         : in    std_logic;
+      checkpoint_req  : in    std_logic := '0';
+      checkpoint_paused : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0'
    );
 end entity;
 
 architecture arch of gba_cpu is
+
+   signal cpu_ce, checkpoint_take : std_logic;
+   signal bus_lastread : std_logic_vector(31 downto 0);
+   signal checkpoint_held : std_logic := '0';
+   signal checkpoint_data : std_logic_vector(31 downto 0);
+   signal checkpoint_data_done : std_logic;
 
    -- ####################################
    -- ARM processor regs and states 
@@ -426,6 +436,37 @@ architecture arch of gba_cpu is
      
 begin  
 
+   -- CPU component checkpoint only. The top-level console does not enable it.
+   -- Retire a taken branch, drain its previous fetch and suppress the target
+   -- fetch. Both cancellation and a fresh reset can then refill at that PC.
+   cpu_ce <= ce and not checkpoint_held when EXPERIMENTAL_CHECKPOINT else ce;
+   checkpoint_paused <= checkpoint_held;
+   lastread <= bus_lastread;
+   gcheckpoint : if EXPERIMENTAL_CHECKPOINT generate
+   begin
+      assert SS_PRESET_ONLY = '0'
+         report "checkpoint requires the full CPU state bus" severity failure;
+      checkpoint_take <= '1' when reset = '0' and cpu_ce = '1' and
+         checkpoint_req = '1' and decode_functions_detail = branch_all and
+         execute_branch = '1' and execute_done = '1' and execute_stall = '0' and
+         (busState = BUSSTATE_IDLE or fetch_done = '1') and
+         dma_on = '0' and dma_on_1 = '0' and gb_bus_saved = '0' and
+         execute_RW_ena = '0' else '0';
+      process(clk) begin
+         if rising_edge(clk) then
+            if reset = '1' or checkpoint_req = '0' then
+               checkpoint_held <= '0';
+            elsif checkpoint_take = '1' then
+               checkpoint_held <= '1';
+            end if;
+         end if;
+      end process;
+   end generate;
+   gno_checkpoint : if not EXPERIMENTAL_CHECKPOINT generate
+      checkpoint_take <= '0';
+      checkpoint_held <= '0';
+   end generate;
+
    -- Synthesizable one-wire-bundle tap for temporary live-hardware
    -- diagnosis. Unlike cpu_export, this remains present when is_simu='0'.
    dbg_pc <= std_logic_vector(regs(15));
@@ -444,7 +485,7 @@ begin
       if rising_edge(clk) then
          if (reset = '1') then
             gb_bus_lock_active <= '0';
-         elsif (ce = '1') then
+         elsif (cpu_ce = '1') then
             if (execute_RW_ena = '1' and decode_datatransfer_swap = '1') then
                gb_bus_lock_active <= '1';
             elsif (gb_bus_lock_active = '1' and gb_bus_done = '1' and
@@ -478,6 +519,71 @@ begin
    
    cpu_halt   <= decode_halt;
    
+   -- Experimental ABI 1: live readback and direct loading while reset is
+   -- held. Reusing live register flops avoids a second full shadow bank.
+   -- PC still uses its boot shadow, so fetch can refill after reset releases.
+   gcheckpoint_read : if EXPERIMENTAL_CHECKPOINT generate
+      process(all) begin
+         checkpoint_data <= (others => '0');
+         checkpoint_data_done <= '1';
+         case to_integer(unsigned(savestate_bus.Adr)) is
+            when 0 => checkpoint_data <= SAVESTATE_PC_out;
+            when 1 => checkpoint_data <= std_logic_vector(regs(0));
+            when 2 => checkpoint_data <= std_logic_vector(regs(1));
+            when 3 => checkpoint_data <= std_logic_vector(regs(2));
+            when 4 => checkpoint_data <= std_logic_vector(regs(3));
+            when 5 => checkpoint_data <= std_logic_vector(regs(4));
+            when 6 => checkpoint_data <= std_logic_vector(regs(5));
+            when 7 => checkpoint_data <= std_logic_vector(regs(6));
+            when 8 => checkpoint_data <= std_logic_vector(regs(7));
+            when 9 => checkpoint_data <= std_logic_vector(regs(8));
+            when 10 => checkpoint_data <= std_logic_vector(regs(9));
+            when 11 => checkpoint_data <= std_logic_vector(regs(10));
+            when 12 => checkpoint_data <= std_logic_vector(regs(11));
+            when 13 => checkpoint_data <= std_logic_vector(regs(12));
+            when 14 => checkpoint_data <= std_logic_vector(regs(13));
+            when 15 => checkpoint_data <= std_logic_vector(regs(14));
+            when 16 => checkpoint_data <= std_logic_vector(regs(15));
+            when 17 => checkpoint_data <= std_logic_vector(CPSR);
+            when 18 => checkpoint_data <= std_logic_vector(SPSR);
+            when 19 => checkpoint_data <= std_logic_vector(regs_0_8);
+            when 20 => checkpoint_data <= std_logic_vector(regs_0_9);
+            when 21 => checkpoint_data <= std_logic_vector(regs_0_10);
+            when 22 => checkpoint_data <= std_logic_vector(regs_0_11);
+            when 23 => checkpoint_data <= std_logic_vector(regs_0_12);
+            when 24 => checkpoint_data <= std_logic_vector(regs_0_13);
+            when 25 => checkpoint_data <= std_logic_vector(regs_0_14);
+            when 26 => checkpoint_data <= std_logic_vector(regs_1_8);
+            when 27 => checkpoint_data <= std_logic_vector(regs_1_9);
+            when 28 => checkpoint_data <= std_logic_vector(regs_1_10);
+            when 29 => checkpoint_data <= std_logic_vector(regs_1_11);
+            when 30 => checkpoint_data <= std_logic_vector(regs_1_12);
+            when 31 => checkpoint_data <= std_logic_vector(regs_1_13);
+            when 32 => checkpoint_data <= std_logic_vector(regs_1_14);
+            when 33 => checkpoint_data <= std_logic_vector(regs_1_17);
+            when 34 => checkpoint_data <= std_logic_vector(regs_2_13);
+            when 35 => checkpoint_data <= std_logic_vector(regs_2_14);
+            when 36 => checkpoint_data <= std_logic_vector(regs_2_17);
+            when 37 => checkpoint_data <= std_logic_vector(regs_3_13);
+            when 38 => checkpoint_data <= std_logic_vector(regs_3_14);
+            when 39 => checkpoint_data <= std_logic_vector(regs_3_17);
+            when 40 => checkpoint_data <= std_logic_vector(regs_4_13);
+            when 41 => checkpoint_data <= std_logic_vector(regs_4_14);
+            when 42 => checkpoint_data <= std_logic_vector(regs_4_17);
+            when 43 => checkpoint_data <= std_logic_vector(regs_5_13);
+            when 44 => checkpoint_data <= std_logic_vector(regs_5_14);
+            when 45 => checkpoint_data <= std_logic_vector(regs_5_17);
+            when 46 => checkpoint_data <= x"00000" & SAVESTATE_mixed_out;
+            when 148 => checkpoint_data <= bus_lastread;
+            when others => checkpoint_data_done <= '0';
+         end case;
+      end process;
+   end generate;
+   gno_checkpoint_read : if not EXPERIMENTAL_CHECKPOINT generate
+      checkpoint_data <= (others => '0');
+      checkpoint_data_done <= '0';
+   end generate;
+
    -- savestates
    -- ---------------------------------------------------------------------
    -- This core has no savestates. nds_top drives the savestate bus for
@@ -505,7 +611,7 @@ begin
    -- both CPUs come up in and the reason nds_top can treat the plain r13 at
    -- address 14 as the supervisor stack. Tying this one off to zero instead
    -- would boot the ARM9 in user mode with interrupts already enabled.
-   gss_full : if SS_PRESET_ONLY = '0' generate
+   gss_full : if SS_PRESET_ONLY = '0' and not EXPERIMENTAL_CHECKPOINT generate
    begin
    gSAVESTATE_REGS : for i in 0 to 15 generate
    begin
@@ -547,7 +653,7 @@ begin
    
    iSAVESTATE_CPUMIXED  : entity work.eProcReg_gba generic map (REG_SAVESTATE_CPUMIXED)  port map (clk, savestate_bus, save_wired_or(46), save_wired_done(46), SAVESTATE_mixed_out , SAVESTATE_mixed_in);
    
-   process (save_wired_or)
+   process (all)
       variable wired_or : std_logic_vector(31 downto 0);
    begin
       wired_or := save_wired_or(0);
@@ -559,7 +665,7 @@ begin
    ss_wired_done <= '0' when (save_wired_done = 0) else '1';
    end generate;
 
-   gss_preset : if SS_PRESET_ONLY = '1' generate
+   gss_preset : if SS_PRESET_ONLY = '1' or EXPERIMENTAL_CHECKPOINT generate
    begin
       -- The seven registers nds_top's preset_adr actually writes. wired_out is
       -- mapped `open` so the per-register read mux and the 47-deep OR tree
@@ -617,8 +723,8 @@ begin
       -- flow depends on it.
       SAVESTATE_mixed_in <= std_logic_vector(to_unsigned(16#CC0#, 12));
 
-      ss_wired_out  <= (others => '0');
-      ss_wired_done <= '0';
+      ss_wired_out <= checkpoint_data when EXPERIMENTAL_CHECKPOINT else (others => '0');
+      ss_wired_done <= checkpoint_data_done when EXPERIMENTAL_CHECKPOINT else '0';
    end generate;
 
 
@@ -649,7 +755,7 @@ begin
       gb_bus_ena  <= '0';
       gb_bus_save <= '0';
 
-      if (reset = '0' and ce = '1') then
+      if (reset = '0' and cpu_ce = '1') then
 
          if (bus_accessFetch = '1' and (busState <= BUSSTATE_IDLE or gb_bus_done = '1')) then
             gb_bus_ena  <= not dma_on;
@@ -664,6 +770,8 @@ begin
          if (gb_bus_saved = '1' and dma_on = '0') then
             gb_bus_ena   <= '1';
          end if;
+
+         if checkpoint_take = '1' then gb_bus_ena <= '0'; end if;
 
       end if;
          
@@ -681,8 +789,13 @@ begin
             busState     <= BUSSTATE_IDLE;
             CPU_bus_idle <= '1';
             gb_bus_saved <= '0';
+            if EXPERIMENTAL_CHECKPOINT and checkpoint_restore = '1' and
+               savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
+               savestate_bus.bEna = "1111" and unsigned(savestate_bus.Adr) = 148 then
+               bus_lastread <= savestate_bus.Din;
+            end if;
             
-         elsif (ce = '1') then
+         elsif (cpu_ce = '1') then
          
             if (gb_bus_done = '1') then
                busState     <= BUSSTATE_IDLE;
@@ -690,9 +803,9 @@ begin
                
                -- todo
                if (thumbmode = '1') then 
-                  lastread     <= gb_bus_din(15 downto 0) & gb_bus_din(15 downto 0); 
+                  bus_lastread     <= gb_bus_din(15 downto 0) & gb_bus_din(15 downto 0);
                else
-                  lastread     <= gb_bus_din; 
+                  bus_lastread     <= gb_bus_din;
                end if;
             end if;
          
@@ -784,7 +897,7 @@ begin
             fetch_ready <= '0';
             fetch_first <= '1';
          
-         elsif (ce = '1') then
+         elsif (cpu_ce = '1') then
             
             fetch_first <= '0';
             
@@ -823,7 +936,7 @@ begin
             
             if (execute_branch = '1') then
                fetch_ready <= '0';
-               if ((execute_stall = '1' and execute_done = '0') or dma_on = '1') then
+               if ((execute_stall = '1' and execute_done = '0') or dma_on = '1' or checkpoint_take = '1') then
                   fetch_PC <= execute_branchPC_masked;
                end if;
             end if;
@@ -874,10 +987,17 @@ begin
          if (reset = '1') then
          
             decode_ready   <= '0';
-            decode_halt    <= SAVESTATE_HALT;
+            if EXPERIMENTAL_CHECKPOINT and checkpoint_restore = '1' then
+               if savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
+                  savestate_bus.bEna = "1111" and unsigned(savestate_bus.Adr) = 46 then
+                  decode_halt <= savestate_bus.Din(0);
+               end if;
+            else
+               decode_halt <= SAVESTATE_HALT;
+            end if;
             decode_unhalt  <= '0';
          
-         elsif (ce = '1') then
+         elsif (cpu_ce = '1') then
             
             decode_unhalt <= '0';
             
@@ -2308,7 +2428,7 @@ begin
    end process;
    
    -- outputs   
-   execute_now      <= ce when (fetch_done = '1' and decode_ready = '1' and decode_halt = '0' and execute_stall = '0') else 
+   execute_now      <= cpu_ce when (fetch_done = '1' and decode_ready = '1' and decode_halt = '0' and execute_stall = '0') else
                        '0';
    
    execute_branch   <= '1'                                  when (execute_writeback = '1' and execute_writereg = x"F") else 
@@ -2564,6 +2684,66 @@ begin
          if (reset = '1') then
          
             execute_stall    <= '0';
+            if EXPERIMENTAL_CHECKPOINT and checkpoint_restore = '1' then
+               if savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
+                  savestate_bus.bEna = "1111" then
+                  case to_integer(unsigned(savestate_bus.Adr)) is
+                     when 1 => regs(0) <= unsigned(savestate_bus.Din);
+                     when 2 => regs(1) <= unsigned(savestate_bus.Din);
+                     when 3 => regs(2) <= unsigned(savestate_bus.Din);
+                     when 4 => regs(3) <= unsigned(savestate_bus.Din);
+                     when 5 => regs(4) <= unsigned(savestate_bus.Din);
+                     when 6 => regs(5) <= unsigned(savestate_bus.Din);
+                     when 7 => regs(6) <= unsigned(savestate_bus.Din);
+                     when 8 => regs(7) <= unsigned(savestate_bus.Din);
+                     when 9 => regs(8) <= unsigned(savestate_bus.Din);
+                     when 10 => regs(9) <= unsigned(savestate_bus.Din);
+                     when 11 => regs(10) <= unsigned(savestate_bus.Din);
+                     when 12 => regs(11) <= unsigned(savestate_bus.Din);
+                     when 13 => regs(12) <= unsigned(savestate_bus.Din);
+                     when 14 => regs(13) <= unsigned(savestate_bus.Din);
+                     when 15 => regs(14) <= unsigned(savestate_bus.Din);
+                     when 16 => regs(15) <= unsigned(savestate_bus.Din);
+                     when 19 => regs_0_8 <= unsigned(savestate_bus.Din);
+                     when 20 => regs_0_9 <= unsigned(savestate_bus.Din);
+                     when 21 => regs_0_10 <= unsigned(savestate_bus.Din);
+                     when 22 => regs_0_11 <= unsigned(savestate_bus.Din);
+                     when 23 => regs_0_12 <= unsigned(savestate_bus.Din);
+                     when 24 => regs_0_13 <= unsigned(savestate_bus.Din);
+                     when 25 => regs_0_14 <= unsigned(savestate_bus.Din);
+                     when 26 => regs_1_8 <= unsigned(savestate_bus.Din);
+                     when 27 => regs_1_9 <= unsigned(savestate_bus.Din);
+                     when 28 => regs_1_10 <= unsigned(savestate_bus.Din);
+                     when 29 => regs_1_11 <= unsigned(savestate_bus.Din);
+                     when 30 => regs_1_12 <= unsigned(savestate_bus.Din);
+                     when 31 => regs_1_13 <= unsigned(savestate_bus.Din);
+                     when 32 => regs_1_14 <= unsigned(savestate_bus.Din);
+                     when 33 => regs_1_17 <= unsigned(savestate_bus.Din);
+                     when 34 => regs_2_13 <= unsigned(savestate_bus.Din);
+                     when 35 => regs_2_14 <= unsigned(savestate_bus.Din);
+                     when 36 => regs_2_17 <= unsigned(savestate_bus.Din);
+                     when 37 => regs_3_13 <= unsigned(savestate_bus.Din);
+                     when 38 => regs_3_14 <= unsigned(savestate_bus.Din);
+                     when 39 => regs_3_17 <= unsigned(savestate_bus.Din);
+                     when 40 => regs_4_13 <= unsigned(savestate_bus.Din);
+                     when 41 => regs_4_14 <= unsigned(savestate_bus.Din);
+                     when 42 => regs_4_17 <= unsigned(savestate_bus.Din);
+                     when 43 => regs_5_13 <= unsigned(savestate_bus.Din);
+                     when 44 => regs_5_14 <= unsigned(savestate_bus.Din);
+                     when 45 => regs_5_17 <= unsigned(savestate_bus.Din);
+                     when 46 =>
+                        Flag_Zero <= savestate_bus.Din(1);
+                        Flag_Carry <= savestate_bus.Din(2);
+                        Flag_Negative <= savestate_bus.Din(3);
+                        Flag_V_Overflow <= savestate_bus.Din(4);
+                        thumbmode <= savestate_bus.Din(5);
+                        cpu_mode <= savestate_bus.Din(9 downto 6);
+                        IRQ_disable <= savestate_bus.Din(10);
+                        FIQ_disable <= savestate_bus.Din(11);
+                     when others => null; -- PC shadow, read-only CPSR/SPSR, lastread
+                  end case;
+               end if;
+            else
             
             Flag_Zero       <= SAVESTATE_Flag_Zero;      
             Flag_Carry      <= SAVESTATE_Flag_Carry;     
@@ -2606,11 +2786,13 @@ begin
             regs_5_14 <= unsigned(SAVESTATE_REGS_5_14);
             regs_5_17 <= unsigned(SAVESTATE_REGS_5_17);
             
+            end if;
+
             execute_RW_State  <= DATARW_IDLE;
             execute_MUL_State <= MUL_IDLE;
             alu_wait_shift   <= '0';
             
-         elsif (ce = '1') then
+         elsif (cpu_ce = '1') then
             
             if (execute_writeback = '1' and execute_writereg /= 15) then
                regs(to_integer(execute_writereg)) <= execute_writedata;

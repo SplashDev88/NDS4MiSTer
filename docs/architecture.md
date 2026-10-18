@@ -202,7 +202,9 @@ and assembly passed, but static timing closure remains unresolved; no new FPGA
 build or timing-closure claim accompanies the performance freeze.
 
 Save states, DS wireless, NAND cartridge saves, DSi mode and RTC alarm/periodic
-interrupts remain unsupported. Short selected-game checks do not establish full
+interrupts remain unsupported. The [bounded suspend/resume experiment](SUSPEND_RESUME_PROTOTYPE.md)
+currently proves CPU component persistence only; it is disabled in the console
+and does not add whole-game resume. Short selected-game checks do not establish full
 playthrough compatibility. Slowdown, uneven animation, audio hitches and crashes
 remain possible.
 
