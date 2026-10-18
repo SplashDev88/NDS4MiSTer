@@ -10,7 +10,7 @@ use work.pProc_bus_gba.all;
 entity tb_nds_checkpoint_sound_restore is
  generic(RESTORING:boolean:=false;TABLE_RAM:natural range 0 to 1:=1;
          SCENARIO:natural range 0 to 4:=0;SLOT:natural range 0 to 1023:=17;
-         LATENCY:positive:=4;WRITE_ORDER:natural range 0 to 1:=0);
+         LATENCY:positive:=4;WRITE_GAPS:natural range 0 to 1:=0);
 end;
 architecture sim of tb_nds_checkpoint_sound_restore is
  constant N:positive:=270;
@@ -96,13 +96,14 @@ begin
   procedure load_word(a:natural;v:std_logic_vector(31 downto 0)) is
   begin
    select_word(a);assert wr_ready='1' report "SPU restore word never writable" severity failure;
-   write_data<=v;wr<='1';step;wr<='0';step(1+a mod 3);
+   write_data<=v;wr<='1';step;wr<='0';
+   if WRITE_GAPS=0 then step;else step(3+a mod 7);end if;
   end;
   procedure load_image is
    variable a:natural;
   begin
    for i in 0 to N-1 loop
-    if WRITE_ORDER=0 then a:=i;else a:=N-1-i;end if;
+    a:=i; -- exact ascending stream; vary idle gaps, not coverage order
     load_word(a,state(a));
     assert error='0' report "SPU rejected image word "&integer'image(a)&" value "&to_hstring(state(a)) severity failure;
     if i<N-1 then assert ready='0' report "SPU incomplete image accepted" severity failure;end if;
@@ -121,7 +122,9 @@ begin
   begin restore<='0';step;restore<='1';step(2);assert ready='0' and error='0' report "SPU stale restore coverage/error" severity failure;end;
   procedure bad_word(a:natural;v:std_logic_vector(31 downto 0)) is
   begin
-   new_attempt;address<=to_unsigned(a,9);write_data<=v;step(2);wr<='1';step;wr<='0';step;
+   new_attempt;
+   if a<N then for i in 0 to a-1 loop load_word(i,state(i));end loop;end if;
+   address<=to_unsigned(a,9);write_data<=v;step(2);wr<='1';step;wr<='0';step;
    assert ready='0' and error='1' report "SPU invalid image accepted" severity failure;
    address<=to_unsigned(0,9);write_data<=state(0);wr<='1';step;wr<='0';step;
    assert ready='0' and error='1' report "SPU error not sticky" severity failure;
@@ -137,8 +140,20 @@ begin
    bad_word(1,x"80000000");bad_word(14,x"00000001");bad_word(263,x"00000400");bad_word(269,x"00800000");
    -- Switching a RAM channel and writing on the same edge is not a valid
    -- registered-port transaction. Reject rather than use stale read data.
-   new_attempt;address<=to_unsigned(12,9);step(2);address<=to_unsigned(28,9);write_data<=state(28);wr<='1';step;wr<='0';step;
+   new_attempt;for a in 0 to 27 loop load_word(a,state(a));end loop;
+   address<=to_unsigned(12,9);step(2);address<=to_unsigned(28,9);write_data<=state(28);wr<='1';step;wr<='0';step;
    assert error='1' and ready='0' report "SPU stale RAM port accepted" severity failure;
+   -- Strict stream coverage: rejected duplicates/skips/reordering must
+   -- not be treated as progress, even when data and masks are otherwise valid.
+   for kind in 0 to 3 loop
+    new_attempt;
+    if kind=0 then idx:=1;
+    elsif kind=1 then load_word(0,state(0));idx:=0;
+    elsif kind=2 then for a in 0 to 10 loop load_word(a,state(a));end loop;idx:=12;
+    else load_image;idx:=269;end if;
+    address<=to_unsigned(idx,9);write_data<=state(idx);step(2);wr<='1';step;wr<='0';step;
+    assert error='1' and ready='0' report "SPU invalid restore order accepted" severity failure;
+   end loop;
    new_attempt;load_image;read_image(true);
    -- Normal register writes and live memory response inputs cannot change a
    -- reset-held image. Retain silence, flags and decoded pipeline on gaps.
@@ -147,7 +162,7 @@ begin
    -- Reject live writes to every image word without modifying live state.
    for a in 0 to N-1 loop
     restore<='0';step;address<=to_unsigned(a,9);write_data<=state(a);
-    if a=6 then write_data<=state(a) xor x"00000001";end if;
+    if a=0 then write_data<=state(a) xor x"00000001";end if;
     restore<='1';wr<='1';step;wr<='0';step;
     assert error='1' and ready='0' report "SPU live restore accepted" severity failure;
    end loop;

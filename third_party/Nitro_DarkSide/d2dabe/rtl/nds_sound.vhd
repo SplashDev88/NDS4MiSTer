@@ -98,7 +98,10 @@ architecture arch of nds_sound is
    signal stop_playback : std_logic;
    signal stop_seen : std_logic := '0';
    signal restore_active, restore_write_valid : std_logic;
-   signal restore_loaded : std_logic_vector(269 downto 0) := (others => '0');
+   signal register_write_data, sample_write_data : std_logic_vector(31 downto 0);
+   signal restore_curw_pending : std_logic := '0';
+   signal restore_curw_channel : natural range 0 to 15 := 0;
+   signal restore_next : unsigned(8 downto 0) := (others => '0');
    signal restore_error : std_logic := '0';
    signal restore_settle : natural range 0 to 2 := 0;
    signal checkpoint_ram_access, checkpoint_ram_seen : std_logic := '0';
@@ -608,20 +611,22 @@ begin
    -- Restore is reset-held, requires every word, and remains poisoned after
    -- invalid input until a new attempt. Two idle edges settle registered RAM.
    restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   register_write_data <= checkpoint_write_data when restore_active = '1' else bus7.Din;
+   sample_write_data <= checkpoint_write_data when restore_active = '1' else mb_din;
    checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
    checkpoint_restore_ready <= '1' when restore_active = '1' and restore_error = '0' and
-      restore_loaded = (269 downto 0 => '1') and restore_settle = 2 and checkpoint_write = '0' and
+      restore_next = 270 and restore_settle = 2 and checkpoint_write = '0' and restore_curw_pending = '0' and
       (ADPCM_TABLE_RAM = 0 or (adstep_init = 89 and adstep_we = '0')) else '0';
    process(clk) begin
       if rising_edge(clk) then
          if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
-            restore_loaded <= (others => '0'); restore_error <= '0'; restore_settle <= 0;
+            restore_next <= (others => '0'); restore_error <= '0'; restore_settle <= 0;
          elsif reset = '0' then restore_error <= '1'; restore_settle <= 0;
          elsif checkpoint_write = '1' then
             restore_settle <= 0;
-            if restore_write_valid = '1' then restore_loaded(to_integer(checkpoint_address)) <= '1';
+            if restore_write_valid = '1' then restore_next <= restore_next + 1;
             else restore_error <= '1'; end if;
-         elsif restore_loaded = (269 downto 0 => '1') and restore_error = '0' and restore_settle < 2 then
+         elsif restore_next = 270 and restore_error = '0' and restore_settle < 2 then
             restore_settle <= restore_settle + 1;
          end if;
       end if;
@@ -687,9 +692,9 @@ begin
          end case;
       end if;
       checkpoint_write_ready <= '0'; restore_write_valid <= '0';
-      if restore_active = '1' and restore_error = '0' and a < 270 and ram_ready then
+      if restore_active = '1' and restore_error = '0' and a < 270 and ram_ready and restore_curw_pending = '0' then
          checkpoint_write_ready <= '1';
-         if checkpoint_write = '1' and shape and (checkpoint_write_data and not mask) = x"00000000" then restore_write_valid <= '1'; end if;
+         if checkpoint_write = '1' and a = to_integer(restore_next) and shape and (checkpoint_write_data and not mask) = x"00000000" then restore_write_valid <= '1'; end if;
       end if;
       checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
       if EXPERIMENTAL_CHECKPOINT and a < 270 and ram_ready and
@@ -772,29 +777,40 @@ begin
       variable a : natural range 0 to 511;
    begin
       if rising_edge(clk) then
+         restore_curw_pending <= '0';
 
          if (reset = '1') then
             if restore_active = '1' then
+               -- Restore the current word through the existing next-to-current
+               -- path. The next word is temporary scratch for one held edge;
+               -- its actual image follows at the next ordered address.
+               if restore_curw_pending = '1' then
+                  for i in 0 to 15 loop
+                     if restore_curw_channel = i then chan(i).curw <= chan(i).nxtw; end if;
+                  end loop;
+               end if;
                if restore_write_valid = '1' then
                   a := to_integer(checkpoint_address); n := to_integer(checkpoint_address(7 downto 4));
                   if a < 256 then
                      case a mod 16 is
                         when 0 =>
-                           chan(n).volmul <= checkpoint_write_data(6 downto 0); chan(n).voldiv <= checkpoint_write_data(9 downto 8);
-                           chan(n).hold <= checkpoint_write_data(15); chan(n).pan <= checkpoint_write_data(22 downto 16);
-                           chan(n).duty <= checkpoint_write_data(26 downto 24); chan(n).repeatm <= checkpoint_write_data(28 downto 27);
-                           chan(n).format <= checkpoint_write_data(30 downto 29); chan(n).busy <= checkpoint_write_data(31);
-                        when 1 => chan(n).sad <= checkpoint_write_data(26 downto 0);
-                        when 2 => chan(n).tmr <= checkpoint_write_data(15 downto 0); chan(n).pnt <= checkpoint_write_data(31 downto 16);
-                        when 3 => chan(n).len <= checkpoint_write_data(21 downto 0);
+                           chan(n).volmul <= register_write_data(6 downto 0); chan(n).voldiv <= register_write_data(9 downto 8);
+                           chan(n).hold <= register_write_data(15); chan(n).pan <= register_write_data(22 downto 16);
+                           chan(n).duty <= register_write_data(26 downto 24); chan(n).repeatm <= register_write_data(28 downto 27);
+                           chan(n).format <= register_write_data(30 downto 29); chan(n).busy <= register_write_data(31);
+                        when 1 => chan(n).sad <= register_write_data(26 downto 0);
+                        when 2 => chan(n).tmr <= register_write_data(15 downto 0); chan(n).pnt <= register_write_data(31 downto 16);
+                        when 3 => chan(n).len <= register_write_data(21 downto 0);
                         when 4 =>
                            chan(n).timer <= unsigned(checkpoint_write_data(16 downto 0));
                            chan(n).subpos <= unsigned(checkpoint_write_data(19 downto 17)); chan(n).startdel <= unsigned(checkpoint_write_data(21 downto 20));
                            chan(n).curv <= checkpoint_write_data(22); chan(n).nxtv <= checkpoint_write_data(23); chan(n).adhdr <= checkpoint_write_data(24);
                            chan(n).psgpos <= unsigned(checkpoint_write_data(27 downto 25));
                         when 5 => chan(n).remwords <= unsigned(checkpoint_write_data(23 downto 0));
-                        when 6 => chan(n).curw <= checkpoint_write_data;
-                        when 7 => chan(n).nxtw <= checkpoint_write_data;
+                        when 6 =>
+                           chan(n).nxtw <= sample_write_data;
+                           restore_curw_pending <= '1'; restore_curw_channel <= n;
+                        when 7 => chan(n).nxtw <= sample_write_data;
                         when 8 => chan(n).adval <= signed(checkpoint_write_data(15 downto 0)); chan(n).adidx <= to_integer(unsigned(checkpoint_write_data(22 downto 16)));
                         when 9 => chan(n).adval_l <= signed(checkpoint_write_data(15 downto 0)); chan(n).adidx_l <= to_integer(unsigned(checkpoint_write_data(22 downto 16)));
                         when 10 => chan(n).noise <= unsigned(checkpoint_write_data(15 downto 0)); chan(n).cursmp <= signed(checkpoint_write_data(31 downto 16));
@@ -802,12 +818,12 @@ begin
                      end case;
                   else
                      case a is
-                        when 256 => soundcnt <= checkpoint_write_data(15 downto 0); soundbias <= checkpoint_write_data(25 downto 16);
-                        when 257 => cap(0).cnt <= checkpoint_write_data(7 downto 0); cap(1).cnt <= checkpoint_write_data(15 downto 8);
-                        when 258 => cap(0).dad <= checkpoint_write_data(26 downto 0);
-                        when 259 => cap(0).len <= checkpoint_write_data(15 downto 0);
-                        when 260 => cap(1).dad <= checkpoint_write_data(26 downto 0);
-                        when 261 => cap(1).len <= checkpoint_write_data(15 downto 0);
+                        when 256 => soundcnt <= register_write_data(15 downto 0); soundbias <= register_write_data(25 downto 16);
+                        when 257 => cap(0).cnt <= register_write_data(7 downto 0); cap(1).cnt <= register_write_data(15 downto 8);
+                        when 258 => cap(0).dad <= register_write_data(26 downto 0);
+                        when 259 => cap(0).len <= register_write_data(15 downto 0);
+                        when 260 => cap(1).dad <= register_write_data(26 downto 0);
+                        when 261 => cap(1).len <= register_write_data(15 downto 0);
                         when 262 =>
                            tick2 <= checkpoint_write_data(0);
                            if checkpoint_write_data(1) = '1' then fstate <= FSCAN_EVAL; else fstate <= FSCAN_ADDR; end if;
@@ -890,17 +906,17 @@ begin
                   case bus7.Adr(3 downto 2) is
 
                      when "00" =>  -- SOUNDxCNT
-                        if (bus7.bEna(0) = '1') then chan(n).volmul <= bus7.Din(6 downto 0); end if;
+                        if (bus7.bEna(0) = '1') then chan(n).volmul <= register_write_data(6 downto 0); end if;
                         if (bus7.bEna(1) = '1') then
-                           chan(n).voldiv <= bus7.Din(9 downto 8);
-                           chan(n).hold   <= bus7.Din(15);
+                           chan(n).voldiv <= register_write_data(9 downto 8);
+                           chan(n).hold   <= register_write_data(15);
                         end if;
-                        if (bus7.bEna(2) = '1') then chan(n).pan <= bus7.Din(22 downto 16); end if;
+                        if (bus7.bEna(2) = '1') then chan(n).pan <= register_write_data(22 downto 16); end if;
                         if (bus7.bEna(3) = '1') then
-                           chan(n).duty    <= bus7.Din(26 downto 24);
-                           chan(n).repeatm <= bus7.Din(28 downto 27);
-                           chan(n).format  <= bus7.Din(30 downto 29);
-                           if (bus7.Din(31) = '1' and chan(n).busy = '0') then
+                           chan(n).duty    <= register_write_data(26 downto 24);
+                           chan(n).repeatm <= register_write_data(28 downto 27);
+                           chan(n).format  <= register_write_data(30 downto 29);
+                           if (register_write_data(31) = '1' and chan(n).busy = '0') then
                               -- channel start: latch runtime state
                               chan(n).busy  <= '1';
                               chan(n).timer <= '0' & unsigned(chan(n).tmr);
@@ -916,12 +932,12 @@ begin
                               frem_a_din  <= resize(unsigned(chan(n).pnt), 24) +
                                              resize(unsigned(chan(n).len), 24);
                               frem_a_we   <= '1';
-                              if (bus7.Din(30 downto 29) = "10") then
+                              if (register_write_data(30 downto 29) = "10") then
                                  chan(n).adhdr <= '1';
                               else
                                  chan(n).adhdr <= '0';
                               end if;
-                              if (bus7.Din(30 downto 29) = "11") then
+                              if (register_write_data(30 downto 29) = "11") then
                                  chan(n).startdel <= "00";   -- melonDS Pos=-1
                               else
                                  chan(n).startdel <= "10";   -- melonDS Pos=-3
@@ -929,43 +945,43 @@ begin
                               chan(n).noise  <= x"7FFF";
                               chan(n).psgpos <= "111";       -- first tick -> step 0
                               chan(n).cursmp <= (others => '0');
-                           elsif (bus7.Din(31) = '0') then
+                           elsif (register_write_data(31) = '0') then
                               chan(n).busy <= '0';
                            end if;
                         end if;
 
                      when "01" =>  -- SOUNDxSAD
-                        chan(n).sad <= bus7.Din(26 downto 0);
+                        chan(n).sad <= register_write_data(26 downto 0);
 
                      when "10" =>  -- SOUNDxTMR (15:0) + SOUNDxPNT (31:16)
-                        if (bus7.bEna(0) = '1') then chan(n).tmr(7 downto 0)  <= bus7.Din(7 downto 0); end if;
-                        if (bus7.bEna(1) = '1') then chan(n).tmr(15 downto 8) <= bus7.Din(15 downto 8); end if;
-                        if (bus7.bEna(2) = '1') then chan(n).pnt(7 downto 0)  <= bus7.Din(23 downto 16); end if;
-                        if (bus7.bEna(3) = '1') then chan(n).pnt(15 downto 8) <= bus7.Din(31 downto 24); end if;
+                        if (bus7.bEna(0) = '1') then chan(n).tmr(7 downto 0)  <= register_write_data(7 downto 0); end if;
+                        if (bus7.bEna(1) = '1') then chan(n).tmr(15 downto 8) <= register_write_data(15 downto 8); end if;
+                        if (bus7.bEna(2) = '1') then chan(n).pnt(7 downto 0)  <= register_write_data(23 downto 16); end if;
+                        if (bus7.bEna(3) = '1') then chan(n).pnt(15 downto 8) <= register_write_data(31 downto 24); end if;
 
                      when others =>  -- SOUNDxLEN
-                        chan(n).len <= bus7.Din(21 downto 0);
+                        chan(n).len <= register_write_data(21 downto 0);
 
                   end case;
                else
                   case bus7.Adr(4 downto 2) is
                      when "000" =>
-                        if (bus7.bEna(0) = '1') then soundcnt(7 downto 0)  <= bus7.Din(7 downto 0); end if;
-                        if (bus7.bEna(1) = '1') then soundcnt(15 downto 8) <= bus7.Din(15 downto 8); end if;
+                        if (bus7.bEna(0) = '1') then soundcnt(7 downto 0)  <= register_write_data(7 downto 0); end if;
+                        if (bus7.bEna(1) = '1') then soundcnt(15 downto 8) <= register_write_data(15 downto 8); end if;
                      when "001" =>
-                        if (bus7.bEna(0) = '1') then soundbias(7 downto 0) <= bus7.Din(7 downto 0); end if;
-                        if (bus7.bEna(1) = '1') then soundbias(9 downto 8) <= bus7.Din(9 downto 8); end if;
+                        if (bus7.bEna(0) = '1') then soundbias(7 downto 0) <= register_write_data(7 downto 0); end if;
+                        if (bus7.bEna(1) = '1') then soundbias(9 downto 8) <= register_write_data(9 downto 8); end if;
                      when "010" =>
-                        if (bus7.bEna(0) = '1') then cap(0).cnt <= bus7.Din(7 downto 0); end if;
-                        if (bus7.bEna(1) = '1') then cap(1).cnt <= bus7.Din(15 downto 8); end if;
-                     when "100" => cap(0).dad <= bus7.Din(26 downto 0);
+                        if (bus7.bEna(0) = '1') then cap(0).cnt <= register_write_data(7 downto 0); end if;
+                        if (bus7.bEna(1) = '1') then cap(1).cnt <= register_write_data(15 downto 8); end if;
+                     when "100" => cap(0).dad <= register_write_data(26 downto 0);
                      when "101" =>
-                        if (bus7.bEna(0) = '1') then cap(0).len(7 downto 0)  <= bus7.Din(7 downto 0); end if;
-                        if (bus7.bEna(1) = '1') then cap(0).len(15 downto 8) <= bus7.Din(15 downto 8); end if;
-                     when "110" => cap(1).dad <= bus7.Din(26 downto 0);
+                        if (bus7.bEna(0) = '1') then cap(0).len(7 downto 0)  <= register_write_data(7 downto 0); end if;
+                        if (bus7.bEna(1) = '1') then cap(0).len(15 downto 8) <= register_write_data(15 downto 8); end if;
+                     when "110" => cap(1).dad <= register_write_data(26 downto 0);
                      when "111" =>
-                        if (bus7.bEna(0) = '1') then cap(1).len(7 downto 0)  <= bus7.Din(7 downto 0); end if;
-                        if (bus7.bEna(1) = '1') then cap(1).len(15 downto 8) <= bus7.Din(15 downto 8); end if;
+                        if (bus7.bEna(0) = '1') then cap(1).len(7 downto 0)  <= register_write_data(7 downto 0); end if;
+                        if (bus7.bEna(1) = '1') then cap(1).len(15 downto 8) <= register_write_data(15 downto 8); end if;
                      when others => null;
                   end case;
                end if;
@@ -1164,7 +1180,7 @@ begin
                   if (mb_done = '1') then
                      -- always deliver to the prefetch slot; maintenance
                      -- above moves it down when the play slot is empty
-                     chan(fch).nxtw <= mb_din;
+                     chan(fch).nxtw <= sample_write_data;
                      chan(fch).nxtv <= '1';
                      if (unsigned(frem_b_dout(23 downto 0)) = 1) then
                         if (chan(fch).repeatm = "01") then

@@ -755,7 +755,8 @@ RAM read or duplicate fetch-state bank. The physical port's registered read
 must settle: wait for `checkpoint_valid` on reads and
 `checkpoint_write_ready` before each write. A write to a newly selected RAM
 channel before that acknowledgement poisons the attempt instead of combining
-its data with a stale row. Either pointer/count word may be written first.
+its data with a stale row. Restore now requires the exact ascending stream
+0 through 269, so each pointer precedes its corresponding count.
 
 | Global word | State |
 | --- | --- |
@@ -780,7 +781,15 @@ initialization. The default-disabled path retains its previous startup behavior.
 
 Restore writes live channel, decoder, mixer and buffer state while reset is
 held; it does not restart channels through their normal control registers.
-All 270 words are required, including zeros. Reserved bits, unsupported
+The programmed registers share their normal data input during reset-held
+loading. The current sample word is loaded through the existing next-to-current
+copy path: word 6 temporarily occupies the next-word buffer, then one held edge
+copies it into the current-word register before word 7 supplies the actual next
+word. Wait for `checkpoint_write_ready`; no gameplay or fetch advances here.
+
+A nine-bit progress counter replaces 270 individual loaded flags. All 270 words
+are required in exact ascending order, including zeros. Duplicate, skipped,
+reordered or extra writes poison the attempt. Reserved bits, unsupported
 addresses, ADPCM indices above 88, premature RAM writes and live restore
 attempts are rejected. An error stays latched until restore is withdrawn for
 an edge and a fresh complete load begins. After the last write, two idle edges
@@ -794,8 +803,10 @@ missing hardware audio-capture behavior, the existing hold-bit functionality,
 or additional output-selection modes. The state image stores the actual hold
 field directly; the existing guest readback behavior is unchanged.
 
-`tools/test_checkpoint_sound_restore.sh` checks 20 fresh-process restores with
-ascending/descending writes. Each compares 65,536 resumed cycles of stereo
+`tools/test_checkpoint_sound_restore.sh` first compares ten complete capture
+images and continuations to the pinned pre-compaction implementation. It then
+checks 20 fresh-process restores using ascending writes with short or varied
+idle gaps. Each compares 65,536 resumed cycles of stereo
 output, register reads and enabled memory requests, plus all 270 image words
 after the first resumed edge. The latter catches a lost ROM pipeline result
 even when a channel's timer would allow its cache to refresh before decoding.
@@ -803,9 +814,10 @@ Cases cover PCM8, PCM16, ADPCM, PSG/noise, looping, delayed reads, saturation,
 newly started channels, idle audio, both table implementations and mixer slots
 0, 16, 17 and 1023. Fast ADPCM cases additionally exercise the existing lookup
 approximation; they test exact continuation of this implementation, not new
-hardware-accuracy claims. Nine deliberate faults cover buffers, decoder state,
-fetch pointers, mixer state, pending ROM output, partial coverage, invalid
-indices, stale RAM rows and live mutation.
+hardware-accuracy claims. Eleven deliberate faults cover buffers, the staged
+current-word copy, decoder state, fetch pointers, mixer state, pending ROM
+output, partial coverage, write ordering, invalid indices, stale RAM rows and
+live mutation.
 
 `tools/test_checkpoint_sound_baseline.sh` compares default-disabled and
 unrequested-enabled playback to pinned pre-restore source, with both table
@@ -824,16 +836,22 @@ port as a virtual pin, using the Cyclone V target and area optimization:
 | Previous hold-only implementation (`41d4351`) | 6,107 | 9,414 | 5,188 |
 | Capture only; restore inputs tied off | 7,935 | 11,112 | 5,258 |
 | Restore only; capture outputs disconnected | 8,486 | 11,729 | 5,485 |
-| Complete component interface | 10,700 | 14,193 | 5,787 |
+| Initial complete interface (`7e94517`) | 10,700 | 14,193 | 5,787 |
+| Compact complete interface | 9,475 | 13,637 | 5,531 |
 
-All four retain 2,704 used block-memory bits and seven DSP blocks. The complete
-interface adds **4,593 estimated ALMs** to this probe; reducing that overhead
-is the next implementation priority before expanding device coverage. The
-isolated-path results identify both capture and restore as contributors; they
-are not additive. These mappings are not full-console utilization, fitting or
-routing results. Virtual-pin and virtual-clock warnings are expected, and no
-timing result is inferred. The source and normal playback tests remain valid,
-but the current interface cost is not accepted for the eventual gameplay beta.
+All configurations retain 2,704 used block-memory bits and seven DSP blocks.
+The compact interface saves **1,225 estimated ALMs** versus the initial complete
+interface, reducing its added cost from 4,593 to **3,368 estimated ALMs** (about
+27%). It combines ordered coverage with shared register-data inputs and reuse
+of the existing sample-buffer copy path. Two alternative capture-mux rewrites
+increased ALUT usage and were discarded; the capture image and access latency
+remain unchanged.
+
+The isolated-path estimates are not additive. These mappings are not
+full-console utilization, fitting or routing results. Virtual-pin and
+virtual-clock warnings are expected, and no timing or gameplay-speed result is
+inferred. The remaining cost still needs a complete-core resource check before
+this can be accepted for a gameplay beta.
 
 ## Persistence proof
 
