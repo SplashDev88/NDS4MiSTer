@@ -2754,6 +2754,86 @@ guest DMA as a copy engine also requires preserving its original state and
 containing side effects. No new memory-copy fabric should be assumed necessary
 until these existing paths have been evaluated.
 
+### Audio state rotation experiment
+
+A private generated variant now tests reusing the live channel registers as a
+rotation ring while the machine is held. Hidden playback fields rotate together
+through one fixed read/write position, replacing indexed hidden-state selection.
+The per-channel ADPCM lookup result rotates with them. Programmed registers,
+fetch-pointer/count RAM and global state retain their existing addressing. The
+270-word format, ordered restore coverage and malformed-image checks remain.
+There is no second array holding a duplicate audio snapshot.
+
+This is not a CPU bus or a complete implementation of the SNES scheme. It is a
+measured device-datapath replacement that a future authorized maintenance bus
+could drive. `prepare_audio_rotation_probe.py` creates it outside the checkout;
+the canonical SPU and shipping QIP remain unchanged. `measure_connected_area.py
+--audio-rotation` includes it only in the generated connected synthesis probe,
+and requires both hybrid CPU monitors and their capture/return transport.
+
+`nds_checkpoint_audio_scan_guard` holds all local and external device owners,
+not just CPU return, until the live channels regain their original order.
+A read address can start rotation only after both the raw capture request and
+common acquisition are asserted, or during reset-held restore. Acquisition
+failure, request withdrawal and owner loss select a global word to unwind the
+ring. The release observation depends only on the registered ring position,
+avoiding combinational feedback through address selection and owner readiness.
+It reports channel order only: it cannot certify a complete or valid restore.
+The existing image-coverage and common-owner checks remain required.
+
+`tools/test_checkpoint_audio_rotation.sh` freezes its source closure and passes
+10 image/continuation comparisons against pinned source
+`7e94517190a1328cf64fa46d964a530e0fdbfe1f`, plus 20 fresh-process restores with
+65,536 continuation observations each. Cases cover PCM8, PCM16, ADPCM and PSG,
+channel start/loop/mixer phases, empty playback, sample-memory latency and bus
+backpressure. Reads visit all 270 words in a shuffled order. Each of 30 candidate
+processes interrupts a transfer at all 15 nonzero ring positions both by
+cancellation and by owner loss: **900 unwinds**. The image must remain unchanged,
+no audio work may advance during cleanup, and all-owner hold and CPU return
+permission must remain fenced. Eight deliberately faulty data/guard variants
+are detected. These are component and guard tests; they do not simulate full
+console persistence or prove FPGA clock timing.
+
+An earlier shared programmed-register write path passed continuation tests but
+increased the complete shell from 42,491 to 42,819 estimated ALMs, so it was
+rejected. Incomplete diagnostic ablations showed that removing audio validation
+saved only 35 isolated ALMs; those checks are retained. The isolated rotation
+experiment reduced 8,746 to 8,110 ALMs before adding the outer owner guard.
+Isolated component counts must not be added to complete-shell savings.
+
+A CPU-only release guard was also insufficient because DMA and other devices
+could restart while channel fields were rotated. Its area result is not the
+accepted configuration. The measured configuration below includes the common
+owner guard and registered-position release observation.
+
+| Full-shell configuration | Estimated ALMs | Combinational ALUTs | Logic registers |
+| --- | ---: | ---: | ---: |
+| Default-disabled control | 34,290 | 52,271 | 39,376 |
+| Previous hybrid monitor transport | 42,491 | 63,400 | 41,672 |
+| Guarded audio rotation | **41,699** | **62,111** | **41,679** |
+
+The generated rotation shell saves **792 estimated ALMs and 1,289 ALUTs**,
+with seven additional registers. It retains 4,146,788 used RAM bits and 27 DSP
+blocks. All pre-existing hardware source hashes match the preceding experiment;
+the new guard and bench are the only added hardware files. The default-disabled
+control exactly reproduces the prior resource counts. The connected report
+SHA-256 is
+`8a0c08ea9b418135ecf833c3894e1b3d16006a3dc51d548b21c4a6ad05435173`.
+
+The map estimate is only **211 ALMs below nominal device capacity**. That is
+not established packing or routing headroom, particularly with memory, renderer
+and host integration still missing. This remains a virtual-pin synthesis probe,
+not a deployable core or evidence of game-level suspend/resume. Neither its
+area result nor simulation continuation establishes gameplay speed or timing.
+
+The next CPU-copy phase must distinguish captured guest context from a parked
+maintenance engine. Simply un-parking a CPU would currently look like ownership
+loss to the coordinator. An explicit phase must keep the other CPU and all guest
+owners held, protect snapshot RAM from host/CPU port collisions, and preserve
+the common epoch and return fence while an authored load/store loop copies
+bounded device state. Device restore must also keep its reset separate from the
+maintenance CPU that executes those stores.
+
 ## Remaining state coverage
 
 | Owner | Needed before a game can resume | Current status |
@@ -2777,11 +2857,12 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 1. Establish a viable full-shell resource budget with checkpoint capture and
    restore observable before adding the remaining memory serializers. Use the
    connected probe and capacity failure to target the largest measured costs.
-   The hybrid monitor capture/return path now estimates 42,491 ALMs,
-   still 581 above capacity before missing work. Prioritize the maintenance
-   audio bus experiment above, reusing existing device and memory paths as in
-   the SNES approach. Remove superseded hardware in the measured variant rather
-   than putting another adapter in front of it. Check complete-shell costs and
+   The generated audio-rotation shell now estimates 41,699 ALMs, only 211
+   below nominal capacity before missing work; actual fitting remains a separate
+   gate. Implement the bounded CPU maintenance device-copy phase above, reusing
+   existing device and memory paths as in the SNES approach. Remove superseded
+   hardware in the measured variant rather than putting another adapter in
+   front of it. Check complete-shell costs and
    guest behavior; local hierarchy deltas are not additive ALM savings.
    Keep the direct checkpoint path as the sleep-semantics reference.
    Preserve component continuation proofs when changing their implementation.

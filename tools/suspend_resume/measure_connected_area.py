@@ -430,7 +430,44 @@ def instrument_monitor_transport(root):
         'set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_monitor_capture.vhd'))
 
 
-def prepare(repo, output, arm7_monitor=False, arm9_monitor=False, monitor_sleep=False, monitor_transport=False):
+def instrument_audio_rotation(root):
+    """Private channel scan, with all-owner cleanup and common-return fencing."""
+    from prepare_audio_rotation_probe import rotate_sound
+    edit(root, 'third_party/Nitro_DarkSide/d2dabe/rtl/nds_sound.vhd', rotate_sound)
+    def console(s):
+        s = once(s, '   signal cp_area_sound_write_ready : std_logic;',
+            '   signal cp_area_sound_write_ready : std_logic;\n'
+            '   signal cp_area_sound_release_ready, cp_area_return_permission : std_logic;\n'
+            '   signal checkpoint_raw_hold_request, cp_area_pair_paused : std_logic;\n'
+            '   signal cp_area_sound_address : unsigned(8 downto 0);')
+        s = instance(s, 'isound', 'checkpoint_release_ready => cp_area_sound_release_ready')
+        s = once(s, 'checkpoint_address => unsigned(cp_area_in(13 downto 5)),',
+                    'checkpoint_address => cp_area_sound_address,')
+        s = once(s, 'return_permission => cp_area_in(90), capture_format',
+                    'return_permission => cp_area_return_permission, capture_format')
+        s = once(s, 'hold_request => checkpoint_hold_request,',
+                    'hold_request => checkpoint_raw_hold_request,')
+        s = once(s, 'pair_paused => checkpoint_pair_paused,', 'pair_paused => cp_area_pair_paused,')
+        # Quartus rejects connecting an OUT interface directly to an IN port,
+        # even where other reads of that output are accepted. Use a local net.
+        s = once(s, '   gcheckpoint_cpu : if CHECKPOINT_CPU_ENABLE generate',
+                    '   gcheckpoint_cpu : if CHECKPOINT_CPU_ENABLE generate\n'
+                    '      checkpoint_pair_paused <= cp_area_pair_paused;')
+        return once(s, '   g_area_select: for n in 0 to 19 generate',
+            '   area_audio_scan_guard:entity work.nds_checkpoint_audio_scan_guard\n'
+            '      port map(capture_request=>checkpoint_raw_hold_request,capture_held=>cp_area_pair_paused,\n'
+            '         restore_active=>cp_area_in(46) and resetCpu,channel_order_ready=>cp_area_sound_release_ready,\n'
+            '         outer_return_permission=>cp_area_in(90),requested_address=>unsigned(cp_area_in(13 downto 5)),\n'
+            '         device_hold=>checkpoint_hold_request,return_permission=>cp_area_return_permission,sound_address=>cp_area_sound_address);\n'
+            '   g_area_select: for n in 0 to 19 generate')
+    edit(root, 'rtl/nds_nitro_console_top.vhd', console)
+    edit(root, PROJECT/'files.qip', lambda s: once(s,
+        'set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_monitor_capture.vhd',
+        'set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_monitor_capture.vhd\n'
+        'set_global_assignment -name VHDL_FILE ../../rtl/nds_checkpoint_audio_scan_guard.vhd'))
+
+
+def prepare(repo, output, arm7_monitor=False, arm9_monitor=False, monitor_sleep=False, monitor_transport=False, audio_rotation=False):
     output.mkdir(parents=True, exist_ok=False)
     files = subprocess.check_output(['git', 'ls-files', '-z'], cwd=repo).decode().split('\0')
     files = [n for n in files if n and (repo/n).is_file()]
@@ -457,6 +494,8 @@ def prepare(repo, output, arm7_monitor=False, arm9_monitor=False, monitor_sleep=
                 instrument_arm9_monitor(root, monitor_sleep)
             if monitor_transport:
                 instrument_monitor_transport(root)
+            if audio_rotation:
+                instrument_audio_rotation(root)
         manifest = {name: digest(root/name) for name in files}
         (output/(variant.upper()+'_SOURCE.json')).write_text(json.dumps(manifest, sort_keys=True, indent=2)+'\n')
     receipt = {
@@ -467,7 +506,7 @@ def prepare(repo, output, arm7_monitor=False, arm9_monitor=False, monitor_sleep=
         'scope': 'Full shell synthesis with existing component capture/restore and acquisition connected to raw observable virtual pins. Not a usable transport, complete machine state, fit, timing or gameplay proof.',
         'unimplemented': ['RAM/cache/TCM serialization', 'downstream writer/renderer ownership', 'safe host transport/CDC', 'complete restore boot path'],
         'components': {'0':'ARM9', '1':'ARM7', **{str(n):label for n,label,_ in COMPONENTS}, '20':'math', '21':'CDC with packet frontend'},
-        'arm7_monitor': arm7_monitor, 'arm9_monitor': arm9_monitor, 'monitor_sleep': monitor_sleep, 'monitor_transport': monitor_transport,
+        'arm7_monitor': arm7_monitor, 'arm9_monitor': arm9_monitor, 'monitor_sleep': monitor_sleep, 'monitor_transport': monitor_transport, 'audio_rotation': audio_rotation,
     }
     (output/'INPUTS.json').write_text(json.dumps(receipt,sort_keys=True,indent=2)+'\n')
 
@@ -504,6 +543,7 @@ def summarize(output, baseline_output=None):
     result['arm9_monitor'] = json.loads((output/'INPUTS.json').read_text()).get('arm9_monitor',False)
     result['monitor_sleep'] = json.loads((output/'INPUTS.json').read_text()).get('monitor_sleep',False)
     result['monitor_transport'] = json.loads((output/'INPUTS.json').read_text()).get('monitor_transport',False)
+    result['audio_rotation'] = json.loads((output/'INPUTS.json').read_text()).get('audio_rotation',False)
     if baseline_output:
         old = json.loads((baseline_output/'INPUTS.json').read_text())
         new = json.loads((output/'INPUTS.json').read_text())
@@ -602,6 +642,7 @@ def main():
     parser.add_argument('--monitor-sleep', action='store_true',
                         help='Include hybrid HALT/WFI pipeline transfers in both monitors')
     parser.add_argument('--monitor-transport', action='store_true', help='Use tested hybrid capture/read/common-return transport; requires --monitor-sleep')
+    parser.add_argument('--audio-rotation', action='store_true', help='Private hidden audio channel rotation plus all-owner cleanup guard; requires --monitor-transport')
     parser.add_argument('--summarize', action='store_true')
     parser.add_argument('--baseline-output', type=Path,
                         help='Reuse a completed baseline after verifying identical hardware inputs')
@@ -622,7 +663,9 @@ def main():
             parser.error('--monitor-sleep requires both CPU monitor flags')
         if args.monitor_transport and not args.monitor_sleep:
             parser.error('--monitor-transport requires --monitor-sleep')
-        prepare(repo, output, args.arm7_monitor, args.arm9_monitor, args.monitor_sleep, args.monitor_transport)
+        if args.audio_rotation and not args.monitor_transport:
+            parser.error('--audio-rotation requires --monitor-transport')
+        prepare(repo, output, args.arm7_monitor, args.arm9_monitor, args.monitor_sleep, args.monitor_transport, args.audio_rotation)
     if args.summarize:
         summarize(output, args.baseline_output.resolve() if args.baseline_output else None)
     if args.variant:
