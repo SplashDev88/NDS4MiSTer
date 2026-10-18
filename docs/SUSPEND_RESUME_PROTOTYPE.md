@@ -1932,7 +1932,7 @@ or block RAM is added by these probes.
 Adding the halted pipeline to direct loading adds **29 registers and 529 mapped
 logic cells** across both CPUs. Total overhead versus disabled is 115 registers
 and 2,974 mapped logic cells. Both disabled CPU mappings still match the earlier
-baseline counts. The full-core cost and performance remain unmeasured.
+baseline counts. These isolated results do not measure full-core cost or performance.
 
 These are **mapped logic cells, not final ALMs**. Mapping does not establish
 full-core fit, routing, timing or gameplay throughput. The probe contains only
@@ -1942,6 +1942,77 @@ The wildcard virtual-pin assignment also produces ignored-assignment warnings
 on internal nodes; all four retained mappings completed with zero errors.
 The initial shadow-bank implementation is retained only in private measurement
 evidence, not as a second maintained implementation in this branch.
+
+### Connected full-shell area probe
+
+`tools/suspend_resume/measure_connected_area.py` prepares matched frozen copies
+of the full MiSTer project, using the three Beta12 experiment macros recorded
+in `docs/release/BETA12_BUILD_PROVENANCE.json`. The baseline retains disabled
+checkpoint options. The connected copy enables both CPUs, common acquisition,
+all implemented device serializers, display banks, graphics event/query state,
+math and the CDC/frontend serializer. Capture data, restore writes, coverage
+status and acquisition status reach observable virtual pins so synthesis cannot
+discard them merely because a host connection is missing.
+The generated restore control holds reset and producer stop independently of
+the normal acquisition controller, whose hold drops on reset. All component
+restore phases remain asserted while writes select individual components, and
+the CDC session-flush input is isolated during this probe restore phase. This
+keeps the guarded write paths reachable for the area measurement.
+
+Only generated copies are instrumented. Their raw control pins span clock
+domains and are **not an operational host transport**. Do not assemble or deploy
+the probe. Memory/cache/TCM serialization, downstream packet/renderer ownership,
+the safe host interface and the restore boot path remain outside this cost.
+A synthesis estimate is not a successful fit or a whole-machine restore test.
+
+```sh
+python3 tools/suspend_resume/measure_connected_area.py --prepare --output NEW_DIRECTORY
+python3 tools/suspend_resume/measure_connected_area.py --variant baseline --output NEW_DIRECTORY --runtime QUARTUS_ROOT --udev-shim SHIM
+python3 tools/suspend_resume/measure_connected_area.py --variant connected --output NEW_DIRECTORY --runtime QUARTUS_ROOT --udev-shim SHIM
+python3 tools/suspend_resume/measure_connected_area.py --summarize --output NEW_DIRECTORY
+```
+
+The tool refuses to overwrite build logs or reuse changed frozen inputs.
+`INPUTS.json`, both source manifests, `COUNTS.json`, `ENTITIES.json` and Quartus
+reports identify exactly what was measured. Optional `--stage fit` requires
+a successful map and runs only the fitter, without creating a deployable image.
+`--summarize --baseline-output PREVIOUS_DIRECTORY` can reuse a completed baseline
+only after verifying identical non-documentation/tool inputs and Beta12 flags.
+Rejected virtual-pin assignments invalidate comparison/fitting in this tool.
+
+The first whole-project compile exposed two Quartus 17 interface restrictions
+missed by the simulator: integer raster OUT-port reads and the RTC ready OUT-port
+connection to a guard input. Internal wire aliases resolve both without changing
+register values, clocks or event order. Raster continuation/fault controls,
+ordinary timing and the active DMA/audio console fixture cover these changes.
+
+Matched full-shell synthesis on October 18, 2026, with the corrected virtual-pin
+and independent restore/reset/stop wiring, gives:
+
+| Resource | Checkpoints disabled | Connected component checkpoint probe | Added |
+| --- | ---: | ---: | ---: |
+| Estimated ALMs | 34,290 | 46,319 | 12,029 |
+| Combinational ALUTs | 52,271 | 67,227 | 14,956 |
+| Dedicated logic registers | 39,376 | 41,975 | 2,599 |
+| Block memory bits | 4,113,236 | 4,112,996 | -240 |
+| DSP blocks | 27 | 27 | 0 |
+
+Both maps passed. The probe has 224 accepted virtual pins and retains the normal
+145 physical shell pins. The baseline was reused only after checking identical
+hardware inputs and flags. All frozen input hashes remained unchanged.
+
+The largest added **local ALUT** counts are sound (+3,902), ARM9 (+2,118), ARM7
+(+1,696), the island/measurement interface (+1,316), and ARM9 DMA (+752).
+These are hierarchy-local logic counts, not independently additive ALM costs.
+The current implementation needs a substantially smaller checkpoint design
+before the remaining memory serializers are added. Reuse existing register
+access paths while stopped and measure any replacement against this connected
+baseline; previous rejected one-hot audio mux variants are not new candidates.
+
+Report SHA-256 identities:
+
+- Baseline map: `070073ad7ee0a375a7e4cf185247293b2e5d3eb614dbf45559acc7ee28a583cd`.
+- Connected map: `a1ce8c99cdc2b6721514fc3b14fe2f6b4dc65b2d1229b3cb7be3c5932cfc1741`.
 
 ## Remaining state coverage
 
@@ -1963,7 +2034,11 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 ## Next acceptance gates
 
-1. Implement the real external owner behind the optional common barrier and
+1. Establish a viable full-shell resource budget with checkpoint capture and
+   restore observable before adding the remaining memory serializers. Use the
+   connected probe and early fitter result to target the largest measured costs.
+   Preserve component continuation proofs when changing their implementation.
+2. Implement the real external owner behind the optional common barrier and
    extend enabled-console coverage beyond the authored CPU/IO/DMA/audio fixture
    to active game-card/SPI/math and actual mixed-language backing. Exclude host
    loader/debug/seed changes and
@@ -1971,17 +2046,17 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Complete the remaining device coverage,
+3. Complete the remaining device coverage,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
-3. Require exact ROM plus FPGA/host/helper hashes and complete component coverage
+4. Require exact ROM plus FPGA/host/helper hashes and complete component coverage
    before presenting a user control. Define RTC elapsed-time behavior using the
    existing offline-clock rules rather than silently rewinding wall time.
-4. Fit and route the private checkpoint build. Compare throughput and pacing to
+5. Fit and route the private checkpoint build. Compare throughput and pacing to
    rc9 at 1 GHz; source-level clock-enable equality is not a hardware performance
    measurement.
-5. With isolated game saves, suspend Castlevania and NSMB, exit to Menu, relaunch
+6. With isolated game saves, suspend Castlevania and NSMB, exit to Menu, relaunch
    the same build and resume. Check gameplay, touch/input, audio, RTC and a normal
    save/reload. Only then attempt a power-cycle resume.
 

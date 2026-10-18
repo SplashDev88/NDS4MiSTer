@@ -36,7 +36,7 @@ mutations={
  'lost-vcount':('vcnt <= unsigned(checkpoint_write_data(29 downto 21));',"vcnt <= (others => '0');"),
  'lost-pending':('vcnt_wr_pend <= checkpoint_write_data(0);',"vcnt_wr_pend <= '0';"),
  'lost-phase':('lcd_phase_line <= unsigned(checkpoint_write_data(20 downto 12));',"lcd_phase_line <= (others => '0');"),
- 'lost-draw-counter':('linecounter <= to_integer(unsigned(checkpoint_write_data(7 downto 0)));','linecounter <= 0;'),
+ 'lost-draw-counter':('linecounter_state <= to_integer(unsigned(checkpoint_write_data(7 downto 0)));','linecounter_state <= 0;'),
  'lost-dispstat9':('busses(c).Din <= checkpoint_write_data;','if c=0 then busses(c).Din <= (others => \'0\'); else busses(c).Din <= checkpoint_write_data; end if;'),
  'lost-dispstat7':('busses(c).Din <= checkpoint_write_data;','if c=1 then busses(c).Din <= (others => \'0\'); else busses(c).Din <= checkpoint_write_data; end if;'),
  'lost-order':('checkpoint_address = restore_count and','true and'),

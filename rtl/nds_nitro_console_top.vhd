@@ -494,6 +494,7 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_irq9_idle_s, checkpoint_irq7_idle_s, checkpoint_ipc_idle_s : std_logic;
    signal checkpoint_card_stop : std_logic;
    signal checkpoint_cpus_observed, checkpoint_rtc_request : std_logic;
+   signal checkpoint_rtc_ready_s : std_logic;
    signal checkpoint_extra_paused, checkpoint_extra_seen : std_logic_vector(1 downto 0);
    signal checkpoint_local_ready : std_logic_vector(14 downto 0);
    signal checkpoint_fabric1_idle, checkpoint_fabric2_idle : std_logic;
@@ -2223,7 +2224,7 @@ begin
             cpus_observed => checkpoint_cpus_observed, local_ready => checkpoint_local_ready,
             island_idle_async => checkpoint_fabric2_idle and checkpoint_math_idle_2x,
             external_seen => checkpoint_external_seen, external_paused => checkpoint_external_paused,
-            rtc_ready => checkpoint_rtc_ready, local_seen => checkpoint_extra_seen(0),
+            rtc_ready => checkpoint_rtc_ready_s, local_seen => checkpoint_extra_seen(0),
             local_paused => checkpoint_extra_paused(0), local_idle => checkpoint_local_idle,
             rtc_request => checkpoint_rtc_request);
    end generate;
@@ -2873,6 +2874,9 @@ begin
 
    -- A native BIOS boot reads the serial RTC before loading firmware. Seed
    -- once from the host; guest reset leaves the calendar and edited date intact.
+   -- Use an internal signal at the owner-to-guard boundary: Quartus 17 cannot
+   -- associate an OUT interface object with the guard's IN port.
+   checkpoint_rtc_ready <= checkpoint_rtc_ready_s;
    irtc : entity work.nds_nitro_rtc
    generic map(EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE)
    port map (
@@ -2881,7 +2885,7 @@ begin
       rtc_datetime => rtc_datetime, date_written => rtc_date_written,
       bus7 => io_bus7, wired_out7 => rtc_native_out7,
       wired_done7 => rtc_wired_done7,
-      checkpoint_request => checkpoint_rtc_request, checkpoint_ready => checkpoint_rtc_ready,
+      checkpoint_request => checkpoint_rtc_request, checkpoint_ready => checkpoint_rtc_ready_s,
       checkpoint_datetime => checkpoint_rtc_datetime, checkpoint_subsecond => checkpoint_rtc_subsecond
    );
    -- Firmware and direct games share the same retained, host-seeded calendar.

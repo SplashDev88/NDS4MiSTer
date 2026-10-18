@@ -142,6 +142,9 @@ architecture arch of nds_gpu_timing is
    signal restore_active, restore_write_valid : std_logic;
    signal restore_count : unsigned(2 downto 0) := (others => '0');
    signal restore_error : std_logic := '0';
+   -- Quartus 17 cannot read integer OUT ports in the checkpoint mux, even
+   -- with VHDL-2008 enabled. Keep the existing registers behind wire aliases.
+   signal linecounter_state, linecounter_obj_state : integer range 0 to 191 := 0;
 
    function valid_word(a : unsigned(2 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
    begin
@@ -155,6 +158,9 @@ architecture arch of nds_gpu_timing is
    end function;
 
 begin
+
+   linecounter <= linecounter_state;
+   linecounter_obj <= linecounter_obj_state;
 
    stop_timing <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
    restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
@@ -188,7 +194,7 @@ begin
                std_logic_vector(to_unsigned(line,9)) & std_logic_vector(to_unsigned(cycles,12));
             when 1 => checkpoint_data(20 downto 0) <= std_logic_vector(lcd_phase_line) & vmatch_flag(1) & vmatch_flag(0) &
                std_logic_vector(vcnt_wr_val) & vcnt_wr_pend;
-            when 2 => checkpoint_data(15 downto 0) <= std_logic_vector(to_unsigned(linecounter_obj,8)) & std_logic_vector(to_unsigned(linecounter,8));
+            when 2 => checkpoint_data(15 downto 0) <= std_logic_vector(to_unsigned(linecounter_obj_state,8)) & std_logic_vector(to_unsigned(linecounter_state,8));
             when 3 | 4 =>
                c := to_integer(checkpoint_address) - 3;
                checkpoint_data(15 downto 7) <= R_vmatch_low(c) & R_vmatch_msb(c);
@@ -318,8 +324,8 @@ begin
                      vmatch_flag(0) <= checkpoint_write_data(10); vmatch_flag(1) <= checkpoint_write_data(11);
                      lcd_phase_line <= unsigned(checkpoint_write_data(20 downto 12));
                   when 2 =>
-                     linecounter <= to_integer(unsigned(checkpoint_write_data(7 downto 0)));
-                     linecounter_obj <= to_integer(unsigned(checkpoint_write_data(15 downto 8)));
+                     linecounter_state <= to_integer(unsigned(checkpoint_write_data(7 downto 0)));
+                     linecounter_obj_state <= to_integer(unsigned(checkpoint_write_data(15 downto 8)));
                   when others => null;
                end case;
             end if;
@@ -411,14 +417,14 @@ begin
                   lcd_phase_line <= to_unsigned(line, lcd_phase_line'length);
                   if (line < 192) then
                      drawline    <= '1';
-                     linecounter <= line;
+                     linecounter_state <= line;
                   end if;
                   if (line < 191) then
                      drawObj         <= '1';
-                     linecounter_obj <= line + 1;
+                     linecounter_obj_state <= line + 1;
                   elsif (line = 262) then
                      drawObj         <= '1';
-                     linecounter_obj <= 0;
+                     linecounter_obj_state <= 0;
                   end if;
                end if;
 
