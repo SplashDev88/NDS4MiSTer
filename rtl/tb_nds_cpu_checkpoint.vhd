@@ -11,7 +11,7 @@ entity tb_nds_cpu_checkpoint is
   generic(OPERATION:string:="capture"; READ_DELAY:positive:=1;
           REQUEST_PHASE:natural:=0; OMIT_EXT_RESTORE:boolean:=false;
           ARM9:boolean:=true; THUMB_LOOP:boolean:=false; STEP_PERIOD:positive:=1;
-          EARLY_CAPTURE:boolean:=false);
+          EARLY_CAPTURE:boolean:=false; HALT_PIPELINE:boolean:=false);
 end;
 architecture sim of tb_nds_cpu_checkpoint is
   signal clk:std_logic:='0'; signal ce,dma:std_logic:='0'; signal reset:std_logic:='1';
@@ -21,13 +21,22 @@ architecture sim of tb_nds_cpu_checkpoint is
   signal completed,initial_count,writes:natural:=0;
   signal pending_bus:boolean:=false;
   function last_word return natural is
-  begin if ARM9 then return 67; else return 47; end if; end;
+    variable result:natural:=47;
+  begin
+    if ARM9 then result:=67;end if;
+    if HALT_PIPELINE then result:=result+12;end if;
+    return result;
+  end;
   function expected_flags return std_logic_vector is
   begin if ARM9 then return x"0800009F"; else return x"0000009F"; end if; end;
   type state_words is array(0 to last_word) of std_logic_vector(31 downto 0);
   function word_address(i:natural) return natural is
   begin
-    if i<47 then return i; elsif ARM9 then return 128+i-47; else return 148; end if;
+    if i<47 then return i;
+    elsif ARM9 and i<68 then return 128+i-47;
+    elsif not ARM9 and i=47 then return 148;
+    elsif ARM9 then return 160+i-68;
+    else return 160+i-48;end if;
   end;
   function instruction(a:std_logic_vector(31 downto 0)) return std_logic_vector is
   begin
@@ -72,7 +81,8 @@ begin
   end process;
   garm9:if ARM9 generate
   dut:entity work.nds_cpu9
-    generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true)
+    generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true,
+      EXPERIMENTAL_HALT_CHECKPOINT=>HALT_PIPELINE)
     port map(clk=>clk,ce=>ce,reset=>reset,savestate_bus=>ss,
       ss_wired_out=>ssout,ss_wired_done=>ssdone,
       gb_bus_Adr=>addr,gb_bus_rnw=>rnw,gb_bus_ena=>ena,gb_bus_seq=>open,
@@ -88,7 +98,8 @@ begin
   end generate;
   garm7:if not ARM9 generate
     dut:entity work.gba_cpu
-      generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true)
+      generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true,
+        EXPERIMENTAL_HALT_CHECKPOINT=>HALT_PIPELINE)
       port map(clk=>clk,ce=>ce,reset=>reset,savestate_bus=>ss,
         ss_wired_out=>ssout,ss_wired_done=>ssdone,
         gb_bus_Adr=>addr,gb_bus_rnw=>rnw,gb_bus_ena=>ena,gb_bus_seq=>open,

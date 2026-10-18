@@ -27,6 +27,18 @@ for scenario in normal dma9 dma7 halt7 wfi9 no_branch9 early_cancel stuck_releas
   done
 done
 echo 'PASS: 108 real CPU-pair barrier/cancel/timeout/CDC cases'
+for scenario in halt7 wfi9; do
+  for delay in 1 11; do
+    for step in 1 5; do
+      for phase in 0 7 41; do
+        nvc --std=2008 -e -gSCENARIO="$scenario" -gREAD_DELAY="$delay" \
+            -gSTEP_PERIOD="$step" -gREQUEST_PHASE="$phase" -gHALT_PIPELINE=true tb_nds_checkpoint_coordinator
+        nvc --std=2008 -r tb_nds_checkpoint_coordinator --ieee-warnings=off --exit-severity=error
+      done
+    done
+  done
+done
+echo 'PASS: 24 additional CPU-pair holds with a sleeping CPU and pipeline coverage enabled'
 # If cancellation skips delivery acknowledgement, an old low level can make
 # the controller rearm while the stopped endpoint has not seen the request.
 sed 's/phase <= CANCEL_DELIVERY;/phase <= DRAIN;/g' \

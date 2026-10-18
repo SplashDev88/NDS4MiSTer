@@ -14,12 +14,14 @@ from pathlib import Path
 import re
 import struct
 import tempfile
+from pipeline_layout import validate_words
 
 MAGIC = b'NDS4M-CPU-PROOF\x00\x01'
 MAX_HEADER = 4096
 MAX_PAYLOAD = 4096
 MAX_FILE = len(MAGIC) + 4 + MAX_HEADER + MAX_PAYLOAD + 32
-WORD_COUNTS = {'arm9-branch-v1': 68, 'arm7-branch-v1': 48}
+WORD_COUNTS = {'arm9-branch-v1': 68, 'arm7-branch-v1': 48,
+               'arm9-pipeline-v1': 80, 'arm7-pipeline-v1': 60}
 
 
 class InvalidCheckpoint(ValueError):
@@ -29,7 +31,7 @@ class InvalidCheckpoint(ValueError):
 def check_identity(identity):
     if not isinstance(identity, dict) or set(identity) != {'rom_sha256', 'build_sha256', 'component'}:
         raise InvalidCheckpoint('Exact ROM, build and component identity required')
-    if identity['component'] not in WORD_COUNTS:
+    if not isinstance(identity['component'], str) or identity['component'] not in WORD_COUNTS:
         raise InvalidCheckpoint('Unsupported component; full-machine resume is not implemented')
     for key in ('rom_sha256', 'build_sha256'):
         if not isinstance(identity[key], str) or re.fullmatch('[0-9a-f]{64}', identity[key]) is None:
@@ -42,6 +44,12 @@ def check_payload(payload, identity):
         raise InvalidCheckpoint('Incomplete CPU state word count')
     if re.fullmatch(rb'(?:[0-9A-F]{8}\n){' + str(count).encode() + rb'}', payload) is None:
         raise InvalidCheckpoint('Invalid CPU state encoding')
+    if '-pipeline-' in identity['component']:
+        try:
+            validate_words([int(word, 16) for word in payload.splitlines()[-12:]],
+                           identity['component'].startswith('arm9-'))
+        except ValueError as exc:
+            raise InvalidCheckpoint(str(exc)) from exc
 
 
 def encode(identity, payload):

@@ -62,6 +62,22 @@ for arm9 in true false; do
     done
   done
 done
+# The pipeline-enabled CPU must still preserve branch checkpoints in both
+# instruction sets, including slow enables and delayed memory responses.
+for arm9 in true false; do
+  for thumb in false true; do
+    for step in 1 5; do
+      for delay in 1 11; do
+        for operation in capture restore; do
+          nvc --std=2008 -e -gARM9="$arm9" -gTHUMB_LOOP="$thumb" -gSTEP_PERIOD="$step" \
+              -gREAD_DELAY="$delay" -gHALT_PIPELINE=true -gOPERATION="$operation" tb_nds_cpu_checkpoint
+          nvc --std=2008 -r tb_nds_cpu_checkpoint --ieee-warnings=off --exit-severity=error
+        done
+      done
+    done
+  done
+done
+echo 'PASS: 16 additional branch restores with the halted-pipeline extension enabled'
 # Generate a CPU9 state for the negative control after the final ARM7 case.
 nvc --std=2008 -e tb_nds_cpu_checkpoint
 nvc --std=2008 -r tb_nds_cpu_checkpoint --ieee-warnings=off --exit-severity=error

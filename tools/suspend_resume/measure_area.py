@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--runtime', type=Path, required=True, help='Quartus 17.0.2 installation')
     parser.add_argument('--udev-shim', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True, help='New directory outside the source checkout')
+    parser.add_argument('--halt-pipeline', action='store_true', help='Include halted pipeline state in enabled probes')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     output = args.output.resolve()
@@ -37,7 +38,8 @@ def main():
     results = {}
     for arm9 in [True, False]:
         for enabled in [False, True]:
-            variant = ('arm9' if arm9 else 'arm7') + ('-checkpoint' if enabled else '-baseline')
+            suffix = '-halt-checkpoint' if args.halt_pipeline else '-checkpoint'
+            variant = ('arm9' if arm9 else 'arm7') + (suffix if enabled else '-baseline')
             project = output/variant; project.mkdir()
             settings = '''set_global_assignment -name FAMILY "Cyclone V"
 set_global_assignment -name DEVICE 5CSEBA6U23I7
@@ -51,6 +53,7 @@ set_instance_assignment -name VIRTUAL_PIN ON -to *
             settings += ''.join('set_global_assignment -name VHDL_FILE ../source/'+Path(n).name+'\n' for n in files)
             settings += 'set_parameter -name ARM9 '+str(arm9).lower()+'\n'
             settings += 'set_parameter -name CHECKPOINTS '+str(enabled).lower()+'\n'
+            settings += 'set_parameter -name HALT_PIPELINE '+str(enabled and args.halt_pipeline).lower()+'\n'
             (project/'probe.qsf').write_text(settings)
             (project/'probe.qpf').write_text('PROJECT_REVISION = "probe"\n')
             with (project/'map.log').open('w') as log:

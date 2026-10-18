@@ -5,7 +5,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.pProc_bus_gba.all;
 entity checkpoint_area_probe is
-  generic(ARM9:boolean:=true; CHECKPOINTS:boolean:=false);
+  generic(ARM9:boolean:=true; CHECKPOINTS:boolean:=false; HALT_PIPELINE:boolean:=false);
   port(clk,reset,ce,dma,irq,unhalt,new_halt:in std_logic;
        ss_addr:in std_logic_vector(27 downto 0);
        ss_data:in std_logic_vector(31 downto 0);
@@ -33,7 +33,8 @@ begin
   ss <= (ss_data,ss_addr,ss_rnw,ss_ena,"10",ss_be,ss_rst);
   g9:if ARM9 generate
     cpu:entity work.nds_cpu9
-      generic map(is_simu=>'0',SS_PRESET_ONLY=>preset_only,EXPERIMENTAL_CHECKPOINT=>CHECKPOINTS)
+      generic map(is_simu=>'0',SS_PRESET_ONLY=>preset_only,EXPERIMENTAL_CHECKPOINT=>CHECKPOINTS,
+        EXPERIMENTAL_HALT_CHECKPOINT=>HALT_PIPELINE)
       port map(clk=>clk,ce=>ce,reset=>reset,savestate_bus=>ss,
         ss_wired_out=>state_data,ss_wired_done=>state_done,
         gb_bus_Adr=>mem_addr,gb_bus_dout=>mem_data,gb_bus_din=>mem_input,
@@ -56,7 +57,8 @@ begin
   end generate;
   g7:if not ARM9 generate
     cpu:entity work.gba_cpu
-      generic map(is_simu=>'0',SS_PRESET_ONLY=>preset_only,EXPERIMENTAL_CHECKPOINT=>CHECKPOINTS)
+      generic map(is_simu=>'0',SS_PRESET_ONLY=>preset_only,EXPERIMENTAL_CHECKPOINT=>CHECKPOINTS,
+        EXPERIMENTAL_HALT_CHECKPOINT=>HALT_PIPELINE)
       port map(clk=>clk,ce=>ce,reset=>reset,savestate_bus=>ss,
         ss_wired_out=>state_data,ss_wired_done=>state_done,
         gb_bus_Adr=>mem_addr,gb_bus_dout=>mem_data,gb_bus_din=>mem_input,

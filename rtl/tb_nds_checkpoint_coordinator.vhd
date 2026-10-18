@@ -9,7 +9,8 @@ use work.pProc_bus_gba.all;
 
 entity tb_nds_checkpoint_coordinator is
   generic (SCENARIO : string := "normal"; READ_DELAY : positive := 1;
-           STEP_PERIOD : positive := 1; REQUEST_PHASE : natural := 0);
+           STEP_PERIOD : positive := 1; REQUEST_PHASE : natural := 0;
+           HALT_PIPELINE : boolean := false);
 end;
 
 architecture sim of tb_nds_checkpoint_coordinator is
@@ -112,7 +113,8 @@ begin
   end generate;
 
   cpu9 : entity work.nds_cpu9
-    generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true)
+    generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true,
+      EXPERIMENTAL_HALT_CHECKPOINT=>HALT_PIPELINE)
     port map(clk=>clk(0),ce=>ce(0),reset=>reset,savestate_bus=>ss,
       ss_wired_out=>ssout(0),ss_wired_done=>open,
       gb_bus_Adr=>addr(0),gb_bus_rnw=>rnw(0),gb_bus_ena=>ena(0),gb_bus_seq=>open,
@@ -126,7 +128,8 @@ begin
       bus_cacheable_i=>open,bus_cacheable_d=>open,cache_op_busy=>'0',
       checkpoint_req=>req(0),checkpoint_paused=>paused(0));
   cpu7 : entity work.gba_cpu
-    generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true)
+    generic map(is_simu=>'0',SS_PRESET_ONLY=>'0',EXPERIMENTAL_CHECKPOINT=>true,
+      EXPERIMENTAL_HALT_CHECKPOINT=>HALT_PIPELINE)
     port map(clk=>clk(1),ce=>ce(1),reset=>reset,savestate_bus=>ss,
       ss_wired_out=>ssout(1),ss_wired_done=>open,
       gb_bus_Adr=>addr(1),gb_bus_rnw=>rnw(1),gb_bus_ena=>ena(1),gb_bus_seq=>open,
@@ -185,7 +188,16 @@ begin
     old_epoch:=epoch;request<='1';clocks(1);
     assert epoch=old_epoch+1 report "request did not allocate exactly one epoch" severity failure;
 
-    if SCENARIO="early_cancel" or SCENARIO="stopped_clock" then
+    if HALT_PIPELINE and (SCENARIO="wfi9" or SCENARIO="halt7") then
+      await_pair;before:=completed;clocks(200);
+      assert completed=before and halt/="00" report "halted pair did not stay asleep" severity failure;
+      request<='0';wait_ready;wake<="11";
+      for i in 1 to 10000 loop
+        clocks(1);exit when completed(0)>before(0) and completed(1)>before(1);
+      end loop;
+      assert completed(0)>before(0) and completed(1)>before(1)
+        report "halted pair did not resume after release" severity failure;
+    elsif SCENARIO="early_cancel" or SCENARIO="stopped_clock" then
       -- Cancel before the high phase can return from both CPU domains.
       if SCENARIO="stopped_clock" then clock7_run<=false;end if;
       request<='0';clocks(1);
@@ -253,7 +265,8 @@ begin
       end if;
     end if;
     report "PASS: CPU-pair coordinator " & SCENARIO & " delay=" & integer'image(READ_DELAY) &
-      " step=" & integer'image(STEP_PERIOD) & " phase=" & integer'image(REQUEST_PHASE);
+      " step=" & integer'image(STEP_PERIOD) & " phase=" & integer'image(REQUEST_PHASE) &
+      " halted-format=" & boolean'image(HALT_PIPELINE);
     stop;wait;
   end process;
   process begin wait for 5 ms;assert false report "test watchdog" severity failure;end process;

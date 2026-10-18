@@ -20,7 +20,43 @@ class CapsuleTests(unittest.TestCase):
         for component, count in capsule.WORD_COUNTS.items():
             identity = dict(self.identity, component=component)
             words = b'ABCDEF01\n' * count
+            if '-pipeline-' in component:
+                words = b'ABCDEF01\n' * (count-12) + b'00000000\n' * 12
             self.assertEqual(capsule.decode(capsule.encode(identity, words), identity), words)
+
+    def test_pipeline_values_checked_before_restore(self):
+        from pipeline_layout import layout
+        def check_invalid(identity, count, payload):
+            with self.assertRaises(capsule.InvalidCheckpoint):
+                capsule.encode(identity, payload)
+            # Bypass the writer and forge a correct file checksum: the reader
+            # must still reject enum/range/reserved bits before returning data.
+            valid = capsule.encode(identity, b'00000000\n' * count)
+            body = valid[:-(count*9+32)] + payload
+            with self.assertRaises(capsule.InvalidCheckpoint):
+                capsule.decode(body + hashlib.sha256(body).digest(), identity)
+        for arm9 in [True, False]:
+            component = 'arm9-pipeline-v1' if arm9 else 'arm7-pipeline-v1'
+            identity = dict(self.identity, component=component)
+            count = capsule.WORD_COUNTS[component]
+            for name, kind, address, bit, size in layout(arm9):
+                if kind == 'tFunctions_detail':
+                    bad = 25 if arm9 else 20
+                elif kind == 'tdatareceivetype':
+                    bad = 5
+                elif kind == 'integer range -64 to 64':
+                    bad = 65
+                else:
+                    continue
+                words = [0] * count
+                words[count-12+address-160] = bad << bit
+                payload = ''.join(f'{value:08X}\n' for value in words).encode()
+                check_invalid(identity, count, payload)
+            words = [0] * count
+            words[-1] = 4  # reserved fetch-control bit
+            check_invalid(identity, count, ''.join(f'{value:08X}\n' for value in words).encode())
+            with self.assertRaises(capsule.InvalidCheckpoint):
+                capsule.encode(dict(identity, component=[]), b'')
 
     def test_mismatch_before_any_state_is_returned(self):
         for key, value in [('rom_sha256', '3' * 64), ('build_sha256', '4' * 64),

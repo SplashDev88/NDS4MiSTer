@@ -9,12 +9,14 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use std.env.all;
+use std.textio.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_arm7_halt_prefetch is
   generic(THUMB:boolean:=false; RETURN_THUMB:boolean:=THUMB;
           HALT_NOPS:natural:=2; COUNT_NOPS:boolean:=true;
           DMA_PAUSE:boolean:=false; WAKE_TICKS:natural:=50;
-          MASK_IRQ:boolean:=true);
+          MASK_IRQ:boolean:=true; CHECKPOINT_OPERATION:string:="none";
+          OMIT_PIPELINE_RESTORE:boolean:=false);
 end;
 architecture sim of tb_nds_arm7_halt_prefetch is
   signal clk:std_logic:='0'; signal reset:std_logic:='1';
@@ -24,6 +26,15 @@ architecture sim of tb_nds_arm7_halt_prefetch is
   signal acc:std_logic_vector(1 downto 0);
   signal finished,escaped,irq_seen:boolean:=false;
   signal tick:natural:=0;
+  signal checkpoint_req,checkpoint_paused,checkpoint_restore,cpu_idle:std_logic:='0';
+  signal ssout:std_logic_vector(31 downto 0);signal ssdone:std_logic;
+  type checkpoint_words is array(0 to 59) of std_logic_vector(31 downto 0);
+  function checkpoint_preset return std_logic is
+  begin if CHECKPOINT_OPERATION="none" then return '1';else return '0';end if;end;
+  function word_address(i:natural) return natural is
+  begin
+    if i<47 then return i;elsif i=47 then return 148;else return 160+i-48;end if;
+  end;
   signal io7:proc_bus_gb_type;
   signal bioaddr:unsigned(13 downto 2);
   signal biodata,ioread,lastread:std_logic_vector(31 downto 0);
@@ -83,16 +94,19 @@ begin
   newhalt<=rawhalt;
   dma<='1' when DMA_PAUSE and ((tick mod 13)<5) else '0';
   din<=busdin; done<=busdone;
-  dut:entity work.gba_cpu generic map(is_simu=>'0') port map(
+  dut:entity work.gba_cpu generic map(is_simu=>'0',SS_PRESET_ONLY=>checkpoint_preset,
+    EXPERIMENTAL_CHECKPOINT=>CHECKPOINT_OPERATION/="none",
+    EXPERIMENTAL_HALT_CHECKPOINT=>CHECKPOINT_OPERATION/="none") port map(
     clk=>clk,ce=>'1',reset=>reset,error_cpu=>error_cpu,dbg_pc=>pc,
     dbg_regsel=>to_unsigned(14,5),dbg_regval=>regval,savestate_bus=>ss,
-    ss_wired_out=>open,ss_wired_done=>open,
+    ss_wired_out=>ssout,ss_wired_done=>ssdone,
     gb_bus_Adr=>addr,gb_bus_rnw=>rnw,gb_bus_ena=>ena,gb_bus_code=>code,
     gb_bus_seq=>open,gb_bus_acc=>acc,gb_bus_dout=>dout,
     gb_bus_din=>din,gb_bus_done=>done,gb_bus_lock=>open,bus_lowbits=>open,
-    dma_on=>dma,done=>open,CPU_bus_idle=>open,PC_in_BIOS=>open,
+    dma_on=>dma,done=>open,CPU_bus_idle=>cpu_idle,PC_in_BIOS=>open,
     cpu_halt=>halt,lastread=>lastread,jump_out=>open,IRQ_in=>irq,
-    unhalt=>unhalt,new_halt=>newhalt);
+    unhalt=>unhalt,new_halt=>newhalt,checkpoint_req=>checkpoint_req,
+    checkpoint_paused=>checkpoint_paused,checkpoint_restore=>checkpoint_restore);
   mb:entity work.nds_membus7 port map(
     clk=>clk,reset=>reset,cpu_adr=>addr,cpu_rnw=>rnw,cpu_ena=>ena,cpu_acc=>acc,
     cpu_dout=>dout,cpu_lowbits=>"00",cpu_lastread=>lastread,cpu_din=>busdin,cpu_done=>busdone,
@@ -127,12 +141,58 @@ begin
     end if;
   end process;
   process
+    file state_file:text;
+    variable linebuf:line;
+    variable saved,reread:checkpoint_words;
+    procedure clocks(n:natural) is
+    begin for i in 1 to n loop wait until falling_edge(clk);end loop;end;
+    procedure read_state(variable v:out checkpoint_words) is
+    begin
+      for i in v'range loop
+        ss.Adr<=std_logic_vector(to_unsigned(word_address(i),ss.Adr'length));
+        ss.rnw<='1';ss.ena<='1';clocks(1);
+        assert ssdone='1' report "checkpoint state word missing" severity failure;
+        v(i):=ssout;
+      end loop;ss.ena<='0';
+    end;
   begin
-    wait for 50 ns; wait until falling_edge(clk); reset<='0';
-    wait until halt='1' for 100 us;
+    wait for 50 ns;wait until falling_edge(clk);
+    if CHECKPOINT_OPERATION="restore" then
+      ss.rst<='1';clocks(3);ss.rst<='0';checkpoint_restore<='1';clocks(2);
+      file_open(state_file,"halt.state",read_mode);
+      for i in saved'range loop
+        readline(state_file,linebuf);hread(linebuf,saved(i));
+        if not OMIT_PIPELINE_RESTORE or word_address(i)<160 then
+          ss.Adr<=std_logic_vector(to_unsigned(word_address(i),ss.Adr'length));
+          ss.Din<=saved(i);ss.rnw<='0';ss.ena<='1';clocks(1);ss.ena<='0';clocks(1);
+        end if;
+      end loop;
+      assert endfile(state_file) report "trailing checkpoint words" severity failure;
+      file_close(state_file);clocks(3);read_state(reread);
+      for i in 1 to saved'high loop
+        if not OMIT_PIPELINE_RESTORE or word_address(i)<160 then
+          assert saved(i)=reread(i) report "ARM7 checkpoint state mismatch" severity failure;
+        end if;
+      end loop;
+      checkpoint_restore<='0';
+    end if;
+    reset<='0';
+    if halt/='1' then wait until halt='1' for 100 us;end if;
     assert halt='1' report "Did not reach HALTCNT halt" severity failure;
     report "HALTED pc="&to_hstring(pc)&" lr="&to_hstring(regval);
-    for i in 1 to WAKE_TICKS loop wait until falling_edge(clk); end loop; irq<='1'; unhalt<='1';
+    for i in 1 to WAKE_TICKS loop wait until falling_edge(clk); end loop;
+    if CHECKPOINT_OPERATION="capture" then
+      checkpoint_req<='1';
+      for i in 1 to 2000 loop clocks(1);exit when checkpoint_paused='1';end loop;
+      assert checkpoint_paused='1' report "halt checkpoint timed out" severity failure;
+      assert cpu_idle='1' and ena='0' report "halt snapshot has pending bus work" severity failure;
+      read_state(saved);clocks(100);read_state(reread);
+      assert saved=reread report "halt checkpoint changed while held" severity failure;
+      file_open(state_file,"halt.state",write_mode);
+      for i in saved'range loop hwrite(linebuf,saved(i));writeline(state_file,linebuf);end loop;
+      file_close(state_file);checkpoint_req<='0';clocks(8);
+    end if;
+    irq<='1'; unhalt<='1';
     wait until halt='0'; wait until falling_edge(clk); unhalt<='0';
     if not MASK_IRQ then
       wait until irq_seen for 100 us;

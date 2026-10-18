@@ -203,9 +203,9 @@ build or timing-closure claim accompanies the performance freeze.
 
 Save states, DS wireless, NAND cartridge saves, DSi mode and RTC alarm/periodic
 interrupts remain unsupported. The [bounded suspend/resume experiment](SUSPEND_RESUME_PROTOTYPE.md)
-currently proves CPU component persistence and a bounded CPU-pair pause/cancel
-barrier in simulation. It is disabled in the console and does not add whole-game
-resume. Short selected-game checks do not establish full
+currently proves branch and idle HALT/WFI CPU persistence, including prefetched
+instructions, and a bounded CPU-pair pause/cancel barrier in simulation. It is
+disabled in the console and does not add whole-game resume. Short selected-game checks do not establish full
 playthrough compatibility. Slowdown, uneven animation, audio hitches and crashes
 remain possible.
 

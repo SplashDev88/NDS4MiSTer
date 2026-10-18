@@ -16,7 +16,8 @@ entity gba_cpu is
       -- "savestates" block below for why that is bit-exact. '0' restores the
       -- full bus, which is what a real savestate implementation would need.
       SS_PRESET_ONLY : std_logic := '1';
-      EXPERIMENTAL_CHECKPOINT : boolean := false
+      EXPERIMENTAL_CHECKPOINT : boolean := false;
+      EXPERIMENTAL_HALT_CHECKPOINT : boolean := false
    );
    port 
    (
@@ -75,6 +76,10 @@ architecture arch of gba_cpu is
    signal cpu_ce, checkpoint_take : std_logic;
    signal bus_lastread : std_logic_vector(31 downto 0);
    signal checkpoint_held : std_logic := '0';
+   signal checkpoint_branch_take, checkpoint_halt_take : std_logic;
+   type t_checkpoint_pipeline is array(0 to 11) of std_logic_vector(31 downto 0);
+   signal checkpoint_pipeline : t_checkpoint_pipeline;
+
    signal checkpoint_data : std_logic_vector(31 downto 0);
    signal checkpoint_data_done : std_logic;
 
@@ -446,12 +451,22 @@ begin
    begin
       assert SS_PRESET_ONLY = '0'
          report "checkpoint requires the full CPU state bus" severity failure;
-      checkpoint_take <= '1' when reset = '0' and cpu_ce = '1' and
+      checkpoint_branch_take <= '1' when reset = '0' and cpu_ce = '1' and
          checkpoint_req = '1' and decode_functions_detail = branch_all and
          execute_branch = '1' and execute_done = '1' and execute_stall = '0' and
          (busState = BUSSTATE_IDLE or fetch_done = '1') and
          dma_on = '0' and dma_on_1 = '0' and gb_bus_saved = '0' and
          execute_RW_ena = '0' else '0';
+      checkpoint_take <= checkpoint_branch_take or checkpoint_halt_take;
+      checkpoint_halt_take <= '1' when EXPERIMENTAL_HALT_CHECKPOINT and
+         reset = '0' and cpu_ce = '1' and checkpoint_req = '1' and
+         decode_halt = '1' and decode_unhalt = '0' and unhalt = '0' and
+         new_halt = '0' and IRQ_in = '0' and decode_functions_detail /= IRQ and
+         execute_stall = '0' and execute_done = '0' and execute_RW_ena = '0' and
+         execute_RW_State = DATARW_IDLE and execute_MUL_State = MUL_IDLE and
+         alu_wait_shift = '0' and execute_switchmode_now = '0' and
+         busState = BUSSTATE_IDLE and gb_bus_saved = '0' and
+         dma_on = '0' and dma_on_1 = '0' else '0';
       process(clk) begin
          if rising_edge(clk) then
             if reset = '1' or checkpoint_req = '0' then
@@ -464,6 +479,8 @@ begin
    end generate;
    gno_checkpoint : if not EXPERIMENTAL_CHECKPOINT generate
       checkpoint_take <= '0';
+      checkpoint_branch_take <= '0';
+      checkpoint_halt_take <= '0';
       checkpoint_held <= '0';
    end generate;
 
@@ -522,6 +539,71 @@ begin
    -- Experimental ABI 1: live readback and direct loading while reset is
    -- held. Reusing live register flops avoids a second full shadow bank.
    -- PC still uses its boot shadow, so fetch can refill after reset releases.
+   assert not EXPERIMENTAL_HALT_CHECKPOINT or EXPERIMENTAL_CHECKPOINT
+      report "halt checkpoint requires architectural checkpoint support" severity failure;
+-- BEGIN CHECKPOINT PIPELINE READBACK
+   gcheckpoint_pipeline : if EXPERIMENTAL_HALT_CHECKPOINT generate
+      process(all) begin
+         checkpoint_pipeline <= (others => (others => '0'));
+         checkpoint_pipeline(0)(3 downto 0) <= decode_condition;
+         checkpoint_pipeline(0)(4) <= decode_ready;
+         checkpoint_pipeline(1)(31 downto 0) <= std_logic_vector(decode_PC);
+         checkpoint_pipeline(2)(31 downto 0) <= decode_data_1;
+         checkpoint_pipeline(3)(4 downto 0) <= std_logic_vector(to_unsigned(tFunctions_detail'pos(decode_functions_detail), 5));
+         checkpoint_pipeline(3)(7 downto 5) <= std_logic_vector(to_unsigned(tdatareceivetype'pos(decode_datareceivetype), 3));
+         checkpoint_pipeline(3)(8) <= decode_clearbit1;
+         checkpoint_pipeline(3)(12 downto 9) <= decode_rdest;
+         checkpoint_pipeline(3)(16 downto 13) <= decode_rdest_save;
+         checkpoint_pipeline(3)(20 downto 17) <= decode_Rn_op1;
+         checkpoint_pipeline(3)(24 downto 21) <= decode_Rn_op1_save;
+         checkpoint_pipeline(3)(28 downto 25) <= decode_RM_op2;
+         checkpoint_pipeline(3)(29) <= decode_alu_use_immi;
+         checkpoint_pipeline(3)(30) <= decode_alu_use_shift;
+         checkpoint_pipeline(4)(31 downto 0) <= std_logic_vector(decode_immidiate);
+         checkpoint_pipeline(5)(0) <= decode_shift_regbased;
+         checkpoint_pipeline(5)(2 downto 1) <= decode_shift_mode;
+         checkpoint_pipeline(5)(10 downto 3) <= std_logic_vector(to_unsigned(decode_shift_amount, 8));
+         checkpoint_pipeline(5)(11) <= decode_shift_RRX;
+         checkpoint_pipeline(5)(12) <= decode_shiftcarry;
+         checkpoint_pipeline(5)(13) <= decode_useoldcarry;
+         checkpoint_pipeline(5)(14) <= decode_updateflags;
+         checkpoint_pipeline(5)(15) <= decode_mul_signed;
+         checkpoint_pipeline(5)(16) <= decode_mul_useadd;
+         checkpoint_pipeline(5)(17) <= decode_mul_long;
+         checkpoint_pipeline(5)(18) <= decode_writeback;
+         checkpoint_pipeline(5)(19) <= decode_switch_op;
+         checkpoint_pipeline(5)(20) <= decode_set_thumbmode;
+         checkpoint_pipeline(5)(21) <= decode_branch_usereg;
+         checkpoint_pipeline(5)(22) <= decode_branch_link;
+         checkpoint_pipeline(5)(23) <= decode_branch_long;
+         checkpoint_pipeline(6)(25 downto 0) <= std_logic_vector(decode_branch_immi);
+         checkpoint_pipeline(6)(27 downto 26) <= decode_datatransfer_type;
+         checkpoint_pipeline(6)(28) <= decode_datatransfer_preadd;
+         checkpoint_pipeline(6)(29) <= decode_datatransfer_addup;
+         checkpoint_pipeline(6)(30) <= decode_datatransfer_writeback;
+         checkpoint_pipeline(7)(11 downto 0) <= std_logic_vector(decode_datatransfer_addvalue);
+         checkpoint_pipeline(7)(12) <= decode_datatransfer_shiftval;
+         checkpoint_pipeline(7)(13) <= decode_datatransfer_regoffset;
+         checkpoint_pipeline(7)(14) <= decode_datatransfer_swap;
+         checkpoint_pipeline(7)(15) <= decode_block_usermoderegs;
+         checkpoint_pipeline(7)(16) <= decode_block_switchmode;
+         checkpoint_pipeline(7)(24 downto 17) <= std_logic_vector(to_signed(decode_block_addrmod, 8));
+         checkpoint_pipeline(8)(7 downto 0) <= std_logic_vector(to_signed(decode_block_endmod, 8));
+         checkpoint_pipeline(8)(15 downto 8) <= std_logic_vector(to_signed(decode_block_addrmod_baseRlist, 8));
+         checkpoint_pipeline(8)(31 downto 16) <= decode_block_reglist;
+         checkpoint_pipeline(9)(0) <= decode_block_emptylist;
+         checkpoint_pipeline(9)(1) <= decode_psr_with_spsr;
+         checkpoint_pipeline(9)(2) <= decode_leaveirp;
+         checkpoint_pipeline(10)(31 downto 0) <= fetch_data;
+         checkpoint_pipeline(11)(0) <= fetch_ready;
+         checkpoint_pipeline(11)(1) <= fetch_first;
+      end process;
+   end generate;
+   gno_checkpoint_pipeline : if not EXPERIMENTAL_HALT_CHECKPOINT generate
+      checkpoint_pipeline <= (others => (others => '0'));
+   end generate;
+-- END CHECKPOINT PIPELINE READBACK
+
    gcheckpoint_read : if EXPERIMENTAL_CHECKPOINT generate
       process(all) begin
          checkpoint_data <= (others => '0');
@@ -575,6 +657,10 @@ begin
             when 45 => checkpoint_data <= std_logic_vector(regs_5_17);
             when 46 => checkpoint_data <= x"00000" & SAVESTATE_mixed_out;
             when 148 => checkpoint_data <= bus_lastread;
+            when 160 to 171 =>
+               if EXPERIMENTAL_HALT_CHECKPOINT then
+                  checkpoint_data <= checkpoint_pipeline(to_integer(unsigned(savestate_bus.Adr))-160);
+               else checkpoint_data_done <= '0'; end if;
             when others => checkpoint_data_done <= '0';
          end case;
       end process;
@@ -893,9 +979,22 @@ begin
       
          if (reset = '1') then
          
-            fetch_PC    <= unsigned(SAVESTATE_PC_in);
-            fetch_ready <= '0';
-            fetch_first <= '1';
+            fetch_PC <= unsigned(SAVESTATE_PC_in);
+            if EXPERIMENTAL_HALT_CHECKPOINT and checkpoint_restore = '1' then
+               if savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
+                  savestate_bus.bEna = "1111" then
+                  case to_integer(unsigned(savestate_bus.Adr)) is
+                     when 170 => fetch_data <= savestate_bus.Din;
+                     when 171 => fetch_ready <= savestate_bus.Din(0);
+                                 fetch_first <= savestate_bus.Din(1);
+                     when others => null;
+                  end case;
+               end if;
+            else
+               fetch_ready <= '0';
+               fetch_first <= '1';
+               if EXPERIMENTAL_HALT_CHECKPOINT then fetch_data <= (others => '0'); end if;
+            end if;
          
          elsif (cpu_ce = '1') then
             
@@ -944,6 +1043,10 @@ begin
             if (jump_out = '1') then
                SAVESTATE_PC_out <= std_logic_vector(execute_branchPC_masked);
             end if;
+            if checkpoint_halt_take = '1' then
+               SAVESTATE_PC_out <= std_logic_vector(fetch_PC);
+            end if;
+
 
          end if;
          
@@ -986,7 +1089,129 @@ begin
    
          if (reset = '1') then
          
-            decode_ready   <= '0';
+            if EXPERIMENTAL_HALT_CHECKPOINT and checkpoint_restore = '1' then
+-- BEGIN CHECKPOINT PIPELINE DECODE_LOAD
+               if savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
+                  savestate_bus.bEna = "1111" then
+                  case to_integer(unsigned(savestate_bus.Adr)) is
+                     when 160 =>
+                        decode_condition <= savestate_bus.Din(3 downto 0);
+                        decode_ready <= savestate_bus.Din(4);
+                     when 161 =>
+                        decode_PC <= unsigned(savestate_bus.Din(31 downto 0));
+                     when 162 =>
+                        decode_data_1 <= savestate_bus.Din(31 downto 0);
+                     when 163 =>
+                        decode_functions_detail <= tFunctions_detail'val(to_integer(unsigned(savestate_bus.Din(4 downto 0))));
+                        decode_datareceivetype <= tdatareceivetype'val(to_integer(unsigned(savestate_bus.Din(7 downto 5))));
+                        decode_clearbit1 <= savestate_bus.Din(8);
+                        decode_rdest <= savestate_bus.Din(12 downto 9);
+                        decode_rdest_save <= savestate_bus.Din(16 downto 13);
+                        decode_Rn_op1 <= savestate_bus.Din(20 downto 17);
+                        decode_Rn_op1_save <= savestate_bus.Din(24 downto 21);
+                        decode_RM_op2 <= savestate_bus.Din(28 downto 25);
+                        decode_alu_use_immi <= savestate_bus.Din(29);
+                        decode_alu_use_shift <= savestate_bus.Din(30);
+                     when 164 =>
+                        decode_immidiate <= unsigned(savestate_bus.Din(31 downto 0));
+                     when 165 =>
+                        decode_shift_regbased <= savestate_bus.Din(0);
+                        decode_shift_mode <= savestate_bus.Din(2 downto 1);
+                        decode_shift_amount <= to_integer(unsigned(savestate_bus.Din(10 downto 3)));
+                        decode_shift_RRX <= savestate_bus.Din(11);
+                        decode_shiftcarry <= savestate_bus.Din(12);
+                        decode_useoldcarry <= savestate_bus.Din(13);
+                        decode_updateflags <= savestate_bus.Din(14);
+                        decode_mul_signed <= savestate_bus.Din(15);
+                        decode_mul_useadd <= savestate_bus.Din(16);
+                        decode_mul_long <= savestate_bus.Din(17);
+                        decode_writeback <= savestate_bus.Din(18);
+                        decode_switch_op <= savestate_bus.Din(19);
+                        decode_set_thumbmode <= savestate_bus.Din(20);
+                        decode_branch_usereg <= savestate_bus.Din(21);
+                        decode_branch_link <= savestate_bus.Din(22);
+                        decode_branch_long <= savestate_bus.Din(23);
+                     when 166 =>
+                        decode_branch_immi <= signed(savestate_bus.Din(25 downto 0));
+                        decode_datatransfer_type <= savestate_bus.Din(27 downto 26);
+                        decode_datatransfer_preadd <= savestate_bus.Din(28);
+                        decode_datatransfer_addup <= savestate_bus.Din(29);
+                        decode_datatransfer_writeback <= savestate_bus.Din(30);
+                     when 167 =>
+                        decode_datatransfer_addvalue <= unsigned(savestate_bus.Din(11 downto 0));
+                        decode_datatransfer_shiftval <= savestate_bus.Din(12);
+                        decode_datatransfer_regoffset <= savestate_bus.Din(13);
+                        decode_datatransfer_swap <= savestate_bus.Din(14);
+                        decode_block_usermoderegs <= savestate_bus.Din(15);
+                        decode_block_switchmode <= savestate_bus.Din(16);
+                        decode_block_addrmod <= to_integer(signed(savestate_bus.Din(24 downto 17)));
+                     when 168 =>
+                        decode_block_endmod <= to_integer(signed(savestate_bus.Din(7 downto 0)));
+                        decode_block_addrmod_baseRlist <= to_integer(signed(savestate_bus.Din(15 downto 8)));
+                        decode_block_reglist <= savestate_bus.Din(31 downto 16);
+                     when 169 =>
+                        decode_block_emptylist <= savestate_bus.Din(0);
+                        decode_psr_with_spsr <= savestate_bus.Din(1);
+                        decode_leaveirp <= savestate_bus.Din(2);
+                     when others => null;
+                  end case;
+               end if;
+-- END CHECKPOINT PIPELINE DECODE_LOAD
+            elsif EXPERIMENTAL_HALT_CHECKPOINT then
+-- BEGIN CHECKPOINT PIPELINE DECODE_RESET
+               decode_condition <= (others => '0');
+               decode_ready <= '0';
+               decode_PC <= (others => '0');
+               decode_data_1 <= (others => '0');
+               decode_functions_detail <= tFunctions_detail'left;
+               decode_datareceivetype <= tdatareceivetype'left;
+               decode_clearbit1 <= '0';
+               decode_rdest <= (others => '0');
+               decode_rdest_save <= (others => '0');
+               decode_Rn_op1 <= (others => '0');
+               decode_Rn_op1_save <= (others => '0');
+               decode_RM_op2 <= (others => '0');
+               decode_alu_use_immi <= '0';
+               decode_alu_use_shift <= '0';
+               decode_immidiate <= (others => '0');
+               decode_shift_regbased <= '0';
+               decode_shift_mode <= (others => '0');
+               decode_shift_amount <= 0;
+               decode_shift_RRX <= '0';
+               decode_shiftcarry <= '0';
+               decode_useoldcarry <= '0';
+               decode_updateflags <= '0';
+               decode_mul_signed <= '0';
+               decode_mul_useadd <= '0';
+               decode_mul_long <= '0';
+               decode_writeback <= '0';
+               decode_switch_op <= '0';
+               decode_set_thumbmode <= '0';
+               decode_branch_usereg <= '0';
+               decode_branch_link <= '0';
+               decode_branch_long <= '0';
+               decode_branch_immi <= (others => '0');
+               decode_datatransfer_type <= (others => '0');
+               decode_datatransfer_preadd <= '0';
+               decode_datatransfer_addup <= '0';
+               decode_datatransfer_writeback <= '0';
+               decode_datatransfer_addvalue <= (others => '0');
+               decode_datatransfer_shiftval <= '0';
+               decode_datatransfer_regoffset <= '0';
+               decode_datatransfer_swap <= '0';
+               decode_block_usermoderegs <= '0';
+               decode_block_switchmode <= '0';
+               decode_block_addrmod <= 0;
+               decode_block_endmod <= 0;
+               decode_block_addrmod_baseRlist <= 0;
+               decode_block_reglist <= (others => '0');
+               decode_block_emptylist <= '0';
+               decode_psr_with_spsr <= '0';
+               decode_leaveirp <= '0';
+-- END CHECKPOINT PIPELINE DECODE_RESET
+            else
+               decode_ready <= '0';
+            end if;
             if EXPERIMENTAL_CHECKPOINT and checkpoint_restore = '1' then
                if savestate_bus.ena = '1' and savestate_bus.rnw = '0' and
                   savestate_bus.bEna = "1111" and unsigned(savestate_bus.Adr) = 46 then
