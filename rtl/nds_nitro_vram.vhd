@@ -302,7 +302,10 @@ entity nds_vram is
       -- nds_gpu2d drives req as a one-cycle pulse, so counting req-asserted
       -- cycles counts REQUESTS, not waiting time (measured 0.94 cycles per op
       -- where an op takes ~4).
-      dbg_rbusy    : out std_logic
+      dbg_rbusy    : out std_logic;
+      -- All CPU/posting/renderer work drained; observation only. Callers must
+      -- separately stop producers and freeze VRAM mappings before capture.
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
@@ -935,6 +938,18 @@ begin
    -- true renderer-memory occupancy, for the bench (see the port comment):
    -- anything still in the queue counts as work in flight
    dbg_rbusy <= '0' when rq_count = 0 else '1';
+
+   -- Occupancy alone misses requests on their admission edge, staged backing
+   -- responses, BRAM/cache-hit returns and the final one-cycle completion.
+   -- Keep the datapath/arbitration entirely unchanged; this observes its drain.
+   checkpoint_idle <= '1' when reset = '0' and clr_busy = '0' and
+      state = IDLE and req9.valid = '0' and req7.valid = '0' and
+      cpu9_ena = '0' and cpu7_ena = '0' and cpu9_done = '0' and cpu7_done = '0' and
+      wq_count = 0 and wq_push_now = '0' and srv_req = '0' and srv_done = '0' and
+      bram_we = "00000" and rreq_now = x"00" and rpend = x"00" and
+      rdispatch = '0' and rq_count = 0 and br_valid = '0' and adq_count = 0 and
+      rsrv_req = '0' and rsrv_done = '0' and rsp_valid = '0' and
+      adhit_valid = '0' and rdone_int = x"00" else '0';
 
    rchosen_hit  <= rdec_bg_hit    when rpick = 0 else
                    rdec_obj_hit   when rpick = 1 else

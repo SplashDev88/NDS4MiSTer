@@ -16,7 +16,11 @@ ap.add_argument('--seeds', default='1,29,137')
 ap.add_argument('--cycles', type=int, default=12000)
 ap.add_argument('--mutant', action='store_true')
 ap.add_argument('--reference-revision', help='Compare current physical-slot VRAM with this local git revision')
+ap.add_argument('--checkpoint-idle', action='store_true', help='Check the new idle observer against independent client/backing work')
+ap.add_argument('--checkpoint-mutant', choices=['posted', 'renderer', 'completion'])
 args = ap.parse_args()
+if args.checkpoint_mutant and (not args.checkpoint_idle or args.mutant):
+    ap.error('--checkpoint-mutant requires --checkpoint-idle and excludes --mutant')
 out = args.output.resolve()
 out.mkdir(parents=True, exist_ok=False)
 original = (ROOT / 'tools/fixtures/beta14/nds_vram_before_victim.vhd').read_text()
@@ -79,6 +83,16 @@ def instrument(text, name, physical):
 
 ref = instrument(original, 'nds_vram_reference', bool(args.reference_revision))
 can = instrument(candidate, 'nds_vram_candidate', True)
+if args.checkpoint_mutant:
+    if args.checkpoint_mutant == 'posted':
+        can = once(can, "wq_count = 0 and wq_push_now = '0' and srv_req = '0' and srv_done = '0' and",
+                   "wq_push_now = '0' and srv_req = '0' and srv_done = '0' and")
+    elif args.checkpoint_mutant == 'renderer':
+        can = once(can, "rdispatch = '0' and rq_count = 0 and br_valid = '0' and adq_count = 0 and\n      rsrv_req = '0' and rsrv_done = '0' and rsp_valid = '0' and\n      adhit_valid = '0' and rdone_int = x\"00\" else '0';",
+                   "rdispatch = '0' else '0';")
+    else:
+        can = once(can, "adhit_valid = '0' and rdone_int = x\"00\" else '0';",
+                   "adhit_valid = '0' else '0';")
 if args.mutant and args.reference_revision:
     can = once(can, 'v_acc := v_acc or v_br_word;',
                'v_acc := (v_acc or v_br_word) xor x"00000001";')
@@ -103,12 +117,55 @@ for name, direction, typ in ports:
         decl.append(f'   type pair_{name} is array(0 to 1) of {typ};\n   signal {name} : pair_{name};')
         for side in range(2): maps[side].append(f'{name}=>{name}({side})')
         checks.append(f'      assert {name}(0)={name}(1) report "equivalence mismatch: {name}, phase=" & integer\'image(phase) & ", cycle=" & integer\'image(cycles) severity failure;')
+if args.checkpoint_idle:
+    assert not any(name == 'checkpoint_idle' for name, _, _ in ports), 'Use a reference from before the idle observer'
+    decl += ["   signal checkpoint_observed_idle, audit_store_pending : std_logic := '0';",
+             "   signal audit_backing_pending, audit_write_guard : natural := 0;"]
+    maps[1].append('checkpoint_idle=>checkpoint_observed_idle')
 instances = '\n'.join(f'   dut{side}: entity work.nds_vram_{name} generic map(is_simu=>\'1\', POSTED_WRITES=>POSTED) port map(\n      '+',\n      '.join(maps[side])+');' for side,name in enumerate(['reference','candidate']))
 channels = ['bg','obj','bgep','objep','bgb','objb','bgepb','objepb']
 wiring = '\n'.join(f'   rdr_{ch}_req <= requests({i}); rdr_{ch}_addr <= resize(addresses({i}),rdr_{ch}_addr\'length);\n   accepts({i}) <= rdr_{ch}_accept(0); dones({i}) <= rdr_{ch}_done(0); words({i}) <= rdr_{ch}_dout(0);' for i,ch in enumerate(channels))
 bench = (ROOT / 'rtl/tb_nds_vram_victim_equivalence.vhd').read_text()
 for token, value in [('DECLARATIONS', '\n'.join(decl)), ('INSTANCES', instances), ('CHECKS', '\n'.join(checks)), ('WIRING', wiring)]:
     bench = once(bench, '-- @'+token+'@', value)
+if args.checkpoint_idle:
+    bench = once(bench, '   monitor: process', '''   -- Observe both clock phases: a bad idle level between a posted admission
+   -- and next-edge drain must not hide behind a rising-edge-only check.
+   checkpoint_monitor: process
+      variable accepted_epoch, returned_epoch : counts_array(0 to 7) := (others=>0);
+   begin
+      wait until clk'event; wait for 1 ns;
+      -- Common reset deliberately discards the old generation's outstanding
+      -- work in this fixture. Only compare ownership within the current one.
+      if reset='1' then accepted_epoch:=accepted;returned_epoch:=returned;end if;
+      if checkpoint_observed_idle='1' then
+         assert reset='0' and clr_busy(1)='0' and cpu9_ena='0' and cpu7_ena='0' and
+            cpu9_done(1)='0' and cpu7_done(1)='0' and requests=x"00" and dones=x"00" and
+            audit_store_pending='0' and audit_backing_pending=0 and audit_write_guard=0 and
+            srv_req(1)='0' and srv_done='0' and rsrv_req(1)='0' and rsrv_done='0'
+            report "checkpoint idle exposed live client/backing work" severity failure;
+         for ch in 0 to 7 loop
+            assert accepted(ch)-accepted_epoch(ch)=returned(ch)-returned_epoch(ch)
+               report "checkpoint idle exposed an unreturned renderer request, channel="&integer'image(ch)&
+                  " phase="&integer'image(phase) severity failure;
+         end loop;
+      end if;
+   end process;
+
+   monitor: process''')
+    bench = once(bench, "      end if;\n   end process;\n\n   -- Observe both clock phases:",
+                 '''         if pending then audit_store_pending<='1'; else audit_store_pending<='0';end if;
+         audit_backing_pending<=count;
+         if reset='1' then audit_write_guard<=0;
+         elsif (cpu9_ena='1' and cpu9_rnw='0') or (cpu7_ena='1' and cpu7_rnw='0') then audit_write_guard<=2;
+         elsif audit_write_guard>0 then audit_write_guard<=audit_write_guard-1;end if;
+      end if;
+   end process;
+
+   -- Observe both clock phases:''')
+    bench = once(bench, '         assert dbg_rbusy(0)=\'0\' report "Renderer failed to drain" severity failure;',
+                 '''         assert dbg_rbusy(0)='0' report "Renderer failed to drain" severity failure;
+         assert checkpoint_observed_idle='1' report "checkpoint idle failed to qualify after drain" severity failure;''')
 (out / 'bench.vhd').write_text(bench)
 commands = ["nvc --std=2008 --work=MEM -a /workspace/rtl/tb_mem_sync_ram_dual_byte_enable.vhd",
             "nvc --std=2008 -L . -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_vram_map.vhd reference.vhd candidate.vhd bench.vhd"]
@@ -125,11 +182,14 @@ completed=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT
 (out/'driver.log').write_text(completed.stdout)
 result={'command':command,'baseline_fixture':BASE,'baseline_rtl_sha256':hashlib.sha256(original.encode()).hexdigest(),
         'candidate_rtl_sha256':hashlib.sha256(candidate.encode()).hexdigest(),'mutant':args.mutant,'returncode':completed.returncode,
+        'checkpoint_idle':args.checkpoint_idle,'checkpoint_mutant':args.checkpoint_mutant,
         'port_count':len(ports)-3-int(bool(args.reference_revision)),'runs':{tag:(out/(tag+'.log')).read_text() if (out/(tag+'.log')).exists() else None for tag in runs},
         'limits':'Simulation uses the existing portable dual-port RAM model. Passive test-only probes and event pulses observe canonical caches; product RTL has no test ports. The synthetic shared backing model preloads nonzero fixture data only after the complete real reset-clear pass.'}
 result['passed'] = completed.returncode == 0 and all(v and 'PASS: full VRAM' in v for v in result['runs'].values())
 if args.mutant:
     result['passed'] = completed.returncode != 0 and any(v and 'equivalence mismatch:' in v for v in result['runs'].values())
+if args.checkpoint_mutant:
+    result['passed'] = completed.returncode != 0 and any(v and 'checkpoint idle exposed' in v for v in result['runs'].values())
 (out/'results.json').write_text(json.dumps(result,indent=2)+'\n')
 print(json.dumps(result,indent=2))
 raise SystemExit(0 if result['passed'] else 1)

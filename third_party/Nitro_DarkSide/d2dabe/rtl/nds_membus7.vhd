@@ -93,7 +93,8 @@ entity nds_membus7 is
       io_ce_next     : in  std_logic := '1';
       io_bus         : out proc_bus_gb_type := ((others => '0'), (others => '0'), '1', '0', "00", "0000", '0');
       io_wired_out   : in  std_logic_vector(31 downto 0);
-      io_wired_done  : in  std_logic
+      io_wired_done  : in  std_logic;
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
@@ -365,6 +366,14 @@ begin
                            (state = W_WRAMSH and wsh_done  = '1') or
                            (state = W_VRAM   and vram_done = '1') or
                            (state = W_MAIN   and mr_done   = '1')) else '0';
+
+   -- Completion cycles can accept the next request; they are not idle. Include
+   -- delayed IO/baseband strobes and direct private/Wi-Fi RAM writes as well
+   -- as the external-memory handshakes. This observes, never stalls, the bus.
+   checkpoint_idle <= '1' when reset = '0' and state = IDLE and
+      cpu_ena = '0' and cpu_done = '0' and wsh_ena = '0' and vram_ena = '0' and
+      mr_ena = '0' and io_bus.ena = '0' and w7p_we = '0' and
+      wifi_we = '0' and wram_we = '0' and bb_we = '0' else '0';
 
    -- ================= ARM7-private WRAM store drive =================
    -- Presented in the accept cycle so the BRAM's internal address register

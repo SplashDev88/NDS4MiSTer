@@ -49,7 +49,8 @@ entity nds_wram is
       arm7_din    : in  std_logic_vector(31 downto 0);
       arm7_dout   : out std_logic_vector(31 downto 0);
       arm7_done   : out std_logic := '0';
-      arm7_mapped : out std_logic
+      arm7_mapped : out std_logic;
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
@@ -86,6 +87,10 @@ begin
 
    arm9_mapped <= map9;
    arm7_mapped <= map7;
+
+   -- RAM writes commit at the admission edge; registered read data and done
+   -- retire on the next edge. A WRAMCNT change still needs a held owner.
+   checkpoint_idle <= not (arm9_ena or arm7_ena or arm9_done or arm7_done);
 
    iwramshared : entity MEM.SyncRamDualByteEnable
    generic map

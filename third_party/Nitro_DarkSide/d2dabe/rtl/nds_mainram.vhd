@@ -86,11 +86,20 @@ entity nds_mainram is
 
       -- diagnostic export for the ch4 debug mailbox:
       -- {allow, lock_pair, serving7, req7_pending, req9_pending, state[1:0]}
-      dbg_mr           : out std_logic_vector(7 downto 0) := (others => '0')
+      dbg_mr           : out std_logic_vector(7 downto 0) := (others => '0');
+      -- Observation in clk1x, valid only after request producers stop. This
+      -- does not reserve the bus, stop refresh, or establish global SDRAM idle.
+      checkpoint_idle  : out std_logic := '0'
    );
 end entity;
 
 architecture arch of nds_mainram is
+
+   signal checkpoint_mem_idle : std_logic;
+   signal checkpoint_idle_meta, checkpoint_idle_sync : std_logic := '0';
+   signal checkpoint_quiet : unsigned(1 downto 0) := (others => '0');
+   attribute async_reg : string;
+   attribute async_reg of checkpoint_idle_meta, checkpoint_idle_sync : signal is "true";
 
    type tState is
    (
@@ -135,6 +144,40 @@ begin
 
    mainram_active <= req9_pending or req7_pending or lock_pair;
    mainram_busy   <= '1' when (state /= MR_IDLE) else '0';
+
+   -- Include both sides of completion retirement and the SWP reservation
+   -- between its read and write. A bare `not mainram_active` can be true while
+   -- MR_DONE/response strobes still belong to the preceding transaction.
+   checkpoint_mem_idle <= '1' when reset = '0' and state = MR_IDLE and
+      lock_pair = '0' and done9_6x = '0' and done7_6x = '0' and
+      req9_pending = '0' and req7_pending = '0' and mr_sdram_ena = '0' and
+      sdram_done32 = '0' and sdram_done64 = '0' else '0';
+   process(clk1x) begin
+      if rising_edge(clk1x) then
+         if reset = '1' then
+            checkpoint_idle_meta <= '0'; checkpoint_idle_sync <= '0';
+            checkpoint_quiet <= (others => '0');
+         else
+            checkpoint_idle_meta <= checkpoint_mem_idle;
+            checkpoint_idle_sync <= checkpoint_idle_meta;
+            if mem9_ena = '1' or mem7_ena = '1' or req9_pending = '1' or
+               req7_pending = '1' or mem9_done = '1' or mem7_done = '1' or
+               checkpoint_idle_sync = '0' then
+               checkpoint_quiet <= (others => '0');
+            elsif checkpoint_quiet /= 3 then
+               checkpoint_quiet <= checkpoint_quiet + 1;
+            end if;
+         end if;
+      end if;
+   end process;
+   -- Local admission revokes the observation immediately. The quiet interval
+   -- prevents an old synchronized idle level from surviving a fresh request.
+   -- This uses the existing clkMem >= clk1x phase contract, not arbitrary
+   -- unrelated clocks. A machine hold must also prove every producer stopped.
+   checkpoint_idle <= '1' when reset = '0' and checkpoint_quiet = 3 and
+      checkpoint_idle_sync = '1' and mem9_ena = '0' and mem7_ena = '0' and
+      req9_pending = '0' and req7_pending = '0' and
+      mem9_done = '0' and mem7_done = '0' else '0';
 
    dbg_mr <= mainram_allow & lock_pair & serving7 & req7_pending & req9_pending &
              "0" & std_logic_vector(to_unsigned(tState'pos(state), 2));

@@ -450,6 +450,8 @@ entity nds_nitro_console_top is
       -- Partial drain status only; no coherent machine snapshot yet.
       checkpoint_dma_stopped, checkpoint_arm9_memory_idle : out std_logic := '0';
       checkpoint_sound_stopped, checkpoint_timing_stopped : out std_logic := '0';
+      checkpoint_mainram_idle, checkpoint_vram_idle : out std_logic := '0';
+      checkpoint_arm7_memory_idle, checkpoint_shared_wram_idle : out std_logic := '0';
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
       checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
       checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
@@ -471,6 +473,8 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_valid9, checkpoint_valid7 : std_logic;
    signal checkpoint_hold_request, checkpoint_dma9_stopped, checkpoint_dma7_stopped : std_logic;
    signal checkpoint_memory9_idle : std_logic;
+   signal checkpoint_mainram_idle_s, checkpoint_vram_idle_s : std_logic;
+   signal checkpoint_memory7_idle_s, checkpoint_shared_wram_idle_s : std_logic;
    signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
    signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
    attribute async_reg : string;
@@ -2088,6 +2092,10 @@ begin
             cpu_valid9 => checkpoint_valid9, cpu_valid7 => checkpoint_valid7);
       checkpoint_dma_stopped <= checkpoint_dma9_stopped and checkpoint_dma7_stopped;
       checkpoint_arm9_memory_idle <= checkpoint_memory9_sync;
+      checkpoint_mainram_idle <= checkpoint_mainram_idle_s;
+      checkpoint_vram_idle <= checkpoint_vram_idle_s;
+      checkpoint_arm7_memory_idle <= checkpoint_memory7_idle_s and not w7m_we and not ld_busy;
+      checkpoint_shared_wram_idle <= checkpoint_shared_wram_idle_s and not resetCpu;
       checkpoint_timing_stopped <= checkpoint_timer9_stopped and checkpoint_timer7_stopped and checkpoint_raster_stopped;
       process(clk1x) begin
          if rising_edge(clk1x) then
@@ -2118,6 +2126,8 @@ begin
       checkpoint_req9 <= '0'; checkpoint_req7 <= '0'; checkpoint_hold_request <= '0';
       checkpoint_dma_stopped <= '0'; checkpoint_arm9_memory_idle <= '0';
       checkpoint_timing_stopped <= '0';
+      checkpoint_mainram_idle <= '0'; checkpoint_vram_idle <= '0';
+      checkpoint_arm7_memory_idle <= '0'; checkpoint_shared_wram_idle <= '0';
       checkpoint_ready <= '0'; checkpoint_busy <= '0'; checkpoint_pair_paused <= '0';
       checkpoint_timed_out <= '0'; checkpoint_release_stalled <= '0'; checkpoint_lease_expired <= '0';
       checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
@@ -2558,6 +2568,7 @@ begin
    (
       clk => clk1x, reset => resetCpu,
       cpu_adr => mbus7_adr, cpu_rnw => mbus7_rnw, cpu_ena => mbus7_ena, cpu_acc => mbus7_acc,
+      checkpoint_idle => checkpoint_memory7_idle_s,
       cpu_dout => mbus7_dout, cpu_lowbits => mbus7_low, cpu_lastread => cpu7_lastread,
       cpu_din => cpu7_din, cpu_done => cpu7_done,
       bios_addr => bios_addr, bios_data => bios7_data,
@@ -2906,6 +2917,7 @@ begin
    port map
    (
       clk => clk1x, wramcnt => wramcnt,
+      checkpoint_idle => checkpoint_shared_wram_idle_s,
       arm9_ena => wsh9_ena, arm9_rnw => wsh9_rnw, arm9_addr => wsh9_addr, arm9_be => wsh9_be,
       arm9_din => wsh9_din, arm9_dout => wsh9_dout, arm9_done => wsh9_done, arm9_mapped => wsh9_mapped,
       arm7_ena => wsh7_ena, arm7_rnw => wsh7_rnw, arm7_addr => wsh7_addr, arm7_be => wsh7_be,
@@ -2927,6 +2939,7 @@ begin
       mem7_rnw => mr7_rnw, mem7_addr => mr7_addr, mem7_be => mr7_be,
       mem7_writedata => mr7_writedata, mem7_done => mr7_done, mem7_readdata => mr7_readdata,
       mainram_allow => mainram_allow, mainram_active => mainram_active, mainram_busy => mainram_busy,
+      checkpoint_idle => checkpoint_mainram_idle_s,
       mr_sdram_ena => sdram_ena, mr_sdram_rnw => sdram_rnw, mr_sdram_Adr => sdram_Adr,
       mr_sdram_Din => sdram_Din, mr_sdram_be => sdram_be,
       sdram_Dout => sdram_Dout, sdram_done32 => sdram_done32,
@@ -2989,6 +3002,7 @@ begin
    port map
    (
       clk => clk1x, reset => reset_boot, vramcnt => vramcnt,
+      checkpoint_idle => checkpoint_vram_idle_s,
       cpu9_ena => vr9_ena, cpu9_rnw => vr9_rnw, cpu9_addr => vr9_addr,
       cpu9_be => vr9_be, cpu9_din => vr9_din, cpu9_dout => vram9_dout, cpu9_done => vram9_done,
       cpu9_wpost => vr9_wpost, cpu9_welig => vr9_welig, cpu9_wok => vr9_wok,

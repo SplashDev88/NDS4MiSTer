@@ -23,7 +23,8 @@ instructions across a fresh-process restore. The branch-only format still
 refuses sleeping CPUs. A fourth milestone adds a read-only CPU state transport,
 an expiring host lease, and optional wiring to the actual console CPUs. Further
 component steps add DMA admission stopping/draining, ARM9 memory-island idle
-status, audio drain/pause and raster/timer event stopping. Memory, remaining
+status, audio drain/pause, raster/timer event stopping and memory-owner drain
+observers, including the ARM7 bus and shared WRAM. Remaining crossings,
 devices and the renderer still lack a common freeze boundary; these partial
 signals do not authorize a whole-machine checkpoint.
 
@@ -185,8 +186,9 @@ Native-mode policy bits are not mistaken for work pending forever.
 
 The console exposes `checkpoint_dma_stopped` and a synchronized
 `checkpoint_arm9_memory_idle`. Neither is a complete freeze acknowledgement:
-the main-RAM owner, cross-domain requests, VRAM posting, remaining device
-events and renderer queues still require their own drain/freeze contracts.
+remaining cross-domain requests, device events and host renderer queues still
+require their own drain/freeze contracts. Memory-owner observations described
+below now cover main RAM, VRAM, the ARM7 bus/private writes and shared WRAM.
 Dirty caches and TCM contents also still need serializers and restore paths.
 
 ### Audio and event stopping
@@ -220,6 +222,39 @@ The console exports `checkpoint_sound_stopped` and `checkpoint_timing_stopped`
 for the CPU hold, memory-owner drain or IRQ/CDC/renderer freeze. None of these
 devices has a complete serializer/restore interface yet. Audio output muting
 and restoration of the physical output path also remain integration work.
+
+### Memory-owner drain observations
+
+The memory owners export an observation-only `checkpoint_idle`. They do
+not stop admissions, reserve storage for the host, invalidate caches, change
+arbitration or stop SDRAM clocks/refresh. The console exposes these as
+`checkpoint_mainram_idle` and `checkpoint_vram_idle` only when the experimental
+option is enabled. All request producers must already be held before treating
+either observation as a stable boundary.
+
+- Main RAM includes queued ARM9/ARM7 requests, the memory FSM, pending return
+  strobes and the reservation between a SWP's read and write. Its memory-domain
+  observation crosses to clk1x through two registers. Three quiet clk1x edges
+  after local retirement/synchronized idle prevent an old idle level from
+  surviving a new request; live request inputs revoke the output immediately.
+  This uses the existing phase-related `clkMem >= clk1x` contract. It says
+  nothing about other clients of the physical SDRAM controller.
+- VRAM covers CPU requests, posted writes, BRAM writes, backing requests,
+  renderer admissions/completion queues, staged backing/cache-hit replies and
+  the last completion pulse. A posted acknowledgement or an empty renderer
+  completion queue alone is insufficient. Read-only caches can remain valid;
+  this observer does not flush or otherwise change them.
+- The ARM7 bus includes external-memory waits, IO alignment, direct private
+  WRAM/Wi-Fi writes, delayed baseband commits and completion cycles that can
+  accept a new request. The console's `checkpoint_arm7_memory_idle` also
+  excludes private-WRAM loader writes and a busy loader. Shared WRAM waits
+  for both ports' admission and registered completion strobes to clear;
+  `checkpoint_shared_wram_idle` is masked during CPU reset.
+
+Remaining clock crossings, loader/debug ownership and external host/rendering
+queues still need inclusion in a common machine hold. No RAM/VRAM/TCM/cache
+serializer or restore path is provided
+by these status signals, and no global `machine_held` claim is exposed.
 
 Do not force a sleeping CPU awake to obtain a branch checkpoint or discard its
 prefetched instructions. Those would change the guest state. The optional
@@ -394,6 +429,44 @@ bash tools/test_nds_sound_dma_yield.sh
 These tests establish pause/drain behavior in simulation, not persistent audio
 or device restoration, full-console capture, FPGA timing or gameplay speed.
 
+Memory-owner checks:
+
+```sh
+bash tools/test_checkpoint_mainram.sh
+bash tools/test_checkpoint_arm7_memory.sh
+python3 tools/test_vram_victim_equivalence.py \
+  --reference-revision ec553bc6ef1ef19d4dfe4cd638f11d449364506f \
+  --checkpoint-idle --output /path/to/new/output-directory
+```
+
+- 24 main-RAM configurations vary clock ratios 1/3, phase offsets 0/2 ns,
+  response latency 1/4/17 memory clocks and both CPU priorities. Independent
+  memory/data/ownership checks cover queued admission, reads/writes, a missing
+  upper pair word, both CPUs' SWP gaps with a peer waiting, simultaneous
+  requests, a withheld response and reset while accepted work drains.
+- Six complete VRAM comparisons use three seeds with posted writes on/off.
+  Each checks over 1.1 million clocks, including full reset clearing, all eight
+  renderer channels, both CPU ports, cache hits/misses, paired LCDC reads,
+  write/fill races and backing stalls. Every pre-existing output and the
+  canonical cache records remain cycle-identical to the preceding commit.
+  The new idle status is checked independently against client ownership and
+  backing work at both clock phases, and must assert after each final drain.
+  Ownership accounting starts a new generation after common reset.
+- Main-RAM fault injections expose stale idle at admission or drop the SWP
+  reservation. Add `--checkpoint-mutant posted`, `renderer` or `completion`
+  to the VRAM command (using a separate new output directory) to omit each
+  class of work from its observer. All five faulty observers are detected.
+  Existing cache critical-word/writeback/SWP checks also pass at five latencies.
+- The actual ARM7 bus and shared/private RAM test covers all four WRAM mappings,
+  private fallback, simultaneous mapped port writes, 18 external-response
+  delays per memory path, IO alignment, BIOS and open bus. The existing Wi-Fi
+  register/baseband/RAM suite additionally checks access/completion idle
+  exclusion and eventual drain. Two more faulty observers expose pending IO or
+  ignore a shared-WRAM completion and are detected.
+
+These are simulations of owner drain and unchanged transfer behavior. They do
+not establish physical CDC timing or whole-machine snapshot consistency.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -467,7 +540,7 @@ evidence, not as a second maintained implementation in this branch.
 | --- | --- | --- |
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
-| Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Missing |
+| Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
 | FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA drain and timer/raster stop tested; remaining owners, coherent freeze and serializers missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
@@ -482,8 +555,9 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 ## Next acceptance gates
 
 1. Extend the optional CPU-only console wiring into a coherent machine freeze.
-   Combine the tested DMA/audio/event stops and ARM9 idle signals with memory
-   owners, remaining device events, IRQ and lid-sleep control, verifying no pending
+   Combine the tested CPU/DMA/audio/event stops and memory-owner idle
+   signals with the remaining CDC/debug/loader owners, device events,
+   IRQ and lid-sleep control, verifying no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.

@@ -34,6 +34,7 @@ architecture sim of tb_nds_membus7_wifi is
    signal cpu_lastread : std_logic_vector(31 downto 0) := (others => '0');
    signal cpu_din : std_logic_vector(31 downto 0);
    signal cpu_done : std_logic;
+   signal checkpoint_idle : std_logic;
 
    signal bios_data : std_logic_vector(31 downto 0) := (others => '0');
    signal w7p_readdata : std_logic_vector(31 downto 0) := (others => '0');
@@ -55,6 +56,7 @@ begin
       cpu_adr => cpu_adr, cpu_rnw => cpu_rnw, cpu_ena => cpu_ena,
       cpu_acc => cpu_acc, cpu_dout => cpu_dout, cpu_lowbits => cpu_lowbits,
       cpu_lastread => cpu_lastread, cpu_din => cpu_din, cpu_done => cpu_done,
+      checkpoint_idle => checkpoint_idle,
       bios_addr => open, bios_data => bios_data,
       w7p_addr => open, w7p_we => open, w7p_be => open,
       w7p_writedata => open, w7p_readdata => w7p_readdata,
@@ -68,6 +70,14 @@ begin
       io_ce_next => '1', io_bus => open,
       io_wired_out => io_wired_out, io_wired_done => io_wired_done
    );
+
+   process
+   begin
+      wait until clk'event;wait for 1 ns;
+      if reset='1' or cpu_ena='1' or cpu_done='1' then
+         assert checkpoint_idle='0' report "Wi-Fi access/completion falsely idle" severity failure;
+      end if;
+   end process;
 
    process
       procedure txn(
@@ -280,7 +290,9 @@ begin
       wifi_read(16#4002#, x"CAFE", "wifi RAM survives console reset");
       wifi_read(16#01C#, x"1234", "wifi register survives console reset");
 
-      report "PASS: nds_membus7 wifi register file matches spec";
+      for k in 1 to 3 loop wait until rising_edge(clk);end loop;wait for 1 ns;
+      assert checkpoint_idle='1' report "Wi-Fi/baseband writes did not drain" severity failure;
+      report "PASS: nds_membus7 wifi register file matches spec and drains";
       finish;
    end process;
 end architecture;
