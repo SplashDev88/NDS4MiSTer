@@ -54,7 +54,11 @@ module tb_nds_gx_fifo_packet_frontend;
 
     always #5 clk = ~clk;
 
-    nds_gx_fifo_packet_frontend dut (.*);
+    nds_gx_fifo_packet_frontend dut (.*, .geometry_busy(), .checkpoint_request(1'b0), .checkpoint_producers_stopped(1'b0),
+        .checkpoint_address(9'd0), .checkpoint_restore(1'b0),
+        .checkpoint_write(1'b0), .checkpoint_write_data(32'd0),
+        .checkpoint_stopped(), .checkpoint_data(), .checkpoint_valid(),
+        .checkpoint_restore_ready(), .checkpoint_restore_error());
 
     task automatic expect_record(
         input logic [7:0] command,

@@ -98,7 +98,7 @@ module tb_nds_h3d_frame_record_cdc;
 
     nds_h3d_frame_record_cdc #(
         .ASYNC_LGDEPTH(2)
-    ) dut (.*);
+    ) dut (.*, .gx_geometry_busy());
 
     function automatic logic [127:0] direct_record(
         input logic [7:0] kind,

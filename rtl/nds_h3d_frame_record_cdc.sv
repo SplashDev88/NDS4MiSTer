@@ -291,7 +291,12 @@ module nds_h3d_frame_record_cdc #(
         .stack_ack(gx_stack_ack),
         .pos_stack_level(gx_stack_status[4:0]),
         .proj_stack_level(gx_stack_status[5]),
-        .stack_error(gx_stack_status[6])
+        .stack_error(gx_stack_status[6]),
+        .checkpoint_request(1'b0), .checkpoint_producers_stopped(1'b0),
+        .checkpoint_address(9'd0), .checkpoint_restore(1'b0),
+        .checkpoint_write(1'b0), .checkpoint_write_data(32'd0),
+        .checkpoint_stopped(), .checkpoint_data(), .checkpoint_valid(),
+        .checkpoint_restore_ready(), .checkpoint_restore_error()
     );
 
     logic async_write_valid;

@@ -39,8 +39,8 @@ SPU. The first non-CPU restore components also preserve interrupt enable/pending
 state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
 transactions, completed arithmetic, system-control registers, raster timing,
 the RTC's calendar/partial serial state, both display readback banks, the
-drained graphics gate's epochs and geometry query/status registers across fresh
-simulator processes. These
+drained graphics gate's epochs, geometry query/status registers, and packet
+frontend parsing/stack/SWAP-retirement state across fresh simulator processes. These
 ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
@@ -924,6 +924,78 @@ does not establish their state coverage. The image ports above
 remain unconnected to console transport, and no hardware/gameplay resume or
 combined FPGA resource result is claimed.
 
+## Packet frontend component persistence
+
+`rtl/nds_gx_fifo_packet_frontend.sv` has a default-off
+`EXPERIMENTAL_CHECKPOINT` option. Its transport queues and architectural
+retirement queue have different lifetimes. Accepted SWAP records can already
+be delivered to ARM while `waiting_vblank` remains set and another 256 commands
+wait behind it. Waiting for the retirement queue to become empty after stopping
+the raster would deadlock. Capture instead retains that queue and its wait.
+
+The source-domain owner asserts `checkpoint_request` and
+`checkpoint_producers_stopped`, holds the native VBlank and stack-ack inputs
+quiet, and lets accepted delivery drain. Once the record and SWAP-timestamp
+queues are empty, the frontend freezes normalization and retirement immediately;
+`checkpoint_stopped` qualifies after two quiet edges. Partial packed commands,
+including a zero-parameter expansion blocked by full retirement, need not finish
+before capture. Withheld downstream acceptance prevents capture and must be
+handled by the outer bounded timeout/cancel flow. Dropping the request resumes
+normal delivery without deleting accepted work.
+
+The ordered image is 263 32-bit words at addresses 0 through 262:
+
+| Word | Retained state |
+| --- | --- |
+| 0 | Remaining packed command bytes |
+| 1 | Packed zero-parameter trigger payload |
+| 2 | Packed command-word frame |
+| 3–4 | Packed command-word timestamp, low then high |
+| 5 | Command count 2:0, remaining parameters 8:3, matrix mode 10:9, position pointer 16:11, projection pointer 17, texture pointer 18, stack error 19; upper bits zero |
+| 6 | Retirement read pointer 7:0, write pointer 15:8, count 24:16, VBlank wait 25; upper bits zero |
+| 7–262 | One retirement queue cell per word, with its SWAP marker in bit 0 |
+
+Only live retirement cells are observable; inactive cells read as zero. The
+snapshot borrows the existing one-bit memory read path while retirement is
+held. Restore writes every physical cell, including the canonical inactive
+zeros. Both delivery queues were empty at capture, so their pointers/counts
+restart together at zero; their stale payload memory is unreachable before a
+new write. This reasoning does **not** apply to live retirement cells. With
+SWAP retirement disabled, words 6 through 262 must all be zero. The exact-build
+identity must include that feature setting.
+
+Restore holds reset, request and producer-stop high and requires all source,
+native-VBlank and stack-ack activity quiet. Gaps retain loaded values. Loading
+suppresses write-ready, packet-valid, SWAP enqueue and frame-end handshakes.
+Only an ordered complete image qualifies. Skips, duplicates, extra words,
+reserved/range-invalid values, inconsistent retirement pointers/count, active
+sources and a live reset-free load poison the attempt until withdrawal and a
+complete retry. Never release a partial image. Keep global hold asserted as
+reset/restore are released; IRQ/DMA consumers must remain held while their
+external FIFO and busy inputs are being rebuilt.
+
+`tools/test_checkpoint_packet_restore.sh` uses pinned pre-change source
+`60354e0` for uninterrupted continuation. Thirty-two captures produce **64
+fresh-process restores and 484,096 continuation observations** with both
+retirement settings and zero/seven-cycle write gaps. Cases cover partial
+SHININESS/matrix/test commands, pending zero-parameter expansion, stack overflow
+and hidden pointers, power-off waits, ring wrap, multiple pending SWAPs, a full
+256-entry retirement queue, blocked delivery and capture cancellation.
+Fourteen injected faults are detected; nine missing-state faults fail the
+continued output trace with image comparison disabled. Ordinary FIFO/stack,
+SWAP/CDC, frame-writer, readback-fence and packet-parser regressions are separate
+checks. Four island SystemVerilog configurations elaborate, including the
+Beta12 feature defines; VHDL remains black-boxed in that check.
+
+The product CDC wrapper still ties this interface inactive. It separately owns
+`geometry_enabled`, `logical_frame`, sparse-phase buffering, the asynchronous
+FIFO and a one/two-command DDR packer tail. A checkpoint marker or equivalent
+real delivery receipt must flush that tail and cross the clock boundary before
+those queues can be treated as empty. The packet writer, renderer and reply
+cache have additional state. The component test stores geometry power as
+external fixture context; it does not implement that wrapper's persistence.
+No hardware fit, throughput or whole-game restore result is implied.
+
 ## Geometry query and status component persistence
 
 `nds_h3d_gx_readback_owner.vhd` now exports a six-word image behind default-off
@@ -1779,7 +1851,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks, geometry query/status and drained graphics-gate epochs tested; packet frontend, reply cache and real external ownership still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks, geometry query/status, packet frontend and drained graphics-gate epochs tested; CDC/packet-writer epochs, reply cache and real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; calendar/partial serial component restore tested; elapsed-time restore and host integration missing |

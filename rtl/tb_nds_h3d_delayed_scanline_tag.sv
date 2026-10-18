@@ -84,7 +84,7 @@ module tb_nds_h3d_delayed_scanline_tag;
         .ASYNC_LGDEPTH(2),
         .SPARSE_HBLANK(1'b1),
         .SCANLINE_TAGS(1'b1)
-    ) dut (.*);
+    ) dut (.*, .gx_geometry_busy());
 
     always @(posedge ddr_clk) begin
         if (record_valid && record_ready) begin

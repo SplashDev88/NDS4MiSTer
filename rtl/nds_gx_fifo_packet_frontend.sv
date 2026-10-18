@@ -21,7 +21,8 @@
 // record; no separate marker is allowed to pass it.
 module nds_gx_fifo_packet_frontend #(
     parameter integer FIFO_DEPTH = 256,
-    parameter bit SWAP_VBLANK_RETIREMENT = 0
+    parameter bit SWAP_VBLANK_RETIREMENT = 0,
+    parameter bit EXPERIMENTAL_CHECKPOINT = 0
 ) (
     input  logic         clk,
     input  logic         reset,
@@ -69,7 +70,22 @@ module nds_gx_fifo_packet_frontend #(
     input  logic         stack_ack,
     output logic [4:0]   pos_stack_level,
     output logic         proj_stack_level,
-    output logic         stack_error
+    output logic         stack_error,
+
+    // Source-domain component transport. The owner stops new sources, drains
+    // delivery, then holds this request through readout. Retirement is NOT a
+    // delivery queue: retain its SWAP waits even after ARM received the record.
+    input  logic         checkpoint_request,
+    input  logic         checkpoint_producers_stopped,
+    output logic         checkpoint_stopped,
+    input  logic [8:0]   checkpoint_address,
+    output logic [31:0]  checkpoint_data,
+    output logic         checkpoint_valid,
+    input  logic         checkpoint_restore,
+    input  logic         checkpoint_write,
+    input  logic [31:0]  checkpoint_write_data,
+    output logic         checkpoint_restore_ready,
+    output logic         checkpoint_restore_error
 );
     localparam integer POINTER_WIDTH =
         FIFO_DEPTH <= 2 ? 1 : $clog2(FIFO_DEPTH);
@@ -178,7 +194,8 @@ module nds_gx_fifo_packet_frontend #(
     wire qualified_write =
         qualified_fifo_write || qualified_direct_write;
 
-    assign record_valid = count != 0;
+    wire checkpoint_loading, checkpoint_hold;
+    assign record_valid = count != 0 && !checkpoint_loading;
     assign record = record_valid
         ? {32'd0, parameter_memory[read_pointer], 32'd0, 12'd0, 4'd0,
            command_memory[read_pointer], 8'd1}
@@ -224,14 +241,17 @@ module nds_gx_fifo_packet_frontend #(
         packed_commands[7:0] != 0 ||
         (packed_command_count == 4 && packed_commands == 0);
     wire packed_zero_advance =
-        packed_zero_phase && (!packed_zero_emits || fifo_has_space);
+        packed_zero_phase && (!packed_zero_emits || fifo_has_space) &&
+        !checkpoint_hold && !checkpoint_loading;
 
     // An initial packed command word is one internal word of buffering, so it
     // remains acceptable at full FIFO occupancy. A subsequent parameter or a
     // direct command needs a FIFO slot. Non-GX writes are accepted and ignored
     // so a shared observed write stream is not blocked by this frontend.
     always_comb begin
-        if (!qualified_write) begin
+        if (checkpoint_loading || checkpoint_hold) begin
+            write_ready = 1'b0;
+        end else if (!qualified_write) begin
             write_ready = 1'b1;
         end else if (packed_zero_phase) begin
             write_ready = 1'b0;
@@ -272,6 +292,73 @@ module nds_gx_fifo_packet_frontend #(
     assign oldest_swap_timestamp = swap_pending
         ? swap_timestamp_memory[swap_read_pointer] : 64'd0;
 
+    // Capture only canonical empty delivery queues. Partial packed commands
+    // (including an autonomous zero-param phase blocked by retirement) remain
+    // live and are serialized. Freezing here must not wait for future VBlank.
+    assign checkpoint_loading = EXPERIMENTAL_CHECKPOINT && checkpoint_restore;
+    assign checkpoint_hold = EXPERIMENTAL_CHECKPOINT && checkpoint_request &&
+        checkpoint_producers_stopped && !reset && !checkpoint_loading &&
+        !write_valid && !lcd_vblank && !stack_ack && !protocol_error &&
+        count == 0 && swap_count == 0;
+    logic [1:0] checkpoint_quiet;
+    logic [8:0] restore_count;
+    logic restore_error;
+    wire restore_safe = reset && checkpoint_request &&
+        checkpoint_producers_stopped && !write_valid && !lcd_vblank && !stack_ack;
+    wire [7:0] restored_tail = checkpoint_write_data[7:0] +
+        checkpoint_write_data[23:16];
+    wire restore_value_valid = checkpoint_address < 9'd263 &&
+        (checkpoint_address != 5 ||
+            (checkpoint_write_data[31:20] == 0 &&
+             checkpoint_write_data[2:0] <= 4 &&
+             checkpoint_write_data[8:3] <= 32 &&
+             (checkpoint_write_data[2:0] != 0 ||
+              checkpoint_write_data[8:3] == 0))) &&
+        (checkpoint_address != 6 ||
+            (checkpoint_write_data[31:26] == 0 &&
+             checkpoint_write_data[24:16] <= 256 &&
+             checkpoint_write_data[15:8] == restored_tail)) &&
+        (checkpoint_address < 7 || checkpoint_write_data[31:1] == 0) &&
+        (SWAP_VBLANK_RETIREMENT || checkpoint_address < 6 ||
+            checkpoint_write_data == 0);
+    wire restore_accept = checkpoint_loading && restore_safe &&
+        checkpoint_write && !restore_error &&
+        checkpoint_address == restore_count && restore_value_valid;
+    assign checkpoint_stopped = checkpoint_hold && checkpoint_quiet == 2;
+    assign checkpoint_restore_error = EXPERIMENTAL_CHECKPOINT && restore_error;
+    assign checkpoint_restore_ready = checkpoint_loading && restore_safe &&
+        !restore_error && restore_count == 9'd263 && !checkpoint_write;
+    assign checkpoint_valid = EXPERIMENTAL_CHECKPOINT && checkpoint_address < 9'd263 &&
+        (checkpoint_stopped || checkpoint_restore_ready);
+    logic [31:0] retirement_checkpoint_data;
+    always_comb begin
+        checkpoint_data = 0;
+        if (checkpoint_valid) begin
+            case (checkpoint_address)
+                0: checkpoint_data = packed_commands;
+                1: checkpoint_data = packed_trigger_parameter;
+                2: checkpoint_data = packed_word_frame;
+                3: checkpoint_data = packed_word_timestamp[31:0];
+                4: checkpoint_data = packed_word_timestamp[63:32];
+                5: checkpoint_data = {12'd0, stack_error, tex_pointer,
+                    proj_pointer, pos_pointer, matrix_mode,
+                    packed_parameters_remaining, packed_command_count};
+                default: checkpoint_data = retirement_checkpoint_data;
+            endcase
+        end
+    end
+    always_ff @(posedge clk) begin
+        if (!checkpoint_hold) checkpoint_quiet <= 0;
+        else if (checkpoint_quiet != 2) checkpoint_quiet <= checkpoint_quiet + 1'b1;
+        if (!checkpoint_loading) begin
+            restore_count <= 0;
+            restore_error <= 0;
+        end else if (!restore_safe ||
+                     (checkpoint_write && !restore_accept)) begin
+            restore_error <= 1;
+        end else if (restore_accept) restore_count <= restore_count + 1'b1;
+    end
+
     generate if (SWAP_VBLANK_RETIREMENT) begin : swap_retirement
         logic swap_memory [0:FIFO_DEPTH-1];
         logic [POINTER_WIDTH-1:0] pointer, tail;
@@ -279,9 +366,35 @@ module nds_gx_fifo_packet_frontend #(
         assign geometry_busy = waiting_vblank || retirement_count != 0;
         wire retirement_enqueue = enqueue && geometry_enabled;
         assign retirement_pop =
-            retirement_count != 0 && !waiting_vblank && geometry_enabled;
+            retirement_count != 0 && !waiting_vblank && geometry_enabled &&
+            !checkpoint_hold && !checkpoint_loading;
+        // Reuse a one-bit RAM port; avoid a 256-bit variable serializer mux.
+        // Inactive cells are not observable by retirement and read as zero.
+        wire [7:0] checkpoint_cell = 8'(checkpoint_address - 9'd7);
+        wire [7:0] checkpoint_distance = checkpoint_cell - pointer;
+        wire [POINTER_WIDTH-1:0] memory_read_address =
+            checkpoint_valid && checkpoint_address >= 7 ? checkpoint_cell : pointer;
+        wire memory_read_bit = swap_memory[memory_read_address];
+        always_comb begin
+            retirement_checkpoint_data = 0;
+            if (checkpoint_address == 6)
+                retirement_checkpoint_data = {6'd0, waiting_vblank,
+                    9'(retirement_count), 8'(tail), 8'(pointer)};
+            else if (checkpoint_address >= 7 && checkpoint_address < 263 &&
+                     {1'b0, checkpoint_distance} < retirement_count)
+                retirement_checkpoint_data = {31'd0, memory_read_bit};
+        end
         always_ff @(posedge clk) begin
-            if (reset) begin
+            if (checkpoint_loading) begin
+                if (restore_accept && checkpoint_address == 6) begin
+                    pointer <= checkpoint_write_data[7:0];
+                    tail <= checkpoint_write_data[15:8];
+                    retirement_count <= checkpoint_write_data[24:16];
+                    waiting_vblank <= checkpoint_write_data[25];
+                end
+                if (restore_accept && checkpoint_address >= 7)
+                    swap_memory[checkpoint_cell] <= checkpoint_write_data[0];
+            end else if (reset) begin
                 pointer <= 0;
                 tail <= 0;
                 retirement_count <= 0;
@@ -292,11 +405,11 @@ module nds_gx_fifo_packet_frontend #(
                     if (tail == LAST_POINTER) tail <= 0;
                     else tail <= tail + 1'b1;
                 end
-                if (waiting_vblank && lcd_vblank && geometry_enabled)
+                if (waiting_vblank && lcd_vblank && geometry_enabled && !checkpoint_hold)
                     waiting_vblank <= 0;
                 if (retirement_pop) begin
                     // A SWAP starting on VBlank waits for the NEXT pulse.
-                    if (swap_memory[pointer]) waiting_vblank <= 1;
+                    if (memory_read_bit) waiting_vblank <= 1;
                     if (pointer == LAST_POINTER) pointer <= 0;
                     else pointer <= pointer + 1'b1;
                 end
@@ -308,6 +421,7 @@ module nds_gx_fifo_packet_frontend #(
             end
         end
     end else begin : transport_only
+        assign retirement_checkpoint_data = 0;
         assign retirement_count = 0;
         assign retirement_pop = 0;
         assign geometry_busy = 0;
@@ -319,7 +433,38 @@ module nds_gx_fifo_packet_frontend #(
     end
 
     always_ff @(posedge clk) begin
-        if (reset) begin
+        if (checkpoint_loading) begin
+            // The captured delivery and SWAP-timestamp queues were empty.
+            // Reset indices together; their stale payload RAM is unreachable.
+            if (reset) begin
+                write_pointer <= 0;
+                read_pointer <= 0;
+                count <= 0;
+                swap_write_pointer <= 0;
+                swap_read_pointer <= 0;
+                swap_count <= 0;
+                protocol_error <= 0;
+            end
+            if (restore_accept) begin
+                case (checkpoint_address)
+                    0: packed_commands <= checkpoint_write_data;
+                    1: packed_trigger_parameter <= checkpoint_write_data;
+                    2: packed_word_frame <= checkpoint_write_data;
+                    3: packed_word_timestamp[31:0] <= checkpoint_write_data;
+                    4: packed_word_timestamp[63:32] <= checkpoint_write_data;
+                    5: begin
+                        packed_command_count <= checkpoint_write_data[2:0];
+                        packed_parameters_remaining <= checkpoint_write_data[8:3];
+                        matrix_mode <= checkpoint_write_data[10:9];
+                        pos_pointer <= checkpoint_write_data[16:11];
+                        proj_pointer <= checkpoint_write_data[17];
+                        tex_pointer <= checkpoint_write_data[18];
+                        stack_error <= checkpoint_write_data[19];
+                    end
+                    default: ;
+                endcase
+            end
+        end else if (reset) begin
             write_pointer <= 0;
             read_pointer <= 0;
             count <= 0;
