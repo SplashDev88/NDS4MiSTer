@@ -21,10 +21,11 @@ both real CPU implementations together. A third milestone adds an optional
 halted-pipeline format: ARM7 HALT and ARM9 WFI can preserve their pending
 instructions across a fresh-process restore. The branch-only format still
 refuses sleeping CPUs. A fourth milestone adds a read-only CPU state transport,
-an expiring host lease, and optional wiring to the actual console CPUs. Memory,
-devices and the renderer are not frozen by this controller. The next step adds
-DMA admission stopping/draining and explicit ARM9 memory-island idle status;
-these partial drain signals still do not establish a whole-machine boundary.
+an expiring host lease, and optional wiring to the actual console CPUs. Further
+component steps add DMA admission stopping/draining, ARM9 memory-island idle
+status, audio drain/pause and raster/timer event stopping. Memory, remaining
+devices and the renderer still lack a common freeze boundary; these partial
+signals do not authorize a whole-machine checkpoint.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
@@ -146,9 +147,10 @@ no user-facing control. The source closure analyzes successfully, but a full
 console simulation or hardware capture has not yet qualified this wiring.
 
 `checkpoint_pair_paused` says only that both CPUs acknowledged. Caches can
-finish posted work after CPU retirement, and timers, IRQs, video, audio and
-host queues still run. This signal must not be treated as permission to save
-a coherent whole-machine image.
+finish posted work after CPU retirement; audio/event stopping has separate
+acknowledgements, and remaining devices, IRQ delivery and host queues still
+need coordination. This signal must not be treated as permission to save a
+coherent whole-machine image.
 
 ### Partial memory and DMA drain
 
@@ -183,9 +185,41 @@ Native-mode policy bits are not mistaken for work pending forever.
 
 The console exposes `checkpoint_dma_stopped` and a synchronized
 `checkpoint_arm9_memory_idle`. Neither is a complete freeze acknowledgement:
-the main-RAM owner, cross-domain requests, VRAM posting, audio refills, device
+the main-RAM owner, cross-domain requests, VRAM posting, remaining device
 events and renderer queues still require their own drain/freeze contracts.
 Dirty caches and TCM contents also still need serializers and restore paths.
+
+### Audio and event stopping
+
+The same default-disabled console option connects the internal hold request
+to the SPU, both timer groups and the raster timing unit. Each component keeps
+register writes live during acquisition: stopping a playback/timing clock must
+not discard a CPU/DMA write that the IO bus has already accepted. Their stopped
+flags withdraw while the corresponding IO bus is active. They become a stable
+snapshot boundary only after every bus master and other event owner is held.
+
+- Audio holds channel timers/decoders, buffer promotion, mixer accumulators and
+  the split left/right output phase. The ADPCM table reader and its channel-tag
+  pipeline stop together; immutable table initialization can finish first.
+- An unowned sound fetch grant is withdrawn without moving its fetch pointer.
+  A granted or issued read still finishes, including committing the updated
+  fetch-state RAM word. No new read starts from the scanner while stopped.
+  A missing response prevents acknowledgement; cancellation preserves the read
+  until the real response arrives. Sound `ce` and its bus clock must remain
+  enabled for this drain. No memory completion is fabricated.
+- The raster counter holds its exact cycle/line. Already emitted registered
+  IRQ/draw pulses clear on the next clock, after downstream consumers can
+  receive them once. DISPSTAT and queued VCOUNT writes still work.
+- Timer prescaler/counters hold. Their IRQ and cascade outputs describe the
+  *next* counter edge, so both are suppressed while that edge is suspended.
+  The counter/start-delay state retains a pending overflow for resume. Timer
+  start/stop writes still update control state while `ce=1` during acquisition.
+
+The console exports `checkpoint_sound_stopped` and `checkpoint_timing_stopped`
+(both timer groups plus raster). They are partial status only, not a replacement
+for the CPU hold, memory-owner drain or IRQ/CDC/renderer freeze. None of these
+devices has a complete serializer/restore interface yet. Audio output muting
+and restoration of the physical output path also remain integration work.
 
 Do not force a sleeping CPU awake to obtain a branch checkpoint or discard its
 prefetched instructions. Those would change the guest state. The optional
@@ -334,6 +368,32 @@ bash tools/test_nds_cache_instruction_return.sh
   the new tests. Existing sound/DMA yield and GX-overlap regression checks pass.
   These are functional/model timing results, not a hardware speed comparison.
 
+Audio and timing stop checks:
+
+```sh
+bash tools/test_checkpoint_sound.sh
+bash tools/test_checkpoint_timing.sh
+bash tools/test_nds_sound_dma_yield.sh
+```
+
+- Seven audio configurations cover PCM8, PCM16, ADPCM (direct and RAM tables),
+  PSG/noise, 1/16 channels and memory delays of 1/4/31 clocks. Each compares
+  600 stereo pairs against uninterrupted playback, including a full 64-word
+  ADPCM loop. Independent per-channel fetch-address checks detect repeated or
+  skipped words. Stops cover ungranted/granted/issued/completing reads, withheld
+  responses, mixer slots 16/17, repeated holds, register writes and common reset.
+- Four timing configurations cover all timer prescalers, cascades, overflow
+  edges, register writes while stopped and existing sleep/CE behavior. Each
+  compares 1,130,000 virtual clocks against the old CE-paced reference,
+  including more than two frames, raster IRQs and all draw/lifecycle pulses.
+- Negative controls discard a sound response, let the mixer run while stopped,
+  leave timer IRQs unmasked, run a held counter or stretch a raster IRQ. All
+  must fail. Six existing sound/DMA-yield cases also compare a checkpoint-enabled
+  but unrequested SPU with the disabled implementation cycle by cycle.
+
+These tests establish pause/drain behavior in simulation, not persistent audio
+or device restoration, full-console capture, FPGA timing or gameplay speed.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -408,8 +468,8 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA admission/drain tested; coherent device freeze and serializers missing |
-| Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA drain and timer/raster stop tested; remaining owners, coherent freeze and serializers missing |
+| Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
 | Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | CPU-pair barrier, lease and read transport tested; device freeze, host connection and restore ordering missing |
@@ -422,8 +482,8 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 ## Next acceptance gates
 
 1. Extend the optional CPU-only console wiring into a coherent machine freeze.
-   Extend the tested DMA stop and ARM9 idle signals to the memory owners,
-   audio, event producers, IRQ and lid-sleep control, verifying no pending
+   Combine the tested DMA/audio/event stops and ARM9 idle signals with memory
+   owners, remaining device events, IRQ and lid-sleep control, verifying no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.

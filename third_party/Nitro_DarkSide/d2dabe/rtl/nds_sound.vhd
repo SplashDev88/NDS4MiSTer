@@ -43,7 +43,8 @@ entity nds_sound is
       --     path is judged against, and the fallback if the approximation ever
       --     turns out to matter.
       ADPCM_TABLE_RAM : integer := 1;
-      DIAGNOSTICS : integer := 0
+      DIAGNOSTICS : integer := 0;
+      EXPERIMENTAL_CHECKPOINT : boolean := false
    );
    port
    (
@@ -74,11 +75,18 @@ entity nds_sound is
       -- debug/verification tap: master enable + any-channel-active
       snd_enable  : out std_logic;
       snd_active  : out std_logic_vector(15 downto 0);
-      diagnostic : out std_logic_vector(127 downto 0) := (others => '0')
+      diagnostic : out std_logic_vector(127 downto 0) := (others => '0');
+      -- Stop playback and new fetch admissions, but finish an owned read.
+      -- Register writes remain live until the CPUs/DMA have drained too.
+      checkpoint_stop : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0'
    );
 end entity;
 
 architecture arch of nds_sound is
+
+   signal stop_playback : std_logic;
+   signal stop_seen : std_logic := '0';
 
    type t_chan is record
       -- SOUNDxCNT stored fields
@@ -327,7 +335,7 @@ begin
                memory_age <= (others => '0'); memory_max <= (others => '0');
             elsif ce = '1' then
                missing := (others => '0');
-               if tick2 = '1' and soundcnt(15) = '1' then
+               if tick2 = '1' and soundcnt(15) = '1' and stop_playback = '0' then
                   for i in 0 to 15 loop
                      if chan(i).busy = '1' and chan(i).format /= "11" and
                         chan(i).timer(15 downto 0) = x"FFFF" and
@@ -420,7 +428,7 @@ begin
          we_a      => adstep_we,
          be_a      => "1111",
          -- port B: round-robin read, one channel per cycle
-         ce_b      => '1',
+         ce_b      => not stop_playback,
          addr_b    => adstep_ra,
          datain_b0 => x"00", datain_b1 => x"00",
          datain_b2 => x"00", datain_b3 => x"00",
@@ -441,12 +449,13 @@ begin
                adstep_init <= adstep_init + 1;
             end if;
 
-            adstep_rr_d <= adstep_rr;
-            if (adstep_rr = 15) then adstep_rr <= 0; else adstep_rr <= adstep_rr + 1; end if;
-            -- dataout_b is the entry for the channel addressed one cycle ago,
-            -- and adstep_rr_d names that same channel, so this lands in the
-            -- right slot
-            adstep_q(adstep_rr_d) <= to_integer(unsigned(adstep_dout_v(14 downto 0)));
+            if stop_playback = '0' then
+               adstep_rr_d <= adstep_rr;
+               if (adstep_rr = 15) then adstep_rr <= 0; else adstep_rr <= adstep_rr + 1; end if;
+               -- Stop both the RAM reader and its channel-tag pipeline. The
+               -- immutable table's startup writes still finish while stopped.
+               adstep_q(adstep_rr_d) <= to_integer(unsigned(adstep_dout_v(14 downto 0)));
+            end if;
          end if;
       end process;
    end generate;
@@ -503,6 +512,23 @@ begin
    -- synthesis translate_on
 
    snd_enable <= soundcnt(15);
+   stop_playback <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   process(clk) begin
+      if rising_edge(clk) then
+         if reset = '1' then stop_seen <= '0';
+         else stop_seen <= stop_playback; end if;
+      end if;
+   end process;
+   -- The RAM write strobes are registered: completion of the read is one
+   -- edge earlier than commitment of its updated fetch pointer/count. Do not
+   -- acknowledge until those writes and the last stereo-valid pulse retire.
+   checkpoint_stopped <= '1' when EXPERIMENTAL_CHECKPOINT and
+      reset = '0' and stop_playback = '1' and stop_seen = '1' and
+      (fstate = FSCAN_ADDR or fstate = FSCAN_EVAL) and
+      snd_bus_req = '0' and snd_bus_own = '0' and mb_ena = '0' and
+      fptr_a_we = '0' and frem_a_we = '0' and fptr_b_we = '0' and frem_b_we = '0' and
+      sample_valid = '0' and bus7.ena = '0' and
+      (ADPCM_TABLE_RAM = 0 or (adstep_init = 89 and adstep_we = '0')) else '0';
    gact : for i in 0 to 15 generate
       snd_active(i) <= chan(i).busy;
    end generate;
@@ -636,7 +662,7 @@ begin
 
          elsif (ce = '1') then
 
-            tick2     <= not tick2;
+            if stop_playback = '0' then tick2 <= not tick2; end if;
             mb_ena    <= '0';
             fptr_a_we <= '0';
             frem_a_we <= '0';
@@ -734,7 +760,7 @@ begin
             end if;
 
             -- -------- channel time advance + decode (33.514/2 MHz) --------
-            if (tick2 = '1' and soundcnt(15) = '1') then
+            if (tick2 = '1' and soundcnt(15) = '1' and stop_playback = '0') then
                for i in 0 to 15 loop
                   if (chan(i).busy = '1') then
                      chan(i).timer <= ('0' & chan(i).timer(15 downto 0)) + 1;
@@ -872,7 +898,7 @@ begin
             -- it never races the decode above, and a same-cycle fetch
             -- delivery below wins the nxtv write, keeping both flags right
             for i in 0 to 15 loop
-               if (chan(i).busy = '1' and chan(i).curv = '0' and chan(i).nxtv = '1') then
+               if (stop_playback = '0' and chan(i).busy = '1' and chan(i).curv = '0' and chan(i).nxtv = '1') then
                   chan(i).curw <= chan(i).nxtw;
                   chan(i).curv <= '1';
                   chan(i).nxtv <= '0';
@@ -887,13 +913,15 @@ begin
                   -- fch (concurrent assignment below), this just gives the
                   -- BRAMs' registered outputs a cycle to catch up before
                   -- FSCAN_EVAL trusts frem_b_dout
-                  fstate <= FSCAN_EVAL;
+                  if stop_playback = '0' then fstate <= FSCAN_EVAL; end if;
 
                when FSCAN_EVAL =>
                   -- one candidate per two cycles, round-robin; a stopped
                   -- channel with a fetch in flight still delivers (stale
                   -- words in a dead buffer are harmless)
-                  if (chan(fch).busy = '1' and chan(fch).format /= "11" and
+                  if stop_playback = '1' then
+                     null; -- retain this candidate and its registered RAM read
+                  elsif (chan(fch).busy = '1' and chan(fch).format /= "11" and
                       unsigned(frem_b_dout(23 downto 0)) /= 0 and chan(fch).nxtv = '0') then
                      snd_bus_req <= '1';
                      fstate      <= FGRANT;
@@ -906,7 +934,11 @@ begin
                   end if;
 
                when FGRANT =>
-                  if (snd_bus_ok = '1') then
+                  if stop_playback = '1' then
+                     -- Not owned or issued yet; retry the same word on resume.
+                     snd_bus_req <= '0';
+                     fstate <= FSCAN_ADDR;
+                  elsif (snd_bus_ok = '1') then
                      snd_bus_own <= '1';
                      fstate      <= FISSUE;
                   end if;
@@ -989,7 +1021,7 @@ begin
             master_left_latch <= (others => '0');
             sample_l <= (others => '0');
             sample_r <= (others => '0');
-         elsif (ce = '1') then
+         elsif (ce = '1' and stop_playback = '0') then
             mixcnt <= mixcnt + 1;
 
             if (to_integer(mixcnt) < 16) then

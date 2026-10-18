@@ -64,7 +64,7 @@ begin
  -- Mode 2 sees exactly the production instance's accepted responses. Require
  -- every request, sample and retained counter to remain cycle-identical, even
  -- in the deliberately starving negative control and repeated DMA cases.
- slim: entity work.nds_sound generic map (is_simu=>'1',ADPCM_TABLE_RAM=>0,DIAGNOSTICS=>2)
+ slim: entity work.nds_sound generic map (is_simu=>'1',ADPCM_TABLE_RAM=>0,DIAGNOSTICS=>2,EXPERIMENTAL_CHECKPOINT=>true)
  port map (clk=>clk,ce=>'1',reset=>reset,bus7=>regs,
   wired_out7=>open,wired_done7=>open,snd_bus_req=>slim_req,snd_bus_ok=>sound_ok,
   snd_bus_own=>slim_own,mb_ena=>slim_ena,mb_adr=>slim_addr,mb_din=>data(1),mb_done=>done(1),

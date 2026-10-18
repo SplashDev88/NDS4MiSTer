@@ -449,6 +449,7 @@ entity nds_nitro_console_top is
       checkpoint_epoch : out unsigned(31 downto 0) := (others => '0');
       -- Partial drain status only; no coherent machine snapshot yet.
       checkpoint_dma_stopped, checkpoint_arm9_memory_idle : out std_logic := '0';
+      checkpoint_sound_stopped, checkpoint_timing_stopped : out std_logic := '0';
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
       checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
       checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
@@ -470,6 +471,7 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_valid9, checkpoint_valid7 : std_logic;
    signal checkpoint_hold_request, checkpoint_dma9_stopped, checkpoint_dma7_stopped : std_logic;
    signal checkpoint_memory9_idle : std_logic;
+   signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
    signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
    attribute async_reg : string;
    attribute async_reg of checkpoint_memory9_meta, checkpoint_memory9_sync : signal is "true";
@@ -2086,6 +2088,7 @@ begin
             cpu_valid9 => checkpoint_valid9, cpu_valid7 => checkpoint_valid7);
       checkpoint_dma_stopped <= checkpoint_dma9_stopped and checkpoint_dma7_stopped;
       checkpoint_arm9_memory_idle <= checkpoint_memory9_sync;
+      checkpoint_timing_stopped <= checkpoint_timer9_stopped and checkpoint_timer7_stopped and checkpoint_raster_stopped;
       process(clk1x) begin
          if rising_edge(clk1x) then
             if resetCpu = '1' then
@@ -2114,6 +2117,7 @@ begin
       cpu_save9 <= ss_bus9; cpu_save7 <= ss_bus7;
       checkpoint_req9 <= '0'; checkpoint_req7 <= '0'; checkpoint_hold_request <= '0';
       checkpoint_dma_stopped <= '0'; checkpoint_arm9_memory_idle <= '0';
+      checkpoint_timing_stopped <= '0';
       checkpoint_ready <= '0'; checkpoint_busy <= '0'; checkpoint_pair_paused <= '0';
       checkpoint_timed_out <= '0'; checkpoint_release_stalled <= '0'; checkpoint_lease_expired <= '0';
       checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
@@ -2786,10 +2790,12 @@ begin
 
    gsound : if SOUND_ENABLE /= 0 generate
       isound : entity work.nds_sound
-      generic map ( is_simu => is_simu, DIAGNOSTICS => SOUND_DIAGNOSTICS )
+      generic map ( is_simu => is_simu, DIAGNOSTICS => SOUND_DIAGNOSTICS,
+                    EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE )
       port map
       (
          clk => clk1x, ce => '1', reset => resetCpu,
+         checkpoint_stop => checkpoint_hold_request, checkpoint_stopped => checkpoint_sound_stopped,
          bus7 => io_bus7, wired_out7 => snd_wired_out7, wired_done7 => snd_wired_done7,
          snd_bus_req => snd_bus_req,
          snd_bus_ok  => snd_bus_ok,
@@ -2813,6 +2819,7 @@ begin
    -- forever, which would look like a boot bug rather than a missing peripheral.
    -- So claim exactly the range nds_sound claims and read back zero.
    gnosound : if SOUND_ENABLE = 0 generate
+      checkpoint_sound_stopped <= checkpoint_hold_request and not resetCpu;
       snd_wired_done7 <= '1' when (io_bus7.Adr(27 downto 9) = "0000000000000000010") else '0';
       snd_wired_out7  <= (others => '0');
       -- never ask for the ARM7 membus, so cpu7_pause/dma7_idle_ok are unaffected
@@ -2841,10 +2848,11 @@ begin
    );
 
    itimer9 : entity work.gba_timer
-   generic map ( is_simu => '0' )
+   generic map ( is_simu => '0', EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE )
    port map
    (
       clk => clk1x, ce => not console_sleep, reset => resetCpu,
+      checkpoint_stop => checkpoint_hold_request, checkpoint_stopped => checkpoint_timer9_stopped,
       savestate_bus => ss_bus9, ss_wired_out => open, ss_wired_done => open,
       loading_savestate => '0',
       gb_bus => io_bus9, wired_out => timer_wired_out9, wired_done => timer_wired_done9,
@@ -2854,10 +2862,11 @@ begin
    );
 
    itimer7 : entity work.gba_timer
-   generic map ( is_simu => '0' )
+   generic map ( is_simu => '0', EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE )
    port map
    (
       clk => clk1x, ce => not console_sleep, reset => resetCpu,
+      checkpoint_stop => checkpoint_hold_request, checkpoint_stopped => checkpoint_timer7_stopped,
       savestate_bus => ss_bus7, ss_wired_out => open, ss_wired_done => open,
       loading_savestate => '0',
       gb_bus => io_bus7, wired_out => timer_wired_out7, wired_done => timer_wired_done7,
@@ -3022,9 +3031,11 @@ begin
    -- that used to sit here (and the OSD item that switched it) is gone - see
    -- the header. A line is 2,130 clk1x cycles and the renderer fits it.
    itiming : entity work.nds_gpu_timing
+   generic map ( EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE )
    port map
    (
       clk             => clk1x,
+      checkpoint_stop => checkpoint_hold_request, checkpoint_stopped => checkpoint_raster_stopped,
       -- Preserve the beta93 real-time raster. Frame-event pressure describes
       -- HPS input admission, not completion of a visible 3D plane; using it
       -- as a clock-enable made beta95/beta96 hide 3D for seconds.

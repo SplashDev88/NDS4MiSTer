@@ -12,7 +12,8 @@ entity gba_timer is
       is_simu : std_logic;
       -- See the iSAVESTATE_TIMER comment below: '1' drops the savestate
       -- registers this core never writes, '0' builds them.
-      SS_PRESET_ONLY : std_logic := '1'
+      SS_PRESET_ONLY : std_logic := '1';
+      EXPERIMENTAL_CHECKPOINT : boolean := false
    );
    port 
    (
@@ -37,11 +38,15 @@ entity gba_timer is
       debugout0         : out   unsigned(15 downto 0);
       debugout1         : out   unsigned(15 downto 0);
       debugout2         : out   unsigned(15 downto 0);
-      debugout3         : out   unsigned(15 downto 0)
+      debugout3         : out   unsigned(15 downto 0);
+      checkpoint_stop   : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0'
    );
 end entity;
 
 architecture arch of gba_timer is
+   signal stop_count : std_logic;
+   signal stop_seen : std_logic := '0';
  
    type t_reg_wired_or is array(0 to 3) of std_logic_vector(31 downto 0);
    signal reg_wired_or    : t_reg_wired_or;   
@@ -58,7 +63,17 @@ architecture arch of gba_timer is
    signal save_wired_or        : t_ss_wired_or;   
    signal save_wired_done      : unsigned(0 to 3);
  
-begin 
+begin
+   stop_count <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   process(clk) begin
+      if rising_edge(clk) then
+         if reset = '1' then stop_seen <= '0';
+         else stop_seen <= stop_count; end if;
+      end if;
+   end process;
+   checkpoint_stopped <= '1' when EXPERIMENTAL_CHECKPOINT and
+      reset = '0' and stop_count = '1' and stop_seen = '1' and
+      gb_bus.ena = '0' and IRP_Timer = "0000" and timerticks = "0000" else '0';
 
    -- REG_SAVESTATE_TIMER is at address 62 (size 4, so 62-65). nds_top's boot
    -- preset only ever writes savestate addresses 0, 13, 14, 15, 24, 34 and 37
@@ -105,7 +120,7 @@ begin
       if rising_edge(clk) then
          if (reset = '1') then
             prescaleCounter <= unsigned(SAVESTATE_TIMER(28 downto 19));
-         elsif (ce = '1') then
+         elsif (ce = '1' and stop_count = '0') then
             prescaleCounter <= prescaleCounter + 1;
          end if;
       end if;
@@ -120,7 +135,8 @@ begin
       Reg_H_Prescaler        => TM0CNT_H_Prescaler       ,
       Reg_H_Count_up         => TM0CNT_H_Count_up        ,
       Reg_H_Timer_IRQ_Enable => TM0CNT_H_Timer_IRQ_Enable,
-      Reg_H_Timer_Start_Stop => TM0CNT_H_Timer_Start_Stop   
+      Reg_H_Timer_Start_Stop => TM0CNT_H_Timer_Start_Stop,
+      EXPERIMENTAL_CHECKPOINT => EXPERIMENTAL_CHECKPOINT
    )                                  
    port map
    (
@@ -143,7 +159,8 @@ begin
       tick              => timerticks(0),
       IRP_Timer         => IRP_Timer(0),
                         
-      debugout          => debugout0
+      debugout          => debugout0,
+      checkpoint_stop => stop_count
    );
    
    igba_timer_module1 : entity work.gba_timer_module
@@ -155,7 +172,8 @@ begin
       Reg_H_Prescaler        => TM1CNT_H_Prescaler       ,
       Reg_H_Count_up         => TM1CNT_H_Count_up        ,
       Reg_H_Timer_IRQ_Enable => TM1CNT_H_Timer_IRQ_Enable,
-      Reg_H_Timer_Start_Stop => TM1CNT_H_Timer_Start_Stop   
+      Reg_H_Timer_Start_Stop => TM1CNT_H_Timer_Start_Stop,
+      EXPERIMENTAL_CHECKPOINT => EXPERIMENTAL_CHECKPOINT
    )                                  
    port map
    (
@@ -178,7 +196,8 @@ begin
       tick              => timerticks(1),
       IRP_Timer         => IRP_Timer(1),
                         
-      debugout          => debugout1      
+      debugout          => debugout1,
+      checkpoint_stop => stop_count
    );
    
    igba_timer_module2 : entity work.gba_timer_module
@@ -190,7 +209,8 @@ begin
       Reg_H_Prescaler        => TM2CNT_H_Prescaler       ,
       Reg_H_Count_up         => TM2CNT_H_Count_up        ,
       Reg_H_Timer_IRQ_Enable => TM2CNT_H_Timer_IRQ_Enable,
-      Reg_H_Timer_Start_Stop => TM2CNT_H_Timer_Start_Stop   
+      Reg_H_Timer_Start_Stop => TM2CNT_H_Timer_Start_Stop,
+      EXPERIMENTAL_CHECKPOINT => EXPERIMENTAL_CHECKPOINT
    )                                  
    port map
    (
@@ -213,7 +233,8 @@ begin
       tick              => timerticks(2),
       IRP_Timer         => IRP_Timer(2),
                         
-      debugout          => debugout2      
+      debugout          => debugout2,
+      checkpoint_stop => stop_count
    );
    
    igba_timer_module3 : entity work.gba_timer_module
@@ -225,7 +246,8 @@ begin
       Reg_H_Prescaler        => TM3CNT_H_Prescaler       ,
       Reg_H_Count_up         => TM3CNT_H_Count_up        ,
       Reg_H_Timer_IRQ_Enable => TM3CNT_H_Timer_IRQ_Enable,
-      Reg_H_Timer_Start_Stop => TM3CNT_H_Timer_Start_Stop   
+      Reg_H_Timer_Start_Stop => TM3CNT_H_Timer_Start_Stop,
+      EXPERIMENTAL_CHECKPOINT => EXPERIMENTAL_CHECKPOINT
    )                                  
    port map
    (
@@ -248,7 +270,8 @@ begin
       tick              => timerticks(3),
       IRP_Timer         => IRP_Timer(3),
                         
-      debugout          => debugout3      
+      debugout          => debugout3,
+      checkpoint_stop => stop_count
    );
     
 

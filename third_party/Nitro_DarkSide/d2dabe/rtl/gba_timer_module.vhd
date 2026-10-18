@@ -18,7 +18,8 @@ entity gba_timer_module is
       Reg_H_Timer_Start_Stop : regmap_type;
       -- See the iSAVESTATE_TIMER comment below: '1' drops the savestate
       -- register this core never writes, '0' builds it.
-      SS_PRESET_ONLY         : std_logic := '1'
+      SS_PRESET_ONLY         : std_logic := '1';
+      EXPERIMENTAL_CHECKPOINT : boolean := false
    );
    port 
    (
@@ -41,11 +42,13 @@ entity gba_timer_module is
       tick                : out   std_logic := '0';
       IRP_Timer           : out   std_logic := '0';
       
-      debugout            : out   unsigned(15 downto 0)
+      debugout            : out   unsigned(15 downto 0);
+      checkpoint_stop     : in    std_logic := '0'
    );
 end entity;
 
 architecture arch of gba_timer_module is
+   signal stop_count : std_logic;
 
    signal L_Counter_Reload   : std_logic_vector(Reg_L                 .upper downto Reg_L                 .lower) := (others => '0');
    signal H_Prescaler        : std_logic_vector(Reg_H_Prescaler       .upper downto Reg_H_Prescaler       .lower) := (others => '0');
@@ -78,6 +81,8 @@ architecture arch of gba_timer_module is
    signal debugout_next : unsigned(15 downto 0) := (others => '0');
    
 begin 
+
+   stop_count <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
 
    SAVESTATE_TIMER_BACK(0)            <= timer_on;       
    SAVESTATE_TIMER_BACK(1)            <= '0';  
@@ -147,20 +152,25 @@ begin
       tick      <= '0';
       IRP_Timer <= '0';
       
-      if (startwait = '1') then
-        if (counter = x"FFFF" and H_Timer_IRQ_Enable = "1") then
-           IRP_Timer <= '1';
+      -- These are combinational events for the next counter edge. Mask both
+      -- IRQ and cascade ticks when that edge is suspended. The pending
+      -- overflow remains in the counter/startwait state and fires on resume.
+      if (stop_count = '0') then
+         if (startwait = '1') then
+           if (counter = x"FFFF" and H_Timer_IRQ_Enable = "1") then
+              IRP_Timer <= '1';
+           end if;
         end if;
-     end if;
 
-      if (timer_on = '1' and startwait = '0') then   
-         if (newCounter(16) = '1') then
-            tick             <= '1';
-            if (H_Timer_IRQ_Enable = "1") then
-               IRP_Timer <= '1';
+         if (timer_on = '1' and startwait = '0') then
+            if (newCounter(16) = '1') then
+               tick             <= '1';
+               if (H_Timer_IRQ_Enable = "1") then
+                  IRP_Timer <= '1';
+               end if;
             end if;
          end if;
-      end if;
+      end if; -- stop_count
    
    end process;
    
@@ -180,24 +190,26 @@ begin
             counter          <= unsigned(SAVESTATE_TIMER(17 downto 2));
       
          elsif (ce = '1') then
-         
-            if (startwait = '1') then
-               startwait        <= '0';
-               counter          <= unsigned(L_Counter_Reload);
-               counter_readback <= L_Counter_Reload;
-            end if;
-
-            if (timer_on = '1' and startwait = '0') then   
-
-               counter          <= newCounter(15 downto 0);
-               counter_readback <= std_logic_vector(newCounter(15 downto 0));
-            
-               if (newCounter(16) = '1') then
+            if stop_count = '0' then
+               if (startwait = '1') then
+                  startwait        <= '0';
                   counter          <= unsigned(L_Counter_Reload);
                   counter_readback <= L_Counter_Reload;
                end if;
 
-            end if;
+               if (timer_on = '1' and startwait = '0') then
+
+                  counter          <= newCounter(15 downto 0);
+                  counter_readback <= std_logic_vector(newCounter(15 downto 0));
+            
+                  if (newCounter(16) = '1') then
+                     counter          <= unsigned(L_Counter_Reload);
+                     counter_readback <= L_Counter_Reload;
+                  end if;
+
+               end if;
+
+            end if; -- counter advance; register writes still complete below
 
             -- set_settings
             if (H_Timer_Start_Stop_writeTo = '1' and loading_savestate = '0') then
@@ -225,7 +237,6 @@ begin
   
 
 end architecture;
-
 
 
 

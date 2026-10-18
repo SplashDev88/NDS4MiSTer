@@ -40,6 +40,7 @@ use work.pRegmap_gba.all;
 use work.pReg_nds_display.all;
 
 entity nds_gpu_timing is
+   generic (EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk               : in  std_logic;
@@ -74,11 +75,15 @@ entity nds_gpu_timing is
       refpoint_update   : out std_logic := '0';
 
       vcount_out        : out unsigned(8 downto 0);  -- live line, for compose/debug
-      dbg_vbl_ena9      : out std_logic := '0'       -- diagnostic-only persistent ARM9 DISPSTAT bit 3
+      dbg_vbl_ena9      : out std_logic := '0';      -- diagnostic-only persistent ARM9 DISPSTAT bit 3
+      checkpoint_stop  : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0'
    );
 end entity;
 
 architecture arch of nds_gpu_timing is
+   signal stop_timing : std_logic;
+   signal stop_seen : std_logic := '0';
 
    constant LINE_CYCLES  : integer := 355 * 6;
    constant RENDER_START : integer := 48 + 256 * 6;   -- hblank begins here
@@ -128,6 +133,24 @@ architecture arch of nds_gpu_timing is
    signal vmatch : t_vmatch;
 
 begin
+
+   stop_timing <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   process(clk) begin
+      if rising_edge(clk) then
+         if reset = '1' then stop_seen <= '0';
+         else stop_seen <= stop_timing; end if;
+      end if;
+   end process;
+   -- Pulses from the preceding enabled edge are delivered once before this
+   -- acknowledgement. Register access remains live until the CPU buses drain.
+   checkpoint_stopped <= '1' when EXPERIMENTAL_CHECKPOINT and
+      reset = '0' and stop_timing = '1' and stop_seen = '1' and
+      gb_bus9.ena = '0' and gb_bus7.ena = '0' and
+      irq9_vblank = '0' and irq9_hblank = '0' and irq9_vcount = '0' and
+      irq7_vblank = '0' and irq7_hblank = '0' and irq7_vcount = '0' and
+      drawline = '0' and drawObj = '0' and line_trigger = '0' and
+      hblank_trigger = '0' and lcd_phase = '0' and vblank_trigger = '0' and
+      refpoint_update = '0' else '0';
 
    busses(0) <= gb_bus9;
    busses(1) <= gb_bus7;
@@ -217,7 +240,7 @@ begin
             vmatch_flag  <= "00";
             vcnt_wr_pend <= '0';
 
-         elsif (ce = '1') then
+         elsif (ce = '1' and stop_timing = '0') then
 
             if (cycles = LINE_CYCLES - 1) then
 
