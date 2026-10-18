@@ -13,12 +13,16 @@ use ieee.numeric_std.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_cache_instruction_return is
    generic (legacy_live_lock : boolean := false; memory_delay : natural := 2;
-            expect_single_cycle : boolean := true);
+            expect_single_cycle : boolean := true; native_session : std_logic := '0');
 end entity;
 architecture test of tb_nds_cache_instruction_return is
    signal clk : std_logic := '0';
    signal cache_debug : std_logic_vector(7 downto 0);
    signal reset : std_logic := '1';
+   signal checkpoint_idle : std_logic;
+   signal dtcm_enabled : std_logic := '0';
+   signal dtcm_write : std_logic;
+   signal dtcm_write_data, dtcm_word : std_logic_vector(31 downto 0) := (others=>'0');
    signal adr, dout, din : std_logic_vector(31 downto 0) := (others => '0');
    signal ena, done, dma, code, cached, cpu_lock : std_logic := '0';
    signal rnw : std_logic := '1';
@@ -50,13 +54,24 @@ architecture test of tb_nds_cache_instruction_return is
    begin return pattern(to_integer(unsigned(a(13 downto 2)))); end;
 begin
    clk <= not clk after 5 ns;
+   process(clk) begin
+      if falling_edge(clk) and reset='0' and (mem_ena='1' or ena='1' or op_busy='1' or op_ena='1') then
+         assert checkpoint_idle='0' report "island idle while memory/maintenance is active" severity failure;
+      end if;
+   end process;
+   process(clk) begin
+      if rising_edge(clk) and dtcm_write='1' then
+         assert checkpoint_idle='0' report "island idle before TCM write commits" severity failure;
+         dtcm_word<=dtcm_write_data;
+      end if;
+   end process;
    applied_lock <= cpu_lock and not cached when legacy_live_lock else mem_lock;
    dut : entity work.nds_membus9
       generic map (is_simu => '1')
       port map (
-         clk => clk, reset => reset,
+         clk => clk, reset => reset, native_mode => native_session, checkpoint_idle => checkpoint_idle,
          itcm_ena => '0', itcm_load => '0', itcm_size => "00000",
-         dtcm_ena => '0', dtcm_load => '0', dtcm_base => x"00000", dtcm_size => "00000",
+         dtcm_ena => dtcm_enabled, dtcm_load => '0', dtcm_base => x"03000", dtcm_size => "00101",
          bus_cacheable_i => cached, bus_cacheable_d => cached,
          cache_op_ena => op_ena, cache_op => op, cache_op_addr => op_addr, cache_op_busy => op_busy,
          dma_bus => dma, cpu_adr => adr, cpu_rnw => rnw, cpu_ena => ena, cpu_code => code, cpu_lock => cpu_lock,
@@ -64,7 +79,7 @@ begin
          cpu_lastread => x"BAD0BAD0", cpu_din => din, cpu_done => done,
          itcm_addr => open, itcm_we => open, itcm_be => open, itcm_writedata => open,
          itcm_readdata => x"00000000", dtcm_addr => open, dtcm_readdata => x"00000000",
-         dtcm_addr_b => open, dtcm_we_b => open, dtcm_be_b => open, dtcm_writedata_b => open,
+         dtcm_addr_b => open, dtcm_we_b => dtcm_write, dtcm_be_b => open, dtcm_writedata_b => dtcm_write_data,
          brom_addr => open, brom_data => x"00000000",
          wsh_ena => open, wsh_rnw => open, wsh_addr => open, wsh_be => open, wsh_din => open,
          wsh_dout => x"00000000", wsh_done => '0', wsh_mapped => '0',
@@ -168,6 +183,7 @@ begin
          assert cache_debug(3 downto 0)=x"0" and op_busy='0'
             report "cache did not drain" severity failure;
          cycle; cycle;
+         assert checkpoint_idle='1' report "drained ARM9 island not reported idle" severity failure;
       end;
       -- The next request is presented DURING the current response, so the
       -- rising edge consumes one word and accepts the next (real CPU contract).
@@ -228,6 +244,7 @@ begin
       -- Returning the critical word must leave three pair fills in flight.
       transfer(x"02000000",expected(x"02000000"),'1','1','1','0');
       assert pair_count < 4 report "critical-word-first no longer returns early" severity failure;
+      assert checkpoint_idle='0' report "idle claimed with background fill pending" severity failure;
       swap(x"023FFFE8");
       -- A poisoned background pair supplies a stale high word here with legacy wiring.
       for i in 1 to 7 loop
@@ -237,6 +254,22 @@ begin
       assert locked_reads = 1 and locked_writes = 1
          report "background fill inherited the next SWP lock" severity failure;
       report "PASS: critical-word-first, all eight cached words, and queued SWP read/write";
+
+      if native_session='1' then
+         -- Native mode deliberately bypasses the D cache, so the dirty-line
+         -- expectations below apply only to direct-boot sessions.
+         drained;
+         transfer(x"02000400",x"A55A3CC3",'0','1','0','0');
+         transfer(x"02000400",x"A55A3CC3",'1','0','0','0');drained;
+         dtcm_enabled<='1';cycle;
+         transfer(x"03000000",x"BEEFFEED",'0','0','0','0');
+         assert checkpoint_idle='0' report "island ignored delayed TCM forwarding state" severity failure;
+         cycle;cycle;
+         assert checkpoint_idle='1' and dtcm_word=x"BEEFFEED"
+            report "native TCM commit did not produce idle boundary" severity failure;
+         report "PASS native-mode checkpoint idle: I fill, uncached data policy, TCM commit";
+         std.env.stop;wait;
+      end if;
 
       -- Dirty maintenance writeback must remain unlocked while a SWP waits.
       transfer(x"02000400",expected(x"02000400"),'1','1','0','0');
@@ -308,6 +341,13 @@ begin
          assert done='0' report "response after reset without a request" severity failure; cycle;
       end loop;
       report "PASS reset, mixed I/D traffic and response attribution";
+      drained;dtcm_enabled<='1';cycle;
+      transfer(x"03000000",x"BEEFFEED",'0','0','0','0');
+      assert checkpoint_idle='0' report "island ignored delayed TCM forwarding state" severity failure;
+      cycle;cycle;
+      assert checkpoint_idle='1' and dtcm_word=x"BEEFFEED"
+         report "TCM commit did not produce idle boundary" severity failure;
+      report "PASS checkpoint idle excludes background cache, maintenance and deferred TCM state";
       std.env.stop; wait;
    end process;
 end architecture;

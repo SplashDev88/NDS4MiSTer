@@ -16,6 +16,7 @@ entity nds_checkpoint_cpu_capture is
     keepalive_epoch : in unsigned(31 downto 0);
     ready, busy, pair_paused, timed_out, release_stalled, lease_expired : out std_logic;
     epoch : out unsigned(31 downto 0);
+    hold_request : out std_logic := '0'; -- includes acquisition and cancellation delivery
     cpu_request9, cpu_request7 : out std_logic;
     cpu_paused9, cpu_paused7 : in std_logic;
     read_strobe, read_cpu : in std_logic; -- 0 = ARM9, 1 = ARM7
@@ -37,6 +38,7 @@ architecture rtl of nds_checkpoint_cpu_capture is
   signal data9, data7 : std_logic_vector(31 downto 0);
 begin
   epoch <= epoch_i;
+  hold_request <= pair_request;
   pair_paused <= held;
   coordinator : entity work.nds_checkpoint_coordinator
     generic map(TIMEOUT_CYCLES => TIMEOUT_CYCLES, LEASE_CYCLES => LEASE_CYCLES)

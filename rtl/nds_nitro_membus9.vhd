@@ -163,11 +163,13 @@ entity nds_membus9 is
       -- diagnostic export for the ch4 debug mailbox:
       -- {cpu_ena, cpu_done, membus state[2:0]} and the cache's own word
       dbg_mb         : out std_logic_vector(7 downto 0) := (others => '0');
-      dbg_cache      : out std_logic_vector(7 downto 0) := (others => '0')
+      dbg_cache      : out std_logic_vector(7 downto 0) := (others => '0');
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
 architecture arch of nds_membus9 is
+   signal cache_checkpoint_idle : std_logic;
 
    type t_target is (T_ITCM, T_DTCM, T_BROM, T_MAIN, T_WRAMSH, T_IO, T_VRAM, T_PAL, T_OAM, T_OPEN);
    -- W_IO_RESP: wait for the IO fabric's completion before retiring the access.
@@ -297,6 +299,13 @@ begin
       end if;
    end process;
 
+   -- Includes delayed TCM writes and background cache work, unlike CPU bus
+   -- idle alone. This observes the island; it neither invalidates nor freezes it.
+   checkpoint_idle <= '1' when reset = '0' and state = IDLE and cpu_ena = '0' and
+      cache_checkpoint_idle = '1' and dw_pend = '0' and dwq_pend = '0' and dr_pend = '0' and
+      wsh_ena = '0' and vram_ena = '0' and pal_we = '0' and oam_we = '0' and io_bus.ena = '0'
+      else '0';
+
    -- BIOS9 uses a synchronous hot-loadable RAM in hardware. Drive its read
    -- address in the accept cycle so the registered word is ready in FINISH.
    brom_addr <= unsigned(cpu_adr(14 downto 2));
@@ -339,7 +348,8 @@ begin
       op            => cache_op,
       op_addr       => cache_op_addr,
       op_busy       => cache_op_busy,
-      dbg_state     => dbg_cache
+      dbg_state     => dbg_cache,
+      checkpoint_idle => cache_checkpoint_idle
    );
 
    -- cpu_done is an out port (unreadable in VHDL-93), so export the terms that

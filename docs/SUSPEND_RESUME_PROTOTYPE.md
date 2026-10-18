@@ -22,7 +22,9 @@ halted-pipeline format: ARM7 HALT and ARM9 WFI can preserve their pending
 instructions across a fresh-process restore. The branch-only format still
 refuses sleeping CPUs. A fourth milestone adds a read-only CPU state transport,
 an expiring host lease, and optional wiring to the actual console CPUs. Memory,
-devices and the renderer are not frozen by this CPU-only controller.
+devices and the renderer are not frozen by this controller. The next step adds
+DMA admission stopping/draining and explicit ARM9 memory-island idle status;
+these partial drain signals still do not establish a whole-machine boundary.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
@@ -144,10 +146,46 @@ no user-facing control. The source closure analyzes successfully, but a full
 console simulation or hardware capture has not yet qualified this wiring.
 
 `checkpoint_pair_paused` says only that both CPUs acknowledged. Caches can
-finish posted work after CPU retirement, and DMA, timers, IRQs, video, audio and
+finish posted work after CPU retirement, and timers, IRQs, video, audio and
 host queues still run. This signal must not be treated as permission to save
-a coherent whole-machine image. Device admission/draining and a common machine
-freeze boundary remain the next integration work.
+a coherent whole-machine image.
+
+### Partial memory and DMA drain
+
+The console's experimental option also enables `checkpoint_stop` on both DMA
+controllers. It follows the coordinator's internal hold request, including
+acquisition and cancellation delivery, rather than the possibly stuck host
+request. Lease expiry/abort therefore releases admission after the endpoint
+handshake completes.
+
+- New channel admissions stop at IDLE. An ungranted GRANT returns ownership
+  without consuming its pending request. A transfer that already started
+  continues to completion or its ordinary GX pause boundary. There is no new
+  arbitrary mid-word interruption or forced memory acknowledgement.
+- Requests already latched while stopped remain pending. In the experimental
+  ARM7 configuration, a VBlank/card trigger on the LATCH edge is retained too:
+  previously that edge's trigger could be overwritten by the old request's
+  consumption. The default-disabled ARM7 configuration is unchanged.
+- `checkpoint_stopped` requires IDLE, released ownership, no outgoing request
+  or completion IRQ pulse, and (ARM9) no posted main-RAM operation in flight.
+  Full transfers can take longer than the acquisition deadline. If memory or
+  GX/VRAM acceptance stops responding, capture must fail/cancel rather than
+  discard the held word. Posted VRAM traffic still needs draining at its owner.
+- This stops admissions, not register/trigger state updates. Event sources must
+  be frozen separately before serializing the DMA state. Existing one-bit
+  trigger coalescing is not a general event queue.
+
+The ARM9 cache now exports an observation-only idle indication covering its
+FSM, queued requests/maintenance, outstanding response and write enables. The
+memory bus combines that with its own requests and delayed TCM write/forwarding
+slots. It does not invalidate cache contents or alter request/return timing.
+Native-mode policy bits are not mistaken for work pending forever.
+
+The console exposes `checkpoint_dma_stopped` and a synchronized
+`checkpoint_arm9_memory_idle`. Neither is a complete freeze acknowledgement:
+the main-RAM owner, cross-domain requests, VRAM posting, audio refills, device
+events and renderer queues still require their own drain/freeze contracts.
+Dirty caches and TCM contents also still need serializers and restore paths.
 
 Do not force a sleeping CPU awake to obtain a branch checkpoint or discard its
 prefetched instructions. Those would change the guest state. The optional
@@ -269,6 +307,33 @@ during a read. Subsequent counter stores verify resumed CPU progress. Negative
 controls deliberately accept stale keepalive epochs or skip read-handshake
 draining and must fail. The existing 132 coordinator cases remain passing.
 
+DMA/cache drain checks:
+
+```sh
+bash tools/test_checkpoint_dma.sh
+bash tools/test_nds_dma9_mainram_fast.sh
+bash tools/test_dma9_gx.sh
+bash tools/test_nds_cache_instruction_return.sh
+```
+
+- 12 DMA configurations cover both CPUs, three response latencies, VBlank/card
+  triggers, cancellation before grant, active drain, queued repeats, LATCH-edge
+  trigger collisions and unavailable memory. Lost-pending and lost-LATCH-event
+  negative controls fail as expected.
+- 216 default-disabled and 216 enabled DMA9 transfer cases cover fast/fallback
+  lanes, 16/32-bit words, fixed/increment/decrement addressing and pair offsets.
+  A stop before admission and during an active transfer must retain exact data,
+  write counts and completion ownership. GX/VRAM tests also check held words
+  during backpressure, drain and cancellation.
+- Four direct-session cache cases cover early critical-word returns, background
+  fills, dirty maintenance, request attribution and deferred TCM writes. Both
+  warm instruction streams still return 128 words in 128 modeled clocks.
+  Two native-mode smoke cases use its existing uncached-data policy and verify
+  eventual idle after I-cache fills, data traffic and TCM writes.
+- Deliberately reporting cache idle early or omitting delayed TCM state fails
+  the new tests. Existing sound/DMA yield and GX-overlap regression checks pass.
+  These are functional/model timing results, not a hardware speed comparison.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -341,9 +406,9 @@ evidence, not as a second maintained implementation in this branch.
 | Owner | Needed before a game can resume | Current status |
 | --- | --- | --- |
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
-| ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Missing; resetting or simply invalidating caches is not equivalent |
+| ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | Missing; require coherent freeze and versioned serializers |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA admission/drain tested; coherent device freeze and serializers missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
@@ -357,7 +422,8 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 ## Next acceptance gates
 
 1. Extend the optional CPU-only console wiring into a coherent machine freeze.
-   Integrate actual cache, DMA, IRQ and lid-sleep control, verifying no pending
+   Extend the tested DMA stop and ARM9 idle signals to the memory owners,
+   audio, event producers, IRQ and lid-sleep control, verifying no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.

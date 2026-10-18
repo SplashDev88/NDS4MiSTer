@@ -9,7 +9,10 @@ if [[ ${1:-} != --inside ]]; then
 fi
 p="$repo/third_party/Nitro_DarkSide/d2dabe/rtl"
 nvc --std=2008 -a "$p/proc_bus_gba.vhd" "$p/nds_dma9.vhd" "$repo/rtl/tb_nds_dma9_mainram_fast.vhd"
+for checkpoint in false true; do
 for latency in 1 4 11; do
- nvc --std=2008 -e -gLATENCY="$latency" tb_nds_dma9_mainram_fast
+ nvc --std=2008 -e -gLATENCY="$latency" -gCHECKPOINT="$checkpoint" tb_nds_dma9_mainram_fast
  nvc --std=2008 -r tb_nds_dma9_mainram_fast --ieee-warnings=off --exit-severity=error
 done
+done
+echo "PASS: 216 baseline and 216 checkpoint DMA9 fast/fallback transfers"

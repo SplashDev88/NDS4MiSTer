@@ -447,6 +447,8 @@ entity nds_nitro_console_top is
       checkpoint_ready, checkpoint_busy, checkpoint_pair_paused : out std_logic := '0';
       checkpoint_timed_out, checkpoint_release_stalled, checkpoint_lease_expired : out std_logic := '0';
       checkpoint_epoch : out unsigned(31 downto 0) := (others => '0');
+      -- Partial drain status only; no coherent machine snapshot yet.
+      checkpoint_dma_stopped, checkpoint_arm9_memory_idle : out std_logic := '0';
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
       checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
       checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
@@ -466,6 +468,11 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_addr9, checkpoint_addr7 : std_logic_vector(7 downto 0);
    signal checkpoint_data9, checkpoint_data7 : std_logic_vector(31 downto 0);
    signal checkpoint_valid9, checkpoint_valid7 : std_logic;
+   signal checkpoint_hold_request, checkpoint_dma9_stopped, checkpoint_dma7_stopped : std_logic;
+   signal checkpoint_memory9_idle : std_logic;
+   signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
+   attribute async_reg : string;
+   attribute async_reg of checkpoint_memory9_meta, checkpoint_memory9_sync : signal is "true";
 
    component nds_nitro_save_profile is
       generic
@@ -2067,7 +2074,7 @@ begin
             ready => checkpoint_ready, busy => checkpoint_busy,
             pair_paused => checkpoint_pair_paused, timed_out => checkpoint_timed_out,
             release_stalled => checkpoint_release_stalled, lease_expired => checkpoint_lease_expired,
-            epoch => checkpoint_epoch, cpu_request9 => checkpoint_req9, cpu_request7 => checkpoint_req7,
+            epoch => checkpoint_epoch, hold_request => checkpoint_hold_request, cpu_request9 => checkpoint_req9, cpu_request7 => checkpoint_req7,
             cpu_paused9 => checkpoint_paused9, cpu_paused7 => checkpoint_paused7,
             read_strobe => checkpoint_read_strobe, read_cpu => checkpoint_read_cpu,
             read_address => checkpoint_read_address, read_epoch => checkpoint_read_epoch,
@@ -2077,6 +2084,18 @@ begin
             cpu_address9 => checkpoint_addr9, cpu_address7 => checkpoint_addr7,
             cpu_data9 => checkpoint_data9, cpu_data7 => checkpoint_data7,
             cpu_valid9 => checkpoint_valid9, cpu_valid7 => checkpoint_valid7);
+      checkpoint_dma_stopped <= checkpoint_dma9_stopped and checkpoint_dma7_stopped;
+      checkpoint_arm9_memory_idle <= checkpoint_memory9_sync;
+      process(clk1x) begin
+         if rising_edge(clk1x) then
+            if resetCpu = '1' then
+               checkpoint_memory9_meta <= '0'; checkpoint_memory9_sync <= '0';
+            else
+               checkpoint_memory9_meta <= checkpoint_memory9_idle;
+               checkpoint_memory9_sync <= checkpoint_memory9_meta;
+            end if;
+         end if;
+      end process;
       -- Only the CPU state mux is borrowed. Timer/other boot buses keep their
       -- original ownership. Boot presets remain unchanged while reset is high.
       process(all) begin
@@ -2093,7 +2112,8 @@ begin
    end generate;
    gno_checkpoint_cpu : if not CHECKPOINT_CPU_ENABLE generate
       cpu_save9 <= ss_bus9; cpu_save7 <= ss_bus7;
-      checkpoint_req9 <= '0'; checkpoint_req7 <= '0';
+      checkpoint_req9 <= '0'; checkpoint_req7 <= '0'; checkpoint_hold_request <= '0';
+      checkpoint_dma_stopped <= '0'; checkpoint_arm9_memory_idle <= '0';
       checkpoint_ready <= '0'; checkpoint_busy <= '0'; checkpoint_pair_paused <= '0';
       checkpoint_timed_out <= '0'; checkpoint_release_stalled <= '0'; checkpoint_lease_expired <= '0';
       checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
@@ -2207,6 +2227,7 @@ begin
    generic map ( is_simu => is_simu )
    port map
    (
+      checkpoint_idle => checkpoint_memory9_idle,
       clk => clk2x, reset => resetCpu, native_mode => fw_boot,
       bus_cacheable_i => bus_cacheable_i, bus_cacheable_d => bus_cacheable_d,
       bus_bufferable_d => bus_bufferable_d,
@@ -2273,10 +2294,13 @@ begin
    mbus_low  <= dmab_low  when dma_bus_on = '1' else cpu9_lowbits;
 
    idma9 : entity work.nds_dma9
+   generic map(EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE)
    port map
    (
       clk          => clk1x,
       reset        => resetCpu,
+      checkpoint_stop => checkpoint_hold_request,
+      checkpoint_stopped => checkpoint_dma9_stopped,
       gb_bus       => io_bus9,
       wired_out    => dma_wired_out,
       wired_done   => dma_wired_done,
@@ -2498,10 +2522,13 @@ begin
                  "00"       when snd_bus_own = '1' else cpu7_lowbits;
 
    idma7 : entity work.nds_dma7
+   generic map(EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE)
    port map
    (
       clk          => clk1x,
       reset        => resetCpu,
+      checkpoint_stop => checkpoint_hold_request,
+      checkpoint_stopped => checkpoint_dma7_stopped,
       gb_bus       => io_bus7,
       wired_out    => dma7_wired_out,
       wired_done   => dma7_wired_done,

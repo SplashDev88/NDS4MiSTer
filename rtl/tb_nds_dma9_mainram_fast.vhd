@@ -7,10 +7,11 @@ use ieee.numeric_std.all;
 use std.env.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_dma9_mainram_fast is
- generic(LATENCY:positive:=1);
+ generic(LATENCY:positive:=1; CHECKPOINT : boolean := false);
 end;
 architecture sim of tb_nds_dma9_mainram_fast is
  signal clk:std_logic:='0';signal reset:std_logic:='1';
+ signal checkpoint_stop, checkpoint_stopped : std_logic := '0';
  signal regs:proc_bus_gb_type:=((others=>'0'),(others=>'0'),'1','0',ACCESS_32BIT,"0000",'0');
  signal dma_on,grant,mb_ena,mb_rnw,mb_done,mr_ena,mr_rnw,mr_done,mr_pair:std_logic:='0';
  signal mb_addr,mb_out,mb_in,mr_out,mr_lo,mr_hi:std_logic_vector(31 downto 0):=(others=>'0');
@@ -37,7 +38,7 @@ architecture sim of tb_nds_dma9_mainram_fast is
 begin
  clk<=not clk after 5 ns;
  fast_ok<=grant when fast else '0';
- dut:entity work.nds_dma9 port map(clk=>clk,reset=>reset,gb_bus=>regs,wired_out=>open,wired_done=>open,
+ dut:entity work.nds_dma9 generic map(EXPERIMENTAL_CHECKPOINT=>CHECKPOINT) port map(clk=>clk,reset=>reset,checkpoint_stop=>checkpoint_stop,checkpoint_stopped=>checkpoint_stopped,gb_bus=>regs,wired_out=>open,wired_done=>open,
   trig_vblank=>'0',trig_hblank=>'0',trig_card=>'0',gx_supported=>'0',trig_gx=>'0',cpu_bus_idle=>'1',dma_on=>dma_on,dma_bus_on=>grant,
   mb_ena=>mb_ena,mb_rnw=>mb_rnw,mb_adr=>mb_addr,mb_acc=>mb_acc,mb_lowbits=>open,mb_dout=>mb_out,mb_din=>mb_in,mb_done=>mb_done,
   io_fast_ena=>open,io_fast_rnw=>open,io_fast_adr=>open,io_fast_acc=>open,io_fast_be=>open,io_fast_dout=>open,io_fast_din=>(others=>'0'),
@@ -53,6 +54,10 @@ begin
  begin
   if rising_edge(clk) then
    mr_done<='0';mb_done<='0';
+   if checkpoint_stopped='1' then
+    assert not pending and not busy and mr_ena='0' and mb_ena='0' and grant='0' and dma_on='0'
+      report "DMA stopped before accepted traffic drained" severity failure;
+   end if;
    if reset='1' then pending:=false;busy<=false;writes<=0;reads<=0;fast_requests<=0;
    else
     if pending then
@@ -109,7 +114,7 @@ begin
     for s in 0 to 2 loop
      for d in 0 to 2 loop
       for align in 0 to 1 loop
-       wait until falling_edge(clk);reset<='1';fast<=f=1;words32<=w=1;src_mode<=s;dst_mode<=d;
+       wait until falling_edge(clk);reset<='1';checkpoint_stop<='1';fast<=f=1;words32<=w=1;src_mode<=s;dst_mode<=d;
        if w=1 then width:=4;else width:=2;end if;
        source<=16#02001080#+align*width;dest<=16#02008080#+align*width;
        wait until falling_edge(clk);wait until falling_edge(clk);reset<='0';
@@ -117,6 +122,14 @@ begin
        count:=17;
        ctrl:=unsigned'(x"C0000000") or to_unsigned(count,32) or shift_left(to_unsigned(w,32),26) or shift_left(to_unsigned(s,32),23) or shift_left(to_unsigned(d,32),21);
        reg(16#B8#,std_logic_vector(ctrl));
+       if CHECKPOINT then
+        for i in 1 to 12 loop wait until falling_edge(clk);end loop;
+        assert checkpoint_stopped='1' and reads=0 and writes=0 report "DMA admitted work while stopped" severity failure;
+        checkpoint_stop<='0';
+        wait until writes=3 for 200 us;
+        assert writes=3 report "queued DMA failed to start" severity failure;
+        wait until falling_edge(clk);checkpoint_stop<='1';
+       end if;
        wait until irq(0)='1' for 200 us;
        assert irq(0)='1' report "DMA timeout" severity failure;
        assert writes=count and not busy report "early completion or missing/duplicated write" severity failure;
@@ -124,6 +137,14 @@ begin
        else assert fast_requests=0 report "fast lane used without grant" severity failure;end if;
        if f=1 and w=1 and s=0 and d=0 then
         assert reads<=10 report "pair buffer did not reduce physical reads" severity failure;
+       end if;
+       if CHECKPOINT then
+        wait until checkpoint_stopped='1' for 200 us;
+        assert checkpoint_stopped='1' report "DMA failed to drain" severity failure;
+        for i in 1 to 12 loop wait until falling_edge(clk);end loop;
+        assert writes=count and not busy report "stopped DMA continued" severity failure;
+       else
+        assert checkpoint_stopped='0' report "disabled checkpoint activated" severity failure;
        end if;
        cases:=cases+1;
       end loop;

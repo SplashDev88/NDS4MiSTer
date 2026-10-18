@@ -205,8 +205,9 @@ Save states, DS wireless, NAND cartridge saves, DSi mode and RTC alarm/periodic
 interrupts remain unsupported. The [bounded suspend/resume experiment](SUSPEND_RESUME_PROTOTYPE.md)
 currently proves branch and idle HALT/WFI CPU persistence, including prefetched
 instructions, and a bounded CPU-pair barrier/read transport with host-lease
-expiry in simulation. Optional console CPU-only wiring is disabled by default;
-device freeze and whole-game resume remain unimplemented. Short selected-game
+expiry in simulation. Optional console wiring also stops/drains DMA admissions
+and observes ARM9 cache/TCM quiescence; it is disabled by default. Coherent device
+freeze, state serialization and whole-game resume remain unimplemented. Short selected-game
 checks do not establish full
 playthrough compatibility. Slowdown, uneven animation, audio hitches and crashes
 remain possible.

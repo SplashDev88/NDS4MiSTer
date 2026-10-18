@@ -68,7 +68,7 @@ begin
       port map(clk=>control_clk,clk9=>clk(0),clk7=>clk(1),reset=>reset,
         request=>request,keepalive=>keepalive,keepalive_epoch=>keepalive_epoch,
         ready=>ready,busy=>busy,pair_paused=>pair_paused,timed_out=>timeout,
-        release_stalled=>stalled,lease_expired=>expired,epoch=>epoch,
+        release_stalled=>stalled,lease_expired=>expired,epoch=>epoch,hold_request=>pair_req,
         cpu_request9=>req(0),cpu_request7=>req(1),cpu_paused9=>paused(0),cpu_paused7=>paused(1),
         read_strobe=>rd_strobe,read_cpu=>rd_cpu,read_address=>rd_address,read_epoch=>rd_epoch,
         read_ready=>rd_ready,read_done=>rd_done,read_error=>rd_error,read_data=>rd_data,
@@ -332,7 +332,7 @@ begin
       assert expired='1' and timeout='1' and pair_paused='0'
         report "lost host failed to expire CPU hold" severity failure;
       keepalive<='0';clocks(100);
-      assert paused="00" and ready='0' report "expired hold did not release / falsely rearmed" severity failure;
+      assert paused="00" and ready='0' and pair_req='0' report "expired hold did not release / falsely rearmed" severity failure;
       progress;old_epoch:=epoch;clocks(LEASE);
       assert epoch=old_epoch report "stale host request retried itself" severity failure;
       request<='0';wait_ready;request<='1';await_pair;

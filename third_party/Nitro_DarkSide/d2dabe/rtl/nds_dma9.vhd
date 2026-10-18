@@ -40,10 +40,15 @@ use IEEE.numeric_std.all;
 use work.pProc_bus_gba.all;
 
 entity nds_dma9 is
+   generic (EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk          : in  std_logic;
       reset        : in  std_logic;
+      -- Drain the current transfer, then stop new admissions. Pending
+      -- channels/triggers are retained; this is not a frozen state image.
+      checkpoint_stop : in std_logic := '0';
+      checkpoint_stopped : out std_logic := '0';
 
       gb_bus       : in  proc_bus_gb_type;
       wired_out    : out std_logic_vector(31 downto 0) := (others => '0');
@@ -189,6 +194,7 @@ entity nds_dma9 is
 end entity;
 
 architecture arch of nds_dma9 is
+   signal stop_admission : std_logic;
 
    constant ADR_BASE : unsigned(27 downto 0) := x"00000B0";
 
@@ -344,6 +350,11 @@ architecture arch of nds_dma9 is
    end function;
 
 begin
+   stop_admission <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_stopped <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '0' and
+      stop_admission = '1' and state = IDLE and dma_on = '0' and
+      dma_bus_on = '0' and mb_ena = '0' and irq_dma = "0000" and mr_busy = '0' and mr_fast_ena = '0' and io_fast_ena = '0' and vram_fast_ena = '0'
+      else '0';
 
    -- ================= per-access cost census (sim only) =================
    -- [04-02] DMA PRIORITY requires a 16-bit unit to cost 2 clk1x cycles and this
@@ -696,7 +707,7 @@ begin
                         v_got  := '1';
                      end if;
                   end loop;
-                  if (v_got = '1') then
+                  if (v_got = '1' and stop_admission = '0') then
                      active <= v_pick;
                      dma_on <= '1';
                      state  <= GRANT;
@@ -706,7 +717,11 @@ begin
                  end if;
 
                when GRANT =>
-                  if (cpu_bus_idle = '1') then
+                  if stop_admission = '1' then
+                     -- No transaction has been issued and LATCH has not
+                     -- consumed pend. Return ownership without losing it.
+                     dma_on <= '0'; dma_bus_on <= '0'; state <= IDLE;
+                  elsif (cpu_bus_idle = '1') then
                      io_read_overlap <= '0';
                      dma_bus_on <= '1';
                      state      <= LATCH;

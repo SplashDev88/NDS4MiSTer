@@ -6,6 +6,7 @@ use std.env.all;
 use work.pProc_bus_gba.all;
 
 entity tb_nds_h3d_dma9_gx is
+   generic (CHECKPOINT : boolean := false);
 end entity;
 
 architecture sim of tb_nds_h3d_dma9_gx is
@@ -17,6 +18,7 @@ architecture sim of tb_nds_h3d_dma9_gx is
    signal wired_done : std_logic;
 
    signal gx_supported, trig_gx, trig_hblank : std_logic := '0';
+   signal checkpoint_stop, checkpoint_stopped : std_logic := '0';
    signal check_dma_preemption : std_logic := '0';
    signal check_unit_preemption : std_logic := '0';
    signal gx_write_ready : std_logic := '1';
@@ -60,9 +62,10 @@ begin
    clk <= not clk after 5 ns;
 
    dut : entity work.nds_dma9
+      generic map(EXPERIMENTAL_CHECKPOINT=>CHECKPOINT)
       port map
       (
-         clk => clk, reset => reset,
+         clk => clk, reset => reset, checkpoint_stop => checkpoint_stop, checkpoint_stopped => checkpoint_stopped,
          gb_bus => regs_bus, wired_out => wired_out, wired_done => wired_done,
          trig_vblank => '0', trig_hblank => trig_hblank, trig_card => '0',
          gx_supported => gx_supported, trig_gx => trig_gx,
@@ -633,6 +636,7 @@ begin
          cycles := cycles + 1;
          assert cycles < 100 report "VRAM held-valid timeout" severity failure;
       end loop;
+      if CHECKPOINT then checkpoint_stop<='1';end if;
       for i in 0 to 7 loop
          wait until falling_edge(clk);
          assert vr_write_valid = '1' and vr_ena = '0' and
@@ -641,6 +645,7 @@ begin
             report "VRAM valid/payload was not held before local acceptance"
             severity failure;
       end loop;
+      assert checkpoint_stopped='0' report "stalled VRAM write falsely drained" severity failure;
       assert vr_writes = 0 and irq_count = 0
          report "VRAM DMA retired before local/event acceptance" severity failure;
       vr_wok <= '1';
@@ -648,6 +653,30 @@ begin
       assert vr_writes = 2
          report "VRAM DMA did not retire each accepted word exactly once"
          severity failure;
+
+      if CHECKPOINT then
+         for i in 0 to 100 loop wait until falling_edge(clk);exit when checkpoint_stopped='1';end loop;
+         assert checkpoint_stopped='1' report "VRAM DMA did not drain after acceptance" severity failure;
+         checkpoint_stop<='0';reset<='1';
+         wait until rising_edge(clk);wait until rising_edge(clk);reset<='0';
+         gx_supported<='1';trig_gx<='0';gx_write_ready<='0';
+         write_reg(x"00000D4", x"02000000");
+         write_reg(x"00000D8", x"04000400");
+         write_reg(x"00000DC", x"FC400002");trig_gx<='1';
+         for i in 0 to 100 loop wait until falling_edge(clk);exit when gx_write_valid='1';end loop;
+         assert gx_write_valid='1' report "GX stop fixture failed" severity failure;
+         checkpoint_stop<='1';
+         for i in 0 to 12 loop
+            wait until falling_edge(clk);
+            assert checkpoint_stopped='0' and gx_write_valid='1' and gx_writes=0 and irq_count=0
+               report "stalled GX word lost during checkpoint drain" severity failure;
+         end loop;
+         checkpoint_stop<='0'; -- cancellation cannot discard the held word
+         for i in 0 to 3 loop wait until falling_edge(clk);end loop;
+         gx_write_ready<='1';wait_for_irq(1);
+         assert gx_writes=2 report "GX cancellation lost/duplicated a word" severity failure;
+         report "PASS checkpoint drain retains stalled GX and posted VRAM requests";
+      end if;
 
       report "PASS: DMA9 GX/VRAM held-valid requests survive backpressure with no pre-accept retirement, duplicate, or loss"
          severity note;

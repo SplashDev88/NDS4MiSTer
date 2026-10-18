@@ -100,7 +100,10 @@ entity nds_cache9 is
       -- diagnostic export: {r_code, beat[2:0], state[3:0]}. Read out through the
       -- ch4 debug mailbox so a wedged ARM9 can be told apart from a slow one
       -- without a waveform. Costs a 8-bit encoder; leave it wired.
-      dbg_state     : out std_logic_vector(7 downto 0) := (others => '0')
+      dbg_state     : out std_logic_vector(7 downto 0) := (others => '0');
+      -- Observation only. Dirty/valid cache contents remain live and must be
+      -- serialized; idle never means that invalidation would be lossless.
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
@@ -277,6 +280,13 @@ architecture arch of nds_cache9 is
 begin
 
    op_busy <= op_ena or op_pending or op_active;
+   checkpoint_idle <= '1' when reset = '0' and state = IDLE and req_ena = '0' and
+      req_pending = '0' and op_ena = '0' and op_pending = '0' and op_active = '0' and
+      mem_ena = '0' and resp_done_reg = '0' and
+      dwr_pend = '0' and dwr_committed = '0' and
+      it_we = "0000" and dt_we = "0000" and id_we = "0000" and dd_we = "0000"
+      else '0';
+
 
    dbg_state <= r_code & std_logic_vector(beat) & state_code(state);
 

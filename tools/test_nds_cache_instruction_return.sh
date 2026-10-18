@@ -22,6 +22,13 @@ for delay in 0 2 17 31; do
     nvc --std=2008 -L . -r tb_nds_cache_instruction_return --ieee-warnings=off --exit-severity=error
 done
 
+# Native firmware uses a retained registered-hit policy; it must still drain.
+for delay in 0 17; do
+    nvc --std=2008 -L . -e -gmemory_delay="$delay" -gnative_session="'1'" \
+        -gexpect_single_cycle=false tb_nds_cache_instruction_return
+    nvc --std=2008 -L . -r tb_nds_cache_instruction_return --ieee-warnings=off --exit-severity=error
+done
+
 # Fault injection verifies the data scoreboard and same-cycle invalidation
 # check, rather than accepting a test that merely reaches its final message.
 python3 - "$p/nds_cache9.vhd" <<'PY'
@@ -53,3 +60,30 @@ for fault in wrong-instruction missing-invalidation-gate; do
     fi
 done
 echo "PASS: cache instruction return, streaming, ordering and both detecting negative controls"
+
+# Quiescence must not be inferred from the CPU returning its critical word,
+# nor before the deferred TCM forwarding slot is retired.
+python3 - "$p/nds_cache9.vhd" "$repo_dir/rtl/nds_nitro_membus9.vhd" <<'PYCODE'
+from pathlib import Path
+import sys,re
+s=Path(sys.argv[1]).read_text()
+s,n=re.subn(r"   checkpoint_idle <= '1' when.*?else '0';", "   checkpoint_idle <= not reset;", s, count=1, flags=re.S)
+assert n==1
+Path('early-cache-idle.vhd').write_text(s)
+s=Path(sys.argv[2]).read_text()
+assert s.count(" and dwq_pend = '0'")==1
+Path('early-tcm-idle.vhd').write_text(s.replace(" and dwq_pend = '0'",''))
+PYCODE
+nvc --std=2008 -L . -a early-cache-idle.vhd "$repo_dir/rtl/nds_nitro_membus9.vhd" "$repo_dir/rtl/tb_nds_cache_instruction_return.vhd"
+nvc --std=2008 -L . -e tb_nds_cache_instruction_return
+if nvc --std=2008 -L . -r tb_nds_cache_instruction_return --ieee-warnings=off --exit-severity=error > early-cache-idle.log 2>&1; then
+    echo 'FAIL: early cache idle unexpectedly passed' >&2; exit 1
+fi
+grep -E 'idle claimed with background fill pending|island idle while memory/maintenance is active' early-cache-idle.log
+nvc --std=2008 -L . -a "$p/nds_cache9.vhd" early-tcm-idle.vhd "$repo_dir/rtl/tb_nds_cache_instruction_return.vhd"
+nvc --std=2008 -L . -e tb_nds_cache_instruction_return
+if nvc --std=2008 -L . -r tb_nds_cache_instruction_return --ieee-warnings=off --exit-severity=error > early-tcm-idle.log 2>&1; then
+    echo 'FAIL: early TCM idle unexpectedly passed' >&2; exit 1
+fi
+grep -F 'island ignored delayed TCM forwarding state' early-tcm-idle.log
+echo 'PASS: cache/TCM checkpoint idle and both early-idle negative controls'
