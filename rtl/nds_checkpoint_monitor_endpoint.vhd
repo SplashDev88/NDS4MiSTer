@@ -12,7 +12,8 @@ entity nds_checkpoint_monitor_endpoint is
     -- but fresh restore must hold it low until every machine owner is ready.
     return_permission:in std_logic;
     monitor_request,monitor_continue,monitor_release:out std_logic;
-    capture_paused,request_seen:out std_logic);
+    capture_paused,request_seen:out std_logic;
+    return_waiting:out std_logic:='0');
 end;
 architecture rtl of nds_checkpoint_monitor_endpoint is
   signal request_sync:std_logic;
@@ -26,6 +27,10 @@ begin
   monitor_release<=not reset and not request_sync and monitor_ready and not monitor_error and return_permission;
   capture_paused<=monitor_paused and not monitor_ready and not monitor_error and not reset;
   request_seen<=seen;
+  -- Low request is locally delivered and this CPU either never entered or
+  -- has completed its private reload. Used by the common return barrier.
+  return_waiting<=not reset and not request_sync and not monitor_error and
+    (not monitor_active or monitor_ready);
   process(clk) begin
     if rising_edge(clk) then
       if reset='1' then seen<='0';

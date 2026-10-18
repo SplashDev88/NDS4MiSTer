@@ -8,7 +8,9 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity nds_checkpoint_read_port is
-  generic (TIMEOUT_CYCLES : positive := 1024);
+  generic (TIMEOUT_CYCLES : positive := 1024;
+           RAM_READ_LATENCY : natural range 0 to 1 := 0;
+           WORD_COUNT : positive range 1 to 256 := 256);
   port (
     clk, cpu_clk, reset : in std_logic;
     permit : in std_logic;
@@ -28,7 +30,7 @@ end;
 
 architecture rtl of nds_checkpoint_read_port is
   type phase_type is (DRAIN, IDLE, WAIT_REPLY, CANCEL_REPLY, WAIT_LOW);
-  type cpu_phase_type is (CPU_IDLE, CPU_SAMPLE, CPU_REPLY);
+  type cpu_phase_type is (CPU_IDLE, CPU_RAM_WAIT, CPU_SAMPLE, CPU_REPLY);
   signal phase : phase_type := DRAIN;
   signal cpu_phase : cpu_phase_type := CPU_IDLE;
   signal request_i, req_meta, req_sync, ack, ack_meta, ack_sync : std_logic := '0';
@@ -73,7 +75,7 @@ begin
               epoch_hold <= read_epoch;
               elapsed <= 0;
               error_i <= '1'; data_i <= (others => '0');
-              if permit = '1' and epoch = read_epoch then
+              if permit = '1' and epoch = read_epoch and unsigned(read_address) < WORD_COUNT then
                 request_i <= '1'; phase <= WAIT_REPLY;
               else
                 done <= '1'; phase <= WAIT_LOW;
@@ -115,13 +117,19 @@ begin
           when CPU_IDLE =>
             if req_sync = '1' then
               cpu_address <= address_hold;
-              cpu_phase <= CPU_SAMPLE;
+              if RAM_READ_LATENCY = 1 then cpu_phase <= CPU_RAM_WAIT;
+              else cpu_phase <= CPU_SAMPLE; end if;
             end if;
+          when CPU_RAM_WAIT =>
+            -- Address was registered at the previous edge. Let a synchronous
+            -- RAM update its output before the reply samples that output.
+            cpu_phase <= CPU_SAMPLE;
           when CPU_SAMPLE =>
             -- Address was registered on the preceding CPU edge. The CPU's
             -- checkpoint mux is combinational; state is stable while held.
             reply_hold <= cpu_data;
-            reply_error <= not (cpu_paused and cpu_valid);
+            reply_error <= '1';
+            if unsigned(cpu_address) < WORD_COUNT then reply_error <= not (cpu_paused and cpu_valid); end if;
             ack <= '1'; cpu_phase <= CPU_REPLY;
           when CPU_REPLY =>
             if req_sync = '0' then ack <= '0'; cpu_phase <= CPU_IDLE; end if;

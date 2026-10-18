@@ -53,8 +53,10 @@ return holds pass; the real memory-island fixture also retains dirty cache and
 TCM contents through maintenance and CPU-only reset. An optional sequential
 transfer now preserves idle HALT/WFI pipelines in that same snapshot RAM, with
 138 capture/fresh-process restore pairs passing. Whole-machine memory persistence
-is still missing. See the CPU-assisted sections below for validation scope and
-full-shell area costs.
+is still missing. A separate monitor-aware capture/read transport now passes
+40 cases with three attempts each and four deliberate faults, including a common
+CPU return fence. It remains outside the product console. See the CPU-assisted
+sections below for validation scope and full-shell area costs.
 
 `EXPERIMENTAL_CHECKPOINT`, `EXPERIMENTAL_HALT_CHECKPOINT` and
 `EXPERIMENTAL_CPU_MONITOR` / `EXPERIMENTAL_MONITOR_SLEEP` default to `false`
@@ -2634,6 +2636,124 @@ renderer integration. It has not been fitted, assembled or deployed and does
 not prove clock timing, speed or gameplay resume. No hardware actions, public
 installation changes or game-save changes accompany this iteration.
 
+### Hybrid monitor capture and common return transport
+
+`nds_checkpoint_monitor_capture` connects both real hybrid CPU monitors to the
+bounded coordinator and read mailboxes. It identifies its images as `MCv1`
+(`0x4D430001`): **78 ARM9 words and 59 ARM7 words**, including the optional
+HALT/WFI extension. Both monitor wrappers must enable that extension. This is
+a capture/read/return component, not a host image loader or a complete restore
+protocol, and the product console does not instantiate it yet.
+
+The monitor RAM has a synchronous read output. The transport waits a full RAM
+edge after presenting an address, and validates the original eight-bit address
+before narrowing it for either snapshot RAM. Out-of-range and stale-epoch
+requests return an error with zero data. The old direct-register transport
+keeps its default zero-wait, 256-word behavior. Timeout, cancellation and late
+reply draining remain enforced.
+
+Maintenance-aware endpoints keep the request-delivery receipt high until their
+CPU finishes returning, even after cancellation or lease expiry. Each CPU
+reloads its context, then waits at a common return barrier. Both endpoints must
+observe request withdrawal and finish reloading (or never have entered), and
+the outer owner must grant return permission, before either CPU can leave.
+That permission defaults to denied. This does not yet implement complete
+machine restore ordering or validate a host-supplied image.
+
+`tools/test_checkpoint_monitor_capture.sh` passes **40 cases, three attempts
+each**, using the real ARM7 and ARM9 RTL with unrelated clocks, two ARM7 clock
+enable rates and two memory response latencies. Normal capture covers all four
+running/HALT/WFI combinations. Other cases exercise early and mid-entry
+cancellation, lease expiry, a one-cycle owner loss, an in-flight read cancelled
+by release, and a stopped CPU clock with a timed-out read and late draining.
+All 137 words are read in a shuffled order against independent direct snapshot
+RAM observations. Guest counter stores must continue without skips or repeats.
+
+Four deliberate faults are detected: omitting the RAM wait, permitting address
+aliasing, bypassing the common return fence, and acknowledging release before
+maintenance has finished. Existing direct coordinator/transport checks pass
+228 cases and three faults; owner ordering passes 44 cases plus eight joined
+RTC cases and five faults. The ordinary enabled-console regression retains
+733 audio samples, 729 varied samples, 644 fetches, 25,664 DMA9 words and 26,368
+DMA7 words. That console regression uses the existing console path; it is not
+an integrated monitor-console gameplay test. The generated full-shell monitor
+transport VHDL closure also analyzes successfully.
+
+The matched full-shell synthesis comparison includes the complete monitor
+transport alongside observable component capture and restore:
+
+| Current-source configuration | Estimated ALMs | Combinational ALUTs | Logic registers |
+| --- | ---: | ---: | ---: |
+| Default-disabled control | 34,290 | 52,271 | 39,376 |
+| Previous direct transport | 42,509 | 63,362 | 41,658 |
+| Hybrid monitor transport | **42,491** | **63,400** | **41,672** |
+
+The incremental change versus the current-source control is -18
+estimated ALMs and +38 ALUTs. The current-source control differs from
+the preceding 42,593-ALM measurement; use this matched comparison for the
+transport change. Both connected configurations use 4,146,788 RAM bits and
+27 DSP blocks. The new connected report SHA-256 is
+`011a7d6524db9fa7d7d03d1513f58490de866d99f23f86716c0dbbc9ee1c2451`.
+Frozen hardware inputs match the working source. This raw virtual-pin probe is
+still **581 ALMs above the device's 41,910** before missing integration. No
+fitter, assembled image, hardware deployment, timing or gameplay test accompanies
+this measurement. Correct transport behavior does not establish whole-machine
+resume or eliminate the remaining area problem.
+
+### Applying the SNES approach beyond the CPUs
+
+FPGAzumSpass's follow-up emphasizes the small maintenance program and reuse of
+memory access that persistence already requires. The pinned SNES
+[save/load program](https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/src/savestates.asm)
+supports a broader reuse strategy: it copies WRAM, VRAM, OAM and palette memory
+through existing DMA paths, preserving the registers its copying work changes.
+Its [register adapter](https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/rtl/savestates_regs.sv)
+provides access to write-only values and selected temporary state. These source
+observations do not measure an NDS implementation's incremental resource cost.
+
+Our CPU monitors implement the first part of that approach. Most devices still
+have separate checkpoint read selection, write selection and acceptance logic.
+Putting a CPU bus adapter in front of those unchanged ports would not remove
+that logic. Moving the maintenance program to DDR3 alone also does not remove
+the peripheral state paths. The next architectural experiment therefore targets
+reuse of the actual device and memory datapaths, with the replaced checkpoint
+logic absent from the measured variant.
+
+Audio is the first target: in the retained IPC/DMA map it adds **2,560 local
+combinational ALUTs** versus the matched default-disabled shell, the largest
+same-hierarchy device addition. This is not an ALM count or a promise that all
+of it can be removed. Its 270-word image contains 70 programmed-register words,
+168 hidden runtime words and 32 reserved words. Of the programmed channel
+words, 48 describe registers whose ordinary guest reads return zero. A normal
+CPU register dump cannot recover them. The hidden words include playback and
+ADPCM positions, sample buffers, fetch RAM, mixer accumulators and pipeline
+outputs; omitting them would change the resumed audio sequence.
+
+The bounded next experiment is a maintenance-only audio bus window that reuses
+the existing register write and playback/fetch read paths, with side-effect-free
+access to write-only and hidden state. Normal SOUNDxCNT enable writes initialize
+playback state, so ordinary write replay is insufficient. Keep those effects
+for games while bypassing them during validated restore. Compare the replacement
+against the current component using fresh-process continuation, partial writes,
+active channel starts/stops, PCM/ADPCM/PSG, DMA interaction and malformed-image
+tests, then measure the complete shell. Do not retain an area saving that changes
+guest behavior or weakens restore validation.
+
+The present CPU wrappers isolate maintenance from all ordinary external bus
+traffic. Device copying therefore needs an explicitly authorized maintenance
+bus phase after guest CPUs and device owners have drained. The CPU must be able
+to execute that code while devices remain frozen or held in restore reset;
+neither the guest nor renderer may restart merely to make the bus accessible.
+This phase and its common epoch are part of the experiment, not existing product
+functionality.
+
+For bulk memory, first inventory which existing CPU/HPS and RAM ports can be
+used while owners are frozen. Reuse them where coherent access is possible;
+dirty cache data/tags and TCM still require explicit preservation. Running
+guest DMA as a copy engine also requires preserving its original state and
+containing side effects. No new memory-copy fabric should be assumed necessary
+until these existing paths have been evaluated.
+
 ## Remaining state coverage
 
 | Owner | Needed before a game can resume | Current status |
@@ -2657,10 +2777,12 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 1. Establish a viable full-shell resource budget with checkpoint capture and
    restore observable before adding the remaining memory serializers. Use the
    connected probe and capacity failure to target the largest measured costs.
-   The CPU-assisted monitors including HALT/WFI and retained IPC/DMA sharing
-   now estimate 42,593 ALMs, still 683 above capacity before missing work. Target the largest measured
-   checkpoint costs, including audio-state handling and the control/read muxes;
-   check local hierarchy comparisons carefully when CPU wrappers rename paths.
+   The hybrid monitor capture/return path now estimates 42,491 ALMs,
+   still 581 above capacity before missing work. Prioritize the maintenance
+   audio bus experiment above, reusing existing device and memory paths as in
+   the SNES approach. Remove superseded hardware in the measured variant rather
+   than putting another adapter in front of it. Check complete-shell costs and
+   guest behavior; local hierarchy deltas are not additive ALM savings.
    Keep the direct checkpoint path as the sleep-semantics reference.
    Preserve component continuation proofs when changing their implementation.
 2. Implement the real external owner behind the optional common barrier and

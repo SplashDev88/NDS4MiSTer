@@ -210,10 +210,14 @@ and observes ARM9 cache/TCM quiescence; it is disabled by default. An alternativ
 CPU-assisted prototype saves both CPUs through private ARM maintenance code,
 including ARM9 CP15/Q state, without invalidating guest caches. Its optional
 hybrid extension transfers the idle HALT/WFI pipeline through the same snapshot
-RAM and passes 138 native sleep capture/fresh-process restore pairs. The full
-experimental shell with shared IPC/DMA checkpoint paths estimates 42,593 ALMs,
-a reduction of 379, but still 683 above device capacity before missing
-integration. The matched default-disabled shell remains 34,290 ALMs. Neither
+RAM and passes 138 native sleep capture/fresh-process restore pairs. A separate
+monitor-aware transport passes 40 cases with three attempts each and four fault
+controls, including synchronous RAM reads and a common CPU return fence. It is
+not yet part of the product console. The corresponding raw full-shell probe
+estimates 42,491 ALMs, still 581 above device capacity before missing
+integration; the matched default-disabled shell remains 34,290 ALMs. The next
+area experiment extends CPU-driven bus reuse to devices, starting with audio,
+and evaluates existing memory paths before adding copying hardware. Neither
 fitting nor gameplay resume has been qualified. CPU
 and device component restore tests pass, but memory/cache serialization, renderer ownership,
 safe host restore and whole-game resume remain incomplete. Short selected-game
