@@ -35,9 +35,10 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
-SPU. The first non-CPU restore component also preserves interrupt enable and
-pending state across a fresh simulator process. It remains unconnected to the
-console control plane; whole-machine persistence still needs the other owners.
+SPU. The first non-CPU restore components also preserve interrupt enable/pending
+state and complete timer state across fresh simulator processes. These ports
+remain unconnected to the console control plane; whole-machine persistence
+still needs the other owners.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
@@ -547,6 +548,54 @@ The test files are private simulator fixtures, not a supported on-device state
 file format. This does not provide a whole-image parser/checksum, host command,
 console restore wiring or a gameplay beta.
 
+### Timer component capture and restore
+
+`gba_timer(EXPERIMENTAL_CHECKPOINT=true)` now exposes a 13-word image for its
+four timers. This reuses the existing default-off checkpoint switch; the console
+still leaves the new read/restore ports unconnected. The legacy partial savestate
+registers are not used to restore this image.
+
+| Address | State | Defined bits |
+| --- | --- | --- |
+| 0 | Shared prescaler phase | 9:0 |
+| 1 + 3 × timer | Reload and control registers | Reload 15:0; prescaler 17:16; count-up 18; IRQ enable 22; start/stop 23 |
+| 2 + 3 × timer | Live counter and guest readback | Counter 15:0; readback 31:16 |
+| 3 + 3 × timer | Execution flags | `timer_on` 0; `startwait` 1 |
+
+The timer index is 0–3. Capture requires the existing stopped acknowledgement,
+no live register write/reset, and restore inactive. The common owner must hold
+all bus masters across the reads. The readback value is saved independently:
+normal reset can leave it different from the live counter. A pending start and
+an overflow/cascade poised for the next edge must also survive.
+
+Restore requires reset and every distinct word, including zero-valued words.
+Words may arrive in any order with gaps. Existing live reload/control registers
+are reused; their internal bus reset is suppressed during loading, and normal
+start/reload side effects are bypassed. Counter, readback, phase and flags load
+directly. IRQ/cascade outputs stay masked throughout active reset-held loading,
+then resume from the preserved state when the common stop releases. Diagnostic
+counter outputs are not guest state: their existing two-edge pipeline settles
+from the saved readback while the machine remains held.
+
+Unsupported addresses, reserved bits or a live restore attempt poison the
+attempt until restore is withdrawn for a clock edge. Ready requires all 13
+words, no error or active write, and no register write in progress. Invalid or
+incomplete images never authorize CPU release. The caller owns the complete
+machine validation/reset policy; after failure it must load a fresh complete
+image or perform a clean core reload. The private ports on `gba_timer_module`
+are validated by the parent `gba_timer`, not a separate host interface.
+
+`tools/test_checkpoint_timer_restore.sh` records normal execution and checks
+36 fresh-process restores in ascending, descending and interleaved word orders.
+Each compares 8,705 observations of guest reads, IRQ/cascade events and diagnostic
+outputs. Cases cover all four prescalers, pending overflow, cascades, a pending
+start, stopped timers, distinct counter/readback, all-zero state, byte writes and
+clock-enable stalls. Six deliberate faults discard prescaler/start/readback,
+erase registers between writes, accept partial coverage or allow live writes;
+each is detected. The existing timing/event-stop comparison and complete console
+VHDL analysis remain required. This is component persistence, not whole-console
+or on-device resume.
+
 ## Persistence proof
 
 `tools/suspend_resume/capsule.py` wraps the captured CPU words in a bounded,
@@ -988,7 +1037,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ has a component restore; other serializers and real external ownership missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers have component restore; other serializers and real external ownership missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -1009,7 +1058,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend the first IRQ component image to timers, IPC and remaining devices,
+2. Extend IRQ/timer component coverage to IPC and remaining devices,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.

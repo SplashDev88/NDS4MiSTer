@@ -40,13 +40,30 @@ entity gba_timer is
       debugout2         : out   unsigned(15 downto 0);
       debugout3         : out   unsigned(15 downto 0);
       checkpoint_stop   : in std_logic := '0';
-      checkpoint_stopped : out std_logic := '0'
+      checkpoint_stopped : out std_logic := '0';
+      -- Thirteen-word component image: prescaler then three words per timer.
+      checkpoint_address : in unsigned(3 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
 architecture arch of gba_timer is
    signal stop_count : std_logic;
    signal stop_seen : std_logic := '0';
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_loaded : std_logic_vector(12 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+   type checkpoint_addresses is array(0 to 3) of unsigned(1 downto 0);
+   type checkpoint_words is array(0 to 3) of std_logic_vector(31 downto 0);
+   signal module_address : checkpoint_addresses := (others => (others => '0'));
+   signal module_data : checkpoint_words;
+   signal module_write, module_quiet : std_logic_vector(0 to 3);
  
    type t_reg_wired_or is array(0 to 3) of std_logic_vector(31 downto 0);
    signal reg_wired_or    : t_reg_wired_or;   
@@ -74,6 +91,61 @@ begin
    checkpoint_stopped <= '1' when EXPERIMENTAL_CHECKPOINT and
       reset = '0' and stop_count = '1' and stop_seen = '1' and
       gb_bus.ena = '0' and IRP_Timer = "0000" and timerticks = "0000" else '0';
+
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   process(all)
+      variable a : natural range 0 to 15;
+      variable allowed : std_logic_vector(31 downto 0);
+   begin
+      a := to_integer(checkpoint_address);
+      allowed := (others => '0');
+      if a = 0 then allowed := x"000003FF";
+      else
+         for timer in 0 to 3 loop
+            if a = 1+timer*3 then allowed := x"00C7FFFF"; end if;
+            if a = 2+timer*3 then allowed := x"FFFFFFFF"; end if;
+            if a = 3+timer*3 then allowed := x"00000003"; end if;
+         end loop;
+      end if;
+      restore_write_valid <= '0';
+      if restore_active = '1' and restore_error = '0' and checkpoint_write = '1' and
+         a < 13 and (checkpoint_write_data and not allowed) = x"00000000" then
+         restore_write_valid <= '1';
+      end if;
+      module_address <= (others => (others => '0')); module_write <= (others => '0');
+      for timer in 0 to 3 loop
+         if a >= 1+timer*3 and a <= 3+timer*3 then
+            module_address(timer) <= to_unsigned(a-1-timer*3,2);
+            module_write(timer) <= restore_write_valid;
+         end if;
+      end loop;
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and a < 13 and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0' and
+           module_quiet = "1111" and gb_bus.rst = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         if a = 0 then checkpoint_data <= (31 downto 10 => '0') & std_logic_vector(prescaleCounter);
+         else
+            for timer in 0 to 3 loop
+               if a >= 1+timer*3 and a <= 3+timer*3 then checkpoint_data <= module_data(timer); end if;
+            end loop;
+         end if;
+      end if;
+   end process;
+   process(clk) begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_loaded <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' then restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_loaded(to_integer(checkpoint_address)) <= '1';
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and restore_loaded = (12 downto 0 => '1') and
+      restore_error = '0' and checkpoint_write = '0' and module_quiet = "1111" else '0';
 
    -- REG_SAVESTATE_TIMER is at address 62 (size 4, so 62-65). nds_top's boot
    -- preset only ever writes savestate addresses 0, 13, 14, 15, 24, 34 and 37
@@ -119,7 +191,13 @@ begin
    begin
       if rising_edge(clk) then
          if (reset = '1') then
-            prescaleCounter <= unsigned(SAVESTATE_TIMER(28 downto 19));
+            if restore_active = '1' then
+               if restore_write_valid = '1' and checkpoint_address = 0 then
+                  prescaleCounter <= unsigned(checkpoint_write_data(9 downto 0));
+               end if;
+            else
+               prescaleCounter <= unsigned(SAVESTATE_TIMER(28 downto 19));
+            end if;
          elsif (ce = '1' and stop_count = '0') then
             prescaleCounter <= prescaleCounter + 1;
          end if;
@@ -160,7 +238,11 @@ begin
       IRP_Timer         => IRP_Timer(0),
                         
       debugout          => debugout0,
-      checkpoint_stop => stop_count
+      checkpoint_stop => stop_count,
+      checkpoint_restore => restore_active,
+      checkpoint_address => module_address(0), checkpoint_data => module_data(0),
+      checkpoint_write => module_write(0), checkpoint_write_data => checkpoint_write_data,
+      checkpoint_quiet => module_quiet(0)
    );
    
    igba_timer_module1 : entity work.gba_timer_module
@@ -197,7 +279,11 @@ begin
       IRP_Timer         => IRP_Timer(1),
                         
       debugout          => debugout1,
-      checkpoint_stop => stop_count
+      checkpoint_stop => stop_count,
+      checkpoint_restore => restore_active,
+      checkpoint_address => module_address(1), checkpoint_data => module_data(1),
+      checkpoint_write => module_write(1), checkpoint_write_data => checkpoint_write_data,
+      checkpoint_quiet => module_quiet(1)
    );
    
    igba_timer_module2 : entity work.gba_timer_module
@@ -234,7 +320,11 @@ begin
       IRP_Timer         => IRP_Timer(2),
                         
       debugout          => debugout2,
-      checkpoint_stop => stop_count
+      checkpoint_stop => stop_count,
+      checkpoint_restore => restore_active,
+      checkpoint_address => module_address(2), checkpoint_data => module_data(2),
+      checkpoint_write => module_write(2), checkpoint_write_data => checkpoint_write_data,
+      checkpoint_quiet => module_quiet(2)
    );
    
    igba_timer_module3 : entity work.gba_timer_module
@@ -271,7 +361,11 @@ begin
       IRP_Timer         => IRP_Timer(3),
                         
       debugout          => debugout3,
-      checkpoint_stop => stop_count
+      checkpoint_stop => stop_count,
+      checkpoint_restore => restore_active,
+      checkpoint_address => module_address(3), checkpoint_data => module_data(3),
+      checkpoint_write => module_write(3), checkpoint_write_data => checkpoint_write_data,
+      checkpoint_quiet => module_quiet(3)
    );
     
 

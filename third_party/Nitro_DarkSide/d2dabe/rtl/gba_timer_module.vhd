@@ -43,12 +43,21 @@ entity gba_timer_module is
       IRP_Timer           : out   std_logic := '0';
       
       debugout            : out   unsigned(15 downto 0);
-      checkpoint_stop     : in    std_logic := '0'
+      checkpoint_stop     : in    std_logic := '0';
+      -- Internal component port owned/validated by gba_timer. Word 0 is
+      -- reload/control, 1 counter/readback, 2 timer_on/startwait.
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_address : in unsigned(1 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_quiet : out std_logic := '0'
    );
 end entity;
 
 architecture arch of gba_timer_module is
-   signal stop_count : std_logic;
+   signal stop_count, restore_active : std_logic;
+   signal register_bus : proc_bus_gb_type;
 
    signal L_Counter_Reload   : std_logic_vector(Reg_L                 .upper downto Reg_L                 .lower) := (others => '0');
    signal H_Prescaler        : std_logic_vector(Reg_H_Prescaler       .upper downto Reg_H_Prescaler       .lower) := (others => '0');
@@ -82,7 +91,36 @@ architecture arch of gba_timer_module is
    
 begin 
 
-   stop_count <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   stop_count <= (checkpoint_stop or restore_active) when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_quiet <= '1' when L_Counter_Reload_writeTo = '0' and
+      H_Timer_Start_Stop_writeTo = '0' else '0';
+   process(all) begin
+      checkpoint_data <= (others => '0');
+      if EXPERIMENTAL_CHECKPOINT then
+         case to_integer(checkpoint_address) is
+            when 0 =>
+               checkpoint_data(15 downto 0) <= L_Counter_Reload;
+               checkpoint_data(17 downto 16) <= H_Prescaler;
+               checkpoint_data(18) <= H_Count_up(H_Count_up'left);
+               checkpoint_data(22) <= H_Timer_IRQ_Enable(H_Timer_IRQ_Enable'left);
+               checkpoint_data(23) <= H_Timer_Start_Stop(H_Timer_Start_Stop'left);
+            when 1 => checkpoint_data <= counter_readback & std_logic_vector(counter);
+            when 2 => checkpoint_data(1 downto 0) <= startwait & timer_on;
+            when others => null;
+         end case;
+      end if;
+      -- Keep the live register bank across reset-held load gaps. The normal
+      -- setting-write side effects below are bypassed during this load.
+      register_bus <= gb_bus;
+      if restore_active = '1' then
+         register_bus.rst <= '0'; register_bus.ena <= '0';
+         register_bus.rnw <= '0'; register_bus.acc <= ACCESS_32BIT;
+         register_bus.bEna <= "1111"; register_bus.Din <= checkpoint_write_data;
+         register_bus.Adr <= std_logic_vector(to_unsigned(Reg_L.Adr,register_bus.Adr'length));
+         if checkpoint_address = 0 then register_bus.ena <= checkpoint_write; end if;
+      end if;
+   end process;
 
    SAVESTATE_TIMER_BACK(0)            <= timer_on;       
    SAVESTATE_TIMER_BACK(1)            <= '0';  
@@ -107,11 +145,11 @@ begin
    end generate;
 
 
-   iL_Counter_Reload   : entity work.eProcReg_gba generic map ( Reg_L                  ) port map  (clk, gb_bus, reg_wired_or(0), reg_wired_done(0), counter_readback   , L_Counter_Reload   , open, L_Counter_Reload_writeValue  , L_Counter_Reload_writeTo);  
-   iH_Prescaler        : entity work.eProcReg_gba generic map ( Reg_H_Prescaler        ) port map  (clk, gb_bus, reg_wired_or(1), reg_wired_done(1), H_Prescaler        , H_Prescaler        , open, H_Prescaler_writeValue);  
-   iH_Count_up         : entity work.eProcReg_gba generic map ( Reg_H_Count_up         ) port map  (clk, gb_bus, reg_wired_or(2), reg_wired_done(2), H_Count_up         , H_Count_up        );   
-   iH_Timer_IRQ_Enable : entity work.eProcReg_gba generic map ( Reg_H_Timer_IRQ_Enable ) port map  (clk, gb_bus, reg_wired_or(3), reg_wired_done(3), H_Timer_IRQ_Enable , H_Timer_IRQ_Enable);  
-   iH_Timer_Start_Stop : entity work.eProcReg_gba generic map ( Reg_H_Timer_Start_Stop ) port map  (clk, gb_bus, reg_wired_or(4), reg_wired_done(4), H_Timer_Start_Stop , H_Timer_Start_Stop , open, H_Timer_Start_Stop_writeValue, H_Timer_Start_Stop_writeTo );  
+   iL_Counter_Reload   : entity work.eProcReg_gba generic map ( Reg_L                  ) port map  (clk, register_bus, reg_wired_or(0), reg_wired_done(0), counter_readback   , L_Counter_Reload   , open, L_Counter_Reload_writeValue  , L_Counter_Reload_writeTo);
+   iH_Prescaler        : entity work.eProcReg_gba generic map ( Reg_H_Prescaler        ) port map  (clk, register_bus, reg_wired_or(1), reg_wired_done(1), H_Prescaler        , H_Prescaler        , open, H_Prescaler_writeValue);
+   iH_Count_up         : entity work.eProcReg_gba generic map ( Reg_H_Count_up         ) port map  (clk, register_bus, reg_wired_or(2), reg_wired_done(2), H_Count_up         , H_Count_up        );
+   iH_Timer_IRQ_Enable : entity work.eProcReg_gba generic map ( Reg_H_Timer_IRQ_Enable ) port map  (clk, register_bus, reg_wired_or(3), reg_wired_done(3), H_Timer_IRQ_Enable , H_Timer_IRQ_Enable);
+   iH_Timer_Start_Stop : entity work.eProcReg_gba generic map ( Reg_H_Timer_Start_Stop ) port map  (clk, register_bus, reg_wired_or(4), reg_wired_done(4), H_Timer_Start_Stop , H_Timer_Start_Stop , open, H_Timer_Start_Stop_writeValue, H_Timer_Start_Stop_writeTo );
    
    process (reg_wired_or)
       variable wired_or : std_logic_vector(31 downto 0);
@@ -186,8 +224,22 @@ begin
          
          if (reset = '1') then
       
-            timer_on         <= SAVESTATE_TIMER(0);
-            counter          <= unsigned(SAVESTATE_TIMER(17 downto 2));
+            if restore_active = '1' then
+               if checkpoint_write = '1' then
+                  case to_integer(checkpoint_address) is
+                     when 1 =>
+                        counter <= unsigned(checkpoint_write_data(15 downto 0));
+                        counter_readback <= checkpoint_write_data(31 downto 16);
+                     when 2 =>
+                        timer_on <= checkpoint_write_data(0);
+                        startwait <= checkpoint_write_data(1);
+                     when others => null;
+                  end case;
+               end if;
+            else
+               timer_on         <= SAVESTATE_TIMER(0);
+               counter          <= unsigned(SAVESTATE_TIMER(17 downto 2));
+            end if;
       
          elsif (ce = '1') then
             if stop_count = '0' then
