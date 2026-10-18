@@ -7,7 +7,7 @@ use std.env.all;
 use work.pProc_bus_gba.all;
 
 entity tb_nds_checkpoint_irq_ipc is
-   generic(ENABLE_IPC_CAPTURE : boolean := false; ENABLE_IRQ_CAPTURE : boolean := false; SEED : positive := 1; RANDOM_CYCLES : positive := 20000);
+   generic(EXERCISE_IPC_READS : boolean := false; ENABLE_IPC_CAPTURE : boolean := false; ENABLE_IRQ_CAPTURE : boolean := false; SEED : positive := 1; RANDOM_CYCLES : positive := 20000);
 end;
 architecture sim of tb_nds_checkpoint_irq_ipc is
    constant EMPTY_BUS : proc_bus_gb_type := ((others=>'0'),(others=>'0'),'1','0',ACCESS_32BIT,"1111",'0');
@@ -27,8 +27,15 @@ architecture sim of tb_nds_checkpoint_irq_ipc is
    signal ipc_dbg,refipc_dbg : std_logic_vector(31 downto 0);
    signal ipc_idle : std_logic;
    signal compared : natural := 0;
+   signal cp_address : unsigned(5 downto 0) := (others=>'0');
+   signal cp_valid : std_logic;
+   signal read_cycle : natural := 0;
 begin
    clk <= not clk after 5 ns;
+   process(clk) begin
+      if rising_edge(clk) then read_cycle <= (read_cycle + 1) mod 48; end if;
+   end process;
+   cp_address <= to_unsigned(4 + read_cycle/3,6) when EXERCISE_IPC_READS else (others=>'0');
    irq_in(0) <= ext(0) or word'(16=>pulse(0),17=>pulse(1),18=>pulse(2),others=>'0');
    irq_in(1) <= ext(1) or word'(16=>pulse(3),17=>pulse(4),18=>pulse(5),others=>'0');
    gi : for i in 0 to 1 generate
@@ -43,7 +50,7 @@ begin
       bus7=>io(0),wired_out7=>ipc_data(0),wired_done7=>ipc_done(0),
       irq7_sync=>pulse(0),irq7_sendempty=>pulse(1),irq7_recv=>pulse(2),
       bus9=>io(1),wired_out9=>ipc_data(1),wired_done9=>ipc_done(1),
-      irq9_sync=>pulse(3),irq9_sendempty=>pulse(4),irq9_recv=>pulse(5),dbg_ipc=>ipc_dbg,checkpoint_idle=>ipc_idle);
+      irq9_sync=>pulse(3),irq9_sendempty=>pulse(4),irq9_recv=>pulse(5),dbg_ipc=>ipc_dbg,checkpoint_idle=>ipc_idle,checkpoint_address=>cp_address,checkpoint_valid=>cp_valid);
    reference_ipc : entity work.nds_ipc_reference port map(clk=>clk,reset=>reset,
       bus7=>io(0),wired_out7=>refipc_data(0),wired_done7=>refipc_done(0),
       irq7_sync=>refpulse(0),irq7_sendempty=>refpulse(1),irq7_recv=>refpulse(2),
@@ -64,6 +71,7 @@ begin
       end if;
       if io(0).ena='1' or io(1).ena='1' then
          assert ipc_idle='0' report "IPC admission falsely idle" severity failure;
+         assert cp_valid='0' report "IPC checkpoint read raced guest admission" severity failure;
       end if;
       if pulse/="000000" then
          assert ipc_idle='0' report "IPC emitted pulse falsely idle" severity failure;

@@ -152,6 +152,13 @@ begin
       begin
          for a in 0 to 41 loop
             select_word(a);wait for 1 ns;
+            -- A different RAM address must not expose the preceding word.
+            if a >= 5 and a <= 19 then
+               assert cp_valid(0)='0' report "stale IPC RAM address was accepted" severity failure;
+            end if;
+            for settle_cycle in 0 to 3 loop
+               exit when cp_valid(owner(a))='1';step;
+            end loop;
             assert cp_valid(owner(a))='1' report "IPC/IRQ capture unavailable at fixed point" severity failure;
             if compare then assert cp_data(owner(a))=image(a) report "IPC/IRQ restored word differs at " & integer'image(a) severity failure;
             else image(a):=cp_data(owner(a));end if;

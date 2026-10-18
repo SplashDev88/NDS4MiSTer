@@ -75,6 +75,9 @@ end entity;
 architecture arch of nds_dma7 is
    signal stop_admission : std_logic;
    signal restore_active, restore_write_valid : std_logic;
+   signal checkpoint_decoded_channel : natural range 0 to 3;
+   signal checkpoint_decoded_field : natural range 0 to 5;
+   signal register_write_data : std_logic_vector(31 downto 0);
    signal restore_loaded : std_logic_vector(25 downto 0) := (others => '0');
    signal restore_error : std_logic := '0';
 
@@ -142,6 +145,25 @@ begin
 
    -- Fixed-IDLE component image. Six words per channel preserve the live
    -- registers and pending continuation without replaying enable writes.
+   -- Six-word image stride: decode its finite address set without a divider.
+   process(all) begin
+      checkpoint_decoded_channel <= 0; checkpoint_decoded_field <= 0;
+      case to_integer(checkpoint_address) is
+         when 6 to 11 => checkpoint_decoded_channel <= 1;
+         when 12 to 17 => checkpoint_decoded_channel <= 2;
+         when 18 to 23 => checkpoint_decoded_channel <= 3;
+         when others => null;
+      end case;
+      case to_integer(checkpoint_address) is
+         when 1 | 7 | 13 | 19 => checkpoint_decoded_field <= 1;
+         when 2 | 8 | 14 | 20 => checkpoint_decoded_field <= 2;
+         when 3 | 9 | 15 | 21 => checkpoint_decoded_field <= 3;
+         when 4 | 10 | 16 | 22 => checkpoint_decoded_field <= 4;
+         when 5 | 11 | 17 | 23 => checkpoint_decoded_field <= 5;
+         when others => null;
+      end case;
+   end process;
+   register_write_data <= checkpoint_write_data when restore_active = '1' else gb_bus.Din;
    restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
    process(all)
       variable a : natural range 0 to 63;
@@ -152,8 +174,8 @@ begin
       a := to_integer(checkpoint_address); c := 0;
       allowed := (others => '0'); shape_valid := true;
       if a < 24 then
-         c := a/6;
-         case a mod 6 is
+         c := checkpoint_decoded_channel;
+         case checkpoint_decoded_field is
             when 0 | 1 | 3 | 4 => allowed := x"0FFFFFFF";
             when 2 =>
                   allowed := x"F7E0FFFF";
@@ -176,7 +198,7 @@ begin
            trig_vblank = '0' and trig_card = '0' and mb_done = '0') or checkpoint_restore_ready = '1') then
          checkpoint_valid <= '1';
          if a < 24 then
-            case a mod 6 is
+            case checkpoint_decoded_field is
                when 0 => checkpoint_data <= "0000" & ch(c).sad;
                when 1 => checkpoint_data <= "0000" & ch(c).dad;
                when 2 => checkpoint_data <= ch(c).enable & ch(c).irqena & ch(c).timing & '0' & ch(c).word32 & ch(c).repeat & ch(c).srcctl & ch(c).dstctl & "00000" & ch(c).count;
@@ -267,19 +289,19 @@ begin
                if restore_write_valid = '1' then
                   checkpoint_word := to_integer(checkpoint_address);
                   if checkpoint_word < 24 then
-                     checkpoint_channel := checkpoint_word/6;
-                     case checkpoint_word mod 6 is
-                        when 0 => ch(checkpoint_channel).sad <= checkpoint_write_data(27 downto 0);
-                        when 1 => ch(checkpoint_channel).dad <= checkpoint_write_data(27 downto 0);
+                     checkpoint_channel := checkpoint_decoded_channel;
+                     case checkpoint_decoded_field is
+                        when 0 => ch(checkpoint_channel).sad <= register_write_data(27 downto 0);
+                        when 1 => ch(checkpoint_channel).dad <= register_write_data(27 downto 0);
                         when 2 =>
-                        ch(checkpoint_channel).count <= checkpoint_write_data(15 downto 0);
-                        ch(checkpoint_channel).timing <= checkpoint_write_data(29 downto 28);
-                           ch(checkpoint_channel).dstctl <= checkpoint_write_data(22 downto 21);
-                           ch(checkpoint_channel).srcctl <= checkpoint_write_data(24 downto 23);
-                           ch(checkpoint_channel).repeat <= checkpoint_write_data(25);
-                           ch(checkpoint_channel).word32 <= checkpoint_write_data(26);
-                           ch(checkpoint_channel).irqena <= checkpoint_write_data(30);
-                           ch(checkpoint_channel).enable <= checkpoint_write_data(31);
+                        ch(checkpoint_channel).count <= register_write_data(15 downto 0);
+                        ch(checkpoint_channel).timing <= register_write_data(29 downto 28);
+                           ch(checkpoint_channel).dstctl <= register_write_data(22 downto 21);
+                           ch(checkpoint_channel).srcctl <= register_write_data(24 downto 23);
+                           ch(checkpoint_channel).repeat <= register_write_data(25);
+                           ch(checkpoint_channel).word32 <= register_write_data(26);
+                           ch(checkpoint_channel).irqena <= register_write_data(30);
+                           ch(checkpoint_channel).enable <= register_write_data(31);
                         when 3 => ch(checkpoint_channel).cur_src <= unsigned(checkpoint_write_data(27 downto 0));
                         when 4 => ch(checkpoint_channel).cur_dst <= unsigned(checkpoint_write_data(27 downto 0));
                         when others =>
@@ -309,9 +331,9 @@ begin
                      for i in 0 to 3 loop
                         if (gb_bus.bEna(i) = '1') then
                            if (i = 3) then
-                              ch(regsel_ch).sad(27 downto 24) <= gb_bus.Din(27 downto 24);
+                              ch(regsel_ch).sad(27 downto 24) <= register_write_data(27 downto 24);
                            else
-                              ch(regsel_ch).sad(i*8 + 7 downto i*8) <= gb_bus.Din(i*8 + 7 downto i*8);
+                              ch(regsel_ch).sad(i*8 + 7 downto i*8) <= register_write_data(i*8 + 7 downto i*8);
                            end if;
                         end if;
                      end loop;
@@ -319,9 +341,9 @@ begin
                      for i in 0 to 3 loop
                         if (gb_bus.bEna(i) = '1') then
                            if (i = 3) then
-                              ch(regsel_ch).dad(27 downto 24) <= gb_bus.Din(27 downto 24);
+                              ch(regsel_ch).dad(27 downto 24) <= register_write_data(27 downto 24);
                            else
-                              ch(regsel_ch).dad(i*8 + 7 downto i*8) <= gb_bus.Din(i*8 + 7 downto i*8);
+                              ch(regsel_ch).dad(i*8 + 7 downto i*8) <= register_write_data(i*8 + 7 downto i*8);
                            end if;
                         end if;
                      end loop;
@@ -329,27 +351,27 @@ begin
                      v_ena := ch(regsel_ch).enable;
                      cmask := count_mask(regsel_ch);
                      if (gb_bus.bEna(0) = '1') then
-                        ch(regsel_ch).count(7 downto 0) <= gb_bus.Din(7 downto 0) and cmask(7 downto 0);
+                        ch(regsel_ch).count(7 downto 0) <= register_write_data(7 downto 0) and cmask(7 downto 0);
                      end if;
                      if (gb_bus.bEna(1) = '1') then
-                        ch(regsel_ch).count(15 downto 8) <= gb_bus.Din(15 downto 8) and cmask(15 downto 8);
+                        ch(regsel_ch).count(15 downto 8) <= register_write_data(15 downto 8) and cmask(15 downto 8);
                      end if;
                      if (gb_bus.bEna(2) = '1') then
-                        ch(regsel_ch).dstctl <= gb_bus.Din(22 downto 21);
-                        ch(regsel_ch).srcctl(0) <= gb_bus.Din(23);
+                        ch(regsel_ch).dstctl <= register_write_data(22 downto 21);
+                        ch(regsel_ch).srcctl(0) <= register_write_data(23);
                      end if;
                      if (gb_bus.bEna(3) = '1') then
-                        ch(regsel_ch).srcctl(1) <= gb_bus.Din(24);
-                        ch(regsel_ch).repeat <= gb_bus.Din(25);
-                        ch(regsel_ch).word32 <= gb_bus.Din(26);
-                        ch(regsel_ch).timing <= gb_bus.Din(29 downto 28);
-                        ch(regsel_ch).irqena <= gb_bus.Din(30);
-                        ch(regsel_ch).enable <= gb_bus.Din(31);
-                        if (gb_bus.Din(31) = '1' and v_ena = '0') then
+                        ch(regsel_ch).srcctl(1) <= register_write_data(24);
+                        ch(regsel_ch).repeat <= register_write_data(25);
+                        ch(regsel_ch).word32 <= register_write_data(26);
+                        ch(regsel_ch).timing <= register_write_data(29 downto 28);
+                        ch(regsel_ch).irqena <= register_write_data(30);
+                        ch(regsel_ch).enable <= register_write_data(31);
+                        if (register_write_data(31) = '1' and v_ena = '0') then
                            ch(regsel_ch).cur_src <= unsigned(ch(regsel_ch).sad);
                            ch(regsel_ch).cur_dst <= unsigned(ch(regsel_ch).dad);
                            ch(regsel_ch).remain  <= (others => '0');
-                           if (gb_bus.Din(29 downto 28) = "00") then
+                           if (register_write_data(29 downto 28) = "00") then
                               ch(regsel_ch).pend <= '1';
                            end if;
                         end if;

@@ -26,8 +26,10 @@ PYCODE
 nvc --std=2008 -a "$rtl/proc_bus_gba.vhd" nds_irq-reference.vhd nds_ipc-reference.vhd "$rtl/nds_irq.vhd" "$rtl/nds_ipc.vhd" "$repo/rtl/tb_nds_checkpoint_irq_ipc.vhd"
 for enabled in false true; do
  for seed in 1 29 137; do
-  nvc --std=2008 -e -gSEED=$seed -gENABLE_IRQ_CAPTURE="$enabled" -gENABLE_IPC_CAPTURE="$enabled" tb_nds_checkpoint_irq_ipc
+ for reads in false true; do
+  nvc --std=2008 -e -gSEED=$seed -gENABLE_IRQ_CAPTURE="$enabled" -gENABLE_IPC_CAPTURE="$enabled" -gEXERCISE_IPC_READS="$reads" tb_nds_checkpoint_irq_ipc
   nvc --std=2008 -r tb_nds_checkpoint_irq_ipc --ieee-warnings=off --exit-severity=error
+ done
  done
 done
 
@@ -39,6 +41,7 @@ irq=(root/'nds_irq.vhd').read_text();ipc=(root/'nds_ipc.vhd').read_text()
 mutations=[
  ('irq-input',irq,'(irq_in and not IRPFLags) = x"00000000"','true'),
  ('irq-output',irq,'cpu_unhalt = expected_unhalt and cpu_irq = expected_irq then','true then'),
+ ('ipc-forward',ipc,"last9_visible <= fifo79_read_data when EXPERIMENTAL_CHECKPOINT and pop9_pending = '1' else last9;",'last9_visible <= last9;'),
  ('ipc-edge',ipc,'p7_sendemp = sendemp7 and p9_sendemp = sendemp9 and\n         p7_recvpend = recvpend7 and p9_recvpend = recvpend9','true'),
  ('ipc-pulse',ipc,"irq7_sync = '0' and irq9_sync = '0' and\n         irq7_sendempty = '0' and irq9_sendempty = '0' and\n         irq7_recv = '0' and irq9_recv = '0'",'true'),
 ]
@@ -46,12 +49,14 @@ for name,s,old,new in mutations:
  assert s.count(old)==1,(name,s.count(old))
  Path(name+'.vhd').write_text(s.replace(old,new))
 PYCODE
-for mutation in irq-input irq-output ipc-edge ipc-pulse; do
+for mutation in irq-input irq-output ipc-edge ipc-pulse ipc-forward; do
  nvc --std=2008 -a "$rtl/nds_irq.vhd" "$rtl/nds_ipc.vhd" "$mutation.vhd" "$repo/rtl/tb_nds_checkpoint_irq_ipc.vhd"
- nvc --std=2008 -e tb_nds_checkpoint_irq_ipc
+ nvc --std=2008 -e -gENABLE_IPC_CAPTURE=true -gEXERCISE_IPC_READS=true tb_nds_checkpoint_irq_ipc
  if nvc --std=2008 -r tb_nds_checkpoint_irq_ipc --ieee-warnings=off --exit-severity=error > "$mutation.log" 2>&1; then
   echo "FAIL: $mutation negative control passed" >&2;exit 1
  fi
- grep -E 'new IRQ bit falsely settled|IRQ idle preceded|IME output latency falsely idle|IPC enabled edge falsely idle|IPC emitted pulse falsely idle|IPC idle preceded' "$mutation.log"
+ grep -E 'new IRQ bit falsely settled|IRQ idle preceded|IME output latency falsely idle|IPC enabled edge falsely idle|IPC emitted pulse falsely idle|IPC idle preceded|IRQ/IPC behavior differs from baseline' "$mutation.log"
  echo "PASS: detected $mutation negative control"
 done
+
+echo "PASS: 12 default/enabled IRQ/IPC comparisons with quiet-read contention and 5 fault controls"

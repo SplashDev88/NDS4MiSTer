@@ -211,8 +211,10 @@ CPU-assisted prototype saves both CPUs through private ARM maintenance code,
 including ARM9 CP15/Q state, without invalidating guest caches. Its optional
 hybrid extension transfers the idle HALT/WFI pipeline through the same snapshot
 RAM and passes 138 native sleep capture/fresh-process restore pairs. The full
-experimental shell estimates 42,972 ALMs, still 1,062 above device capacity
-before missing integration; it has not been fitted or tested in gameplay. CPU
+experimental shell with shared IPC/DMA checkpoint paths estimates 42,593 ALMs,
+a reduction of 379, but still 683 above device capacity before missing
+integration. The matched default-disabled shell remains 34,290 ALMs. Neither
+fitting nor gameplay resume has been qualified. CPU
 and device component restore tests pass, but memory/cache serialization, renderer ownership,
 safe host restore and whole-game resume remain incomplete. Short selected-game
 checks do not establish full

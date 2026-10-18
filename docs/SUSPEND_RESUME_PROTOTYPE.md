@@ -2558,6 +2558,82 @@ It must not be assembled or deployed. Further area work must preserve these
 continuation tests and default-runtime behavior, then be measured in the full
 shell. There have been no hardware actions or game-save changes.
 
+### IPC checkpoint RAM-port sharing
+
+The enabled IPC checkpoint path reads the ARM7-to-ARM9 FIFO through its
+existing registered RAM read port. The ordinary ARM9 pop forwards that RAM
+output on the pop edge, then settles the last-read latch on the following
+edge. Both CPU consumer sampling phases remain unchanged. The default-disabled
+configuration retains the original pop implementation.
+
+Capture waits for the pending last-read update. Image words 4–19 require a
+registered RAM read: callers hold the address and wait for `checkpoint_valid`.
+The returned address and checkpoint ownership are checked before validity, so
+a changed address cannot expose the previous word. Guest bus requests take
+priority over the private selector. The 36-word image still preserves all FIFO
+cells, last-read values and IRQ history, including unoccupied cells that the
+existing same-edge send/pop behavior can expose. No messages are discarded.
+
+Validation passes **27 fresh-process IPC/IRQ restores**, each with 4,106
+continuation observations, and **ten fault controls**, including stale-address
+rejection. **Twelve default/enabled comparisons** against pinned pre-checkpoint
+RTL compare 535,788 consumer phases across three random seeds, full/wrapped
+queues and checkpoint reads interleaved with guest traffic. Five faults are
+detected; removing pop-edge forwarding fails the baseline comparison.
+
+Simple asynchronous sharing and forced MLAB placement regressed isolated area
+and were rejected. The preliminary registered-read probe fell from 1,134 to
+846 estimated ALMs, but the complete-core decision required testing it both
+alone and alongside the DMA changes below. No new memory attributes or weakened
+read-during-write guarantees are used.
+
+### DMA checkpoint data sharing and finite decoding
+
+Both DMA controllers now select the reset-held restore word once for their
+programmed registers, sharing that data path with ordinary register writes.
+Internal continuation fields still load directly, and restored enable bits do
+not replay the ordinary enable-write side effects. Guest byte enables,
+transfer scheduling, fast paths and clocks are unchanged. The six-word image
+stride now uses a fixed channel/field decoder instead of division and modulo;
+readback, validation and restore share the same decoder. The 26-word ARM7 and
+37-word ARM9 images and their acceptance rules are unchanged.
+
+The selected DMA sources pass **84 fresh-process restores**, each comparing
+16,384 continuation observations, and **15 fault controls**. Ordinary coverage
+also passes 12 stop/drain/trigger cases and two fault controls, 216 default plus
+216 checkpoint-enabled ARM9 main-RAM transfers, GX/VRAM backpressure checks,
+and six audio/DMA interaction configurations. These test behavior and bounded
+progress; they do not establish routed clock timing or game performance.
+
+Isolated DMA7 synthesis falls from 1,292 to 1,189 estimated ALMs and DMA9 from
+2,145 to 1,989. These component estimates are not additive full-shell savings.
+The complete-shell measurements show why those isolated estimates cannot be
+added together:
+
+| Full-shell configuration | Estimated ALMs | Combinational ALUTs | Logic registers |
+| --- | ---: | ---: | ---: |
+| Previous hybrid CPU monitors, including HALT/WFI | 42,972 | 64,013 | 42,205 |
+| IPC sharing alone | 42,989 | 63,863 | 41,658 |
+| DMA sharing and finite decode alone | 42,767 | 63,814 | 42,205 |
+| **Retained: IPC and DMA together** | **42,593** | **63,391** | **41,658** |
+
+All three new matched default-disabled controls reproduce **34,290 ALMs**,
+52,271 ALUTs and 39,376 logic registers. Connected configurations retain
+4,146,788 used RAM bits and 27 DSP blocks. The retained combination saves
+**379 estimated ALMs, 622 ALUTs and 547 registers** versus the previous hybrid
+shell. IPC alone slightly regresses ALMs; with the DMA changes it improves
+on DMA alone by 174 ALMs. The final decision uses the combined measurement.
+The combined enabled-console test passes with 733 audio samples, 729 varied
+samples, 644 fetches, 25,664 DMA9 words and 26,368 DMA7 words.
+
+The final connected map report SHA-256 is
+`c3db81d065db41d0d2fe343daeda7e2bdf2a3aa5624af65f05960e56bd8fa479`.
+The hardware inputs match that frozen project. This remains a raw synthesis
+probe, **683 ALMs above the device's 41,910**, before missing memory, host and
+renderer integration. It has not been fitted, assembled or deployed and does
+not prove clock timing, speed or gameplay resume. No hardware actions, public
+installation changes or game-save changes accompany this iteration.
+
 ## Remaining state coverage
 
 | Owner | Needed before a game can resume | Current status |
@@ -2581,8 +2657,8 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 1. Establish a viable full-shell resource budget with checkpoint capture and
    restore observable before adding the remaining memory serializers. Use the
    connected probe and capacity failure to target the largest measured costs.
-   The CPU-assisted monitors including HALT/WFI now estimate 42,972 ALMs,
-   still 1,062 above capacity before missing work. Target the largest measured
+   The CPU-assisted monitors including HALT/WFI and retained IPC/DMA sharing
+   now estimate 42,593 ALMs, still 683 above capacity before missing work. Target the largest measured
    checkpoint costs, including audio-state handling and the control/read muxes;
    check local hierarchy comparisons carefully when CPU wrappers rename paths.
    Keep the direct checkpoint path as the sleep-semantics reference.

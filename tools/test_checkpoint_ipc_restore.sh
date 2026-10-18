@@ -32,6 +32,7 @@ import sys
 s=Path(sys.argv[1]).read_text()
 mutations={
  'lost-queue':[("fifo79(to_integer(checkpoint_address)-4) <= checkpoint_write_data;","fifo79(to_integer(checkpoint_address)-4) <= (others => '0');")],
+ 'stale-address':[("fifo79_read_address_q /= fifo79_read_address","false")],
  'lost-last':[("when 2 => last7 <= checkpoint_write_data;","when 2 => last7 <= (others => '0');")],
  'wrong-pointer':[("rd79 <= to_integer(unsigned(checkpoint_write_data(13 downto 10)));","rd79 <= 0;")],
  'partial-ready':[("restore_loaded = (35 downto 0 => '1')","restore_loaded /= (35 downto 0 => '0')")],
@@ -54,7 +55,7 @@ image=Path('ipc-1-2.state').read_text().splitlines()
 for i in range(4,36):image[i]='00000000'
 (d/'ipc.state').write_text('\n'.join(image)+'\n')
 PYCODE
-for mutation in lost-queue lost-last wrong-pointer partial-ready new-wakeup live-write retained-coverage invalid-ring empty-cells; do
+for mutation in stale-address lost-queue lost-last wrong-pointer partial-ready new-wakeup live-write retained-coverage invalid-ring empty-cells; do
  scenario=0
  if [[ $mutation == wrong-pointer ]];then scenario=1;fi
  if [[ $mutation == new-wakeup || $mutation == empty-cells ]];then scenario=2;fi
@@ -66,7 +67,9 @@ for mutation in lost-queue lost-last wrong-pointer partial-ready new-wakeup live
  if nvc --std=2008 -r tb_nds_checkpoint_ipc_restore --ieee-warnings=off --exit-severity=error > "$mutation.log" 2>&1;then
   echo "FAIL: $mutation negative control passed" >&2;exit 1
  fi
- grep -E 'IPC/IRQ restored word differs|incomplete IPC restore accepted|complete IPC/IRQ restore never|invalid IPC restore was not rejected|fresh IPC attempt retained coverage|IPC continuation mismatch' "$mutation.log" || { cat "$mutation.log";exit 1; }
+ grep -E 'IPC/IRQ restored word differs|incomplete IPC restore accepted|complete IPC/IRQ restore never|invalid IPC restore was not rejected|fresh IPC attempt retained coverage|IPC continuation mismatch|stale IPC RAM address was accepted' "$mutation.log" || { cat "$mutation.log";exit 1; }
  echo "PASS: detected $mutation negative control"
  popd >/dev/null
 done
+
+echo "PASS: 27 IPC fresh restores and 10 fault controls, including stale RAM read rejection"

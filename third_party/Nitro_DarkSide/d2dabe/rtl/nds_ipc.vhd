@@ -71,6 +71,14 @@ architecture arch of nds_ipc is
 
    -- fifo79: ARM7 -> ARM9 (7's send, 9's recv); fifo97 the reverse
    signal fifo79, fifo97       : t_fifo;
+   -- One registered read port serves ARM9 pops and held checkpoint reads.
+   -- The ARM9 consumer samples after the pop edge, so its visible word can
+   -- use this RAM output immediately and settle into last9 on the next edge.
+   signal fifo79_read_address, fifo79_read_address_q : integer range 0 to 15 := 0;
+   signal fifo79_read_data, last9_visible : std_logic_vector(31 downto 0);
+   signal fifo79_checkpoint_read, fifo79_checkpoint_read_q : std_logic := '0';
+   signal pop9_pending : std_logic := '0';
+
    signal cnt79, cnt97         : integer range 0 to 16 := 0;
    signal rd79, wr79           : integer range 0 to 15 := 0;
    signal rd97, wr97           : integer range 0 to 15 := 0;
@@ -125,12 +133,18 @@ begin
          irq7_sync = '0' and irq9_sync = '0' and
          irq7_sendempty = '0' and irq9_sendempty = '0' and
          irq7_recv = '0' and irq9_recv = '0' and
-         p7_sendemp = sendemp7 and p9_sendemp = sendemp9 and
+         pop9_pending = '0' and p7_sendemp = sendemp7 and p9_sendemp = sendemp9 and
          p7_recvpend = recvpend7 and p9_recvpend = recvpend9 then
          checkpoint_idle <= '1';
       end if;
    end process;
 
+   fifo79_checkpoint_read <= '1' when EXPERIMENTAL_CHECKPOINT and
+      checkpoint_address >= 4 and checkpoint_address < 20 and
+      ((checkpoint_idle = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') else '0';
+   fifo79_read_address <= to_integer(unsigned(checkpoint_address(3 downto 0)) - 4)
+      when fifo79_checkpoint_read = '1' else rd79;
+   last9_visible <= fifo79_read_data when EXPERIMENTAL_CHECKPOINT and pop9_pending = '1' else last9;
    restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
    expected_sendemp7 <= '1' when cnt79 = 0 and sirq7 = '1' else '0';
    expected_sendemp9 <= '1' when cnt97 = 0 and sirq9 = '1' else '0';
@@ -177,7 +191,11 @@ begin
             when 3 => checkpoint_data <= last9;
             -- Retain even unoccupied cells: the current same-edge send/pop
             -- behavior can expose their old contents. Do not canonicalize.
-            when 4 to 19 => checkpoint_data <= fifo79(to_integer(checkpoint_address)-4);
+            when 4 to 19 =>
+               checkpoint_data <= fifo79_read_data;
+               if fifo79_checkpoint_read_q = '0' or fifo79_read_address_q /= fifo79_read_address then
+                  checkpoint_valid <= '0';
+               end if;
             when 20 to 35 => checkpoint_data <= fifo97(to_integer(checkpoint_address)-20);
             when others => null;
          end case;
@@ -220,8 +238,11 @@ begin
                  (others => '0');
    wired_done7 <= '1' when (bus7.Adr = ADR_SYNC or bus7.Adr = ADR_CNT or bus7.Adr = ADR_RECV) else '0';
 
-   -- RECV reads present last9, NOT fifo79(rd79), and the asymmetry with the ARM7
-   -- path above is deliberate.
+   -- RECV reads present the last popped word, not the new FIFO head. The
+   -- asymmetry with the ARM7 path above is deliberate. With checkpoints enabled,
+   -- last9_visible forwards the registered RAM output on the pop edge, then
+   -- settles it into last9 at the following edge. This lets checkpoint reads
+   -- reuse that RAM port without changing the ordinary consumer's timing.
    --
    -- The pop happens at the edge ending the cycle in which bus9.ena is high:
    -- `last9 <= fifo79(rd79)` captures the popped word and rd79 then advances. So
@@ -247,7 +268,7 @@ begin
    -- changes, this line has to change with it.
    wired_out9 <= sync9_rd when (bus9.Adr = ADR_SYNC) else
                  cnt9_rd  when (bus9.Adr = ADR_CNT)  else
-                 last9    when (bus9.Adr = ADR_RECV) else
+                 last9_visible when (bus9.Adr = ADR_RECV) else
                  (others => '0');
    wired_done9 <= '1' when (bus9.Adr = ADR_SYNC or bus9.Adr = ADR_CNT or bus9.Adr = ADR_RECV) else '0';
 
@@ -258,6 +279,13 @@ begin
    begin
       if rising_edge(clk) then
 
+         if EXPERIMENTAL_CHECKPOINT then
+            fifo79_read_data <= fifo79(fifo79_read_address);
+            fifo79_read_address_q <= fifo79_read_address;
+            fifo79_checkpoint_read_q <= fifo79_checkpoint_read;
+            if pop9_pending = '1' then last9 <= fifo79_read_data; end if;
+            pop9_pending <= '0';
+         end if;
          irq7_sync      <= '0';
          irq9_sync      <= '0';
          irq7_sendempty <= '0';
@@ -383,7 +411,8 @@ begin
             end if;
             if (bus9.ena = '1' and bus9.rnw = '1' and bus9.Adr = ADR_RECV) then
                if (en9 = '1' and v_cnt79 /= 0) then
-                  last9   <= fifo79(rd79);
+                  if EXPERIMENTAL_CHECKPOINT then pop9_pending <= '1';
+                  else last9 <= fifo79(rd79); end if;
                   rd79    <= (rd79 + 1) mod 16;
                   v_cnt79 := v_cnt79 - 1;
                elsif (en9 = '1') then
