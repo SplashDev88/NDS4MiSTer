@@ -10,10 +10,15 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity nds_checkpoint_coordinator is
-  generic (TIMEOUT_CYCLES : positive := 1048576);
+  generic (TIMEOUT_CYCLES : positive := 1048576;
+           LEASE_CYCLES : positive := 33513982);
   port (
     clk, reset        : in std_logic;
     request           : in std_logic;
+    -- Synchronous host strobes, tagged with this attempt's epoch. A held-high
+    -- keepalive is NOT repeated progress. Acquisition has its own deadline.
+    keepalive         : in std_logic := '0';
+    keepalive_epoch   : in unsigned(31 downto 0) := (others => '0');
     cpu_paused_async  : in std_logic_vector(1 downto 0);
     request_seen_async : in std_logic_vector(1 downto 0);
     cpu_request       : out std_logic;
@@ -22,6 +27,7 @@ entity nds_checkpoint_coordinator is
     pair_paused       : out std_logic;
     timed_out         : out std_logic;
     release_stalled   : out std_logic;
+    lease_expired     : out std_logic := '0';
     epoch             : out unsigned(31 downto 0)
   );
 end;
@@ -34,6 +40,8 @@ architecture rtl of nds_checkpoint_coordinator is
   signal elapsed : natural range 0 to TIMEOUT_CYCLES - 1 := 0;
   signal epoch_i : unsigned(31 downto 0) := (others => '0');
   signal timeout_i, stalled_i : std_logic := '0';
+  signal lease_i, keepalive_d : std_logic := '0';
+  signal lease_elapsed : natural range 0 to LEASE_CYCLES - 1 := 0;
   attribute async_reg : string;
   attribute async_reg of ack_meta, ack_sync : signal is "true";
   attribute async_reg of seen_meta, seen_sync : signal is "true";
@@ -44,6 +52,7 @@ begin
   busy <= '0' when phase = IDLE or phase = WAIT_LOW else '1';
   timed_out <= timeout_i;
   release_stalled <= stalled_i;
+  lease_expired <= lease_i;
   epoch <= epoch_i;
 
   process(clk)
@@ -53,12 +62,16 @@ begin
       ack_sync <= ack_meta;
       seen_meta <= request_seen_async;
       seen_sync <= seen_meta;
+      keepalive_d <= keepalive;
       if reset = '1' then
         phase <= DRAIN;
         elapsed <= 0;
         timeout_i <= '0';
         stalled_i <= '0';
         epoch_i <= (others => '0');
+        lease_i <= '0';
+        keepalive_d <= '0';
+        lease_elapsed <= 0;
       else
         case phase is
           when DRAIN =>
@@ -78,6 +91,7 @@ begin
             if request = '1' then
               epoch_i <= epoch_i + 1;
               timeout_i <= '0';
+              lease_i <= '0';
               stalled_i <= '0';
               elapsed <= 0;
               phase <= ACQUIRE;
@@ -89,6 +103,7 @@ begin
             elsif ack_sync = "11" and seen_sync = "11" then
               phase <= HELD;
               elapsed <= 0;
+              lease_elapsed <= 0;
             elsif elapsed = TIMEOUT_CYCLES - 1 then
               timeout_i <= '1';
               phase <= CANCEL_DELIVERY;
@@ -103,6 +118,17 @@ begin
               if request = '1' then timeout_i <= '1'; end if;
               phase <= CANCEL_DELIVERY;
               elapsed <= 0;
+            elsif keepalive = '1' and keepalive_d = '0' and keepalive_epoch = epoch_i then
+              lease_elapsed <= 0;
+            elsif lease_elapsed = LEASE_CYCLES - 1 then
+              -- Host disappeared. Invalidate the checkpoint and use the same
+              -- delivery/release handshake as an explicit cancellation.
+              lease_i <= '1';
+              timeout_i <= '1';
+              phase <= CANCEL_DELIVERY;
+              elapsed <= 0;
+            else
+              lease_elapsed <= lease_elapsed + 1;
             end if;
           when CANCEL_DELIVERY =>
             -- Finish the high phase even if cancellation precedes request

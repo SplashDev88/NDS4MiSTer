@@ -97,6 +97,11 @@ entity nds_nitro_console_top is
       -- answering and fall to NDS.sv's outer timeout rather than hanging.
       DEBUG_ENABLE             : integer   := 1;
       H3D_GX_READBACK_ENABLE    : boolean   := false;
+      -- Experimental CPU-only hold/readback. Does not freeze peripherals or
+      -- certify a restorable machine image. No shipping wrapper enables it.
+      CHECKPOINT_CPU_ENABLE    : boolean := false;
+      CHECKPOINT_TIMEOUT_CYCLES : positive := 1048576;
+      CHECKPOINT_LEASE_CYCLES  : positive := 33513982;
       -- simulation only: the testbench has staged the ARM9/ARM7 main-RAM sections
       -- itself, so nds_loader may skip copying them (see nds_loader.skip_copy)
       skip_copy                : std_logic := '0'
@@ -435,11 +440,32 @@ entity nds_nitro_console_top is
       dbg_rsp_stb      : out std_logic;
       dbg_hwstat       : out std_logic_vector(17 downto 0);
       -- Optional synthetic microphone input; defaults to silence for old callers.
-      mic_blow         : in std_logic := '0'
+      mic_blow         : in std_logic := '0';
+      -- Experimental control plane, synchronous to clk1x. No restore writes.
+      checkpoint_request, checkpoint_keepalive : in std_logic := '0';
+      checkpoint_keepalive_epoch : in unsigned(31 downto 0) := (others => '0');
+      checkpoint_ready, checkpoint_busy, checkpoint_pair_paused : out std_logic := '0';
+      checkpoint_timed_out, checkpoint_release_stalled, checkpoint_lease_expired : out std_logic := '0';
+      checkpoint_epoch : out unsigned(31 downto 0) := (others => '0');
+      checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
+      checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
+      checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
+      checkpoint_read_ready, checkpoint_read_done, checkpoint_read_error : out std_logic := '0';
+      checkpoint_read_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_result_epoch : out unsigned(31 downto 0) := (others => '0')
    );
 end entity;
 
 architecture arch of nds_nitro_console_top is
+   function checkpoint_preset return std_logic is
+   begin
+      if CHECKPOINT_CPU_ENABLE then return '0'; else return '1'; end if;
+   end;
+   signal cpu_save9, cpu_save7 : proc_bus_gb_type;
+   signal checkpoint_req9, checkpoint_req7, checkpoint_paused9, checkpoint_paused7 : std_logic;
+   signal checkpoint_addr9, checkpoint_addr7 : std_logic_vector(7 downto 0);
+   signal checkpoint_data9, checkpoint_data7 : std_logic_vector(31 downto 0);
+   signal checkpoint_valid9, checkpoint_valid7 : std_logic;
 
    component nds_nitro_save_profile is
       generic
@@ -2031,6 +2057,50 @@ begin
    end process;
    ld_wr_done <= ld_w7_done when ld_to_wram7 = '1' else mem9_done;
 
+   gcheckpoint_cpu : if CHECKPOINT_CPU_ENABLE generate
+      capture : entity work.nds_checkpoint_cpu_capture
+         generic map(TIMEOUT_CYCLES => CHECKPOINT_TIMEOUT_CYCLES,
+                     LEASE_CYCLES => CHECKPOINT_LEASE_CYCLES)
+         port map(clk => clk1x, clk9 => clk2x, clk7 => clk1x, reset => resetCpu,
+            request => checkpoint_request, keepalive => checkpoint_keepalive,
+            keepalive_epoch => checkpoint_keepalive_epoch,
+            ready => checkpoint_ready, busy => checkpoint_busy,
+            pair_paused => checkpoint_pair_paused, timed_out => checkpoint_timed_out,
+            release_stalled => checkpoint_release_stalled, lease_expired => checkpoint_lease_expired,
+            epoch => checkpoint_epoch, cpu_request9 => checkpoint_req9, cpu_request7 => checkpoint_req7,
+            cpu_paused9 => checkpoint_paused9, cpu_paused7 => checkpoint_paused7,
+            read_strobe => checkpoint_read_strobe, read_cpu => checkpoint_read_cpu,
+            read_address => checkpoint_read_address, read_epoch => checkpoint_read_epoch,
+            read_ready => checkpoint_read_ready, read_done => checkpoint_read_done,
+            read_error => checkpoint_read_error, read_data => checkpoint_read_data,
+            result_epoch => checkpoint_result_epoch,
+            cpu_address9 => checkpoint_addr9, cpu_address7 => checkpoint_addr7,
+            cpu_data9 => checkpoint_data9, cpu_data7 => checkpoint_data7,
+            cpu_valid9 => checkpoint_valid9, cpu_valid7 => checkpoint_valid7);
+      -- Only the CPU state mux is borrowed. Timer/other boot buses keep their
+      -- original ownership. Boot presets remain unchanged while reset is high.
+      process(all) begin
+         cpu_save9 <= ss_bus9; cpu_save7 <= ss_bus7;
+         if resetCpu = '0' then
+            cpu_save9.Adr <= std_logic_vector(resize(unsigned(checkpoint_addr9),proc_busadr));
+            cpu_save7.Adr <= std_logic_vector(resize(unsigned(checkpoint_addr7),proc_busadr));
+            cpu_save9.ena <= '0'; cpu_save7.ena <= '0';
+            cpu_save9.rnw <= '1'; cpu_save7.rnw <= '1';
+            cpu_save9.bEna <= "0000"; cpu_save7.bEna <= "0000";
+            cpu_save9.rst <= '0'; cpu_save7.rst <= '0';
+         end if;
+      end process;
+   end generate;
+   gno_checkpoint_cpu : if not CHECKPOINT_CPU_ENABLE generate
+      cpu_save9 <= ss_bus9; cpu_save7 <= ss_bus7;
+      checkpoint_req9 <= '0'; checkpoint_req7 <= '0';
+      checkpoint_ready <= '0'; checkpoint_busy <= '0'; checkpoint_pair_paused <= '0';
+      checkpoint_timed_out <= '0'; checkpoint_release_stalled <= '0'; checkpoint_lease_expired <= '0';
+      checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
+      checkpoint_read_ready <= '0'; checkpoint_read_done <= '0'; checkpoint_read_error <= '1';
+      checkpoint_read_data <= (others => '0');
+   end generate;
+
    -- ================= ARM9 CPU + membus =================
    -- The product uses redistributable melonDS FreeBIOS. It provides CpuSet,
    -- CpuFastSet, wait, decompression, and other direct-boot SWIs without
@@ -2066,7 +2136,9 @@ begin
    end process;
 
    icpu9 : entity work.nds_cpu9
-   generic map ( is_simu => is_simu )
+   generic map ( is_simu => is_simu, SS_PRESET_ONLY => checkpoint_preset,
+                 EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE,
+                 EXPERIMENTAL_HALT_CHECKPOINT => CHECKPOINT_CPU_ENABLE )
    port map
    (
       clk             => clk2x,
@@ -2084,9 +2156,11 @@ begin
       dbg_cpsr        => cpu9_dbg_cpsr,
       dbg_regsel      => dbg_regsel_s,
       dbg_regval      => dbg_regval9,
-      savestate_bus   => ss_bus9,
-      ss_wired_out    => open,
-      ss_wired_done   => open,
+      savestate_bus   => cpu_save9,
+      ss_wired_out    => checkpoint_data9,
+      ss_wired_done   => checkpoint_valid9,
+      checkpoint_req => checkpoint_req9,
+      checkpoint_paused => checkpoint_paused9,
       gb_bus_Adr      => cpu9_adr,
       gb_bus_rnw      => cpu9_rnw,
       gb_bus_ena      => cpu9_ena,
@@ -2343,7 +2417,9 @@ begin
 
    -- ================= ARM7 CPU + membus =================
    icpu7 : entity work.gba_cpu
-   generic map ( is_simu => is_simu )
+   generic map ( is_simu => is_simu, SS_PRESET_ONLY => checkpoint_preset,
+                 EXPERIMENTAL_CHECKPOINT => CHECKPOINT_CPU_ENABLE,
+                 EXPERIMENTAL_HALT_CHECKPOINT => CHECKPOINT_CPU_ENABLE )
    port map
    (
       clk             => clk1x,
@@ -2357,9 +2433,11 @@ begin
       dbg_pc          => pc7_s,
       dbg_regsel      => dbg_regsel_s,
       dbg_regval      => dbg_regval7,
-      savestate_bus   => ss_bus7,
-      ss_wired_out    => open,
-      ss_wired_done   => open,
+      savestate_bus   => cpu_save7,
+      ss_wired_out    => checkpoint_data7,
+      ss_wired_done   => checkpoint_valid7,
+      checkpoint_req => checkpoint_req7,
+      checkpoint_paused => checkpoint_paused7,
       gb_bus_Adr      => cpu7_adr,
       gb_bus_rnw      => cpu7_rnw,
       gb_bus_ena      => cpu7_ena,

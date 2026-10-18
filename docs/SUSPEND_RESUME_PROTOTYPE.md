@@ -20,13 +20,14 @@ with a deadline, cancellation and acknowledgement draining. It is tested with
 both real CPU implementations together. A third milestone adds an optional
 halted-pipeline format: ARM7 HALT and ARM9 WFI can preserve their pending
 instructions across a fresh-process restore. The branch-only format still
-refuses sleeping CPUs. None of these components is connected to the console
-or host yet.
+refuses sleeping CPUs. A fourth milestone adds a read-only CPU state transport,
+an expiring host lease, and optional wiring to the actual console CPUs. Memory,
+devices and the renderer are not frozen by this CPU-only controller.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
-in both CPUs. No console top level or ARM9 adapter enables either option. The
-released FPGA, host, renderer, settings and
-1 GHz operating point are unchanged.
+in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
+`false`; no shipping wrapper or ARM9 adapter enables it. The released FPGA,
+host, renderer, settings and 1 GHz operating point are unchanged.
 
 The old `SS_PRESET_ONLY=0` path is insufficient by itself: it omits ARM9 CP15
 configuration and CPSR.Q, and its exported PC is only updated on a branch.
@@ -101,8 +102,52 @@ graphics or audio and cannot authorize writing a whole-machine state file.
 - Coordinator, endpoints and CPUs require a common reset spanning at least
   three rising edges in every domain. Clocks stay running during a hold; CPU
   enables stop internally. Host transport must synchronize its request before
-  this interface, and future integration still needs a host-liveness watchdog
-  for a caller that disappears while a successful hold is active.
+  this interface.
+- A held pair expires after `LEASE_CYCLES` control clocks without a fresh
+  `keepalive` rising edge carrying the current attempt's epoch. The default is
+  33,513,982 clocks (about one second at clk1x). Wrong epochs, a stuck-high input
+  and keepalives during acquisition cannot extend the hold. Expiry invalidates
+  `pair_paused`, sets sticky `lease_expired` and `timed_out`, and releases the
+  CPUs through the normal handshake. A stopped CPU clock can still prevent
+  physical release; this is reported rather than hidden by a false `ready`.
+
+### CPU state transport and console wiring
+
+`nds_checkpoint_cpu_capture.vhd` combines the coordinator, endpoints and two
+`nds_checkpoint_read_port.vhd` mailboxes. Its host interface is synchronous to
+the control clock; it is not yet connected to SPI or the ARM host.
+
+- Wait for `read_ready`, then issue a **one-cycle** `read_strobe` with CPU
+  selection (0 = ARM9, 1 = ARM7), word address and the current hold epoch.
+  Address/selection/epoch may change after that accepted edge.
+- Each mailbox keeps its address stable through a four-phase request/reply
+  crossing. The CPU-domain reader registers the address, samples the mux on
+  the next clock, and keeps the reply stable until acknowledgement is withdrawn.
+  Only a paused CPU and valid word address can produce a successful reply.
+- `read_done` is a one-cycle completion. Accept its data only with
+  `read_error=0`, the matching `result_epoch`, and a still-valid pair hold.
+  Invalid addresses, stale epochs and reads outside a hold return errors.
+  Cancellation or lease expiry also masks a reply arriving on that same edge.
+- A read deadline reports an error but still drains the late request/reply.
+  It cannot rearm while a stopped CPU clock leaves that handshake unfinished.
+  It never forwards a late completion into the next attempt.
+- These are bundled-data CDC paths: the handshake holds addresses/replies
+  stable. Simulation tests clock ratios and phases; physical CDC constraints
+  and timing still require validation in the integrated FPGA build.
+
+With `CHECKPOINT_CPU_ENABLE=true`, `nds_nitro_console_top.vhd` connects this
+controller to both actual CPUs. The ARM9 reader uses clk2x, the ARM7 reader uses
+clk1x, and the host side uses clk1x. Reset preserves the existing boot preset
+buses; during execution only the CPU read mux addresses are borrowed. Timer
+state buses retain their original owners. There are **no restore writes** and
+no user-facing control. The source closure analyzes successfully, but a full
+console simulation or hardware capture has not yet qualified this wiring.
+
+`checkpoint_pair_paused` says only that both CPUs acknowledged. Caches can
+finish posted work after CPU retirement, and DMA, timers, IRQs, video, audio and
+host queues still run. This signal must not be treated as permission to save
+a coherent whole-machine image. Device admission/draining and a common machine
+freeze boundary remain the next integration work.
 
 Do not force a sleeping CPU awake to obtain a branch checkpoint or discard its
 prefetched instructions. Those would change the guest state. The optional
@@ -215,6 +260,15 @@ With the halted-pipeline extension enabled, another 24 paired-CPU cases accept
 and release an ARM7 HALT or ARM9 WFI without waking the sleeping CPU during the
 hold. The same scenarios time out with the branch-only format.
 
+Another **96 real-CPU transport/lease cases** vary the same memory delays,
+clock-enable periods and request phases. They read all 80 ARM9 and 60 ARM7
+words, change command inputs after acceptance, reject invalid addresses and
+epochs, cancel pending reads, recover from stopped read clocks, expire lost or
+stale host leases, invalidate a read during lease expiry, and reset both domains
+during a read. Subsequent counter stores verify resumed CPU progress. Negative
+controls deliberately accept stale keepalive epochs or skip read-handshake
+draining and must fail. The existing 132 coordinator cases remain passing.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -234,8 +288,9 @@ bash tools/test_halt_checkpoint.sh
   behavior, even when the pipeline readback comparison is skipped.
 
 The earlier branch-format capsule code also passed its nine tests on the
-MiSTer's Python 3.9.6, then wrote, synced, atomically replaced and read a test slot from a fresh process on
-the SD-card filesystem. Temporary test folders were removed. The FAT mount
+MiSTer's Python 3.9.6, then wrote, synced, atomically replaced and read a test
+slot from a fresh process on the SD-card filesystem. Temporary test folders
+were removed. The FAT mount
 reports mode `0755` despite `fchmod(0600)`; POSIX per-file permissions cannot be
 assumed there. This verifies file operations only, not power-loss durability or
 capture/restore of a live FPGA. No NDS session or ordinary game save was used.
@@ -285,14 +340,14 @@ evidence, not as a second maintained implementation in this branch.
 
 | Owner | Needed before a game can resume | Current status |
 | --- | --- | --- |
-| Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI component proofs; not wired to host or console |
+| Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Missing; resetting or simply invalidating caches is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Missing |
 | FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | Missing; require coherent freeze and versioned serializers |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
-| Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | CPU-pair pause/abort simulation proof; console/device freeze and host transport missing |
+| Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | CPU-pair barrier, lease and read transport tested; device freeze, host connection and restore ordering missing |
 
 Current H3D lifecycle quiesce **destroys the renderer** before acknowledgement;
 it is a session-exit operation, not a checkpoint. A full melonDS emulator state
@@ -301,11 +356,11 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 ## Next acceptance gates
 
-1. Integrate a top-level pause/abort and state-read transport with a common
-   machine epoch. The CPU-pair proof now covers idle HALT/WFI; integrate it with
-   actual cache, DMA, IRQ and lid-sleep control, verifying no pending access or
-   interrupt is dropped. Preserve delivery/release handshakes and add a
-   host-liveness limit.
+1. Extend the optional CPU-only console wiring into a coherent machine freeze.
+   Integrate actual cache, DMA, IRQ and lid-sleep control, verifying no pending
+   access or interrupt is dropped. Connect the bounded read transport and host
+   lease to the host control plane, and qualify the full console path. Preserve
+   delivery/release handshakes and keep all endpoint clocks running.
 2. Add memory/cache and device coverage, then a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
