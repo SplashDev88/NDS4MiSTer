@@ -2128,7 +2128,11 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
     .write_data(math_write_data),.selected(math_selected),
     .read_data(math_read_data),.done(math_done_unused),
     .div_busy(div_busy_unused),.sqrt_busy(sqrt_busy_unused),
-    .checkpoint_idle(checkpoint_math_idle_2x)
+    .checkpoint_idle(checkpoint_math_idle_2x),
+    // Component serializer remains disabled until the common transport exists.
+    .checkpoint_address(4'd0),.checkpoint_data(),.checkpoint_valid(),
+    .checkpoint_restore(1'b0),.checkpoint_write(1'b0),.checkpoint_write_data(32'd0),
+    .checkpoint_restore_ready(),.checkpoint_restore_error()
 );
 
 nds_nitro_console_wrap #(

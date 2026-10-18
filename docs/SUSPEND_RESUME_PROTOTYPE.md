@@ -36,10 +36,10 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
-state, timers, IPC queues, both DMA controllers, audio, product SPI and cartridge
-transactions across fresh simulator
-processes. These ports remain unconnected to the console control plane; whole-machine persistence
-still needs the other owners.
+state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
+transactions, completed arithmetic and system-control registers across fresh
+simulator processes. These ports remain unconnected to the console control
+plane; whole-machine persistence still needs the other owners.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
@@ -855,6 +855,99 @@ virtual-clock warnings are expected, and no timing or gameplay-speed result is
 inferred. The remaining cost still needs a complete-core resource check before
 this can be accepted for a gameplay beta.
 
+## Arithmetic and system-control component persistence
+
+The product `nds_nitro_arm9_math_unit.sv` and `nds_syscnt.vhd` now expose ordered
+component images under their default-off `EXPERIMENTAL_CHECKPOINT` options.
+Each uses the existing live registers while reset is held, without a duplicate
+shadow bank. Their serializers remain disconnected from the console transport;
+the product arithmetic instance explicitly ties the inactive restore inputs low.
+
+### Completed arithmetic
+
+The arithmetic capture boundary requires both calculations, bus responses and
+the product transaction signature to retire using their original clock/credit
+path. Low BUSY flags alone are insufficient. The producer must then stay quiet;
+this component has no additional admission-stop input.
+
+| Word | Saved state |
+| --- | --- |
+| 0 | DIVCNT 15:0, SQRTCNT 31:16; both BUSY bits must be clear |
+| 1–2 | Numerator, low then high word |
+| 3–4 | Denominator, low then high word |
+| 5–6 | Completed quotient, low then high word |
+| 7–8 | Completed remainder, low then high word |
+| 9–10 | Square-root parameter, low then high word |
+| 11 | Completed square-root result |
+| 12 | Registered read-response data |
+
+The last read response remains observable in the registered bus mode after
+`done` retires. The same image preserves it in both bus modes. Dormant arithmetic
+scratch and retired bus/signature payloads are reset: every accepted new
+operation initializes its complete microengine, and an inactive signature
+cannot suppress the first resumed request. Results and operands are loaded
+directly; replaying their MMIO writes would restart arithmetic and is not used.
+
+Hold reset and `checkpoint_restore`, keep `request` low, and write all 13 words
+in order. Gaps retain previously loaded words. Missing-order, duplicate, extra,
+BUSY-bit or live writes and any concurrent request poison the attempt. Withdraw
+restore for an edge before retrying the entire image. Readback is available
+only at the drained capture boundary or after all words are accepted with no
+current write. Invalid addresses return zero/invalid. Release reset and restore
+together only when the complete machine is ready.
+
+`tools/test_checkpoint_math_restore.sh` checks ten scenarios in each bus mode,
+then resumes each in two fresh processes with different write gaps: **40
+restores, 67,216 continuation observations**. Pinned source `624085a` remains
+the normal-execution oracle. Cases include signed/zero/overflow division,
+32/64-bit square root, old results read before new work, control/operand restart
+writes, credit stalls and product signature rearming. Eight deliberate faults
+are detected; four remove saved values and fail continuation with image checks
+disabled. The existing retirement/baseline and numeric arithmetic suite passes
+with checkpointing disabled.
+
+### Memory mappings, ownership, power and sleep
+
+System-control capture requires both buses and the direct-boot preset to be
+quiet, the HALT pulse to retire, and no pending wake that would clear an active
+sleep flag. An asserted wake with the console already awake is harmless.
+This observer does not itself stop bus or loader producers.
+
+| Word | Saved state, low bits first |
+| --- | --- |
+| 0 | Raw ARM9 EXMEMCNT 15:0, ARM7 timing copy 22:16, WRAM mapping 24:23, ARM7 POSTFLG 25, ARM9 POSTFLG 27:26, console sleep 28 |
+| 1, 2 | Raw VRAM bank controls, bits 31:0 then 63:32 |
+| 3 | Final VRAM control byte 7:0, POWCNT1 23:8 |
+
+The raw VRAM bytes must survive even where CPU readback masks reserved bits:
+mapping outputs and readback are different interfaces. Sticky POSTFLG bits and
+sleep restore directly, without replaying guest writes or issuing another HALT
+pulse. The CPU's own halted state is a separate component. On release, the
+ordinary enabled-IRQ wake behavior resumes.
+
+Load all four words in order while reset and restore are high and the buses and
+direct-boot preset are inactive. Unused image bits and unimplemented POWCNT1
+bits are rejected, as are incomplete ordering, duplicate/extra words, live
+restore or bus/preset activity. Errors require withdrawal and a complete retry.
+Wake inputs and cold-boot defaults cannot erase loaded words during restore;
+the surrounding restore boot flow must also prevent a later direct-boot preset
+from overwriting the image after release. This does not restore WRAM/VRAM data,
+CPU caches or renderer mappings by itself.
+
+`tools/test_checkpoint_syscnt_restore.sh` checks ten scenarios with each
+cold/direct reset default, then resumes each with two write-gap schedules:
+**40 restores, 31,800 continuation observations**. Pinned source `624085a` checks
+normal execution. Tests cover all four WRAM mappings, raw/masked VRAM views,
+slot ownership and power, sticky flags, HALT versus sleep, wake on release,
+opposite boot defaults during load and simultaneous CPU writes. Ten deliberate
+faults are detected; six lost values fail continuation without image-readback
+checking. Existing VRAM-readback and native/direct boot regressions also pass.
+
+Full console VHDL analysis and three SystemVerilog island branch elaborations
+pass. The latter leave VHDL wrappers as black boxes and are not a mixed-language
+hardware proof. No FPGA fit, timing or gameplay-speed result is inferred from
+these component checks.
+
 ## Cartridge component persistence
 
 `nds_card` exposes **15 scalar words plus every physical prefetch cell** when
@@ -1441,8 +1534,8 @@ evidence, not as a second maintained implementation in this branch.
 | --- | --- | --- |
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
-| Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA/product SPI/cartridge have component restore; other serializers and real external ownership missing |
+| Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control component restore tested; raster/RTC and other state plus real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -1463,7 +1556,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend IRQ/timer/IPC/DMA/audio/SPI/cartridge coverage to the remaining devices,
+2. Complete the remaining device coverage,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.

@@ -18,7 +18,10 @@ module tb_nds_nitro_arm9_math_unit;
     wire [31:0] read_data;
     wire done, div_busy, sqrt_busy, checkpoint_idle;
 
-    nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) dut (.*);
+    nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) dut (.*,
+        .checkpoint_address(4'd0),.checkpoint_data(),.checkpoint_valid(),
+        .checkpoint_restore(1'b0),.checkpoint_write(1'b0),.checkpoint_write_data(32'd0),
+        .checkpoint_restore_ready(),.checkpoint_restore_error());
 
     task automatic write32(input logic [31:0] a, input logic [31:0] d);
         begin

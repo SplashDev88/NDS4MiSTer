@@ -33,6 +33,7 @@ use IEEE.numeric_std.all;
 use work.pProc_bus_gba.all;
 
 entity nds_syscnt is
+   generic (EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk          : in  std_logic;
@@ -61,7 +62,17 @@ entity nds_syscnt is
       exmem_prio7  : out std_logic;   -- main-memory priority to ARM7
       halt7        : out std_logic := '0'; -- 1-cycle pulse: HALTCNT halt
       wake7        : in  std_logic := '0'; -- IE & IF, independent of IME
-      console_sleep : out std_logic := '0'
+      console_sleep : out std_logic := '0';
+      -- Four ordered words. Bus/loader producers must be held independently.
+      checkpoint_idle : out std_logic := '0';
+      checkpoint_address : in unsigned(2 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -85,8 +96,61 @@ architecture arch of nds_syscnt is
    signal exmem9_rd, exmem7_rd : std_logic_vector(15 downto 0);
    signal vramstat  : std_logic_vector(1 downto 0);
    signal vramcnt_rd : std_logic_vector(71 downto 0);
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_count : unsigned(2 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+
+   function valid_word(a : unsigned(2 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 => return d(31 downto 29) = "000";
+         when 1 | 2 => return true;
+         when 3 => return d(31 downto 24) = x"00" and (d(23 downto 8) and x"7DF0") = x"0000";
+         when others => return false;
+      end case;
+   end function;
 
 begin
+
+   checkpoint_idle <= '1' when reset = '0' and bus9.ena = '0' and bus7.ena = '0' and
+      preset_direct = '0' and halt7 = '0' and not (console_sleep = '1' and wake7 = '1') else '0';
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   restore_write_valid <= '1' when restore_active = '1' and restore_error = '0' and checkpoint_write = '1' and
+      bus9.ena = '0' and bus7.ena = '0' and preset_direct = '0' and restore_count < 4 and
+      checkpoint_address = restore_count and valid_word(checkpoint_address, checkpoint_write_data) else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and restore_error = '0' and restore_count = 4 and
+      bus9.ena = '0' and bus7.ena = '0' and preset_direct = '0' and checkpoint_write = '0' else '0';
+
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_count <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' or bus9.ena = '1' or bus7.ena = '1' or preset_direct = '1' then
+            restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+
+   process(all)
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < 4 and
+         ((checkpoint_idle = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data(28 downto 0) <= console_sleep & postflg9 & postflg7 & r_wramcnt & exmem7lo & exmem9;
+            when 1 => checkpoint_data <= r_vramcnt(31 downto 0);
+            when 2 => checkpoint_data <= r_vramcnt(63 downto 32);
+            when 3 => checkpoint_data(23 downto 0) <= r_powcnt & r_vramcnt(71 downto 64);
+            when others => null;
+         end case;
+      end if;
+   end process;
 
    exmem9_rd <= exmem9(15 downto 14) & '1' & exmem9(12 downto 0);
    exmem7_rd <= exmem9(15 downto 14) & '1' & exmem9(12 downto 7) & exmem7lo;
@@ -130,7 +194,22 @@ begin
    begin
       if rising_edge(clk) then
          halt7 <= '0';
-         if (reset = '1') then
+         if restore_active = '1' then
+            -- Do not reapply cold/direct-boot defaults between loaded words.
+            -- Preserve raw VRAM bank bytes, including masked readback bits.
+            if restore_write_valid = '1' then
+               case to_integer(checkpoint_address) is
+                  when 0 =>
+                     exmem9 <= checkpoint_write_data(15 downto 0); exmem7lo <= checkpoint_write_data(22 downto 16);
+                     r_wramcnt <= checkpoint_write_data(24 downto 23); postflg7 <= checkpoint_write_data(25);
+                     postflg9 <= checkpoint_write_data(27 downto 26); console_sleep <= checkpoint_write_data(28);
+                  when 1 => r_vramcnt(31 downto 0) <= checkpoint_write_data;
+                  when 2 => r_vramcnt(63 downto 32) <= checkpoint_write_data;
+                  when 3 => r_vramcnt(71 downto 64) <= checkpoint_write_data(7 downto 0); r_powcnt <= checkpoint_write_data(23 downto 8);
+                  when others => null;
+               end case;
+            end if;
+         elsif (reset = '1') then
             console_sleep <= '0';
             if cold_boot = '1' then exmem9 <= x"6000";
             else exmem9 <= x"6580"; end if;

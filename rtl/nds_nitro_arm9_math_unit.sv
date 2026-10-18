@@ -25,7 +25,8 @@ module nds_nitro_arm9_math_unit #(
     // rather than the two-cycle request/done protocol used by the legacy
     // bridge.  Keep the tested legacy behavior as the default and expose the
     // live register image only for the Nitro console island.
-    parameter bit COMBINATIONAL_READ = 1'b0
+    parameter bit COMBINATIONAL_READ = 1'b0,
+    parameter bit EXPERIMENTAL_CHECKPOINT = 1'b0
 ) (
     input  logic        clk,
     input  logic        reset,
@@ -44,7 +45,15 @@ module nds_nitro_arm9_math_unit #(
     output logic        div_busy,
     output logic        sqrt_busy,
     // Observation only; producers and the IO crossing must be held separately.
-    output logic        checkpoint_idle
+    output logic        checkpoint_idle,
+    input  logic [3:0]  checkpoint_address,
+    output logic [31:0] checkpoint_data,
+    output logic        checkpoint_valid,
+    input  logic        checkpoint_restore,
+    input  logic        checkpoint_write,
+    input  logic [31:0] checkpoint_write_data,
+    output logic        checkpoint_restore_ready,
+    output logic        checkpoint_restore_error
 );
     localparam logic [31:0] DIVCNT      = 32'h04000280;
     localparam logic [31:0] DIV_NUMER_L = 32'h04000290;
@@ -355,25 +364,100 @@ module nds_nitro_arm9_math_unit #(
         !bus_response_pending && !done && !product_signature_valid &&
         !div_running && !sqrt_running && !div_busy && !sqrt_busy;
 
+    // Thirteen ordered words at a fully drained arithmetic/bus boundary.
+    // Each new operation initializes its entire microengine, so dormant work
+    // registers need not be serialized. Guest-visible results and the legacy
+    // read-response latch remain state even after BUSY and done have retired.
+    logic [3:0] restore_count = 4'd0;
+    logic restore_error = 1'b0;
+    wire restore_active = EXPERIMENTAL_CHECKPOINT && reset && checkpoint_restore;
+    wire restore_write_valid = restore_active && !request && !restore_error && checkpoint_write &&
+        restore_count < 4'd13 && checkpoint_address == restore_count &&
+        (checkpoint_address != 4'd0 || (checkpoint_write_data & 32'h80008000) == 0);
+    assign checkpoint_restore_error = EXPERIMENTAL_CHECKPOINT && restore_error;
+    assign checkpoint_restore_ready = restore_active && !request && !restore_error &&
+        restore_count == 4'd13 && !checkpoint_write;
+
+    always_ff @(posedge clk) begin
+        if (!EXPERIMENTAL_CHECKPOINT || !checkpoint_restore) begin
+            restore_count <= 4'd0;
+            restore_error <= 1'b0;
+        end else if (!reset || request) begin
+            restore_error <= 1'b1;
+        end else if (checkpoint_write) begin
+            if (restore_write_valid) restore_count <= restore_count + 1'b1;
+            else restore_error <= 1'b1;
+        end
+    end
+
+    always_comb begin
+        checkpoint_data = 32'd0;
+        checkpoint_valid = 1'b0;
+        if (EXPERIMENTAL_CHECKPOINT && checkpoint_address < 4'd13 &&
+            ((checkpoint_idle && !checkpoint_restore) || checkpoint_restore_ready)) begin
+            checkpoint_valid = 1'b1;
+            case (checkpoint_address)
+                0: checkpoint_data = {sqrt_cnt, div_cnt};
+                1: checkpoint_data = div_numerator[31:0];
+                2: checkpoint_data = div_numerator[63:32];
+                3: checkpoint_data = div_denominator[31:0];
+                4: checkpoint_data = div_denominator[63:32];
+                5: checkpoint_data = div_quotient[31:0];
+                6: checkpoint_data = div_quotient[63:32];
+                7: checkpoint_data = div_remainder[31:0];
+                8: checkpoint_data = div_remainder[63:32];
+                9: checkpoint_data = sqrt_parameter[31:0];
+                10: checkpoint_data = sqrt_parameter[63:32];
+                11: checkpoint_data = sqrt_result;
+                12: checkpoint_data = registered_read_data;
+                default: begin end
+            endcase
+        end
+    end
+
     always_ff @(posedge clk) begin
         if (reset) begin
+            if (restore_active) begin
+                if (restore_write_valid) begin
+                    case (checkpoint_address)
+                        0: begin div_cnt <= checkpoint_write_data[15:0]; sqrt_cnt <= checkpoint_write_data[31:16]; end
+                        1: div_numerator[31:0] <= checkpoint_write_data;
+                        2: div_numerator[63:32] <= checkpoint_write_data;
+                        3: div_denominator[31:0] <= checkpoint_write_data;
+                        4: div_denominator[63:32] <= checkpoint_write_data;
+                        5: div_quotient[31:0] <= checkpoint_write_data;
+                        6: div_quotient[63:32] <= checkpoint_write_data;
+                        7: div_remainder[31:0] <= checkpoint_write_data;
+                        8: div_remainder[63:32] <= checkpoint_write_data;
+                        9: sqrt_parameter[31:0] <= checkpoint_write_data;
+                        10: sqrt_parameter[63:32] <= checkpoint_write_data;
+                        11: sqrt_result <= checkpoint_write_data;
+                        12: registered_read_data <= checkpoint_write_data;
+                        default: begin end
+                    endcase
+                end
+            end else begin
+                div_cnt <= 16'd0;
+                div_numerator <= 64'd0;
+                div_denominator <= 64'd0;
+                div_quotient <= 64'd0;
+                div_remainder <= 64'd0;
+                sqrt_cnt <= 16'd0;
+                sqrt_parameter <= 64'd0;
+                sqrt_result <= 32'd0;
+                registered_read_data <= 32'd0;
+            end
             bus_active <= 1'b0;
             bus_response_pending <= 1'b0;
             bus_response_read <= 1'b0;
             bus_read_address <= 32'd0;
             bus_read_access <= 2'd0;
-            registered_read_data <= 32'd0;
             done <= 1'b0;
             product_signature_valid <= 1'b0;
             product_signature_address <= 32'd0;
             product_signature_rnw <= 1'b1;
             product_signature_access <= 2'd0;
 
-            div_cnt <= 16'd0;
-            div_numerator <= 64'd0;
-            div_denominator <= 64'd0;
-            div_quotient <= 64'd0;
-            div_remainder <= 64'd0;
             div_running <= 1'b0;
             div_total_iterations <= 7'd32;
             div_iterations <= 7'd0;
@@ -389,9 +473,6 @@ module nds_nitro_arm9_math_unit #(
             div_pending_quotient <= 64'd0;
             div_pending_remainder <= 64'd0;
 
-            sqrt_cnt <= 16'd0;
-            sqrt_parameter <= 64'd0;
-            sqrt_result <= 32'd0;
             sqrt_running <= 1'b0;
             sqrt_total_iterations <= 6'd16;
             sqrt_iterations <= 6'd0;

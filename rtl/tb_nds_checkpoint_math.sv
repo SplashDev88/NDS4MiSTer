@@ -12,7 +12,10 @@ module tb_nds_checkpoint_math;
     wire ref_selected,ref_done,ref_div_busy,ref_sqrt_busy;
     wire [31:0] ref_read_data;
     always #5 clk=~clk;
-    nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(PRODUCT)) dut(.*);
+    nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(PRODUCT)) dut(.*,
+        .checkpoint_address(4'd0),.checkpoint_data(),.checkpoint_valid(),
+        .checkpoint_restore(1'b0),.checkpoint_write(1'b0),.checkpoint_write_data(32'd0),
+        .checkpoint_restore_ready(),.checkpoint_restore_error());
     nds_nitro_arm9_math_unit_reference #(.COMBINATIONAL_READ(PRODUCT)) reference_math(
         .clk(clk),.reset(reset),.request(request),.read_not_write(read_not_write),
         .cycle_advance(cycle_advance),.cycle_advance_valid(cycle_advance_valid),
