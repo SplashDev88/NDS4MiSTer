@@ -7,7 +7,7 @@ use std.env.all;
 use work.pProc_bus_gba.all;
 
 entity tb_nds_checkpoint_irq_ipc is
-   generic(SEED : positive := 1; RANDOM_CYCLES : positive := 20000);
+   generic(ENABLE_IRQ_CAPTURE : boolean := false; SEED : positive := 1; RANDOM_CYCLES : positive := 20000);
 end;
 architecture sim of tb_nds_checkpoint_irq_ipc is
    constant EMPTY_BUS : proc_bus_gb_type := ((others=>'0'),(others=>'0'),'1','0',ACCESS_32BIT,"1111",'0');
@@ -32,7 +32,7 @@ begin
    irq_in(0) <= ext(0) or word'(16=>pulse(0),17=>pulse(1),18=>pulse(2),others=>'0');
    irq_in(1) <= ext(1) or word'(16=>pulse(3),17=>pulse(4),18=>pulse(5),others=>'0');
    gi : for i in 0 to 1 generate
-      dut : entity work.nds_irq port map(clk=>clk,ce=>ce(i),reset=>reset,gb_bus=>io(i),
+      dut : entity work.nds_irq generic map(EXPERIMENTAL_CHECKPOINT => ENABLE_IRQ_CAPTURE) port map(clk=>clk,ce=>ce(i),reset=>reset,gb_bus=>io(i),
          wired_out=>irq_data(i),wired_done=>irq_done(i),irq_in=>irq_in(i),cpu_irq=>irq(i),cpu_unhalt=>unhalt(i),
          dbg_ime=>ime(i),dbg_ie=>ie(i),dbg_if=>flags(i),checkpoint_idle=>irq_idle(i));
       reference_irq : entity work.nds_irq_reference port map(clk=>clk,ce=>ce(i),reset=>reset,gb_bus=>io(i),

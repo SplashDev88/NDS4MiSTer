@@ -5,6 +5,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.pexport.all;
+use work.pProc_bus_gba.all;
 use work.checkpoint_fixture_rom.all;
 entity tb_nds_checkpoint_console is
    generic(LATENCY : positive := 2; ARM9_HALF_NS : positive := 20);
@@ -100,6 +101,11 @@ architecture sim of tb_nds_checkpoint_console is
    signal checkpoint_read_error : std_logic := '0';
    signal checkpoint_read_data : std_logic_vector(31 downto 0) := (others => '0');
    signal checkpoint_result_epoch : unsigned(31 downto 0) := (others => '0');
+   signal sound_left, sound_right : std_logic_vector(15 downto 0);
+   signal sound_samples, sound_varied, sound_fetches, dma9_writes, dma7_writes : natural := 0;
+   signal sound_inflight, dma9_active, dma7_active : std_logic := '0';
+   signal sound_loops_complete, sound_memory_pending : boolean := false;
+   signal hold_sound_response : std_logic := '0';
    signal phase_index : natural range 0 to 2 := 2;
    signal count9, count7, physical_writes : natural := 0;
    signal sink_ready, allow_host, respond : std_logic := '1';
@@ -270,8 +276,8 @@ begin
       vblank_out => open,
       sound_diagnostic => open,
       sound_stream_diagnostic => open,
-      sound_out_left => open,
-      sound_out_right => open,
+      sound_out_left => sound_left,
+      sound_out_right => sound_right,
       dbg_export9_done => open,
       dbg_export9 => open,
       dbg_export7_done => open,
@@ -338,6 +344,104 @@ begin
       checkpoint_read_error => checkpoint_read_error,
       checkpoint_read_data => checkpoint_read_data,
       checkpoint_result_epoch => checkpoint_result_epoch);
+   active_audio_check : if ACTIVE_DEVICES generate
+      signal registers : proc_bus_gb_type;
+      signal reset_sound, ref_request, ref_owner, ref_ena, ref_done, ref_valid, dut_valid : std_logic := '0';
+      signal ref_address, ref_data : std_logic_vector(31 downto 0) := (others => '0');
+      signal ref_left, ref_right : std_logic_vector(15 downto 0);
+   begin
+      observe : process(all)
+         alias actual_bus is << signal .tb_nds_checkpoint_console.dut.io_bus7 : proc_bus_gb_type >>;
+         alias actual_reset is << signal .tb_nds_checkpoint_console.dut.resetCpu : std_logic >>;
+         alias actual_valid is << signal .tb_nds_checkpoint_console.dut.gsound.isound.sample_valid : std_logic >>;
+         alias actual_own is << signal .tb_nds_checkpoint_console.dut.snd_bus_own : std_logic >>;
+         alias actual_dma9 is << signal .tb_nds_checkpoint_console.dut.dma_bus_on : std_logic >>;
+         alias actual_dma7 is << signal .tb_nds_checkpoint_console.dut.dma7_bus_on : std_logic >>;
+      begin
+         registers <= actual_bus; reset_sound <= actual_reset; dut_valid <= actual_valid;
+         sound_inflight <= actual_own; dma9_active <= actual_dma9; dma7_active <= actual_dma7;
+      end process;
+      -- Independent uninterrupted SPU with the same observed configuration
+      -- writes and authored source bytes. It never sees the checkpoint request
+      -- or console bus grants. Compare sample sequence, not wall-clock phase.
+      reference : entity work.nds_sound
+         generic map(is_simu => '1')
+         port map(clk => clk1x, ce => '1', reset => reset_sound, bus7 => registers,
+            wired_out7 => open, wired_done7 => open, snd_bus_req => ref_request,
+            snd_bus_ok => '1', snd_bus_own => ref_owner, mb_ena => ref_ena,
+            mb_adr => ref_address, mb_din => ref_data, mb_done => ref_done,
+            sample_l => ref_left, sample_r => ref_right, sample_valid => ref_valid,
+            snd_enable => open, snd_active => open);
+      reference_memory : process(clk1x)
+         variable pending : boolean := false;
+         variable delay, address : natural := 0;
+      begin
+         if rising_edge(clk1x) then
+            ref_done <= '0';
+            if reset_sound = '1' then pending := false;
+            else
+               if pending then
+                  if delay > 0 then delay := delay-1;
+                  else ref_data <= rom_word(address); ref_done <= '1'; pending := false; end if;
+               end if;
+               if ref_ena = '1' then
+                  assert not pending report "reference SPU overlapped requests" severity failure;
+                  assert unsigned(ref_address) >= x"02001400" and unsigned(ref_address) < x"02001700"
+                     report "reference SPU used unexpected sample address" severity failure;
+                  address := (to_integer(unsigned(ref_address))-16#02001000#+16#1000#)/4;
+                  pending := true; delay := LATENCY;
+               end if;
+            end if;
+         end if;
+      end process;
+      stream_check : process(clk1x)
+         alias ena is << signal .tb_nds_checkpoint_console.dut.sndb7_ena : std_logic >>;
+         alias adr is << signal .tb_nds_checkpoint_console.dut.sndb7_adr : std_logic_vector(31 downto 0) >>;
+         alias own is << signal .tb_nds_checkpoint_console.dut.snd_bus_own : std_logic >>;
+         alias req is << signal .tb_nds_checkpoint_console.dut.snd_bus_req : std_logic >>;
+         type samples_t is array(0 to 8191) of std_logic_vector(31 downto 0);
+         type counts_t is array(0 to 2) of natural;
+         variable samples : samples_t;
+         variable fetched : counts_t := (others => 0);
+         variable produced, consumed, channel : natural := 0;
+         variable previous : std_logic_vector(31 downto 0) := (others => '0');
+      begin
+         if rising_edge(clk1x) then
+            if reset_sound = '1' then
+               produced := 0; consumed := 0; fetched := (others => 0);
+               sound_samples <= 0; sound_varied <= 0; sound_fetches <= 0; sound_loops_complete <= false; previous := (others => '0');
+            else
+               assert not (own = '1' and dma7_active = '1') report "connected SPU/DMA double grant" severity failure;
+               if ref_valid = '1' then
+                  assert produced < samples'length report "reference sample log overflow" severity failure;
+                  samples(produced) := ref_left & ref_right; produced := produced+1;
+               end if;
+               if dut_valid = '1' then
+                  assert consumed < produced report "paused SPU ran ahead of reference" severity failure;
+                  assert (sound_left & sound_right) = samples(consumed)
+                     report "connected resumed audio differs from reference at sample " & integer'image(consumed) &
+                     " got=" & to_hstring(sound_left & sound_right) & " expected=" & to_hstring(samples(consumed)) severity failure;
+                  if (sound_left & sound_right) /= previous then sound_varied <= sound_varied+1; end if;
+                  previous := sound_left & sound_right; consumed := consumed+1; sound_samples <= consumed;
+               end if;
+               if ena = '1' then
+                  assert own = '1' report "unowned connected SPU read" severity failure;
+                  assert unsigned(adr) >= x"02001400" and unsigned(adr) < x"02001700"
+                     report "connected SPU read outside authored source" severity failure;
+                  channel := (to_integer(unsigned(adr))-16#02001400#)/256;
+                  assert to_integer(unsigned(adr(7 downto 0))) = (fetched(channel) mod 64)*4
+                     report "connected SPU fetch pointer skipped/repeated" severity failure;
+                  fetched(channel) := fetched(channel)+1; sound_fetches <= sound_fetches+1;
+                  sound_loops_complete <= fetched(0) > 64 and fetched(1) > 64 and fetched(2) > 64;
+               end if;
+               if checkpoint_pair_paused = '1' then
+                  assert dut_valid = '0' and own = '0' and req = '0' and ena = '0'
+                     report "captured console still has sound work" severity failure;
+               end if;
+            end if;
+         end if;
+      end process;
+   end generate;
    -- The host fixture acknowledges delivered request independently of its
    -- ability to pause. It consumes records normally until local producers
    -- stop and their queues drain. No software state is modeled or serialized.
@@ -383,10 +487,22 @@ begin
          if pending then
             if not low_returned then
                if delay > 0 then delay := delay-1;
-               elsif respond = '1' then
+               elsif respond = '1' and not (hold_sound_response = '1' and
+                  a >= 16#1400#/4 and a < 16#1700#/4 and rd = '1') then
                   if rd = '0' then
                      for b in 0 to 3 loop if mask(b) = '1' then memory(a)(b*8+7 downto b*8) := value(b*8+7 downto b*8); end if; end loop;
                      physical_writes <= physical_writes+1;
+                     if ACTIVE_DEVICES and a >= 16#3000#/4 and a < 16#3100#/4 then
+                        assert a-16#3000#/4 = dma9_writes mod 64 and
+                           unsigned(value) = 16#69000000#+dma9_writes mod 64 and mask = "1111"
+                           report "ARM9 DMA skipped/repeated/corrupted destination" severity failure;
+                        dma9_writes <= dma9_writes+1;
+                     elsif ACTIVE_DEVICES and a >= 16#3400#/4 and a < 16#3500#/4 then
+                        assert a-16#3400#/4 = dma7_writes mod 64 and
+                           unsigned(value) = 16#67000000#+dma7_writes mod 64 and mask = "1111"
+                           report "ARM7 DMA skipped/repeated/corrupted destination" severity failure;
+                        dma7_writes <= dma7_writes+1;
+                     end if;
                      if a = 16#2000#/4 then
                         assert unsigned(value) = count9+1 report "ARM9 counter skipped/repeated" severity failure;
                         count9 <= count9+1;
@@ -406,6 +522,7 @@ begin
             a := to_integer(unsigned(sdram_Adr(21 downto 2))); rd := sdram_rnw; value := sdram_Din; mask := sdram_be;
          end if;
          memory_pending <= pending;
+         sound_memory_pending <= pending and not low_returned and a >= 16#1400#/4 and a < 16#1700#/4 and rd = '1';
       end if;
    end process;
    vram_backing : process(clk1x)
@@ -452,7 +569,7 @@ begin
       procedure progress is
       begin
          c9 := count9; c7 := count7;
-         for i in 1 to 20000 loop step; exit when count9 >= c9+5 and count7 >= c7+5; end loop;
+         for i in 1 to 200000 loop step; exit when count9 >= c9+5 and count7 >= c7+5; end loop;
          assert count9 >= c9+5 and count7 >= c7+5 report "CPU progress failed PC9=" & to_hstring(dbg_pc9) & " PC7=" & to_hstring(dbg_pc7) severity failure;
       end;
       procedure release_owner is
@@ -469,7 +586,24 @@ begin
       report "BOOT_PASS time=" & time'image(now);
       progress;
       for attempt in 0 to 3 loop
-         step(attempt*13+1); checkpoint_request <= '1';
+         step(attempt*13+1);
+         if ACTIVE_DEVICES then
+            -- Target real owner phases instead of hoping a random request
+            -- overlaps traffic. These are observations, never forced grants.
+            for i in 1 to 20000 loop
+               step;
+               exit when (attempt = 0 and dma9_active = '1') or
+                  (attempt = 1 and dma7_active = '1') or
+                  (attempt = 2 and sound_inflight = '1') or
+                  (attempt = 3 and dma7_active = '1' and memory_pending);
+            end loop;
+            assert (attempt = 0 and dma9_active = '1') or
+               (attempt = 1 and dma7_active = '1') or
+               (attempt = 2 and sound_inflight = '1') or
+               (attempt = 3 and dma7_active = '1' and memory_pending)
+               report "fixture did not reach requested active owner phase" severity failure;
+         end if;
+         checkpoint_request <= '1';
          for i in 1 to 4500 loop step; exit when checkpoint_pair_paused = '1' or checkpoint_timed_out = '1'; end loop;
          assert checkpoint_pair_paused = '1' report "common acquisition failed local=" & std_logic'image(checkpoint_local_idle) &
             " graphics=" & std_logic'image(checkpoint_graphics_stopped) & " owners=" &
@@ -504,8 +638,8 @@ begin
                if pass = 0 then snapshot(slot) := checkpoint_read_data;
                else assert snapshot(slot) = checkpoint_read_data report "held CPU image changed" severity failure; end if;
                if address = 0 then
-                  if cpu = 0 then assert checkpoint_read_data = LOOP_PC_9 report "ARM9 captured wrong branch target" severity failure;
-                  else assert checkpoint_read_data = LOOP_PC_7 report "ARM7 captured wrong branch target" severity failure; end if;
+                  if cpu = 0 then assert checkpoint_read_data = LOOP_PC_9 or checkpoint_read_data = DMA_WAIT_PC_9 report "ARM9 captured wrong branch target" severity failure;
+                  else assert checkpoint_read_data = LOOP_PC_7 or checkpoint_read_data = DMA_WAIT_PC_7 report "ARM7 captured wrong branch target" severity failure; end if;
                elsif address = 1 then
                   if cpu = 0 then assert checkpoint_read_data = x"02002000" severity failure;
                   else assert checkpoint_read_data = x"02002004" severity failure; end if;
@@ -551,6 +685,29 @@ begin
       step(20050);
       assert checkpoint_lease_expired = '1' and checkpoint_pair_paused = '0' report "console hold outlived host lease" severity failure;
       release_owner; progress;
+      if ACTIVE_DEVICES then
+         hold_sound_response <= '1';
+         for i in 1 to 20000 loop step; exit when sound_memory_pending; end loop;
+         assert sound_memory_pending report "no accepted SPU memory request to withhold" severity failure;
+         checkpoint_request <= '1';
+         for i in 1 to 4500 loop step; exit when checkpoint_timed_out = '1'; end loop;
+         assert checkpoint_timed_out = '1' and checkpoint_pair_paused = '0' and checkpoint_sound_stopped = '0'
+            report "missing SPU response falsely acquired" severity failure;
+         release_owner; hold_sound_response <= '0'; progress;
+         step(650000); progress;
+         checkpoint_request <= '1';
+         for i in 1 to 4000 loop step; exit when checkpoint_pair_paused = '1'; end loop;
+         assert checkpoint_pair_paused = '1' report "final active-device drain failed" severity failure;
+         assert dma9_writes mod 64 = 0 and dma7_writes mod 64 = 0
+            report "common hold left a partial immediate DMA transfer" severity failure;
+         assert sound_samples >= 600 and sound_varied >= 100 and sound_loops_complete
+            report "connected audio lacked active loop/refill coverage" severity failure;
+         assert dma9_writes >= 10*64 and dma7_writes >= 10*64
+            report "connected DMA lacked repeated transfer coverage" severity failure;
+         report "CHECKPOINT_CONSOLE_DEVICES_PASS samples=" & integer'image(sound_samples) &
+            " varied=" & integer'image(sound_varied) & " fetches=" & integer'image(sound_fetches) &
+            " DMA9_words=" & integer'image(dma9_writes) & " DMA7_words=" & integer'image(dma7_writes);
+      end if;
       report "CHECKPOINT_CONSOLE_PASS latency=" & integer'image(LATENCY) & " ARM9_half_ns=" & integer'image(ARM9_HALF_NS) &
          " counters=" & integer'image(count9) & "," & integer'image(count7);
       std.env.stop; wait;

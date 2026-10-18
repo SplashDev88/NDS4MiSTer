@@ -33,6 +33,12 @@ status. An optional common acquisition controller combines local observations
 with a required external-owner handshake and takes the final RTC sample after
 those owners settle. The real renderer/storage ownership path is still missing; these partial signals do not authorize a whole-machine checkpoint.
 
+The connected console test now adds active DMA on both CPUs and three audio
+formats, comparing the resumed audio sequence to an independent uninterrupted
+SPU. The first non-CPU restore component also preserves interrupt enable and
+pending state across a fresh simulator process. It remains unconnected to the
+console control plane; whole-machine persistence still needs the other owners.
+
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
 `false`; no shipping wrapper or ARM9 adapter enables it. The released FPGA,
@@ -419,8 +425,9 @@ Neither observation stops sources, blocks bus accesses or authorizes capture.
 
 The outputs describe a fixed point under the **current** inputs. All remaining
 event sources and bus masters must be stopped before treating that fixed point
-as a stable checkpoint boundary. There is no new IRQ/IPC serializer or restore
-path, and pending guest events must be part of the eventual image.
+as a stable checkpoint boundary. The IRQ component now has the optional fixed-point
+image described below; IPC queue/state serialization and restoration remain
+missing. Pending guest events must be part of the eventual complete image.
 
 ### Memory-owner drain observations
 
@@ -491,6 +498,54 @@ is combinational, halt is in word 46, and unhalt is constrained to zero at captu
 Execution state machines must be idle at the halted boundary; this format is
 not a general mid-instruction snapshot. The format remains an experimental
 component ABI, not a supported user save-state format.
+
+### Interrupt component capture and restore
+
+`nds_irq(EXPERIMENTAL_CHECKPOINT=true)` adds a default-off, **component-only**
+read/restore port. Neither console IRQ instance enables or connects it yet.
+The provisional image contains three 32-bit words: address 0 is IME (bit 0
+only), address 1 is IE and address 2 is IF. Capture is valid only at the existing
+IRQ fixed point with normal restore inactive; the caller must keep every IRQ
+source and bus master held across all reads. Invalid addresses return no data.
+
+Assert `checkpoint_restore` only with the device and CPUs held in reset. Write
+all three words using `checkpoint_address`, `checkpoint_write_data` and a
+clocked `checkpoint_write`. Any order is permitted. This reuses the live IE/IME
+registers and IF accumulator; it does not allocate a second register image.
+The internal register bus suppresses its ordinary reset while loading so gaps
+between writes do not erase earlier words. IF loads directly, bypassing its
+normal guest write-one-to-clear behavior.
+
+`checkpoint_restore_ready` requires all three distinct words, no error, no
+active write and settled IRQ/unhalt outputs. Those outputs are reconstructed
+from IME/IE/IF **while reset remains held**, so the first resumed CPU edge sees
+the pending interrupt from the captured fixed point. They are not separate
+image words because capture excludes transient output latency. Readback is
+available when restore is ready. Zero-valued words still require actual writes.
+
+An unsupported word, nonzero reserved IME bits or a restore attempt without
+reset raises `checkpoint_restore_error`. Invalid attempts stay invalid until
+`checkpoint_restore` is low for a clock edge, and a new attempt requires all
+three words again. Live checkpoint writes do not modify IRQ state. The caller
+must keep the machine in reset after a rejected or incomplete restore and either
+start a fresh complete load or clean boot; this local port cannot enforce a
+whole-machine reset policy. Release reset and restore together only after the
+**entire** machine image, identity and all owners are validated.
+
+`tools/test_checkpoint_irq_restore.sh` records state and a 513-step continuation
+from normal execution, then loads that state in fresh simulator processes.
+Thirty-six restores cover all six write orders, enabled/masked interrupts,
+zero IE/IF, held level sources, byte writes, simultaneous acknowledgements and
+new sources, and clock-enable stalls. Missing words, unsupported addresses,
+reserved bits and writes to a live device are rejected. Five deliberate faults
+lose IF, accept incomplete coverage, erase earlier IE/IME writes, omit pending
+IRQ reconstruction or allow live writes; each is detected. IRQ/IPC comparison
+against the pinned pre-experiment RTL also passes with IRQ capture disabled
+and enabled but unrequested.
+
+The test files are private simulator fixtures, not a supported on-device state
+file format. This does not provide a whole-image parser/checksum, host command,
+console restore wiring or a gameplay beta.
 
 ## Persistence proof
 
@@ -799,6 +854,12 @@ ARM9 verifies main RAM, LCDC VRAM, palette and OAM; ARM7 verifies main RAM,
 private WRAM and shared WRAM. Both start a timer and exercise keys and IPCSYNC;
 ARM7 also reads the RTC port. Counter stores must increase exactly once and a
 bad read enters a distinct failure loop, which fails progress/PC checks.
+The active-device variant starts repeating PCM8, PCM16 and ADPCM voices and
+runs 64-word immediate DMA copies on both CPUs. Authored source bytes are
+loaded by the actual HLE loader. Every physical DMA destination word is checked
+for address order, data and byte lanes; the guest also verifies both buffer ends.
+A pending DMA may leave a CPU paused in its completion-poll branch, which is a
+supported CPU checkpoint boundary.
 
 External SDRAM/VRAM/card backing and the host event sink are explicit behavioral
 fixtures. The external delivery receipt is independent of host completion.
@@ -807,18 +868,31 @@ its hold. The math idle input is justified only by asserting that these authored
 programs never request DIV/SQRT; no SystemVerilog math engine is bound here.
 Firmware operations and renderer VRAM reads are also asserted absent.
 
-The matrix varies 1.5x/2x ARM9 clocks and two memory latencies. Each run makes
+The runner freezes its complete source closure and prints an input-manifest
+SHA-256 before starting. `all` runs one baseline smoke plus four active-device
+cases; `baseline` and `devices` can be selected separately. The matrix varies
+1.5x/2x ARM9 clocks and two memory latencies. Each run makes
 four common captures, reads all 80 ARM9 and 60 ARM7 words twice, compares the
 stable images, checks PC/R0/R1 against committed memory and requires resumed
 progress. It also holds the graphics sink, lets it drain, times out an absent
 host and a withheld real SDRAM reply, and expires an acquired host lease.
 Cancellation must retain the accepted memory transaction and resume execution.
 
+The active-device cases explicitly request holds during ARM9 DMA, ARM7 DMA,
+SPU ownership and an accepted DMA memory operation. A separate withheld SPU
+response must time out without fabricating completion. An uninterrupted SPU
+reference receives the same observed guest configuration and independent
+source-memory responses, but never sees the pause request or the console bus
+grants. The resumed stereo samples must match in playback order. Every voice
+must fetch past its first complete loop, and hundreds of nonconstant samples
+must compare. The final common hold must leave both immediate DMA transfers
+complete. No internal owner state or handshake is forced to obtain a pass.
+
 This is a **connected local acquisition/read/release test**, not persistent
-restore or a real ARM renderer test. Audio is instantiated but no voice is
-started; DMA is idle; card traffic is the loader's authored ROM reads. Active
-DMA/SPU/card/SPI/math, native boot, mixed-language backing/cache ownership,
-host exclusion and serialization still require integrated qualification.
+restore or a real ARM renderer test. Card traffic is still the loader's authored
+ROM reads. Active game-card/SPI/math work, other DMA/audio modes, native boot,
+mixed-language backing/cache ownership, host exclusion and complete memory/
+device serialization still require integrated qualification.
 
 Graphics source checks:
 
@@ -914,7 +988,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; backing caches, remaining owners, coherent freeze and serializers missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ has a component restore; other serializers and real external ownership missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -928,14 +1002,15 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 ## Next acceptance gates
 
 1. Implement the real external owner behind the optional common barrier and
-   extend enabled-console coverage beyond the authored CPU/IO fixture to active
-   DMA/audio/card/SPI/math and actual mixed-language backing. Exclude host
+   extend enabled-console coverage beyond the authored CPU/IO/DMA/audio fixture
+   to active game-card/SPI/math and actual mixed-language backing. Exclude host
    loader/debug/seed changes and
    use real backing-cache persistence acknowledgements. Ensure no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Add memory/cache and device coverage, then a renderer-preserving checkpoint
+2. Extend the first IRQ component image to timers, IPC and remaining devices,
+   then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
 3. Require exact ROM plus FPGA/host/helper hashes and complete component coverage
