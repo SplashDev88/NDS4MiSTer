@@ -1,14 +1,17 @@
 # Experimental NAND cartridge saves
 
 This branch adds NAND saves to the ARM-assisted standalone product. It is not
-release-qualified. No NAND gameplay save/reload result is available yet.
+release-qualified. The NAND1 prototype completed WarioWare first-run setup,
+played Mona microgames, saved the player profile and restored it after a full
+core exit/relaunch. The corrected rc.9-settings NAND3 build still needs final
+hardware qualification.
 The rc.9 baseline reached the WarioWare intro/title sequence on the RetroTINK
 rig, with a 512-byte erased fallback sidecar; this is not a save-success result.
 
 | Cartridge | Game codes | Save size | Status |
 | --- | --- | --- | --- |
-| WarioWare D.I.Y. / Made in Ore | UORE, UORP, UORJ | 16 MiB | Protocol tests; UORE available for board testing |
-| Jam with the Band | UXBP | 8 MiB | Protocol tests; game not available on test rig |
+| WarioWare D.I.Y. / Made in Ore | UORE, UORP, UORJ | 16 MiB | UORE prototype setup/gameplay/profile reload passed; final build qualification pending |
+| Jam with the Band | UXBP | 8 MiB | 8 MiB authored hardware persistence test passes; retail game unavailable |
 | Daigasso! Band Brothers DX | AXBJ | 8 MiB | Recognized, but a missing save-region header is rejected; layout requires separate verification |
 
 Face Training uses a DSi-specific variant and is outside this prototype.
@@ -53,12 +56,20 @@ initialization leaves the previous destination intact. Unique temporary names
 allow a later retry after a power loss leaves an unfinished temporary file. No imported save is
 silently resized. The prior save descriptor is retained if mounting fails.
 
+If an earlier unsupported core left a small fallback sidecar, keep a backup and
+move that file aside before starting a fresh NAND save. Do not truncate, pad or
+overwrite a save containing progress. Imported saves must be raw files of the
+exact capacity; conversion of other emulator container formats is not provided.
+
 Ordinary saves retain their existing 1 MiB host bound. NAND saves allow only
 their own sector count, and the firmware save slot retains its independent
 bound. Renderer code and CPU clocks are unchanged.
 
 ## Repeatable checks
 
+- [`tools/nand_diagnostic/build.sh`](../tools/nand_diagnostic/README.md): build
+  the authored 8/16 MiB cartridge diagnostics used on the board. Both rebuilt
+  ROMs exactly reproduce the tested bytes. Use unique basenames/test saves.
 - `tools/test_nand_card.sh`: actual card registers, both capacities, CPU CE
   periods 1/5, high-bank page writes, streamed reads, cache stalls, short writes,
   protected ID region, write enable, discard/reset, both CPU owners.
