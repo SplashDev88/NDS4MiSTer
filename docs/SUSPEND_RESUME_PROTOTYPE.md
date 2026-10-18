@@ -2001,6 +2001,11 @@ Both maps passed. The probe has 224 accepted virtual pins and retains the normal
 145 physical shell pins. The baseline was reused only after checking identical
 hardware inputs and flags. All frozen input hashes remained unchanged.
 
+The fitter then **failed for capacity**: 4,816 LABs were required, but the
+5CSEBA6U23I7 has 4,191. It reported 47,448 / 41,910 ALMs (113%). This is a
+resource failure after successful synthesis, not a pin-assignment failure.
+There is no routed or deployable checkpoint image from this probe.
+
 The largest added **local ALUT** counts are sound (+3,902), ARM9 (+2,118), ARM7
 (+1,696), the island/measurement interface (+1,316), and ARM9 DMA (+752).
 These are hierarchy-local logic counts, not independently additive ALM costs.
@@ -2013,6 +2018,117 @@ Report SHA-256 identities:
 
 - Baseline map: `070073ad7ee0a375a7e4cf185247293b2e5d3eb614dbf45559acc7ee28a583cd`.
 - Connected map: `a1ce8c99cdc2b6721514fc3b14fe2f6b4dc65b2d1229b3cb7be3c5932cfc1741`.
+
+### Sharing audio checkpoint access
+
+The next resource experiment reuses the mixer's channel read port for sample,
+volume and pan state, and the fetcher's read port for format, address and loop
+state. Checkpoint addresses can select these ports only after playback has
+acknowledged its drain or while reset-held restore is active. A stop request
+alone does not take the fetch port away from an outstanding request. Releasing
+the hold returns both selectors to their normal owners without an extra cycle.
+The 270-word image and its ordered restore, validation and coverage checks
+remain unchanged.
+
+Ordinary reset is also factored separately from restore so Quartus can use more
+of the registers' synchronous-clear inputs. Bus ownership and pending RAM write
+strobes still clear on every reset-held edge, including restore. The live-write
+negative control now removes the single reset qualification of `restore_active`;
+it still fails by corrupting the restored image when reset is absent.
+
+Matched isolated SPU synthesis, with identical settings and observable ports:
+
+| Implementation | Estimated ALMs | Combinational ALUTs | Registers |
+| --- | ---: | ---: | ---: |
+| Previous shared-write/buffer implementation | 9,475 | 13,637 | 5,531 |
+| Separate ordinary reset | 9,254 | 13,532 | 5,531 |
+| Shared mixer/fetch reads | 8,843 | 12,984 | 5,531 |
+| Both changes | 8,746 | 13,009 | 5,531 |
+
+All four retain 2,704 block-memory bits and seven DSP blocks. The combined
+candidate saves 729 estimated ALMs in this isolated probe. Counts from isolated
+blocks do not establish the savings in the full design or physical timing.
+
+Ten pinned-source image and continuation comparisons, 20 fresh-process restores
+with 65,536-cycle continuations, and all 11 injected-fault controls pass. Four
+ordinary-playback comparisons (checkpoint option disabled/enabled, with both
+ADPCM table modes) pass against the earlier unmodified playback implementation,
+including both observer-fault controls. The integrated DMA/audio fixture also
+passes: 733 stereo samples, 729 varied samples, 644 fetches, 25,664 ARM9 DMA words
+and 26,368 ARM7 DMA words.
+
+The subsequent matched full-shell map reduces the connected estimate from
+**46,319 to 44,845 ALMs** (1,474 fewer), and ALUTs from 67,227 to 66,072 (1,155
+fewer). Registers, block memory and DSP counts are unchanged. The newly mapped
+checkpoint-disabled baseline exactly reproduces all previous counts, including
+34,290 estimated ALMs and 52,271 ALUTs. The connected probe retains 145 physical
+pins and 224 accepted virtual pins, with unchanged frozen source inputs.
+
+The new connected report SHA-256 is
+`62045b08bafc289bb20ce8c3effa62d661250938376f2d9ff70f69f586cd909e`;
+the matching baseline is
+`b54812d5714bb948cb1fedb50235fcad4f1e66d3411d8045879e96f350aea77c`.
+This remains 2,935 estimated ALMs above the device's 41,910, before remaining
+state coverage. No second fitter run or hardware deployment is claimed. The
+next priority is the CPU-assisted architecture experiment below.
+
+### CPU-assisted alternative: SNES implementation review
+
+Research requested on October 18, 2026, after FPGAzumSpass suggested letting the
+emulated CPUs move state. The inspected upstream SNES commit is
+`23026830ff8108fda0f32c0616296845f586b8ce`; this is source research, not a measured
+NDS implementation or a claim of zero FPGA overhead.
+
+- [SNES control logic](https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/rtl/savestates.sv)
+  intercepts an NMI vector read, with an IRQ fallback, and temporarily maps a
+  save/load program. Its controller streams bytes through a DDR interface and
+  releases the override when the routine returns. Current CX4 support also
+  waits for that coprocessor to become idle before entering capture.
+- [The save/load program](https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/src/savestates.asm)
+  saves CPU registers on the stack and uses the existing DMA engine for memory
+  transfers. It preserves registers that its own copying work changes, then
+  restores the CPU context and returns from the interrupt.
+- This is a hybrid: [shadow-register access](https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/rtl/savestates_regs.sv)
+  and [DSP state access](https://github.com/MiSTer-devel/SNES_MiSTer/blob/23026830ff8108fda0f32c0616296845f586b8ce/rtl/DSP.vhd)
+  remain hardware additions. CPU software does not make inaccessible device
+  state automatically readable or writable.
+
+For NDS, the relevant processors are the emulated ARM7 and ARM9 inside the
+FPGA. The MiSTer's Linux ARM can coordinate and store the capsule, but cannot
+read their private registers merely by running a host program. Existing direct
+checkpoint logic adds 2,118 local ALUTs at ARM9 and 1,696 at ARM7 in the original
+connected probe. Those figures include more than just register access; they
+are targets to investigate, not guaranteed recoverable savings or ALM counts.
+
+Prioritize a bounded ARM7 maintenance-routine experiment before extending the
+current wide serializer approach. Start from an already drained boundary, run
+only private maintenance code, and use normal register transfer instructions
+and a small isolated scratch/stream window to save and reload context. Measure
+capture **and restore**, with the old wide architectural access paths removed
+in the experimental variant so synthesis cannot hide their cost. Retain the
+current implementation as the comparison until this path is proven.
+
+The entry/return mechanism must preserve its own scratch registers, banked
+registers, CPSR/SPSRs, ARM/Thumb mode, return PC and pre-existing interrupt state.
+It cannot rely on a game leaving IRQ enabled or waking from HALT, nor silently
+overwrite an exception bank. A bounded refusal is safer than an unproven entry.
+No monitor stack or buffer may overwrite unsaved game memory. While the monitor
+runs, the guest remains paused: devices, IPC peers, renderer publication and
+external queues must still share the captured epoch.
+
+Then test ARM9 with a maintenance fetch/data path that cannot pollute or be
+remapped by the guest's cache/TCM settings. Dirty data, cached instructions and
+pending pipeline work still require an explicit preservation policy; invalidating
+caches is not automatically equivalent. Do not run guest DMA for copying until
+its original state and side effects have been protected. Peripheral internals
+and the ARM renderer still need narrow access and coherent ownership, even if
+ordinary memory and programming-register transfers move to CPU code.
+
+Acceptance remains fresh-process guest continuation, all CPU modes and HALT/
+interrupt cases, unchanged ordinary execution, and a lower connected full-shell
+resource count with the monitor and transport included. No SNES-derived NDS
+monitor has been implemented or measured yet. This is now the next architectural
+feasibility experiment; further small mux changes should not displace it.
 
 ## Remaining state coverage
 
@@ -2036,7 +2152,9 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 1. Establish a viable full-shell resource budget with checkpoint capture and
    restore observable before adding the remaining memory serializers. Use the
-   connected probe and early fitter result to target the largest measured costs.
+   connected probe and capacity failure to target the largest measured costs.
+   First evaluate the CPU-assisted ARM7 experiment described above, then ARM9;
+   compare capture and restore against the current 44,845-ALM connected probe.
    Preserve component continuation proofs when changing their implementation.
 2. Implement the real external owner behind the optional common barrier and
    extend enabled-console coverage beyond the authored CPU/IO/DMA/audio fixture

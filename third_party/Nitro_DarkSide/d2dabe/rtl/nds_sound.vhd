@@ -156,6 +156,11 @@ architecture arch of nds_sound is
    end record;
    type t_chans is array (0 to 15) of t_chan;
    signal chan : t_chans;
+   -- Reuse the existing mixer/fetch read ports after acquisition is complete.
+   -- Neither engine advances while these selectors address checkpoint state.
+   signal checkpoint_channel_access : std_logic;
+   signal mix_read_channel, fetch_read_channel : natural range 0 to 15;
+   signal mix_read_state, fetch_read_state : t_chan;
 
    -- fptr/frem moved off the per-channel flop array into two small
    -- dual-port BRAMs - by far the biggest ALM item in this file (16-deep
@@ -590,6 +595,12 @@ begin
    -- synthesis translate_on
 
    snd_enable <= soundcnt(15);
+   checkpoint_channel_access <= '1' when EXPERIMENTAL_CHECKPOINT and
+      (checkpoint_stopped = '1' or restore_active = '1') else '0';
+   mix_read_channel <= to_integer(checkpoint_address(7 downto 4)) when checkpoint_channel_access = '1' else to_integer(mixcnt(3 downto 0));
+   fetch_read_channel <= to_integer(checkpoint_address(7 downto 4)) when checkpoint_channel_access = '1' else fch;
+   mix_read_state <= chan(mix_read_channel);
+   fetch_read_state <= chan(fetch_read_channel);
    stop_playback <= checkpoint_stop when EXPERIMENTAL_CHECKPOINT else '0';
    process(clk) begin
       if rising_edge(clk) then
@@ -644,14 +655,14 @@ begin
          case a mod 16 is
             when 0 =>
                mask := x"FF7F837F";
-               value := chan(c).busy & chan(c).format & chan(c).repeatm & chan(c).duty &
-                        '0' & chan(c).pan & chan(c).hold & "00000" & chan(c).voldiv & '0' & chan(c).volmul;
-            when 1 => mask := x"07FFFFFF"; value(26 downto 0) := chan(c).sad;
-            when 2 => mask := x"FFFFFFFF"; value := chan(c).pnt & chan(c).tmr;
-            when 3 => mask := x"003FFFFF"; value(21 downto 0) := chan(c).len;
+               value := mix_read_state.busy & fetch_read_state.format & fetch_read_state.repeatm & chan(c).duty &
+                        '0' & mix_read_state.pan & chan(c).hold & "00000" & mix_read_state.voldiv & '0' & mix_read_state.volmul;
+            when 1 => mask := x"07FFFFFF"; value(26 downto 0) := fetch_read_state.sad;
+            when 2 => mask := x"FFFFFFFF"; value := fetch_read_state.pnt & chan(c).tmr;
+            when 3 => mask := x"003FFFFF"; value(21 downto 0) := fetch_read_state.len;
             when 4 =>
                mask := x"0FFFFFFF";
-               value(27 downto 0) := std_logic_vector(chan(c).psgpos) & chan(c).adhdr & chan(c).nxtv & chan(c).curv &
+               value(27 downto 0) := std_logic_vector(chan(c).psgpos) & chan(c).adhdr & fetch_read_state.nxtv & chan(c).curv &
                   std_logic_vector(chan(c).startdel) & std_logic_vector(chan(c).subpos) & std_logic_vector(chan(c).timer);
             when 5 => mask := x"00FFFFFF"; value(23 downto 0) := std_logic_vector(chan(c).remwords);
             when 6 => mask := x"FFFFFFFF"; value := chan(c).curw;
@@ -660,7 +671,7 @@ begin
                mask := x"007FFFFF"; shape := unsigned(checkpoint_write_data(22 downto 16)) <= 88;
                if a mod 16 = 8 then value(22 downto 0) := std_logic_vector(to_unsigned(chan(c).adidx,7)) & std_logic_vector(chan(c).adval);
                else value(22 downto 0) := std_logic_vector(to_unsigned(chan(c).adidx_l,7)) & std_logic_vector(chan(c).adval_l); end if;
-            when 10 => mask := x"FFFFFFFF"; value := std_logic_vector(chan(c).cursmp) & std_logic_vector(chan(c).noise);
+            when 10 => mask := x"FFFFFFFF"; value := std_logic_vector(mix_read_state.cursmp) & std_logic_vector(chan(c).noise);
             when 11 => mask := x"00007FFF"; value(14 downto 0) := std_logic_vector(to_unsigned(adstep_q(c),15));
             when 12 | 13 =>
                ram_ready := checkpoint_ram_seen = '1' and checkpoint_ram_channel_d = c and checkpoint_ram_access = '1';
@@ -779,8 +790,54 @@ begin
       if rising_edge(clk) then
          restore_curw_pending <= '0';
 
-         if (reset = '1') then
-            if restore_active = '1' then
+         if reset = '1' and restore_active = '0' then
+            soundcnt  <= (others => '0');
+            soundbias <= SOUNDBIAS_DIRECT_BOOT_VALUE;
+            -- zero everything: the read mux ORs into the shared IO bus, a
+            -- single 'U' field would poison every ARM7 IO read
+            for i in 0 to 15 loop
+               chan(i).busy     <= '0';
+               chan(i).volmul   <= (others => '0');
+               chan(i).voldiv   <= (others => '0');
+               chan(i).hold     <= '0';
+               chan(i).pan      <= (others => '0');
+               chan(i).duty     <= (others => '0');
+               chan(i).repeatm  <= (others => '0');
+               chan(i).format   <= (others => '0');
+               chan(i).sad      <= (others => '0');
+               chan(i).tmr      <= (others => '0');
+               chan(i).pnt      <= (others => '0');
+               chan(i).len      <= (others => '0');
+               chan(i).timer    <= (others => '0');
+               chan(i).remwords <= (others => '0');
+               chan(i).subpos   <= (others => '0');
+               chan(i).startdel <= (others => '0');
+               chan(i).curw     <= (others => '0');
+               chan(i).nxtw     <= (others => '0');
+               chan(i).curv     <= '0';
+               chan(i).nxtv     <= '0';
+               -- fptr/frem live in ram_fptr/ram_frem; no reset-clear needed
+               -- (busy='0' above gates every read of them until the next
+               -- channel start rewrites both from scratch - see the RAM
+               -- declaration comment).
+               chan(i).adhdr    <= '0';
+               chan(i).adval    <= (others => '0');
+               chan(i).adidx    <= 0;
+               chan(i).adval_l  <= (others => '0');
+               chan(i).adidx_l  <= 0;
+               chan(i).noise    <= (others => '0');
+               chan(i).psgpos   <= (others => '0');
+               chan(i).cursmp   <= (others => '0');
+            end loop;
+            for i in 0 to 1 loop
+               cap(i).cnt <= (others => '0');
+               cap(i).dad <= (others => '0');
+               cap(i).len <= (others => '0');
+            end loop;
+            tick2       <= '0';
+            fstate      <= FSCAN_ADDR;
+            fch         <= 0;
+         elsif restore_active = '1' then
                -- Restore the current word through the existing next-to-current
                -- path. The next word is temporary scratch for one held edge;
                -- its actual image follows at the next ordered address.
@@ -832,62 +889,6 @@ begin
                      end case;
                   end if;
                end if;
-            else
-            soundcnt  <= (others => '0');
-            soundbias <= SOUNDBIAS_DIRECT_BOOT_VALUE;
-            -- zero everything: the read mux ORs into the shared IO bus, a
-            -- single 'U' field would poison every ARM7 IO read
-            for i in 0 to 15 loop
-               chan(i).busy     <= '0';
-               chan(i).volmul   <= (others => '0');
-               chan(i).voldiv   <= (others => '0');
-               chan(i).hold     <= '0';
-               chan(i).pan      <= (others => '0');
-               chan(i).duty     <= (others => '0');
-               chan(i).repeatm  <= (others => '0');
-               chan(i).format   <= (others => '0');
-               chan(i).sad      <= (others => '0');
-               chan(i).tmr      <= (others => '0');
-               chan(i).pnt      <= (others => '0');
-               chan(i).len      <= (others => '0');
-               chan(i).timer    <= (others => '0');
-               chan(i).remwords <= (others => '0');
-               chan(i).subpos   <= (others => '0');
-               chan(i).startdel <= (others => '0');
-               chan(i).curw     <= (others => '0');
-               chan(i).nxtw     <= (others => '0');
-               chan(i).curv     <= '0';
-               chan(i).nxtv     <= '0';
-               -- fptr/frem live in ram_fptr/ram_frem; no reset-clear needed
-               -- (busy='0' above gates every read of them until the next
-               -- channel start rewrites both from scratch - see the RAM
-               -- declaration comment).
-               chan(i).adhdr    <= '0';
-               chan(i).adval    <= (others => '0');
-               chan(i).adidx    <= 0;
-               chan(i).adval_l  <= (others => '0');
-               chan(i).adidx_l  <= 0;
-               chan(i).noise    <= (others => '0');
-               chan(i).psgpos   <= (others => '0');
-               chan(i).cursmp   <= (others => '0');
-            end loop;
-            for i in 0 to 1 loop
-               cap(i).cnt <= (others => '0');
-               cap(i).dad <= (others => '0');
-               cap(i).len <= (others => '0');
-            end loop;
-            tick2       <= '0';
-            fstate      <= FSCAN_ADDR;
-            fch         <= 0;
-            end if; -- ordinary reset / direct restore
-            snd_bus_req <= '0';
-            snd_bus_own <= '0';
-            mb_ena      <= '0';
-            fptr_a_we   <= '0';
-            frem_a_we   <= '0';
-            fptr_b_we   <= '0';
-            frem_b_we   <= '0';
-
          elsif (ce = '1') then
 
             if stop_playback = '0' then tick2 <= not tick2; end if;
@@ -1149,8 +1150,8 @@ begin
                   -- words in a dead buffer are harmless)
                   if stop_playback = '1' then
                      null; -- retain this candidate and its registered RAM read
-                  elsif (chan(fch).busy = '1' and chan(fch).format /= "11" and
-                      unsigned(frem_b_dout(23 downto 0)) /= 0 and chan(fch).nxtv = '0') then
+                  elsif (fetch_read_state.busy = '1' and fetch_read_state.format /= "11" and
+                      unsigned(frem_b_dout(23 downto 0)) /= 0 and fetch_read_state.nxtv = '0') then
                      snd_bus_req <= '1';
                      fstate      <= FGRANT;
                   elsif (fch = 15) then
@@ -1183,12 +1184,12 @@ begin
                      chan(fch).nxtw <= sample_write_data;
                      chan(fch).nxtv <= '1';
                      if (unsigned(frem_b_dout(23 downto 0)) = 1) then
-                        if (chan(fch).repeatm = "01") then
+                        if (fetch_read_state.repeatm = "01") then
                            -- wrap the fetch stream to the loop point
-                           fptr_b_din <= resize(unsigned(chan(fch).sad(26 downto 2)), 25) +
-                                         resize(unsigned(chan(fch).pnt), 25);
+                           fptr_b_din <= resize(unsigned(fetch_read_state.sad(26 downto 2)), 25) +
+                                         resize(unsigned(fetch_read_state.pnt), 25);
                            fptr_b_we  <= '1';
-                           frem_b_din <= resize(unsigned(chan(fch).len), 24);
+                           frem_b_din <= resize(unsigned(fetch_read_state.len), 24);
                            frem_b_we  <= '1';
                         else
                            -- Packed fetch state writes complete words. Retain
@@ -1222,6 +1223,16 @@ begin
             end case;
 
          end if;
+         if reset = '1' then
+            snd_bus_req <= '0';
+            snd_bus_own <= '0';
+            mb_ena      <= '0';
+            fptr_a_we   <= '0';
+            frem_a_we   <= '0';
+            fptr_b_we   <= '0';
+            frem_b_we   <= '0';
+
+         end if;
 
       end if;
    end process;
@@ -1240,8 +1251,16 @@ begin
    begin
       if rising_edge(clk) then
          sample_valid <= '0';
-         if (reset = '1') then
-            if restore_active = '1' then
+         if reset = '1' and restore_active = '0' then
+            mixcnt   <= (others => '0');
+            accl     <= (others => '0');
+            accr     <= (others => '0');
+            master_gain_latch <= (others => '0');
+            master_bias_latch <= (others => '0');
+            master_left_latch <= (others => '0');
+            sample_l <= (others => '0');
+            sample_r <= (others => '0');
+         elsif restore_active = '1' then
                if restore_write_valid = '1' then
                   case to_integer(checkpoint_address) is
                      when 263 => mixcnt <= unsigned(checkpoint_write_data(9 downto 0));
@@ -1253,16 +1272,6 @@ begin
                      when others => null;
                   end case;
                end if;
-            else
-            mixcnt   <= (others => '0');
-            accl     <= (others => '0');
-            accr     <= (others => '0');
-            master_gain_latch <= (others => '0');
-            master_bias_latch <= (others => '0');
-            master_left_latch <= (others => '0');
-            sample_l <= (others => '0');
-            sample_r <= (others => '0');
-            end if;
          elsif (ce = '1' and stop_playback = '0') then
             mixcnt <= mixcnt + 1;
 
@@ -1270,13 +1279,13 @@ begin
                v_ch := to_integer(mixcnt(3 downto 0));
                -- SOUNDCNT bits 12/13 pull ch1/ch3 out of the mix (capture
                -- plumbing); capture itself is not modeled
-               if (soundcnt(15) = '1' and chan(v_ch).busy = '1' and not
+               if (soundcnt(15) = '1' and mix_read_state.busy = '1' and not
                    ((v_ch = 1 and soundcnt(12) = '1') or
                     (v_ch = 3 and soundcnt(13) = '1'))) then
-                  v_a   := shift_left(resize(chan(v_ch).cursmp, 21),
-                                      volshift(chan(v_ch).voldiv));
-                  v_b   := resize(v_a * to_signed(vol128(chan(v_ch).volmul), 9), 30);
-                  v_pan := vol128(chan(v_ch).pan);
+                  v_a   := shift_left(resize(mix_read_state.cursmp, 21),
+                                      volshift(mix_read_state.voldiv));
+                  v_b   := resize(v_a * to_signed(vol128(mix_read_state.volmul), 9), 30);
+                  v_pan := vol128(mix_read_state.pan);
                   v_p   := v_b * to_signed(128 - v_pan, 9);
                   accl  <= accl + resize(shift_right(v_p, 10), 32);
                   v_p   := v_b * to_signed(v_pan, 9);

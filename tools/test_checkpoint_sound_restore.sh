@@ -51,13 +51,12 @@ changes={
  'invalid-index':[("shape and (checkpoint_write_data and not mask)","(checkpoint_write_data and not mask)"),
   ("to_integer(unsigned(checkpoint_write_data(22 downto 16)))","to_integer(unsigned(checkpoint_write_data(22 downto 16))) mod 89")],
  'stale-ram':[("ram_ready := checkpoint_ram_seen = '1' and checkpoint_ram_channel_d = c and checkpoint_ram_access = '1';","ram_ready := true;")],
- 'live-write':[("EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0'","EXPERIMENTAL_CHECKPOINT and checkpoint_restore = '1' else '0'"),
-  ("if (reset = '1') then\n            if restore_active", "if (reset = '1' or restore_active = '1') then\n            if restore_active")],
+ 'live-write':[("EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0'","EXPERIMENTAL_CHECKPOINT and checkpoint_restore = '1' else '0'")],
 }
 for name,replacements in changes.items():
  s=source;d=Path('negative-'+name);d.mkdir()
  for old,new in replacements:
-  expected=2 if (name=='live-write' and old.startswith('if (reset')) or (name=='invalid-index' and old.startswith('to_integer')) else 1
+  expected=2 if name=='invalid-index' and old.startswith('to_integer') else 1
   assert s.count(old)==expected,(name,s.count(old));s=s.replace(old,new)
  (d/'nds_sound.vhd').write_text(s)
 PYCODE
