@@ -10,7 +10,8 @@ use work.pProc_bus_gba.all;
 entity tb_nds_checkpoint_coordinator is
   generic (SCENARIO : string := "normal"; READ_DELAY : positive := 1;
            STEP_PERIOD : positive := 1; REQUEST_PHASE : natural := 0;
-           HALT_PIPELINE : boolean := false; USE_CAPTURE : boolean := false);
+           HALT_PIPELINE : boolean := false; USE_CAPTURE : boolean := false;
+           OWNER_MODE : boolean := false; RTC_GUARD : boolean := false);
 end;
 
 architecture sim of tb_nds_checkpoint_coordinator is
@@ -43,6 +44,10 @@ architecture sim of tb_nds_checkpoint_coordinator is
   signal clock7_run : boolean := true;
   signal force_ack, force_seen : std_logic := '0';
   signal ack_input, seen_input : std_logic_vector(1 downto 0);
+  signal owners_paused, owners_seen : std_logic_vector(1 downto 0) := "00";
+  signal owner_block, owner_no_delivery, owner_force_release, owner_loss, owner_seen_loss : std_logic := '0';
+  signal owner_pipe : std_logic_vector(4 downto 0) := "00000";
+  signal cpus_observed : std_logic;
 begin
   control_clk <= not control_clk after 5 ns;
   clk(0) <= not clk(0) after 7 ns;
@@ -64,7 +69,7 @@ begin
 
   capture_controller : if USE_CAPTURE generate
     capture : entity work.nds_checkpoint_cpu_capture
-      generic map(TIMEOUT_CYCLES=>DEADLINE, LEASE_CYCLES=>LEASE, READ_TIMEOUT_CYCLES=>100)
+      generic map(TIMEOUT_CYCLES=>DEADLINE, LEASE_CYCLES=>LEASE, READ_TIMEOUT_CYCLES=>100, REQUIRE_OWNERS=>OWNER_MODE)
       port map(clk=>control_clk,clk9=>clk(0),clk7=>clk(1),reset=>reset,
         request=>request,keepalive=>keepalive,keepalive_epoch=>keepalive_epoch,
         ready=>ready,busy=>busy,pair_paused=>pair_paused,timed_out=>timeout,
@@ -73,8 +78,47 @@ begin
         read_strobe=>rd_strobe,read_cpu=>rd_cpu,read_address=>rd_address,read_epoch=>rd_epoch,
         read_ready=>rd_ready,read_done=>rd_done,read_error=>rd_error,read_data=>rd_data,
         result_epoch=>result_epoch,cpu_address9=>state_address(0),cpu_address7=>state_address(1),
-        cpu_data9=>ssout(0),cpu_data7=>ssout(1),cpu_valid9=>state_valid(0),cpu_valid7=>state_valid(1));
+        cpu_data9=>ssout(0),cpu_data7=>ssout(1),cpu_valid9=>state_valid(0),cpu_valid7=>state_valid(1),
+        owners_paused=>owners_paused,owners_seen=>owners_seen,cpus_observed=>cpus_observed);
     seen <= req; -- observable endpoint delivery for the common test helpers
+  end generate;
+
+  -- Synthetic local/host owner receipts; CPUs and their transport are real.
+  -- Low receipt may be delayed independently from stopped/idle status.
+  owner_model : process(control_clk) begin
+    if rising_edge(control_clk) then
+      if reset='1' then owner_pipe<="00000";
+      else owner_pipe<=owner_pipe(3 downto 0)&pair_req;end if;
+    end if;
+  end process;
+  synthetic_local : if not RTC_GUARD generate
+  owners_seen <= (owner_pipe(4) and not owner_no_delivery and not owner_seen_loss) & owner_pipe(1)
+    when OWNER_MODE else "00";
+  owners_paused <= ((owner_pipe(4) and not owner_no_delivery and not owner_block and not owner_loss) or owner_force_release) &
+    (owner_pipe(3) and not owner_block) when OWNER_MODE else "00";
+
+  end generate;
+  integrated_guard : if RTC_GUARD generate
+    signal rtc_request, rtc_ready, local_seen, local_paused, local_idle : std_logic;
+    signal local_ready : std_logic_vector(13 downto 0);
+    signal date, snapshot : std_logic_vector(55 downto 0);
+    signal bus7 : proc_bus_gb_type := ((others=>'0'),x"0000138",'1','0',ACCESS_16BIT,"0000",'0');
+  begin
+    assert OWNER_MODE and USE_CAPTURE report "RTC guard needs owner capture mode" severity failure;
+    owners_seen <= (owner_pipe(4) and not owner_no_delivery and not owner_seen_loss) & local_seen;
+    owners_paused <= ((owner_pipe(4) and not owner_no_delivery and not owner_block and not owner_loss) or owner_force_release) & local_paused;
+    local_ready <= (others => not owner_block);
+    guard : entity work.nds_checkpoint_console_guard
+      port map(clk=>control_clk,reset=>reset,hold=>pair_req,cpus_observed=>cpus_observed,
+        local_ready=>local_ready,island_idle_async=>idle(0),external_seen=>owners_seen(1),
+        external_paused=>owners_paused(1),rtc_ready=>rtc_ready,local_seen=>local_seen,
+        local_paused=>local_paused,local_idle=>local_idle,rtc_request=>rtc_request);
+    rtc : entity work.nds_nitro_rtc
+      generic map(CYCLES_PER_SECOND=>1024,EXPERIMENTAL_CHECKPOINT=>true)
+      port map(clk=>control_clk,ce=>'1',reset=>reset,fw_boot=>'1',rtc_seed=>(others=>'0'),rtc_seed_toggle=>'0',
+        rtc_datetime=>date,date_written=>open,bus7=>bus7,wired_out7=>open,wired_done7=>open,
+        checkpoint_request=>rtc_request,checkpoint_ready=>rtc_ready,checkpoint_datetime=>snapshot,
+        checkpoint_subsecond=>open);
   end generate;
 
   endpoints : for i in 0 to 1 generate
@@ -190,6 +234,8 @@ begin
       for i in 1 to DEADLINE+100 loop clocks(1);exit when ready='1';end loop;
       assert ready='1' and paused="00" and seen="00" and busy='0'
         report "rearmed before both endpoints released" severity failure;
+      assert not OWNER_MODE or (owners_paused="00" and owners_seen="00")
+        report "rearmed before additional owners released" severity failure;
     end;
     procedure await_pair is
     begin
@@ -198,6 +244,8 @@ begin
         report "running CPU pair did not reach barrier" severity failure;
       assert paused="11" and idle="11" and ena="00" and pending_bus="00"
         report "pair barrier accepted outstanding bus work" severity failure;
+      assert not OWNER_MODE or (owners_paused="11" and owners_seen="11")
+        report "capture bypassed additional owners" severity failure;
     end;
     procedure progress is
     begin
@@ -253,7 +301,9 @@ begin
       SCENARIO="early_cancel" or SCENARIO="stuck_release" or SCENARIO="stopped_clock" or
       SCENARIO="transport" or SCENARIO="read_cancel" or SCENARIO="read_stopped" or
       SCENARIO="lease" or SCENARIO="stale_keepalive" or SCENARIO="stuck_keepalive" or
-      SCENARIO="read_lease" or SCENARIO="common_reset"
+      SCENARIO="read_lease" or SCENARIO="common_reset" or
+      SCENARIO="owner_timeout" or SCENARIO="owner_delivery" or
+      SCENARIO="owner_release" or SCENARIO="owner_loss" or SCENARIO="owner_seen_loss"
       report "unknown scenario" severity failure;
     ss.rst<='1';clocks(30);ss.rst<='0';clocks(10);
     ss.Din<=x"02000000";ss.ena<='1';clocks(10);ss.ena<='0';clocks(10);reset<='0';
@@ -266,11 +316,50 @@ begin
     elsif SCENARIO/="no_branch9" then progress;end if;
     if SCENARIO="dma9" then dma(0)<='1';end if;
     if SCENARIO="dma7" then dma(1)<='1';end if;
+    if SCENARIO="owner_timeout" then owner_block<='1';end if;
+    if SCENARIO="owner_delivery" then owner_no_delivery<='1';end if;
     clocks(REQUEST_PHASE);
     old_epoch:=epoch;request<='1';clocks(1);
     assert epoch=old_epoch+1 report "request did not allocate exactly one epoch" severity failure;
 
-    if SCENARIO="transport" then
+    if SCENARIO="owner_timeout" then
+      assert OWNER_MODE and USE_CAPTURE severity failure;
+      for i in 1 to DEADLINE+20 loop
+        clocks(1);assert pair_paused='0' report "capture bypassed blocked owner" severity failure;
+        exit when timeout='1';
+      end loop;
+      assert timeout='1' and paused="11" report "device acquisition deadline failed" severity failure;
+      clocks(100);assert paused="00" and pair_req='0' and ready='0'
+        report "blocked owner prevented CPU timeout release" severity failure;
+      progress;request<='0';owner_block<='0';wait_ready;
+      request<='1';await_pair;request<='0';wait_ready;progress;
+    elsif SCENARIO="owner_delivery" then
+      assert OWNER_MODE and USE_CAPTURE severity failure;
+      request<='0';clocks(DEADLINE+40);
+      assert stalled='1' and ready='0' and pair_req='1'
+        report "missing owner delivery falsely rearmed" severity failure;
+      owner_no_delivery<='0';wait_ready;progress;
+      request<='1';await_pair;request<='0';wait_ready;progress;
+    elsif SCENARIO="owner_release" then
+      await_pair;owner_force_release<='1';request<='0';clocks(DEADLINE+40);
+      assert stalled='1' and ready='0' and pair_req='0'
+        report "stale owner release falsely rearmed" severity failure;
+      owner_force_release<='0';wait_ready;progress;
+      request<='1';await_pair;request<='0';wait_ready;progress;
+    elsif SCENARIO="owner_loss" or SCENARIO="owner_seen_loss" then
+      await_pair;start_read(0,0);
+      -- A short synchronous owner loss must invalidate this whole epoch,
+      -- including the arriving reply; recovery must not reopen the permit.
+      if SCENARIO="owner_loss" then owner_loss<='1';else owner_seen_loss<='1';end if;
+      clocks(1);owner_loss<='0';owner_seen_loss<='0';wait for 1 ns;
+      assert pair_paused='0' report "owner recovery reopened invalid capture" severity failure;
+      finish_read(0,false);clocks(30);
+      assert timeout='1' and pair_paused='0' and pair_req='0'
+        report "lost owner failed to abort shared hold" severity failure;
+      request<='0';wait_ready;progress;
+      request<='1';await_pair;start_read(0,0);finish_read(0);
+      request<='0';wait_ready;progress;
+    elsif SCENARIO="transport" then
       assert USE_CAPTURE and HALT_PIPELINE report "transport needs full capture format" severity failure;
       await_pair;before:=completed;
       for cpu in 0 to 1 loop
@@ -416,7 +505,7 @@ begin
     end if;
     report "PASS: CPU-pair coordinator " & SCENARIO & " delay=" & integer'image(READ_DELAY) &
       " step=" & integer'image(STEP_PERIOD) & " phase=" & integer'image(REQUEST_PHASE) &
-      " halted-format=" & boolean'image(HALT_PIPELINE);
+      " halted-format=" & boolean'image(HALT_PIPELINE) & " owners=" & boolean'image(OWNER_MODE) & " rtc-guard=" & boolean'image(RTC_GUARD);
     stop;wait;
   end process;
   process begin wait for 5 ms;assert false report "test watchdog" severity failure;end process;

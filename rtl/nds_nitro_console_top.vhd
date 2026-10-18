@@ -100,6 +100,9 @@ entity nds_nitro_console_top is
       -- Experimental CPU-only hold/readback. Does not freeze peripherals or
       -- certify a restorable machine image. No shipping wrapper enables it.
       CHECKPOINT_CPU_ENABLE    : boolean := false;
+      -- Experimental common acquisition contract, only for ARM-rendered builds.
+      -- External host/backing owners are not implemented by the shipping wrapper.
+      CHECKPOINT_OWNERS_ENABLE : boolean := false;
       CHECKPOINT_TIMEOUT_CYCLES : positive := 1048576;
       CHECKPOINT_LEASE_CYCLES  : positive := 33513982;
       -- simulation only: the testbench has staged the ARM9/ARM7 main-RAM sections
@@ -455,6 +458,13 @@ entity nds_nitro_console_top is
       checkpoint_irq_idle, checkpoint_ipc_idle : out std_logic := '0';
       checkpoint_card_stopped, checkpoint_spi_stopped : out std_logic := '0';
       checkpoint_inputs_held, checkpoint_rtc_ready : out std_logic := '0';
+      -- External receipt/held are synchronous to clk1x. Receipt must come from
+      -- a running hardware endpoint, independently of host software progress.
+      -- Math idle is clk2x.
+      checkpoint_external_seen, checkpoint_external_paused : in std_logic := '0';
+      checkpoint_math_idle_2x : in std_logic := '0';
+      checkpoint_owner_request, checkpoint_owners_paused : out std_logic := '0';
+      checkpoint_local_idle : out std_logic := '0';
       checkpoint_rtc_datetime : out std_logic_vector(55 downto 0) := (others => '0');
       checkpoint_rtc_subsecond : out unsigned(31 downto 0) := (others => '0');
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
@@ -482,6 +492,10 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_memory7_idle_s, checkpoint_shared_wram_idle_s : std_logic;
    signal checkpoint_irq9_idle_s, checkpoint_irq7_idle_s, checkpoint_ipc_idle_s : std_logic;
    signal checkpoint_card_stop : std_logic;
+   signal checkpoint_cpus_observed, checkpoint_rtc_request : std_logic;
+   signal checkpoint_extra_paused, checkpoint_extra_seen : std_logic_vector(1 downto 0);
+   signal checkpoint_local_ready : std_logic_vector(13 downto 0);
+   signal checkpoint_fabric1_idle, checkpoint_fabric2_idle : std_logic;
    signal checkpoint_live_inputs, checkpoint_inputs : std_logic_vector(30 downto 0);
    signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
    signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
@@ -2083,7 +2097,7 @@ begin
    gcheckpoint_cpu : if CHECKPOINT_CPU_ENABLE generate
       capture : entity work.nds_checkpoint_cpu_capture
          generic map(TIMEOUT_CYCLES => CHECKPOINT_TIMEOUT_CYCLES,
-                     LEASE_CYCLES => CHECKPOINT_LEASE_CYCLES)
+                     LEASE_CYCLES => CHECKPOINT_LEASE_CYCLES, REQUIRE_OWNERS => CHECKPOINT_OWNERS_ENABLE)
          port map(clk => clk1x, clk9 => clk2x, clk7 => clk1x, reset => resetCpu,
             request => checkpoint_request, keepalive => checkpoint_keepalive,
             keepalive_epoch => checkpoint_keepalive_epoch,
@@ -2099,7 +2113,9 @@ begin
             result_epoch => checkpoint_result_epoch,
             cpu_address9 => checkpoint_addr9, cpu_address7 => checkpoint_addr7,
             cpu_data9 => checkpoint_data9, cpu_data7 => checkpoint_data7,
-            cpu_valid9 => checkpoint_valid9, cpu_valid7 => checkpoint_valid7);
+            cpu_valid9 => checkpoint_valid9, cpu_valid7 => checkpoint_valid7,
+            owners_paused => checkpoint_extra_paused, owners_seen => checkpoint_extra_seen,
+            cpus_observed => checkpoint_cpus_observed);
       checkpoint_dma_stopped <= checkpoint_dma9_stopped and checkpoint_dma7_stopped;
       checkpoint_arm9_memory_idle <= checkpoint_memory9_sync;
       checkpoint_mainram_idle <= checkpoint_mainram_idle_s;
@@ -2151,6 +2167,63 @@ begin
       checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
       checkpoint_read_ready <= '0'; checkpoint_read_done <= '0'; checkpoint_read_error <= '1';
       checkpoint_read_data <= (others => '0');
+   end generate;
+
+   -- Common acquisition is default-off and intentionally cannot succeed in
+   -- an unchanged wrapper: external ownership and math idle default to zero.
+   gcheckpoint_owners : if CHECKPOINT_OWNERS_ENABLE generate
+      assert CHECKPOINT_CPU_ENABLE and GPU2D_A_ENABLE = 0 and GPU2D_B_ENABLE = 0 and DEBUG_ENABLE = 0
+         report "common checkpoint requires CPU capture, ARM-rendered 2D and disabled debugger" severity failure;
+      checkpoint_owner_request <= checkpoint_hold_request;
+      checkpoint_owners_paused <= checkpoint_pair_paused;
+      checkpoint_extra_seen(1) <= checkpoint_external_seen;
+      checkpoint_extra_paused(1) <= checkpoint_external_paused;
+      -- These related-clock signals must settle after all source admissions
+      -- stop. Do not confuse equal toggles with a completed receiver pulse.
+      -- CHECKPOINT_FABRIC_BEGIN (enabled full-console qualification still required)
+      checkpoint_fabric2_idle <= '1' when resetCpu = '0' and
+         i9_wsh_ena = '0' and i9_vram_ena = '0' and i9_mr_ena = '0' and i9_io_bus.ena = '0' and
+         i9_pal_we = '0' and i9_oam_we = '0' and cpu9_done = '0' and
+         i9_wsh_done = '0' and i9_vram_done = '0' and i9_mr_done = '0' and i9_io_done = '0' and
+         cdc_wsh_done_d = '0' and cdc_vram_done_d = '0' and cdc_mr_done_d = '0' and
+         cdc_dmab_ena_d = '0' and dmab_ena_i9 = '0' and oam_read_busy = '0' and
+         sleep9_meta = console_sleep and sleep9 = console_sleep else '0';
+      checkpoint_fabric1_idle <= '1' when resetCpu = '0' and boot_state = B_RUN and
+         ld_start = '0' and ld_busy = '0' and ld_wr_ena = '0' and ld_w7_done = '0' and
+         bios7_load_we = '0' and bios9_load_we = '0' and
+         dbg_cmd_stb = '0' and dbg_pk_sel = '0' and dbg_boot_rst = '0' and
+         cdc_req_wsh = cdc_req_wsh_d and cdc_req_vram = cdc_req_vram_d and
+         cdc_req_mr = cdc_req_mr_d and cdc_req_io = cdc_req_io_d and
+         cdc_req_pal = cdc_req_pal_d and cdc_req_oam = cdc_req_oam_d and
+         cdc_io_cpl = cdc_io_cpl_d and cdc_cpudone_tgl = cdc_cpudone_tgl_d and
+         wsh9_ena = '0' and vram9_ena = '0' and mr9_ena = '0' and io9_ena = '0' and
+         pal_we = '0' and oam_we = '0' and cpu9_done_1x = '0' and
+         io_bus9.ena = '0' and io_bus7.ena = '0' and
+         dma_io_ena = '0' and dmab_ena = '0' and dma_vr_ena = '0' and dma_mr_ena = '0' and
+         gx_readback_busy = '0' and gx_readback_cpu_complete = '0' and
+         h3d_gpu_source_valid = '0' and h3d_gpu_cpu_complete = '0' and
+         h3d_vram9_source_valid = '0' and h3d_vram9_unposted_pending = '0' and
+         pal_read_busy_1x = '0' and
+         vclr_busy = '0' and pclr_busy_a = '0' and pclr_busy_b = '0' else '0';
+      -- CHECKPOINT_FABRIC_END
+      checkpoint_local_ready <= checkpoint_dma_stopped & checkpoint_sound_stopped &
+         checkpoint_timing_stopped & checkpoint_mainram_idle & checkpoint_vram_idle &
+         checkpoint_arm7_memory_idle & checkpoint_shared_wram_idle & checkpoint_irq_idle &
+         checkpoint_ipc_idle & checkpoint_card_stopped & checkpoint_spi_stopped &
+         checkpoint_inputs_held & checkpoint_arm9_memory_idle & checkpoint_fabric1_idle;
+      guard : entity work.nds_checkpoint_console_guard
+         port map(clk => clk1x, reset => resetCpu, hold => checkpoint_hold_request,
+            cpus_observed => checkpoint_cpus_observed, local_ready => checkpoint_local_ready,
+            island_idle_async => checkpoint_fabric2_idle and checkpoint_math_idle_2x,
+            external_seen => checkpoint_external_seen, external_paused => checkpoint_external_paused,
+            rtc_ready => checkpoint_rtc_ready, local_seen => checkpoint_extra_seen(0),
+            local_paused => checkpoint_extra_paused(0), local_idle => checkpoint_local_idle,
+            rtc_request => checkpoint_rtc_request);
+   end generate;
+   gno_checkpoint_owners : if not CHECKPOINT_OWNERS_ENABLE generate
+      checkpoint_extra_seen <= "00"; checkpoint_extra_paused <= "00";
+      checkpoint_owner_request <= '0'; checkpoint_owners_paused <= '0'; checkpoint_local_idle <= '0';
+      checkpoint_rtc_request <= checkpoint_hold_request;
    end generate;
 
    -- ================= ARM9 CPU + membus =================
@@ -2801,7 +2874,7 @@ begin
       rtc_datetime => rtc_datetime, date_written => rtc_date_written,
       bus7 => io_bus7, wired_out7 => rtc_native_out7,
       wired_done7 => rtc_wired_done7,
-      checkpoint_request => checkpoint_hold_request, checkpoint_ready => checkpoint_rtc_ready,
+      checkpoint_request => checkpoint_rtc_request, checkpoint_ready => checkpoint_rtc_ready,
       checkpoint_datetime => checkpoint_rtc_datetime, checkpoint_subsecond => checkpoint_rtc_subsecond
    );
    -- Firmware and direct games share the same retained, host-seeded calendar.

@@ -15,6 +15,7 @@ nvc --std=2008 -a "$p/export.vhd" "$p/proc_bus_gba.vhd" \
     "$p/reg_savestates.vhd" "$p/nds_cpu9.vhd" "$p/gba_cpu.vhd" \
     "$repo/rtl/nds_checkpoint_endpoint.vhd" "$repo/rtl/nds_checkpoint_coordinator.vhd" \
     "$repo/rtl/nds_checkpoint_read_port.vhd" "$repo/rtl/nds_checkpoint_cpu_capture.vhd" \
+    "$repo/rtl/nds_checkpoint_console_guard.vhd" "$repo/rtl/nds_nitro_rtc.vhd" \
     "$repo/rtl/tb_nds_checkpoint_coordinator.vhd"
 for scenario in normal dma9 dma7 halt7 wfi9 no_branch9 early_cancel stuck_release stopped_clock; do
   for delay in 1 11; do
