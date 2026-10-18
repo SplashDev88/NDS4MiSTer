@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1);
+module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1, parameter bit NAND_SAVES=0);
     logic clk=0,clk7=0,clk9=0,run7=1,run9=1,reset=1;
     always #5 clk=~clk;
     always #7 if(run7) clk7=~clk7;
@@ -43,7 +43,7 @@ module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1);
     logic [31:0] ram7[0:4095],ram9[0:1023];
     integer writes7=0,writes9=0,flushes=0,commits=0;
     reg [15:0] last_commit=0;
-    nds_firmware_control #(.SIMULATE(RAM_SIMULATE),.HOST_SAVE_PROFILE(1)) dut(.*);
+    nds_firmware_control #(.SIMULATE(RAM_SIMULATE),.HOST_SAVE_PROFILE(1),.NAND_SAVES(NAND_SAVES)) dut(.*);
 
     // Match the generated SPI RAM's registered config-write stage.
     always @(posedge clk7) begin
@@ -176,7 +176,7 @@ module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1);
     initial begin
         repeat(8) @(negedge clk);reset=0;
         command(0,0,flags,err);
-        if(flags!==16'h420) $fatal(1,"capability/reset flags %h",flags);
+        if(flags!==(16'h420 | (NAND_SAVES ? 16'h1000 : 16'h0))) $fatal(1,"capability/reset flags %h",flags);
         command(1,0,flags,err);
         upload(4,16384);upload(5,4096);upload(7,512);
         // Old host can complete its firmware assets but cannot release a cart.
@@ -194,11 +194,11 @@ module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1);
         command(1,0,flags,err);
         begin_asset(8);send_half_value(0,16'h4d41);end_asset;
         if(cart_profile_ready || !fault) $fatal(1,"interrupted upload became ready");
-        command(1,0,flags,err);profile(32'h45434d41,8,16'h5351);
+        command(1,0,flags,err);profile(32'h45434d41,NAND_SAVES ? 10 : 8,16'h5351);
         if(cart_profile_ready || !fault) $fatal(1,"unsupported type accepted");
         command(1,0,flags,err);profile(32'h45434d41,3,16'h5350);
         if(cart_profile_ready || !fault) $fatal(1,"old protocol accepted");
-        for(integer kind=0;kind<8;kind=kind+1) begin
+        for(integer kind=0;kind<(NAND_SAVES ? 10 : 8);kind=kind+1) begin
             command(1,0,flags,err);profile(32'h12345678,kind,16'h5351);
             if(fault || !cart_profile_ready || cart_profile_type!==kind)
                 $fatal(1,"valid type %0d rejected",kind);

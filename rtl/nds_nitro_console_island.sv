@@ -200,7 +200,7 @@ always_ff @(posedge clk1x) host_save_ready_sync <= {host_save_ready_sync[1:0],ho
 // download, with CPUs held through both edges and a three-clock valid delay.
 nds_firmware_control #(
 `ifdef NDS_ARM_AREA
-    .HOST_SAVE_PROFILE(1)
+    .HOST_SAVE_PROFILE(1), .NAND_SAVES(1)
 `else
     .HOST_SAVE_PROFILE(0)
 `endif
@@ -304,6 +304,7 @@ wire bridge_reset_ddr = bridge_reset_sync_ddr[1];
 // The complete chip address goes to the bridge while only its low nine bits
 // select this M10K.
 wire [19:0] backup_addr;
+wire [3:0] backup_bank;
 wire [7:0] backup_write_data;
 wire backup_write_enable;
 wire [7:0] backup_read_data;
@@ -471,7 +472,7 @@ defparam
 // that final cycle, so firmware traffic cannot populate the cartridge cache.
 logic [1:0] sector_payload_owner=0;
 always_ff @(posedge clk_video) sector_payload_owner<={firmware_sd_ack,save_sd_ack};
-nds_nitro_save_bridge save_bridge (
+nds_nitro_save_bridge #(.SAVE_ADDR_BITS(24)) save_bridge (
     .clk(clk_video),
     .reset(save_bridge_reset_video),
     .cart_download(save_cart_event_pulse),
@@ -480,7 +481,7 @@ nds_nitro_save_bridge save_bridge (
     .img_size(save_mount_size),
     .backup_save_type(backup_save_type_sync_video),
     .backup_profile_valid(backup_profile_valid_sync_video),
-    .backup_linear_addr(backup_addr),
+    .backup_linear_addr({backup_bank, backup_addr}),
     .backup_access_active(backup_access_active),
     .backup_write_toggle(backup_write_toggle),
     .save_ready(save_ready),
@@ -2172,6 +2173,7 @@ nds_nitro_console_wrap #(
     .card_ena(card_ena),.card_addr(card_addr),
     .card_din(card_din),.card_done(card_done),
     .backup_addr(backup_addr),
+    .backup_bank(backup_bank),
     .backup_write_data(backup_write_data),
     .backup_write_enable(backup_write_enable),
     .backup_read_data(backup_read_data),

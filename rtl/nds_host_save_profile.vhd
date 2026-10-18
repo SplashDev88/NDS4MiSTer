@@ -25,7 +25,9 @@ begin
             fault <= '0'; publish_pending <= '0';
          elsif start = '1' then
             valid <= '0'; publish_pending <= '0';
-            if host_valid = '1' and host_code = game_code and unsigned(host_type) <= 7 then
+            if host_valid = '1' and host_code = game_code and (unsigned(host_type) <= 7 or
+               (host_type = x"9" and (game_code = x"45524F55" or game_code = x"50524F55" or game_code = x"4A524F55")) or
+               (host_type = x"8" and (game_code = x"50425855" or game_code = x"4A425841"))) then
                save_type <= host_type;
                publish_pending <= '1';
             else

@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_nds_nitro_save_bridge;
+module tb_nds_nitro_save_bridge #(parameter integer SAVE_ADDR_BITS=20);
     logic clk = 0;
     logic reset = 1;
     logic cart_download = 0;
@@ -8,7 +8,7 @@ module tb_nds_nitro_save_bridge;
     logic [63:0] img_size = 0;
     logic [3:0] backup_save_type = 0;
     logic backup_profile_valid = 0;
-    logic [19:0] backup_linear_addr = 0;
+    logic [SAVE_ADDR_BITS-1:0] backup_linear_addr = 0;
     logic backup_access_active = 0;
     logic backup_write_toggle = 0;
     logic save_ready, save_run_ready, backup_cache_ready;
@@ -32,6 +32,7 @@ module tb_nds_nitro_save_bridge;
     logic [15:0] disk_flash_last = 16'hffff;
     logic [15:0] disk_flash_target = 16'hffff;
     logic [15:0] disk_flash_1m_last = 16'hffff;
+    logic [15:0] disk_nand_8m_last = 16'hffff, disk_nand_16m_last = 16'hffff;
     integer io_word = 0;
     integer io_addr_bias = 0;
     integer io_lba = 0;
@@ -56,6 +57,8 @@ module tb_nds_nitro_save_bridge;
                 disk_read = disk_flash_target;
             if (lba == 2047 && widx == 255)
                 disk_read = disk_flash_1m_last;
+            if (lba == 16383 && widx == 255) disk_read = disk_nand_8m_last;
+            if (lba == 32767 && widx == 255) disk_read = disk_nand_16m_last;
         end
     endfunction
 
@@ -72,6 +75,8 @@ module tb_nds_nitro_save_bridge;
                 disk_flash_target <= value;
             if (lba == 2047 && widx == 255)
                 disk_flash_1m_last <= value;
+            if (lba == 16383 && widx == 255) disk_nand_8m_last <= value;
+            if (lba == 32767 && widx == 255) disk_nand_16m_last <= value;
         end
     endtask
 
@@ -87,7 +92,7 @@ module tb_nds_nitro_save_bridge;
         sd_buff_wr = sd_ack && io_read;
     end
 
-    nds_nitro_save_bridge #(.QUIET_COUNTER_BITS(3)) dut (.*);
+    nds_nitro_save_bridge #(.QUIET_COUNTER_BITS(3), .SAVE_ADDR_BITS(SAVE_ADDR_BITS)) dut (.*);
 
     always_ff @(posedge clk) begin
         if (backup_host_write_enable)
@@ -198,7 +203,7 @@ module tb_nds_nitro_save_bridge;
         end
     endtask
 
-    task automatic card_select(input logic [19:0] addr);
+    task automatic card_select(input logic [SAVE_ADDR_BITS-1:0] addr);
         begin
             backup_linear_addr <= addr;
             backup_access_active <= 1;
@@ -215,7 +220,7 @@ module tb_nds_nitro_save_bridge;
     endtask
 
     task automatic card_write_byte(
-        input logic [19:0] addr,
+        input logic [SAVE_ADDR_BITS-1:0] addr,
         input logic [7:0] value
     );
         logic [15:0] word;
@@ -231,7 +236,7 @@ module tb_nds_nitro_save_bridge;
         end
     endtask
 
-    function automatic logic [7:0] cache_byte(input logic [19:0] addr);
+    function automatic logic [7:0] cache_byte(input logic [SAVE_ADDR_BITS-1:0] addr);
         logic [15:0] word;
         begin
             word = cache[addr[8:1]];
@@ -452,7 +457,42 @@ module tb_nds_nitro_save_bridge;
         if (io_writes != writes_before)
             $fatal(1, "oversize sidecar was overwritten");
 
+        if (SAVE_ADDR_BITS == 24) begin
+            for (integer kind=8; kind<=9; kind=kind+1) begin
+                power_reset();
+                writes_before=io_writes;
+                mount_profile(kind==8 ? 64'd8388608 : 64'd16777216,0,kind);
+                if(io_writes!=writes_before) $fatal(1,"prepared NAND unexpectedly reinitialized");
+                card_write_byte(kind==8 ? 24'h7ffffe : 24'hfffffe, 8'h5c+kind);
+                wait_flush();
+                if(max_write_lba!=(kind==8 ? 16383 : 32767)) $fatal(1,"NAND LBA truncated");
+                power_reset();
+                mount_profile(kind==8 ? 64'd8388608 : 64'd16777216,0,kind);
+                card_select(kind==8 ? 24'h7ffffe : 24'hfffffe);
+                if(cache_byte(kind==8 ? 24'h7ffffe : 24'hfffffe)!=(8'h5c+kind))
+                    $fatal(1,"NAND high-sector reset persistence");
+                card_release();
+                card_select(24'h0ffffe);
+                if(cache_byte(24'h0ffffe)!=8'ha7) $fatal(1,"NAND write aliased 1MiB sentinel");
+                card_release();
+            end
+            power_reset(); writes_before=io_writes;
+            mount_profile(64'd16777216,1,9);
+            card_write_byte(24'hfffffe,8'h22);
+            repeat(40) @(posedge clk);
+            if(io_writes!=writes_before || disk_nand_16m_last[7:0]!=8'h65)
+                $fatal(1,"read-only NAND changed disk");
+            power_reset(); writes_before=io_writes;
+            mount_profile(64'h0000000101000000,0,9);
+            card_select(24'hfffffe);
+            if(cache_byte(24'hfffffe)!=8'hff) $fatal(1,"oversize NAND aliased exact size");
+            card_release(); card_write_byte(24'hfffffe,8'h22);
+            repeat(40) @(posedge clk);
+            if(io_writes!=writes_before) $fatal(1,"oversize NAND written");
+            $display("PASS: 8/16 MiB NAND highest-LBA persistence, ordinary alias sentinel, no reinitialization, read-only and oversize protection");
+        end
         $display("PASS: host-backed 8K/64K EEPROM and 256K/1M flash persistence");
         $finish;
     end
+    initial begin #100000000; $fatal(1,"save bridge watchdog"); end
 endmodule

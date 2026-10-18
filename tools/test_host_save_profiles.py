@@ -5,7 +5,7 @@ from pathlib import Path
 import random
 import subprocess
 import tempfile
-from generate_nds_save_profiles import host_header, ROM_ENTRY
+from generate_nds_save_profiles import host_header, ROM_ENTRY, NAND_PROFILES
 from test_save_profile_compression import read_hex, decode_tables
 
 root = Path(__file__).resolve().parents[1]
@@ -16,6 +16,7 @@ fpga = root / 'fpga/mister_nitro_console_island'
 prefix = read_hex(fpga / 'nds_save_profile_prefix.hex', 512)
 entries = read_hex(fpga / 'nds_save_profile_entries.hex', 4096)
 oracle = decode_tables(prefix, entries, 368)
+oracle.update(NAND_PROFILES)
 codes = set(oracle)
 # Include every source entry, including type 1 and unsupported entries omitted
 # from the FPGA ROM, plus missing codes in present and absent prefix buckets.
@@ -47,4 +48,4 @@ int main() {
     cases = ''.join(f'{code} {oracle.get(code, 0 if code in (0x4553424b, 0x23232323) else 1)}\n'
                     for code in sorted(codes))
     subprocess.run([str(exe)], input=cases, text=True, check=True)
-print(f'PASS: compiled host lookup equals FPGA ROM oracle for {len(codes)} codes, all database entries and fallbacks')
+print(f'PASS: compiled host lookup equals ordinary FPGA ROM plus explicit NAND profiles for {len(codes)} codes, all database entries and fallbacks')

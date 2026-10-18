@@ -4,11 +4,12 @@
 // The DS backup chip and MiSTer's mounted .sav channel share one 512-byte,
 // mixed-width M10K cache. Cache misses stall AUXSPI through cache_ready while
 // this bridge reads or writes one sector. This supports save devices through
-// 1 MiB without placing the whole image in FPGA RAM: compared with the former
+// 16 MiB in the extended product configuration without placing the whole image in FPGA RAM: compared with the former
 // 64 KiB backing store it frees 63 M10Ks while retaining standard MiSTer .sav
 // persistence.
 module nds_nitro_save_bridge #(
-    parameter integer QUIET_COUNTER_BITS = 24
+    parameter integer QUIET_COUNTER_BITS = 24,
+    parameter integer SAVE_ADDR_BITS = 20
 ) (
     input  logic        clk,
     input  logic        reset,
@@ -20,7 +21,7 @@ module nds_nitro_save_bridge #(
 
     input  logic [3:0]  backup_save_type,
     input  logic        backup_profile_valid,
-    input  logic [19:0] backup_linear_addr,
+    input  logic [SAVE_ADDR_BITS-1:0] backup_linear_addr,
     input  logic        backup_access_active,
     input  logic        backup_write_toggle,
     output logic        save_ready,
@@ -60,22 +61,22 @@ module nds_nitro_save_bridge #(
     logic cart_download_d;
     logic cart_epoch_started;
     logic mount_pending;
-    // The largest supported cartridge save is 1 MiB. Retain the exact low
-    // 21 bits needed to represent every accepted size plus one bit proving
+    // Retain enough low bits to represent the configured maximum save size
+    // (1 MiB by default, 16 MiB in the product) plus one bit proving
     // that discarded upper bits were nonzero. This preserves wrong-size
     // rejection for arbitrary 64-bit host values without routing a 64-bit
     // state/comparison cone through the nearly-full FPGA.
-    logic [20:0] mounted_size_low;
+    logic [SAVE_ADDR_BITS:0] mounted_size_low;
     logic mounted_size_oversize;
     logic mounted_readonly;
     logic mounted_valid_size;
     logic mounted_has_data;
-    logic [11:0] mounted_sector_count;
-    logic [11:0] active_sector_count;
+    logic [SAVE_ADDR_BITS-9:0] mounted_sector_count;
+    logic [SAVE_ADDR_BITS-9:0] active_sector_count;
     logic [3:0] active_save_type;
 
-    logic [10:0] cache_lba;
-    logic [10:0] target_lba;
+    logic [SAVE_ADDR_BITS-10:0] cache_lba;
+    logic [SAVE_ADDR_BITS-10:0] target_lba;
     logic cache_valid;
     logic cache_dirty;
     logic dirty_during_flush;
@@ -84,14 +85,14 @@ module nds_nitro_save_bridge #(
 
     logic [7:0] clear_addr;
     logic clear_for_init;
-    logic [10:0] init_sector;
-    logic [10:0] init_last_sector;
+    logic [SAVE_ADDR_BITS-10:0] init_sector;
+    logic [SAVE_ADDR_BITS-10:0] init_last_sector;
     logic [8:0] load_word_count;
     logic [QUIET_COUNTER_BITS-1:0] quiet_counter;
     logic profile_fresh_armed;
 
-    (* async_reg = "true" *) logic [19:0] backup_addr_meta;
-    (* async_reg = "true" *) logic [19:0] backup_addr_sync;
+    (* async_reg = "true" *) logic [SAVE_ADDR_BITS-1:0] backup_addr_meta;
+    (* async_reg = "true" *) logic [SAVE_ADDR_BITS-1:0] backup_addr_sync;
     (* async_reg = "true" *) logic access_meta;
     (* async_reg = "true" *) logic access_sync;
     (* async_reg = "true" *) logic backup_toggle_meta;
@@ -100,19 +101,21 @@ module nds_nitro_save_bridge #(
 
     wire cart_download_start = cart_download && !cart_download_d;
     wire backup_write_event = backup_toggle_sync != backup_toggle_d;
-    wire [10:0] requested_lba = backup_addr_sync[19:9];
+    wire [SAVE_ADDR_BITS-10:0] requested_lba = backup_addr_sync[SAVE_ADDR_BITS-1:9];
     wire mounted_write_allowed = mounted_valid_size && !mounted_readonly;
 
-    function automatic logic [11:0] sectors_for_type(input logic [3:0] t);
+    function automatic logic [SAVE_ADDR_BITS-9:0] sectors_for_type(input logic [3:0] t);
         case (t)
-            4'd1: sectors_for_type = 12'd1;    // 512-byte tiny EEPROM
-            4'd2: sectors_for_type = 12'd16;   // 8 KiB EEPROM
-            4'd3: sectors_for_type = 12'd128;  // 64 KiB EEPROM/FRAM
-            4'd4: sectors_for_type = 12'd256;  // 128 KiB EEPROM/FRAM
-            4'd5: sectors_for_type = 12'd512;  // 256 KiB flash
-            4'd6: sectors_for_type = 12'd1024; // 512 KiB flash
-            4'd7: sectors_for_type = 12'd2048; // 1 MiB flash
-            default: sectors_for_type = 12'd0;
+            4'd1: sectors_for_type = (SAVE_ADDR_BITS-8)'(1);    // 512-byte tiny EEPROM
+            4'd2: sectors_for_type = (SAVE_ADDR_BITS-8)'(16);   // 8 KiB EEPROM
+            4'd3: sectors_for_type = (SAVE_ADDR_BITS-8)'(128);  // 64 KiB EEPROM/FRAM
+            4'd4: sectors_for_type = (SAVE_ADDR_BITS-8)'(256);  // 128 KiB EEPROM/FRAM
+            4'd5: sectors_for_type = (SAVE_ADDR_BITS-8)'(512);  // 256 KiB flash
+            4'd6: sectors_for_type = (SAVE_ADDR_BITS-8)'(1024); // 512 KiB flash
+            4'd7: sectors_for_type = (SAVE_ADDR_BITS-8)'(2048); // 1 MiB flash
+            4'd8: sectors_for_type = SAVE_ADDR_BITS >= 24 ? 16384 : 0; // 8 MiB NAND
+            4'd9: sectors_for_type = SAVE_ADDR_BITS >= 24 ? 32768 : 0; // 16 MiB NAND
+            default: sectors_for_type = (SAVE_ADDR_BITS-8)'(0);
         endcase
     endfunction
 
@@ -154,14 +157,14 @@ module nds_nitro_save_bridge #(
             state <= ST_WAIT_MOUNT;
             if (!preserve_mount) begin
                 mount_pending <= 1'b0;
-                mounted_size_low <= 21'd0;
+                mounted_size_low <= (SAVE_ADDR_BITS+1)'(0);
                 mounted_size_oversize <= 1'b0;
                 mounted_readonly <= 1'b0;
             end
             mounted_valid_size <= 1'b0;
             mounted_has_data <= 1'b0;
-            mounted_sector_count <= 12'd0;
-            active_sector_count <= 12'd0;
+            mounted_sector_count <= (SAVE_ADDR_BITS-8)'(0);
+            active_sector_count <= (SAVE_ADDR_BITS-8)'(0);
             active_save_type <= 4'd0;
             cache_valid <= 1'b0;
             cache_dirty <= 1'b0;
@@ -180,8 +183,8 @@ module nds_nitro_save_bridge #(
     endtask
 
     always_ff @(posedge clk) begin : bridge_fsm
-        logic [11:0] expected_sectors;
-        logic [20:0] expected_bytes;
+        logic [SAVE_ADDR_BITS-9:0] expected_sectors;
+        logic [SAVE_ADDR_BITS:0] expected_bytes;
         logic exact_size;
         logic chrono_short_migration;
 
@@ -218,8 +221,8 @@ module nds_nitro_save_bridge #(
 
             if (img_mounted) begin
                 mount_pending <= 1'b1;
-                mounted_size_low <= img_size[20:0];
-                mounted_size_oversize <= |img_size[63:21];
+                mounted_size_low <= img_size[SAVE_ADDR_BITS:0];
+                mounted_size_oversize <= |img_size[63:SAVE_ADDR_BITS+1];
                 mounted_readonly <= img_readonly;
             end
 
@@ -237,7 +240,7 @@ module nds_nitro_save_bridge #(
                 replacement_pending <= 1'b1;
                 quiet_counter <= '0;
                 if (cache_dirty && mounted_write_allowed && state == ST_READY) begin
-                    sd_lba <= {21'd0, cache_lba};
+                    sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, cache_lba};
                     sd_wr <= 1'b1;
                     dirty_during_flush <= 1'b0;
                     post_flush_load <= 1'b0;
@@ -277,7 +280,7 @@ module nds_nitro_save_bridge #(
                                          mounted_size_low == expected_bytes;
                             chrono_short_migration = backup_save_type == 4'd3 &&
                                 !mounted_size_oversize &&
-                                mounted_size_low == 21'd8192;
+                                mounted_size_low == (SAVE_ADDR_BITS+1)'(8192);
                             active_save_type <= backup_save_type;
                             active_sector_count <= expected_sectors;
                             mounted_valid_size <=
@@ -289,13 +292,13 @@ module nds_nitro_save_bridge #(
                             if (exact_size)
                                 mounted_sector_count <= expected_sectors;
                             else if (chrono_short_migration)
-                                mounted_sector_count <= 12'd16;
+                                mounted_sector_count <= (SAVE_ADDR_BITS-8)'(16);
                             else
-                                mounted_sector_count <= 12'd0;
+                                mounted_sector_count <= (SAVE_ADDR_BITS-8)'(0);
                             cache_valid <= 1'b0;
                             cache_dirty <= 1'b0;
 
-                            if (backup_save_type == 0 ||
+                            if (expected_sectors == 0 ||
                                 ((mounted_size_oversize ||
                                   mounted_size_low != 0) && !exact_size &&
                                  !chrono_short_migration)) begin
@@ -311,8 +314,8 @@ module nds_nitro_save_bridge #(
                                 // Materialize every missing sector as FF. The
                                 // result is an exact-size standard sidecar, not
                                 // a sparse file whose holes read back as zero.
-                                init_sector <= chrono_short_migration ? 11'd16 : 11'd0;
-                                init_last_sector <= expected_sectors[10:0] - 1'b1;
+                                init_sector <= chrono_short_migration ? (SAVE_ADDR_BITS-9)'(16) : (SAVE_ADDR_BITS-9)'(0);
+                                init_last_sector <= expected_sectors[SAVE_ADDR_BITS-10:0] - 1'b1;
                                 clear_addr <= '0;
                                 clear_for_init <= 1'b1;
                                 state <= ST_CACHE_CLEAR;
@@ -327,7 +330,7 @@ module nds_nitro_save_bridge #(
                         if (&clear_addr) begin
                             clear_addr <= '0;
                             if (clear_for_init) begin
-                                sd_lba <= {21'd0, init_sector};
+                                sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, init_sector};
                                 sd_wr <= 1'b1;
                                 state <= ST_INIT_WRITE_REQUEST;
                             end else begin
@@ -360,7 +363,7 @@ module nds_nitro_save_bridge #(
                                 state <= ST_READY;
                             end else begin
                                 init_sector <= init_sector + 1'b1;
-                                sd_lba <= {21'd0, init_sector + 1'b1};
+                                sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, init_sector + 1'b1};
                                 sd_wr <= 1'b1;
                                 state <= ST_INIT_WRITE_REQUEST;
                             end
@@ -373,14 +376,14 @@ module nds_nitro_save_bridge #(
                             target_lba <= requested_lba;
                             quiet_counter <= '0;
                             if (cache_dirty && mounted_write_allowed) begin
-                                sd_lba <= {21'd0, cache_lba};
+                                sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, cache_lba};
                                 sd_wr <= 1'b1;
                                 dirty_during_flush <= 1'b0;
                                 post_flush_load <= 1'b1;
                                 state <= ST_FLUSH_REQUEST;
                             end else if (mounted_has_data && mounted_valid_size &&
                                          {1'b0, requested_lba} < mounted_sector_count) begin
-                                sd_lba <= {21'd0, requested_lba};
+                                sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, requested_lba};
                                 sd_rd <= 1'b1;
                                 load_word_count <= 9'd0;
                                 state <= ST_LOAD_REQUEST;
@@ -392,7 +395,7 @@ module nds_nitro_save_bridge #(
                         end else if (cache_dirty && mounted_write_allowed &&
                                      !access_sync) begin
                             if (&quiet_counter) begin
-                                sd_lba <= {21'd0, cache_lba};
+                                sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, cache_lba};
                                 sd_wr <= 1'b1;
                                 dirty_during_flush <= 1'b0;
                                 post_flush_load <= 1'b0;
@@ -451,7 +454,7 @@ module nds_nitro_save_bridge #(
                                 post_flush_load <= 1'b0;
                                 if (mounted_has_data && mounted_valid_size &&
                                     {1'b0, target_lba} < mounted_sector_count) begin
-                                    sd_lba <= {21'd0, target_lba};
+                                    sd_lba <= {{(41-SAVE_ADDR_BITS){1'b0}}, target_lba};
                                     sd_rd <= 1'b1;
                                     load_word_count <= 9'd0;
                                     state <= ST_LOAD_REQUEST;

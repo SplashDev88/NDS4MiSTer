@@ -8,6 +8,7 @@
 #include "firmware_media.h"
 #include "game_clock.h"
 #include "save_profiles.h"
+#include "nand_save.h"
 #include "font.h"
 #include "framebuffer_metadata.h"
 #include "freebios_media.h"
@@ -2157,12 +2158,8 @@ class Host {
     try { firmwareControl(6); } catch (...) {}
     firmwareError("Firmware save failed", error.what());
   }
-  void mount(const std::string &rom) {
-    if (save >= 0) {
-      require(fdatasync(save) == 0, "sync outgoing save");
-      close(save);
-      save = -1;
-    }
+  uint32_t save_sector_limit = 2048;
+  void mount(const std::string &rom, uint8_t save_type = 0) {
     fs::path name = fs::path(rom).filename();
     name.replace_extension(".sav");
     fs::path dest = fs::path(savedir) / name;
@@ -2171,10 +2168,24 @@ class Host {
     // private copy here after normal MiSTer has advanced the shared save.
     // Match the normal frontend's durable cartridge writes, including on
     // an unexpected host exit. The renderer runs independently of this I/O.
-    save = open(dest.c_str(), O_RDWR | O_CREAT | O_DSYNC | O_CLOEXEC, 0644);
-    require(save >= 0, "open shared save");
+    const uint32_t nand_bytes = nds_nand::bytes(save_type);
+    if (nand_bytes) nds_nand::prepare(dest, nand_bytes, [&] {
+      if (!running) throw std::runtime_error("NAND save initialization interrupted");
+      beat();
+    });
+    const int incoming = open(dest.c_str(), O_RDWR | O_CREAT | O_DSYNC | O_CLOEXEC, 0644);
+    require(incoming >= 0, "open shared save");
     struct stat st;
-    require(fstat(save, &st) == 0 && st.st_size <= 1048576, "save size");
+    if (fstat(incoming, &st) != 0 || st.st_size < 0 ||
+        (nand_bytes ? st.st_size != nand_bytes : st.st_size > 1048576)) {
+      close(incoming); throw std::runtime_error("save size");
+    }
+    if (save >= 0) {
+      if (fdatasync(save) != 0) { close(incoming); throw std::runtime_error("sync outgoing save"); }
+      close(save);
+    }
+    save = incoming;
+    save_sector_limit = nand_bytes ? nand_bytes / 512 : 2048;
     uint64_t n = st.st_size;
     spi.begin(Spi::IO, 0x1d);
     for (int i = 0; i < 4; i++)
@@ -2210,7 +2221,7 @@ class Host {
     spi.end();
     const unsigned slot = (c >> 2) & 15;
     require((c & 0x8000) && slot <= 1 && ((c >> 6) & 7) == 2 &&
-                ((c >> 9) & 63) == 0 && lba < (slot ? 512u : 2048u),
+                ((c >> 9) & 63) == 0 && lba < (slot ? 512u : save_sector_limit),
             "unsupported SD request");
     if (slot == 1) {
       if (firmware_failed) return false;
@@ -2890,8 +2901,18 @@ public:
     const auto *header = static_cast<const uint8_t *>(mapping.at(0).data);
     const uint32_t game_code = uint32_t(header[12]) | uint32_t(header[13]) << 8 |
                                uint32_t(header[14]) << 16 | uint32_t(header[15]) << 24;
+    const uint64_t nand_base = (uint64_t(header[0x96]) | uint64_t(header[0x97]) << 8) << 17;
     mapping.reset();
-    mount(path);
+    const uint8_t save_type = nds_save_profile::lookup(game_code);
+    if (nds_nand::bytes(save_type)) {
+      if (!(firmwareControl().flags & 0x1000))
+        throw std::runtime_error("NAND cartridge saves require the matching NAND-capable FPGA core");
+      // Older AXBJ cartridges lack this header field. Do not guess their
+      // bank layout or touch their save until that variant is verified.
+      if (!nand_base || uint64_t(nand_base) + nds_nand::bytes(save_type) > 0x08000000)
+        throw std::runtime_error("Unsupported NAND cartridge save-region header; save preserved");
+    }
+    mount(path, save_type);
     spi.cmd(Spi::FIO, 0x53, {0});
     uploadSaveProfile(game_code);
     firmwareControl(3);

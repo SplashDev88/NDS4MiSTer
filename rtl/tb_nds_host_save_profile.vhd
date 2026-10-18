@@ -34,6 +34,24 @@ begin
          host_type <= x"F"; tick;
          assert unsigned(save_type) = kind report "payload was not latched" severity failure;
       end loop;
+      for region in 0 to 2 loop
+         clear;
+         if region = 0 then code <= x"45524F55"; host_code <= x"45524F55";
+         elsif region = 1 then code <= x"50524F55"; host_code <= x"50524F55";
+         else code <= x"4A524F55"; host_code <= x"4A524F55"; end if;
+         host_type <= x"9"; host_valid <= '1'; tick;
+         start <= '1'; tick; start <= '0'; tick;
+         assert valid = '1' and save_type = x"9" and fault = '0' severity failure;
+      end loop;
+      for region in 0 to 1 loop
+         clear;
+         if region = 0 then code <= x"50425855"; host_code <= x"50425855";
+         else code <= x"4A425841"; host_code <= x"4A425841"; end if;
+         host_type <= x"8"; tick; start <= '1'; tick; start <= '0'; tick;
+         assert valid = '1' and save_type = x"8" and fault = '0' severity failure;
+      end loop;
+      clear; host_type <= x"9"; expect_rejection; -- wrong NAND capacity for title
+      clear; host_type <= x"A"; expect_rejection; -- DSi not supported
       clear; host_type <= x"3"; start <= '1'; tick; start <= '0';
       clear; -- reset between payload and publication cancels validity
       host_valid <= '0'; expect_rejection;

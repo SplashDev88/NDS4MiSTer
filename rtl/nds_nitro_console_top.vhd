@@ -193,6 +193,7 @@ entity nds_nitro_console_top is
       -- SystemVerilog island so its second port can connect directly to the
       -- MiSTer mounted-save interface.
       backup_addr         : out std_logic_vector(19 downto 0);
+      backup_bank         : out std_logic_vector(3 downto 0) := (others => '0');
       backup_write_data   : out std_logic_vector(7 downto 0);
       backup_write_enable : out std_logic;
       backup_read_data    : in  std_logic_vector(7 downto 0);
@@ -593,6 +594,7 @@ architecture arch of nds_nitro_console_top is
              (low >= 16#600# and low <= 16#613#);
    end function;
 
+   signal ld_nand_base : std_logic_vector(31 downto 0);
    signal ld_cartid  : std_logic_vector(31 downto 0);  -- header-size chip ID -> nds_card B8
    signal ld_save_is_64k : std_logic;
    signal ld_save_gamecode : std_logic_vector(31 downto 0);
@@ -1426,7 +1428,7 @@ begin
       profile_data => profile_data, profile_fw_offset => profile_fw_offset,
       profile_fw_checksums => profile_fw_checksums,
       busy => ld_busy, done => ld_done, load_error => ld_error,
-      arm9_entry => arm9_entry, arm7_entry => arm7_entry, cart_id => ld_cartid,
+      arm9_entry => arm9_entry, arm7_entry => arm7_entry, cart_id => ld_cartid, nand_base => ld_nand_base,
       save_is_64k => ld_save_is_64k,
       save_gamecode => ld_save_gamecode,
       save_gamecode_valid => ld_save_gamecode_valid,
@@ -1499,13 +1501,14 @@ begin
       clk => clk1x, ce => '1', reset => resetCpu,
       card7 => exmem_card7_s,
       fw_boot => fw_boot,
-      chipid => ld_cartid,
+      chipid => ld_cartid, nand_base => ld_nand_base,
       bus9 => io_bus9, wired_out9 => card_wired_out9, wired_done9 => card_wired_done9,
       bus7 => io_bus7, wired_out7 => card_wired_out7, wired_done7 => card_wired_done7,
       irq9_xfer => irq9_card, irq7_xfer => irq7_card,
       dma9_card => dma9_card_trig, dma7_card => dma7_card_trig,
       dbg_card => dbg_card_s,
       backup_addr => backup_addr,
+      backup_bank => backup_bank,
       backup_write_data => backup_write_data,
       backup_write_enable => backup_write_enable,
       backup_read_data => backup_read_data,

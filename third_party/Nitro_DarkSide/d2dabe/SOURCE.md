@@ -146,3 +146,15 @@ binaries, frame captures, build artifacts, and upstream Git history are
 intentionally excluded. They are not product dependencies and may contain
 redistributable or historical test payloads that must not enter the source
 commit.
+
+## NAND cartridge prototype (October 2026)
+
+The experimental NAND branch additionally adapts `rtl/nds_card.vhd` and
+`rtl/nds_loader.vhd`. The card gains a 2 KiB command-write staging buffer,
+NAND window/status/identity commands and a four-bit save-address bank output.
+The loader reads the NAND base from the header for explicitly recognized
+cartridges and supplies a NAND-capable chip ID. Protocol behavior and identity
+constants are based on the GPL melonDS source already vendored in this tree.
+See `docs/NAND_SAVES.md` at the repository root for scope and validation gaps.
+The existing upstream inventory is provenance, not a claim that these locally
+adapted files still match upstream hashes.

@@ -98,6 +98,7 @@ entity nds_nitro_console_wrap is
       -- side of a mixed-width M10K; MiSTer's mounted .sav channel owns the
       -- other side.
       backup_addr         : out std_logic_vector(19 downto 0);
+      backup_bank         : out std_logic_vector(3 downto 0) := (others => '0');
       backup_write_data   : out std_logic_vector(7 downto 0);
       backup_write_enable : out std_logic;
       backup_read_data    : in  std_logic_vector(7 downto 0);
@@ -437,6 +438,7 @@ begin
       card_done        => card_done,
 
       backup_addr         => backup_addr,
+      backup_bank => backup_bank,
       backup_write_data   => backup_write_data,
       backup_write_enable => backup_write_enable,
       backup_read_data    => backup_read_data,

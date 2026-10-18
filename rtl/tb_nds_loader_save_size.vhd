@@ -13,6 +13,9 @@ architecture sim of tb_nds_loader_save_size is
    signal start : std_logic := '0';
    signal busy, done, load_error : std_logic;
    signal arm9_entry, arm7_entry, cart_id : std_logic_vector(31 downto 0);
+   signal nand_base : std_logic_vector(31 downto 0);
+   signal nand_header : std_logic_vector(31 downto 0) := x"03500350";
+   signal nand_reads : natural := 0;
    signal save_is_64k : std_logic;
    signal save_gamecode : std_logic_vector(31 downto 0);
    signal save_gamecode_valid : std_logic;
@@ -34,7 +37,7 @@ begin
    port map (
       clk => clk, reset => reset, start => start, direct => '0', fw_boot => '1',
       busy => busy, done => done, load_error => load_error,
-      arm9_entry => arm9_entry, arm7_entry => arm7_entry, cart_id => cart_id,
+      arm9_entry => arm9_entry, arm7_entry => arm7_entry, cart_id => cart_id, nand_base => nand_base,
       save_is_64k => save_is_64k,
       save_gamecode => save_gamecode,
       save_gamecode_valid => save_gamecode_valid,
@@ -48,7 +51,7 @@ begin
    begin
       if rising_edge(clk) then
          if reset = '1' then
-            save_code_seen <= '0';
+            save_code_seen <= '0'; nand_reads <= 0;
             ir_cart_latched <= '0';
          elsif save_gamecode_valid = '1' then
             save_code_seen <= '1';
@@ -64,6 +67,8 @@ begin
                card_rdata <= game_code;
             elsif unsigned(card_addr) = 16#20# then
                card_rdata <= x"08000000";
+            elsif unsigned(card_addr) = 16#25# then
+               card_rdata <= nand_header; nand_reads <= nand_reads+1;
             else
                card_rdata <= (others => '0');
             end if;
@@ -121,7 +126,25 @@ begin
       reset <= '0';
       launch_and_check('0', '0');
 
-      report "PASS: loader save-size hint and resettable I-prefix IR latch";
+      assert nand_reads = 0 and nand_base = x"00000000"
+         report "ordinary cart acquired NAND reads or address" severity failure;
+      for kind in 0 to 2 loop
+         wait until falling_edge(clk); reset <= '1';
+         if kind = 0 then game_code <= x"45524F55"; nand_header <= x"03500350";
+         elsif kind = 1 then game_code <= x"50425855"; nand_header <= x"03900390";
+         else game_code <= x"4A425841"; nand_header <= x"00000000"; end if;
+         wait until falling_edge(clk); reset <= '0'; launch_and_check('0', '0');
+         assert nand_reads = 1 and cart_id = x"08007FC2"
+            report "NAND header count or chip ID mismatch" severity failure;
+         if kind = 0 then assert nand_base = x"06A00000" severity failure;
+         elsif kind = 1 then assert nand_base = x"07200000" severity failure;
+         else assert nand_base = x"00000000" report "missing header was guessed" severity failure; end if;
+      end loop;
+      wait until falling_edge(clk); reset <= '1'; game_code <= x"454D414E";
+      wait until falling_edge(clk); reset <= '0'; launch_and_check('0', '0');
+      assert nand_reads = 0 and nand_base = x"00000000" and cart_id = x"00007FC2"
+         report "NAND metadata survived ordinary-cart reset" severity failure;
+      report "PASS: loader save-size, IR latch, NAND header/chip ID, ordinary read-count and reset";
       stop;
       wait;
    end process;

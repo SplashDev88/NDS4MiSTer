@@ -87,6 +87,7 @@ entity nds_loader is
       cart_id     : out std_logic_vector(31 downto 0) := (others => '0');  -- valid from done
       -- Chrono Trigger USA's little-endian header game code is 0x45555159
       -- ("YQUE"). It uses the regular EEPROM protocol with 64 KiB storage.
+      nand_base : out std_logic_vector(31 downto 0) := (others => '0');
       save_is_64k : out std_logic := '0';
       save_gamecode : out std_logic_vector(31 downto 0) := (others => '0');
       save_gamecode_valid : out std_logic := '0';
@@ -140,7 +141,7 @@ architecture arch of nds_loader is
 
    type t_hdr is array (0 to 7) of std_logic_vector(31 downto 0);
    signal hdr     : t_hdr := (others => (others => '0'));
-   signal hdr_i   : integer range 0 to 11 := 0;
+   signal hdr_i   : integer range 0 to 12 := 0;
 
    -- Main RAM must be ZERO before the CPUs run. NitroSDK's MI_LockByWord does
    -- `swp r0,r0,[0x027FFFE8]` with lock id 0x40: SWP always writes the id and
@@ -172,6 +173,7 @@ architecture arch of nds_loader is
    signal env_seccrc : std_logic_vector(15 downto 0) := (others => '0'); -- hdr+0x6C
    signal cart_p     : unsigned(31 downto 0) := to_unsigned(512, 32);
    signal cart_iter  : integer range 9 to 29 := 9;
+   signal cart_nand : std_logic := '0';
    signal cart_dsi   : std_logic := '0'; -- metadata read only for >256 MiB media
    signal cartid     : std_logic_vector(31 downto 0) := (others => '0');
    signal crcword    : std_logic_vector(31 downto 0) := (others => '0');
@@ -240,6 +242,7 @@ begin
          save_gamecode_valid <= '0';
 
          if (reset = '1') then
+            cart_nand <= '0'; nand_base <= (others => '0');
             state      <= IDLE;
             busy       <= '0';
             done       <= '0';
@@ -340,6 +343,8 @@ begin
                      card_addr <= std_logic_vector(to_unsigned(3, card_addr'length));      -- byte 0x0C, game code
                   elsif (hdr_i = 9) then
                      card_addr <= std_logic_vector(to_unsigned(16#20#, card_addr'length)); -- byte 0x80, used ROM size
+                  elsif (hdr_i = 12) then
+                     card_addr <= std_logic_vector(to_unsigned(16#25#,card_addr'length)); -- 0x94 NAND region
                   elsif (hdr_i = 10) then
                      card_addr <= std_logic_vector(to_unsigned(4, card_addr'length)); -- byte 0x12 UnitCode
                   elsif (hdr_i = 11) then
@@ -353,6 +358,12 @@ begin
                when HDR_WAIT =>
                   if (card_done = '1') then
                      if (hdr_i = 8) then
+                        cart_nand <= '0'; nand_base <= (others => '0');
+                        if card_rdata = x"45524F55" or card_rdata = x"50524F55" or card_rdata = x"4A524F55" then
+                           cart_nand <= '1';
+                        elsif card_rdata = x"50425855" or card_rdata = x"4A425841" then
+                           cart_nand <= '1';
+                        end if;
                         save_gamecode <= card_rdata;
                         save_gamecode_valid <= '1';
                         if (card_rdata = x"45555159") then
@@ -366,17 +377,21 @@ begin
                         cart_dsi <= card_rdata(17); -- UnitCode bit 1, little endian
                         hdr_i <= 11;
                         state <= HDR_REQ;
-                     elsif (hdr_i = 9 or hdr_i = 11) then
+                     elsif (hdr_i = 9 or hdr_i = 11 or hdr_i = 12) then
                         if (hdr_i = 9) then
                            env_size <= unsigned(card_rdata);
                            cpu_sel  <= 0;
+                        elsif hdr_i = 12 then
+                           nand_base <= std_logic_vector(shift_left(resize(unsigned(card_rdata(31 downto 16)),32),17));
                         elsif (card_rdata = x"00000000") then
                            cart_dsi <= '0'; -- melonDS zero-region bad-dump fallback
                         end if;
                         -- Older media keep the original reads and cycle count.
                         -- These two metadata words also cover firmware boot,
                         -- which does not perform the direct-boot header copy.
-                        if (hdr_i = 9 and unsigned(card_rdata) > x"10000000") then
+                        if hdr_i = 9 and cart_nand = '1' then
+                           hdr_i <= 12; state <= HDR_REQ;
+                        elsif (hdr_i = 9 and unsigned(card_rdata) > x"10000000") then
                            hdr_i <= 10;
                            state <= HDR_REQ;
                         elsif (fw_boot = '1') then
@@ -489,7 +504,9 @@ begin
                      end if;
                      cart_iter <= cart_iter + 1;
                   else
-                     if (cart_p > x"10000000") then
+                     if cart_nand = '1' then
+                        cartid <= x"08007FC2"; -- 128 MiB NAND; same value in boot env and B8
+                     elsif (cart_p > x"10000000") then
                         -- >128 MiB uses the reverse size-byte encoding;
                         -- 512 MiB is FE, not the linear formula's 1FF.
                         cartid <= "0" & cart_dsi & "00" & x"000FEC2";

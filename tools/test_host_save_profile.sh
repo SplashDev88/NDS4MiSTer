@@ -4,9 +4,11 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 test_tmp="$(mktemp -d "${TMPDIR:-/tmp}/nds-host-save.XXXXXX")"
 trap 'rm -rf "$test_tmp"' EXIT
 python3 "$repo_dir/tools/test_host_save_profiles.py"
-iverilog -g2012 -s tb_nds_host_save_control -o "$test_tmp/control" \
+for nand in 0 1; do
+iverilog -g2012 -s tb_nds_host_save_control -Ptb_nds_host_save_control.NAND_SAVES="$nand" -o "$test_tmp/control" \
     "$repo_dir/rtl/nds_firmware_control.sv" "$repo_dir/rtl/tb_nds_host_save_control.sv"
 vvp "$test_tmp/control"
+done
 run_vhdl() {
     nvc --std=2008 -a "$1/rtl/nds_host_save_profile.vhd" "$1/rtl/tb_nds_host_save_profile.vhd"
     nvc --std=2008 -e tb_nds_host_save_profile
