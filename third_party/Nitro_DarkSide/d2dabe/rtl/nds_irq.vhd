@@ -49,7 +49,9 @@ entity nds_irq is
       -- they do not participate in interrupt delivery.
       dbg_ime    : out std_logic_vector(31 downto 0) := (others => '0');
       dbg_ie     : out std_logic_vector(31 downto 0) := (others => '0');
-      dbg_if     : out std_logic_vector(31 downto 0) := (others => '0')
+      dbg_if     : out std_logic_vector(31 downto 0) := (others => '0');
+      -- Observation only. Sources/bus masters must be held separately.
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
@@ -67,6 +69,26 @@ architecture arch of nds_irq is
    signal reg_wired_done : std_logic_vector(0 to 2);
 
 begin
+
+   -- A held level source (notably GX) need not go low: it is settled once
+   -- its bits are already in IF and the registered CPU outputs agree with
+   -- IME/IE/IF. Requiring irq_in=0 would reject valid boundaries forever.
+   -- Conversely a just-written IE/IME can leave one cycle of output work
+   -- even with no source pulse or bus request currently asserted.
+   process(all)
+      variable expected_unhalt, expected_irq : std_logic;
+   begin
+      expected_unhalt := '0'; expected_irq := '0';
+      if (IRPFLags and REG_IE) /= x"00000000" then
+         expected_unhalt := '1'; expected_irq := REG_IME(0);
+      end if;
+      checkpoint_idle <= '0';
+      if reset = '0' and gb_bus.rst = '0' and gb_bus.ena = '0' and
+         IF_written = '0' and (irq_in and not IRPFLags) = x"00000000" and
+         cpu_unhalt = expected_unhalt and cpu_irq = expected_irq then
+         checkpoint_idle <= '1';
+      end if;
+   end process;
 
    dbg_ime <= (31 downto 1 => '0') & REG_IME;
    dbg_ie  <= REG_IE;

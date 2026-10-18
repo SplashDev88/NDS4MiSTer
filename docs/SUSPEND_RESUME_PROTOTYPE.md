@@ -24,9 +24,10 @@ refuses sleeping CPUs. A fourth milestone adds a read-only CPU state transport,
 an expiring host lease, and optional wiring to the actual console CPUs. Further
 component steps add DMA admission stopping/draining, ARM9 memory-island idle
 status, audio drain/pause, raster/timer event stopping and memory-owner drain
-observers, including the ARM7 bus and shared WRAM. Remaining crossings,
-devices and the renderer still lack a common freeze boundary; these partial
-signals do not authorize a whole-machine checkpoint.
+observers, including the ARM7 bus and shared WRAM. IRQ and IPC observations
+also verify that accepted events have settled without clearing pending flags
+or messages. Remaining crossings, devices and the renderer still lack a common
+freeze boundary; these partial signals do not authorize a whole-machine checkpoint.
 
 `EXPERIMENTAL_CHECKPOINT` and `EXPERIMENTAL_HALT_CHECKPOINT` default to `false`
 in both CPUs. The console's `CHECKPOINT_CPU_ENABLE` option also defaults to
@@ -222,6 +223,31 @@ The console exports `checkpoint_sound_stopped` and `checkpoint_timing_stopped`
 for the CPU hold, memory-owner drain or IRQ/CDC/renderer freeze. None of these
 devices has a complete serializer/restore interface yet. Audio output muting
 and restoration of the physical output path also remain integration work.
+
+### IRQ and IPC retirement observations
+
+The interrupt controllers and IPC owner now export observation-only
+`checkpoint_idle` outputs. The console exposes `checkpoint_irq_idle` (both
+CPUs) and `checkpoint_ipc_idle` when its experimental option is enabled.
+Neither observation stops sources, blocks bus accesses or authorizes capture.
+
+- The IRQ observer requires every currently asserted source bit to be latched
+  in IF, and the registered IRQ/wake outputs to agree with IME, IE and IF.
+  A held level source, such as GX, may remain asserted once its flag is latched.
+  Requiring all source lines to go low would reject that valid local boundary.
+  New unlatched bits, active register accesses/reset, and the output cycle after
+  an IME/IE write revoke idle. Pending IF bits and HALT wake semantics remain
+  intact, including a source asserted during write-one-to-clear.
+- IPC requires both buses quiet, emitted pulses retired and all four IRQ edge
+  history bits settled. Enabling a FIFO interrupt can create an event on the
+  following cycle, after the original bus write is gone; an empty pulse vector
+  alone is insufficient. Nonempty or full queues are allowed. No queued word,
+  pointer, last-read value or error flag is cleared to obtain idle.
+
+The outputs describe a fixed point under the **current** inputs. All remaining
+event sources and bus masters must be stopped before treating that fixed point
+as a stable checkpoint boundary. There is no new IRQ/IPC serializer or restore
+path, and pending guest events must be part of the eventual image.
 
 ### Memory-owner drain observations
 
@@ -467,6 +493,29 @@ python3 tools/test_vram_victim_equivalence.py \
 These are simulations of owner drain and unchanged transfer behavior. They do
 not establish physical CDC timing or whole-machine snapshot consistency.
 
+IRQ/IPC retirement checks:
+
+```sh
+bash tools/test_checkpoint_irq_ipc.sh
+```
+
+- Both CPUs exercise all 32 interrupt bits, held levels, simultaneous source
+  assertion and IF acknowledgement, IME/IE output latency, CE stalls and reset.
+- IPC checks full queues in both directions, pointer wrapping and exact word
+  order after a quiet interval, delayed receive/send-empty IRQs, error/last-read
+  behavior and sync IRQ delivery. Full queues become locally idle without
+  dropping messages.
+- Three seeds add 60,000 randomized cycles of concurrent bus traffic, byte
+  enables, level/pulse sources, CE changes and resets. Across the directed and
+  random runs, all original outputs match the pre-observer source revision
+  `eb7580c` at 133,947 clock phases. A separate temporal check verifies that
+  an idle owner has no state/output transition left for the next edge.
+- Four faulty observers ignore an unlatched source, the registered CPU output
+  delay, IPC edge history or an emitted IPC pulse. All are detected.
+
+This verifies retirement and behavioral equivalence only. IRQ sources and
+bus masters still need a common freeze, and no IRQ/IPC image is restored yet.
+
 Run the sleeping-CPU persistence checks:
 
 ```sh
@@ -541,7 +590,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA drain and timer/raster stop tested; remaining owners, coherent freeze and serializers missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA drain, timer/raster stop and IRQ/IPC retirement tested; remaining owners, coherent freeze and serializers missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Existing clock persistence is separate; checkpoint integration missing |
@@ -556,8 +605,8 @@ RAM dump alone is therefore deliberately not exposed as Resume.
 
 1. Extend the optional CPU-only console wiring into a coherent machine freeze.
    Combine the tested CPU/DMA/audio/event stops and memory-owner idle
-   signals with the remaining CDC/debug/loader owners, device events,
-   IRQ and lid-sleep control, verifying no pending
+   signals and IRQ/IPC retirement with the remaining CDC/debug/loader owners,
+   device events and lid-sleep control, verifying no pending
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.

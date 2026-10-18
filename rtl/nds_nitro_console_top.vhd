@@ -452,6 +452,7 @@ entity nds_nitro_console_top is
       checkpoint_sound_stopped, checkpoint_timing_stopped : out std_logic := '0';
       checkpoint_mainram_idle, checkpoint_vram_idle : out std_logic := '0';
       checkpoint_arm7_memory_idle, checkpoint_shared_wram_idle : out std_logic := '0';
+      checkpoint_irq_idle, checkpoint_ipc_idle : out std_logic := '0';
       checkpoint_read_strobe, checkpoint_read_cpu : in std_logic := '0';
       checkpoint_read_address : in std_logic_vector(7 downto 0) := (others => '0');
       checkpoint_read_epoch : in unsigned(31 downto 0) := (others => '0');
@@ -475,6 +476,7 @@ architecture arch of nds_nitro_console_top is
    signal checkpoint_memory9_idle : std_logic;
    signal checkpoint_mainram_idle_s, checkpoint_vram_idle_s : std_logic;
    signal checkpoint_memory7_idle_s, checkpoint_shared_wram_idle_s : std_logic;
+   signal checkpoint_irq9_idle_s, checkpoint_irq7_idle_s, checkpoint_ipc_idle_s : std_logic;
    signal checkpoint_timer9_stopped, checkpoint_timer7_stopped, checkpoint_raster_stopped : std_logic;
    signal checkpoint_memory9_meta, checkpoint_memory9_sync : std_logic := '0';
    attribute async_reg : string;
@@ -2096,6 +2098,8 @@ begin
       checkpoint_vram_idle <= checkpoint_vram_idle_s;
       checkpoint_arm7_memory_idle <= checkpoint_memory7_idle_s and not w7m_we and not ld_busy;
       checkpoint_shared_wram_idle <= checkpoint_shared_wram_idle_s and not resetCpu;
+      checkpoint_irq_idle <= checkpoint_irq9_idle_s and checkpoint_irq7_idle_s;
+      checkpoint_ipc_idle <= checkpoint_ipc_idle_s;
       checkpoint_timing_stopped <= checkpoint_timer9_stopped and checkpoint_timer7_stopped and checkpoint_raster_stopped;
       process(clk1x) begin
          if rising_edge(clk1x) then
@@ -2128,6 +2132,7 @@ begin
       checkpoint_timing_stopped <= '0';
       checkpoint_mainram_idle <= '0'; checkpoint_vram_idle <= '0';
       checkpoint_arm7_memory_idle <= '0'; checkpoint_shared_wram_idle <= '0';
+      checkpoint_irq_idle <= '0'; checkpoint_ipc_idle <= '0';
       checkpoint_ready <= '0'; checkpoint_busy <= '0'; checkpoint_pair_paused <= '0';
       checkpoint_timed_out <= '0'; checkpoint_release_stalled <= '0'; checkpoint_lease_expired <= '0';
       checkpoint_epoch <= (others => '0'); checkpoint_result_epoch <= (others => '0');
@@ -2685,7 +2690,8 @@ begin
       clk => clk1x, ce => '1', reset => resetCpu,
       gb_bus => io_bus9, wired_out => irq_wired_out9, wired_done => irq_wired_done9,
       irq_in => irq_in9, cpu_irq => cpu9_irq, cpu_unhalt => cpu9_unhalt,
-      dbg_ime => irq9_dbg_ime, dbg_ie => irq9_dbg_ie, dbg_if => irq9_dbg_if
+      dbg_ime => irq9_dbg_ime, dbg_ie => irq9_dbg_ie, dbg_if => irq9_dbg_if,
+      checkpoint_idle => checkpoint_irq9_idle_s
    );
 
    iirq7 : entity work.nds_irq
@@ -2694,7 +2700,8 @@ begin
       clk => clk1x, ce => '1', reset => resetCpu,
       gb_bus => io_bus7, wired_out => irq_wired_out7, wired_done => irq_wired_done7,
       irq_in => irq_in7, cpu_irq => cpu7_irq, cpu_unhalt => cpu7_unhalt,
-      dbg_ime => irq7_dbg_ime, dbg_ie => irq7_dbg_ie, dbg_if => irq7_dbg_if
+      dbg_ime => irq7_dbg_ime, dbg_ie => irq7_dbg_ie, dbg_if => irq7_dbg_if,
+      checkpoint_idle => checkpoint_irq7_idle_s
    );
 
    -- Minimal coherent GXSTAT owner for the hybrid renderer.  It is removed
@@ -2894,7 +2901,7 @@ begin
       irq7_sync => ipc7_irq_sync, irq7_sendempty => ipc7_irq_sendempty, irq7_recv => ipc7_irq_recv,
       bus9 => io_bus9, wired_out9 => ipc_wired_out9, wired_done9 => ipc_wired_done9,
       irq9_sync => ipc9_irq_sync, irq9_sendempty => ipc9_irq_sendempty, irq9_recv => ipc9_irq_recv,
-      dbg_ipc => dbg_ipc_s
+      dbg_ipc => dbg_ipc_s, checkpoint_idle => checkpoint_ipc_idle_s
    );
 
    isyscnt : entity work.nds_syscnt

@@ -43,7 +43,9 @@ entity nds_ipc is
       -- and neither IF pending is a missed-wakeup deadlock, and NOTHING else
       -- can see it: peek cannot read IO, so IPCSYNC/IPCFIFOCNT are invisible.
       dbg_ipc         : out std_logic_vector(31 downto 0) := (others => '0');
-      irq9_recv       : out std_logic := '0'
+      irq9_recv       : out std_logic := '0';
+      -- Observation only; nonempty queues are state, not work to discard.
+      checkpoint_idle : out std_logic := '0'
    );
 end entity;
 
@@ -79,6 +81,30 @@ architecture arch of nds_ipc is
    signal p7_recvpend, p9_recvpend : std_logic := '0';
 
 begin
+
+   -- Enabling an IRQ can leave an edge pending for the following clock,
+   -- because the state process observes the previous enable bits. Include
+   -- edge history as well as the emitted pulses. Never empty a FIFO to make
+   -- this true: queued words, pointers, last-read data and errors are state
+   -- that a future serializer must preserve after both bus masters stop.
+   process(all)
+      variable sendemp7, sendemp9, recvpend7, recvpend9 : std_logic;
+   begin
+      sendemp7 := '0'; sendemp9 := '0'; recvpend7 := '0'; recvpend9 := '0';
+      if cnt79 = 0 and sirq7 = '1' then sendemp7 := '1'; end if;
+      if cnt97 = 0 and sirq9 = '1' then sendemp9 := '1'; end if;
+      if cnt97 /= 0 and rirq7 = '1' then recvpend7 := '1'; end if;
+      if cnt79 /= 0 and rirq9 = '1' then recvpend9 := '1'; end if;
+      checkpoint_idle <= '0';
+      if reset = '0' and bus7.ena = '0' and bus9.ena = '0' and
+         irq7_sync = '0' and irq9_sync = '0' and
+         irq7_sendempty = '0' and irq9_sendempty = '0' and
+         irq7_recv = '0' and irq9_recv = '0' and
+         p7_sendemp = sendemp7 and p9_sendemp = sendemp9 and
+         p7_recvpend = recvpend7 and p9_recvpend = recvpend9 then
+         checkpoint_idle <= '1';
+      end if;
+   end process;
 
    -- ================= combinational read data =================
    sync7_rd <= x"0000" & '0' & sync7_ien & '0' & '0' & sync7_out & x"0" & sync9_out;
