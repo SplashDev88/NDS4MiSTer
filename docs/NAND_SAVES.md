@@ -3,14 +3,24 @@
 This branch adds NAND saves to the ARM-assisted standalone product. It is not
 release-qualified. The NAND1 prototype completed WarioWare first-run setup,
 played Mona microgames, saved the player profile and restored it after a full
-core exit/relaunch. The corrected rc.9-settings NAND3 build still needs final
-hardware qualification.
+core exit/relaunch. The corrected rc.9-settings NAND3 build also loads that
+profile and displays its saved Mona high score of 4. A new score was then
+committed on NAND3 and recovered after another full core exit/relaunch. Both
+NAND capacities pass authored program/readback and clean-relaunch persistence
+checks on NAND3.
 The rc.9 baseline reached the WarioWare intro/title sequence on the RetroTINK
 rig, with a 512-byte erased fallback sidecar; this is not a save-success result.
 
+The private test uses **Scripts → NDS_NAND_Test** and a separate hidden support
+folder. See [test instructions](release/NAND_PRIVATE_TEST.txt) and the
+[validation record](release/NAND_VALIDATION.json). Keep the matched FPGA and
+host together. Normal installation files and original saves were hash-checked
+throughout the board tests; the test runs used separate save copies or new
+diagnostic saves.
+
 | Cartridge | Game codes | Save size | Status |
 | --- | --- | --- | --- |
-| WarioWare D.I.Y. / Made in Ore | UORE, UORP, UORJ | 16 MiB | UORE prototype setup/gameplay/profile reload passed; final build qualification pending |
+| WarioWare D.I.Y. / Made in Ore | UORE, UORP, UORJ | 16 MiB | UORE setup/gameplay/profile reload on prototype; new Mona score save/reload on NAND3; other regions untested |
 | Jam with the Band | UXBP | 8 MiB | 8 MiB authored hardware persistence test passes; retail game unavailable |
 | Daigasso! Band Brothers DX | AXBJ | 8 MiB | Recognized, but a missing save-region header is rejected; layout requires separate verification |
 
@@ -130,10 +140,60 @@ record's `build_sha256`; seed 7 and one fitter worker are retained. This is a
 build override, leaving the repository's documented source defaults intact.
 NAND1 also predates the stricter known-NAND/profile guard; NAND3 includes it.
 
-Still required: completed NAND3 routing/timing review and hardware checks;
-WarioWare first-run format, gameplay and meaningful save/reload through the
-RetroTINK rig; ordinary gameplay/performance comparisons. Simulation and the
-authored diagnostic do not establish retail-game compatibility.
+NAND3 completes synthesis, fitting, assembly and standalone timing analysis.
+It uses 34,512 ALMs, 41,230 registers, 536/553 RAM blocks, 4,130,644 block-memory
+bits and 27 DSP blocks. Relative to the exact published rc.9 image, this adds
+252 ALMs, 325 registers, two RAM blocks and 2 KiB logical RAM, with no extra
+DSPs. All 851 renderer source inputs are unchanged from rc.9.
+
+Timing requirements remain **unmet**, and the design is not fully constrained.
+The slow 100 C model reports -15.254 ns worst setup slack, +0.248 ns hold slack
+and -12.981 ns recovery slack. The frozen rc.9 build lacks standalone timing
+analysis, so no numerical timing-regression comparison is claimed. Successful
+tool completion and a working board do not establish timing closure.
+
+On NAND3, the authored 8/16 MiB tests each program two 2 KiB pages, exit fully,
+relaunch, and detect the persisted pages without writing again. Each first run
+records eight sector writes; each second run records zero. Independent scans
+of both entire files match the expected pages and erased remainder exactly.
+This does not substitute for retail Jam with the Band qualification or a
+power-cut test.
+
+NAND3 also loads the private WarioWare test profile from NAND1. Its Mona table
+initially shows `4, 0, 0`. A second microgame run followed by the game's Quit
+button changes that to `4, 4, 0`, with 48 sector writes. After a full core exit
+and fresh launch, the table still shows `4, 4, 0`; this session writes zero
+sectors and retains the same whole-file hash. Both direct framebuffer and
+physical RetroTINK capture confirm the restored score. A 40-second gameplay
+recording has audible captured audio and zero OBS render/encoding drops.
+An earlier attempt exited before the normal Quit transition and did not commit
+the new score; it is not counted as a successful save. Always use the game's
+normal save process before exiting the core.
+
+These are short Mona microgame checks, not coverage of every WarioWare mode,
+other regions, long sessions, or power loss. Retail first-run setup was tested
+on NAND1; NAND3 blank-file initialization is covered by the authored diagnostic
+and actual-host tests.
+
+## Ordinary-game performance check
+
+NSMB World 2-5 was checked at 1 GHz using the same private save copy, renderer,
+new host and repeated-jump input sequence with either the released rc.9 FPGA
+or NAND3. Each build has three recorded approximately 20-second active samples,
+including a fresh-launch confirmation. At the preselected character-image
+threshold of 20 with at least 12 changed pixels, the means are 55.46 visible
+changes/second for rc.9 and 55.31 for NAND3. These are animation-dependent image
+changes, not whole-game FPS. Saves retain their original hashes.
+
+The strict primary capture-quality gate **did not pass**: one baseline video
+has one OBS render drop, and two NAND3 videos each have one false detection in
+their paused control window. The confirmation and all earlier results are
+retained. Predeclared threshold-24/32 sensitivity checks have no paused false
+detections and also show small differences (about -0.7%/-1.2% across all
+samples); they are not substituted for the primary gate. No substantial
+slowdown is indicated in this scene, but this remains capture-limited smoke
+evidence, not performance qualification or a claim of statistical equivalence.
+It does not qualify every ordinary game or resolve FPGA timing closure.
 
 ## References and provenance
 

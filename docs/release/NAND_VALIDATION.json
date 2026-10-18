@@ -1,0 +1,521 @@
+{
+  "schema": 1,
+  "date_utc": "2026-10-18T23:12:45.844212+00:00",
+  "candidate": "NAND3 private test based on rc.9",
+  "private_test_ready": true,
+  "public_release_qualified": false,
+  "branch": "experiment/nand-saves-20261018",
+  "compiled_source_revision": "a7cef185c39a454b1dd383598db1adfb03d9294c",
+  "runtime_sha256": {
+    "NDS_Standalone.rbf": "ea2dda4bed0009732f1d90016ae082b8f5bfdff642f93ec7a148a59767be0a81",
+    "nds_standalone_host": "fbd0202e7b2935a5121d4f78b2fed44d72181884c8860d3a73c8488363b2e0be",
+    "support/nds_hybrid_3d_service": "5510089f11be99c2bf56e80bca4cc784ccbbc418ce951514d78d352140a151a8",
+    "supervisor.py": "49e73e9b788703f399e21ac61005c92a5711da25f34af2623aafdd74bda1e10a"
+  },
+  "fpga_qsf_override": {
+    "appended_text": "\n# Private isolated SWAP busy experiment; source defaults remain off.\nset_global_assignment -name VERILOG_MACRO \"NDS_GX_SWAP_RETIREMENT_EXPERIMENT=1\"\nset_global_assignment -name VERILOG_MACRO \"NDS_HBLANK_RUN_QUEUE_EXPERIMENT=1\"\nset_global_assignment -name VERILOG_MACRO \"NDS_GX_BUSY_STATUS_EXPERIMENT=1\"\n",
+    "base_sha256": "510e15c2951a107ff4f9ad2269f3ba20ad2e9c04d9e71f42683d15da3aea270f",
+    "build_sha256": "d72de4c0efab96737314ad7db950403a65b0e0dc5cd27b9f4563ab43ae7fecfa"
+  },
+  "resources": {
+    "ALMs": 34512,
+    "registers": 41230,
+    "ram_blocks": 536,
+    "block_memory_bits": 4130644,
+    "DSPs": 27
+  },
+  "resource_delta_vs_rc9": {
+    "ALMs": 252,
+    "registers": 325,
+    "ram_blocks": 2,
+    "block_memory_bits": 16384,
+    "DSPs": 0
+  },
+  "static_timing_met": false,
+  "fully_constrained": false,
+  "slow_100c_ns": {
+    "setup": -15.254,
+    "hold": 0.248,
+    "recovery": -12.981
+  },
+  "rc9_standalone_timing_baseline_available": false,
+  "clock_khz": 1000000,
+  "renderer_source_inputs_unchanged_vs_rc9": 851,
+  "nand_diagnostics": {
+    "capacities_mib": [
+      8,
+      16
+    ],
+    "program_readback": true,
+    "full_core_exit_and_relaunch": true,
+    "second_launch_writes": 0,
+    "entire_file_matches_expected_pages_and_erased_remainder": true
+  },
+  "retail": {
+    "game": "WarioWare D.I.Y. (USA)",
+    "code": "UORE",
+    "capacity_mib": 16,
+    "first_run_format_test_build": "NAND1",
+    "NAND3_initial_scores": [
+      4,
+      0,
+      0
+    ],
+    "NAND3_new_scores_after_quit": [
+      4,
+      4,
+      0
+    ],
+    "NAND3_scores_after_full_relaunch": [
+      4,
+      4,
+      0
+    ],
+    "save_sector_writes": 48,
+    "reload_sector_writes": 0,
+    "short_capture_video_audio": true,
+    "OBS_render_and_encoding_drops": 0,
+    "other_modes_regions_and_long_sessions_tested": false
+  },
+  "ordinary_save_checks": {
+    "existing_eeprom_flash_ir_regressions": "pass",
+    "ordinary_card_loader_cases_match_rc9_results_and_simulation_time": 42,
+    "NSMB_private_copy_unchanged": true,
+    "original_saves_and_installation_hashes_preserved": true
+  },
+  "NSMB_comparison": {
+    "plan": {
+      "reason": "Initial baseline capture2 had one OBS render drop; candidate capture2R had one quiet-window false detection at preselected threshold20. Preserve both; obtain one fresh paired first-scene capture after warm-up.",
+      "runs": [
+        "BASE3_NSMB_CONFIRM1",
+        "NAND3_NSMB_CONFIRM1"
+      ],
+      "require": "Same threshold20/min12, zero paused detections and zero capture drops; no performance-based rejection of runs.",
+      "retain_valid_initial": [
+        "BASE3_NSMB_CAPTURE1",
+        "NAND3_NSMB_CAPTURE1"
+      ]
+    },
+    "initial_comparison_sha256": "7422f93da5d49573e79daf7b1e0e9f3f5975aa1d32da37c8590c7c8b917a0a1b",
+    "runs": [
+      {
+        "label": "BASE3_NSMB_CAPTURE1",
+        "completed_updates_per_sec": 59.589849924530405,
+        "primary": {
+          "rgb_threshold": 20,
+          "minimum_pixels": 12,
+          "changes_per_second": 54.867414999991006,
+          "paused_false_changes": 0,
+          "gap_p95_ms": 33.333333333333215
+        },
+        "sensitivity": [
+          {
+            "rgb_threshold": 16,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.69505125110001,
+            "paused_false_changes": 2,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.867414999991006,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 52.92003558561688,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.459501024836285,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333432
+          }
+        ],
+        "render_skips": 0,
+        "encode_skips": 0
+      },
+      {
+        "label": "BASE3_NSMB_CONFIRM1",
+        "completed_updates_per_sec": 59.62353131691917,
+        "primary": {
+          "rgb_threshold": 20,
+          "minimum_pixels": 12,
+          "changes_per_second": 55.6819019571414,
+          "paused_false_changes": 0,
+          "gap_p95_ms": 33.333333333333215
+        },
+        "sensitivity": [
+          {
+            "rgb_threshold": 16,
+            "minimum_pixels": 12,
+            "changes_per_second": 56.606688790345665,
+            "paused_false_changes": 1,
+            "gap_p95_ms": 33.33333333333144
+          },
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.6819019571414,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.41640418538818,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 52.32346556287325,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333384
+          }
+        ],
+        "render_skips": 0,
+        "encode_skips": 0
+      },
+      {
+        "label": "NAND3_NSMB_CAPTURE1",
+        "completed_updates_per_sec": 59.47312947302333,
+        "primary": {
+          "rgb_threshold": 20,
+          "minimum_pixels": 12,
+          "changes_per_second": 55.756052846753924,
+          "paused_false_changes": 0,
+          "gap_p95_ms": 33.333333333333215
+        },
+        "sensitivity": [
+          {
+            "rgb_threshold": 16,
+            "minimum_pixels": 12,
+            "changes_per_second": 56.6364115759132,
+            "paused_false_changes": 2,
+            "gap_p95_ms": 33.33333333333144
+          },
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.756052846753924,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.09315302500863,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.696620928963945,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333499
+          }
+        ],
+        "render_skips": 0,
+        "encode_skips": 0
+      },
+      {
+        "label": "NAND3_NSMB_CONFIRM1",
+        "completed_updates_per_sec": 59.62150195923141,
+        "primary": {
+          "rgb_threshold": 20,
+          "minimum_pixels": 12,
+          "changes_per_second": 55.28984057437955,
+          "paused_false_changes": 1,
+          "gap_p95_ms": 33.333333333333215
+        },
+        "sensitivity": [
+          {
+            "rgb_threshold": 16,
+            "minimum_pixels": 12,
+            "changes_per_second": 56.068570723314465,
+            "paused_false_changes": 6,
+            "gap_p95_ms": 33.33333333333144
+          },
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.28984057437955,
+            "paused_false_changes": 1,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 53.440356470659104,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333499
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.44486046401336,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333499
+          }
+        ],
+        "render_skips": 0,
+        "encode_skips": 0
+      }
+    ],
+    "excluded_initial_captures": [
+      {
+        "label": "BASE3_NSMB_CAPTURE2",
+        "reason": "One OBS render skip"
+      },
+      {
+        "label": "NAND3_NSMB_CAPTURE2R",
+        "reason": "One paused-window false detection at preselected threshold20/min12"
+      }
+    ],
+    "baseline_mean": 55.2746584785662,
+    "candidate_mean": 55.522946710566735,
+    "percent_change": 0.44918998838647806,
+    "controls_pass": false,
+    "regression_alert": true,
+    "limitation": "Short scene smoke comparison at 1GHz, same host3 and renderer, visible changes dependent on animation/thresholds. Initial quality failures retained separately; no run excluded for its speed result. No whole-game FPS or statistical equivalence claim."
+  },
+  "NSMB_capture_assessment": {
+    "scope": "All three recorded samples per FPGA retained, including capture-quality limitations",
+    "runs": [
+      {
+        "label": "BASE3_NSMB_CAPTURE1",
+        "completed_updates_per_sec": 59.589849924530405,
+        "render_skips": 0,
+        "encode_skips": 0,
+        "cases": [
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.867414999991006,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 52.92003558561688,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.459501024836285,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333432
+          }
+        ]
+      },
+      {
+        "label": "BASE3_NSMB_CAPTURE2",
+        "completed_updates_per_sec": 59.65124437606693,
+        "render_skips": 1,
+        "encode_skips": 0,
+        "cases": [
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.84375353039845,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333144
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.574577313798486,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 52.2802972299447,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          }
+        ]
+      },
+      {
+        "label": "BASE3_NSMB_CONFIRM1",
+        "completed_updates_per_sec": 59.62353131691917,
+        "render_skips": 0,
+        "encode_skips": 0,
+        "cases": [
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.6819019571414,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.41640418538818,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 52.32346556287325,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333384
+          }
+        ]
+      },
+      {
+        "label": "NAND3_NSMB_CAPTURE1",
+        "completed_updates_per_sec": 59.47312947302333,
+        "render_skips": 0,
+        "encode_skips": 0,
+        "cases": [
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.756052846753924,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.09315302500863,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.696620928963945,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333499
+          }
+        ]
+      },
+      {
+        "label": "NAND3_NSMB_CAPTURE2R",
+        "completed_updates_per_sec": 59.621012570504966,
+        "render_skips": 0,
+        "encode_skips": 0,
+        "cases": [
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 54.88456378456401,
+            "paused_false_changes": 1,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 53.27318424284638,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.124678187222884,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333477
+          }
+        ]
+      },
+      {
+        "label": "NAND3_NSMB_CONFIRM1",
+        "completed_updates_per_sec": 59.62150195923141,
+        "render_skips": 0,
+        "encode_skips": 0,
+        "cases": [
+          {
+            "rgb_threshold": 20,
+            "minimum_pixels": 12,
+            "changes_per_second": 55.28984057437955,
+            "paused_false_changes": 1,
+            "gap_p95_ms": 33.333333333333215
+          },
+          {
+            "rgb_threshold": 24,
+            "minimum_pixels": 12,
+            "changes_per_second": 53.440356470659104,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333499
+          },
+          {
+            "rgb_threshold": 32,
+            "minimum_pixels": 12,
+            "changes_per_second": 51.44486046401336,
+            "paused_false_changes": 0,
+            "gap_p95_ms": 33.33333333333499
+          }
+        ]
+      }
+    ],
+    "strict_primary_quality_gate_passed": false,
+    "functional_private_beta_ready": true,
+    "public_performance_qualification": false,
+    "reason": "Primary threshold20/min12 has one paused false detection in each of two NAND3 captures. One original baseline capture has one OBS render skip. No primary threshold was changed or reported as a clean pass. Threshold24/32 were predeclared sensitivity checks, not replacement primary metrics.",
+    "threshold_20": {
+      "BASE3": 55.46435682917695,
+      "NAND3": 55.31015240189916,
+      "percent_change": -0.27802436752799586
+    },
+    "threshold_24": {
+      "BASE3": 53.97033902826785,
+      "NAND3": 53.60223124617137,
+      "percent_change": -0.6820557156472118
+    },
+    "threshold_32": {
+      "BASE3": 52.02108793921808,
+      "NAND3": 51.42205319340006,
+      "percent_change": -1.1515229103204017
+    },
+    "conclusion": "No substantial slowdown signal in these short NSMB scenes; capture limitations prevent a strict primary-quality pass. This is a functionality test beta, not a public release or an FPS guarantee."
+  },
+  "strict_performance_quality_gate_passed": false,
+  "limits": [
+    "Jam with the Band retail game unavailable; 8MiB protocol and persistence diagnostics only",
+    "Other WarioWare regions untested",
+    "AXBJ missing NAND-base header refused; layout unverified",
+    "DSi Face Training unsupported",
+    "Ni no Kuni uses ordinary EEPROM; separate report remains unresolved",
+    "NAND page programming is not power-loss atomic",
+    "No power-cut, multi-board or full-game compatibility qualification",
+    "Strict NSMB primary capture-quality gate did not pass; analog/compressed capture noise limits performance conclusions",
+    "Static timing closure remains unresolved; private testing only",
+    "Suspend/resume experiment remains paused"
+  ],
+  "capture_retry": "Second NSMB recorder launch stopped at idle preflight while the first recording was still finalizing; no input sent. CAPTURE2R is the valid second run.",
+  "private_evidence_sha256": {
+    "NAND3_BUILD_RESULT.json": "e94198ffb2a93cecc5f3027a0c14e78e00914e2346747884f3b4341dcc67fe4b",
+    "NAND3_AUTHORED_SEQUENCE.json": "c40bda87959c0935b87ec989b158e23e2a90e4998ca0a2118bddf66df9b066db",
+    "PROBEV2_NAND3_8_FILE_VERIFY.json": "6b718be5ea72fa3294fa4076e527f60500f43ec3b5c665bb300b1026f268371b",
+    "PROBEV2_NAND3_16_FILE_VERIFY.json": "81bdde79e4794db73ecf4aae6cbbeb05b542997c1e65547fc0761536af3d7fe3",
+    "HARDWARE_NAND3_WARIO.json": "bda20955705ac74f32a247d21f1f40ce6e23d64cf8c9299dce1717b93b72bcda",
+    "NAND3_WARIO_PLAY_VIDEO_CHECK.json": "64a6810d76dd895287f4a3d16b7a945031e528e49371e5cb1d44ade1f3f4e0ac",
+    "NSMB_COMPARISON_PLAN.json": "dfe6ca9947febb3dae0ae2f82fb97004a20f156806ffc8aef17d2c8f7cbea904",
+    "NSMB_NAND3_COMPARISON.json": "7422f93da5d49573e79daf7b1e0e9f3f5975aa1d32da37c8590c7c8b917a0a1b",
+    "NSMB_NAND3_CONFIRMATION.json": "87b2f9308cde07980d8076e4b581468ccb2e19f67338d384a6bae1718c872a9a",
+    "NSMB_NAND3_ASSESSMENT.json": "9109ce556c3af03466c2d64232ae72c030ecb3e21bd4a2a108416d97144dd60c",
+    "NSMB_CONFIRMATION_PLAN.json": "25ec16442825d8a00497d9cd154923c7e35d7cc3fad4099b9a93be6f5dd1fd91",
+    "NAND3_NSMB_CONFIRM1_STOP.json": "dc9e710e10ece48d6a4c040ee67e610f450f14dd595f24c46e4764d7203aec03",
+    "build-nand3-inputs.json": "e6a368e821643039f9775300c749009b8a4b609371a979b3ba15c8f32a0ae228",
+    "host3-source.json": "3df05f2cbd58e0faed8d1df47e519c4ed990e4b1026d4caa1b4eba23b756b195",
+    "ORDINARY_ROM_COMPARISON.json": "471988b378694dbdba49c6e3a13c472e9534c1523fd497af5ca8626e338ee131"
+  }
+}

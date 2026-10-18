@@ -1,0 +1,37 @@
+NDS4MiSTer NAND cartridge private test (NAND3, based on rc.9)
+
+This is an experimental build, not a public release.
+
+On the prepared MiSTer, run Scripts -> NDS_NAND_Test, then Load *.NDS.
+The launcher uses the separate hidden .NDS_NAND_NAND3_20261018 folder.
+Keep that folder and this launcher together. The retained host may display
+rc.8 internally; the launcher and NAND build manifest identify this test.
+
+Primary test game: WarioWare D.I.Y. (USA), using a 16 MiB NAND save.
+European/Japanese WarioWare profiles are enabled but were not tested.
+Jam with the Band (Europe) has an 8 MiB profile and authored diagnostic
+coverage; its retail game still needs testing. Daigasso! Band Brothers DX
+with a missing save-region header is rejected pending separate investigation.
+DSi Face Training is not supported. Ni no Kuni uses ordinary EEPROM, so this
+change does not resolve its separate compatibility report.
+
+Use the game's normal save process before System -> Reboot. Exiting the core
+cannot save progress that the game has not yet committed. NAND page writes
+are not power-loss atomic. This is cartridge-save support, not save states.
+
+Saves use saves/NDS/<ROM name>.sav, as usual. Back up saves before testing.
+Existing NAND saves must be raw files of exactly 8 MiB or 16 MiB, as appropriate.
+If an older unsupported core created a small fallback .sav, back it up and
+move it aside before starting a fresh save. Do not truncate or pad a file
+containing progress. This test does not convert emulator save containers.
+
+To return to your normal installation, exit cleanly and run its usual launcher.
+Keep the new NAND saves backed up; older cores do not support them.
+
+The renderer and 1 GHz ARM clock are retained from rc.9. FPGA timing closure
+remains unresolved. Short board tests do not qualify every game, long sessions,
+or other boards. NSMB showed no substantial slowdown in short checks, but
+capture noise limits that comparison. NAND_VALIDATION.json in the hidden
+folder records test scope and the failed strict capture-quality gate.
+
+The suspend/resume experiment remains paused and is not part of this build.
