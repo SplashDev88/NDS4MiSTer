@@ -1,5 +1,6 @@
 library IEEE;
 use IEEE.std_logic_1164.all;
+use IEEE.numeric_std.all;
 
 library work;
 use work.pProc_bus_gba.all;
@@ -24,14 +25,23 @@ use work.pProc_bus_gba.all;
 -- retains the original GPU's full DISPCNT, full address decode and bus reset.
 -- This allows its private drawers to disappear when ARM owns the full frame.
 entity nds_gpu2d_register_shadow is
-   generic (is_engine_b : boolean := true);
+   generic (is_engine_b : boolean := true; EXPERIMENTAL_CHECKPOINT : boolean := false);
    port
    (
       clk        : in  std_logic;
       reset      : in  std_logic;
       gb_bus     : in  proc_bus_gb_type;
       wired_out  : out std_logic_vector(31 downto 0) := (others => '0');
-      wired_done : out std_logic := '0'
+      wired_done : out std_logic := '0';
+      checkpoint_idle : out std_logic := '0';
+      checkpoint_address : in unsigned(2 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -46,7 +56,56 @@ architecture rtl of nds_gpu2d_register_shadow is
    signal bg01_cnt, bg23_cnt : std_logic_vector(31 downto 0) := (others => '0');
    signal win_cnt, blend_cnt : std_logic_vector(31 downto 0) := (others => '0');
    signal master_bright : std_logic_vector(15 downto 0) := (others => '0');
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_count : unsigned(2 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+   function valid_word(a : unsigned(2 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 => return (d and not display_mask) = x"00000000";
+         when 1 | 2 => return true;
+         when 3 => return (d and not x"3F3F3F3F") = x"00000000";
+         when 4 => return (d and not x"1F1F3FFF") = x"00000000";
+         when 5 => return (d and not x"0000C01F") = x"00000000";
+         when others => return false;
+      end case;
+   end function;
 begin
+   checkpoint_idle <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '0' and gb_bus.rst = '0' and gb_bus.ena = '0' else '0';
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   restore_write_valid <= '1' when restore_active = '1' and gb_bus.ena = '0' and restore_error = '0' and checkpoint_write = '1' and
+      restore_count < 6 and checkpoint_address = restore_count and valid_word(checkpoint_address,checkpoint_write_data) else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and gb_bus.ena = '0' and restore_error = '0' and
+      restore_count = 6 and checkpoint_write = '0' else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then restore_count <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' or gb_bus.ena = '1' then restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+   process(all)
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < 6 and
+         ((checkpoint_idle = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data <= disp_cnt;
+            when 1 => checkpoint_data <= bg01_cnt;
+            when 2 => checkpoint_data <= bg23_cnt;
+            when 3 => checkpoint_data <= win_cnt;
+            when 4 => checkpoint_data <= blend_cnt;
+            when 5 => checkpoint_data(15 downto 0) <= master_bright;
+            when others => null;
+         end case;
+      end if;
+   end process;
    -- Engine A must decode the full address like the original eProcReg bank.
    -- Engine B keeps its existing translated-window behavior.
    address_selected <= is_engine_b or gb_bus.Adr(27 downto 12) = x"0000";
@@ -55,7 +114,19 @@ begin
       variable next_effect_cnt : std_logic_vector(31 downto 0);
    begin
       if rising_edge(clk) then
-         if (is_engine_b and reset = '1') or gb_bus.rst = '1' then
+         if restore_active = '1' then
+            if restore_write_valid = '1' then
+               case to_integer(checkpoint_address) is
+                  when 0 => disp_cnt <= checkpoint_write_data;
+                  when 1 => bg01_cnt <= checkpoint_write_data;
+                  when 2 => bg23_cnt <= checkpoint_write_data;
+                  when 3 => win_cnt <= checkpoint_write_data;
+                  when 4 => blend_cnt <= checkpoint_write_data;
+                  when 5 => master_bright <= checkpoint_write_data(15 downto 0);
+                  when others => null;
+               end case;
+            end if;
+         elsif (is_engine_b and reset = '1') or gb_bus.rst = '1' then
             disp_cnt <= (others => '0');
             bg01_cnt <= (others => '0');
             bg23_cnt <= (others => '0');

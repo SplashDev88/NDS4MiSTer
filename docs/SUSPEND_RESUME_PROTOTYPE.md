@@ -37,8 +37,9 @@ The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
 state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
-transactions, completed arithmetic, system-control registers, raster timing and
-the RTC's calendar/partial serial state across fresh simulator processes. These
+transactions, completed arithmetic, system-control registers, raster timing,
+the RTC's calendar/partial serial state, both display readback banks and the
+drained graphics gate's epochs across fresh simulator processes. These
 ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
@@ -856,6 +857,72 @@ virtual-clock warnings are expected, and no timing or gameplay-speed result is
 inferred. The remaining cost still needs a complete-core resource check before
 this can be accepted for a gameplay beta.
 
+## Graphics epoch and display-register component persistence
+
+The product `nds_h3d_console_event_gate.vhd` image has four ordered words:
+timestamp low/high, geometry-frame counter, and independent LCD-frame counter.
+The existing checkpoint boundary requires stopped producers, a live service,
+empty GPU/VRAM/HBlank/frame queues, no fault and two quiet qualification edges.
+It does not discard work to obtain that boundary. A drained queue has no live
+payload to serialize: on restore, its count and read/write positions start
+empty, and the next retained record supplies its payload. The compressed
+HBlank queue likewise seeds a new run from the next received event. Its stale
+predictions and boundary RAM do not represent future events.
+
+Restore holds reset, the checkpoint request and producer-stop indication.
+All source-valid and raster pulse inputs must be quiet. The three counters
+load directly; reset continues to empty the queues without erasing loaded
+counters during gaps. Incoming source acceptance, CPU posting completion,
+VRAM issues and outgoing event-valid signals are suppressed throughout the
+explicit restore. Invalid order, duplicates, extra words, source activity,
+missing producer stop/request or a live attempt poison the load until
+withdrawal and a complete retry. All four words are required. The host service
+may initialize while reset remains held, but local restore readiness stays
+low until `service_ready=1`. This does not replace the required external
+delivery receipt, host epoch or renderer/storage ownership acknowledgement.
+
+`tools/test_checkpoint_graphics_restore.sh` checks 18 capture scenarios and
+36 fresh-process restores across raw/compressed/sparse HBlank modes, GPU queue
+depths 4/32, different prior queue histories and zero/variable load gaps. Capture
+and ordinary continuation match immutable revision `ef7e265`; restored
+continuation matches every ready/valid/issue signal and every valid record's
+payload, scanline, timestamp and frame number. Invalid payload pins are ignored
+by protocol. Future traffic includes queue wrap, backpressure, an ARM7 held
+write, the GPU CPU-overflow skid and a retained regular HBlank run crossing
+line 262. Separate synthetic epochs exercise timestamp carry across bit 32
+and both frame-counter wraps through normal output events, then are discarded
+before the recorded continuation. Ten injected faults are detected: four lost
+epoch fields and two broken empty-queue positions fail functional checks with
+image comparison disabled; four restore protocol/isolation faults also fail.
+These tests prove only this gate's drained boundary, not empty or disposable
+state in other FPGA or host queues.
+
+`nds_gpu2d_register_shadow.vhd` has a separate six-word image for each engine,
+behind default-off `EXPERIMENTAL_CHECKPOINT`: DISPCNT, BG0/1CNT, BG2/3CNT,
+WININ/OUT, BLDCNT/BLDALPHA, and MASTER_BRIGHT. The exact engine identity preserves
+its existing address and bit-mask rules. Capture requires a quiet bus with both
+resets inactive. Ordered reset-held restore writes existing registers directly,
+validates reserved bits and keeps all loaded values through reset gaps.
+Malformed, live or bus-active attempts require a complete retry.
+`tools/test_checkpoint_display_restore.sh` checks 12 captures and 24 fresh
+restores across both engines, masked byte lanes, high-address aliasing,
+read/modify/write and subsequent reset. Ten injected faults are detected,
+including all six lost register words through ordinary readback continuation
+with image comparisons disabled. The existing Engine A differential against
+the original GPU bank and Engine B register contract also pass.
+
+The source survey distinguishes `nds_h3d_query_watch.vhd`, a passive diagnostic
+that is currently absent from the product (the top's diagnostic ports remain
+tied off), from the gameplay-facing `nds_h3d_gx_readback_owner.vhd` and
+`nds_h3d_gx_status.vhd`. The latter owners still need coverage: partial packed
+commands, test-result state, retained request sequence and response/cache
+generations must agree with the restored ARM service. The packet frontend behind
+`nds_h3d_frame_record_cdc.sv`, its normalized command FIFO, stack tracking and
+readback-reply cache are also separate owners; draining the source gate alone
+does not establish their state coverage. The image ports above
+remain unconnected to console transport, and no hardware/gameplay resume or
+combined FPGA resource result is claimed.
+
 ## Raster timing component persistence
 
 `nds_gpu_timing.vhd` now exposes five ordered words behind its existing
@@ -1651,7 +1718,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster component restore tested; graphics event/display and other state plus real external ownership still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks and drained graphics-gate epochs tested; gameplay geometry-query/status state and real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; calendar/partial serial component restore tested; elapsed-time restore and host integration missing |

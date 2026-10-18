@@ -117,7 +117,17 @@ entity nds_h3d_console_event_gate is
       frame_event_ready     : in  std_logic;
       frame_event_number    : out std_logic_vector(31 downto 0);
       frame_event_timestamp : out std_logic_vector(63 downto 0);
-      frame_pending_level   : out std_logic_vector(8 downto 0)
+      frame_pending_level   : out std_logic_vector(8 downto 0);
+      -- Drained queues have no live payload. Persist the three clock epochs;
+      -- restore their empty queues while reset is held, then rejoin the host.
+      checkpoint_address : in unsigned(2 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -214,7 +224,47 @@ architecture arch of nds_h3d_console_event_gate is
    signal checkpoint_clock_hold, checkpoint_drained : std_logic;
    signal checkpoint_invalid : std_logic := '0';
    signal checkpoint_quiet : natural range 0 to 2 := 0;
+   signal restore_active, restore_write_valid, source_quiet, service_active : std_logic;
+   signal restore_count : unsigned(2 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
 begin
+   source_quiet <= '1' when gpu_source_valid = '0' and vram9_source_valid = '0' and vram7_source_valid = '0' and
+      hblank_pulse = '0' and frame_pulse = '0' else '0';
+   restore_active <= '1' when CHECKPOINT_ENABLE and reset = '1' and checkpoint_restore = '1' else '0';
+   service_active <= service_ready and not restore_active;
+   restore_write_valid <= '1' when restore_active = '1' and source_quiet = '1' and checkpoint_request = '1' and
+      checkpoint_producers_stopped = '1' and restore_error = '0' and checkpoint_write = '1' and
+      restore_count < 4 and checkpoint_address = restore_count else '0';
+   checkpoint_restore_error <= restore_error when CHECKPOINT_ENABLE else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and source_quiet = '1' and checkpoint_request = '1' and
+      checkpoint_producers_stopped = '1' and service_ready = '1' and restore_error = '0' and
+      restore_count = 4 and checkpoint_write = '0' else '0';
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not CHECKPOINT_ENABLE or checkpoint_restore = '0' then restore_count <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' or source_quiet = '0' or checkpoint_request = '0' or checkpoint_producers_stopped = '0' then restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+   process(all)
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if CHECKPOINT_ENABLE and checkpoint_address < 4 and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data <= std_logic_vector(timestamp_counter(31 downto 0));
+            when 1 => checkpoint_data <= std_logic_vector(timestamp_counter(63 downto 32));
+            when 2 => checkpoint_data <= std_logic_vector(frame_counter);
+            when 3 => checkpoint_data <= std_logic_vector(hblank_frame_counter);
+            when others => null;
+         end case;
+      end if;
+   end process;
    -- Clock hold is independent of downstream completion: the host may need
    -- the source clock stopped before it can finish its own checkpoint. Late
    -- source work revokes the hold and is processed normally, never discarded.
@@ -254,7 +304,7 @@ begin
    frame_pending_level <= std_logic_vector(frame_pending_count);
 
    gpu_queue_read <= gpu_queue(to_integer(gpu_read_pointer));
-   gpu_queue_pop <= '1' when service_ready = '1' and
+   gpu_queue_pop <= '1' when service_active = '1' and
                              gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) and
                              gpu_event_ready = '1' else '0';
    -- A pop may refill a full queue on the same edge with no bubble.
@@ -262,7 +312,7 @@ begin
       gpu_pending_count < to_unsigned(GPU_QUEUE_DEPTH, gpu_pending_count'length) or
       gpu_queue_pop = '1' else '0';
    gpu_pending_move <= gpu_pending and gpu_queue_space;
-   gpu_source_take <= '1' when service_ready = '1' and gpu_pending = '0' and
+   gpu_source_take <= '1' when service_active = '1' and gpu_pending = '0' and
                               gpu_source_valid = '1' and gpu_queue_space = '1'
                       else '0';
    -- Preserve the old zero-latency path when both stages are empty. If the
@@ -273,15 +323,15 @@ begin
    gpu_queue_push <= gpu_pending_move or
       (gpu_source_take and not gpu_bypass_fire);
 
-   gpu_valid_i <= '1' when service_ready = '1' and
+   gpu_valid_i <= '1' when service_active = '1' and
                            (gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) or
                             (gpu_pending = '0' and gpu_source_valid = '1')) else '0';
-   gpu_source_ready <= '1' when service_ready = '0' else
+   gpu_source_ready <= '0' when restore_active = '1' else '1' when service_ready = '0' else
                        gpu_queue_space when gpu_pending = '0' else '0';
    -- CPU completion is tied to durable local posting, not downstream drain.
    -- A pulse captured in the overflow skid slot completes when that slot can
    -- move into the queue; DMA observes the same edge through source_ready.
-   gpu_cpu_complete <= '1' when service_ready = '1' and
+   gpu_cpu_complete <= '1' when service_active = '1' and
       ((gpu_pending = '1' and gpu_pending_move = '1' and
         gpu_pending_cpu = '1') or
        (gpu_pending = '0' and gpu_source_take = '1' and
@@ -313,12 +363,12 @@ begin
    -- closes a loop through sink arbitration, local VRAM acceptance, and source
    -- valid.  A simultaneous sink pop and source push refills the stage on the
    -- same edge, so this cut adds one cycle of latency but no steady-state bubble.
-   vram9_valid_i <= '1' when service_ready = '1' and
+   vram9_valid_i <= '1' when service_active = '1' and
                              vram9_pending = '1' else '0';
-   vram9_source_ready <= '1' when service_ready = '0' or
+   vram9_source_ready <= '0' when restore_active = '1' else '1' when service_ready = '0' or
                                  vram9_pending = '0' or
                                  vram9_event_ready = '1' else '0';
-   vram9_issue <= vram9_source_valid when service_ready = '0' else
+   vram9_issue <= '0' when restore_active = '1' else vram9_source_valid when service_ready = '0' else
                   vram9_pending and vram9_event_ready;
    vram9_event_valid     <= vram9_valid_i;
    vram9_event_address   <= vram9_pending_address;
@@ -328,10 +378,10 @@ begin
    vram9_event_scanline     <= vram9_pending_scanline;
    vram9_event_timestamp <= vram9_pending_time;
 
-   vram7_valid_i <= '1' when service_ready = '1' and
+   vram7_valid_i <= '1' when service_active = '1' and
                              (vram7_pending = '1' or vram7_source_valid = '1') else '0';
-   vram7_source_ready <= '1' when service_ready = '0' else vram7_event_ready;
-   vram7_issue <= vram7_source_valid when service_ready = '0' else
+   vram7_source_ready <= '0' when restore_active = '1' else '1' when service_ready = '0' else vram7_event_ready;
+   vram7_issue <= '0' when restore_active = '1' else vram7_source_valid when service_ready = '0' else
                   vram7_valid_i and vram7_event_ready;
    vram7_event_valid     <= vram7_valid_i;
    vram7_event_address   <= vram7_pending_address when vram7_pending = '1' else
@@ -349,7 +399,7 @@ begin
 
    hblank_event_valid <= hblank_valid_i;
    sparse_hblank_output : if SPARSE_HBLANK generate
-      hblank_valid_i <= '1' when service_ready = '1' and
+      hblank_valid_i <= '1' when service_active = '1' and
          hblank_pulse = '1' and
          (unsigned(hblank_line) = to_unsigned(0, hblank_line'length) or
           unsigned(hblank_line) = to_unsigned(192, hblank_line'length))
@@ -361,7 +411,7 @@ begin
    end generate;
 
    queued_hblank_output : if not SPARSE_HBLANK and not COMPRESS_HBLANK generate
-      hblank_valid_i <= '1' when service_ready = '1' and
+      hblank_valid_i <= '1' when service_active = '1' and
          (hblank_pending_count /=
              to_unsigned(0, hblank_pending_count'length) or
           hblank_pulse = '1') else '0';
@@ -387,7 +437,7 @@ begin
       hblank_queue_read <= (others => '0');
       run_queue : entity work.nds_hblank_run_queue
       port map (
-         clk => clk, reset => reset, service_ready => service_ready,
+         clk => clk, reset => reset, service_ready => service_active,
          source_pulse => hblank_pulse, source_line => hblank_line,
          source_frame => std_logic_vector(hblank_frame_counter),
          source_timestamp => std_logic_vector(timestamp_counter),
@@ -398,7 +448,7 @@ begin
       );
    end generate;
 
-   frame_valid_i <= '1' when service_ready = '1' and
+   frame_valid_i <= '1' when service_active = '1' and
                              (frame_pending_count /=
                                 to_unsigned(0, frame_pending_count'length) or
                               frame_pulse = '1') else '0';
@@ -417,9 +467,21 @@ begin
    begin
       if rising_edge(clk) then
          if (reset = '1') then
-            timestamp_counter <= (others => '0');
-            frame_counter <= (others => '0');
-            hblank_frame_counter <= (others => '0');
+            if restore_active = '1' then
+               if restore_write_valid = '1' then
+                  case to_integer(checkpoint_address) is
+                     when 0 => timestamp_counter(31 downto 0) <= unsigned(checkpoint_write_data);
+                     when 1 => timestamp_counter(63 downto 32) <= unsigned(checkpoint_write_data);
+                     when 2 => frame_counter <= unsigned(checkpoint_write_data);
+                     when 3 => hblank_frame_counter <= unsigned(checkpoint_write_data);
+                     when others => null;
+                  end case;
+               end if;
+            else
+               timestamp_counter <= (others => '0');
+               frame_counter <= (others => '0');
+               hblank_frame_counter <= (others => '0');
+            end if;
             source_fault_reason_i <= "00";
             gpu_pending <= '0';
             gpu_pending_cpu <= '0';
