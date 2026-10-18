@@ -92,9 +92,37 @@ Board checks completed before the NAND bitstream was available:
   existing-file preservation, wrong-size rejection, cancellation and retry with
   a leftover temporary file pass. No SPI or live game state is involved.
 
-Still required: Quartus placement/routing/timing review; WarioWare first-run
-format, gameplay and meaningful save/reload through the RetroTINK rig; ordinary
-gameplay/performance comparisons. Simulation is not game compatibility proof.
+The initial NAND1 bitstream also passes an authored cartridge diagnostic on
+physical MiSTer for both capacities. It programs two complete 2 KiB pages (one
+above 1 MiB and one at the writable region's end), reads them back, then finds
+them intact after clean exit and a fresh core launch. The second launch performs
+no programming. An independent scan of each entire save file matches the two
+expected pages, with every other byte still FF. The RetroTINK capture confirms
+the diagnostic's pass screen. The same diagnostic fails the initial NAND status
+check on rc.9, as expected. This is cartridge-bus/storage validation, not a
+retail-game save qualification or a power-cut test.
+
+NAND1 uses 34,399 ALMs, 534/553 RAM blocks and 27 DSP blocks after fitting.
+Fitting, assembly and timing analysis completed. Timing requirements are **not**
+met: the slow 100 C report has -14.274 ns worst setup slack, +0.256 ns hold slack
+and -14.137 ns recovery slack. These values describe NAND1 only.
+
+NAND1 and NAND2 were built with source defaults, which omit the three graphics
+options enabled in the published rc.9 FPGA. They are diagnostic builds, not
+performance-qualified successors to rc.9. NAND2 was intentionally cancelled
+while routing after this mismatch was identified. The corrected NAND3 build
+applies the exact `fpga_qsf_override.appended_text` from
+[the rc.9 provenance record](release/BETA12_BUILD_PROVENANCE.json):
+`NDS_GX_SWAP_RETIREMENT_EXPERIMENT`, `NDS_HBLANK_RUN_QUEUE_EXPERIMENT` and
+`NDS_GX_BUSY_STATUS_EXPERIMENT`, all set to 1. Its final QSF hash must match that
+record's `build_sha256`; seed 7 and one fitter worker are retained. This is a
+build override, leaving the repository's documented source defaults intact.
+NAND1 also predates the stricter known-NAND/profile guard; NAND3 includes it.
+
+Still required: completed NAND3 routing/timing review and hardware checks;
+WarioWare first-run format, gameplay and meaningful save/reload through the
+RetroTINK rig; ordinary gameplay/performance comparisons. Simulation and the
+authored diagnostic do not establish retail-game compatibility.
 
 ## References and provenance
 
