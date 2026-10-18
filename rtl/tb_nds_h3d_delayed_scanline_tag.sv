@@ -84,7 +84,13 @@ module tb_nds_h3d_delayed_scanline_tag;
         .ASYNC_LGDEPTH(2),
         .SPARSE_HBLANK(1'b1),
         .SCANLINE_TAGS(1'b1)
-    ) dut (.*, .gx_geometry_busy());
+    ) dut (.*, .gx_geometry_busy(),
+        .checkpoint_request(1'b0), .checkpoint_producers_stopped(1'b0),
+        .checkpoint_address(9'd0), .checkpoint_restore(1'b0),
+        .checkpoint_write(1'b0), .checkpoint_write_data(32'd0),
+        .checkpoint_ddr_ack(1'b0), .checkpoint_ddr_request(),
+        .checkpoint_seen(), .checkpoint_stopped(), .checkpoint_data(),
+        .checkpoint_valid(), .checkpoint_restore_ready(), .checkpoint_restore_error());
 
     always @(posedge ddr_clk) begin
         if (record_valid && record_ready) begin

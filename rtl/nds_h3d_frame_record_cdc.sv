@@ -5,6 +5,7 @@
 // through the exact standalone GX normalizer; other GPU and VRAM writes are
 // converted directly to the shared 128-bit record ABI. A 172-bit asynchronous
 // FIFO transports {boundary, frame_end, logical_frame, record} to DDR.
+// Checkpoint builds add one private marker bit, never exposed in the packet ABI.
 module nds_h3d_frame_record_cdc #(
     parameter integer ASYNC_LGDEPTH = 4,
     // Production Engine-B scanout needs LCD phase information, but sending
@@ -14,7 +15,8 @@ module nds_h3d_frame_record_cdc #(
     // transport resumes, so timing pulses never backpressure the console.
     parameter bit SPARSE_HBLANK = 0,
     parameter bit SCANLINE_TAGS = 0,
-    parameter bit SWAP_VBLANK_RETIREMENT = 0
+    parameter bit SWAP_VBLANK_RETIREMENT = 0,
+    parameter bit EXPERIMENTAL_CHECKPOINT = 0
 ) (
     input  logic         source_clk,
     input  logic         ddr_clk,
@@ -84,12 +86,29 @@ module nds_h3d_frame_record_cdc #(
     output logic         record_frame_end,
     output logic         boundary_valid,
     input  logic         boundary_ready,
-    output logic [31:0]  boundary_frame
+    output logic [31:0]  boundary_frame,
+
+    // Control/image ports are synchronous to source_clk. The DDR request
+    // requires a real downstream owner; ACK defaults inactive in the product.
+    input  logic         checkpoint_request,
+    input  logic         checkpoint_producers_stopped,
+    output logic         checkpoint_seen,
+    output logic         checkpoint_stopped,
+    input  logic [8:0]   checkpoint_address,
+    output logic [31:0]  checkpoint_data,
+    output logic         checkpoint_valid,
+    input  logic         checkpoint_restore,
+    input  logic         checkpoint_write,
+    input  logic [31:0]  checkpoint_write_data,
+    output logic         checkpoint_restore_ready,
+    output logic         checkpoint_restore_error,
+    output logic         checkpoint_ddr_request,
+    input  logic         checkpoint_ddr_ack
 );
     // {boundary, frame_end, logical_frame, scanline_valid, scanline, record}.
     // Keep scanline metadata outside the record proper so the common GX
     // structural checks and 128-bit record mux stay identical to beta.6.
-    localparam integer CDC_WIDTH = 172;
+    localparam integer CDC_WIDTH = EXPERIMENTAL_CHECKPOINT ? 173 : 172;
     localparam logic [7:0] KIND_GX_COMMAND = 8'd1;
     localparam logic [7:0] KIND_GX_REGISTER = 8'd2;
     localparam logic [7:0] KIND_VRAM_WRITE = 8'd3;
@@ -100,6 +119,30 @@ module nds_h3d_frame_record_cdc #(
     localparam logic [7:0] KIND_HBLANK = 8'd8;
     localparam logic [7:0] KIND_GX_PACKED = 8'd9;
     localparam logic [7:0] KIND_GX_READBACK_FENCE = 8'd10;
+
+    typedef enum logic [2:0] {CP_IDLE, CP_SEND, CP_WAIT_HIGH, CP_HELD,
+                              CP_WAIT_LOW, CP_WAIT_REQUEST_LOW} checkpoint_phase_t;
+    typedef enum logic [1:0] {CD_IDLE, CD_REQUEST, CD_REPLY, CD_DRAIN} checkpoint_ddr_phase_t;
+    checkpoint_phase_t checkpoint_phase;
+    checkpoint_ddr_phase_t checkpoint_ddr_phase;
+    wire checkpoint_loading, checkpoint_block, checkpoint_sources_quiet;
+    wire checkpoint_front_request, checkpoint_front_stop;
+    wire checkpoint_marker_valid, checkpoint_marker_fire, checkpoint_marker_active;
+    wire checkpoint_marker_read;
+    wire checkpoint_front_stopped, checkpoint_front_valid;
+    wire checkpoint_front_restore_ready, checkpoint_front_restore_error;
+    wire [31:0] checkpoint_front_data;
+    wire [8:0] checkpoint_front_address = checkpoint_address - 9'd2;
+    wire checkpoint_restore_safe, checkpoint_restore_accept, checkpoint_restore_full;
+    logic [8:0] checkpoint_restore_count;
+    logic checkpoint_error, checkpoint_loaded;
+    wire checkpoint_reset_guard = EXPERIMENTAL_CHECKPOINT && checkpoint_loaded &&
+        !reset && !session_flush;
+    wire checkpoint_marker_ack;
+    (* async_reg = "true" *) logic checkpoint_ack_meta, checkpoint_ack_sync;
+    (* async_reg = "true" *) logic checkpoint_active_meta, checkpoint_active_sync;
+    logic checkpoint_delivery_lost;
+    (* async_reg = "true" *) logic checkpoint_lost_meta, checkpoint_lost_sync;
 
     function automatic logic [1:0] address_low(
         input logic [3:0] byte_enable
@@ -251,17 +294,21 @@ module nds_h3d_frame_record_cdc #(
     logic geometry_enabled;
     always_ff @(posedge source_clk) begin
         // Match the direct-boot renderer and matrix-prefix initial state.
-        if (source_reset_local) geometry_enabled <= 1;
+        if (checkpoint_loading) begin
+            if (checkpoint_restore_accept && checkpoint_address == 1)
+                geometry_enabled <= checkpoint_write_data[0];
+        end else if (source_reset_local && !checkpoint_reset_guard) geometry_enabled <= 1;
         else if (gpu_valid && gpu_ready && gpu_powcnt1 && gpu_byte_enable[0])
             geometry_enabled <= gpu_data[3];
     end
 
     nds_gx_fifo_packet_frontend #(
-        .SWAP_VBLANK_RETIREMENT(SWAP_VBLANK_RETIREMENT)
+        .SWAP_VBLANK_RETIREMENT(SWAP_VBLANK_RETIREMENT),
+        .EXPERIMENTAL_CHECKPOINT(EXPERIMENTAL_CHECKPOINT)
     ) gx_frontend (
         .clk(source_clk),
-        .reset(source_reset_local),
-        .lcd_vblank(lcd_vblank),
+        .reset(source_reset_local && !checkpoint_reset_guard),
+        .lcd_vblank(lcd_vblank && !checkpoint_block),
         .geometry_enabled(geometry_enabled),
         .write_valid(gx_write_valid),
         .write_ready(gx_write_ready),
@@ -288,15 +335,20 @@ module nds_h3d_frame_record_cdc #(
         .packed_active(gx_packed_active),
         .normalization_pending(gx_normalization_pending),
         .protocol_error(gx_protocol_error),
-        .stack_ack(gx_stack_ack),
+        .stack_ack(gx_stack_ack && !checkpoint_block),
         .pos_stack_level(gx_stack_status[4:0]),
         .proj_stack_level(gx_stack_status[5]),
         .stack_error(gx_stack_status[6]),
-        .checkpoint_request(1'b0), .checkpoint_producers_stopped(1'b0),
-        .checkpoint_address(9'd0), .checkpoint_restore(1'b0),
-        .checkpoint_write(1'b0), .checkpoint_write_data(32'd0),
-        .checkpoint_stopped(), .checkpoint_data(), .checkpoint_valid(),
-        .checkpoint_restore_ready(), .checkpoint_restore_error()
+        .checkpoint_request(checkpoint_front_request),
+        .checkpoint_producers_stopped(checkpoint_front_stop),
+        .checkpoint_address(checkpoint_front_address),
+        .checkpoint_restore(checkpoint_loading),
+        .checkpoint_write(checkpoint_restore_accept && checkpoint_address >= 2),
+        .checkpoint_write_data(checkpoint_write_data),
+        .checkpoint_stopped(checkpoint_front_stopped),
+        .checkpoint_data(checkpoint_front_data), .checkpoint_valid(checkpoint_front_valid),
+        .checkpoint_restore_ready(checkpoint_front_restore_ready),
+        .checkpoint_restore_error(checkpoint_front_restore_error)
     );
 
     logic async_write_valid;
@@ -428,14 +480,14 @@ module nds_h3d_frame_record_cdc #(
         gpu_ready = 0;
         arm9_vram_ready = 0;
         arm7_vram_ready = 0;
-        hblank_ready = SPARSE_HBLANK ? 1'b1 : 1'b0;
+        hblank_ready = SPARSE_HBLANK && !checkpoint_block ? 1'b1 : 1'b0;
         frame_ready = 0;
         gx_write_valid = 0;
         gx_record_ready = 0;
         async_write_valid = 0;
         async_write_data = '0;
 
-        if (source_active && !source_fault) begin
+        if (source_active && !source_fault && !checkpoint_block) begin
             // A SWAP accepted into the final ordered stream has already
             // closed every earlier frame.  Its later VBlank token is therefore
             // a local no-op and must not sit behind older traffic or a full
@@ -622,27 +674,13 @@ module nds_h3d_frame_record_cdc #(
             source_fault_reason_now = 4'd8;
     end
 
-    always_ff @(posedge source_clk or posedge source_reset_local) begin
-        if (source_reset_local) begin
+    always_ff @(posedge source_clk) begin
+        if (checkpoint_loading) begin
+            if (checkpoint_restore_accept && checkpoint_address == 0)
+                logical_frame <= checkpoint_write_data;
+        end else if (source_reset_local && !checkpoint_reset_guard) begin
             logical_frame <= 32'd1;
-            source_fault <= 0;
-            source_fault_reason <= 0;
-            gpu_stalled <= 0;
-            arm9_stalled <= 0;
-            arm7_stalled <= 0;
-            hblank_stalled <= 0;
-            frame_stalled <= 0;
-            gpu_stalled_payload <= 0;
-            arm9_stalled_payload <= 0;
-            arm7_stalled_payload <= 0;
-            hblank_stalled_payload <= 0;
-            frame_stalled_payload <= 0;
         end else begin
-            if (!source_fault && source_fault_reason_now != 0) begin
-                source_fault <= 1;
-                source_fault_reason <= source_fault_reason_now;
-            end
-
             // Frame ownership follows the final timestamp-ordered stream,
             // not the earlier instant at which a command entered the GX
             // normalization FIFO. A VBlank may legitimately sort ahead of a
@@ -661,6 +699,29 @@ module nds_h3d_frame_record_cdc #(
                 if (frame_number != 32'hffffffff &&
                     logical_frame < frame_number + 1'b1)
                     logical_frame <= frame_number + 1'b1;
+            end
+
+        end
+    end
+
+    always_ff @(posedge source_clk or posedge source_reset_local) begin
+        if (source_reset_local) begin
+            source_fault <= 0;
+            source_fault_reason <= 0;
+            gpu_stalled <= 0;
+            arm9_stalled <= 0;
+            arm7_stalled <= 0;
+            hblank_stalled <= 0;
+            frame_stalled <= 0;
+            gpu_stalled_payload <= 0;
+            arm9_stalled_payload <= 0;
+            arm7_stalled_payload <= 0;
+            hblank_stalled_payload <= 0;
+            frame_stalled_payload <= 0;
+        end else begin
+            if (!source_fault && source_fault_reason_now != 0) begin
+                source_fault <= 1;
+                source_fault_reason <= source_fault_reason_now;
             end
 
             if (gpu_valid && !gpu_ready && !gpu_stalled) begin
@@ -705,9 +766,9 @@ module nds_h3d_frame_record_cdc #(
     ) crossing (
         .write_clk(source_clk),
         .write_reset(source_reset_local),
-        .write_valid(async_write_valid),
+        .write_valid(async_write_valid || checkpoint_marker_valid),
         .write_ready(async_write_ready),
-        .write_data(async_write_data),
+        .write_data(checkpoint_marker_valid ? {1'b1, 172'd0} : async_write_data),
         .read_clk(ddr_clk),
         .read_reset(ddr_reset_local),
         .read_valid(async_read_valid),
@@ -760,8 +821,10 @@ module nds_h3d_frame_record_cdc #(
     logic pack_emit_three;
     logic pack_flush_one;
 
+    wire async_head_checkpoint = EXPERIMENTAL_CHECKPOINT &&
+        async_read_data[CDC_WIDTH-1];
     wire async_head_boundary = async_read_data[171];
-    wire async_head_structural_gx = !async_head_boundary &&
+    wire async_head_structural_gx = !async_head_checkpoint && !async_head_boundary &&
         async_read_data[7:0] == KIND_GX_COMMAND &&
         async_read_data[31:16] == 16'd0 &&
         async_read_data[63:32] == 32'd0 &&
@@ -784,7 +847,12 @@ module nds_h3d_frame_record_cdc #(
 
         if (ddr_active && !ddr_fault) begin
             if (gx_pack_count == 0) begin
-                if (async_read_valid && async_head_boundary) begin
+                if (async_read_valid && async_head_checkpoint) begin
+                    // The marker reaches the downstream owner only after the
+                    // private one/two-command tail was accepted in order.
+                    async_read_ready = checkpoint_ddr_phase == CD_REQUEST &&
+                        checkpoint_ddr_ack && checkpoint_active_sync;
+                end else if (async_read_valid && async_head_boundary) begin
                     boundary_valid = 1'b1;
                     boundary_frame = async_read_data[169:138];
                     async_read_ready = boundary_ready;
@@ -868,6 +936,155 @@ module nds_h3d_frame_record_cdc #(
                     gx_pack_count <= 0;
                 end
             end
+        end
+    end
+
+    assign checkpoint_loading = EXPERIMENTAL_CHECKPOINT && checkpoint_restore;
+    assign checkpoint_sources_quiet = !gpu_valid && !arm9_vram_valid &&
+        !arm7_vram_valid && !hblank_valid && !frame_valid &&
+        !lcd_vblank && !gx_stack_ack;
+    assign checkpoint_block = checkpoint_loading || (EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_phase == CP_WAIT_HIGH || checkpoint_phase == CP_HELD ||
+         checkpoint_phase == CP_WAIT_LOW || checkpoint_phase == CP_WAIT_REQUEST_LOW));
+    assign checkpoint_front_request = EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_request || checkpoint_phase != CP_IDLE);
+    assign checkpoint_front_stop = EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_block || (checkpoint_producers_stopped &&
+         checkpoint_sources_quiet && !sparse_phase_pending));
+    assign checkpoint_seen = EXPERIMENTAL_CHECKPOINT && checkpoint_phase != CP_IDLE;
+    assign checkpoint_stopped = EXPERIMENTAL_CHECKPOINT &&
+        checkpoint_phase == CP_HELD && checkpoint_request &&
+        checkpoint_producers_stopped && checkpoint_sources_quiet &&
+        checkpoint_front_stopped && !source_fault && !checkpoint_loading && !checkpoint_lost_sync;
+    assign checkpoint_marker_valid = EXPERIMENTAL_CHECKPOINT &&
+        checkpoint_phase == CP_SEND && checkpoint_request &&
+        checkpoint_producers_stopped && checkpoint_sources_quiet &&
+        !sparse_phase_pending && checkpoint_front_stopped &&
+        source_active && !source_fault && !async_write_valid && !checkpoint_loading;
+    assign checkpoint_marker_fire = checkpoint_marker_valid && async_write_ready;
+    assign checkpoint_marker_active = EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_phase == CP_WAIT_HIGH || checkpoint_phase == CP_HELD);
+    assign checkpoint_marker_read = async_read_valid && async_head_checkpoint &&
+        async_read_ready && ddr_active && !ddr_fault;
+    assign checkpoint_ddr_request = EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_ddr_phase == CD_REQUEST || checkpoint_ddr_phase == CD_REPLY);
+    assign checkpoint_marker_ack = EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_ddr_phase == CD_REPLY || checkpoint_ddr_phase == CD_DRAIN);
+
+    // Four-phase marker ownership survives cancellation. Once sent, keep
+    // producers held until the marker is received AND downstream ACK returns
+    // low. A stopped DDR/host cannot produce a false success or stale ACK reuse.
+    always_ff @(posedge source_clk or posedge source_reset_local) begin
+        if (source_reset_local) begin
+            checkpoint_phase <= CP_IDLE;
+            checkpoint_ack_meta <= 0;
+            checkpoint_ack_sync <= 0;
+            checkpoint_lost_meta <= 0;
+            checkpoint_lost_sync <= 0;
+        end else begin
+            checkpoint_lost_meta <= checkpoint_delivery_lost;
+            checkpoint_lost_sync <= checkpoint_lost_meta;
+            checkpoint_ack_meta <= checkpoint_marker_ack;
+            checkpoint_ack_sync <= checkpoint_ack_meta;
+            if (EXPERIMENTAL_CHECKPOINT && !checkpoint_loading) begin
+                case (checkpoint_phase)
+                    CP_IDLE: if (checkpoint_request) checkpoint_phase <= CP_SEND;
+                    CP_SEND: begin
+                        if (!checkpoint_request)
+                            checkpoint_phase <= CP_IDLE;
+                        else if (checkpoint_marker_fire) checkpoint_phase <= CP_WAIT_HIGH;
+                    end
+                    CP_WAIT_HIGH: if (checkpoint_ack_sync) begin
+                        if (checkpoint_request && checkpoint_producers_stopped &&
+                            checkpoint_sources_quiet && !source_fault && !checkpoint_lost_sync)
+                            checkpoint_phase <= CP_HELD;
+                        else checkpoint_phase <= CP_WAIT_LOW;
+                    end
+                    CP_HELD: if (!checkpoint_request || !checkpoint_producers_stopped ||
+                                 !checkpoint_sources_quiet || source_fault || checkpoint_lost_sync)
+                        checkpoint_phase <= CP_WAIT_LOW;
+                    CP_WAIT_LOW: if (!checkpoint_ack_sync) begin
+                        if (checkpoint_request) checkpoint_phase <= CP_WAIT_REQUEST_LOW;
+                        else checkpoint_phase <= CP_IDLE;
+                    end
+                    CP_WAIT_REQUEST_LOW: if (!checkpoint_request) checkpoint_phase <= CP_IDLE;
+                    default: checkpoint_phase <= CP_IDLE;
+                endcase
+            end
+        end
+    end
+    always_ff @(posedge ddr_clk or posedge ddr_reset_local) begin
+        if (ddr_reset_local) begin
+            checkpoint_ddr_phase <= CD_IDLE;
+            checkpoint_active_meta <= 0;
+            checkpoint_active_sync <= 0;
+            checkpoint_delivery_lost <= 0;
+        end else begin
+            // Latch even a one-DDR-edge loss so a slower source clock cannot
+            // miss a downstream owner withdrawing its high acknowledgement.
+            if (checkpoint_ddr_phase == CD_IDLE) checkpoint_delivery_lost <= 0;
+            else if (checkpoint_ddr_phase == CD_REPLY && !checkpoint_ddr_ack)
+                checkpoint_delivery_lost <= 1;
+            checkpoint_active_meta <= checkpoint_marker_active;
+            checkpoint_active_sync <= checkpoint_active_meta;
+            if (EXPERIMENTAL_CHECKPOINT) begin
+                case (checkpoint_ddr_phase)
+                    CD_IDLE: if (ddr_active && !ddr_fault && checkpoint_active_sync &&
+                                 async_read_valid && async_head_checkpoint &&
+                                 gx_pack_count == 0 && !checkpoint_ddr_ack)
+                        checkpoint_ddr_phase <= CD_REQUEST;
+                    CD_REQUEST: if (checkpoint_marker_read) checkpoint_ddr_phase <= CD_REPLY;
+                    CD_REPLY: if (!checkpoint_active_sync) checkpoint_ddr_phase <= CD_DRAIN;
+                    CD_DRAIN: if (!checkpoint_ddr_ack) checkpoint_ddr_phase <= CD_IDLE;
+                endcase
+            end
+        end
+    end
+
+    // The image covers the source epoch plus the connected frontend. All
+    // transport buffers are disposable only after the ordered marker receipt.
+    assign checkpoint_restore_safe = reset && !session_flush &&
+        checkpoint_request && checkpoint_producers_stopped && checkpoint_sources_quiet;
+    assign checkpoint_restore_accept = checkpoint_loading && checkpoint_restore_safe &&
+        !checkpoint_error && !checkpoint_front_restore_error && checkpoint_write &&
+        checkpoint_address == checkpoint_restore_count && checkpoint_address < 265 &&
+        (checkpoint_address != 0 || checkpoint_write_data != 0) &&
+        (checkpoint_address != 1 || checkpoint_write_data[31:1] == 0);
+    assign checkpoint_restore_full = checkpoint_loading && checkpoint_restore_safe &&
+        !checkpoint_error && !checkpoint_front_restore_error && !checkpoint_write &&
+        checkpoint_restore_count == 265 && checkpoint_front_restore_ready;
+    assign checkpoint_restore_ready = checkpoint_restore_full && checkpoint_loaded;
+    assign checkpoint_restore_error = EXPERIMENTAL_CHECKPOINT &&
+        (checkpoint_error || checkpoint_front_restore_error);
+    assign checkpoint_valid = EXPERIMENTAL_CHECKPOINT && checkpoint_address < 265 &&
+        (checkpoint_stopped || checkpoint_restore_ready) &&
+        (checkpoint_address < 2 || checkpoint_front_valid);
+    always_comb begin
+        checkpoint_data = 0;
+        if (checkpoint_valid) begin
+            case (checkpoint_address)
+                0: checkpoint_data = logical_frame;
+                1: checkpoint_data = {31'd0, geometry_enabled};
+                default: checkpoint_data = checkpoint_front_data;
+            endcase
+        end
+    end
+    always_ff @(posedge source_clk) begin
+        if (!checkpoint_loading) begin
+            checkpoint_restore_count <= 0;
+            checkpoint_error <= 0;
+            // A qualified image survives the three-cycle reset synchronizer
+            // tail. Ordinary new resets/flushes still discard it completely.
+            if (reset || session_flush || !source_reset_local) checkpoint_loaded <= 0;
+        end else begin
+            if (!checkpoint_restore_safe || checkpoint_front_restore_error ||
+                (checkpoint_write && !checkpoint_restore_accept)) begin
+                checkpoint_error <= 1;
+                checkpoint_loaded <= 0;
+            end else if (checkpoint_restore_accept) begin
+                checkpoint_restore_count <= checkpoint_restore_count + 1'b1;
+                checkpoint_loaded <= 0;
+            end else if (checkpoint_restore_full) checkpoint_loaded <= 1;
         end
     end
 endmodule

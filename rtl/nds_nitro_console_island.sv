@@ -1747,7 +1747,15 @@ nds_h3d_frame_record_cdc #(
     .record_frame_end(h3d_raw_record_frame_end),
     .boundary_valid(h3d_raw_boundary_valid),
     .boundary_ready(h3d_raw_boundary_ready),
-    .boundary_frame(h3d_raw_boundary_frame)
+    .boundary_frame(h3d_raw_boundary_frame),
+    // No checkpoint capability is advertised until writer/renderer ownership
+    // and the shared host transport are connected. Never synthesize a fake ACK.
+    .checkpoint_request(1'b0), .checkpoint_producers_stopped(1'b0),
+    .checkpoint_address(9'd0), .checkpoint_restore(1'b0),
+    .checkpoint_write(1'b0), .checkpoint_write_data(32'd0),
+    .checkpoint_ddr_ack(1'b0), .checkpoint_ddr_request(),
+    .checkpoint_seen(), .checkpoint_stopped(), .checkpoint_data(),
+    .checkpoint_valid(), .checkpoint_restore_ready(), .checkpoint_restore_error()
 );
 
 // Fold consecutive ARM9 VRAM writes (halfwords into words, words into pairs)

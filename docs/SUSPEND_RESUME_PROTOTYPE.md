@@ -40,7 +40,8 @@ state, timers, IPC queues, both DMA controllers, audio, product SPI, cartridge
 transactions, completed arithmetic, system-control registers, raster timing,
 the RTC's calendar/partial serial state, both display readback banks, the
 drained graphics gate's epochs, geometry query/status registers, and packet
-frontend parsing/stack/SWAP-retirement state across fresh simulator processes. These
+frontend parsing/stack/SWAP-retirement state and its connected source/DDR
+transport epochs across fresh simulator processes. These
 ports remain unconnected to the console control
 plane; whole-machine persistence still needs the other owners.
 
@@ -987,14 +988,112 @@ SWAP/CDC, frame-writer, readback-fence and packet-parser regressions are separat
 checks. Four island SystemVerilog configurations elaborate, including the
 Beta12 feature defines; VHDL remains black-boxed in that check.
 
-The product CDC wrapper still ties this interface inactive. It separately owns
-`geometry_enabled`, `logical_frame`, sparse-phase buffering, the asynchronous
-FIFO and a one/two-command DDR packer tail. A checkpoint marker or equivalent
-real delivery receipt must flush that tail and cross the clock boundary before
-those queues can be treated as empty. The packet writer, renderer and reply
-cache have additional state. The component test stores geometry power as
-external fixture context; it does not implement that wrapper's persistence.
-No hardware fit, throughput or whole-game restore result is implied.
+The CDC wrapper now connects this local image under its own default-off option,
+described below. The product island keeps the outer interface inactive. The
+packet writer, renderer and reply cache still have separate state. The
+standalone frontend test stores geometry power as external fixture context;
+the connected CDC test below restores that actual register. No hardware fit,
+throughput or whole-game restore result is implied.
+
+## Graphics CDC ownership and component persistence
+
+`rtl/nds_h3d_frame_record_cdc.sv` adds a default-off
+`EXPERIMENTAL_CHECKPOINT` option. Its source-domain request and image port
+coordinate the real GX frontend, sparse-phase buffering, asynchronous FIFO and
+DDR command packer. The product island explicitly ties the outer ports and
+DDR acknowledgement inactive; this does not advertise a whole-machine
+checkpoint capability.
+
+After producers stop, accepted GPU/VRAM/phase records continue to drain. The
+frontend freezes only at its qualified empty-delivery boundary, preserving
+partial packed commands and architectural SWAP retirement. Once all input
+sources and the sparse-phase buffer are quiet, an extra private FIFO bit marks
+an ordered checkpoint token. It follows every previously accepted record. The
+token first flushes the DDR packer's remaining one/two GX commands, then raises
+`checkpoint_ddr_request`. It never becomes a renderer record, frame boundary,
+SWAP or packet-ABI opcode. Normal disabled builds retain the 172-bit FIFO;
+experimental builds use 173 bits.
+
+A real downstream owner must now drain the VRAM packing pipeline and packet
+writer, settle the renderer and supply `checkpoint_ddr_ack`. The source reports
+`checkpoint_stopped` only after the token is consumed with that acknowledgement
+and its receipt crosses back. A constant high ACK is invalid: a new request
+can start only after observing ACK low. A brief ACK loss during ownership is
+latched in DDR and synchronized back, so a slower source clock cannot miss it.
+Losing that owner or producer ownership invalidates the attempt and requires
+the request to return low before another acquisition can succeed.
+
+Cancellation before token insertion leaves accepted records to drain normally.
+After insertion, source admission and frontend retirement remain held until
+the token receipt completes and downstream ACK returns low. The caller must
+keep the raster and all source producers stopped, with VBlank/stack-ack quiet,
+until `checkpoint_seen` returns low; withdrawing the request alone is not
+permission to restart those producers. An unavailable DDR
+clock or downstream owner never produces success. The outer bounded coordinator
+must time out and report cancellation/release still pending if a stopped owner
+cannot complete cleanup; clocks must keep running for recovery. Reusing an old
+ACK or forcibly clearing live queues is not cancellation.
+
+The connected image is **265 ordered 32-bit words**:
+
+| Word | State |
+| --- | --- |
+| 0 | Nonzero logical frame number, including saturated `FFFFFFFF` |
+| 1 | Geometry power enable in bit 0; other bits zero |
+| 2–264 | All 263 frontend words described above |
+
+Explicit restore requires reset, request and producer-stop asserted, session
+flush inactive, and every input valid/native-VBlank/stack-ack quiet. Both reset
+clocks must run. It validates the two outer words and delegates every remaining
+word to the real frontend's checks. A complete ordered image and the
+frontend's own ready flag are required. Skips, duplicates, extra words,
+reserved/range errors, source activity, session flush and reset-free writes
+poison the attempt until withdrawal and a complete retry. All source-ready and
+record/boundary handshakes are suppressed while loading.
+
+A qualified image has a narrow reset-release guard: its source epoch, power and
+frontend registers survive the three source reset-synchronizer edges after
+reset and restore are deasserted together. The guard then clears; later normal
+reset/session flush still restores ordinary defaults. Keep request and
+producer-stop asserted through release and startup. The marker handshake must
+qualify again before exposing the restored epoch; host/writer/renderer owners
+must already have restored their matching state. The guard does not bypass the
+console's separate ROM-loader clears or presets, which remain unintegrated.
+
+`tools/test_checkpoint_cdc_restore.sh` exercises 88 captures and **176
+fresh-process restores**, comparing **591,004 source-clock observations and
+703,380 DDR-clock observations** against a continuation of the captured run.
+It uses both 3/7 ns DDR half-periods with a 5 ns source half-period, full/sparse
+phase modes and zero/seven-cycle image-write gaps. This compares the new
+checkpoint path with its uninterrupted continuation; the separate ordinary
+transport regression checks the default-disabled path.
+
+Cases include one/two-command tails, full 256-entry retirement, pending SWAP
+and partial packed commands, high frame epochs, geometry power off, both VRAM
+sources, sparse-phase retention, blocked sinks, stopped DDR, stale/missing/briefly
+lost ACKs, cancellation before/after insertion, producer-owner loss and normal
+session flush after resume. Twelve deliberate faults are detected. Three
+lost-state/reset-guard mutations fail ordinary continuation with image
+comparison disabled; the others exercise receipt, cancellation, cleanup,
+coverage and marker isolation. Existing FIFO/stack, SWAP/CDC, sparse-phase,
+frame-writer, query/reply-cache and C++ packet-parser checks also pass. Four
+SystemVerilog island configurations elaborate, including Beta12 feature flags;
+VHDL is black-boxed there.
+
+The test's downstream ACK is an explicit fixture, not a persisted renderer or
+storage receipt. The following real owners still need integration:
+
+- `nds_h3d_vram_record_packer.sv`: its input FIFO, registered RAM/output stages,
+  merge group and skid buffers. An idle upstream input alone is insufficient.
+- `nds_h3d_frame_packet_writer.sv`: pending burst/header/commit, partial packet,
+  continuation frame and producer/consumer/session state. Drain with a valid
+  continuation commit; do not invent a frame-ending VBlank or SWAP.
+- ARM renderer, publication buffers, reply cache and backing storage: retain
+  their matching epochs through a nondestructive pause. Existing H3DQ teardown
+  remains unsuitable.
+
+No whole-machine resume, connected full-console fit, routed timing or hardware
+throughput result is claimed by this component proof.
 
 ## Geometry query and status component persistence
 
@@ -1851,7 +1950,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Drain observations and system mapping-register restore tested; common ownership and memory/cache data serialization still missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks, geometry query/status, packet frontend and drained graphics-gate epochs tested; CDC/packet-writer epochs, reply cache and real external ownership still missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | IRQ/timers/IPC/DMA/audio/SPI/cartridge/math/system-control/RTC/raster/display banks, geometry query/status, packet frontend, connected graphics CDC and drained source-gate epochs tested; VRAM packing, packet-writer epochs, reply cache and real external ownership still missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; calendar/partial serial component restore tested; elapsed-time restore and host integration missing |
