@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <stdexcept>
@@ -30,10 +31,14 @@ inline void prepare(const std::filesystem::path &path, uint32_t size,
             throw std::runtime_error("NAND save has the wrong size or file type; existing file preserved");
         if (original.st_size == size) return;
     }
-    const auto temp = path.string() + ".nand-new-" + std::to_string(getpid());
-    int fd = open(temp.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
+    // A power loss can leave an unfinished temporary file. A unique suffix
+    // lets the next launch retry without deleting or reusing that old file.
+    auto temp = path.string() + ".nand-new-XXXXXX";
+    int fd = mkstemp(temp.data());
     if (fd < 0) throw std::runtime_error("Cannot create temporary NAND save");
     try {
+        if (fcntl(fd, F_SETFD, FD_CLOEXEC) < 0)
+            throw std::runtime_error("Cannot protect temporary NAND descriptor");
         std::array<unsigned char, 65536> erased;
         erased.fill(0xff);
         for (uint32_t position = 0; position < size;) {

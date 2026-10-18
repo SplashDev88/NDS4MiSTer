@@ -97,6 +97,13 @@ struct HostTest {
   catch(const std::exception&){rejected=true;}
   assert(rejected && fs::file_size(changed)==8);
   for(const auto &p:fs::directory_iterator(saves))assert(p.path().string().find(".nand-new-")==std::string::npos);
+  // An interrupted prior process may leave a temporary file, including
+  // one bearing a reused PID. A retry must preserve it and still succeed.
+  const auto retry=saves/"retry.sav";
+  const auto stale=retry.string()+".nand-new-"+std::to_string(getpid());
+  std::ofstream(stale)<<"unfinished";
+  nds_nand::prepare(retry,nds_nand::bytes(8),[]{});
+  assert(fs::file_size(retry)==8388608 && fs::file_size(stale)==10);
   std::cout<<"PASS: actual Host NAND mount/sector I/O, high-LBA persistence, strict bounds, FF initialization, cancellation, existing-file protection and ordinary-save return\n";
  }
 };
