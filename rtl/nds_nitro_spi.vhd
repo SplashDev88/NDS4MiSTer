@@ -86,7 +86,17 @@ entity nds_nitro_spi is
       mic_blow    : in std_logic := '0';
       irq_lid     : out std_logic := '0';
       checkpoint_stop : in std_logic := '0';
-      checkpoint_stopped : out std_logic := '0'
+      checkpoint_stopped : out std_logic := '0';
+      -- Nine ordered words (0..8), captured only at a drained byte boundary.
+      -- Restore writes the live registers with reset and stop held throughout.
+      checkpoint_address : in unsigned(3 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -122,7 +132,7 @@ architecture arch of nds_nitro_spi is
    -- firmware flash
    signal fw_hold    : std_logic := '0';
    signal fw_cmd     : std_logic_vector(7 downto 0) := (others => '0');
-   signal fw_datapos : unsigned(2 downto 0) := (others => '0');   -- saturates at 4
+   signal fw_datapos : unsigned(2 downto 0) := (others => '0');   -- saturates at 7
    signal fw_a       : unsigned(23 downto 0) := (others => '0');
    signal fw_out     : std_logic_vector(7 downto 0) := (others => '0');
    signal fw_status  : std_logic_vector(7 downto 0) := (others => '0');
@@ -145,6 +155,23 @@ architecture arch of nds_nitro_spi is
    signal tsc_datapos : unsigned(1 downto 0) := (others => '0');
    signal tsc_conv    : unsigned(11 downto 0) := (others => '0');
    signal stop_spi : std_logic;
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_count : unsigned(3 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+
+   function valid_word(a : unsigned(3 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 => return d(31 downto 17) = (31 downto 17 => '0') and
+                          (d(15 downto 0) and x"34FC") = x"0000";
+         when 1 | 2 | 4 => return true;
+         when 3 | 8 => return d(31 downto 19) = (31 downto 19 => '0');
+         when 5 => return d(31 downto 23) = (31 downto 23 => '0');
+         when 6 => return d(31 downto 26) = (31 downto 26 => '0');
+         when 7 => return d(31 downto 30) = "00";
+         when others => return false;
+      end case;
+   end function;
 
 begin
 
@@ -156,6 +183,54 @@ begin
       bus7.ena = '0' and cnt(7) = '0' and fw_pend = '0' and fw_done = '0' and
       fw_req = '0' and fw_wr = '0' and fw_release = '0' and
       irq_spi = '0' and irq_lid = '0' else '0';
+
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   restore_write_valid <= '1' when restore_active = '1' and stop_spi = '1' and
+      bus7.ena = '0' and fw_done = '0' and restore_error = '0' and checkpoint_write = '1' and
+      restore_count < 9 and checkpoint_address = restore_count and
+      valid_word(checkpoint_address, checkpoint_write_data) else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and stop_spi = '1' and
+      bus7.ena = '0' and fw_done = '0' and restore_count = 9 and restore_error = '0' and
+      checkpoint_write = '0' else '0';
+
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_count <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' or stop_spi = '0' or bus7.ena = '1' or fw_done = '1' then
+            restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+
+   process(all)
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < 9 and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data(16 downto 0) <= lid_was_closed & cnt;
+            when 1 | 2 =>
+               for i in 0 to 3 loop
+                  checkpoint_data(i*8+7 downto i*8) <= pm_regs((to_integer(checkpoint_address)-1)*4+i);
+               end loop;
+            when 3 => checkpoint_data(18 downto 0) <= pm_hold & std_logic_vector(pm_datapos) & pm_data & pm_index;
+            when 4 => checkpoint_data <= fw_cmd & std_logic_vector(fw_a);
+            when 5 => checkpoint_data(22 downto 0) <= std_logic_vector(fw_lane) & fw_pending_write & fw_hold &
+               std_logic_vector(fw_datapos) & fw_status & fw_out;
+            when 6 => checkpoint_data(25 downto 0) <= std_logic_vector(fw_wlane) & fw_wdata & std_logic_vector(fw_addr);
+            when 7 => checkpoint_data(29 downto 0) <= std_logic_vector(tsc_conv) & std_logic_vector(tsc_datapos) & tsc_data & tsc_ctrl;
+            when 8 => checkpoint_data(18 downto 0) <= mic_positive & std_logic_vector(mic_phase) & std_logic_vector(mic_noise);
+            when others => null;
+         end case;
+      end if;
+   end process;
 
    rdata <= x"00"   when (cnt(15) = '0' or cnt(7) = '1') else
             pm_data when (cnt(9 downto 8) = "00") else
@@ -178,7 +253,41 @@ begin
          irq_spi <= '0';
          irq_lid <= '0';
 
-         if (reset = '1') then
+         if restore_active = '1' then
+            -- Busy/delay, backing request and IRQ pulses are absent at capture.
+            -- Preserve loaded words through arbitrary gaps; ordinary reset must
+            -- not erase them. External firmware cache data/dirty epoch are NOT
+            -- included in this local image and need their own restore owner.
+            delay_cnt <= (others => '0'); fw_pend <= '0';
+            fw_req <= '0'; fw_wr <= '0'; fw_release <= '0';
+            if restore_write_valid = '1' then
+               case to_integer(checkpoint_address) is
+                  when 0 => cnt <= checkpoint_write_data(15 downto 0); lid_was_closed <= checkpoint_write_data(16);
+                  when 1 | 2 =>
+                     for i in 0 to 3 loop
+                        pm_regs((to_integer(checkpoint_address)-1)*4+i) <= checkpoint_write_data(i*8+7 downto i*8);
+                     end loop;
+                  when 3 =>
+                     pm_index <= checkpoint_write_data(7 downto 0); pm_data <= checkpoint_write_data(15 downto 8);
+                     pm_datapos <= unsigned(checkpoint_write_data(17 downto 16)); pm_hold <= checkpoint_write_data(18);
+                  when 4 => fw_a <= unsigned(checkpoint_write_data(23 downto 0)); fw_cmd <= checkpoint_write_data(31 downto 24);
+                  when 5 =>
+                     fw_out <= checkpoint_write_data(7 downto 0); fw_status <= checkpoint_write_data(15 downto 8);
+                     fw_datapos <= unsigned(checkpoint_write_data(18 downto 16)); fw_hold <= checkpoint_write_data(19);
+                     fw_pending_write <= checkpoint_write_data(20); fw_lane <= unsigned(checkpoint_write_data(22 downto 21));
+                  when 6 =>
+                     fw_addr <= unsigned(checkpoint_write_data(15 downto 0)); fw_wdata <= checkpoint_write_data(23 downto 16);
+                     fw_wlane <= unsigned(checkpoint_write_data(25 downto 24));
+                  when 7 =>
+                     tsc_ctrl <= checkpoint_write_data(7 downto 0); tsc_data <= checkpoint_write_data(15 downto 8);
+                     tsc_datapos <= unsigned(checkpoint_write_data(17 downto 16)); tsc_conv <= unsigned(checkpoint_write_data(29 downto 18));
+                  when 8 =>
+                     mic_noise <= unsigned(checkpoint_write_data(15 downto 0)); mic_phase <= unsigned(checkpoint_write_data(17 downto 16));
+                     mic_positive <= checkpoint_write_data(18);
+                  when others => null;
+               end case;
+            end if;
+         elsif (reset = '1') then
             lid_was_closed <= lid_closed;
             mic_noise <= x"ACE1";
             mic_phase <= (others => '0');

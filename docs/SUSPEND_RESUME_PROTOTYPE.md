@@ -36,7 +36,7 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
-state, timers, IPC queues, both DMA controllers and audio across fresh simulator
+state, timers, IPC queues, both DMA controllers, audio and product SPI across fresh simulator
 processes. These ports remain unconnected to the console control plane; whole-machine persistence
 still needs the other owners.
 
@@ -328,8 +328,9 @@ acquisition and immediately withdraw the corresponding acknowledgement.
 
 A missing backing response prevents acknowledgement. Cancelling the stop
 preserves the outstanding request and permits normal progress when the real
-response arrives. Common reset invalidates the acknowledgement. No complete
-cartridge/SPI serializer or persistent restore path is implemented yet.
+response arrives. Common reset invalidates the acknowledgement. Product SPI
+now has the component restore path described below; cartridge serialization and
+both owners' external backing-cache restore contracts remain missing.
 
 ### RTC, physical inputs and math retirement
 
@@ -853,6 +854,74 @@ virtual-clock warnings are expected, and no timing or gameplay-speed result is
 inferred. The remaining cost still needs a complete-core resource check before
 this can be accepted for a gameplay beta.
 
+## Product SPI component persistence
+
+The actual console device, `rtl/nds_nitro_spi.vhd`, exposes a nine-word image
+under its default-off `EXPERIMENTAL_CHECKPOINT` option. The donor `nds_spi.vhd`
+is not the product firmware device and is not changed. Capture waits for the
+accepted byte, its backing response and both IRQ/release pulses to retire;
+chip-select and a partial command remain intact.
+
+| Word | Saved state, low bits first |
+| --- | --- |
+| 0 | SPICNT 15:0 (busy clear), last observed lid level 16 |
+| 1, 2 | Four PM register bytes per word, all eight physical registers |
+| 3 | PM index 7:0, data 15:8, byte position 17:16, hold 18 |
+| 4 | Full firmware address 23:0, command 31:24 |
+| 5 | Firmware output 7:0, status 15:8, byte position 18:16, hold 19, last operation was write 20, read lane 22:21 |
+| 6 | Last backing word address 15:0, write data 23:16, write lane 25:24 |
+| 7 | Touch control 7:0, data 15:8, byte position 17:16, pending conversion 29:18 |
+| 8 | Microphone LFSR 15:0, conversion phase 17:16, held polarity 18 |
+
+Unused bits are zero. SPICNT accepts only its implemented writable bits, mask
+`0xCB03`. The drained byte has no pending backing request, delay, completion
+IRQ or chip-select-release pulse; these are restored inactive. Inactive command
+and output latches are retained, including fields that ordinary reset does not
+initialize. The firmware's external busy flag, cache bytes, dirty generation,
+host requests and persistence acknowledgements are **not** in this image.
+Local readiness cannot substitute for that separate owner.
+
+For restore, hold reset and stop high, keep the guest bus and firmware response
+inactive, raise `checkpoint_restore`, and write addresses **0 through 8 in
+order**, one accepted word per rising edge. Gaps are allowed. Ordinary reset
+presets do not overwrite earlier words while restore is active. Duplicate,
+skipped, extra, out-of-range or reserved-bit writes poison the attempt, as do
+live restore, a missing stop, a guest access or an arriving backing response.
+Withdraw restore for an edge and start a complete image again to retry; never
+release a failed or incomplete image to the guest. `checkpoint_restore_ready`
+requires all nine words, no error and no current write. Readback is available
+only at this complete reset-held point or at the ordinary drained capture
+boundary. Addresses 9–15 return zero and invalid.
+
+After successful readback, release reset/restore/stop together only when every
+other owner is ready. Input policy remains the same: sample the current lid on
+release and emit the normal reopen IRQ if its saved level was closed. Events
+that happened entirely while suspended are not replayed. Touch conversions
+already underway and the synthetic microphone's noise history resume from
+their saved positions. No new microphone source or RTC behavior is introduced.
+These SPI ports are not yet connected to the console transport.
+
+`bash tools/test_checkpoint_spi_restore.sh` covers 18 capture scenarios and
+36 fresh-process restores with short and varied write gaps. It checks
+1,587,774 continuation clock observations against pre-reset execution. Capture
+and continuation also compare cycle by cycle with pinned pre-serializer source
+`a5bbabc` and a default-disabled instance. The model saves its firmware backing
+bytes separately and restores them into a new process; this is a fixture, not
+proof of the real firmware cache or host persistence path.
+
+Coverage includes PM writes/read indices, all firmware address-byte boundaries,
+read/program transfers stopped with a delayed response, byte lanes and 24-bit
+address wrap, WEL plus external busy status, touch result bytes, microphone
+phase/noise and lid reopen. Independent byte expectations supplement the trace.
+Invalid sequences, missing words, reset-held gaps, retries and live writes are
+checked. Ten deliberate faults are detected. Six remove saved device fields
+and must fail the continuation with readback comparison disabled, so those
+checks establish resumed behavior rather than merely image equality. The
+existing 18-case stop/drain suite, lid/microphone tests, firmware cache and
+firmware-image regressions, and complete console VHDL analysis also pass.
+The connected active DMA/audio fixture passes after this change, but still does
+not exercise an SPI image through the real host transport.
+
 ## Persistence proof
 
 `tools/suspend_resume/capsule.py` wraps the captured CPU words in a bounded,
@@ -1081,9 +1150,10 @@ bash tools/test_checkpoint_card_dma.sh
   All are detected. Existing back-to-back card and save-transaction regressions
   also pass with the feature disabled.
 
-These prove component stop/drain and resume-after-cancellation behavior, not
-persistent cartridge/SPI state restoration, cache durability, timing closure
-or gameplay suspend/resume.
+These stop/drain tests prove resume-after-cancellation behavior. Product SPI's
+separate persistent component proof is described above. Neither suite proves
+persistent cartridge restoration, cache durability, timing closure or gameplay
+suspend/resume.
 
 RTC/input and math checks:
 
@@ -1294,7 +1364,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA have component restore; other serializers and real external ownership missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA/product SPI have component restore; other serializers and real external ownership missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -1315,7 +1385,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend IRQ/timer/IPC/DMA/audio component coverage to the remaining devices,
+2. Extend IRQ/timer/IPC/DMA/audio/SPI component coverage to the remaining devices,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
