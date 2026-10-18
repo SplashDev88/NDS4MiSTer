@@ -16,7 +16,7 @@ entity tb_nds_arm7_halt_prefetch is
           HALT_NOPS:natural:=2; COUNT_NOPS:boolean:=true;
           DMA_PAUSE:boolean:=false; WAKE_TICKS:natural:=50;
           MASK_IRQ:boolean:=true; CHECKPOINT_OPERATION:string:="none";
-          OMIT_PIPELINE_RESTORE:boolean:=false);
+          OMIT_PIPELINE_RESTORE:boolean:=false; MONITOR_CANCEL:boolean:=false);
 end;
 architecture sim of tb_nds_arm7_halt_prefetch is
   signal clk:std_logic:='0'; signal reset:std_logic:='1';
@@ -27,6 +27,7 @@ architecture sim of tb_nds_arm7_halt_prefetch is
   signal finished,escaped,irq_seen:boolean:=false;
   signal tick:natural:=0;
   signal checkpoint_req,checkpoint_paused,checkpoint_restore,cpu_idle:std_logic:='0';
+  signal monitor_active,monitor_paused,monitor_error:std_logic;
   signal ssout:std_logic_vector(31 downto 0);signal ssdone:std_logic;
   type checkpoint_words is array(0 to 59) of std_logic_vector(31 downto 0);
   function checkpoint_preset return std_logic is
@@ -96,7 +97,8 @@ begin
   din<=busdin; done<=busdone;
   dut:entity work.gba_cpu generic map(is_simu=>'0',SS_PRESET_ONLY=>checkpoint_preset,
     EXPERIMENTAL_CHECKPOINT=>CHECKPOINT_OPERATION/="none",
-    EXPERIMENTAL_HALT_CHECKPOINT=>CHECKPOINT_OPERATION/="none") port map(
+    EXPERIMENTAL_HALT_CHECKPOINT=>CHECKPOINT_OPERATION/="none",
+    EXPERIMENTAL_CPU_MONITOR=>MONITOR_CANCEL) port map(
     clk=>clk,ce=>'1',reset=>reset,error_cpu=>error_cpu,dbg_pc=>pc,
     dbg_regsel=>to_unsigned(14,5),dbg_regval=>regval,savestate_bus=>ss,
     ss_wired_out=>ssout,ss_wired_done=>ssdone,
@@ -106,7 +108,9 @@ begin
     dma_on=>dma,done=>open,CPU_bus_idle=>cpu_idle,PC_in_BIOS=>open,
     cpu_halt=>halt,lastread=>lastread,jump_out=>open,IRQ_in=>irq,
     unhalt=>unhalt,new_halt=>newhalt,checkpoint_req=>checkpoint_req,
-    checkpoint_paused=>checkpoint_paused,checkpoint_restore=>checkpoint_restore);
+    checkpoint_paused=>checkpoint_paused,checkpoint_restore=>checkpoint_restore,
+    monitor_request=>checkpoint_req,monitor_active=>monitor_active,
+    monitor_paused=>monitor_paused,monitor_error=>monitor_error);
   mb:entity work.nds_membus7 port map(
     clk=>clk,reset=>reset,cpu_adr=>addr,cpu_rnw=>rnw,cpu_ena=>ena,cpu_acc=>acc,
     cpu_dout=>dout,cpu_lowbits=>"00",cpu_lastread=>lastread,cpu_din=>busdin,cpu_done=>busdone,
@@ -181,6 +185,13 @@ begin
     assert halt='1' report "Did not reach HALTCNT halt" severity failure;
     report "HALTED pc="&to_hstring(pc)&" lr="&to_hstring(regval);
     for i in 1 to WAKE_TICKS loop wait until falling_edge(clk); end loop;
+    if MONITOR_CANCEL then
+      checkpoint_req<='1';clocks(100);
+      assert monitor_active='0' and monitor_paused='0' and monitor_error='0'
+        report "monitor entered a sleeping CPU" severity failure;
+      checkpoint_req<='0';clocks(4);
+      report "PASS: sleeping monitor request cancelled without entering maintenance";
+    end if;
     if CHECKPOINT_OPERATION="capture" then
       checkpoint_req<='1';
       for i in 1 to 2000 loop clocks(1);exit when checkpoint_paused='1';end loop;
