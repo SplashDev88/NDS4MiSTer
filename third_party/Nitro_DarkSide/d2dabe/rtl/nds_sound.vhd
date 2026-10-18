@@ -79,7 +79,17 @@ entity nds_sound is
       -- Stop playback and new fetch admissions, but finish an owned read.
       -- Register writes remain live until the CPUs/DMA have drained too.
       checkpoint_stop : in std_logic := '0';
-      checkpoint_stopped : out std_logic := '0'
+      checkpoint_stopped : out std_logic := '0';
+      checkpoint_address : in unsigned(8 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      -- RAM words use a registered port: wait for this before each write.
+      checkpoint_write_ready : out std_logic := '0';
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -87,6 +97,22 @@ architecture arch of nds_sound is
 
    signal stop_playback : std_logic;
    signal stop_seen : std_logic := '0';
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_loaded : std_logic_vector(269 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+   signal restore_settle : natural range 0 to 2 := 0;
+   signal checkpoint_ram_access, checkpoint_ram_seen : std_logic := '0';
+   signal checkpoint_ram_channel, checkpoint_ram_channel_d : natural range 0 to 15 := 0;
+   signal checkpoint_ram_address : natural range 0 to 15;
+   signal checkpoint_ram_data, checkpoint_ram_q : std_logic_vector(48 downto 0);
+   signal checkpoint_ram_write : std_logic;
+   -- The ADPCM ROM output is a pipeline register too. On the first resumed
+   -- lookup consume its saved value, while the physical reader refills.
+   signal adstep_read_seen : std_logic := '0';
+   signal adstep_resume_pending : std_logic := '0';
+   signal adstep_resume_data : std_logic_vector(14 downto 0) := (others => '0');
+   signal adstep_effective_data : std_logic_vector(14 downto 0);
+
 
    type t_chan is record
       -- SOUNDxCNT stored fields
@@ -437,28 +463,49 @@ begin
          be_b      => "0000"
       );
 
-      p_adstep : process (clk)
-      begin
-         if rising_edge(clk) then
-            -- 89-cycle init sweep, long before any channel can decode
-            adstep_we <= '0';
-            if (adstep_init < 89) then
-               adstep_wa   <= adstep_init;
-               adstep_wd   <= std_logic_vector(to_unsigned(ADPCM_STEP_INIT(adstep_init), 32));
-               adstep_we   <= '1';
-               adstep_init <= adstep_init + 1;
+   end generate;
+   gno_adstep : if ADPCM_TABLE_RAM = 0 generate
+      adstep_dout_v <= (others => '0');
+   end generate;
+   -- Before the first initialized-table read there is no meaningful ROM
+   -- output to preserve. Canonicalize that startup-only value in this option.
+   adstep_effective_data <= adstep_resume_data when EXPERIMENTAL_CHECKPOINT and adstep_resume_pending = '1' else
+                            (others => '0') when EXPERIMENTAL_CHECKPOINT and adstep_read_seen = '0' else
+                            adstep_dout_v(14 downto 0);
+   p_adstep : process (clk)
+      variable a : natural range 0 to 511;
+   begin
+      if rising_edge(clk) then
+         adstep_we <= '0';
+         if ADPCM_TABLE_RAM /= 0 and adstep_init < 89 then
+            adstep_wa <= adstep_init;
+            adstep_wd <= std_logic_vector(to_unsigned(ADPCM_STEP_INIT(adstep_init), 32));
+            adstep_we <= '1'; adstep_init <= adstep_init + 1;
+         end if;
+         if restore_active = '1' then
+            if restore_write_valid = '1' then
+               a := to_integer(checkpoint_address);
+               if a < 256 and a mod 16 = 11 then
+                  adstep_q(a/16) <= to_integer(unsigned(checkpoint_write_data(14 downto 0)));
+               elsif a = 269 then
+                  adstep_rr <= to_integer(unsigned(checkpoint_write_data(3 downto 0)));
+                  adstep_rr_d <= to_integer(unsigned(checkpoint_write_data(7 downto 4)));
+                  adstep_resume_data <= checkpoint_write_data(22 downto 8);
+                  adstep_resume_pending <= '1';
+               end if;
             end if;
-
-            if stop_playback = '0' then
+         else
+            if reset = '1' then adstep_resume_pending <= '0'; end if;
+            if ADPCM_TABLE_RAM /= 0 and stop_playback = '0' then
+               if adstep_init = 89 and adstep_we = '0' then adstep_read_seen <= '1'; end if;
                adstep_rr_d <= adstep_rr;
-               if (adstep_rr = 15) then adstep_rr <= 0; else adstep_rr <= adstep_rr + 1; end if;
-               -- Stop both the RAM reader and its channel-tag pipeline. The
-               -- immutable table's startup writes still finish while stopped.
-               adstep_q(adstep_rr_d) <= to_integer(unsigned(adstep_dout_v(14 downto 0)));
+               if adstep_rr = 15 then adstep_rr <= 0; else adstep_rr <= adstep_rr + 1; end if;
+               adstep_q(adstep_rr_d) <= to_integer(unsigned(adstep_effective_data));
+               adstep_resume_pending <= '0';
             end if;
          end if;
-      end process;
-   end generate;
+      end if;
+   end process;
 
    master_acc_in <= accl when mixcnt = to_unsigned(16, mixcnt'length) else accr;
    master_gain_in <= to_signed(vol128(soundcnt(6 downto 0)), master_gain_in'length)
@@ -484,15 +531,43 @@ begin
    port map
    (
       clk    => clk,
-      addr_a => fptr_a_addr,
-      data_a => fetchstate_a_din,
-      q_a    => open,
-      we_a   => fptr_a_we or frem_a_we,
+      addr_a => checkpoint_ram_address,
+      data_a => checkpoint_ram_data,
+      q_a    => checkpoint_ram_q,
+      we_a   => checkpoint_ram_write,
       addr_b => fptr_b_addr,
       data_b => fetchstate_b_din,
       q_b    => fetchstate_b_dout,
       we_b   => fptr_b_we or frem_b_we
    );
+
+   -- Borrow the idle channel-start port, keeping the actual 49-bit RAM and
+   -- its atomic writes. Each 32-bit restore word updates one logical field
+   -- after the registered read has selected that channel. No shadow bank.
+   checkpoint_ram_channel <= to_integer(checkpoint_address(7 downto 4));
+   checkpoint_ram_access <= '1' when EXPERIMENTAL_CHECKPOINT and checkpoint_address < 256 and
+      (checkpoint_address(3 downto 0) = 12 or checkpoint_address(3 downto 0) = 13) and
+      (restore_active = '1' or checkpoint_stopped = '1') else '0';
+   checkpoint_ram_address <= checkpoint_ram_channel when checkpoint_ram_access = '1' else fptr_a_addr;
+   process(all) begin
+      checkpoint_ram_data <= fetchstate_a_din;
+      checkpoint_ram_write <= fptr_a_we or frem_a_we;
+      if checkpoint_ram_access = '1' then
+         checkpoint_ram_data <= checkpoint_ram_q;
+         checkpoint_ram_write <= restore_write_valid;
+         if checkpoint_address(3 downto 0) = 12 then
+            checkpoint_ram_data(24 downto 0) <= checkpoint_write_data(24 downto 0);
+         else
+            checkpoint_ram_data(48 downto 25) <= checkpoint_write_data(23 downto 0);
+         end if;
+      end if;
+   end process;
+   process(clk) begin
+      if rising_edge(clk) then
+         checkpoint_ram_seen <= checkpoint_ram_access;
+         checkpoint_ram_channel_d <= checkpoint_ram_channel;
+      end if;
+   end process;
 
    -- port B always tracks fch combinationally (not just while the fetch
    -- FSM is actively servicing it) so the FSCAN_ADDR settle cycle above
@@ -529,6 +604,99 @@ begin
       fptr_a_we = '0' and frem_a_we = '0' and fptr_b_we = '0' and frem_b_we = '0' and
       sample_valid = '0' and bus7.ena = '0' and
       (ADPCM_TABLE_RAM = 0 or (adstep_init = 89 and adstep_we = '0')) else '0';
+   -- 16 words per channel (14/15 reserved zero), followed by 14 globals.
+   -- Restore is reset-held, requires every word, and remains poisoned after
+   -- invalid input until a new attempt. Two idle edges settle registered RAM.
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and restore_error = '0' and
+      restore_loaded = (269 downto 0 => '1') and restore_settle = 2 and checkpoint_write = '0' and
+      (ADPCM_TABLE_RAM = 0 or (adstep_init = 89 and adstep_we = '0')) else '0';
+   process(clk) begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_loaded <= (others => '0'); restore_error <= '0'; restore_settle <= 0;
+         elsif reset = '0' then restore_error <= '1'; restore_settle <= 0;
+         elsif checkpoint_write = '1' then
+            restore_settle <= 0;
+            if restore_write_valid = '1' then restore_loaded(to_integer(checkpoint_address)) <= '1';
+            else restore_error <= '1'; end if;
+         elsif restore_loaded = (269 downto 0 => '1') and restore_error = '0' and restore_settle < 2 then
+            restore_settle <= restore_settle + 1;
+         end if;
+      end if;
+   end process;
+   process(all)
+      variable a : natural range 0 to 511;
+      variable c : natural range 0 to 15;
+      variable mask, value : std_logic_vector(31 downto 0);
+      variable shape, ram_ready : boolean;
+   begin
+      a := to_integer(checkpoint_address); c := to_integer(checkpoint_address(7 downto 4));
+      mask := (others => '0'); value := (others => '0'); shape := true;
+      ram_ready := true;
+      if a < 256 then
+         case a mod 16 is
+            when 0 =>
+               mask := x"FF7F837F";
+               value := chan(c).busy & chan(c).format & chan(c).repeatm & chan(c).duty &
+                        '0' & chan(c).pan & chan(c).hold & "00000" & chan(c).voldiv & '0' & chan(c).volmul;
+            when 1 => mask := x"07FFFFFF"; value(26 downto 0) := chan(c).sad;
+            when 2 => mask := x"FFFFFFFF"; value := chan(c).pnt & chan(c).tmr;
+            when 3 => mask := x"003FFFFF"; value(21 downto 0) := chan(c).len;
+            when 4 =>
+               mask := x"0FFFFFFF";
+               value(27 downto 0) := std_logic_vector(chan(c).psgpos) & chan(c).adhdr & chan(c).nxtv & chan(c).curv &
+                  std_logic_vector(chan(c).startdel) & std_logic_vector(chan(c).subpos) & std_logic_vector(chan(c).timer);
+            when 5 => mask := x"00FFFFFF"; value(23 downto 0) := std_logic_vector(chan(c).remwords);
+            when 6 => mask := x"FFFFFFFF"; value := chan(c).curw;
+            when 7 => mask := x"FFFFFFFF"; value := chan(c).nxtw;
+            when 8 | 9 =>
+               mask := x"007FFFFF"; shape := unsigned(checkpoint_write_data(22 downto 16)) <= 88;
+               if a mod 16 = 8 then value(22 downto 0) := std_logic_vector(to_unsigned(chan(c).adidx,7)) & std_logic_vector(chan(c).adval);
+               else value(22 downto 0) := std_logic_vector(to_unsigned(chan(c).adidx_l,7)) & std_logic_vector(chan(c).adval_l); end if;
+            when 10 => mask := x"FFFFFFFF"; value := std_logic_vector(chan(c).cursmp) & std_logic_vector(chan(c).noise);
+            when 11 => mask := x"00007FFF"; value(14 downto 0) := std_logic_vector(to_unsigned(adstep_q(c),15));
+            when 12 | 13 =>
+               ram_ready := checkpoint_ram_seen = '1' and checkpoint_ram_channel_d = c and checkpoint_ram_access = '1';
+               if a mod 16 = 12 then mask := x"01FFFFFF"; value(24 downto 0) := checkpoint_ram_q(24 downto 0);
+               else mask := x"00FFFFFF"; value(23 downto 0) := checkpoint_ram_q(48 downto 25); end if;
+            when others => null;
+         end case;
+      else
+         case a is
+            when 256 => mask := x"03FFFFFF"; value(25 downto 0) := soundbias & soundcnt;
+            when 257 => mask := x"0000FFFF"; value(15 downto 0) := cap(1).cnt & cap(0).cnt;
+            when 258 => mask := x"07FFFFFF"; value(26 downto 0) := cap(0).dad;
+            when 259 => mask := x"0000FFFF"; value(15 downto 0) := cap(0).len;
+            when 260 => mask := x"07FFFFFF"; value(26 downto 0) := cap(1).dad;
+            when 261 => mask := x"0000FFFF"; value(15 downto 0) := cap(1).len;
+            when 262 =>
+               mask := x"000001FF"; value(8 downto 0) := std_logic_vector(fgapc) & std_logic_vector(to_unsigned(fch,4)) & '0' & tick2;
+               if fstate = FSCAN_EVAL then value(1) := '1'; end if;
+            when 263 => mask := x"000003FF"; value(9 downto 0) := std_logic_vector(mixcnt);
+            when 264 => mask := x"FFFFFFFF"; value := std_logic_vector(accl);
+            when 265 => mask := x"FFFFFFFF"; value := std_logic_vector(accr);
+            when 266 => mask := x"0001FFFF"; value(16 downto 0) := master_bias_latch & master_gain_latch;
+            when 267 => mask := x"0000FFFF"; value(15 downto 0) := master_left_latch;
+            when 268 => mask := x"FFFFFFFF"; value := sample_r & sample_l;
+            when 269 =>
+               mask := x"007FFFFF";
+               value(22 downto 0) := adstep_effective_data & std_logic_vector(to_unsigned(adstep_rr_d,4)) & std_logic_vector(to_unsigned(adstep_rr,4));
+            when others => null;
+         end case;
+      end if;
+      checkpoint_write_ready <= '0'; restore_write_valid <= '0';
+      if restore_active = '1' and restore_error = '0' and a < 270 and ram_ready then
+         checkpoint_write_ready <= '1';
+         if checkpoint_write = '1' and shape and (checkpoint_write_data and not mask) = x"00000000" then restore_write_valid <= '1'; end if;
+      end if;
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and a < 270 and ram_ready and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0' and mb_done = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_data <= value; checkpoint_valid <= '1';
+      end if;
+   end process;
    gact : for i in 0 to 15 generate
       snd_active(i) <= chan(i).busy;
    end generate;
@@ -601,11 +769,54 @@ begin
       variable v_diff : integer range 0 to 65535;
       variable v_smp  : integer;
       variable v_i    : integer;
+      variable a : natural range 0 to 511;
    begin
       if rising_edge(clk) then
 
          if (reset = '1') then
-
+            if restore_active = '1' then
+               if restore_write_valid = '1' then
+                  a := to_integer(checkpoint_address); n := to_integer(checkpoint_address(7 downto 4));
+                  if a < 256 then
+                     case a mod 16 is
+                        when 0 =>
+                           chan(n).volmul <= checkpoint_write_data(6 downto 0); chan(n).voldiv <= checkpoint_write_data(9 downto 8);
+                           chan(n).hold <= checkpoint_write_data(15); chan(n).pan <= checkpoint_write_data(22 downto 16);
+                           chan(n).duty <= checkpoint_write_data(26 downto 24); chan(n).repeatm <= checkpoint_write_data(28 downto 27);
+                           chan(n).format <= checkpoint_write_data(30 downto 29); chan(n).busy <= checkpoint_write_data(31);
+                        when 1 => chan(n).sad <= checkpoint_write_data(26 downto 0);
+                        when 2 => chan(n).tmr <= checkpoint_write_data(15 downto 0); chan(n).pnt <= checkpoint_write_data(31 downto 16);
+                        when 3 => chan(n).len <= checkpoint_write_data(21 downto 0);
+                        when 4 =>
+                           chan(n).timer <= unsigned(checkpoint_write_data(16 downto 0));
+                           chan(n).subpos <= unsigned(checkpoint_write_data(19 downto 17)); chan(n).startdel <= unsigned(checkpoint_write_data(21 downto 20));
+                           chan(n).curv <= checkpoint_write_data(22); chan(n).nxtv <= checkpoint_write_data(23); chan(n).adhdr <= checkpoint_write_data(24);
+                           chan(n).psgpos <= unsigned(checkpoint_write_data(27 downto 25));
+                        when 5 => chan(n).remwords <= unsigned(checkpoint_write_data(23 downto 0));
+                        when 6 => chan(n).curw <= checkpoint_write_data;
+                        when 7 => chan(n).nxtw <= checkpoint_write_data;
+                        when 8 => chan(n).adval <= signed(checkpoint_write_data(15 downto 0)); chan(n).adidx <= to_integer(unsigned(checkpoint_write_data(22 downto 16)));
+                        when 9 => chan(n).adval_l <= signed(checkpoint_write_data(15 downto 0)); chan(n).adidx_l <= to_integer(unsigned(checkpoint_write_data(22 downto 16)));
+                        when 10 => chan(n).noise <= unsigned(checkpoint_write_data(15 downto 0)); chan(n).cursmp <= signed(checkpoint_write_data(31 downto 16));
+                        when others => null;
+                     end case;
+                  else
+                     case a is
+                        when 256 => soundcnt <= checkpoint_write_data(15 downto 0); soundbias <= checkpoint_write_data(25 downto 16);
+                        when 257 => cap(0).cnt <= checkpoint_write_data(7 downto 0); cap(1).cnt <= checkpoint_write_data(15 downto 8);
+                        when 258 => cap(0).dad <= checkpoint_write_data(26 downto 0);
+                        when 259 => cap(0).len <= checkpoint_write_data(15 downto 0);
+                        when 260 => cap(1).dad <= checkpoint_write_data(26 downto 0);
+                        when 261 => cap(1).len <= checkpoint_write_data(15 downto 0);
+                        when 262 =>
+                           tick2 <= checkpoint_write_data(0);
+                           if checkpoint_write_data(1) = '1' then fstate <= FSCAN_EVAL; else fstate <= FSCAN_ADDR; end if;
+                           fch <= to_integer(unsigned(checkpoint_write_data(5 downto 2))); fgapc <= unsigned(checkpoint_write_data(8 downto 6));
+                        when others => null;
+                     end case;
+                  end if;
+               end if;
+            else
             soundcnt  <= (others => '0');
             soundbias <= SOUNDBIAS_DIRECT_BOOT_VALUE;
             -- zero everything: the read mux ORs into the shared IO bus, a
@@ -652,6 +863,7 @@ begin
             tick2       <= '0';
             fstate      <= FSCAN_ADDR;
             fch         <= 0;
+            end if; -- ordinary reset / direct restore
             snd_bus_req <= '0';
             snd_bus_own <= '0';
             mb_ena      <= '0';
@@ -1013,6 +1225,19 @@ begin
       if rising_edge(clk) then
          sample_valid <= '0';
          if (reset = '1') then
+            if restore_active = '1' then
+               if restore_write_valid = '1' then
+                  case to_integer(checkpoint_address) is
+                     when 263 => mixcnt <= unsigned(checkpoint_write_data(9 downto 0));
+                     when 264 => accl <= signed(checkpoint_write_data);
+                     when 265 => accr <= signed(checkpoint_write_data);
+                     when 266 => master_gain_latch <= checkpoint_write_data(6 downto 0); master_bias_latch <= checkpoint_write_data(16 downto 7);
+                     when 267 => master_left_latch <= checkpoint_write_data(15 downto 0);
+                     when 268 => sample_l <= checkpoint_write_data(15 downto 0); sample_r <= checkpoint_write_data(31 downto 16);
+                     when others => null;
+                  end case;
+               end if;
+            else
             mixcnt   <= (others => '0');
             accl     <= (others => '0');
             accr     <= (others => '0');
@@ -1021,6 +1246,7 @@ begin
             master_left_latch <= (others => '0');
             sample_l <= (others => '0');
             sample_r <= (others => '0');
+            end if;
          elsif (ce = '1' and stop_playback = '0') then
             mixcnt <= mixcnt + 1;
 

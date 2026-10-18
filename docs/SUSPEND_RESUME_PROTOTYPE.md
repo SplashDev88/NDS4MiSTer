@@ -36,7 +36,7 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
-state, timers, IPC queues and both DMA controllers across fresh simulator
+state, timers, IPC queues, both DMA controllers and audio across fresh simulator
 processes. These ports remain unconnected to the console control plane; whole-machine persistence
 still needs the other owners.
 
@@ -722,6 +722,100 @@ cover that correction. Existing DMA stop/drain, ARM9 fast/fallback and graphics
 backpressure tests remain required. No gameplay speed or routed timing result
 is implied by these component checks.
 
+### Audio component capture and restore
+
+`nds_sound` now has a 270-word component image under the default-off
+`EXPERIMENTAL_CHECKPOINT` option. The console leaves its read/restore ports
+unconnected. Capture requires the existing playback hold and drained fetch
+boundary, no guest register access or memory completion, and an initialized
+ADPCM table. Hold the playback request and all guest writers throughout the
+read; this is a component boundary, not complete machine ownership.
+
+Each channel occupies 16 words at `channel * 16`:
+
+| Offset | State |
+| --- | --- |
+| 0 | Stored channel control; hold is bit 15, matching its write field |
+| 1 | Sample address, bits 26:0 |
+| 2 | Timer reload 15:0 and loop point 31:16 |
+| 3 | Programmed length, bits 21:0 |
+| 4 | Timer 16:0, subposition 19:17, start delay 21:20, current/next valid 22/23, ADPCM header 24, PSG position 27:25 |
+| 5 | Remaining playback words, bits 23:0 |
+| 6, 7 | Current and prefetched sample words |
+| 8, 9 | Current and loop ADPCM state: signed value 15:0, index 22:16 |
+| 10 | Noise generator 15:0 and current signed sample 31:16 |
+| 11 | Cached ADPCM step value, bits 14:0 |
+| 12, 13 | Next fetch pointer 24:0 and remaining fetch words 23:0 |
+| 14, 15 | Reserved zero words, still required for complete coverage |
+
+The fetch pointer/count stay in their existing 49-bit dual-port RAM. Capture
+borrows its idle channel-start port. Restore reads the selected row, changes
+one field and writes the whole row atomically. There is no new asynchronous
+RAM read or duplicate fetch-state bank. The physical port's registered read
+must settle: wait for `checkpoint_valid` on reads and
+`checkpoint_write_ready` before each write. A write to a newly selected RAM
+channel before that acknowledgement poisons the attempt instead of combining
+its data with a stale row. Either pointer/count word may be written first.
+
+| Global word | State |
+| --- | --- |
+| 256 | Sound control 15:0 and bias 25:16 |
+| 257 | Capture-unit control bytes 7:0 and 15:8 |
+| 258–261 | Capture 0 address/length, then capture 1 address/length |
+| 262 | Timer cadence bit 0; fetch scan phase bit 1; selected channel 5:2; fetch gap 8:6 |
+| 263 | Mixer slot, bits 9:0 |
+| 264, 265 | Signed left/right mixer accumulators |
+| 266 | Latched master gain 6:0 and bias 16:7 |
+| 267 | Completed left-mix latch, bits 15:0 |
+| 268 | Last output pair: left 15:0, right 31:16 |
+| 269 | ADPCM lookup channel 3:0, delayed channel 7:4 and pending ROM result 22:8 |
+
+The ADPCM lookup's last ROM result is necessary in addition to each channel's
+cached step. The first resumed clock consumes the saved result while the real
+ROM reader refills; subsequent clocks use the physical reader normally. With
+the experimental option, the startup value before the first initialized-table
+read is explicitly zero. This makes a suspend before any channel playback
+serializable. The immutable step table itself is rebuilt, and ready waits for
+initialization. The default-disabled path retains its previous startup behavior.
+
+Restore writes live channel, decoder, mixer and buffer state while reset is
+held; it does not restart channels through their normal control registers.
+All 270 words are required, including zeros. Reserved bits, unsupported
+addresses, ADPCM indices above 88, premature RAM writes and live restore
+attempts are rejected. An error stays latched until restore is withdrawn for
+an edge and a fresh complete load begins. After the last write, two idle edges
+settle the restored fetch-channel RAM output before ready. Keep playback held
+while withdrawing restore and releasing reset, then use the common machine
+release. Failure requires another complete load or a clean core reload;
+ordinary reset alone does not clear every RAM and pipeline value.
+
+Diagnostic counters are not guest state. This component does not implement
+missing hardware audio-capture behavior, the existing hold-bit functionality,
+or additional output-selection modes. The state image stores the actual hold
+field directly; the existing guest readback behavior is unchanged.
+
+`tools/test_checkpoint_sound_restore.sh` checks 20 fresh-process restores with
+ascending/descending writes. Each compares 65,536 resumed cycles of stereo
+output, register reads and enabled memory requests, plus all 270 image words
+after the first resumed edge. The latter catches a lost ROM pipeline result
+even when a channel's timer would allow its cache to refresh before decoding.
+Cases cover PCM8, PCM16, ADPCM, PSG/noise, looping, delayed reads, saturation,
+newly started channels, idle audio, both table implementations and mixer slots
+0, 16, 17 and 1023. Fast ADPCM cases additionally exercise the existing lookup
+approximation; they test exact continuation of this implementation, not new
+hardware-accuracy claims. Nine deliberate faults cover buffers, decoder state,
+fetch pointers, mixer state, pending ROM output, partial coverage, invalid
+indices, stale RAM rows and live mutation.
+
+`tools/test_checkpoint_sound_baseline.sh` compares default-disabled and
+unrequested-enabled playback to pinned pre-restore source, with both table
+implementations. Four runs compare 580,756 clock phases, exercising all formats,
+partial register writes, clock-enable stalls, delayed fetches and reset; two
+observer faults are detected. Existing stop/drain tests compare another 4,200
+stereo pairs to uninterrupted playback. DMA-yield and direct-boot bias checks
+also remain required. These are simulation results, not routed timing,
+performance or whole-game resume qualification.
+
 ## Persistence proof
 
 `tools/suspend_resume/capsule.py` wraps the captured CPU words in a bounded,
@@ -1164,7 +1258,7 @@ evidence, not as a second maintained implementation in this branch.
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
 | FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA have component restore; other serializers and real external ownership missing |
-| Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop and accepted-refill drain tested; serialization/restore and output integration missing |
+| Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
 | Coordinator | Common machine epoch, bounded pause/abort, restore ordering, capability gate | Optional common-owner barrier, lease/read guards and final RTC ordering tested; authored enabled-console acquisition/read/release passes; real external ownership, host connection and restore ordering missing |
@@ -1184,7 +1278,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend IRQ/timer/IPC/DMA component coverage to audio and the remaining devices,
+2. Extend IRQ/timer/IPC/DMA/audio component coverage to the remaining devices,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
