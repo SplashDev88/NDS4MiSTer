@@ -163,7 +163,17 @@ entity nds_card is
       card_din     : in  std_logic_vector(31 downto 0);
       card_done    : in  std_logic;
       checkpoint_stop : in std_logic := '0';
-      checkpoint_stopped : out std_logic := '0'
+      checkpoint_stopped : out std_logic := '0';
+      -- Ordered live-state image: 15 scalar words plus every prefetch cell.
+      -- Restore requires reset/stop held and both guest buses disconnected.
+      checkpoint_address : in unsigned(4 downto 0) := (others => '0');
+      checkpoint_data : out std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_valid : out std_logic := '0';
+      checkpoint_restore : in std_logic := '0';
+      checkpoint_write : in std_logic := '0';
+      checkpoint_write_data : in std_logic_vector(31 downto 0) := (others => '0');
+      checkpoint_restore_ready : out std_logic := '0';
+      checkpoint_restore_error : out std_logic := '0'
    );
 end entity;
 
@@ -282,6 +292,29 @@ architecture arch of nds_card is
    signal auxspi_rd   : std_logic_vector(31 downto 0);
    signal spi_busy_bit : std_logic;
    signal stop_card : std_logic;
+   constant CHECKPOINT_WORDS : positive := 15 + CARDPREFETCH;
+   signal restore_active, restore_write_valid : std_logic;
+   signal restore_count : unsigned(4 downto 0) := (others => '0');
+   signal restore_error : std_logic := '0';
+
+   function valid_word(a : unsigned(4 downto 0); d : std_logic_vector(31 downto 0)) return boolean is
+   begin
+      case to_integer(a) is
+         when 0 => return d(31 downto 30) = "00" and unsigned(d(18 downto 16)) < 6 and unsigned(d(25 downto 24)) < 3;
+         when 1 | 2 | 3 | 4 | 7 => return true;
+         when 5 => return d(31 downto 26) = "000000" and unsigned(d(12 downto 0)) <= 4096 and unsigned(d(25 downto 13)) <= 4096;
+         when 6 | 13 => return d(31 downto 20) = x"000";
+         when 8 => return d(31 downto 22) = (31 downto 22 => '0') and
+            to_integer(unsigned(d(2 downto 0))) < CARDPREFETCH and
+            to_integer(unsigned(d(5 downto 3))) < CARDPREFETCH and
+            to_integer(unsigned(d(8 downto 6))) <= CARDPREFETCH and unsigned(d(21 downto 9)) <= 4096;
+         when 9 => return d(31 downto 27) = "00000";
+         when 10 => return d(31) = '0';
+         when 11 | 12 => return d(31 downto 28) = x"0";
+         when 14 => return d(31 downto 17) = (31 downto 17 => '0') and unsigned(d(16 downto 0)) <= 65536;
+         when others => return a < CHECKPOINT_WORDS;
+      end case;
+   end function;
 
    function masked_save_addr(
       addr : unsigned(19 downto 0);
@@ -325,6 +358,62 @@ begin
       (erase_active = '0' or backup_cache_ready = '1') and
       irq9_xfer = '0' and irq7_xfer = '0' and dma9_card = '0' and dma7_card = '0'
       else '0';
+
+   restore_active <= '1' when EXPERIMENTAL_CHECKPOINT and reset = '1' and checkpoint_restore = '1' else '0';
+   restore_write_valid <= '1' when restore_active = '1' and stop_card = '1' and
+      bus9.ena = '0' and bus7.ena = '0' and card_done = '0' and restore_error = '0' and
+      checkpoint_write = '1' and restore_count < CHECKPOINT_WORDS and checkpoint_address = restore_count and
+      valid_word(checkpoint_address, checkpoint_write_data) else '0';
+   checkpoint_restore_error <= restore_error when EXPERIMENTAL_CHECKPOINT else '0';
+   checkpoint_restore_ready <= '1' when restore_active = '1' and stop_card = '1' and
+      bus9.ena = '0' and bus7.ena = '0' and card_done = '0' and restore_error = '0' and
+      restore_count = CHECKPOINT_WORDS and checkpoint_write = '0' and
+      (backup_access_r = '0' or backup_cache_ready = '1') and
+      (erase_active = '0' or backup_cache_ready = '1') else '0';
+
+   process(clk)
+   begin
+      if rising_edge(clk) then
+         if not EXPERIMENTAL_CHECKPOINT or checkpoint_restore = '0' then
+            restore_count <= (others => '0'); restore_error <= '0';
+         elsif reset = '0' or stop_card = '0' or bus9.ena = '1' or bus7.ena = '1' or card_done = '1' then
+            restore_error <= '1';
+         elsif checkpoint_write = '1' then
+            if restore_write_valid = '1' then restore_count <= restore_count + 1;
+            else restore_error <= '1'; end if;
+         end if;
+      end if;
+   end process;
+
+   process(all)
+   begin
+      checkpoint_data <= (others => '0'); checkpoint_valid <= '0';
+      if EXPERIMENTAL_CHECKPOINT and checkpoint_address < CHECKPOINT_WORDS and
+         ((checkpoint_stopped = '1' and checkpoint_restore = '0') or checkpoint_restore_ready = '1') then
+         checkpoint_valid <= '1';
+         case to_integer(checkpoint_address) is
+            when 0 => checkpoint_data(29 downto 0) <= key1_seen4 & std_logic_vector(sec_cnt) & std_logic_vector(cmd_mode) &
+               cmd_redir & cmd_b8 & cmd_b7 & word_ready & busy & std_logic_vector(to_unsigned(tstate'pos(state),3)) & spicnt;
+            when 1 => checkpoint_data <= romctrl;
+            when 2 => checkpoint_data <= cmdbytes(31 downto 0);
+            when 3 => checkpoint_data <= cmdbytes(63 downto 32);
+            when 4 => checkpoint_data <= romdata;
+            when 5 => checkpoint_data(25 downto 0) <= std_logic_vector(xferpos) & std_logic_vector(xferlen);
+            when 6 => checkpoint_data(19 downto 0) <= std_logic_vector(delay_cnt);
+            when 7 => checkpoint_data <= std_logic_vector(b7_addr);
+            when 8 => checkpoint_data(21 downto 0) <= std_logic_vector(pf_asked) & std_logic_vector(to_unsigned(pf_cnt,3)) &
+               std_logic_vector(to_unsigned(pf_rd,3)) & std_logic_vector(to_unsigned(pf_wr,3));
+            when 9 => checkpoint_data(26 downto 0) <= card_addr;
+            when 10 => checkpoint_data(30 downto 0) <= backup_write_toggle & erase_active & backup_access_r & ir_cmd & sram_cmd &
+               std_logic_vector(spi_pos) & spi_hold & spi_data;
+            when 11 => checkpoint_data(27 downto 0) <= sram_status & std_logic_vector(sram_addr);
+            when 12 => checkpoint_data(27 downto 0) <= sram_wd_r & std_logic_vector(sram_wa_r);
+            when 13 => checkpoint_data(19 downto 0) <= std_logic_vector(erase_addr);
+            when 14 => checkpoint_data(16 downto 0) <= std_logic_vector(erase_remaining);
+            when others => checkpoint_data <= pf(to_integer(checkpoint_address)-15);
+         end case;
+      end if;
+   end process;
 
    backup_addr <= std_logic_vector(masked_save_addr(sram_wa_r, backup_save_type)) when
                      sram_we_r = '1' else
@@ -417,11 +506,46 @@ begin
          card_ena  <= '0';
          sram_we_r <= '0';
 
-         if (sram_we_r = '1') then
+         if (sram_we_r = '1' and restore_active = '0') then
             backup_write_toggle <= not backup_write_toggle;
          end if;
 
-         if (reset = '1') then
+         if restore_active = '1' then
+            -- Accepted requests and pulses drained before capture. Retain
+            -- partial transfers/erase and loaded words through reset-held gaps.
+            pf_inflt <= '0'; pop_req <= '0'; spi_busy <= (others => '0');
+            if restore_write_valid = '1' then
+               case to_integer(checkpoint_address) is
+                  when 0 =>
+                     spicnt <= checkpoint_write_data(15 downto 0);
+                     state <= tstate'val(to_integer(unsigned(checkpoint_write_data(18 downto 16))));
+                     busy <= checkpoint_write_data(19); word_ready <= checkpoint_write_data(20);
+                     cmd_b7 <= checkpoint_write_data(21); cmd_b8 <= checkpoint_write_data(22); cmd_redir <= checkpoint_write_data(23);
+                     cmd_mode <= unsigned(checkpoint_write_data(25 downto 24)); sec_cnt <= unsigned(checkpoint_write_data(28 downto 26));
+                     key1_seen4 <= checkpoint_write_data(29);
+                  when 1 => romctrl <= checkpoint_write_data;
+                  when 2 => cmdbytes(31 downto 0) <= checkpoint_write_data;
+                  when 3 => cmdbytes(63 downto 32) <= checkpoint_write_data;
+                  when 4 => romdata <= checkpoint_write_data;
+                  when 5 => xferlen <= unsigned(checkpoint_write_data(12 downto 0)); xferpos <= unsigned(checkpoint_write_data(25 downto 13));
+                  when 6 => delay_cnt <= unsigned(checkpoint_write_data(19 downto 0));
+                  when 7 => b7_addr <= unsigned(checkpoint_write_data);
+                  when 8 =>
+                     pf_wr <= to_integer(unsigned(checkpoint_write_data(2 downto 0))); pf_rd <= to_integer(unsigned(checkpoint_write_data(5 downto 3)));
+                     pf_cnt <= to_integer(unsigned(checkpoint_write_data(8 downto 6))); pf_asked <= unsigned(checkpoint_write_data(21 downto 9));
+                  when 9 => card_addr <= checkpoint_write_data(26 downto 0);
+                  when 10 =>
+                     spi_data <= checkpoint_write_data(7 downto 0); spi_hold <= checkpoint_write_data(8); spi_pos <= unsigned(checkpoint_write_data(11 downto 9));
+                     sram_cmd <= checkpoint_write_data(19 downto 12); ir_cmd <= checkpoint_write_data(27 downto 20);
+                     backup_access_r <= checkpoint_write_data(28); erase_active <= checkpoint_write_data(29); backup_write_toggle <= checkpoint_write_data(30);
+                  when 11 => sram_addr <= unsigned(checkpoint_write_data(19 downto 0)); sram_status <= checkpoint_write_data(27 downto 20);
+                  when 12 => sram_wa_r <= unsigned(checkpoint_write_data(19 downto 0)); sram_wd_r <= checkpoint_write_data(27 downto 20);
+                  when 13 => erase_addr <= unsigned(checkpoint_write_data(19 downto 0));
+                  when 14 => erase_remaining <= unsigned(checkpoint_write_data(16 downto 0));
+                  when others => pf(to_integer(checkpoint_address)-15) <= checkpoint_write_data;
+               end case;
+            end if;
+         elsif (reset = '1') then
 
             spicnt     <= (others => '0');
             romctrl    <= (others => '0');

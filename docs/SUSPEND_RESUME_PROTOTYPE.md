@@ -36,7 +36,8 @@ those owners settle. The real renderer/storage ownership path is still missing; 
 The connected console test now adds active DMA on both CPUs and three audio
 formats, comparing the resumed audio sequence to an independent uninterrupted
 SPU. The first non-CPU restore components also preserve interrupt enable/pending
-state, timers, IPC queues, both DMA controllers, audio and product SPI across fresh simulator
+state, timers, IPC queues, both DMA controllers, audio, product SPI and cartridge
+transactions across fresh simulator
 processes. These ports remain unconnected to the console control plane; whole-machine persistence
 still needs the other owners.
 
@@ -329,8 +330,8 @@ acquisition and immediately withdraw the corresponding acknowledgement.
 A missing backing response prevents acknowledgement. Cancelling the stop
 preserves the outstanding request and permits normal progress when the real
 response arrives. Common reset invalidates the acknowledgement. Product SPI
-now has the component restore path described below; cartridge serialization and
-both owners' external backing-cache restore contracts remain missing.
+and cartridge now have the component restore paths described below. Both
+owners' external backing-cache restore contracts remain missing.
 
 ### RTC, physical inputs and math retirement
 
@@ -854,6 +855,83 @@ virtual-clock warnings are expected, and no timing or gameplay-speed result is
 inferred. The remaining cost still needs a complete-core resource check before
 this can be accepted for a gameplay beta.
 
+## Cartridge component persistence
+
+`nds_card` exposes **15 scalar words plus every physical prefetch cell** when
+the default-off `EXPERIMENTAL_CHECKPOINT` option is enabled. Queue depths 1, 4
+and 7 use 16, 19 and 22 words respectively. The exact FPGA build determines the
+depth and pacing; a state file must not change those settings on restore.
+
+Capture uses the existing drained owner boundary. It retains the actual
+IDLE/CMDDELAY/FETCH/DATAREADY/WORDDELAY/FINISH state, including a published ROM
+word waiting for the guest, partially consumed prefetch queues and remaining
+erase bytes. It does not force IDLE, pop a data word or finish an erase to make
+capture possible. All physical queue cells are retained, even when empty.
+
+| Word | Saved state, low bits first |
+| --- | --- |
+| 0 | AUXSPICNT 15:0, FSM 18:16, busy 19, word ready 20, B7/B8/redirect 21–23, command mode 25:24, secure-block counter 28:26, KEY1 4x history 29 |
+| 1 | Stored ROMCTRL, including bits whose readback uses live flags |
+| 2, 3 | Command bytes, low then high 32 bits |
+| 4 | Published ROM data word |
+| 5 | Transfer length 12:0, consumed-word position 25:13 |
+| 6, 7 | Pacing countdown 19:0; next ROM byte address 31:0 |
+| 8 | Prefetch write index 2:0, read index 5:3, count 8:6, requested-word count 21:9 |
+| 9 | Last backing ROM word address 26:0 |
+| 10 | AUXSPI data 7:0, chip-select hold 8, byte position 11:9, save command 19:12, IR selector 27:20, backup access 28, erase active 29, write-toggle history 30 |
+| 11 | Save address 19:0, status 27:20 |
+| 12 | Last save write address 19:0, byte data 27:20 |
+| 13, 14 | Next erase address 19:0; remaining erase bytes 16:0 |
+| 15 onward | Prefetch cells in physical array order |
+
+Unused bits must be zero. FSM and command-mode values are bounded, prefetch
+indices/counts must fit the configured queue, transfer/request counts must be
+at most 4096, and an erase count cannot exceed 65536. The accepted ROM request,
+pop history, AUXSPI byte countdown, write/request strobes and IRQ/DMA pulses
+have drained and are restored inactive.
+
+Hold reset and stop throughout an ordered load from address 0 through the last
+prefetch cell. Both CPU buses and the ROM response must remain quiet. Clock
+enable may be low: restoration uses the physical clock and bypasses ordinary
+reset presets. Duplicate, missing-order, extra, reserved or out-of-range words
+poison the attempt, as does a live attempt or concurrent bus/response activity.
+Withdraw restore for an edge before retrying a complete image; never run a
+partial or rejected image. Readback requires either a drained capture boundary
+or a complete reset-held restore with no current write.
+
+The external save cache must own the restored address before readiness can
+assert when backup access or erase is active. A cache miss keeps readiness low
+and can resolve without restarting an otherwise valid load. This is still a
+**local** readiness gate, not a durable save-file acknowledgement. Keep the
+real backing cache, host and guest disconnected from partial loads; their data,
+dirty generation and write-toggle consumer history need a coordinated image.
+Save type, IR enable, slot ownership, chip ID and firmware-boot configuration
+also belong to the surrounding machine/ROM identity. The write-toggle bit in
+this component must agree with the restored consumer, not be reset arbitrarily.
+The console control plane does not connect this serializer yet.
+
+`bash tools/test_checkpoint_card_restore.sh` covers 24 scenarios with three
+owner/queue/latency profiles: ARM9/depth1/delay1, ARM7/depth4/delay17 and
+ARM9/depth7/delay97. Every capture resumes in two fresh processes with different
+write gaps, for **144 restores and 1,697,656 continuation observations**.
+Capture and continuation agree with pinned
+pre-serializer source `8485564`; independent ROM-word, save-byte and exact erase
+address/count expectations supplement the recorded trace. The fixture stores
+and reloads its modeled save bytes separately; this does not qualify the real
+save cache or host persistence path.
+
+Cases include all six transfer phases, full/wrapped and near-empty queues,
+raw/KEY1/main command modes, partial flash addresses and program commands,
+fast-read dummy bytes, tiny/regular EEPROM, IR selector/pass-through, the last
+byte of a page erase and interrupted 64 KiB sector erase. Malformed ordered
+loads, reset-held gaps with clock enable low, cache misses, live writes and
+complete retries are checked. All 14 deliberate state-loss and protocol faults
+are detected; ten remove saved device fields and fail resumed behavior with
+image-readback checking disabled. Existing stop/drain, coupled DMA,
+save-transaction and back-to-back ROM transfer regressions also pass, as does
+complete console VHDL analysis. The connected active DMA/audio fixture passes;
+it does not exercise cartridge restoration through the host control plane.
+
 ## Product SPI component persistence
 
 The actual console device, `rtl/nds_nitro_spi.vhd`, exposes a nine-word image
@@ -1152,8 +1230,8 @@ bash tools/test_checkpoint_card_dma.sh
 
 These stop/drain tests prove resume-after-cancellation behavior. Product SPI's
 separate persistent component proof is described above. Neither suite proves
-persistent cartridge restoration, cache durability, timing closure or gameplay
-suspend/resume.
+real backing-cache durability, timing closure or gameplay suspend/resume.
+Persistent cartridge component coverage is documented separately above.
 
 RTC/input and math checks:
 
@@ -1364,7 +1442,7 @@ evidence, not as a second maintained implementation in this branch.
 | Both FPGA CPUs | Registers, banked state, valid resume boundary | Branch and idle HALT/WFI proofs; optional console CPU-only read wiring; host/restore integration missing |
 | ARM9 memory island | TCM contents, I/D cache data/tags/dirty state, write buffers | Explicit idle observation tested; serialization missing; invalidation is not equivalent |
 | Shared memory | Main RAM, WRAM, VRAM, palette, OAM and ownership/mapping registers | Main-RAM/VRAM/ARM7/shared-WRAM drain observations tested; common ownership and all serialization/restore missing |
-| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA/product SPI have component restore; other serializers and real external ownership missing |
+| FPGA devices | DMA progress, timers, IRQ, IPC/FIFOs, cartridge/save-chip transactions, SPI, math units, timing counters | DMA/card/SPI drain, timer/raster stop and IRQ/IPC/math retirement tested; connected DMA/SPU holds verified; IRQ/timers/IPC/DMA/product SPI/cartridge have component restore; other serializers and real external ownership missing |
 | Audio | Voice state, playback position, FIFOs, capture/mixer state and output phase | Playback stop/drain and fresh-process component restore tested; console transport, physical output integration and hardware qualification missing |
 | ARM graphics helper | GPU/VRAM mirrors, partial GX commands, replay queues, display capture, paired publication and worker state | Existing melonDS serializers are only a starting point |
 | RTC/input/host | Clock offset/elapsed-time policy, touch/input state, save-file isolation, exact package identity | Input hold and coherent RTC timestamp tested; complete serial state, elapsed-time restore and host integration missing |
@@ -1385,7 +1463,7 @@ RAM dump alone is therefore deliberately not exposed as Resume.
    access or interrupt is dropped. Connect the bounded read transport and host
    lease to the host control plane, and qualify the full console path. Preserve
    delivery/release handshakes and keep all endpoint clocks running.
-2. Extend IRQ/timer/IPC/DMA/audio/SPI component coverage to the remaining devices,
+2. Extend IRQ/timer/IPC/DMA/audio/SPI/cartridge coverage to the remaining devices,
    then memory/cache coverage and a renderer-preserving checkpoint
    path. Do not reuse the destructive H3D session quiesce. Validate complete Main
    and Touch publication together and invalidate only disposable host caches.
