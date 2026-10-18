@@ -49,7 +49,8 @@ Saves retain the usual `saves/NDS/<ROM name>.sav` location. New NAND files are
 filled with FF in a temporary file, synced and renamed into place. Existing
 nonempty saves must be the exact expected size. Incorrect sizes and unsupported
 file types are rejected without rewriting the existing file. Interrupted
-initialization leaves the previous destination intact. No imported save is
+initialization leaves the previous destination intact. Unique temporary names
+allow a later retry after a power loss leaves an unfinished temporary file. No imported save is
 silently resized. The prior save descriptor is retained if mounting fails.
 
 Ordinary saves retain their existing 1 MiB host bound. NAND saves allow only
@@ -77,6 +78,19 @@ Initial Quartus synthesis passes and infers the staging buffer as M10K RAM.
 The build reports 38,884 registers, 4,121,684 block-memory bits and 27 DSP blocks.
 The RTC synchronization-register synthesis check also passes. These counts are
 from the first candidate, before the stricter old-host/NAND-profile guard.
+
+Board checks completed before the NAND bitstream was available:
+
+- New host with rc.9 FPGA: UORE is rejected before save creation, then MENU is
+  restored. Protected installation/configuration/save hashes remain unchanged.
+- New host with rc.9 FPGA: NSMB loads a private copy of the existing World 2
+  save, enters World 2-5, responds to movement/jumping, and exits cleanly. The
+  test copy and original save retain their hashes. This checks the host change;
+  it does not qualify the new FPGA or establish a frame-rate comparison.
+- The current NAND file-initialization code runs directly on the MiSTer SD
+  filesystem. 8/16 MiB all-FF initialization/full readback, durable rename,
+  existing-file preservation, wrong-size rejection, cancellation and retry with
+  a leftover temporary file pass. No SPI or live game state is involved.
 
 Still required: Quartus placement/routing/timing review; WarioWare first-run
 format, gameplay and meaningful save/reload through the RetroTINK rig; ordinary
