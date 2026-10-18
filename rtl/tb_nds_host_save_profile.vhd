@@ -42,6 +42,7 @@ begin
          host_type <= x"9"; host_valid <= '1'; tick;
          start <= '1'; tick; start <= '0'; tick;
          assert valid = '1' and save_type = x"9" and fault = '0' severity failure;
+         clear; host_type <= x"1"; expect_rejection; -- old host's fallback must not release NAND
       end loop;
       for region in 0 to 1 loop
          clear;
@@ -49,6 +50,7 @@ begin
          else code <= x"4A425841"; host_code <= x"4A425841"; end if;
          host_type <= x"8"; tick; start <= '1'; tick; start <= '0'; tick;
          assert valid = '1' and save_type = x"8" and fault = '0' severity failure;
+         clear; host_type <= x"1"; expect_rejection;
       end loop;
       clear; host_type <= x"9"; expect_rejection; -- wrong NAND capacity for title
       clear; host_type <= x"A"; expect_rejection; -- DSi not supported

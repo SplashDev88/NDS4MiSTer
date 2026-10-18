@@ -1,7 +1,9 @@
 # Experimental NAND cartridge saves
 
 This branch adds NAND saves to the ARM-assisted standalone product. It is not
-release-qualified. No gameplay save/reload result is available yet.
+release-qualified. No NAND gameplay save/reload result is available yet.
+The rc.9 baseline reached the WarioWare intro/title sequence on the RetroTINK
+rig, with a 512-byte erased fallback sidecar; this is not a save-success result.
 
 | Cartridge | Game codes | Save size | Status |
 | --- | --- | --- | --- |
@@ -36,6 +38,8 @@ is rejected by the host before mounting its save; no address is guessed.
 The firmware-control capability bit 12 prevents a new host from attempting
 NAND saves with an older FPGA. Save profiles 8/9 are enabled only for the five
 explicit game codes, not every database entry with those numeric save types.
+Known NAND cartridges also reject ordinary backup types, so an older host
+cannot release them using its 512-byte fallback.
 The legacy FPGA profile ROM remains unchanged; this prototype requires the
 ARM-assisted product and matching host.
 
@@ -63,9 +67,18 @@ bound. Renderer code and CPU clocks are unchanged.
   and header gates, atomic blank-file creation, cancellation, preservation of
   existing data, highest-sector I/O and file reopen.
 - Existing host-profile, EEPROM/flash/IR, long transaction, large-ROM and
-  complete-console VHDL checks remain required.
+  complete-console VHDL checks pass. All 42 ordinary cartridge/loader cases
+  match the rc.9 baseline pass results and elapsed simulation times; this is
+  not a gameplay FPS comparison.
+- `tools/test_nand_faults.py --output <directory>` detects intentional high-bank,
+  cache-wait, discard, read-wrap and protected-region faults.
 
-Still required: Quartus resource/routing/timing review; WarioWare first-run
+Initial Quartus synthesis passes and infers the staging buffer as M10K RAM.
+The build reports 38,884 registers, 4,121,684 block-memory bits and 27 DSP blocks.
+The RTC synchronization-register synthesis check also passes. These counts are
+from the first candidate, before the stricter old-host/NAND-profile guard.
+
+Still required: Quartus placement/routing/timing review; WarioWare first-run
 format, gameplay and meaningful save/reload through the RetroTINK rig; ordinary
 gameplay/performance comparisons. Simulation is not game compatibility proof.
 

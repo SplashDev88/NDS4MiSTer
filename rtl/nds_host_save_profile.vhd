@@ -15,7 +15,10 @@ entity nds_host_save_profile is
 end entity;
 architecture rtl of nds_host_save_profile is
    signal publish_pending : std_logic := '0';
+   signal nand16, nand8 : boolean;
 begin
+   nand16 <= game_code = x"45524F55" or game_code = x"50524F55" or game_code = x"4A524F55";
+   nand8 <= game_code = x"50425855" or game_code = x"4A425841";
    busy <= publish_pending;
    process(clk)
    begin
@@ -25,9 +28,8 @@ begin
             fault <= '0'; publish_pending <= '0';
          elsif start = '1' then
             valid <= '0'; publish_pending <= '0';
-            if host_valid = '1' and host_code = game_code and (unsigned(host_type) <= 7 or
-               (host_type = x"9" and (game_code = x"45524F55" or game_code = x"50524F55" or game_code = x"4A524F55")) or
-               (host_type = x"8" and (game_code = x"50425855" or game_code = x"4A425841"))) then
+            if host_valid = '1' and host_code = game_code and ((not nand16 and not nand8 and unsigned(host_type) <= 7) or
+               (nand16 and host_type = x"9") or (nand8 and host_type = x"8")) then
                save_type <= host_type;
                publish_pending <= '1';
             else
