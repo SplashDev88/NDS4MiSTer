@@ -9,9 +9,12 @@ rc.8 internally; the launcher and NAND build manifest identify this test.
 
 Primary test game: WarioWare D.I.Y. (USA), using a 16 MiB NAND save.
 European/Japanese WarioWare profiles are enabled but were not tested.
-Jam with the Band (Europe) has an 8 MiB profile and authored diagnostic
-coverage; its retail game still needs testing. Daigasso! Band Brothers DX
-with a missing save-region header is rejected pending separate investigation.
+Jam with the Band (Europe) passes fresh 8 MiB setup, one-button demo controls
+and profile persistence across two full core restarts on NAND3. RetroTINK video
+and audio signal were captured. Normal-song scores, composition saves, singing,
+wireless/downloads, long sessions and rhythm timing still need testing.
+Daigasso! Band Brothers DX with a missing save-region header is rejected
+pending separate investigation.
 DSi Face Training is not supported. Ni no Kuni uses ordinary EEPROM, so this
 change does not resolve its separate compatibility report.
 

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "date_utc": "2026-10-18T23:12:45.844212+00:00",
+  "date_utc": "2026-10-19T21:42:33.738457+00:00",
   "candidate": "NAND3 private test based on rc.9",
   "private_test_ready": true,
   "public_release_qualified": false,
@@ -489,7 +489,7 @@
   },
   "strict_performance_quality_gate_passed": false,
   "limits": [
-    "Jam with the Band retail game unavailable; 8MiB protocol and persistence diagnostics only",
+    "Jam UXBP setup/tutorial/profile reload tested; normal-song scores, composition saves, singing, downloads/wireless and long sessions untested",
     "Other WarioWare regions untested",
     "AXBJ missing NAND-base header refused; layout unverified",
     "DSi Face Training unsupported",
@@ -517,5 +517,64 @@
     "build-nand3-inputs.json": "e6a368e821643039f9775300c749009b8a4b609371a979b3ba15c8f32a0ae228",
     "host3-source.json": "3df05f2cbd58e0faed8d1df47e519c4ed990e4b1026d4caa1b4eba23b756b195",
     "ORDINARY_ROM_COMPARISON.json": "471988b378694dbdba49c6e3a13c472e9534c1523fd497af5ca8626e338ee131"
+  },
+  "retail_jam": {
+    "game": "Jam with the Band (Europe)",
+    "code": "UXBP",
+    "capacity_mib": 8,
+    "build": "NAND3",
+    "date_utc": "2026-10-19T21:42:33.738457+00:00",
+    "rom_sha256": "df7ad936364cc9f874da455e67132c2a3af053c35654208285c1c842265461d8",
+    "first_run_setup": true,
+    "test_profile": "test",
+    "tutorial": "Smoke on the Water one-button demo; successful note hits observed; advanced to later tour screens, dismissed remaining tour with End, reached main menu",
+    "button_and_touch_input": true,
+    "full_core_exit_relaunches": 2,
+    "restored_profile_observed_framebuffer_and_RetroTINK": true,
+    "session_sector_io": [
+      {
+        "reads": 1755,
+        "writes": 208
+      },
+      {
+        "reads": 892,
+        "writes": 8
+      },
+      {
+        "reads": 859,
+        "writes": 0
+      }
+    ],
+    "final_read_only_relaunch_save_hash_unchanged": true,
+    "final_save_sha256": "fa788e840276063cb15b3494f20768f260939a6385bc03f7fdf6c115034439a8",
+    "captured_audio_signal_present": true,
+    "recordings_seconds": [
+      40,
+      40
+    ],
+    "OBS_render_and_encoding_drops": 0,
+    "transport_faults_in_observed_frames": 0,
+    "protected_paths_verified": 134,
+    "original_saves_and_normal_installation_preserved": true,
+    "final_board_state": "MENU",
+    "limits": [
+      "Short setup/tutorial/profile-persistence check, not full-game qualification",
+      "Normal-song scores, composition save/reload, singing/microphone, wireless/downloads and long sessions not tested",
+      "No audio-fidelity, rhythm-input-latency or game-FPS qualification",
+      "Capture was initially unplugged; user reconnected it before both recordings",
+      "No power-cut or multi-board test; existing FPGA timing limitation remains"
+    ]
+  },
+  "jam_private_evidence_sha256": {
+    "UPLOAD.json": "0f80f2f8a46eb5f7d0adfd2ff5bdd8a58d28b534e7e7ab95a22858ed2a1c9305",
+    "JAM_STOP1.json": "111edf8d9e81eef7b7968c6338dc5d3662c7551665b45dc89e9e37bfd3ed9417",
+    "JAM_STOP2.json": "e8d5fa2061fe0aa5dc51c4d48c41252b0cd7e6366c045ee9cd72abe71362b0b8",
+    "JAM_STOP3.json": "e04a2624f238a0e9bc9fbb3b2602e3da28faa427b2f8481db6475d138fb85119",
+    "JAM_RELOAD_FRAME4.json": "f825558bd031f1b09294f913409e8f0306684883ddc13efd0a2f4b40c039814f",
+    "JAM_RELOAD3_FRAME.json": "103bf3197bf5d69e31c1830b01619fa38c2b618e0469e013cc91e8208b722a42",
+    "JAM_SHOP_SAVE_CHANGE.json": "2255d34edca39536e36c489d9cee0493ff6bc865d72bac9d0796496d5d0dae6b",
+    "JAM_TUTORIAL_CAPTURE_CHECK.json": "ccba4891a184ba0e356fd00f291c7c6bb53c4994136a4c2c77dbc91d7fe2db0b",
+    "JAM_DEMO_CAPTURE_CHECK.json": "4347a354ddab1df84c0652dc4579bef446b452e50a0c76857306fd1b77626fa1",
+    "JAM_RETAIL_VALIDATION.json": "5b51dcaf54f2a0767da3f674f403dcc50fbb6f2410844027cba115ca1086a31e"
   }
 }

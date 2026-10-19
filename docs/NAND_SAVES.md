@@ -21,7 +21,7 @@ diagnostic saves.
 | Cartridge | Game codes | Save size | Status |
 | --- | --- | --- | --- |
 | WarioWare D.I.Y. / Made in Ore | UORE, UORP, UORJ | 16 MiB | UORE setup/gameplay/profile reload on prototype; new Mona score save/reload on NAND3; other regions untested |
-| Jam with the Band | UXBP | 8 MiB | 8 MiB authored hardware persistence test passes; retail game unavailable |
+| Jam with the Band | UXBP | 8 MiB | UXBP first-run setup, one-button demo and profile reload pass on NAND3; broader modes untested |
 | Daigasso! Band Brothers DX | AXBJ | 8 MiB | Recognized, but a missing save-region header is rejected; layout requires separate verification |
 
 Face Training uses a DSi-specific variant and is outside this prototype.
@@ -156,8 +156,8 @@ On NAND3, the authored 8/16 MiB tests each program two 2 KiB pages, exit fully,
 relaunch, and detect the persisted pages without writing again. Each first run
 records eight sector writes; each second run records zero. Independent scans
 of both entire files match the expected pages and erased remainder exactly.
-This does not substitute for retail Jam with the Band qualification or a
-power-cut test.
+These authored diagnostics do not establish full retail-game compatibility or
+power-cut safety. A separate Jam with the Band retail check is recorded below.
 
 NAND3 also loads the private WarioWare test profile from NAND1. Its Mona table
 initially shows `4, 0, 0`. A second microgame run followed by the game's Quit
@@ -174,6 +174,31 @@ These are short Mona microgame checks, not coverage of every WarioWare mode,
 other regions, long sessions, or power loss. Retail first-run setup was tested
 on NAND1; NAND3 blank-file initialization is covered by the authored diagnostic
 and actual-host tests.
+
+## Jam with the Band retail check
+
+On NAND3, the user-supplied European UXBP cartridge starts with a fresh 8 MiB
+NAND file, completes member-card registration and plays the one-button
+"Smoke on the Water" demo. The remaining tour is dismissed with End, then the
+main menu is reached. Button and touch input work;
+successful note hits were observed. Setup records 208 sector writes before a
+clean core exit. A fresh core launch skips registration and displays the saved
+`test` profile, verified in both the framebuffer and RetroTINK capture.
+
+That second session shows the first-shop help and records eight further sector
+writes, changing two 2 KiB pages. A third full core launch restores the profile
+again with zero sector writes and an unchanged complete-file SHA-256. All three
+exits are clean. Normal installation files, original saves and configuration
+remain unchanged; the checks use a separate test save. The uploaded retail ROM
+is available under `games/NDS` for a fresh user session.
+
+The capture device was initially unplugged and was reconnected before two
+40-second recordings. Both contain video and non-silent capture audio with zero
+OBS render/encoding drops. Observed framebuffer transport-fault counters stay
+zero. This does not qualify audio fidelity, rhythm-input latency or game FPS.
+Normal-song score persistence, composition save/reload, singing/microphone,
+wireless/download features, long sessions and power loss remain untested. See
+the `retail_jam` entry in the validation record for counts and evidence hashes.
 
 ## Ordinary-game performance check
 
