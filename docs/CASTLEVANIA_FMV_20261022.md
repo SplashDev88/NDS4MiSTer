@@ -34,9 +34,12 @@ contains a roughly 602 ms hold. Some additional holds remain, and this is not a
 claim that every frame is presented perfectly or that all audio defects are gone.
 
 Screen-buffer publication stays around 59.6 updates/s in both builds; repeated
-movie images make that an unsuitable FMV-speed metric. These captures have no
-encoding drops or increase in OBS rendering drops. Sampled transport fault
-words remain zero. The FPGA, renderer, HPS clock and display setup are unchanged.
+movie images make that an unsuitable FMV-speed metric. The frozen-baseline and
+enabled-candidate captures have no encoding drops. The final disabled-host
+control recorded three encoding drops over its complete recording; the earlier
+disabled control had none and measured 6.44 changes/s. No capture increased OBS
+rendering drops. Sampled transport fault words remain zero. The FPGA, renderer,
+HPS clock and display setup are unchanged.
 
 ## Audio and visual checks
 
