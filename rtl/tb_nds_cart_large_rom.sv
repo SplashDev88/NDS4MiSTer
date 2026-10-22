@@ -12,7 +12,7 @@ module tb_nds_cart_large_rom;
     reg cart_download_ddr=0,cart_download_d=0,cart_download_raw=0;
     reg source_request=0;
     reg [15:0] ioctl_index=16'h0003;
-    reg expect_large=0,expect_512=0,expect_472=0;
+    reg expect_large=0,expect_512=0,expect_464=0;
     reg [26:0] source_address=0;
     wire response_ready,request,done,flush_complete,altbank;
     wire [31:0] response_data,data;
@@ -55,13 +55,13 @@ module tb_nds_cart_large_rom;
             if(physical_address >= (32'h30000000>>3) &&
                (({3'd0,physical_address}<<3)+burst*8) <= 32'h3fc00000)
                 response_address <= {1'b0,physical_address[24:0],3'd0};
-            else if(expect_472 && physical_address >= (32'h22000000>>3) &&
+            else if(expect_464 && physical_address >= (32'h22800000>>3) &&
                (({3'd0,physical_address}<<3)+burst*8) <= 32'h24000000)
-                response_address <= 29'h0fc00000 + ((physical_address-(32'h22000000>>3))<<3);
-            else if(expect_472 && physical_address >= (32'h24400000>>3) &&
+                response_address <= 29'h0fc00000 + ((physical_address-(32'h22800000>>3))<<3);
+            else if(expect_464 && physical_address >= (32'h24400000>>3) &&
                (({3'd0,physical_address}<<3)+burst*8) <= 32'h30000000)
-                response_address <= 29'h11c00000 + ((physical_address-(32'h24400000>>3))<<3);
-            else if(!expect_472 && expect_512 && physical_address >= (32'h28000000>>3) &&
+                response_address <= 29'h11400000 + ((physical_address-(32'h24400000>>3))<<3);
+            else if(!expect_464 && expect_512 && physical_address >= (32'h28000000>>3) &&
                (({3'd0,physical_address}<<3)+burst*8) <= 32'h2c000000)
                 response_address <= (physical_address >= (32'h2bc00000>>3))
                     ? 29'h0fc00000 + ((physical_address-(32'h2bc00000>>3))<<3)
@@ -87,7 +87,7 @@ module tb_nds_cart_large_rom;
         integer t;
         reg [31:0] expected;
         begin
-            if(expect_472) expected=byte_address>=29'h1d800000 ? 32'hffffffff : word_at({byte_address[28:2],2'b00});
+            if(expect_464) expected=byte_address>=29'h1d000000 ? 32'hffffffff : word_at({byte_address[28:2],2'b00});
             else if(expect_512) expected=byte_address>=29'h13c00000 ? 32'hffffffff : word_at({byte_address[28:2],2'b00});
             else expected=expect_large && byte_address[27:0]>=28'hfc00000 ? 32'hffffffff :
                 word_at({1'b0,byte_address[27] & expect_large,byte_address[26:2],2'b00});
@@ -112,7 +112,7 @@ module tb_nds_cart_large_rom;
         console_reset_1x=0;console_reset_ddr=0;
         expect_large=download_index[8] && download_index[5:0]==6'h03;
         expect_512=(&download_index[9:8]) && download_index[5:0]==6'h03;
-        expect_472=(&download_index[10:8]) && download_index[5:0]==6'h03;
+        expect_464=(download_index[11] && (&download_index[9:8])) && download_index[5:0]==6'h03;
     endtask
     integer before_commands,before_beats,before_cycles,before_replies;
     initial begin
@@ -221,42 +221,42 @@ module tb_nds_cart_large_rom;
         read_word(29'h10008000);read_word(29'h0fc00000);
         replace_image(16'h0003);read_word(29'h10008000);read_word(29'h18008000);
         replace_image(16'h0303);read_word(29'h10008000);read_word(29'h0fc00000);
-        // New 472 MiB layout: low aperture, both upper windows, all cache tag
+        // New 464 MiB layout: low aperture, both upper windows, all cache tag
         // bits and all mapping discontinuities. The oracle independently rejects
         // any burst that enters scaler, TATE or graphics/control ownership.
-        replace_image(16'h0703);
+        replace_image(16'h0b03);
         for(integer n=0;n<3;n=n+1) begin
-            read_word(29'h02008000);read_word(29'h0fc08000);
-            read_word(29'h06408000);read_word(29'h13c08000);
-            read_word(29'h0a408000);read_word(29'h17c08000);
-            read_word(29'h0e408000);read_word(29'h1bc08000);
+            read_word(29'h02808000);read_word(29'h0fc08000);
+            read_word(29'h06408000);read_word(29'h13408000);
+            read_word(29'h0a408000);read_word(29'h17408000);
+            read_word(29'h0e408000);read_word(29'h1b408000);
         end
         for(integer n=0;n<16;n=n+1) read_word(29'h0fbfffe0+n*4);
-        for(integer n=0;n<16;n=n+1) read_word(29'h11bfffe0+n*4);
+        for(integer n=0;n<16;n=n+1) read_word(29'h113fffe0+n*4);
         before_commands=commands;
-        for(integer n=0;n<16;n=n+1) read_word(29'h1d7fffe0+n*4);
-        if(commands-before_commands!=1) $fatal(1,"472 MiB crossing accessed omitted bytes");
+        for(integer n=0;n<16;n=n+1) read_word(29'h1cffffe0+n*4);
+        if(commands-before_commands!=1) $fatal(1,"464 MiB crossing accessed omitted bytes");
         before_commands=commands;
-        read_word(29'h1d800000);read_word(29'h1fffffff);
-        if(commands!=before_commands) $fatal(1,"472 FF tail issued DDR request");
+        read_word(29'h1d000000);read_word(29'h1fffffff);
+        if(commands!=before_commands) $fatal(1,"464 FF tail issued DDR request");
         // Keep mode through guest reset, then replace during an accepted refill.
         next_delay=50;before_replies=replies;before_commands=commands;
         submit(29'h1bc00040);wait(commands==before_commands+1);
         @(negedge ddr_clk);console_reset_1x=1;console_reset_ddr=1;
         repeat(8) @(negedge ddr_clk);
         console_reset_1x=0;console_reset_ddr=0;
-        submit(29'h1d800000);await_word(29'h1d800000);
+        submit(29'h1d000000);await_word(29'h1d000000);
         if(replies!=before_replies+1 || commands!=before_commands+1)
-            $fatal(1,"472 stale reply or padding request escaped reset");
-        next_delay=0;read_word(29'h1bc08000);
+            $fatal(1,"464 stale reply or padding request escaped reset");
+        next_delay=0;read_word(29'h1b408000);
         next_delay=50;before_replies=replies;before_commands=commands;
         submit(29'h1bc09000);wait(commands==before_commands+1);
         epoch=32'h30000000;replace_image(16'h0303);
-        if(replies!=before_replies) $fatal(1,"472 reply survived replacement");
-        next_delay=0;read_word(29'h10008000);read_word(29'h1bc08000);
-        replace_image(16'h0703);read_word(29'h1bc08000);
-        replace_image(16'h0003);read_word(29'h1bc08000);
-        replace_image(16'h0403);read_word(29'h1bc08000);
+        if(replies!=before_replies) $fatal(1,"464 reply survived replacement");
+        next_delay=0;read_word(29'h10008000);read_word(29'h1b408000);
+        replace_image(16'h0b03);read_word(29'h1b408000);
+        replace_image(16'h0003);read_word(29'h1b408000);
+        replace_image(16'h0403);read_word(29'h1b408000);
         // A lone new bit without the LR1 bit does not select an extended mode.
         replace_image(16'h0203);read_word(29'h10008000);read_word(29'h18008000);
         // Only FS3 receives extended mode; the old C0 loader remains small.

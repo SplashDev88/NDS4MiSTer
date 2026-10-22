@@ -3,7 +3,7 @@
 // remain idle during normal cartridge play. Assets change only while held.
 // HOST_SAVE_PROFILE advertises flags[10]; FIO8 commits game code/type with a
 // protocol marker, and flags[11] gates direct release. See ARM_AREA_EXPERIMENT.
-module nds_firmware_control #(parameter bit SIMULATE = 0, parameter bit HOST_SAVE_PROFILE = 0, parameter bit NAND_SAVES = 0, parameter bit CART_472 = 0) (
+module nds_firmware_control #(parameter bit SIMULATE = 0, parameter bit HOST_SAVE_PROFILE = 0, parameter bit NAND_SAVES = 0, parameter bit CART_464 = 0) (
     input logic clk, clk7, clk9, reset,
     input logic io_enable, io_strobe,
     input logic [15:0] io_din,
@@ -51,7 +51,7 @@ module nds_firmware_control #(parameter bit SIMULATE = 0, parameter bit HOST_SAV
     wire asset_index=ioctl_index==4 || ioctl_index==5 || ioctl_index==6 || ioctl_index==7 || (HOST_SAVE_PROFILE && ioctl_index==8);
     wire asset_download=ioctl_download && asset_index;
     wire [14:0] expected=asset==8?15'd8:asset==4?15'd16384:asset==5?15'd4096:asset==7?15'd512:15'd120;
-    wire [15:0] flags={2'd0,CART_472,NAND_SAVES,cart_profile_ready,HOST_SAVE_PROFILE,direct_profile_ready,persist_pending,fault,mounted,clean,
+    wire [15:0] flags={1'b0,CART_464,1'b0,NAND_SAVES,cart_profile_ready,HOST_SAVE_PROFILE,direct_profile_ready,persist_pending,fault,mounted,clean,
         profile_ready,bios9_ready,bios7_ready,native_mode,hold_console};
     assign fault=control_fault | cache_fault;
     assign io_override=io_enable && selected;

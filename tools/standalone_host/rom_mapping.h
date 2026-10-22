@@ -8,6 +8,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <sys/mman.h>
 #include <unistd.h>
 #ifdef STANDALONE_TEST
@@ -34,12 +35,29 @@ inline void validateRomBank(std::istream &iomem) {
     throw std::runtime_error("512 MiB ROM needs a readable, unredacted Linux memory map");
 }
 
+// The kernel's console framebuffer survives the standalone Main handoff.
+// Its device-tree reservation must fit the preserved 8 MiB window. Main's
+// additional background buffers are inactive while the standalone host owns
+// the frontend, and are recreated by Main after the core exits.
+inline void validateRomFramebuffer(std::istream &reg) {
+  unsigned char bytes[9]{};
+  reg.read(reinterpret_cast<char *>(bytes), sizeof(bytes));
+  if (reg.gcount() != 8 || reg.bad())
+    throw std::runtime_error("Large ROM needs a readable MiSTer framebuffer reservation");
+  const auto be32 = [&](unsigned off) {
+    return uint32_t(bytes[off]) << 24 | uint32_t(bytes[off+1]) << 16 |
+           uint32_t(bytes[off+2]) << 8 | uint32_t(bytes[off+3]);
+  };
+  if (be32(0) != 0x22000000 || be32(4) != 0x00800000)
+    throw std::runtime_error("Large ROM requires the standard 8 MiB MiSTer framebuffer reservation");
+}
+
 class RomMapping {
   std::array<RomLayout::Span, 3> spans;
   std::array<void *, 3> memory{{MAP_FAILED, MAP_FAILED, MAP_FAILED}};
 public:
 #ifdef STANDALONE_TEST
-  inline static std::string test_iomem_path;
+  inline static std::string test_iomem_path, test_framebuffer_path;
   inline static int test_memory_fd = -1, test_fail_mapping = -1;
   inline static unsigned test_live_mappings = 0;
   inline static std::vector<RomLayout::Span> test_mapped_spans;
@@ -53,6 +71,18 @@ public:
       std::ifstream iomem(test_iomem_path);
 #endif
       validateRomBank(iomem);
+#ifndef STANDALONE_TEST
+      std::ifstream framebuffer("/sys/firmware/devicetree/base/MiSTer_fb/reg", std::ios::binary);
+      validateRomFramebuffer(framebuffer);
+#else
+      if (test_framebuffer_path.empty()) {
+        std::istringstream framebuffer(std::string("\x22\x00\x00\x00\x00\x80\x00\x00", 8));
+        validateRomFramebuffer(framebuffer);
+      } else {
+        std::ifstream framebuffer(test_framebuffer_path, std::ios::binary);
+        validateRomFramebuffer(framebuffer);
+      }
+#endif
     }
 #ifndef STANDALONE_TEST
     const int fd = open("/dev/mem", O_RDWR | O_SYNC | O_CLOEXEC);

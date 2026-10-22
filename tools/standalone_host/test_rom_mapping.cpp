@@ -8,6 +8,23 @@
 #include <iostream>
 #include <sstream>
 
+static void framebuffer_tests() {
+  const auto check = [](const std::string &bytes, bool expected) {
+    std::istringstream input(bytes);
+    bool passed = true;
+    try { validateRomFramebuffer(input); }
+    catch (const std::runtime_error &) { passed = false; }
+    assert(passed == expected);
+  };
+  const std::string normal("\x22\x00\x00\x00\x00\x80\x00\x00", 8);
+  check(normal, true);
+  check("", false); check(normal.substr(0, 7), false); check(normal + "x", false);
+  auto moved = normal; moved[0] = 0x28; check(moved, false);
+  auto enlarged = normal; enlarged[4] = 1; check(enlarged, false);
+  auto redacted = std::string(8, '\0'); check(redacted, false);
+  std::cout << "PASS Linux framebuffer reservation: canonical DT, missing, truncated, malformed, moved and enlarged\n";
+}
+
 static void reservation_tests() {
   const auto check = [](const char *text, bool expected) {
     std::istringstream input(text);
@@ -19,8 +36,8 @@ static void reservation_tests() {
   // Actual device System RAM and representative nested/device entries.
   check("00000000-1fefffff : System RAM\n  00008000-00dfffff : Kernel code\n"
         "ff706000-ff706fff : ff706000.fpgamgr fpgamgr@ff706000\n", true);
-  check("00000000-21ffffff : System RAM\n30000000-30ffffff : System RAM\n", true);
-  check("00000000-22000000 : System RAM\n", false);
+  check("00000000-227fffff : System RAM\n30000000-30ffffff : System RAM\n", true);
+  check("00000000-22800000 : System RAM\n", false);
   check("2fffffff-30ffffff : System RAM\n", false);
   check("00000000-28000000 : System RAM\n", false);
   check("2bffffff-2fffffff : System RAM\n", false);
@@ -43,8 +60,8 @@ static void reservation_tests() {
 // transferred ROM, independently checking both discontinuous upper windows.
 static uint64_t physical(uint64_t logical) {
   return logical < 252ull * 1024 * 1024 ? 0x30000000 + logical
-                                      : logical < 284ull * 1024 * 1024 ? 0x22000000 + logical - 252ull * 1024 * 1024
-                                      : 0x24400000 + logical - 284ull * 1024 * 1024;
+                                      : logical < 276ull * 1024 * 1024 ? 0x22800000 + logical - 252ull * 1024 * 1024
+                                      : 0x24400000 + logical - 276ull * 1024 * 1024;
 }
 static void transfer_compare(const std::filesystem::path &rom,
                              const std::filesystem::path &backing, bool retain = false) {
@@ -57,7 +74,7 @@ static void transfer_compare(const std::filesystem::path &rom,
   expected.fill(0xa5);
   // Protect both sides of each bank and all four MiB of graphics/control.
   const std::array<std::pair<uint64_t, uint64_t>, 4> guards{{
-    {0x20000000, 32 * RomLayout::mib}, {0x24000000, 4 * RomLayout::mib},
+    {0x20000000, 40 * RomLayout::mib}, {0x24000000, 4 * RomLayout::mib},
     {0x3fc00000, 4 * RomLayout::mib}, {0x40000000, 4096}}};
   for (const auto &guard : guards)
     for (uint64_t offset = 0; offset < guard.second;) {
@@ -95,14 +112,14 @@ static void transfer_compare(const std::filesystem::path &rom,
   assert(RomMapping::test_mapped_spans.size() == expected_maps);
   assert(RomMapping::test_mapped_spans[0].physical == 0x30000000);
   if (expected_maps == 3) {
-    assert(RomMapping::test_mapped_spans[1].physical == 0x22000000);
+    assert(RomMapping::test_mapped_spans[1].physical == 0x22800000);
     assert(RomMapping::test_mapped_spans[2].physical == 0x24400000);
   }
   const int source = open(rom.c_str(), O_RDONLY);
   assert(source >= 0);
   for (uint64_t logical = 0; logical < stored;) {
     const auto next_boundary = logical < 252 * RomLayout::mib ? 252 * RomLayout::mib :
-                               logical < 284 * RomLayout::mib ? 284 * RomLayout::mib : stored;
+                               logical < 276 * RomLayout::mib ? 276 * RomLayout::mib : stored;
     const auto n = std::min<uint64_t>(expected.size(), std::min(stored, next_boundary)-logical);
     expected.fill(0xff);
     if (logical < transferred) {
@@ -131,6 +148,7 @@ static void transfer_compare(const std::filesystem::path &rom,
 
 int main(int argc, char **argv) {
   reservation_tests();
+  framebuffer_tests();
   char temp[] = "/tmp/nds-rom-mapping-XXXXXX";
   assert(mkdtemp(temp));
   const std::filesystem::path root(temp), rom = root / "synthetic.nds", backing = root / "memory";
@@ -145,14 +163,14 @@ int main(int argc, char **argv) {
         unsigned char value = 1;
         for (const auto offset : {252 * RomLayout::mib-1, 252 * RomLayout::mib,
                                   256 * RomLayout::mib-1, 256 * RomLayout::mib,
-                                  284 * RomLayout::mib-1, 284 * RomLayout::mib,
-                                  472 * RomLayout::mib-1})
+                                  276 * RomLayout::mib-1, 276 * RomLayout::mib,
+                                  464 * RomLayout::mib-1})
           romFixtureByte(rom.c_str(), offset, value++);
       }
       transfer_compare(rom, backing, size == 512 * RomLayout::mib);
     }
     // Reuse the full512MiB image's physical backing. Its old non-FF body must
-    // not survive past the new trimmed file's EOF anywhere through472MiB.
+    // not survive past the new trimmed file's EOF anywhere through464MiB.
     largeRomFixture(rom.c_str(), 256 * RomLayout::mib + 1);
     transfer_compare(rom, backing);
     // The larger-bank guard is never consulted for LR1 or small mappings.

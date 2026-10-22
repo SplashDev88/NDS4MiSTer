@@ -2851,11 +2851,17 @@ public:
   }
   void load(const std::string &path) {
     log("loading " + path);
+    require(!live_main(), "another MiSTer process started");
     beginLoading(fs::path(path).filename().string());
     clearConsoleInputs();
     drain(450);
+    uint64_t next_main_check = 0;
     const auto service = [&] {
       if (!running) throw std::runtime_error("ROM load interrupted");
+      if (ms() >= next_main_check) {
+        require(!live_main(), "another MiSTer process started");
+        next_main_check = ms() + 500;
+      }
       sector();
       beat();
     };
@@ -2865,10 +2871,10 @@ public:
     const auto transfer_size = RomReader::transferSize(file_size);
     const auto storage_size = RomLayout::storageSize(file_size);
     // Reserve every destination before touching FIO. Large files use the
-    // separate rotated bank; graphics/control memory keeps its existing owner.
+    // expanded windows; Linux console and graphics/control retain their owners.
     requireHostSaveProfile();
-    if (RomLayout::extended(file_size) && !(firmwareControl().flags & 0x2000))
-      throw std::runtime_error("Large ROM requires the matching 472 MiB cartridge-capable FPGA core");
+    if (RomLayout::extended(file_size) && !(firmwareControl().flags & 0x4000))
+      throw std::runtime_error("Large ROM requires the matching 464 MiB cartridge-capable FPGA core");
     RomMapping mapping(file_size);
     firmwareControl(1);
     flushFirmware();
@@ -2885,7 +2891,7 @@ public:
       off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
       updateLoading(off, storage_size);
     }
-    // The extended FPGA aperture always backs 472 MiB. A trimmed file must not
+    // The extended FPGA aperture always backs 464 MiB. A trimmed file must not
     // expose a prior cartridge's bytes between its EOF and that boundary.
     while (off < storage_size) {
 #ifdef STANDALONE_TEST

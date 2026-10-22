@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1, parameter bit NAND_SAVES=0, parameter bit CART_472=0);
+module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1, parameter bit NAND_SAVES=0, parameter bit CART_464=0);
     logic clk=0,clk7=0,clk9=0,run7=1,run9=1,reset=1;
     always #5 clk=~clk;
     always #7 if(run7) clk7=~clk7;
@@ -43,7 +43,7 @@ module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1, parameter bit NA
     logic [31:0] ram7[0:4095],ram9[0:1023];
     integer writes7=0,writes9=0,flushes=0,commits=0;
     reg [15:0] last_commit=0;
-    nds_firmware_control #(.SIMULATE(RAM_SIMULATE),.HOST_SAVE_PROFILE(1),.NAND_SAVES(NAND_SAVES),.CART_472(CART_472)) dut(.*);
+    nds_firmware_control #(.SIMULATE(RAM_SIMULATE),.HOST_SAVE_PROFILE(1),.NAND_SAVES(NAND_SAVES),.CART_464(CART_464)) dut(.*);
 
     // Match the generated SPI RAM's registered config-write stage.
     always @(posedge clk7) begin
@@ -176,7 +176,7 @@ module tb_nds_host_save_control #(parameter bit RAM_SIMULATE=1, parameter bit NA
     initial begin
         repeat(8) @(negedge clk);reset=0;
         command(0,0,flags,err);
-        if(flags!==(16'h420 | (NAND_SAVES ? 16'h1000 : 16'h0) | (CART_472 ? 16'h2000 : 16'h0))) $fatal(1,"capability/reset flags %h",flags);
+        if(flags!==(16'h420 | (NAND_SAVES ? 16'h1000 : 16'h0) | (CART_464 ? 16'h4000 : 16'h0))) $fatal(1,"capability/reset flags %h",flags);
         command(1,0,flags,err);
         upload(4,16384);upload(5,4096);upload(7,512);
         // Old host can complete its firmware assets but cannot release a cart.

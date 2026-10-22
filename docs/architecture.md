@@ -45,9 +45,9 @@ flowchart LR
 The host uploads a selected ROM and the FPGA creates the direct-boot environment.
 Built-in FreeBIOS/generated firmware support normal game loading; optional native
 firmware boot is a separate path. ROMs up to 256 MiB require all-FF padding above
-252 MiB; this experimental branch backs larger layouts through 472 MiB and
+252 MiB; this experimental branch backs larger layouts through 464 MiB and
 requires all-FF padding beyond that point. The published/previous runtime
-backs 316 MiB. See [expanded cartridge storage](ROM_CAPACITY_472.md). File
+backs 316 MiB. See [expanded cartridge storage](ROM_CAPACITY_464.md). File
 size alone is not compatibility. See [development](DEVELOPMENT.md) and
 [firmware protocol](DS_FIRMWARE_PROTOCOL.md).
 

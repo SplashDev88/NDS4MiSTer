@@ -199,7 +199,7 @@ always_ff @(posedge clk1x) host_save_ready_sync <= {host_save_ready_sync[1:0],ho
 // The bundled code/type are immutable from profile commit until the next ROM
 // download, with CPUs held through both edges and a three-clock valid delay.
 nds_firmware_control #(
-    .CART_472(1),
+    .CART_464(1),
 `ifdef NDS_ARM_AREA
     .HOST_SAVE_PROFILE(1), .NAND_SAVES(1)
 `else
@@ -609,17 +609,17 @@ wire nds_on = boot_ready_sync[1] && !console_reset_1x;
 // outstanding word, so payloads stay stable until the acknowledgement returns.
 wire card_ena;
 // The standalone host marks extended FS3 media: bit 8 selects LR1,
-// bits 9:8 select the old 316 MiB layout; bits 10:8 select the 472 MiB layout.
+// bits 9:8 select the old 316 MiB layout; bits 11,9,8 select the 464 MiB layout.
 // Preserve the old 128 MiB alias for every unmarked download, including all
 // existing hosts. Media mode changes only during replacement, never reset.
 logic cart_large_rom = 1'b0;
 logic cart_512_rom = 1'b0;
-logic cart_472_rom = 1'b0;
+logic cart_464_rom = 1'b0;
 always_ff @(posedge ddr_clk) begin
     if (cart_download_raw) begin
         cart_large_rom <= (ioctl_index[5:0] == 6'h03) && ioctl_index[8];
         cart_512_rom <= (ioctl_index[5:0] == 6'h03) && (&ioctl_index[9:8]);
-        cart_472_rom <= (ioctl_index[5:0] == 6'h03) && (&ioctl_index[10:8]);
+        cart_464_rom <= (ioctl_index[5:0] == 6'h03) && (ioctl_index[11] && (&ioctl_index[9:8]));
     end
 end
 wire [26:0] card_addr;
@@ -665,7 +665,7 @@ logic [25:0] cd_addr;
 logic cd_padding;
 logic cd_altbank;
 wire card_upper_bank = cart_512_rom && (card_addr_effective >= 27'h3f00000);
-wire card_padding = cart_472_rom ? (card_addr_effective >= 27'h7600000)
+wire card_padding = cart_464_rom ? (card_addr_effective >= 27'h7400000)
                    : cart_512_rom ? (card_addr_effective >= 27'h4f00000)
                                     : (&card_addr_effective[25:20]);
 // ddram ch2 retains one aligned four-beat cartridge read-ahead line. Probe
@@ -744,14 +744,14 @@ always_ff @(posedge ddr_clk or posedge card_bridge_boot_reset) begin
                          !cart_download_raw && !cart_download_ddr &&
                          (card_req_sync[2] != card_req_seen)) begin
                 card_req_seen <= card_req_sync[2];
-                // 472 mode maps 252..284 MiB to 0x22000000..0x24000000,
-                // then 284..472 MiB to 0x24400000..0x30000000. Scaler and
+                // 464 mode maps 252..276 MiB to 0x22800000..0x24000000,
+                // then 276..464 MiB to 0x24400000..0x30000000. Scaler and
                 // TATE buffers retain exclusive ownership of the gaps.
                 // Old 512 hosts retain their rotated 64 MiB bank at0x28000000.
-                if (card_upper_bank && cart_472_rom)
-                    cd_addr <= card_addr_effective < 27'h4700000
-                        ? card_addr_effective - 27'h3700000
-                        : card_addr_effective - 27'h3600000;
+                if (card_upper_bank && cart_464_rom)
+                    cd_addr <= card_addr_effective < 27'h4500000
+                        ? card_addr_effective - 27'h3500000
+                        : card_addr_effective - 27'h3400000;
                 else
                     cd_addr <= card_upper_bank ? {2'b10,card_addr_effective[23:0]}
                                                : card_addr_effective[25:0];
