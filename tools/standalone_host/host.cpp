@@ -2911,8 +2911,8 @@ public:
     if (movie_fast && std::strcmp(movie_fast,"1") == 0) {
       const auto staged = mapping.at(0);
       const bool applied = nds_fmv::apply(static_cast<uint8_t*>(staged.data), staged.size, file_size);
-      log(applied ? "FMV color fast path applied to staged ACVE revision 0" :
-                    "FMV color fast path skipped: ROM identity or code differs");
+      log(applied ? "FMV decoder fast paths applied to staged ACVE revision 0" :
+                    "FMV decoder fast paths skipped: ROM identity or code differs");
       __sync_synchronize();
     }
     const auto *header = static_cast<const uint8_t *>(mapping.at(0).data);

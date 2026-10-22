@@ -26,4 +26,22 @@ docker run --rm --network none \
       -mfpu=neon -mfloat-abi=hard /src/test_converter.cpp /src/test_converter.S \
       -o /tmp/test-converter
     /tmp/test-converter
+    arm-linux-gnueabihf-as /host/fmv_castlevania_dct.S -o /tmp/dct.o
+    arm-linux-gnueabihf-ld -Ttext=0x01ffd1d4 /tmp/dct.o -o /tmp/dct.elf
+    arm-linux-gnueabihf-objcopy -O binary --only-section=.text \
+      /tmp/dct.elf /tmp/assembled-dct.bin
+    cmp /tmp/assembled-dct.bin /tmp/candidate-dct.bin
+    arm-linux-gnueabihf-g++ -std=c++17 -O2 -static -mcpu=cortex-a9 \
+      -mfpu=neon -mfloat-abi=hard /src/test_dct.cpp /src/test_dct.S \
+      -o /tmp/test-dct
+    /tmp/test-dct
+    arm-linux-gnueabihf-as /host/fmv_castlevania_adpcm.S -o /tmp/adpcm.o
+    arm-linux-gnueabihf-ld -Ttext=0x02059960 /tmp/adpcm.o -o /tmp/adpcm.elf
+    arm-linux-gnueabihf-objcopy -O binary --only-section=.text \
+      /tmp/adpcm.elf /tmp/assembled-adpcm.bin
+    cmp /tmp/assembled-adpcm.bin /tmp/candidate-adpcm.bin
+    arm-linux-gnueabihf-g++ -std=c++17 -O2 -static -mcpu=cortex-a9 \
+      -mfpu=neon -mfloat-abi=hard /src/test_adpcm.cpp /src/test_adpcm.S \
+      -o /tmp/test-adpcm
+    /tmp/test-adpcm
   '

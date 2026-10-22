@@ -22,7 +22,7 @@ int main(int argc,char**argv) {
   require(std::memcmp(copy.data()+0xc509c,original.data()+0xc509c,0x8c4)==0);
   require(!nds_fmv::apply(copy.data(),copy.size(),copy.size()));
   require(copy==expected);
-  for (const size_t offset:{size_t(12),size_t(0x1e),size_t(0x100),size_t(0xc509c),size_t(0xc618b)}) {
+  for (const size_t offset:{size_t(12),size_t(0x1e),size_t(0x100),size_t(0xc509c),size_t(0xc618b),size_t(0x5d4a0),size_t(0x5dd20),size_t(0x8a2d0),size_t(0x8a391)}) {
     copy=original;copy[offset]^=1;const auto before=copy;
     require(!nds_fmv::apply(copy.data(),copy.size(),copy.size()));require(copy==before);
   }
@@ -32,6 +32,8 @@ int main(int argc,char**argv) {
   }
   copy=original;
   require(!nds_fmv::apply(copy.data(),512,copy.size()));require(copy==original);
+  require(!nds_fmv::apply(copy.data(),0xc618c,copy.size()));require(copy==original);
+  require(!nds_fmv::apply(copy.data(),0xc9d8f,copy.size()));require(copy==original);
   require(!nds_fmv::apply(copy.data(),copy.size(),copy.size()-1));require(copy==original);
   require(!nds_fmv::apply(nullptr,0,0));
   std::cout<<"PASS: exact staged patch; revision/header/code/bounds guards; atomic rejection; idempotence\n";

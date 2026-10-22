@@ -26,13 +26,10 @@ row_start:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_0
+ cmp ip, fp
  beq store_0
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_0:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -55,13 +52,10 @@ store_0:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_1
+ cmp ip, fp
  beq store_1
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_1:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -84,13 +78,10 @@ store_1:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_2
+ cmp ip, fp
  beq store_2
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_2:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -113,13 +104,10 @@ store_2:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_3
+ cmp ip, fp
  beq store_3
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_3:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -142,13 +130,10 @@ store_3:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_4
+ cmp ip, fp
  beq store_4
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_4:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -171,13 +156,10 @@ store_4:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_5
+ cmp ip, fp
  beq store_5
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_5:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -200,13 +182,10 @@ store_5:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_6
+ cmp ip, fp
  beq store_6
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_6:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -229,13 +208,10 @@ store_6:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_7
+ cmp ip, fp
  beq store_7
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_7:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -258,13 +234,10 @@ store_7:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_8
+ cmp ip, fp
  beq store_8
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_8:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -287,13 +260,10 @@ store_8:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_9
+ cmp ip, fp
  beq store_9
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_9:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -316,13 +286,10 @@ store_9:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_10
+ cmp ip, fp
  beq store_10
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_10:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -345,13 +312,10 @@ store_10:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_11
+ cmp ip, fp
  beq store_11
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_11:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -374,13 +338,10 @@ store_11:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_12
+ cmp ip, fp
  beq store_12
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_12:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -403,13 +364,10 @@ store_12:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_13
+ cmp ip, fp
  beq store_13
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_13:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -432,13 +390,10 @@ store_13:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_14
+ cmp ip, fp
  beq store_14
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_14:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -461,13 +416,10 @@ store_14:
  ldr ip, [sb], #4
  cmp lr, r1
  cmpeq r3, r2
- cmpeq ip, fp
+ bne new_chroma_15
+ cmp ip, fp
  beq store_15
- cmp lr, r1
- cmpeq r3, r2
- movne r1, lr
- movne r2, r3
- blne recompute
+convert_15:
  mov fp, ip
  add ip, ip, #128
  add r0, ip, r4
@@ -525,4 +477,84 @@ clamp:
  movgt ip, #255
  bic ip, ip, ip, asr #31
  bx lr
+new_chroma_0:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_0
+new_chroma_1:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_1
+new_chroma_2:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_2
+new_chroma_3:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_3
+new_chroma_4:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_4
+new_chroma_5:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_5
+new_chroma_6:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_6
+new_chroma_7:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_7
+new_chroma_8:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_8
+new_chroma_9:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_9
+new_chroma_10:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_10
+new_chroma_11:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_11
+new_chroma_12:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_12
+new_chroma_13:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_13
+new_chroma_14:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_14
+new_chroma_15:
+ mov r1, lr
+ mov r2, r3
+ bl recompute
+ b convert_15
 .org 0x82c

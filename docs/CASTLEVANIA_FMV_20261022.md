@@ -1,5 +1,7 @@
 # Castlevania opening-movie optimization
 
+Historical Color3 / Beta1 results. See [FMV Beta2](CASTLEVANIA_FMV_BETA2_20261022.md) for the current private beta.
+
 22 October 2026. Branch `experiment/castlevania-fmv-20261022`.
 Baseline: Conquest Beta1 FPGA/host, unchanged rc.9 renderer, stock 1 GHz HPS.
 Exemplar: Dawn of Sorrow, USA ACVE revision 0, opening attract movie.
@@ -119,7 +121,7 @@ Color3 host SHA-256:
 Separate installed kit: `/media/fat/Scripts/.NDS_FMV_Color3_20261022`.
 The original Conquest kit and launchers are retained.
 
-On the test MiSTer, run **Scripts → NDS_FMV_Beta**, load the USA revision 0
+On the test MiSTer, run **Scripts → NDS_FMV_Beta1**, load the USA revision 0
 game, and wait at the title screen for the opening movie. The launcher enables
 the guarded optimization automatically. Use **System → Reboot** to exit, then
 the usual launcher to return to the previous build. This beta retains the
