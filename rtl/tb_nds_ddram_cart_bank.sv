@@ -2,7 +2,7 @@
 // Cartridge bank ownership must survive command stalls/refill and must never
 // leak into any of the five other legacy DDR clients, especially ch6.
 `timescale 1ns/1ps
-module tb_nds_ddram_cart_bank;
+module tb_nds_ddram_cart_bank #(parameter bit WIDE=0);
     reg clk=0;
     always #5 clk=~clk;
     reg [6:1] req=0;
@@ -16,7 +16,7 @@ module tb_nds_ddram_cart_bank;
     wire [31:0] cart_data;
     reg [63:0] read_data=0;
     reg read_valid=0;
-    ddram dut(
+    ddram #(.CART_WIDE_BANK(WIDE)) dut(
         .DDRAM_CLK(clk),.DDRAM_BUSY(busy),.DDRAM_BURSTCNT(burst),
         .DDRAM_ADDR(physical),.DDRAM_DOUT(read_data),
         .DDRAM_DOUT_READY(read_valid),.DDRAM_RD(read_en),
@@ -67,7 +67,7 @@ module tb_nds_ddram_cart_bank;
     task cart(input bit bank,input [27:0] byte_address,input bit miss,input bit stall);
         reg [31:0] mapped;
         begin
-            mapped=bank ? 32'h28000000+{6'd0,byte_address[25:0]} : 32'h30000000+byte_address;
+            mapped=bank ? (WIDE ? 32'h20000000+byte_address : 32'h28000000+{6'd0,byte_address[25:0]}) : 32'h30000000+byte_address;
             if(miss) begin expected_physical[pushed]=mapped&32'hffffffe0;pushed=pushed+1;end
             @(negedge clk);addr[2]=byte_address[27:1];altbank=bank;req[2]=1;
             @(negedge clk);req[2]=0;
@@ -104,6 +104,12 @@ module tb_nds_ddram_cart_bank;
             for(integer w=1;w<8;w=w+1) cart(1,28'h8000+c*32+w*4,0,0);
             cart(0,28'h8000+c*32,1,0);
             for(integer w=1;w<8;w=w+1) cart(0,28'h8000+c*32+w*4,0,0);
+        end
+        if(WIDE) begin
+            // Distinct high address bits in the expanded bank must be tagged.
+            cart(1,28'h2009000,1,1);cart(1,28'h6009000,1,0);
+            cart(1,28'ha009000,1,0);cart(1,28'he009000,1,1);
+            cart(0,28'he009000,1,0);cart(1,28'he009000,1,0);
         end
         // Re-arm the alternate bank before EVERY other client's grant.
         // ch6 deliberately runs first while the old shared ch register is2.

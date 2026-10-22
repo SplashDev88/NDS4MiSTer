@@ -152,15 +152,19 @@ struct HostTest {
         assert(h.loading_progress == 0);
       } else assert(h.loading_progress > 0 && h.loading_progress < 167);
     };
+    h.spi.default_firmware_flags &= ~0x2000;
+    reject_large("matching 472 MiB cartridge-capable FPGA core", true);
+    assert(RomMapping::test_live_mappings == 0);
+    h.spi.default_firmware_flags |= 0x2000;
     for (const auto offset : {RomReader::max_transfer_size, RomReader::max_file_size - 1}) {
       romFixtureByte(large.c_str(), offset, 0);
-      reject_large("above 316 MiB must be FF padding", true);
+      reject_large("above 472 MiB must be FF padding", true);
       romFixtureByte(large.c_str(), offset, 0xff);
     }
     rom_test_read_error = true;
     rom_test_error_offset = RomReader::max_transfer_size;
     reject_large("ROM read failed while checking padding", true);
-    for (const auto offset : {2 * RomLayout::mib, 252 * RomLayout::mib, 256 * RomLayout::mib}) {
+    for (const auto offset : {4 * RomLayout::mib, 252 * RomLayout::mib, 284 * RomLayout::mib}) {
       rom_test_error_offset = offset;
       reject_large("ROM read failed", false);
     }
@@ -206,7 +210,7 @@ struct HostTest {
     int signal_status;
     assert(waitpid(signaller, &signal_status, 0) == signaller && WIFEXITED(signal_status));
     running = 1;
-    // A complete 512 MiB file transfers 316 MiB and retains the full size on
+    // A complete 512 MiB file transfers 472 MiB and retains the full size on
     // the wire, with heartbeat service during the pre-download padding check.
     rom_test_read_delay = slow ? 21500 : 250;
     h.spi.history.clear();
@@ -218,7 +222,7 @@ struct HostTest {
       if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
     }
     assert((downloads == std::vector<std::vector<uint16_t>>{{1, 0, 0}, {0}, {1, 0, 0}, {0}, {1, 0, 0}, {0}, {255, 0, 0x2000}, {0}, {1, 0, 0}, {0}}));
-    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {0x303}, {8}}));
+    assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {0x703}, {8}}));
     assert(h.game == large && h.loading_progress == 167);
     std::ifstream saved_file(sd / "saves/NDS/loader.sav", std::ios::binary);
     assert(std::string(std::istreambuf_iterator<char>(saved_file), {}) == saved_bytes);
@@ -238,7 +242,7 @@ struct HostTest {
       indices.clear();
       for (const auto &t : h.spi.history)
         if (t.select == Spi::FIO && t.command == 0x55) indices.push_back(t.words);
-      const uint16_t expected_index = size > 256ull * 1024 * 1024 ? 0x303 :
+      const uint16_t expected_index = size > 256ull * 1024 * 1024 ? 0x703 :
                                       size > 128ull * 1024 * 1024 ? 0x103 : 3;
       assert((indices == std::vector<std::vector<uint16_t>>{{4}, {5}, {7}, {expected_index}, {8}}));
     }
@@ -254,23 +258,23 @@ struct HostTest {
     largeRomFixture(large.c_str(), RomReader::max_file_size);
     h.load(large.string());
     unsigned char prior = 0;
-    assert(pread(physical_fd, &prior, 1, 0x2bbfffff) == 1 && prior == 0x37);
+    assert(pread(physical_fd, &prior, 1, 0x2fffffff) == 1 && prior == 0x37);
     const auto trimmed = 256 * RomLayout::mib + 1;
     largeRomFixture(large.c_str(), trimmed);
     rom_test_fill_next = trimmed;
     rom_test_fill_calls = 0;
     RomMapping::test_before_padding_write = [](uint64_t off) {
       assert(off == rom_test_fill_next);
-      rom_test_fill_next += std::min<uint64_t>(262144, RomLayout::max_transfer_size-off);
+      rom_test_fill_next += std::min<uint64_t>(262144, (off < 284 * RomLayout::mib ? 284 * RomLayout::mib : RomLayout::max_transfer_size)-off);
       ++rom_test_fill_calls;
     };
     h.load(large.string());
-    assert(rom_test_fill_next == RomLayout::max_transfer_size && rom_test_fill_calls == 240);
+    assert(rom_test_fill_next == RomLayout::max_transfer_size && rom_test_fill_calls == 864);
     RomMapping::test_before_padding_write = nullptr;
     std::array<unsigned char, 262144> padding;
     for (uint64_t off = trimmed; off < RomLayout::max_transfer_size;) {
-      const auto n = std::min<uint64_t>(padding.size(), RomLayout::max_transfer_size-off);
-      assert(pread(physical_fd, padding.data(), n, 0x28000000 + off % (64 * RomLayout::mib)) == ssize_t(n));
+      const auto n = std::min<uint64_t>(padding.size(), (off < 284 * RomLayout::mib ? 284 * RomLayout::mib : RomLayout::max_transfer_size)-off);
+      assert(pread(physical_fd, padding.data(), n, (off < 284 * RomLayout::mib ? 0x22000000 + off - 252 * RomLayout::mib : 0x24400000 + off - 284 * RomLayout::mib)) == ssize_t(n));
       assert(std::all_of(padding.begin(), padding.begin()+n, [](unsigned char byte) { return byte == 0xff; }));
       off += n;
     }
@@ -278,7 +282,7 @@ struct HostTest {
     RomMapping::test_memory_fd = -1;
     close(physical_fd);
     fs::remove(physical_file);
-    std::cout << "PASS: actual Host full512->trimmed load clears every backed byte beyond EOF in240bounded chunks\n";
+    std::cout << "PASS: actual Host full512->trimmed load clears every backed byte beyond EOF in bounded chunks\n";
     RomReader::test_hook = nullptr;
     rom_test_metadata_delay = rom_test_read_delay = 0;
     rom_test_delay_offset = 0;

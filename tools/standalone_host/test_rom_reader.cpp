@@ -137,7 +137,7 @@ static void large_roms() {
   // A tiny claimed used-size in the zero-filled header cannot hide real data.
   for (const auto offset : {RomReader::max_transfer_size, RomReader::max_file_size - 1}) {
     romFixtureByte(path, offset, 0x00);
-    error(path, "above 316 MiB must be FF padding");
+    error(path, "above 472 MiB must be FF padding");
     romFixtureByte(path, offset, 0xff);
   }
   fail_padding = true;

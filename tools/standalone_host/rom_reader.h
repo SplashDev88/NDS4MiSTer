@@ -189,7 +189,7 @@ public:
     if (h.operation) {
       if (h.operation == 5)
         throw std::runtime_error(RomLayout::extended(h.size)
-            ? "ROM data above 316 MiB must be FF padding (cartridge storage is reserved)"
+            ? "ROM data above 472 MiB must be FF padding (cartridge storage is reserved)"
             : "ROM data above 252 MiB must be FF padding (graphics memory is reserved)");
       const char *names[] = {"", "open ROM", "ROM stat", "ROM file", "ROM size", "",
                              "ROM read failed while checking padding"};

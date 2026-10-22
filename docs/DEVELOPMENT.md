@@ -14,7 +14,10 @@ Super Mario 64 DS's first-course horizontal-line problem is fixed in the tested
 version. Supported larger layouts include tested Kingdom Hearts: 358/2 Days
 and Pokémon White 2. File size alone is not a compatibility guarantee: files
 up to 256 MiB require all-FF padding above 252 MiB; larger files up to 512 MiB
-require it above 316 MiB. Unsupported layouts are rejected before upload.
+require it above 472 MiB on this experimental branch (316 MiB in the previous
+runtime). The expanded layout requires the matching FPGA/host pair; see
+[cartridge storage and ownership](ROM_CAPACITY_472.md). Unsupported layouts
+are rejected before upload.
 
 Delayed ROM reads run separately so a slow network transfer can keep loading.
 A load stops after **120 seconds without file progress**, not 120 seconds total.

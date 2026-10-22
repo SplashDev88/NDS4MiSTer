@@ -32,7 +32,10 @@ persistence failure blocks that transition rather than discarding settings.
 
 ## Asset and control interface
 
-Existing cartridge indices 3, 0x103 and 0x303 are unchanged. Firmware FIO indices:
+Existing cartridge indices 3, 0x103 and 0x303 retain their address layouts.
+The experimental 0x703 index selects 472 MiB of backed ROM storage, with
+512 MiB capacity. It requires firmware status bit 13 before host upload; see
+[cartridge memory ownership](ROM_CAPACITY_472.md). Firmware FIO indices:
 
 - 4: ARM7 BIOS, exactly 16 KiB, 16-bit little-endian words.
 - 5: ARM9 BIOS, exactly 4 KiB.
@@ -73,6 +76,11 @@ bit4 profile ready, bit5 firmware clean/idle, bit6 firmware mounted,
 bit7 error, bit8 persistence acknowledgement pending, bit 9 direct-game profile
 ready. The host requires bit 9 before releasing a game, so an older core that
 ignores index 7 cannot silently launch with stale profile data.
+
+Bit 10 advertises host-supplied save profiles, bit 11 indicates a committed
+cartridge save profile, and bit 12 advertises NAND saves. Bit 13 advertises the
+472 MiB cartridge storage layout. These are separate capabilities; a host
+must not infer large-ROM support from NAND support.
 
 ## Firmware storage
 

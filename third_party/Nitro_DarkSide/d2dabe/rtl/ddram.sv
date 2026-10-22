@@ -19,7 +19,7 @@
 // ------------------------------------------
 //
 
-module ddram
+module ddram #(parameter bit CART_WIDE_BANK = 0)
 (
 	input         DDRAM_CLK,
 	input         DDRAM_BUSY,
@@ -100,7 +100,10 @@ reg  [6:1] ready;
 
 assign DDRAM_BURSTCNT = ram_burst;
 assign DDRAM_BE       = ram_read ? 8'hFF : ram_be;
-assign DDRAM_ADDR     = ram_altbank ? {6'b001010, ram_address[25:3]}
+// Wider cartridge mode retains every offset bit and its existing cache tag.
+// Other clients always restore ram_altbank=0 and keep their original aperture.
+assign DDRAM_ADDR     = ram_altbank ? (CART_WIDE_BANK ? {4'b0010, ram_address[27:3]}
+                                                     : {6'b001010, ram_address[25:3]})
                                     : {4'b0011, ram_address[27:3]};
 assign DDRAM_RD       = ram_read;
 assign DDRAM_DIN      = ram_data;

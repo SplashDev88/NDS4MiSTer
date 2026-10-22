@@ -275,7 +275,7 @@ module emu
 
     // Direct-to-DDR standalone loads validate image size/padding in the host.
     // ioctl_addr remains the unused 27-bit MiSTer transfer counter; FS3 index
-    // bit 8 selects 28-bit cartridge addresses. The host stages at most 252 MiB,
-    // and the island synthesizes FF in the graphics-owned final 4 MiB.
+    // bits 8/9 enable 256/512 MiB capacity. Bit10 selects the472MiB backed
+    // layout, avoiding scaler/TATE/graphics buffers. Omitted bytes must be FF.
     assign LED_USER=nitro_boot_error|nitro_boundary_fault|~nitro_cart_loaded;
 endmodule

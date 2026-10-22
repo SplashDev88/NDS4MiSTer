@@ -19,7 +19,9 @@ static void reservation_tests() {
   // Actual device System RAM and representative nested/device entries.
   check("00000000-1fefffff : System RAM\n  00008000-00dfffff : Kernel code\n"
         "ff706000-ff706fff : ff706000.fpgamgr fpgamgr@ff706000\n", true);
-  check("00000000-27ffffff : System RAM\n2c000000-2fffffff : System RAM\n", true);
+  check("00000000-21ffffff : System RAM\n30000000-30ffffff : System RAM\n", true);
+  check("00000000-22000000 : System RAM\n", false);
+  check("2fffffff-30ffffff : System RAM\n", false);
   check("00000000-28000000 : System RAM\n", false);
   check("2bffffff-2fffffff : System RAM\n", false);
   check("00000000-1fefffff : System RAM\n28001000-28001fff : System RAM\n", false);
@@ -38,10 +40,11 @@ static void reservation_tests() {
 }
 
 // Separate arithmetic from the production span table when reconstructing the
-// transferred ROM. The upper bank rotates every 64 MiB and ends before2c000000.
+// transferred ROM, independently checking both discontinuous upper windows.
 static uint64_t physical(uint64_t logical) {
   return logical < 252ull * 1024 * 1024 ? 0x30000000 + logical
-                                      : 0x28000000 + logical % (64ull * 1024 * 1024);
+                                      : logical < 284ull * 1024 * 1024 ? 0x22000000 + logical - 252ull * 1024 * 1024
+                                      : 0x24400000 + logical - 284ull * 1024 * 1024;
 }
 static void transfer_compare(const std::filesystem::path &rom,
                              const std::filesystem::path &backing, bool retain = false) {
@@ -53,8 +56,8 @@ static void transfer_compare(const std::filesystem::path &rom,
   std::array<unsigned char, 262144> expected, actual;
   expected.fill(0xa5);
   // Protect both sides of each bank and all four MiB of graphics/control.
-  const std::array<std::pair<uint64_t, uint64_t>, 5> guards{{
-    {0x27fff000, 4096}, {0x2c000000, 4096}, {0x2ffff000, 4096},
+  const std::array<std::pair<uint64_t, uint64_t>, 4> guards{{
+    {0x20000000, 32 * RomLayout::mib}, {0x24000000, 4 * RomLayout::mib},
     {0x3fc00000, 4 * RomLayout::mib}, {0x40000000, 4096}}};
   for (const auto &guard : guards)
     for (uint64_t offset = 0; offset < guard.second;) {
@@ -92,14 +95,14 @@ static void transfer_compare(const std::filesystem::path &rom,
   assert(RomMapping::test_mapped_spans.size() == expected_maps);
   assert(RomMapping::test_mapped_spans[0].physical == 0x30000000);
   if (expected_maps == 3) {
-    assert(RomMapping::test_mapped_spans[1].physical == 0x2bc00000);
-    assert(RomMapping::test_mapped_spans[2].physical == 0x28000000);
+    assert(RomMapping::test_mapped_spans[1].physical == 0x22000000);
+    assert(RomMapping::test_mapped_spans[2].physical == 0x24400000);
   }
   const int source = open(rom.c_str(), O_RDONLY);
   assert(source >= 0);
   for (uint64_t logical = 0; logical < stored;) {
     const auto next_boundary = logical < 252 * RomLayout::mib ? 252 * RomLayout::mib :
-                               logical < 256 * RomLayout::mib ? 256 * RomLayout::mib : stored;
+                               logical < 284 * RomLayout::mib ? 284 * RomLayout::mib : stored;
     const auto n = std::min<uint64_t>(expected.size(), std::min(stored, next_boundary)-logical);
     expected.fill(0xff);
     if (logical < transferred) {
@@ -142,13 +145,14 @@ int main(int argc, char **argv) {
         unsigned char value = 1;
         for (const auto offset : {252 * RomLayout::mib-1, 252 * RomLayout::mib,
                                   256 * RomLayout::mib-1, 256 * RomLayout::mib,
-                                  316 * RomLayout::mib-1})
+                                  284 * RomLayout::mib-1, 284 * RomLayout::mib,
+                                  472 * RomLayout::mib-1})
           romFixtureByte(rom.c_str(), offset, value++);
       }
       transfer_compare(rom, backing, size == 512 * RomLayout::mib);
     }
     // Reuse the full512MiB image's physical backing. Its old non-FF body must
-    // not survive past the new trimmed file's EOF anywhere through316MiB.
+    // not survive past the new trimmed file's EOF anywhere through472MiB.
     largeRomFixture(rom.c_str(), 256 * RomLayout::mib + 1);
     transfer_compare(rom, backing);
     // The larger-bank guard is never consulted for LR1 or small mappings.

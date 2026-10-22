@@ -2867,6 +2867,8 @@ public:
     // Reserve every destination before touching FIO. Large files use the
     // separate rotated bank; graphics/control memory keeps its existing owner.
     requireHostSaveProfile();
+    if (RomLayout::extended(file_size) && !(firmwareControl().flags & 0x2000))
+      throw std::runtime_error("Large ROM requires the matching 472 MiB cartridge-capable FPGA core");
     RomMapping mapping(file_size);
     firmwareControl(1);
     flushFirmware();
@@ -2883,7 +2885,7 @@ public:
       off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
       updateLoading(off, storage_size);
     }
-    // The extended FPGA aperture always backs316MiB. A trimmed file must not
+    // The extended FPGA aperture always backs 472 MiB. A trimmed file must not
     // expose a prior cartridge's bytes between its EOF and that boundary.
     while (off < storage_size) {
 #ifdef STANDALONE_TEST
