@@ -99,6 +99,41 @@ The low-ROM bridge benchmark remains 64 words / 8 DDR commands / 32 beats /
 916 cycles, matching the retained baseline. This is a bus-level regression
 check, not a whole-game FPS result.
 
-Hardware baseline rejection and old-core/new-host rejection are reproduced.
-Candidate FPGA fitting and game qualification are still in progress; no
-successful Ni no Kuni gameplay or save/reload result is claimed here yet.
+Hardware testing used the supplied Japanese `B2KJ` image on one board running
+Linux 6.18.38-MiSTer at 1 GHz. The old loader rejection and the new host's
+old-core rejection were reproduced before installing the matched candidate.
+After installation, a read-only checksum of all 464 MiB of physical cartridge
+storage matched the source image exactly.
+
+Ni no Kuni reached its title, opening movie, Motorville street, NPC dialogue,
+home exterior, foyer, living room and kitchen. Directional movement, scrolling
+and area transitions worked. A roughly 34-minute session, including menus and
+idle time, reached the first bedroom checkpoint and completed an in-game
+64 KiB EEPROM save. After a clean exit to MENU and a fresh core/host/helper
+launch, Continue restored that bedroom checkpoint. The save checksum remained
+unchanged during the reload; the second session recorded 266 save-sector reads
+and no writes. This was a core relaunch, not a physical power-cycle test.
+Native frames and DV1 output through the RetroTINK-4K were inspected.
+
+The initial and second CIFS loads took approximately 117 and 101 seconds.
+Allow about two minutes for this large image to load on the tested setup.
+
+Two matched 20-second NSMB World 2-5 jumping runs averaged 59.541 completed
+screen updates/second on the retained FPGA and 59.520 on the candidate
+(-0.035%). Both used the same starting save, renderer, input sequence and
+1 GHz clock, with no transport faults. These counters can include reused
+images; this is a short targeted regression check, not unique visible FPS or
+proof of performance across all games.
+
+The authored NAND probe passed programming/readback and then reported prior
+data recovered on a fresh launch without reprogramming. All 16 MiB of its
+save matched the two expected pages and erased remainder after both sessions.
+
+The fitted design uses 34,563 ALMs, 536 RAM blocks and 27 DSP blocks: 51 more
+ALMs than the retained NAND3 build, with RAM and DSP use unchanged. Fitting,
+assembly and timing-report generation completed, but static timing closure
+remains unresolved (worst reported slack -15.270 ns, versus -15.254 ns for the
+retained build). This is a private test beta. Later story/battle coverage,
+translated or modified ROMs, other boards, analog output on this bitstream and
+a new hardware run on Linux 5.15 remain unqualified. The standard 5.15 device
+tree's framebuffer reservation was checked in source only.
