@@ -188,6 +188,7 @@ entity nds_nitro_console_top is
       card_addr        : out std_logic_vector(28 downto 2);
       card_din         : in  std_logic_vector(31 downto 0);
       card_done        : in  std_logic;
+      card_address_mask : in std_logic_vector(31 downto 0) := x"FFFFFFFF";
 
       -- Cartridge backup-memory byte port.  Storage is instantiated in the
       -- SystemVerilog island so its second port can connect directly to the
@@ -1502,6 +1503,7 @@ begin
       card7 => exmem_card7_s,
       fw_boot => fw_boot,
       chipid => ld_cartid, nand_base => ld_nand_base,
+      rom_addr_mask => card_address_mask,
       bus9 => io_bus9, wired_out9 => card_wired_out9, wired_done9 => card_wired_done9,
       bus7 => io_bus7, wired_out7 => card_wired_out7, wired_done7 => card_wired_done7,
       irq9_xfer => irq9_card, irq7_xfer => irq7_card,

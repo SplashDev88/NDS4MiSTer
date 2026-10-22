@@ -2183,6 +2183,9 @@ nds_nitro_console_wrap #(
     .boot_done(boot_done),.boot_error(boot_error),
     .card_ena(card_ena),.card_addr(card_addr),
     .card_din(card_din),.card_done(card_done),
+    // These download flags stay stable before and throughout CPU execution.
+    // Match the existing DDR bank mask before the card's protected-area rule.
+    .card_address_mask({3'b000, cart_512_rom, cart_large_rom, 27'h7ffffff}),
     .backup_addr(backup_addr),
     .backup_bank(backup_bank),
     .backup_write_data(backup_write_data),

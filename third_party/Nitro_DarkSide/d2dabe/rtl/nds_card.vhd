@@ -116,6 +116,9 @@ entity nds_card is
       fw_boot      : in  std_logic := '0';
 
       chipid       : in  std_logic_vector(31 downto 0);  -- nds_loader cart_id, B8 answer
+      -- Stable while a cartridge session runs. Apply the product's image-bank
+      -- mirroring before the secure-area redirect, not only in the DDR bridge.
+      rom_addr_mask : in std_logic_vector(31 downto 0) := x"FFFFFFFF";
 
       bus9         : in  proc_bus_gb_type;
       wired_out9   : out std_logic_vector(31 downto 0);
@@ -1046,6 +1049,10 @@ begin
                      if (cmdbytes(63 downto 56) = x"B7") then
                         v_b7    := '1';
                         v_redir := '1';
+                        -- A 256 MiB cart read at 0x10001000 aliases 0x1000,
+                        -- then redirects to 0x8000. Masking only after
+                        -- eff_addr instead exposes the raw header/padding.
+                        v_addr := v_addr and unsigned(rom_addr_mask);
                      elsif (cmdbytes(63 downto 56) = x"B8") then
                         v_b8 := '1';
                      end if;

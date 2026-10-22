@@ -93,6 +93,7 @@ entity nds_nitro_console_wrap is
       card_addr        : out std_logic_vector(26 downto 0);  -- word address (byte addr 28:2)
       card_din         : in  std_logic_vector(31 downto 0);
       card_done        : in  std_logic;
+      card_address_mask : in std_logic_vector(31 downto 0) := x"FFFFFFFF";
 
       -- Cartridge backup-memory byte port.  The island terminates this on one
       -- side of a mixed-width M10K; MiSTer's mounted .sav channel owns the
@@ -436,6 +437,7 @@ begin
       card_addr        => card_addr,
       card_din         => card_din,
       card_done        => card_done,
+      card_address_mask => card_address_mask,
 
       backup_addr         => backup_addr,
       backup_bank => backup_bank,

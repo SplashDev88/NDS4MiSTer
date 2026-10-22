@@ -34,14 +34,15 @@ architecture sim of tb_nds_card_large_rom is
    signal expected_base : unsigned(31 downto 0) := (others => '0');
    signal expected_words, requests_seen : natural := 0;
    signal hold_reply, inject_stale, mem_pending : std_logic := '0';
+   signal address_mask : std_logic_vector(31 downto 0) := x"FFFFFFFF";
 
-   function effective_address(address : unsigned(31 downto 0))
+   impure function effective_address(address : unsigned(31 downto 0))
       return std_logic_vector is
-      variable result : unsigned(31 downto 0) := address;
+      variable result : unsigned(31 downto 0) := address and unsigned(address_mask);
    begin
-      if address < 16#8000# then
+      if result < 16#8000# then
          result := to_unsigned(16#8000#, 32) +
-                   (address and to_unsigned(16#1FF#, 32));
+                   (result and to_unsigned(16#1FF#, 32));
       end if;
       return "000" & std_logic_vector(result(28 downto 2)) & "00";
    end function;
@@ -65,6 +66,7 @@ begin
    port map (
       clk => clk, ce => '1', reset => reset, card7 => card_owner,
       fw_boot => '0', chipid => x"12345678",
+      rom_addr_mask => address_mask,
       bus9 => bus9, wired_out9 => out9, wired_done9 => open,
       bus7 => bus7, wired_out7 => out7, wired_done7 => open,
       irq9_xfer => open, irq7_xfer => open, dbg_card => dbg_card,
@@ -235,6 +237,25 @@ begin
       read_transfer(x"0FFFFFF0", 128); -- prefetch across 256 MiB, bit 28 retained
       read_transfer(x"13BFFFF0", 128); -- prefetch across 316 MiB policy boundary
       read_transfer(x"1FFFFFF0", 128); -- low-29-bit wrap at 512 MiB
+
+      -- Pokemon Conquest reads 256 MiB + 0x1000/0x1200/0x1400/0x1600
+      -- and expects the same protected block as a read at 0x1000. These
+      -- whole-transfer checks cover both bus owners and all prefetch timings.
+      address_mask <= x"0FFFFFFF";
+      read_transfer(x"00001000", 128);
+      read_transfer(x"10001000", 128);
+      read_transfer(x"10001200", 128);
+      read_transfer(x"10001400", 128);
+      read_transfer(x"10001600", 128);
+      read_transfer(x"10008100", 128); -- ordinary mirrored data, not protected
+      address_mask <= x"07FFFFFF";
+      read_transfer(x"08001000", 128);
+      read_transfer(x"08008100", 128);
+      address_mask <= x"1FFFFFFF";
+      read_transfer(x"20001000", 128);
+      read_transfer(x"20008100", 128);
+      read_transfer(x"10001000", 128); -- remains distinct on a 512 MiB cart
+      address_mask <= x"FFFFFFFF";
 
       -- Abort an outstanding high-half request, empty the queue, and present
       -- a late reply while idle. The next lower-half transfer must be fresh.
