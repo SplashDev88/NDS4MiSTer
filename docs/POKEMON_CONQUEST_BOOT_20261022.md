@@ -1,7 +1,10 @@
 # Pokémon Conquest startup diagnosis
 
-Status: cause identified; targeted FPGA fix is compiling. Hardware validation
-of the fixed image is still pending. This is not a public release qualification.
+Status: boot fix confirmed on hardware with the original, unmodified revision-1
+ROM. The private beta reaches the title, accepts new-game controller/touch
+input, and enters the opening battle presentation. Save/reload, extended play,
+and revision-0 validation on the fixed image remain pending. This is not a
+public release qualification.
 
 ## Failure and cause
 
@@ -62,8 +65,30 @@ fixed build.
   by hash checks. Tests use separate aliases and saves. Diagnostic ROM copies
   and RAM captures remain private and are not release contents.
 
-Still required: route and launch the fixed image, boot the original ROM without
-diagnostic modifications, reach player control, and test save/reload. Static
-timing closure remains unresolved in the preceding beta; successful compilation
-alone must not be described as timing closure. The separate Ni no Kuni speed
-report's unresolved Mario Kart moving-segment result also remains unresolved.
+## Fixed-image hardware check
+
+The complete Quartus build passed on October 22, 2026. The fixed RBF SHA-256 is
+`4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26`.
+The exact product-source fix is commit
+`5924000f9d422fc624fdc0aecad424eab5ca9325`, built with the same three enabled
+graphics-retirement/status experiments as the preceding private beta. Host and
+renderer hashes are unchanged. Diagnostic CPU probes are absent.
+
+With an isolated fresh save and the unmodified VPYT revision-1 ROM, the fixed
+image passed the formerly fatal startup checks, displayed the publisher screens
+and opening movie, reached the title, and accepted controller and touch input
+through character selection and naming. The story advanced into the first
+battle presentation. Coherent native-frame captures show zero transport faults,
+and an independent RetroTINK capture confirms the title on the physical output.
+The user reported that it "seems to work great"; automated inputs were then
+paused to avoid interfering with their testing.
+
+The flash-save file initializes and changes, but persistence of a player-created
+save across exit/relaunch has not yet been verified. The earlier revision-0
+failure is confirmed; the fixed image has not yet been tested with that revision.
+No whole-game green compatibility rating follows from these checks.
+
+Static timing closure remains unresolved: the final report still has negative
+slack. Successful compilation must not be described as timing closure. The
+separate Ni no Kuni speed report's unresolved Mario Kart moving-segment result
+also remains unresolved; this cartridge fix is not a new speed qualification.
