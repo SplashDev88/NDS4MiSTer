@@ -19,6 +19,7 @@
 #include "recent_files.h"
 #include "rom_mapping.h"
 #include "rom_reader.h"
+#include "fmv_castlevania.h"
 #include "storage_job.h"
 #include "storage_locations.h"
 #include "system_menu.h"
@@ -2906,6 +2907,14 @@ public:
     }
     service();
     __sync_synchronize();
+    const char* movie_fast = std::getenv("NDS_FMV_COLOR_FAST");
+    if (movie_fast && std::strcmp(movie_fast,"1") == 0) {
+      const auto staged = mapping.at(0);
+      const bool applied = nds_fmv::apply(static_cast<uint8_t*>(staged.data), staged.size, file_size);
+      log(applied ? "FMV color fast path applied to staged ACVE revision 0" :
+                    "FMV color fast path skipped: ROM identity or code differs");
+      __sync_synchronize();
+    }
     const auto *header = static_cast<const uint8_t *>(mapping.at(0).data);
     const uint32_t game_code = uint32_t(header[12]) | uint32_t(header[13]) << 8 |
                                uint32_t(header[14]) << 16 | uint32_t(header[15]) << 24;

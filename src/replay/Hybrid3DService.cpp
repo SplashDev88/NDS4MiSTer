@@ -22,6 +22,9 @@
 
 #include <array>
 #include <atomic>
+#ifdef NDS4MISTER_FMV_DIAGNOSTIC
+#include <fstream>
+#endif
 #include <cerrno>
 #include <chrono>
 #include <condition_variable>
@@ -814,6 +817,19 @@ public:
     {
         stop_replay_worker();
         stop_publication_worker();
+#ifdef NDS4MISTER_FMV_DIAGNOSTIC
+        if (!fmv_rows_.empty()) {
+            std::ofstream output("/tmp/nds-fmv-diagnostic.csv");
+            output << "us,lcd,dispcnt_a,dispcnt_b,screen_swap,top_hash,bottom_hash";
+            for (unsigned bank = 0; bank < 9; ++bank) output << ",vram" << bank;
+            output << '\n';
+            for (const auto& row : fmv_rows_) {
+                for (unsigned i = 0; i < row.size(); ++i)
+                    output << (i ? "," : "") << row[i];
+                output << '\n';
+            }
+        }
+#endif
         dump_plane_samples();
         dump_full_video_samples();
         dump_pipeline_profile();
@@ -3237,6 +3253,37 @@ private:
                     arm_video_scanline_max_ns_, scanline_started);
             }
             if (line == PlaneHeight - 1) {
+#ifdef NDS4MISTER_FMV_DIAGNOSTIC
+                // Private diagnostic: observe owned CPU memory before publication.
+                // Bounded RAM only during playback; flush after workers stop.
+                if (fmv_trace_enabled_ && fmv_rows_.size() < 9000) {
+                    std::array<std::uint64_t, 16> row {};
+                    row[0] = nds4mister::crash::CausalTimeline::now_us();
+                    row[1] = display_frame;
+                    row[2] = nds_->GPU.GPU2D_A.DispCnt;
+                    row[3] = nds_->GPU.GPU2D_B.DispCnt;
+                    row[4] = nds_->GPU.ScreenSwap;
+                    for (unsigned screen = 0; screen < 2; ++screen) {
+                        std::uint32_t hash = 2166136261u;
+                        const auto* pixels = arm_video_frames_[destination_index][screen].data();
+                        for (unsigned y = 8; y < 192; y += 16)
+                            for (unsigned x = 8; x < 256; x += 16)
+                                hash = (hash ^ pixels[y * 256 + x]) * 16777619u;
+                        row[5 + screen] = hash;
+                    }
+                    for (unsigned bank = 0; bank < 9; ++bank) {
+                        std::uint32_t hash = 2166136261u;
+                        // First 16 KiB is valid in every physical bank.
+                        for (unsigned offset = 0; offset < 16384; offset += 64) {
+                            std::uint32_t word;
+                            std::memcpy(&word, nds_->GPU.VRAM[bank] + offset, sizeof(word));
+                            hash = (hash ^ word) * 16777619u;
+                        }
+                        row[7 + bank] = hash;
+                    }
+                    fmv_rows_.push_back(row);
+                }
+#endif
                 // Detach before the publication owner can see this slot. A
                 // skipped/partial next frame must never overwrite queued data.
                 nds_->GPU.GetRenderer().SetExternalFramebuffers(nullptr, nullptr);
@@ -5528,6 +5575,10 @@ private:
     std::uint32_t matched_next_line_ = 0;
     bool asynchronous_arm_video_replay_ = false;
     bool pipeline_profile_enabled_ = false;
+#ifdef NDS4MISTER_FMV_DIAGNOSTIC
+    const bool fmv_trace_enabled_ = std::getenv("NDS4MISTER_FMV_TRACE") != nullptr;
+    std::vector<std::array<std::uint64_t, 16>> fmv_rows_;
+#endif
     bool timing_profile_only_ = false;
     bool bind_hps_worker_cores_ = false;
     bool direct_plane_publication_ = false;
