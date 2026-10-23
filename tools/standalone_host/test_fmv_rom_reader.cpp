@@ -47,7 +47,7 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   std::ofstream(fake/"nsmb_stream.py")<<
     "import os,sys,struct\nfrom pathlib import Path\n"
     "src,dst,parent=map(int,sys.argv[1:])\n"
-    "Path('"<<marker.string()<<"').write_text('called')\n"
+    "Path('"<<marker.string()<<"').write_text(os.environ['NDS_NSMB_PATCH'])\n"
     "data=os.pread(src,1024,0)\n"
     "os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)\n"
     "os.write(dst,struct.pack('<Qii',1024,0,8))\n";
@@ -55,6 +55,12 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   transfer(fake.string(),true,1000,"off");assert(!fs::exists(marker));
   assert(std::string(getenv("NDS_NSMB_PATCH"))=="both");
   transfer(fake.string(),true,1000,"lookup",false);assert(fs::exists(marker));fs::remove(marker);
+  for(const char* mode:{"bones","lookup+bones","skip+bones","both+bones"}){
+    transfer(fake.string(),true,1000,mode,false);
+    std::ifstream file(marker);std::string selected;file>>selected;assert(selected==mode);
+    fs::remove(marker);
+    transfer(argv[1],true,1000,mode,false); // Unknown identity must return original bytes.
+  }
   original.replace(12,4,"BMTE");
   std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
   transfer(fake.string(),true,1000,"both",false); // Speed options cannot enable movies.

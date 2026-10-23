@@ -19,6 +19,13 @@
           "guard_bytes": 16,
           "guard_sha256": "e515e5610410253249cbf7a450468168ce65c3846d79f18b2dfa424c8f3feff2",
           "phase": "main_loaded"
+        },
+        {
+          "flag": "bone_reads",
+          "address": 33658668,
+          "guard_bytes": 16,
+          "guard_sha256": "4a359c92a13ea50a36866405a3b7771f147d27d29e19149efa9c61d1e8995cd1",
+          "phase": "main_loaded"
         }
       ]
     }

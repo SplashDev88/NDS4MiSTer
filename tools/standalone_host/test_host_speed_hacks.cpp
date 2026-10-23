@@ -38,6 +38,24 @@ struct HostTest {
     assert(h.status==status && !fs::exists(kit/"NDS_speed.cfg"));
     h.saveSettings();
     {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.speed_hacks==3);}
+    const auto saved_status=h.status;
+    h.menu=true;h.cursor=Host::SPEED_CURSOR;h.action(2);
+    h.action(1);h.action(1);assert(h.cursor==2 && h.mainMenuRow(2)==3);
+    h.action(2);assert(h.speed_hacks==7);
+    h.draw();
+    assert(h.osd_rows[3]==h.frame.renderRow(3,
+      optionLabel(h.speed_hacks,{2,1,2,"Reduce bone reads",{"Off","On"}}),true,nds_osd::arrow_left));
+    h.action(8);assert(h.speed_hacks==3);h.action(7);assert(h.speed_hacks==7);
+    assert(h.status==saved_status);
+    for(unsigned mask=0;mask<Host::SPEED_MODES.size();++mask){
+      h.speed_hacks=mask;h.saveSettings();
+      Host restored(kit.string(),(sd/"games/NDS").string(),sd);
+      assert(restored.speed_hacks==mask);
+      setenv("NDS_NSMB_PATCH",Host::SPEED_MODES[mask],1);
+      Host forced(kit.string(),(sd/"games/NDS").string(),sd);
+      assert(forced.speed_hacks==mask);
+      unsetenv("NDS_NSMB_PATCH");
+    }
     std::ofstream(kit/"NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n99\n";
     {Host malformed(kit.string(),(sd/"games/NDS").string(),sd);assert(malformed.speed_hacks==0);}
     setenv("NDS_NSMB_PATCH","lookup",1);

@@ -332,14 +332,15 @@ class Host {
   unsigned touch_range = 0; // 100%, stored separately from FPGA status/mappings.
   bool speed_menu = false, speed_hacks_available = false;
   unsigned speed_hacks = 0; // Independent pending flags; applied on ROM load.
-  static constexpr std::array<const char *, 4> SPEED_MODES{{"off", "lookup", "skip", "both"}};
+  static constexpr std::array<const char *, 8> SPEED_MODES{{"off", "lookup", "skip", "both",
+      "bones", "lookup+bones", "skip+bones", "both+bones"}};
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
                        RESET_CURSOR = 10, EXIT_CURSOR = 11,
                        SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, DV_TARGET_CURSOR = 14,
                        DISPLAY_CURSOR = 15, TOUCH_RANGE_CURSOR = 16,
                        SPEED_CURSOR = 17, LAST_MAIN_CURSOR = 17;
   int mainMenuRow(int item) const {
-    if (speed_menu) return item == 0 ? 1 : item == 1 ? 2 : item == EXIT_CURSOR ? 15 : -1;
+    if (speed_menu) return item >= 0 && item < 3 ? item + 1 : item == EXIT_CURSOR ? 15 : -1;
     if (item == SPEED_CURSOR) return speed_hacks_available && independent_outputs_supported && !display_menu ? 9 : -1;
     // Stable option identities keep status bits and saved settings unchanged.
     // Only the visible rows differ between the main and Display options pages.
@@ -1551,9 +1552,11 @@ class Host {
       frame.setTitle("Speed hacks");
       rows[1] = optionLabel(speed_hacks, {0, 1, 2, "Local packet lookup", {"Off", "On"}});
       rows[2] = optionLabel(speed_hacks, {1, 1, 2, "Skip inactive clients", {"Off", "On"}});
+      rows[3] = optionLabel(speed_hacks, {2, 1, 2, "Reduce bone reads", {"Off", "On"}});
       rows[5] = " NSMB US rev0 experiment";
       rows[7] = " Reload game to apply";
       rows[9] = " Other games stay unchanged";
+      rows[10] = " Bone effects may differ";
       rows[14] = message;
       rows[15] = "            back";
       selected = mainMenuRow(cursor);
@@ -1814,7 +1817,7 @@ class Host {
       } else if (speed_menu) {
         if (a == 5 || (a == 2 && cursor == EXIT_CURSOR)) {
           speed_menu = false; cursor = SPEED_CURSOR;
-        } else if ((a == 2 || a == 7 || a == 8) && (cursor == 0 || cursor == 1)) {
+        } else if ((a == 2 || a == 7 || a == 8) && (cursor >= 0 && cursor < 3)) {
           speed_hacks ^= 1u << cursor;
           message = " Reload game to apply";
         }
@@ -2848,11 +2851,11 @@ public:
     if (speed_hacks_available) {
       std::ifstream config(fs::path(kit) / "NDS_speed.cfg");
       const std::string text((std::istreambuf_iterator<char>(config)), {});
-      for (unsigned i=0;i<4;++i)
+      for (unsigned i=0;i<SPEED_MODES.size();++i)
         if (text == "NDS-SpeedHacks-v1\n" + std::to_string(i) + "\n") speed_hacks = i;
       if (const char *mode = std::getenv("NDS_NSMB_PATCH")) {
         speed_hacks = 0;
-        for (unsigned i=0;i<4;++i) if (std::strcmp(mode,SPEED_MODES[i]) == 0) speed_hacks=i;
+        for (unsigned i=0;i<SPEED_MODES.size();++i) if (std::strcmp(mode,SPEED_MODES[i]) == 0) speed_hacks=i;
       }
     }
     fs::create_directories(savedir);

@@ -95,7 +95,9 @@ private:
         const char* nsmb_mode = std::getenv("NDS_NSMB_PATCH");
         const bool nsmb = code == "A2DE" && nsmb_mode &&
             (std::strcmp(nsmb_mode, "lookup") == 0 || std::strcmp(nsmb_mode, "skip") == 0 ||
-             std::strcmp(nsmb_mode, "both") == 0);
+             std::strcmp(nsmb_mode, "both") == 0 || std::strcmp(nsmb_mode, "bones") == 0 ||
+             std::strcmp(nsmb_mode, "lookup+bones") == 0 || std::strcmp(nsmb_mode, "skip+bones") == 0 ||
+             std::strcmp(nsmb_mode, "both+bones") == 0);
         if (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
                                code == "AXFE" || code == "YWSE")))) {
           const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
