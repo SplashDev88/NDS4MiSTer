@@ -20,7 +20,8 @@
 // otherwise a reused request ID from an old session could produce an ABA
 // commit while the full scan straddles publication of the new session.
 module nds_h3d_gx_readback_reply #(
-    parameter logic [28:0] CONTROL_BASE_WORD = 29'h01f80000
+    parameter logic [28:0] CONTROL_BASE_WORD = 29'h01f80000,
+    parameter bit BURST_FILL = 0
 ) (
     input  logic        source_clk,
     input  logic        ddr_clk,
@@ -143,33 +144,52 @@ module nds_h3d_gx_readback_reply #(
     logic [63:0] beat_data;
     logic [31:0] snapshot_status;
     logic magic_ok, session_ok, id_ok, reserved_ok, inside_commit_ok;
+    wire response_now;
 
-    // One 32x32 simple dual-port RAM: one DDR write per clock, synchronous
+    // One 1024-bit simple dual-port RAM: one DDR write per clock, synchronous
     // source read. Deliberately no RAM reset/clear loop (preserves inference).
     // Contents are undefined before a completed request, and may change only
     // while a later accepted request owns the cache. response_valid commits
     // all 32 entries atomically to the source consumer.
-    (* ramstyle = "M10K, no_rw_check" *) logic [31:0] result_cache [0:31];
     wire cache_write = state == STORE_LOW || state == STORE_HIGH;
     wire [4:0] cache_write_index = {beat_index, state == STORE_HIGH};
     wire [31:0] cache_write_data = state == STORE_HIGH ?
         beat_data[63:32] : beat_data[31:0];
-    always_ff @(posedge ddr_clk) begin
-        if (cache_write) result_cache[cache_write_index] <= cache_write_data;
-    end
-    always_ff @(posedge source_clk)
-        read_data <= result_cache[read_index];
+    generate if (BURST_FILL) begin : burst_cache
+        // Same 1024 payload bits, a full DDR beat per write. Read selection
+        // is synchronous so no partially-filled reply reaches the CPU.
+        (* ramstyle = "M10K, no_rw_check" *) logic [63:0] result_cache [0:15];
+        logic [63:0] cache_read_beat;
+        logic cache_read_half;
+        always_ff @(posedge ddr_clk)
+            if (response_now && phase == FILL_CACHE)
+                result_cache[beat_index] <= ddram_read_data;
+        // Register the complete RAM port before selecting the 32-bit half.
+        // Selecting inside the RAM read expression prevents Quartus 17 from
+        // inferring the simple dual-port block and expands it into registers.
+        always_ff @(posedge source_clk) begin
+            cache_read_beat <= result_cache[read_index[4:1]];
+            cache_read_half <= read_index[0];
+        end
+        assign read_data = cache_read_half ? cache_read_beat[63:32] : cache_read_beat[31:0];
+    end else begin : scalar_cache
+        (* ramstyle = "M10K, no_rw_check" *) logic [31:0] result_cache [0:31];
+        always_ff @(posedge ddr_clk)
+            if (cache_write) result_cache[cache_write_index] <= cache_write_data;
+        always_ff @(posedge source_clk)
+            read_data <= result_cache[read_index];
+    end endgenerate
 
     assign ddram_read = state == READ_ISSUE && !issued_command &&
         !ddr_reset_local && !reset_async;
-    assign ddram_burst_count = 8'd1;
+    assign ddram_burst_count = BURST_FILL && phase == FILL_CACHE ? 8'd16 : 8'd1;
     assign ddram_address = REPLY_BASE_WORD +
         (phase == POLL_HEADER ? 29'd0 :
-         phase == FILL_CACHE ? {25'd0, beat_index} : 29'd15);
+         phase == FILL_CACHE ? (BURST_FILL ? 29'd0 : {25'd0, beat_index}) : 29'd15);
     wire handoff = ddram_read && !ddram_busy;
     wire accepted_read = ddram_command_accepted &&
         (issued_command || handoff);
-    wire response_now = ddram_read_data_ready &&
+    assign response_now = ddram_read_data_ready &&
         (state == READ_WAIT || (state == READ_ISSUE && accepted_read));
 
     always_ff @(posedge ddr_clk or posedge ddr_reset_local) begin
@@ -270,7 +290,15 @@ module nds_h3d_gx_readback_reply #(
                             end
                             default: begin end
                         endcase
-                        state <= STORE_LOW;
+                        if (BURST_FILL) begin
+                            if (beat_index == 4'd15) begin
+                                phase <= VERIFY_COMMIT;
+                                state <= READ_ISSUE;
+                            end else begin
+                                beat_index <= beat_index + 4'd1;
+                                state <= READ_WAIT;
+                            end
+                        end else state <= STORE_LOW;
                     end
                     VERIFY_COMMIT: begin
                         if (ddram_read_data[31:0] != active_id ||

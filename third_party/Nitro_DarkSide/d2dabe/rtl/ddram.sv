@@ -19,7 +19,8 @@
 // ------------------------------------------
 //
 
-module ddram #(parameter bit CART_WIDE_BANK = 0)
+module ddram #(parameter bit CART_WIDE_BANK = 0,
+               parameter bit CH3_READ_BURST = 0)
 (
 	input         DDRAM_CLK,
 	input         DDRAM_BUSY,
@@ -58,6 +59,8 @@ module ddram #(parameter bit CART_WIDE_BANK = 0)
 	input         ch3_rnw,
 	input  [7:0]  ch3_be,
 	output        ch3_ready,
+	input  [7:0]  ch3_burst,
+	output        ch3_valid,
 
 	// save state
 	input  [27:1] ch4_addr,
@@ -111,7 +114,9 @@ assign DDRAM_WE       = ram_write;
 
 assign ch1_dout  = ram_address[2] ? {ram_q[1][31:0], ram_q[1][63:32]} : ram_q[1];
 assign ch2_dout  = ram_address[2] ? ram_q[2][63:32] : ram_q[2][31:0];
-assign ch3_dout  = ram_q[3];
+reg  [2:0] state  = 0;
+assign ch3_dout  = CH3_READ_BURST && state == 3'd6 ? DDRAM_DOUT : ram_q[3];
+assign ch3_valid = CH3_READ_BURST && state == 3'd6 && DDRAM_DOUT_READY;
 assign ch4_dout  = ram_q[4];
 assign ch1_ready = ready[1];
 assign ch2_ready = ready[2];
@@ -132,7 +137,7 @@ reg [63:0] ch2_cache[0:3];
 reg  [1:0] ch2_fill_index;
 reg  [1:0] ch2_request_index;
 reg [27:1] ch2_request_addr;
-reg  [2:0] state  = 0;
+
 reg  [2:1] cached = 0;
 reg  [2:0] ch = 0;
 reg  [6:1] ch_rq = 0;   // explicit power-up value (also keeps SV sims X-free)
@@ -244,7 +249,13 @@ always @(posedge DDRAM_CLK) begin
 					end
 					else begin
 						ram_read      <= 1;
-						state         <= 1;
+						if (CH3_READ_BURST) begin
+							// One outstanding read owns all beats, including stalls.
+							// A zero count fails closed to one beat.
+							ram_burst <= ch3_burst == 0 ? 8'd1 : ch3_burst;
+							rcnt <= ch3_burst == 0 ? 8'd1 : ch3_burst;
+							state <= 6;
+						end else state <= 1;
 					end
 				end
 			   else if(p4) begin
@@ -330,6 +341,15 @@ always @(posedge DDRAM_CLK) begin
 		if(rcnt == 8'd1) begin
 			ready[6] <= 1;
 			state    <= 0;
+		end
+	end
+
+	if(CH3_READ_BURST && state == 3'd6 && DDRAM_DOUT_READY) begin
+		rcnt <= rcnt - 1'd1;
+		if(rcnt == 8'd1) begin
+			ram_q[3] <= DDRAM_DOUT;
+			ready[3] <= 1;
+			state <= 0;
 		end
 	end
 

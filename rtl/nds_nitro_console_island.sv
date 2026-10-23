@@ -225,6 +225,11 @@ nds_firmware_control #(
     .profile_addr(firmware_profile_addr),.profile_data(firmware_profile_data),
     .profile_fw_offset(firmware_profile_offset),.profile_fw_checksums(firmware_profile_checksums)
 );
+`ifdef NDS_GX_READBACK_BURST
+localparam bit H3D_READBACK_BURST = 1;
+`else
+localparam bit H3D_READBACK_BURST = 0;
+`endif
 // A hybrid-3D product never lets either CPU run against an absent, stale, or
 // restarting HPS renderer.  The control block lives outside console_reset and
 // raises this release only after its ordered H3DQ/H3D1 session handshake.
@@ -1339,6 +1344,8 @@ wire [4:0] h3d_readback_index;
 wire [31:0] h3d_readback_data;
 wire h3d_readback_source_fault;
 wire h3d_readback_ddr_read, h3d_readback_ddr_busy;
+wire [7:0] h3d_readback_ddr_burst, h3d_readback_ch3_burst;
+wire h3d_readback_ch3_valid;
 wire [28:0] h3d_readback_ddr_address;
 wire h3d_readback_ddr_accepted, h3d_readback_ddr_data_ready;
 wire [63:0] h3d_readback_ddr_data;
@@ -1843,7 +1850,7 @@ nds_h3d_frame_packet_writer #(
 // outer-fabric client. The adapter removes the legacy 0x30000000 translation
 // and keeps old ownership alive through session/reset cancellation.
 nds_h3d_gx_readback_reply #(
-    .CONTROL_BASE_WORD(H3D_CONTROL_WORD)
+    .CONTROL_BASE_WORD(H3D_CONTROL_WORD), .BURST_FILL(H3D_READBACK_BURST)
 ) h3d_readback_reply (
     .source_clk(clk1x), .ddr_clk(ddr_clk),
     .reset(bridge_reset_ddr), .session_flush(~h3d_control_release),
@@ -1855,7 +1862,7 @@ nds_h3d_gx_readback_reply #(
     .response_status(h3d_readback_status),
     .read_index(h3d_readback_index), .read_data(h3d_readback_data),
     .source_fault(h3d_readback_source_fault),
-    .ddram_read(h3d_readback_ddr_read), .ddram_burst_count(),
+    .ddram_read(h3d_readback_ddr_read), .ddram_burst_count(h3d_readback_ddr_burst),
     .ddram_address(h3d_readback_ddr_address),
     .ddram_busy(h3d_readback_ddr_busy),
     .ddram_command_accepted(h3d_readback_ddr_accepted),
@@ -1863,16 +1870,18 @@ nds_h3d_gx_readback_reply #(
     .ddram_read_data_ready(h3d_readback_ddr_data_ready)
 );
 
-nds_h3d_readback_legacy_adapter h3d_readback_adapter (
+nds_h3d_readback_legacy_adapter #(.BURST_ENABLE(H3D_READBACK_BURST)) h3d_readback_adapter (
     .clk(ddr_clk), .boot_reset(h3d_fabric_boot_reset),
     .cancel(h3d_path_reset),
     .read(h3d_readback_ddr_read), .address(h3d_readback_ddr_address),
+    .burst_count(h3d_readback_ddr_burst),
     .busy(h3d_readback_ddr_busy),
     .command_accepted(h3d_readback_ddr_accepted),
     .read_data(h3d_readback_ddr_data),
     .read_data_ready(h3d_readback_ddr_data_ready),
     .ch_request(h3d_readback_ch3_request),
     .ch_address(h3d_readback_ch3_address),
+    .ch_burst(h3d_readback_ch3_burst), .ch_valid(h3d_readback_ch3_valid),
     .ch_ready(h3d_readback_ch3_ready), .ch_data(h3d_readback_ch3_data)
 );
 
@@ -2065,7 +2074,7 @@ always_comb begin
 `endif
 end
 
-ddram #(.CART_WIDE_BANK(1)) island_ddram (
+ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(H3D_READBACK_BURST)) island_ddram (
     .*,
     .ch1_addr(27'd0),.ch1_dout(),.ch1_din(16'd0),
     .ch1_req(1'b0),.ch1_rnw(1'b1),.ch1_ready(),
@@ -2075,9 +2084,11 @@ ddram #(.CART_WIDE_BANK(1)) island_ddram (
     .ch3_addr(h3d_readback_ch3_address),.ch3_dout(h3d_readback_ch3_data),
     .ch3_din(64'd0),.ch3_req(h3d_readback_ch3_request),
     .ch3_rnw(1'b1),.ch3_be(8'd0),.ch3_ready(h3d_readback_ch3_ready),
+    .ch3_burst(h3d_readback_ch3_burst),.ch3_valid(h3d_readback_ch3_valid),
 `else
     .ch3_addr(27'd0),.ch3_dout(),.ch3_din(64'd0),.ch3_req(1'b0),
     .ch3_rnw(1'b1),.ch3_be(8'd0),.ch3_ready(),
+    .ch3_burst(8'd1),.ch3_valid(),
 `endif
     .ch4_addr(27'd0),.ch4_dout(),.ch4_din(64'd0),.ch4_req(1'b0),
     .ch4_rnw(1'b1),.ch4_be(8'd0),.ch4_ready(),

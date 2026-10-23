@@ -1,7 +1,9 @@
 `timescale 1ns/1ps
 
 module tb_nds_h3d_gx_readback_reply #(
-    parameter integer CLOCK_CASE = 0
+    parameter integer CLOCK_CASE = 0,
+    parameter bit BURST_CASE = 0,
+    parameter bit LEGACY_CASE = 0
 );
     localparam logic [28:0] CONTROL_BASE = 29'h01f80000;
     localparam logic [28:0] REPLY_BASE = CONTROL_BASE + 29'd64;
@@ -27,11 +29,56 @@ module tb_nds_h3d_gx_readback_reply #(
     wire [7:0] ddram_burst_count;
     wire [28:0] ddram_address;
     wire ddram_busy;
-    logic ddram_command_accepted = 0;
-    logic [63:0] ddram_read_data = 0;
-    logic ddram_read_data_ready = 0;
+    wire ddram_command_accepted;
+    wire [63:0] ddram_read_data;
+    wire ddram_read_data_ready;
+    logic model_accepted = 0, model_ready = 0;
+    logic [63:0] model_data = 0;
+    wire model_read, model_busy;
+    wire [28:0] model_address;
+    wire [7:0] model_burst;
+    logic boot_reset = 1;
+    initial begin repeat(4) @(negedge ddr_clk); boot_reset = 0; end
 
-    nds_h3d_gx_readback_reply dut (.*);
+    generate if (!LEGACY_CASE) begin : direct_model
+        assign model_read = ddram_read;
+        assign model_address = ddram_address;
+        assign model_burst = ddram_burst_count;
+        assign ddram_busy = model_busy;
+        assign ddram_command_accepted = model_accepted;
+        assign ddram_read_data = model_data;
+        assign ddram_read_data_ready = model_ready;
+    end else begin : legacy_model
+        wire ch_request, ch_ready, ch_valid;
+        wire [27:1] ch_address;
+        wire [63:0] ch_data;
+        wire [7:0] ch_burst;
+        wire [28:0] physical_address;
+        wire physical_write;
+        assign model_address = physical_address - 29'h06000000;
+        nds_h3d_readback_legacy_adapter #(.BURST_ENABLE(BURST_CASE)) adapter (
+            .clk(ddr_clk), .boot_reset(boot_reset), .cancel(reset || session_flush),
+            .read(ddram_read), .address(ddram_address), .burst_count(ddram_burst_count),
+            .busy(ddram_busy), .command_accepted(ddram_command_accepted),
+            .read_data(ddram_read_data), .read_data_ready(ddram_read_data_ready),
+            .ch_request(ch_request), .ch_address(ch_address), .ch_burst(ch_burst),
+            .ch_valid(ch_valid), .ch_ready(ch_ready), .ch_data(ch_data));
+        ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(BURST_CASE)) memory_port (
+            .DDRAM_CLK(ddr_clk), .DDRAM_BUSY(model_busy), .DDRAM_BURSTCNT(model_burst),
+            .DDRAM_ADDR(physical_address), .DDRAM_DOUT(model_data),
+            .DDRAM_DOUT_READY(model_ready), .DDRAM_RD(model_read), .DDRAM_WE(physical_write),
+            .DDRAM_DIN(), .DDRAM_BE(),
+            .ch1_addr(27'd0), .ch1_din(16'd0), .ch1_req(1'b0), .ch1_rnw(1'b1), .ch1_dout(), .ch1_ready(),
+            .ch2_addr(27'd0), .ch2_altbank(1'b0), .ch2_din(32'd0), .ch2_req(1'b0), .ch2_rnw(1'b1), .ch2_dout(), .ch2_ready(),
+            .ch3_addr(ch_address), .ch3_din(64'd0), .ch3_req(ch_request), .ch3_rnw(1'b1), .ch3_be(8'd0),
+            .ch3_burst(ch_burst), .ch3_valid(ch_valid), .ch3_dout(ch_data), .ch3_ready(ch_ready),
+            .ch4_addr(27'd0), .ch4_din(64'd0), .ch4_req(1'b0), .ch4_rnw(1'b1), .ch4_be(8'd0), .ch4_dout(), .ch4_ready(),
+            .ch5_addr(27'd0), .ch5_din(64'd0), .ch5_req(1'b0), .ch5_burst(8'd1), .ch5_next(), .ch5_ready(),
+            .ch6_addr(27'd0), .ch6_burst(8'd1), .ch6_req(1'b0), .ch6_dout(), .ch6_valid(), .ch6_ready());
+        always @(posedge ddr_clk) if(physical_write) $fatal(1,"readback wrote physical DDR");
+    end endgenerate
+
+    nds_h3d_gx_readback_reply #(.BURST_FILL(BURST_CASE)) dut (.*);
 
     // Physical transactions deliberately survive reader reset/flush. The
     // owner keeps busy asserted until stale data drains, like the product
@@ -42,47 +89,60 @@ module tb_nds_h3d_gx_readback_reply #(
     logic [28:0] queued_address = 0;
     logic force_busy = 0, immediate_response = 0;
     integer accept_delay = 4, data_delay = 6;
-    integer handoffs = 0, accepts = 0, returned = 0;
-    assign ddram_busy = force_busy || txn_stage != 0;
+    integer handoffs = 0, accepts = 0, returned = 0, expected_beats = 0;
+    integer beats_left = 0;
+    assign model_busy = force_busy || txn_stage != 0;
 
     always @(posedge ddr_clk) begin
-        ddram_command_accepted <= 0;
-        ddram_read_data_ready <= 0;
+        model_accepted <= 0;
+        model_ready <= 0;
         case (txn_stage)
-            0: if (ddram_read && !ddram_busy) begin
-                if (ddram_burst_count !== 8'd1)
-                    $fatal(1, "reply reader issued a non-single-beat request");
-                if (ddram_address < REPLY_BASE || ddram_address > REPLY_BASE + 15)
-                    $fatal(1, "reader touched unrelated control word %h", ddram_address);
-                queued_address <= ddram_address;
+            0: if (model_read && !model_busy) begin
+                if (model_burst !== (BURST_CASE && dut.phase == 2 ? 8'd16 : 8'd1))
+                    $fatal(1, "wrong reply burst length");
+                expected_beats <= expected_beats + model_burst;
+                beats_left <= model_burst;
+                if (model_address < REPLY_BASE || model_address > REPLY_BASE + 15)
+                    $fatal(1, "reader touched unrelated control word %h", model_address);
+                queued_address <= model_address;
                 handoffs <= handoffs + 1;
                 if (immediate_response) begin
-                    ddram_command_accepted <= 1;
+                    model_accepted <= 1;
                     accepts <= accepts + 1;
-                    ddram_read_data <= {
-                        memory[2*(ddram_address-CONTROL_BASE)+1],
-                        memory[2*(ddram_address-CONTROL_BASE)]};
-                    ddram_read_data_ready <= 1;
+                    model_data <= {
+                        memory[2*(model_address-CONTROL_BASE)+1],
+                        memory[2*(model_address-CONTROL_BASE)]};
+                    model_ready <= 1;
                     returned <= returned + 1;
-                    txn_stage <= 3;
+                    if (model_burst == 1) txn_stage <= 3;
+                    else begin
+                        queued_address <= model_address + 1;
+                        beats_left <= model_burst - 1;
+                        delay_left <= 0; txn_stage <= 2;
+                    end
                 end else begin
                     delay_left <= accept_delay;
                     txn_stage <= 1;
                 end
             end
             1: if (delay_left == 0) begin
-                ddram_command_accepted <= 1;
+                model_accepted <= 1;
                 accepts <= accepts + 1;
                 delay_left <= data_delay;
                 txn_stage <= 2;
             end else delay_left <= delay_left - 1;
             2: if (delay_left == 0) begin
-                ddram_read_data <= {
+                model_data <= {
                     memory[2*(queued_address-CONTROL_BASE)+1],
                     memory[2*(queued_address-CONTROL_BASE)]};
-                ddram_read_data_ready <= 1;
+                model_ready <= 1;
                 returned <= returned + 1;
-                txn_stage <= 3;
+                if (beats_left == 1) txn_stage <= 3;
+                else begin
+                    queued_address <= queued_address + 1;
+                    beats_left <= beats_left - 1;
+                    delay_left <= immediate_response ? 0 : data_delay;
+                end
             end else delay_left <= delay_left - 1;
             3: txn_stage <= 0;
             default: $fatal(1, "bad DDR model state");
@@ -231,7 +291,8 @@ module tb_nds_h3d_gx_readback_reply #(
         end
     endtask
 
-    integer i, saved_handoffs, fault_case;
+    integer i, saved_handoffs, saved_beats, fault_case;
+    time stable_reply_start;
     initial begin
         for (i = 0; i < 256; i = i + 1) memory[i] = 32'hcafe0000 + 32'(i);
         make_reply(session, 0, 32'h11000000, 0);
@@ -272,7 +333,8 @@ module tb_nds_h3d_gx_readback_reply #(
         immediate_response = 1;
         issue(32'd12);
         make_reply(session, 32'd12, 32'h66000000, 1);
-        wait (dut.state == 4 && dut.beat_index == 15);
+        if (BURST_CASE) wait (dut.phase == 3 && dut.state == 1);
+        else wait (dut.state == 4 && dut.beat_index == 15);
         @(negedge ddr_clk);
         memory[REPLY_INDEX+30] = 0;
         no_completion(100);
@@ -357,14 +419,31 @@ module tb_nds_h3d_gx_readback_reply #(
         await_response(6);
         check_cache();
 
+        // A prepublished valid reply needs the same 19 returned DDR beats,
+        // but the bounded payload burst reduces commands from 19 to four.
+        // This measures the test memory model, not board-level performance.
+        make_reply(session, 32'd61, 32'hf1000000, 1);
+        allow_current_reply();
+        saved_handoffs = handoffs;
+        saved_beats = returned;
+        stable_reply_start = $time;
+        issue(32'd61);
+        await_response(7);
+        if (handoffs-saved_handoffs != (BURST_CASE ? 4 : 19) || returned-saved_beats != 19)
+            $fatal(1, "stable reply has unexpected command/beat count");
+        $display("REPLY_MODEL_BENCH clocks=%0d burst=%0d legacy=%0d commands=%0d beats=%0d latency_ns=%0d",
+            CLOCK_CASE, BURST_CASE, LEGACY_CASE, handoffs-saved_handoffs,
+            returned-saved_beats, $time-stable_reply_start);
+        check_cache();
+
         for (i = 0; i < 256; i = i + 1)
             if ((i < REPLY_INDEX || i >= REPLY_INDEX+32) &&
                 memory[i] !== 32'hcafe0000 + 32'(i))
                 $fatal(1, "unrelated control word changed at %0d", i);
-        if (handoffs != accepts || accepts != returned)
+        if (handoffs != accepts || expected_beats != returned)
             $fatal(1, "unbalanced handoffs/acceptances/responses: %0d/%0d/%0d",
                 handoffs, accepts, returned);
-        $display("PASS: GX reply CDC, tag/commit validation, held DDR handoff, delayed/simultaneous response, cache ownership, reset/flush, malformed reply (clock case %0d, %0d DDR reads)", CLOCK_CASE, handoffs);
+        $display("PASS: GX reply CDC, tag/commit validation, held DDR handoff, delayed/simultaneous response, cache ownership, reset/flush, malformed reply (clock case %0d, burst %0d, legacy %0d, %0d DDR reads)", CLOCK_CASE, BURST_CASE, LEGACY_CASE, handoffs);
         $finish;
     end
 
