@@ -130,7 +130,10 @@ main-RAM edits and recompression metadata are the only changed initial code;
 autoload sections and original cartridge assets stay intact. The rebuilt ARM
 shim is byte-identical to the tested diagnostic. Host navigation, all eight
 saved masks, environment overrides, worker dispatch and failed-identity
-fallback tests passed. The integrated menu still needs hardware validation.
+fallback tests passed. A native launch with the integrated host confirmed the
+independent menu switches through the RetroTINK capture. The integrated
+lookup-plus-bones scene reproduced the speed gain; final private-package
+scope and renderer selection are recorded in `NSMB_SPEED_BETA_VALIDATION_20261023.md`.
 
 Evidence root on the development machine:
 `evidence/nsmb-four-candidates-20261023/` (under the NDS4MISTER workspace).
