@@ -22,7 +22,7 @@
 
 #include <array>
 #include <atomic>
-#ifdef NDS4MISTER_FMV_DIAGNOSTIC
+#if defined(NDS4MISTER_FMV_DIAGNOSTIC) || defined(NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR)
 #include <fstream>
 #endif
 #include <cerrno>
@@ -817,6 +817,18 @@ public:
     {
         stop_replay_worker();
         stop_publication_worker();
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+        if (nds_) {
+            std::ofstream output("/tmp/nds-fmv-packed-probe.txt");
+            output << "conversions=" << nds_->GPU.FmvPackedColor.Conversions << '\n';
+            output << "filter_conversions=" << nds_->GPU.FmvPackedColor.FilterConversions << '\n';
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE
+            output << "video_decodes=" << nds_->GPU.FmvPackedColor.VideoDecodes << '\n';
+            output << "video_errors=" << nds_->GPU.FmvPackedColor.VideoErrors << '\n';
+            output << "cached_conversions=" << nds_->GPU.FmvPackedColor.CachedConversions << '\n';
+#endif
+        }
+#endif
 #ifdef NDS4MISTER_FMV_DIAGNOSTIC
         if (!fmv_rows_.empty()) {
             std::ofstream output("/tmp/nds-fmv-diagnostic.csv");
@@ -7722,6 +7734,41 @@ void run_texture_remap_coherence_test()
 
 void run_self_test()
 {
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    {
+        // Normal LCDC writes also reach banks E-I. After a movie has allocated
+        // its A-D staging buffers, those writes must not touch their pointers.
+        melonDS::NDSArgs args;
+        args.JIT = std::nullopt;
+        auto nds = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
+        nds->Reset();
+        auto& gpu = nds->GPU;
+        auto& fmv = gpu.FmvPackedColor;
+        gpu.VRAMMap_LCDC = 0x1ff;
+        std::array<const void*, 4> buffers {};
+        for (unsigned bank = 0; bank < buffers.size(); ++bank) {
+            gpu.WriteVRAM_LCDC<melonDS::u32>(
+                0x06800000 + bank * 0x20000 + fmv.Header, fmv.Begin);
+            buffers[bank] = fmv.Transactions[bank].get();
+            if (!buffers[bank]) self_test_fail("FMV staging allocation");
+        }
+        const unsigned addresses[] = {
+            0x06880000, 0x06890000, 0x06894000, 0x06898000, 0x068a0000};
+        for (auto address : addresses) {
+            gpu.WriteVRAM_LCDC<melonDS::u8>(address, 0x17);
+            gpu.WriteVRAM_LCDC<melonDS::u16>(address + 2, 0x2345);
+            gpu.WriteVRAM_LCDC<melonDS::u32>(address + 4, 0x89abcdef);
+            for (unsigned bank = 0; bank < buffers.size(); ++bank)
+                if (buffers[bank] != fmv.Transactions[bank].get())
+                    self_test_fail("non-FMV VRAM write corrupted staging pointer");
+            if (gpu.ReadVRAM_LCDC<melonDS::u8>(address) != 0x17 ||
+                gpu.ReadVRAM_LCDC<melonDS::u16>(address + 2) != 0x2345 ||
+                gpu.ReadVRAM_LCDC<melonDS::u32>(address + 4) != 0x89abcdef)
+                self_test_fail("non-FMV VRAM write changed");
+        }
+        std::cout << "H3D_FMV_SMALL_VRAM_BANKS_PASS\n";
+    }
+#endif
     {
         // Compare packed replay against the two original word writes over
         // every bank mask, aliases, dirty/mapping boundaries and remaps.

@@ -128,6 +128,19 @@ void GPU::ResetVRAMCache() noexcept
 
 void GPU::Reset() noexcept
 {
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    FmvPackedColor.Next.fill(0);
+    FmvPackedColor.Armed.fill(false);
+    FmvPackedColor.DirtyAll.fill(false);
+    FmvPackedColor.Conversions = 0;
+    FmvPackedColor.FilterConversions = 0;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE
+    FmvPackedColor.Video.Clear();
+    FmvPackedColor.VideoDecodes = 0;
+    FmvPackedColor.VideoErrors = 0;
+    FmvPackedColor.CachedConversions = 0;
+#endif
+#endif
     BOBJCoherencyEpoch = 0;
     ExternalRenderMemorySequence = 0;
     memset(ExternalRenderVRAMRevision, 0,

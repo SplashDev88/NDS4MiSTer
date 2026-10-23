@@ -25,6 +25,9 @@
 #include "GPU2D.h"
 #include "GPU3D.h"
 #include "NonStupidBitfield.h"
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+#include "FmvPackedColor.h"
+#endif
 
 namespace melonDS
 {
@@ -64,6 +67,22 @@ class Renderer;
 class GPU
 {
 public:
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    ExperimentalFmv::PackedColor FmvPackedColor;
+    bool ApplyPackedColor(unsigned bank, unsigned offset, unsigned bytes)
+    {
+        // LCDC also covers the smaller banks E-I. They have no transaction or
+        // dirty flag here; indexing DirtyAll for them can corrupt a staging
+        // pointer even though PackedColor::Write rejects the bank itself.
+        if (bank >= FmvPackedColor.Armed.size()) return false;
+        const bool converted = FmvPackedColor.Write(bank, offset, bytes, VRAM[bank]);
+        if (!converted && !FmvPackedColor.DirtyAll[bank]) return false;
+        FmvPackedColor.DirtyAll[bank] = false;
+        for (unsigned block = 0; block < 0x20000 / VRAMDirtyGranularity; ++block)
+            VRAMDirty[bank][block] = true;
+        return true;
+    }
+#endif
     explicit GPU(melonDS::NDS& nds, std::unique_ptr<Renderer>&& renderer = nullptr) noexcept;
     ~GPU() noexcept;
     void Reset() noexcept;
@@ -289,6 +308,9 @@ public:
         {
             *(T*)&VRAM[bank][addr] = val;
             VRAMDirty[bank][addr / VRAMDirtyGranularity] = true;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            ApplyPackedColor(bank, addr, sizeof(T));
+#endif
         }
     }
 
@@ -432,6 +454,9 @@ public:
         {
             VRAMDirty[2][(addr & 0x1FFFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_C[addr & 0x1FFFF] = val;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T));
+#endif
         }
         if (mask & (1<<7))
         {
@@ -488,6 +513,10 @@ public:
             changed |= 1u << bank;
         };
         if (mask & (1u << 2)) write(2, VRAM_C, addr & 0x1FFFF);
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+        if ((mask & (1u << 2)) && ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T)))
+            changed |= 1u << 2;
+#endif
         if (mask & (1u << 7)) write(7, VRAM_H, addr & 0x7FFF);
         if (mask & (1u << 8)) write(8, VRAM_I, addr & 0x3FFF);
         return changed;
@@ -518,6 +547,9 @@ public:
         {
             VRAMDirty[3][(addr & 0x1FFFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_D[addr & 0x1FFFF] = val;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            ApplyPackedColor(3, addr & 0x1FFFF, sizeof(T));
+#endif
         }
         if (mask & (1<<8))
         {

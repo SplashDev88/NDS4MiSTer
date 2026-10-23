@@ -1,9 +1,10 @@
 # Architecture — standalone and private performance beta
 
-Updated 17 October 2026. This describes the current matched-screen design and
+Baseline updated 17 October 2026; optional FMV experiment added 22 October.
+This describes the current matched-screen design and
 accepted final Castlevania worker-range runtime. See [the private beta freeze](PRIVATE_BETA_20261017.md)
 for the exact package, component identities and final experiment decision.
-The published release remains v0.9.0-rc.8. Historical experiment reports describe
+The published release is v0.9.0-rc.9. Historical experiment reports describe
 their named builds, not necessarily the selected runtime.
 
 ## Hardware and software responsibilities
@@ -77,6 +78,35 @@ repeat an older complete picture; do not describe it as independently full-speed
 FPGA 2D with only a transparent missing 3D line.
 
 ## Threads and scheduling
+
+### Optional movie-decoder experiment (22 October)
+
+The default renderer does not decode movies. Castlevania FMV Beta2 improves
+identified guest routines that still execute on the FPGA's DS ARM9.
+
+The separate, default-disabled FMV experiment can instead execute verified
+MobiClip or VX decoding in the HPS ordered-replay worker. Private ROM fixtures
+add guarded guest stubs and per-packet descriptors; the original ROM stays
+unchanged. Compressed video packets travel through the existing ordered LCDC
+write stream. The HPS caches bounded YUV frames by stream and guest buffer key,
+then filters and converts them when the guest requests display. Audio decoding,
+movie queues, display scheduling and sound synthesis retain their guest/FPGA
+paths. No new FPGA bitstream or clock change is needed.
+
+Only 128 KiB VRAM banks A-D participate. Staging preserves the previous visible
+RGB image until a complete transaction commits; ordinary writes to smaller
+banks E-I bypass the receiver. Physical guest VRAM is synthetic during this
+protocol, so CPU/DMA reads of converted output must be excluded through specific
+dependency checks. This is not a general replacement for arbitrary VRAM writes.
+
+This path remains a private experiment. A separate hash-checked movie-test
+launcher selects the prepared copies and isolated saves on the development
+MiSTer; normal-ROM automatic integration remains future work. Per-game movie,
+transition and gameplay coverage is recorded explicitly. Source provenance,
+exact output tests, hardware measurements and remaining work are recorded in
+[the FMV offload report](FMV_OFFLOAD_EXPERIMENT_20261022.md).
+
+### Established renderer placement
 
 These affinities describe the accepted package, not every environment override.
 

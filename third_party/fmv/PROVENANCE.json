@@ -1,0 +1,39 @@
+{
+  "ffmpeg": {
+    "url": "https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz",
+    "sha256": "733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1"
+  },
+  "vx": {
+    "commit": "4e9475a2e2f8b64605b77025ff793da26fcf1b3e",
+    "files": {
+      "libavcodec/actimagine_vxdec.c": {
+        "url": "https://raw.githubusercontent.com/librempeg/librempeg/4e9475a2e2f8b64605b77025ff793da26fcf1b3e/libavcodec/actimagine_vxdec.c",
+        "sha256": "ce5e067004c134b2ef168382cd155b39f3b307abfb1b2648cdd91034458de670"
+      },
+      "libavcodec/actimagine_vx_vlc.c": {
+        "url": "https://raw.githubusercontent.com/librempeg/librempeg/4e9475a2e2f8b64605b77025ff793da26fcf1b3e/libavcodec/actimagine_vx_vlc.c",
+        "sha256": "3c1eaa3fba3c98113baf81f287e3001d5a2a32033b85cf972740c541ef111819"
+      },
+      "libavcodec/actimagine_vx_vlc.h": {
+        "url": "https://raw.githubusercontent.com/librempeg/librempeg/4e9475a2e2f8b64605b77025ff793da26fcf1b3e/libavcodec/actimagine_vx_vlc.h",
+        "sha256": "847ff0569c804bf19718924373c82cf3b1c73b6b2736a91af8042fce7218a5eb"
+      },
+      "COPYING.GPLv3": {
+        "url": "https://raw.githubusercontent.com/librempeg/librempeg/4e9475a2e2f8b64605b77025ff793da26fcf1b3e/COPYING.GPLv3",
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      }
+    }
+  },
+  "patched_files": {
+    "configure": "fdd3f74c24f979f9084d885b396a5bd33b85a835be1c15012e7a6c9a1c30dc0a",
+    "libavcodec/Makefile": "b2160ca051eae0429d74fa11769a0211fdc3234029476b643b20f4abfbb8a3a3",
+    "libavcodec/allcodecs.c": "3b0fb6a41a9432c9e0fd3141dfced82ee681cd7107198cfede3e7f254e43c820",
+    "libavcodec/codec_id.h": "c079358fc62da4d469764bd62b8ec788349816521111af9f4dae7b1e2fa929b5",
+    "libavcodec/codec_desc.c": "79665094649206a820dc121af0eee544fa289e81d72839fcccba08c844245b2f",
+    "libavcodec/mobiclip.c": "7f51e3dc658961c0e5d455e9e235d66356393aeea51bbf70d18d748e01a213db",
+    "libavcodec/actimagine_vxdec.c": "59fecb9463686ecf55723e20dfc82fc562b200fcb295f4a4d88255be94b0dde9",
+    "libavcodec/actimagine_vx_vlc.c": "3c1eaa3fba3c98113baf81f287e3001d5a2a32033b85cf972740c541ef111819",
+    "libavcodec/actimagine_vx_vlc.h": "847ff0569c804bf19718924373c82cf3b1c73b6b2736a91af8042fce7218a5eb"
+  },
+  "patch_sha256": "725532b250f7737567d22f33b9918d53491f7d266b26f673f5e8f7173a54a18a"
+}

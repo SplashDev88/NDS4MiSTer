@@ -17,6 +17,13 @@ option(NDS4MISTER_NO_VIDEO_RENDER "Diagnostic: skip melonDS video renderer outpu
 option(NDS4MISTER_NO_2D_RENDER "Diagnostic: skip melonDS 2D scanline and sprite rendering while preserving LCD timing" OFF)
 option(NDS4MISTER_NO_3D_RENDER "Diagnostic: skip melonDS 3D frame rendering while preserving LCD timing" OFF)
 option(NDS4MISTER_NO_AUDIO_MIX "Diagnostic: skip melonDS audio mixer work while preserving SPU event timing" OFF)
+option(NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    "Private prototype: consume explicitly marked planar movie uploads" OFF)
+option(NDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE
+    "Private prototype: decode explicitly marked MODSN3 movie packets" OFF)
+option(NDS4MISTER_EXPERIMENTAL_FMV_VX_DECODE
+    "Private prototype: also accept explicitly marked older VX packets" OFF)
+set(NDS4MISTER_FFMPEG_ROOT "" CACHE PATH "Private minimal FFmpeg static installation")
 option(NDS4MISTER_FPGA_AUDIO_OFFLOAD
     "Build default-off FPGA-audio offload support with a lightweight SPU status shadow"
     OFF)
@@ -80,6 +87,30 @@ if(NDS4MISTER_USE_MELONDS)
     set(ENABLE_JIT ${NDS4MISTER_ENABLE_JIT} CACHE BOOL "" FORCE)
     set(ENABLE_LTO_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE} CACHE BOOL "" FORCE)
     add_subdirectory(third_party/melonDS EXCLUDE_FROM_ALL)
+    if(NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR)
+        target_compile_definitions(core PUBLIC NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR=1)
+    endif()
+    if(NDS4MISTER_EXPERIMENTAL_FMV_VX_DECODE)
+        if(NOT NDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE)
+            message(FATAL_ERROR "VX decoding requires the private movie decoder")
+        endif()
+        target_compile_definitions(core PUBLIC NDS4MISTER_EXPERIMENTAL_FMV_VX_DECODE=1)
+    endif()
+    if(NDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE)
+        if(NOT NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR)
+            message(FATAL_ERROR "Movie decoding requires the private packed-color receiver")
+        endif()
+        if(NOT EXISTS "${NDS4MISTER_FFMPEG_ROOT}/include/libavcodec/avcodec.h" OR
+           NOT EXISTS "${NDS4MISTER_FFMPEG_ROOT}/lib/libavcodec.a" OR
+           NOT EXISTS "${NDS4MISTER_FFMPEG_ROOT}/lib/libavutil.a")
+            message(FATAL_ERROR "A matching minimal FFmpeg static installation is required")
+        endif()
+        target_compile_definitions(core PUBLIC NDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE=1)
+        target_include_directories(core PUBLIC "${NDS4MISTER_FFMPEG_ROOT}/include")
+        target_link_libraries(core PUBLIC
+            "${NDS4MISTER_FFMPEG_ROOT}/lib/libavcodec.a"
+            "${NDS4MISTER_FFMPEG_ROOT}/lib/libavutil.a" Threads::Threads m)
+    endif()
     target_compile_definitions(core PUBLIC NDS4MISTER_CORE_TIMING=$<BOOL:${NDS4MISTER_CORE_TIMING}>)
     target_compile_definitions(core PUBLIC NDS4MISTER_NO_VIDEO_RENDER=$<BOOL:${NDS4MISTER_NO_VIDEO_RENDER}>)
     target_compile_definitions(core PUBLIC NDS4MISTER_NO_2D_RENDER=$<BOOL:${NDS4MISTER_NO_2D_RENDER}>)

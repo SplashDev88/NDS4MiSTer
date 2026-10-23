@@ -1,0 +1,2 @@
+# Unified-diff context lines intentionally contain a leading space, even when blank.
+third_party/fmv/*.patch -whitespace
