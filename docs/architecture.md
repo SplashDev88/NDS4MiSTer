@@ -85,9 +85,12 @@ The default renderer does not decode movies. Castlevania FMV Beta2 improves
 identified guest routines that still execute on the FPGA's DS ARM9.
 
 The separate, default-disabled FMV experiment can instead execute verified
-MobiClip or VX decoding in the HPS ordered-replay worker. Private ROM fixtures
-add guarded guest stubs and per-packet descriptors; the original ROM stays
-unchanged. Compressed video packets travel through the existing ordered LCDC
+MobiClip or VX decoding in the HPS ordered-replay worker. The automatic private
+RC assembles qualified guest stubs and per-packet descriptors in the disposable
+ROM-reader process. It verifies the original cartridge hash and reconstructs
+the previously qualified cartridge stream without writing a patched ROM or
+cache file. The host retains the original filename for saves and recents.
+Compressed video packets travel through the existing ordered LCDC
 write stream. The HPS caches bounded YUV frames by stream and guest buffer key,
 then filters and converts them when the guest requests display. Audio decoding,
 movie queues, display scheduling and sound synthesis retain their guest/FPGA
@@ -99,12 +102,16 @@ banks E-I bypass the receiver. Physical guest VRAM is synthetic during this
 protocol, so CPU/DMA reads of converted output must be excluded through specific
 dependency checks. This is not a general replacement for arbitrary VRAM writes.
 
-This path remains a private experiment. A separate hash-checked movie-test
-launcher selects the prepared copies and isolated saves on the development
-MiSTer; normal-ROM automatic integration remains future work. Per-game movie,
-transition and gameplay coverage is recorded explicitly. Source provenance,
-exact output tests, hardware measurements and remaining work are recorded in
-[the FMV offload report](FMV_OFFLOAD_EXPERIMENT_20261022.md).
+This path remains a private experiment. The automatic RC recognizes five exact
+cartridge/player revisions and eight opening assets; Castlevania retains its
+existing staged guest optimizations. Unknown ROMs use their original decoder.
+This does not establish support for every movie, revision or game using these
+codecs. Preparation finishes before boot and has no resident gameplay worker.
+The ROM reader sends an explicit completion record, which the host checks before
+releasing the cartridge or mounting its save. Pairing checks bind the host,
+renderer, profiles and hooks to one package. See the
+[automatic RC guide](FMV_AUTO_RC_20261022.md) and
+[FMV offload report](FMV_OFFLOAD_EXPERIMENT_20261022.md) for scope and evidence.
 
 ### Established renderer placement
 

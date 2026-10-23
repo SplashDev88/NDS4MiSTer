@@ -2866,7 +2866,9 @@ public:
       sector();
       beat();
     };
-    RomReader reader(path);
+    const char* automatic_movies = std::getenv("NDS_FMV_AUTO");
+    const bool prepare_movies = automatic_movies && std::strcmp(automatic_movies, "1") == 0;
+    RomReader reader(path, prepare_movies ? (fs::path(kit) / "fmv").string() : std::string());
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.
     const auto file_size = reader.size(service);
     const auto transfer_size = RomReader::transferSize(file_size);
@@ -2892,6 +2894,7 @@ public:
       off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
       updateLoading(off, storage_size);
     }
+    reader.finish(file_size, service);
     // The extended FPGA aperture always backs 464 MiB. A trimmed file must not
     // expose a prior cartridge's bytes between its EOF and that boundary.
     while (off < storage_size) {

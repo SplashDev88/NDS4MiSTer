@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <chrono>
 #include <csignal>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -51,7 +52,8 @@ private:
     }
     return true;
   }
-  [[noreturn]] static void worker(int output, pid_t parent, const std::string &path) {
+  [[noreturn]] static void worker(int output, pid_t parent, const std::string &path,
+                                const std::string &movie_directory) {
     // Never inherit the host's graceful SIGTERM handler: this child has no
     // state to save and must also stop if the host disappears during CIFS I/O.
     signal(SIGTERM, SIG_DFL);
@@ -59,14 +61,15 @@ private:
     signal(SIGUSR1, SIG_DFL);
     if (prctl(PR_SET_PDEATHSIG, SIGKILL) || getppid() != parent) _exit(1);
     // CLOEXEC alone does not release the host's flock after fork. Close every
-    // inherited descriptor before any network operation, including that lock,
-    // input devices, save, heartbeat and /dev/mem. Never access inherited MMIO.
+    // inherited descriptor except the diagnostic stderr before any network
+    // operation, including that lock, input devices, save, heartbeat and
+    // /dev/mem. Never access inherited MMIO.
     DIR *fds = opendir("/proc/self/fd");
     if (!fds) _exit(1);
     while (auto *e = readdir(fds)) {
       char *end;
       const long fd = strtol(e->d_name, &end, 10);
-      if (*end == '\0' && fd != output && fd != dirfd(fds)) close(int(fd));
+      if (*end == '\0' && fd != output && fd != STDERR_FILENO && fd != dirfd(fds)) close(int(fd));
     }
     closedir(fds);
 #ifdef STANDALONE_TEST
@@ -81,6 +84,28 @@ private:
     else if (st.st_size < 0 || !validSize(uint64_t(st.st_size))) {
       h.operation = 4; h.error = EINVAL;
     } else h.size = uint64_t(st.st_size);
+    // Optional paired-kit movie preparation runs in this disposable worker,
+    // before FIO is touched. Unknown games stay on the existing native reader.
+    // Only these FDs survive exec; neither save/SPI ownership nor a helper
+    // process is retained during gameplay. The original path stays in Host.
+    if (!h.operation && !movie_directory.empty()) {
+      unsigned char header[32]{};
+      if (pread(rom, header, sizeof(header), 0) == ssize_t(sizeof(header))) {
+        const std::string code(reinterpret_cast<char *>(header + 12), 4);
+        if (header[30] == 0 && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
+                               code == "AXFE" || code == "YWSE")) {
+          const auto script = movie_directory + "/stream.py";
+          const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
+          const auto parent_arg = std::to_string(parent);
+          if (fcntl(rom, F_SETFD, 0) || fcntl(output, F_SETFD, 0)) _exit(1);
+          execlp("python3", "python3", "-E", "-s", "-B", script.c_str(), input_arg.c_str(),
+                 output_arg.c_str(), parent_arg.c_str(), static_cast<char *>(nullptr));
+          // A missing worker must not silently enable only half of a profile.
+          // No cartridge data has been sent; retain the ordinary native path.
+          dprintf(STDERR_FILENO, "FMV_AUTO_FALLBACK cannot start movie reader\n");
+        }
+      }
+    }
     std::array<unsigned char, 262144> buffer;
     // Validate all omitted bytes before telling the host it may start a
     // download. The ROM header's used-size field is not evidence of padding.
@@ -114,6 +139,10 @@ private:
       if (n <= 0 || !send(output, buffer.data(), size_t(n))) _exit(1);
       off += uint64_t(n);
     }
+    // The parent must observe completion before releasing the cartridge. This
+    // also covers post-stream source validation in the optional movie worker.
+    const Header complete{transfer_size, 0, 8};
+    if (!send(output, &complete, sizeof(complete))) _exit(1);
     _exit(0);
   }
 
@@ -123,7 +152,7 @@ public:
   inline static void (*test_hook)(int, uint64_t) = nullptr;
   pid_t testPid() const { return child; }
 #endif
-  explicit RomReader(const std::string &path) {
+  explicit RomReader(const std::string &path, const std::string &movie_directory = {}) {
     reap();
     int fds[2];
     if (pipe2(fds, O_CLOEXEC)) throw std::runtime_error("ROM reader pipe");
@@ -133,7 +162,7 @@ public:
       close(fds[0]); close(fds[1]);
       throw std::runtime_error("ROM reader fork");
     }
-    if (!child) worker(fds[1], parent, path);
+    if (!child) worker(fds[1], parent, path, movie_directory);
     close(fds[1]);
     input = fds[0];
   }
@@ -158,6 +187,15 @@ public:
       const auto r = waitpid(pid, &status, WNOHANG);
       return r == pid || (r < 0 && errno == ECHILD);
     }), retiring.end());
+  }
+  template<class Service>
+  void finish(uint64_t size, const Service &service, unsigned timeout_ms = no_progress_ms) {
+    Header h{};
+    size_t off = 0;
+    while (off < sizeof(h))
+      off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
+    if (h.operation != 8 || h.error || h.size != transferSize(size))
+      throw std::runtime_error("ROM stream did not complete validation");
   }
   template<class Service>
   size_t read(void *data, size_t size, const Service &service,
@@ -193,6 +231,8 @@ public:
             : "ROM data above 252 MiB must be FF padding (graphics memory is reserved)");
       const char *names[] = {"", "open ROM", "ROM stat", "ROM file", "ROM size", "",
                              "ROM read failed while checking padding"};
+      if (h.operation < 1 || h.operation > 6)
+        throw std::runtime_error("Invalid ROM reader response");
       throw std::runtime_error(std::string(names[h.operation]) + ": " + strerror(h.error));
     }
     return h.size;

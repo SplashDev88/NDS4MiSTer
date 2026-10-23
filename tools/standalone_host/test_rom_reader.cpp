@@ -68,6 +68,7 @@ static void transfer(const std::string &expected, unsigned timeout, unsigned min
     std::string got(n, '\0');
     size_t off = 0;
     while (off < n) off += r.read(got.data() + off, n - off, service, timeout);
+    r.finish(n, service, timeout);
     assert(got == expected);
   }
   reaped(pid);
@@ -114,6 +115,7 @@ static void large_transfer(uint64_t file_size) {
         assert(buffer[i] == (off + i == 0 ? 0x12 : off + i == expected - 1 ? 0x37 : 0));
       off += n;
     }
+    r.finish(file_size, [] {}, 500);
     // The worker must not stream padding into the reserved graphics area.
     bool ended = false;
     try { r.read(buffer.data(), 1, [] {}, 500); }

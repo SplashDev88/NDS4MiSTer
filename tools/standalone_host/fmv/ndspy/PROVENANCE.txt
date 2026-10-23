@@ -1,0 +1,4 @@
+ndspy 4.2.0, unchanged subset from PyPI ndspy 4.2.0.
+https://github.com/RoadrunnerWMC/ndspy
+GPL-3.0-or-later; see source headers and LICENSE.
+Only executable-code parsing, SDK autoload serialization and code compression dependencies are included.
