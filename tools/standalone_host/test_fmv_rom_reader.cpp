@@ -13,8 +13,9 @@ int main(int argc,char**argv) {
   const auto path=root/"original name.nds";
   std::string original(1024,'x');original.replace(12,4,"BMTE");original[30]=0;
   std::ofstream(path,std::ios::binary).write(original.data(),original.size());
-  const auto transfer=[&](const std::string&directory,bool success,unsigned timeout=1000) {
-    RomReader r(path.string(),directory);unsigned services=0;
+  const auto transfer=[&](const std::string&directory,bool success,unsigned timeout=1000,
+                         const std::string&mode=std::string(),bool movies=true) {
+    RomReader r(path.string(),directory,mode,movies);unsigned services=0;
     const auto service=[&]{++services;};
     const auto n=r.size(service,timeout);assert(n==original.size());
     std::string got(n,'\0');size_t off=0;
@@ -40,5 +41,32 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
   transfer("/missing-worker",true);
   std::cout<<"PASS unrelated game retains native ROM reader\n";
+  setenv("NDS_NSMB_PATCH","both",1);
+  transfer(argv[1],true); // Wrong cartridge size/hash must preserve the original.
+  const auto marker=root/"nsmb-worker-called";
+  std::ofstream(fake/"nsmb_stream.py")<<
+    "import os,sys,struct\nfrom pathlib import Path\n"
+    "src,dst,parent=map(int,sys.argv[1:])\n"
+    "Path('"<<marker.string()<<"').write_text('called')\n"
+    "data=os.pread(src,1024,0)\n"
+    "os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)\n"
+    "os.write(dst,struct.pack('<Qii',1024,0,8))\n";
+  transfer(fake.string(),true);assert(fs::exists(marker));fs::remove(marker);
+  transfer(fake.string(),true,1000,"off");assert(!fs::exists(marker));
+  assert(std::string(getenv("NDS_NSMB_PATCH"))=="both");
+  transfer(fake.string(),true,1000,"lookup",false);assert(fs::exists(marker));fs::remove(marker);
+  original.replace(12,4,"BMTE");
+  std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+  transfer(fake.string(),true,1000,"both",false); // Speed options cannot enable movies.
+  original.replace(12,4,"A2DE");
+  std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+  for(const char* mode:{"off","invalid"}){
+    setenv("NDS_NSMB_PATCH",mode,1);transfer(fake.string(),true);assert(!fs::exists(marker));
+  }
+  setenv("NDS_NSMB_PATCH","both",1);original[30]=1;
+  std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+  transfer(fake.string(),true);assert(!fs::exists(marker));
+  unsetenv("NDS_NSMB_PATCH");
+  std::cout<<"PASS NSMB experiment requires explicit mode and revision zero; failed identity keeps original bytes\n";
   fs::remove_all(root);
 }

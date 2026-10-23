@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "profiles": [
+    {
+      "game_code": "A2DE",
+      "revision": 0,
+      "arm9_crc32": "d68a9af0",
+      "hooks": [
+        {
+          "flag": "packet_lookup",
+          "address": 33614672,
+          "guard_bytes": 16,
+          "guard_sha256": "d79596e1819b1b322b0e4a7ec0e99d0a215ca485771b3b5304f1d3ef87a6c555",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "idle_clients",
+          "address": 33625308,
+          "guard_bytes": 16,
+          "guard_sha256": "e515e5610410253249cbf7a450468168ce65c3846d79f18b2dfa424c8f3feff2",
+          "phase": "main_loaded"
+        }
+      ]
+    }
+  ]
+}

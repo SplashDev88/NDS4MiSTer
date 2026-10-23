@@ -395,6 +395,7 @@ set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_arm9_math_unit.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_arm9_pc_sampler.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_async_fifo.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_fb_ddr3.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_touch_input.sv

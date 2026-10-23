@@ -53,7 +53,7 @@ private:
     return true;
   }
   [[noreturn]] static void worker(int output, pid_t parent, const std::string &path,
-                                const std::string &movie_directory) {
+                                const std::string &movie_directory, bool allow_movies) {
     // Never inherit the host's graceful SIGTERM handler: this child has no
     // state to save and must also stop if the host disappears during CIFS I/O.
     signal(SIGTERM, SIG_DFL);
@@ -92,9 +92,13 @@ private:
       unsigned char header[32]{};
       if (pread(rom, header, sizeof(header), 0) == ssize_t(sizeof(header))) {
         const std::string code(reinterpret_cast<char *>(header + 12), 4);
-        if (header[30] == 0 && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
-                               code == "AXFE" || code == "YWSE")) {
-          const auto script = movie_directory + "/stream.py";
+        const char* nsmb_mode = std::getenv("NDS_NSMB_PATCH");
+        const bool nsmb = code == "A2DE" && nsmb_mode &&
+            (std::strcmp(nsmb_mode, "lookup") == 0 || std::strcmp(nsmb_mode, "skip") == 0 ||
+             std::strcmp(nsmb_mode, "both") == 0);
+        if (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
+                               code == "AXFE" || code == "YWSE")))) {
+          const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);
           if (fcntl(rom, F_SETFD, 0) || fcntl(output, F_SETFD, 0)) _exit(1);
@@ -152,7 +156,8 @@ public:
   inline static void (*test_hook)(int, uint64_t) = nullptr;
   pid_t testPid() const { return child; }
 #endif
-  explicit RomReader(const std::string &path, const std::string &movie_directory = {}) {
+  explicit RomReader(const std::string &path, const std::string &movie_directory = {},
+                     const std::string &nsmb_mode = {}, bool allow_movies = true) {
     reap();
     int fds[2];
     if (pipe2(fds, O_CLOEXEC)) throw std::runtime_error("ROM reader pipe");
@@ -162,7 +167,12 @@ public:
       close(fds[0]); close(fds[1]);
       throw std::runtime_error("ROM reader fork");
     }
-    if (!child) worker(fds[1], parent, path, movie_directory);
+    if (!child) {
+      // Only the disposable reader inherits the menu selection. Never mutate
+      // the SPI owner's environment when another game is loaded later.
+      if (!nsmb_mode.empty() && setenv("NDS_NSMB_PATCH", nsmb_mode.c_str(), 1)) _exit(1);
+      worker(fds[1], parent, path, movie_directory, allow_movies);
+    }
     close(fds[1]);
     input = fds[0];
   }

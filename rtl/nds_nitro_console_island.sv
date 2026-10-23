@@ -1651,6 +1651,22 @@ assign h3d_full_frame_screen = 1'b0;
 // -------------------------------------------------------------------------
 // Hybrid 3D session, ordered event stream, and clock-safe return plane.
 // -------------------------------------------------------------------------
+`ifdef NDS_ARM9_PC_PROFILE
+wire [31:0] profile_pc9, profile_cpsr9, profile_control9;
+wire [31:0] profile_pc_ddr, profile_metadata_ddr;
+// Synchronize reset release into the source domain. This observer does not
+// participate in any console hold, execution, bus or publication handshake.
+(* async_reg = "true" *) logic [1:0] profile_reset_sync = 2'b11;
+always_ff @(posedge clk2x) profile_reset_sync <= {profile_reset_sync[0], bridge_reset_ddr};
+nds_arm9_pc_sampler profile_sampler (
+    .cpu_clk(clk2x), .cpu_reset(profile_reset_sync[1]),
+    .architectural_pc(profile_pc9), .thumb(profile_cpsr9[5]),
+    .halted(profile_control9[8]), .dma_hold(profile_control9[6]),
+    .guest_reset(profile_control9[13]), .vblank_async(h3d_lcd_vblank),
+    .ddr_clk(ddr_clk), .ddr_reset(bridge_reset_ddr),
+    .pc(profile_pc_ddr), .metadata(profile_metadata_ddr)
+);
+`endif
 nds_h3d_control_init #(
     .BASE_WORD(H3D_CONTROL_WORD), .ENTRY_COUNT(16384),
     .PACKET_MODE(1'b1), .SESSION_POLICY_ENABLE(1'b1)
@@ -1667,7 +1683,11 @@ nds_h3d_control_init #(
     .external_fault_bits(h3d_external_fault_bits),
     // Retain the ABI and existing DDR write cadence, with zero in the
     // temporary CPU/probe fields. Session, HPS liveness and faults stay live.
+`ifdef NDS_ARM9_PC_PROFILE
+    .fpga_heartbeat_value(profile_pc_ddr), .fpga_telemetry_value(profile_metadata_ddr),
+`else
     .fpga_heartbeat_value(32'd0), .fpga_telemetry_value(32'd0),
+`endif
     .telemetry_index(), .diagnostic_hold(),
     .active(h3d_control_active),
     .initialized(h3d_control_initialized),
@@ -2319,10 +2339,15 @@ nds_nitro_console_wrap #(
     .h3d_frame_number(h3d_frame_number),
     .h3d_frame_timestamp(h3d_frame_timestamp),
 `endif
-    .dbg_pc9(),.dbg_pc7(),
-    .dbg_mem_probe(),.dbg_cpu9_addr(),
+`ifdef NDS_ARM9_PC_PROFILE
+    .dbg_pc9(profile_pc9), .dbg_cpsr9(profile_cpsr9),
+    .dbg_cpu9_addr(profile_control9),
+`else
+    .dbg_pc9(), .dbg_cpsr9(), .dbg_cpu9_addr(),
+`endif
+    .dbg_pc7(), .dbg_mem_probe(),
     .dbg_r0_9(),.dbg_lr9(),
-    .dbg_cpsr9(),.dbg_vfy_bad(),
+    .dbg_vfy_bad(),
     .diagnostic_hold9(1'b0),
     .diagnostic_hold7(1'b0),
     .diagnostic_release9(1'b0),

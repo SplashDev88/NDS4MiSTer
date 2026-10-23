@@ -330,22 +330,27 @@ class Host {
   bool video_flags_known = false;
   TouchRotation touch_rotation = TouchRotation::Normal;
   unsigned touch_range = 0; // 100%, stored separately from FPGA status/mappings.
+  bool speed_menu = false, speed_hacks_available = false;
+  unsigned speed_hacks = 0; // Independent pending flags; applied on ROM load.
+  static constexpr std::array<const char *, 4> SPEED_MODES{{"off", "lookup", "skip", "both"}};
   static constexpr int TOUCH_ROTATION_CURSOR = 4, LID_CURSOR = 9,
                        RESET_CURSOR = 10, EXIT_CURSOR = 11,
                        SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, DV_TARGET_CURSOR = 14,
                        DISPLAY_CURSOR = 15, TOUCH_RANGE_CURSOR = 16,
-                       LAST_MAIN_CURSOR = 16;
+                       SPEED_CURSOR = 17, LAST_MAIN_CURSOR = 17;
   int mainMenuRow(int item) const {
+    if (speed_menu) return item == 0 ? 1 : item == 1 ? 2 : item == EXIT_CURSOR ? 15 : -1;
+    if (item == SPEED_CURSOR) return speed_hacks_available && independent_outputs_supported && !display_menu ? 9 : -1;
     // Stable option identities keep status bits and saved settings unchanged.
     // Only the visible rows differ between the main and Display options pages.
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1, -1, 2};
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1, -1, 2, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
-        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1, 2};
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1, 2, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, -1, -1, -1, -1, -1, -1, 7, 8, 15, -1, 4, -1, 5, 6};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 7, 8, 15, -1, 4, -1, 5, 6, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
-        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1};
+        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, -1};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
     if (independent_outputs_supported) {
@@ -495,6 +500,10 @@ class Host {
     const std::string stick_config = "NDS-StickRange-v1\n" +
         std::to_string(TOUCH_RANGE_PERCENT[touch_range]) + "\n";
     atomicFile(fs::path(kit) / "NDS_stick.cfg", stick_config.data(), stick_config.size());
+    if (speed_hacks_available) {
+      const std::string config = "NDS-SpeedHacks-v1\n" + std::to_string(speed_hacks) + "\n";
+      atomicFile(fs::path(kit) / "NDS_speed.cfg", config.data(), config.size());
+    }
     const std::string video_config = std::string("NDS-DirectVideo-v1\n") +
         (direct_video_crt ? "crt\n" : "retrotink\n");
     atomicFile(fs::path(kit) / "NDS_video.cfg", video_config.data(), video_config.size());
@@ -648,7 +657,7 @@ class Host {
   // its own ".." returns to the NDS menu rather than exposing Linux internals.
   void finishStorageBrowser() {
     browser = true;
-    core_browser = recent_view = storage_choices = system_menu = display_menu = false;
+    core_browser = recent_view = storage_choices = system_menu = display_menu = speed_menu = false;
     cursor = browser_first = 0;
     scroll_offset = 0;
     next_scroll = ms() + 1000;
@@ -1105,7 +1114,7 @@ class Host {
               recent_available.push_back(f[i + 1] == "1");
             }
             browser = recent_view = true;
-            storage_choices = core_browser = system_menu = display_menu = false;
+            storage_choices = core_browser = system_menu = display_menu = speed_menu = false;
             cursor = browser_first = 0;
             scroll_offset = 0;
             next_scroll = ms() + 1000;
@@ -1444,7 +1453,7 @@ class Host {
       next_scroll = now + 10;
       writeRow(browser_selected_row, frame.scrollRow(browser_selected_row, browser_base,
                name, scroll_offset, entry.directory ? 176 : 232, true));
-    } else if (!system_menu && !display_menu) { // Keep the submenu Back footer visible.
+    } else if (!system_menu && !display_menu && !speed_menu) { // Keep the submenu Back footer visible.
       if (auto footer = version_footer.advance(frame, footer_base, CORE_VERSION, now))
         writeRow(15, *footer);
     }
@@ -1538,6 +1547,16 @@ class Host {
       rows[3] = "             yes";
       rows[4] = "             no";
       selected = cursor == 0 ? 3 : 4;
+    } else if (speed_menu) {
+      frame.setTitle("Speed hacks");
+      rows[1] = optionLabel(speed_hacks, {0, 1, 2, "Local packet lookup", {"Off", "On"}});
+      rows[2] = optionLabel(speed_hacks, {1, 1, 2, "Skip inactive clients", {"Off", "On"}});
+      rows[5] = " NSMB US rev0 experiment";
+      rows[7] = " Reload game to apply";
+      rows[9] = " Other games stay unchanged";
+      rows[14] = message;
+      rows[15] = "            back";
+      selected = mainMenuRow(cursor);
     } else {
       frame.setTitle(display_menu ? "Display options" : "NDS");
       if (!display_menu) {
@@ -1580,12 +1599,14 @@ class Host {
         rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
       if (mainMenuRow(RESET_CURSOR) >= 0)
         rows[mainMenuRow(RESET_CURSOR)] = " Reset";
+      if (mainMenuRow(SPEED_CURSOR) >= 0)
+        rows[mainMenuRow(SPEED_CURSOR)] = " Speed hacks                " + std::string(1, char(0x16));
       rows[14] = message.empty() ? personal_settings_notice : message;
       rows[15] = (display_menu) ? "            back" : "            exit";
       selected = mainMenuRow(cursor);
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
-                            : (system_menu || display_menu) ? nds_osd::arrow_left
+                            : (system_menu || display_menu || speed_menu) ? nds_osd::arrow_left
                                           : nds_osd::arrow_right;
     for (int i = 0; i < 16; i++)
       line(i, rows[i], i == selected, arrows);
@@ -1602,7 +1623,7 @@ class Host {
     menu = !menu;
     syncScreenPeek();
     if (core_browser) closeBrowser();
-    browser = system_menu = display_menu = reset_confirm = false;
+    browser = system_menu = display_menu = speed_menu = reset_confirm = false;
     recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
         false;
     mapping_step = -1;
@@ -1629,7 +1650,7 @@ class Host {
       if (a == 2 || a == 3 || a == 4) {
         firmware_error_dialog = false;
         menu = true;
-        browser = system_menu = display_menu = false;
+        browser = system_menu = display_menu = speed_menu = false;
         cursor = 1;
         dirty = true;
       }
@@ -1673,6 +1694,7 @@ class Host {
           full_status.fill(0);
           touch_rotation = TouchRotation::Normal;
           touch_range = 0;
+          speed_hacks = 0;
           direct_video_crt = true;
           saveSettings();
           sendstatus();
@@ -1685,7 +1707,7 @@ class Host {
     if (a == 9) {
       if (recent_view) closeBrowser();
       else if (!choosing_firmware &&
-               ((browser && !core_browser) || (!system_menu && !display_menu && cursor == 0)))
+               ((browser && !core_browser) || (!system_menu && !display_menu && !speed_menu && cursor == 0)))
         openRecents();
       dirty = true;
       return;
@@ -1704,6 +1726,9 @@ class Host {
     if (a == 3) {
       if (browser) {
         closeBrowser();
+      } else if (speed_menu) {
+        speed_menu = false;
+        cursor = SPEED_CURSOR;
       } else if (display_menu) {
         display_menu = false;
         cursor = DISPLAY_CURSOR;
@@ -1786,6 +1811,13 @@ class Host {
           system_menu = false;
           cursor = 0;
         }
+      } else if (speed_menu) {
+        if (a == 5 || (a == 2 && cursor == EXIT_CURSOR)) {
+          speed_menu = false; cursor = SPEED_CURSOR;
+        } else if ((a == 2 || a == 7 || a == 8) && (cursor == 0 || cursor == 1)) {
+          speed_hacks ^= 1u << cursor;
+          message = " Reload game to apply";
+        }
       } else if (display_menu && (a == 5 || (a == 2 && cursor == EXIT_CURSOR))) {
         display_menu = false;
         cursor = DISPLAY_CURSOR;
@@ -1801,6 +1833,10 @@ class Host {
                  (a == 2 || a == 7 || a == 8)) {
         touch_range = (touch_range + TOUCH_RANGE_PERCENT.size() + (a == 7 ? -1 : 1)) % TOUCH_RANGE_PERCENT.size();
         message = " System > Save settings";
+      } else if (a == 2 && cursor == SPEED_CURSOR && speed_hacks_available) {
+        speed_menu = true;
+        cursor = 0;
+        message.clear();
       } else if (a == 2 && cursor == DISPLAY_CURSOR) {
         display_menu = true;
         cursor = 3;
@@ -1889,7 +1925,7 @@ class Host {
     firmware_error_dialog = true;
     menu = true;
     syncScreenPeek();
-    browser = system_menu = display_menu = false;
+    browser = system_menu = display_menu = speed_menu = false;
     recent_view = recent_clear_confirm = choosing_firmware = storage_devices =
         false;
     mapping_step = -1;
@@ -2163,7 +2199,7 @@ class Host {
     firmwareControl(2);
     waitFirmware(0x43, 0x42, 3000, "native firmware release");
     native_firmware = true;
-    menu = browser = system_menu = display_menu = false;
+    menu = browser = system_menu = display_menu = speed_menu = false;
     recent_view = recent_clear_confirm = false;
     osd(false);
     log("native DS firmware CPUs released; firmware menu progress not yet verified");
@@ -2808,6 +2844,17 @@ public:
     core_root = sd_root;
     const char *diagnostics = std::getenv("NDS_FIRMWARE_DIAGNOSTICS");
     firmware_diagnostics = diagnostics && std::strcmp(diagnostics, "1") == 0;
+    speed_hacks_available = fs::is_regular_file(fs::path(kit) / "fmv/nsmb_hooks.json");
+    if (speed_hacks_available) {
+      std::ifstream config(fs::path(kit) / "NDS_speed.cfg");
+      const std::string text((std::istreambuf_iterator<char>(config)), {});
+      for (unsigned i=0;i<4;++i)
+        if (text == "NDS-SpeedHacks-v1\n" + std::to_string(i) + "\n") speed_hacks = i;
+      if (const char *mode = std::getenv("NDS_NSMB_PATCH")) {
+        speed_hacks = 0;
+        for (unsigned i=0;i<4;++i) if (std::strcmp(mode,SPEED_MODES[i]) == 0) speed_hacks=i;
+      }
+    }
     fs::create_directories(savedir);
 #ifdef STANDALONE_TEST
     // Fixture tests must never touch a running standalone session's heartbeat.
@@ -2888,7 +2935,8 @@ public:
     };
     const char* automatic_movies = std::getenv("NDS_FMV_AUTO");
     const bool prepare_movies = automatic_movies && std::strcmp(automatic_movies, "1") == 0;
-    RomReader reader(path, prepare_movies ? (fs::path(kit) / "fmv").string() : std::string());
+    RomReader reader(path, (prepare_movies || (speed_hacks_available && speed_hacks)) ?
+        (fs::path(kit) / "fmv").string() : std::string(), SPEED_MODES[speed_hacks], prepare_movies);
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.
     const auto file_size = reader.size(service);
     const auto transfer_size = RomReader::transferSize(file_size);
@@ -2963,7 +3011,7 @@ public:
     try { remember(path); }
     catch (const std::exception &e) { log(std::string("recent files: ") + e.what()); }
     menu = false;
-    browser = system_menu = display_menu = false;
+    browser = system_menu = display_menu = speed_menu = false;
     recent_view = recent_clear_confirm = false;
     osd(false);
     log("ROM started " + path);
