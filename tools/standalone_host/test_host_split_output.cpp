@@ -78,7 +78,7 @@ struct HostTest {
         h.cursor=cursor;h.action(2);assert(h.status==saved);
       }
     }
-    const std::array<int,8> order{0,1,2,13,Host::DISPLAY_CURSOR,9,10,11};
+    const std::array<int,9> order{0,1,2,13,Host::DISPLAY_CURSOR,Host::CONTROLS_CURSOR,9,10,11};
     h.cursor=0;
     for(unsigned i=1;i<=order.size();++i){h.action(1);assert(h.cursor==order[i%order.size()]);}
     for(unsigned i=1;i<=order.size();++i){h.action(0);assert(h.cursor==order[(order.size()-i)%order.size()]);}
@@ -89,7 +89,8 @@ struct HostTest {
     assert(((h.status>>5)&3)==1);
     assert(h.mainMenuRow(Host::ANALOG_CURSOR)<0);
     assert(h.osd_rows[10]==h.frame.renderRow(10,"",false,nds_osd::arrow_right));
-    h.cursor=Host::DISPLAY_CURSOR;h.action(1);assert(h.cursor==Host::LID_CURSOR);
+    h.cursor=Host::DISPLAY_CURSOR;h.action(1);assert(h.cursor==Host::CONTROLS_CURSOR);
+    h.action(1);assert(h.cursor==Host::LID_CURSOR);
     const auto scaled=h.status;h.cursor=Host::ANALOG_CURSOR;h.action(2);assert(h.status==scaled);
     // Regression from the rig: a saved CRT-On bit must not override the
     // selected digital layout when the FPGA disables split for vga_scaler.

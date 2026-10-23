@@ -722,6 +722,7 @@ R"({
       std::string text;
       if (!row) text = " " + std::string(LOAD_LABEL);
       else if (row == 1) text = " Boot DS firmware";
+      else if (row == 2) text = " Controls                   " + std::string(1,char(0x16));
       else if (row == 5) text = " Touch Rotation:      Normal";
       else if (row >= 3 && row <= 8) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
       else if (row == 9) text = " CRT Mode:               Off";

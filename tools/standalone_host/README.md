@@ -62,6 +62,24 @@ menu behavior, persistence and the reported sideways-game directions.
 
 ## Controller motion sensors
 
+**Controls → Right Stick Range** expands the stylus reach for controllers that
+cannot reach the touchscreen corners. Choose **100%, 125%, 150%, 175% or 200%**.
+Start at **150%** for limited diagonal travel, then use the lowest setting that
+reaches all four corners. Higher values reach the edges earlier and leave less
+stick travel for fine positioning. **100%** is the unchanged default.
+
+The setting applies when closing the menu, including a stick already held off
+center. **System → Save settings** keeps it in the kit's `NDS_stick.cfg`
+(`NDS-StickRange-v1`, then the percentage on the next line). It applies to all
+controllers using that kit. Missing/invalid files and **Reset settings** select
+100%. Mouse input, the 3% stick dead zone, touch rotation and button mappings
+retain their behavior. The host applies integer gain and clamps the coordinates
+at input events; the FPGA and renderer are unchanged.
+
+`test_host_touch_range.cpp` checks actual evdev-to-SPI corner reach, rotated
+input, default coordinate equivalence, mouse/button isolation, menu paths and
+settings persistence.
+
 Motion-sensor devices are ignored automatically. This keeps DualSense and
 DualShock 4 gyro reports from overwriting the right-stick stylus position,
 including small sensor changes while the controller is resting. The regular

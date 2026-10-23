@@ -33,7 +33,7 @@ struct HostTest {
       assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
       assert(h.osd_rows[5]==h.frame.renderRow(5," Display options            " + std::string(1,char(0x16)),false,nds_osd::arrow_right));
       std::vector<int> order{0,1,2};if(!(flags&(1<<2)))order.push_back(Host::ANALOG_CURSOR);
-      order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
+      order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::CONTROLS_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
       cycle(h,order);
       for(int back : {2,3,5,4}) {
         // Reach the submenu only using the real public navigation path.
