@@ -19,6 +19,20 @@ EXPECTED_WC = "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113"
 NORMAL_HELPER_SHA = "91ce15eed06269380b78ba505e6f5cb19eeb99d3845ce21fb176566a390febe3"
 HELPER = KIT / "support/nds_hybrid_3d_service"
 SD_ROOT = Path("/media/fat")
+# Documented installation paths, relative to the SD root. Only Main binaries
+# belong here, never the UI children or background launcher services.
+# Sources and compatibility limits: docs/LAUNCHER_COMPATIBILITY.md.
+MAIN_PATHS = (
+    "MiSTer",
+    "MiSTer_Physical-CD",
+    "MiSTer-disc",
+    "MiSTer-disc-RA",
+    "MiSTer_RA",
+    "zaparoo/MiSTer_Zaparoo",
+    "degauss/MiSTer_Degauss",
+    "degauss/MiSTer_RA_Degauss",
+    "ConsoleMode/MiSTer_ConsoleMode",
+)
 EXPECTED_HELPER = "5510089f11be99c2bf56e80bca4cc784ccbbc418ce951514d78d352140a151a8"
 EXPECTED_CORE = "3d0516778d0805ddef8da30e3ef01d55d4d6fed5ed677fb16036ca56ef1fdfee"
 EXPECTED_KICKSTART = "1426479fabdf911ef8395abb4a74000ac96fb096a564022ec5056f927c1ad20d"
@@ -76,18 +90,50 @@ def alive(p):
 
 
 def mains():
+    # Linux truncates comm to 15 bytes; Physical-CD's name cannot fit there.
+    # Match the actual executable, never argv or a broad MiSTer* prefix.
+    executables = {str(SD_ROOT.resolve() / name) for name in MAIN_PATHS}
     out = []
     for p in Path("/proc").iterdir():
         try:
-            if (
-                p.name.isdigit()
-                and (p / "comm").read_text().strip() == "MiSTer"
-                and epoch(int(p.name))
-            ):
-                out.append(ident(int(p.name)))
+            if not p.name.isdigit():
+                continue
+            process = ident(int(p.name))
+            executable = os.readlink(p / "exe")
+            # Count an unlinked frontend as an owner too. Validation below
+            # refuses takeover when that executable can no longer be restored.
+            target = executable[:-10] if executable.endswith(" (deleted)") else executable
+            if target in executables and alive(process):
+                process["exe"] = executable
+                out.append(process)
         except (FileNotFoundError, ProcessLookupError, NotADirectoryError):
             pass
     return out
+
+
+def main_executable(value):
+    """Validate a supported, installed frontend before executing it."""
+    executable = Path(value)
+    if (executable not in {SD_ROOT.resolve() / name for name in MAIN_PATHS}
+            or executable.resolve(strict=True) != executable
+            or not executable.is_file() or not os.access(executable, os.X_OK)):
+        raise RuntimeError("Unsupported or unavailable MiSTer executable: " + str(executable))
+    return executable
+
+
+def require_main():
+    processes = mains()
+    prerequisite(len(processes) == 1,
+                 "Expected one supported MiSTer Main process; found %d" % len(processes))
+    process = processes[0]
+    try:
+        executable = main_executable(process["exe"])
+        # A replacement installed over the running binary is not that process.
+        same = executable.samefile(Path("/proc/%d/exe" % process["pid"]))
+    except (OSError, RuntimeError, ValueError) as error:
+        prerequisite(False, "Cannot restore the running MiSTer frontend: " + str(error))
+    prerequisite(same and alive(process), "MiSTer frontend changed during validation; retry launch")
+    return process
 
 
 def kill(p):
@@ -187,9 +233,13 @@ def recover(state):
         restore_bootstrap(KIT, SD_ROOT)
         started_main = not mains()
         if started_main:
+            # Old leases predate executable recording and used stock Main.
+            executable = main_executable(state.get("original_main", {}).get(
+                "exe", str(SD_ROOT.resolve() / "MiSTer")))
             with open(RUNTIME / "recovery-main.log", "wb", buffering=0) as log:
                 subprocess.Popen(
-                    ["/media/fat/MiSTer", str(CORE) if core_name() == "NDS" else "/media/fat/menu.rbf"],
+                    [str(executable), str(CORE) if core_name() == "NDS" else "menu.rbf"],
+                    cwd=str(SD_ROOT),
                     stdin=subprocess.DEVNULL,
                     stdout=log,
                     stderr=log,
@@ -199,7 +249,9 @@ def recover(state):
         # A command FIFO with a live reader proves Main reached its event loop.
         wait_for(lambda: len(mains()) == 1, 15)
         previous_main = mains()[0]
-        cmd("load_core /media/fat/menu.rbf", 30)
+        # Main forks route this alias to their own menu core. An absolute
+        # stock-menu path bypasses that routing in Zaparoo and Degauss.
+        cmd("load_core menu.rbf", 30)
         # Loading an RBF replaces Main. Require the previous epoch to exit so
         # an old CORENAME=MENU file cannot satisfy recovery prematurely.
         wait_for(lambda: not alive(previous_main) and core_name() == "MENU"
@@ -232,6 +284,7 @@ def recover(state):
                     at=time.time(),
                     core=core_name(),
                     reason=state.get("reason", "normal exit"),
+                    original_main=state.get("original_main"),
                     selected_core=str(target) if target else None,
                     rejected_core=state.get("selected_core_rejected"),
                     message=state.get("selected_core_message"),
@@ -392,7 +445,7 @@ def preflight():
     prerequisite(os.geteuid() == 0, "Launch this script as the MiSTer root user")
     for program in ("sh", "sha256sum", "taskset", "start-stop-daemon", "pidof", "insmod", "rmmod"):
         prerequisite(shutil.which(program) is not None, "Missing system command: " + program)
-    for path in (SD_ROOT / "MiSTer", SD_ROOT / "menu.rbf", Path("/dev/mem"), Path("/dev/MiSTer_cmd")):
+    for path in (SD_ROOT / "menu.rbf", Path("/dev/mem"), Path("/dev/MiSTer_cmd")):
         prerequisite(path.exists(), "Missing MiSTer system file: " + str(path))
     for path, expected in ((CORE, EXPECTED_CORE), (HELPER, EXPECTED_HELPER),
                            (Path(KICK), EXPECTED_KICKSTART),
@@ -412,7 +465,7 @@ def preflight():
                      if x.startswith(b"vermagic=")), b"").decode("ascii", "replace")
     prerequisite(vermagic.split() and vermagic.split()[0] == os.uname().release,
                  "The included write-combining module does not match this kernel")
-    prerequisite(len(mains()) == 1, "Expected one normal MiSTer frontend")
+    require_main()
     prerequisite(not Path("/tmp/nds-standalone-guard-ready").exists(),
                  "A standalone session or recovery is already active")
     validate_previous_renderer()
@@ -472,7 +525,7 @@ def main():
         sha(KIT / "nds_standalone_host")
         == json.loads((KIT / "manifest.json").read_text())["host_sha256"]
     ), "Host mismatch"
-    assert len(mains()) == 1, "Expected one normal MiSTer frontend"
+    original_main = require_main()
     assert not Path(
         "/tmp/nds-standalone-guard-ready"
     ).exists(), "Recovery guard already active"
@@ -482,7 +535,7 @@ def main():
         supervisor=ident(os.getpid()),
         started=time.monotonic(),
         phase="bootstrap",
-        original_main=mains()[0],
+        original_main=original_main,
         config=Path("/media/fat/config/NDS_v1.CFG").read_bytes().hex() if Path("/media/fat/config/NDS_v1.CFG").exists() else None,
     )
 
@@ -519,7 +572,7 @@ def main():
     try:
         stage("enter normal menu")
         if core_name() != "MENU":
-            cmd("load_core /media/fat/menu.rbf")
+            cmd("load_core menu.rbf")
             wait_for(lambda: core_name() == "MENU")
         stage("stop previous helper")
         stop_previous_renderer()

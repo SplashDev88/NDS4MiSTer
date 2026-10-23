@@ -18,7 +18,7 @@ class Preflight(unittest.TestCase):
         self.stack = contextlib.ExitStack(); self.addCleanup(self.stack.close)
         def mockpath(*args):
             result = Path(*args)
-            return self.root/str(result).lstrip('/') if str(result).startswith(('/dev/', '/sys/', '/proc/', '/tmp/')) and not str(result).startswith(str(self.root)) else result
+            return self.root/str(result).lstrip('/') if (str(result)=='/proc' or str(result).startswith(('/dev/', '/sys/', '/proc/', '/tmp/'))) and not str(result).startswith(str(self.root)) else result
         self.stack.enter_context(patch.object(s,'Path',side_effect=mockpath))
         for name,value in [('KIT',self.kit),('SD_ROOT',self.root/'media/fat'),('CORE',self.kit/'NDS_Standalone.rbf'),('HELPER',self.kit/'support/nds_hybrid_3d_service'),('KICK',str(self.kit/'Kickstart.sh'))]:
             self.stack.enter_context(patch.object(s,name,value))
@@ -37,7 +37,9 @@ class Preflight(unittest.TestCase):
         self.stack.enter_context(patch.object(s.os,'geteuid',return_value=0))
         self.stack.enter_context(patch.object(s.os,'uname',return_value=SimpleNamespace(release='5.15.1-MiSTer')))
         self.stack.enter_context(patch.object(s.shutil,'which',return_value='/bin/tool'))
-        self.stack.enter_context(patch.object(s,'mains',return_value=[{'pid':12,'epoch':'a'}]))
+        process=self.root/'proc/12';process.mkdir(parents=True)
+        (process/'stat').write_text('12 (MiSTer) S '+'0 '*18+'100 0\n')
+        (process/'exe').symlink_to(self.paths['MiSTer'].resolve())
         self.run=self.stack.enter_context(patch.object(s.subprocess,'run'))
         self.spawn=self.stack.enter_context(patch.object(s.subprocess,'Popen'))
         self.command=self.stack.enter_context(patch.object(s,'cmd'))
@@ -50,6 +52,24 @@ class Preflight(unittest.TestCase):
         self.run.assert_called_with(['sh',s.KICK,'preflight'],check=True,timeout=15,stdout=s.subprocess.DEVNULL)
         self.assertFalse((s.SD_ROOT/'Scripts/NDS_Kickstart.sh').exists())
         self.assertFalse((self.kit/'NDS_v1.CFG').exists())
+    def test_physical_cd_passes_preflight_without_stock_binary(self):
+        alternate=self.paths['MiSTer'].with_name('MiSTer_Physical-CD')
+        self.paths['MiSTer'].rename(alternate)
+        process=self.root/'proc/12'
+        (process/'exe').unlink();(process/'exe').symlink_to(alternate.resolve())
+        (process/'stat').write_text('12 (MiSTer_Physical) S '+'0 '*18+'100 0\n')
+        s.preflight();self.no_changes()
+        self.assertEqual(self.run.call_count,2)
+    def test_two_frontends_reject_before_hardware_action(self):
+        process=self.root/'proc/13';process.mkdir()
+        (process/'stat').write_text('13 (MiSTer) S '+'0 '*18+'101 0\n')
+        (process/'exe').symlink_to(self.paths['MiSTer'].resolve())
+        with self.assertRaisesRegex(RuntimeError,'found 2'):s.preflight()
+        self.no_changes();self.run.assert_not_called()
+    def test_missing_frontend_rejects_before_hardware_action(self):
+        (self.root/'proc/12/exe').unlink()
+        with self.assertRaisesRegex(RuntimeError,'found 0'):s.preflight()
+        self.no_changes();self.run.assert_not_called()
     def test_hash_mismatch_rejects_before_hardware_action(self):
         self.paths['NDS_Standalone.rbf'].write_bytes(b'wrong')
         with self.assertRaisesRegex(RuntimeError,'checksum mismatch'):s.preflight()
@@ -140,7 +160,7 @@ class Handoff(unittest.TestCase):
             events=[];old={'pid':234,'epoch':'a'}
             with patch.object(s,'KIT',root),patch.object(s,'SD_ROOT',root),patch.object(s,'RUNTIME',root),patch.object(s,'kill',side_effect=lambda p:events.append('kill')),patch.object(s.fcntl,'flock',side_effect=lambda *a:events.append('lock')),patch.object(s.subprocess,'run',side_effect=lambda args,**kwargs:events.append('helper '+args[-1])),patch.object(s.subprocess,'Popen') as spawn,patch.object(s,'mains',return_value=[old]),patch.object(s,'core_name',return_value='MENU'),patch.object(s,'alive',return_value=False),patch.object(s,'cmd',side_effect=lambda command,timeout:events.append(command)):
                 s.recover({'done':True,'host_returncode':0,'selected_core':str(target)})
-            self.assertEqual(events,['kill','lock','helper stop','load_core /media/fat/menu.rbf'])
+            self.assertEqual(events,['kill','lock','helper stop','load_core menu.rbf'])
             spawn.assert_not_called()
             receipt=json.loads((root/'recovery.json').read_text())
             self.assertIsNone(receipt['selected_core']);self.assertEqual(receipt['rejected_core'],str(target.resolve()))

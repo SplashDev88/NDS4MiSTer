@@ -10,6 +10,17 @@ Build this frontend using `build.sh`. Its menu options are generated from the in
 
 Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_*.py"` from the repository root, plus the C++ test programs in this directory (including `test_storage.cpp` and `test_host_storage.cpp`). These tests use a fake SPI bus; they do not operate hardware.
 
+The supervisor recognizes the documented Main executable paths for stock,
+Physical-CD, Zaparoo, Degauss, RetroAchievements, mister-disc and Console Mode
+through `/proc/PID/exe`. It requires exactly one live Main and verifies that its
+installed executable can be restarted. The original executable is recorded in
+the recovery lease before any core reload. Recovery uses Main's `menu.rbf`
+alias so forks can select their own menu core. UI child processes and launcher
+services are not Main owners. `test_frontends.py` exercises discovery, reloads,
+recovery, ambiguous owners, PID reuse and unavailable binaries without hardware.
+See [launcher compatibility](../../docs/LAUNCHER_COMPATIBILITY.md) for exact
+paths, sources, Zaparoo commands and the remaining hardware validation.
+
 Private split.8.4 adds the existing-menu `DV Target` row and F4 startup Advanced
 Options. Both use `NDS_video.cfg` (`NDS-DirectVideo-v1` followed by `crt` or
 `retrotink`). Missing/unrecognized preferences safely default to CRT without a

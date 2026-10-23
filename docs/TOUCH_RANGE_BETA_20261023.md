@@ -25,6 +25,14 @@ public and FMV RC1 installations are retained.
 
 ## Validation
 
+Beta3 adds alternative Main discovery and recovery for Physical-CD, mister-disc,
+RetroAchievements, Zaparoo, Degauss and Console Mode at their documented paths.
+It remembers the running Main executable and restores it when the standalone
+session exits. The 63-test Python suite passes, including all nine accepted
+executable paths. Real alternate-frontend installations still need hardware
+validation. See [launcher compatibility](LAUNCHER_COMPATIBILITY.md) for setup
+and scope. The host, renderer, FPGA and FMV preparation files match Beta2.
+
 Beta2 removes the Controls submenu. Five focused host test programs were rerun
 for the root-menu adjustment: touch range, touch rotation, general host, display
 menu and split output. The range math and settings format are unchanged; the
