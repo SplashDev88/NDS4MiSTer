@@ -813,6 +813,14 @@ public:
         }
     }
 
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    void configure_movie_receiver_before_initialize(bool enabled)
+    {
+        if (nds_) throw std::logic_error("Movie receiver selection after initialization");
+        fmv_receiver_enabled_ = enabled;
+    }
+#endif
+
     ~Hybrid3DService()
     {
         stop_replay_worker();
@@ -1257,6 +1265,9 @@ private:
         args.JIT = std::nullopt;
         nds_ = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
         nds_->Reset();
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+        nds_->GPU.FmvReceiverEnabled = fmv_receiver_enabled_;
+#endif
         const char* direct_output = std::getenv("NDS4MISTER_DIRECT_FULL_VIDEO");
         direct_full_video_output_ = !direct_output || std::strcmp(direct_output, "0") != 0;
         // OAM enters through ARM9 writes; direct external marks are dirty hints.
@@ -5583,6 +5594,9 @@ private:
     bool matched_full_rate_ = false;
     bool matched_recovery_skip_enabled_ = false;
     bool integral_texture_spans_ = false;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    bool fmv_receiver_enabled_ = false;
+#endif
     nds4mister::replay::MatchedDisplayRecovery matched_recovery_pacer_;
     std::uint32_t matched_next_line_ = 0;
     bool asynchronous_arm_video_replay_ = false;
@@ -7745,6 +7759,11 @@ void run_self_test()
         auto& gpu = nds->GPU;
         auto& fmv = gpu.FmvPackedColor;
         gpu.VRAMMap_LCDC = 0x1ff;
+        gpu.WriteVRAM_LCDC<melonDS::u32>(0x06800000 + fmv.Header, fmv.Begin);
+        if (gpu.FmvReceiverEnabled || fmv.Armed[0] || fmv.Transactions[0] ||
+            gpu.ReadVRAM_LCDC<melonDS::u32>(0x06800000 + fmv.Header) != fmv.Begin)
+            self_test_fail("disabled movie receiver changed ordinary VRAM");
+        gpu.FmvReceiverEnabled = true;
         std::array<const void*, 4> buffers {};
         for (unsigned bank = 0; bank < buffers.size(); ++bank) {
             gpu.WriteVRAM_LCDC<melonDS::u32>(
@@ -7767,6 +7786,10 @@ void run_self_test()
                 self_test_fail("non-FMV VRAM write changed");
         }
         std::cout << "H3D_FMV_SMALL_VRAM_BANKS_PASS\n";
+        gpu.Reset();
+        if (gpu.FmvReceiverEnabled)
+            self_test_fail("GPU reset inherited a movie receiver selection");
+        std::cout << "H3D_FMV_SESSION_GATE_PASS\n";
     }
 #endif
     {
@@ -11234,6 +11257,9 @@ try {
                 std::strcmp(frame_skip_requested, "nsmb-half") == 0;
             bool nsmb_recovery = false;
             bool integral_texture_spans = false;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            bool fmv_receiver = false;
+#endif
             unsigned matrix_prefix_mode = !prefix_requested ? 0u :
                 std::strcmp(prefix_requested, "verify") == 0 ? 1u :
                 std::strcmp(prefix_requested, "fast") == 0 || automatic_query_profile ? 2u : 0u;
@@ -11248,6 +11274,9 @@ try {
                     continue;
                 profile_session = selected_session;
                 integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected);
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+                fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
+#endif
                 if (automatic_query_profile)
                     matrix_prefix_mode = nds4mister::replay::game_query_prefix_mode(selected.profile);
                 // Controlled NSMB-only comparison: reuse the existing tested
@@ -11265,6 +11294,9 @@ try {
                     << " identified=" << selected.identified
                     << " recovery_skip=" << nsmb_recovery
                     << " integral_texture_spans=" << integral_texture_spans
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+                    << " fmv_receiver=" << fmv_receiver
+#endif
                     << " display_cadence=" << (matched_full_rate ? 1 : 2)
                     << " header_crc32=" << std::hex << selected.identity.header_crc32;
                 std::cout << profile_log.str() << std::endl;
@@ -11298,6 +11330,9 @@ try {
                 timing_profile_only,
                 nsmb_recovery,
                 integral_texture_spans);
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            candidate->configure_movie_receiver_before_initialize(fmv_receiver);
+#endif
             const bool initialized = candidate->initialize(profile_session);
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.

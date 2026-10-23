@@ -61,6 +61,27 @@ struct GameQuerySelection {
     bool identified = false;
 };
 
+// Fingerprints of the qualified virtual cartridge headers, after the loader
+// has verified the full original ROM and assembled its guarded movie hooks.
+// This only enables the receiver; it does not select or patch a guest player.
+inline bool automatic_movie_receiver_profile(const GameQuerySelection& selected)
+{
+    if (!selected.identified) return false;
+    constexpr GameQueryIdentity movies[] = {
+        {{{'B','2','K','J'}}, 0, 0x489ec758u},
+        {{{'Y','Q','U','E'}}, 0, 0xe8c32d96u},
+        {{{'B','M','T','E'}}, 0, 0xdcfbb2bbu},
+        {{{'A','X','F','E'}}, 0, 0x2725ad29u},
+        {{{'Y','W','S','E'}}, 0, 0xc7e49123u},
+    };
+    for (const auto& movie : movies)
+        if (selected.identity.code == movie.code &&
+            selected.identity.revision == movie.revision &&
+            selected.identity.header_crc32 == movie.header_crc32)
+            return true;
+    return false;
+}
+
 // The measured sprite-raster shortcut is selected independently of query
 // reply policy. Unknown/revised headers retain the established raster path.
 inline bool castlevania_integral_texture_profile(const GameQuerySelection& selected)

@@ -309,7 +309,7 @@ public:
             *(T*)&VRAM[bank][addr] = val;
             VRAMDirty[bank][addr / VRAMDirtyGranularity] = true;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
-            ApplyPackedColor(bank, addr, sizeof(T));
+            if (FmvReceiverEnabled) ApplyPackedColor(bank, addr, sizeof(T));
 #endif
         }
     }
@@ -455,7 +455,7 @@ public:
             VRAMDirty[2][(addr & 0x1FFFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_C[addr & 0x1FFFF] = val;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
-            ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T));
+            if (FmvReceiverEnabled) ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T));
 #endif
         }
         if (mask & (1<<7))
@@ -514,7 +514,8 @@ public:
         };
         if (mask & (1u << 2)) write(2, VRAM_C, addr & 0x1FFFF);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
-        if ((mask & (1u << 2)) && ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T)))
+        if (FmvReceiverEnabled && (mask & (1u << 2)) &&
+            ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T)))
             changed |= 1u << 2;
 #endif
         if (mask & (1u << 7)) write(7, VRAM_H, addr & 0x7FFF);
@@ -548,7 +549,7 @@ public:
             VRAMDirty[3][(addr & 0x1FFFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_D[addr & 0x1FFFF] = val;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
-            ApplyPackedColor(3, addr & 0x1FFFF, sizeof(T));
+            if (FmvReceiverEnabled) ApplyPackedColor(3, addr & 0x1FFFF, sizeof(T));
 #endif
         }
         if (mask & (1<<8))
@@ -729,6 +730,11 @@ public:
 
     u32 CaptureCnt;
     bool CaptureEnable;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    // Selected once, before replay, for a verified virtual movie cartridge.
+    // Keep the receiver call out of ordinary games' VRAM-write paths.
+    bool FmvReceiverEnabled = false;
+#endif
 
     alignas(u64) u8 Palette[2*1024] {};
     alignas(u64) u8 OAM[2*1024] {};

@@ -129,6 +129,7 @@ void GPU::ResetVRAMCache() noexcept
 void GPU::Reset() noexcept
 {
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+    FmvReceiverEnabled = false;
     FmvPackedColor.Next.fill(0);
     FmvPackedColor.Armed.fill(false);
     FmvPackedColor.DirtyAll.fill(false);

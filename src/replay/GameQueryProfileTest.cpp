@@ -52,6 +52,35 @@ int main(int argc, char** argv)
     auto short_second = read_game_query_profile([&](GameQueryHeader&) { return ++calls == 1; });
     check(!short_second.identified && short_second.profile == GameQueryProfile::Fast, "second read failure");
     check(!castlevania_integral_texture_profile(short_second), "failed second read disables raster shortcut");
+    check(!automatic_movie_receiver_profile(raced) &&
+          !automatic_movie_receiver_profile(short_second), "unstable identity disables movie receiver");
+    check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, known, true}),
+          "Castlevania guest-only optimization does not enable movie receiver");
+    const GameQueryIdentity movies[] = {
+        {{{'B','2','K','J'}}, 0, 0x489ec758u},
+        {{{'Y','Q','U','E'}}, 0, 0xe8c32d96u},
+        {{{'B','M','T','E'}}, 0, 0xdcfbb2bbu},
+        {{{'A','X','F','E'}}, 0, 0x2725ad29u},
+        {{{'Y','W','S','E'}}, 0, 0xc7e49123u},
+    };
+    for (const auto& movie : movies) {
+        check(automatic_movie_receiver_profile({GameQueryProfile::Fast, movie, true}),
+              "qualified virtual header enables receiver");
+        check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, movie, false}),
+              "missing header does not inherit movie receiver");
+        auto changed = movie; ++changed.revision;
+        check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+              "other revision disables movie receiver");
+        changed = movie; changed.header_crc32 ^= 1;
+        check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+              "other header disables movie receiver");
+        for (unsigned byte = 0; byte < 4; ++byte) {
+            changed = movie; changed.code[byte] ^= 1;
+            check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+                  "other game disables movie receiver");
+        }
+    }
+    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=5 unknown_off=1 reset_default_off=1\n";
 
     // Optional private fixtures stay outside the source tree and release.
     if (argc == 3) {
