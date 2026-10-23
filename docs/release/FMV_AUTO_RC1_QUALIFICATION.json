@@ -1,0 +1,930 @@
+{
+  "ready": true,
+  "selected_helper": "gated",
+  "private_test_ready": true,
+  "public_release_qualified": false,
+  "runtime_source_revision": "b540c0e894bec8935108a0cd0dbc9442ccf2855d",
+  "host_source_revision": "dec7eb264fd520b7eccfab29cad4aff158ec52e8",
+  "component_sha256": {
+    "NDS_Standalone.rbf": "4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26",
+    "nds_standalone_host": "57b3ca17c563edbc18b23b566d65d0a1f8f4188964ee4c99c89a47781d6a7734",
+    "support/nds_hybrid_3d_service": "5b174c97a2dee7a10da6f3e9d0011ecd08a08760aef8849accbb902c15bee768",
+    "supervisor.py": "b7861fdc46345f213eba8c01b53dcc835cf8a84452e8d0c2a007debe5016e08d",
+    "Kickstart.sh": "1426479fabdf911ef8395abb4a74000ac96fb096a564022ec5056f927c1ad20d"
+  },
+  "native_movie_checks_passed": true,
+  "movies": {
+    "CHRONO": {
+      "label": "CHRONO_AUTO_GATE_A",
+      "pass": true,
+      "capture_seconds": 230,
+      "recording_name": "2026-10-23_02-04-52_NDS-test.mp4",
+      "original_source_verified": true,
+      "normal_source_applied": true,
+      "clean_exit": true,
+      "transport_fault_samples": 0,
+      "capture_drops": {
+        "renderSkippedFrames": 0,
+        "outputSkippedFrames": 0
+      },
+      "strict_zero_capture_drop_pass": true,
+      "decoder_counters": {
+        "conversions": 2596,
+        "filter_conversions": 0,
+        "video_decodes": 2606,
+        "video_errors": 0,
+        "cached_conversions": 2596
+      },
+      "movie_windows": {
+        "selected": {
+          "top_hash": {
+            "matched_transitions": 2174,
+            "interval_ms_percentiles_50_95_99_100": [
+              67.01763649471104,
+              68.89979189727455,
+              70.87198016408365,
+              74.53726802486926
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.17146031379766669,
+              2.284334816000921,
+              15.905363317791553,
+              20.153297993346087
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.0000117988541937,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -19.660864840261638,
+              1.763541775289923,
+              15.272798745427274,
+              17.26396125741303
+            ]
+          }
+        }
+      },
+      "audio": {
+        "nonquiet_100ms_windows": 1150,
+        "correlation_percentiles": [
+          0.3813673827938748,
+          0.7689014343510664,
+          0.912229882466549,
+          0.9813637620867324,
+          0.9995715597454394
+        ],
+        "rms_gain": 0.4999066502337276,
+        "dropout_windows": [],
+        "clock_fit": [
+          1.0000121208452648,
+          73.14345014018086
+        ],
+        "timing_residual_ms": [
+          -3.007699063260816,
+          0.02352472353095436,
+          0.3529011278544658
+        ]
+      },
+      "audio_scope": "Software soundtrack versus captured HDMI audio; 100ms nonquiet windows, downsampled to 6kHz. Tests repeats/dropouts and timing stability. Does not establish audio/video lip-sync without video alignment.",
+      "load_seconds": 37.204
+    },
+    "NINO": {
+      "label": "NINO_AUTO_GATE_B",
+      "pass": true,
+      "capture_seconds": 480,
+      "recording_name": "2026-10-23_02-47-47_NDS-test.mp4",
+      "original_source_verified": true,
+      "normal_source_applied": true,
+      "clean_exit": true,
+      "transport_fault_samples": 0,
+      "capture_drops": {
+        "renderSkippedFrames": 1,
+        "outputSkippedFrames": 0
+      },
+      "strict_zero_capture_drop_pass": false,
+      "decoder_counters": {
+        "conversions": 7498,
+        "filter_conversions": 0,
+        "video_decodes": 7528,
+        "video_errors": 0,
+        "cached_conversions": 7498
+      },
+      "movie_windows": {
+        "selected": {
+          "top_hash": {
+            "matched_transitions": 1144,
+            "interval_ms_percentiles_50_95_99_100": [
+              83.78162002190948,
+              85.95350435352884,
+              91.099395122146,
+              102.00125101255253
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.22816884109033708,
+              2.9643410896397864,
+              17.233206895251666,
+              19.67422834491117
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.000110010580446,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -23.358756268862635,
+              0.2906763693317771,
+              114.5762485609157,
+              117.18688276596367
+            ]
+          },
+          "bottom_hash": {
+            "matched_transitions": 1186,
+            "interval_ms_percentiles_50_95_99_100": [
+              83.75352452276275,
+              85.95312925172038,
+              93.21292859967832,
+              102.00125101255253
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.22240450556409996,
+              2.9628255901315015,
+              17.207502455056563,
+              19.67422834491117
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.0002219507574197,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -29.71143677132204,
+              -2.508994977688417,
+              108.6486421135487,
+              112.46151610976085
+            ]
+          }
+        },
+        "first_opening": {
+          "top_hash": {
+            "matched_transitions": 1225,
+            "interval_ms_percentiles_50_95_99_100": [
+              83.77594500780106,
+              86.35108603630215,
+              90.35009342711419,
+              102.08494000835344
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.20391402719610596,
+              3.5184849378936147,
+              17.76833233333008,
+              34.599444320278394
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.000006124303023,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -21.37673005927354,
+              1.0817522997967899,
+              11.587370035704225,
+              27.674565208144486
+            ]
+          },
+          "bottom_hash": {
+            "matched_transitions": 1251,
+            "interval_ms_percentiles_50_95_99_100": [
+              83.77601497340947,
+              86.31581199006177,
+              90.11666697915643,
+              102.08494000835344
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.21230501076274777,
+              3.3494188299698635,
+              17.700907501623675,
+              34.599444320278394
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.000009676770499,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -21.22679800959304,
+              0.9554465650580823,
+              11.58914149506018,
+              27.638638217467815
+            ]
+          }
+        }
+      },
+      "audio": {
+        "nonquiet_100ms_windows": 900,
+        "correlation_percentiles": [
+          0.7783318631484988,
+          0.8354125223333865,
+          0.9089381167881496,
+          0.9767344747345585,
+          0.9997201406809662
+        ],
+        "rms_gain": 0.5004640156327749,
+        "dropout_windows": [],
+        "clock_fit": [
+          1.000007892331739,
+          507.86775456580096
+        ],
+        "timing_residual_ms": [
+          -2.2372995704245113,
+          0.0004673152602663322,
+          2.5847075650062834
+        ]
+      },
+      "audio_scope": "Software soundtrack versus captured HDMI audio; 100ms nonquiet windows, downsampled to 6kHz. Tests repeats/dropouts and timing stability. Does not establish audio/video lip-sync without video alignment.",
+      "load_seconds": 202.369
+    },
+    "FF12": {
+      "label": "FF12_AUTO_GATE_A",
+      "pass": true,
+      "capture_seconds": 180,
+      "recording_name": "2026-10-23_02-28-07_NDS-test.mp4",
+      "original_source_verified": true,
+      "normal_source_applied": true,
+      "clean_exit": true,
+      "transport_fault_samples": 0,
+      "capture_drops": {
+        "renderSkippedFrames": 0,
+        "outputSkippedFrames": 0
+      },
+      "strict_zero_capture_drop_pass": true,
+      "decoder_counters": {
+        "conversions": 2690,
+        "filter_conversions": 0,
+        "video_decodes": 2432,
+        "video_errors": 0,
+        "cached_conversions": 2432
+      },
+      "movie_windows": {
+        "selected": {
+          "top_hash": {
+            "matched_transitions": 509,
+            "interval_ms_percentiles_50_95_99_100": [
+              83.69935001246631,
+              86.15750359604135,
+              89.3067997484468,
+              93.86143501615152
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.15264000464298988,
+              2.9046200068684414,
+              16.028508033256514,
+              18.920153336445367
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.0000263356820351,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -16.189590678550303,
+              0.390610279282555,
+              13.139819991774857,
+              14.466423890553415
+            ]
+          },
+          "bottom_hash": {
+            "matched_transitions": 499,
+            "interval_ms_percentiles_50_95_99_100": [
+              83.69935001246631,
+              86.14698809105903,
+              88.64629786810836,
+              93.86143501615152
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.15264000464298988,
+              2.9018366894367986,
+              16.039867977525898,
+              18.920153336445367
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.0000137717178903,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -15.878674748819321,
+              0.3381296410225332,
+              13.265251785051081,
+              14.373074052855372
+            ]
+          }
+        }
+      },
+      "audio": {
+        "nonquiet_100ms_windows": 450,
+        "correlation_percentiles": [
+          0.7742776871565201,
+          0.8384967755115131,
+          0.8998152688050948,
+          0.9599556864455496,
+          0.9982511139676847
+        ],
+        "rms_gain": 0.5008588447778564,
+        "dropout_windows": [],
+        "clock_fit": [
+          1.0000079874835317,
+          69.13219219367586
+        ],
+        "timing_residual_ms": [
+          -0.11712779961214892,
+          0.006814064612115089,
+          0.163759881516512
+        ]
+      },
+      "audio_scope": "Software soundtrack versus captured HDMI audio; 100ms nonquiet windows, downsampled to 6kHz. Tests repeats/dropouts and timing stability. Does not establish audio/video lip-sync without video alignment.",
+      "load_seconds": 29.748
+    },
+    "SONIC": {
+      "label": "SONIC_AUTO_GATE_A",
+      "pass": true,
+      "capture_seconds": 210,
+      "recording_name": "2026-10-23_02-33-14_NDS-test.mp4",
+      "original_source_verified": true,
+      "normal_source_applied": true,
+      "clean_exit": true,
+      "transport_fault_samples": 0,
+      "capture_drops": {
+        "renderSkippedFrames": 0,
+        "outputSkippedFrames": 0
+      },
+      "strict_zero_capture_drop_pass": true,
+      "decoder_counters": {
+        "conversions": 3954,
+        "filter_conversions": 0,
+        "video_decodes": 2960,
+        "video_errors": 0,
+        "cached_conversions": 2952
+      },
+      "movie_windows": {
+        "selected": {
+          "top_hash": {
+            "matched_transitions": 445,
+            "interval_ms_percentiles_50_95_99_100": [
+              66.99380301870406,
+              68.89026196440682,
+              70.0275589642115,
+              70.35999104846269
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.16453636701641017,
+              15.394490192274857,
+              17.763110038977175,
+              19.923850327572268
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 0.999478903447143,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -69.66672418639064,
+              3.724954731296748,
+              24.91004818817602,
+              26.327996514737606
+            ]
+          },
+          "bottom_hash": {
+            "matched_transitions": 520,
+            "interval_ms_percentiles_50_95_99_100": [
+              66.9697129924316,
+              69.06707448360976,
+              70.74509610130917,
+              74.54506104113534
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.16558398678689912,
+              15.691323235554572,
+              17.77892698887046,
+              18.985517280484032
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 0.999452360431388,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -62.15281324693933,
+              0.43767347233369946,
+              28.713926592026823,
+              29.739404271822423
+            ]
+          }
+        }
+      },
+      "audio": {
+        "nonquiet_100ms_windows": 320,
+        "correlation_percentiles": [
+          0.46153204176998885,
+          0.6028932301706965,
+          0.7264717365464352,
+          0.9181243107394151,
+          0.9989868701508923
+        ],
+        "rms_gain": 0.5040008322824421,
+        "dropout_windows": [],
+        "clock_fit": [
+          1.000007174392935,
+          72.72413222958059
+        ],
+        "timing_residual_ms": [
+          -0.09376379719583383,
+          0.008940397108858633,
+          0.07577262664426598
+        ]
+      },
+      "audio_scope": "Software soundtrack versus captured HDMI audio; 100ms nonquiet windows, downsampled to 6kHz. Tests repeats/dropouts and timing stability. Does not establish audio/video lip-sync without video alignment.",
+      "load_seconds": 32.267
+    },
+    "SJ": {
+      "label": "SJ_AUTO_GATE_A",
+      "pass": true,
+      "capture_seconds": 180,
+      "recording_name": "2026-10-23_02-38-57_NDS-test.mp4",
+      "original_source_verified": true,
+      "normal_source_applied": true,
+      "clean_exit": true,
+      "transport_fault_samples": 0,
+      "capture_drops": {
+        "renderSkippedFrames": 0,
+        "outputSkippedFrames": 0
+      },
+      "strict_zero_capture_drop_pass": true,
+      "decoder_counters": {
+        "conversions": 3060,
+        "filter_conversions": 3054,
+        "video_decodes": 3060,
+        "video_errors": 0,
+        "cached_conversions": 3060
+      },
+      "movie_windows": {
+        "selected": {
+          "top_hash": {
+            "matched_transitions": 2796,
+            "interval_ms_percentiles_50_95_99_100": [
+              33.80373600521125,
+              35.2500120352488,
+              38.314374483888976,
+              68.49872600287199
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.3783809754551726,
+              1.9993098188102465,
+              15.143113895283035,
+              18.12590263148195
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.0000189385706608,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -19.41522175911814,
+              0.9322372206952423,
+              17.08377218572422,
+              24.142504669725895
+            ]
+          }
+        }
+      },
+      "audio": {
+        "nonquiet_100ms_windows": 960,
+        "correlation_percentiles": [
+          0.44394896356382274,
+          0.8716198968283304,
+          0.9717206267202703,
+          0.9964035674478324,
+          0.9998468533073446
+        ],
+        "rms_gain": 0.4993287173979225,
+        "dropout_windows": [],
+        "clock_fit": [
+          1.0000080671096034,
+          97.83617789072773
+        ],
+        "timing_residual_ms": [
+          -0.10464082609473735,
+          0.0004741581278722151,
+          0.0931650656639249
+        ]
+      },
+      "audio_scope": "Software soundtrack versus captured HDMI audio; 100ms nonquiet windows, downsampled to 6kHz. Tests repeats/dropouts and timing stability. Does not establish audio/video lip-sync without video alignment.",
+      "load_seconds": 41.383
+    },
+    "CV": {
+      "label": "CV_AUTO_GATE_A",
+      "pass": true,
+      "capture_seconds": 140,
+      "recording_name": "2026-10-23_02-44-26_NDS-test.mp4",
+      "original_source_verified": true,
+      "normal_source_applied": true,
+      "clean_exit": true,
+      "transport_fault_samples": 0,
+      "capture_drops": {
+        "renderSkippedFrames": 0,
+        "outputSkippedFrames": 0
+      },
+      "strict_zero_capture_drop_pass": true,
+      "decoder_counters": {
+        "conversions": 0,
+        "filter_conversions": 0,
+        "video_decodes": 0,
+        "video_errors": 0,
+        "cached_conversions": 0
+      },
+      "movie_windows": {
+        "selected": {
+          "bottom_hash": {
+            "matched_transitions": 650,
+            "interval_ms_percentiles_50_95_99_100": [
+              100.2283304987941,
+              101.96541502373293,
+              103.26834252628032,
+              118.23499598540366
+            ],
+            "excess_delay_ms_percentiles_50_95_99_100": [
+              0.2092911716715662,
+              2.2623490763351106,
+              6.2925094942646345,
+              12.82346231801057
+            ],
+            "excess_over_50ms": 0,
+            "excess_over_100ms": 0,
+            "clock_scale": 1.0061072717178705,
+            "clock_residual_ms_percentiles_0_50_99_100": [
+              -219.86679133260623,
+              2.940143400337547,
+              161.5310591214802,
+              167.36176185077056
+            ]
+          }
+        }
+      },
+      "audio": {
+        "nonquiet_100ms_windows": 490,
+        "correlation_percentiles": [
+          0.8750145031028546,
+          0.8935474818739781,
+          0.9408690706457544,
+          0.9855986933000569,
+          0.9994597652120887
+        ],
+        "rms_gain": 0.49973504051224715,
+        "dropout_windows": [],
+        "clock_fit": [
+          1.000008012820513,
+          19.47138730769233
+        ],
+        "timing_residual_ms": [
+          -0.10525641084768722,
+          -0.005096154104933248,
+          0.0814423074473325
+        ]
+      },
+      "audio_scope": "Software soundtrack versus captured HDMI audio; 100ms nonquiet windows, downsampled to 6kHz. Tests repeats/dropouts and timing stability. Does not establish audio/video lip-sync without video alignment.",
+      "load_seconds": 1.704
+    }
+  },
+  "gameplay_controls": {
+    "CV": {
+      "variants": {
+        "BASE": {
+          "values": [
+            21.63692554373116,
+            21.571195362651135
+          ],
+          "active_seconds": [
+            20.012085317983292,
+            20.026706575008575
+          ],
+          "mean": 21.604060453191146,
+          "initial_save_sha256": "91ed7ba3e0734dfe28c94119989d7fc1a1f3deb80c70f4a0788c1c294d61e1f5"
+        },
+        "RC": {
+          "values": [
+            21.238772679256144,
+            21.389159383704506
+          ],
+          "active_seconds": [
+            20.01057247602148,
+            20.010136551980395
+          ],
+          "mean": 21.313966031480327,
+          "initial_save_sha256": "91ed7ba3e0734dfe28c94119989d7fc1a1f3deb80c70f4a0788c1c294d61e1f5"
+        }
+      },
+      "mean_change_percent": -1.3427773095680662,
+      "no_material_regression": true,
+      "scope": "Bounded matched save/input checks at 1 GHz. Completed screen updates may reuse images; these are not whole-game FPS or statistical equivalence.",
+      "scene": "Cave/bat room left of the save room, idle animation; fresh matched seeds, RC then baseline."
+    },
+    "NSMB": {
+      "variants": {
+        "BASE": {
+          "values": [
+            59.527345708332476,
+            59.49758719675721
+          ],
+          "active_seconds": [
+            20.56197845604038,
+            20.52184059098363
+          ],
+          "mean": 59.51246645254484,
+          "initial_save_sha256": "dbe70c28ca3d63a2084eca335cdc52d1538de373618c8f5f889b63f32cca84b5"
+        },
+        "RC": {
+          "values": [
+            59.5806340792663,
+            59.51403193748178
+          ],
+          "active_seconds": [
+            20.577155965962447,
+            20.532972816959955
+          ],
+          "mean": 59.54733300837404,
+          "initial_save_sha256": "dbe70c28ca3d63a2084eca335cdc52d1538de373618c8f5f889b63f32cca84b5"
+        }
+      },
+      "mean_change_percent": 0.058586978338404094,
+      "no_material_regression": true,
+      "scope": "Bounded matched save/input checks at 1 GHz. Completed screen updates may reuse images; these are not whole-game FPS or statistical equivalence.",
+      "scene": "World 2-5 repeated jumping."
+    },
+    "KART": {
+      "variants": {
+        "BASE": {
+          "values": [
+            23.03455888134145,
+            23.86880780161069
+          ],
+          "active_seconds": [
+            20.01340691500809,
+            20.02613636897877
+          ],
+          "mean": 23.45168334147607,
+          "initial_save_sha256": "4669efcb6d1fcdb1192fac21314860e93b887e2665401a8a2fa5d587f3dcae06"
+        },
+        "RC": {
+          "values": [
+            23.1815720064159,
+            24.091543905437796
+          ],
+          "active_seconds": [
+            20.015898829966318,
+            20.007019968994427
+          ],
+          "mean": 23.636557955926847,
+          "initial_save_sha256": "4669efcb6d1fcdb1192fac21314860e93b887e2665401a8a2fa5d587f3dcae06"
+        }
+      },
+      "mean_change_percent": 0.7883212977032317,
+      "no_material_regression": true,
+      "scope": "Bounded matched save/input checks at 1 GHz. Completed screen updates may reuse images; these are not whole-game FPS or statistical equivalence.",
+      "scene": "Figure-8 Circuit Time Trial, B Dasher; no AI racers; matched game-clock start."
+    }
+  },
+  "additional_gameplay_comparisons": {
+    "CV_first_gated_comparison": {
+      "variants": {
+        "BASE": {
+          "values": [
+            21.790545380857665,
+            21.63869775980309,
+            21.63951653496584,
+            21.591716578690896
+          ],
+          "active_seconds": [
+            20.00867772602942,
+            20.010446321975905,
+            20.009689186001197,
+            20.007672776991967
+          ],
+          "mean": 21.665119063579372,
+          "initial_save_sha256": "91ed7ba3e0734dfe28c94119989d7fc1a1f3deb80c70f4a0788c1c294d61e1f5"
+        },
+        "RC": {
+          "values": [
+            21.23344233468752,
+            21.270434562803665
+          ],
+          "active_seconds": [
+            20.01559583703056,
+            20.027799561037682
+          ],
+          "mean": 21.25193844874559,
+          "initial_save_sha256": "91ed7ba3e0734dfe28c94119989d7fc1a1f3deb80c70f4a0788c1c294d61e1f5"
+        }
+      },
+      "mean_change_percent": -1.9071236747937759,
+      "no_material_regression": true,
+      "scope": "Bounded matched save/input checks at 1 GHz. Completed screen updates may reuse images; these are not whole-game FPS or statistical equivalence."
+    },
+    "CV_all_gated_samples": {
+      "variants": {
+        "BASE": {
+          "values": [
+            21.790545380857665,
+            21.63869775980309,
+            21.63951653496584,
+            21.591716578690896,
+            21.63692554373116,
+            21.571195362651135
+          ],
+          "active_seconds": [
+            20.00867772602942,
+            20.010446321975905,
+            20.009689186001197,
+            20.007672776991967,
+            20.012085317983292,
+            20.026706575008575
+          ],
+          "mean": 21.644766193449964,
+          "initial_save_sha256": "91ed7ba3e0734dfe28c94119989d7fc1a1f3deb80c70f4a0788c1c294d61e1f5"
+        },
+        "RC": {
+          "values": [
+            21.23344233468752,
+            21.270434562803665,
+            21.238772679256144,
+            21.389159383704506
+          ],
+          "active_seconds": [
+            20.01559583703056,
+            20.027799561037682,
+            20.01057247602148,
+            20.010136551980395
+          ],
+          "mean": 21.28295224011296,
+          "initial_save_sha256": "91ed7ba3e0734dfe28c94119989d7fc1a1f3deb80c70f4a0788c1c294d61e1f5"
+        }
+      },
+      "mean_change_percent": -1.671600192412781,
+      "no_material_regression": true,
+      "scope": "Bounded matched save/input checks at 1 GHz. Completed screen updates may reuse images; these are not whole-game FPS or statistical equivalence."
+    },
+    "KART_grand_prix": {
+      "variants": {
+        "BASE": {
+          "values": [
+            27.486995810142407,
+            28.08173248616843
+          ],
+          "active_seconds": [
+            20.009462067042477,
+            20.013010247028433
+          ],
+          "mean": 27.78436414815542,
+          "initial_save_sha256": "4669efcb6d1fcdb1192fac21314860e93b887e2665401a8a2fa5d587f3dcae06"
+        },
+        "RC": {
+          "values": [
+            27.020470014660603,
+            27.734462463532743
+          ],
+          "active_seconds": [
+            20.02185749198543,
+            20.0112044980051
+          ],
+          "mean": 27.377466239096673,
+          "initial_save_sha256": "4669efcb6d1fcdb1192fac21314860e93b887e2665401a8a2fa5d587f3dcae06"
+        }
+      },
+      "mean_change_percent": -1.4644852294946609,
+      "no_material_regression": true,
+      "scope": "Bounded matched save/input checks at 1 GHz. Completed screen updates may reuse images; these are not whole-game FPS or statistical equivalence. Grand Prix includes AI and is less repeatable than Time Trial."
+    }
+  },
+  "gameplay_gate": "No slowdown greater than 3% in these bounded controls. Smaller variation remains measurable; this is not proof of exact parity or every-game behavior.",
+  "normal_menu_validation": {
+    "pass": true,
+    "default_launcher_without_rom": true,
+    "recent_selection_loaded_original_rom": true,
+    "original_filename_preserved": true,
+    "normal_save_path_verified": true,
+    "same_isolated_save_loaded_across_cold_sessions": true,
+    "normal_user_saves_protected": true,
+    "recents_restored_exactly": true,
+    "no_resident_preparation_worker": true,
+    "scope": "Normal menu and Recent Files on the new host, using an isolated Chrono Trigger save. Not an in-game save-write or full-game compatibility claim.",
+    "screenshots": [
+      "AUTO_RC_MENU_UI_START.png",
+      "AUTO_RC_MENU_UI_RECENTS.png",
+      "AUTO_RC_MENU_UI_LOADED.png"
+    ]
+  },
+  "same_host_reload_validation": {
+    "pass": true,
+    "same_host_process_across_reloads": true,
+    "sequence": [
+      "Chrono Trigger",
+      "New Super Mario Bros.",
+      "Chrono Trigger"
+    ],
+    "counters": [
+      {
+        "conversions": 734,
+        "filter_conversions": 0,
+        "video_decodes": 740,
+        "video_errors": 0,
+        "cached_conversions": 734
+      },
+      {
+        "conversions": 0,
+        "filter_conversions": 0,
+        "video_decodes": 0,
+        "video_errors": 0,
+        "cached_conversions": 0
+      },
+      {
+        "conversions": 663,
+        "filter_conversions": 0,
+        "video_decodes": 669,
+        "video_errors": 0,
+        "cached_conversions": 663
+      }
+    ],
+    "save_paths_checked": true,
+    "normal_user_saves_protected": true,
+    "recents_restored_exactly": true,
+    "scope": "Native same-process menu reload with isolated normal-name saves; movie decoding resumes after an ordinary game. Not an in-game save-write test."
+  },
+  "renderer_build_validation": {
+    "source_revision": "b540c0e",
+    "build_exit": 0,
+    "profile_tests_exit": 0,
+    "renderer_selftest_exit": 0,
+    "helper_sha256": "5b174c97a2dee7a10da6f3e9d0011ecd08a08760aef8849accbb902c15bee768",
+    "default_disabled_build_exit": 0,
+    "default_disabled_sha256": "5510089f11be99c2bf56e80bca4cc784ccbbc418ce951514d78d352140a151a8",
+    "default_disabled_matches_baseline": true
+  },
+  "scope": "Six qualified original cartridge revisions and opening scenes. The architecture shares decoders; support is not universal or all-movie.",
+  "capture_retry": {
+    "reason": "OBS renderSkippedFrames increased by one in NINO_AUTO_GATE_A; core transport, decoder, audio and selected frame-cadence checks passed. Retain first run and repeat unchanged candidate.",
+    "retained_label": "NINO_AUTO_GATE_A",
+    "repeat_label": "NINO_AUTO_GATE_B",
+    "seed_hash_unchanged": true,
+    "candidate_changed": false,
+    "repeat_render_drops": 1,
+    "repeat_encode_drops": 0,
+    "repeat_native_checks_pass": true,
+    "strict_capture_gate_pass": false,
+    "disposition": "Both Ni no Kuni attempts had one OBS renderSkippedFrames increment and zero encoding drops. Independent on-MiSTer framebuffer probes, audio analysis, decoder and transport checks passed. The recordings are not certified drop-free; this is recorded as an instrumentation limitation, not silently discarded."
+  },
+  "capture_review": {
+    "native_movie_quality_pass": true,
+    "strict_zero_capture_drop_pass": false,
+    "movies": {
+      "CHRONO": {
+        "label": "CHRONO_AUTO_GATE_A",
+        "native_movie_quality_pass": true,
+        "capture_drops": {
+          "renderSkippedFrames": 0,
+          "outputSkippedFrames": 0
+        },
+        "strict_zero_capture_drop_pass": true
+      },
+      "FF12": {
+        "label": "FF12_AUTO_GATE_A",
+        "native_movie_quality_pass": true,
+        "capture_drops": {
+          "renderSkippedFrames": 0,
+          "outputSkippedFrames": 0
+        },
+        "strict_zero_capture_drop_pass": true
+      },
+      "SONIC": {
+        "label": "SONIC_AUTO_GATE_A",
+        "native_movie_quality_pass": true,
+        "capture_drops": {
+          "renderSkippedFrames": 0,
+          "outputSkippedFrames": 0
+        },
+        "strict_zero_capture_drop_pass": true
+      },
+      "SJ": {
+        "label": "SJ_AUTO_GATE_A",
+        "native_movie_quality_pass": true,
+        "capture_drops": {
+          "renderSkippedFrames": 0,
+          "outputSkippedFrames": 0
+        },
+        "strict_zero_capture_drop_pass": true
+      },
+      "CV": {
+        "label": "CV_AUTO_GATE_A",
+        "native_movie_quality_pass": true,
+        "capture_drops": {
+          "renderSkippedFrames": 0,
+          "outputSkippedFrames": 0
+        },
+        "strict_zero_capture_drop_pass": true
+      },
+      "NINO": {
+        "label": "NINO_AUTO_GATE_B",
+        "native_movie_quality_pass": true,
+        "capture_drops": {
+          "renderSkippedFrames": 1,
+          "outputSkippedFrames": 0
+        },
+        "strict_zero_capture_drop_pass": false
+      }
+    },
+    "capture_qualifier": "Both Ni no Kuni attempts had one OBS renderSkippedFrames increment and zero encoding drops. Independent on-MiSTer framebuffer probes, audio analysis, decoder and transport checks passed. The recordings are not certified drop-free; this is recorded as an instrumentation limitation, not silently discarded.",
+    "decision": "Proceed as a private candidate with this explicit capture limitation. Do not change the runtime or repeat solely to select a zero-drop recording."
+  },
+  "packaging_state": "Runtime qualified. Archive integrity and installed-launcher smoke are recorded separately after packaging.",
+  "source_roms_modified": false,
+  "user_saves_modified": false,
+  "cpu_clock_khz": 1000000
+}

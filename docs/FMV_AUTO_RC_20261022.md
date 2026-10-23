@@ -27,8 +27,11 @@ Five virtual cartridge images reproduce their earlier qualified private images
 byte for byte. That covers eight opening assets and 10,455 encoded video frames.
 Castlevania uses the existing staged-memory substitutions instead.
 
-Unknown games, revisions, translations and modified cartridge contents keep
-their original decoder path. Other movie assets are not silently reframed.
+The five automatic cartridge profiles require a complete source-hash match;
+unmatched revisions or modified contents keep their original decoder path.
+Castlevania separately checks its header and exact routine bytes, rather than
+the complete cartridge hash. Translations and modifications are not qualified.
+Other movie assets are not silently reframed.
 Common decoder implementation does not prove compatible player behavior or
 safe VRAM ownership in every game. Ordinary gameplay does not receive a general
 3D acceleration from this change.
@@ -59,7 +62,12 @@ cartridge release. The worker exits before gameplay; nothing extra remains
 running to compete with the renderer.
 
 Audio decoding and scheduling stay with the original guest/FPGA path. The
-renderer, FPGA image and 1 GHz clock are unchanged from helper O qualification.
+renderer enables its movie receiver only for the five qualified virtual-header
+fingerprints, selected at each fresh session. Other games bypass the receiver,
+and reset clears the selection. Castlevania retains its guest-only routines.
+The decoder implementation, FPGA image and 1 GHz clock are unchanged from
+helper O qualification. Building with FMV support disabled still produces the
+byte-identical earlier renderer.
 
 ## Source reproduction
 
@@ -86,10 +94,86 @@ documented in `FMV_OFFLOAD_EXPERIMENT_20261022.md` and `third_party/fmv`.
 
 ## Validation
 
-Automated checks cover exact reconstruction, guest-hook reproduction, fallback,
-virtual image boundaries, source mutation, movie packet/audio preservation,
-keyframe offsets, incomplete worker streams, heartbeat service, cancellation,
-large cartridge apertures and package pairing. Native playback, transition and
-gameplay comparisons must be completed and recorded before declaring this RC
-ready. Existing helper O results are supporting evidence, not a substitute for
-testing the new loader and package.
+Automated checks passed for exact reconstruction, guest-hook reproduction,
+fallback, virtual image boundaries, source mutation, movie packet/audio
+preservation, keyframe offsets, incomplete worker streams, heartbeat service,
+cancellation, large cartridge apertures and package pairing.
+
+The new loader, host and helper were tested together at 1 GHz through the
+RetroTINK-4K capture rig, using original ROM inputs and isolated saves:
+
+| Game | Recorded opening test |
+| --- | ---: |
+| Castlevania: Dawn of Sorrow | 140 seconds |
+| Chrono Trigger | 230 seconds |
+| Ni no Kuni | 480 seconds, both opening streams |
+| Final Fantasy XII: Revenant Wings | 180 seconds |
+| Sonic Chronicles | 210 seconds |
+| Shin Megami Tensei: Strange Journey | 180 seconds |
+
+All six sessions exited cleanly. No transport faults, decoder errors or
+detected audio-dropout windows occurred. Five recordings had no capture drops;
+the Ni no Kuni recording limitation is described below. In the selected moving
+portions, no source-relative pause exceeded 50 ms beyond the expected movie
+cadence. These are bounded measurements, not a guarantee of perfect playback
+in every scene. Source movies retain their original frame rate.
+Audio comparisons use nonquiet 100 ms windows; they do not independently
+establish audio/video lip-sync.
+
+Transition checks reached the Chrono Trigger title/New Game menu, the
+Castlevania equipment menu from a seeded save, Ni no Kuni's normal Japanese
+startup warning, the Revenant Wings aerial canyon scene, the Sonic Chronicles
+battle scene and Strange Journey's Antarctic briefing. These do not establish
+complete gameplay or save compatibility for those titles.
+
+The gameplay controls used the same save seeds and bounded inputs at 1 GHz.
+The baseline is the preceding private gameplay renderer with FMV off, not
+public rc.9. Each primary mean below contains two active samples of about
+20 seconds.
+
+| Game and scene | Baseline updates/sec | RC updates/sec | Change |
+| --- | ---: | ---: | ---: |
+| Castlevania, cave/bat room idle | 21.60 | 21.31 | -1.34% |
+| NSMB, World 2-5 jumping | 59.51 | 59.55 | +0.06% |
+| Mario Kart, Figure-8 Time Trial | 23.45 | 23.64 | +0.79% |
+
+Castlevania was repeated in reverse order (RC then baseline); that repeat is
+shown in the table. The first gated comparison was -1.91%; combining
+all gated samples gives -1.67%. Mario Kart's separate Grand Prix check
+was -1.46%; Time Trial removes AI racers and gives a more repeatable control.
+The retained reports include these earlier samples, rather than discarding
+lower results. No tested comparison crossed the preselected 3% slowdown gate.
+Small variations remain, so this does not prove exact parity or every-game
+behavior. Completed screen updates may reuse images and are not whole-game FPS.
+
+The same host process loaded Chrono Trigger, NSMB, then Chrono Trigger again.
+Movie decoding resumed on return to Chrono Trigger; the intervening NSMB
+session recorded no movie conversions or decodes. Normal menu/recent-file
+selection and the original save basename were verified with isolated saves.
+The original user saves, settings, launchers and recent-file list were protected.
+These checks do not establish an in-game save-write or full-game compatibility.
+
+Both Ni no Kuni captures had one OBS render drop and zero encoding drops.
+Their core transport, decoder, selected movie-cadence and audio checks passed.
+Movie cadence is measured by framebuffer probes running on MiSTer, independently
+of OBS. Both attempts are retained; these recordings are not certified drop-free.
+This is an explicit capture limitation of the private candidate's evidence.
+
+The detailed report is [FMV_AUTO_RC1_QUALIFICATION.json](release/FMV_AUTO_RC1_QUALIFICATION.json).
+Archive integrity and the installed-launcher smoke are recorded separately
+when the private package is installed.
+
+### Loading tradeoff
+
+This RC prioritizes verification over loading speed. On the test CIFS share,
+Chrono Trigger took about 37 seconds and the 512 MiB Ni no Kuni cartridge took
+about 202 seconds from host loading to cartridge start. Network and storage
+speed affect these times. There is no persistent cache. The preparation worker
+exits before gameplay, so it does not consume CPU during movie playback or play.
+
+### Remaining limits
+
+Only the cartridge revisions and assets above have been qualified. Long
+sessions, later movies, translations, other revisions and other boards need
+more coverage. The inherited FPGA static-timing limitation remains unresolved.
+The release keeps the existing 1 GHz setting; no overclock is required.

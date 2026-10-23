@@ -105,6 +105,11 @@ dependency checks. This is not a general replacement for arbitrary VRAM writes.
 This path remains a private experiment. The automatic RC recognizes five exact
 cartridge/player revisions and eight opening assets; Castlevania retains its
 existing staged guest optimizations. Unknown ROMs use their original decoder.
+The replay service also checks the qualified virtual-header fingerprint at each
+fresh session. Only those five headers enable the movie receiver; other games
+bypass it at the VRAM write sites. GPU reset clears the selection, and the
+existing session-generation check prevents applying an earlier cartridge's
+choice during reload. The default build without FMV support remains unchanged.
 This does not establish support for every movie, revision or game using these
 codecs. Preparation finishes before boot and has no resident gameplay worker.
 The ROM reader sends an explicit completion record, which the host checks before

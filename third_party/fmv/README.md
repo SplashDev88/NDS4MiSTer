@@ -30,7 +30,8 @@ Use `--target native` for software comparison builds. Configure the core with
 three `NDS4MISTER_EXPERIMENTAL_FMV_{PACKED_COLOR,VIDEO_DECODE,VX_DECODE}` options
 enabled. Preserve the established ARM helper's LTO and `NO_AUDIO_MIX` settings.
 
-For the qualified helper O configuration, with the ARM toolchain installed:
+For helper O and the automatic RC's per-session receiver configuration, with
+the ARM toolchain installed:
 
 ```sh
 cmake -S . -B build-fmv-arm -G Ninja \
@@ -50,7 +51,7 @@ cmake --build build-fmv-arm --target nds_hybrid_3d_service
 Run `nds_hybrid_3d_service --self-test` using a compatible ARM Linux runner.
 The full fixture suite was run under Docker/binfmt; running that suite alongside
 a game on the memory-constrained MiSTer is not part of the qualification.
-The native game tests use the matching retained host and FPGA, identified by
+The native game tests use the paired host and retained FPGA, identified by
 hash in the private kit manifest. Compiler and build-path differences can change
 binary hashes; a new binary must be qualified before replacing the tested one.
 
