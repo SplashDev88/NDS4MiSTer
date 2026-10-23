@@ -57,8 +57,7 @@ struct HostTest {
     };
     // A stick reaching only ~70% on each diagonal misses corners by default.
     assert(sample(218,218) == (std::vector<uint16_t>{0,packed(90,90)}));
-    h.togglemenu(); h.cursor = Host::CONTROLS_CURSOR; h.action(2);
-    assert(h.controls_menu && h.cursor == Host::TOUCH_RANGE_CURSOR);
+    h.togglemenu(); h.cursor = Host::TOUCH_RANGE_CURSOR;
     h.action(2); h.action(2); assert(h.touch_range == 2); // 150%
     h.togglemenu();
     assert(last(h, 0x3d) == (std::vector<uint16_t>{0,packed(127,127)}));
@@ -100,34 +99,31 @@ struct HostTest {
 
     h.togglemenu(); h.touch_range = 0;
     const auto status = h.status; const auto full_status = h.full_status;
-    // Controls is reachable on both current and legacy menu layouts.
+    // The range is edited directly on both current and legacy root menus.
     for (bool independent : {false,true}) {
       h.independent_outputs_supported = independent;
       h.cursor = 0;
-      for (int n=0; h.cursor != Host::CONTROLS_CURSOR && n<20; ++n) h.action(1);
-      assert(h.cursor == Host::CONTROLS_CURSOR);
-      for (int back : {2,3,5,4}) {
-        h.action(2); assert(h.controls_menu);
-        h.action(0); assert(h.cursor == Host::EXIT_CURSOR);
-        h.action(0); assert(h.cursor == Host::TOUCH_RANGE_CURSOR);
-        h.action(1); assert(h.cursor == Host::EXIT_CURSOR);
-        h.action(1); assert(h.cursor == Host::TOUCH_RANGE_CURSOR);
-        h.action(9); h.action(6); assert(!h.browser && !h.system_menu);
-        if (back == 2) h.action(0);
-        h.action(back); assert(!h.controls_menu);
-        if (back == 4) { assert(!h.menu); h.togglemenu(); h.cursor = Host::CONTROLS_CURSOR; }
-        else assert(h.cursor == Host::CONTROLS_CURSOR);
-      }
+      for (int n=0; h.cursor != Host::TOUCH_RANGE_CURSOR && n<20; ++n) h.action(1);
+      assert(h.cursor == Host::TOUCH_RANGE_CURSOR);
+      h.action(2); assert(h.touch_range == 1 && !h.display_menu && !h.system_menu);
+      h.action(7); assert(h.touch_range == 0);
+      const int row = independent ? 6 : 2;
+      h.draw();
+      assert(h.osd_rows[row] == h.frame.renderRow(row,
+          " Right Stick Range:     100%",true,nds_osd::arrow_right));
+      h.action(9); assert(!h.browser);
+      h.action(6); assert(h.system_menu); // Right still opens System.
+      h.action(5); assert(!h.system_menu && h.cursor == 0);
     }
     h.independent_outputs_supported = false;
-    h.action(2); h.spi.history.clear(); h.action(7);
+    h.cursor = Host::TOUCH_RANGE_CURSOR; h.spi.history.clear(); h.action(7);
     assert(h.touch_range == 4); h.action(8); assert(h.touch_range == 0);
     h.action(2); h.action(2); assert(h.touch_range == 2 && h.spi.history.empty());
     assert(h.status == status && h.full_status == full_status);
     assert(!fs::exists(kit / "NDS_stick.cfg")); // Explicit Save settings only.
     h.draw();
-    assert(h.osd_rows[1] == h.frame.renderRow(1," Right Stick Range:     150%",true,nds_osd::arrow_left));
-    h.action(3); h.action(6); h.cursor=3; h.action(2);
+    assert(h.osd_rows[2] == h.frame.renderRow(2," Right Stick Range:     150%",true,nds_osd::arrow_right));
+    h.action(6); h.cursor=3; h.action(2);
     { Host restored(kit.string(), (sd/"games/NDS").string(), sd); assert(restored.touch_range==2); }
     h.action(6); h.cursor=2; h.action(2); h.action(0); h.action(2);
     assert(h.touch_range==0);

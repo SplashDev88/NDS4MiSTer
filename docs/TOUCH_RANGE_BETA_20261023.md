@@ -1,14 +1,14 @@
 # Private right-stick touch range beta
 
 Controllers with limited diagonal travel can reach the touchscreen edges but
-miss its corners. **Controls → Right Stick Range** adds 100%, 125%, 150%, 175%
-and 200% choices. Start at 150% and select the lowest value that reaches all
+miss its corners. The root menu’s **Right Stick Range** setting adds 100%,
+125%, 150%, 175% and 200% choices. Start at 150% and select the lowest value that reaches all
 four corners. Higher values reach the edges earlier, reducing fine positioning
 travel. The 100% default is unchanged.
 
-Run **Scripts → NDS_Touch_Range_Beta**, load a game, open the core menu and enter
-**Controls**. Select **Right Stick Range** with Enter/the menu select button to
-cycle values; keyboard +/- also works. Close the menu to apply. Choose
+Run **Scripts → NDS_Touch_Range_Beta**, load a game and open the core menu.
+Select **Right Stick Range** directly below **Display options**. Enter/the menu
+select button cycles values; keyboard +/- also works. Close the menu to apply. Choose
 **System → Save settings** to retain the choice after relaunch.
 
 The setting applies to all controllers using this kit. Mouse input, touch
@@ -25,12 +25,17 @@ public and FMV RC1 installations are retained.
 
 ## Validation
 
+Beta2 removes the Controls submenu. Five focused host test programs were rerun
+for the root-menu adjustment: touch range, touch rotation, general host, display
+menu and split output. The range math and settings format are unchanged; the
+native touch measurements below were collected on Beta1.
+
 Nine host test programs pass: touch range, touch rotation, motion input, general
 host behavior, display menu, split output, Direct Video target, screen peek and
 board buttons. The touch tests verify all 65,536 default coordinate pairs,
 monotonic/clamped output, driver axis ranges, neutral/dead-zone behavior,
 rotated corner reach, mouse/button isolation and save/reset behavior. Existing
-menu expectations were updated for the new Controls entry.
+menu expectations were updated for the direct Right Stick Range entry.
 
 A native diagnostic ROM was tested on MiSTer using a temporary virtual
 controller through the ordinary Linux input, host, FPGA and DS touchscreen

@@ -62,7 +62,7 @@ menu behavior, persistence and the reported sideways-game directions.
 
 ## Controller motion sensors
 
-**Controls → Right Stick Range** expands the stylus reach for controllers that
+The root menu’s **Right Stick Range** setting expands the stylus reach for controllers that
 cannot reach the touchscreen corners. Choose **100%, 125%, 150%, 175% or 200%**.
 Start at **150%** for limited diagonal travel, then use the lowest setting that
 reaches all four corners. Higher values reach the edges earlier and leave less
