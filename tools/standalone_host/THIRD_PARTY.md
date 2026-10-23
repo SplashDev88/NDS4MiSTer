@@ -21,3 +21,10 @@ without modifying vendored melonDS defaults or embedding console dumps. The
 writable firmware store retains the contribution credit to InsaneFriend
 (GitHub: saneFriend). Keep generator source and its pinned provenance with
 redistributed generated assets.
+
+The optional automatic movie loader uses an unchanged executable-code subset
+of ndspy 4.2.0 (RoadrunnerWMC and contributors), GPL-3.0-or-later, from
+https://github.com/RoadrunnerWMC/ndspy. Source headers, full license and provenance
+are included in `fmv/ndspy`. It parses SDK autoload sections and compressed
+overlays from the caller's ROM. No original game code or movie payload is
+included in the movie profiles or generated transport hooks.
