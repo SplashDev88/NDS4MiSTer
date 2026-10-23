@@ -11143,6 +11143,10 @@ try {
     const char* burst_requested = std::getenv("NDS4MISTER_STANDALONE_QUERY_BURST");
     const bool query_burst = memory_path == "/dev/mem" && fast_query_poll &&
         burst_requested && std::strcmp(burst_requested, "1") == 0;
+    const char* short_idle_requested =
+        std::getenv("NDS4MISTER_STANDALONE_QUERY_SHORT_IDLE");
+    const bool query_short_idle = memory_path == "/dev/mem" && fast_query_poll &&
+        short_idle_requested && std::strcmp(short_idle_requested, "1") == 0;
     nds4mister::replay::BoundedIdlePoll idle_burst;
     using Pacing = nds4mister::crash::PacingMetric;
     const auto pacing_enabled = [&] {
@@ -11198,7 +11202,11 @@ try {
                 // Renderer/publication waits and no-read games stay unchanged.
                 std::this_thread::sleep_for(fast_query_poll &&
                     service->fast_matrix_replies_active() ?
-                    std::chrono::microseconds(100) : HpsQueuePollInterval);
+                    // A bounded sleep still yields the shared CPU to raster
+                    // work. Only an empty intake may use the private shorter
+                    // interval; publication/ack waits retain their old delay.
+                    std::chrono::microseconds(query_short_idle &&
+                        result == PollResult::Empty ? 25 : 100) : HpsQueuePollInterval);
                 if (trace_sleep) {
                     const auto us = static_cast<std::uint64_t>(
                         std::chrono::duration_cast<std::chrono::microseconds>(

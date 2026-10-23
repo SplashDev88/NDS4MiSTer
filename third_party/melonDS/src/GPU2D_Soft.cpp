@@ -50,6 +50,8 @@ SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
     SpritePriorityIndex = !priorityIndex || std::strcmp(priorityIndex, "0") != 0;
     const char* affineTile = std::getenv("NDS_GPU_AFFINE_TILE_CACHE");
     AffineTileCache = !affineTile || std::strcmp(affineTile, "0") != 0;
+    const char* packedRows = std::getenv("NDS_GPU_AFFINE_PACKED_ROWS");
+    AffinePackedRows = packedRows && std::strcmp(packedRows, "1") == 0;
     const char* paletteCache = std::getenv("NDS_GPU_STANDARD_PALETTE_CACHE");
     StandardPaletteCache = !paletteCache || std::strcmp(paletteCache, "0") != 0;
     const char* setup = std::getenv("NDS_GPU_SPRITE_SETUP_CACHE");
@@ -1199,7 +1201,42 @@ void SoftRenderer2D::DrawBG_ExtendedImpl(u32 line, u32 bgnum)
                         const auto* palette = colors;
                         if constexpr (!cached)
                             if (extpal) palette = GPU2D.GetBGExtPal(bgnum, tile >> 12);
-                        for (int j = 0; j < run; ++j)
+                        // A complete, aligned tile row is one doubleword.
+                        // Keep the two partial boundary runs on the scalar path.
+                        // Palette pointers and pixels are still fetched afresh
+                        // for every scanline; this introduces no lifetime cache.
+                        if (AffinePackedRows && run == 8)
+                        {
+                            u32 windows[2];
+                            std::memcpy(windows, &WindowMask[i], sizeof(windows));
+                            const u32 bits = windowBit * 0x01010101u;
+                            if ((windows[0] | windows[1]) & bits)
+                            {
+                                u64 packed;
+                                std::memcpy(&packed, pixels, sizeof(packed));
+                                const bool allVisible = (windows[0] & windows[1] & bits) == bits;
+                                auto draw = [&](u32 x, u32 shift)
+#if defined(__GNUC__) || defined(__clang__)
+                                    __attribute__((always_inline))
+#endif
+                                {
+                                    const u32 index = (packed >> shift) & 255u;
+                                    if (index && (allVisible || (WindowMask[i+x] & windowBit)))
+                                        DrawPalettePixel<cached>(&BGOBJLine[i+x], palette[index], layer);
+                                };
+                                if (flipX)
+                                {
+                                    draw(0,56); draw(1,48); draw(2,40); draw(3,32);
+                                    draw(4,24); draw(5,16); draw(6,8); draw(7,0);
+                                }
+                                else
+                                {
+                                    draw(0,0); draw(1,8); draw(2,16); draw(3,24);
+                                    draw(4,32); draw(5,40); draw(6,48); draw(7,56);
+                                }
+                            }
+                        }
+                        else for (int j = 0; j < run; ++j)
                         {
                             if (!(WindowMask[i + j] & windowBit)) continue;
                             const u8 index = pixels[(tileX + j) ^ flipX];

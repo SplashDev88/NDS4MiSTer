@@ -188,6 +188,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     ParallelRasterThread = nullptr;
     const char* dualCoreRaster = std::getenv("NDS4MISTER_DUAL_CORE_3D");
     DualCoreRaster = dualCoreRaster && strcmp(dualCoreRaster, "0") != 0;
+    const char* parallelClear = std::getenv("NDS4MISTER_PARALLEL_CLEAR");
+    ParallelClear = parallelClear && strcmp(parallelClear, "1") == 0;
+    const char* parallelFinal = std::getenv("NDS4MISTER_PARALLEL_FINAL_PASS");
+    ParallelFinalPass = parallelFinal && strcmp(parallelFinal, "1") == 0;
     const char* adaptiveRasterSplit =
         std::getenv("NDS4MISTER_ADAPTIVE_RASTER_SPLIT");
     AdaptiveRasterSplit = DualCoreRaster && adaptiveRasterSplit &&
@@ -4233,9 +4237,21 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
 }
 
 void SoftRenderer3D::RenderPolygonsDualCore(
-    bool threaded, Polygon** polygons, int npolys)
+    bool threaded, Polygon** polygons, int npolys, bool overlapClear)
 {
+    if (overlapClear)
+    {
+        if (CancelRasterIfRequested()) return;
+        // Clear owns framebuffer/damage state; setup owns polygon state and
+        // texture bindings. Neither raster worker may start until both finish.
+        ParallelJob_.store(ParallelJob::Clear, std::memory_order_relaxed);
+        Platform::Semaphore_Post(Sema_ParallelRasterStart);
+    }
     const int polygonsPrepared = SetupRenderPolygons(polygons, npolys);
+    if (overlapClear)
+        // A cancellation still consumes the posted job's completion. This
+        // fence also protects the next frame, reset and publication.
+        Platform::Semaphore_Wait(Sema_ParallelRasterDone);
     const bool antiAliasOnlyFinalPass =
         NDS4MiSTerUseAntiAliasOnlyFinalPass(GPU3D.RenderDispCnt);
     if (CancelRasterIfRequested()) return;
@@ -4370,6 +4386,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     const u64 balanceStartedNs = AdaptiveRasterSplit && !bandQueueFrame ?
         renderer3DClockNowNs() : 0;
+    ParallelJob_.store(ParallelJob::Raster, std::memory_order_relaxed);
     Platform::Semaphore_Post(Sema_ParallelRasterStart);
     RasterBandResult primaryResult;
     if (bandQueueFrame)
@@ -4510,12 +4527,29 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         }
     }
 
-    // Edge marking reads the adjacent rasterized rows. Join both disjoint
-    // bands first, then perform the inexpensive final pass in canonical line
-    // order. This avoids a boundary race without changing any pixel result.
+    // Raster is joined before any final processing. Legacy scanline consumers
+    // retain canonical row order and their existing completion tokens.
     const auto finalPassStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
-    if (antiAliasOnlyFinalPass)
+    if (ParallelFinalPass && threaded && FullFrameCompletion)
+    {
+        constexpr s32 split = VisibleScanlines / 2;
+        const bool edgeMarking = GPU3D.RenderDispCnt & (1 << 5);
+        // Edge marking reads neighbor attribute words while writing coverage
+        // bits in its own word. Two untouched boundary rows prevent a C++
+        // read/write race, even though the polygon-ID bits never change.
+        const s32 primaryEnd = edgeMarking ? split - 1 : split;
+        ParallelFinalFirstLine = edgeMarking ? split + 1 : split;
+        ParallelFinalAntiAliasOnly = antiAliasOnlyFinalPass;
+        ParallelJob_.store(ParallelJob::FinalPass, std::memory_order_relaxed);
+        Platform::Semaphore_Post(Sema_ParallelRasterStart);
+        FinalPassRows(0, primaryEnd, antiAliasOnlyFinalPass);
+        Platform::Semaphore_Wait(Sema_ParallelRasterDone);
+        if (CancelRasterIfRequested()) return;
+        if (edgeMarking)
+            FinalPassRows(split - 1, split + 1, antiAliasOnlyFinalPass);
+    }
+    else if (antiAliasOnlyFinalPass)
     {
         for (s32 y = 0; y < VisibleScanlines; y++)
         {
@@ -4538,6 +4572,27 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     if (Parent.StageProfileEnabled)
         Parent.StageProfile.ThreeDFinalPassNs +=
             renderer3DProfileElapsedNs(finalPassStarted);
+}
+
+void SoftRenderer3D::FinalPassRows(
+    s32 firstLine, s32 endLine, bool antiAliasOnly)
+{
+    if (antiAliasOnly)
+    {
+        for (s32 y = firstLine; y < endLine; ++y)
+        {
+            if (CancelRasterIfRequested()) return;
+            ScanlineFinalPassAntiAlias(y);
+        }
+    }
+    else
+    {
+        for (s32 y = firstLine; y < endLine; ++y)
+        {
+            if (CancelRasterIfRequested()) return;
+            ScanlineFinalPass(y);
+        }
+    }
 }
 
 void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npolys)
@@ -4684,6 +4739,11 @@ void SoftRenderer3D::RenderThreadFunc()
             if (!FullFrameCompletion)
                 Platform::Semaphore_Post(Sema_ScanlineCount, 192);
         }
+        else if (ParallelClear && DualCoreRaster && FullFrameCompletion)
+        {
+            RenderPolygonsDualCore(
+                true, &GPU3D.RenderPolygonRAM[0], GPU3D.RenderNumPolygons, true);
+        }
         else
         {
             const auto clearStarted =
@@ -4727,6 +4787,26 @@ void SoftRenderer3D::ParallelRasterThreadFunc()
         Platform::Semaphore_Wait(Sema_ParallelRasterStart);
         if (!ParallelRasterThreadRunning.load(std::memory_order_relaxed))
             return;
+
+        const auto job = ParallelJob_.load(std::memory_order_relaxed);
+        if (job == ParallelJob::Clear)
+        {
+            const auto clearStarted =
+                renderer3DProfileStarted(Parent.StageProfileEnabled);
+            if (!CancelRasterIfRequested()) ClearBuffers();
+            if (Parent.StageProfileEnabled)
+                Parent.StageProfile.ThreeDClearNs +=
+                    renderer3DProfileElapsedNs(clearStarted);
+            Platform::Semaphore_Post(Sema_ParallelRasterDone);
+            continue;
+        }
+        if (job == ParallelJob::FinalPass)
+        {
+            FinalPassRows(ParallelFinalFirstLine, VisibleScanlines,
+                ParallelFinalAntiAliasOnly);
+            Platform::Semaphore_Post(Sema_ParallelRasterDone);
+            continue;
+        }
 
         const s32 SplitLine =
             ParallelRasterSplitLine_.load(std::memory_order_relaxed);

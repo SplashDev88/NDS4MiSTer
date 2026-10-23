@@ -100,6 +100,7 @@ private:
     bool SpriteBatch = true;
     bool SpritePriorityIndex = true;
     bool AffineTileCache = true;
+    bool AffinePackedRows = false;
     bool StandardPaletteCache = true;
     bool StandardPaletteValid = false, StandardPaletteChecked = false;
     alignas(16) u16 StandardPaletteRaw[256] {};

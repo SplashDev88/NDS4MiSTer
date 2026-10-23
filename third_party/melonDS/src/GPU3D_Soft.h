@@ -2405,7 +2405,9 @@ private:
     void ScanlineFinalPass(s32 y);
     void ClearBuffers();
     void RenderPolygons(bool threaded, Polygon** polygons, int npolys);
-    void RenderPolygonsDualCore(bool threaded, Polygon** polygons, int npolys);
+    void RenderPolygonsDualCore(bool threaded, Polygon** polygons, int npolys,
+        bool overlapClear = false);
+    void FinalPassRows(s32 firstLine, s32 endLine, bool antiAliasOnly);
     int SetupRenderPolygons(Polygon** polygons, int npolys);
     u64 RenderScanlineBand(
         s32 firstLine, s32 endLine, RendererPolygon* polygonList,
@@ -2474,6 +2476,10 @@ private:
 
     bool Threaded = false;
     bool DualCoreRaster = false;
+    // Private, independently controlled experiments. Legacy scanline consumers
+    // retain serial phases even when these options are enabled.
+    bool ParallelClear = false;
+    bool ParallelFinalPass = false;
     bool AdaptiveRasterSplit = false;
     bool RasterBandQueue = false;
     bool RasterXPartition = false;
@@ -2513,6 +2519,11 @@ private:
     // join for the final pass, preserving deterministic polygon order.
     Platform::Semaphore* Sema_ParallelRasterStart;
     Platform::Semaphore* Sema_ParallelRasterDone;
+    enum class ParallelJob { Raster, Clear, FinalPass };
+    std::atomic<ParallelJob> ParallelJob_ {ParallelJob::Raster};
+    // Primary writes before posting Start; secondary reads until Done.
+    s32 ParallelFinalFirstLine = 96;
+    bool ParallelFinalAntiAliasOnly = false;
     std::unique_ptr<RendererPolygon[]> ParallelPolygonList;
     u32 ParallelActivePolygonMask[PolygonMaskWords] {};
     u8 ParallelStencilBuffer[256 * 2] {};
