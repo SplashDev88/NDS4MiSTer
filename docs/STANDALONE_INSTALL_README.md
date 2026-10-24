@@ -1,93 +1,49 @@
-# NDS4MiSTer v0.9.0-rc.9
+# NDS4MiSTer v0.9.0-rc.10
 
-This release packages the tested Beta12 rendering improvements, compatibility
-fixes and offline DS clock support. The gameplay ARM clock remains 1 GHz.
-The unchanged host binary may display rc.8 internally; the release launcher
-and manifest identify rc.9 / Beta12.
+**Smoother supported movies, faster New Super Mario Bros., more games booting, and adjustable right-stick touch range.**
+
+Back up your installation and saves before updating.
+
+## What's new since rc.9
+
+- **Smoother opening movies.** Automatic acceleration for tested revisions of Castlevania: Dawn of Sorrow, Chrono Trigger, Ni no Kuni, Shin Megami Tensei: Strange Journey, Final Fantasy XII: Revenant Wings and Sonic Chronicles. Load your original ROM normally. Supported code is checked before acceleration is enabled; unmatched revisions retain the ordinary path. Loading supported games can take longer, especially from a network share. Movies keep their original frame rate.
+- **Better New Super Mario Bros. performance.** The tested USA revision 0 uses automatic optimizations that reduce geometry work and rubberbanding. A faster ARM renderer also improves completed screen updates in the tested castle scene. There is no Speed hacks menu and the ARM still runs at 1 GHz. Some slowdown remains; all levels, power-ups and effects are not verified.
+- **Ni no Kuni and Pokémon Conquest boot fixes.** Larger cartridge layouts now load correctly, and cartridge address mirroring is corrected. The tested Japanese Ni no Kuni reached gameplay and save/reload; USA/Australia Conquest revision 1 reached its opening battle. These are bounded checks, not full-game completion claims.
+- **NAND saves for WarioWare D.I.Y. and Jam with the Band.** WarioWare's tested Mona score and Jam's registration/profile survived full core exit and relaunch. Other modes and regions need more coverage. **Daigassou! Band Brothers DX is not supported by this release**; its separate save experiment is paused.
+- **Right Stick Range in the root menu.** Choose 100%, 125%, 150%, 175% or 200% to help controllers reach all four touchscreen corners. Start at 150% if needed, then use the lowest working value. Select **System → Save settings** to retain it. The default remains 100%.
+- **Alternative MiSTer launcher handling.** Added discovery and return-to-menu handling for documented installations of Zaparoo, Degauss, RetroAchievements, Physical-CD, mister-disc and Console Mode. Automated discovery/recovery checks passed; real installations of each alternative frontend still need testing. This does not add RetroAchievements or disc support to the DS core.
+
+## Performance example
+
+In repeated **NSMB World 1 castle jumping** checks, the final renderer delivered about **39–40 completed screen updates/sec**, up from about **35–36** with the preceding private renderer. Earlier work in this release raised geometry submissions from about **35 to 58/sec**, reducing rubberbanding. These measure different stages and must not be added together.
+
+These are development comparisons at **1 GHz**, **not a direct rc.9-to-rc.10 FPS benchmark**. Short Castlevania and Mario Kart checks found no material slowdown against their preceding private controls. This does not establish performance across every game or board.
 
 ## Install or update
 
-1. Exit the core through **System → Reboot**. This returns to normal MiSTer.
-2. Before updating, back up `Scripts/NDS4MiSTer.sh`, the entire hidden
-   `Scripts/.NDS_Standalone` folder, `saves/NDS`, and `config/NDS_storage.cfg`.
-3. Extract the entire ZIP to the SD card root, merging **Scripts** and replacing
-   its program files. Include hidden files. Keep existing settings and maps;
-   the archive contains none. Do not delete the old folder before merging.
-4. Run **Scripts → NDS4MiSTer**, choose **Load *.NDS**, and select a game.
+1. Exit the core with **System → Reboot**.
+2. Back up `Scripts/NDS4MiSTer.sh`, the entire hidden `Scripts/.NDS_Standalone` folder, `saves/NDS` and `config/NDS_storage.cfg`.
+3. Extract **NDS4MiSTer_v0.9.0-rc.10_Standalone.zip** to the SD card root. Include hidden files, merge `Scripts`, and overwrite program files.
+4. Run **Scripts → NDS4MiSTer**, then **Load *.NDS**.
 
-A fresh install requires normal MiSTer but no earlier NDS release. Linux
-6.18.38-MiSTer and 5.15.1-MiSTer have matching included support modules. The
-launcher checks prerequisites; it does not install a kernel or change your INI.
-Use the FPGA, host, supervisor and support files from one package together.
+Keep the launcher and support folder together. Existing display settings, controller maps and clock settings are retained. The included `NDS_speed.cfg` is the release's automatic performance preset. The retained frontend may still show **rc.8** internally; the package manifest identifies **rc.10**.
 
-Games use cartridge saves in **saves/NDS on the SD card**, even when ROMs are
-on USB or a network share. Keep ROM filenames unchanged to keep using their
-matching saves. Save inside the game; save states are not included.
+Saves stay in `saves/NDS`, including for games on USB or a network share. Do not rename ROMs. If an older core left an incorrectly sized NAND save, back it up and move that individual file aside before creating a fresh save. Do not overwrite a save containing progress.
 
-## Moving from the dated private Beta12
+**Rollback:** exit cleanly and restore your backed-up launcher and hidden folder together. Keep current ordinary game saves. rc.9 does not support the new NAND saves; preserve them for a later return to rc.10. Offline clock-file behavior is unchanged from rc.9.
 
-The private launcher uses `Scripts/.NDS_Private_Beta_20261017`; the public
-launcher uses `Scripts/.NDS_Standalone`. Shared game saves remain available,
-but kit-specific settings do not move automatically. With both kits stopped
-and backed up, copy only your chosen compatible display/controller settings
-and `NDS_rtc.cfg` if wanted. Do not copy binaries, the supervisor or manifests
-between packages. Leaving the public kit's settings alone is also supported.
+No game ROMs, game saves, commercial BIOS/firmware dumps, personal settings or kernel image are included. Support modules for Linux **6.18.38-MiSTer** and **5.15.1-MiSTer** are included. Display examples are in `QUICK_START.txt`.
 
-## Return to the previous release
+## Known limits
 
-Exit through **System → Reboot**, move the beta's launcher and entire hidden
-support folder aside, and restore the backed-up launcher and folder together.
-Leave cartridge saves in place to retain current progress. Keep a backup of
-the beta's `NDS_rtc.cfg`. rc.8 cannot read an offline `NDS-RTC-v2` file:
-restore the old clock-file backup, or move the v2 file aside and set MiSTer's
-local time before rolling back. Pre-RTC releases ignore that file. Restoring an older save
-backup also restores older game progress, so do that only intentionally.
+- **NSMB goal pole:** a user reports background glitches while sliding down the pole, also seen in earlier releases. This sequence has not yet been reproduced or fixed in our test rig.
+- The NSMB optimization omits six transform updates in verified USA revision 0 code. Two reference routes matched visually, but this is a compatibility tradeoff; report broken effects or animations with the level and power-up.
+- Movie acceleration covers the listed revisions and tested opening sequences, not every movie or translation. Some loading/preparation takes about a minute. Playback, audio and game performance are not guaranteed hitch-free.
+- Slowdown, uneven animation, graphics errors and crashes remain possible. **60 FPS has not been achieved throughout the core.** FPGA static timing closure remains unresolved.
+- No save states, persistent lid-close resume, RTC alarms/interrupts, wireless multiplayer, DSi mode or PAL 50 Hz output. Native analog remains about 59.64 Hz.
 
-The backup method restores the exact previous installation and avoids mixing
-support files. Retain the previous release ZIP and its checksum as well.
+[Validation and supported movie revisions](https://github.com/SplashDev88/NDS4MiSTer/blob/v0.9.0-rc.10/docs/release/VALIDATION_RC10.md) · [Clock behavior](https://github.com/SplashDev88/NDS4MiSTer/blob/v0.9.0-rc.10/docs/GAME_CLOCK.md) · [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues/new?template=bug_report.yml)
 
-## Displays and a black screen
+Download the **Standalone ZIP** and its **SHA-256 checksum**. GitHub's **Source code** archives are for developers, not installation.
 
-Native analog automatically shows one 240p screen. **Analog Screen** selects
-Main or Touch; **Digital Layout** independently selects Main, Touch,
-Side-by-side, or Top/bottom. Explicit `vga_scaler=1` still uses scaled VGA.
-
-For DV1, use `direct_video=1`, `dvi_mode=0`, and `vga_scaler=0` with a compatible
-receiver. **Direct Video Target: CRT** limits DV1 to one screen; **Scaler**
-enables combined layouts. This option is also available through **F4: Advanced
-Options** during startup. Normal HDMI uses `direct_video=0`.
-
-If a game shows black, try the other Main/Touch screen or hold **F10 / Screen
-Peek**. Some games intentionally leave one screen blank. Native output is
-approximately 59.64 Hz; a PAL television must accept that timing. This beta
-does not add PAL 50 Hz output. Cable, adapter and MiSTer profile requirements
-still apply. See **QUICK_START.txt** for details.
-
-## Controller mapping and clock
-
-Use **System → Define NDS buttons**. Each input needs a full press and release
-before advancing. **Esc/OSD** cancels; **Space/USER** skips. Existing maps remain
-valid. **Cycle Video Layout** changes the layout once per press; **Screen Peek**
-shows the other screen only while held. Choose the intended action when mapping.
-
-Set MiSTer's local date, time and timezone before launching when possible. If
-the date is unavailable or outside 2000–2099, the clock starts at January 1,
-2000. Offline edits persist, but powered-off elapsed time requires usable
-system time. The DS clock is
-seeded once per session and continues through menus, reset and lid sleep.
-Clock edits made inside DS firmware persist automatically in the hidden kit's
-**NDS_rtc.cfg**; keep it during upgrades. If MiSTer synchronizes time after the
-core starts, exit and relaunch to adopt the correction. See **GAME_CLOCK.md**
-for timezone behavior and how to return to the default clock.
-
-## Scope
-
-RTC alarms/periodic interrupts and save-state clock restoration are unsupported.
-Static FPGA timing still reports violations. Physical controllers, CRTs/adapters,
-long sessions and all game-specific timed events are not fully qualified.
-Games may slow down, hitch, glitch or crash; this is not a 60 FPS guarantee.
-
-Read **RELEASE_NOTES.md** and the accompanying qualification report. Licenses
-and third-party notices are included. ROMs, BIOS, user firmware, saves, maps,
-settings and a Linux kernel are not included. Source and issue reporting:
-[NDS4MiSTer](https://github.com/SplashDev88/NDS4MiSTer).
+Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend (saneFriend), Corn and skmp. Corresponding source, FFmpeg/ndspy credits and licenses are included.

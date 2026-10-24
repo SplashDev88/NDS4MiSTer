@@ -170,9 +170,9 @@ class PackageSource(unittest.TestCase):
     def test_renderer_options_are_identical_to_accepted(self):
         accepted=json.loads((ROOT/'test_fixtures/accepted-runtime.json').read_text())
         after=(ROOT/'Kickstart.sh').read_text()
-        # Pin the validated renderer launch block, including its frame policy.
+        # Pin Performance RC1 r2 / rc.10, including its unchanged frame policy.
         launch=after[after.index('        NDS4MISTER_GX_MATRIX_PREFIX='):after.index('    ) >>"$logfile"')]
-        self.assertEqual(hashlib.sha256(launch.encode()).hexdigest(),"d7564359171a5903a227c89d2929c0322bfbf2b340a0eaf5ba1a7dd966fa2b90")
+        self.assertEqual(hashlib.sha256(launch.encode()).hexdigest(),"df84c6ca6bf0f579da7500425bf029ea2de495f4f6ee18079a4cdd89aaef87e4")
         self.assertEqual(accepted['shell_environment_checked'],s.EXPECTED_SPEED_ENV)
     def test_kickstart_hash_matches_public_bytes(self):
         self.assertEqual(s.sha(ROOT/'Kickstart.sh'),s.EXPECTED_KICKSTART)

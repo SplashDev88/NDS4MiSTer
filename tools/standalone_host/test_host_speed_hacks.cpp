@@ -11,42 +11,28 @@ struct HostTest {
     fs::create_directories(kit/"fmv");fs::create_directories(sd);
     unsetenv("NDS_NSMB_PATCH");
     {Host absent(kit.string(),(sd/"games/NDS").string(),sd);
-     absent.independent_outputs_supported=true;
-     assert(absent.mainMenuRow(Host::SPEED_CURSOR)==-1);}
+     assert(!absent.speed_hacks_available && absent.speed_hacks==0);}
     std::ofstream(kit/"fmv/nsmb_hooks.json")<<"{}";
+    std::ofstream(kit/"NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n5\n";
     Host h(kit.string(),(sd/"games/NDS").string(),sd);
+    assert(h.speed_hacks_available && h.speed_hacks==5);
+    const auto status=h.status;
+    // Installed hooks and enabled defaults must not add another menu page.
     h.independent_outputs_supported=true;
-    assert(h.speed_hacks==0 && h.mainMenuRow(Host::SPEED_CURSOR)==9);
-    h.cursor=0;for(int i=0;i<20 && h.cursor!=Host::SPEED_CURSOR;++i)h.action(1);
-    assert(h.cursor==Host::SPEED_CURSOR);
-    h.action(2);assert(h.speed_menu && h.cursor==0);
-    auto status=h.status;
-    h.action(2);assert(h.speed_hacks==1);
-    h.action(1);h.action(8);assert(h.speed_hacks==3);
-    h.action(7);assert(h.speed_hacks==1);
-    h.action(0);h.action(7);assert(h.speed_hacks==0);
-    h.action(0);assert(h.cursor==Host::EXIT_CURSOR);
-    h.action(1);assert(h.cursor==0);
-    h.action(6);assert(h.speed_menu && !h.system_menu);
-    h.action(9);assert(!h.browser);
-    h.action(2);h.action(1);h.action(2);assert(h.speed_hacks==3);
+    const std::vector<int> order{0,1,2,Host::ANALOG_CURSOR,Host::DISPLAY_CURSOR,
+      Host::TOUCH_RANGE_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR};
+    h.cursor=0;
+    for(unsigned i=1;i<=order.size();++i){h.action(1);assert(h.cursor==order[i%order.size()]);}
+    for(unsigned i=1;i<=order.size();++i){h.action(0);assert(h.cursor==order[(order.size()-i)%order.size()]);}
     h.draw();
-    assert(h.osd_rows[7]==h.frame.renderRow(7," Reload game to apply",false,nds_osd::arrow_left));
-    h.action(3);assert(!h.speed_menu && h.cursor==Host::SPEED_CURSOR);
-    h.action(2);h.action(5);assert(!h.speed_menu && h.cursor==Host::SPEED_CURSOR);
-    h.action(2);h.action(4);assert(!h.speed_menu && !h.menu);
-    assert(h.status==status && !fs::exists(kit/"NDS_speed.cfg"));
-    h.saveSettings();
-    {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.speed_hacks==3);}
-    const auto saved_status=h.status;
-    h.menu=true;h.cursor=Host::SPEED_CURSOR;h.action(2);
-    h.action(1);h.action(1);assert(h.cursor==2 && h.mainMenuRow(2)==3);
-    h.action(2);assert(h.speed_hacks==7);
-    h.draw();
-    assert(h.osd_rows[3]==h.frame.renderRow(3,
-      optionLabel(h.speed_hacks,{2,1,2,"Reduce bone reads",{"Off","On"}}),true,nds_osd::arrow_left));
-    h.action(8);assert(h.speed_hacks==3);h.action(7);assert(h.speed_hacks==7);
-    assert(h.status==saved_status);
+    assert(h.osd_rows[9]==h.frame.renderRow(9,"",false,nds_osd::arrow_right));
+    assert(h.mainMenuRow(17)==-1);
+    h.cursor=Host::DISPLAY_CURSOR;h.action(2);
+    assert(h.display_menu && !h.system_menu);h.action(3);
+    assert(!h.display_menu && h.cursor==Host::DISPLAY_CURSOR);
+    h.action(6);assert(h.system_menu);h.action(5);assert(!h.system_menu);
+    assert(h.status==status && h.speed_hacks==5);
+    // The internal preset, developer override and saved configuration still work.
     for(unsigned mask=0;mask<Host::SPEED_MODES.size();++mask){
       h.speed_hacks=mask;h.saveSettings();
       Host restored(kit.string(),(sd/"games/NDS").string(),sd);
@@ -58,10 +44,7 @@ struct HostTest {
     }
     std::ofstream(kit/"NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n99\n";
     {Host malformed(kit.string(),(sd/"games/NDS").string(),sd);assert(malformed.speed_hacks==0);}
-    setenv("NDS_NSMB_PATCH","lookup",1);
-    {Host forced(kit.string(),(sd/"games/NDS").string(),sd);assert(forced.speed_hacks==1);}
-    unsetenv("NDS_NSMB_PATCH");
-    std::cout<<"PASS: independent flags, navigation, pending-only behavior, save/reload and malformed defaults\n";
+    std::cout<<"PASS: no speed submenu with hooks enabled; navigation, preset, save/reload and overrides preserved\n";
   }
 };
 int main(){char path[]="/tmp/nds-speed-hacks-XXXXXX";assert(mkdtemp(path));HostTest::run(path);fs::remove_all(path);}

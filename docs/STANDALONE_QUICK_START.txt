@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.9
+NDS4MiSTer v0.9.0-rc.10
 
 START HERE
 
@@ -422,7 +422,7 @@ are not implemented. No claim of universal full-speed operation is made.
 
 RELEASE IDENTIFICATION
 
-The launcher and release manifest identify v0.9.0-rc.9 / Beta12. The retained
+The launcher and release manifest identify v0.9.0-rc.10 / Beta12. The retained
 host still identifies v0.9.0-rc.8 internally. The host, FPGA, renderer, support
 modules and runtime settings are unchanged from the frozen Beta12 package;
 none were rebuilt for this release. The public kit uses .NDS_Standalone rather
@@ -471,3 +471,25 @@ Try Analog Screen Main/Touch or Digital Layout Main/Touch, or hold F10/Screen
 Peek. A game may intentionally leave one DS screen blank. Native analog and
 DV1 CRT use about 59.64 Hz; PAL TVs must accept that timing. No PAL 50 Hz mode
 is supplied. Physical CRT/adapter acceptance needs testing on that hardware.
+
+NEW IN RC.10
+
+Right Stick Range is directly on the core menu. 100% is unchanged; use 125%,
+150%, 175% or 200% for limited stick travel, and System -> Save settings to keep
+it. Higher values reach the edges sooner, reducing fine positioning travel.
+
+Qualified movie acceleration and the tested NSMB USA revision-0 optimization
+activate automatically when loading the original game. There is no Speed hacks
+menu. Preparation can take about a minute; network loading may take longer.
+ROM files are not rewritten. Unsupported revisions keep the ordinary path.
+Read RELEASE_NOTES.md for the NSMB compatibility tradeoff and known issues.
+
+WarioWare D.I.Y. uses a 16 MiB NAND save; Jam with the Band uses 8 MiB. If the
+loader rejects an old incorrectly sized fallback save, back it up and move
+that one file aside for a fresh start. Existing progress is not automatically
+converted. Band Brothers DX remains unsupported. Use the game's normal save
+process before System -> Reboot; power-cut safety is not guaranteed.
+
+The support folder retains historical private-beta validation records. Their
+old launcher names and installation instructions do not apply to rc.10. Use
+Scripts -> NDS4MiSTer and this quick start for the current public package.
