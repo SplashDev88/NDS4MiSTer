@@ -91,6 +91,43 @@ the applied framebuffer orientation rather than a requested direction that
 has not yet finished rendering. Independent analog remains upright. Scaled
 analog retains its existing HDMI mirror behavior.
 
+## Latency
+
+Rotation Off bypasses the added native reader and transpose buffering. It
+does not remove the existing game, renderer, scaler or display latency.
+Rotation On captures a complete raster before presenting the transposed
+frame. The four memory slots protect two independent consumers; their count
+is not a four-frame display queue.
+
+The safe blanking-window adoption avoids an unnecessary extra wait when a
+completion arrives during blanking. Nevertheless, the capture-to-scanout
+phase still matters. A diagnostic copy of the complete pipeline testbench
+timestamped source and corresponding rotated pixels at four startup phases.
+For a 256x392 source, the mean pixel ages were 14.60, 28.05, 22.98 and 18.79 ms.
+The worst observed individual pixel age was 54.28 ms in the quarter-frame
+offset case, which also repeated a frame. These are short simulation runs
+with randomized DDR stalls and a direction switch, not measured controller
+latency or a hardware bound. Game execution, ARM rendering, the RetroTINK
+and the monitor are outside this measurement.
+
+The next latency experiment should align native scanout with capture
+completion and investigate whether the unused HDMI consumer can acknowledge
+immediately during independent-analog DV1 operation. Scaled analog still
+needs that consumer. Any change must preserve buffer ownership, avoid
+reading incomplete frames, retain native refresh timing and pass a sweep
+of source/output phases. Reading a frame while it is being written is not
+an acceptable default because it risks tearing.
+
+The tested NDS 1080p RetroTINK profile initially used Triple Buffer. After
+validating the final bitstream in that mode, Gen Lock worked at 59.64 Hz
+with 48 kHz audio. Scaling/Crop Setup reported `Min. Lag (0.8 ms)` for Buffer
+Length. This is the receiver's reported setting, not a controller-to-display
+measurement. The saved NDS 1080p profile uses Gen Lock, Auto Fill Int, square
+pixels and external rotation Off. A short gameplay capture had no sampled
+blackouts and retained audio; this does not establish long-session or
+every-display compatibility. The original 17–34 ms conversational estimate
+for core rotation is not a measured guarantee.
+
 ## Validation
 
 `python3 tools/test_dv1_osd.py` checks the complete native menu against an
@@ -125,11 +162,32 @@ assertion; the same assertion fails on the unchanged release source.
 The version source and generated menu identify `v0.9.0-rc10`; footer
 rendering and scrolling tests passed with that string.
 
-The menu-only candidate was tested on hardware with stacked, single and
-side-by-side DV1 layouts, external rotation, independent analog and normal
-HDMI in all core rotation directions. These observations do not validate the
-new native rotation reader: its FPGA build and hardware checks are pending.
+The final rotation bitstream, built from overlay commit `709389a`, has SHA-256
+`5d19631ecf0822ea85daa20e4f89965c1f89c10308539de4066dded9141af1f9`.
+On the RetroTINK-4K rig, stacked CW/CCW/Off, side-by-side CW/CCW with the
+largest gap, side-by-side CW with the normal gap, Main CW and Touch CCW all
+displayed correctly. Root-menu orientation matched the game and opening the
+menu left the complete DV1 metadata packet unchanged in every checked case.
+Both 192x520 and 192x536 tall modes worked with HDMI packets and audio
+enabled. The tall-mode recording retained nonzero audio in all 991 analyzed
+blocks after startup. The final bitstream also retained an upright independent
+analog game and menu while DV1 used CW rotation. Normal HDMI had been checked
+before the horizontal-blanking fix; a controlled scaled-analog comparison
+retained the menu-only baseline's existing output.
+
+At 1 GHz, two short NSMB World 1 castle jumping runs on the final bitstream
+measured 44.51 and 44.58 completed screen updates/sec with rotation Off,
+versus 44.02 and 44.12 with CW rotation. A further CW run with RetroTINK
+Gen Lock measured 44.02. Transport-fault counters stayed zero. These count
+completed buffers, not unique visible frames or input latency, and the
+roughly 1.1% difference is limited to this scene and short test. Earlier
+menu-only runs measured 42.69 and 42.59; run variation and changed FPGA
+placement prevent attributing that difference to a rendering optimization.
 
 The experimental FPGA build starts from the exact frozen rc10 FPGA inputs
-and overlays only the native video/menu changes. Static timing closure
-remains unresolved. The release notes and README are unchanged.
+and overlays only the native video/menu changes. Mapping, fitting, assembly
+and timing analysis completed successfully. The fit uses 34,815 ALMs,
+538/553 RAM blocks and 27 DSP blocks. Worst setup slack is -15.278 ns,
+hold +0.091 ns and recovery -14.478 ns: static timing closure remains
+unresolved. This is a private beta with bounded hardware checks, not a
+public-release qualification. The release notes and README are unchanged.
