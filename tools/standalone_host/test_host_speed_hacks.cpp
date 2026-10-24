@@ -25,7 +25,7 @@ struct HostTest {
     for(unsigned i=1;i<=order.size();++i){h.action(1);assert(h.cursor==order[i%order.size()]);}
     for(unsigned i=1;i<=order.size();++i){h.action(0);assert(h.cursor==order[(order.size()-i)%order.size()]);}
     h.draw();
-    assert(h.osd_rows[9]==h.frame.renderRow(9,"",false,nds_osd::arrow_right));
+    assert(h.osd_rows[6]==h.frame.renderRow(6,"",false,nds_osd::arrow_right));
     assert(h.mainMenuRow(17)==-1);
     h.cursor=Host::DISPLAY_CURSOR;h.action(2);
     assert(h.display_menu && !h.system_menu);h.action(3);

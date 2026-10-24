@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'Scripts/.NDS_Standalone/'
 VERSION = 'v0.9.0-rc.10'
 PINS = {
-    'nds_standalone_host': 'e904b4d9751dfb96852998540d47738a95dfb33bc877cb428da5e1ac85d42533',
+    'nds_standalone_host': '877970e11a69ab93d09ef1cea822b5bf8b28f4aa2dc61edc0530b522db7a724a',
     'NDS_Standalone.rbf': '4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26',
     'support/nds_hybrid_3d_service': '78384aacd738bfbacdc50bd9ceb336a2704042e94f09da2b5e0c843caccde35d',
     'supervisor.py': '2a94d422e213c71aee3741be5589003376cc0058428a1e0ac4a05579f1df25fc',
@@ -63,12 +63,15 @@ def assemble(kit):
             need(sha(data)==h,'FPGA frozen source mismatch: '+name); checked+=1
     source_readme='''# rc.10 corresponding source
 
-The gameplay binaries are unchanged from Performance RC1 revision 2.
+The renderer and FPGA are unchanged from Performance RC1 revision 2.
+The host is rebuilt solely for the requested menu spacing. Build it from
+`NDS4MiSTer-rc10-source.tar.gz` with tools/standalone_host/build.sh.
+The recorded GCC 13.3 Cortex-A9 static command is unchanged.
 
 - `NDS4MiSTer-rc10-source.tar.gz`: release documentation, packaging recipe and
-  current launcher scripts. The host source includes the menu-removal overlay.
-- `NDS4MiSTer-Performance-RC1-runtime.tar.gz`: exact host/renderer source used
-  for the accepted build. Follow `BUILD_PERFORMANCE_RC.md`, compiler profile
+  current launcher scripts. The host source includes menu removal and the three added blank rows.
+- `NDS4MiSTer-Performance-RC1-runtime.tar.gz`: exact prior host/renderer source used
+  for the accepted build; the menu-spacing host is in the rc.10 source archive. Follow `BUILD_PERFORMANCE_RC.md`, compiler profile
   archive, `RC1-build-provenance.json` and `RC1-r2-host-provenance.json`.
 - `NDS4MiSTer-rc10-fpga-5924000.tar.gz`: FPGA source at the exact selected
   commit. Append `build_override` from `../fpga-source-manifest.json` to
@@ -87,7 +90,7 @@ instructions and dependency licenses are retained alongside the source.
     files[PREFIX+'source/BUILD_RC10.md']=source_readme.encode()
     m=json.loads((ROOT/'docs/release/RC10_RUNTIME_MANIFEST.json').read_text())
     m.update(name='NDS4MiSTer',version=VERSION,release_channel='release candidate',
-             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=1,
+             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=2,
              packaging_source_revision=revision,launcher_sha256=sha(files[launcher]),
              installation_scope='Normal standalone kit; ordinary saves shared; existing display/input/clock settings retained.',
              hardware_validation='Inherited Performance RC1 r2 validation; separate rc.10 package launch receipt.',
@@ -101,8 +104,9 @@ instructions and dependency licenses are retained alongside the source.
         m['source_and_validation_sha256'][name]=sha(files[PREFIX+name])
     files[PREFIX+'manifest.json']=js(m)
     provenance={'version':VERSION,'packaging_source_revision':revision,
-                'runtime_binaries_changed_for_packaging':False,'runtime_pins':PINS,
+                'runtime_binaries_changed_for_packaging':['nds_standalone_host (menu spacing only)'],'runtime_pins':PINS,
                 'baseline_package':'Performance RC1 revision 2',
+                'host_change':'Three blank menu rows only; renderer/FPGA/runtime settings unchanged',
                 'baseline_zip_sha256':'a77fefbec42327d01fd92805b9c924056c638d52e2fa7698b2da69e41880c967',
                 'frozen_fpga_inputs_checked':checked,'fpga_code_commit':fm['code_commit'],
                 'dx_experiment_included':False,'static_timing_clean':False,

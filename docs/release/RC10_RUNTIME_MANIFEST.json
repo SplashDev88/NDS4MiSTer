@@ -9,8 +9,8 @@
   "freeze_source_revision": "5924000f9d422fc624fdc0aecad424eab5ca9325",
   "hardware_validation": "Renderer scene results inherited from RC1; revision-2 installed menu check is in the external receipt.",
   "helper_sha256": "78384aacd738bfbacdc50bd9ceb336a2704042e94f09da2b5e0c843caccde35d",
-  "host_change": "Remove speed menu only; preserve internal preset, loader and renderer.",
-  "host_sha256": "e904b4d9751dfb96852998540d47738a95dfb33bc877cb428da5e1ac85d42533",
+  "host_change": "Add blank lines between Display options, Right Stick Range, Lid and Reset; gameplay paths unchanged.",
+  "host_sha256": "877970e11a69ab93d09ef1cea822b5bf8b28f4aa2dc61edc0530b522db7a724a",
   "host_source_revision": "12325dfd6af12c962a81b98b2b1978cced5d5ae8",
   "hps_clock_khz": 1000000,
   "kernel_module_sha256": {
@@ -79,7 +79,7 @@
   "installation_scope": "Separate private kit with shared ordinary game saves; no user settings or cartridges.",
   "automatic_movie_files": {
     "NDS_Standalone.rbf": "4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26",
-    "nds_standalone_host": "e904b4d9751dfb96852998540d47738a95dfb33bc877cb428da5e1ac85d42533",
+    "nds_standalone_host": "877970e11a69ab93d09ef1cea822b5bf8b28f4aa2dc61edc0530b522db7a724a",
     "support/nds_hybrid_3d_service": "78384aacd738bfbacdc50bd9ceb336a2704042e94f09da2b5e0c843caccde35d",
     "supervisor.py": "2a94d422e213c71aee3741be5589003376cc0058428a1e0ac4a05579f1df25fc",
     "Kickstart.sh": "0b567af3cd088a9d7ff720fc7f8249ef20cea05a69e9d7dc8d1200ba1899dda8",
@@ -458,9 +458,8 @@
   "package_revision": 2,
   "speed_hacks_menu": false,
   "host_source_overlay_sha256": {
-    "tools/standalone_host/host.cpp": "926b1b8bb95e07050d19438e47238860591c59e2627472546f180ff819b9e581",
-    "tools/standalone_host/test_host_speed_hacks.cpp": "54a4d908813a71695d3b3c9546e98026ed58dd4a9222bb49dc5193f12904ccb9",
-    "docs/PERFORMANCE_RC1_20261023.md": "fec55499b35fa3aa144832b82b3f59643b7bfb5bbf99a2dc2afd38d5f2cf1078",
-    "docs/PERFORMANCE_RC1_VALIDATION_20261023.md": "be1f6063a539f17940aab7d436134737e29ff666b8474164ddebceffdb4bb92a"
+    "tools/standalone_host/host.cpp": "17ab0337410fe4b6090bc177e69353ad0ac58ad585fe5fb20f5d6986fe8ed3d9",
+    "tools/standalone_host/test_host_speed_hacks.cpp": "e9ea4e12a927adf53b54570ed0a51d1ff3b3c0bf7c806ffcf679c885b0e07825",
+    "tools/standalone_host/test_host_touch_range.cpp": "196801828b9e5b27f184030d06faf8fdc2cc5b52ea2831f319d76e74fbca76e6"
   }
 }

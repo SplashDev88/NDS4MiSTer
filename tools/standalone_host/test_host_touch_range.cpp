@@ -107,7 +107,7 @@ struct HostTest {
       assert(h.cursor == Host::TOUCH_RANGE_CURSOR);
       h.action(2); assert(h.touch_range == 1 && !h.display_menu && !h.system_menu);
       h.action(7); assert(h.touch_range == 0);
-      const int row = independent ? 6 : 2;
+      const int row = independent ? 7 : 2;
       h.draw();
       assert(h.osd_rows[row] == h.frame.renderRow(row,
           " Right Stick Range:     100%",true,nds_osd::arrow_right));

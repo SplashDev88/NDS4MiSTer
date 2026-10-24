@@ -1,8 +1,10 @@
 # rc.10 validation and scope
 
 rc.10 packages the accepted **Performance RC1 revision 2** gameplay runtime.
-The host, FPGA, renderer, movie worker, supervisor, clock controller and runtime
-settings are unchanged. The public wrapper points at `Scripts/.NDS_Standalone`.
+The FPGA, renderer, movie worker, supervisor, clock controller and runtime
+settings are unchanged. The host is rebuilt only to add one blank line between
+Display options, Right Stick Range, Lid and Reset. Menu navigation, touch-range,
+split-output and no-speed-menu checks pass after that layout change. The public wrapper points at `Scripts/.NDS_Standalone`.
 Package/installation receipts accompany the final ZIP; inherited runtime tests
 below are not represented as a new sweep of every game.
 
@@ -15,7 +17,7 @@ and Jam with the Band.
 
 | Component | SHA-256 |
 | --- | --- |
-| Host | `e904b4d9751dfb96852998540d47738a95dfb33bc877cb428da5e1ac85d42533` |
+| Host | `877970e11a69ab93d09ef1cea822b5bf8b28f4aa2dc61edc0530b522db7a724a` |
 | FPGA | `4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26` |
 | Renderer | `78384aacd738bfbacdc50bd9ceb336a2704042e94f09da2b5e0c843caccde35d` |
 | Supervisor | `2a94d422e213c71aee3741be5589003376cc0058428a1e0ac4a05579f1df25fc` |
@@ -24,7 +26,7 @@ ARM clock is 1 GHz. Internal performance preset is 5; no Speed hacks OSD.
 The inherited host version string remains rc.8. FPGA source is commit
 `5924000f9d422fc624fdc0aecad424eab5ca9325` with the three recorded graphics
 build overrides. Host/renderer baseline is `12325dfd6af12c962a81b98b2b1978cced5d5ae8`,
-plus the recorded menu-removal host overlay. The shipped source archives and
+plus the recorded menu-removal overlay and rc.10 menu-spacing change. The shipped source archives and
 provenance identify each component separately; the package branch's newer RTL
 experiments are not the FPGA build inputs.
 
@@ -105,7 +107,7 @@ explicit release performance preset. Source includes authored hook assembly,
 corresponding runtime archives, compiler profile counters and FFmpeg source.
 
 A separate receipt records installation, package validation, launch/clean return
-and protection of existing saves/settings. Runtime binaries stay byte-identical
-to Performance RC1 r2. Do not describe these package checks as new full-game
+and protection of existing saves/settings. Renderer/FPGA binaries stay byte-identical
+to Performance RC1 r2; the host differs only for menu spacing. Do not describe these package checks as new full-game
 qualification. Long sessions, all outputs/controllers and multiple boards remain
 unqualified; FPGA static timing remains unresolved.
