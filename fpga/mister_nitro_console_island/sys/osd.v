@@ -25,7 +25,9 @@ module osd
     output wire buffer_re,
     output wire [12:0] buffer_raddr,
     input wire [7:0] buffer_q,
-    output wire buffer_scheduled
+    output wire buffer_scheduled,
+    input tri0 native_pixel_enable,
+    input tri0 native_pixel_ce
 );
 
 // Optional shared bitmap ports. The default keeps the original private RAM.
@@ -39,6 +41,9 @@ parameter  OSD_COUNTER_BITS = 22;
 // behavior for HDMI and the existing native raster.
 parameter  OSD_FIXED_UPRIGHT = 0;
 parameter  OSD_MAX_LINES = 0;
+// Only the native digital instance enables this option. Scaled HDMI and
+// the independent analog menu retain the original raster exactly.
+parameter  OSD_NATIVE_PIXELS = 0;
 
 localparam OSD_WIDTH    = 12'd256;
 localparam OSD_HEIGHT   = 12'd64;
@@ -125,7 +130,26 @@ end
 
 (* direct_enable *) reg ce_pix;
 reg [OSD_COUNTER_BITS-1:0] pixsz;
-assign buffer_re = ce_pix;
+wire native_pixels = OSD_NATIVE_PIXELS && native_pixel_enable;
+wire [12:0] native_address;
+wire native_active;
+wire [2:0] native_bit;
+generate if (OSD_NATIVE_PIXELS) begin : native_raster
+    nds_dv1_osd_raster raster (
+        .clk(clk_video), .ce(native_pixel_ce), .de(de_in), .vs(vs_in),
+        .enable(osd_enable), .info(info), .info_x(infox[11:0]), .info_y(infoy[11:0]),
+        .width(info ? {3'b0,infow} : 12'd256),
+        .height(info ? {3'b0,infoh} : highres ? 12'd128 : 12'd64),
+        .address(native_address), .active(native_active), .bit_select(native_bit)
+    );
+end else begin
+    assign native_address = 0;
+    assign native_active = 0;
+    assign native_bit = 0;
+end endgenerate
+// The dedicated digital RAM port can read every clock. This lets a full
+// 256-column menu start at the left edge without losing pipeline columns.
+assign buffer_re = native_pixels || ce_pix;
 assign buffer_scheduled = pixsz != 0;
 reg [OSD_COUNTER_BITS-1:0] cnt = 0;
 always @(posedge clk_video) begin
@@ -182,7 +206,7 @@ end
 reg [7:0] osd_byte;
 reg [OSD_COUNTER_BITS-1:0] osd_vcnt,osd_hcnt,osd_hcnt2;
 wire [7:0] bitmap_byte = OSD_EXTERNAL_BUFFER ? buffer_q : osd_byte;
-assign buffer_raddr = rot[0] ? ({osd_hcnt2[6:3],osd_vcnt[7:0]} ^ {rot_row_mask,{8{rot[1]}}}) : {osd_vcnt[7:3],osd_hcnt[7:0]};
+assign buffer_raddr = native_pixels ? native_address : rot[0] ? ({osd_hcnt2[6:3],osd_vcnt[7:0]} ^ {rot_row_mask,{8{rot[1]}}}) : {osd_vcnt[7:3],osd_hcnt[7:0]};
 always @(posedge clk_video) begin
 	reg        deD;
 	reg  [2:0] osd_div;
@@ -197,6 +221,7 @@ always @(posedge clk_video) begin
 	reg        f1;
 	reg        half;
 
+	if(native_pixels && !OSD_EXTERNAL_BUFFER) osd_byte <= osd_buffer[native_address];
 	if(ce_pix) begin
 		// The frame-boundary test used to feed the multiscan selector through
 		// a 22-bit comparison in the same HDMI cycle. Track it throughout the
@@ -280,7 +305,7 @@ always @(posedge clk_video) begin
 			end
 		end
 
-		if(!OSD_EXTERNAL_BUFFER) osd_byte <= osd_buffer[rot[0] ? ({osd_hcnt2[6:3], osd_vcnt[7:0]} ^ {rot_row_mask, {8{rot[1]}}}) : {osd_vcnt[7:3], osd_hcnt[7:0]}];
+		if(!OSD_EXTERNAL_BUFFER && !native_pixels) osd_byte <= osd_buffer[rot[0] ? ({osd_hcnt2[6:3], osd_vcnt[7:0]} ^ {rot_row_mask, {8{rot[1]}}}) : {osd_vcnt[7:3], osd_hcnt[7:0]}];
 		osd_pixel <= bitmap_byte[rot[0] ? ((osd_hcnt2[2:0]-1'd1) ^ {3{~rot[1]}}) : osd_vcnt[2:0]];
 		osd_de[2:1] <= osd_de[1:0];
 	end
@@ -306,6 +331,10 @@ always @(posedge clk_video) begin
 
 	osd_mux <= ~osd_de[2];
 	rdout2  <= osd_mux ? nrdout1 : ordout1;
+	if(native_pixels) rdout2 <= !native_active ? nrdout1 :
+        {{bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[2], nrdout1[23:19]},
+         {bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[1], nrdout1[15:11]},
+         {bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[0], nrdout1[7:3]}};
 	rdout3  <= rdout2;
 
 	de1 <= de_in; de2 <= de1; de3 <= de2;

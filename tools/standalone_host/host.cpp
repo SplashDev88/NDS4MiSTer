@@ -402,7 +402,9 @@ class Host {
   void serviceVideoMetadata() {
     if (!direct_video_metadata) return;
     std::array<uint8_t, 31> packet{};
-    if (!video_packet.ready(nds_video::readGeometry(spi), video_osd_visible, packet)) return;
+    auto geometry = nds_video::readGeometry(spi);
+    geometry.native_menu_pixels = nds_video::readNativeMenuPixels(spi);
+    if (!video_packet.ready(geometry, video_osd_visible, packet)) return;
     if (video_transmitter.writePacket(packet)) {
       video_packet.acknowledge(packet);
       video_write_failed = false;

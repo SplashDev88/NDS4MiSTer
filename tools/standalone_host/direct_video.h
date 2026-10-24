@@ -18,6 +18,7 @@ struct Geometry {
   uint32_t width = 0, height = 0, clocks = 0;
   uint32_t line_ticks = 0, frame_ticks = 0;
   uint16_t repeat = 0, left = 0, top = 0, flags = 0;
+  bool native_menu_pixels = false;
   bool valid() const {
     return width && width <= 1024 && height && height <= 1024 &&
            repeat && repeat <= 16 && left < 8192 && top < 256;
@@ -26,7 +27,9 @@ struct Geometry {
     std::array<uint8_t, 31> p{};
     p[0] = 0x83; p[1] = 1; p[2] = 25;
     p[4] = 'D'; p[5] = 'V'; p[6] = '1';
-    p[7] = ((flags & 0x100) ? 1 : 0) | (menu ? 4 : 0) |
+    // Bit2 asks the receiver to retain the finer legacy OSD sample grid.
+    // A native-pixel menu is safe to decimate exactly like the game picture.
+    p[7] = ((flags & 0x100) ? 1 : 0) | (menu && !native_menu_pixels ? 4 : 0) |
            ((flags & 0x200) ? 8 : 0);
     p[8] = uint8_t(repeat);
     const std::array<uint16_t, 4> fields{left, top, uint16_t(width), uint16_t(height)};
@@ -38,6 +41,19 @@ struct Geometry {
     return p; // Main enables the transmitter's automatic SPD checksum.
   }
 };
+
+template<class SPI> bool readNativeMenuPixels(SPI &spi) {
+  const auto signature = spi.begin(SPI::IO, 0x46);
+  try {
+    (void)spi.word(0); // current video flags
+    const auto split = spi.word(0);
+    const auto native = spi.word(0);
+    spi.end();
+    // Older cores retain0x5350 for the extra word. Never suppress the
+    // high-resolution flag unless the actual FPGA reports the new raster.
+    return signature == 0x4456 && split == 0x5350 && native == 0x4e51;
+  } catch (...) { spi.end(); throw; }
+}
 
 template<class SPI> Geometry readGeometry(SPI &spi) {
   Geometry g;
@@ -64,11 +80,15 @@ template<class SPI> Geometry readGeometry(SPI &spi) {
 class StablePacket {
   std::array<uint8_t, 31> candidate{}, written{};
   bool seen = false, sent = false;
+  bool candidate_native_pixels = false;
 public:
   bool ready(const Geometry &g, bool menu, std::array<uint8_t, 31> &out) {
     if (!g.valid()) { seen = false; return false; }
     auto p = g.packet(false);
-    if (!seen || p != candidate) { candidate = p; seen = true; return false; }
+    if (!seen || p != candidate || candidate_native_pixels != g.native_menu_pixels) {
+      candidate = p; candidate_native_pixels = g.native_menu_pixels;
+      seen = true; return false;
+    }
     out = g.packet(menu);
     return !sent || written != out;
   }

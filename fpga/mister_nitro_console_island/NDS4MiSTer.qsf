@@ -451,3 +451,4 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_h3d_adoption_window
 # Keep 3D FPS, TATE/menu rotation, YC encoding, microphone and lid controls.
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_native_osd_memory.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_osd_raster.sv

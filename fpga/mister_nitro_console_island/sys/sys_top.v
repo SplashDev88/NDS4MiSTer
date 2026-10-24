@@ -310,6 +310,13 @@ reg        cfg_set      = 0;
 
 wire       audio_96k    = cfg[6];
 wire       csync_en     = cfg[3];
+`ifdef MISTER_HDMI_ONLY
+wire nds_dv1_native_osd = 1'b0;
+`elsif NDS_HDMI_SCALER_ONLY
+wire nds_dv1_native_osd = 1'b0;
+`else
+wire nds_dv1_native_osd = direct_video && !vga_fb && (nds_split_active || vga_scaler);
+`endif
 `ifndef MISTER_DUAL_SDRAM
 	`ifdef NDS_HDMI_SCALER_ONLY
 	wire sog = 1'b0;
@@ -500,6 +507,9 @@ always@(posedge clk_sys) begin
 `ifdef NDS_NATIVE_OUTPUTS
 			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
             if(cmd == 'h46 && cnt == 1) io_dout_sys <= 16'h5350; // split-output ABI v1
+            // Optional fourth response: native-pixel OSD ABI, bit0 active.
+            // Old hosts stop after the split capability and remain compatible.
+            if(cmd == 'h46 && cnt == 2) io_dout_sys <= 16'h4e50 | nds_dv1_native_osd;
 `endif
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
@@ -1621,7 +1631,9 @@ nds_native_osd_memory nds_osd_memory (
 // blanking with ample headroom. The tallest source is414 active lines
 // (stacked screens,24-pixel gap,FPS row), so larger multiscan modes are
 // unreachable. HDMI keeps the generic22-bit counters and all geometries.
-osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1)) vga_osd
+// Never alter the shared legacy analog raster. The correction is allowed
+// only while HDMI uses Direct Video and analog has its own raster or scaler.
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(1)) vga_osd
 (
 	.clk_sys(clk_sys),
 
@@ -1642,7 +1654,8 @@ osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1)) vga_o
 	.de_out(vga_de_osd),
     .buffer_we(nds_osd_write), .buffer_waddr(nds_osd_write_address), .buffer_wdata(nds_osd_write_data),
     .buffer_re(nds_osd_digital_read), .buffer_raddr(nds_osd_digital_address),
-    .buffer_q(nds_osd_digital_q), .buffer_scheduled()
+    .buffer_q(nds_osd_digital_q), .buffer_scheduled(),
+    .native_pixel_enable(nds_dv1_native_osd), .native_pixel_ce(vga_ce_sl)
 );
 
 wire vga_cs_osd;
