@@ -315,7 +315,9 @@ wire nds_dv1_native_osd = 1'b0;
 `elsif NDS_HDMI_SCALER_ONLY
 wire nds_dv1_native_osd = 1'b0;
 `else
-wire nds_dv1_native_osd = direct_video && !vga_fb && (nds_split_active || vga_scaler);
+// CONF_DVI and CONF_DIRECT_VIDEO2 must retain the legacy menu sampling.
+wire nds_dv1_native_osd = direct_video && !cfg[7] && !cfg[13] &&
+                          !vga_fb && (nds_split_active || vga_scaler);
 `endif
 `ifndef MISTER_DUAL_SDRAM
 	`ifdef NDS_HDMI_SCALER_ONLY
