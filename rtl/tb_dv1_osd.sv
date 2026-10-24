@@ -23,7 +23,7 @@ module tb_dv1_osd;
         .de_out(actual_ctl[0]),.hs_out(actual_ctl[1]),.vs_out(actual_ctl[2]),.osd_status(actual_ctl[3]),
         .buffer_we(we),.buffer_waddr(wa),.buffer_wdata(wd),
         .buffer_re(re),.buffer_raddr(ra),.buffer_q(q),.buffer_scheduled(),
-        .native_pixel_enable(native_enable),.native_pixel_ce(ce));
+        .native_pixel_enable(native_enable),.native_pixel_ce(ce),.native_rotation(applied_rotation));
     osd_reference #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512)) old (
         .clk_sys(clk),.clk_video(clk),.io_osd,.io_strobe,.io_din,
         .din(rgb),.de_in(de),.hs_in(hs),.vs_in(vs),.dout(reference),
@@ -51,6 +51,7 @@ module tb_dv1_osd;
 
     integer px,py,w,h,rows,divisor;
     reg visible=0, checking=0;
+    reg [1:0] applied_rotation=0;
     reg [26:0] expected[0:3];
     integer checked=0,col0=0,col255=0;
     function automatic [7:0] content(input integer x,y);
@@ -64,9 +65,12 @@ module tb_dv1_osd;
     always @(posedge clk) begin : oracle
         reg [23:0] want;
         reg [7:0] bits;
-        integer x,y;
+        integer x,y,sx,sy,sw,sh;
         want=rgb;
-        x=px-(w-256)/2;y=py-(h-rows*8)/2;
+        sw=applied_rotation==0?w:h;sh=applied_rotation==0?h:w;
+        sx=applied_rotation==1?py:applied_rotation==2?sw-1-py:px;
+        sy=applied_rotation==1?sh-1-px:applied_rotation==2?px:py;
+        x=sx-(sw-256)/2;y=sy-(sh-rows*8)/2;
         if(visible && de && x>=0 && x<256 && y>=0 && y<rows*8) begin
             bits=content(x,y/8);
             want=overlay(rgb,bits[y%8]);
@@ -80,9 +84,14 @@ module tb_dv1_osd;
             if({analog_ctl,analog_rgb} !== {analog_reference_ctl,analog_reference})
                 $fatal(1,"independent analog changed while DV1 enabled=%0d",native_enable);
             if(native_enable) begin
-                if({actual_ctl[2:0],actual} !== expected[3])
+                if({actual_ctl[2:0],actual} !== expected[3]) begin
+                    $display("rot%0d source%0d,%0d by%0d addr%h bit%0d q%h can%0d,%0d",dut.native_rotation,
+                        dut.native_raster.raster.source_x,dut.native_raster.raster.source_y,
+                        dut.native_raster.raster.by,ra,dut.native_bit,q,
+                        dut.native_raster.raster.canvas_width,dut.native_raster.raster.canvas_height);
                     $fatal(1,"DV1 pixel mismatch mode%0dx%0d/%0d rows%0d xy%0d,%0d got%h expected%h",
                         w,h,divisor,rows,px,py,{actual_ctl[2:0],actual},expected[3]);
+                end
             end else if({actual_ctl,actual} !== {reference_ctl,reference})
                 $fatal(1,"non-DV1 changed mode%0dx%0d/%0d got%h expected%h",
                        w,h,divisor,{actual_ctl,actual},{reference_ctl,reference});
@@ -146,6 +155,15 @@ module tb_dv1_osd;
         raster(256,192,6,8,0,1,1);
         raster(256,414,3,16,0,1,1);
         raster(256,392,3,16,0,1,0);
+        // Game and menu turn together; legacy analog remains byte-exact.
+        applied_rotation=1;
+        raster(392,256,6,16,0,1,1);
+        raster(240,320,3,8,0,1,1);
+        raster(198,536,2,16,0,1,1);
+        applied_rotation=2;
+        raster(414,256,6,16,0,1,1);
+        raster(192,520,2,8,0,1,1);
+        applied_rotation=0;
         // Switch back after DV1; every RGB and sync sample must match rc10.
         raster(256,392,3,16,0,0,1);
         raster(320,240,10,16,0,0,1);

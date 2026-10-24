@@ -32,7 +32,7 @@ provide 212 MiB without reducing Linux RAM or moving the video buffers.
 | `0x22000000..0x22800000` | Linux console framebuffer, 8 MiB | None |
 | `0x22800000..0x24000000` | Cartridge, 24 MiB | 252..276 MiB |
 | `0x24000000..0x24300000` | TATE: three 1 MiB buffers | None |
-| `0x24300000..0x24400000` | Reserved guard | None |
+| `0x24300000..0x24400000` | Fourth TATE buffer for the experimental DV1 reader; otherwise reserved | None |
 | `0x24400000..0x30000000` | Cartridge, 188 MiB | 276..464 MiB |
 | `0x30000000..0x3fc00000` | Cartridge, 252 MiB | 0..252 MiB |
 | `0x3fc00000..0x40000000` | Graphics/control, audio and display publication | None |

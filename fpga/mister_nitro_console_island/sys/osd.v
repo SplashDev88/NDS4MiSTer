@@ -27,7 +27,8 @@ module osd
     input wire [7:0] buffer_q,
     output wire buffer_scheduled,
     input tri0 native_pixel_enable,
-    input tri0 native_pixel_ce
+    input tri0 native_pixel_ce,
+    input tri0 [1:0] native_rotation
 );
 
 // Optional shared bitmap ports. The default keeps the original private RAM.
@@ -137,6 +138,7 @@ wire [2:0] native_bit;
 generate if (OSD_NATIVE_PIXELS) begin : native_raster
     nds_dv1_osd_raster raster (
         .clk(clk_video), .ce(native_pixel_ce), .de(de_in), .vs(vs_in),
+        .rotation(native_rotation),
         .enable(osd_enable), .info(info), .info_x(infox[11:0]), .info_y(infoy[11:0]),
         .width(info ? {3'b0,infow} : 12'd256),
         .height(info ? {3'b0,infoh} : highres ? 12'd128 : 12'd64),

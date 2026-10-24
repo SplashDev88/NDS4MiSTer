@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 `timescale 1ns/1ps
-module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_ONLY=1);
+module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_ONLY=1, parameter integer NATIVE_READER=0);
     reg reset=1, i_clk=0, avl_clk=0, o_clk=0;
     always #8 i_clk=~i_clk;
     always #5 avl_clk=~avl_clk;
@@ -18,7 +18,23 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
     wire [27:0] wr_address;
     wire [127:0] wr_data;
     wire wr_valid, wr_ready;
-    nds_tate_video #(.TILE_ROWS(TILE_ROWS),.CCW_ONLY(CCW_ONLY)) dut (.*);
+    reg n_clk=0,n_vbl=0,n_enable=NATIVE_READER,pause_native=0;
+    always #11 n_clk=~n_clk;
+    integer native_clock=0;
+    always @(negedge n_clk) begin
+        if(pause_native) begin n_vbl=0;native_clock=0;end
+        else begin
+            native_clock=native_clock+1;
+            if(native_clock==1900) n_vbl=1;
+            if(native_clock==1980) begin n_vbl=0;native_clock=0;end
+        end
+    end
+    wire n_fb_enable;
+    wire [1:0] n_rotation_applied;
+    wire [9:0] n_fb_width,n_fb_height;
+    wire [31:0] n_fb_base;
+    wire [13:0] n_fb_stride;
+    nds_tate_video #(.TILE_ROWS(TILE_ROWS),.CCW_ONLY(CCW_ONLY),.NATIVE_READER(NATIVE_READER)) dut (.*);
 
     reg s_read=0, s_write=0;
     reg [27:0] s_address=28'h1000;
@@ -39,7 +55,7 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
         .m_read,.m_write,.m_address,.m_burstcount,.m_writedata,.m_byteenable,
         .m_waitrequest
     );
-    reg [31:0] memory [0:786431];
+    reg [31:0] memory [0:1048575];
     integer beats=0, base_word=0, remaining=0, writes=0, normal_beats=0;
     integer lane, address_word;
     integer vblank_clock=0, scaler_left=0, avl_count=0;
@@ -75,9 +91,14 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
                     $fatal(1,"rotation is not a full tile burst");
                 if (fb_enable && ((m_address-28'h2400000)>>16) == dut.display_fb)
                     $fatal(1,"write overwrote the displayed frame");
+                if(NATIVE_READER && n_fb_enable && ((m_address-28'h2400000)>>16)==dut.native_fb)
+                    $fatal(1,"write overwrote native display frame");
+                if((dut.completed!=dut.display_ack || (NATIVE_READER && dut.completed!=dut.native_ack)) &&
+                    ((m_address-28'h2400000)>>16)==dut.ready_fb)
+                    $fatal(1,"write overwrote pending immutable frame");
                 for(lane=0;lane<4;lane=lane+1) begin
                     address_word=base_word+beats*4+lane;
-                    if(address_word<0 || address_word>=786432) $fatal(1,"write escaped reserved buffers");
+                    if(address_word<0 || address_word>=(NATIVE_READER?1048576:786432)) $fatal(1,"write escaped reserved buffers");
                     memory[address_word]=m_writedata[lane*32+:32];
                 end
                 writes=writes+1;
@@ -142,6 +163,9 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
             if(CCW_ONLY && rot==1) rot=2;
             t=0;
             while((!fb_enable || rotation_applied!=rot ||
+                (NATIVE_READER && (!n_fb_enable || n_rotation_applied!=rot ||
+                memory[((n_fb_base-32'h24000000)>>2)] !==
+                    (rot==1 ? packed_pattern(0,h-1,id) : packed_pattern(w-1,0,id)))) ||
                 memory[((fb_base-32'h24000000)>>2)] !==
                     (rot==1 ? packed_pattern(0,h-1,id) : packed_pattern(w-1,0,id))) && t<100000) begin
                 @(negedge avl_clk);t=t+1;
@@ -203,6 +227,14 @@ module tb_nds_tate_video #(parameter integer TILE_ROWS=4, parameter integer CCW_
             $display("PASS both mid-frame direction changes hold the previous complete frame");
         end
         if(overflow) $fatal(1,"unexpected overflow with ordinary stalls");
+        if(NATIVE_READER) begin
+            pause_native=1;
+            frame(32,24,id,1);repeat(10000) @(negedge avl_clk);
+            frame(32,24,id+1,1);repeat(10000) @(negedge avl_clk);
+            frame(32,24,id+2,1);repeat(10000) @(negedge avl_clk);
+            pause_native=0;verify_frame(32,24,id,1);id=id+3;
+            $display("PASS paused native reader pins its old and pending frames");
+        end
         pause_display=1;
         frame(32,24,id,1);repeat(1000) @(negedge avl_clk);
         frame(32,24,id+1,1);repeat(1000) @(negedge avl_clk);

@@ -32,7 +32,7 @@ inline constexpr std::array<Span, 3> spans(uint64_t size) {
            // Preserve scaler0x200..0x220 and Linux framebuffer0x220..0x228.
            {lr1_transfer_size, bank_start,
             stored > lr1_transfer_size ? std::min(stored, 276 * mib) - lr1_transfer_size : 0},
-           // Leave 0x24000000..0x24400000 for TATE (3 x 1 MiB plus guard).
+           // Leave 0x24000000..0x24400000 for TATE (four reserved 1 MiB slots).
            {276 * mib, 0x24400000,
             stored > 276 * mib ? stored - 276 * mib : 0}}};
 }

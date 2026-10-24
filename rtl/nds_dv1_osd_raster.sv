@@ -5,6 +5,7 @@
 // shared with the existing OSD; no framebuffer or extra bitmap is needed.
 module nds_dv1_osd_raster (
     input wire clk, ce, de, vs, enable, info,
+    input wire [1:0] rotation, // applied game rotation: 1=CW, 2=CCW
     input wire [11:0] info_x, info_y, width, height,
     output wire [12:0] address,
     output reg active = 0,
@@ -15,12 +16,19 @@ module nds_dv1_osd_raster (
     wire line_start = de && !de_d;
     wire [9:0] next_x = line_start ? 10'd0 : ce && de ? x + 1'b1 : x;
     wire [9:0] next_y = line_start ? (frame_pending ? 10'd0 : y + 1'b1) : y;
-    wire [11:0] left = info ? info_x : canvas_width >= width ?
-                      ({2'b0,canvas_width} - width) >> 1 : 12'd0;
-    wire [11:0] top = info ? info_y : canvas_height >= height ?
-                     ({2'b0,canvas_height} - height) >> 1 : 12'd0;
-    wire [11:0] bx = {2'b0,next_x} - left;
-    wire [11:0] by = {2'b0,next_y} - top;
+    wire turned = rotation == 1 || rotation == 2;
+    wire [11:0] source_width = turned ? {2'b0,canvas_height} : {2'b0,canvas_width};
+    wire [11:0] source_height = turned ? {2'b0,canvas_width} : {2'b0,canvas_height};
+    wire [11:0] source_x = rotation == 1 ? {2'b0,next_y} :
+        rotation == 2 ? source_width - 1'b1 - next_y : {2'b0,next_x};
+    wire [11:0] source_y = rotation == 1 ? source_height - 1'b1 - next_x :
+        rotation == 2 ? {2'b0,next_x} : {2'b0,next_y};
+    wire [11:0] left = info ? info_x : source_width >= width ?
+                      (source_width - width) >> 1 : 12'd0;
+    wire [11:0] top = info ? info_y : source_height >= height ?
+                     (source_height - height) >> 1 : 12'd0;
+    wire [11:0] bx = source_x - left;
+    wire [11:0] by = source_y - top;
     assign address = {by[7:3],bx[7:0]};
     always @(posedge clk) begin
         de_d <= de;

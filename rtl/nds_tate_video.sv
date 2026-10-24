@@ -5,8 +5,9 @@
 // display frame; it never stalls the DS or publishes partially written data.
 module nds_tate_video #(
     parameter integer CCW_ONLY = 0,
+    parameter integer NATIVE_READER = 0,
     parameter integer TILE_ROWS = 4, // 4 or 8; one or two full DDR beats
-    parameter [27:0] RAM_BASE = 28'h2400000 // byte 0x24000000, 3 x 1 MiB
+    parameter [27:0] RAM_BASE = 28'h2400000 // 3 slots; optional DV1 uses the reserved fourth
 ) (
     input  wire reset,
     input  wire i_clk, i_ce, i_de, i_vs,
@@ -15,6 +16,12 @@ module nds_tate_video #(
     input  wire [9:0] source_width, source_height,
     input  wire avl_clk,
     input  wire o_clk, o_vbl,
+    input  tri0 n_clk, n_vbl, n_enable,
+    output wire n_fb_enable,
+    output wire [1:0] n_rotation_applied,
+    output reg [9:0] n_fb_width = 0, n_fb_height = 0,
+    output wire [31:0] n_fb_base,
+    output reg [13:0] n_fb_stride = 0,
     output wire fb_enable,
     output wire [1:0] rotation_applied,
     output reg [9:0] fb_width, fb_height,
@@ -124,6 +131,11 @@ module nds_tate_video #(
     (* async_reg = "true" *) reg [1:0] display_bank_meta = 2, display_bank_sync = 2;
     reg [1:0] write_fb = 0, ready_fb = 0, display_fb = 2;
     reg completed = 0, display_ack = 0;
+    reg native_ack = 0;
+    reg [1:0] native_fb = 3;
+    (* async_reg = "true" *) reg [1:0] native_ack_sync = 0;
+    (* async_reg = "true" *) reg [1:0] native_bank_meta = 3, native_bank_sync = 3;
+    reg display_ack_settled = 0, native_ack_settled = 0;
     reg [9:0] ready_width, ready_height;
     reg [13:0] ready_stride;
     reg [1:0] ready_mode;
@@ -137,10 +149,11 @@ module nds_tate_video #(
     reg [1:0] strip_mode;
     localparam IDLE=0, RAM_WAIT=1, RAM_LOAD=2, BEAT0=3, BEAT1=4;
 
-    function automatic [1:0] free_bank(input [1:0] a, b);
-        if (a != 0 && b != 0) free_bank = 0;
-        else if (a != 1 && b != 1) free_bank = 1;
-        else free_bank = 2;
+    function automatic [1:0] free_bank(input [1:0] a, b, c);
+        if (a != 0 && b != 0 && (!NATIVE_READER || c != 0)) free_bank = 0;
+        else if (a != 1 && b != 1 && (!NATIVE_READER || c != 1)) free_bank = 1;
+        else if (!NATIVE_READER || (a != 2 && b != 2 && c != 2)) free_bank = 2;
+        else free_bank = 3;
     endfunction
     function automatic [31:0] pixel_word(input [17:0] rgb);
         pixel_word = {8'd0,rgb[5:0],rgb[5:4],rgb[11:6],rgb[11:10],rgb[17:12],rgb[17:16]};
@@ -163,6 +176,8 @@ module nds_tate_video #(
         if (reset) begin
             request_sync <= 0; acknowledge <= 0; state <= IDLE;
             display_ack_sync <= 0; display_bank_meta <= 2; display_bank_sync <= 2;
+            native_ack_sync <= 0; native_bank_meta <= 3; native_bank_sync <= 3;
+            display_ack_settled <= 0; native_ack_settled <= 0;
             write_fb <= 0; completed <= 0; ready_fb <= 0;
             address <= 0; column <= 0; read_bank <= 0;
         end else begin
@@ -170,6 +185,14 @@ module nds_tate_video #(
             display_ack_sync <= {display_ack_sync[0],display_ack};
             display_bank_meta <= display_fb;
             display_bank_sync <= display_bank_meta;
+            native_ack_sync <= {native_ack_sync[0],native_ack};
+            native_bank_meta <= native_fb;
+            native_bank_sync <= native_bank_meta;
+            // The bank and acknowledgement launch together. Give the two-bit
+            // bank crossing one additional cycle to settle before accepting
+            // its acknowledgement, so a newly displayed bank cannot look free.
+            display_ack_settled <= display_ack_sync[1];
+            native_ack_settled <= native_ack_sync[1];
             case (state)
                 IDLE: if (request_sync[1] != acknowledge) begin
                     read_bank <= req_bank;
@@ -192,13 +215,14 @@ module nds_tate_video #(
                     if (strip_mode == 2 ? column == 0 : column == strip_width - 1'b1) begin
                         acknowledge <= request_sync[1];
                         state <= IDLE;
-                        if (strip_last && completed == display_ack_sync[1]) begin
+                        if (strip_last && completed == display_ack_settled &&
+                            (!NATIVE_READER || completed == native_ack_settled)) begin
                             ready_fb <= write_fb;
                             ready_width <= req_height; ready_height <= strip_width;
                             ready_stride <= {stride_words,4'd0};
                             ready_mode <= strip_mode;
                             completed <= ~completed;
-                            write_fb <= free_bank(write_fb,display_bank_sync);
+                            write_fb <= free_bank(write_fb,display_bank_sync,native_bank_sync);
                         end
                     end else begin
                         column <= strip_mode == 2 ? column - 1'b1 : column + 1'b1;
@@ -238,6 +262,50 @@ module nds_tate_video #(
     assign fb_enable = have_frame;
     assign rotation_applied = have_frame ? displayed_mode : 2'd0;
     assign fb_base = {RAM_BASE,4'd0} + {10'd0,display_fb,20'd0};
+
+    // Both consumers acknowledge the immutable descriptor independently. The
+    // fourth slot was already excluded from cartridge storage. It permits a
+    // writer, a pending frame and two readers at different frame boundaries.
+    // n_vbl must remain low until the native reader has drained its DDR reads.
+    reg native_have_frame = 0;
+    reg [1:0] native_mode = 0;
+    generate if (NATIVE_READER) begin: native_display
+        (* async_reg = "true" *) reg [1:0] ready_sync = 0;
+        (* async_reg = "true" *) reg [1:0] rot_meta = 0, rot_sync = 0;
+        reg old_blank = 0;
+        always @(posedge n_clk or posedge reset) begin
+            if (reset) begin
+                ready_sync <= 0; rot_meta <= 0; rot_sync <= 0;
+                old_blank <= 0; native_ack <= 0; native_fb <= 3;
+                native_have_frame <= 0; native_mode <= 0;
+                n_fb_width <= 0; n_fb_height <= 0; n_fb_stride <= 0;
+            end else begin
+                ready_sync <= {ready_sync[0],completed};
+                rot_meta <= rotation; rot_sync <= rot_meta;
+                old_blank <= n_vbl;
+                // An unused native output must never throttle normal HDMI.
+                if (!native_have_frame && (!n_enable || rot_sync == 0 || rot_sync == 3))
+                    native_ack <= ready_sync[1];
+                if (!old_blank && n_vbl) begin
+                    if (!n_enable || rot_sync == 0 || rot_sync == 3)
+                        native_have_frame <= 0;
+                    if (ready_sync[1] != native_ack) begin
+                        native_ack <= ready_sync[1];
+                        if (n_enable && ready_mode == rot_sync &&
+                            (rot_sync == 1 || rot_sync == 2)) begin
+                            native_fb <= ready_fb;
+                            n_fb_width <= ready_width; n_fb_height <= ready_height;
+                            n_fb_stride <= ready_stride; native_mode <= ready_mode;
+                            native_have_frame <= 1;
+                        end
+                    end
+                end
+            end
+        end
+    end endgenerate
+    assign n_fb_enable = native_have_frame;
+    assign n_rotation_applied = native_have_frame ? native_mode : 2'd0;
+    assign n_fb_base = {RAM_BASE,4'd0} + {10'd0,native_fb,20'd0};
 endmodule
 
 // Share only the scaler port. Preserve an accepted normal write burst until
