@@ -110,13 +110,30 @@ with randomized DDR stalls and a direction switch, not measured controller
 latency or a hardware bound. Game execution, ARM rendering, the RetroTINK
 and the monitor are outside this measurement.
 
-The next latency experiment should align native scanout with capture
-completion and investigate whether the unused HDMI consumer can acknowledge
-immediately during independent-analog DV1 operation. Scaled analog still
-needs that consumer. Any change must preserve buffer ownership, avoid
-reading incomplete frames, retain native refresh timing and pass a sweep
-of source/output phases. Reading a frame while it is being written is not
-an acceptable default because it risks tearing.
+The phase-acquisition experiment aligns native scanout with the first
+completed capture. While inactive, it accepts the descriptor, starts in
+blanking before vertical sync, and uses the usual two-line row-zero prefetch.
+Eight additional blank lines allow completion jitter on subsequent frames.
+The counters then run freely; they never stretch or skip a visible line to
+chase new data. The frame wrap retains the final pixel's entire repetition
+period: the previous wrap shortened a frame by 1–5 transport clocks, which
+could gradually lose the acquired phase.
+
+A geometry change drains the previous image, waits for a fresh completed
+buffer and reacquires phase. A read that spans the next prefetch follows the
+same safe recovery rule. No additional full-frame buffer, DDR port or CPU
+work is added. Both consumer acknowledgements and bank ownership remain
+unchanged; bypassing an unused HDMI acknowledgement remains a separate
+possible experiment. Scaled analog still needs that consumer.
+
+`tools/test_dv1_rotation_latency.py` compares the old and new scheduling over
+source phases, both rotation directions, all native timing classes and
+randomized DDR stalls. Its aligned runs require each of 40 steady-state
+source frames to appear exactly once, exact pixels, no buffer overwrite,
+no underrun and the exact 1,006,080-clock output period. The static
+single-screen source model uses the actual 384-dot raster and repetition 10.
+These remain simulated pixel ages, not measurements of controller latency.
+The phase-acquisition FPGA build and its hardware validation are pending.
 
 The tested NDS 1080p RetroTINK profile initially used Triple Buffer. After
 validating the final bitstream in that mode, Gen Lock worked at 59.64 Hz

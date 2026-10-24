@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Native DV1 scanout of the existing transposed framebuffer. Two RGB666
 // scanlines (18,432 bits) suffice; the console DDR port and ARM are untouched.
-module nds_dv1_rotate_read (
+module nds_dv1_rotate_read #(
+    parameter integer ALIGN_CAPTURE_PHASE = 1
+) (
     input wire reset, clk, avl_clk, enable, fb_enable,
     input wire [9:0] fb_width, fb_height,
     input wire [31:0] fb_base,
@@ -30,6 +32,8 @@ module nds_dv1_rotate_read (
     reg [9:0] pending_width = 256, pending_height = 192;
     reg pending_active = 0;
     reg [1:0] pending_rotation = 0;
+    reg phase_locked = 0, wait_fresh_frame = 0;
+    reg [31:0] previous_base = 0;
     reg [2:0] divider = 0, repeat_count = 6;
     reg [27:0] base = 0, next_row_address = 0;
     reg [9:0] stride = 0;
@@ -50,12 +54,19 @@ module nds_dv1_rotate_read (
     // A descriptor can be released only after its last read has returned.
     // Close adoption before row-zero prefetch. Its completion must not
     // create a second boundary that releases the bank we just prefetched.
-    assign frame_boundary = y >= height && y < total - 2 && idle;
+    assign frame_boundary = idle &&
+        ((y >= height && y < total - 2) ||
+         (ALIGN_CAPTURE_PHASE && !active && !pending_active));
     reg [1:0] ready = 0;
     reg [9:0] bank_row [0:1];
     reg display_bank = 0, line_valid = 0;
     wire descriptor_valid = enable && fb_enable && fb_width != 0 &&
         fb_width <= 512 && fb_height != 0 && fb_height <= 600;
+    wire phase_ready = !ALIGN_CAPTURE_PHASE || (phase_locked && active);
+    wire [9:0] descriptor_total = fb_height > 500 ? 10'd786 :
+        fb_height > 250 ? 10'd524 : 10'd262;
+    wire [2:0] descriptor_repeat = fb_height > 500 ? 3'd2 :
+        fb_height > 250 ? 3'd3 : 3'd6;
 
     (* ramstyle = "M10K, no_rw_check" *) reg [71:0] pixels [0:255];
     reg [71:0] q;
@@ -69,6 +80,7 @@ module nds_dv1_rotate_read (
             total <= 262; repeat_count <= 6; divider <= 0;
             pending_width <= 256; pending_height <= 192;
             pending_active <= 0; pending_rotation <= 0;
+            phase_locked <= 0; wait_fresh_frame <= 0; previous_base <= 0;
             base <= 0; stride <= 0; next_row_address <= 0;
             request <= 0; request_address <= 0; request_count <= 0;
             request_bank <= 0; request_row <= 0;
@@ -95,10 +107,10 @@ module nds_dv1_rotate_read (
                 // Stage the descriptor and fetch row zero during blanking.
                 // A taller next frame must not turn this frame's blanking
                 // into active rows before its counters wrap.
-                pending_active <= descriptor_valid && idle;
+                pending_active <= descriptor_valid && idle && phase_ready;
                 pending_rotation <= descriptor_valid ? fb_rotation : 2'd0;
                 ready <= 0;
-                if (descriptor_valid && idle) begin
+                if (descriptor_valid && idle && phase_ready) begin
                     pending_width <= fb_width; pending_height <= fb_height;
                     base <= fb_base[31:4]; stride <= fb_stride[13:4];
                     request_address <= fb_base[31:4];
@@ -112,7 +124,10 @@ module nds_dv1_rotate_read (
                 active <= pending_active; rotation <= pending_rotation;
                 total <= pending_height > 500 ? 10'd786 : pending_height > 250 ? 10'd524 : 10'd262;
                 repeat_count <= pending_height > 500 ? 3'd2 : pending_height > 250 ? 3'd3 : 3'd6;
-                divider <= 0;
+                // Preserve the final pixel's full repetition period. Resetting
+                // to zero here makes every frame repeat_count-1 clocks short,
+                // eventually losing the phase acquired from the source.
+                divider <= ALIGN_CAPTURE_PHASE ? 3'd1 : 3'd0;
             end
             if (line_start && y < height) begin
                 display_bank <= y[0];
@@ -139,6 +154,46 @@ module nds_dv1_rotate_read (
             {ce,de,hs,vs} <= ctl;
             rgb <= ctl[2] && line_valid ?
                 {dot[17:12],dot[17:16],dot[11:6],dot[11:10],dot[5:0],dot[5:4]} : 24'd0;
+            if (ALIGN_CAPTURE_PHASE) begin
+                // A read that spans the next prefetch can deactivate scanout.
+                // Restart from a fresh completion once it drains; never fetch
+                // while the inactive consumer can release a descriptor.
+                if (phase_locked && !active && !pending_active) begin
+                    phase_locked <= 0; wait_fresh_frame <= 1;
+                    previous_base <= fb_base;
+                end
+                if (!descriptor_valid) begin
+                    phase_locked <= 0;
+                    wait_fresh_frame <= 0;
+                end
+                // Changing source geometry changes the capture deadline. Stop
+                // only after the old visible frame and all reads have drained,
+                // then align to a NEW completed frame, not an older descriptor
+                // that happened to be adopted during this blanking interval.
+                if (phase_locked && frame_boundary && descriptor_valid &&
+                    (fb_width != width || fb_height != height)) begin
+                    active <= 0; pending_active <= 0; ready <= 0;
+                    phase_locked <= 0; wait_fresh_frame <= 1;
+                    previous_base <= fb_base;
+                end
+                if (!phase_locked && !active && !pending_active && idle &&
+                    descriptor_valid && (!wait_fresh_frame || fb_base != previous_base)) begin
+                    // Start in blanking before VS, then use the normal two-line
+                    // row-zero prefetch. The remaining eight lines allow for
+                    // completion/DDR jitter on subsequent frames. Only acquire
+                    // while this raster is inactive; steady scanout never skips
+                    // or stretches a line to chase a completion.
+                    x <= 0; y <= descriptor_total - 10'd10; divider <= 0;
+                    total <= descriptor_total; repeat_count <= descriptor_repeat;
+                    width <= fb_width; height <= fb_height;
+                    ready <= 0; line_valid <= 0;
+                    // Select the blanking raster now so the receiver sees its
+                    // complete sync pulse before the first visible image.
+                    active <= 1;
+                    ctl <= 0; ce <= 0; de <= 0; hs <= 0; vs <= 0; rgb <= 0;
+                    phase_locked <= 1; wait_fresh_frame <= 0;
+                end
+            end
         end
     end
 

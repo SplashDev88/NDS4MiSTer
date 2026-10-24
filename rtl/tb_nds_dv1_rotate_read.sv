@@ -39,7 +39,7 @@ module tb_nds_dv1_rotate_read;
         rd_wait=block_ddr || random_state[3:0]==0;
         rd_valid=pending!=0 && !block_ddr && random_state[6:4]!=0;
         for(i=0;i<4;i=i+1) begin
-            word_index=(addr-28'h2400000)*4+beat*4+i;
+            word_index=(addr & 28'h000ffff)*4+beat*4+i;
             py=word_index/(fb_stride/4);px=word_index%(fb_stride/4);
             color=pattern(px,py);
             rd_data[i*32+:32]={8'd0,color[7:0],color[15:8],color[23:16]};
@@ -104,6 +104,12 @@ module tb_nds_dv1_rotate_read;
     task automatic test_mode(input integer w,h,rot);
         checking=0;enable=1;fb_enable=1;fb_width=w;fb_height=h;
         fb_stride=((w+3)/4)*16;fb_rotation=rot;
+        // The real producer continuously publishes completed buffers. After
+        // a geometry change the reader drains the old image and waits for a
+        // fresh completion before acquiring the new capture phase.
+        repeat(2) @(posedge vs);
+        wait(frame_boundary); @(negedge clk);
+        fb_base=fb_base ^ 32'h00100000;
         repeat(4) @(posedge vs);
         @(negedge vs);checking=1;
         repeat(2) @(posedge vs);
@@ -130,14 +136,17 @@ module tb_nds_dv1_rotate_read;
         // A stalled transaction must pin its framebuffer even in blanking.
         checking=0;
         @(negedge vs);block_ddr=1;
-        @(posedge vs);repeat(20) @(negedge clk);
+        repeat(3) @(posedge vs);repeat(20) @(negedge clk);
         if(frame_boundary || !underrun) $fatal(1,"undrained native frame was released");
         block_ddr=0;
+        wait(frame_boundary); @(negedge clk);
+        fb_base=fb_base ^ 32'h00100000;
         repeat(3) @(posedge vs);
+        if(!active) $fatal(1,"native path did not recover after a fresh completion");
         enable=0;repeat(2) @(posedge vs);
         if(active) $fatal(1,"native path did not turn off");
         $display("PASS %0d exact pixels, %0d reads, %0d beats, late reads pin descriptor; Off drains",checked,accepted,delivered);
         $finish;
     end
-    initial begin #1000000000; $fatal(1,"reader timeout"); end
+    initial begin #1500000000; $fatal(1,"reader timeout"); end
 endmodule
