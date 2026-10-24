@@ -75,6 +75,12 @@ The latter accommodates rotated side-by-side screens and their largest gap.
 Images taller than 250 pixels use at least the 524-line class. Vertical sync
 leaves blanking both before and after its pulse so MiSTer's reconstructed
 HDMI data-enable window retains every game row, including the first two.
+The horizontal sync spans 80 native pixels. The reconstructed HDMI blanking
+therefore retains at least 168 transport clocks at repetition 2 for packet
+traffic. The initial 32-pixel pulse produced a valid tall picture in a
+temporary DVI-only diagnostic, but the receiver lost sync with HDMI packets
+enabled; disabling SPD alone did not fix it. This is why raw pixel and sync
+simulation is supplemented by a packet-blanking budget and receiver tests.
 MiSTer’s existing video measurement logic measures the selected DV1 output,
 so the host sends its actual width, height, repetition and crop offsets.
 Opening the menu does not change the raster or its metadata.

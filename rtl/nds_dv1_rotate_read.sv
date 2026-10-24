@@ -131,7 +131,11 @@ module nds_dv1_rotate_read (
                 end
             end
             lane <= picture_x[1:0];
-            ctl <= {pixel,in_picture,x >= 592 && x < 624,y >= total - 8 && y < total - 5};
+            // sys_top expands DE around this pulse. Even repetition 2 must
+            // leave enough transport clocks for HDMI audio/InfoFrame packets;
+            // a 32-pixel pulse worked in DVI but failed with HDMI packets.
+            // The 80-pixel pulse leaves at least 168 blank transport clocks.
+            ctl <= {pixel,in_picture,x >= 544 && x < 624,y >= total - 8 && y < total - 5};
             {ce,de,hs,vs} <= ctl;
             rgb <= ctl[2] && line_valid ?
                 {dot[17:12],dot[17:16],dot[11:6],dot[11:10],dot[5:0],dot[5:4]} : 24'd0;

@@ -90,6 +90,17 @@ module tb_nds_dv1_rotate_read;
     always @(posedge clk) expected_active <= {expected_active[1:0],ce && de};
     always @(negedge clk) if(checking && expected_active[2] && !transport_de)
         $fatal(1,"DV1 transport discarded an active game pixel near row %0d",py);
+    integer transport_blank=0;
+    reg previous_transport_de=0;
+    always @(negedge clk) begin
+        if(!transport_de) transport_blank=transport_blank+1;
+        else begin
+            if(checking && !previous_transport_de && transport_blank<160)
+                $fatal(1,"HDMI packet blanking too short: %0d transport clocks",transport_blank);
+            transport_blank=0;
+        end
+        previous_transport_de=transport_de;
+    end
     task automatic test_mode(input integer w,h,rot);
         checking=0;enable=1;fb_enable=1;fb_width=w;fb_height=h;
         fb_stride=((w+3)/4)*16;fb_rotation=rot;
