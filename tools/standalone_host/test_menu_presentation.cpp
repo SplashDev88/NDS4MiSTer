@@ -100,6 +100,13 @@ int main(int argc, char **argv) {
     auto rows = loadingRows("Final Fantasy Tactics A2.nds", loadingProgress(current, 1000));
     assert(rows == referenceProgress("Final Fantasy Tactics A2.nds", current, 1000));
   }
+  for (unsigned tick = 0; tick < 96; ++tick) {
+    const auto row = loadingActivity(tick);
+    assert(row.size() == 28 && row.front() == ' ');
+    assert(std::count(row.begin(), row.end(), char(0x7f)) == 3);
+    assert(row == loadingActivity(tick + 48));
+    assert(row != loadingActivity(tick + 1));
+  }
   nds_osd::Frame frame("NDS", charfont);
   const auto exit = frame.renderRow(15, "            exit", false, nds_osd::arrow_right);
   // Reference Main helpstate/ScrollText state machine, including delayed polls.

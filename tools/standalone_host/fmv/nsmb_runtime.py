@@ -84,7 +84,11 @@ def assemble(source, mode, progress=lambda n: None):
         struct.pack_into('<I', data, 0x1972c, branch)
     section.data = data
     progress(source.size)
-    packed = arm.save(compress=True)
+    # The DS loader accepts an uncompressed ARM9 (as used by our FMV profiles).
+    # Recompressing this small executable in Python costs tens of seconds on
+    # HPS, only to make the guest decompress it again at boot. save(False)
+    # clears the SDK compressed-end marker and preserves all autoload sections.
+    packed = arm.save(compress=False)
     # The SDK footer and overlay table immediately follow the original ARM9.
     # Append a virtual ARM9 image instead of treating that region as padding.
     # Every original asset, overlay, file table and ARM7 byte keeps its offset.

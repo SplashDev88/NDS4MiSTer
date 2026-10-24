@@ -99,6 +99,15 @@ inline std::string loadingBar(int progress) {
   // InfoMessage's set_text keeps 28 characters per row, including the margin.
   return (" " + std::string(progress / 6, char(0x7f)) + char(partial[progress % 6])).substr(0, 28);
 }
+// Preparation has no reliable byte total (hashing, decompression and movie
+// assembly precede the transfer). A bouncing marker denotes activity, not %.
+inline std::string loadingActivity(uint64_t tick) {
+  const unsigned position = tick % 48;
+  const unsigned offset = position <= 24 ? position : 48 - position;
+  std::string row(28, ' ');
+  row.replace(1 + offset, 3, std::string(3, char(0x7f)));
+  return row;
+}
 inline std::array<std::string, 8> loadingRows(const std::string &name, int progress) {
   std::array<std::string, 8> rows{};
   rows[3] = " " + name.substr(0, 27);
