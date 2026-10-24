@@ -11,15 +11,6 @@
 - **Right Stick Range** setting in the root menu. Choose 100%, 125%, 150%, 175% or 200% so your controller can reach all four touchscreen corners. Use **System → Save settings** to retain your choice.
 - **Alternative MiSTer launcher support.** Added discovery and return-to-menu handling for documented installations of Zaparoo, Degauss, RetroAchievements, Physical-CD, mister-disc and Console Mode. Automated checks passed; each alternative frontend still needs hardware validation.
 
-## Performance example
-
-In repeated **NSMB World 1 castle** jumping tests:
-
-- **Screen updates:** ~39–40 completed per second with the final renderer, up from ~35–36 with the previous internal renderer.
-- **Geometry submissions:** ~58 per second, up from ~35 earlier in this release cycle, which reduces rubberbanding.
-
-These measure different stages of the pipeline, so the gains aren't cumulative. Measurements were taken at **1 GHz** against internal builds; they are not a direct rc.9-to-rc.10 comparison or whole-game FPS figures.
-
 ## Install or update
 
 1. Exit the core with **System → Reboot**.
