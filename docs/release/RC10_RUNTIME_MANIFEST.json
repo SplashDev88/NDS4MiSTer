@@ -9,9 +9,9 @@
   "freeze_source_revision": "5924000f9d422fc624fdc0aecad424eab5ca9325",
   "hardware_validation": "Renderer scene results inherited from RC1; revision-2 installed menu check is in the external receipt.",
   "helper_sha256": "1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc",
-  "host_change": "Keep blank lines after Display options and Lid; make Right Stick Range and Lid adjacent. Gameplay paths unchanged.",
-  "host_sha256": "e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301",
-  "host_source_revision": "12325dfd6af12c962a81b98b2b1978cced5d5ae8",
+  "host_change": "Loading ROM progress and preparation activity; bounded framed loading with completion held until verification.",
+  "host_sha256": "c9e4f3a6b4aa1ec4bad8a120fc4c21229dc6ab92dfeef4d7db6206bc3661e118",
+  "host_source_revision": "a5ee96647e00c0fe912e2e3dad95a4de8db7301d",
   "hps_clock_khz": 1000000,
   "kernel_module_sha256": {
     "5.15.1-MiSTer": "c3c67f88de36a853db7d4537ddce3202df6329a54b2600fa90b7104c803a7113",
@@ -79,15 +79,15 @@
   "installation_scope": "Separate private kit with shared ordinary game saves; no user settings or cartridges.",
   "automatic_movie_files": {
     "NDS_Standalone.rbf": "4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26",
-    "nds_standalone_host": "e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301",
+    "nds_standalone_host": "c9e4f3a6b4aa1ec4bad8a120fc4c21229dc6ab92dfeef4d7db6206bc3661e118",
     "support/nds_hybrid_3d_service": "1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc",
     "supervisor.py": "92ebab31844c099f818e7734a2fc7b35cc1a6460ebe8bf461d67c3e30c7d52aa",
     "Kickstart.sh": "0b567af3cd088a9d7ff720fc7f8249ef20cea05a69e9d7dc8d1200ba1899dda8",
-    "auto_movies.py": "c3ad6bce7cde86260626ca2cd53556c03ab164dbdd59d4af9210586740d176f5",
+    "auto_movies.py": "7043bf18af9bb393816f5b29d28811a3d91accd5d5491c48ec986a8d5031c1b3",
     "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f",
     "video_target.py": "11e108c4c41ab9c19ca382f8a092db0694df05f3250a203ce8e79420aaba9886",
     "fmv/profiles.json": "598f4e23e967f56d9b9a2065de8826725d027bfc6f674933794b08f0809b5218",
-    "fmv/stream.py": "e7b5c37be6ecdc88fb429a65366b6a9cc9f592829aae01fe279201ed0c9d2955",
+    "fmv/stream.py": "5c423086dd81e66c1ad812be4cac1278dfeeb5187220797dc152f8cfc00e3e0d",
     "fmv/build_guest.py": "fee80f708183543cb5528e1c5e56bb13ebe194102e0ba2bd1e7ec9fe6a631c64",
     "fmv/test_prepare.py": "19bee797dbd32afeb988bc6a993554430980cee7dd46c6a4b189bcab1120a11f",
     "fmv/prepare.py": "88bbb465f1f04402bd1e918dd85641109adc2395fd5f1d1d67ebad7403ddc1f7",
@@ -119,7 +119,7 @@
     "fmv/guest/packed_vx_sonic_decode.bin": "4db8979ea85e4420696a9989725635e82b69d9578dfeb3442320053ccb93fbae",
     "fmv/guest/sj_queue_rebase.S": "27bfd095ed9186150654ae77543b08dbe9aa46d8a4d3286279e5c1b45f4f3748",
     "fmv/guest/packed_video_color.S": "c9c43f849079e5f1758b5f326acfeeeeabe7d6af2b88fde5e5ac87eb44ede6de",
-    "fmv/nsmb_runtime.py": "24c3cb77c6d52bb34ca9b29ea9bc511249a042bde90e95c7eb29dc11c6f0f651",
+    "fmv/nsmb_runtime.py": "ac3fa0c88e066b04813b967d1a9805f44856bda9507146475d598d5cc1dda80b",
     "fmv/nsmb_stream.py": "b114ad56bebedb9d6e48fa05879897791ace4a2d835aef436a97be7b957a70ff",
     "fmv/nsmb_runtime.S": "e074ce17cc223de2f1494ffe9d97ebc8f89884c2fce1a969077278412359fa12",
     "fmv/nsmb_runtime.ld": "05c3fd77a4a29ad64f3734e3935a8adb107ffa4839c298d67bd47e645ddae7e3",
@@ -127,7 +127,9 @@
     "fmv/nsmb_hooks.json": "5fc735c5072c75bd3afe0d86a7cb74a4587336679414d504c91ba0eed7e8322e",
     "fmv/nsmb_bones.S": "ca4073de805998c34bfdd9b815cc829efef37e1f0b4226fa9f4fa6c61c81f4d0",
     "fmv/nsmb_bones.ld": "8dfba79964b670166136eec31bb19c332f76b7447c351f67c8b6c35016ddc44c",
-    "support/nds_hybrid_3d_service.sha256": "679afd1c3efa7672a2a2c0615945d6c79cdd423d1bc3b65ee5e89f0fa1af02a4"
+    "support/nds_hybrid_3d_service.sha256": "679afd1c3efa7672a2a2c0615945d6c79cdd423d1bc3b65ee5e89f0fa1af02a4",
+    "fmv/prepared_cache.py": "7181de0520769713826b1982cc3fad892fad10f30aa919ed0521499da7479312",
+    "fmv/stream_load.py": "66c8acd4123bb858767f83919d90fa8d164cb3d93d32922d1a7cdf3befe9dfa7"
   },
   "strict_zero_capture_drop_pass": false,
   "automatic_movie_scope": "Whole-cartridge verification for six profiles, including Ni no Kuni English translation v1.0; separate guarded Castlevania routines. Exact revisions and bounded tests are listed in VALIDATION_RC10.md.",
@@ -181,7 +183,9 @@
     "source/native-training-profiles.tar": "095af749a4abd697f678db1aa5b3dad4d5f5f07d33857ac2ec6111ced714db16",
     "source/RC1-r2-menu.patch": "2ae1745a1ff3924b0e4a6d15dc15a8fc986117a85774b2f61cdfa90ead1e829b",
     "source/RC1-r2-host-provenance.json": "d9a66193f8c51ca64d5152ee26d18451f08bc65d845bc05c9cf3210bb67b7638",
-    "source/RC10-renderer-build.json": "26c1eb8617ec6c76aee0e23638272f4ffc4cb7580119a57d758a2e567a607839"
+    "source/RC10-renderer-build.json": "26c1eb8617ec6c76aee0e23638272f4ffc4cb7580119a57d758a2e567a607839",
+    "RC10_LOADING_FOLLOWUP.md": "b17335fb5d36740fe6e26448c2f91017499815d974b178c1e13237bbe2655f4e",
+    "RC10_LOADING_VALIDATION.json": "3f9feadd621e41ba88658a85b38b25d141a0d7fce93c3c4ef4468e71f3056ea0"
   },
   "gameplay_regression_evidence_scope": "Fresh bounded comparisons listed in PERFORMANCE_RC1_VALIDATION_20261023.md; not full-game qualification.",
   "touch_validation": {
@@ -324,34 +328,34 @@
       },
       "nsmb_candidate": [
         {
-          "label": "RPGOUSE1_JUMP",
-          "pictures_per_second": 39.153500035008975,
-          "geometry_per_second": 58.48915707201322,
-          "picture_gap_p95_ms": 32.892,
-          "picture_gap_max_ms": 42.788,
+          "capture_drops": [
+            0,
+            0
+          ],
           "faults": [
             0,
             0
           ],
-          "capture_drops": [
-            0,
-            0
-          ]
+          "geometry_per_second": 58.48915707201322,
+          "label": "RPGOUSE1_JUMP",
+          "picture_gap_max_ms": 42.788,
+          "picture_gap_p95_ms": 32.892,
+          "pictures_per_second": 39.153500035008975
         },
         {
-          "label": "RPGOUSE1_REPEAT",
-          "pictures_per_second": 40.407648140687186,
-          "geometry_per_second": 57.97619081050975,
-          "picture_gap_p95_ms": 30.028,
-          "picture_gap_max_ms": 46.637,
+          "capture_drops": [
+            0,
+            0
+          ],
           "faults": [
             0,
             0
           ],
-          "capture_drops": [
-            0,
-            0
-          ]
+          "geometry_per_second": 57.97619081050975,
+          "label": "RPGOUSE1_REPEAT",
+          "picture_gap_max_ms": 46.637,
+          "picture_gap_p95_ms": 30.028,
+          "pictures_per_second": 40.407648140687186
         }
       ]
     },
@@ -467,5 +471,14 @@
     "ni_no_kuni_english": "v1.0 exact source hash",
     "nsmb_europe": "not included: owned ROM unavailable for qualification",
     "european_fmv_profiles": "not included: owned ROMs unavailable for qualification"
+  },
+  "loading_followup": {
+    "cache_budget_bytes": 2147483648,
+    "cache_data_included": false,
+    "cache_hits_verify_cached_sha256_and_original_metadata": true,
+    "cache_path": "/media/fat/.cache/NDS4MiSTer/prepared-roms",
+    "details": "RC10_LOADING_FOLLOWUP.md",
+    "fresh_source_sha256_on_cache_miss": true,
+    "source_commit": "a5ee96647e00c0fe912e2e3dad95a4de8db7301d"
   }
 }

@@ -1,0 +1,108 @@
+{
+  "runtime_source_commit": "a5ee96647e00c0fe912e2e3dad95a4de8db7301d",
+  "host_sha256": "c9e4f3a6b4aa1ec4bad8a120fc4c21229dc6ab92dfeef4d7db6206bc3661e118",
+  "hardware_clock_khz": 1000000,
+  "measurements": {
+    "NINO_STREAM1": {
+      "rom_load_seconds": 80.736
+    },
+    "EN10_STREAM1": {
+      "rom_load_seconds": 45.855
+    },
+    "NINO_CACHE_COLD1": {
+      "rom_load_seconds": 142.018
+    },
+    "NINO_CACHE_HIT1": {
+      "rom_load_seconds": 38.079
+    },
+    "NINO_CACHE_MOVIE": {
+      "rom_load_seconds": 37.973,
+      "playback_seconds": 120,
+      "transport_faults": 0
+    },
+    "EN10_CACHE_COLD1": {
+      "rom_load_seconds": 115.298
+    },
+    "EN10_CACHE_MOVIE": {
+      "rom_load_seconds": 37.979,
+      "playback_seconds": 120,
+      "transport_faults": 0
+    },
+    "NSMB_CACHE_HOST": {
+      "rom_load_seconds": 10.305
+    }
+  },
+  "test_results": {
+    "python_cases": 46,
+    "launcher_cases": 6,
+    "actual_host_loading_suite": "passed",
+    "framed_protocol_and_memory_boundaries": "passed",
+    "real_image_equivalence": [
+      {
+        "profile": "NINO",
+        "phase": "cold",
+        "image_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+        "qualified_image_matches": true,
+        "seconds": 0.920751458
+      },
+      {
+        "profile": "NINO",
+        "phase": "hit",
+        "image_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+        "qualified_image_matches": true,
+        "seconds": 0.39199833299999987
+      },
+      {
+        "profile": "NINO",
+        "phase": "corrupt-rebuild",
+        "image_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+        "qualified_image_matches": true,
+        "seconds": 0.9522436249999999
+      },
+      {
+        "profile": "NINO_EN10",
+        "phase": "cold",
+        "image_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+        "qualified_image_matches": true,
+        "seconds": 0.7936749590000001
+      },
+      {
+        "profile": "NINO_EN10",
+        "phase": "hit",
+        "image_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+        "qualified_image_matches": true,
+        "seconds": 0.3880916659999998
+      },
+      {
+        "profile": "NINO_EN10",
+        "phase": "corrupt-rebuild",
+        "image_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+        "qualified_image_matches": true,
+        "seconds": 0.9612097089999998
+      }
+    ]
+  },
+  "nsmb_regression": {
+    "completed_updates_per_second": 59.63538583328279,
+    "seconds": 20.575032471999293,
+    "scope": "Short World 2-5 repeated jumping; not whole-game FPS"
+  },
+  "limitations": [
+    "First cache creation adds SD writes; measured 115\u2013142 seconds, excluding core startup and game logos.",
+    "Sources retaining identical observed metadata require manual cache clearing to force full original verification.",
+    "Network and OS file-cache conditions were not forcibly reset; bounded testing, not a full game sweep."
+  ],
+  "cache_policy": {
+    "path": "/media/fat/.cache/NDS4MiSTer/prepared-roms",
+    "budget_bytes": 2147483648,
+    "source_metadata_trusted_on_hits": true,
+    "full_cache_sha256_verified_on_hits": true
+  },
+  "final_label": "Loading ROM",
+  "final_rebuilt_host_boot_checks": [
+    "NINO",
+    "NINO_EN10"
+  ],
+  "original_settings_and_saves_preserved": true,
+  "package_installation_check": "Recorded separately in RC10_INSTALL_VALIDATION.json for the final ZIP."
+}

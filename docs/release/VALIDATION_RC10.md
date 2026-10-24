@@ -287,3 +287,24 @@ The movie corpus checks cover sequential playback and restarts at frame zero.
 The receiver requires consecutive frame sequences; arbitrary seeks beginning
 at a nonzero frame are not qualified by these checks. Later in-game transitions,
 subtitle timing and full playthroughs still require broader coverage.
+
+## Revision 10 loading follow-up
+
+The rc.10 repack retains the FPGA and renderer binaries from revision 9. It
+updates the host and loader to show loading activity, avoid NSMB ARM9
+recompression, stream qualified relocated ROMs and cache verified prepared
+Ni no Kuni images locally. All loading stages display **Loading ROM**.
+
+[Loading validation](RC10_LOADING_FOLLOWUP.md) and the
+[machine-readable results](RC10_LOADING_VALIDATION.json) record image equivalence,
+cache invalidation and recovery tests, measured load times, bounded movie checks
+and the short NSMB regression check. Cache hits hash the entire prepared image
+and check source metadata; the original source is fully hashed on cache misses.
+The first cache creation adds SD writes and can be slower than an uncached load.
+The package contains no prepared cartridge data, saves or user settings.
+
+The exact final ZIP receives a separate installation, public-launcher, menu,
+clean-exit and rollback check, recorded in `RC10_INSTALL_VALIDATION.json` beside
+the archive. The approved release notes and README are unchanged. The package
+records its new source revision and includes that complete source archive; the
+original published rc.10 tag is retained.

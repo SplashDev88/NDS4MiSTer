@@ -63,13 +63,21 @@
     "mode": 420,
     "sha256": "be1f6063a539f17940aab7d436134737e29ff666b8474164ddebceffdb4bb92a"
   },
+  "RC10_LOADING_FOLLOWUP.md": {
+    "mode": 420,
+    "sha256": "b17335fb5d36740fe6e26448c2f91017499815d974b178c1e13237bbe2655f4e"
+  },
+  "RC10_LOADING_VALIDATION.json": {
+    "mode": 420,
+    "sha256": "3f9feadd621e41ba88658a85b38b25d141a0d7fce93c3c4ef4468e71f3056ea0"
+  },
   "TOUCH_RANGE_BETA.md": {
     "mode": 420,
     "sha256": "9bf6789cf70e56bd633af09dfcc2528918f40c550adccdb5a300dd1604b43196"
   },
   "auto_movies.py": {
     "mode": 493,
-    "sha256": "c3ad6bce7cde86260626ca2cd53556c03ab164dbdd59d4af9210586740d176f5"
+    "sha256": "7043bf18af9bb393816f5b29d28811a3d91accd5d5491c48ec986a8d5031c1b3"
   },
   "clock_control.py": {
     "mode": 493,
@@ -213,7 +221,7 @@
   },
   "fmv/nsmb_runtime.py": {
     "mode": 420,
-    "sha256": "24c3cb77c6d52bb34ca9b29ea9bc511249a042bde90e95c7eb29dc11c6f0f651"
+    "sha256": "ac3fa0c88e066b04813b967d1a9805f44856bda9507146475d598d5cc1dda80b"
   },
   "fmv/nsmb_stream.py": {
     "mode": 420,
@@ -223,13 +231,21 @@
     "mode": 493,
     "sha256": "88bbb465f1f04402bd1e918dd85641109adc2395fd5f1d1d67ebad7403ddc1f7"
   },
+  "fmv/prepared_cache.py": {
+    "mode": 420,
+    "sha256": "7181de0520769713826b1982cc3fad892fad10f30aa919ed0521499da7479312"
+  },
   "fmv/profiles.json": {
     "mode": 493,
     "sha256": "598f4e23e967f56d9b9a2065de8826725d027bfc6f674933794b08f0809b5218"
   },
   "fmv/stream.py": {
     "mode": 493,
-    "sha256": "e7b5c37be6ecdc88fb429a65366b6a9cc9f592829aae01fe279201ed0c9d2955"
+    "sha256": "5c423086dd81e66c1ad812be4cac1278dfeeb5187220797dc152f8cfc00e3e0d"
+  },
+  "fmv/stream_load.py": {
+    "mode": 420,
+    "sha256": "66c8acd4123bb858767f83919d90fa8d164cb3d93d32922d1a7cdf3befe9dfa7"
   },
   "fmv/test_prepare.py": {
     "mode": 493,
@@ -329,7 +345,7 @@
   },
   "nds_standalone_host": {
     "mode": 493,
-    "sha256": "e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301"
+    "sha256": "c9e4f3a6b4aa1ec4bad8a120fc4c21229dc6ab92dfeef4d7db6206bc3661e118"
   },
   "source/BUILD_FMV.md": {
     "mode": 493,
