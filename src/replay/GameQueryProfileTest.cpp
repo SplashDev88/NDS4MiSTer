@@ -57,12 +57,12 @@ int main(int argc, char** argv)
     check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, known, true}),
           "Castlevania guest-only optimization does not enable movie receiver");
     const GameQueryIdentity movies[] = {
-        {{{'B','2','K','J'}}, 0, 0x489ec758u},
-        {{{'B','2','K','J'}}, 0, 0xd2b13b89u},
-        {{{'Y','Q','U','E'}}, 0, 0xe8c32d96u},
-        {{{'B','M','T','E'}}, 0, 0xdcfbb2bbu},
-        {{{'A','X','F','E'}}, 0, 0x2725ad29u},
-        {{{'Y','W','S','E'}}, 0, 0xc7e49123u},
+        {{{'B','2','K','J'}}, 0, 0x56588d29u},
+        {{{'B','2','K','J'}}, 0, 0xf2d6c66fu},
+        {{{'Y','Q','U','E'}}, 0, 0x93bba687u},
+        {{{'B','M','T','E'}}, 0, 0xae6c8af6u},
+        {{{'A','X','F','E'}}, 0, 0x4fa8f939u},
+        {{{'Y','W','S','E'}}, 0, 0x28886fdau},
     };
     for (const auto& movie : movies) {
         check(automatic_movie_receiver_profile({GameQueryProfile::Fast, movie, true}),

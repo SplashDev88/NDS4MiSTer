@@ -11,7 +11,7 @@ import sys
 import tempfile
 import unittest
 import zlib
-from prepare import Source, VirtualRom, CompactedFiles, movie, digest, profile_for
+from prepare import Source, VirtualRom, CompactedFiles, movie, digest, profile_for, reframe_movie
 
 
 class PrepareTests(unittest.TestCase):
@@ -165,5 +165,33 @@ class PrepareTests(unittest.TestCase):
                 rows=zlib.decompress(base64.b64decode(m['descriptors']))
                 self.assertEqual(len(rows),m['frames']*16)
                 for i in range(m['frames']):self.assertEqual(struct.unpack_from('<I',rows,i*16+12)[0],i)
+
+    def test_later_mobiclip_quantizers_and_original_seek_points(self):
+        raw=bytearray(52);raw[:4]=b'MODS';struct.pack_into('<I',raw,8,1)
+        payload=b'\x00\x80VIDEO-AUDIO';raw.extend(struct.pack('<I',len(payload)<<14|3)+payload)
+        at=len(raw);raw.extend(struct.pack('<II',0,52));struct.pack_into('<III',raw,36,0,at,1)
+        for q in (12,43,48,161):
+            rows=struct.pack('<4I',0x4342c453,6,q,0)
+            out=reframe_movie(raw,'mobiclip',rows,1)
+            self.assertEqual(out[72:72+len(payload)],payload)
+            self.assertEqual(struct.unpack_from('<II',out,at+16),(0,52))
+        for q in (11,162,65535):
+            with self.assertRaises(ValueError):
+                reframe_movie(raw,'mobiclip',struct.pack('<4I',0x4342c453,6,q,0),1)
+
+    def test_vx_envelope_keeps_audio_timing_and_trailer(self):
+        raw=bytearray(48);raw[:4]=b'VXDS';struct.pack_into('<I',raw,4,1)
+        struct.pack_into('<III',raw,16,30<<16,27,32768)
+        payload=b'VIDEO-AUDIO';raw.extend(struct.pack('<HH',len(payload)+2,5)+payload)
+        ao=len(raw);raw.extend(b'AUDIO-TABLE');ko=len(raw);raw.extend(struct.pack('<II',0,48))
+        struct.pack_into('<4I',raw,32,len(payload)+4,ao,ko,1)
+        rows=struct.pack('<4I',0x31585646,4,27|(2<<16),0)
+        out=reframe_movie(raw,'vx',rows,1)
+        self.assertEqual(out[:32],raw[:32])
+        self.assertEqual(struct.unpack_from('<HH',out,48),(len(payload)+18,5))
+        self.assertEqual(out[68:68+len(payload)],payload)
+        self.assertEqual(out[ao+16:ko+16],b'AUDIO-TABLE')
+        self.assertEqual(struct.unpack_from('<II',out,ko+16),(0,48))
+        with self.assertRaises(ValueError):reframe_movie(raw,'unknown',rows,1)
 
 if __name__=='__main__':unittest.main()

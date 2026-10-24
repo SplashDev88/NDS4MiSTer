@@ -221,11 +221,11 @@
   },
   "fmv/prepare.py": {
     "mode": 493,
-    "sha256": "489c9e5f63baffce42f0ddefb90c18f81bf820a3c50555bf2a04d822ad0ae356"
+    "sha256": "88bbb465f1f04402bd1e918dd85641109adc2395fd5f1d1d67ebad7403ddc1f7"
   },
   "fmv/profiles.json": {
     "mode": 493,
-    "sha256": "019ff36bcb40826f83e1ac0d4ece482b1fbf96cf59f5f075d0c50483a7cb3204"
+    "sha256": "598f4e23e967f56d9b9a2065de8826725d027bfc6f674933794b08f0809b5218"
   },
   "fmv/stream.py": {
     "mode": 493,
@@ -233,7 +233,7 @@
   },
   "fmv/test_prepare.py": {
     "mode": 493,
-    "sha256": "3fb977059e7ab94f402d81954aac83b54e4061af47867ea2f0fc0b8a6e3f058b"
+    "sha256": "19bee797dbd32afeb988bc6a993554430980cee7dd46c6a4b189bcab1120a11f"
   },
   "fmv/verify_qualified.py": {
     "mode": 493,
@@ -381,7 +381,7 @@
   },
   "source/RC10-renderer-build.json": {
     "mode": 420,
-    "sha256": "4d6e5acdc540816aab1317e0813eda5af7efa0885738691b8752d07fc394033a"
+    "sha256": "26c1eb8617ec6c76aee0e23638272f4ffc4cb7580119a57d758a2e567a607839"
   },
   "source/ffmpeg-7.1.1.tar.xz": {
     "mode": 420,
@@ -393,7 +393,7 @@
   },
   "supervisor.py": {
     "mode": 493,
-    "sha256": "2f2a2c946187fcc2a1413ba4f178d49911fc37abe823303a40aba8d1b6a5b038"
+    "sha256": "92ebab31844c099f818e7734a2fc7b35cc1a6460ebe8bf461d67c3e30c7d52aa"
   },
   "support/modules/6.18.38-MiSTer/BUILD_PROVENANCE.json": {
     "mode": 493,
@@ -409,11 +409,11 @@
   },
   "support/nds_hybrid_3d_service": {
     "mode": 493,
-    "sha256": "728e306fbb6f80bd075dfaa1021fcbca0478d5caca536199cb224a992c0ab1a9"
+    "sha256": "1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc"
   },
   "support/nds_hybrid_3d_service.sha256": {
     "mode": 493,
-    "sha256": "ab0afc551f174f7a4bbeb682a0c05aa67d5bd667147a7d472e197ca7df630886"
+    "sha256": "679afd1c3efa7672a2a2c0615945d6c79cdd423d1bc3b65ee5e89f0fa1af02a4"
   },
   "support/nds_mem_wc.ko": {
     "mode": 493,

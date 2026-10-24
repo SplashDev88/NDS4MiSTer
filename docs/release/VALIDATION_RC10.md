@@ -1,11 +1,13 @@
 # rc.10 validation and scope
 
 rc.10 retains the accepted **Performance RC1 revision 2** rendering algorithms,
-FPGA and runtime settings. Package revision 8 adds exact-hash movie support for
-Ni no Kuni's English translation v1.0. The renderer is rebuilt with the same
-compiler profile data to recognize that virtual cartridge; the supervisor's
-renderer checksum is updated. The loader selects same-header revisions by
-full SHA-256 and streams a compacted file layout for this translation only.
+FPGA and runtime settings. Package revision 9 expands the six exact-identity
+movie profiles to every MODS/VXDS asset found in their verified cartridges.
+The renderer is rebuilt with the same compiler profile data to recognize the
+new virtual headers; rendering algorithms and guest hooks are unchanged.
+The loader selects same-header revisions by full SHA-256. Both qualified
+Ni no Kuni layouts use read-only FAT relocation within the cartridge window.
+The README and release notes remain unchanged at the owner's request.
 
 The menu-spacing host is retained from package revision 7: a blank line follows
 Display options and Lid; Right Stick Range and Lid are adjacent. Menu navigation,
@@ -25,8 +27,8 @@ and Jam with the Band.
 | --- | --- |
 | Host | `e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301` |
 | FPGA | `4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26` |
-| Renderer | `728e306fbb6f80bd075dfaa1021fcbca0478d5caca536199cb224a992c0ab1a9` |
-| Supervisor | `2f2a2c946187fcc2a1413ba4f178d49911fc37abe823303a40aba8d1b6a5b038` |
+| Renderer | `1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc` |
+| Supervisor | `92ebab31844c099f818e7734a2fc7b35cc1a6460ebe8bf461d67c3e30c7d52aa` |
 
 ARM clock is 1 GHz. Internal performance preset is 5; no Speed hacks OSD.
 The inherited host version string remains rc.8. FPGA source is commit
@@ -63,21 +65,27 @@ background corruption remains unverified and unresolved.
 See the included `PERFORMANCE_RC1_VALIDATION_20261023.md` and
 `NSMB_SPEED_BETA_VALIDATION_20261023.md` for controls and rejected candidates.
 
-## Supported accelerated movies
+## Supported accelerated movies — current package
 
-| Title | Verified code/revision | Tested scope |
+| Title | Verified code/revision | Accelerated asset coverage |
 | --- | --- | --- |
-| Castlevania: Dawn of Sorrow, USA | ACVE / 0 | Guarded decoder/converter/audio routines; 140 sec opening |
-| Chrono Trigger, USA | YQUE / 0 | Opening; 230 sec |
-| Ni no Kuni, Japan | B2KJ / 0 | Both opening streams; 480 sec |
-| Ni no Kuni, English translation v1.0 | B2KJ / 0 plus full source SHA-256 | Both opening streams, two cycles; 360 sec |
-| Strange Journey, USA | BMTE / 0 | Opening; 180 sec |
-| Final Fantasy XII: Revenant Wings, USA | AXFE / 0 | Upper/lower opening streams; 180 sec |
-| Sonic Chronicles, USA | YWSE / 0 | Upper/lower opening streams; 210 sec |
+| Castlevania: Dawn of Sorrow, USA | ACVE / 0 | Existing shared decoder/converter/audio routine hooks; opening validated |
+| Chrono Trigger, USA | YQUE / 0 | All 10 MODS streams |
+| Ni no Kuni, Japan | B2KJ / 0 | All 17 MODS streams |
+| Ni no Kuni, English translation v1.0 | B2KJ / 0 plus full source SHA-256 | All 17 MODS streams, byte-identical to the Japanese movie assets |
+| Strange Journey, USA | BMTE / 0 | All 11 MODS streams |
+| Final Fantasy XII: Revenant Wings, USA | AXFE / 0 | All 20 VXDS streams |
+| Sonic Chronicles, USA | YWSE / 0 | All 59 VXDS streams |
 
-Six cartridge profiles require a complete source-hash match; Castlevania checks
-its header and routine bytes. Other revisions, translations and movie assets
-are not automatically qualified. The original cartridges remain unchanged.
+These counts are file streams, including separate upper/lower-screen planes;
+they are not counts of distinct cutscenes. The exact inventory is recorded in
+[RC10_MOVIE_ASSETS.json](RC10_MOVIE_ASSETS.json). Six cartridge profiles require
+a complete source-hash match; Castlevania checks its header and routine bytes.
+Other revisions and translations are not automatically qualified. Original
+cartridges remain unchanged. Coverage of all listed assets does not establish
+full-playthrough testing, every late-game transition, or perfect audio sync.
+
+The opening-only checks below describe the inherited qualification.
 The six earlier retail sessions exited cleanly with no transport faults, decoder errors or
 detected audio-dropout windows. Ni no Kuni recordings each had one OBS render
 drop and zero encoding drops; the strict zero-capture-drop gate was therefore
@@ -120,7 +128,7 @@ to package revision 7. The renderer change and PGO rebuild are documented in
 qualification. Long sessions, all outputs/controllers and multiple boards remain
 unqualified; FPGA static timing remains unresolved.
 
-## English translation v1.0 qualification
+## Package revision 8 English translation qualification (historical)
 
 The original Japanese cartridge SHA-256 is
 `7c78318ae93bd5639e592be98b22114e2160c54397f7bfff5e1bfe61b54a4f3c`.
@@ -184,3 +192,98 @@ checkpoint into Oliver's Room. The 65,536-byte save remained unchanged after
 reading, and the session exited cleanly. This validates reading that existing
 checkpoint; a fresh English save-write/reload cycle and later story progression
 are not qualified by this check.
+
+
+## Package revision 9 expanded movie qualification
+
+The offline asset audit found 117 MODS/VXDS streams in the five retail images,
+plus 17 byte-identical streams in the supported English translation. All 72,725
+unique asset frames passed native metadata decoding. Lossless packet reframing
+preserves every original video/audio byte, audio count, frame-rate field and
+keyframe entry. Every FAT file was compared against its original payload or its
+specified movie/overlay transform: 42,755 file entries checked across six profiles.
+No movie payloads or game code are included in the profile registry.
+
+The shipped receiver matched full-packet reference output for 89,804 frame decodes
+across 134 assets, including replay from frame zero after each movie. Decoder
+contexts and six reused output buffers were retained across movie changes.
+Strange Journey asset 4930 uses quantizers beyond the original opening's range;
+all 1,650 frames matched the game's interpreted original decoder byte-for-byte
+(121,651,200 YUV bytes). The envelope guard now accepts the decoder's documented
+12–161 quantizer range rather than the opening-only bound of 43.
+
+Both Ni no Kuni layouts discard only audited erased padding; unchanged files
+remain byte-identical. The expanded English layout uses 486,051,328 bytes of the
+486,539,264-byte cartridge window, leaving 487,936 bytes. The Japanese layout
+leaves 6,525,440 bytes. Unknown or modified images retain the existing fail-closed
+selection/fallback behavior.
+
+Fresh hardware and package checks are recorded with the final archive receipt.
+
+The same receiver ran directly on the MiSTer's ARM processor against all 117
+retail streams: 73,661 frame decodes, including eight-frame restarts where
+available, matched complete-packet reference pixels with no errors. The English
+movie bytes are identical and were separately included in the 134-asset native
+comparison. These are decoder-corpus checks, not full-game playthroughs.
+
+A fresh English Ni no Kuni hardware session played the first story sequence
+and returned to interactive Morton Street. Across 360 seconds, 1,800 transport
+samples were fault-free, 1,446 video frames decoded with zero errors, and OBS
+reported zero rendering/encoding drops. That story asset's 581 frames also
+matched the game's interpreted original decoder exactly (42,835,968 YUV bytes).
+The earlier opening was skipped during this session. These checks do not prove
+all later audio transitions or subtitle synchronization.
+
+The final Revenant Wings profile reuses one abandoned movie span, keeping its
+virtual cartridge at 128 MiB. The first expanded draft crossed into 256 MiB.
+All movie envelopes are identical between these layouts, and all 1,852 FAT
+payloads were rechecked. Only that profile's FAT offsets, cartridge header and
+receiver identity changed; the final build passed the renderer self-test.
+
+Fresh cold-launch playback checks used the expanded profiles at 1 GHz:
+
+| Profile | Measured playback window | Decoded frames | Decoder/transport errors |
+| --- | ---: | ---: | ---: |
+| Chrono Trigger USA | 120 sec | 1,644 | 0 / 0 |
+| Revenant Wings USA, initial expanded layout | 120 sec | 1,326 | 0 / 0 |
+| Sonic Chronicles USA | 120 sec | 2,134 | 0 / 0 |
+| Strange Journey USA | 120 sec | 2,826 | 0 / 0 |
+| Ni no Kuni Japan | 150 sec | 2,634 | 0 / 0 |
+
+These five recordings had zero OBS rendering/encoding drops. The expanded
+layout's first renderer build was used for this sweep. The final renderer changes
+only the Revenant Wings virtual-header identity after the storage adjustment
+above; its final-layout playback check is recorded separately. Movie payloads,
+decoder code, guest hooks, and rendering algorithms did not change between the
+two builds.
+
+## Revision 9 final checks
+
+The final 128 MiB Revenant Wings layout decoded 1,324 frames in a
+120-second cold-launch playback check. All 600 transport samples were fault-free,
+with zero decoder errors and zero OBS rendering/encoding drops.
+
+| Scene | Preceding revision 8 control | Expanded movie build |
+| --- | ---: | ---: |
+| NSMB W1 castle, repeated jumping | 39.39 / 39.62 updates/sec | 39.38 / 39.23 updates/sec |
+| Castlevania cave/bat room | 21.84 updates/sec | 21.78 updates/sec |
+| Mario Kart Figure-8 Circuit, crowded start | 22.13 updates/sec | 22.14 updates/sec |
+
+No material speed regression was detected in these bounded 1 GHz checks. The
+NSMB and Castlevania runs used the initial expanded helper; the final helper
+differs only in its Revenant Wings header identity. Mario Kart used the final
+helper and a fresh matched revision 8 control. Both start-grid screenshots show
+the same countdown, time, position and race field. An earlier 22.48/sec result
+compared with the older 27.04/sec empty-track scene was not a matched comparison
+and is excluded from the regression conclusion. These counts measure completed
+paired-screen updates, not whole-game FPS.
+
+All gameplay runs had zero transport faults. The first NSMB capture had one
+OBS rendering drop; its repeat had none. Castlevania and both matched Mario Kart
+captures had zero rendering/encoding drops. Capturing does not establish an
+absence of every visible or audible hitch.
+
+The movie corpus checks cover sequential playback and restarts at frame zero.
+The receiver requires consecutive frame sequences; arbitrary seeks beginning
+at a nonzero frame are not qualified by these checks. Later in-game transitions,
+subtitle timing and full playthroughs still require broader coverage.

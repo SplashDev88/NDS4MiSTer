@@ -205,8 +205,21 @@ def movie(source, spec):
     require(digest(raw) == spec['source_sha256'], 'movie identity differs')
     rows = zlib.decompress(base64.b64decode(spec['descriptors']))
     count = spec['frames']
+    out = reframe_movie(raw, spec['family'], rows, count)
+    require(len(out) == spec['output_bytes'] and digest(out) == spec['output_sha256'],
+            'movie reconstruction differs from qualified stream')
+    return out
+
+
+def reframe_movie(raw, family, rows, count):
+    """Build a lossless packet envelope, also used by offline qualification.
+
+    Runtime callers must verify source and output identities through movie().
+    Movie timing, audio payloads and seek entries retain their original values.
+    """
+    require(family in ('vx', 'mobiclip'), 'unknown movie family')
     require(len(rows) == count*16, 'invalid descriptor table')
-    vx = spec['family'] == 'vx'
+    vx = family == 'vx'
     require(raw[:4] == (b'VXDS' if vx else b'MODS'), 'movie signature differs')
     require(struct.unpack_from('<I', raw, 4 if vx else 8)[0] == count, 'frame count differs')
     pos = 48 if vx else 52
@@ -233,7 +246,7 @@ def movie(source, spec):
             maximum = max(maximum, size+18)
         else:
             key = struct.unpack_from('<H', payload)[0] & 0x8000
-            require(magic == (0x43424453 | key) and (quant & 65535) <= 43,
+            require(magic == (0x43424453 | key) and 12 <= (quant & 65535) <= 161,
                     'MobiClip descriptor invalid')
             packet_header = struct.pack('<I', ((size+16) << 14) | audio)
             maximum = max(maximum, size+16)
@@ -252,8 +265,6 @@ def movie(source, spec):
         frame, offset = struct.unpack_from('<II', raw, keys_offset+i*8)
         require(frame < count and offset in offsets, 'invalid keyframe index')
         struct.pack_into('<II', out, keys_offset+shift+i*8, frame, offsets[offset])
-    require(len(out) == spec['output_bytes'] and digest(out) == spec['output_sha256'],
-            'movie reconstruction differs from qualified stream')
     return out
 
 

@@ -8,7 +8,7 @@
   "fpga_source_revision": "5924000f9d422fc624fdc0aecad424eab5ca9325",
   "freeze_source_revision": "5924000f9d422fc624fdc0aecad424eab5ca9325",
   "hardware_validation": "Renderer scene results inherited from RC1; revision-2 installed menu check is in the external receipt.",
-  "helper_sha256": "728e306fbb6f80bd075dfaa1021fcbca0478d5caca536199cb224a992c0ab1a9",
+  "helper_sha256": "1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc",
   "host_change": "Keep blank lines after Display options and Lid; make Right Stick Range and Lid adjacent. Gameplay paths unchanged.",
   "host_sha256": "e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301",
   "host_source_revision": "12325dfd6af12c962a81b98b2b1978cced5d5ae8",
@@ -60,12 +60,12 @@
     "NDS_GPU_AFFINE_PACKED_ROWS": "1",
     "NDS4MISTER_STANDALONE_QUERY_SHORT_IDLE": "1"
   },
-  "runtime_selection": "Retain Performance RC1 r2 rendering algorithms and runtime settings; rebuild with the same PGO data and add an exact Ni no Kuni English v1.0 movie-receiver identity. The ROM loader verifies the full source hash and compacts padding only for this qualified translation.",
+  "runtime_selection": "Retain rendering algorithms, runtime settings and PGO data; update six exact virtual-header identities for complete MODS/VXDS asset inventories. Full source hashes gate read-only profiles. Both qualified Ni no Kuni layouts compact only verified padding.",
   "runtime_source_revision": "12325dfd6af12c962a81b98b2b1978cced5d5ae8",
   "shared_saves": "/media/fat/saves/NDS",
   "source_revision": "12325dfd6af12c962a81b98b2b1978cced5d5ae8",
   "static_timing_clean": false,
-  "supervisor_sha256": "2f2a2c946187fcc2a1413ba4f178d49911fc37abe823303a40aba8d1b6a5b038",
+  "supervisor_sha256": "92ebab31844c099f818e7734a2fc7b35cc1a6460ebe8bf461d67c3e30c7d52aa",
   "timing_profile": false,
   "user_dumps_included": false,
   "user_settings_included": false,
@@ -80,17 +80,17 @@
   "automatic_movie_files": {
     "NDS_Standalone.rbf": "4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26",
     "nds_standalone_host": "e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301",
-    "support/nds_hybrid_3d_service": "728e306fbb6f80bd075dfaa1021fcbca0478d5caca536199cb224a992c0ab1a9",
-    "supervisor.py": "2f2a2c946187fcc2a1413ba4f178d49911fc37abe823303a40aba8d1b6a5b038",
+    "support/nds_hybrid_3d_service": "1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc",
+    "supervisor.py": "92ebab31844c099f818e7734a2fc7b35cc1a6460ebe8bf461d67c3e30c7d52aa",
     "Kickstart.sh": "0b567af3cd088a9d7ff720fc7f8249ef20cea05a69e9d7dc8d1200ba1899dda8",
     "auto_movies.py": "c3ad6bce7cde86260626ca2cd53556c03ab164dbdd59d4af9210586740d176f5",
     "clock_control.py": "1ff17e6b13f0fa1013ef9a7e1325f27572049b5dccf4b77da081e03181aaa46f",
     "video_target.py": "11e108c4c41ab9c19ca382f8a092db0694df05f3250a203ce8e79420aaba9886",
-    "fmv/profiles.json": "019ff36bcb40826f83e1ac0d4ece482b1fbf96cf59f5f075d0c50483a7cb3204",
+    "fmv/profiles.json": "598f4e23e967f56d9b9a2065de8826725d027bfc6f674933794b08f0809b5218",
     "fmv/stream.py": "e7b5c37be6ecdc88fb429a65366b6a9cc9f592829aae01fe279201ed0c9d2955",
     "fmv/build_guest.py": "fee80f708183543cb5528e1c5e56bb13ebe194102e0ba2bd1e7ec9fe6a631c64",
-    "fmv/test_prepare.py": "3fb977059e7ab94f402d81954aac83b54e4061af47867ea2f0fc0b8a6e3f058b",
-    "fmv/prepare.py": "489c9e5f63baffce42f0ddefb90c18f81bf820a3c50555bf2a04d822ad0ae356",
+    "fmv/test_prepare.py": "19bee797dbd32afeb988bc6a993554430980cee7dd46c6a4b189bcab1120a11f",
+    "fmv/prepare.py": "88bbb465f1f04402bd1e918dd85641109adc2395fd5f1d1d67ebad7403ddc1f7",
     "fmv/verify_qualified.py": "2c2279f2e2b1d60aca893d72aae4ee6753c16a8acab1e3631904a58cbdd25abe",
     "fmv/ndspy/_lzCommon.py": "0cf8c6f186a8fc44f0e657a5b4ca6c8f25c6ca9301b698fd7181f0782bd4b255",
     "fmv/ndspy/LICENSE": "8b1ba204bb69a0ade2bfcf65ef294a920f6bb361b317dba43c7ef29d96332b9b",
@@ -127,7 +127,7 @@
     "fmv/nsmb_hooks.json": "5fc735c5072c75bd3afe0d86a7cb74a4587336679414d504c91ba0eed7e8322e",
     "fmv/nsmb_bones.S": "ca4073de805998c34bfdd9b815cc829efef37e1f0b4226fa9f4fa6c61c81f4d0",
     "fmv/nsmb_bones.ld": "8dfba79964b670166136eec31bb19c332f76b7447c351f67c8b6c35016ddc44c",
-    "support/nds_hybrid_3d_service.sha256": "ab0afc551f174f7a4bbeb682a0c05aa67d5bd667147a7d472e197ca7df630886"
+    "support/nds_hybrid_3d_service.sha256": "679afd1c3efa7672a2a2c0615945d6c79cdd423d1bc3b65ee5e89f0fa1af02a4"
   },
   "strict_zero_capture_drop_pass": false,
   "automatic_movie_scope": "Whole-cartridge verification for six profiles, including Ni no Kuni English translation v1.0; separate guarded Castlevania routines. Exact revisions and bounded tests are listed in VALIDATION_RC10.md.",
@@ -181,7 +181,7 @@
     "source/native-training-profiles.tar": "095af749a4abd697f678db1aa5b3dad4d5f5f07d33857ac2ec6111ced714db16",
     "source/RC1-r2-menu.patch": "2ae1745a1ff3924b0e4a6d15dc15a8fc986117a85774b2f61cdfa90ead1e829b",
     "source/RC1-r2-host-provenance.json": "d9a66193f8c51ca64d5152ee26d18451f08bc65d845bc05c9cf3210bb67b7638",
-    "source/RC10-renderer-build.json": "4d6e5acdc540816aab1317e0813eda5af7efa0885738691b8752d07fc394033a"
+    "source/RC10-renderer-build.json": "26c1eb8617ec6c76aee0e23638272f4ffc4cb7580119a57d758a2e567a607839"
   },
   "gameplay_regression_evidence_scope": "Fresh bounded comparisons listed in PERFORMANCE_RC1_VALIDATION_20261023.md; not full-game qualification.",
   "touch_validation": {
@@ -456,7 +456,7 @@
   "nsmb_validation_sha256": "6673e4e83d5e6f96aa4c033e6a347aa074b17dd8647ffac3beb068b4b6fef99e",
   "runtime_source_archive": "source/NDS4MiSTer-Performance-RC1-runtime.tar.gz",
   "runtime_source_overlays": {},
-  "package_revision": 8,
+  "package_revision": 9,
   "speed_hacks_menu": false,
   "host_source_overlay_sha256": {
     "tools/standalone_host/host.cpp": "73a103ee617827a5399e3cb58fdf8c08eed03de4d51ce35d6d4bc20223f854b9",
