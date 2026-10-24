@@ -1,7 +1,9 @@
-# Experimental NAND cartridge saves
+# NAND cartridge saves
 
-This branch adds NAND saves to the ARM-assisted standalone product. It is not
-release-qualified. The NAND1 prototype completed WarioWare first-run setup,
+rc.10 retains the earlier NAND3 save implementation for the ARM-assisted
+standalone product, with the bounded hardware coverage below. The separate
+Band Brothers DX serial-flash experiment is paused and excluded from rc.10.
+The private launcher references below identify historical tests. The NAND1 prototype completed WarioWare first-run setup,
 played Mona microgames, saved the player profile and restored it after a full
 core exit/relaunch. The corrected rc.9-settings NAND3 build also loads that
 profile and displays its saved Mona high score of 4. A new score was then
@@ -22,7 +24,7 @@ diagnostic saves.
 | --- | --- | --- | --- |
 | WarioWare D.I.Y. / Made in Ore | UORE, UORP, UORJ | 16 MiB | UORE setup/gameplay/profile reload on prototype; new Mona score save/reload on NAND3; other regions untested |
 | Jam with the Band | UXBP | 8 MiB | UXBP first-run setup, one-button demo and profile reload pass on NAND3; broader modes untested |
-| Daigasso! Band Brothers DX | AXBJ | 8 MiB | Recognized, but a missing save-region header is rejected; layout requires separate verification |
+| Daigasso! Band Brothers DX | AXBJ | 8 MiB | Unsupported in rc.10: separate serial-flash protocol; experimental first hardware save fails |
 
 Face Training uses a DSi-specific variant and is outside this prototype.
 Ni no Kuni uses ordinary EEPROM, so NAND support does not address that report.
