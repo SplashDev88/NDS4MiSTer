@@ -9,8 +9,8 @@ VERSION = 'v0.9.0-rc.10'
 PINS = {
     'nds_standalone_host': 'e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301',
     'NDS_Standalone.rbf': '4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26',
-    'support/nds_hybrid_3d_service': '78384aacd738bfbacdc50bd9ceb336a2704042e94f09da2b5e0c843caccde35d',
-    'supervisor.py': '2a94d422e213c71aee3741be5589003376cc0058428a1e0ac4a05579f1df25fc',
+    'support/nds_hybrid_3d_service': '728e306fbb6f80bd075dfaa1021fcbca0478d5caca536199cb224a992c0ab1a9',
+    'supervisor.py': '2f2a2c946187fcc2a1413ba4f178d49911fc37abe823303a40aba8d1b6a5b038',
 }
 DOCS = {'README.md': 'docs/STANDALONE_INSTALL_README.md',
         'RELEASE_NOTES.md': 'docs/RELEASE_NOTES_V090_RC10.md',
@@ -63,13 +63,16 @@ def assemble(kit):
             need(sha(data)==h,'FPGA frozen source mismatch: '+name); checked+=1
     source_readme='''# rc.10 corresponding source
 
-The renderer and FPGA are unchanged from Performance RC1 revision 2.
-The host is rebuilt solely for the requested menu spacing. Build it from
+The FPGA and menu-spacing host are retained from rc.10 revision 7. The
+renderer adds an exact Ni no Kuni English v1.0 receiver identity and retains
+the same PGO settings. Rebuild it using `RC10-renderer-build.json`, the supplied
+profile archive and FFmpeg build instructions. Build the menu-spacing host from
 `NDS4MiSTer-rc10-source.tar.gz` with tools/standalone_host/build.sh.
 The recorded GCC 13.3 Cortex-A9 static command is unchanged.
 
 - `NDS4MiSTer-rc10-source.tar.gz`: release documentation, packaging recipe and
-  current launcher scripts. The host source includes menu removal and the two retained blank rows.
+  current loader and renderer source, including guarded English v1.0 support.
+  The host source includes menu removal and the two retained blank rows.
 - `NDS4MiSTer-Performance-RC1-runtime.tar.gz`: exact prior host/renderer source used
   for the accepted build; the menu-spacing host is in the rc.10 source archive. Follow `BUILD_PERFORMANCE_RC.md`, compiler profile
   archive, `RC1-build-provenance.json` and `RC1-r2-host-provenance.json`.
@@ -90,10 +93,15 @@ instructions and dependency licenses are retained alongside the source.
     files[PREFIX+'source/BUILD_RC10.md']=source_readme.encode()
     m=json.loads((ROOT/'docs/release/RC10_RUNTIME_MANIFEST.json').read_text())
     m.update(name='NDS4MiSTer',version=VERSION,release_channel='release candidate',
-             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=7,
-             packaging_source_revision=revision,launcher_sha256=sha(files[launcher]),
+             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=8,
+             packaging_source_revision=revision,helper_source_revision=revision,
+             source_revision=revision,source_commit=revision,runtime_source_revision=revision,
+             supervisor_source_revision=revision,loader_source_revision=revision,
+             runtime_source_archive=source_name,source_archive_sha256=sha(files[PREFIX+source_name]),
+             baseline_runtime_source_archive="source/NDS4MiSTer-Performance-RC1-runtime.tar.gz",
+             launcher_sha256=sha(files[launcher]),
              installation_scope='Normal standalone kit; ordinary saves shared; existing display/input/clock settings retained.',
-             hardware_validation='Inherited Performance RC1 r2 validation; separate rc.10 package launch receipt.',
+             hardware_validation='Inherited Performance RC1 r2 validation plus English translation playback and fresh gameplay regression checks; see VALIDATION_RC10.md.',
              public_release_qualified=False,
              public_release_scope='Prepared release candidate with documented bounded validation and unresolved timing; publication is a separate action.',
              dx_experiment_included=False,
@@ -104,9 +112,12 @@ instructions and dependency licenses are retained alongside the source.
         m['source_and_validation_sha256'][name]=sha(files[PREFIX+name])
     files[PREFIX+'manifest.json']=js(m)
     provenance={'version':VERSION,'packaging_source_revision':revision,
-                'runtime_binaries_changed_for_packaging':['nds_standalone_host (menu spacing only)'],'runtime_pins':PINS,
+                'runtime_binaries_changed_for_packaging':['nds_standalone_host (menu spacing only)', 'nds_hybrid_3d_service (English translation receiver identity; same PGO settings)'],'runtime_pins':PINS,
                 'baseline_package':'Performance RC1 revision 2',
-                'host_change':'Blank rows before Right Stick Range and Reset; Right Stick Range and Lid are adjacent; renderer/FPGA/runtime settings unchanged',
+                'host_change':'Host retained from rc.10 r7: blank rows before Right Stick Range and Reset; Right Stick Range and Lid adjacent',
+                'renderer_change':'Add exact English v1.0 movie receiver identity; retain rendering algorithms and PGO settings',
+                'loader_change':'Full-hash translation selection and read-only file relocation to fit the cartridge window',
+                'renderer_build_recipe':'source/RC10-renderer-build.json',
                 'baseline_zip_sha256':'a77fefbec42327d01fd92805b9c924056c638d52e2fa7698b2da69e41880c967',
                 'frozen_fpga_inputs_checked':checked,'fpga_code_commit':fm['code_commit'],
                 'dx_experiment_included':False,'static_timing_clean':False,

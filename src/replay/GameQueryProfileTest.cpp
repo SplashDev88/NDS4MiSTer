@@ -58,6 +58,7 @@ int main(int argc, char** argv)
           "Castlevania guest-only optimization does not enable movie receiver");
     const GameQueryIdentity movies[] = {
         {{{'B','2','K','J'}}, 0, 0x489ec758u},
+        {{{'B','2','K','J'}}, 0, 0xd2b13b89u},
         {{{'Y','Q','U','E'}}, 0, 0xe8c32d96u},
         {{{'B','M','T','E'}}, 0, 0xdcfbb2bbu},
         {{{'A','X','F','E'}}, 0, 0x2725ad29u},
@@ -80,7 +81,7 @@ int main(int argc, char** argv)
                   "other game disables movie receiver");
         }
     }
-    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=5 unknown_off=1 reset_default_off=1\n";
+    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=6 unknown_off=1 reset_default_off=1\n";
 
     // Optional private fixtures stay outside the source tree and release.
     if (argc == 3) {

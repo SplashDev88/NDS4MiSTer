@@ -3,6 +3,7 @@ import base64
 import hashlib
 import json
 import os
+import random
 from pathlib import Path
 import struct
 import subprocess
@@ -10,7 +11,7 @@ import sys
 import tempfile
 import unittest
 import zlib
-from prepare import Source, VirtualRom, movie, digest
+from prepare import Source, VirtualRom, CompactedFiles, movie, digest, profile_for
 
 
 class PrepareTests(unittest.TestCase):
@@ -41,6 +42,80 @@ class PrepareTests(unittest.TestCase):
     def test_source_mutation_fails(self):
         self.path.write_bytes(b'new source')
         with self.assertRaises(ValueError):self.source.unchanged()
+
+    def test_same_header_profiles_select_exact_hash_independent_of_order(self):
+        original = self.path.read_bytes()
+        common = dict(code_hex=original[12:16].hex(), revision=original[30],
+                      source_size=len(original))
+        known = dict(common, source_sha256=digest(original))
+        other = dict(common, source_sha256='0'*64)
+        progress = []
+        self.assertIs(profile_for(self.source, [other, known], progress.append), known)
+        self.assertTrue(progress)
+        progress.clear()
+        self.assertIs(profile_for(self.source, [known, other], progress.append), known)
+        self.assertEqual(progress, [])  # Full identity read only once per source FD.
+        with self.assertRaises(ValueError):
+            profile_for(self.source, [known, dict(known)])
+        self.assertIsNone(profile_for(self.source, [other, dict(other)]))
+
+    def test_cached_identity_rejects_changed_source(self):
+        self.assertEqual(self.source.sha256(), digest(self.path.read_bytes()))
+        self.path.write_bytes(b'changed')
+        with self.assertRaises(ValueError):self.source.sha256()
+
+    def compact_fixture(self):
+        # Non-file prefix and physically unordered file IDs. Include an empty
+        # file and a movie that grows; every unindexed gap is erased padding.
+        raw = bytearray(b'\xff'*4096)
+        struct.pack_into('<II',raw,0x48,512,5*8)
+        entries = [(1800,1803),(700,704),(1408,1413),(2048,2048),(2560,2564)]
+        for i,(a,b) in enumerate(entries):
+            struct.pack_into('<II',raw,512+8*i,a,b)
+            raw[a:b] = bytes([i+1])*(b-a)
+        oldfat = raw[512:552]
+        table = bytearray(oldfat)
+        relocated = [(1152,1155),(700,704),(1024,1029),(1280,1280),(1280,1287)]
+        for i,(a,b) in enumerate(relocated):struct.pack_into('<II',table,8*i,a,b)
+        spec = dict(prefix=1024,alignment=128,source_fat_sha256=digest(oldfat),
+                    output_fat_sha256=digest(table),files_end=1287)
+        movie = dict(id=4,output_offset=1280,output_bytes=7)
+        self.path.write_bytes(raw)
+        expected = bytearray(b'\xff'*len(raw));expected[:1024]=raw[:1024]
+        expected[512:552]=table
+        expected[1024:1029]=raw[1408:1413];expected[1152:1155]=raw[1800:1803]
+        return raw,spec,[movie],expected
+
+    def test_compacted_file_reads_cross_spans_and_preserve_source(self):
+        original,spec,movies,expected = self.compact_fixture()
+        backing = CompactedFiles(Source(self.fd),spec,movies)
+        rng = random.Random(947)
+        ranges = [(0,4096),(511,553),(699,705),(1028,1156),(4096,4096)]
+        ranges += [sorted([rng.randrange(4097),rng.randrange(4097)]) for _ in range(100)]
+        for a,b in ranges:self.assertEqual(backing.read(a,b-a),expected[a:b])
+        image = VirtualRom(backing,4096);image.add(1280,b'newfilm');image.finish()
+        expected[1280:1287]=b'newfilm'
+        self.assertEqual(b''.join(image.blocks()),expected)
+        self.assertEqual(self.path.read_bytes(),original)
+        for a,n in [(-1,1),(4096,1),(1,-1)]:
+            with self.assertRaises(ValueError):backing.read(a,n)
+
+    def test_compaction_rejects_inconsistent_metadata(self):
+        _,spec,movies,_ = self.compact_fixture()
+        for key,value in [('alignment',64),('prefix',540),('source_fat_sha256','0'*64),
+                          ('output_fat_sha256','0'*64),('files_end',1288)]:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                CompactedFiles(Source(self.fd),dict(spec,**{key:value}),movies)
+        for changed in [[dict(movies[0],output_offset=1408)],movies*2,
+                        [dict(movies[0],id=1)],[dict(movies[0],id=99)]]:
+            with self.assertRaises(ValueError):CompactedFiles(Source(self.fd),spec,changed)
+
+    def test_compaction_rejects_crossing_and_overlapping_source_files(self):
+        for start,end in [(1000,1030),(1409,1415),(4090,4100)]:
+            raw,spec,movies,_ = self.compact_fixture()
+            struct.pack_into('<II',raw,512,start,end)
+            spec['source_fat_sha256']=digest(raw[512:552]);self.path.write_bytes(raw)
+            with self.assertRaises(ValueError):CompactedFiles(Source(self.fd),spec,movies)
 
     def test_unknown_and_changed_known_rom_stream_unchanged(self):
         # A recognizable game code alone never authorizes patching.
@@ -81,7 +156,8 @@ class PrepareTests(unittest.TestCase):
         root=Path(__file__).parent
         registry=json.loads((root/'profiles.json').read_text())
         self.assertEqual(registry['version'],1)
-        self.assertEqual(len(registry['profiles']),5)
+        self.assertEqual({p['key'] for p in registry['profiles']},
+                         {'NINO','NINO_EN10','SJ','CHRONO','FF12','SONIC'})
         for p in registry['profiles']:
             self.assertEqual(p['assembled_sha256'],p['qualified_image_sha256'])
             for s in p['stubs']:self.assertEqual(digest((root/'guest'/s['file']).read_bytes()),s['sha256'])

@@ -32,7 +32,7 @@ def main():
         registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
         if registry['version'] != 1:
             raise ValueError('unsupported profile version')
-        profile = profile_for(source, registry['profiles'])
+        profile = profile_for(source, registry['profiles'], progress)
         if profile:
             image = assemble(source, profile, progress=progress)
             print('FMV_AUTO_APPLIED '+profile['key']+' original cartridge; save identity retained',file=sys.stderr,flush=True)

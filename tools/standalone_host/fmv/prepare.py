@@ -6,6 +6,7 @@ code, textures or movie payloads. All original bytes come from the open ROM.
 The entire identity is checked before any replacement is made visible.
 """
 import base64
+import bisect
 import hashlib
 import json
 import os
@@ -33,6 +34,7 @@ class Source:
         self.fd = fd
         self.stat = os.fstat(fd)
         self.size = self.stat.st_size
+        self._sha256 = None
 
     def read(self, start, size):
         require(0 <= start <= self.size and 0 <= size <= self.size - start,
@@ -45,12 +47,16 @@ class Source:
         return bytes(result)
 
     def sha256(self, progress=lambda n: None):
+        self.unchanged()
+        if self._sha256 is not None:
+            return self._sha256
         h = hashlib.sha256()
         for at in range(0, self.size, CHUNK):
             h.update(self.read(at, min(CHUNK, self.size - at)))
             progress(at)
         self.unchanged()
-        return h.hexdigest()
+        self._sha256 = h.hexdigest()
+        return self._sha256
 
     def unchanged(self):
         now = os.fstat(self.fd)
@@ -104,10 +110,93 @@ class VirtualRom:
         require(at == end, 'incomplete virtual stream')
 
 
-def profile_for(source, profiles):
+class CompactedFiles:
+    """Read-only FAT relocation for an exact, separately qualified cartridge.
+
+    Keep the boot/system prefix intact and stream file payloads at their new
+    FAT offsets. Replaced movies are supplied by VirtualRom. No whole-ROM
+    buffer or on-disk patched cartridge is created on MiSTer.
+    """
+    def __init__(self, source, spec, movies):
+        self.source, self.size = source, source.size
+        header = source.read(0, 512)
+        fat, fat_size = struct.unpack_from('<II', header, 0x48)
+        prefix, alignment = spec['prefix'], spec['alignment']
+        require(alignment == 128 and 512 <= prefix <= LIMIT and
+                fat_size % 8 == 0 and 512 <= fat < fat + fat_size <= prefix,
+                'invalid compact file layout')
+        original = source.read(fat, fat_size)
+        require(digest(original) == spec['source_fat_sha256'], 'file table differs')
+        table = bytearray(original)
+        replacements = {m['id']: m for m in movies}
+        require(len(replacements) == len(movies), 'duplicate compact movie')
+        spans = [(0, fat, 0), (fat + fat_size, prefix, fat + fat_size)]
+        files = [(i, *struct.unpack_from('<II', original, i*8))
+                 for i in range(fat_size//8)]
+        cursor, previous_end = prefix, 0
+        found = set()
+        for fid, start, end in sorted(files, key=lambda f: (f[1], f[2], f[0])):
+            require(0 <= start <= end <= source.size and start >= previous_end,
+                    'overlapping or invalid source files')
+            previous_end = end
+            if start < prefix:
+                require(end <= prefix and fid not in replacements, 'file crosses compact prefix')
+                continue
+            cursor = (cursor + alignment - 1) & ~(alignment - 1)
+            size = replacements[fid]['output_bytes'] if fid in replacements else end-start
+            require(cursor + size <= LIMIT, 'compacted files exceed cartridge memory')
+            struct.pack_into('<II', table, fid*8, cursor, cursor+size)
+            if fid in replacements:
+                require(replacements[fid]['output_offset'] == cursor, 'compact movie offset differs')
+                found.add(fid)
+            elif size:
+                spans.append((cursor, cursor+size, start))
+            cursor += size
+        require(found == set(replacements) and cursor == spec['files_end'],
+                'compact file extent differs')
+        require(digest(table) == spec['output_fat_sha256'], 'compact file table differs')
+        spans.append((fat, fat+fat_size, bytes(table)))
+        self.spans = sorted(spans)
+        self.starts = [s[0] for s in self.spans]
+        require(all(a[1] <= b[0] for a, b in zip(self.spans, self.spans[1:])),
+                'overlapping compact output')
+        self.unchanged()
+
+    def unchanged(self):
+        self.source.unchanged()
+
+    def read(self, start, size):
+        require(0 <= start <= self.size and 0 <= size <= self.size-start,
+                'compact read outside cartridge')
+        out, end = bytearray(), start+size
+        index = max(0, bisect.bisect_right(self.starts, start)-1)
+        while start < end:
+            while index < len(self.spans) and self.spans[index][1] <= start:
+                index += 1
+            if index == len(self.spans):
+                out.extend(b'\xff'*(end-start)); break
+            a, b, backing = self.spans[index]
+            if start < a:
+                stop = min(a, end); out.extend(b'\xff'*(stop-start)); start = stop
+                continue
+            stop = min(b, end)
+            out.extend(backing[start-a:stop-a] if isinstance(backing, bytes)
+                       else self.source.read(backing+start-a, stop-start))
+            start = stop
+        return bytes(out)
+
+
+def profile_for(source, profiles, progress=lambda n: None):
     header = source.read(0, 512)
-    return next((p for p in profiles if header[12:16].hex() == p['code_hex'] and
-                 header[30] == p['revision'] and source.size == p['source_size']), None)
+    matches = [p for p in profiles if header[12:16].hex() == p['code_hex'] and
+               header[30] == p['revision'] and source.size == p['source_size']]
+    if len(matches) > 1:
+        # Translations can retain the retail code, revision and padded size.
+        # Select by complete identity; never let registry order choose a patch.
+        identity = source.sha256(progress)
+        matches = [p for p in matches if p['source_sha256'] == identity]
+        require(len(matches) <= 1, 'ambiguous cartridge profile')
+    return matches[0] if matches else None
 
 
 def movie(source, spec):
@@ -175,7 +264,9 @@ def assemble(source, profile, root=ROOT, progress=lambda n: None):
     main = code.MainCodeFile(source.read(armoff,size), load)
     fat, fat_size = struct.unpack_from('<II', header, 0x48)
     oe, osize = struct.unpack_from('<II', header, 0x50)
-    image = VirtualRom(source, profile['output_size'])
+    backing = CompactedFiles(source, profile['compact_files'], profile['movies']) \
+        if 'compact_files' in profile else source
+    image = VirtualRom(backing, profile['output_size'])
     overlays = {}
     for spec in profile['overlays']:
         row = oe+spec['id']*32

@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Reproduce qualified virtual images from locally owned original cartridges.
 
-Expected input names: SJ.nds, NINO.nds, CHRONO.nds, FF12.nds, SONIC.nds.
+Expected input names are the profile keys with a .nds suffix, including
+NINO_EN10.nds for the exact English translation v1.0.
 Only hashes and lengths are emitted. No ROM or movie output is written.
 """
 import argparse

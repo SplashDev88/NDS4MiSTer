@@ -69,6 +69,7 @@ inline bool automatic_movie_receiver_profile(const GameQuerySelection& selected)
     if (!selected.identified) return false;
     constexpr GameQueryIdentity movies[] = {
         {{{'B','2','K','J'}}, 0, 0x489ec758u},
+        {{{'B','2','K','J'}}, 0, 0xd2b13b89u}, // English translation v1.0, exact virtual image.
         {{{'Y','Q','U','E'}}, 0, 0xe8c32d96u},
         {{{'B','M','T','E'}}, 0, 0xdcfbb2bbu},
         {{{'A','X','F','E'}}, 0, 0x2725ad29u},
@@ -81,7 +82,6 @@ inline bool automatic_movie_receiver_profile(const GameQuerySelection& selected)
             return true;
     return false;
 }
-
 // The measured sprite-raster shortcut is selected independently of query
 // reply policy. Unknown/revised headers retain the established raster path.
 inline bool castlevania_integral_texture_profile(const GameQuerySelection& selected)
