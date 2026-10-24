@@ -132,8 +132,17 @@ randomized DDR stalls. Its aligned runs require each of 40 steady-state
 source frames to appear exactly once, exact pixels, no buffer overwrite,
 no underrun and the exact 1,006,080-clock output period. The static
 single-screen source model uses the actual 384-dot raster and repetition 10.
+The final 27-case sweep passed. In the 256x392 stacked source layout,
+average source-pixel age was 10.678 ms with phase acquisition across all
+eight tested startup phases; the previous scheduling ranged from 12.499
+to 27.170 ms. Equal weighting of those phases gives 19.834 ms previously
+and 10.678 ms with alignment, a 9.156 ms reduction in this model. Both
+directions ran in every case. Tall side-by-side, single-screen CRT and
+partial transpose strips also passed, including delayed writes. Every
+aligned case delivered each of 40 steady-state frames exactly once.
 These remain simulated pixel ages, not measurements of controller latency.
-The phase-acquisition FPGA build and its hardware validation are pending.
+The phase-acquisition build and bounded hardware checks are complete; see
+the final validation section below.
 
 The tested NDS 1080p RetroTINK profile initially used Triple Buffer. After
 validating the final bitstream in that mode, Gen Lock worked at 59.64 Hz
@@ -179,7 +188,7 @@ assertion; the same assertion fails on the unchanged release source.
 The version source and generated menu identify `v0.9.0-rc10`; footer
 rendering and scrolling tests passed with that string.
 
-The final rotation bitstream, built from overlay commit `709389a`, has SHA-256
+The previous rotation bitstream, built from overlay commit `709389a`, has SHA-256
 `5d19631ecf0822ea85daa20e4f89965c1f89c10308539de4066dded9141af1f9`.
 On the RetroTINK-4K rig, stacked CW/CCW/Off, side-by-side CW/CCW with the
 largest gap, side-by-side CW with the normal gap, Main CW and Touch CCW all
@@ -201,10 +210,51 @@ roughly 1.1% difference is limited to this scene and short test. Earlier
 menu-only runs measured 42.69 and 42.59; run variation and changed FPGA
 placement prevent attributing that difference to a rendering optimization.
 
-The experimental FPGA build starts from the exact frozen rc10 FPGA inputs
+That experimental FPGA build starts from the exact frozen rc10 FPGA inputs
 and overlays only the native video/menu changes. Mapping, fitting, assembly
 and timing analysis completed successfully. The fit uses 34,815 ALMs,
 538/553 RAM blocks and 27 DSP blocks. Worst setup slack is -15.278 ns,
 hold +0.091 ns and recovery -14.478 ns: static timing closure remains
 unresolved. This is a private beta with bounded hardware checks, not a
 public-release qualification. The release notes and README are unchanged.
+
+### Phase-aligned rotation beta
+
+The phase-aligned bitstream, built from overlay commit `ef0918b`, has SHA-256
+`6bd1daf846ef133266fc27e79b466b5d44f902a0e7123a138b03c5225e4ee2a4`.
+The frozen input audit matched 1,971 tracked files outside the six video/menu
+overlays to the rc10 FPGA baseline; only the native rotation reader differs
+from the previous working rotation build. Mapping, fitting, assembly and
+timing analysis returned success. The fit uses 34,820 ALMs (five more), the
+same 538/553 RAM blocks and 27 DSP blocks. Worst setup slack is -14.912 ns,
+hold +0.086 ns and recovery -13.841 ns. Static timing closure remains
+unresolved.
+
+On the same RetroTINK-4K Gen Lock profile, stacked CW/CCW/Off, side-by-side
+CW/CCW with maximum gap, Main CW and Touch CCW passed. Switching back to
+stacked CW also passed. In all eight checks, opening the menu retained the
+entire DV1 metadata packet and did not enable the receiver's high-resolution
+OSD flag. The game and menu had the expected orientation and proportions.
+Independent analog retained an upright game and menu while DV1 was rotated.
+The single-screen checks exercised the 320x240 source timing; the tall
+checks exercised the 192x536 rotated output. Three 15-second gameplay
+capture segments contained 2,703 video frames with no detected blackout or
+missing full-width scanlines, and retained audio with continuous capture
+timestamps. Near-silent audio blocks in the first segment also occurred in
+the equivalent baseline capture; this check is not perceptual audio scoring.
+
+Fresh-launch NSMB World 1 castle jumping runs at 1 GHz measured 42.51 and
+42.54 completed screen updates/sec with the candidate, versus 42.59 and
+42.60 after reinstalling and freshly launching the previous bitstream.
+The means differ by about 0.16%. Earlier baseline runs had measured 43.91
+and 43.88; a later candidate CW run measured 43.68, and Off runs ranged
+42.76–44.26. The fresh-launch comparison did not reproduce the apparent
+3% slowdown inferred from mixing those sessions. Transport-fault counters
+remained zero. These short checks do not prove absence of regressions in
+every game, and count completed buffers rather than unique visible frames
+or controller latency.
+
+The private launcher remains `Scripts/NDS_DV1_Menu_Beta.sh`, with stacked
+layout, 8-pixel gap and CW rotation retained for the left-rotated monitor.
+RetroTINK rotation remains Off. The original MiSTer.ini and NSMB save are
+preserved. The public package, release notes and README are unchanged.
