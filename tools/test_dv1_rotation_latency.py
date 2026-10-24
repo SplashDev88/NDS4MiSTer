@@ -49,7 +49,7 @@ def run(output, quick=False):
                  for p in (0, 125760, 251520, 377280, 503040, 628800, 754560, 880320)]
         cases += [(1, w, h, p, jitter) for w, h in ((536, 192), (320, 240))
                   for p, jitter in ((0, 0), (251520, 0), (503040, 10000), (754560, 10000))]
-        cases += [(1, 256, h, 503040, 10000) for h in (384, 408)]
+        cases += [(1, 256, h, 503040, 10000) for h in (384, 408, 414)]
 
     def measure(case):
         align, width, height, phase, jitter = case
