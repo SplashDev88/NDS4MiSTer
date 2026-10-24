@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 `timescale 1ns/1ps
-module tb_nds_dv1_rotation_pipeline;
+module tb_nds_dv1_rotation_pipeline #(parameter PHYSICAL_CADENCE=0);
+    localparam SOURCE_HEIGHT=PHYSICAL_CADENCE ? 392 : 198;
     reg clk=0,avl_clk=0,o_clk=0,reset=1;
-    always #8 clk=~clk;always #5 avl_clk=~avl_clk;always #7 o_clk=~o_clk;
+    always #(PHYSICAL_CADENCE ? 8.333 : 8) clk=~clk;
+    always #5 avl_clk=~avl_clk;
+    always #(PHYSICAL_CADENCE ? 3.367 : 7) o_clk=~o_clk;
     reg i_ce=0,i_de=0,i_vs=1,o_vbl=0,n_enable=1;
     reg [23:0] i_rgb=0;
     reg [1:0] rotation=1;
@@ -17,7 +20,7 @@ module tb_nds_dv1_rotation_pipeline;
     reg wr_ready=1;
     nds_tate_video #(.NATIVE_READER(1)) writer(
         .reset,.i_clk(clk),.i_ce,.i_de,.i_vs,.i_rgb,.rotation,
-        .source_width(10'd256),.source_height(10'd198),.avl_clk,.o_clk,.o_vbl,
+        .source_width(10'd256),.source_height(10'(SOURCE_HEIGHT)),.avl_clk,.o_clk,.o_vbl,
         .n_clk(clk),.n_vbl(frame_boundary),.n_enable,
         .fb_enable,.rotation_applied,.fb_width,.fb_height,.fb_base,.fb_stride,
         .n_fb_enable,.n_rotation_applied,.n_fb_width,.n_fb_height,.n_fb_base,.n_fb_stride,
@@ -40,8 +43,8 @@ module tb_nds_dv1_rotation_pipeline;
     reg [31:0] random_state=32'h64b71593;
     always @(negedge o_clk) begin
         display_clock=display_clock+1;
-        if(display_clock==13000)o_vbl=1;
-        if(display_clock==14000)begin display_clock=0;o_vbl=0;end
+        if(display_clock==(PHYSICAL_CADENCE ? 2470000 : 13000))o_vbl=1;
+        if(display_clock==(PHYSICAL_CADENCE ? 2475000 : 14000))begin display_clock=0;o_vbl=0;end
     end
     always @(negedge avl_clk) begin
         random_state={random_state[30:0],random_state[31]^random_state[21]^random_state[1]^random_state[0]};
@@ -66,7 +69,7 @@ module tb_nds_dv1_rotation_pipeline;
     task automatic tick(input bit blank,input [23:0] color);
         @(negedge clk);i_ce=1;i_de=!blank;i_rgb=color;
         @(negedge clk);i_ce=0;
-        repeat(4)@(negedge clk);
+        repeat(PHYSICAL_CADENCE ? 1 : 4)@(negedge clk);
     endtask
     function automatic [23:0] color(input integer x,y,id);
         reg [5:0] r,g,b;
@@ -74,13 +77,15 @@ module tb_nds_dv1_rotation_pipeline;
     endfunction
     task automatic source_frame(input integer id);
         i_vs=0;tick(1,0);i_vs=1;tick(1,0);
-        for(integer y=0;y<198;y=y+1)begin
+        for(integer y=0;y<SOURCE_HEIGHT;y=y+1)begin
             for(integer x=0;x<256;x=x+1)tick(0,color(x,y,id));
-            repeat(20)tick(1,0);
+            repeat(PHYSICAL_CADENCE ? 384 : 20)tick(1,0);
         end
-        repeat(256)tick(1,0);
+        // Physical mode: 640*524*3 source clocks/frame, matching the native
+        // reader's 640*262*6 clocks/frame. HDMI consumes at about 60 Hz.
+        repeat(PHYSICAL_CADENCE ? 640*132-2 : 256)tick(1,0);
     endtask
-    integer px=0,py=0,id=0,checked=0,frames=0;
+    integer px=0,py=0,id=0,checked=0,frames=0,unique_frames=0,last_id=0;
     reg previous_de=0,previous_vs=0,checking=0;
     reg [1:0] frame_mode=0;
     always @(negedge clk) if(ce)begin
@@ -89,13 +94,20 @@ module tb_nds_dv1_rotation_pipeline;
             if(!previous_de)px=0;
             if(px==0 && py==0)begin id=rgb[23:18];frame_mode=applied;checking=id!=0;end
             if(checking)begin
-                if(rgb !== (frame_mode==1 ? color(py,197-px,id) : color(255-py,px,id)))
+                if(rgb !== (frame_mode==1 ? color(py,SOURCE_HEIGHT-1-px,id) : color(255-py,px,id)))
                     $fatal(1,"torn/misrotated frame mode%0d id%0d pixel%0d,%0d rgb%h",frame_mode,id,px,py,rgb);
                 checked=checked+1;
             end
             px=px+1;
         end
-        if(previous_de && !de)begin py=py+1;if(py==256 && checking)frames=frames+1;end
+        if(previous_de && !de)begin
+            py=py+1;
+            if(py==256 && checking)begin
+                frames=frames+1;
+                if(id!=last_id)unique_frames=unique_frames+1;
+                last_id=id;
+            end
+        end
         previous_de=de;previous_vs=vs;
     end
     initial begin
@@ -104,8 +116,10 @@ module tb_nds_dv1_rotation_pipeline;
         rotation=2;
         for(integer i=13;i<=24;i=i+1)source_frame(i);
         if(frames<4 || underrun || overflow)$fatal(1,"insufficient full frames/underrun/overflow: %0d %b %b",frames,underrun,overflow);
+        if(PHYSICAL_CADENCE && unique_frames<19)$fatal(1,"native publication throttled: %0d unique frames from 24",unique_frames);
+        if(PHYSICAL_CADENCE)$display("PASS physical cadence: %0d unique in %0d complete frames from 24 source frames, including startup and direction switch",unique_frames,frames);
         $display("PASS full transpose + native reader: %0d pixels in %0d untorn frames, both directions, four-buffer ownership",checked,frames);
         $finish;
     end
-    initial begin #400000000;$fatal(1,"pipeline timeout");end
+    initial begin #600000000;$fatal(1,"pipeline timeout");end
 endmodule

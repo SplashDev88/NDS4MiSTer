@@ -59,7 +59,9 @@ normal HDMI publication.
 The native consumer changes descriptors only in blanking, after all previous
 reads have drained and before fetching the next frame’s first line. Adoption
 closes before that prefetch, preventing its completion from releasing the
-just-acquired frame. A missed line is black for the entire line, never a mix
+just-acquired frame. A new completion can be adopted anywhere in this safe
+window, avoiding an extra frame of latency when it arrives during blanking.
+A missed line is black for the entire line, never a mix
 of pixels being overwritten. Geometry changes commit at a frame boundary.
 The read arbiter preserves stalled commands and normal write bursts, drains
 prior read responses, and routes every response to the client that requested
@@ -70,6 +72,9 @@ The native raster retains a 60 MHz transport clock and integer repetitions.
 All three timing classes use 1,006,080 clocks/frame (about 59.64 Hz): 640x262
 with repetition 6, 640x524 with repetition 3, or 640x786 with repetition 2.
 The latter accommodates rotated side-by-side screens and their largest gap.
+Images taller than 250 pixels use at least the 524-line class. Vertical sync
+leaves blanking both before and after its pulse so MiSTer's reconstructed
+HDMI data-enable window retains every game row, including the first two.
 MiSTer’s existing video measurement logic measures the selected DV1 output,
 so the host sends its actual width, height, repetition and crop offsets.
 Opening the menu does not change the raster or its metadata.
@@ -95,9 +100,16 @@ both HDMI-only builds. The correction applies only to DV1.
 `python3 tools/test_dv1_rotation.py` checks burst arbitration, exact native
 pixels, metadata from the actual MiSTer measurement module, delayed reads,
 layout transitions, and the complete transpose-to-native-output pipeline.
-The separate TATE testbench supports `NATIVE_READER=1` to test independent
-consumer clocks, a paused consumer, immutable pending frames and recovery.
-The original single-consumer TATE tests remain applicable.
+It also extracts the actual DV1 HDMI transport and verifies that its
+data-enable window includes every active game pixel. A timing variant uses
+the approximately 59.64 Hz source/native cadence and a 60 Hz HDMI consumer
+to reject unintended throttling to half the frame rate.
+The measurement harness spells legacy block-static initializers as explicit
+initial blocks for Verilator; the production measurement logic is unchanged.
+`bash tools/test_nds_tate.sh` also runs the TATE testbench with
+`NATIVE_READER=1` to check independent consumer clocks, a paused consumer,
+immutable pending frames and recovery, alongside the original four
+single-consumer configurations.
 
 The shared-bitmap/write-queue regression, loading-window rotation tests,
 actual host display-menu and DV-target tests, dual-output host/RTL trace,

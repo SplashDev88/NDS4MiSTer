@@ -266,27 +266,27 @@ module nds_tate_video #(
     // Both consumers acknowledge the immutable descriptor independently. The
     // fourth slot was already excluded from cartridge storage. It permits a
     // writer, a pending frame and two readers at different frame boundaries.
-    // n_vbl must remain low until the native reader has drained its DDR reads.
+    // n_vbl is a safe adoption window: old reads have drained and the next
+    // frame's prefetch has not started. Accept a completion anywhere in this
+    // window so a longer vertical porch does not add a frame of latency.
     reg native_have_frame = 0;
     reg [1:0] native_mode = 0;
     generate if (NATIVE_READER) begin: native_display
         (* async_reg = "true" *) reg [1:0] ready_sync = 0;
         (* async_reg = "true" *) reg [1:0] rot_meta = 0, rot_sync = 0;
-        reg old_blank = 0;
         always @(posedge n_clk or posedge reset) begin
             if (reset) begin
                 ready_sync <= 0; rot_meta <= 0; rot_sync <= 0;
-                old_blank <= 0; native_ack <= 0; native_fb <= 3;
+                native_ack <= 0; native_fb <= 3;
                 native_have_frame <= 0; native_mode <= 0;
                 n_fb_width <= 0; n_fb_height <= 0; n_fb_stride <= 0;
             end else begin
                 ready_sync <= {ready_sync[0],completed};
                 rot_meta <= rotation; rot_sync <= rot_meta;
-                old_blank <= n_vbl;
                 // An unused native output must never throttle normal HDMI.
                 if (!native_have_frame && (!n_enable || rot_sync == 0 || rot_sync == 3))
                     native_ack <= ready_sync[1];
-                if (!old_blank && n_vbl) begin
+                if (n_vbl) begin
                     if (!n_enable || rot_sync == 0 || rot_sync == 3)
                         native_have_frame <= 0;
                     if (ready_sync[1] != native_ack) begin

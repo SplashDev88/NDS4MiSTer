@@ -81,6 +81,15 @@ module tb_nds_dv1_rotate_read;
         end
         old_de=de;old_vs=vs;
     end
+    // Check the actual sys_top DV1 HDMI transport, not only the reader's DE.
+    // Its reconstructed blanking must preserve even the first and last rows.
+    wire transport_de;
+    dv_transport actual_transport(.clk_vid(clk),.ce,.hs,.vs,.rgb,
+        .dv_data(),.dv_de(transport_de),.dv_hs(),.dv_vs());
+    reg [2:0] expected_active=0;
+    always @(posedge clk) expected_active <= {expected_active[1:0],ce && de};
+    always @(negedge clk) if(checking && expected_active[2] && !transport_de)
+        $fatal(1,"DV1 transport discarded an active game pixel near row %0d",py);
     task automatic test_mode(input integer w,h,rot);
         checking=0;enable=1;fb_enable=1;fb_width=w;fb_height=h;
         fb_stride=((w+3)/4)*16;fb_rotation=rot;
@@ -94,7 +103,7 @@ module tb_nds_dv1_rotate_read;
         par_num=4;repeat(3)@(negedge clk);
         if(measurement!=h)$fatal(1,"DV1 metadata height%0d expected%0d",measurement,h);
         par_num=16;repeat(3)@(negedge clk);
-        if(measurement!=(h>500?2:h>256?3:6))$fatal(1,"DV1 metadata pixel repetition");
+        if(measurement!=(h>500?2:h>250?3:6))$fatal(1,"DV1 metadata pixel repetition");
         par_num=17;repeat(3)@(negedge clk);
         if(measurement==0 || measurement>=8192)$fatal(1,"DV1 horizontal crop offset");
         par_num=18;repeat(3)@(negedge clk);
@@ -104,6 +113,7 @@ module tb_nds_dv1_rotate_read;
     initial begin
         repeat(6) @(negedge clk);reset=0;
         test_mode(392,256,1);test_mode(414,256,2);
+        test_mode(256,192,1);test_mode(256,250,2);
         test_mode(240,320,1);test_mode(192,520,2);
         test_mode(198,536,1);test_mode(192,256,2);
         // A stalled transaction must pin its framebuffer even in blanking.

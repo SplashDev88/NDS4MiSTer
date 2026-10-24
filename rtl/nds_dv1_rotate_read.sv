@@ -21,8 +21,10 @@ module nds_dv1_rotate_read (
 );
     // All modes have 1,006,080 transport clocks/frame (~59.64 Hz at 60 MHz).
     // The longer raster accommodates rotated side-by-side layouts, including
-    // the largest screen gap. Syncs stay at the end of blanking, so DV1 crop
-    // offsets remain representable even with a short image in a tall raster.
+    // the largest screen gap. Leave blanking on both sides of vertical sync:
+    // MiSTer's DV1 HDMI transport excludes lines adjacent to that sync. A
+    // 256-line image therefore uses the 524-line class, not a 262-line raster.
+    // Syncs remain near the end so DV1 crop offsets fit their metadata fields.
     reg [9:0] x = 0, y = 0, width = 256, height = 192;
     reg [9:0] total = 262;
     reg [9:0] pending_width = 256, pending_height = 192;
@@ -108,8 +110,8 @@ module nds_dv1_rotate_read (
             if (pixel && x == 639 && y == total - 1'b1) begin
                 width <= pending_width; height <= pending_height;
                 active <= pending_active; rotation <= pending_rotation;
-                total <= pending_height > 500 ? 10'd786 : pending_height > 256 ? 10'd524 : 10'd262;
-                repeat_count <= pending_height > 500 ? 3'd2 : pending_height > 256 ? 3'd3 : 3'd6;
+                total <= pending_height > 500 ? 10'd786 : pending_height > 250 ? 10'd524 : 10'd262;
+                repeat_count <= pending_height > 500 ? 3'd2 : pending_height > 250 ? 3'd3 : 3'd6;
                 divider <= 0;
             end
             if (line_start && y < height) begin
@@ -129,7 +131,7 @@ module nds_dv1_rotate_read (
                 end
             end
             lane <= picture_x[1:0];
-            ctl <= {pixel,in_picture,x >= 592 && x < 624,y >= total - 4 && y < total - 1};
+            ctl <= {pixel,in_picture,x >= 592 && x < 624,y >= total - 8 && y < total - 5};
             {ce,de,hs,vs} <= ctl;
             rgb <= ctl[2] && line_valid ?
                 {dot[17:12],dot[17:16],dot[11:6],dot[11:10],dot[5:0],dot[5:4]} : 24'd0;

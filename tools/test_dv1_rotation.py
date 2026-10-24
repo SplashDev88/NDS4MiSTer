@@ -35,16 +35,27 @@ def run(output):
         calc = calc.replace(declaration, '', 1)
     calc = calc.replace(');', ');\n' + ''.join(declarations), 1)
     (output / 'video_calc.sv').write_text(calc)
+    system = (ROOT / 'fpga/mister_nitro_console_island/sys/sys_top.v').read_text()
+    start = system.index('always @(posedge clk_vid) begin', system.index('reg [23:0] dv_data;'))
+    end = system.index('\nend', start) + len('\nend')
+    (output / 'dv_transport.sv').write_text('''module dv_transport(
+input clk_vid, ce, hs, vs, input [23:0] rgb,
+output reg [23:0] dv_data, output reg dv_de,dv_hs,dv_vs);
+wire nds_dv1_present=1,nds_dv1_ce=ce,ce_pix=ce,csync_en=0;
+wire dv_hs_osd=hs,dv_vs_osd=vs,dv_cs_osd=0;
+wire [23:0] dv_data_osd=rgb;
+''' + system[start:end] + '\nendmodule\n')
     docker = ['docker', 'run', '--rm', '--network', 'none',
               '-v', str(ROOT) + ':/work:ro', '-v', str(output) + ':/out', '-w', '/out',
               os.environ.get('VERILATOR_IMAGE', 'nds4mister-rtl-verilator:24.04')]
     cases = (
-        ('read_arbiter', ['nds_dv1_rotate_read.sv'], []),
-        ('rotate_read', ['nds_dv1_rotate_read.sv'], ['/out/video_calc.sv']),
-        ('rotation_pipeline', ['nds_tate_video.sv', 'nds_dv1_rotate_read.sv'], []),
+        ('read_arbiter', 'read_arbiter', ['nds_dv1_rotate_read.sv'], []),
+        ('rotate_read', 'rotate_read', ['nds_dv1_rotate_read.sv'], ['/out/video_calc.sv', '/out/dv_transport.sv']),
+        ('rotation_pipeline', 'rotation_pipeline', ['nds_tate_video.sv', 'nds_dv1_rotate_read.sv'], []),
+        ('rotation_cadence', 'rotation_pipeline', ['nds_tate_video.sv', 'nds_dv1_rotate_read.sv'], ['-GPHYSICAL_CADENCE=1']),
     )
-    for name, sources, extra in cases:
-        top = 'tb_nds_dv1_' + name
+    for name, top_name, sources, extra in cases:
+        top = 'tb_nds_dv1_' + top_name
         with (output / (name + '-compile.log')).open('w') as log:
             result = subprocess.run(docker + ['verilator', '--binary', '--timing', '--assert',
                 '-Wno-fatal', '--top-module', top, '-j', '2', '--Mdir', '/out/' + name] +
