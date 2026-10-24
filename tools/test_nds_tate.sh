@@ -14,3 +14,8 @@ for rows in 4 8; do
     echo "PASS TATE tile rows=$rows CCW_ONLY=$ccw"
 done
 done
+iverilog -g2012 -s tb_nds_tate_video -Ptb_nds_tate_video.CCW_ONLY=0 \
+    -Ptb_nds_tate_video.NATIVE_READER=1 -o "$test_dir/dual-reader" \
+    "$repo/rtl/nds_tate_video.sv" "$repo/rtl/tb_nds_tate_video.sv"
+vvp "$test_dir/dual-reader"
+echo "PASS TATE with independent HDMI and DV1 consumers"
