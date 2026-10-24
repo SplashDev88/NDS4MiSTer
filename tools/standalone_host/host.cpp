@@ -1475,7 +1475,7 @@ class Host {
     if (!loading_preparing || now < loading_next_animation) return;
     const auto elapsed = now - loading_started;
     line(4, loadingActivity(elapsed / 200));
-    line(6, " Preparing game... " + std::to_string(elapsed / 1000) + "s");
+    line(6, " Loading ROM... " + std::to_string(elapsed / 1000) + "s");
     loading_next_animation = now + 200;
   }
   void updateLoading(uint64_t done, uint64_t total) {
@@ -2931,7 +2931,7 @@ public:
     log(std::string(reader.framed() ? "ROM stream ready; verification pending after " :
                                     "ROM preparation completed in ") +
         std::to_string(ms() - loading_started) + " ms");
-    line(6, reader.framed() ? " Loading / checking ROM" : " Loading ROM");
+    line(6, " Loading ROM");
     loading_progress = -1;
     updateLoading(0, 1);
     const auto transfer_size = RomReader::transferSize(file_size);

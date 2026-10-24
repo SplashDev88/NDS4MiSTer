@@ -11,10 +11,11 @@ the virtual image size. `RomReader::size()` consumes these while keeping the
 host responsive, but `Host::updateLoading()` only runs during the later transfer.
 Thus real verification and patch preparation appeared as an empty, frozen bar.
 
-The host now displays a bouncing activity marker and elapsed preparation time,
+The host now displays a bouncing activity marker and elapsed loading time,
 then switches to the determinate transfer bar. The activity marker means the
 host is responsive; it is not a percentage or evidence that a blocked file read
-is progressing. Existing no-progress timeouts and completion checks remain.
+is progressing. Both stages say **Loading ROM**. Existing no-progress timeouts
+and completion checks remain.
 
 NSMB also recompressed its patched ARM9 in Python on every launch. The candidate
 instead serializes the same sections uncompressed and clears the SDK compressed
@@ -80,6 +81,18 @@ There is no new OSD setting or gameplay worker.
 
 ### Additional validation
 
+- At 1 GHz on the same board, Japanese Ni no Kuni took **120.134 s** on the
+  previous loader, **80.736 s** with uncached streaming, and **37.973 / 38.079 s**
+  on cache hits. Its first cache creation took **142.018 s**. The English v1.0
+  profile took **115.298 s** to create its cache and **37.979 s** on a cache hit.
+  These intervals run from host `loading` to `ROM started`, excluding core
+  startup and game logos. Network and OS file-cache conditions were not forcibly
+  reset. Cache creation adds SD writes and is not a first-launch speed win.
+- Both versions booted and played their opening movies from cache in bounded
+  120-second hardware checks, with no graphics-transport faults. NSMB loaded in
+  **10.305 s** and the same short World 2-5 jumping check recorded **59.635**
+  completed updates/second, matching the earlier loading-fix host's **59.63**.
+  That counter can include reused images and is not a whole-game FPS claim.
 - Full 512 MiB image comparisons for both qualified profiles match their
   existing image SHA-256 after uncached streaming, cache creation, a cache hit,
   and deliberate cache corruption followed by recovery.
