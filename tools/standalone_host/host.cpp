@@ -347,7 +347,7 @@ class Host {
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
         0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1, 2};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, -1, -1, -1, -1, -1, -1, 9, 11, 15, -1, 4, -1, 5, 7};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 8, 10, 15, -1, 4, -1, 5, 7};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
         -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;

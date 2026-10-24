@@ -2,8 +2,8 @@
 
 rc.10 packages the accepted **Performance RC1 revision 2** gameplay runtime.
 The FPGA, renderer, movie worker, supervisor, clock controller and runtime
-settings are unchanged. The host is rebuilt only to add one blank line between
-Display options, Right Stick Range, Lid and Reset. Menu navigation, touch-range,
+settings are unchanged. The host is rebuilt only to adjust menu spacing: a blank line follows
+Display options and Lid; Right Stick Range and Lid are adjacent. Menu navigation, touch-range,
 split-output and no-speed-menu checks pass after that layout change. The public wrapper points at `Scripts/.NDS_Standalone`.
 Package/installation receipts accompany the final ZIP; inherited runtime tests
 below are not represented as a new sweep of every game.
@@ -17,7 +17,7 @@ and Jam with the Band.
 
 | Component | SHA-256 |
 | --- | --- |
-| Host | `877970e11a69ab93d09ef1cea822b5bf8b28f4aa2dc61edc0530b522db7a724a` |
+| Host | `e8dfbbd4c8b721e01db07bcf0d482701f180d857483229020de48a769fbf2301` |
 | FPGA | `4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26` |
 | Renderer | `78384aacd738bfbacdc50bd9ceb336a2704042e94f09da2b5e0c843caccde35d` |
 | Supervisor | `2a94d422e213c71aee3741be5589003376cc0058428a1e0ac4a05579f1df25fc` |
