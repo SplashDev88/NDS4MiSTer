@@ -455,7 +455,7 @@
   "nsmb_validation_sha256": "6673e4e83d5e6f96aa4c033e6a347aa074b17dd8647ffac3beb068b4b6fef99e",
   "runtime_source_archive": "source/NDS4MiSTer-Performance-RC1-runtime.tar.gz",
   "runtime_source_overlays": {},
-  "package_revision": 6,
+  "package_revision": 7,
   "speed_hacks_menu": false,
   "host_source_overlay_sha256": {
     "tools/standalone_host/host.cpp": "73a103ee617827a5399e3cb58fdf8c08eed03de4d51ce35d6d4bc20223f854b9",

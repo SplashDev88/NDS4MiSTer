@@ -4,7 +4,7 @@
 
 ## What's new since rc.9
 
-- **Smoother opening movies.** FMV playback is optimized for tested revisions of *Castlevania: Dawn of Sorrow*, *Chrono Trigger*, *Ni no Kuni*, *Shin Megami Tensei: Strange Journey*, *Final Fantasy XII: Revenant Wings* and *Sonic Chronicles*. See the validation link below for supported revisions and movie coverage.
+- **Smoother opening movies.** FMV playback is optimized for tested revisions of *Castlevania: Dawn of Sorrow*, *Chrono Trigger*, *Ni no Kuni*, *Shin Megami Tensei: Strange Journey*, *Final Fantasy XII: Revenant Wings* and *Sonic Chronicles*.
 - **Faster New Super Mario Bros.** Optimizations for the tested USA revision 0 reduce geometry work and rubberbanding.
 - **Boot fixes for Ni no Kuni and Pokémon Conquest.** Larger cartridge layouts now load correctly, and cartridge address mirroring has been fixed.
 - **NAND saves** for *WarioWare D.I.Y.* and *Jam with the Band*. *Daigassou! Band Brothers DX* remains unsupported.

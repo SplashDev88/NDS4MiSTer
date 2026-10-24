@@ -90,7 +90,7 @@ instructions and dependency licenses are retained alongside the source.
     files[PREFIX+'source/BUILD_RC10.md']=source_readme.encode()
     m=json.loads((ROOT/'docs/release/RC10_RUNTIME_MANIFEST.json').read_text())
     m.update(name='NDS4MiSTer',version=VERSION,release_channel='release candidate',
-             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=6,
+             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=7,
              packaging_source_revision=revision,launcher_sha256=sha(files[launcher]),
              installation_scope='Normal standalone kit; ordinary saves shared; existing display/input/clock settings retained.',
              hardware_validation='Inherited Performance RC1 r2 validation; separate rc.10 package launch receipt.',
