@@ -28,7 +28,8 @@ def main():
     manifest=json.loads((kit/'manifest.json').read_text())
     checks=manifest['automatic_movie_files']
     required={'nds_standalone_host','support/nds_hybrid_3d_service','NDS_Standalone.rbf',
-              'supervisor.py','Kickstart.sh','auto_movies.py','fmv/stream.py','fmv/prepare.py','fmv/profiles.json'}
+              'supervisor.py','Kickstart.sh','auto_movies.py','fmv/stream.py','fmv/prepare.py','fmv/profiles.json',
+              'fmv/stream_load.py','fmv/prepared_cache.py'}
     if not required <= set(checks):raise ValueError('Incomplete automatic-movie package')
     for name,expected in checks.items():
         relative=Path(name)

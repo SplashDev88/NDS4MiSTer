@@ -39,6 +39,7 @@ private:
   static constexpr int padding_progress = 7;
   int input = -1;
   pid_t child = -1;
+  bool framed_stream = false;
   std::chrono::steady_clock::time_point progressed = std::chrono::steady_clock::now();
   inline static std::vector<pid_t> retiring;
   static bool send(int fd, const void *data, size_t size) {
@@ -84,8 +85,9 @@ private:
     else if (st.st_size < 0 || !validSize(uint64_t(st.st_size))) {
       h.operation = 4; h.error = EINVAL;
     } else h.size = uint64_t(st.st_size);
-    // Optional paired-kit movie preparation runs in this disposable worker,
-    // before FIO is touched. Unknown games stay on the existing native reader.
+    // Optional paired-kit movie preparation runs in this disposable worker.
+    // Framed workers may stage bytes under reset before identity verification;
+    // only their final completion permits boot. Unknown games keep the reader.
     // Only these FDs survive exec; neither save/SPI ownership nor a helper
     // process is retained during gameplay. The original path stays in Host.
     if (!h.operation && !movie_directory.empty()) {
@@ -104,6 +106,10 @@ private:
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);
           if (fcntl(rom, F_SETFD, 0) || fcntl(output, F_SETFD, 0)) _exit(1);
+          // Capability negotiation: old paired workers ignore this, and a new
+          // worker never sends framed data to an old host. Keep a diagnostic
+          // opt-out for exact loader A/B checks, with no menu setting.
+          if (!getenv("NDS_ROM_STREAM_PATCHES") && setenv("NDS_ROM_STREAM_PATCHES", "1", 1)) _exit(1);
           execlp("python3", "python3", "-E", "-s", "-B", script.c_str(), input_arg.c_str(),
                  output_arg.c_str(), parent_arg.c_str(), static_cast<char *>(nullptr));
           // A missing worker must not silently enable only half of a profile.
@@ -154,6 +160,7 @@ private:
 
 public:
   static constexpr unsigned no_progress_ms = 120000;
+  bool framed() const { return framed_stream; }
 #ifdef STANDALONE_TEST
   inline static void (*test_hook)(int, uint64_t) = nullptr;
   pid_t testPid() const { return child; }
@@ -202,12 +209,56 @@ public:
   }
   template<class Service>
   void finish(uint64_t size, const Service &service, unsigned timeout_ms = no_progress_ms) {
+    if (framed_stream) throw std::runtime_error("Framed ROM requires validated transfer");
     Header h{};
     size_t off = 0;
     while (off < sizeof(h))
       off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
     if (h.operation != 8 || h.error || h.size != transferSize(size))
       throw std::runtime_error("ROM stream did not complete validation");
+  }
+  // Framed loads remain held in reset until a validated completion record.
+  // The host initializes the whole aperture to FF first; only it owns MMIO.
+  template<class Service, class Write, class Progress, class Prepare>
+  void transferFramed(uint64_t size, const Service &service, const Write &write,
+                      const Progress &progress, const Prepare &prepare,
+                      unsigned timeout_ms = no_progress_ms) {
+    if (!framed_stream || !validSize(size)) throw std::runtime_error("Invalid framed ROM size");
+    const auto limit = transferSize(size);
+    std::array<unsigned char, 262144> buffer;
+    uint64_t checked = 0;
+    bool preparing = false;
+    const auto exact = [&](void *data, size_t bytes) {
+      size_t off = 0;
+      while (off < bytes) off += read(static_cast<char *>(data) + off, bytes - off, service, timeout_ms);
+    };
+    for (;;) {
+      Header h{};
+      exact(&h, sizeof(h));
+      if (h.operation == 10) {
+        if (h.error <= 0 || size_t(h.error) > buffer.size() || h.size > limit ||
+            uint64_t(h.error) > limit - h.size)
+          throw std::runtime_error("ROM write outside cartridge memory");
+        exact(buffer.data(), size_t(h.error));
+        write(h.size, buffer.data(), size_t(h.error));
+      } else if (h.operation == 7) {
+        if (h.error || h.size < checked || h.size > size)
+          throw std::runtime_error("Invalid ROM verification progress");
+        checked = h.size;
+        if (!preparing) progress(checked, size);
+      } else if (h.operation == 11) {
+        if (h.error || h.size || preparing || checked != size)
+          throw std::runtime_error("Invalid ROM preparation stage");
+        preparing = true;
+        prepare();
+      } else if (h.operation == 8) {
+        if (h.error || h.size != limit || checked != size || !preparing)
+          throw std::runtime_error("ROM stream did not complete validation");
+        return;
+      } else {
+        throw std::runtime_error("ROM stream validation failed");
+      }
+    }
   }
   template<class Service>
   size_t read(void *data, size_t size, const Service &service,
@@ -236,6 +287,11 @@ public:
       while (off < sizeof(h))
         off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
     } while (h.operation == padding_progress);
+    if (h.operation == 9) {
+      if (h.error || !validSize(h.size)) throw std::runtime_error("Invalid framed ROM metadata");
+      framed_stream = true;
+      return h.size;
+    }
     if (h.operation) {
       if (h.operation == 5)
         throw std::runtime_error(RomLayout::extended(h.size)

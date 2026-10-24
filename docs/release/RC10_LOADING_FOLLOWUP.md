@@ -1,6 +1,7 @@
 # rc10 loading follow-up
 
-This candidate changes the standalone host's loading dialog and NSMB preparation.
+This candidate changes the standalone host's loading dialog, NSMB preparation,
+and loading of qualified Ni no Kuni cartridges.
 The renderer, FPGA image, movie profiles and released rc10 package are unchanged.
 
 ## Cause
@@ -42,10 +43,51 @@ the full-cartridge, ARM9, and hook-site checks remain unchanged.
   rc10 source; its old root-menu order is stale. The current
   `test_host_display_menu.cpp` passes on this candidate.
 
-## Remaining loading work
+## Ni no Kuni streaming and local cache
 
-Ni no Kuni preparation still verifies the whole 512 MiB source and prepares its
-movie assets before the transfer rereads the source. The dialog fix makes this
-visible but does not remove that cost. A read-once or verified local-cache path
-is a separate follow-up; no hash checks have been relaxed and no ROM cache has
-been introduced by this candidate.
+The original path scanned the entire 512 MiB source before transferring its
+relocated files. The framed loader hashes that source and copies the file spans
+in the same sequential pass. It then prepares the guarded movie/code patches.
+The DS remains held until the worker confirms successful completion. Reserved
+display and Linux memory are excluded from every write. This path applies only
+to the qualified Japanese and English-translation compacted profiles; other
+profiles retain their existing loader.
+
+Prepared writes are cached locally in
+`/media/fat/.cache/NDS4MiSTer/prepared-roms`. The first preparation still checks
+the entire original source, every applicable hook guard, and movie identities.
+It publishes a cache entry only after those checks pass, using an atomic
+manifest-last write. An interrupted preparation cannot publish a partial entry.
+
+Repeat launches verify the complete cached data while staging it under reset.
+They trust the original source's canonical path, device/inode, size, modification
+time and change time. They do **not** rescan all original content over the
+network. A source metadata change, profile change, or loader code change causes
+a cache miss. An external edit that preserves all observed source metadata can
+therefore require clearing the cache manually. The original file must remain
+available; a cache is not a standalone installation or a save state.
+
+A failed cache check discards the entry, clears all provisional cartridge bytes,
+and rebuilds from the original without releasing reset. Insufficient disk space
+or an unavailable cache directory falls back to uncached loading. The namespace
+is bounded to 2 GiB, with oldest entries removed first and 128 MiB of free-space
+headroom reserved when starting a new entry. Each tested Ni no Kuni version uses
+about 480 MB. Original ROMs and game saves are never changed by this cache.
+
+Exit the core before deleting that cache directory to reclaim space or force
+fresh source verification. `NDS_ROM_CACHE_DIR=off` disables it for diagnostics.
+There is no new OSD setting or gameplay worker.
+
+### Additional validation
+
+- Full 512 MiB image comparisons for both qualified profiles match their
+  existing image SHA-256 after uncached streaming, cache creation, a cache hit,
+  and deliberate cache corruption followed by recovery.
+- Python tests cover source mutation, hook/hash failures, malformed cache
+  records, truncated/missing metadata, loader/source invalidation, disk errors,
+  interrupted writes and cache eviction.
+- C++ tests reject incomplete or malformed framed streams before save mounting
+  or cartridge release. Boundary tests cross both reserved cartridge windows
+  while preserving sentinel bytes in display/Linux memory.
+- ARM host cross-compilation and paired-launcher validation pass. The renderer,
+  FPGA, game profiles and approved README/release notes remain unchanged.

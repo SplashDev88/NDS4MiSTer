@@ -2928,8 +2928,10 @@ public:
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.
     const auto file_size = reader.size(service);
     loading_preparing = false;
-    log("ROM preparation completed in " + std::to_string(ms() - loading_started) + " ms");
-    line(6, " Loading ROM");
+    log(std::string(reader.framed() ? "ROM stream ready; verification pending after " :
+                                    "ROM preparation completed in ") +
+        std::to_string(ms() - loading_started) + " ms");
+    line(6, reader.framed() ? " Loading / checking ROM" : " Loading ROM");
     loading_progress = -1;
     updateLoading(0, 1);
     const auto transfer_size = RomReader::transferSize(file_size);
@@ -2950,12 +2952,42 @@ public:
     // Download's rising edge asks the save bridge to flush the outgoing cart.
     drain(100);
     size_t off = 0;
+    if (reader.framed()) {
+      // The worker can relocate files but never maps cartridge memory. Clear
+      // every destination while the CPUs are held, including gaps and old ROMs.
+      while (off < storage_size) {
+        service();
+        const auto chunk = mapping.at(off);
+        const auto n = std::min<size_t>(262144, chunk.size);
+        memset(chunk.data, 0xff, n);
+        off += n;
+      }
+      reader.transferFramed(file_size, service,
+          [&](uint64_t at, const unsigned char *data, size_t size) {
+            while (size) {
+              const auto chunk = mapping.at(at);
+              const auto n = std::min<size_t>(size, chunk.size);
+              memcpy(chunk.data, data, n);
+              at += n; data += n; size -= n;
+            }
+          }, [&](uint64_t done, uint64_t total) { updateLoading(done, total); }, [&] {
+            loading_preparing = true;
+            loading_started = ms();
+            loading_next_animation = 0;
+            animateLoading(loading_started);
+          });
+      loading_preparing = false;
+      loading_progress = -1;
+      updateLoading(storage_size, storage_size);
+      log("ROM streamed verification and preparation completed");
+    } else {
     while (off < transfer_size) {
       const auto chunk = mapping.at(off);
       off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
       updateLoading(off, storage_size);
     }
     reader.finish(file_size, service);
+    }
     // The extended FPGA aperture always backs 464 MiB. A trimmed file must not
     // expose a prior cartridge's bytes between its EOF and that boundary.
     while (off < storage_size) {

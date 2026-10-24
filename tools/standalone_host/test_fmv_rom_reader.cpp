@@ -74,5 +74,48 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   transfer(fake.string(),true);assert(!fs::exists(marker));
   unsetenv("NDS_NSMB_PATCH");
   std::cout<<"PASS NSMB experiment requires explicit mode and revision zero; failed identity keeps original bytes\n";
+
+  original.replace(12,4,"BMTE");original[30]=0;
+  std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+  std::ofstream(fake/"stream.py")<<R"PY(import os,sys,struct
+src,dst,parent=map(int,sys.argv[1:]);data=os.pread(src,1024,0);case=os.environ['NDS_FRAMED_TEST_CASE']
+def record(at,n,op):os.write(dst,struct.pack('<Qii',at,n,op))
+record(536870913 if case=='metadata' else 1024,0,9)
+if case=='metadata':sys.exit(0)
+if case=='range':record(1020,8,10);sys.exit(0)
+if case=='negative':record(0,-1,10);sys.exit(0)
+if case=='oversize':record(0,262145,10);sys.exit(0)
+if case=='zero':record(0,0,10);sys.exit(0)
+if case=='short':record(0,10,10);os.write(dst,b'xy');sys.exit(0)
+if case=='premature':record(1024,0,8);sys.exit(0)
+record(0,len(data),10);os.write(dst,data)
+record(100,0,7)
+if case=='backwards':record(99,0,7);sys.exit(0)
+record(1024,0,7);record(0,0,11)
+if case=='double_prepare':record(0,0,11);sys.exit(0)
+record(20,5,10);os.write(dst,b'HELLO')
+if case!='late':record(1024,0,8)
+)PY";
+  for(const char* name:{"ok","range","negative","oversize","zero","short","premature",
+                        "backwards","double_prepare","late","metadata"}) {
+    setenv("NDS_FRAMED_TEST_CASE",name,1);
+    bool complete=false;unsigned services=0,prepares=0;std::vector<uint64_t> checks;
+    std::string got(1024,char(0xff));
+    try {
+      RomReader r(path.string(),fake.string());const auto service=[&]{++services;};
+      const auto size=r.size(service);assert(size==1024 && r.framed());
+      r.transferFramed(size,service,[&](uint64_t at,const unsigned char* bytes,size_t n){
+        assert(at+n<=got.size());got.replace(size_t(at),n,reinterpret_cast<const char*>(bytes),n);
+      },[&](uint64_t checked,uint64_t total){assert(total==1024);checks.push_back(checked);},[&]{++prepares;});
+      complete=true;
+    } catch(const std::runtime_error&) {}
+    assert(complete==(std::string(name)=="ok") && services>0);
+    if(complete) {
+      auto expected=original;expected.replace(20,5,"HELLO");assert(got==expected);
+      assert((checks==std::vector<uint64_t>{100,1024}) && prepares==1);
+    }
+  }
+  unsetenv("NDS_FRAMED_TEST_CASE");
+  std::cout<<"PASS framed writes, verification stages and completion; malformed/truncated streams cannot commit\n";
   fs::remove_all(root);
 }

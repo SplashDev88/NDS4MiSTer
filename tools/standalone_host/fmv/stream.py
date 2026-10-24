@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Disposable ROM-reader worker. Never writes a ROM, save or cache file."""
+"""Disposable ROM reader. Original ROMs and saves are always read-only here."""
 import errno
 import json
 import os
@@ -32,6 +32,19 @@ def main():
         registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
         if registry['version'] != 1:
             raise ValueError('unsupported profile version')
+        if os.environ.get('NDS_ROM_STREAM_PATCHES') == '1':
+            from stream_load import select_plan
+            from prepared_cache import cached_transfer
+            plan = select_plan(source, registry['profiles'])
+            if plan:
+                # After metadata is sent, failures must terminate this stream;
+                # never append the incompatible legacy fallback protocol.
+                try:
+                    cached_transfer(source, plan, lambda data: send(output_fd, data))
+                except Exception as error:
+                    print('FMV_STREAM_READ_FAILED '+str(error), file=sys.stderr, flush=True)
+                    return 1
+                return 0
         profile = profile_for(source, registry['profiles'], progress)
         if profile:
             image = assemble(source, profile, progress=progress)

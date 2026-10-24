@@ -8,7 +8,7 @@ class LauncherTests(unittest.TestCase):
   self.temp=tempfile.TemporaryDirectory();self.kit=Path(self.temp.name)
   (self.kit/'auto_movies.py').write_bytes(SOURCE.read_bytes())
   self.names=['nds_standalone_host','support/nds_hybrid_3d_service','NDS_Standalone.rbf',
-   'supervisor.py','Kickstart.sh','auto_movies.py','fmv/stream.py','fmv/prepare.py','fmv/profiles.json']
+   'supervisor.py','Kickstart.sh','auto_movies.py','fmv/stream.py','fmv/prepare.py','fmv/profiles.json','fmv/stream_load.py','fmv/prepared_cache.py']
   for n in self.names:
    p=self.kit/n;p.parent.mkdir(parents=True,exist_ok=True)
    if n!='auto_movies.py':p.write_text(n)
