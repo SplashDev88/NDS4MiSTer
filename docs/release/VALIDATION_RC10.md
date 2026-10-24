@@ -303,8 +303,11 @@ and check source metadata; the original source is fully hashed on cache misses.
 The first cache creation adds SD writes and can be slower than an uncached load.
 The package contains no prepared cartridge data, saves or user settings.
 
-The exact final ZIP receives a separate installation, public-launcher, menu,
-clean-exit and rollback check, recorded in `RC10_INSTALL_VALIDATION.json` beside
-the archive. The approved release notes and README are unchanged. The package
+The exact final ZIP is extracted separately on the MiSTer and checked using the
+packaged launcher's validation mode. This avoids interrupting an active game.
+The separate receipt is recorded in `RC10_INSTALL_VALIDATION.json` beside the
+archive. Runtime launch and gameplay coverage come from the matching private
+build; the public installation is not replaced for this repack check.
+The approved release notes and README are unchanged. The package
 records its new source revision and includes that complete source archive; the
 original published rc.10 tag is retained.

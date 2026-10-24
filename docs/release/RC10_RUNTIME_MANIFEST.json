@@ -184,7 +184,7 @@
     "source/RC1-r2-menu.patch": "2ae1745a1ff3924b0e4a6d15dc15a8fc986117a85774b2f61cdfa90ead1e829b",
     "source/RC1-r2-host-provenance.json": "d9a66193f8c51ca64d5152ee26d18451f08bc65d845bc05c9cf3210bb67b7638",
     "source/RC10-renderer-build.json": "26c1eb8617ec6c76aee0e23638272f4ffc4cb7580119a57d758a2e567a607839",
-    "RC10_LOADING_FOLLOWUP.md": "b17335fb5d36740fe6e26448c2f91017499815d974b178c1e13237bbe2655f4e",
+    "RC10_LOADING_FOLLOWUP.md": "1205a1e53db68946470c2b8f4d038035d421d79737526d3ab5248e9306622233",
     "RC10_LOADING_VALIDATION.json": "3f9feadd621e41ba88658a85b38b25d141a0d7fce93c3c4ef4468e71f3056ea0"
   },
   "gameplay_regression_evidence_scope": "Fresh bounded comparisons listed in PERFORMANCE_RC1_VALIDATION_20261023.md; not full-game qualification.",

@@ -1,8 +1,9 @@
 # rc10 loading follow-up
 
-This candidate changes the standalone host's loading dialog, NSMB preparation,
+This follow-up changes the standalone host's loading dialog, NSMB preparation,
 and loading of qualified Ni no Kuni cartridges.
-The renderer, FPGA image, movie profiles and released rc10 package are unchanged.
+The renderer, FPGA image and movie profiles are unchanged from the original
+rc10. Package revision 10 includes the loading changes described here.
 
 ## Cause
 
