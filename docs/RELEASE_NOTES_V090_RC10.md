@@ -32,7 +32,6 @@ Support modules are included for Linux **6.18.38-MiSTer** and **5.15.1-MiSTer**.
 ## Known limitations
 
 - **NSMB goal pole glitch:** A user has reported background glitches while sliding down the goal pole, also present in earlier releases. We haven't reproduced it in our test rig yet.
-- NSMB's transform-skipping optimization is not fully verified across all levels, power-ups and effects. Movie acceleration covers the tested revisions and opening sequences, not every movie or translation.
 - Slowdown, uneven animation, graphical errors and crashes can still occur. **The core does not yet run at a consistent 60 FPS**, and FPGA static timing closure is still unresolved.
 - Not yet supported: save states, persistent lid-close resume, RTC alarms/interrupts, wireless multiplayer, DSi mode and PAL 50 Hz output. Native analog output remains about 59.64 Hz.
 
