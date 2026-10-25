@@ -112,7 +112,7 @@ module tb_shared_osd;
         join
         if(mode!=3 && (dpixels==0 || apixels==0)) $fatal(1,"menu absent");
         for(integer i=0;i<4096;i=i+1)
-            if((8'(memory.bitmap[i/2] >> (8*(i%2))))!==original_d.osd_buffer[i]) $fatal(1,"lost bitmap byte%0d",i);
+            if((i%2 ? memory.bitmap_odd[i/2] : memory.bitmap_even[i/2])!==original_d.osd_buffer[i]) $fatal(1,"lost bitmap byte%0d",i);
         $display("PASS shared bitmap %0dx%0d /%0d rot%0d mode%0d pixels%0d/%0d peakFIFO%0d",width,height,divisor,rotation,mode,dpixels,apixels,peak);
     endtask
     initial begin
