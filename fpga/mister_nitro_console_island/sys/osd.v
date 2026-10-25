@@ -28,7 +28,8 @@ module osd
     output wire buffer_scheduled,
     input tri0 native_pixel_enable,
     input tri0 native_pixel_ce,
-    input tri0 [1:0] native_rotation
+    input tri0 [1:0] native_rotation,
+    input tri0 double_width
 );
 
 // Optional shared bitmap ports. The default keeps the original private RAM.
@@ -45,6 +46,9 @@ parameter  OSD_MAX_LINES = 0;
 // Only the native digital instance enables this option. Scaled HDMI and
 // the independent analog menu retain the original raster exactly.
 parameter  OSD_NATIVE_PIXELS = 0;
+// Optional legacy-font widening for dual-screen DV1. Other instances retain
+// their original sampling. No extra bitmap or video pipeline stage is used.
+parameter  OSD_DOUBLE_WIDTH = 0;
 
 localparam OSD_WIDTH    = 12'd256;
 localparam OSD_HEIGHT   = 12'd64;
@@ -154,6 +158,18 @@ end endgenerate
 assign buffer_re = native_pixels || ce_pix;
 assign buffer_scheduled = pixsz != 0;
 reg [OSD_COUNTER_BITS-1:0] cnt = 0;
+wire [OSD_COUNTER_BITS-1:0] measured_period = (cnt + 1'b1) >> (9-rot[0]);
+wire [OSD_COUNTER_BITS-1:0] legacy_period = measured_period > 1 ? measured_period : 1;
+// Native transport lines contain fewer than 4096 active clocks. Compute
+// floor(line_clocks / 264) with one correction to /256: the eight extra
+// bitmap columns leave room for the legacy centering/pixel pipeline. For
+// this bounded input the /256 estimate is at most one above the answer.
+wire [12:0] native_line_clocks = {1'b0,cnt[11:0]} + 1'b1;
+wire [4:0] fit_guess = {1'b0,native_line_clocks[11:8]};
+wire [12:0] fit_cost = ({8'd0,fit_guess} << 8) + ({8'd0,fit_guess} << 3);
+wire [4:0] fit_period = fit_guess - (fit_cost > native_line_clocks);
+wire [OSD_COUNTER_BITS-1:0] twice_period = legacy_period << 1;
+wire [OSD_COUNTER_BITS-1:0] wide_period = twice_period < fit_period ? twice_period : fit_period;
 always @(posedge clk_video) begin
 	reg [OSD_COUNTER_BITS-1:0] pixcnt;
 	reg deD;
@@ -168,7 +184,9 @@ always @(posedge clk_video) begin
 	if(~deD && de_in) cnt <= 0;
 
 	if(deD && ~de_in) begin
-		pixsz  <= (((cnt+1'b1) >> (9-rot[0])) > 1) ? (((cnt+1'b1) >> (9-rot[0])) - 1'd1) : 22'd0;
+		pixsz <= legacy_period - 1'b1;
+        if(OSD_DOUBLE_WIDTH && double_width && !rot && cnt < 4095 && wide_period > legacy_period)
+            pixsz <= wide_period - 1'b1;
 		pixcnt <= 0;
 	end
 end
