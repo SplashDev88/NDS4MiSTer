@@ -10,6 +10,7 @@ module tb_dv1_legacy_width;
     wire [9:0] sw=applied_rotation==0 ? w : h;
     wire [9:0] sh=applied_rotation==0 ? h : w;
     wire wide_enable=native_enable && sh>240 && applied_rotation==0;
+    wire half_enable=native_enable && sw>320 && sh<=240 && applied_rotation==0;
     wire [3:0] actual_ctl,reference_ctl;
     wire we,re,busy;
     wire [12:0] wa,ra;
@@ -20,17 +21,17 @@ module tb_dv1_legacy_width;
     nds_native_osd_memory memory(.clk,.write_enable(we),.write_address(wa),.write_data(wd),
         .busy,.digital_read(re),.digital_address(ra),.digital_q(q),
         .analog_read(ar && scheduled),.analog_address(aa),.analog_q(aq));
-    osd #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512),.OSD_EXTERNAL_BUFFER(1),.OSD_NATIVE_PIXELS(0),.OSD_DOUBLE_WIDTH(1)) dut (
+    osd #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512),.OSD_EXTERNAL_BUFFER(1),.OSD_NATIVE_PIXELS(0),.OSD_DOUBLE_WIDTH(1),.OSD_HALF_WIDTH(1)) dut (
         .clk_sys(clk),.clk_video(clk),.io_osd,.io_strobe,.io_din,
         .din(rgb),.de_in(de),.hs_in(hs),.vs_in(vs),.dout(actual),
         .de_out(actual_ctl[0]),.hs_out(actual_ctl[1]),.vs_out(actual_ctl[2]),.osd_status(actual_ctl[3]),
         .buffer_we(we),.buffer_waddr(wa),.buffer_wdata(wd),
         .buffer_re(re),.buffer_raddr(ra),.buffer_q(q),.buffer_scheduled(),
-        .native_pixel_enable(native_enable),.native_pixel_ce(ce),.native_rotation(applied_rotation),.double_width(wide_enable));
+        .native_pixel_enable(native_enable),.native_pixel_ce(ce),.native_rotation(applied_rotation),.double_width(wide_enable),.half_width(half_enable));
     osd_reference #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512)) old (
         .clk_sys(clk),.clk_video(clk),.io_osd,.io_strobe,.io_din,
         .din(rgb),.de_in(de),.hs_in(hs),.vs_in(vs),.dout(reference),
-        .de_out(reference_ctl[0]),.hs_out(reference_ctl[1]),.vs_out(reference_ctl[2]),.osd_status(reference_ctl[3]),.double_width(wide_enable));
+        .de_out(reference_ctl[0]),.hs_out(reference_ctl[1]),.vs_out(reference_ctl[2]),.osd_status(reference_ctl[3]),.double_width(wide_enable),.half_width(half_enable));
     // Simultaneous independent analog output shares the same RAM while the
     // new digital reader runs every clock. Its pixels must stay unchanged.
     integer ax=0,ay=0;
@@ -145,6 +146,10 @@ module tb_dv1_legacy_width;
                 limit=(width*repeat_pixels)/264;
                 if(wide_enable && width*repeat_pixels<4096 && limit>period)
                     period=(2*period<limit)?2*period:limit;
+                if(half_enable && width*repeat_pixels<4096) begin
+                    period=period/2;
+                    if(period<1) period=1;
+                end
                 expected_width=shown?256*period:0;
                 if(row_count!=expected_width)
                     $fatal(1,"visible width %0d expected %0d at %0dx%0d repeat%0d",row_count,expected_width,width,height,repeat_pixels);
@@ -168,6 +173,11 @@ module tb_dv1_legacy_width;
         raster(536,198,6,16,0,1,1);
         raster(512,192,6,16,0,1,1);
         raster(520,192,6,16,0,1,1);
+        raster(520,192,6,8,0,1,1);
+        raster(520,192,6,16,0,1,0);
+        // Saturation at one clock and an odd transport period.
+        raster(520,192,1,8,0,1,1);
+        raster(520,192,5,16,0,1,1);
         raster(256,192,6,8,0,1,1);
         raster(256,414,3,16,0,1,1);
         raster(256,392,3,16,0,1,0);

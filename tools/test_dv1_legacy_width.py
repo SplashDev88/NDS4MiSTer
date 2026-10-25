@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check dual-screen widening against a division-based legacy reference."""
+"""Check dual-screen width corrections against a division-based reference."""
 import argparse
 import os
 from pathlib import Path
@@ -19,7 +19,7 @@ def run(output):
     reference = reference.replace('module osd\n', 'module osd_reference\n', 1)
     # The original raster is retained. The independent width specification
     # uses integer division, rather than the candidate's shift/correction.
-    reference=reference.replace('output reg    osd_status','input double_width, output reg    osd_status')
+    reference=reference.replace('output reg    osd_status','input tri0 double_width, input tri0 half_width, output reg    osd_status')
     needle="pixsz  <= (((cnt+1'b1) >> (9-rot[0])) > 1) ? (((cnt+1'b1) >> (9-rot[0])) - 1'd1) : 22'd0;"
     assert reference.count(needle)==1
     reference=reference.replace(needle, """begin : width_spec
@@ -30,6 +30,10 @@ def run(output):
             maximum_period=(cnt+1)/264;
             if(double_width && !rot && cnt<4095 && maximum_period>original_period)
                 chosen_period=(original_period*2<maximum_period)?original_period*2:maximum_period;
+            if(half_width && !rot && cnt<4095) begin
+                chosen_period=original_period/2;
+                if(chosen_period<1) chosen_period=1;
+            end
             pixsz <= chosen_period-1;
         end""")
     (output / 'osd_reference.v').write_text(reference)

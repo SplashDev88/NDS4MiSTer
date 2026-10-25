@@ -29,7 +29,8 @@ module osd
     input tri0 native_pixel_enable,
     input tri0 native_pixel_ce,
     input tri0 [1:0] native_rotation,
-    input tri0 double_width
+    input tri0 double_width,
+    input tri0 half_width
 );
 
 // Optional shared bitmap ports. The default keeps the original private RAM.
@@ -49,6 +50,9 @@ parameter  OSD_NATIVE_PIXELS = 0;
 // Optional legacy-font widening for dual-screen DV1. Other instances retain
 // their original sampling. No extra bitmap or video pipeline stage is used.
 parameter  OSD_DOUBLE_WIDTH = 0;
+// Side-by-side DV1 uses a wider transport. Halve only that menu's horizontal
+// period; other instances and the vertical/video pipelines stay unchanged.
+parameter  OSD_HALF_WIDTH = 0;
 
 localparam OSD_WIDTH    = 12'd256;
 localparam OSD_HEIGHT   = 12'd64;
@@ -170,6 +174,7 @@ wire [12:0] fit_cost = ({8'd0,fit_guess} << 8) + ({8'd0,fit_guess} << 3);
 wire [4:0] fit_period = fit_guess - (fit_cost > native_line_clocks);
 wire [OSD_COUNTER_BITS-1:0] twice_period = legacy_period << 1;
 wire [OSD_COUNTER_BITS-1:0] wide_period = twice_period < fit_period ? twice_period : fit_period;
+wire [OSD_COUNTER_BITS-1:0] half_period = legacy_period > 1 ? legacy_period >> 1 : 1;
 always @(posedge clk_video) begin
 	reg [OSD_COUNTER_BITS-1:0] pixcnt;
 	reg deD;
@@ -187,6 +192,8 @@ always @(posedge clk_video) begin
 		pixsz <= legacy_period - 1'b1;
         if(OSD_DOUBLE_WIDTH && double_width && !rot && cnt < 4095 && wide_period > legacy_period)
             pixsz <= wide_period - 1'b1;
+        if(OSD_HALF_WIDTH && half_width && !rot && cnt < 4095)
+            pixsz <= half_period - 1'b1;
 		pixcnt <= 0;
 	end
 end

@@ -1691,16 +1691,19 @@ nds_native_osd_memory nds_osd_memory (
 // blanking with ample headroom. The tallest source is414 active lines
 // (stacked screens,24-pixel gap,FPS row), so larger multiscan modes are
 // unreachable. HDMI keeps the generic22-bit counters and all geometries.
-// Only unrotated Top/Bottom DV1 has the narrow legacy font. Side-by-side
-// and the rotated stacked canvas already have normal-width menus. Use
-// the applied video path, preserving Main, Touch, CRT and rotated modes.
+// Adjust only unrotated dual-screen DV1: widen the narrow Top/Bottom
+// menu and halve the broad Side-by-side menu. Use the applied video path,
+// preserving Main, Touch, CRT and rotated modes.
 `ifdef NDS_TATE
 wire nds_dv1_dual_menu = nds_dv1_native_osd &&
                        tate_source_height > 10'd240 && !nds_dv1_present;
+wire nds_dv1_side_menu = nds_dv1_native_osd &&
+                       tate_source_width > 10'd320 && tate_source_height <= 10'd240 && !nds_dv1_present;
 `else
 wire nds_dv1_dual_menu = 1'b0;
+wire nds_dv1_side_menu = 1'b0;
 `endif
-osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(0), .OSD_DOUBLE_WIDTH(1)) vga_osd
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(0), .OSD_DOUBLE_WIDTH(1), .OSD_HALF_WIDTH(1)) vga_osd
 (
 	.clk_sys(clk_sys),
 
@@ -1723,7 +1726,8 @@ osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_
     .buffer_re(nds_osd_digital_read), .buffer_raddr(nds_osd_digital_address),
     .buffer_q(nds_osd_digital_q), .buffer_scheduled(),
     .native_pixel_enable(nds_dv1_native_osd), .native_pixel_ce(native_digital_ce),
-    .native_rotation(nds_dv1_rotation), .double_width(nds_dv1_dual_menu)
+    .native_rotation(nds_dv1_rotation), .double_width(nds_dv1_dual_menu),
+    .half_width(nds_dv1_side_menu)
 );
 
 wire vga_cs_osd;

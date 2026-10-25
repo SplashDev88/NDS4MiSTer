@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(output):
     output.mkdir(parents=True, exist_ok=True)
     source = (ROOT / 'fpga/mister_nitro_console_island/sys/sys_top.v').read_text()
-    dual = source.split('// Only unrotated Top/Bottom DV1',1)[1].split('`ifdef NDS_TATE',1)[1].split('osd #',1)[0]
+    dual = source.split('// Adjust only unrotated dual-screen DV1:',1)[1].split('`ifdef NDS_TATE',1)[1].split('osd #',1)[0]
     dual = '`ifdef NDS_TATE' + dual
     source = source.split('reg        cfg_set      = 0;', 1)[1]
     declarations = source.split('wire       audio_96k', 1)[0]
@@ -26,7 +26,7 @@ def run(output):
         text += '''module tb_dv1_osd_gate;
 reg [15:0] cfg;
 reg vga_force_scaler, nds_split_active, vga_scaler;
-reg expected,expected_dual,nds_dv1_rotated;
+reg expected,expected_dual,expected_side,nds_dv1_rotated;
 wire nds_dv1_present=nds_dv1_native_osd && nds_dv1_rotated;
 reg [9:0] tate_source_width,tate_source_height;
 integer checked;
@@ -64,11 +64,17 @@ for (integer outputs = 0; outputs < 8; outputs = outputs + 1) begin
         endcase
         #1;
         expected_dual=0;
+        expected_side=0;
 `ifdef NDS_TATE
         expected_dual=expected && layout>=6 && turn==0;
+        expected_side=expected && layout>=3 && layout<=5 && turn==0;
 `endif
         assert(nds_dv1_dual_menu===expected_dual)
           else $fatal(1,"dual gate flags=%h outputs=%d layout=%d",cfg,outputs,layout);
+        assert(nds_dv1_side_menu===expected_side)
+          else $fatal(1,"side gate flags=%h outputs=%d layout=%d",cfg,outputs,layout);
+        assert(!(nds_dv1_dual_menu && nds_dv1_side_menu))
+          else $fatal(1,"conflicting width adjustments");
         checked++;
     end
 end
