@@ -105,10 +105,11 @@ public:
         u64 entriesCount = ((startBit + bitsCount + 0x3F) >> 6) - startEntry;
         for (u32 j = startEntry; j < startEntry + entriesCount; j++)
         {
-            if (GetRangedBitMask(j, startBit, bitsCount) & dirty[j & ((vramSize / VRAMDirtyGranularity)-1)])
+            if (GetRangedBitMask(j, startBit, bitsCount) & dirty[j & ((vramSize / (VRAMDirtyGranularity * 64))-1)])
             {
-                if (MaskedHash(vram, vramSize, start, size) != oldHash)
-                    return true;
+                // One dirty block is enough to check the entire input range.
+                // Later dirty blocks cannot change that same comparison.
+                return MaskedHash(vram, vramSize, start, size) != oldHash;
             }
         }
 
