@@ -737,7 +737,8 @@ public:
         unsigned matrix_prefix_mode = 0,
         bool timing_profile_only = false,
         bool matched_recovery_skip = false,
-        bool integral_texture_spans = false)
+        bool integral_texture_spans = false,
+        bool sprite_raster_spans = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -768,6 +769,7 @@ public:
           matched_recovery_skip_enabled_(matched_display_test && matched_full_rate &&
                                          asynchronous_arm_video_replay && matched_recovery_skip),
           integral_texture_spans_(matched_display_test && integral_texture_spans),
+          sprite_raster_spans_(matched_display_test && sprite_raster_spans),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -1284,6 +1286,7 @@ private:
         // vertex on the Cortex-A9.
         nds_->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
         nds_->GPU.GPU3D.SetIntegralTextureSpansEnabled(integral_texture_spans_);
+        nds_->GPU.GPU3D.SetSpriteRasterSpansEnabled(sprite_raster_spans_);
         matrix_prefix_.reset();
         active_prefix_snapshot_ = nullptr;
         active_prefix_published_ = false;
@@ -1904,7 +1907,7 @@ private:
                         packet.records.data() + index, run_end - index,
                         geometry_command_count))
                     return false;
-            } else if (integral_texture_spans_ &&
+            } else if ((integral_texture_spans_ || sprite_raster_spans_) &&
                        kind == frame_packet::RecordKind::VramWritePair) {
                 for (std::size_t record_index = index;
                      record_index < run_end; ++record_index)
@@ -2524,7 +2527,7 @@ private:
             // The exact Castlevania profile repeats large unchanged BG
             // uploads. Retain normal capture synchronization and all other
             // profiles; invalidate only physical banks whose bytes changed.
-            if (integral_texture_spans_ && !arm_video_engine_b_only_ &&
+            if ((integral_texture_spans_ || sprite_raster_spans_) && !arm_video_engine_b_only_ &&
                 region == 0x00200000u) {
                 bank_mask = access->bytes == 2
                     ? nds_->GPU.WriteVRAM_BBGChanged<melonDS::u16>(
@@ -5594,6 +5597,7 @@ private:
     bool matched_full_rate_ = false;
     bool matched_recovery_skip_enabled_ = false;
     bool integral_texture_spans_ = false;
+    bool sprite_raster_spans_ = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
     bool fmv_receiver_enabled_ = false;
 #endif
@@ -11265,6 +11269,7 @@ try {
                 std::strcmp(frame_skip_requested, "nsmb-half") == 0;
             bool nsmb_recovery = false;
             bool integral_texture_spans = false;
+            bool sprite_raster_spans = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11282,11 +11287,12 @@ try {
                     continue;
                 profile_session = selected_session;
                 integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected);
+                sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                 fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
 #endif
                 if (automatic_query_profile)
-                    matrix_prefix_mode = nds4mister::replay::game_query_prefix_mode(selected.profile);
+                    matrix_prefix_mode = sprite_raster_spans ? 0u : nds4mister::replay::game_query_prefix_mode(selected.profile);
                 // Controlled NSMB-only comparison: reuse the existing tested
                 // paired-picture cadence while leaving all query/state work
                 // active. Other games and normal launchers keep full rate.
@@ -11302,6 +11308,7 @@ try {
                     << " identified=" << selected.identified
                     << " recovery_skip=" << nsmb_recovery
                     << " integral_texture_spans=" << integral_texture_spans
+                    << " sprite_raster_spans=" << sprite_raster_spans
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11337,7 +11344,8 @@ try {
                 matrix_prefix_mode,
                 timing_profile_only,
                 nsmb_recovery,
-                integral_texture_spans);
+                integral_texture_spans,
+                sprite_raster_spans);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif

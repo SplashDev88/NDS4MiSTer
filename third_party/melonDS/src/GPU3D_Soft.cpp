@@ -1168,7 +1168,7 @@ void SoftRenderer3D::SetupPolygon(
     pixelState.FlatRectangle = false;
     pixelState.PreparedRectangle = false;
     pixelState.GrayRectangle = false;
-    if (GPU3D.IntegralTextureSpansEnabled() && nverts == 4 &&
+    if (GPU3D.SpriteRasterSpansEnabled() && nverts == 4 &&
         ytop < ybot && rp->XL < rp->XR &&
         pixelState.CachedModulate && pixelState.PolyAlpha == 31 &&
         pixelState.ConstantVertexColor &&
@@ -1222,7 +1222,7 @@ void SoftRenderer3D::SetupPolygon(
     // translucent. Prove its actual corners, depth and equal RGB channels;
     // a bounding box alone would also accept crossed or slanted quads.
     // Alpha blending guarantees filled edges for this translucent path.
-    if (GPU3D.IntegralTextureSpansEnabled() && nverts == 4 &&
+    if (GPU3D.SpriteRasterSpansEnabled() && nverts == 4 &&
         ytop < ybot && rp->XR - rp->XL > 1 &&
         !pixelState.TextureEnabled && pixelState.BlendMode == 0 &&
         pixelState.PolyAlpha > 0 && pixelState.PolyAlpha < 31 &&
@@ -1706,7 +1706,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     switch (rp->PixelState.TextureWrapFlags)
     {
     case 0x0u:
-        if (neutralOpaque && GPU3D.IntegralTextureSpansEnabled())
+        if (neutralOpaque && GPU3D.SpriteRasterSpansEnabled())
             RenderCachedModulateIntegralTextureDispatch<0x0u>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1726,7 +1726,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     case 0x3u:
-        if (neutralOpaque && GPU3D.IntegralTextureSpansEnabled())
+        if (neutralOpaque && GPU3D.SpriteRasterSpansEnabled())
             RenderCachedModulateIntegralTextureDispatch<0x3u>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -1746,7 +1746,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         return;
     default:
-        if (neutralOpaque && GPU3D.IntegralTextureSpansEnabled())
+        if (neutralOpaque && GPU3D.SpriteRasterSpansEnabled())
             RenderCachedModulateIntegralTextureDispatch<0xFFu>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
@@ -4276,7 +4276,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     // hysteresis. The delayed-worker oracle bypasses the production warm-up.
     // The verified Castlevania profile uses completion-based adaptive splitting.
     // Other games retain the established four-band policy and hysteresis.
-    const bool castlevaniaProfile = GPU3D.IntegralTextureSpansEnabled();
+    const bool castlevaniaProfile = GPU3D.SpriteRasterSpansEnabled();
     RasterBalance.SetCastlevaniaProfile(castlevaniaProfile);
     const bool queuedRaster = RasterBandQueue && !castlevaniaProfile;
     const bool bandQueueHeavy = queuedRaster &&

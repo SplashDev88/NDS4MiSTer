@@ -25,6 +25,28 @@ int main(int argc, char** argv)
     const std::uint8_t crc_example[] = {'1','2','3','4','5','6','7','8','9'};
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
+    const GameQueryIdentity portrait {{{'A','C','B','E'}}, 0, 0xa9935ea4u};
+    check(portrait_sprite_raster_profile({GameQueryProfile::Fast, portrait, true}),
+          "Portrait exact raster identity");
+    check(select_game_query_profile(portrait) == GameQueryProfile::Fast &&
+          !castlevania_integral_texture_profile({GameQueryProfile::Fast, portrait, true}),
+          "Portrait must not inherit Dawn query or runtime policy");
+    check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, portrait, false}) &&
+          !portrait_sprite_raster_profile({GameQueryProfile::Fast, known, true}),
+          "unidentified and other cartridges keep their existing raster policy");
+    for (unsigned bit = 0; bit < 32; ++bit) {
+        auto changed = portrait; changed.header_crc32 ^= 1u << bit;
+        check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, changed, true}),
+              "changed Portrait header must use fallback");
+    }
+    for (unsigned byte = 0; byte < 4; ++byte) {
+        auto changed = portrait; changed.code[byte] ^= 1;
+        check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, changed, true}),
+              "changed Portrait code must use fallback");
+    }
+    auto revised_portrait = portrait; ++revised_portrait.revision;
+    check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, revised_portrait, true}),
+          "untested Portrait revision must use fallback");
     check(game_query_prefix_mode(select_game_query_profile(known)) == 0, "known identity");
     check(castlevania_integral_texture_profile({GameQueryProfile::Fast, known, true}),
           "Castlevania raster choice is independent of query mode");
