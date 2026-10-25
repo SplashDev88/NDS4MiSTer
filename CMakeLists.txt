@@ -309,7 +309,7 @@ if(NDS4MISTER_USE_MELONDS)
     target_link_libraries(nds_live_hgs_test PRIVATE
         core nds_headless_save ${CMAKE_DL_LIBS})
 
-    foreach(oracle IN ITEMS TextureDirtyRange)
+    foreach(oracle IN ITEMS TextureDirtyRange TextureHistory)
         string(TOLOWER "${oracle}" oracle_name)
         add_executable(nds_${oracle_name}_test
             src/replay/${oracle}Test.cpp src/melonds/HeadlessPlatform.cpp)

@@ -175,6 +175,8 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     : Renderer3D(gpu3D), Parent(parent),
       TextureCache(gpu3D.GPU, SoftTexcacheLoader())
 {
+    if(const char* v=std::getenv("NDS4MISTER_TEXTURE_HISTORY"))
+        TextureHistoryEnabled=std::strcmp(v,"1")==0;
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
     Sema_ScanlineCount = Platform::Semaphore_Create();
@@ -244,6 +246,16 @@ void SoftRenderer3D::GetNativeBufferHashes(u64 hashes[3]) const noexcept
 SoftRenderer3D::~SoftRenderer3D()
 {
     StopRenderThread();
+    const char* report=std::getenv("NDS4MISTER_RENDER_CACHE_STATS");
+    if(report && std::strcmp(report,"1")==0 && TextureHistoryFrames)
+        if(FILE* f=std::fopen("/tmp/nds-render-cache-stats.jsonl","a"))
+        {
+            std::fprintf(f,"{\"render_frames\":%llu,\"texture_hits\":%llu,\"texture_misses\":%llu}\n",
+                (unsigned long long)TextureHistoryFrames,
+                (unsigned long long)TextureCache.ContentHistoryHits,
+                (unsigned long long)TextureCache.ContentHistoryMisses);
+            std::fclose(f);
+        }
 
     TextureCache.Reset();
 
@@ -4663,6 +4675,9 @@ void SoftRenderer3D::RenderFrame()
     RenderFrameCanceled.store(false, std::memory_order_relaxed);
     const auto coherenceStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
+    TextureCache.ContentIdentityEnabled = TextureHistoryEnabled &&
+        GPU3D.IntegralTextureSpansEnabled();
+    if(TextureCache.ContentIdentityEnabled)++TextureHistoryFrames;
     bool textureChanged;
     if (UseTextureCache)
     {
