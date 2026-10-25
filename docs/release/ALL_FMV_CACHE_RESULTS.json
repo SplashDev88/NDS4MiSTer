@@ -1,0 +1,435 @@
+{
+  "base_source": "1e27f9542b6cf6e9a8b1a91587cc5c7a88e8c14b",
+  "python_tests": 56,
+  "prepared_image_checks": [
+    {
+      "profile": "SJ",
+      "phase": "cold",
+      "image_sha256": "0e26f0e9b36189786bc380ed67b8fd606482d4b8571c2ba49657c2c797bc2f64",
+      "qualified_image_matches": true,
+      "cache_bytes": 264253632,
+      "seconds": 0.63,
+      "writes": 264241152
+    },
+    {
+      "profile": "SJ",
+      "phase": "hit",
+      "image_sha256": "0e26f0e9b36189786bc380ed67b8fd606482d4b8571c2ba49657c2c797bc2f64",
+      "qualified_image_matches": true,
+      "cache_bytes": 264253632,
+      "seconds": 0.196,
+      "writes": 264241152
+    },
+    {
+      "profile": "NINO",
+      "phase": "cold",
+      "image_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+      "qualified_image_matches": true,
+      "cache_bytes": 479375097,
+      "seconds": 0.991,
+      "writes": 479202093
+    },
+    {
+      "profile": "NINO",
+      "phase": "hit",
+      "image_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+      "qualified_image_matches": true,
+      "cache_bytes": 479375097,
+      "seconds": 0.453,
+      "writes": 479202093
+    },
+    {
+      "profile": "CHRONO",
+      "phase": "cold",
+      "image_sha256": "0e34c9b8ef407f2edbc9ccfc248ec7662c705f1a6d17c8498a631489a0b7ab52",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224268,
+      "seconds": 0.27,
+      "writes": 134217728
+    },
+    {
+      "profile": "CHRONO",
+      "phase": "hit",
+      "image_sha256": "0e34c9b8ef407f2edbc9ccfc248ec7662c705f1a6d17c8498a631489a0b7ab52",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224268,
+      "seconds": 0.1,
+      "writes": 134217728
+    },
+    {
+      "profile": "FF12",
+      "phase": "cold",
+      "image_sha256": "f1da17bf1827970067d5a7ceaef189b9c522c5de6e36db6224d76d7a27729a12",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224556,
+      "seconds": 0.21,
+      "writes": 134217728
+    },
+    {
+      "profile": "FF12",
+      "phase": "hit",
+      "image_sha256": "f1da17bf1827970067d5a7ceaef189b9c522c5de6e36db6224d76d7a27729a12",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224556,
+      "seconds": 0.099,
+      "writes": 134217728
+    },
+    {
+      "profile": "SONIC",
+      "phase": "cold",
+      "image_sha256": "dfe64af47cc07b1b62fed03d5d39ce04a3377aabd38dc73e3867d1bb6b33be57",
+      "qualified_image_matches": true,
+      "cache_bytes": 264255072,
+      "seconds": 0.312,
+      "writes": 264241152
+    },
+    {
+      "profile": "SONIC",
+      "phase": "hit",
+      "image_sha256": "dfe64af47cc07b1b62fed03d5d39ce04a3377aabd38dc73e3867d1bb6b33be57",
+      "qualified_image_matches": true,
+      "cache_bytes": 264255072,
+      "seconds": 0.208,
+      "writes": 264241152
+    },
+    {
+      "profile": "NINO_EN10",
+      "phase": "cold",
+      "image_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+      "qualified_image_matches": true,
+      "cache_bytes": 485417619,
+      "seconds": 0.896,
+      "writes": 485244267
+    },
+    {
+      "profile": "NINO_EN10",
+      "phase": "hit",
+      "image_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+      "qualified_image_matches": true,
+      "cache_bytes": 485417619,
+      "seconds": 0.491,
+      "writes": 485244267
+    },
+    {
+      "profile": "YQUP",
+      "phase": "cold",
+      "image_sha256": "6428ada802d97d69032826adb1734a59b70f3acd0fb14723286604ee80a33ade",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224268,
+      "seconds": 0.562,
+      "writes": 134217728
+    },
+    {
+      "profile": "YQUP",
+      "phase": "hit",
+      "image_sha256": "6428ada802d97d69032826adb1734a59b70f3acd0fb14723286604ee80a33ade",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224268,
+      "seconds": 0.118,
+      "writes": 134217728
+    },
+    {
+      "profile": "YQUJ",
+      "phase": "cold",
+      "image_sha256": "169633fb8b87d45efb4978464d9b000e6a7e4f121e74f1387762e0ad0d416eb7",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224268,
+      "seconds": 0.295,
+      "writes": 134217728
+    },
+    {
+      "profile": "YQUJ",
+      "phase": "hit",
+      "image_sha256": "169633fb8b87d45efb4978464d9b000e6a7e4f121e74f1387762e0ad0d416eb7",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224268,
+      "seconds": 0.103,
+      "writes": 134217728
+    },
+    {
+      "profile": "AXFP",
+      "phase": "cold",
+      "image_sha256": "92ec25b212527095c07c611cfcdd896a8a91a7378718d4373d94b9cd416ad8f6",
+      "qualified_image_matches": true,
+      "cache_bytes": 264253944,
+      "seconds": 0.326,
+      "writes": 264241152
+    },
+    {
+      "profile": "AXFP",
+      "phase": "hit",
+      "image_sha256": "92ec25b212527095c07c611cfcdd896a8a91a7378718d4373d94b9cd416ad8f6",
+      "qualified_image_matches": true,
+      "cache_bytes": 264253944,
+      "seconds": 0.21,
+      "writes": 264241152
+    },
+    {
+      "profile": "AXFJ",
+      "phase": "cold",
+      "image_sha256": "5d20ab24da6f588c9ed877a2d9f156facfed3b5e1dc3c06eaa4a9365b836328d",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224556,
+      "seconds": 0.258,
+      "writes": 134217728
+    },
+    {
+      "profile": "AXFJ",
+      "phase": "hit",
+      "image_sha256": "5d20ab24da6f588c9ed877a2d9f156facfed3b5e1dc3c06eaa4a9365b836328d",
+      "qualified_image_matches": true,
+      "cache_bytes": 134224556,
+      "seconds": 0.106,
+      "writes": 134217728
+    },
+    {
+      "profile": "CSNP",
+      "phase": "cold",
+      "image_sha256": "913c9b3652553c738faaad5b9749ea36a697e36bf3fde2e8b75e52798f52a167",
+      "qualified_image_matches": true,
+      "cache_bytes": 264255072,
+      "seconds": 0.319,
+      "writes": 264241152
+    },
+    {
+      "profile": "CSNP",
+      "phase": "hit",
+      "image_sha256": "913c9b3652553c738faaad5b9749ea36a697e36bf3fde2e8b75e52798f52a167",
+      "qualified_image_matches": true,
+      "cache_bytes": 264255072,
+      "seconds": 0.195,
+      "writes": 264241152
+    },
+    {
+      "profile": "C5RJ",
+      "phase": "cold",
+      "image_sha256": "152c1a90fbccae225a9b68ca71c67e5dc2b82af4d97bb14b67c57968568ab27b",
+      "qualified_image_matches": true,
+      "cache_bytes": 264255096,
+      "seconds": 0.316,
+      "writes": 264241152
+    },
+    {
+      "profile": "C5RJ",
+      "phase": "hit",
+      "image_sha256": "152c1a90fbccae225a9b68ca71c67e5dc2b82af4d97bb14b67c57968568ab27b",
+      "qualified_image_matches": true,
+      "cache_bytes": 264255096,
+      "seconds": 0.196,
+      "writes": 264241152
+    },
+    {
+      "profile": "BMTJ",
+      "phase": "cold",
+      "image_sha256": "ec344766f9a4b76327fc8b678698c9399596cbc05752ee485f513f842544f946",
+      "qualified_image_matches": true,
+      "cache_bytes": 264253632,
+      "seconds": 0.514,
+      "writes": 264241152
+    },
+    {
+      "profile": "BMTJ",
+      "phase": "hit",
+      "image_sha256": "ec344766f9a4b76327fc8b678698c9399596cbc05752ee485f513f842544f946",
+      "qualified_image_matches": true,
+      "cache_bytes": 264253632,
+      "seconds": 0.196,
+      "writes": 264241152
+    }
+  ],
+  "hardware": [
+    {
+      "game": "CHRONO",
+      "phase": "cold",
+      "load_seconds": 48.492,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "CHRONO",
+      "phase": "hit",
+      "load_seconds": 9.386,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "FF12",
+      "phase": "cold",
+      "load_seconds": 38.951,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "FF12",
+      "phase": "hit",
+      "load_seconds": 8.447,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "SONIC",
+      "phase": "cold",
+      "load_seconds": 65.26,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "SONIC",
+      "phase": "hit",
+      "load_seconds": 17.604,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "SJ",
+      "phase": "cold",
+      "load_seconds": 74.169,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "SJ",
+      "phase": "hit",
+      "load_seconds": 17.687,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "AXFP",
+      "phase": "cold",
+      "load_seconds": 65.502,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "AXFP",
+      "phase": "hit",
+      "load_seconds": 17.618,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "NINO",
+      "phase": "cold",
+      "load_seconds": 149.857,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "NINO",
+      "phase": "hit",
+      "load_seconds": 39.781,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "CV",
+      "phase": "control",
+      "load_seconds": 6.309,
+      "cache_hit": false,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    }
+  ],
+  "final_ui_hardware": [
+    {
+      "game": "CHRONO",
+      "phase": "cold",
+      "load_seconds": 43.845,
+      "cache_hit": false,
+      "cache_stored": true,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "CHRONO",
+      "phase": "hit",
+      "load_seconds": 8.6,
+      "cache_hit": true,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    },
+    {
+      "game": "NSMB",
+      "phase": "control",
+      "load_seconds": 10.08,
+      "cache_hit": false,
+      "cache_stored": false,
+      "clock_mhz": 1000,
+      "transport_errors": 0,
+      "post_boot_sample_seconds": 20,
+      "clean_exit": true
+    }
+  ],
+  "preservation": {
+    "status": "passed",
+    "core": "MENU",
+    "protected_files": 1095,
+    "original_saves_and_ini_unchanged": true,
+    "storage_and_recents_restored": true,
+    "display_settings_restored": true,
+    "test_saves_archived": 8
+  },
+  "renderer_fpga_unchanged": true,
+  "host_changes": "Loading status and removal of settings footer messages",
+  "protocol_and_host_ui_tests": "passed",
+  "physical_capture": "Chrono Trigger picture returned after the user rebooted RetroTINK 4K; physical screenshots retained. Audio was not requalified.",
+  "cache_budget_bytes": 2147483648,
+  "hardware_scope": "ROM loading and 20-second post-boot checks; six prepared profiles cold/hit plus Castlevania control; no new full-game compatibility sweep."
+}
