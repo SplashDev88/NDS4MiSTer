@@ -2,7 +2,7 @@
 
 **Smoother FMVs, a modest speed boost, boot fixes, adjustable right-stick range, NAND save support, and alternative MiSTer launcher support.**
 
-[Download the latest release](https://github.com/SplashDev88/NDS4MiSTer/releases/latest) · [Quick start](docs/STANDALONE_QUICK_START.txt)
+[Download the latest release](https://github.com/SplashDev88/NDS4MiSTer/releases/latest)
 
 ## What's new since rc.9
 
