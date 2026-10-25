@@ -2,6 +2,8 @@
 
 **Smoother FMVs, a modest speed boost, boot fixes, adjustable right-stick range, NAND save support, and alternative MiSTer launcher support.**
 
+[Download the latest release](https://github.com/SplashDev88/NDS4MiSTer/releases/latest) · [Quick start](docs/STANDALONE_QUICK_START.txt)
+
 ## What's new since rc.9
 
 - **Smoother opening movies.** FMV playback is optimized for tested revisions of *Castlevania: Dawn of Sorrow*, *Chrono Trigger*, *Ni no Kuni*, *Shin Megami Tensei: Strange Journey*, *Final Fantasy XII: Revenant Wings* and *Sonic Chronicles*.
