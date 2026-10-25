@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def run(output):
     output.mkdir(parents=True, exist_ok=True)
     source = (ROOT / 'fpga/mister_nitro_console_island/sys/sys_top.v').read_text()
-    dual = source.split('// Widen only the legacy menu',1)[1].split('`ifdef NDS_TATE',1)[1].split('osd #',1)[0]
+    dual = source.split('// Only unrotated Top/Bottom DV1',1)[1].split('`ifdef NDS_TATE',1)[1].split('osd #',1)[0]
     dual = '`ifdef NDS_TATE' + dual
     source = source.split('reg        cfg_set      = 0;', 1)[1]
     declarations = source.split('wire       audio_96k', 1)[0]
@@ -26,7 +26,8 @@ def run(output):
         text += '''module tb_dv1_osd_gate;
 reg [15:0] cfg;
 reg vga_force_scaler, nds_split_active, vga_scaler;
-reg expected,expected_dual;
+reg expected,expected_dual,nds_dv1_rotated;
+wire nds_dv1_present=nds_dv1_native_osd && nds_dv1_rotated;
 reg [9:0] tate_source_width,tate_source_height;
 integer checked;
 '''
@@ -48,7 +49,9 @@ for (integer outputs = 0; outputs < 8; outputs = outputs + 1) begin
 '''
         text += '''    assert (nds_dv1_native_osd === expected)
         else $fatal(1, "mode gate flags=%h outputs=%d", cfg, outputs);
+    for(integer turn=0;turn<2;turn++)
     for(integer layout=0;layout<(expected?8:1);layout++) begin
+        nds_dv1_rotated=1'(turn);
         case(layout)
             0:begin tate_source_width=320;tate_source_height=240;end
             1:begin tate_source_width=256;tate_source_height=192;end
@@ -62,7 +65,7 @@ for (integer outputs = 0; outputs < 8; outputs = outputs + 1) begin
         #1;
         expected_dual=0;
 `ifdef NDS_TATE
-        expected_dual=expected && layout>=3;
+        expected_dual=expected && layout>=6 && turn==0;
 `endif
         assert(nds_dv1_dual_menu===expected_dual)
           else $fatal(1,"dual gate flags=%h outputs=%d layout=%d",cfg,outputs,layout);

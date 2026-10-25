@@ -1691,12 +1691,12 @@ nds_native_osd_memory nds_osd_memory (
 // blanking with ample headroom. The tallest source is414 active lines
 // (stacked screens,24-pixel gap,FPS row), so larger multiscan modes are
 // unreachable. HDMI keeps the generic22-bit counters and all geometries.
-// Widen only the legacy menu on dual-screen DV1. Source dimensions are
-// unrotated and latched by the core, so Main, Touch and CRT-target modes
-// retain their existing menu even when the game is rotated.
+// Only unrotated Top/Bottom DV1 has the narrow legacy font. Side-by-side
+// and the rotated stacked canvas already have normal-width menus. Use
+// the applied video path, preserving Main, Touch, CRT and rotated modes.
 `ifdef NDS_TATE
 wire nds_dv1_dual_menu = nds_dv1_native_osd &&
-                       (tate_source_width > 10'd320 || tate_source_height > 10'd240);
+                       tate_source_height > 10'd240 && !nds_dv1_present;
 `else
 wire nds_dv1_dual_menu = 1'b0;
 `endif
