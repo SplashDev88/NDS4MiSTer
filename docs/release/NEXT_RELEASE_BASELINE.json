@@ -32,7 +32,10 @@
   "known_limitations": [
     "Static setup/recovery timing remains unresolved; accepted as development baseline, not a qualified public release.",
     "No new full-game native-framerate or stability claim.",
-    "DS Lite profile is a visual approximation, not a colorimeter calibration of a physical DS Lite panel."
+    "DS Lite profile is a visual approximation, not a colorimeter calibration of a physical DS Lite panel.",
+    "Open menu/LCD Grid 2 sweep: rotated left/right, Main-only and Touch-only digital layouts become nearly black; effect-Off controls restore visibility.",
+    "Unrotated left/right inherited a cropped noninteger scale after mode changes; a temporary 3x capture is included, persistence remains unqualified.",
+    "Native analog LCD Grid 2 shows vertical banding with the current profile; analog menu stays upright and effect-Off controls are clear."
   ],
   "release_version_to_publish": null,
   "published": false,
@@ -46,5 +49,6 @@
     "output": "1080p60",
     "effect": "LCD Mono 2",
     "binary_profile_exported": false
-  }
+  },
+  "menu_matrix_report": "MENU_MATRIX_20261025.json"
 }
