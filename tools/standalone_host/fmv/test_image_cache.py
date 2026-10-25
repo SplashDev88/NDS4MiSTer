@@ -146,5 +146,20 @@ class ImageCacheTests(unittest.TestCase):
         for size in [0,511,513*1024**2]:
             with self.assertRaises(ValueError): transfer_limit(size)
 
+    def test_cache_status_is_negotiated_and_only_sent_for_a_real_miss(self):
+        status = struct.pack('<Qii', 0, 1, 12)
+        with mock.patch.dict(os.environ, {'NDS_ROM_CACHE_STATUS': '1'}):
+            cold = self.run_cache()
+            self.assertEqual(cold[:16], status)
+            expected = self.decode(cold[16:])
+            hit = self.run_cache()
+            self.assertNotEqual(hit[:16], status)
+            self.assertEqual(self.decode(hit), expected)
+            pieces = []
+            cached_transfer(self.source, select_plan(self.source, [self.profile]),
+                lambda data: pieces.append(bytes(data)), root='off', assembler=self.assemble)
+            self.assertNotIn(status, pieces)
+            self.assertEqual(self.decode(b''.join(pieces)), expected)
+
 
 if __name__ == '__main__': unittest.main()

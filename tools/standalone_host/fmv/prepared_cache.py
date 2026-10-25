@@ -267,6 +267,10 @@ def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
                 writer = Writer(store, required)
             except OSError as error:
                 log('cannot create entry: '+str(error))
+        # Optional UI metadata is negotiated by the paired host. Old hosts
+        # retain the original stream; hits and disabled caches keep Loading ROM.
+        if writer and writer.file and os.environ.get('NDS_ROM_CACHE_STATUS') == '1':
+            emit(struct.pack('<Qii', 0, 1, 12))
         transfer(source, plan, emit, recovery=recovery,
                  observe=writer.append if writer else lambda at, data: None,
                  prepared=writer.commit if writer else lambda: None, **kwargs)

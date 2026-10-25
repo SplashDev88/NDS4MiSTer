@@ -33,7 +33,7 @@ def select_plan(source, profiles):
             continue
         matches.append((profile, backing))
     # Header/FAT matches select a cache namespace, never permission to patch.
-    # Full original SHA-256 is checked after the sequential copy, before patches.
+    # Full original SHA-256 is checked before patches or cache publication.
     return matches[0] if len(matches) == 1 else None
 
 
@@ -78,12 +78,12 @@ def transfer_image(source, profile, emit, assembler, observe, prepared, recovery
         emit(struct.pack('<Qii', size if recovery else at*size//limit, 0, 7))
     require(at == limit, 'incomplete prepared image')
     source.unchanged()
+    if not recovery:
+        emit(struct.pack('<Qii', 0, 0, 11))
     if qualified:
         prepared()
         print('FMV_AUTO_APPLIED '+profile['key']+' verified image; save identity retained',
               file=sys.stderr, flush=True)
-    if not recovery:
-        emit(struct.pack('<Qii', 0, 0, 11))
     emit(struct.pack('<Qii', limit, 0, 8))
 
 

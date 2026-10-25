@@ -94,7 +94,11 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   std::ofstream(fake/"stream.py")<<R"PY(import os,sys,struct
 src,dst,parent=map(int,sys.argv[1:]);data=os.pread(src,1024,0);case=os.environ['NDS_FRAMED_TEST_CASE']
 def record(at,n,op):os.write(dst,struct.pack('<Qii',at,n,op))
+if case=='phase_before':record(0,1,12)
+if case=='bad_phase':record(0,2,12)
+if case=='bad_phase_size':record(1,1,12)
 record(536870913 if case=='metadata' else 1024,0,9)
+if case=='phase_during':record(0,1,12)
 if case=='metadata':sys.exit(0)
 if case=='range':record(1020,8,10);sys.exit(0)
 if case=='negative':record(0,-1,10);sys.exit(0)
@@ -111,19 +115,23 @@ record(20,5,10);os.write(dst,b'HELLO')
 if case!='late':record(1024,0,8)
 )PY";
   for(const char* name:{"ok","range","negative","oversize","zero","short","premature",
-                        "backwards","double_prepare","late","metadata"}) {
+                        "backwards","double_prepare","late","metadata",
+                        "phase_before","phase_during","bad_phase","bad_phase_size"}) {
     setenv("NDS_FRAMED_TEST_CASE",name,1);
     bool complete=false;unsigned services=0,prepares=0;std::vector<uint64_t> checks;
     std::string got(1024,char(0xff));
     try {
       RomReader r(path.string(),fake.string());const auto service=[&]{++services;};
       const auto size=r.size(service);assert(size==1024 && r.framed());
+      assert(r.preparingCache()==(std::string(name)=="phase_before"));
       r.transferFramed(size,service,[&](uint64_t at,const unsigned char* bytes,size_t n){
         assert(at+n<=got.size());got.replace(size_t(at),n,reinterpret_cast<const char*>(bytes),n);
       },[&](uint64_t checked,uint64_t total){assert(total==1024);checks.push_back(checked);},[&]{++prepares;});
+      assert(r.preparingCache()==(std::string(name)=="phase_before" || std::string(name)=="phase_during"));
       complete=true;
     } catch(const std::runtime_error&) {}
-    assert(complete==(std::string(name)=="ok") && services>0);
+    assert(complete==(std::string(name)=="ok" || std::string(name)=="phase_before" ||
+                      std::string(name)=="phase_during") && services>0);
     if(complete) {
       auto expected=original;expected.replace(20,5,"HELLO");assert(got==expected);
       assert((checks==std::vector<uint64_t>{100,1024}) && prepares==1);

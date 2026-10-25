@@ -40,6 +40,11 @@ private:
   int input = -1;
   pid_t child = -1;
   bool framed_stream = false;
+  bool cache_preparing = false;
+  void cacheStatus(const Header &h) {
+    if (h.size || h.error != 1) throw std::runtime_error("Invalid ROM cache status");
+    cache_preparing = true;
+  }
   std::chrono::steady_clock::time_point progressed = std::chrono::steady_clock::now();
   inline static std::vector<pid_t> retiring;
   static bool send(int fd, const void *data, size_t size) {
@@ -112,6 +117,7 @@ private:
           // worker never sends framed data to an old host. Keep a diagnostic
           // opt-out for exact loader A/B checks, with no menu setting.
           if (!getenv("NDS_ROM_STREAM_PATCHES") && setenv("NDS_ROM_STREAM_PATCHES", "1", 1)) _exit(1);
+          if (setenv("NDS_ROM_CACHE_STATUS", "1", 1)) _exit(1);
           execlp("python3", "python3", "-E", "-s", "-B", script.c_str(), input_arg.c_str(),
                  output_arg.c_str(), parent_arg.c_str(), static_cast<char *>(nullptr));
           // A missing worker must not silently enable only half of a profile.
@@ -189,6 +195,7 @@ public:
   }
   RomReader(const RomReader &) = delete;
   RomReader &operator=(const RomReader &) = delete;
+  bool preparingCache() const { return cache_preparing; }
   ~RomReader() {
     close(input);
     // A CIFS task in uninterruptible sleep may not exit immediately. Never join
@@ -237,7 +244,9 @@ public:
     for (;;) {
       Header h{};
       exact(&h, sizeof(h));
-      if (h.operation == 10) {
+      if (h.operation == 12) {
+        cacheStatus(h);
+      } else if (h.operation == 10) {
         if (h.error <= 0 || size_t(h.error) > buffer.size() || h.size > limit ||
             uint64_t(h.error) > limit - h.size)
           throw std::runtime_error("ROM write outside cartridge memory");
@@ -288,7 +297,8 @@ public:
       size_t off = 0;
       while (off < sizeof(h))
         off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
-    } while (h.operation == padding_progress);
+      if (h.operation == 12) cacheStatus(h);
+    } while (h.operation == padding_progress || h.operation == 12);
     if (h.operation == 9) {
       if (h.error || !validSize(h.size)) throw std::runtime_error("Invalid framed ROM metadata");
       framed_stream = true;
