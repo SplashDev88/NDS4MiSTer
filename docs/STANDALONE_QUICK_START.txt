@@ -344,8 +344,9 @@ reload and temporarily turning AutoLoad DV1 off recovered capture. Check the rec
 input/profile if a mode change loses signal.
 DV1 is different from dvi_mode: keep HDMI signaling for metadata and audio.
 Digital Main/Touch uses a centered single-screen raster; combined digital
-layouts use their native geometry. Native DV1/analog output uses the receiver's
-rotation controls. For DV1 Side-by-side on RetroTINK, choose Aspect Correction
+layouts use their native geometry. DV1 in Scaler target follows the core's
+Video Rotation for game and menu. Native analog stays upright; use the
+receiver to rotate it. For DV1 Side-by-side on RetroTINK, choose Aspect Correction
 1:1 (Sq. Pixel); an inherited 4:3 (PAR) setting can stretch it vertically.
 For simultaneous DV1 and component, retain vga_mode=ypbpr and composite_sync=1;
 the receiver may need YCbCr 709. This combination still needs a color-bar test.
@@ -405,35 +406,24 @@ kernel, controller and the exact error; do not attach ROMs or BIOS dumps.
 
 PERFORMANCE AND KNOWN LIMITATIONS
 
-Both ARM cores stay at 1 GHz with write-combining, overclocked from the
-standard 800 MHz. This clock setting is unchanged from the tested Beta12 build.
-No overclock setting is exposed. Beta12's renderer/pacing settings are retained,
-including full-rate NSMB drawing with frame skipping off. Reusing unchanged
-work reduces cost but does not guarantee every frame finishes on time.
-The 3D FPS Counter reports publication activity, which
-can include reused images; it is not proof of 60 unique frames per second.
-
-Some slowdown, surging, uneven animation, movie/audio hitches and graphical
-problems remain. Strange Journey can still freeze in its intro; GTA can
-still clip near the camera. Not all games, controllers, alternate INIs or
-display changes have been tested. Sound is experimental. Cartridge saves
-are supported; save states, NAND cartridge saves and DS wireless multiplayer
-are not implemented. No claim of universal full-speed operation is made.
+Both ARM cores run at 1 GHz with write-combining. No overclock setting is
+exposed. Slowdown, uneven animation, audio hitches and graphical problems can
+still occur. The 3D FPS Counter includes reused images and does not establish
+60 unique frames per second. FPGA static timing remains unresolved.
+Cartridge saves are supported, including NAND saves for WarioWare D.I.Y. and
+Jam with the Band. Save states and DS wireless multiplayer are not implemented.
 
 RELEASE IDENTIFICATION
 
-The launcher and release manifest identify v0.9.0-rc.10 / Beta12. The retained
-host still identifies v0.9.0-rc.8 internally. The host, FPGA, renderer, support
-modules and runtime settings are unchanged from the frozen Beta12 package;
-none were rebuilt for this release. The public kit uses .NDS_Standalone rather
-than the dated private kit's folder. See the release validation details for
-inherited hardware coverage, offline package checks and remaining limits.
+The launcher, host and release manifest identify rc.10. Use
+Scripts -> NDS4MiSTer with its matching .NDS_Standalone folder.
+See VALIDATION_RC10.md for component provenance and testing coverage.
 
 SOURCE AND CREDITS
 
-The public release uses GitHub's Source code (zip)/(tar.gz) links for matching
-source. The install ZIP and its SHA-256 companion are the only release assets;
-there is no duplicate source ZIP asset. Internal checksums accompany both.
+Corresponding source archives, build instructions and licenses are included
+in Scripts/.NDS_Standalone/source and licenses. Install the Standalone ZIP;
+GitHub's Source code archives are for developers.
 
 Built on work from the MiSTer community, FPGAzumSpass, Nitro_DarkSide and
 melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to
@@ -478,11 +468,11 @@ Right Stick Range is directly on the core menu. 100% is unchanged; use 125%,
 150%, 175% or 200% for limited stick travel, and System -> Save settings to keep
 it. Higher values reach the edges sooner, reducing fine positioning travel.
 
-Qualified movie acceleration and the tested NSMB USA revision-0 optimization
-activate automatically when loading the original game. There is no Speed hacks
-menu. Preparation can take about a minute; network loading may take longer.
+Qualified movie and NSMB optimizations activate automatically. There is no
+Speed hacks menu. The first load may show Preparing FMV cache; subsequent
+loads reuse verified cached data. The cache uses up to 2 GiB on the SD card.
 ROM files are not rewritten. Unsupported revisions keep the ordinary path.
-Read RELEASE_NOTES.md for the NSMB compatibility tradeoff and known issues.
+See VALIDATION_RC10.md for supported revisions and testing coverage.
 
 WarioWare D.I.Y. uses a 16 MiB NAND save; Jam with the Band uses 8 MiB. If the
 loader rejects an old incorrectly sized fallback save, back it up and move

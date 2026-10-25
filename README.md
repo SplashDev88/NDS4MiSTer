@@ -6,6 +6,7 @@
 
 - **Smoother opening movies.** FMV playback is optimized for tested revisions of *Castlevania: Dawn of Sorrow*, *Chrono Trigger*, *Ni no Kuni*, *Shin Megami Tensei: Strange Journey*, *Final Fantasy XII: Revenant Wings* and *Sonic Chronicles*.
 - **Faster New Super Mario Bros.** Optimizations for the tested USA revision 0 reduce geometry work and rubberbanding.
+- **Caching reduces repeat load times in supported games.**
 - **Boot fixes for Ni no Kuni and Pokémon Conquest.** Larger cartridge layouts now load correctly, and cartridge address mirroring has been fixed.
 - **NAND saves** for *WarioWare D.I.Y.* and *Jam with the Band*. *Daigassou! Band Brothers DX* remains unsupported.
 - **Right Stick Range** setting in the root menu. Choose 100%, 125%, 150%, 175% or 200% so your controller can reach all four touchscreen corners. Use **System → Save settings** to retain your choice.

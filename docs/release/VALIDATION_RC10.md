@@ -1,5 +1,34 @@
 # rc.10 validation and scope
 
+## Current package: revision 11, October 24
+
+This package retains the tested all-FMV cache beta binaries and runtime settings
+from source `b9a8a5b273fa772e073e67064ba8e32cdc38e24b`. Only distribution metadata,
+documentation and the standard launcher layout change during packaging.
+The host reports `v0.9.0-rc10`; no Speed hacks menu is exposed.
+
+Caching is enabled for all 13 qualified prepared movie cartridges. Cold and
+warm images match the prior qualified image SHA-256 values for every profile.
+The cache/UI validation includes 56 Python tests, framed-reader and host UI
+checks, board launches and a normal NSMB loading control. Chrono Trigger
+loaded in 43.8 seconds cold and 8.6 seconds cached in the final UI check. These
+are load times, not gameplay FPS. The unchanged renderer and FPGA retain their
+previous gameplay coverage; this repack is not a new all-game qualification.
+
+See [cache validation](ALL_FMV_CACHE_20261024.md) and
+[regional qualification](SPEEDUP_VARIANTS_20261024.md) for current coverage.
+Exact component hashes, the DV1 FPGA source overlay and corresponding source
+archives are recorded in the installed manifest and BUILD_PROVENANCE.json.
+The existing NAND implementation remains; Band Brothers DX is excluded.
+The later NSMB intro-sky report was not confirmed and investigation is paused;
+no rendering change was made for that report. Static timing remains unresolved.
+Archive and staged installation receipts accompany the packaged candidate.
+
+## Historical qualification: original rc.10 package
+
+The remaining original measurements and component table describe earlier
+package revisions. Current component identity and regional coverage are above.
+
 rc.10 retains the accepted **Performance RC1 revision 2** rendering algorithms,
 FPGA and runtime settings. Package revision 9 expands the six exact-identity
 movie profiles to every MODS/VXDS asset found in their verified cartridges.
@@ -65,7 +94,7 @@ background corruption remains unverified and unresolved.
 See the included `PERFORMANCE_RC1_VALIDATION_20261023.md` and
 `NSMB_SPEED_BETA_VALIDATION_20261023.md` for controls and rejected candidates.
 
-## Supported accelerated movies — current package
+## Supported accelerated movies — original package
 
 | Title | Verified code/revision | Accelerated asset coverage |
 | --- | --- | --- |

@@ -7,11 +7,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'Scripts/.NDS_Standalone/'
 VERSION = 'v0.9.0-rc.10'
 PINS = {
-    'nds_standalone_host': 'c9e4f3a6b4aa1ec4bad8a120fc4c21229dc6ab92dfeef4d7db6206bc3661e118',
-    'NDS_Standalone.rbf': '4e83635200fd64441e0e5055eb707f652e2cb3ea4cdd76807e8706c4b99a5e26',
-    'support/nds_hybrid_3d_service': '1ad26b0fefaba899227b200c63983c70c5da49f6752c18cc3f19ad9bbf51d1cc',
-    'supervisor.py': '92ebab31844c099f818e7734a2fc7b35cc1a6460ebe8bf461d67c3e30c7d52aa',
+    'nds_standalone_host': '6fdac10a4cd4f16800992a1ff13d84ef2a4bf65b84e2977aae938beaafaf0bc7',
+    'NDS_Standalone.rbf': '6bd1daf846ef133266fc27e79b466b5d44f902a0e7123a138b03c5225e4ee2a4',
+    'support/nds_hybrid_3d_service': 'cb674cc92c590197b5039c600c8873cd0a37d8b534979877818b526c78a91582',
+    'supervisor.py': '3b12ee05893d71332282b22ee00d5577b5323198f1db05d8f6509e859cb1ebe3',
 }
+
 DOCS = {'README.md': 'docs/STANDALONE_INSTALL_README.md',
         'RELEASE_NOTES.md': 'docs/RELEASE_NOTES_V090_RC10.md',
         'QUICK_START.txt': 'docs/STANDALONE_QUICK_START.txt',
@@ -20,6 +21,10 @@ DOCS = {'README.md': 'docs/STANDALONE_INSTALL_README.md',
         'RC10_LOADING_FOLLOWUP.md': 'docs/release/RC10_LOADING_FOLLOWUP.md',
         'RC10_LOADING_VALIDATION.json': 'docs/release/RC10_LOADING_VALIDATION.json',
         'RC10_MOVIE_ASSETS.json': 'docs/release/RC10_MOVIE_ASSETS.json',
+        'ALL_FMV_CACHE_20261024.md': 'docs/release/ALL_FMV_CACHE_20261024.md',
+        'ALL_FMV_CACHE_RESULTS.json': 'docs/release/ALL_FMV_CACHE_RESULTS.json',
+        'SPEEDUP_VARIANTS_20261024.md': 'docs/release/SPEEDUP_VARIANTS_20261024.md',
+        'SPEEDUP_VARIANTS_RESULTS.json': 'docs/release/SPEEDUP_VARIANTS_RESULTS.json',
         'LICENSE.txt': 'LICENSE.txt'}
 
 def sha(data): return hashlib.sha256(data).hexdigest()
@@ -48,7 +53,7 @@ def assemble(kit):
     need(b'Speed hacks' not in files[PREFIX+'nds_standalone_host'], 'Visible speed menu')
     need(files[PREFIX+'NDS_speed.cfg']==b'NDS-SpeedHacks-v1\n5\n', 'Wrong automatic preset')
     for out, source in DOCS.items(): files[out] = (ROOT/source).read_bytes(); modes[out]=0o644
-    approved_notes = '371d7f991f2b448c0af60532d132147fe7debba4c66029d8b9c5d7092ba2f4a9'
+    approved_notes = '8e41c5dd241b80ded83f1852d8595e4749fbfe8193f6f0f21c8cfba12848e988'
     for n in ('README.md','RELEASE_NOTES.md'):
         need(sha(files[n])==approved_notes, 'Approved release text changed: '+n)
     need(sha((ROOT/'README.md').read_bytes())==approved_notes, 'Repository README changed')
@@ -59,8 +64,7 @@ def assemble(kit):
     need(not git('status','--porcelain'), 'Commit release source before packaging')
     source_name='source/NDS4MiSTer-rc10-source.tar.gz'
     files[PREFIX+source_name]=git('archive','--format=tar.gz','HEAD')
-    fpga_name='source/NDS4MiSTer-rc10-fpga-5924000.tar.gz'
-    files[PREFIX+fpga_name]=git('archive','--format=tar.gz','5924000f9d422fc624fdc0aecad424eab5ca9325')
+    fpga_name='source/NDS4MiSTer-DV1-fpga-source.tar.gz'
     fm=json.loads(files[PREFIX+'fpga-source-manifest.json'])
     # Confirm every RTL, constraint and FPGA build source in the frozen manifest.
     checked=0
@@ -68,73 +72,62 @@ def assemble(kit):
         for name,h in fm['frozen_input_sha256'].items():
             if not (name.startswith(('rtl/','fpga/')) or Path(name).suffix in ('.qsf','.sdc','.qip')): continue
             data=t.extractfile(name).read()
-            if name=='fpga/mister_nitro_console_island/NDS4MiSTer.qsf': data+=fm['build_override'].encode()
             need(sha(data)==h,'FPGA frozen source mismatch: '+name); checked+=1
     source_readme='''# rc.10 corresponding source
 
-The FPGA and renderer are unchanged from the original rc.10 release. The host
-adds loading activity and elapsed time, with bounded framed-stream completion
-before CPU release. The loader streams qualified relocated cartridges, keeps a
-verified local cache and avoids recompressing NSMB's patched ARM9 image.
-Rebuild the renderer using `RC10-renderer-build.json`, the supplied profile archive
-and FFmpeg build instructions. Build the loading-progress host from
-`NDS4MiSTer-rc10-source.tar.gz` with tools/standalone_host/build.sh.
-The recorded GCC 13.3 Cortex-A9 static command is unchanged.
+This distribution packages the accepted all-FMV cache beta without rebuilding
+or changing its host, renderer, FPGA, movie profiles or runtime settings.
 
-- `NDS4MiSTer-rc10-source.tar.gz`: release documentation, packaging recipe and
-  current host, loader and renderer source, including guarded whole-movie-inventory
-  support and the loading/cache follow-up. The existing menu layout is retained.
-- `NDS4MiSTer-Performance-RC1-runtime.tar.gz`: exact prior host/renderer source used
-  for the earlier accepted build; the current host is in the rc.10 source archive. Follow `BUILD_PERFORMANCE_RC.md`, compiler profile
-  archive, `RC1-build-provenance.json` and `RC1-r2-host-provenance.json`.
-- `NDS4MiSTer-rc10-fpga-5924000.tar.gz`: FPGA source at the exact selected
-  commit. Append `build_override` from `../fpga-source-manifest.json` to
-  `fpga/mister_nitro_console_island/NDS4MiSTer.qsf` before building. The packaging
-  audit compares all frozen RTL/FPGA inputs. Static timing is not closed.
-- Other archives and documents are historical corresponding-source records.
-  Their old private launcher instructions do not apply to this release.
+- NDS4MiSTer-rc10-source.tar.gz contains the release packaging recipe and current
+  host, loader and renderer source. Build the host with tools/standalone_host/build.sh.
+- BUILD_ALL_FMV_CACHE.txt identifies the exact tested host and loader source.
+- BUILD_SPEEDUP_VARIANTS.txt identifies the retained regional renderer source.
+  Use RC10-renderer-build.json, native-training-profiles.tar and the FFmpeg build
+  instructions. GCC 13.3 LTO/PGO settings are retained.
+- NDS4MiSTer-DV1-fpga-source.tar.gz contains the frozen FPGA source with DV1
+  overlays. Its QSF already includes the recorded build overrides; do not append
+  them again. Packaging checks every frozen RTL/FPGA input. Static timing is
+  not closed.
+- Other archives document earlier corresponding source. Their private launcher
+  instructions do not apply to this release.
 
-To reproduce the distribution, extract this release source and run
-`python3 tools/package_rc10_release.py --runtime-kit /path/to/extracted/Scripts/.NDS_Standalone --out-dir /path/to/output`
-from its Git checkout. The recipe accepts only hash-pinned qualified runtime
-inputs; no cartridge, save, controller map or BIOS/firmware dump is needed.
-The repository commit is recorded in `../BUILD_PROVENANCE.json`. Binary rebuild
-instructions and dependency licenses are retained alongside the source.
+To reproduce the package from this source's Git checkout, run:
+python3 tools/package_rc10_release.py --runtime-kit /path/to/extracted/Scripts/.NDS_Standalone --out-dir /path/to/output
+
+The recipe accepts only hash-pinned runtime inputs; no cartridges, saves or personal settings
+are needed. BUILD_PROVENANCE.json records the packaging revision and binary
+provenance. Publication is a separate step.
 '''
     files[PREFIX+'source/BUILD_RC10.md']=source_readme.encode()
     m=json.loads((ROOT/'docs/release/RC10_RUNTIME_MANIFEST.json').read_text())
+    m.pop('private_beta_name',None)
+    m.pop('private_test_ready',None)
     m.update(name='NDS4MiSTer',version=VERSION,release_channel='release candidate',
-             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=10,
-             packaging_source_revision=revision,helper_source_revision=revision,
-             source_revision=revision,source_commit=revision,runtime_source_revision=revision,
-             supervisor_source_revision=revision,loader_source_revision=revision,
+             remote_kit='/media/fat/Scripts/.NDS_Standalone',package_revision=11,
+             packaging_source_revision=revision,source_revision=revision,source_commit=revision,
              runtime_source_archive=source_name,source_archive_sha256=sha(files[PREFIX+source_name]),
-             baseline_runtime_source_archive="source/NDS4MiSTer-Performance-RC1-runtime.tar.gz",
              launcher_sha256=sha(files[launcher]),
              installation_scope='Normal standalone kit; ordinary saves shared; existing display/input/clock settings retained.',
-             hardware_validation='Original rc.10 validation plus loading/cache image equivalence, fault recovery, both Ni no Kuni openings and a short NSMB regression check; see VALIDATION_RC10.md and RC10_LOADING_VALIDATION.json.',
+             hardware_validation='Tested all-FMV cache beta, regional speedup and DV1 qualification; see VALIDATION_RC10.md and included detailed records. Exact archive installation has a separate receipt.',
              public_release_qualified=False,
-             public_release_scope='Prepared release candidate with documented bounded validation and unresolved timing; publication is a separate action.',
-             dx_experiment_included=False,
-             launcher_change='Public wrapper selects the paired automatic movie launcher and streaming/cache modules in .NDS_Standalone.',
-             user_settings_included=False,
+             public_release_scope='Prepared release candidate with bounded validation and unresolved timing; publication is a separate action.',
+             dx_experiment_included=False,user_settings_included=False,
              release_performance_preset_included=True)
     for name in [source_name,fpga_name,'source/BUILD_RC10.md']:
         m['source_and_validation_sha256'][name]=sha(files[PREFIX+name])
     files[PREFIX+'manifest.json']=js(m)
     provenance={'version':VERSION,'packaging_source_revision':revision,
-                'runtime_binaries_changed_for_packaging':['nds_standalone_host (loading progress and bounded framed-stream completion)'],'runtime_pins':PINS,
-                'compared_with':'Original rc.10 package revision 9',
-                'host_source_revision':'a5ee96647e00c0fe912e2e3dad95a4de8db7301d',
-                'baseline_package':'Performance RC1 revision 2',
-                'host_change':'Loading ROM activity and elapsed time; validate framed writes and final completion before CPU/save commit; existing menu retained',
-                'renderer_change':'None from original rc.10 revision 9; identical binary and PGO settings',
-                'loader_change':'Single-pass source hashing and relocated streaming, SHA256-verified prepared-ROM cache, uncompressed patched NSMB ARM9',
+                'runtime_binaries_changed_for_packaging':[],'runtime_pins':PINS,
+                'compared_with':'Accepted all-FMV cache beta, source b9a8a5b273fa772e073e67064ba8e32cdc38e24b',
+                'baseline_zip_sha256':'1956f0c4a174964e2882a62c32ff63d4cfecb75bec9c5ea6b94d61210cff2c26',
+                'host_source_revision':m['host_source_revision'],
+                'renderer_source_revision':m['helper_source_revision'],
+                'loader_source_revision':m['loader_source_revision'],
                 'renderer_build_recipe':'source/RC10-renderer-build.json',
-                'baseline_zip_sha256':'a77fefbec42327d01fd92805b9c924056c638d52e2fa7698b2da69e41880c967',
                 'frozen_fpga_inputs_checked':checked,'fpga_code_commit':fm['code_commit'],
+                'fpga_overlay_commit':fm['overlay_commit'],
                 'dx_experiment_included':False,'static_timing_clean':False,
-                'validation':'VALIDATION_RC10.md, RC10_LOADING_FOLLOWUP.md, RC10_LOADING_VALIDATION.json and external RC10_INSTALL_VALIDATION.json receipt'}
+                'validation':'VALIDATION_RC10.md, ALL_FMV_CACHE_20261024.md, SPEEDUP_VARIANTS_20261024.md and external RC10_INSTALL_VALIDATION.json receipt'}
     files[PREFIX+'BUILD_PROVENANCE.json']=js(provenance)
     files[PREFIX+'SHA256SUMS']=''.join(sha(b)+'  '+n[len(PREFIX):]+'\n' for n,b in sorted(files.items()) if n.startswith(PREFIX)).encode()
     files['SHA256SUMS']=''.join(sha(b)+'  '+n+'\n' for n,b in sorted(files.items())).encode()
@@ -192,7 +185,7 @@ def main():
     need(not out.exists(),'Output already exists')
     with zipfile.ZipFile(out,'x',zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for n,b in sorted(files.items()):
-            i=zipfile.ZipInfo(n,(2026,10,23,0,0,0));i.create_system=3;i.compress_type=zipfile.ZIP_DEFLATED
+            i=zipfile.ZipInfo(n,(2026,10,24,0,0,0));i.create_system=3;i.compress_type=zipfile.ZIP_DEFLATED
             i.external_attr=(stat.S_IFREG|modes.get(n,0o644))<<16;z.writestr(i,b)
     with zipfile.ZipFile(out) as z:need(z.testzip() is None,'ZIP CRC failure')
     h=sha(out.read_bytes());out.with_suffix('.zip.sha256').write_text(h+'  '+out.name+'\n')
