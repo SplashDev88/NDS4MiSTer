@@ -509,9 +509,10 @@ always@(posedge clk_sys) begin
 `ifdef NDS_NATIVE_OUTPUTS
 			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
             if(cmd == 'h46 && cnt == 1) io_dout_sys <= 16'h5350; // split-output ABI v1
-            // Optional fourth response: native-pixel OSD ABI, bit0 active.
-            // Old hosts stop after the split capability and remain compatible.
-            if(cmd == 'h46 && cnt == 2) io_dout_sys <= 16'h4e50 | nds_dv1_native_osd;
+            // Restore the original finer MiSTer menu grid. Keep the native
+            // video/rotation gate above intact, but do not advertise a DS-pixel
+            // menu: the host must retain the receiver's legacy OSD sampling flag.
+            if(cmd == 'h46 && cnt == 2) io_dout_sys <= 16'h4e50;
 `endif
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
@@ -1692,7 +1693,7 @@ nds_native_osd_memory nds_osd_memory (
 // unreachable. HDMI keeps the generic22-bit counters and all geometries.
 // Never alter the shared legacy analog raster. The correction is allowed
 // only while HDMI uses Direct Video and analog has its own raster or scaler.
-osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(1)) vga_osd
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(0)) vga_osd
 (
 	.clk_sys(clk_sys),
 
