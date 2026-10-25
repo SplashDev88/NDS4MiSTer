@@ -1378,13 +1378,19 @@ class Host {
       spi.cmd(Spi::OSD, 0x40); // Hide both outputs and reset both row-height latches.
       return;
     }
-    // Scaled HDMI follows Video Rotation. Native analog (and native Direct
-    // Video) retains the unrotated game image, so its OSD stays upright.
-    // VGA scaler mode already uses the HDMI image including its HDMI OSD.
+    // Scaled HDMI follows Video Rotation. DV1 also rotates its native digital
+    // picture, but uses the VGA OSD command channel. Admit that path only on
+    // the split-output core and the same DV1 flags as sys_top. Its independent
+    // analog OSD is fixed upright in RTL and ignores the rotation word.
+    // DVI, DV2, framebuffer and older cores retain the upright native menu.
     const unsigned rotation = (status >> 11) & 3;
     const uint16_t hdmi_rotation = rotation == 1 ? 3 : rotation == 2 ? 1 : 0;
+    const bool native_dv1 = video_flags_known && independent_outputs_supported &&
+        (video_flags & (1u << 10)) &&
+        !(video_flags & ((1u << 7) | (1u << 12) | (1u << 13)));
+    const uint16_t native_rotation = native_dv1 ? hdmi_rotation : 0;
     for (const auto &output : {std::pair{Spi::OSD_HDMI, hdmi_rotation},
-                              std::pair{Spi::OSD_ANALOG, uint16_t(0)}}) {
+                              std::pair{Spi::OSD_ANALOG, native_rotation}}) {
       spi.begin(output.first, message_window ? 0x49 : 0x41);
       for (int i = 0; i < 4; i++)
         spi.word(0);
