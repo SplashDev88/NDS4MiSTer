@@ -3,7 +3,7 @@
 // Each font pixel therefore has the same aspect as a game pixel, including
 // after external rotation. Bitmap RAM and the four-clock RGB pipeline are
 // shared with the existing OSD; no framebuffer or extra bitmap is needed.
-module nds_dv1_osd_raster (
+module nds_dv1_osd_raster #(parameter COMPACT_WIDTH = 0) (
     input wire clk, ce, de, vs, enable, info,
     input wire [1:0] rotation, // applied game rotation: 1=CW, 2=CCW
     input wire [11:0] info_x, info_y, width, height,
@@ -23,13 +23,17 @@ module nds_dv1_osd_raster (
         rotation == 2 ? source_width - 1'b1 - next_y : {2'b0,next_x};
     wire [11:0] source_y = rotation == 1 ? source_height - 1'b1 - next_x :
         rotation == 2 ? {2'b0,next_x} : {2'b0,next_y};
-    wire [11:0] left = info ? info_x : source_width >= width ?
-                      (source_width - width) >> 1 : 12'd0;
+    // Retain the side menu's 128-game-pixel footprint. Both bitmap columns
+    // of each pair are read together and averaged in the OSD color stage.
+    wire [11:0] display_width = COMPACT_WIDTH ? width >> 1 : width;
+    wire [11:0] left = info ? info_x : source_width >= display_width ?
+                      (source_width - display_width) >> 1 : 12'd0;
     wire [11:0] top = info ? info_y : source_height >= height ?
                      (source_height - height) >> 1 : 12'd0;
     wire [11:0] bx = source_x - left;
     wire [11:0] by = source_y - top;
-    assign address = {by[7:3],bx[7:0]};
+    wire [7:0] bitmap_x = COMPACT_WIDTH ? {bx[6:0],1'b0} : bx[7:0];
+    assign address = {by[7:3],bitmap_x};
     always @(posedge clk) begin
         de_d <= de;
         vs_d <= vs;
@@ -48,6 +52,6 @@ module nds_dv1_osd_raster (
         // sample, so RGB/DE/HS/VS keep their original four-clock latency.
         bit_select <= by[2:0];
         active <= enable && de && canvas_width != 0 && canvas_height != 0 &&
-                  bx < width && by < height;
+                  bx < display_width && by < height;
     end
 endmodule

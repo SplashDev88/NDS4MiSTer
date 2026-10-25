@@ -1,5 +1,5 @@
 `timescale 1ns/1ps
-module tb_dv1_osd;
+module tb_dv1_osd #(parameter COMPACT = 0);
     reg clk=0;
     always #5 clk=~clk;
     reg io_osd=0,io_strobe=0;
@@ -10,19 +10,19 @@ module tb_dv1_osd;
     wire [3:0] actual_ctl,reference_ctl;
     wire we,re,busy;
     wire [12:0] wa,ra;
-    wire [7:0] wd,q;
+    wire [7:0] wd,q,pair_q;
     wire ar,scheduled;
     wire [12:0] aa;
     wire [7:0] aq;
     nds_native_osd_memory memory(.clk,.write_enable(we),.write_address(wa),.write_data(wd),
-        .busy,.digital_read(re),.digital_address(ra),.digital_q(q),
+        .busy,.digital_read(re),.digital_address(ra),.digital_q(q),.digital_pair_q(pair_q),
         .analog_read(ar && scheduled),.analog_address(aa),.analog_q(aq));
-    osd #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512),.OSD_EXTERNAL_BUFFER(1),.OSD_NATIVE_PIXELS(1)) dut (
+    osd #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512),.OSD_EXTERNAL_BUFFER(1),.OSD_NATIVE_PIXELS(1),.OSD_NATIVE_COMPACT(COMPACT)) dut (
         .clk_sys(clk),.clk_video(clk),.io_osd,.io_strobe,.io_din,
         .din(rgb),.de_in(de),.hs_in(hs),.vs_in(vs),.dout(actual),
         .de_out(actual_ctl[0]),.hs_out(actual_ctl[1]),.vs_out(actual_ctl[2]),.osd_status(actual_ctl[3]),
         .buffer_we(we),.buffer_waddr(wa),.buffer_wdata(wd),
-        .buffer_re(re),.buffer_raddr(ra),.buffer_q(q),.buffer_scheduled(),
+        .buffer_re(re),.buffer_raddr(ra),.buffer_q(q),.buffer_pair_q(pair_q),.buffer_scheduled(),
         .native_pixel_enable(native_enable),.native_pixel_ce(ce),.native_rotation(applied_rotation));
     osd_reference #(.OSD_COUNTER_BITS(14),.OSD_MAX_LINES(512)) old (
         .clk_sys(clk),.clk_video(clk),.io_osd,.io_strobe,.io_din,
@@ -54,6 +54,7 @@ module tb_dv1_osd;
     reg [1:0] applied_rotation=0;
     reg [26:0] expected[0:3];
     integer checked=0,col0=0,col255=0;
+    localparam MENU_WIDTH = COMPACT ? 128 : 256;
     function automatic [7:0] content(input integer x,y);
         content=(y*17)^x^(x>>3);
     endfunction
@@ -64,18 +65,25 @@ module tb_dv1_osd;
     endfunction
     always @(posedge clk) begin : oracle
         reg [23:0] want;
-        reg [7:0] bits;
+        reg [7:0] bits,partner_bits;
+        reg [23:0] partner_color;
         integer x,y,sx,sy,sw,sh;
         want=rgb;
         sw=applied_rotation==0?w:h;sh=applied_rotation==0?h:w;
         sx=applied_rotation==1?py:applied_rotation==2?sw-1-py:px;
         sy=applied_rotation==1?sh-1-px:applied_rotation==2?px:py;
-        x=sx-(sw-256)/2;y=sy-(sh-rows*8)/2;
-        if(visible && de && x>=0 && x<256 && y>=0 && y<rows*8) begin
-            bits=content(x,y/8);
+        x=sx-(sw-MENU_WIDTH)/2;y=sy-(sh-rows*8)/2;
+        if(visible && de && x>=0 && x<MENU_WIDTH && y>=0 && y<rows*8) begin
+            bits=content(COMPACT ? 2*x : x,y/8);
             want=overlay(rgb,bits[y%8]);
+            if(COMPACT) begin
+                partner_bits=content(2*x+1,y/8);
+                partner_color=overlay(rgb,partner_bits[y%8]);
+                for(integer channel=0;channel<3;channel++)
+                    want[8*channel+:8]=8'((int'(want[8*channel+:8])+int'(partner_color[8*channel+:8]))/2);
+            end
             if(checking && native_enable && x==0) col0=col0+1;
-            if(checking && native_enable && x==255) col255=col255+1;
+            if(checking && native_enable && x==MENU_WIDTH-1) col255=col255+1;
         end
         expected[3]<=expected[2];expected[2]<=expected[1];expected[1]<=expected[0];
         expected[0]<={vs,hs,de,want};

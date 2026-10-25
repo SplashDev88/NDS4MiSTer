@@ -25,6 +25,7 @@ module osd
     output wire buffer_re,
     output wire [12:0] buffer_raddr,
     input wire [7:0] buffer_q,
+    input tri0 [7:0] buffer_pair_q,
     output wire buffer_scheduled,
     input tri0 native_pixel_enable,
     input tri0 native_pixel_ce,
@@ -47,6 +48,9 @@ parameter  OSD_MAX_LINES = 0;
 // Only the native digital instance enables this option. Scaled HDMI and
 // the independent analog menu retain the original raster exactly.
 parameter  OSD_NATIVE_PIXELS = 0;
+// Paired-column coverage preserves the compact side menu's width and thin
+// strokes, including inverse selection. Requires the external paired RAM.
+parameter  OSD_NATIVE_COMPACT = 0;
 // Optional legacy-font widening for dual-screen DV1. Other instances retain
 // their original sampling. No extra bitmap or video pipeline stage is used.
 parameter  OSD_DOUBLE_WIDTH = 0;
@@ -144,7 +148,7 @@ wire [12:0] native_address;
 wire native_active;
 wire [2:0] native_bit;
 generate if (OSD_NATIVE_PIXELS) begin : native_raster
-    nds_dv1_osd_raster raster (
+    nds_dv1_osd_raster #(.COMPACT_WIDTH(OSD_NATIVE_COMPACT)) raster (
         .clk(clk_video), .ce(native_pixel_ce), .de(de_in), .vs(vs_in),
         .rotation(native_rotation),
         .enable(osd_enable), .info(info), .info_x(infox[11:0]), .info_y(infoy[11:0]),
@@ -362,6 +366,13 @@ always @(posedge clk_video) begin
         {{bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[2], nrdout1[23:19]},
          {bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[1], nrdout1[15:11]},
          {bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[0], nrdout1[7:3]}};
+    if(native_pixels && OSD_NATIVE_COMPACT && native_active &&
+       (bitmap_byte[native_bit] != buffer_pair_q[native_bit]))
+        // Half coverage is the arithmetic midpoint of the two existing
+        // OSD colors. Neither white strokes nor inverse black strokes vanish.
+        rdout2 <= {({2'b00,OSD_COLOR[2],nrdout1[23:19]} + 8'd96),
+                   ({2'b00,OSD_COLOR[1],nrdout1[15:11]} + 8'd96),
+                   ({2'b00,OSD_COLOR[0],nrdout1[7:3]} + 8'd96)};
 	rdout3  <= rdout2;
 
 	de1 <= de_in; de2 <= de1; de3 <= de2;

@@ -11,15 +11,24 @@ module nds_native_osd_memory (
     output wire busy,
     input wire digital_read,
     input wire [12:0] digital_address,
-    output reg [7:0] digital_q,
+    output wire [7:0] digital_q,
+    output wire [7:0] digital_pair_q,
     input wire analog_read,
     input wire [12:0] analog_address,
-    output reg [7:0] analog_q
+    output wire [7:0] analog_q
 );
     // The non-MENU core has 4096 addressable bitmap bytes. Bit12 must be
     // retained until validity is checked, so out-of-range SPI writes do not
     // alias the valid bitmap. Out-of-range reads are undefined, as before.
-    (* ramstyle = "no_rw_check" *) reg [7:0] bitmap[0:4095];
+    // Adjacent columns share one word, retaining the same 4 KiB bitmap.
+    // Byte enables preserve both legacy readers and writes. The companion
+    // column has the same latency, without another RAM port or video stage.
+    (* ramstyle = "no_rw_check" *) reg [15:0] bitmap[0:2047];
+    reg [15:0] digital_word, analog_word;
+    reg digital_lane, analog_lane;
+    assign digital_q = digital_lane ? digital_word[15:8] : digital_word[7:0];
+    assign digital_pair_q = digital_lane ? digital_word[7:0] : digital_word[15:8];
+    assign analog_q = analog_lane ? analog_word[15:8] : analog_word[7:0];
     reg [20:0] queued0,queued1,queued2,queued3;
     reg [1:0] wp=0,rp=0;
     reg [2:0] count=0;
@@ -30,9 +39,17 @@ module nds_native_osd_memory (
     // Leave two entries for the accepted word and acknowledgement pipeline.
     assign busy = count >= 2;
     always @(posedge clk) begin
-        if (digital_read) digital_q <= bitmap[digital_address[11:0]];
-        if (analog_read) analog_q <= bitmap[port_b_address];
-        else if (take && !front[20]) bitmap[port_b_address] <= front[7:0];
+        if (digital_read) begin
+            digital_word <= bitmap[digital_address[11:1]];
+            digital_lane <= digital_address[0];
+        end
+        if (analog_read) begin
+            analog_word <= bitmap[port_b_address[11:1]];
+            analog_lane <= port_b_address[0];
+        end else if (take && !front[20]) begin
+            if (port_b_address[0]) bitmap[port_b_address[11:1]][15:8] <= front[7:0];
+            else bitmap[port_b_address[11:1]][7:0] <= front[7:0];
+        end
         if (accept) begin
             case(wp)
                 0: queued0 <= {write_address,write_data};
