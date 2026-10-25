@@ -16,7 +16,7 @@ import re
 import struct
 import sys
 from prepare import CHUNK, ROOT, require
-from stream_load import transfer
+from stream_load import transfer, transfer_limit
 
 DEFAULT_ROOT = Path('/media/fat/.cache/NDS4MiSTer/prepared-roms')
 BUDGET = 2 * 1024**3
@@ -102,27 +102,29 @@ class Store:
                 f.close()
             return None
 
-    def reserve(self):
+    def reserve(self, required=MAX_ENTRY):
+        require(0 < required <= MAX_ENTRY, 'invalid cache reservation')
         entries = sorted((p for p in self.root.glob('*.data') if NAME.fullmatch(p.name)),
                          key=lambda p: p.with_suffix('.json').stat().st_mtime_ns)
         used = sum(p.stat().st_size for p in entries)
         def free():
             s = os.statvfs(self.root)
             return s.f_bavail*s.f_frsize
-        while entries and (used+MAX_ENTRY > BUDGET or free() < MAX_ENTRY+RESERVE):
+        while entries and (used+required > BUDGET or free() < required+RESERVE):
             p = entries.pop(0)
             used -= p.stat().st_size
             p.with_suffix('.json').unlink()
             p.unlink()
-        return used+MAX_ENTRY <= BUDGET and free() >= MAX_ENTRY+RESERVE
+        return used+required <= BUDGET and free() >= required+RESERVE
 
 
 class Writer:
-    def __init__(self, store):
+    def __init__(self, store, required=MAX_ENTRY):
         self.store, self.file = store, None
+        self.max_size = required
         self.size, self.hash = 0, hashlib.sha256()
         self.temp = store.path('.tmp')
-        if store.reserve():
+        if store.reserve(required):
             self.file = self.temp.open('wb', buffering=CHUNK)
         else:
             log('disabled for this load: insufficient free space')
@@ -144,7 +146,7 @@ class Writer:
             return
         try:
             header = struct.pack('<QI', at, len(data))
-            require(self.size+len(header)+len(data) <= MAX_ENTRY, 'cache exceeds size bound')
+            require(self.size+len(header)+len(data) <= self.max_size, 'cache exceeds size bound')
             for b in (header, data):
                 self.file.write(b)
                 self.hash.update(b)
@@ -185,10 +187,11 @@ class Writer:
             self.abort()
 
 
-def replay(source, entry, emit):
+def replay(source, entry, emit, image_size=None):
     f, meta = entry
     before = os.fstat(f.fileno())
-    limit = min(source.size, (464 if source.size > 256*1024**2 else 252)*1024**2)
+    image_size = source.size if image_size is None else image_size
+    limit = transfer_limit(image_size)
     count, h = 0, hashlib.sha256()
     while count < meta['bytes']:
         header = f.read(12)
@@ -203,7 +206,7 @@ def replay(source, entry, emit):
         emit(struct.pack('<Qii', at, n, 10))
         emit(data)
         count += 12+n
-        emit(struct.pack('<Qii', count*source.size//meta['bytes'], 0, 7))
+        emit(struct.pack('<Qii', count*image_size//meta['bytes'], 0, 7))
     require(not f.read(1) and stat_identity(before) == stat_identity(os.fstat(f.fileno())) and
             h.hexdigest() == meta['sha256'], 'cache verification failed')
     source.unchanged()
@@ -212,6 +215,8 @@ def replay(source, entry, emit):
 def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
     root = root if root is not None else os.environ.get('NDS_ROM_CACHE_DIR', str(DEFAULT_ROOT))
     store, writer, recovery = None, None, False
+    image_size = plan[0]['output_size']
+    limit = transfer_limit(image_size)
     kwargs = {} if assembler is None else {'assembler': assembler}
     try:
         if root and root != 'off':
@@ -223,38 +228,43 @@ def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
             entry = store.entry()
             if entry:
                 source.unchanged()
-                emit(struct.pack('<Qii', source.size, 0, 9))
+                emit(struct.pack('<Qii', image_size, 0, 9))
                 try:
-                    replay(source, entry, emit)
+                    replay(source, entry, emit, image_size)
                 except (ValueError, OSError) as error:
                     log('invalid; rebuilding from original: '+str(error))
                     store.invalidate()
                     # Previous cache bytes were provisional. Clear ALL of them
                     # before a fresh full-source verification/preparation.
-                    emit(struct.pack('<Qii', source.size, 0, 7))
+                    emit(struct.pack('<Qii', image_size, 0, 7))
                     emit(struct.pack('<Qii', 0, 0, 11))
-                    limit = min(source.size, (464 if source.size > 256*1024**2 else 252)*1024**2)
                     for at in range(0, limit, CHUNK):
                         data = b'\xff'*min(CHUNK, limit-at)
                         emit(struct.pack('<Qii', at, len(data), 10))
                         emit(data)
                     recovery = True
                 else:
-                    emit(struct.pack('<Qii', source.size, 0, 7))
+                    emit(struct.pack('<Qii', image_size, 0, 7))
                     emit(struct.pack('<Qii', 0, 0, 11))
-                    limit = min(source.size, (464 if source.size > 256*1024**2 else 252)*1024**2)
                     emit(struct.pack('<Qii', limit, 0, 8))
                     try:
                         os.utime(store.path('.json'), None)
                     except OSError:
                         pass
                     log('hit verified; original metadata unchanged; '+plan[0]['key'])
+                    print('FMV_AUTO_APPLIED '+plan[0]['key']+' verified local cache; save identity retained',
+                          file=sys.stderr, flush=True)
                     return
                 finally:
                     entry[0].close()
             try:
                 store.invalidate()
-                writer = Writer(store)
+                # Full images have a known upper bound; don't evict half a GiB
+                # for a 128 MiB title. Compacted writes retain their old bound.
+                patches = 2+3*len(plan[0].get('overlays', []))+2*len(plan[0].get('movies', []))
+                required = MAX_ENTRY if plan[1] is not None else min(MAX_ENTRY,
+                    limit+12*((limit+CHUNK-1)//CHUNK+2*patches+1))
+                writer = Writer(store, required)
             except OSError as error:
                 log('cannot create entry: '+str(error))
         transfer(source, plan, emit, recovery=recovery,

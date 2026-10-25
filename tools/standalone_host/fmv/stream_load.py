@@ -7,7 +7,12 @@ is hashed on a fresh preparation; an optional observer stores verified writes.
 import hashlib
 import struct
 import sys
-from prepare import CHUNK, CompactedFiles, assemble, require
+from prepare import CHUNK, CompactedFiles, VirtualRom, assemble, require
+
+
+def transfer_limit(size):
+    require(512 <= size <= 512*1024**2, 'invalid prepared cartridge size')
+    return min(size, (464 if size > 256*1024**2 else 252)*1024**2)
 
 
 def select_plan(source, profiles):
@@ -15,22 +20,78 @@ def select_plan(source, profiles):
     matches = []
     for profile in profiles:
         if (profile['code_hex'] != header[12:16].hex() or profile['revision'] != header[30]
-                or profile['source_size'] != source.size or profile['output_size'] != source.size
-                or 'compact_files' not in profile):
+                or profile['source_size'] != source.size):
             continue
         try:
-            backing = CompactedFiles(source, profile['compact_files'], profile['movies'])
+            transfer_limit(profile['output_size'])
+            if 'compact_files' in profile:
+                require(profile['output_size'] == source.size, 'expanded compacted cartridge')
+                backing = CompactedFiles(source, profile['compact_files'], profile['movies'])
+            else:
+                backing = None
         except ValueError:
             continue
         matches.append((profile, backing))
-    # The FAT identifies a relocation plan, never permission to install hooks.
+    # Header/FAT matches select a cache namespace, never permission to patch.
     # Full original SHA-256 is checked after the sequential copy, before patches.
     return matches[0] if len(matches) == 1 else None
+
+
+def transfer_image(source, profile, emit, assembler, observe, prepared, recovery):
+    """Cache other qualified images, including cartridges expanded by movies.
+
+    Fresh failures retain the original cartridge and its original size. After
+    a corrupt cache has already announced a size, reconstruction must qualify
+    that same image or fail closed; never change the parent's reserved aperture.
+    """
+    size = profile['output_size']
+    qualified = False
+    def progress(n):
+        emit(struct.pack('<Qii', size if recovery else min(n, size), 0, 7))
+    try:
+        require(source.sha256(progress) == profile['source_sha256'], 'cartridge revision/content differs')
+        image = assembler(source, profile, progress=progress)
+        require(image.size == size, 'prepared cartridge size differs')
+        qualified = True
+    except (ValueError, KeyError, IndexError, struct.error, OSError) as error:
+        source.unchanged()
+        if recovery:
+            raise ValueError('cache recovery could not qualify original: '+str(error)) from error
+        image = VirtualRom(source, source.size).finish()
+        print('FMV_AUTO_FALLBACK '+str(error), file=sys.stderr, flush=True)
+    size = image.size
+    limit = transfer_limit(size)
+    # The excluded upper aperture belongs to graphics/Linux, even on cache hits.
+    for block in image.blocks(limit, size):
+        require(block == b'\xff'*len(block), 'prepared data exceeds cartridge memory')
+    source.unchanged()
+    if not recovery:
+        emit(struct.pack('<Qii', size, 0, 9))
+    at = 0
+    for block in image.blocks(0, limit):
+        require(0 < len(block) <= CHUNK and at <= limit-len(block), 'invalid prepared block')
+        emit(struct.pack('<Qii', at, len(block), 10))
+        emit(block)
+        if qualified:
+            observe(at, block)
+        at += len(block)
+        emit(struct.pack('<Qii', size if recovery else at*size//limit, 0, 7))
+    require(at == limit, 'incomplete prepared image')
+    source.unchanged()
+    if qualified:
+        prepared()
+        print('FMV_AUTO_APPLIED '+profile['key']+' verified image; save identity retained',
+              file=sys.stderr, flush=True)
+    if not recovery:
+        emit(struct.pack('<Qii', 0, 0, 11))
+    emit(struct.pack('<Qii', limit, 0, 8))
 
 
 def transfer(source, plan, emit, assembler=assemble, observe=lambda at, data: None,
              prepared=lambda: None, recovery=False):
     profile, backing = plan
+    if backing is None:
+        return transfer_image(source, profile, emit, assembler, observe, prepared, recovery)
     limit = min(source.size, (464 if source.size > 256*1024*1024 else 252)*1024*1024)
     spans = sorted((origin, origin+b-a, a) for a, b, origin in backing.spans
                    if isinstance(origin, int))
