@@ -33,25 +33,33 @@ MODES = {
 
 def assemble(source, mode, progress=lambda n: None):
     require(mode in MODES, 'unknown NSMB experiment mode')
-    require(source.size == 33554432, 'unqualified NSMB cartridge size')
     header = bytearray(source.read(0, 512))
-    require(header[12:16] == b'A2DE' and header[30] == 0,
-            'unqualified NSMB region or revision')
-    require(source.sha256(progress) == SOURCE_SHA256, 'unqualified NSMB cartridge hash')
     offset, entry, address, length = struct.unpack_from('<4I', header, 0x20)
-    require((offset, entry, address, length) == (0x4000, 0x02000800, 0x02000000, 389028),
-            'unexpected NSMB ARM9 layout')
     raw = source.read(offset, length)
     registry = json.loads((Path(__file__).parent/'nsmb_hooks.json').read_text())
     profile = select_profile(registry, header, raw)
     require(profile is not None, 'no game-code/ARM9-CRC32 hook profile')
-    require(digest(raw) == ARM9_SHA256, 'unexpected NSMB ARM9 code')
+    require(source.size == profile['source_size'] and
+            source.sha256(progress) == profile['source_sha256'],
+            'unqualified NSMB cartridge identity')
+    require([offset, entry, address, length] == profile['arm9_layout'] and
+            digest(raw) == profile['arm9_sha256'], 'unexpected NSMB ARM9 code/layout')
     arm = code.MainCodeFile(raw, address)
-    require(arm.codeSettingsOffs == 0xb48 and len(arm.sections) == 5,
-            'unexpected NSMB autoload table')
+    require(arm.codeSettingsOffs == profile['code_settings'] and
+            len(arm.sections) == profile['section_count'], 'unexpected NSMB autoload table')
     section = arm.sections[0]
-    require(section.ramAddress == address and section.implicit and len(section.data) == 275328,
-            'unexpected NSMB main section')
+    require(section.ramAddress == address and section.implicit and
+            len(section.data) == profile['main_bytes'], 'unexpected NSMB main section')
+    relocations = {int(k, 16): int(v, 16) for k, v in profile['relocations'].items()}
+    def relocated(blob):
+        out = bytearray(blob)
+        for at in range(0, len(blob), 4):
+            value = struct.unpack_from('<I', blob, at)[0]
+            if value in relocations:
+                struct.pack_into('<I', out, at, relocations[value])
+        return bytes(out)
+    lookup, skip, bones = map(relocated, (LOOKUP, SKIP_CLIENTS, BONE_READS))
+    sites = {h['flag']: h['address'] - address for h in profile['hooks']}
     data = bytearray(section.data)
     requested = MODES[mode]
     def main_memory(at, size):
@@ -66,22 +74,22 @@ def assemble(source, mode, progress=lambda n: None):
         require(ok, hook['flag']+': '+reason)
         qualified.add(hook['flag'])
     require(qualified == requested, 'missing requested hook guard')
-    require(digest(data[0xeb50:0xebe0]) == LOOKUP_SHA256 and
-            data[0x114dc:0x114e0] == bytes.fromhex('0a00a0e1') and
-            data[0xc00:0xc00+len(SKIP_CLIENTS)] == bytes(len(SKIP_CLIENTS)),
-            'NSMB patch sites differ')
+    lookup_at, idle_at, bone_at = (sites[k] for k in ('packet_lookup', 'idle_clients', 'bone_reads'))
+    require(digest(data[lookup_at:lookup_at+0x90]) == profile['lookup_sha256'] and
+            data[idle_at:idle_at+4] == bytes.fromhex('0a00a0e1') and
+            data[0xc00:0xc00+len(skip)] == bytes(len(skip)), 'NSMB patch sites differ')
     if 'packet_lookup' in requested:
-        data[0xeb50:0xeb50+len(LOOKUP)] = LOOKUP
+        data[lookup_at:lookup_at+len(lookup)] = lookup
     if 'idle_clients' in requested:
-        data[0xc00:0xc00+len(SKIP_CLIENTS)] = SKIP_CLIENTS
-        branch = 0xea000000 | (((0x02000c00-0x020114dc-8)//4) & 0xffffff)
-        struct.pack_into('<I', data, 0x114dc, branch)
+        data[0xc00:0xc00+len(skip)] = skip
+        branch = 0xea000000 | (((0xc00-idle_at-8)//4) & 0xffffff)
+        struct.pack_into('<I', data, idle_at, branch)
     if 'bone_reads' in requested:
-        require(data[0xd00:0xd00+len(BONE_READS)] == bytes(len(BONE_READS)),
+        require(data[0xd00:0xd00+len(bones)] == bytes(len(bones)),
                 'bone-read scratch space differs')
-        data[0xd00:0xd00+len(BONE_READS)] = BONE_READS
-        branch = 0xea000000 | (((0x02000d00-0x0201972c-8)//4) & 0xffffff)
-        struct.pack_into('<I', data, 0x1972c, branch)
+        data[0xd00:0xd00+len(bones)] = bones
+        branch = 0xea000000 | (((0xd00-bone_at-8)//4) & 0xffffff)
+        struct.pack_into('<I', data, bone_at, branch)
     section.data = data
     progress(source.size)
     # The DS loader accepts an uncompressed ARM9 (as used by our FMV profiles).

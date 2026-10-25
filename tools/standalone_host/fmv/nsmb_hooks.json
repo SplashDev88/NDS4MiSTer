@@ -27,7 +27,235 @@
           "guard_sha256": "4a359c92a13ea50a36866405a3b7771f147d27d29e19149efa9c61d1e8995cd1",
           "phase": "main_loaded"
         }
-      ]
+      ],
+      "source_size": 33554432,
+      "source_sha256": "9f67fef1b4c73e966767f6153431ada3751dc1b0da2c70f386c14a5e3017f354",
+      "arm9_sha256": "72a43c39fa4ab0e233519d5ecbcd90813117fdd2c330cbebd864331817ff695a",
+      "arm9_layout": [
+        16384,
+        33556480,
+        33554432,
+        389028
+      ],
+      "code_settings": 2888,
+      "section_count": 5,
+      "main_bytes": 275328,
+      "lookup_sha256": "d77ee1ce2b479ab985749ed886b2165b0d59a62f4583617c0536b1e931700fcb",
+      "relocations": {
+        "0x20887fc": "0x20887fc",
+        "0x20887f0": "0x20887f0",
+        "0x20888e0": "0x20888e0",
+        "0x2046e98": "0x2046e98",
+        "0x2088a54": "0x2088a54",
+        "0x2088a84": "0x2088a84",
+        "0x2011564": "0x2011564",
+        "0x20114e0": "0x20114e0",
+        "0x2019740": "0x2019740",
+        "0x212c9e4": "0x212c9e4",
+        "0x212c9f8": "0x212c9f8",
+        "0x212ca0c": "0x212ca0c",
+        "0x212ca34": "0x212ca34",
+        "0x212ca48": "0x212ca48",
+        "0x212ca5c": "0x212ca5c",
+        "0x212c9c0": "0x212c9c0",
+        "0x212ca70": "0x212ca70",
+        "0x212c98c": "0x212c98c",
+        "0x212c990": "0x212c990",
+        "0x212c994": "0x212c994",
+        "0x212c998": "0x212c998"
+      }
+    },
+    {
+      "game_code": "A2DP",
+      "revision": 0,
+      "arm9_crc32": "07dc30f6",
+      "hooks": [
+        {
+          "flag": "packet_lookup",
+          "address": 33616060,
+          "guard_bytes": 16,
+          "guard_sha256": "d79596e1819b1b322b0e4a7ec0e99d0a215ca485771b3b5304f1d3ef87a6c555",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "idle_clients",
+          "address": 33626684,
+          "guard_bytes": 16,
+          "guard_sha256": "f1ad3efa66ae254a180b3db3b32b7c6ca938f71c132e2241f979af4d3646ccaa",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "bone_reads",
+          "address": 33660160,
+          "guard_bytes": 16,
+          "guard_sha256": "4a359c92a13ea50a36866405a3b7771f147d27d29e19149efa9c61d1e8995cd1",
+          "phase": "main_loaded"
+        }
+      ],
+      "source_size": 33554432,
+      "source_sha256": "dd2e519a9e46134e213e6e63dd2b478d9a258627769b777baddb2316dc21b81d",
+      "arm9_sha256": "e8d8db8f8a719d4a53d386a4e03e67a1280449dcd493db5f0a5ff74853c01ebe",
+      "arm9_layout": [
+        16384,
+        33556480,
+        33554432,
+        465128
+      ],
+      "code_settings": 2888,
+      "section_count": 6,
+      "main_bytes": 210080,
+      "lookup_sha256": "0661c7607b2fe9cfa9d61a6ec2a1a7f38893ba493b60d21c0c944f6bcdd70171",
+      "relocations": {
+        "0x20887fc": "0x209ae78",
+        "0x20887f0": "0x209ae54",
+        "0x20888e0": "0x209af40",
+        "0x2046e98": "0x2036e2c",
+        "0x2088a54": "0x209b0b8",
+        "0x2088a84": "0x209b0e8",
+        "0x2011564": "0x2011ac4",
+        "0x20114e0": "0x2011a40",
+        "0x2019740": "0x2019d14",
+        "0x212c9e4": "0x213b6a4",
+        "0x212c9f8": "0x213b6b8",
+        "0x212ca0c": "0x213b6cc",
+        "0x212ca34": "0x213b6f4",
+        "0x212ca48": "0x213b708",
+        "0x212ca5c": "0x213b71c",
+        "0x212c9c0": "0x213b680",
+        "0x212ca70": "0x213b730",
+        "0x212c98c": "0x213b64c",
+        "0x212c990": "0x213b650",
+        "0x212c994": "0x213b654",
+        "0x212c998": "0x213b658"
+      }
+    },
+    {
+      "game_code": "A2DJ",
+      "revision": 0,
+      "arm9_crc32": "0a827112",
+      "hooks": [
+        {
+          "flag": "packet_lookup",
+          "address": 33614332,
+          "guard_bytes": 16,
+          "guard_sha256": "d79596e1819b1b322b0e4a7ec0e99d0a215ca485771b3b5304f1d3ef87a6c555",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "idle_clients",
+          "address": 33624968,
+          "guard_bytes": 16,
+          "guard_sha256": "e515e5610410253249cbf7a450468168ce65c3846d79f18b2dfa424c8f3feff2",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "bone_reads",
+          "address": 33658236,
+          "guard_bytes": 16,
+          "guard_sha256": "4a359c92a13ea50a36866405a3b7771f147d27d29e19149efa9c61d1e8995cd1",
+          "phase": "main_loaded"
+        }
+      ],
+      "source_size": 33554432,
+      "source_sha256": "331e7e9d3f409e5b47f4c56b977dbd5b51cc2fa014855042cbaaf823580f47d1",
+      "arm9_sha256": "a46c66c074d179880aa1b00b35bb8e4f84f781bc2922b0b72773cec4f3384438",
+      "arm9_layout": [
+        16384,
+        33556480,
+        33554432,
+        388004
+      ],
+      "code_settings": 2888,
+      "section_count": 5,
+      "main_bytes": 273120,
+      "lookup_sha256": "77e36dcef67cb82b2e03ba1e3223b779dfc6228c4115c4c3fc0140858c58d1cd",
+      "relocations": {
+        "0x20887fc": "0x2087e1c",
+        "0x20887f0": "0x2087e10",
+        "0x20888e0": "0x2087f00",
+        "0x2046e98": "0x2046480",
+        "0x2088a54": "0x2088074",
+        "0x2088a84": "0x20880a4",
+        "0x2011564": "0x2011410",
+        "0x20114e0": "0x201138c",
+        "0x2019740": "0x2019590",
+        "0x212c9e4": "0x2127f04",
+        "0x212c9f8": "0x2127f18",
+        "0x212ca0c": "0x2127f2c",
+        "0x212ca34": "0x2127f54",
+        "0x212ca48": "0x2127f68",
+        "0x212ca5c": "0x2127f7c",
+        "0x212c9c0": "0x2127ee0",
+        "0x212ca70": "0x2127f90",
+        "0x212c98c": "0x2127eac",
+        "0x212c990": "0x2127eb0",
+        "0x212c994": "0x2127eb4",
+        "0x212c998": "0x2127eb8"
+      }
+    },
+    {
+      "game_code": "A2DK",
+      "revision": 0,
+      "arm9_crc32": "72ad24e9",
+      "hooks": [
+        {
+          "flag": "packet_lookup",
+          "address": 33616120,
+          "guard_bytes": 16,
+          "guard_sha256": "d79596e1819b1b322b0e4a7ec0e99d0a215ca485771b3b5304f1d3ef87a6c555",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "idle_clients",
+          "address": 33626632,
+          "guard_bytes": 16,
+          "guard_sha256": "9bc2e82891b6adfbc015d91daac0f3eb7bd7c03f9b1598fd17092079f7d26291",
+          "phase": "main_loaded"
+        },
+        {
+          "flag": "bone_reads",
+          "address": 33660232,
+          "guard_bytes": 16,
+          "guard_sha256": "4a359c92a13ea50a36866405a3b7771f147d27d29e19149efa9c61d1e8995cd1",
+          "phase": "main_loaded"
+        }
+      ],
+      "source_size": 33554432,
+      "source_sha256": "86ef4b05ba8057a6e21015948221db9a3c26bf4df4c67c038acf794589b7cfc2",
+      "arm9_sha256": "489975508e8852fcfefd53ff8fcfd7dcced66326c47ea26eda1037988355afa4",
+      "arm9_layout": [
+        16384,
+        33556480,
+        33554432,
+        393536
+      ],
+      "code_settings": 2888,
+      "section_count": 5,
+      "main_bytes": 281216,
+      "lookup_sha256": "067160281e1d3b4522783081fc6c46d5c4d100d4f592c10fa5d906c5d585f53f",
+      "relocations": {
+        "0x20887fc": "0x2089418",
+        "0x20887f0": "0x20893f4",
+        "0x20888e0": "0x20894e0",
+        "0x2046e98": "0x204840c",
+        "0x2088a54": "0x2089658",
+        "0x2088a84": "0x2089688",
+        "0x2011564": "0x2011a90",
+        "0x20114e0": "0x2011a0c",
+        "0x2019740": "0x2019d5c",
+        "0x212c9e4": "0x2129624",
+        "0x212c9f8": "0x2129638",
+        "0x212ca0c": "0x212964c",
+        "0x212ca34": "0x2129674",
+        "0x212ca48": "0x2129688",
+        "0x212ca5c": "0x212969c",
+        "0x212c9c0": "0x2129600",
+        "0x212ca70": "0x21296b0",
+        "0x212c98c": "0x21295cc",
+        "0x212c990": "0x21295d0",
+        "0x212c994": "0x21295d4",
+        "0x212c998": "0x21295d8"
+      }
     }
   ]
 }

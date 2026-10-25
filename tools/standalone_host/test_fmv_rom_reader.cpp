@@ -35,6 +35,13 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
 # Simulate late validation failure: all bytes arrived but no commit marker.
 )PY";
   transfer(fake.string(),false,100);
+  for (const char* region:{"BMTJ","YQUP","YQUJ","AXFP","AXFJ","CSNP","C5RJ"}) {
+    original.replace(12,4,region);
+    std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+    transfer(fake.string(),false,100); // Each new code must use the guarded worker.
+    transfer(argv[1],true); // An unqualified image must still return original bytes.
+  }
+
   std::cout<<"PASS slow preparation services heartbeat; incomplete stream cannot commit\n";
   // Unrecognized games must not start even an invalid optional worker.
   original.replace(12,4,"A2DE");
@@ -60,6 +67,13 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
     std::ifstream file(marker);std::string selected;file>>selected;assert(selected==mode);
     fs::remove(marker);
     transfer(argv[1],true,1000,mode,false); // Unknown identity must return original bytes.
+  }
+  for (const char* region:{"A2DE","A2DP","A2DJ","A2DK"}) {
+    original.replace(12,4,region);
+    std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+    transfer(fake.string(),true,1000,"lookup+bones",false);
+    assert(fs::exists(marker));fs::remove(marker);
+    transfer(argv[1],true,1000,"lookup+bones",false);
   }
   original.replace(12,4,"BMTE");
   std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());

@@ -95,13 +95,15 @@ private:
       if (pread(rom, header, sizeof(header), 0) == ssize_t(sizeof(header))) {
         const std::string code(reinterpret_cast<char *>(header + 12), 4);
         const char* nsmb_mode = std::getenv("NDS_NSMB_PATCH");
-        const bool nsmb = code == "A2DE" && nsmb_mode &&
+        const bool nsmb = (code == "A2DE" || code == "A2DP" || code == "A2DJ" || code == "A2DK") && nsmb_mode &&
             (std::strcmp(nsmb_mode, "lookup") == 0 || std::strcmp(nsmb_mode, "skip") == 0 ||
              std::strcmp(nsmb_mode, "both") == 0 || std::strcmp(nsmb_mode, "bones") == 0 ||
              std::strcmp(nsmb_mode, "lookup+bones") == 0 || std::strcmp(nsmb_mode, "skip+bones") == 0 ||
              std::strcmp(nsmb_mode, "both+bones") == 0);
         if (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
-                               code == "AXFE" || code == "YWSE")))) {
+                               code == "AXFE" || code == "YWSE" || code == "BMTJ" ||
+                               code == "YQUP" || code == "YQUJ" || code == "AXFP" ||
+                               code == "AXFJ" || code == "CSNP" || code == "C5RJ")))) {
           const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);

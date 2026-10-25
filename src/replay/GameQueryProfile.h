@@ -68,12 +68,12 @@ inline bool automatic_movie_receiver_profile(const GameQuerySelection& selected)
 {
     if (!selected.identified) return false;
     constexpr GameQueryIdentity movies[] = {
-        {{{'B','2','K','J'}}, 0, 0x56588d29u},
-        {{{'B','2','K','J'}}, 0, 0xf2d6c66fu}, // English translation v1.0, exact virtual image.
-        {{{'Y','Q','U','E'}}, 0, 0x93bba687u},
-        {{{'B','M','T','E'}}, 0, 0xae6c8af6u},
-        {{{'A','X','F','E'}}, 0, 0x4fa8f939u},
-        {{{'Y','W','S','E'}}, 0, 0x28886fdau},
+#include "replay/AutomaticMovieProfiles.inc"
+
+
+
+
+
     };
     for (const auto& movie : movies)
         if (selected.identity.code == movie.code &&

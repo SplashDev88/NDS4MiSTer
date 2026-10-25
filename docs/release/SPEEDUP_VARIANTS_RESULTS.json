@@ -1,0 +1,325 @@
+{
+  "private_beta": "Regional speedup variants beta",
+  "clock_mhz": 1000,
+  "base_source": "4eeaed2ceb934056c3aeaa5927dbc2ce93571e43",
+  "original_roms_unmodified": true,
+  "speed_hacks_menu": false,
+  "hardware_movie_scope": "120 seconds after fresh graphics session for each revision; opening/title sequences only, not every movie triggered in game.",
+  "offline_movie_scope": "189 new indexed movie assets, 87563 source frames; 89075 original-vs-transport pixel comparisons including restart windows.",
+  "exact_prepared_images": [
+    {
+      "game": "SJ",
+      "bytes": 268435456,
+      "sha256": "0e26f0e9b36189786bc380ed67b8fd606482d4b8571c2ba49657c2c797bc2f64",
+      "qualified_image_match": true
+    },
+    {
+      "game": "NINO",
+      "bytes": 536870912,
+      "sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+      "qualified_image_match": true
+    },
+    {
+      "game": "CHRONO",
+      "bytes": 134217728,
+      "sha256": "0e34c9b8ef407f2edbc9ccfc248ec7662c705f1a6d17c8498a631489a0b7ab52",
+      "qualified_image_match": true
+    },
+    {
+      "game": "FF12",
+      "bytes": 134217728,
+      "sha256": "f1da17bf1827970067d5a7ceaef189b9c522c5de6e36db6224d76d7a27729a12",
+      "qualified_image_match": true
+    },
+    {
+      "game": "SONIC",
+      "bytes": 268435456,
+      "sha256": "dfe64af47cc07b1b62fed03d5d39ce04a3377aabd38dc73e3867d1bb6b33be57",
+      "qualified_image_match": true
+    },
+    {
+      "game": "NINO_EN10",
+      "bytes": 536870912,
+      "sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+      "qualified_image_match": true
+    },
+    {
+      "game": "YQUP",
+      "bytes": 134217728,
+      "sha256": "6428ada802d97d69032826adb1734a59b70f3acd0fb14723286604ee80a33ade",
+      "qualified_image_match": true
+    },
+    {
+      "game": "YQUJ",
+      "bytes": 134217728,
+      "sha256": "169633fb8b87d45efb4978464d9b000e6a7e4f121e74f1387762e0ad0d416eb7",
+      "qualified_image_match": true
+    },
+    {
+      "game": "AXFP",
+      "bytes": 268435456,
+      "sha256": "92ec25b212527095c07c611cfcdd896a8a91a7378718d4373d94b9cd416ad8f6",
+      "qualified_image_match": true
+    },
+    {
+      "game": "AXFJ",
+      "bytes": 134217728,
+      "sha256": "5d20ab24da6f588c9ed877a2d9f156facfed3b5e1dc3c06eaa4a9365b836328d",
+      "qualified_image_match": true
+    },
+    {
+      "game": "CSNP",
+      "bytes": 268435456,
+      "sha256": "913c9b3652553c738faaad5b9749ea36a697e36bf3fde2e8b75e52798f52a167",
+      "qualified_image_match": true
+    },
+    {
+      "game": "C5RJ",
+      "bytes": 268435456,
+      "sha256": "152c1a90fbccae225a9b68ca71c67e5dc2b82af4d97bb14b67c57968568ab27b",
+      "qualified_image_match": true
+    },
+    {
+      "game": "BMTJ",
+      "bytes": 268435456,
+      "sha256": "ec344766f9a4b76327fc8b678698c9399596cbc05752ee485f513f842544f946",
+      "qualified_image_match": true
+    }
+  ],
+  "movies": [
+    {
+      "game": "YQUP",
+      "counters": {
+        "conversions": 1743,
+        "filter_conversions": 0,
+        "video_decodes": 1749,
+        "video_errors": 0,
+        "cached_conversions": 1743
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "YQUJ",
+      "counters": {
+        "conversions": 1753,
+        "filter_conversions": 0,
+        "video_decodes": 1759,
+        "video_errors": 0,
+        "cached_conversions": 1753
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 47,
+      "capture_output_drops": 7
+    },
+    {
+      "game": "AXFP",
+      "counters": {
+        "conversions": 1394,
+        "filter_conversions": 0,
+        "video_decodes": 1414,
+        "video_errors": 0,
+        "cached_conversions": 1394
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "AXFJ",
+      "counters": {
+        "conversions": 1392,
+        "filter_conversions": 0,
+        "video_decodes": 1412,
+        "video_errors": 0,
+        "cached_conversions": 1392
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "CSNP",
+      "counters": {
+        "conversions": 2230,
+        "filter_conversions": 0,
+        "video_decodes": 2237,
+        "video_errors": 0,
+        "cached_conversions": 2230
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "C5RJ",
+      "counters": {
+        "conversions": 2140,
+        "filter_conversions": 0,
+        "video_decodes": 2148,
+        "video_errors": 0,
+        "cached_conversions": 2140
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "BMTJ",
+      "counters": {
+        "conversions": 2703,
+        "filter_conversions": 2703,
+        "video_decodes": 2715,
+        "video_errors": 0,
+        "cached_conversions": 2703
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "ACVP",
+      "counters": {
+        "conversions": 0,
+        "filter_conversions": 0,
+        "video_decodes": 0,
+        "video_errors": 0,
+        "cached_conversions": 0
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 0,
+      "capture_output_drops": 0
+    },
+    {
+      "game": "ACVJ",
+      "counters": {
+        "conversions": 0,
+        "filter_conversions": 0,
+        "video_decodes": 0,
+        "video_errors": 0,
+        "cached_conversions": 0
+      },
+      "samples": 600,
+      "faults": 0,
+      "patch_applied": true,
+      "audio_present": true,
+      "capture_render_drops": 40,
+      "capture_output_drops": 3
+    }
+  ],
+  "gameplay": [
+    {
+      "profile": "CONTROL_NSMB",
+      "mode": "nsmb",
+      "completed_updates_per_sec": [
+        59.67982691819964,
+        59.666694297602334
+      ]
+    },
+    {
+      "profile": "FINAL_NSMB",
+      "mode": "nsmb",
+      "completed_updates_per_sec": [
+        59.64688768639149,
+        59.62850644301827
+      ]
+    },
+    {
+      "profile": "A2DP",
+      "mode": "nsmb",
+      "completed_updates_per_sec": [
+        59.63085218282397,
+        59.63829976012943
+      ]
+    },
+    {
+      "profile": "A2DJ",
+      "mode": "nsmb",
+      "completed_updates_per_sec": [
+        59.620048114300545,
+        59.59537672017178
+      ]
+    },
+    {
+      "profile": "A2DK",
+      "mode": "nsmb",
+      "completed_updates_per_sec": [
+        59.640297275343,
+        59.61283810452798
+      ]
+    },
+    {
+      "profile": "CONTROL_CV",
+      "mode": "bat",
+      "completed_updates_per_sec": [
+        20.092111502810987,
+        20.10942777770166
+      ]
+    },
+    {
+      "profile": "FINAL_CV",
+      "mode": "bat",
+      "completed_updates_per_sec": [
+        20.186896937472294,
+        20.065065631186147
+      ]
+    }
+  ],
+  "regression_comparisons": {
+    "NSMB": {
+      "control": [
+        59.67982691819964,
+        59.666694297602334
+      ],
+      "candidate": [
+        59.64688768639149,
+        59.62850644301827
+      ],
+      "mean_change_percent": -0.05959711742548057,
+      "scope": "Same isolated save and inputs; two 20-second jumping windows. Completed screen-buffer updates, not unique pictures or whole-game FPS."
+    },
+    "CV": {
+      "control": [
+        20.092111502810987,
+        20.10942777770166
+      ],
+      "candidate": [
+        20.186896937472294,
+        20.065065631186147
+      ],
+      "mean_change_percent": 0.12542626239746557,
+      "scope": "Same isolated save and inputs; two 20-second jumping windows. Completed screen-buffer updates, not unique pictures or whole-game FPS."
+    }
+  },
+  "runtime_sha256": {
+    "host": "1a6c776cf497e1a82057813b9166e60e4d19b1130fc057435a919b1a35c4d682",
+    "renderer": "cb674cc92c590197b5039c600c8873cd0a37d8b534979877818b526c78a91582",
+    "fpga": "6bd1daf846ef133266fc27e79b466b5d44f902a0e7123a138b03c5225e4ee2a4"
+  },
+  "capture_limitation": "Capture drops are recorded separately from zero transport/decode faults; no claim of zero visual/audio hitches or full-game qualification."
+}

@@ -19,12 +19,24 @@ for game,table,decoder in [('ff12',0x27e0b40,0x1ff82f0),('sonic',0x27e0ae0,0x1ff
  SPECS['packed_vx_'+game+'_color']=(0x1fff600,['-DOLD_COLOR_TABLE='+hex(table)])
  SPECS['packed_vx_'+game+'_decode']=(0x1fffa80,['-DORIGINAL_DECODER='+hex(decoder)])
 
+SPECS.update({
+ 'packed_sj_jp_color': (0x1fff600, ['-DFILTER_ENTRY=0x0213aa14']),
+ 'sj_jp_queue_rebase': (0x1fffa00, ['-DQUEUE_RESUME=0x0208e068']),
+ 'ff12_eu_wait_before_header': (0x1fffcc0, ['-DWAIT_RESUME=0x02086640']),
+ 'ff12_jp_wait_before_header': (0x1fffcc0, ['-DWAIT_RESUME=0x02086738', '-DJAPANESE_PLAYER=1']),
+ 'packed_vx_ff12_jp_decode': (0x1fffa80, ['-DORIGINAL_DECODER=0x01ff8310']),
+})
+ALIASES = {'packed_sj_jp_color':'packed_video_color',
+           'sj_jp_queue_rebase':'sj_queue_rebase',
+           'ff12_eu_wait_before_header':'ff12_wait_before_header',
+           'ff12_jp_wait_before_header':'ff12_wait_before_header'}
+
 def main():
  p=argparse.ArgumentParser();p.add_argument('--prefix',default='arm-linux-gnueabihf-');a=p.parse_args()
  root=Path(__file__).resolve().parent
  with tempfile.TemporaryDirectory() as temp:
   for name,(address,defines) in SPECS.items():
-   source=name
+   source=ALIASES.get(name,name)
    if name.startswith('packed_vx_'):source='packed_vx_'+name.rsplit('_',1)[1]
    obj=Path(temp)/'hook.o';elf=Path(temp)/'hook.elf'
    subprocess.run([a.prefix+'gcc','-c','-march=armv5te','-marm','-mfloat-abi=soft',*defines,str(root/'guest'/(source+'.S')),'-o',str(obj)],check=True)

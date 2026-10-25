@@ -6,7 +6,7 @@
 #include <cstring>
 
 // EXPERIMENTAL: optional in-memory game-code substitution, not a renderer tweak.
-// Only the verified ACVE revision-0 movie converter, transform and ADPCM loop are eligible.
+// Only the verified USA/EUR revision-0 and JPN revision-1 routines are eligible.
 // Reuse chroma products only when both inputs match; reuse a finished pixel
 // only when luminance and both chroma inputs match exactly.
 // The transform caches nonzero coefficients and computes four outputs per pass.
@@ -477,20 +477,47 @@ inline uint32_t crc32(const uint8_t* data, size_t size) {
   }
   return ~crc;
 }
+struct Profile { const char* code; uint8_t revision; uint32_t header_crc;
+  std::array<size_t,3> offsets; size_t color; uint32_t color_crc;
+  size_t audio; uint32_t audio_crc; size_t table; uint32_t table_crc, index; };
+inline constexpr std::array<Profile,3> profiles {{
+  {"ACVE",0,0x6594b975u,{{0xc5960,0xc9914,0x5d960}},0xc509c,0x344bd545u,0x5d4a0,0x0269847cu,0x8a2d0,0xc75d9211u,0x020862d0u},
+  {"ACVP",0,0x9efe42b8u,{{0xc8240,0xcc1f4,0x5e5a4}},0xc797c,0x0df8d39eu,0x5e0e4,0x758e4998u,0x8b0e8,0xc75d9211u,0x020870e8u},
+  {"ACVJ",1,0xf3c25c9du,{{0xc5a00,0xc99b4,0x5d95c}},0xc513c,0x8ca5f16bu,0x5d49c,0xaa034589u,0x8a2cc,0xc75d9211u,0x020862ccu},
+}};
 inline bool apply(uint8_t* rom, size_t mapped_size, uint64_t file_size) {
-  constexpr size_t begin=0xc509c, end=0xc618c;
-  if (!rom || file_size != 67108864 || mapped_size < 0xc9d90 ||
-      std::memcmp(rom+12,"ACVE",4) || rom[0x1e] != 0 ||
-      crc32(rom,512) != 0x6594b975u ||
-      crc32(rom+begin,end-begin) != 0x344bd545u ||
-      crc32(rom+0x5d4a0,0x888) != 0x0269847cu ||
-      crc32(rom+0x8a2d0,194) != 0xc75d9211u) return false;
-  // Validate every byte before the first mutation. Unknown revisions/hacks
-  // retain their original code; a second application also does nothing.
-  for (const auto& patch:patches)
-    if (std::memcmp(rom+patch.offset,patch.before.data(),patch.size)) return false;
-  for (const auto& patch:patches)
-    std::memcpy(rom+patch.offset,patch.after.data(),patch.size);
+  if (!rom || file_size != 67108864 || mapped_size < 512) return false;
+  const Profile* profile = nullptr;
+  for (const auto& candidate: profiles)
+    if (!std::memcmp(rom+12,candidate.code,4) && rom[0x1e]==candidate.revision)
+      profile=&candidate;
+  if (!profile) return false;
+  const auto& p=*profile;
+  if (mapped_size < p.color+0x10f0 || mapped_size < p.audio+0x888 ||
+      mapped_size < p.table+194 || crc32(rom,512)!=p.header_crc) return false;
+  for (size_t i=0;i<patches.size();++i)
+    if (mapped_size < p.offsets[i]+patches[i].size) return false;
+  if (crc32(rom+p.color,0x10f0)!=p.color_crc ||
+      crc32(rom+p.audio,0x888)!=p.audio_crc ||
+      crc32(rom+p.table,194)!=p.table_crc) return false;
+  // All three original routines are byte-identical across these cartridges.
+  // Validate all guards before mutating any staged byte.
+  for (size_t i=0;i<patches.size();++i)
+    if (std::memcmp(rom+p.offsets[i],patches[i].before.data(),patches[i].size)) return false;
+  for (size_t i=0;i<patches.size();++i) {
+    auto payload=patches[i].after;
+    if (i==2) {
+      // The position-independent audio loop embeds its two table pointers.
+      for (size_t at=0;at+4<=patches[i].size;at+=4) {
+        uint32_t value=0; std::memcpy(&value,payload.data()+at,4);
+        if (value==0x020862d0u || value==0x020862e0u) {
+          value=p.index+(value-0x020862d0u);
+          std::memcpy(payload.data()+at,&value,4);
+        }
+      }
+    }
+    std::memcpy(rom+p.offsets[i],payload.data(),patches[i].size);
+  }
   return true;
 }
 } // namespace nds_fmv

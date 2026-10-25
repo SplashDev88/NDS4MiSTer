@@ -157,7 +157,8 @@ class PrepareTests(unittest.TestCase):
         registry=json.loads((root/'profiles.json').read_text())
         self.assertEqual(registry['version'],1)
         self.assertEqual({p['key'] for p in registry['profiles']},
-                         {'NINO','NINO_EN10','SJ','CHRONO','FF12','SONIC'})
+                         {'NINO','NINO_EN10','SJ','CHRONO','FF12','SONIC',
+                          'YQUP','YQUJ','AXFP','AXFJ','CSNP','C5RJ','BMTJ'})
         for p in registry['profiles']:
             self.assertEqual(p['assembled_sha256'],p['qualified_image_sha256'])
             for s in p['stubs']:self.assertEqual(digest((root/'guest'/s['file']).read_bytes()),s['sha256'])

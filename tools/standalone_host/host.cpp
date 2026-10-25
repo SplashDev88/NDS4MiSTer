@@ -3010,7 +3010,7 @@ public:
     if (movie_fast && std::strcmp(movie_fast,"1") == 0) {
       const auto staged = mapping.at(0);
       const bool applied = nds_fmv::apply(static_cast<uint8_t*>(staged.data), staged.size, file_size);
-      log(applied ? "FMV decoder fast paths applied to staged ACVE revision 0" :
+      log(applied ? "FMV decoder fast paths applied to qualified staged Castlevania revision" :
                     "FMV decoder fast paths skipped: ROM identity or code differs");
       __sync_synchronize();
     }

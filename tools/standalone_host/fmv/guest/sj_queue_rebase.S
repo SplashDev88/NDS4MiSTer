@@ -4,6 +4,9 @@
 .arch armv5te
 .arm
 .text
+#ifndef QUEUE_RESUME
+#define QUEUE_RESUME 0x0208e67c
+#endif
 .global _start
 _start:
  ldr r3,=0x02007550
@@ -17,4 +20,4 @@ _start:
  // Keep the qualified positive-zero literal encoding across assemblers.
  .word 0xe59ff000
 .ltorg
- .word 0x0208e67c
+ .word QUEUE_RESUME

@@ -63,6 +63,13 @@ int main(int argc, char** argv)
         {{{'B','M','T','E'}}, 0, 0xae6c8af6u},
         {{{'A','X','F','E'}}, 0, 0x4fa8f939u},
         {{{'Y','W','S','E'}}, 0, 0x28886fdau},
+        {{{'Y','Q','U','P'}}, 0, 0x61413913u},
+        {{{'Y','Q','U','J'}}, 0, 0x8e64c114u},
+        {{{'A','X','F','P'}}, 0, 0xeaf70a5fu},
+        {{{'A','X','F','J'}}, 0, 0x743ad9b4u},
+        {{{'C','S','N','P'}}, 0, 0x00d6c211u},
+        {{{'C','5','R','J'}}, 0, 0xabea3452u},
+        {{{'B','M','T','J'}}, 0, 0xef046fccu},
     };
     for (const auto& movie : movies) {
         check(automatic_movie_receiver_profile({GameQueryProfile::Fast, movie, true}),
@@ -81,7 +88,7 @@ int main(int argc, char** argv)
                   "other game disables movie receiver");
         }
     }
-    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=6 unknown_off=1 reset_default_off=1\n";
+    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=13 unknown_off=1 reset_default_off=1\n";
 
     // Optional private fixtures stay outside the source tree and release.
     if (argc == 3) {

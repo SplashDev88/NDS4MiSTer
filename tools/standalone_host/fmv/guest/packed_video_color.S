@@ -5,6 +5,9 @@
 .arm
 .text
 .global _start,filter_entry,flush_filter,filter_original
+#ifndef FILTER_ENTRY
+#define FILTER_ENTRY 0x0213b32c
+#endif
 .equ RECORD,0x01fffe00
 _start:
  push {r0-r12,lr}
@@ -148,9 +151,9 @@ filter_entry:
  orr r0,r0,r1
  tst r0,#3
  bne filter_fallback
- ldr r6,=0x0213b404
+ ldr r6,=FILTER_ENTRY+0xd8
  ldrb r6,[r6,r5]
- ldr r7,=0x0213b429
+ ldr r7,=FILTER_ENTRY+0xfd
  ldrb r7,[r7,r5]
  orr r6,r6,r7,lsl#8
  ldr r12,=RECORD
@@ -179,5 +182,5 @@ flush_done:
  pop {r0-r12,pc}
 filter_original:
  push {r4-r9,lr}
- ldr pc,=0x0213b330
+ ldr pc,=FILTER_ENTRY+4
 .ltorg
