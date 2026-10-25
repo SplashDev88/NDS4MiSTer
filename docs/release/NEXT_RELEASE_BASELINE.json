@@ -1,33 +1,50 @@
 {
   "status": "ACCEPTED_NEXT_RELEASE_BASELINE",
-  "baseline_id": "rc10-dv1-20261025",
-  "designated_utc": "2026-10-25T15:08:31.033163+00:00",
-  "user_instruction": "Ok lets use this as the next baseline for our release",
-  "name": "rc10-based beta with doubled unrotated Top/Bottom DV1 menu",
-  "source_revision": "62b4665bd187e21d1dfcf640aeecdfe1a9e27955",
-  "local_git_tag": "baseline/rc10-dv1-20261025",
-  "core_source_revision": "e4a6d7ea7895349fb26e34f39ba099d75a447980",
-  "host_source_revision": "ee6ac636cdba4dfc1b1492d5766cd3eff2354b22",
-  "zip_sha256": "49a859e8871efce27041f8e3a4ac73d26383a53d0c41a5aac8f63f5bab2a7599",
-  "zip_bytes": 142168134,
-  "core_sha256": "7d8f1a06d9009f9e0cc7223c0d30f5895eb044c0dbf85c29a20b3e25eea10d3a",
-  "host_sha256": "d6e789772cc238e626b2b6dedaea1159142ffa02a8cfe3f231a9fa2f82dcd6c6",
-  "renderer_sha256": "bb13597d032d9d365b9763efa3866594c8562e5476b4c02b93ba55754f9f7570",
+  "baseline_id": "portrait3-ds-lite-menu-20261025",
+  "designated_utc": "2026-10-25T23:12:39.623620+00:00",
+  "user_instruction": "Ok perfect. Lets set this as the new baseline for next release.",
+  "name": "Portrait Beta3 performance and rotating menus with compact horizontal menu and DS Lite Tate profile",
+  "source_branch": "fix/dv1-side-native-menu-20261025",
+  "runtime_code_revision": "4e265ed258dd09bb27e913d80a4ab99294733b09",
+  "core_source_revision": "4e265ed258dd09bb27e913d80a4ab99294733b09",
+  "host_source_revision": "dc20baed4a337a6eed72b5eae2738250d8ca5e25",
+  "renderer_source_revision": "c502a8b856bc87d47adccbc1afb7737a5492e7f3",
+  "local_git_tag": "baseline/portrait3-ds-lite-menu-20261025",
+  "zip_sha256": "0da8d23bffdad74b0de99aa259121a7b27fdfa79ecc1e3bafb3216e351b0104e",
+  "zip_bytes": 191395525,
+  "core_sha256": "876ec97a6044191515a0fea910eb1359417a466fdd0a23e31e0cca2a069a08fa",
+  "host_sha256": "0110a2a21efdaec146ab6a6fdf8f044173b344a2935db7b02cc10ab13ab68bc1",
+  "renderer_sha256": "ec71a00f69ab30a4ba4e2004d3aa4f6019b4971de563e474231382e63100e991",
+  "package_checksum_entries_verified": 104,
   "runtime_binaries_rebuilt": false,
-  "hardware_validation_scope": "Bounded private-beta DV1 menu validation on one MiSTer through RetroTINK-4K; not public release or timing qualification",
+  "accepted_behavior": {
+    "digital_menu": "Follows core video rotation",
+    "native_analog_menu": "Upright independent Main/Touch output",
+    "horizontal_menu": "Align unrotated side-by-side DV1 menu to game pixel grid without changing its 128-game-pixel width",
+    "tate_reference": "Top/Bottom 90 CW; square pixels; LCD Grid 2; full-resolution output alignment measured"
+  },
   "static_timing_closed": false,
+  "worst_slack_ns": {
+    "setup": -15.933,
+    "hold": 0.051,
+    "recovery": -15.031
+  },
+  "known_limitations": [
+    "Static setup/recovery timing remains unresolved; accepted as development baseline, not a qualified public release.",
+    "No new full-game native-framerate or stability claim.",
+    "DS Lite profile is a visual approximation, not a colorimeter calibration of a physical DS Lite panel."
+  ],
   "release_version_to_publish": null,
   "published": false,
+  "pushed": false,
   "publication_authorized": false,
-  "accepted_behavior": {
-    "menu_width": "2x only unrotated Top/Bottom native DV1",
-    "menu_height": "unchanged",
-    "main_only_menu": "pixel-identical to legacy reference",
-    "other_layouts": "unchanged",
-    "gameplay_scaling": "unchanged",
-    "legacy_menu_rotation": "upright in the core"
-  },
-  "future_work": "Use this exact source and packaged host, renderer, FPGA and supporting files as the starting point for the next release. Preserve the accepted package and prior snapshots. Release version and public packaging/publication remain separate steps.",
-  "package_filename": "NDS4MiSTer_DV1_Dual_Menu_Beta_20261025.zip",
-  "validation_document": "VALIDATION_DV1_DUAL_MENU_20261025.md"
+  "future_work": "Start the next release from the pinned Beta3 runtime code and package. Preserve all accepted performance, menus, analog/digital behavior and the separate DS Lite profile recipe. Public release packaging and qualification remain separate.",
+  "package_filename": "NDS4MiSTer_Portrait_Beta3_20261025.zip",
+  "retrotink_profile": {
+    "name": "ds-lite-tate-1080p",
+    "recipe": "DS_LITE_TATE_1080P.json",
+    "output": "1080p60",
+    "effect": "LCD Mono 2",
+    "binary_profile_exported": false
+  }
 }

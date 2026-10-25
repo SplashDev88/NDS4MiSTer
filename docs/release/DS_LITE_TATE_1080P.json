@@ -1,0 +1,59 @@
+{
+  "status": "saved_on_retrotink_and_active",
+  "profile_name": "ds-lite-tate-1080p",
+  "target": "DS Lite inspired appearance, not color calibrated",
+  "firmware": "1.99.5",
+  "core_layout": "Top/Bottom",
+  "core_rotation": "90 degrees clockwise",
+  "retrotink_rotation": "Off",
+  "output": "1920x1080p60",
+  "aspect": "1:1 square pixels",
+  "scaling": "Auto Fill Integer; 4x4 native game pixels in current Tate mode",
+  "game_composite_pixels": [
+    392,
+    256
+  ],
+  "output_composite_pixels": [
+    1568,
+    1024
+  ],
+  "crop": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "effect": "LCD Mono 2 (LCD Grid 2)",
+  "lcd_subpixel_strength": 0,
+  "lcd_vertical_strength": 0,
+  "linear_light": true,
+  "normalize_energy": false,
+  "mask": "Off",
+  "smoothing": "Off",
+  "horizontal_blur": "Off",
+  "hdr": "Off",
+  "rgb_range": "Full",
+  "colorimetry": "Auto Rec.709",
+  "sync": "A. Buffer 60.0 Hz",
+  "input_factor": 1.0,
+  "input_lift": 0.0,
+  "input_gain": 1.0,
+  "output_factor": 1.0,
+  "transfer_function": "sRGB 0.055",
+  "custom_color_matrix": "Off",
+  "saturation": 0.0,
+  "reload_test_performed": false,
+  "original_profiles_overwritten": false,
+  "power_up_profile": "NDS 1080p (unchanged)",
+  "notes": [
+    "Initial Tate scaling was already 4x integer; verified and saved as a separately named profile.",
+    "Normalize Energy On did not change the measured LCD Mono 2 background and was restored to Off.",
+    "Physical monitor should use full-pixel/no-overscan display, with no extra zoom or sharpening; monitor settings were not inspected or changed.",
+    "Measured pixel geometry at RetroTINK HDMI output; not an exact reproduction of a DS Lite panel gamut, backlight, or response time."
+  ],
+  "sources": [
+    "https://www.nintendo.co.jp/ds/spec/index.html",
+    "https://consolemods.org/wiki/AV:RetroTINK-4K#LCD_Effects",
+    "https://retrotink-llc.github.io/firmware/4k-experimental.html"
+  ]
+}
