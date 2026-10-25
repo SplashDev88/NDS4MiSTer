@@ -313,9 +313,7 @@ class Host {
   std::vector<Pad> pads;
   std::vector<BrowserEntry> roms;
   int browser_first = 0, browser_selected_row = -1, loading_progress = -1;
-  bool loading_preparing = false;
-  bool loading_cache = false;
-  uint64_t loading_started = 0, loading_next_animation = 0;
+  uint64_t loading_started = 0;
   bool browse_expand = true;
   nds_osd::Row browser_base{}, footer_base{};
   std::array<nds_osd::Row, 16> osd_rows{};
@@ -1471,20 +1469,10 @@ class Host {
     const auto rows = loadingRows(name, 0);
     for (int row = 0; row < 8; ++row) line(row, rows[row]);
     loading_progress = 0;
-    loading_preparing = false;
-    loading_cache = false;
     osd(true, true);
   }
-  void animateLoading(uint64_t now) {
-    if (now < loading_next_animation) return;
-    const auto elapsed = now - loading_started;
-    if (loading_preparing) line(4, loadingActivity(elapsed / 200));
-    line(6, loading_cache ? " Preparing FMV cache..." : " Loading ROM...");
-    line(7, " " + std::to_string(elapsed / 1000) + "s elapsed");
-    loading_next_animation = now + 200;
-  }
   void updateLoading(uint64_t done, uint64_t total) {
-    const auto progress = loadingProgress(done, total);
+    const auto progress = std::max(loading_progress, loadingProgress(done, total));
     if (progress == loading_progress) return;
     loading_progress = progress;
     line(4, loadingBar(progress));
@@ -2909,10 +2897,7 @@ public:
     log("loading " + path);
     require(!live_main(), "another MiSTer process started");
     beginLoading(fs::path(path).filename().string());
-    loading_preparing = true;
     loading_started = ms();
-    loading_next_animation = 0;
-    animateLoading(loading_started);
     clearConsoleInputs();
     drain(450);
     uint64_t next_main_check = 0;
@@ -2925,11 +2910,8 @@ public:
       }
       sector();
       beat();
-      if (active_reader && loading_cache != active_reader->preparingCache()) {
-        loading_cache = active_reader->preparingCache();
-        loading_next_animation = 0;
-      }
-      animateLoading(ms());
+      if (active_reader && active_reader->workProgress() >= 0)
+        updateLoading(active_reader->workProgress(), 10000);
     };
     const char* automatic_movies = std::getenv("NDS_FMV_AUTO");
     const bool prepare_movies = automatic_movies && std::strcmp(automatic_movies, "1") == 0;
@@ -2938,14 +2920,11 @@ public:
     active_reader = &reader;
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.
     const auto file_size = reader.size(service);
-    loading_preparing = false;
     log(std::string(reader.framed() ? "ROM stream ready; verification pending after " :
                                     "ROM preparation completed in ") +
         std::to_string(ms() - loading_started) + " ms");
-    loading_next_animation = 0;
-    animateLoading(ms());
-    loading_progress = -1;
-    updateLoading(0, 1);
+    service();
+    const auto transfer_start = std::clamp(reader.workProgress(), 0, 9800);
     const auto transfer_size = RomReader::transferSize(file_size);
     const auto storage_size = RomLayout::storageSize(file_size);
     // Reserve every destination before touching FIO. Large files use the
@@ -2982,20 +2961,18 @@ public:
               memcpy(chunk.data, data, n);
               at += n; data += n; size -= n;
             }
-          }, [&](uint64_t done, uint64_t total) { updateLoading(done, total); }, [&] {
-            loading_preparing = true;
-            loading_next_animation = 0;
-            animateLoading(ms());
+          }, [&](uint64_t done, uint64_t total) {
+            if (reader.workProgress() < 0) updateLoading(done * 8000 / total, 10000);
+          }, [&] {
+            if (reader.workProgress() < 0) updateLoading(8000, 10000);
           });
-      loading_preparing = false;
-      loading_progress = -1;
-      updateLoading(storage_size, storage_size);
+      updateLoading(9900, 10000);
       log("ROM streamed verification and preparation completed");
     } else {
     while (off < transfer_size) {
       const auto chunk = mapping.at(off);
       off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
-      updateLoading(off, storage_size);
+      updateLoading(transfer_start + (9800 - transfer_start) * uint64_t(off) / storage_size, 10000);
     }
     reader.finish(file_size, service);
     }
@@ -3010,10 +2987,9 @@ public:
       const auto n = std::min<size_t>(262144, chunk.size);
       memset(chunk.data, 0xff, n);
       off += n;
-      updateLoading(off, storage_size);
+      updateLoading(transfer_start + (9800 - transfer_start) * uint64_t(off) / storage_size, 10000);
     }
     service();
-    line(6, " Starting game");
     __sync_synchronize();
     const char* movie_fast = std::getenv("NDS_FMV_COLOR_FAST");
     if (movie_fast && std::strcmp(movie_fast,"1") == 0) {
@@ -3042,6 +3018,7 @@ public:
     uploadSaveProfile(game_code);
     firmwareControl(3);
     waitFirmware(3, 0, 3000, "direct game boot release");
+    updateLoading(10000, 10000);
     native_firmware = false;
     game = path;
     currentdir = fs::path(path).parent_path();

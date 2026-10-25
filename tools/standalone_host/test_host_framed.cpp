@@ -30,8 +30,8 @@ if os.environ['NDS_FRAMED_TEST_CASE']=='ok':record(1024,0,8)
         if(t.select==Spi::FIO && t.command==0x53 && (index&255)==3 && t.words==std::vector<uint16_t>{0})released=true;
       }
       assert(released==success && RomMapping::test_live_mappings==0);
-      if(success)assert(h.game==rom && h.loading_progress==167 && !h.loading_preparing);
-      else assert(h.game.empty() && !fs::exists(sd/"saves/NDS/framed.sav"));
+      if(success)assert(h.game==rom && h.loading_progress==167);
+      else assert(h.game.empty() && h.loading_progress<167 && !fs::exists(sd/"saves/NDS/framed.sav"));
     }
 
     // Exercise writes crossing both physical aperture boundaries. The scaler,
@@ -53,7 +53,7 @@ for at in [252*1024*1024-8,276*1024*1024-8]:
 record(512*1024*1024,0,7);record(0,0,11);record(464*1024*1024,0,8)
 )PY";
     h.spi.default_firmware_flags |= 0x4000;
-    h.load(rom.string());assert(RomMapping::test_live_mappings==0 && !h.loading_preparing);
+    h.load(rom.string());assert(RomMapping::test_live_mappings==0 && h.loading_progress==167);
     char buffer[32];
     for(off_t at:{off_t(0x20000000),off_t(0x22000000),off_t(0x24000000)}) {
       assert(pread(memory,buffer,32,at)==32);assert(std::string(buffer,32)==sentinel);

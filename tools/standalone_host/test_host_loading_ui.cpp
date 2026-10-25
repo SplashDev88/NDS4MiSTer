@@ -22,27 +22,25 @@ struct HostTest {
     fs::create_directories(root / "kit");
     Host host((root / "kit").string(), (root / "sd/games/NDS").string(), root / "sd");
     host.beginLoading("Chrono Trigger.nds");
-    host.loading_started = 0;
-    host.loading_next_animation = 0;
-    host.loading_preparing = true;
-    host.animateLoading(12000);
-    assert(host.osd_rows[6] == host.frame.renderRow(6, " Loading ROM..."));
-    host.loading_cache = true;
-    host.animateLoading(14000);
-    assert(host.osd_rows[6] == host.frame.renderRow(6, " Preparing FMV cache..."));
-    assert(host.osd_rows[7] == host.frame.renderRow(7, " 14s elapsed"));
+    const auto initial = host.osd_rows;
+    host.updateLoading(3500, 10000); // Source verified, preparation still pending.
+    assert(host.loading_progress < 167);
     preview(host, output.string() + "-preparing.ppm", 8);
-    host.loading_preparing = false;
-    host.updateLoading(50, 100);
+    host.updateLoading(6000, 10000);
     const auto bar = host.osd_rows[4];
-    host.animateLoading(16000);
-    assert(host.osd_rows[4] == bar); // Timer updates must not overwrite byte progress.
+    host.updateLoading(500, 10000); // A fallback cannot restart the visual bar.
+    assert(host.osd_rows[4] == bar);
+    host.updateLoading(9900, 10000);
+    assert(host.loading_progress < 167); // Validation/boot release still pending.
+    for (int row = 0; row < 8; ++row)
+      if (row != 4) assert(host.osd_rows[row] == initial[row]);
+    assert(host.osd_rows[6] == host.frame.renderRow(6));
+    assert(host.osd_rows[7] == host.frame.renderRow(7));
+    host.updateLoading(10000, 10000);
+    assert(host.loading_progress == 167);
     host.beginLoading("New Super Mario Bros.nds");
-    host.loading_started = 0;
-    host.loading_next_animation = 0;
-    host.animateLoading(2000);
-    assert(!host.loading_cache);
-    assert(host.osd_rows[6] == host.frame.renderRow(6, " Loading ROM..."));
+    assert(host.loading_progress == 0);
+    host.updateLoading(8000, 10000);
     preview(host, output.string() + "-loading.ppm", 8);
 
     host.menu = true;
@@ -65,5 +63,5 @@ struct HostTest {
 int main(int argc, char **argv) {
   assert(argc == 2);
   HostTest::run(argv[1]);
-  puts("PASS cache/normal loading text, timer preserves progress, right-stick persistence without footer notices");
+  puts("PASS stock loading rows, monotonic progress and completion boundary; right-stick persistence without footer notices");
 }

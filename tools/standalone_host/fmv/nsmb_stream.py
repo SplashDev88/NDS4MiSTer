@@ -7,6 +7,7 @@ import sys
 from prepare import Source, VirtualRom
 from stream import send
 from nsmb_runtime import assemble
+from load_progress import LoadProgress
 
 
 def main():
@@ -14,8 +15,10 @@ def main():
     if os.getppid() != parent:
         return 1
     source = Source(source_fd)
+    work = LoadProgress(lambda data: send(output_fd, data))
     def progress(n):
         send(output_fd, struct.pack('<Qii', n, 0, 7))
+        work.update(0, 4500, min(n, source.size), source.size)
     try:
         mode = os.environ.get('NDS_NSMB_PATCH', 'off')
         image = assemble(source, mode, progress)
@@ -25,6 +28,7 @@ def main():
         image = VirtualRom(source, source.size).finish()
         print('NSMB_RUNTIME_FALLBACK '+str(error), file=sys.stderr, flush=True)
     source.unchanged()
+    work.update(4500, 5000)
     send(output_fd, struct.pack('<Qii', image.size, 0, 0))
     for block in image.blocks():
         send(output_fd, block)

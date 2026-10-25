@@ -199,19 +199,19 @@ def profile_for(source, profiles, progress=lambda n: None):
     return matches[0] if matches else None
 
 
-def movie(source, spec):
+def movie(source, spec, work=lambda done, total: None):
     """Reframe packets while preserving every original video and audio byte."""
     raw = source.read(spec['source_offset'], spec['source_bytes'])
     require(digest(raw) == spec['source_sha256'], 'movie identity differs')
     rows = zlib.decompress(base64.b64decode(spec['descriptors']))
     count = spec['frames']
-    out = reframe_movie(raw, spec['family'], rows, count)
+    out = reframe_movie(raw, spec['family'], rows, count, work)
     require(len(out) == spec['output_bytes'] and digest(out) == spec['output_sha256'],
             'movie reconstruction differs from qualified stream')
     return out
 
 
-def reframe_movie(raw, family, rows, count):
+def reframe_movie(raw, family, rows, count, work=lambda done, total: None):
     """Build a lossless packet envelope, also used by offline qualification.
 
     Runtime callers must verify source and output identities through movie().
@@ -253,6 +253,8 @@ def reframe_movie(raw, family, rows, count):
         offsets[old] = len(out)
         out.extend(packet_header); out.extend(descriptor); out.extend(payload)
         pos = stop
+        if (frame+1) % 128 == 0 or frame+1 == count:
+            work(frame+1, count)
     audio_offset, keys_offset, key_count = struct.unpack_from('<III', raw, 36)
     require(pos == (audio_offset or keys_offset), 'unexpected movie trailer')
     shift = len(out)-pos
@@ -268,7 +270,8 @@ def reframe_movie(raw, family, rows, count):
     return out
 
 
-def assemble(source, profile, root=ROOT, progress=lambda n: None):
+def assemble(source, profile, root=ROOT, progress=lambda n: None,
+             work=lambda done, total: None):
     require(source.sha256(progress) == profile['source_sha256'], 'cartridge revision/content differs')
     header = bytearray(source.read(0,512))
     armoff, entry, load, size = struct.unpack_from('<4I', header, 32)
@@ -331,13 +334,21 @@ def assemble(source, profile, root=ROOT, progress=lambda n: None):
         image.add(spec['output_offset'],raw)
         image.add(fat+fid*8,struct.pack('<II',spec['output_offset'],spec['output_offset']+len(raw)))
         image.add(row+28,struct.pack('<I',0))
+    movie_bytes = sum(spec['source_bytes'] for spec in profile['movies'])
+    finished_bytes = 0
+    # Small code/overlay preparation precedes the byte-weighted movie work.
+    work(1, 10)
     for spec in profile['movies']:
-        output = movie(source,spec)
+        output = movie(source, spec, lambda done, total:
+            work(movie_bytes + 9*(finished_bytes + spec['source_bytes']*done//total),
+                 10*max(1, movie_bytes)))
         image.add(spec['output_offset'],output)
         image.add(fat+spec['id']*8,struct.pack('<II',spec['output_offset'],spec['output_offset']+len(output)))
         progress(spec['output_offset'])
+        finished_bytes += spec['source_bytes']
     header[0x14] = profile['capacity']
     struct.pack_into('<I',header,0x80,profile['used'])
     struct.pack_into('<H',header,0x15e,_common.crc16(header[:0x15e]))
     image.add(0,header)
+    work(1, 1)
     return image.finish()

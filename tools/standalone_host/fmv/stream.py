@@ -8,6 +8,7 @@ from pathlib import Path
 import struct
 import sys
 from prepare import Source, VirtualRom, assemble, profile_for
+from load_progress import LoadProgress
 
 
 def send(fd, data):
@@ -25,8 +26,11 @@ def main():
     if os.getppid() != parent:
         return 1
     source = Source(source_fd)
+    work = None
     def progress(n):
         send(output_fd, struct.pack('<Qii', n, 0, 7))
+        if work:
+            work.update(0, 3000, min(n, source.size), source.size)
     image = VirtualRom(source, source.size).finish()
     try:
         registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
@@ -45,9 +49,11 @@ def main():
                     print('FMV_STREAM_READ_FAILED '+str(error), file=sys.stderr, flush=True)
                     return 1
                 return 0
+        work = LoadProgress(lambda data: send(output_fd, data))
         profile = profile_for(source, registry['profiles'], progress)
         if profile:
-            image = assemble(source, profile, progress=progress)
+            image = assemble(source, profile, progress=progress,
+                             work=lambda n, total: work.update(3000, 5000, n, total))
             print('FMV_AUTO_APPLIED '+profile['key']+' original cartridge; save identity retained',file=sys.stderr,flush=True)
         else:
             print('FMV_AUTO_FALLBACK no qualified cartridge profile',file=sys.stderr,flush=True)
@@ -66,6 +72,8 @@ def main():
         done += len(block)
         progress(done)
     source.unchanged()
+    if work:
+        work.update(3000, 5000)
     send(output_fd,struct.pack('<Qii',image.size,0,0))
     for block in image.blocks(0,transfer):
         send(output_fd,block)

@@ -8,6 +8,7 @@ import hashlib
 import struct
 import sys
 from prepare import CHUNK, CompactedFiles, VirtualRom, assemble, require
+from load_progress import LoadProgress
 
 
 def transfer_limit(size):
@@ -37,7 +38,7 @@ def select_plan(source, profiles):
     return matches[0] if len(matches) == 1 else None
 
 
-def transfer_image(source, profile, emit, assembler, observe, prepared, recovery):
+def transfer_image(source, profile, emit, assembler, observe, prepared, recovery, work):
     """Cache other qualified images, including cartridges expanded by movies.
 
     Fresh failures retain the original cartridge and its original size. After
@@ -49,8 +50,13 @@ def transfer_image(source, profile, emit, assembler, observe, prepared, recovery
     def progress(n):
         emit(struct.pack('<Qii', size if recovery else min(n, size), 0, 7))
     try:
-        require(source.sha256(progress) == profile['source_sha256'], 'cartridge revision/content differs')
-        image = assembler(source, profile, progress=progress)
+        def hashed(n):
+            progress(n)
+            work.update(0, 3500, n, source.size)
+        require(source.sha256(hashed) == profile['source_sha256'], 'cartridge revision/content differs')
+        work.update(0, 3500)
+        image = assembler(source, profile, progress=progress,
+                          work=lambda n, total: work.update(3500, 6000, n, total))
         require(image.size == size, 'prepared cartridge size differs')
         qualified = True
     except (ValueError, KeyError, IndexError, struct.error, OSError) as error:
@@ -60,6 +66,7 @@ def transfer_image(source, profile, emit, assembler, observe, prepared, recovery
         image = VirtualRom(source, source.size).finish()
         print('FMV_AUTO_FALLBACK '+str(error), file=sys.stderr, flush=True)
     size = image.size
+    work.update(3500, 6000)
     limit = transfer_limit(size)
     # The excluded upper aperture belongs to graphics/Linux, even on cache hits.
     for block in image.blocks(limit, size):
@@ -76,6 +83,7 @@ def transfer_image(source, profile, emit, assembler, observe, prepared, recovery
             observe(at, block)
         at += len(block)
         emit(struct.pack('<Qii', size if recovery else at*size//limit, 0, 7))
+        work.update(6000, 9700, at, limit)
     require(at == limit, 'incomplete prepared image')
     source.unchanged()
     if not recovery:
@@ -84,14 +92,16 @@ def transfer_image(source, profile, emit, assembler, observe, prepared, recovery
         prepared()
         print('FMV_AUTO_APPLIED '+profile['key']+' verified image; save identity retained',
               file=sys.stderr, flush=True)
+    work.update(9700, 9900)
     emit(struct.pack('<Qii', limit, 0, 8))
 
 
 def transfer(source, plan, emit, assembler=assemble, observe=lambda at, data: None,
-             prepared=lambda: None, recovery=False):
+             prepared=lambda: None, recovery=False, work=None):
+    work = work or LoadProgress(emit)
     profile, backing = plan
     if backing is None:
-        return transfer_image(source, profile, emit, assembler, observe, prepared, recovery)
+        return transfer_image(source, profile, emit, assembler, observe, prepared, recovery, work)
     limit = min(source.size, (464 if source.size > 256*1024*1024 else 252)*1024*1024)
     spans = sorted((origin, origin+b-a, a) for a, b, origin in backing.spans
                    if isinstance(origin, int))
@@ -130,13 +140,16 @@ def transfer(source, plan, emit, assembler=assemble, observe=lambda at, data: No
                 record(dest+lo-begin, memoryview(block)[lo-at:hi-at])
             i += 1
         emit(struct.pack('<Qii', source.size if recovery else end, 0, 7))
+        work.update(0, 4500, end, source.size)
     source.unchanged()
     source._sha256 = h.hexdigest()
     if not recovery:
         emit(struct.pack('<Qii', 0, 0, 11))
     try:
         require(source._sha256 == profile['source_sha256'], 'cartridge revision/content differs')
-        image = assembler(source, profile, progress=lambda n: emit(struct.pack('<Qii', source.size, 0, 7)))
+        image = assembler(source, profile,
+                          progress=lambda n: emit(struct.pack('<Qii', source.size, 0, 7)),
+                          work=lambda n, total: work.update(4500, 8500, n, total))
         require(image.size == source.size and image.source.spans == backing.spans,
                 'relocation plan changed during preparation')
     except (ValueError, KeyError, IndexError, struct.error, OSError) as error:
@@ -146,16 +159,22 @@ def transfer(source, plan, emit, assembler=assemble, observe=lambda at, data: No
         require(native_padding, 'native fallback data exceeds cartridge memory')
         for at in range(0, limit, CHUNK):
             record(at, source.read(at, min(CHUNK, limit-at)))
+            work.update(4500, 9700, min(at+CHUNK, limit), limit)
         print('FMV_AUTO_FALLBACK '+str(error), file=sys.stderr, flush=True)
     else:
-        for a, b, origin in backing.spans:
-            if isinstance(origin, bytes):
-                record(a, origin)
-        for at, data in image.patches:
+        work.update(4500, 8500)
+        patches = [(a, origin) for a, b, origin in backing.spans if isinstance(origin, bytes)]
+        patches.extend(image.patches)
+        total_bytes = sum(len(data) for at, data in patches)
+        done_bytes = 0
+        for at, data in patches:
             record(at, data)
+            done_bytes += len(data)
+            work.update(8500, 9700, done_bytes, max(1, total_bytes))
         source.unchanged()
         prepared()
         print('FMV_AUTO_APPLIED '+profile['key']+' streamed verification; save identity retained',
               file=sys.stderr, flush=True)
     source.unchanged()
+    work.update(9700, 9900)
     emit(struct.pack('<Qii', limit, 0, 8))

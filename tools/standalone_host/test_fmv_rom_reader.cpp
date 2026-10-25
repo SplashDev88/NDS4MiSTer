@@ -97,6 +97,12 @@ def record(at,n,op):os.write(dst,struct.pack('<Qii',at,n,op))
 if case=='phase_before':record(0,1,12)
 if case=='bad_phase':record(0,2,12)
 if case=='bad_phase_size':record(1,1,12)
+if case.startswith('work_'):
+ assert os.environ['NDS_ROM_LOAD_PROGRESS']=='1'
+ record(2000,0,13)
+ if case=='work_bad_size':record(10000,0,13)
+ if case=='work_error':record(3000,1,13)
+ if case=='work_backwards':record(1999,0,13)
 record(536870913 if case=='metadata' else 1024,0,9)
 if case=='phase_during':record(0,1,12)
 if case=='metadata':sys.exit(0)
@@ -112,11 +118,13 @@ if case=='backwards':record(99,0,7);sys.exit(0)
 record(1024,0,7);record(0,0,11)
 if case=='double_prepare':record(0,0,11);sys.exit(0)
 record(20,5,10);os.write(dst,b'HELLO')
+if case=='work_ok':record(9900,0,13)
 if case!='late':record(1024,0,8)
 )PY";
   for(const char* name:{"ok","range","negative","oversize","zero","short","premature",
                         "backwards","double_prepare","late","metadata",
-                        "phase_before","phase_during","bad_phase","bad_phase_size"}) {
+                        "phase_before","phase_during","bad_phase","bad_phase_size",
+                        "work_ok","work_bad_size","work_error","work_backwards"}) {
     setenv("NDS_FRAMED_TEST_CASE",name,1);
     bool complete=false;unsigned services=0,prepares=0;std::vector<uint64_t> checks;
     std::string got(1024,char(0xff));
@@ -124,14 +132,16 @@ if case!='late':record(1024,0,8)
       RomReader r(path.string(),fake.string());const auto service=[&]{++services;};
       const auto size=r.size(service);assert(size==1024 && r.framed());
       assert(r.preparingCache()==(std::string(name)=="phase_before"));
+      assert(r.workProgress()==(std::string(name)=="work_ok" ? 2000 : -1));
       r.transferFramed(size,service,[&](uint64_t at,const unsigned char* bytes,size_t n){
         assert(at+n<=got.size());got.replace(size_t(at),n,reinterpret_cast<const char*>(bytes),n);
       },[&](uint64_t checked,uint64_t total){assert(total==1024);checks.push_back(checked);},[&]{++prepares;});
       assert(r.preparingCache()==(std::string(name)=="phase_before" || std::string(name)=="phase_during"));
+      assert(r.workProgress()==(std::string(name)=="work_ok" ? 9900 : -1));
       complete=true;
     } catch(const std::runtime_error&) {}
     assert(complete==(std::string(name)=="ok" || std::string(name)=="phase_before" ||
-                      std::string(name)=="phase_during") && services>0);
+                      std::string(name)=="phase_during" || std::string(name)=="work_ok") && services>0);
     if(complete) {
       auto expected=original;expected.replace(20,5,"HELLO");assert(got==expected);
       assert((checks==std::vector<uint64_t>{100,1024}) && prepares==1);
