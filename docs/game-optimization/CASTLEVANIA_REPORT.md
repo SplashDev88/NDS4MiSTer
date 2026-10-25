@@ -1,6 +1,6 @@
 # Castlevania: Dawn of Sorrow optimization investigation
 
-Status: private beta for bounded playtesting. Native scene and regression checks are complete; archive installation is validated separately. This is not a whole-game qualification or a 60 FPS claim.
+Status: private beta for bounded playtesting. Native scene, regression and exact-archive installation checks are complete. This is not a whole-game qualification or a 60 FPS claim.
 
 ## Architecture and scope
 
@@ -182,3 +182,28 @@ kept outside the repository and installer. Source and compiler training counters
 are included in the private package. Native evidence labels are recorded in the
 manifest; private captures remain with the test rig. Public README and release
 notes were not edited.
+
+## Installed-archive verification
+
+The exact 117,932,983-byte private ZIP was installed beside the public build.
+Its SHA-256 is `deb347448ca514a17a8f304e34591098027eb3e8438788975a0fcd9cc2739fe5`;
+the packaged source tree is commit `2a27a21`. All 74 package pins and the
+launcher hash passed validation. The actual launcher enabled texture history
+by default, with cache-stat logging disabled.
+
+Native checks passed: cold launch, in-game suspend resume, cave-to-save-room
+transition and return, core Reset, an explicit in-game Yes save, complete
+exit and fresh-process reload of that save. The game showed “Data has been
+saved”; the isolated save checksum changed and stayed identical after the
+cold reload. Only a disposable test save was used. No transport faults were
+observed. The root menu retains Right Stick Range and has no Speed hacks page.
+
+The final preservation audit checked 1,163 existing file expectations, including
+1,093 pre-existing save files, MiSTer.ini, the normal launcher, storage/recent
+configuration, the original Castlevania ROM and the pinned public staging
+files. There were zero mismatches. The board was left at MENU. Controller
+mapping was copied into the private folder; originals were not modified.
+
+Post-install verification is a separate receipt rather than a change to the
+validated ZIP. Broader playtesting and the remaining investigations above are
+still needed before considering a general public release.
