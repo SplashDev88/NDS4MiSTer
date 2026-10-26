@@ -3,7 +3,9 @@
 The Japanese retail ROM played audio but showed black video after New Game.
 Its story player maps VRAM C/D as main backgrounds (0x89/0x91), unlike the
 opening. Original-game instruction tracing found alternating conversion
-outputs at 0x06020000 and 0x06040000. The accelerated decoder still sent
+outputs at 0x06020000 and 0x06040000. The same mapping and destinations were
+confirmed in an original-code trace of the English v1.0 translation. The
+accelerated decoder still sent
 packets to unmapped LCDC A, and the conversion hook rejected both outputs.
 
 The qualified Ni no Kuni hook now sends decode packets through mapped C
@@ -11,6 +13,8 @@ when it has the observed main-BG mapping. The color hook accepts the two
 story buffers, and the existing staged receiver handles main-BG C/D writes.
 Visible pixels remain unchanged until the complete conversion commits.
 Other games retain their existing profile data. No FPGA or ROM-file change.
+Earlier English story-validation notes do not establish that this path worked
+with the old hooks; the current original-code trace identifies the same gap.
 
 Validation: all 581 story frames decoded exactly against the original
 Japanese interpreter output. Both Japanese and English v1.0 produced the

@@ -18,7 +18,8 @@
       "00"
     ],
     "decoder_before": "fixed LCDC A at 0x06800000, unmapped during story",
-    "color_before": "main-BG outputs 0x06020000 and 0x06040000 were not recognized"
+    "color_before": "main-BG outputs 0x06020000 and 0x06040000 were not recognized",
+    "same_mapping_confirmed_in_english_v1_0": true
   },
   "software": {
     "loader_tests": 59,
