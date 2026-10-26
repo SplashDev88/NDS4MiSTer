@@ -57,6 +57,11 @@ def assemble(path):
     supervisor=(ROOT/'tools/standalone_host/supervisor.py').read_bytes()
     need(supervisor==beta['supervisor.py'].replace(b'v0.9.0-rc.11',VERSION.encode()),'Supervisor change exceeds release label')
     files[PREFIX+'supervisor.py']=supervisor
+    # Beta2 carried two older developer checks; ship their matching current
+    # source. Neither is imported or executed by the runtime movie loader.
+    developer_checks=['fmv/test_prepare.py','fmv/verify_wait_hooks.py']
+    for rel in developer_checks:
+        files[PREFIX+rel]=(ROOT/'tools/standalone_host'/rel).read_bytes()
     for n,b in files.items():
         rel=n[len(PREFIX):]
         if rel.startswith('fmv/') or rel in ['Kickstart.sh','auto_movies.py','clock_control.py','video_target.py']:
@@ -90,6 +95,7 @@ def assemble(path):
     checked=common.check_fpga(files[PREFIX+'source/side-native-fpga-inputs.tar.gz'],fpga)
     files[PREFIX+'fpga-source-manifest.json']=js(dict(core_sha256=PINS['NDS_Standalone.rbf'],source_revision=old['core_source_revision'],packaged_fpga_source='source/side-native-fpga-inputs.tar.gz',frozen_input_sha256=fpga['all_build_inputs'],static_timing_closed=False))
     provenance=dict(version=VERSION,packaging_source_revision=revision,baseline_source_revision=BETA_REV,baseline_archive_sha256=BETA_SHA,runtime_pins=PINS,runtime_changes=['Host rc12 menu/footer label','Supervisor release text','Normal standalone launcher path'],host_changed_sections=changed,host_executable_code_identical=True,renderer_and_fpga_byte_identical=True,movie_profiles_and_hooks_byte_identical=True,frozen_fpga_inputs_checked=checked,published=False,validation_scope='Tested cumulative beta runtime; release-specific offline checks and separately recorded package launch checks; no full-playthrough certification')
+    provenance['developer_check_scripts_updated']=developer_checks
     files[PREFIX+'BUILD_PROVENANCE.json']=js(provenance)
     profiles=json.loads(files[PREFIX+'fmv/profiles.json'])['profiles']
     m={k:old[k] for k in ['hps_clock_khz','required_firmware_capability','kernel_module_sha256','runtime_environment','nsmb_default','nsmb_regions','nsmb_validation','prepared_cache_budget_bytes','shared_saves','rtc_alarm_interrupts','rtc_snapshot_signature','rtc_snapshot_version','core_source_revision','portrait_fmv_variants']}
