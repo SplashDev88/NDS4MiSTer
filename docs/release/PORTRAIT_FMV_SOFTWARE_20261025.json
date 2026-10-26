@@ -1,0 +1,274 @@
+{
+  "PROFILE_BUILD": [
+    {
+      "key": "ACBE0",
+      "source_sha256": "1174a36fd91f79e95e90b76aa1268af8fc09f69c04cc8e5b4ff791e872254abd",
+      "prepared_sha256": "6fc4f85b95b7e0e20f13770d6fde50823422558285502a3f6be0d84bb52e914e",
+      "original_header_crc32": "a9935ea4",
+      "prepared_header_crc32": "2b8de1e5",
+      "arm9_bytes": 1042948,
+      "movie_frames": 1801,
+      "code_patches": [
+        {
+          "overlay": null,
+          "pc": 33545088,
+          "before": "f05f2de9",
+          "after": "9e0600ea"
+        },
+        {
+          "overlay": null,
+          "pc": 34117520,
+          "before": "82bafdeb",
+          "after": "bad8fdeb"
+        },
+        {
+          "overlay": null,
+          "pc": 34117904,
+          "before": "f00095e5",
+          "after": "ead8fdea"
+        },
+        {
+          "overlay": null,
+          "pc": 34117956,
+          "before": "000095e5001090e5141091e531ff2fe1",
+          "after": "0000a0e10000a0e10000a0e10000a0e1"
+        }
+      ]
+    },
+    {
+      "key": "ACBJ0",
+      "source_sha256": "b6bf6a15d94803d67024acf50f45863a7766adccd1e8bba2254fd2eb8181b333",
+      "prepared_sha256": "8403f139cc9e6f503b29ef8c09e984212cef5721cbe0a43c4482b6a55928cdd8",
+      "original_header_crc32": "1f4abb85",
+      "prepared_header_crc32": "c16c5c05",
+      "arm9_bytes": 1043012,
+      "movie_frames": 1801,
+      "code_patches": [
+        {
+          "overlay": null,
+          "pc": 33545088,
+          "before": "f05f2de9",
+          "after": "9e0600ea"
+        },
+        {
+          "overlay": null,
+          "pc": 34117656,
+          "before": "60bafdeb",
+          "after": "98d8fdeb"
+        },
+        {
+          "overlay": null,
+          "pc": 34118040,
+          "before": "f00095e5",
+          "after": "c8d8fdea"
+        },
+        {
+          "overlay": null,
+          "pc": 34118092,
+          "before": "000095e5001090e5141091e531ff2fe1",
+          "after": "0000a0e10000a0e10000a0e10000a0e1"
+        }
+      ]
+    },
+    {
+      "key": "ACBJ1",
+      "source_sha256": "921b8e03c565426a4256bf69dab41b1518d7abe8d3ccac8b65b9a3af1c36b92d",
+      "prepared_sha256": "49dfb47422df1c1ffcb8bce9b79df70a8d1747e2647ee12e97f6050e80d68fbc",
+      "original_header_crc32": "7fea1d6f",
+      "prepared_header_crc32": "903e2dbe",
+      "arm9_bytes": 996804,
+      "movie_frames": 1801,
+      "code_patches": [
+        {
+          "overlay": null,
+          "pc": 33545056,
+          "before": "f05f2de9",
+          "after": "a60600ea"
+        },
+        {
+          "overlay": null,
+          "pc": 34090452,
+          "before": "e9d4fdeb",
+          "after": "29f3fdeb"
+        },
+        {
+          "overlay": null,
+          "pc": 34089524,
+          "before": "002185e0",
+          "after": "a1f4fdea"
+        },
+        {
+          "overlay": null,
+          "pc": 34089576,
+          "before": "000095e5001090e5141091e531ff2fe1",
+          "after": "0000a0e10000a0e10000a0e10000a0e1"
+        }
+      ]
+    },
+    {
+      "key": "ACBP0",
+      "source_sha256": "7e92d86c8d9b7eaa1cf23bbcc11d52f1307fb9cea9f014b48cfe0fc9abb26f9c",
+      "prepared_sha256": "d654c10dc20dbc58f54d2b3bf5435248f16bfae9088fb2234bfb9bcc29a7eb0d",
+      "original_header_crc32": "986730bc",
+      "prepared_header_crc32": "6a6a7703",
+      "arm9_bytes": 1056548,
+      "movie_frames": 1801,
+      "code_patches": [
+        {
+          "overlay": null,
+          "pc": 33545088,
+          "before": "f05f2de9",
+          "after": "9e0600ea"
+        },
+        {
+          "overlay": null,
+          "pc": 34120968,
+          "before": "24b7fdeb",
+          "after": "5cd5fdeb"
+        },
+        {
+          "overlay": null,
+          "pc": 34121352,
+          "before": "f00095e5",
+          "after": "8cd5fdea"
+        },
+        {
+          "overlay": null,
+          "pc": 34121404,
+          "before": "000095e5001090e5141091e531ff2fe1",
+          "after": "0000a0e10000a0e10000a0e10000a0e1"
+        }
+      ]
+    }
+  ],
+  "DECODE_EXACT": {
+    "decoded_frames": 1801,
+    "decoded_bytes_exact": 132784128,
+    "consumed_lengths_exact": 1801,
+    "original_converter_calls": 1797,
+    "converter_pixel_bytes_exact_per_call": 98304
+  },
+  "REGIONAL_ORACLE_RESULTS": [
+    {
+      "key": "ACBE0",
+      "decoded_frames": 1801,
+      "color_frames": 1797,
+      "color_rgb_chain_exact": true,
+      "original_color_first_last": [
+        2470,
+        6058
+      ],
+      "accelerated_color_first_last": [
+        2469,
+        6051
+      ],
+      "original_converter_matches_receiver": true,
+      "accelerated_registers_preserved": true
+    },
+    {
+      "key": "ACBJ0",
+      "decoded_frames": 1801,
+      "color_frames": 1797,
+      "color_rgb_chain_exact": true,
+      "original_color_first_last": [
+        2124,
+        5712
+      ],
+      "accelerated_color_first_last": [
+        2123,
+        5704
+      ],
+      "original_converter_matches_receiver": true,
+      "accelerated_registers_preserved": true
+    },
+    {
+      "key": "ACBJ1",
+      "decoded_frames": 1801,
+      "color_frames": 1797,
+      "color_rgb_chain_exact": true,
+      "original_color_first_last": [
+        2128,
+        5715
+      ],
+      "accelerated_color_first_last": [
+        2127,
+        5708
+      ],
+      "original_converter_matches_receiver": true,
+      "accelerated_registers_preserved": true
+    },
+    {
+      "key": "ACBP0",
+      "decoded_frames": 1801,
+      "color_frames": 1797,
+      "color_rgb_chain_exact": true,
+      "original_color_first_last": [
+        2287,
+        5875
+      ],
+      "accelerated_color_first_last": [
+        2286,
+        5868
+      ],
+      "original_converter_matches_receiver": true,
+      "accelerated_registers_preserved": true
+    }
+  ],
+  "PAYLOAD_AND_IDENTITY_CHECKS": [
+    {
+      "key": "ACBE0",
+      "video_payloads_unchanged": 1801,
+      "authored_fps": 30,
+      "audio_payloads": 0,
+      "original_rom_sha256": "1174a36fd91f79e95e90b76aa1268af8fc09f69c04cc8e5b4ff791e872254abd",
+      "modified_rom_rejected": true
+    },
+    {
+      "key": "ACBJ0",
+      "video_payloads_unchanged": 1801,
+      "authored_fps": 30,
+      "audio_payloads": 0,
+      "original_rom_sha256": "b6bf6a15d94803d67024acf50f45863a7766adccd1e8bba2254fd2eb8181b333",
+      "modified_rom_rejected": true
+    },
+    {
+      "key": "ACBJ1",
+      "video_payloads_unchanged": 1801,
+      "authored_fps": 30,
+      "audio_payloads": 0,
+      "original_rom_sha256": "921b8e03c565426a4256bf69dab41b1518d7abe8d3ccac8b65b9a3af1c36b92d",
+      "modified_rom_rejected": true
+    },
+    {
+      "key": "ACBP0",
+      "video_payloads_unchanged": 1801,
+      "authored_fps": 30,
+      "audio_payloads": 0,
+      "original_rom_sha256": "7e92d86c8d9b7eaa1cf23bbcc11d52f1307fb9cea9f014b48cfe0fc9abb26f9c",
+      "modified_rom_rejected": true
+    }
+  ],
+  "RETAIL_COVERAGE": {
+    "catalog_url": "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat",
+    "catalog_version": "2026.10.07",
+    "catalog_sha256": "0b3d7f233cdc14e13552fbf721edde3b57b8e9b54a68e3baf8689672a3c8f6e1",
+    "all_retail_variants_owned_and_matched": true,
+    "retail_entries": [
+      "game (\n\tname \"Akumajou Dracula - Gallery of Labyrinth (Japan)\"\n\tregion \"Japan\"\n\tserial \"ACBJ\"\n\trom ( name \"Akumajou Dracula - Gallery of Labyrinth (Japan).nds\" size 67108864 crc D97D85AE md5 D035F4A5BD02C5CC25359A830FB01025 sha1 35FBAE07FA24E0991AD1DD12717C84824081DDE1 serial \"ACBJ\" )\n)",
+      "game (\n\tname \"Akumajou Dracula - Gallery of Labyrinth (Japan) (Rev 1)\"\n\tregion \"Japan\"\n\tserial \"ACBJ\"\n\trom ( name \"Akumajou Dracula - Gallery of Labyrinth (Japan) (Rev 1).nds\" size 67108864 crc 8708ECE6 md5 6733F8B0170C9C51B79FBE024FEF2223 sha1 05F3ECEA560E1EAC9CDF955AFF59AB2AB8684FE9 serial \"ACBJ\" )\n)",
+      "game (\n\tname \"Castlevania - Portrait of Ruin (Europe) (En,Fr,De,Es,It)\"\n\tregion \"Europe\"\n\tserial \"ACBP\"\n\trom ( name \"Castlevania - Portrait of Ruin (Europe) (En,Fr,De,Es,It).nds\" size 67108864 crc 772BA12A md5 17A6618C3C7F5547D7C38FC04CB2666E sha1 26FE05FA12019FACEA91556E4E6B00BA6989E15D serial \"ACBP\" )\n)",
+      "game (\n\tname \"Castlevania - Portrait of Ruin (USA)\"\n\tregion \"USA\"\n\tserial \"ACBE\"\n\trom ( name \"Castlevania - Portrait of Ruin (USA).nds\" size 67108864 crc 96DF4C4D md5 2EDD57540CAE45842FBD19C45A4214F9 sha1 382602E3615B2282EEAD584014125E71B5B0F033 serial \"ACBE\" )\n)"
+    ],
+    "non_game_video_excluded": [
+      "game (\n\tname \"Castlevania - Portrait of Ruin - Preview Trailer (USA) (Video)\"\n\tregion \"USA\"\n\tserial \"NTRJ\"\n\trom ( name \"Castlevania - Portrait of Ruin - Preview Trailer (USA) (Video).nds\" size 2620104 crc 5FC19B95 md5 4B9349911275FC832F4C6D25DE5C87C3 sha1 E76FCA032FC641BB606CCFB3AA75DAEDF1E1D3F4 serial \"NTRJ\" )\n)"
+    ]
+  },
+  "RENDERER_BUILD": {
+    "sha256": "bce5e79d8e1825b0380dc4e14d5b3c892833faa87a23538ae79f53f03df07da8",
+    "profile_data": "portrait-combo3 unchanged",
+    "self_test": "passed",
+    "profile_test": "passed",
+    "core_unchanged": true,
+    "host_unchanged": true
+  }
+}

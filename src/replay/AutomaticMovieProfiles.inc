@@ -13,3 +13,7 @@
         {{{'C','S','N','P'}}, 0, 0x00d6c211u},
         {{{'C','5','R','J'}}, 0, 0xabea3452u},
         {{{'B','M','T','J'}}, 0, 0xef046fccu},
+        {{{'A','C','B','E'}}, 0, 0x2b8de1e5u}, // Portrait USA.
+        {{{'A','C','B','P'}}, 0, 0x6a6a7703u}, // Portrait Europe.
+        {{{'A','C','B','J'}}, 0, 0xc16c5c05u}, // Portrait Japan.
+        {{{'A','C','B','J'}}, 1, 0x903e2dbeu}, // Portrait Japan Rev 1.

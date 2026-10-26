@@ -104,7 +104,7 @@ inline bool portrait_sprite_raster_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&
         selected.identity.code == std::array<std::uint8_t, 4>{{'A','C','B','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0xa9935ea4u;
+        selected.identity.revision == 0 && ((selected.identity.header_crc32 == 0xa9935ea4u) | (selected.identity.header_crc32 == 0x2b8de1e5u));
 }
 
 // No remembered selection: every reset/reload starts from the fast default.

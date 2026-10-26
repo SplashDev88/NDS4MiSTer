@@ -92,6 +92,10 @@ int main(int argc, char** argv)
         {{{'C','S','N','P'}}, 0, 0x00d6c211u},
         {{{'C','5','R','J'}}, 0, 0xabea3452u},
         {{{'B','M','T','J'}}, 0, 0xef046fccu},
+        {{{'A','C','B','E'}}, 0, 0x2b8de1e5u},
+        {{{'A','C','B','P'}}, 0, 0x6a6a7703u},
+        {{{'A','C','B','J'}}, 0, 0xc16c5c05u},
+        {{{'A','C','B','J'}}, 1, 0x903e2dbeu},
     };
     for (const auto& movie : movies) {
         check(automatic_movie_receiver_profile({GameQueryProfile::Fast, movie, true}),
@@ -110,7 +114,12 @@ int main(int argc, char** argv)
                   "other game disables movie receiver");
         }
     }
-    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=13 unknown_off=1 reset_default_off=1\n";
+    check(portrait_sprite_raster_profile({GameQueryProfile::Fast, movies[13], true}),
+          "prepared Portrait USA retains its qualified gameplay policy");
+    for (unsigned i = 14; i < 17; ++i)
+        check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, movies[i], true}),
+              "regional movie support does not broaden gameplay policy");
+    std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=17 unknown_off=1 reset_default_off=1\n";
 
     // Optional private fixtures stay outside the source tree and release.
     if (argc == 3) {
