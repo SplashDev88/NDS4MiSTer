@@ -1,0 +1,18 @@
+{
+  "status": "passed",
+  "host_preflight_recovery_video_clock_tests": 48,
+  "fmv_loader_cache_tests": 60,
+  "arm_cpp_suites": [
+    "test_menu",
+    "test_menu_presentation",
+    "test_host_display_menu",
+    "test_rom_reader",
+    "test_fmv_rom_reader"
+  ],
+  "docker_image": "nds4mister-armhf:ubuntu-24.04",
+  "docker_image_id": "sha256:b196be9f1d989f2388969ae8ba89c447db2792c46c90eb2b4554fa2fee4941bc",
+  "host_label_only": true,
+  "host_sha256": "d05ba202611b653dea7003e5d93dfb6ab8ae299cfe1994280d2be77611a6597d",
+  "build_and_tests_log_sha256": "a2744ed9a27d35ca640822ae179d9086877963d00dfd1173864473f4d28c0bc6",
+  "hardware_tests_in_this_receipt": false
+}

@@ -1,0 +1,8 @@
+{
+  "binaries": {
+    "renderer-regions": "a9a2c813ebaf2367306aa0fdbd454d1884f2a22f059497cec64bfa9c04c55ab8",
+    "host-regions": "a9906e469883968302d4334d8a6193ee14b9e29415192f2945645053174308f0"
+  },
+  "tests": "passed; see ARM_BUILD.log",
+  "hardware_tested": false
+}

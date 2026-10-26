@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+cmake -S /work -B /work/build-armhf -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=/work/cmake/toolchains/arm-linux-gnueabihf.cmake -DNDS4MISTER_USE_MELONDS=ON -DNDS4MISTER_ENABLE_LTO_RELEASE=ON -DNDS4MISTER_ENABLE_JIT=OFF -DNDS4MISTER_CORE_TIMING=OFF -DNDS4MISTER_NO_2D_RENDER=OFF -DNDS4MISTER_NO_3D_RENDER=OFF -DNDS4MISTER_NO_AUDIO_MIX=ON -DNDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR=ON -DNDS4MISTER_EXPERIMENTAL_FMV_VIDEO_DECODE=ON -DNDS4MISTER_EXPERIMENTAL_FMV_VX_DECODE=ON -DNDS4MISTER_FFMPEG_ROOT=/evidence/vx-research/combined-arm-install -DCMAKE_C_FLAGS_RELEASE='-O3 -DNDEBUG -fprofile-use=/tmp/nds-portrait-combo3-pgo -fprofile-partial-training -fprofile-correction -Wno-error=coverage-mismatch' -DCMAKE_CXX_FLAGS_RELEASE='-O3 -g -DNDEBUG -fprofile-use=/tmp/nds-portrait-combo3-pgo -fprofile-partial-training -fprofile-correction -Wno-error=coverage-mismatch'
+cmake --build /work/build-armhf --target nds_hybrid_3d_service nds_game_query_profile_test --parallel 3
+/work/build-armhf/nds_game_query_profile_test
+/work/build-armhf/nds_hybrid_3d_service --self-test
+
