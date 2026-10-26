@@ -17,3 +17,4 @@
         {{{'A','C','B','P'}}, 0, 0x6a6a7703u}, // Portrait Europe.
         {{{'A','C','B','J'}}, 0, 0xc16c5c05u}, // Portrait Japan.
         {{{'A','C','B','J'}}, 1, 0x903e2dbeu}, // Portrait Japan Rev 1.
+        {{{'Y','R','9','E'}}, 0, 0x483c0674u}, // Ecclesia USA Rev0 candidate.

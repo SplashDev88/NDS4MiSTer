@@ -113,7 +113,7 @@ inline bool ecclesia_sprite_raster_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&
         selected.identity.code == std::array<std::uint8_t, 4>{{'Y','R','9','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x89d2e308u;
+        selected.identity.revision == 0 && ((selected.identity.header_crc32 == 0x89d2e308u) | (selected.identity.header_crc32 == 0x483c0674u));
 }
 
 // No remembered selection: every reset/reload starts from the fast default.

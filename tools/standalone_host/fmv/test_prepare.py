@@ -11,10 +11,30 @@ import sys
 import tempfile
 import unittest
 import zlib
-from prepare import Source, VirtualRom, CompactedFiles, movie, digest, profile_for, reframe_movie
+from prepare import Source, VirtualRom, CompactedFiles, movie, digest, profile_for, reframe_movie, extension_layout
+from types import SimpleNamespace
 
 
 class PrepareTests(unittest.TestCase):
+    def test_ecclesia_scratch_starts_after_existing_itcm(self):
+        section = SimpleNamespace(ramAddress=0x01ff8000, data=bytes(0x7280), bssSize=0)
+        with self.assertRaisesRegex(ValueError, 'occupied'):
+            extension_layout({}, [section])
+        profile = dict(extension_ram=0x01fff280, extension_bytes=0xbc0)
+        self.assertEqual(extension_layout(profile, [section]), (0x01fff280, 0xbc0))
+        # BSS and aliased autoloads are occupied even without file payload.
+        for item in [SimpleNamespace(ramAddress=0x01ff8000, data=bytes(0x7280), bssSize=1),
+                     SimpleNamespace(ramAddress=0x7280, data=b'x', bssSize=0),
+                     SimpleNamespace(ramAddress=0x8000, data=bytes(0x8001), bssSize=0)]:
+            with self.assertRaisesRegex(ValueError, 'occupied'):
+                extension_layout(profile, [item])
+        self.assertEqual(extension_layout({}, []), (0x01fff000, 0xe40))
+        for address, size in [(0x01fff281, 0xbc0), (0x01fff280, 0xbe0),
+                              (0x02000000, 0xe40), (0x01ff7000, 0x100),
+                              (0x01fff280, -32), (0x01fff280, 0x41)]:
+            with self.assertRaisesRegex(ValueError, 'invalid'):
+                extension_layout(dict(extension_ram=address, extension_bytes=size), [])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name)/'source.nds'
@@ -159,7 +179,7 @@ class PrepareTests(unittest.TestCase):
         self.assertEqual({p['key'] for p in registry['profiles']},
                          {'NINO','NINO_EN10','SJ','CHRONO','FF12','SONIC',
                           'YQUP','YQUJ','AXFP','AXFJ','CSNP','C5RJ','BMTJ',
-                          'ACBE0','ACBP0','ACBJ0','ACBJ1'})
+                          'ACBE0','ACBP0','ACBJ0','ACBJ1','YR9E0'})
         for p in registry['profiles']:
             self.assertEqual(p['assembled_sha256'],p['qualified_image_sha256'])
             for s in p['stubs']:self.assertEqual(digest((root/'guest'/s['file']).read_bytes()),s['sha256'])

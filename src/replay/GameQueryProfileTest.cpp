@@ -50,6 +50,17 @@ int main(int argc, char** argv)
     const GameQueryIdentity ecclesia {{{'Y','R','9','E'}}, 0, 0x89d2e308u};
     check(ecclesia_sprite_raster_profile({GameQueryProfile::Fast, ecclesia, true}),
           "Ecclesia exact raster identity");
+    const GameQueryIdentity ecclesia_movie {{{'Y','R','9','E'}}, 0, 0x483c0674u};
+    check(ecclesia_sprite_raster_profile({GameQueryProfile::Fast, ecclesia_movie, true}) &&
+          automatic_movie_receiver_profile({GameQueryProfile::Fast, ecclesia_movie, true}) &&
+          !automatic_movie_receiver_profile({GameQueryProfile::Fast, ecclesia, true}),
+          "prepared Ecclesia retains gameplay policy and alone enables its movie receiver");
+    for (unsigned bit = 0; bit < 32; ++bit) {
+        auto changed = ecclesia_movie; changed.header_crc32 ^= 1u << bit;
+        check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, changed, true}) &&
+              !automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+              "changed prepared Ecclesia header must use fallback");
+    }
     check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, ecclesia, false}) &&
           !ecclesia_sprite_raster_profile({GameQueryProfile::Fast, portrait, true}),
           "Ecclesia raster selection requires its own stable identity");

@@ -102,5 +102,9 @@ copy_table:
  pop {r4-r12,pc}
 fallback:
  pop {r4-r12,lr}
+#ifdef ORIGINAL_CONVERTER
+ ldr pc,=ORIGINAL_CONVERTER
+#else
  ldr pc,=0x01fff000
+#endif
 .ltorg
