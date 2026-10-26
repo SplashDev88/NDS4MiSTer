@@ -47,6 +47,28 @@ int main(int argc, char** argv)
     auto revised_portrait = portrait; ++revised_portrait.revision;
     check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, revised_portrait, true}),
           "untested Portrait revision must use fallback");
+    const GameQueryIdentity ecclesia {{{'Y','R','9','E'}}, 0, 0x89d2e308u};
+    check(ecclesia_sprite_raster_profile({GameQueryProfile::Fast, ecclesia, true}),
+          "Ecclesia exact raster identity");
+    check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, ecclesia, false}) &&
+          !ecclesia_sprite_raster_profile({GameQueryProfile::Fast, portrait, true}),
+          "Ecclesia raster selection requires its own stable identity");
+    check(game_query_prefix_mode(select_game_query_profile(ecclesia)) == 2 &&
+          !portrait_sprite_raster_profile({GameQueryProfile::Fast, ecclesia, true}),
+          "Ecclesia raster experiment retains its independent fast-query policy");
+    for (unsigned bit = 0; bit < 32; ++bit) {
+        auto changed = ecclesia; changed.header_crc32 ^= 1u << bit;
+        check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, changed, true}),
+              "changed Ecclesia header must use fallback");
+    }
+    for (unsigned byte = 0; byte < 4; ++byte) {
+        auto changed = ecclesia; changed.code[byte] ^= 1;
+        check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, changed, true}),
+              "changed Ecclesia code must use fallback");
+    }
+    auto revised_ecclesia = ecclesia; ++revised_ecclesia.revision;
+    check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, revised_ecclesia, true}),
+          "untested Ecclesia revision must use fallback");
     check(game_query_prefix_mode(select_game_query_profile(known)) == 0, "known identity");
     check(castlevania_integral_texture_profile({GameQueryProfile::Fast, known, true}),
           "Castlevania raster choice is independent of query mode");

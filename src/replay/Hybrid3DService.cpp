@@ -11338,13 +11338,17 @@ try {
                     load_acquire(&header.fpga_session) != selected_session)
                     continue;
                 profile_session = selected_session;
-                integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected);
-                sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected);
+                integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected) ||
+                    nds4mister::replay::ecclesia_sprite_raster_profile(selected);
+                sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected) ||
+                    nds4mister::replay::ecclesia_sprite_raster_profile(selected);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                 fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
 #endif
                 if (automatic_query_profile)
-                    matrix_prefix_mode = sprite_raster_spans ? 0u : nds4mister::replay::game_query_prefix_mode(selected.profile);
+                    matrix_prefix_mode = (nds4mister::replay::portrait_sprite_raster_profile(selected) ||
+                        nds4mister::replay::ecclesia_sprite_raster_profile(selected)) ?
+                        0u : nds4mister::replay::game_query_prefix_mode(selected.profile);
                 // Controlled NSMB-only comparison: reuse the existing tested
                 // paired-picture cadence while leaving all query/state work
                 // active. Other games and normal launchers keep full rate.

@@ -1,0 +1,28 @@
+Order of Ecclesia profile: RC11 cumulative private milestone
+
+The USA Rev 0 cartridge previously used the generic replay/raster policy. Its 2D-style scenery benefits from the existing exact sprite/rectangle raster and integral-texture paths already used by the other Castlevania profiles.
+
+Admission requires a stable identified cartridge header: game code YR9E, revision 0, and CRC32 89d2e308 over the first 0x160 header bytes. Europe, Japan, Korea and unknown or unstable headers retain the prior policy. This is a header guard, not a full-ROM identity proof; modifications that preserve the header can still match it.
+
+The admitted profile enables the existing Portrait sprite/rectangle raster, paired VRAM replay and completion-based worker policy, plus the existing Dawn integral texture spans and prepared Engine-B sprite composition reuse. Automatic matrix-prefix mode is 0 (ordered replay). The generic query-profile helper still returns its normal default; the existing automatic policy selection in Hybrid3DService applies the exact-game override.
+
+This milestone adds no new generic GPU raster implementation, changes no guest clock or game asset, and retains the RC11 FPGA and host binaries. ARM validation runs at 1 GHz. The cumulative package also retains the accepted Ni no Kuni story-movie fix and RC11 Portrait/menu/rotation fixes.
+
+Measured native scope
+- Save-room repeated jumps: baseline 25.41-25.45 paired updates/s; candidate 42.25-42.73 across four measured trials.
+- Monastery entrance jumps: baseline 34.82; candidate 55.33 and 55.68.
+- Monastery entrance attack inputs: baseline 35.02; candidate 54.89 and 55.13. One earlier candidate observer event was missed, so complete interval statistics are withheld for that earlier run; the fresh repeat has no missed events.
+- Monastery warp room repeated jumps: baseline 23.93; candidate 28.77. The animated warp effect remains substantially slower than native full-rate gameplay.
+
+These are completed paired-screen publication rates, not a claim of unique animation FPS, full-game 60 fps, or subjective audio quality. Bounded capture inspection verifies the intended scenes and activity. The native warp comparison uses the same isolated suspend save but different effect phases; it is not a frame-exact hardware replay.
+
+Correctness evidence
+The reuse1 software variant and this milestone use identical GPU runtime source and 3D policy. Across 20,493 tutorial and 4,454 monastery frames, original-versus-candidate screen/state outputs, PCM and save/memory checkpoints match. The paired Engine-B cache is not exercised by that CPU oracle; a separate actual ARM directed test compares 66,060,288 pixels across normal, direct, parallel and combined modes. ARM raster qualification covers 5,132 generic full-buffer cases and 256 boundary compatibility cases. Production service and cartridge-profile self-tests pass in the ARM Docker environment. Full service self-tests are not run on MiSTer.
+
+The independent GPU-fixture control captures 504 renders for comparison with other experimental binaries; it is not an additional original-versus-candidate equality claim. The automatic ordered transport policy is covered by native scene tests, not by the CPU oracle.
+
+Build
+The tested production renderer SHA-256 is cff18debe3991fc9fa77e66c08be9a1dcc2cd8e123c1050e5e2c0fda373caee5. It uses GCC 13.3, -O3, LTO, no JIT and the existing Portrait combo3 profile data with partial training and coverage-mismatch fallback for changed functions. The package contains the exact build command, toolchain receipt, profile archive, frozen source manifest and validation records. See the retained RC11 build instructions for the FFmpeg 7.1.1 dependency and unchanged FPGA/host provenance.
+
+Limitations
+This is a private milestone, not a full playthrough qualification or an assertion that all optimization strategies have been exhausted. Regional Ecclesia binaries absent from the owned inventory are listed in MISSING_ROM_VARIANTS.txt. The warp effect still spends substantial time in general polygon shading/interpolation. Further measured experiments remain open; the next queued game is not advanced on the strength of this milestone alone. Existing RC11 limitations, including unresolved static FPGA setup/recovery timing and the NSMB goal-pole background glitch, remain.

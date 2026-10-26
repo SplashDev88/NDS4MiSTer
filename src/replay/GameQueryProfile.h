@@ -107,6 +107,15 @@ inline bool portrait_sprite_raster_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && ((selected.identity.header_crc32 == 0xa9935ea4u) | (selected.identity.header_crc32 == 0x2b8de1e5u));
 }
 
+// Independent Ecclesia raster experiment. Keep its established query policy
+// while measuring the exact rectangle/sprite path on this verified cartridge.
+inline bool ecclesia_sprite_raster_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','R','9','E'}} &&
+        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x89d2e308u;
+}
+
 // No remembered selection: every reset/reload starts from the fast default.
 // A short/failed read or changing header cannot inherit an earlier game's mode.
 template<class ReadHeader>
