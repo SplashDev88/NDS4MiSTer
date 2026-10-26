@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.8 standalone launcher and recovery supervisor.
+"""NDS4MiSTer v0.9.0-rc.11 standalone launcher and recovery supervisor.
 No system binary/init changes. Bootstrap display settings are journaled/restored.
 """
 from pathlib import Path
@@ -33,8 +33,8 @@ MAIN_PATHS = (
     "degauss/MiSTer_RA_Degauss",
     "ConsoleMode/MiSTer_ConsoleMode",
 )
-EXPECTED_HELPER = "cb674cc92c590197b5039c600c8873cd0a37d8b534979877818b526c78a91582"
-EXPECTED_CORE = "6bd1daf846ef133266fc27e79b466b5d44f902a0e7123a138b03c5225e4ee2a4"
+EXPECTED_HELPER = "bce5e79d8e1825b0380dc4e14d5b3c892833faa87a23538ae79f53f03df07da8"
+EXPECTED_CORE = "876ec97a6044191515a0fea910eb1359417a466fdd0a23e31e0cca2a069a08fa"
 EXPECTED_KICKSTART = "0b567af3cd088a9d7ff720fc7f8249ef20cea05a69e9d7dc8d1200ba1899dda8"
 EXPECTED_SPEED_ENV = {
     "NDS4MISTER_PARALLEL_CLEAR": "0",
@@ -584,6 +584,11 @@ def main():
         # renderer flags or the launcher's offline lifecycle-test overrides.
         env = {k: v for k, v in os.environ.items()
                if not k.startswith(("NDS", "H3D_"))}
+        texture_choice = os.environ.get("NDS4MISTER_TEXTURE_HISTORY", "1")
+        assert texture_choice in ("0", "1"), "Invalid texture-history choice"
+        env["NDS4MISTER_TEXTURE_HISTORY"] = texture_choice
+        if os.environ.get("NDS4MISTER_RENDER_CACHE_STATS") == "1":
+            env["NDS4MISTER_RENDER_CACHE_STATS"] = "1"
         stage("start verified helper")
         subprocess.run(
             ["sh", KICK, "start"],
@@ -603,8 +608,9 @@ def main():
             assert frequency.read_text().strip()=="1000000", "Expected 1 GHz"
         state["wc_mapping_present"] = "/dev/nds_mem_wc" in Path("/proc/%d/maps" % release_pid).read_text()
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
+        assert actual_env.get("NDS4MISTER_TEXTURE_HISTORY") == texture_choice
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.8"
+        state["release"] = "v0.9.0-rc.11"
         write()
         stage("load standalone core")
         stage_bootstrap(KIT, SD_ROOT, validate_settings().read_bytes())

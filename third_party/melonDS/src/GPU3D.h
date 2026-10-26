@@ -151,6 +151,16 @@ public:
     {
         return UseIntegralTextureSpans;
     }
+    // Keep Portrait's admitted raster and scheduling choices separate from
+    // Dawn's texture history and other replay policies.
+    void SetSpriteRasterSpansEnabled(bool enabled) noexcept
+    {
+        UseSpriteRasterSpans = enabled;
+    }
+    bool SpriteRasterSpansEnabled() const noexcept
+    {
+        return UseIntegralTextureSpans || UseSpriteRasterSpans;
+    }
 
     // Native-resolution software rendering consumes FinalPosition only.
     // OpenGL/compute renderers additionally consume HiresPosition.
@@ -336,6 +346,7 @@ public:
     bool ExternalGeometryDiscardTainted = false;
     bool HighResolutionCoordinatesEnabled = true;
     bool UseIntegralTextureSpans = false;
+    bool UseSpriteRasterSpans = false;
 
     u32 DispCnt = 0;
     u8 AlphaRefVal = 0;

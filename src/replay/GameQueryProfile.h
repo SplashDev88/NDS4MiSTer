@@ -98,6 +98,15 @@ inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x01ebee25u;
 }
 
+// Exact Portrait identity selects its qualified raster and replay policy.
+// Other cartridges keep their independent automatic policy.
+inline bool portrait_sprite_raster_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'A','C','B','E'}} &&
+        selected.identity.revision == 0 && ((selected.identity.header_crc32 == 0xa9935ea4u) | (selected.identity.header_crc32 == 0x2b8de1e5u));
+}
+
 // No remembered selection: every reset/reload starts from the fast default.
 // A short/failed read or changing header cannot inherit an earlier game's mode.
 template<class ReadHeader>

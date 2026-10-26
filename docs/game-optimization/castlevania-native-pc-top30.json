@@ -1,0 +1,250 @@
+{
+  "metric": "observed wall-time samples; neither cycles nor instructions",
+  "samples": 13996,
+  "missed_minimum": 5340,
+  "collector_cpu_seconds": 0.84779092,
+  "rows": [
+    {
+      "raw_r15": "0xffff0238",
+      "instruction_pc": "0xffff0230",
+      "flags": 4,
+      "samples": 5203,
+      "percent": 37.17490711631895,
+      "mapping": "BIOS halt (halt flag set)"
+    },
+    {
+      "raw_r15": "0x1ffe338",
+      "instruction_pc": "0x1ffe330",
+      "flags": 2,
+      "samples": 852,
+      "percent": 6.087453558159474,
+      "mapping": "DMA active; sampled PC is not CPU cost"
+    },
+    {
+      "raw_r15": "0x2012920",
+      "instruction_pc": "0x2012918",
+      "flags": 0,
+      "samples": 328,
+      "percent": 2.343526721920549,
+      "mapping": "Fixed-stride callback dispatch at 0x020128e4",
+      "evidence": "Runtime RAM disassembly: ldr r1,[r5]; skip zero pointer; blx r1; advance by 0x2a0, repeat 0x110 times. Not an idle loop."
+    },
+    {
+      "raw_r15": "0x2012740",
+      "instruction_pc": "0x2012738",
+      "flags": 0,
+      "samples": 297,
+      "percent": 2.122034867104887,
+      "mapping": "Fixed-stride callback table traversal at 0x020126f4",
+      "evidence": "Runtime RAM disassembly: checks [r5] and [r5+4], optionally calls blx r1; advances r5 by 0x2a0 for 0x110 entries. Game-object role is inferred, not symbol-confirmed."
+    },
+    {
+      "raw_r15": "0x2012c84",
+      "instruction_pc": "0x2012c7c",
+      "flags": 0,
+      "samples": 98,
+      "percent": 0.7002000571591883,
+      "mapping": "CopyBytes"
+    },
+    {
+      "raw_r15": "0x2060034",
+      "instruction_pc": "0x206002c",
+      "flags": 0,
+      "samples": 91,
+      "percent": 0.6501857673621034,
+      "mapping": "Data-cache clean/invalidate loop"
+    },
+    {
+      "raw_r15": "0x2012c80",
+      "instruction_pc": "0x2012c78",
+      "flags": 0,
+      "samples": 67,
+      "percent": 0.47870820234352673,
+      "mapping": "CopyBytes"
+    },
+    {
+      "raw_r15": "0x2004288",
+      "instruction_pc": "0x2004280",
+      "flags": 0,
+      "samples": 67,
+      "percent": 0.47870820234352673,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x2012c78",
+      "instruction_pc": "0x2012c70",
+      "flags": 0,
+      "samples": 64,
+      "percent": 0.45727350671620465,
+      "mapping": "CopyBytes"
+    },
+    {
+      "raw_r15": "0x20043fc",
+      "instruction_pc": "0x20043f4",
+      "flags": 0,
+      "samples": 60,
+      "percent": 0.42869391254644185,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x200412c",
+      "instruction_pc": "0x2004124",
+      "flags": 0,
+      "samples": 56,
+      "percent": 0.40011431837667905,
+      "mapping": "Background tile traversal/submission"
+    },
+    {
+      "raw_r15": "0x20043f8",
+      "instruction_pc": "0x20043f0",
+      "flags": 0,
+      "samples": 50,
+      "percent": 0.35724492712203487,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x2004384",
+      "instruction_pc": "0x200437c",
+      "flags": 0,
+      "samples": 46,
+      "percent": 0.32866533295227207,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20043f4",
+      "instruction_pc": "0x20043ec",
+      "flags": 0,
+      "samples": 45,
+      "percent": 0.32152043440983136,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x1ffe0d0",
+      "instruction_pc": "0x1ffe0c8",
+      "flags": 0,
+      "samples": 44,
+      "percent": 0.3143755358673907,
+      "mapping": "Unresolved; see raw PC"
+    },
+    {
+      "raw_r15": "0x20041d8",
+      "instruction_pc": "0x20041d0",
+      "flags": 0,
+      "samples": 44,
+      "percent": 0.3143755358673907,
+      "mapping": "Background tile traversal/submission"
+    },
+    {
+      "raw_r15": "0x2004360",
+      "instruction_pc": "0x2004358",
+      "flags": 0,
+      "samples": 43,
+      "percent": 0.30723063732495,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20043ec",
+      "instruction_pc": "0x20043e4",
+      "flags": 0,
+      "samples": 42,
+      "percent": 0.30008573878250927,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20043a4",
+      "instruction_pc": "0x200439c",
+      "flags": 0,
+      "samples": 41,
+      "percent": 0.2929408402400686,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20043c8",
+      "instruction_pc": "0x20043c0",
+      "flags": 0,
+      "samples": 41,
+      "percent": 0.2929408402400686,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x2060040",
+      "instruction_pc": "0x2060038",
+      "flags": 0,
+      "samples": 40,
+      "percent": 0.2857959416976279,
+      "mapping": "Data-cache clean/invalidate loop"
+    },
+    {
+      "raw_r15": "0x2004148",
+      "instruction_pc": "0x2004140",
+      "flags": 0,
+      "samples": 40,
+      "percent": 0.2857959416976279,
+      "mapping": "Background tile traversal/submission"
+    },
+    {
+      "raw_r15": "0x20043c0",
+      "instruction_pc": "0x20043b8",
+      "flags": 0,
+      "samples": 39,
+      "percent": 0.2786510431551872,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20043bc",
+      "instruction_pc": "0x20043b4",
+      "flags": 0,
+      "samples": 39,
+      "percent": 0.2786510431551872,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x2004194",
+      "instruction_pc": "0x200418c",
+      "flags": 0,
+      "samples": 39,
+      "percent": 0.2786510431551872,
+      "mapping": "Background tile traversal/submission"
+    },
+    {
+      "raw_r15": "0x2061d9c",
+      "instruction_pc": "0x2061d94",
+      "flags": 0,
+      "samples": 39,
+      "percent": 0.2786510431551872,
+      "mapping": "Unresolved; see raw PC"
+    },
+    {
+      "raw_r15": "0x21b8cdc",
+      "instruction_pc": "0x21b8cd4",
+      "flags": 0,
+      "samples": 38,
+      "percent": 0.2715061446127465,
+      "mapping": "Unresolved; see raw PC"
+    },
+    {
+      "raw_r15": "0x20043d4",
+      "instruction_pc": "0x20043cc",
+      "flags": 0,
+      "samples": 37,
+      "percent": 0.2643612460703058,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20043cc",
+      "instruction_pc": "0x20043c4",
+      "flags": 0,
+      "samples": 36,
+      "percent": 0.2572163475278651,
+      "mapping": "Background tile quad submission"
+    },
+    {
+      "raw_r15": "0x20041fc",
+      "instruction_pc": "0x20041f4",
+      "flags": 0,
+      "samples": 36,
+      "percent": 0.2572163475278651,
+      "mapping": "Background tile traversal/submission"
+    }
+  ]
+}

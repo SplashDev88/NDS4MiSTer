@@ -2449,6 +2449,8 @@ private:
     u8 UploadBanksAtStart[9] {};
     u32 UploadTextureMapping[4] {}, UploadPaletteMapping[8] {};
     bool UseTextureCache;
+    bool TextureHistoryEnabled=false;
+    u64 TextureHistoryFrames=0;
 
     u32 ColorBuffer[BufferSize * 2];
     u32 DepthBuffer[BufferSize * 2];

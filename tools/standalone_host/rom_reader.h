@@ -41,6 +41,12 @@ private:
   pid_t child = -1;
   bool framed_stream = false;
   bool cache_preparing = false;
+  int work_progress = -1;
+  void workProgress(const Header &h) {
+    if (h.error || h.size > 9900 || int(h.size) < work_progress)
+      throw std::runtime_error("Invalid ROM loading progress");
+    work_progress = int(h.size);
+  }
   void cacheStatus(const Header &h) {
     if (h.size || h.error != 1) throw std::runtime_error("Invalid ROM cache status");
     cache_preparing = true;
@@ -105,10 +111,12 @@ private:
              std::strcmp(nsmb_mode, "both") == 0 || std::strcmp(nsmb_mode, "bones") == 0 ||
              std::strcmp(nsmb_mode, "lookup+bones") == 0 || std::strcmp(nsmb_mode, "skip+bones") == 0 ||
              std::strcmp(nsmb_mode, "both+bones") == 0);
-        if (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
+        const bool portrait = ((code == "ACBE" || code == "ACBP") && header[30] == 0) ||
+                              (code == "ACBJ" && header[30] <= 1);
+        if ((allow_movies && portrait) || (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
                                code == "AXFE" || code == "YWSE" || code == "BMTJ" ||
                                code == "YQUP" || code == "YQUJ" || code == "AXFP" ||
-                               code == "AXFJ" || code == "CSNP" || code == "C5RJ")))) {
+                               code == "AXFJ" || code == "CSNP" || code == "C5RJ"))))) {
           const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);
@@ -118,6 +126,7 @@ private:
           // opt-out for exact loader A/B checks, with no menu setting.
           if (!getenv("NDS_ROM_STREAM_PATCHES") && setenv("NDS_ROM_STREAM_PATCHES", "1", 1)) _exit(1);
           if (setenv("NDS_ROM_CACHE_STATUS", "1", 1)) _exit(1);
+          if (setenv("NDS_ROM_LOAD_PROGRESS", "1", 1)) _exit(1);
           execlp("python3", "python3", "-E", "-s", "-B", script.c_str(), input_arg.c_str(),
                  output_arg.c_str(), parent_arg.c_str(), static_cast<char *>(nullptr));
           // A missing worker must not silently enable only half of a profile.
@@ -196,6 +205,7 @@ public:
   RomReader(const RomReader &) = delete;
   RomReader &operator=(const RomReader &) = delete;
   bool preparingCache() const { return cache_preparing; }
+  int workProgress() const { return work_progress; }
   ~RomReader() {
     close(input);
     // A CIFS task in uninterruptible sleep may not exit immediately. Never join
@@ -244,7 +254,9 @@ public:
     for (;;) {
       Header h{};
       exact(&h, sizeof(h));
-      if (h.operation == 12) {
+      if (h.operation == 13) {
+        workProgress(h);
+      } else if (h.operation == 12) {
         cacheStatus(h);
       } else if (h.operation == 10) {
         if (h.error <= 0 || size_t(h.error) > buffer.size() || h.size > limit ||
@@ -298,7 +310,8 @@ public:
       while (off < sizeof(h))
         off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
       if (h.operation == 12) cacheStatus(h);
-    } while (h.operation == padding_progress || h.operation == 12);
+      if (h.operation == 13) workProgress(h);
+    } while (h.operation == padding_progress || h.operation == 12 || h.operation == 13);
     if (h.operation == 9) {
       if (h.error || !validSize(h.size)) throw std::runtime_error("Invalid framed ROM metadata");
       framed_stream = true;

@@ -17,6 +17,7 @@ import struct
 import sys
 from prepare import CHUNK, ROOT, require
 from stream_load import transfer, transfer_limit
+from load_progress import LoadProgress
 
 DEFAULT_ROOT = Path('/media/fat/.cache/NDS4MiSTer/prepared-roms')
 BUDGET = 2 * 1024**3
@@ -187,7 +188,7 @@ class Writer:
             self.abort()
 
 
-def replay(source, entry, emit, image_size=None):
+def replay(source, entry, emit, image_size=None, work=None):
     f, meta = entry
     before = os.fstat(f.fileno())
     image_size = source.size if image_size is None else image_size
@@ -207,12 +208,15 @@ def replay(source, entry, emit, image_size=None):
         emit(data)
         count += 12+n
         emit(struct.pack('<Qii', count*image_size//meta['bytes'], 0, 7))
+        if work:
+            work.update(0, 9700, count, meta['bytes'])
     require(not f.read(1) and stat_identity(before) == stat_identity(os.fstat(f.fileno())) and
             h.hexdigest() == meta['sha256'], 'cache verification failed')
     source.unchanged()
 
 
 def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
+    work = LoadProgress(emit)
     root = root if root is not None else os.environ.get('NDS_ROM_CACHE_DIR', str(DEFAULT_ROOT))
     store, writer, recovery = None, None, False
     image_size = plan[0]['output_size']
@@ -230,7 +234,7 @@ def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
                 source.unchanged()
                 emit(struct.pack('<Qii', image_size, 0, 9))
                 try:
-                    replay(source, entry, emit, image_size)
+                    replay(source, entry, emit, image_size, work)
                 except (ValueError, OSError) as error:
                     log('invalid; rebuilding from original: '+str(error))
                     store.invalidate()
@@ -243,9 +247,11 @@ def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
                         emit(struct.pack('<Qii', at, len(data), 10))
                         emit(data)
                     recovery = True
+                    work.recovery()
                 else:
                     emit(struct.pack('<Qii', image_size, 0, 7))
                     emit(struct.pack('<Qii', 0, 0, 11))
+                    work.update(9700, 9900)
                     emit(struct.pack('<Qii', limit, 0, 8))
                     try:
                         os.utime(store.path('.json'), None)
@@ -271,7 +277,7 @@ def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
         # retain the original stream; hits and disabled caches keep Loading ROM.
         if writer and writer.file and os.environ.get('NDS_ROM_CACHE_STATUS') == '1':
             emit(struct.pack('<Qii', 0, 1, 12))
-        transfer(source, plan, emit, recovery=recovery,
+        transfer(source, plan, emit, recovery=recovery, work=work,
                  observe=writer.append if writer else lambda at, data: None,
                  prepared=writer.commit if writer else lambda: None, **kwargs)
     finally:

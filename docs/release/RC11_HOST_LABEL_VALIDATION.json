@@ -1,0 +1,11 @@
+{
+  "baseline_sha256": "049c42092545e02afc64401432669c881d6abf63f228b55879d2e74a1f5f8ef1",
+  "bytes": 2203272,
+  "changed_elf_sections": [
+    ".note.gnu.build-id",
+    ".rodata"
+  ],
+  "executable_code_identical": true,
+  "rc11_sha256": "d2459739f78a335c61aadef96d086e5457252eeb434a1a66833bf61ae1de001b",
+  "read_only_data_change": "rc10 -> rc11 menu/footer string only"
+}

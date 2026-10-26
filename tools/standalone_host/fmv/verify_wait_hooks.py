@@ -12,7 +12,11 @@ results = []
 for name, resume, japanese in [
         ('ff12_wait_before_header', 0x02086140, False),
         ('ff12_eu_wait_before_header', 0x02086640, False),
-        ('ff12_jp_wait_before_header', 0x02086738, True)]:
+        ('ff12_jp_wait_before_header', 0x02086738, True),
+        ('portrait_us_wait_before_header', 0x02089914, True),
+        ('portrait_eu_wait_before_header', 0x0208a68c, True),
+        ('portrait_jp_wait_before_header', 0x0208999c, True),
+        ('portrait_jp1_wait_before_header', 0x02082a38, False)]:
     calls = []
     uc = Uc(UC_ARCH_ARM, UC_MODE_ARM)
     uc.mem_map(0x01ff0000, 0x10000)

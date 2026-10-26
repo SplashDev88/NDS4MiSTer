@@ -1,0 +1,154 @@
+{
+  "analog_cases": 6,
+  "baseline_id": "portrait3-ds-lite-menu-20261025",
+  "baseline_tag": "baseline/portrait3-ds-lite-menu-20261025",
+  "completed_utc": "2026-10-25T23:29:40.411941+00:00",
+  "digital_cases": 12,
+  "dimming_measurement": {
+    "cases": {
+      "DIGITAL_MAIN_CCW": {
+        "grid_off_mean_luma": 12.483498746141976,
+        "lcd2_mean_luma": 0.13611882716049384,
+        "ratio": 0.010903900415142938
+      },
+      "DIGITAL_MAIN_CW": {
+        "grid_off_mean_luma": 12.458447145061728,
+        "lcd2_mean_luma": 0.13758680555555555,
+        "ratio": 0.011043656079569445
+      },
+      "DIGITAL_SIDE_CCW": {
+        "grid_off_mean_luma": 12.427262731481482,
+        "lcd2_mean_luma": 0.20745949074074074,
+        "ratio": 0.0166939007586274
+      },
+      "DIGITAL_SIDE_CW": {
+        "grid_off_mean_luma": 12.427359182098765,
+        "lcd2_mean_luma": 0.2070433063271605,
+        "ratio": 0.016660281826037515
+      },
+      "DIGITAL_TOUCH_CCW": {
+        "grid_off_mean_luma": 11.2663175154321,
+        "lcd2_mean_luma": 0.1467110339506173,
+        "ratio": 0.013022092955365324
+      },
+      "DIGITAL_TOUCH_CW": {
+        "grid_off_mean_luma": 11.285115740740741,
+        "lcd2_mean_luma": 0.14694492669753087,
+        "ratio": 0.013021127126507041
+      }
+    },
+    "method": "Whole-frame 8-bit Pillow L mean, LCD2 divided by effect-Off; black borders included in both same-layout captures. Supplemental observation, not physical luminance calibration."
+  },
+  "download": "MENU_CAPTURES_1080P.zip",
+  "gallery": "index.html",
+  "gallery_images_including_original_cropped_side": 27,
+  "grid_off_comparison_cases": 8,
+  "issues": [
+    {
+      "affected": "Left/right, Main only and Touch only at 90 CCW and 90 CW with the core menu open",
+      "evidence": [
+        "ROTATED_TOUCH_SCALER.png",
+        "LCD_OFF_SETTING.png",
+        "GRID_OFF_COMPARISONS.jpg"
+      ],
+      "hypothesis": "Interaction between hires-OSD sampling metadata and the LCD effect. Touch CW reports 720 horizontal samples scaled 1x while the native width is 240. Root cause is not yet isolated between core metadata and receiver effect handling.",
+      "id": "lcd2-rotated-digital-dimming",
+      "observation": "LCD Mono 2 produces a nearly black picture. Disabling the effect restores the image in all six captures.",
+      "release_action": "Resolve the source-grid/OSD/effect interaction and recheck menu-open and menu-closed output before qualifying these modes.",
+      "status": "open"
+    },
+    {
+      "affected": "Unrotated left/right after changing layouts",
+      "evidence": [
+        "SIDE_SCALE_BEFORE_3X.png",
+        "SIDE_SCALE_3X_SETTING.png",
+        "DIGITAL_SIDE_OFF_3X.png"
+      ],
+      "id": "side-scale-mode-switch",
+      "observation": "RetroTINK MiSTer 240p mode inherited 3.849x vertical / 3.850x horizontal scale, cropping a 2002-pixel-wide picture. Temporary live 3x3 adjustment produces 1560x576 and restores the compact intended view.",
+      "release_action": "Ensure the intended 3x scale persists correctly across mode transitions/profile reloads. No permanent profile update was saved during this matrix.",
+      "status": "open"
+    },
+    {
+      "affected": "Native HD15 RGBS Main and Touch with current profile",
+      "evidence": [
+        "ANALOG_EFFECT_SETTINGS.png",
+        "ANALOG_OVERVIEW.jpg",
+        "ANALOG_GRID_OFF_COMPARISONS.jpg"
+      ],
+      "id": "lcd2-analog-banding",
+      "observation": "LCD Mono 2 shows broad vertical bands. Grid-off comparisons remove the bands; the menu and picture remain upright across digital rotation settings.",
+      "release_action": "Use and qualify an analog-specific sampling/scaling/effect configuration before claiming DS-pixel grid alignment on RGBS.",
+      "status": "open"
+    }
+  ],
+  "manifest": "GALLERY_MANIFEST.json",
+  "primary_cases": 18,
+  "qualification": "Accepted as the next development baseline. This matrix is not an all-modes pass and makes no new gameplay-performance claim. No binaries were changed, no release published, and the optimization queue remains paused.",
+  "restoration": {
+    "analog_screen": "Main",
+    "core_config_hashes_unchanged": true,
+    "core_rotation": "90 CW",
+    "core_state_matches_initial": true,
+    "digital_layout": "Top/bottom",
+    "final_full_resolution_capture": "FINAL_TATE_RESTORED_1080P.png",
+    "host": {
+      "epoch": "15133530",
+      "pid": 15277
+    },
+    "isolated_save_hash_matches_prior_evidence": true,
+    "isolated_save_sha256": "068bae615b34db00959c3ae8e52b553be5a4e50e6aa7eb0459bb56e81380c25b",
+    "live_side_scale_changed_to_3x_for_comparison": true,
+    "menu_open": true,
+    "obs_settings_match_initial": true,
+    "obs_source_mode_restored": "1280x720 at original 60 fps setting",
+    "retrotink_effect": "LCD Mono 2",
+    "retrotink_input": "HDMI",
+    "retrotink_menu_closed": true,
+    "retrotink_rotation": "Off",
+    "saved_profiles_modified": false,
+    "status_words": [
+      29728,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "tate_scale": "4x4 native pixels; 1568x1024 at 1080p"
+  },
+  "runtime_code_revision": "4e265ed258dd09bb27e913d80a4ab99294733b09",
+  "scope": {
+    "analog_rotation_behavior": "Independent native analog remains upright. Digital rotation is varied for the six analog captures.",
+    "analog_screens": [
+      "Main",
+      "Touch"
+    ],
+    "capture_resolution": [
+      1920,
+      1080
+    ],
+    "digital_layouts": [
+      "Left/right",
+      "Top/bottom",
+      "Main only",
+      "Touch only"
+    ],
+    "physical_display_photo": false,
+    "retrotink_firmware": "1.99.5",
+    "retrotink_profile": "ds-lite-tate-1080p",
+    "rotations": [
+      "Off",
+      "90 CCW",
+      "90 CW"
+    ],
+    "routes": [
+      "MiSTer digital HDMI -> RetroTINK HDMI -> USB capture",
+      "MiSTer native analog VGA -> RetroTINK HD15 RGBS -> USB capture"
+    ],
+    "screen_order_and_gap": "Unchanged accepted settings; not a permutation of every menu setting."
+  },
+  "status": "CAPTURE_MATRIX_COMPLETE_WITH_OPEN_DISPLAY_ISSUES"
+}

@@ -1,0 +1,32 @@
+{
+  "host_python_tests": {
+    "passed": 63
+  },
+  "fmv_python_tests": {
+    "passed": 59
+  },
+  "arm_cpp_tests": {
+    "passed": [
+      "test_menu_presentation",
+      "test_rom_reader",
+      "test_host_framed"
+    ]
+  },
+  "host_version_validation": {
+    "baseline_sha256": "049c42092545e02afc64401432669c881d6abf63f228b55879d2e74a1f5f8ef1",
+    "rc11_sha256": "d2459739f78a335c61aadef96d086e5457252eeb434a1a66833bf61ae1de001b",
+    "changed_elf_sections": [
+      ".note.gnu.build-id",
+      ".rodata"
+    ],
+    "executable_code_identical": true,
+    "read_only_data_change": "rc10 -> rc11 menu/footer string only",
+    "bytes": 2203272
+  },
+  "hardware_scope": "Reuses exact tested Beta4 renderer/FPGA and host executable code; no new RC11 hardware test claimed.",
+  "test_log_sha256": {
+    "host-offline-tests.log": "18e40499bccc179a9c8ee8a0067d769df0cafe3e40ed8e09122fb12d3a409be5",
+    "fmv-offline-tests.log": "06714013d9525ef0899be956b833c38ff60499442efb046ca207dda5e17e3f87",
+    "host-arm-tests.log": "5f658c600bf551d356da1dcb46f12583c85138262dd148ab6edb5bf4efe5fa96"
+  }
+}

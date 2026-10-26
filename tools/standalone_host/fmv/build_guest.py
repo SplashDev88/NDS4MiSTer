@@ -19,6 +19,14 @@ for game,table,decoder in [('ff12',0x27e0b40,0x1ff82f0),('sonic',0x27e0ae0,0x1ff
  SPECS['packed_vx_'+game+'_color']=(0x1fff600,['-DOLD_COLOR_TABLE='+hex(table)])
  SPECS['packed_vx_'+game+'_decode']=(0x1fffa80,['-DORIGINAL_DECODER='+hex(decoder)])
 
+# Portrait uses the same qualified VX converter with a different table address.
+# Japanese Rev 1 moved the original decoder; retain its own fallback target.
+SPECS.update({
+ 'packed_vx_portrait_color': (0x1fff600, ['-DOLD_COLOR_TABLE=0x027c1080']),
+ 'packed_vx_portrait_decode': (0x1fffa80, ['-DORIGINAL_DECODER=0x01ff81a0']),
+ 'packed_vx_portrait_jp1_decode': (0x1fffa80, ['-DORIGINAL_DECODER=0x01ff8180']),
+})
+
 SPECS.update({
  'packed_sj_jp_color': (0x1fff600, ['-DFILTER_ENTRY=0x0213aa14']),
  'sj_jp_queue_rebase': (0x1fffa00, ['-DQUEUE_RESUME=0x0208e068']),
@@ -30,6 +38,14 @@ ALIASES = {'packed_sj_jp_color':'packed_video_color',
            'sj_jp_queue_rebase':'sj_queue_rebase',
            'ff12_eu_wait_before_header':'ff12_wait_before_header',
            'ff12_jp_wait_before_header':'ff12_wait_before_header'}
+
+# Complete the existing asynchronous file read before inspecting its packet
+# header. Faster decoding otherwise exposes a stale ping-pong buffer header.
+for region,resume,reload in [('us',0x02089914,True),('eu',0x0208a68c,True),
+                             ('jp',0x0208999c,True),('jp1',0x02082a38,False)]:
+ name='portrait_'+region+'_wait_before_header'
+ SPECS[name]=(0x1fffcc0,['-DWAIT_RESUME='+hex(resume)]+(['-DJAPANESE_PLAYER=1'] if reload else []))
+ ALIASES[name]='ff12_wait_before_header'
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--prefix',default='arm-linux-gnueabihf-');a=p.parse_args()

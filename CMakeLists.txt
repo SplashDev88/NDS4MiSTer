@@ -309,6 +309,20 @@ if(NDS4MISTER_USE_MELONDS)
     target_link_libraries(nds_live_hgs_test PRIVATE
         core nds_headless_save ${CMAKE_DL_LIBS})
 
+    foreach(oracle IN ITEMS TextureDirtyRange TextureHistory)
+        string(TOLOWER "${oracle}" oracle_name)
+        add_executable(nds_${oracle_name}_test
+            src/replay/${oracle}Test.cpp src/melonds/HeadlessPlatform.cpp)
+        target_include_directories(nds_${oracle_name}_test PRIVATE
+            src third_party/melonDS/src)
+        target_compile_options(nds_${oracle_name}_test PRIVATE -fno-access-control)
+        target_link_libraries(nds_${oracle_name}_test PRIVATE
+            core nds_headless_save ${CMAKE_DL_LIBS})
+        if(BUILD_TESTING)
+            add_test(NAME nds_${oracle_name} COMMAND nds_${oracle_name}_test)
+        endif()
+    endforeach()
+
     add_executable(nds_layer_capture
         src/replay/LayerCapture.cpp
         src/melonds/MelonDsBackend.cpp

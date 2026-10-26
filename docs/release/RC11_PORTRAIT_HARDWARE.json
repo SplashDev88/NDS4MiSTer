@@ -1,0 +1,352 @@
+{
+  "baseline_movie_source_equivalent_fps": 22.251837402230954,
+  "baseline_source": "61b95dc2809271468aadb5e8f649ca5e943f51e8",
+  "broader_game_queue": "paused",
+  "gameplay": [
+    {
+      "baseline_updates_per_second": 46.218707849080594,
+      "candidate_updates_per_second": 46.1756160886666,
+      "mode": "JUMP",
+      "ratio": 0.9990676554490726
+    },
+    {
+      "baseline_updates_per_second": 47.679203752276806,
+      "candidate_updates_per_second": 47.48681547568759,
+      "mode": "FIGHT",
+      "ratio": 0.9959649435928337
+    }
+  ],
+  "limitations": [
+    "Native timing measures source-matched raw framebuffer transitions, not game-wide FPS.",
+    "Audio correlation proves soundtrack timing and continuity, not a separate lip-sync test.",
+    "Existing accepted FPGA timing and LCD grid limitations are outside this change."
+  ],
+  "movie_target_fps": 30,
+  "native": [
+    {
+      "audio": {
+        "clock_fit": [
+          1.000007183908046,
+          31.48977688834158
+        ],
+        "correlation_percentiles": [
+          0.873679297657364,
+          0.8835507766919939,
+          0.9155827621434154,
+          0.9724175543209997,
+          0.9988667872290868
+        ],
+        "dropout_windows": [],
+        "nonquiet_100ms_windows": 550,
+        "rms_gain": 0.49974086761543746,
+        "timing_residual_ms": [
+          -0.10303776690534505,
+          -0.00030788213223331695,
+          0.07943349683614542
+        ]
+      },
+      "counters": {
+        "cached_conversions": 3225,
+        "conversions": 3225,
+        "filter_conversions": 0,
+        "video_decodes": 3238,
+        "video_errors": 0
+      },
+      "identity": {
+        "code": "ACBE",
+        "header_crc32": "2b8de1e5",
+        "revision": 0,
+        "stable_two_reads": true
+      },
+      "key": "ACBE0",
+      "pacing": {
+        "clock_residual_ms_percentiles_0_50_99_100": [
+          -57.706307066837326,
+          -2.2720892739016563,
+          64.25132219621449,
+          75.24428507895209
+        ],
+        "clock_scale": 0.998479919443128,
+        "excess_delay_ms_percentiles_50_95_99_100": [
+          0.4580268251750397,
+          1.792928336952215,
+          8.938101973125894,
+          17.586103326706848
+        ],
+        "excess_over_100ms": 0,
+        "excess_over_50ms": 0,
+        "interval_ms_percentiles_50_95_99_100": [
+          33.89435350254644,
+          35.13690297986613,
+          40.11396289104595,
+          102.25143699790351
+        ],
+        "matched_transitions": 1698
+      },
+      "recording": "build-host/Movies/NDS Test Rig/2026-10-25_19-34-02_NDS-test.mp4",
+      "source_equivalent_fps": 30.04567184158455,
+      "source_label": "US_ACCEL"
+    },
+    {
+      "audio": {
+        "clock_fit": [
+          1.0000071154898744,
+          47.19021373836895
+        ],
+        "correlation_percentiles": [
+          0.8825430565176341,
+          0.8899206853715259,
+          0.9420653561854994,
+          0.9785217816427078,
+          0.9984658816059161
+        ],
+        "dropout_windows": [],
+        "nonquiet_100ms_windows": 560,
+        "rms_gain": 0.49984131046348135,
+        "timing_residual_ms": [
+          -0.08160919563238167,
+          -0.004679803197404908,
+          0.095019156887588
+        ]
+      },
+      "counters": {
+        "cached_conversions": 2988,
+        "conversions": 2988,
+        "filter_conversions": 0,
+        "video_decodes": 3001,
+        "video_errors": 0
+      },
+      "identity": {
+        "code": "ACBP",
+        "header_crc32": "6a6a7703",
+        "revision": 0,
+        "stable_two_reads": true
+      },
+      "key": "ACBP0",
+      "pacing": {
+        "clock_residual_ms_percentiles_0_50_99_100": [
+          -55.72534212842584,
+          -0.2797379856929183,
+          58.084262411575764,
+          68.43903605476953
+        ],
+        "clock_scale": 0.998456400925189,
+        "excess_delay_ms_percentiles_50_95_99_100": [
+          0.4165974917107462,
+          2.164003228492106,
+          10.138922754777008,
+          20.172209339747837
+        ],
+        "excess_over_100ms": 0,
+        "excess_over_50ms": 0,
+        "interval_ms_percentiles_50_95_99_100": [
+          33.84742699563503,
+          35.51695603819098,
+          40.45206991926534,
+          99.91224299301393
+        ],
+        "matched_transitions": 1700
+      },
+      "recording": "build-host/Movies/NDS Test Rig/2026-10-25_19-37-58_NDS-test.mp4",
+      "source_equivalent_fps": 30.046379563695943,
+      "source_label": "EU_ACCEL"
+    },
+    {
+      "audio": {
+        "clock_fit": [
+          1.0000076172231342,
+          46.91929821200516
+        ],
+        "correlation_percentiles": [
+          0.8645149657754232,
+          0.89442765986394,
+          0.9192552179026058,
+          0.9759762235383853,
+          0.9987710290412657
+        ],
+        "dropout_windows": [],
+        "nonquiet_100ms_windows": 560,
+        "rms_gain": 0.49990229678772596,
+        "timing_residual_ms": [
+          -0.10396369347631662,
+          0.0027526907686592494,
+          0.0850939609051693
+        ]
+      },
+      "counters": {
+        "cached_conversions": 3074,
+        "conversions": 3074,
+        "filter_conversions": 0,
+        "video_decodes": 3082,
+        "video_errors": 0
+      },
+      "identity": {
+        "code": "ACBJ",
+        "header_crc32": "c16c5c05",
+        "revision": 0,
+        "stable_two_reads": true
+      },
+      "key": "ACBJ0",
+      "pacing": {
+        "clock_residual_ms_percentiles_0_50_99_100": [
+          -61.7164145805873,
+          -1.1906470463145524,
+          53.81907115224749,
+          59.88564086146653
+        ],
+        "clock_scale": 0.9984244764696918,
+        "excess_delay_ms_percentiles_50_95_99_100": [
+          0.42775699170150006,
+          2.226978258692114,
+          8.073884000473086,
+          19.51522266903538
+        ],
+        "excess_over_100ms": 0,
+        "excess_over_50ms": 0,
+        "interval_ms_percentiles_50_95_99_100": [
+          33.863261982332915,
+          35.55520150985103,
+          41.151241750048925,
+          101.14104000967927
+        ],
+        "matched_transitions": 1696
+      },
+      "recording": "build-host/Movies/NDS Test Rig/2026-10-25_19-41-44_NDS-test.mp4",
+      "source_equivalent_fps": 30.047340291652677,
+      "source_label": "JP0_ACCEL"
+    },
+    {
+      "audio": {
+        "clock_fit": [
+          1.0000073663565046,
+          47.256784505564696
+        ],
+        "correlation_percentiles": [
+          0.7940336031018167,
+          0.850852299225282,
+          0.9152363104887101,
+          0.9715375535238772,
+          0.9989827393458738
+        ],
+        "dropout_windows": [],
+        "nonquiet_100ms_windows": 560,
+        "rms_gain": 0.49986228751374107,
+        "timing_residual_ms": [
+          -0.10033524948482864,
+          -0.006320699199591218,
+          0.08125113956225505
+        ]
+      },
+      "counters": {
+        "cached_conversions": 3080,
+        "conversions": 3080,
+        "filter_conversions": 0,
+        "video_decodes": 3088,
+        "video_errors": 0
+      },
+      "identity": {
+        "code": "ACBJ",
+        "header_crc32": "903e2dbe",
+        "revision": 1,
+        "stable_two_reads": true
+      },
+      "key": "ACBJ1",
+      "pacing": {
+        "clock_residual_ms_percentiles_0_50_99_100": [
+          -52.94096461148001,
+          -1.5343452687375247,
+          54.37628806044813,
+          73.51875089807436
+        ],
+        "clock_scale": 0.9984201789198792,
+        "excess_delay_ms_percentiles_50_95_99_100": [
+          0.31209731831438603,
+          2.9274950119678027,
+          13.124317996938816,
+          17.602446320765353
+        ],
+        "excess_over_100ms": 0,
+        "excess_over_50ms": 0,
+        "interval_ms_percentiles_50_95_99_100": [
+          33.73214401653968,
+          36.17246600042563,
+          43.236166709684746,
+          100.74807601631619
+        ],
+        "matched_transitions": 1695
+      },
+      "recording": "build-host/Movies/NDS Test Rig/2026-10-25_19-59-04_NDS-test.mp4",
+      "source_equivalent_fps": 30.047469625919316,
+      "source_label": "JP1_COLD"
+    }
+  ],
+  "package": {
+    "archive": "NDS4MiSTer_Portrait_FMV_Beta4_20261025.zip",
+    "bytes": 199875599,
+    "core_sha256": "876ec97a6044191515a0fea910eb1359417a466fdd0a23e31e0cca2a069a08fa",
+    "host_sha256": "049c42092545e02afc64401432669c881d6abf63f228b55879d2e74a1f5f8ef1",
+    "kit": "Scripts/.NDS_Portrait_FMV_Beta4_20261025",
+    "launcher": "Scripts/NDS_Portrait_FMV_Beta4.sh",
+    "pins": 114,
+    "renderer_sha256": "bce5e79d8e1825b0380dc4e14d5b3c892833faa87a23538ae79f53f03df07da8",
+    "sha256": "4eda19c56d6cf15b7fb3e68e3fc306596f7d34123798494b5de287eae2cd16fb",
+    "source_revision": "e7bb1119ab6b3fc0f2f8f03ffc38f8a0ff474b27"
+  },
+  "preservation": {
+    "baseline_entries_unchanged": 178,
+    "candidate_entries_verified": 188,
+    "idle_menu_clock_khz": "800000",
+    "original_USA_ROM_unchanged": true,
+    "preflight": "H3D: executable and SHA-256 preflight passed\n",
+    "protected_hashes_unchanged": 10
+  },
+  "public_release": false,
+  "rejected_runs": {
+    "US_NATIVE": "Preflight blocked stale renderer checksum before loading; fixed.",
+    "US_PASS": "Host had not dispatched to movie worker; acceleration counters zero. Excluded from acceptance."
+  },
+  "rev1_stall_investigation": {
+    "cold_repeat": {
+      "cpu_and_io_trace": true,
+      "fresh_8192_byte_FF_test_save": true,
+      "label": "JP1_COLD",
+      "long_delays_over_expected_50ms": 0,
+      "new_separate_cache_directory": true,
+      "source_equivalent_fps": 30.047469625919316
+    },
+    "disposition": "Not reproduced in instrumented warm or fresh-save/fresh-cache full opening runs. No speculative code change made; retain initial observation for playtesting.",
+    "first_run": {
+      "cluster_source_seconds": [
+        79.28,
+        79.75
+      ],
+      "decoder_errors": 0,
+      "label": "JP1_ACCEL",
+      "long_delays_over_expected_50ms": 5,
+      "max_observed_interval_ms": 614.7622339776717,
+      "source_equivalent_fps": 29.16800087941553
+    },
+    "root_cause": "Unconfirmed; no repeatable instruction-flow error found. Do not label this fixed from a single clean repeat.",
+    "warm_repeat": {
+      "cpu_and_io_trace": true,
+      "label": "JP1_REPEAT",
+      "long_delays_over_expected_50ms": 0,
+      "source_equivalent_fps": 30.047414558325446
+    }
+  },
+  "scope": "Four known retail ROM variants. Full-frame original-versus-accelerated software RGB match; measured native playback, audio continuity and skip. Modified ROMs retain normal decoding.",
+  "status": "private_beta_ready_for_playtest",
+  "visual_review": {
+    "all_four_movie_to_title_skips_verified": true,
+    "gameplay_comparison": "Viewed both paused map/inventory screens from matched hall fixture; same equipment and position, elapsed clock differs by one second.",
+    "reviewer": "primary assistant; viewed original-resolution raw DS framebuffer screenshots",
+    "verified": [
+      "US_ACCEL_AFTER_MOVIE.png -> US_ACCEL_START_SKIP.png",
+      "EU_ACCEL_BEFORE_SKIP.png -> EU_ACCEL_SKIP.png",
+      "JP0_ACCEL_BEFORE_SKIP.png -> JP0_ACCEL_SKIP.png",
+      "JP1_ACCEL_BEFORE_SKIP.png -> JP1_ACCEL_SKIP.png",
+      "JP1_REPEAT_BEFORE_SKIP.png -> JP1_REPEAT_SKIP.png",
+      "JP1_COLD_BEFORE_SKIP.png -> JP1_COLD_SKIP.png"
+    ]
+  }
+}

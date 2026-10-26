@@ -71,6 +71,9 @@ public:
         : GPU(gpu), TexLoader(texloader) // probably better if this would be a move constructor???
     {}
 
+    bool ContentIdentityEnabled = false;
+    u64 ContentHistoryHits = 0, ContentHistoryMisses = 0;
+
     u64 MaskedHash(u8* vram, u32 vramSize, u32 addr, u32 size)
     {
         u64 hash = 0;
@@ -105,10 +108,11 @@ public:
         u64 entriesCount = ((startBit + bitsCount + 0x3F) >> 6) - startEntry;
         for (u32 j = startEntry; j < startEntry + entriesCount; j++)
         {
-            if (GetRangedBitMask(j, startBit, bitsCount) & dirty[j & ((vramSize / VRAMDirtyGranularity)-1)])
+            if (GetRangedBitMask(j, startBit, bitsCount) & dirty[j & ((vramSize / (VRAMDirtyGranularity * 64))-1)])
             {
-                if (MaskedHash(vram, vramSize, start, size) != oldHash)
-                    return true;
+                // One dirty block is enough to check the entire input range.
+                // Later dirty blocks cannot change that same comparison.
+                return MaskedHash(vram, vramSize, start, size) != oldHash;
             }
         }
 
@@ -195,7 +199,7 @@ public:
                 it++;
                 continue;
             invalidate:
-                FreeTextures[entry.WidthLog2][entry.HeightLog2].push_back(entry.Texture);
+                RetireTexture(it->first, entry);
 
                 //printf("invalidating texture %d\n", entry.ImageDescriptor);
 
@@ -233,6 +237,30 @@ public:
             layer = it->second.Texture.Layer;
             helper = &it->second.LastVariant;
             return;
+        }
+
+        if (ContentIdentityEnabled)
+        {
+            auto history = ContentHistory.find(key);
+            if (history != ContentHistory.end())
+            {
+                auto& versions = history->second;
+                for (auto v=versions.begin(); v!=versions.end(); ++v)
+                {
+                    if (!MatchesSnapshot(*v)) continue;
+                    TexCacheEntry restored = std::move(*v);
+                    ContentHistoryBytes -= TextureCost(restored);
+                    versions.erase(v);
+                    if (versions.empty()) ContentHistory.erase(history);
+                    auto& active = Cache.emplace(key, std::move(restored)).first->second;
+                    textureHandle = active.Texture.TextureID;
+                    layer = active.Texture.Layer;
+                    helper = &active.LastVariant;
+                    ++ContentHistoryHits;
+                    return;
+                }
+            }
+            ++ContentHistoryMisses;
         }
 
         u32 widthLog2 = (texParam >> 20) & 0x7;
@@ -340,16 +368,21 @@ public:
 
         entry.Texture = storagePlace;
 
+        if (ContentIdentityEnabled && width*height*4 <= 1024*1024)
+            CaptureSnapshot(entry);
         TexLoader.UploadTexture(storagePlace.TextureID, width, height, storagePlace.Layer, DecodingBuffer);
         //printf("using storage place %d %d | %d %d (%d)\n", width, height, storagePlace.TexArrayIdx, storagePlace.LayerIdx, array.ImageDescriptor);
 
         textureHandle = storagePlace.TextureID;
         layer = storagePlace.Layer;
-        helper = &Cache.emplace(std::make_pair(key, entry)).first->second.LastVariant;
+        helper = &Cache.emplace(key, std::move(entry)).first->second.LastVariant;
+        return;
     }
 
     void Reset()
     {
+        ContentHistory.clear();
+        ContentHistoryBytes = SnapshotBytes = 0;
         TextureSnapshotBanks.fill(0); TextureSnapshotAge.fill(0);
         PaletteSnapshotBanks.fill(0); PaletteSnapshotAge.fill(0);
         for (u32 i = 0; i < 8; i++)
@@ -435,8 +468,105 @@ private:
 
         u64 TextureHash[2];
         u64 TexPalHash;
+        std::array<std::vector<u8>,3> SourceBytes;
     };
     std::unordered_map<u64, TexCacheEntry> Cache;
+    std::unordered_map<u64, std::vector<TexCacheEntry>> ContentHistory;
+    // Bound extra resident data across active entries and history. Texture
+    // allocations are returned to the existing pool when history expires.
+    static constexpr size_t MaxHistoryBytes = 8 * 1024 * 1024;
+    static constexpr size_t MaxSnapshotBytes = 4 * 1024 * 1024;
+    size_t ContentHistoryBytes = 0;
+    size_t SnapshotBytes = 0;
+
+    static size_t SnapshotCost(const TexCacheEntry& e)
+    {
+        size_t bytes = 0;
+        for (const auto& input : e.SourceBytes) bytes += input.size();
+        return bytes;
+    }
+
+    static size_t TextureCost(const TexCacheEntry& e)
+    {
+        size_t bytes=(8u<<e.WidthLog2)*(8u<<e.HeightLog2)*4;
+        return bytes + SnapshotCost(e);
+    }
+    static void SnapshotRange(std::vector<u8>& dest, const u8* src,
+                              u32 capacity, u32 start, u32 size)
+    {
+        dest.resize(size);
+        for(u32 done=0;done<size;)
+        {
+            const u32 offset=(start+done)&(capacity-1);
+            const u32 n=std::min(size-done,capacity-offset);
+            std::memcpy(dest.data()+done,src+offset,n);done+=n;
+        }
+    }
+    static bool MatchesRange(const std::vector<u8>& saved, const u8* src,
+                             u32 capacity, u32 start, u32 size)
+    {
+        if(saved.size()!=size)return false;
+        for(u32 done=0;done<size;)
+        {
+            const u32 offset=(start+done)&(capacity-1);
+            const u32 n=std::min(size-done,capacity-offset);
+            if(std::memcmp(saved.data()+done,src+offset,n))return false;
+            done+=n;
+        }
+        return true;
+    }
+    void CaptureSnapshot(TexCacheEntry& e)
+    {
+        const size_t bytes = size_t(e.TextureRAMSize[0]) +
+            e.TextureRAMSize[1] + e.TexPalSize;
+        if (bytes > MaxSnapshotBytes - SnapshotBytes) return;
+        SnapshotBytes += bytes;
+        for(int i=0;i<2;++i)SnapshotRange(e.SourceBytes[i],GPU.VRAMFlat_Texture,
+            sizeof(GPU.VRAMFlat_Texture),e.TextureRAMStart[i],e.TextureRAMSize[i]);
+        SnapshotRange(e.SourceBytes[2],GPU.VRAMFlat_TexPal,
+            sizeof(GPU.VRAMFlat_TexPal),e.TexPalStart,e.TexPalSize);
+    }
+    bool MatchesSnapshot(const TexCacheEntry& e)
+    {
+        // Palette is small and changes most often; reject it before reading
+        // texture bytes. Exact source comparison authorizes reuse, not hashes.
+        if(!MatchesRange(e.SourceBytes[2],GPU.VRAMFlat_TexPal,
+            sizeof(GPU.VRAMFlat_TexPal),e.TexPalStart,e.TexPalSize))return false;
+        for(int i=0;i<2;++i)if(!MatchesRange(e.SourceBytes[i],GPU.VRAMFlat_Texture,
+            sizeof(GPU.VRAMFlat_Texture),e.TextureRAMStart[i],e.TextureRAMSize[i]))return false;
+        return true;
+    }
+    void ReleaseEntry(TexCacheEntry& e)
+    {
+        SnapshotBytes -= SnapshotCost(e);
+        FreeTextures[e.WidthLog2][e.HeightLog2].push_back(e.Texture);
+    }
+
+    void RetireTexture(u64 key, TexCacheEntry& e)
+    {
+        if (!ContentIdentityEnabled || e.SourceBytes[0].empty())
+        {
+            ReleaseEntry(e);
+            return;
+        }
+        auto& versions = ContentHistory[key];
+        if (versions.size() >= 2)
+        {
+            auto& old = versions.front();
+            ContentHistoryBytes -= TextureCost(old);
+            ReleaseEntry(old);
+            versions.erase(versions.begin());
+        }
+        ContentHistoryBytes += TextureCost(e);
+        versions.push_back(std::move(e));
+        if (ContentHistoryBytes > MaxHistoryBytes)
+        {
+            for (auto& [unused, history] : ContentHistory)
+                for (auto& old : history) ReleaseEntry(old);
+            ContentHistory.clear();
+            ContentHistoryBytes = 0;
+        }
+    }
 
     TexLoaderT TexLoader;
 

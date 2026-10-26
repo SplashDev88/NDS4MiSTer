@@ -3070,6 +3070,20 @@ void GPU3D::WriteExternalNormalizedCommandTriple(
                 NDS.NumFrames, NDS.ARM9Timestamp,
                 entry.Command, entry.Param);
     }
+    // These three commands cannot affect GX stack/test counters. Keep
+    // command order, trace emission, geometry-enable and FIFO-tail behavior.
+    // Only amortize queue admission when all entries fit without compaction.
+    if (ExternalCommandReplay && UseSpriteRasterSpans &&
+        (packedCommands & 0x00E0E0E0u) == 0x00202020u &&
+        CmdPIPE.IsEmpty() && ExternalBatch.size() - ExternalBatchCount >= 3)
+    {
+        ExternalBatch[ExternalBatchCount] = entries[0];
+        ExternalBatch[ExternalBatchCount + 1] = entries[1];
+        ExternalBatch[ExternalBatchCount + 2] = entries[2];
+        ExternalBatchCount += 3;
+        GXStat |= (1 << 27);
+        return;
+    }
     if (ExternalCommandReplay)
     {
         ExternalBatchWrite(entries[0]);

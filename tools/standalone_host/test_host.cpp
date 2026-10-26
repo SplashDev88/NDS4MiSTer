@@ -52,16 +52,14 @@ struct HostTest {
     h.spi.history.clear();
     h.load(path.string());
     assert(h.game == path && !h.menu && h.loading_progress == 167);
-    assert(!h.loading_preparing);
     // Metadata/preparation precedes the cartridge download. The dialog must
-    // visibly animate while that worker is delayed, before any ROM bytes arrive.
+    // remain visible while delayed, without inventing progress from elapsed time.
     std::vector<std::vector<uint16_t>> preparation_bars;
     for (const auto &t : h.spi.history) {
       if (t.select == Spi::FIO && t.command == 0x53 && !t.words.empty() && t.words[0] == 255) break;
       if (t.select == Spi::OSD && t.command == 0x24) preparation_bars.push_back(t.words);
     }
-    assert(preparation_bars.size() >= 4);
-    assert(preparation_bars[1] != preparation_bars[2]);
+    assert(preparation_bars.size() == 1);
     assert(RecentFiles::read(h.recentConfig()).size() == 1);
     std::vector<std::vector<uint16_t>> downloads;
     std::vector<std::vector<uint16_t>> indices;
@@ -949,22 +947,10 @@ R"({
     host.updateLoading(500, 1000);
     assert(host.spi.history.size() == 1);
     host.spi.history.clear();
-    host.loading_preparing = true;
-    host.loading_started = 10000;
-    host.loading_next_animation = 0;
-    host.animateLoading(10000);
-    assert(host.spi.history.size() == 2);
-    assert(host.spi.history[0].command == 0x24 && host.spi.history[1].command == 0x26);
-    const auto first_activity = host.spi.history[0].words;
-    host.animateLoading(10199);
-    assert(host.spi.history.size() == 2); // Bounded OSD traffic while waiting.
-    host.animateLoading(10200);
-    assert(host.spi.history.size() == 3 && host.spi.history.back().words != first_activity);
-    host.animateLoading(11000);
-    assert(host.spi.history.size() == 5 && host.spi.history.back().command == 0x26);
-    host.loading_preparing = false;
-    host.animateLoading(12000);
-    assert(host.spi.history.size() == 5); // No animation in transfer/gameplay.
+    host.updateLoading(400, 1000);
+    assert(host.spi.history.empty()); // Preparation/transfer handoff never resets.
+    host.updateLoading(900, 1000);
+    assert(host.spi.history.size() == 1 && host.spi.history[0].command == 0x24);
     host.osd(false);
     host.browser = false;
     host.cursor = 0;

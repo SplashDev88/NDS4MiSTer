@@ -11,7 +11,11 @@ osd hdmi(.clk_sys,.io_osd(io_osd_hdmi),.io_strobe,.io_din,.clk_video,
  .din(24'b0),.de_in(1'b0),.vs_in(1'b0),.hs_in(1'b0));
 osd #(.OSD_COUNTER_BITS(14)) analog_osd(.clk_sys,.io_osd(io_osd_vga),.io_strobe,.io_din,.clk_video,
  .din(24'b0),.de_in(1'b0),.vs_in(1'b0),.hs_in(1'b0));
-integer trace_file,fields,video_option,crt,height,transactions,sel,command,words,data;
+// The independent CRT menu shares native commands but must stay upright.
+osd #(.OSD_COUNTER_BITS(12),.OSD_FIXED_UPRIGHT(1),.OSD_MAX_LINES(240)) crt_osd(
+ .clk_sys,.io_osd(io_osd_vga),.io_strobe,.io_din,.clk_video,
+ .din(24'b0),.de_in(1'b0),.vs_in(1'b0),.hs_in(1'b0));
+integer trace_file,fields,video_option,crt,height,transactions,sel,command,words,data,native_turn;
 integer cases=0,pixels=0,x,y,source_x,source_y,expected_rotation;
 reg [4095:0] trace_path;
 reg [7:0] expected;
@@ -27,7 +31,10 @@ task automatic tx(input [15:0] value);
 endtask
 task automatic sample(input integer px,py,is_analog);
  @(negedge clk_video);
- if(is_analog) begin
+ if(is_analog==2) begin
+  crt_osd.osd_hcnt=px;crt_osd.osd_hcnt2=px;crt_osd.osd_vcnt=py;
+  crt_osd.scan.h_cnt=10000;crt_osd.scan.h_osd_start=0;crt_osd.scan.deD=0;
+ end else if(is_analog==1) begin
   analog_osd.osd_hcnt=px;analog_osd.osd_hcnt2=px;analog_osd.osd_vcnt=py;
   analog_osd.scan.h_cnt=10000;analog_osd.scan.h_osd_start=0;analog_osd.scan.deD=0;
  end else begin
@@ -35,26 +42,26 @@ task automatic sample(input integer px,py,is_analog);
   hdmi.scan.h_cnt=10000;hdmi.scan.h_osd_start=0;hdmi.scan.deD=0;
  end
  // Expected geometry follows the image on each path, independently of commands.
- if(is_analog || video_option==0) begin source_x=px;source_y=py;end
+ if(is_analog==2 || (is_analog==1 && !native_turn) || video_option==0) begin source_x=px;source_y=py;end
  else if(video_option==1) begin source_x=255-py;source_y=px;end
  else begin source_x=py;source_y=height-1-px;end
  expected=content(source_x,source_y/8);
  @(posedge clk_video);#1;
- if((is_analog ? analog_osd.osd_byte : hdmi.osd_byte)!==expected)
+ if((is_analog==2 ? crt_osd.osd_byte : is_analog==1 ? analog_osd.osd_byte : hdmi.osd_byte)!==expected)
   $fatal(1,"OSD BYTE output=%0d video=%0d crt=%0d xy=%0d,%0d",is_analog,video_option,crt,px,py);
  @(posedge clk_video);#1;
- if((is_analog ? analog_osd.osd_pixel : hdmi.osd_pixel)!==expected[source_y%8])
+ if((is_analog==2 ? crt_osd.osd_pixel : is_analog==1 ? analog_osd.osd_pixel : hdmi.osd_pixel)!==expected[source_y%8])
   $fatal(1,"OSD PIXEL output=%0d video=%0d crt=%0d xy=%0d,%0d",is_analog,video_option,crt,px,py);
  pixels=pixels+1;
 endtask
 initial begin
- force hdmi.ce_pix=1'b1;force analog_osd.ce_pix=1'b1;
+ force hdmi.ce_pix=1'b1;force analog_osd.ce_pix=1'b1;force crt_osd.ce_pix=1'b1;
  repeat(4) @(negedge clk_sys);
  if(!$value$plusargs("HOST_TRACE=%s",trace_path)) $fatal(1,"Host trace required");
  trace_file=$fopen(trace_path,"r");if(!trace_file) $fatal(1,"Cannot open trace");
  while(!$feof(trace_file)) begin
-  fields=$fscanf(trace_file,"%d %d %d %d\n",video_option,crt,height,transactions);
-  if(fields==4) begin
+  fields=$fscanf(trace_file,"%d %d %d %d %d\n",video_option,crt,height,transactions,native_turn);
+  if(fields==5) begin
    if(video_option<0 || video_option>2 || (height!=64 && height!=128)) $fatal(1,"Bad trace header");
    for(integer t=0;t<transactions;t=t+1) begin
     fields=$fscanf(trace_file,"%d %d %d",sel,command,words);
@@ -75,20 +82,23 @@ initial begin
      $fatal(1,"Broadcast disable did not clear both OSDs");
    end
    expected_rotation=video_option==1 ? 3 : video_option==2 ? 1 : 0;
-   if(hdmi.rot!==expected_rotation[1:0] || analog_osd.rot!==0) $fatal(1,"Independent OSD direction mismatch");
+   if(hdmi.rot!==expected_rotation[1:0] || analog_osd.rot!==(native_turn ? expected_rotation[1:0] : 2'd0) || crt_osd.rot!==0)
+    $fatal(1,"Independent OSD direction mismatch: DV1=%0d video=%0d",native_turn,video_option);
    if(hdmi.osd_enable!==1 || analog_osd.osd_enable!==1) $fatal(1,"Both menus must be enabled");
    if(hdmi.highres!==(height==128) || analog_osd.highres!==(height==128)) $fatal(1,"Row-height latch mismatch");
    if(hdmi.osd_status!==(height==128) || analog_osd.osd_status!==(height==128)) $fatal(1,"Menu/message status mismatch");
    for(y=0;y<(video_option==0?height:256);y=y+1)
     for(x=0;x<(video_option==0?256:height);x=x+1) sample(x,y,0);
+   for(y=0;y<((native_turn && video_option!=0)?256:height);y=y+1)
+    for(x=0;x<((native_turn && video_option!=0)?height:256);x=x+1) sample(x,y,1);
    for(y=0;y<height;y=y+1)
-    for(x=0;x<256;x=x+1) sample(x,y,1);
+    for(x=0;x<256;x=x+1) sample(x,y,2);
    cases=cases+1;
   end
  end
  $fclose(trace_file);
- if(cases!=12) $fatal(1,"Expected12 host cases, got%0d",cases);
- $display("PASS dual OSD actual host SPI, actual sys_top select decode, HDMI Off/CCW/CW and upright analog, CRT/standard,16/8-row menus/loading: %0d cases %0d pixels",cases,pixels);
+ if(cases!=96) $fatal(1,"Expected96 host cases, got%0d",cases);
+ $display("PASS three OSD paths: actual host SPI/select decode, HDMI/DV1 Off/CCW/CW, upright CRT, DVI/DV2/framebuffer/old-core/startup fallback,16/8-row menus/loading: %0d cases %0d pixels",cases,pixels);
  $finish;
 end
 endmodule

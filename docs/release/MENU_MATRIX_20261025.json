@@ -1,0 +1,37 @@
+{
+  "status": "CAPTURE_MATRIX_COMPLETE_WITH_OPEN_DISPLAY_ISSUES",
+  "completed_utc": "2026-10-25T23:29:40.411941+00:00",
+  "baseline_id": "portrait3-ds-lite-menu-20261025",
+  "baseline_tag": "baseline/portrait3-ds-lite-menu-20261025",
+  "runtime_code_revision": "4e265ed258dd09bb27e913d80a4ab99294733b09",
+  "primary_cases": 18,
+  "digital_cases": 12,
+  "analog_cases": 6,
+  "grid_off_comparison_cases": 8,
+  "qualification": "Accepted as the next development baseline. This matrix is not an all-modes pass and makes no new gameplay-performance claim. No binaries were changed, no release published, and the optimization queue remains paused.",
+  "issues": [
+    {
+      "id": "lcd2-rotated-digital-dimming",
+      "status": "open",
+      "affected": "Left/right, Main only and Touch only at 90 CCW and 90 CW with the core menu open",
+      "observation": "LCD Mono 2 produces a nearly black picture. Disabling the effect restores the image in all six captures.",
+      "hypothesis": "Interaction between hires-OSD sampling metadata and the LCD effect. Touch CW reports 720 horizontal samples scaled 1x while the native width is 240. Root cause is not yet isolated between core metadata and receiver effect handling.",
+      "release_action": "Resolve the source-grid/OSD/effect interaction and recheck menu-open and menu-closed output before qualifying these modes."
+    },
+    {
+      "id": "side-scale-mode-switch",
+      "status": "open",
+      "affected": "Unrotated left/right after changing layouts",
+      "observation": "RetroTINK MiSTer 240p mode inherited 3.849x vertical / 3.850x horizontal scale, cropping a 2002-pixel-wide picture. Temporary live 3x3 adjustment produces 1560x576 and restores the compact intended view.",
+      "release_action": "Ensure the intended 3x scale persists correctly across mode transitions/profile reloads. No permanent profile update was saved during this matrix."
+    },
+    {
+      "id": "lcd2-analog-banding",
+      "status": "open",
+      "affected": "Native HD15 RGBS Main and Touch with current profile",
+      "observation": "LCD Mono 2 shows broad vertical bands. Grid-off comparisons remove the bands; the menu and picture remain upright across digital rotation settings.",
+      "release_action": "Use and qualify an analog-specific sampling/scaling/effect configuration before claiming DS-pixel grid alignment on RGBS."
+    }
+  ],
+  "restored": "Accepted Top/Bottom 90 CW Tate, native analog Main, HDMI input, LCD Mono 2 and original capture-source settings."
+}

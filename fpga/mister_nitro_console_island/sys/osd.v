@@ -25,10 +25,13 @@ module osd
     output wire buffer_re,
     output wire [12:0] buffer_raddr,
     input wire [7:0] buffer_q,
+    input tri0 [7:0] buffer_pair_q,
     output wire buffer_scheduled,
     input tri0 native_pixel_enable,
     input tri0 native_pixel_ce,
-    input tri0 [1:0] native_rotation
+    input tri0 [1:0] native_rotation,
+    input tri0 double_width,
+    input tri0 half_width
 );
 
 // Optional shared bitmap ports. The default keeps the original private RAM.
@@ -45,6 +48,15 @@ parameter  OSD_MAX_LINES = 0;
 // Only the native digital instance enables this option. Scaled HDMI and
 // the independent analog menu retain the original raster exactly.
 parameter  OSD_NATIVE_PIXELS = 0;
+// Paired-column coverage preserves the compact side menu's width and thin
+// strokes, including inverse selection. Requires the external paired RAM.
+parameter  OSD_NATIVE_COMPACT = 0;
+// Optional legacy-font widening for dual-screen DV1. Other instances retain
+// their original sampling. No extra bitmap or video pipeline stage is used.
+parameter  OSD_DOUBLE_WIDTH = 0;
+// Side-by-side DV1 uses a wider transport. Halve only that menu's horizontal
+// period; other instances and the vertical/video pipelines stay unchanged.
+parameter  OSD_HALF_WIDTH = 0;
 
 localparam OSD_WIDTH    = 12'd256;
 localparam OSD_HEIGHT   = 12'd64;
@@ -136,7 +148,7 @@ wire [12:0] native_address;
 wire native_active;
 wire [2:0] native_bit;
 generate if (OSD_NATIVE_PIXELS) begin : native_raster
-    nds_dv1_osd_raster raster (
+    nds_dv1_osd_raster #(.COMPACT_WIDTH(OSD_NATIVE_COMPACT)) raster (
         .clk(clk_video), .ce(native_pixel_ce), .de(de_in), .vs(vs_in),
         .rotation(native_rotation),
         .enable(osd_enable), .info(info), .info_x(infox[11:0]), .info_y(infoy[11:0]),
@@ -154,6 +166,19 @@ end endgenerate
 assign buffer_re = native_pixels || ce_pix;
 assign buffer_scheduled = pixsz != 0;
 reg [OSD_COUNTER_BITS-1:0] cnt = 0;
+wire [OSD_COUNTER_BITS-1:0] measured_period = (cnt + 1'b1) >> (9-rot[0]);
+wire [OSD_COUNTER_BITS-1:0] legacy_period = measured_period > 1 ? measured_period : 1;
+// Native transport lines contain fewer than 4096 active clocks. Compute
+// floor(line_clocks / 264) with one correction to /256: the eight extra
+// bitmap columns leave room for the legacy centering/pixel pipeline. For
+// this bounded input the /256 estimate is at most one above the answer.
+wire [12:0] native_line_clocks = {1'b0,cnt[11:0]} + 1'b1;
+wire [4:0] fit_guess = {1'b0,native_line_clocks[11:8]};
+wire [12:0] fit_cost = ({8'd0,fit_guess} << 8) + ({8'd0,fit_guess} << 3);
+wire [4:0] fit_period = fit_guess - (fit_cost > native_line_clocks);
+wire [OSD_COUNTER_BITS-1:0] twice_period = legacy_period << 1;
+wire [OSD_COUNTER_BITS-1:0] wide_period = twice_period < fit_period ? twice_period : fit_period;
+wire [OSD_COUNTER_BITS-1:0] half_period = legacy_period > 1 ? legacy_period >> 1 : 1;
 always @(posedge clk_video) begin
 	reg [OSD_COUNTER_BITS-1:0] pixcnt;
 	reg deD;
@@ -168,7 +193,11 @@ always @(posedge clk_video) begin
 	if(~deD && de_in) cnt <= 0;
 
 	if(deD && ~de_in) begin
-		pixsz  <= (((cnt+1'b1) >> (9-rot[0])) > 1) ? (((cnt+1'b1) >> (9-rot[0])) - 1'd1) : 22'd0;
+		pixsz <= legacy_period - 1'b1;
+        if(OSD_DOUBLE_WIDTH && double_width && !rot && cnt < 4095 && wide_period > legacy_period)
+            pixsz <= wide_period - 1'b1;
+        if(OSD_HALF_WIDTH && half_width && !rot && cnt < 4095)
+            pixsz <= half_period - 1'b1;
 		pixcnt <= 0;
 	end
 end
@@ -337,6 +366,13 @@ always @(posedge clk_video) begin
         {{bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[2], nrdout1[23:19]},
          {bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[1], nrdout1[15:11]},
          {bitmap_byte[native_bit], bitmap_byte[native_bit], OSD_COLOR[0], nrdout1[7:3]}};
+    if(native_pixels && OSD_NATIVE_COMPACT && native_active &&
+       (bitmap_byte[native_bit] != buffer_pair_q[native_bit]))
+        // Half coverage is the arithmetic midpoint of the two existing
+        // OSD colors. Neither white strokes nor inverse black strokes vanish.
+        rdout2 <= {({2'b00,OSD_COLOR[2],nrdout1[23:19]} + 8'd96),
+                   ({2'b00,OSD_COLOR[1],nrdout1[15:11]} + 8'd96),
+                   ({2'b00,OSD_COLOR[0],nrdout1[7:3]} + 8'd96)};
 	rdout3  <= rdout2;
 
 	de1 <= de_in; de2 <= de1; de3 <= de2;

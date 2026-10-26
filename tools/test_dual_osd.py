@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay real host transactions into both OSDs using sys_top's actual selects."""
+"""Replay real host transactions into HDMI, DV1 and the fixed upright CRT OSD."""
 from pathlib import Path
 import argparse
 import os
@@ -20,6 +20,9 @@ for before, after in [
     assert source.count(before) == 1, 'Review OSD test adapter'
     source = source.replace(before, after)
 top = (root / 'fpga/mister_nitro_console_island/sys/sys_top.v').read_text()
+# The shared native command reaches both instances. Prove the production CRT
+# instance still ignores rotation, instead of trusting a test-only parameter.
+assert re.search(r'osd\s*#\([^;]*\.OSD_FIXED_UPRIGHT\(1\)[^;]*\)\s*nds_analog_osd', top)
 decode = []
 for name in ('io_ss0', 'io_ss1', 'io_ss2', 'io_osd_hdmi', 'io_osd_vga', 'io_fpga', 'io_uio'):
     expressions = re.findall(r'wire\s+' + name + r'\s*=\s*([^;]+);', top)

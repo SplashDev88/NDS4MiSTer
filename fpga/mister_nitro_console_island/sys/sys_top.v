@@ -319,6 +319,16 @@ wire nds_dv1_native_osd = 1'b0;
 wire nds_dv1_native_osd = direct_video && !cfg[7] && !cfg[13] &&
                           !vga_fb && (nds_split_active || vga_scaler);
 `endif
+`ifdef MISTER_HDMI_ONLY
+wire nds_dv1_side_native_menu = 1'b0;
+`elsif NDS_HDMI_SCALER_ONLY
+wire nds_dv1_side_native_menu = 1'b0;
+`elsif NDS_TATE
+wire nds_dv1_side_native_menu = nds_dv1_native_osd &&
+    tate_source_width > 10'd320 && tate_source_height <= 10'd240 && !nds_dv1_present;
+`else
+wire nds_dv1_side_native_menu = 1'b0;
+`endif
 `ifndef MISTER_DUAL_SDRAM
 	`ifdef NDS_HDMI_SCALER_ONLY
 	wire sog = 1'b0;
@@ -509,9 +519,10 @@ always@(posedge clk_sys) begin
 `ifdef NDS_NATIVE_OUTPUTS
 			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
             if(cmd == 'h46 && cnt == 1) io_dout_sys <= 16'h5350; // split-output ABI v1
-            // Optional fourth response: native-pixel OSD ABI, bit0 active.
-            // Old hosts stop after the split capability and remain compatible.
-            if(cmd == 'h46 && cnt == 2) io_dout_sys <= 16'h4e50 | nds_dv1_native_osd;
+            // Only horizontal side-by-side uses game-pixel menu sampling.
+            // Use the exact raster gate so opening the menu cannot change
+            // receiver decimation. All other modes retain the fine grid.
+            if(cmd == 'h46 && cnt == 2) io_dout_sys <= nds_dv1_side_native_menu ? 16'h4e51 : 16'h4e50;
 `endif
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
 			if(cmd == 'h26) vol_att <= io_din[4:0];
@@ -1671,7 +1682,7 @@ wire [23:0] vga_data_osd;
 wire        vga_vs_osd, vga_hs_osd, vga_de_osd;
 wire nds_osd_write, nds_osd_digital_read, nds_osd_analog_read, nds_osd_analog_scheduled;
 wire [12:0] nds_osd_write_address, nds_osd_digital_address, nds_osd_analog_address;
-wire [7:0] nds_osd_write_data, nds_osd_digital_q, nds_osd_analog_q;
+wire [7:0] nds_osd_write_data, nds_osd_digital_q, nds_osd_digital_pair_q, nds_osd_analog_q;
 // NDS drives both HPS_BUS[36] (clk_sys) and CLK_VIDEO (clk_vid) from the
 // same60MHz source. One true-dual-port bitmap can therefore serve both
 // native menus, with a short synchronous write queue. The HDMI OSD keeps
@@ -1681,7 +1692,7 @@ nds_native_osd_memory nds_osd_memory (
     .clk(clk_vid), .write_enable(nds_osd_write), .write_address(nds_osd_write_address),
     .write_data(nds_osd_write_data), .busy(nds_osd_wait),
     .digital_read(nds_osd_digital_read), .digital_address(nds_osd_digital_address),
-    .digital_q(nds_osd_digital_q),
+    .digital_q(nds_osd_digital_q), .digital_pair_q(nds_osd_digital_pair_q),
     .analog_read(nds_split_active && nds_osd_analog_scheduled && nds_osd_analog_read),
     .analog_address(nds_osd_analog_address), .analog_q(nds_osd_analog_q)
 );
@@ -1690,9 +1701,19 @@ nds_native_osd_memory nds_osd_memory (
 // blanking with ample headroom. The tallest source is414 active lines
 // (stacked screens,24-pixel gap,FPS row), so larger multiscan modes are
 // unreachable. HDMI keeps the generic22-bit counters and all geometries.
-// Never alter the shared legacy analog raster. The correction is allowed
-// only while HDMI uses Direct Video and analog has its own raster or scaler.
-osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(1)) vga_osd
+// Adjust only unrotated dual-screen DV1: widen the narrow Top/Bottom
+// menu and halve the broad Side-by-side menu. Use the applied video path,
+// preserving Main, Touch, CRT and rotated modes.
+`ifdef NDS_TATE
+wire nds_dv1_dual_menu = nds_dv1_native_osd &&
+                       tate_source_height > 10'd240 && !nds_dv1_present;
+wire nds_dv1_side_menu = nds_dv1_native_osd &&
+                       tate_source_width > 10'd320 && tate_source_height <= 10'd240 && !nds_dv1_present;
+`else
+wire nds_dv1_dual_menu = 1'b0;
+wire nds_dv1_side_menu = 1'b0;
+`endif
+osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_NATIVE_PIXELS(1), .OSD_NATIVE_COMPACT(1), .OSD_DOUBLE_WIDTH(1), .OSD_HALF_WIDTH(1)) vga_osd
 (
 	.clk_sys(clk_sys),
 
@@ -1713,9 +1734,10 @@ osd #(.OSD_COUNTER_BITS(14), .OSD_MAX_LINES(512), .OSD_EXTERNAL_BUFFER(1), .OSD_
 	.de_out(vga_de_osd),
     .buffer_we(nds_osd_write), .buffer_waddr(nds_osd_write_address), .buffer_wdata(nds_osd_write_data),
     .buffer_re(nds_osd_digital_read), .buffer_raddr(nds_osd_digital_address),
-    .buffer_q(nds_osd_digital_q), .buffer_scheduled(),
-    .native_pixel_enable(nds_dv1_native_osd), .native_pixel_ce(native_digital_ce),
-    .native_rotation(nds_dv1_rotation)
+    .buffer_q(nds_osd_digital_q), .buffer_pair_q(nds_osd_digital_pair_q), .buffer_scheduled(),
+    .native_pixel_enable(nds_dv1_side_native_menu), .native_pixel_ce(native_digital_ce),
+    .native_rotation(nds_dv1_rotation), .double_width(nds_dv1_dual_menu),
+    .half_width(nds_dv1_side_menu)
 );
 
 wire vga_cs_osd;
