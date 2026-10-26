@@ -107,13 +107,26 @@ inline bool portrait_sprite_raster_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && ((selected.identity.header_crc32 == 0xa9935ea4u) | (selected.identity.header_crc32 == 0x2b8de1e5u));
 }
 
-// Independent Ecclesia raster experiment. Keep its established query policy
-// while measuring the exact rectangle/sprite path on this verified cartridge.
+// Exact retail and prepared Ecclesia identities share the qualified raster and
+// replay policy. Unknown revisions and changed headers retain the default path.
 inline bool ecclesia_sprite_raster_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','R','9','E'}} &&
-        selected.identity.revision == 0 && ((selected.identity.header_crc32 == 0x89d2e308u) | (selected.identity.header_crc32 == 0x483c0674u));
+    if (!selected.identified) return false;
+    static constexpr GameQueryIdentity qualified[] = {
+        {{{'Y','R','9','E'}}, 0, 0x89d2e308u},
+        {{{'Y','R','9','E'}}, 0, 0x483c0674u},
+        {{{'Y','R','9','P'}}, 0, 0x937e153fu},
+        {{{'Y','R','9','P'}}, 0, 0xa1ec237au},
+        {{{'Y','R','9','J'}}, 0, 0x6e9bc11du},
+        {{{'Y','R','9','J'}}, 0, 0x2858119fu},
+        {{{'Y','R','9','K'}}, 0, 0xc52083bcu},
+        {{{'Y','R','9','K'}}, 0, 0x445983c3u},
+    };
+    for (const auto& identity : qualified)
+        if (selected.identity.code == identity.code &&
+            selected.identity.revision == identity.revision &&
+            selected.identity.header_crc32 == identity.header_crc32) return true;
+    return false;
 }
 
 // No remembered selection: every reset/reload starts from the fast default.

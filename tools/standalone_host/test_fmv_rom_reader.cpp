@@ -60,7 +60,7 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
     for (unsigned revision = 0; revision < 2; ++revision) {
       original[30] = char(revision);
       std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
-      const bool qualified = std::string(region) == "YR9E" && revision == 0;
+      const bool qualified = revision == 0;
       transfer(fake.string(),!qualified,100);
       transfer(argv[1],true); // Code/revision alone cannot authorize a ROM patch.
       transfer(fake.string(),true,1000,"off",false);

@@ -116,7 +116,8 @@ private:
         if ((allow_movies && portrait) || (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
                                code == "AXFE" || code == "YWSE" || code == "BMTJ" ||
                                code == "YQUP" || code == "YQUJ" || code == "AXFP" ||
-                               code == "AXFJ" || code == "CSNP" || code == "C5RJ" || code == "YR9E"))))) {
+                               code == "AXFJ" || code == "CSNP" || code == "C5RJ" || code == "YR9E" ||
+                               code == "YR9P" || code == "YR9J" || code == "YR9K"))))) {
           const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);

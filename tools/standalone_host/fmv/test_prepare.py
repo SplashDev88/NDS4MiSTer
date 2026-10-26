@@ -179,7 +179,7 @@ class PrepareTests(unittest.TestCase):
         self.assertEqual({p['key'] for p in registry['profiles']},
                          {'NINO','NINO_EN10','SJ','CHRONO','FF12','SONIC',
                           'YQUP','YQUJ','AXFP','AXFJ','CSNP','C5RJ','BMTJ',
-                          'ACBE0','ACBP0','ACBJ0','ACBJ1','YR9E0'})
+                          'ACBE0','ACBP0','ACBJ0','ACBJ1','YR9E0','YR9P0','YR9J0','YR9K0'})
         for p in registry['profiles']:
             self.assertEqual(p['assembled_sha256'],p['qualified_image_sha256'])
             for s in p['stubs']:self.assertEqual(digest((root/'guest'/s['file']).read_bytes()),s['sha256'])
