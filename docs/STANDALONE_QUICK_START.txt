@@ -1,10 +1,10 @@
-NDS4MiSTer v0.9.0-rc.10
+NDS4MiSTer v0.9.0-rc.11
 
 START HERE
 
 Extract the install ZIP to the SD card root, merging Scripts. Include the
 hidden Scripts/.NDS_Standalone folder. Run Scripts -> NDS4MiSTer.
-This beta updates the normal standalone kit. Back up the existing launcher,
+This release candidate updates the normal standalone kit. Back up the existing launcher,
 entire hidden kit, saves/NDS and config/NDS_storage.cfg before updating.
 For rollback, exit the core and restore the complete backed-up launcher and
 kit together. Keep your saves; restore saved data only if you intend to undo
@@ -483,3 +483,11 @@ process before System -> Reboot; power-cut safety is not guaranteed.
 The support folder retains historical private-beta validation records. Their
 old launcher names and installation instructions do not apply to rc.10. Use
 Scripts -> NDS4MiSTer and this quick start for the current public package.
+
+RC11 DISPLAY AND MOVIES
+
+Digital menus follow Video Rotation. Native analog menus remain upright.
+The compact unrotated side-by-side Direct Video 1 menu retains its width.
+Portrait of Ruin movie acceleration covers USA, Europe, Japan and Japan Rev 1.
+Select your original ROM; its original file and normal save identity are retained.
+See RETROTINK_DS_LITE.md for the optional 1080p Tate LCD Grid 2 recipe.

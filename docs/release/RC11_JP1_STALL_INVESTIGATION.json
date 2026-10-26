@@ -1,0 +1,29 @@
+{
+  "cold_repeat": {
+    "cpu_and_io_trace": true,
+    "fresh_8192_byte_FF_test_save": true,
+    "label": "JP1_COLD",
+    "long_delays_over_expected_50ms": 0,
+    "new_separate_cache_directory": true,
+    "source_equivalent_fps": 30.047469625919316
+  },
+  "disposition": "Not reproduced in instrumented warm or fresh-save/fresh-cache full opening runs. No speculative code change made; retain initial observation for playtesting.",
+  "first_run": {
+    "cluster_source_seconds": [
+      79.28,
+      79.75
+    ],
+    "decoder_errors": 0,
+    "label": "JP1_ACCEL",
+    "long_delays_over_expected_50ms": 5,
+    "max_observed_interval_ms": 614.7622339776717,
+    "source_equivalent_fps": 29.16800087941553
+  },
+  "root_cause": "Unconfirmed; no repeatable instruction-flow error found. Do not label this fixed from a single clean repeat.",
+  "warm_repeat": {
+    "cpu_and_io_trace": true,
+    "label": "JP1_REPEAT",
+    "long_delays_over_expected_50ms": 0,
+    "source_equivalent_fps": 30.047414558325446
+  }
+}

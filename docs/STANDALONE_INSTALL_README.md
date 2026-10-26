@@ -1,38 +1,37 @@
-# NDS4MiSTer v0.9.0-rc.10
+# NDS4MiSTer v0.9.0-rc.11
 
-**Smoother FMVs, a modest speed boost, boot fixes, adjustable right-stick range, NAND save support, and alternative MiSTer launcher support.**
+Portrait of Ruin performance and movie improvements, rotating menus, and a compact horizontal menu.
 
-## What's new since rc.9
+## What's new since rc.10
 
-- **Smoother opening movies.** FMV playback is optimized for tested revisions of *Castlevania: Dawn of Sorrow*, *Chrono Trigger*, *Ni no Kuni*, *Shin Megami Tensei: Strange Journey*, *Final Fantasy XII: Revenant Wings* and *Sonic Chronicles*.
-- **Faster New Super Mario Bros.** Optimizations for the tested USA revision 0 reduce geometry work and rubberbanding.
-- **Caching reduces repeat load times in supported games.**
-- **Boot fixes for Ni no Kuni and Pokémon Conquest.** Larger cartridge layouts now load correctly, and cartridge address mirroring has been fixed.
-- **NAND saves** for *WarioWare D.I.Y.* and *Jam with the Band*. *Daigassou! Band Brothers DX* remains unsupported.
-- **Right Stick Range** setting in the root menu. Choose 100%, 125%, 150%, 175% or 200% so your controller can reach all four touchscreen corners. Use **System → Save settings** to retain your choice.
-- **Alternative MiSTer launcher support.** Added discovery and return-to-menu handling for documented installations of Zaparoo, Degauss, RetroAchievements, Physical-CD, mister-disc and Console Mode. Automated checks passed; each alternative frontend still needs hardware validation.
+- **Faster Portrait of Ruin gameplay in tested USA scenes.** Exact rendering, replay and worker-scheduling optimizations improve throughput and frame spacing. These gameplay measurements cover USA revision 0; they do not establish full-speed play throughout the game or equivalent gains in every region.
+- **Portrait of Ruin opening movies at approximately their native 30 fps.** Automatic acceleration covers all four known retail variants: USA, Europe (all included languages), Japan and Japan Rev 1. Complete movies and skipping were checked on hardware; software comparisons reproduce the original decoded RGB frames. Unknown or modified ROMs retain normal decoding.
+- **Menus follow digital picture rotation.** The independent native analog Main/Touch menu remains upright.
+- **Compact horizontal Direct Video 1 menu.** Unrotated side-by-side menus align with the game pixel grid while retaining their previous width.
+- **Optional DS Lite-style RetroTINK 4K recipe.** The included guide describes the tested 1080p Tate setup with LCD Grid 2. It is a manual recipe, not an importable device profile or an automatic change to your settings.
+
+The earlier Dawn of Sorrow and other supported movie accelerations, New Super Mario Bros. improvements, loading cache, boot fixes, NAND saves, right-stick range and alternative-launcher support remain included. The ARM clock remains 1 GHz.
 
 ## Install or update
 
 1. Exit the core with **System → Reboot**.
 2. Back up `Scripts/NDS4MiSTer.sh`, the hidden `Scripts/.NDS_Standalone` folder, `saves/NDS` and `config/NDS_storage.cfg`.
-3. Extract **NDS4MiSTer_v0.9.0-rc.10_Standalone.zip** to the root of your SD card. Include hidden files, merge the `Scripts` folder, and overwrite existing program files.
-4. Run **Scripts → NDS4MiSTer**, then choose **Load *.NDS**.
+3. Extract **NDS4MiSTer_v0.9.0-rc.11_Standalone.zip** to the SD-card root. Include hidden files, merge `Scripts`, and overwrite program files.
+4. Run **Scripts → NDS4MiSTer**, then **Load *.NDS** and select your original ROM.
 
-Support modules are included for Linux **6.18.38-MiSTer** and **5.15.1-MiSTer**. The package does **not** include game ROMs, game saves, commercial BIOS/firmware dumps, personal settings or a kernel image.
+This updates the normal standalone installation. Earlier private-beta launchers remain separate. Existing settings and saves are preserved; games keep their normal save identity. No patched ROM is required. Linux support modules for **6.18.38-MiSTer** and **5.15.1-MiSTer** are included. No game ROMs, saves, commercial BIOS/firmware, personal settings or kernel image are included.
+
+For rollback, exit the core and restore the backed-up launcher and complete hidden kit together. Keep your current saves unless you intend to undo game progress. See QUICK_START.txt for older RTC-format compatibility.
 
 ## Known limitations
 
-- **NSMB goal pole glitch:** A user has reported background glitches while sliding down the goal pole, also present in earlier releases. We haven't reproduced it in our test rig yet.
-- Slowdown, uneven animation, graphical errors and crashes can still occur. **The core does not yet run at a consistent 60 FPS**, and FPGA static timing closure is still unresolved.
-- Not yet supported: save states, persistent lid-close resume, RTC alarms/interrupts, wireless multiplayer, DSi mode and PAL 50 Hz output. Native analog output remains about 59.64 Hz.
+- This is a release candidate with bounded testing. Gameplay is **not consistently 60 fps**; slowdown, graphical errors and crashes can still occur. FPGA static setup/recovery timing remains unresolved.
+- The RetroTINK LCD Grid 2 recipe is qualified for the documented Tate setup. Other layouts may become dim or show banding with that effect; disable the LCD effect or use a separately adjusted profile for those layouts. The core does not install RetroTINK profiles.
+- One initial Japan Rev 1 movie test showed brief clustered stalls. Warm and fresh-save/cache repeats did not reproduce them; the cause remains unconfirmed.
+- The previously reported NSMB goal-pole background glitch remains unresolved. Save states, persistent lid-close resume, RTC alarms/interrupts, wireless multiplayer, DSi mode and PAL 50 Hz output remain unsupported. Native analog output is about 59.64 Hz.
 
-## Links
-
-[Validation & supported movie revisions](https://github.com/SplashDev88/NDS4MiSTer/blob/v0.9.0-rc.10/docs/release/VALIDATION_RC10.md) · [Clock behavior](https://github.com/SplashDev88/NDS4MiSTer/blob/v0.9.0-rc.10/docs/GAME_CLOCK.md) · [Report a bug](https://github.com/SplashDev88/NDS4MiSTer/issues/new?template=bug_report.yml)
-
-> **Download the Standalone ZIP and its SHA-256 checksum.** GitHub's auto-generated *Source code* archives are for developers and won't work for installation.
+See VALIDATION_RC11.md for the tested scope and RETROTINK_DS_LITE.md for the optional display recipe. Corresponding source, build instructions and licenses are included under `Scripts/.NDS_Standalone/source` and `licenses`.
 
 ## Thanks
 
-Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend (saneFriend), Corn and skmp. Corresponding source code, FFmpeg/ndspy credits and licenses are included in the package.
+Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend (saneFriend), Corn and skmp. FFmpeg and ndspy credits and licenses are included.
