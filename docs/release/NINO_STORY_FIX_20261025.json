@@ -1,0 +1,101 @@
+{
+  "status": "hardware_passed_private_candidate",
+  "base_source": "0c79b891a5b185db65be3d3b01f04005777fd347",
+  "scope": [
+    "Japanese retail B2KJ revision 0",
+    "English translation v1.0, exact existing qualified hash"
+  ],
+  "root_cause": {
+    "japanese_story_vram": [
+      "81",
+      "82",
+      "89",
+      "91",
+      "00",
+      "85",
+      "00",
+      "00",
+      "00"
+    ],
+    "decoder_before": "fixed LCDC A at 0x06800000, unmapped during story",
+    "color_before": "main-BG outputs 0x06020000 and 0x06040000 were not recognized",
+    "same_mapping_confirmed_in_english_v1_0": true
+  },
+  "software": {
+    "loader_tests": 59,
+    "service_self_test": "passed",
+    "main_bg_receiver": "staged output; 32/64-bit writes; exact LCDC parity; disabled gate",
+    "story_decoder_exact_frames": 581,
+    "story_decoder_exact_pixels": 28557312,
+    "frame_comparison": {
+      "Japanese": {
+        "original_unique": 561,
+        "fixed_unique": 561,
+        "identical_unique": 561,
+        "original_only": 0,
+        "fixed_only": 0
+      },
+      "English v1.0": {
+        "original_unique": 561,
+        "fixed_unique": 561,
+        "identical_unique": 561,
+        "original_only": 0,
+        "fixed_only": 0
+      }
+    },
+    "note": "Distinct image sequences match; accelerated execution changes some display-frame boundaries. No RAM/audio bit-exact claim."
+  },
+  "hardware": {
+    "profile": "NINO",
+    "path": "full two-screen opening -> New Game -> first story movie -> controllable Morton Street",
+    "video_decodes": 3215,
+    "video_errors": 0,
+    "cached_conversions": 3204,
+    "renderer_sha256": "41991a8705acf78afa69625b202a33e9ebea63f6505f1f5af8cb25dc1369c146",
+    "host_sha256": "049c42092545e02afc64401432669c881d6abf63f228b55879d2e74a1f5f8ef1",
+    "core_sha256": "876ec97a6044191515a0fea910eb1359417a466fdd0a23e31e0cca2a069a08fa",
+    "movie_probe": {
+      "label": "FIX_C",
+      "reference": "ORIGINAL_TRACE",
+      "source_frame_window": [
+        2199,
+        5077
+      ],
+      "screens": {
+        "bottom_hash": {
+          "matched_transitions": 337,
+          "interval_ms_percentiles_50_95_99_100": [
+            83.60892999917269,
+            85.35432599601336,
+            90.65452733193517,
+            100.2585529931821
+          ],
+          "excess_delay_ms_percentiles_50_95_99_100": [
+            0.18603366628155982,
+            4.7461506219121326,
+            17.965795092108575,
+            18.453278332103196
+          ],
+          "excess_over_50ms": 0,
+          "excess_over_100ms": 0,
+          "clock_scale": 0.9999922160419007,
+          "clock_residual_ms_percentiles_0_50_99_100": [
+            -21.98739253799431,
+            1.9911814597435296,
+            13.091034428216515,
+            43.48695676890202
+          ]
+        }
+      }
+    },
+    "transport_probe_exit": 0,
+    "user_save_sha256_before_after": "71189f7fb6aed638640078fba3a35fda6c39c8962e74dcc75935aac948da9063"
+  },
+  "build_limit": "Existing PGO data retained; changed functions use compiler estimates after coverage mismatch. Broad gameplay performance has not been requalified.",
+  "limits": [
+    "No all-story-movies or full-playthrough claim",
+    "No new hardware validation of the English translation in this fix",
+    "Initial Japanese hardware qualification used the prior host with identical functionality and rc10 label; the final package uses the RC11 host and receives a separate launch test",
+    "No RTL change; original ROMs and user saves unchanged"
+  ]
+}

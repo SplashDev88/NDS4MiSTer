@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.11 standalone launcher and recovery supervisor.
+"""NDS4MiSTer v0.9.0-rc.12 standalone launcher and recovery supervisor.
 No system binary/init changes. Bootstrap display settings are journaled/restored.
 """
 from pathlib import Path
@@ -33,7 +33,7 @@ MAIN_PATHS = (
     "degauss/MiSTer_RA_Degauss",
     "ConsoleMode/MiSTer_ConsoleMode",
 )
-EXPECTED_HELPER = "bce5e79d8e1825b0380dc4e14d5b3c892833faa87a23538ae79f53f03df07da8"
+EXPECTED_HELPER = "a9a2c813ebaf2367306aa0fdbd454d1884f2a22f059497cec64bfa9c04c55ab8"
 EXPECTED_CORE = "876ec97a6044191515a0fea910eb1359417a466fdd0a23e31e0cca2a069a08fa"
 EXPECTED_KICKSTART = "0b567af3cd088a9d7ff720fc7f8249ef20cea05a69e9d7dc8d1200ba1899dda8"
 EXPECTED_SPEED_ENV = {
@@ -610,7 +610,7 @@ def main():
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
         assert actual_env.get("NDS4MISTER_TEXTURE_HISTORY") == texture_choice
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.11"
+        state["release"] = "v0.9.0-rc.12"
         write()
         stage("load standalone core")
         stage_bootstrap(KIT, SD_ROOT, validate_settings().read_bytes())

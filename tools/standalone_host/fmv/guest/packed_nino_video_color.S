@@ -26,6 +26,14 @@ _start:
  tst r8,#3
  bne color_fallback
  mov r9,#0
+ // The Japanese story player alternates main-BG banks C and D.
+ // Unlike its opening, it does not render into sub BG/OBJ or LCDC.
+ ldr r8,=0x06020000
+ cmp r6,r8
+ beq valid_destination
+ add r8,r8,#0x20000
+ cmp r6,r8
+ beq valid_destination
  ldr r8,=0x06200000
  cmp r6,r8
  beq valid_destination

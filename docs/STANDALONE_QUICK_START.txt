@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.11
+NDS4MiSTer v0.9.0-rc.12
 
 START HERE
 
@@ -472,7 +472,7 @@ Qualified movie and NSMB optimizations activate automatically. There is no
 Speed hacks menu. The first load may show Preparing FMV cache; subsequent
 loads reuse verified cached data. The cache uses up to 2 GiB on the SD card.
 ROM files are not rewritten. Unsupported revisions keep the ordinary path.
-See VALIDATION_RC10.md for supported revisions and testing coverage.
+See VERSION_COVERAGE.md and VALIDATION_RC12.md for current coverage.
 
 WarioWare D.I.Y. uses a 16 MiB NAND save; Jam with the Band uses 8 MiB. If the
 loader rejects an old incorrectly sized fallback save, back it up and move
@@ -481,7 +481,7 @@ converted. Band Brothers DX remains unsupported. Use the game's normal save
 process before System -> Reboot; power-cut safety is not guaranteed.
 
 The support folder retains historical private-beta validation records. Their
-old launcher names and installation instructions do not apply to rc.10. Use
+old launcher names and installation instructions do not apply to rc.12. Use
 Scripts -> NDS4MiSTer and this quick start for the current public package.
 
 RC11 DISPLAY AND MOVIES
@@ -491,3 +491,11 @@ The compact unrotated side-by-side Direct Video 1 menu retains its width.
 Portrait of Ruin movie acceleration covers USA, Europe, Japan and Japan Rev 1.
 Select your original ROM; its original file and normal save identity are retained.
 See RETROTINK_DS_LITE.md for the optional 1080p Tate LCD Grid 2 recipe.
+
+RC12 GAMEPLAY AND MOVIES
+
+Order of Ecclesia USA, Europe, Japan and Korea retail revision 0 receive the
+accepted gameplay optimizations and approximately 15 fps opening movie
+acceleration. Ni no Kuni Japanese retail and English v1.0 include the story
+video fix. A first large-ROM load over CIFS can take several minutes.
+See RELEASE_NOTES.md, VERSION_COVERAGE.md and VALIDATION_RC12.md.

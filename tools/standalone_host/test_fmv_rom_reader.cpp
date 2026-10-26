@@ -55,6 +55,19 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   }
   original[30] = 0;
 
+  for (const char* region:{"YR9E","YR9P","YR9J","YR9K"}) {
+    original.replace(12,4,region);
+    for (unsigned revision = 0; revision < 2; ++revision) {
+      original[30] = char(revision);
+      std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+      const bool qualified = revision == 0;
+      transfer(fake.string(),!qualified,100);
+      transfer(argv[1],true); // Code/revision alone cannot authorize a ROM patch.
+      transfer(fake.string(),true,1000,"off",false);
+    }
+  }
+  original[30] = 0;
+
   std::cout<<"PASS slow preparation services heartbeat; incomplete stream cannot commit\n";
   // Unrecognized games must not start even an invalid optional worker.
   original.replace(12,4,"A2DE");

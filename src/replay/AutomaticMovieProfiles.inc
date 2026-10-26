@@ -17,3 +17,7 @@
         {{{'A','C','B','P'}}, 0, 0x6a6a7703u}, // Portrait Europe.
         {{{'A','C','B','J'}}, 0, 0xc16c5c05u}, // Portrait Japan.
         {{{'A','C','B','J'}}, 1, 0x903e2dbeu}, // Portrait Japan Rev 1.
+        {{{'Y','R','9','E'}}, 0, 0x483c0674u}, // Ecclesia USA Rev 0.
+        {{{'Y','R','9','P'}}, 0, 0xa1ec237au}, // Ecclesia Europe Rev 0.
+        {{{'Y','R','9','J'}}, 0, 0x2858119fu}, // Ecclesia Japan Rev 0.
+        {{{'Y','R','9','K'}}, 0, 0x445983c3u}, // Ecclesia Korea Rev 0.

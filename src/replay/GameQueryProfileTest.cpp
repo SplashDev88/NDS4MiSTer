@@ -47,6 +47,46 @@ int main(int argc, char** argv)
     auto revised_portrait = portrait; ++revised_portrait.revision;
     check(!portrait_sprite_raster_profile({GameQueryProfile::Fast, revised_portrait, true}),
           "untested Portrait revision must use fallback");
+    const GameQueryIdentity ecclesia[] = {
+        {{{'Y','R','9','E'}}, 0, 0x89d2e308u}, {{{'Y','R','9','E'}}, 0, 0x483c0674u},
+        {{{'Y','R','9','P'}}, 0, 0x937e153fu}, {{{'Y','R','9','P'}}, 0, 0xa1ec237au},
+        {{{'Y','R','9','J'}}, 0, 0x6e9bc11du}, {{{'Y','R','9','J'}}, 0, 0x2858119fu},
+        {{{'Y','R','9','K'}}, 0, 0xc52083bcu}, {{{'Y','R','9','K'}}, 0, 0x445983c3u},
+    };
+    for (unsigned i = 0; i < 8; ++i) {
+        const auto& identity = ecclesia[i];
+        check(ecclesia_sprite_raster_profile({GameQueryProfile::Fast, identity, true}),
+              "every qualified Ecclesia retail/prepared image enables gameplay policy");
+        check(automatic_movie_receiver_profile({GameQueryProfile::Fast, identity, true}) == bool(i & 1),
+              "only prepared Ecclesia images enable the movie receiver");
+        check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, identity, false}) &&
+              !automatic_movie_receiver_profile({GameQueryProfile::Fast, identity, false}),
+              "Ecclesia requires a stable identified header");
+        check(game_query_prefix_mode(select_game_query_profile(identity)) == 2 &&
+              !portrait_sprite_raster_profile({GameQueryProfile::Fast, identity, true}),
+              "Ecclesia retains its independent query policy");
+        for (unsigned bit = 0; bit < 32; ++bit) {
+            auto changed = identity; changed.header_crc32 ^= 1u << bit;
+            check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, changed, true}) &&
+                  !automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+                  "changed Ecclesia header must use fallback");
+        }
+        for (unsigned byte = 0; byte < 4; ++byte) {
+            auto changed = identity; changed.code[byte] ^= 1;
+            check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, changed, true}) &&
+                  !automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+                  "changed Ecclesia code must use fallback");
+        }
+        for (unsigned revision = 1; revision < 256; ++revision) {
+            auto changed = identity; changed.revision = revision;
+            check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, changed, true}) &&
+                  !automatic_movie_receiver_profile({GameQueryProfile::Fast, changed, true}),
+                  "untested Ecclesia revision must use fallback");
+        }
+    }
+    check(!ecclesia_sprite_raster_profile({GameQueryProfile::Fast, portrait, true}),
+          "other games must not inherit Ecclesia gameplay policy");
+    std::cout << "ECCLESIA_REGIONS_PASS regions=4 retail_and_prepared_headers=8 unknown_off=1\n";
     check(game_query_prefix_mode(select_game_query_profile(known)) == 0, "known identity");
     check(castlevania_integral_texture_profile({GameQueryProfile::Fast, known, true}),
           "Castlevania raster choice is independent of query mode");

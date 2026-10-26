@@ -27,6 +27,13 @@ SPECS.update({
  'packed_vx_portrait_jp1_decode': (0x1fffa80, ['-DORIGINAL_DECODER=0x01ff8180']),
 })
 
+# Ecclesia's original ITCM code ends at0x01fff280. Keep its converter and
+# transport hooks above that boundary without extending into the IRQ area.
+SPECS.update({
+ 'packed_vx_ecclesia_color': (0x1fff880, ['-DOLD_COLOR_TABLE=0x027e0b40', '-DORIGINAL_CONVERTER=0x01fff280']),
+ 'packed_vx_ecclesia_decode': (0x1fffa80, ['-DORIGINAL_DECODER=0x01ff89d0']),
+})
+
 SPECS.update({
  'packed_sj_jp_color': (0x1fff600, ['-DFILTER_ENTRY=0x0213aa14']),
  'sj_jp_queue_rebase': (0x1fffa00, ['-DQUEUE_RESUME=0x0208e068']),

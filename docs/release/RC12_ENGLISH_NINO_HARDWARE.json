@@ -1,0 +1,35 @@
+{
+  "source_rom_sha256": "1ce3fdaf9d83a813328d642e4c7ef41ec8d6273f497b98a09355f9f6f821c627",
+  "source_rom_bytes": 536870912,
+  "translation": "English v1.0",
+  "source_revision": "e185470c306fee61f4b6aea3c655eeb821c3210f",
+  "loaded_identity": {
+    "code": "B2KJ",
+    "revision": 0,
+    "header_crc32": "f2d6c66f",
+    "stable_two_reads": true
+  },
+  "actual_cifs_rom_loaded": true,
+  "automatic_movie_profile": "NINO_EN10",
+  "movie_counters": {
+    "conversions": 3204,
+    "filter_conversions": 0,
+    "video_decodes": 3215,
+    "video_errors": 0,
+    "cached_conversions": 3204
+  },
+  "observed_passes": [
+    "English translation boot and title",
+    "Complete opening movie",
+    "New game and translated instructions",
+    "First story movie with English subtitles",
+    "Movie transition into Morton Street",
+    "D-pad movement and camera follow",
+    "Opening dialogue and movement tutorial",
+    "NPC interaction with English dialogue",
+    "Clean exit to MiSTer MENU"
+  ],
+  "scope": "Opening sequence and starting gameplay only; not a full-game or frame-rate certification. Inputs performed by the test rig.",
+  "existing_japanese_save_and_settings_preserved": true,
+  "host_returncode": 0
+}

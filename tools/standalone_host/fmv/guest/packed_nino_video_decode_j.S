@@ -26,6 +26,13 @@ _start:
  ldr r0,=0x44564d46
  str r0,[r9]
  ldr r10,=0x06800000
+ // Story movies map C as main BG at 0x06020000 and unmap
+ // LCDC A. Use that mapped bank for the same staged decode transaction.
+ // The opening retains its existing LCDC path.
+ ldr r0,=0x04000242
+ ldrb r0,[r0]
+ cmp r0,#0x89
+ ldreq r10,=0x06020000
  add r12,r10,#0x1f000
  ldr r0,=0x31564d46
  str r0,[r12]

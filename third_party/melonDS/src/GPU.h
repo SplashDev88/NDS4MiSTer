@@ -354,11 +354,17 @@ public:
         {
             VRAMDirty[2][(addr & 0x1FFFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_C[addr & 0x1FFFF] = val;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            if (FmvReceiverEnabled) ApplyPackedColor(2, addr & 0x1FFFF, sizeof(T));
+#endif
         }
         if (mask & (1<<3))
         {
             VRAMDirty[3][(addr & 0x1FFFF) / VRAMDirtyGranularity] = true;
             *(T*)&VRAM_D[addr & 0x1FFFF] = val;
+#ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
+            if (FmvReceiverEnabled) ApplyPackedColor(3, addr & 0x1FFFF, sizeof(T));
+#endif
         }
         if (mask & (1<<4))
         {

@@ -270,6 +270,26 @@ def reframe_movie(raw, family, rows, count, work=lambda done, total: None):
     return out
 
 
+def extension_layout(profile, sections):
+    """Reserve only unused ITCM, including data/BSS reached through aliases."""
+    address = profile.get('extension_ram', 0x01fff000)
+    size = profile.get('extension_bytes', 0xe40)
+    require(isinstance(address, int) and isinstance(size, int) and
+            address % 32 == 0 and size >= 0x40 and size % 32 == 0 and
+            0x01ff8000 <= address < address + size <= 0x01fffe40,
+            'invalid autoload scratch layout')
+    start, end = address & 0x7fff, (address & 0x7fff) + size
+    for section in sections:
+        count = len(section.data) + section.bssSize
+        if not count or section.ramAddress >= 0x02000000:
+            continue
+        first = section.ramAddress & 0x7fff
+        require(count <= 0x8000 and first + count <= 0x8000 and
+                (first + count <= start or first >= end),
+                'autoload scratch space occupied')
+    return address, size
+
+
 def assemble(source, profile, root=ROOT, progress=lambda n: None,
              work=lambda done, total: None):
     require(source.sha256(progress) == profile['source_sha256'], 'cartridge revision/content differs')
@@ -307,22 +327,25 @@ def assemble(source, profile, root=ROOT, progress=lambda n: None,
     raw, at = region(c['pc'],c['overlay'])
     converter = bytes(raw[at:at+c['bytes']])
     require(len(converter) == c['bytes'] and digest(converter) == c['sha256'], 'converter identity differs')
-    extension = bytearray(0xe40)
+    extension_address, extension_size = extension_layout(profile, main.sections)
+    extension = bytearray(extension_size)
+    require(len(converter) <= extension_size - 0x40, 'converter outside scratch space')
     extension[:len(converter)] = converter
+    occupied = [(0, len(converter))]
     for stub in profile['stubs']:
         blob = (root/'guest'/stub['file']).read_bytes()
-        require(digest(blob) == stub['sha256'] and stub['offset']+len(blob) <= 0xe00,
+        first, end = stub['offset'], stub['offset'] + len(blob)
+        require(digest(blob) == stub['sha256'] and 0 <= first < end <= extension_size - 0x40 and
+                all(end <= a or first >= b for a, b in occupied),
                 'guest hook differs')
-        extension[stub['offset']:stub['offset']+len(blob)] = blob
+        extension[first:end] = blob
+        occupied.append((first, end))
     for patch in profile['code_patches']:
         raw,at = region(patch['pc'],patch['overlay'])
         before,after = bytes.fromhex(patch['before']),bytes.fromhex(patch['after'])
         require(raw[at:at+len(before)] == before and len(before)==len(after), 'code guard differs')
         raw[at:at+len(after)] = after
-    for s in main.sections:
-        require(s.ramAddress+len(s.data)+s.bssSize <= 0x1fff000 or s.ramAddress >= 0x1fffe40,
-                'autoload scratch space occupied')
-    main.sections.append(code.MainCodeFile.Section(extension,0x1fff000,0))
+    main.sections.append(code.MainCodeFile.Section(extension,extension_address,0))
     arm9 = main.save(compress=False)
     require(arm9[:0x800] == source.read(armoff,0x800), 'secure area changed')
     require(len(arm9) == profile['arm9_bytes'] and digest(arm9) == profile['arm9_sha256'],
