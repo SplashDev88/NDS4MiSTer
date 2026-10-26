@@ -269,6 +269,13 @@
     "self_test": "passed",
     "profile_test": "passed",
     "core_unchanged": true,
-    "host_unchanged": true
+    "host_unchanged": false,
+    "host_change": "See HOST_BUILD; renderer source and training unchanged"
+  },
+  "HOST_BUILD": {
+    "sha256": "049c42092545e02afc64401432669c881d6abf63f228b55879d2e74a1f5f8ef1",
+    "change": "Dispatch ACBE rev0, ACBP rev0, ACBJ rev0/rev1 to the existing guarded loader; all other host behavior unchanged",
+    "rom_reader_tests": "passed, including all supported/unsupported Portrait revisions and movie-disabled mode",
+    "framed_host_tests": "passed"
   }
 }

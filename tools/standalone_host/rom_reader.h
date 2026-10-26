@@ -111,10 +111,12 @@ private:
              std::strcmp(nsmb_mode, "both") == 0 || std::strcmp(nsmb_mode, "bones") == 0 ||
              std::strcmp(nsmb_mode, "lookup+bones") == 0 || std::strcmp(nsmb_mode, "skip+bones") == 0 ||
              std::strcmp(nsmb_mode, "both+bones") == 0);
-        if (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
+        const bool portrait = ((code == "ACBE" || code == "ACBP") && header[30] == 0) ||
+                              (code == "ACBJ" && header[30] <= 1);
+        if ((allow_movies && portrait) || (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
                                code == "AXFE" || code == "YWSE" || code == "BMTJ" ||
                                code == "YQUP" || code == "YQUJ" || code == "AXFP" ||
-                               code == "AXFJ" || code == "CSNP" || code == "C5RJ")))) {
+                               code == "AXFJ" || code == "CSNP" || code == "C5RJ"))))) {
           const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);

@@ -35,12 +35,25 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
 # Simulate late validation failure: all bytes arrived but no commit marker.
 )PY";
   transfer(fake.string(),false,100);
-  for (const char* region:{"BMTJ","YQUP","YQUJ","AXFP","AXFJ","CSNP","C5RJ"}) {
+  for (const char* region:{"BMTJ","YQUP","YQUJ","AXFP","AXFJ","CSNP","C5RJ","ACBE","ACBP","ACBJ"}) {
     original.replace(12,4,region);
     std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
     transfer(fake.string(),false,100); // Each new code must use the guarded worker.
     transfer(argv[1],true); // An unqualified image must still return original bytes.
   }
+
+  for (const char* region:{"ACBE","ACBP","ACBJ"}) {
+    original.replace(12,4,region);
+    for (unsigned revision = 0; revision < 3; ++revision) {
+      original[30] = char(revision);
+      std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+      const bool qualified = revision == 0 || (std::string(region) == "ACBJ" && revision == 1);
+      transfer(fake.string(),!qualified,100); // Missing commit proves worker dispatch.
+      transfer(argv[1],true); // Full identity rejection keeps the source unchanged.
+      transfer(fake.string(),true,1000,"off",false); // Disabled movies remain native.
+    }
+  }
+  original[30] = 0;
 
   std::cout<<"PASS slow preparation services heartbeat; incomplete stream cannot commit\n";
   // Unrecognized games must not start even an invalid optional worker.

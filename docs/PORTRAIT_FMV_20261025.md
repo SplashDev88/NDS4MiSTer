@@ -1,7 +1,8 @@
 # Portrait of Ruin movie acceleration
 
 Private follow-up to the accepted Portrait Beta3 / DS Lite menu baseline at
-61b95dc2809271468aadb5e8f649ca5e943f51e8. The FPGA core and host are unchanged.
+61b95dc2809271468aadb5e8f649ca5e943f51e8. The FPGA core is unchanged. The host dispatch list now includes the four
+qualified Portrait versions; the guarded worker still verifies the complete ROM.
 
 The four retail cartridges in the 2026.10.07 No-Intro metadata are covered:
 USA ACBE revision 0, Europe ACBP revision 0 (all five menu languages), Japan
@@ -31,7 +32,7 @@ The receiver registry is rebuilt with the accepted combo3 profile data and
 coverage mismatch errors enabled. Renderer self-tests, 17-header selection,
 all seven ARM wait-hook interpreter cases, and all 59 loader/cache tests pass.
 The existing core timing caveats and RetroTINK LCD-grid limitations remain.
-Hardware acceptance is recorded separately in the private beta handoff.
+Host dispatch and framed-loading tests also pass. Hardware acceptance is recorded separately in the private beta handoff.
 
 Detailed software qualification: `release/PORTRAIT_FMV_SOFTWARE_20261025.json`.
 Private fixtures and ROM/movie bytes are excluded from source and packages.
