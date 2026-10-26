@@ -214,19 +214,19 @@
       "source_size": 536870912,
       "source_sha256": "7c78318ae93bd5639e592be98b22114e2160c54397f7bfff5e1bfe61b54a4f3c",
       "output_size": 536870912,
-      "qualified_image_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+      "qualified_image_sha256": "3938a8549a20893414c769b1d21e9d8ac763f0af84c4097d2b90ca93b29669ad",
       "capacity": 12,
       "used": 480013824,
       "arm9_offset": 479495168,
       "arm9_bytes": 448964,
-      "arm9_sha256": "898e87a79d5b1de5d473986e40ae89e2885585ede600acb8937aec46842c1f8c",
+      "arm9_sha256": "f3d1e15d67969affc25de6bd0fd376b186fd34aead6e75c3e9637487b6bd73a2",
       "overlays": [
         {
           "id": 13,
           "ram": 34054016,
           "output_offset": 479944192,
           "output_bytes": 69632,
-          "output_sha256": "56cbc5ff2c4138666fa11295564cce751076d6556cd401aad35d7a43e4c11267"
+          "output_sha256": "dd726c4aac75a7c39445873cb3841649903f1e81b6e172c43cda2cc2fa26b498"
         }
       ],
       "movies": [
@@ -445,12 +445,12 @@
         {
           "offset": 1536,
           "file": "packed_nino_video_color.bin",
-          "sha256": "6d02bc2dd5192d403241935f58b23df6e9418d5ac1cda3c838ddb41d49b15e00"
+          "sha256": "ee42706a6eba8a1d71f11c158a78294c0244d1c2540512b885c3a0de9ff5e6c2"
         },
         {
           "offset": 2688,
           "file": "packed_nino_video_decode_j.bin",
-          "sha256": "bbda97d4a3f8b1b2451e4ba2ef1e415240668117e8e06354d77c3ba8bf9ddf8d"
+          "sha256": "148c17cd85d27e1c62058f1862ace0075abf67ca6d31ae899cae86265d3412de"
         }
       ],
       "code_patches": [
@@ -470,10 +470,10 @@
           "overlay": 13,
           "pc": 34070176,
           "before": "f0432de9",
-          "after": "4106feea"
+          "after": "4706feea"
         }
       ],
-      "assembled_sha256": "b4ebb1ea7299669507432d290fafc1ddf7368bf5dd3f0fa290278a2b710c99d1",
+      "assembled_sha256": "3938a8549a20893414c769b1d21e9d8ac763f0af84c4097d2b90ca93b29669ad",
       "compact_files": {
         "prefix": 2212352,
         "alignment": 128,
@@ -1746,19 +1746,19 @@
       "source_size": 536870912,
       "source_sha256": "1ce3fdaf9d83a813328d642e4c7ef41ec8d6273f497b98a09355f9f6f821c627",
       "output_size": 536870912,
-      "qualified_image_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+      "qualified_image_sha256": "e109dfb3171c023050348f3fbf024cd6064e5d4eaad7b20d4b7ba5c6c749ef1d",
       "capacity": 12,
       "used": 486051328,
       "arm9_offset": 485532672,
       "arm9_bytes": 448964,
-      "arm9_sha256": "5ddd20b64ae587e31a69e37f28f43faa2eb983828b44ae627012efcebcfd9170",
+      "arm9_sha256": "fb79214088f48bba88526c2a97fb47e3e7ef3c68e3484cdc80af581b271e5164",
       "overlays": [
         {
           "id": 13,
           "ram": 34054016,
           "output_offset": 485981696,
           "output_bytes": 69632,
-          "output_sha256": "a8b2deab0d9761565f042f9fffd8b4cb44ea4264eec775afc2da5504d8426416"
+          "output_sha256": "a2847ca8f2d4eabaccb9b00264e9f44acba13b9cbd310ca29e61df5934681aa2"
         }
       ],
       "movies": [
@@ -1977,12 +1977,12 @@
         {
           "offset": 1536,
           "file": "packed_nino_video_color.bin",
-          "sha256": "6d02bc2dd5192d403241935f58b23df6e9418d5ac1cda3c838ddb41d49b15e00"
+          "sha256": "ee42706a6eba8a1d71f11c158a78294c0244d1c2540512b885c3a0de9ff5e6c2"
         },
         {
           "offset": 2688,
           "file": "packed_nino_video_decode_j.bin",
-          "sha256": "bbda97d4a3f8b1b2451e4ba2ef1e415240668117e8e06354d77c3ba8bf9ddf8d"
+          "sha256": "148c17cd85d27e1c62058f1862ace0075abf67ca6d31ae899cae86265d3412de"
         }
       ],
       "code_patches": [
@@ -2002,10 +2002,10 @@
           "overlay": 13,
           "pc": 34070176,
           "before": "f0432de9",
-          "after": "4106feea"
+          "after": "4706feea"
         }
       ],
-      "assembled_sha256": "33f42384e82437da67181e9bce682478a811cbdcbe4d861c02b83958218646c8",
+      "assembled_sha256": "e109dfb3171c023050348f3fbf024cd6064e5d4eaad7b20d4b7ba5c6c749ef1d",
       "description": "Ni no Kuni: The Jet-Black Mage, English translation v1.0",
       "compact_files": {
         "prefix": 2211840,

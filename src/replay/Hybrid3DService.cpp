@@ -7795,6 +7795,58 @@ void run_self_test()
             self_test_fail("GPU reset inherited a movie receiver selection");
         std::cout << "H3D_FMV_SESSION_GATE_PASS\n";
     }
+    {
+        // Ni no Kuni's Japanese story player alternates main-BG C/D, while
+        // its opening uses LCDC. Both paths must stage and convert identically,
+        // including replay's paired writes, without leaking packet bytes.
+        melonDS::NDSArgs args;
+        args.JIT = std::nullopt;
+        auto nds = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
+        nds->Reset();
+        auto& gpu = nds->GPU;
+        auto& fmv = gpu.FmvPackedColor;
+        gpu.MapVRAM_AB(0, 0x80);
+        gpu.MapVRAM_CD(2, 0x89);
+        gpu.MapVRAM_CD(3, 0x91);
+        gpu.WriteVRAM_ABG<melonDS::u32>(0x06020000 + fmv.Header, fmv.Begin);
+        if (fmv.Armed[2] || fmv.Transactions[2])
+            self_test_fail("disabled main-BG movie receiver armed");
+        gpu.FmvReceiverEnabled = true;
+        std::vector<std::uint32_t> payload(fmv.PayloadBytes / 4, 0x80808080u);
+        auto* bytes = reinterpret_cast<std::uint8_t*>(payload.data());
+        for (unsigned i = 0; i < fmv.LumaBytes; ++i) bytes[i] = 32 + i % 192;
+        for (unsigned i = 0; i < fmv.TableBytes; ++i)
+            bytes[fmv.LumaBytes + fmv.ChromaBytes + i] = (i / 8) & 31;
+        for (unsigned bank : {0u, 2u, 3u}) {
+            const unsigned base = bank == 0 ? 0x06800000 :
+                bank == 2 ? 0x06020000 : 0x06040000;
+            std::memset(gpu.VRAM[bank], 0xa5, 0x20000);
+            auto write = [&](unsigned offset, std::uint32_t value) {
+                if (!bank) gpu.WriteVRAM_LCDC<melonDS::u32>(base + offset, value);
+                else gpu.WriteVRAM_ABG<melonDS::u32>(base + offset, value);
+            };
+            write(fmv.Header, fmv.Begin);
+            write(fmv.Header + 4, fmv.Dimensions);
+            write(fmv.Header + 8, fmv.Format);
+            for (unsigned i = 0; i < payload.size();) {
+                if (bank == 3) {
+                    const auto pair = std::uint64_t(payload[i]) |
+                        (std::uint64_t(payload[i + 1]) << 32);
+                    gpu.WriteVRAM_ABG<std::uint64_t>(base + i * 4, pair);
+                    i += 2;
+                } else { write(i * 4, payload[i]); ++i; }
+            }
+            for (unsigned i = 0; i < 0x18000; ++i)
+                if (gpu.VRAM[bank][i] != 0xa5)
+                    self_test_fail("main-BG movie packet leaked before commit");
+            write(fmv.Header + 12, fmv.Commit);
+            if (fmv.Armed[bank] || fmv.Conversions != (bank == 0 ? 1u : bank))
+                self_test_fail("main-BG movie conversion did not commit");
+            if (bank && std::memcmp(gpu.VRAM[0], gpu.VRAM[bank], 0x18000))
+                self_test_fail("main-BG movie output differs from LCDC");
+        }
+        std::cout << "H3D_FMV_MAIN_BG_PASS staged=1 lcdc_equal=1 paired=1\n";
+    }
 #endif
     {
         // Compare packed replay against the two original word writes over
