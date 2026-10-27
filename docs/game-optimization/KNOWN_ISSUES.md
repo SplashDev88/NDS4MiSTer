@@ -158,10 +158,13 @@
   substitute for the original audio in an audibility assessment. Recording
   a failed candidate does not accept it, its combination with another patch,
   or its full-game/native behavior.
-- The first native FFTA2 guest-patch screening contains one candidate session
-  per patch and two short Luso windows. Vertex publication throughput is
-  about 3.4% higher; the decoder's 1.1–1.3% change is inconclusive against
-  control variation. Repeat trials and Fire before accepting a benefit.
+- Two native FFTA2 guest-patch screening series each contain one candidate
+  session per patch and two short Luso windows. Vertex's first approximately
+  3.4% publication gain was not reproduced: the second session is +1.328%
+  idle and +0.167% movement/menu, with movement between adjacent controls.
+  Decoder repeats at +0.463% idle/+1.036% movement, with idle between adjacent
+  controls and movement within the broader control range. Neither patch has
+  a qualified gameplay-speed claim. Test Fire next; preserve all results.
   Native staged-cartridge readback does not directly verify live ARM9 RAM
   or instruction-cache contents. Consumed-save equality does not qualify
   new save/write/reload, reset, ROM switch or combined-patch behavior.

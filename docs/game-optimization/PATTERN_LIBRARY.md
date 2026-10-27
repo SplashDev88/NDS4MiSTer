@@ -453,3 +453,13 @@ Equal consumed Quick Saves and clean process exits are useful bounded
 checks; new save/write/reload, reset, ROM switch and relevant transitions
 remain separate qualification gates. Signal-level silence/clipping checks
 complement the user's perceptual review but do not establish bit-exact audio.
+
+Retain the repeated result even when it weakens the first apparent gain.
+FFTA2's second vertex session changed idle publication throughput by +1.328%
+and movement/menu throughput by +0.167%, against about +3.4% in the first
+session. The repeated movement value lies between its adjacent controls.
+Report each session and the control spread; an average of two sessions does
+not establish a consistent movement benefit. Verify loaded bytes, flags and
+scene identity before attributing a weaker result to the patch being absent.
+Once a bounded repeat exposes variability, change to the next representative
+scene instead of repeating the easiest scene until a favorable sample appears.

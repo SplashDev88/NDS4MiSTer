@@ -1,11 +1,12 @@
 # FFTA2 guest-code optimization — 27 October 2026
 
 Status: the user reviewed the separate vertex and decoder comparison videos
-and reported, "No difference in either one." The first independent native
-Luso screening found about 3.4% higher screen-buffer publication throughput
-for the vertex patch. The decoder's 1.1–1.3% change is inconclusive against
-control variation. These are short-window screening results, not whole-game
-speed or release qualification. Repeat candidates and the Fire scene next.
+and reported, "No difference in either one." Repeated native Luso screening
+did not reproduce the vertex patch's first approximately 3.4% result: its
+second session measured +1.328% idle and +0.167% movement/menu publication
+throughput. Decoder repeated at +0.463% idle and +1.036% movement/menu.
+Small benefits remain possible, but these variable short-window results do
+not qualify a dependable gameplay speedup or release. Test Fire next.
 
 Four guest-patch versions still fail the original bit-exact budget and remain
 disabled in the release manifest. Positive perceptual review covers the shown
@@ -1015,6 +1016,55 @@ Beta2 files, its archive/launcher and seven runtime kits unchanged. The rig
 is back at MENU and OBS is idle with its original settings. Receipt:
 `GUEST_NATIVE_LUSO_FINAL_AUDIT_V1.json`.
 
+## Repeated native screening
+
+A second unchanged-runtime series ran control C4, vertex V2, control C5,
+decoder D2 and control C6, with the same private seed and about 20-second
+IDLE/MOVE windows. All title, Quick Save and battle screenshot gates matched
+without navigation recovery. The staged selected/unselected instruction
+bytes, renderer fields, frame-skip setting and stock clocks passed again.
+No source patch, runtime binary or measurement-input sequence changed.
+
+| Patch | Scene | Second control mean | Second candidate | First change | Second change |
+|---|---|---:|---:|---:|---:|
+| Vertex | Luso idle | 23.1598 | 23.4673 | +3.420% | +1.328% |
+| Vertex | Luso movement/menu | 23.7557 | 23.7953 | +3.388% | +0.167% |
+| Decoder | Luso idle | 23.1310 | 23.2381 | +1.293% | +0.463% |
+| Decoder | Luso movement/menu | 23.6735 | 23.9188 | +1.121% | +1.036% |
+
+Units remain screen-buffer publications per second, not unique animation
+FPS or isolated action duration. The second controls span 22.9891–23.3305
+idle and 23.5790–23.9325 movement. Vertex idle exceeds its two adjacent
+controls, but vertex movement lies between them. Decoder idle lies between
+its adjacent controls; decoder movement exceeds its adjacent controls but
+is below the other control in this series. There are only two candidate
+sessions per patch per scene, not enough to claim statistical significance.
+The initial 3.4% vertex value must not be used as a repeatable release gain.
+Retain both rounds, including the weaker results; a two-session average does
+not resolve the inconsistent movement result.
+
+Opening/contact-sheet review of all ten new captures matches the intended
+route. They show zero hardware error counters and pass OBS capture-drop and
+audio-signal checks. The HPS
+host uses 3.02–3.18% and renderer uses 145.70–146.75% of one core. Both patches
+again cold-load and exit cleanly. All ten sessions across the two series
+produce the same consumed-save bytes. New save/write/reload, reset/ROM switch,
+longer transitions, Fire and the combined patch set remain unqualified.
+The original software RAM/audio and bounded pixel differences remain.
+
+Evidence: `GUEST_NATIVE_LUSO_SCREENING_V2.json`,
+`GUEST_NATIVE_LUSO_BEFORE_AFTER_V2.csv`, `GUEST_NATIVE_LUSO_REPEAT_PLAN_V2.json`
+and the per-trial receipts. The existing summary helper now accepts a
+declarative series plan and retains the first-series source/hash. It verifies
+the same admission, capture, save and audit gates before producing results.
+`GUEST_NATIVE_FIRE_PLAN_V1.json` reuses the existing Pina/Kevyn Fire route and
+private opening-battle seed. Move to that representative scene next; do not
+continue Luso repetitions merely to recover the best earlier number.
+The second final preservation audit again verifies 1,865 protected files,
+all 148 installed Beta2 files, its archive/launcher and seven runtime kits.
+MENU and OBS are restored with original settings. Receipt:
+`GUEST_NATIVE_LUSO_FINAL_AUDIT_V2.json`. Release defaults remain disabled.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -1023,8 +1073,8 @@ ownership, display-effect write causality around the three changed scanlines,
 and complete RAM semantics remain open before any acceptance proposal.
 Preserve the user's positive visual/audio review. The decoder's live PCM
 dependency, three-route software characterization, Fire's sound-side timing
-and Luso's source-write ordering are established. Repeat the independent
-native candidates and test Fire using bracketing controls and verified scene
+and Luso's source-write ordering are established. Independent native Luso
+repeats are complete. Test Fire using bracketing controls and verified scene
 gates. Qualify new save/load, reset/ROM switch and longer transitions before
 a private beta proposal; test the combined set only after individual results
 justify it. Keep release defaults disabled and preserve existing failures.
