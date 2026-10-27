@@ -4,6 +4,9 @@ Status: the copy patch is rejected. The vertex patch failed the current
 bit-exact budget and is under **user-authorized timing investigation**.
 A third, decoder-arithmetic candidate reduces selected Luso ARM9 instructions
 by 2.512%; all 4,400 screen pairs and save hashes match, but RAM/audio differ.
+The Fire follow-up has 1,892 changed bottom-screen frames and substantially
+larger audio differences, despite a similar 2.499% instruction reduction.
+The 30,000-frame library/forest route remains exact with no instruction gain.
 All three remain disabled. No new guest patch is installed or release-qualified;
 accepted FFTA2 Beta2 remains unchanged. Platinum is queued, not active.
 
@@ -450,10 +453,10 @@ selected-window instruction counts below.
 | Main-RAM / DTCM / ARM7-WRAM frames differing | 0 / 0 / 0 | 1,579 / 2,356 / 264 | Fails current budget |
 | Native cycles, pacing p50/p95/max, HPS load, load time | No paired measurement | Not measured | No native gain claimed |
 
-ITCM and shared WRAM remain exact. Audio RMS delta is 0.797 in signed-16 units;
+ITCM and shared WRAM remain exact. Luso audio RMS delta is 0.797 in signed-16 units;
 this is not an audibility judgment. The unpatched control reproduces the
 goldens exactly. The patched replay fails the strict RAM/audio gate and the
-manifest remains disabled. Fire, library and native qualification are pending;
+manifest remains disabled. Native qualification is pending;
 the vertex candidate's causal explanation or measured bounds must not be
 transferred to this different patch.
 
@@ -467,6 +470,108 @@ without game addresses. Ten initial scanner checks and a follow-up carry-flag
 encoding check pass. Detection establishes neither middleware identity nor
 safe replacement; the table, index, flag and runtime-write proofs are separate.
 
+### Broader decoder replay coverage
+
+The Fire control reproduces the golden replay exactly. The candidate reduces
+selected ARM9 instructions from 543,588,049 to 530,006,396, or 2.4985%, but
+1,892 of 9,000 bottom-screen hashes differ. All top-screen and save hashes
+match. Main RAM, DTCM and ARM7 WRAM differ in 6,826, 7,005 and 5,281 frames;
+ITCM/shared WRAM remain exact. The retained main-RAM checkpoint differs only
+at the previously classified live elapsed-time words `02132e8c`/`02132e94`.
+These words remain unmasked and this does not classify the transient RAM.
+
+Of the 1,892 changed bottom frames, 1,514 match the control one frame earlier.
+Another 376 have no identical control hash within three frames in either
+direction. These counts retain the same-frame failure; nearby-frame matching
+is a diagnostic, not acceptance or a complete timing explanation. Captured
+frame 7080 differs in 385 character pixels; frame 7680 differs in 43,316
+bottom-screen pixels with maximum color-channel delta 9 during the spell
+effect. The first changed bottom frame is 2678, the last 8991.
+
+Fire audio differs in 132,737 of 7,220,926 stereo samples, with RMS delta
+777.362 in signed-16 units and maximum delta 65,535. Four output samples have
+that maximum, at frames 7623–7624: a stereo output channel goes from positive to
+negative clipping limits between arms. This is not the small Luso bound and
+is not declared benign. The full audio length is unchanged; six frames
+distribute a different number of output samples. The watched table/literal
+bytes again have 108 identical initialization stores and no later writes.
+
+Private receipts are `GUEST_NIBBLE_PAIR_FIRE_V1.json`,
+`GUEST_NIBBLE_FIRE_CAPTURE_DIFFERENCES_V1.json`,
+`GUEST_NIBBLE_FIRE_NEIGHBOR_HASH_V1.json` and
+`GUEST_NIBBLE_FIRE_AUDIO_WINDOWS_V1.json`. Three-second original/candidate WAV
+excerpts preserve the same absolute sample interval without gain adjustment
+or alignment; `GUEST_NIBBLE_FIRE_AUDIO_CLIPS_V1.json` records them. Listening
+has not been assessed. The completed source/decoded/control trace is recorded
+under `GUEST_NIBBLE_FIRE_AUDIO_PLAN_V1.json` and detailed below.
+
+The library/forest candidate passes all 30,000 frames on both screens,
+24,069,760 stereo audio samples, all save hashes and all checked RAM after
+normalizing only the declared 200 instruction bytes. Its control is also exact.
+Selected ARM9 instruction totals remain 750,160,463 in both arms: this is
+outside-target regression coverage, not a speed gain. Table/literal writes
+are unchanged, with no writes after initialization. The route includes the
+library transition and forest dialogue; it is not a pure FMV replay.
+
+| Route | Selected ARM9 instructions before → after | Reduction | Different top / bottom frames | Different stereo samples | Strict result |
+|---|---:|---:|---:|---:|---|
+| Luso, 4,400 frames | 391,329,973 → 381,498,749 | 2.5123% | 0 / 0 | 7,694 / 3,530,229 | RAM/audio fail |
+| Fire, 9,000 frames | 543,588,049 → 530,006,396 | 2.4985% | 0 / 1,892 | 132,737 / 7,220,926 | Screens/RAM/audio fail |
+| Library/forest, 30,000 frames | 750,160,463 → 750,160,463 | 0% | 0 / 0 | 0 / 24,069,760 | Pass within replay scope |
+
+These are software instruction counts, not native cycles, pacing or FPS.
+Every save hash matches in all three routes. No native candidate measurement
+or full-game qualification is claimed. `GUEST_NIBBLE_PAIR_LIBRARY_V1.json`
+retains the outside-target result; earlier Luso evidence remains immutable.
+
+The Fire sound trace reproduces the candidate's earlier outputs and selected
+instruction totals exactly. Its retained V5 control has identical semantic
+outputs to the new unpatched V6 control, and both builds use the same
+instrumented SPU object. All 4,826,361 fetched source words, 13,939,336 decoded
+steps, 364 note-start parameter sets and 21,251 sound-register payloads match.
+There are no unmatched source/decoder tails. This candidate has no observed
+Fire sample-data corruption in that comparison.
+
+Fourteen note starts move: one by −2 callbacks, one by +682, five by −171,
+five by +511 and two by +512. In total 363 control writes cross a different
+mix-callback boundary, with bounds ±682 callbacks (approximately 20.84 ms in
+this reference). PCM stream channels 0/1 retain identical source words,
+decoded values and sample-fetch mix indices; their changed outputs come from
+control timing. Other active channels also select identical sample sequences
+at different times. The existing arithmetic explainer accounts exactly for
+all 78,721,488 captured channel-output records per arm, with zero unexplained.
+This explains the sound-side output difference; upstream game-event/visual
+scheduling, native behavior and listening remain unqualified. It is neither
+the vertex patch's mechanism nor a proposed global tolerance. Evidence is
+`GUEST_NIBBLE_FIRE_AUDIO_FINDINGS_V1.json` and
+`GUEST_NIBBLE_AUDIO_FIRE_V1_{SAMPLES,EVENTS,EXPLANATION}.json`.
+
+Luso is different. Its own traced candidate reproduces the earlier replay,
+and all 20,403 sound-register payloads and 311 note-start parameters match,
+with no changed note-start times. However, three of 2,291,193 source words
+differ at channel 6, generation 23, callback 1,450,863. They change 1,182 of
+8,760,071 decoded values. No unmatched tails remain. All 38,457,840 captured
+channel outputs per arm are explained from the observed samples and controls,
+which does not make the changed source data equivalent.
+
+A new writer trace for this decoder candidate, rather than reuse of the
+vertex candidate's conclusion, identifies the same ARM9 cartridge store at
+`02010180`, with DMA inactive. All 17,272 ordered write payloads match, and
+each of 9,959 sound reads per arm agrees with preceding observed stores.
+The three writes at `02172f90/94/98` occur 15,605 raw ARM9 timestamp ticks
+earlier, moving from after to before the corresponding sound fetches. Channel
+6 is still enabled at volume 3/128 and stops 480 callbacks later. This
+establishes the bounded software overwrite ordering; high-level buffer
+ownership and native interleaving remain unqualified. See
+`GUEST_NIBBLE_RAM_WRITER_FINDINGS_LUSO_V1.json`,
+`GUEST_NIBBLE_RAM_CANDIDATE_AUDIT_LUSO_V1.json` and
+`GUEST_NIBBLE_AUDIO_LUSO_V1_{SAMPLES,EVENTS,EXPLANATION}.json`.
+
+This version is rejected under the current budget and stays disabled. Its
+arithmetic proof and measured instruction reduction remain useful evidence,
+but neither overrides whole-replay differences. Do not repeat the completed
+three-route or source/writer traces without a new question.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -475,8 +580,10 @@ ownership, display-effect write causality around the three changed scanlines,
 and complete RAM semantics remain open before any acceptance proposal.
 Preserve the user's positive visual review. The decoder's live PCM dependency
 is now established, and its first arithmetic candidate has a measured software
-result. Broader software-only Fire/library characterization and classification
-of its RAM/audio differences are next; keep both timing candidates disabled.
+result. Three-route software characterization, Fire's sound-side timing and
+Luso's source-write ordering are complete. Keep both timing candidates disabled.
+Further work on their visual/RAM semantics is deferred while the remaining
+ARM7 service hotspots and content-reuse opportunities are classified.
 Keep the current acceptance budget unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction

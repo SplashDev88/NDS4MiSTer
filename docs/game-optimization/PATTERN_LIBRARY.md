@@ -209,6 +209,31 @@ the selected battle instruction count by 2.512%, with exact screens and saves.
 RAM/audio still differ. It remains disabled: local arithmetic equivalence and
 fewer instructions do not establish scheduling safety or native performance.
 
+The next battle route expands the failure: 1,892 bottom-screen frames differ
+and audio reaches opposite clipping limits. Most changed images match a
+neighboring control frame, but 376 have no identical hash within three frames.
+Retain same-frame failures and unmatched results rather than aligning them
+away. A small first-route audio bound must not become a game-wide allowance;
+observe actual source words, decoded samples and sound-control timing before
+classifying the cause. The retained control can be reused only with pinned
+trace provenance and matching semantic outputs for the current oracle.
+
+The Fire follow-up matches all fetched source words and decoded values without
+unmatched tails. Fourteen note starts move, and control timing shifts by up to
+682 mixer callbacks, about 21 ms. The recorded samples/controls exactly explain
+all channel outputs, including the large pointwise waveform differences.
+Distinguish this measured timing effect from data corruption and from audibility;
+the explanation still does not authorize a non-bit-exact patch.
+
+The shorter route instead exposes three changed source words at an active
+sound-buffer overwrite boundary. A separate trace for this candidate matches
+all producer write payloads but moves three stores before the consumer read;
+the unchanged data arrives earlier. This reproduces the dependency class
+seen with the vertex patch, with a different timestamp delta. Confirm each
+candidate's actual ordering instead of transferring another patch's bounds.
+Preserve both cases: identical-source scheduling shifts and changed-source
+interleaving need different evidence and must not share an assumed tolerance.
+
 ## Elapsed-time accounting is not removable debug work
 
 Detector: a hardware-timer read with overflow accounting, storage of a previous

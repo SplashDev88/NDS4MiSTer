@@ -392,16 +392,16 @@
       ],
       "hook": null,
       "enabled": false,
-      "status": "disabled_strict_Luso_replay_gate_failed_timing_unclassified",
+      "status": "rejected_current_bit_exact_budget_after_three_routes_and_audio_traces",
       "scratch_bytes": 0,
       "overlay": null,
       "validated": {
-        "fb": "bit-exact both screens across 4400 Luso frames",
-        "ram": "failed: transient main RAM, DTCM and ARM7 WRAM; frame2600 main RAM exact outside patch",
-        "audio": "failed:7694/3530229 stereo samples differ; maximum signed16 delta427",
-        "save": "bit-exact all frame hashes and final save in Luso",
+        "fb": "Luso and library exact; Fire top exact but1892/9000 bottom frames differ",
+        "ram": "Failed in both battles; library30000 frames exact after only declared200 code bytes normalized",
+        "audio": "Failed in both battles; library24069760 stereo samples exact",
+        "save": "Exact every-frame and final hashes in Luso, Fire and library",
         "native": "Not run",
-        "other_replays": "Fire and library not run for this candidate"
+        "other_replays": "Library/forest30000-frame route passed; cold/save-reload/reset/native lifecycle not newly qualified"
       },
       "gain": {
         "target_scene_ARM9_instructions_before": 391329973,
@@ -463,9 +463,114 @@
           0,
           72
         ],
-        "scope": "Luso route only; loading-time guards are not runtime protection"
+        "scope": "Table/literal write watch covers Luso, Fire and library; entry-index contract covers Luso only. Loading-time guards are not runtime protection.",
+        "additional_routes": {
+          "FIRE": "GUEST_NIBBLE_PAIR_FIRE_V1.json",
+          "LIBRARY": "GUEST_NIBBLE_PAIR_LIBRARY_V1.json"
+        }
       },
-      "consumer_evidence": "GUEST_NIBBLE_CONSUMER_FINDINGS_LUSO_V1.json"
+      "consumer_evidence": "GUEST_NIBBLE_CONSUMER_FINDINGS_LUSO_V1.json",
+      "additional_replay_coverage": {
+        "FIRE": {
+          "receipt": "GUEST_NIBBLE_PAIR_FIRE_V1.json",
+          "frames": 9000,
+          "different_top_frames": 0,
+          "different_bottom_frames": 1892,
+          "audio": {
+            "stereo_samples": [
+              7220926,
+              7220926
+            ],
+            "lengths_equal": true,
+            "different_stereo_samples": 132737,
+            "max_signed16_delta": 65535,
+            "rms_delta": 777.3621050302868,
+            "first_sample": 1282872,
+            "last_sample": 6157031,
+            "scope": "Same-index signed16 samples; no alignment, masking or audibility judgment"
+          },
+          "RAM_frame_differences": {
+            "frame": 0,
+            "mainram": 6826,
+            "itcm": 0,
+            "dtcm": 7005,
+            "arm7wram": 5281,
+            "sharedwram": 0,
+            "save": 0
+          },
+          "instruction_measurement": {
+            "before": 543588049,
+            "after": 530006396,
+            "reduction_percent": 2.498519425691053,
+            "first_frame": 6500,
+            "end_frame_exclusive": 9000,
+            "scope": "Software executed instructions; not native cycles or speed"
+          },
+          "save_exact": true,
+          "table_and_literal_writes_after_frame0": 0,
+          "accepted": false
+        },
+        "LIBRARY": {
+          "receipt": "GUEST_NIBBLE_PAIR_LIBRARY_V1.json",
+          "frames": 30000,
+          "different_top_frames": 0,
+          "different_bottom_frames": 0,
+          "audio": {
+            "stereo_samples": [
+              24069760,
+              24069760
+            ],
+            "lengths_equal": true,
+            "different_stereo_samples": 0,
+            "max_signed16_delta": 0,
+            "rms_delta": 0.0,
+            "first_sample": null,
+            "last_sample": null,
+            "scope": "Same-index signed16 samples; no alignment, masking or audibility judgment"
+          },
+          "RAM_frame_differences": {
+            "frame": 0,
+            "mainram": 0,
+            "itcm": 0,
+            "dtcm": 0,
+            "arm7wram": 0,
+            "sharedwram": 0,
+            "save": 0
+          },
+          "instruction_measurement": {
+            "before": 750160463,
+            "after": 750160463,
+            "reduction_percent": 0.0,
+            "first_frame": 23300,
+            "end_frame_exclusive": 30000,
+            "scope": "Software executed instructions; not native cycles or speed"
+          },
+          "save_exact": true,
+          "strict_replay_state": "passed_replay_equivalence",
+          "table_and_literal_writes_after_frame0": 0,
+          "accepted": false
+        }
+      },
+      "timing_investigation": {
+        "state": "three_routes_and_both_battle_audio_mechanisms_recorded_not_accepted",
+        "Fire_neighbor_image_receipt": "GUEST_NIBBLE_FIRE_NEIGHBOR_HASH_V1.json",
+        "Fire_audio_plan": "GUEST_NIBBLE_FIRE_AUDIO_PLAN_V1.json",
+        "approval_for_non_bit_exact_release": false,
+        "native_measured": false,
+        "Fire_audio_findings": "GUEST_NIBBLE_FIRE_AUDIO_FINDINGS_V1.json",
+        "Luso_audio_findings": "GUEST_NIBBLE_LUSO_AUDIO_FINDINGS_V1.json",
+        "Luso_writer_findings": "GUEST_NIBBLE_RAM_WRITER_FINDINGS_LUSO_V1.json",
+        "Fire_source_words_exact": 4826361,
+        "Fire_decoded_steps_exact": 13939336,
+        "Fire_changed_note_start_times": 14,
+        "Fire_max_control_mix_callback_shift": 682,
+        "Luso_source_word_mismatches": 3,
+        "Luso_decoded_value_mismatches": 1182,
+        "Luso_ordered_write_payloads_exact": 17272,
+        "Luso_critical_write_ARM9_timestamp_delta": -15605,
+        "all_guest_patches_disabled": true,
+        "remaining": "Native/lifecycle, high-level buffer ownership and remaining visual/RAM semantics unqualified; current version parked under strict gate; continue other FFTA2 hotspots"
+      }
     }
   ],
   "arm9_crc32": "5f2f17b3"

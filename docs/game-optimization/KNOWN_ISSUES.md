@@ -73,6 +73,29 @@
   main RAM matches outside code, but DTCM/ARM7 WRAM and transient RAM differ.
   The 2.512% selected-window instruction reduction is not native speed.
   Loading-time table guards, a write watch and observed entry indices cover
-  this route only. Other scenes, native timing and lifecycle remain unqualified;
+  the tested routes only. Native timing and lifecycle remain unqualified;
   the vertex candidate's explanation does not classify these new differences.
   Keep this patch disabled pending a complete, explicitly approved budget.
+- The same decoder candidate fails Fire more substantially: 1,892 bottom
+  frames and 132,737 stereo samples differ; maximum signed-16 delta is 65,535.
+  All top-screen/save hashes match, and the selected instruction reduction
+  is 2.4985%. Matching a prior frame explains some image hashes, not the
+  whole failure. Four samples cross between opposite clipping limits. The
+  follow-up matches every Fire source word and decoded sample; fourteen note
+  starts shift and control writes move by up to 682 mixer callbacks. Actual
+  samples/control timing explain every captured channel output. Upstream
+  visual/event scheduling, native behavior and audibility remain unqualified.
+  Do not transfer the vertex or Luso timing explanations, approve the patch,
+  or run native qualification
+  on the strength of the synthetic arithmetic proof alone.
+- The decoder candidate's library/forest route is exact across 30,000 frames,
+  including audio/RAM/save checks after only the declared code normalization.
+  The selected instruction total is unchanged. This outside-target pass does
+  not override either battle failure or establish full-game safety.
+- Luso's decoder candidate changes three actual source words and 1,182 decoded
+  values. A fresh writer trace confirms identical ARM9 cartridge stores occur
+  15,605 raw timestamp ticks earlier and cross the active channel's read.
+  This is observed producer/consumer interleaving, not purely sound-control
+  timing. All observed writes and subsequent sound reads are internally
+  consistent, but ownership safety and native behavior are unqualified.
+  Keep this version rejected under the current budget.
