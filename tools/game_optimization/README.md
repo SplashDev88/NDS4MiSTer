@@ -169,6 +169,40 @@ bytes and inconsistent reads stay explicit; an empty trace cannot pass.
 This establishes consistency of captured events, not unrestricted write-watch
 coverage or permission to accept a changed soundtrack.
 
+`NDS_REPLAY_MEMORY_WATCH=SPEC` extends the same instruction observer with
+bounded snapshots of host-backed, canonical DS main RAM. Each row is:
+
+```text
+CPU PC_HEX arm|thumb OPCODE_HEX ADDRESS_REG SIGNED_OFFSET BYTE_COUNT GUARD_REG GUARD_VALUE_HEX
+```
+
+All fields except those marked hex are decimal. Rows for the same CPU/PC
+form one event with ordered spans; at most 16 sites and 64 spans are allowed.
+Each span is 1–4096 bytes, with a register-relative offset within ±4096.
+The exact opcode, CPU mode and register guard must match. The observer rejects
+noncanonical aliases, MMIO, ARM9 ITCM/DTCM overlap, overflow and non-4-MiB RAM
+mapping. It copies backing bytes directly, with no emulated memory reads or
+guest writes. Legacy `watches.csv` is unchanged. Capture is at instruction
+entry, before its condition is evaluated; use an appropriate unconditional
+site or account for this in the fixture. Profiling must cover every required
+entry/exit. Every declared site must be hit, or the run fails.
+
+`memory_watch.csv` retains complete bytes, addresses, registers and mode;
+`memory_watch_summary.csv` records site counts. A new observer build must pass
+an unpatched golden replay before its snapshots support an optimization claim.
+`test_replay_memory_watch.cpp` exercises mapping, guard and output integrity.
+
+`analyze_memory_recurrence.py TRACE FIXTURE --status STATUS --output REPORT`
+requires a passed unpatched replay and its retained trace digest. The fixture
+declares entry/exit sites, register deltas, output pointers, input/output spans,
+key registers and selected frames. It rejects incomplete, nested or mismatched
+invocations. Keys contain actual bytes, sizes and declared register values;
+source-pointer equality alone is insufficient. Reports include exact recurrence,
+output conflicts, reuse distances and hypothetical LRU hit counts. Constant
+tables and other dependencies still need independent proof. Payload storage
+omits metadata and alignment; hit counts omit lookup, copy, invalidation and
+timing costs. This diagnostic does not allocate guest scratch or implement a cache.
+
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic
 `check_guest_block_patch.py MANIFEST FIXTURE --output REPORT` reuses that

@@ -2,6 +2,7 @@
 #include "GPU_Soft.h"
 #include "replay/GameQueryProfile.h"
 #include "NDS.h"
+#include "replay_memory_watch.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -21,6 +22,8 @@ std::map<u32,std::pair<u64,u32>> replay_samples[2];
 std::vector<u32> replay_watches;
 std::ofstream replay_watch;
 NDS* replay_machine=nullptr;
+ReplayMemoryWatch replay_memory;
+std::ofstream replay_memory_output;
 std::ofstream replay_spu_output;
 u64 replay_spu_writes=0,replay_spu_mixes=0;
 struct RamBusTrace {
@@ -113,6 +116,11 @@ void replay_instruction(unsigned cpu,u32 pc,u32 op,const u32* r){
  if((++replay_instructions[cpu]&255)==0){auto& v=replay_samples[cpu][pc];++v.first;v.second=op;}
  if(cpu==0)for(auto w:replay_watches)if(pc==w){replay_watch<<replay_frame<<','<<std::hex<<pc;for(int i=0;i<16;++i)replay_watch<<','<<r[i];replay_watch<<std::dec<<'\n';}
  replay_block.Observe(cpu,pc,op,r);
+ if(!replay_memory.sites.empty()) {
+  const auto& nds=*replay_machine;
+  replay_memory.Observe(cpu,pc,op,r,cpu==0?nds.ARM9.CPSR:nds.ARM7.CPSR,replay_frame,
+   {nds.MainRAM,nds.MainRAMMask,nds.ARM9.ITCMSize,nds.ARM9.DTCMBase,nds.ARM9.DTCMMask},replay_memory_output);
+ }
 }
 }
 using namespace melonDS;
@@ -197,6 +205,12 @@ int main(int argc,char**argv) {
  }
  nds->SetNDSCart(std::move(cart));nds->Reset();nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(nds4mister::replay::castlevania_integral_texture_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected));nds->GPU.GPU3D.SetSpriteRasterSpansEnabled(nds4mister::replay::portrait_sprite_raster_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected)||nds4mister::replay::ffta2_raster_only_profile(selected));nds->SetupDirectBoot(std::filesystem::path(argv[1]).filename().string());nds->SPU.SetOutputSampleRate(48000);nds->RTC.SetDateTime(2026,10,24,12,0,0);static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(nds->GetRenderer()).Rend3D.get())->SetFullFrameCompletion(true);nds->Start();
  const std::string out=argv[3];
+ if(const char* path=std::getenv("NDS_REPLAY_MEMORY_WATCH")) {
+  std::ifstream spec(path);replay_memory.Load(spec);
+  replay_memory_output.open(out+"/memory_watch.csv");
+  replay_memory.Header(replay_memory_output);
+  if(!replay_memory_output)return 8;
+ }
  std::ofstream log(out+"/frames.csv"),thumbs(out+"/thumbs.rgb",std::ios::binary),audio(out+"/audio.s16le",std::ios::binary);
  log<<"frame,timestamp,hash_top,hash_bottom,audio_samples,disp_a,disp_b\n";
  struct Input{unsigned first,last,mask;};std::vector<Input> inputs;std::ifstream replay(argv[5]);Input v;while(replay>>v.first>>v.last>>std::hex>>v.mask>>std::dec)inputs.push_back(v);
@@ -290,6 +304,10 @@ int main(int argc,char**argv) {
  }
  for(int cpu=0;cpu<2;++cpu){std::ofstream prof(out+"/pc"+std::to_string(cpu+1)+".csv");prof<<"pc,count,opcode\n";for(auto [pc,v]:replay_samples[cpu])prof<<std::hex<<pc<<std::dec<<","<<v.first<<","<<std::hex<<v.second<<"\n";}
  std::ofstream saveout(out+"/save.bin",std::ios::binary);saveout.write((char*)nds->GetNDSSave(),nds->GetNDSSaveLength());
+ if(!replay_memory.sites.empty()) {
+  std::ofstream summary(out+"/memory_watch_summary.csv");
+  replay_memory.Finish(replay_memory_output,summary);
+ }
  if(replay_block.enabled){
   std::ofstream summary(out+"/block_trace_summary.csv");summary<<"completed,restarted,unscoped_writes,unfinished\n"<<replay_block.completed<<','<<replay_block.restarted<<','<<replay_block.unscopedWrites<<','<<replay_block.active<<'\n';
  }

@@ -704,6 +704,41 @@ the failed version, and no beta is produced. Continue with input-recurrence
 evidence for the remaining guest-code leads, rather than repeating these
 unchanged timing comparisons.
 
+## Decoder content recurrence: no reuse in the Luso route
+
+A read-only extension of the existing replay instruction observer captures
+128 compressed bytes and the complete eight-byte predictor/index state at
+ARM9 ARM `0x02020080`, with an exact opcode/mode guard and R2=256 guard.
+At `0x02020144`, before the final POP, it captures all 512 output bytes and
+the updated eight-byte state. Pairing verifies input/output pointer advances,
+the 40-byte stack frame and the unchanged state pointer. LR is still the
+negative clamp constant at this site; the POP subsequently restores it.
+
+The fresh unpatched V7 observer passes every golden screen, RAM, audio and
+save comparison over 4,400 frames. Its selected-window ARM9/ARM7 instruction
+totals remain exactly 391,329,973 / 21,412,319. The new observer copies host
+backing RAM only after checking the canonical mapping and excluding TCM;
+it makes no emulated reads, guest writes, HPS service calls or RTL changes.
+
+| Capture scope | Calls | Unique 128-byte inputs | Unique full keys | Reuse hits |
+| --- | ---: | ---: | ---: | ---: |
+| Full Luso route | 12,456 | 12,456 | 12,456 | 0 |
+| Frames 2600–4399 | 7,696 | 7,696 | 7,696 | 0 |
+
+Only eight source addresses are used, but every compressed block is different.
+Keys compare actual bytes plus predictor/index and sample count. Even an
+unbounded cache has no hits in this trace. Storing all observed keys and
+outputs would require 8,220,960 payload bytes before metadata and alignment,
+with no saved decode work. Do not implement a whole-block cache for this
+workload. This does not rule out other scenes, assets or smaller operations.
+
+Evidence: private `GUEST_NIBBLE_CONTENT_RECURRENCE_LUSO_V1.json`,
+`GUEST_NIBBLE_RECURRENCE_LUSO_V1_STATUS.json` and
+`GUEST_MEMORY_WATCH_BUILD_V7.json`. The generic observer passes 39 guard/mapping
+checks; the analyzer additionally tests predictor-state identity, output
+conflicts and six invalid call pairings. No guest patch was added or enabled,
+and no native performance improvement is claimed.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -721,7 +756,8 @@ to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
-Establish decoder source/predictor recurrence and rectangle input recurrence.
+Decoder whole-block recurrence has now been measured and has zero hits in
+Luso. Establish rectangle input recurrence next.
 ARM7's hot windows have structural
 classifications, but dynamic caller/operand and dependency evidence is still
 needed before any service optimization. More vertex arithmetic remains a lead,
@@ -738,10 +774,10 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Measure decoder input recurrence including the complete predictor state
-   before proposing caching; repeated source addresses alone are insufficient.
-2. Trace rectangle inputs and mutation boundaries before considering reuse in
+1. Trace rectangle inputs and mutation boundaries before considering reuse in
    the graphics submission path; equal output alone does not prove redundancy.
-3. Measure cartridge and filesystem recurrence with completion and buffer
-   ownership evidence. A larger dispatch index remains a lower-priority lead
-   requiring space and state proof; the rejected compaction must stay disabled.
+2. Measure cartridge and filesystem recurrence with completion and buffer
+   ownership evidence; the audio staging addresses alone do not reveal it.
+3. Evaluate a larger dispatch index only after proving space, state and call
+   timing requirements; the rejected compaction must stay disabled. ARM7
+   division operand recurrence is another unqualified lead.

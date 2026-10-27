@@ -118,3 +118,11 @@
   timing. All observed writes and subsequent sound reads are internally
   consistent, but ownership safety and native behavior are unqualified.
   Keep this version rejected under the current budget.
+- FFTA2's whole-block audio-decoder cache has no reuse in the full 4,400-frame
+  Luso reference route: 12,456 distinct compressed inputs and complete
+  predictor/count keys across 12,456 calls, despite only eight source
+  addresses. The selected window also has zero hits. A cache would add
+  matching/copy/storage work without a hit in this workload; do not allocate
+  scratch or implement it on the strength of repeated buffer addresses.
+  This is a route-specific negative result, not proof that all assets or
+  smaller operations are unique throughout the game.

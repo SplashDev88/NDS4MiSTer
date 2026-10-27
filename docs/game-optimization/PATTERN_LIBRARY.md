@@ -16,6 +16,29 @@ Detector: decoded texture hashes that return to a small set of values. The cave 
 
 Reject unconditional palette-upload suppression. Precompute/cache only after matching all content and rendering dependencies. Include allocation, matching, copying, changing frames and dual-core synchronization in the cost model; repeated frozen frames alone are not an acceptance benchmark.
 
+## Stateful decoder content recurrence
+
+Repeated source addresses can be reused staging buffers, not repeated assets.
+Capture the actual source bytes, sample/byte count and complete predictor,
+dictionary or other carried state at entry. Capture every output byte and
+updated state at exit, and verify invocation pairing and pointer advances.
+Fixed tables and other dependencies require separate immutability evidence.
+
+Reuse the instruction observer's declarative `NDS_REPLAY_MEMORY_WATCH` spans.
+It requires CPU/mode/opcode/register guards, copies canonical main-RAM backing
+bytes without emulated reads, and rejects TCM or aliased mappings. A passed
+unpatched golden replay is required before analysis. The generic
+`analyze_memory_recurrence.py` compares complete byte tuples, checks repeated
+keys for differing outputs, and reports reuse distances and bounded LRU hits.
+It cannot establish cache safety, spare memory, timing equivalence or native gain.
+
+FFTA2's Luso route has 12,456 decoder calls at eight source addresses, but
+12,456 distinct 128-byte source blocks; adding the eight-byte predictor state
+and sample count also yields no repeated keys. The selected battle window
+has 7,696 calls and zero hits. A whole-block cache is not justified in this
+workload even with unlimited capacity. Do not extrapolate address repetition
+or a decoder's large sample share into a caching opportunity.
+
 ## Native waiting versus reference instruction counts
 
 Reference instruction sampling identifies executed loops. Native PC sampling measures observed wall time, including halt/DMA periods. Neither is a cycle counter. For ACVE the first cave capture observed 37.2% halted samples; the native geometry stream already submitted about 60 frames/s while completed screen publications were about 21.3/s. Prioritize the limiting stage, not the largest reference loop by itself.
