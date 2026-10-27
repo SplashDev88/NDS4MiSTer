@@ -369,6 +369,30 @@ renaming. It finds six ARM9 occurrences, including the profiled hot loop.
 No shared SDK provenance or automatic safety is inferred. Eleven positive and
 negative scanner checks pass.
 
+## Unpatched decoder caller follow-up
+
+The existing instruction-watch mechanism now records the higher-share nibble
+routine without any guest patch. All 4,400 reference outputs remain exact.
+Within frames 2600–4399, 962 wrapper calls produce 7,696 paired routine calls.
+Each starts with count 256, advances the source by 128 bytes and destination
+by 512 bytes, ends with count zero, and retains its predictor-state pointer.
+There are two direct callers, `0202018c` and `020201a4`; their wrapper is
+called at `02020254`. The observed wrapper input is `021c1380`, with separate
+state blocks at `02127778` and `02127780`.
+
+The output blocks fill `021c3800–021c47ff`. No actual SPU FIFO fetch in the
+matching replay reads this range directly. Two PCM16 channels instead loop
+over `021c1800–021c27ff` and `021c2800–021c37ff`. This is not evidence that the
+decoder is dead work: intervening copies or mixing must be traced. The next
+bounded input observes the first 16 bytes of each staging buffer and each
+half of those playback rings, using the existing RAM/sound observer. No new
+patch, scratch allocation or decoded-content reuse is proposed yet.
+
+Private receipts are `GUEST_NIBBLE_CALLER_FINDINGS_LUSO_V2.json`,
+`GUEST_NIBBLE_RETURN_SHAPE_LUSO_V1.json`, and
+`GUEST_NIBBLE_STAGING_INPUT_V1.json`. V2 corrects the V1 scope sentence to say
+that the direct-SPU intersection was empty; its numeric findings are unchanged.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -383,8 +407,8 @@ to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
-Trace the ADPCM-like decoder's callers, source contents and output consumers,
-and classify remaining ARM7 hotspots. More vertex arithmetic remains a lead,
+Trace the ADPCM-like decoder's intermediate output consumers and source
+contents, and classify remaining ARM7 hotspots. More vertex arithmetic remains a lead,
 but do not repeat rejected versions or reinterpret the budget silently.
 The SPU's observed ADPCM playback does not establish that the sampled ARM9
 nibble-processing routine feeds audio. That upstream role remains an inference
@@ -401,8 +425,8 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Establish callers, source-content recurrence and output dependencies of the
-   ADPCM-like decoder before proposing exact arithmetic or resident-data reuse.
+1. Follow the observed decoder staging buffers into the separate PCM playback
+   rings and establish source-content recurrence before proposing reuse.
 2. Classify ARM7's remaining sampled audio/service loops and their cross-CPU
    dependencies; a CPU address window alone is not a function identity.
 3. Trace repeated cartridge sectors and filesystem lookups before proposing

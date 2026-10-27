@@ -167,6 +167,16 @@ concrete example of identical producer work yielding different consumer data
 because of ordering. Do not apply a source-data cache or move a transfer
 without preserving ownership, completion and active-consumer dependencies.
 
+## Temporary decoder outputs are not automatically dead work
+
+A decoder can write intermediate buffers while sound hardware reads separate
+looping buffers. The observed FFTA2 routine repeatedly consumes 128 bytes and
+produces 512 bytes, but its output ranges have no direct SPU fetches in the
+replay. Separate PCM16 playback rings are active. Follow CPU/ARM7 copies,
+mixing and ownership before removing the routine or caching its output. An
+empty direct-consumer intersection is a lead to investigate, not dead-code
+proof. Preserve the predictor state as an input when considering reuse.
+
 ## Elapsed-time accounting is not removable debug work
 
 Detector: a hardware-timer read with overflow accounting, storage of a previous
