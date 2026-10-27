@@ -428,3 +428,28 @@ the encoded video but creates a lossy AAC convenience copy. Use the PCM MOV
 for original-sound review. Human observation can inform a proposed budget;
 it cannot retroactively make a digital mismatch exact or qualify untested
 gameplay, lifecycle, combined-patch or native behavior.
+
+## Native screening after perceptual review
+
+Keep the host, renderer, bitstream, clocks, settings and private save seed the
+same when selecting individual guest patches. Bracket each candidate with
+unpatched controls; inspect actual scene state before starting a timed sample.
+Title/attract-mode navigation delays are setup failures, not performance
+samples. Preserve their receipts and recover before measurement. Validate the
+staged cartridge's selected and unselected instruction sites without probing
+hardware during the measured interval. Distinguish staged-byte admission from
+live emulated RAM/cache verification.
+
+FFTA2's first vertex trial increased publication throughput about 3.4% in
+two short Luso windows, while the decoder's 1.1–1.3% change was comparable
+to control variation. The larger software instruction reduction did not
+produce the larger native screening gain. Require repeat candidates and
+other scenes, and report publication rates without calling them unique
+animation FPS or whole-game speed. An idle/movement window that includes a
+settled menu cannot establish the duration of the move itself. Unavailable
+cycle and frame-time distributions remain unavailable.
+
+Equal consumed Quick Saves and clean process exits are useful bounded
+checks; new save/write/reload, reset, ROM switch and relevant transitions
+remain separate qualification gates. Signal-level silence/clipping checks
+complement the user's perceptual review but do not establish bit-exact audio.

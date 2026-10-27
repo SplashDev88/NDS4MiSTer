@@ -1,21 +1,20 @@
 # FFTA2 guest-code optimization — 27 October 2026
 
 Status: the user reviewed the separate vertex and decoder comparison videos
-and reported, "No difference in either one." This is positive perceptual
-evidence for the shown scenes. Both candidates proceed to individual native
-experiments; full-game acceptance and native speed remain unqualified.
-Four guest-patch versions fail the original bit-exact budget and remain
-disabled in the release manifest. The dispatch candidate passes 1,520 synthetic
-cases and reduces selected library ARM9 instructions by 0.713%, but the full
-30,000-frame replay changes one bottom-screen frame, audio and RAM. Saves
-match. No native gain is measured. The earlier copy, vertex and decoder
-results remain below; user-authorized timing investigation did not authorize
-non-bit-exact acceptance. Accepted FFTA2 Beta2 remains unchanged. Platinum is
-queued, not active. The native diagnostic loader now reuses the existing
-reset-held ROM transaction with explicit manifest/hash/patch selection. Its
-control, vertex and decoder output hashes match the retained replay images;
-no candidate instruction bytes or original ROM files changed. The unchanged
-Beta2 renderer and rc12 bitstream remain the proposed native comparison base.
+and reported, "No difference in either one." The first independent native
+Luso screening found about 3.4% higher screen-buffer publication throughput
+for the vertex patch. The decoder's 1.1–1.3% change is inconclusive against
+control variation. These are short-window screening results, not whole-game
+speed or release qualification. Repeat candidates and the Fire scene next.
+
+Four guest-patch versions still fail the original bit-exact budget and remain
+disabled in the release manifest. Positive perceptual review covers the shown
+scenes; lifecycle, combined-patch and full-game behavior remain unqualified.
+Accepted FFTA2 Beta2 and immutable rc12 remain unchanged. Platinum is queued,
+not active. The native diagnostic loader reuses the existing reset-held ROM
+transaction with explicit manifest/hash/patch selection. Control and both
+candidates use the same new host, unchanged Beta2 renderer and rc12 bitstream.
+No candidate instruction bytes or original ROM files changed.
 
 ## Scope and existing mechanisms
 
@@ -956,22 +955,85 @@ lifecycle qualification; interactions between the two patches; and the paused
 cartridge/filesystem content-reuse audit. No hardware ownership was requested
 or changed for these local recordings.
 
+## First independent native screening
+
+The existing loader and rig helpers ran control C1, vertex V1, control C2,
+decoder D1 and control C3, each from the same private Luso Quick Save seed.
+The host is built from `cbc1bd16cdac9c82a8b1badc76439a1ff4f20145`, SHA-256
+`d187d83a9b31cdbed4ac450a9af514374a4a5f08b94df4356f3a9fa020a77fb4`.
+Both HPS cores remain at 1 GHz, frame skipping is off, and live renderer
+fields match the accepted Beta2 profile. Only the explicit guest selection
+changes between trials. Read-only staged-cartridge checks confirm exactly
+the selected patch bytes and original bytes at the other three sites, plus
+the original header and data guards. This is not direct ARM9 RAM or I-cache
+readback. The original ROM is untouched and the loader worker exits before
+gameplay.
+
+Each result below is complete screen-buffer publications per second over
+about 20 seconds. Controls are averaged from the immediately preceding and
+following sessions. The MOVE window includes the one-tile move and the
+settled command menu; it is not an isolated action-duration measurement.
+
+| Patch | Scene | Bracketing control mean | Candidate | Change |
+|---|---|---:|---:|---:|
+| Vertex | Luso idle | 23.2384 | 24.0332 | +3.420% |
+| Vertex | Luso movement/menu | 23.6409 | 24.4417 | +3.388% |
+| Decoder | Luso idle | 23.1401 | 23.4392 | +1.293% |
+| Decoder | Luso movement/menu | 23.4781 | 23.7413 | +1.121% |
+
+The three controls span 22.9967–23.2836 idle and 23.1372–23.8190 movement.
+Vertex exceeds both adjacent controls in both scenes. Decoder movement lies
+inside the control range, and its idle gain is similar to the control spread.
+There is only one candidate session per patch; repeatability and benefit in
+other scenes are unproven. Native guest cycles, missed VBlanks, DMA/cartridge
+totals, unique animation FPS and per-publication p50/p95/max frame times are
+unavailable from this bounded start/end-counter harness.
+
+Across all ten captures, the HPS host uses 2.94–3.19% and renderer uses
+145.04–147.00% of one CPU core. Renderer usage above 100% reflects multiple
+threads. Hardware error counters remain zero. OBS reports no added render or
+recording-output skips; game audio has no detected clipping, 10-ms window
+below −80 dB or timestamp discontinuity. These signal checks do not prove
+subjective sound quality or bit-exact native audio.
+
+Opening screenshots and contact sheets show the same Luso HP90/90, MP10/14,
+command state and movement route. Vertex V1 and control C3 needed corrected
+menu navigation before any measurement; the mismatched setup captures remain
+recorded and are not measured intervals. All five sessions cold-loaded the
+same seed, exited cleanly and produced identical consumed-save bytes,
+`a52f1ea7fcb7765f798b1478f090e0fa5be54a08ec4ec53aa94e5fa77db111ef`.
+Consuming an existing Quick Save does not qualify a new save/write/cold reload.
+Original software framebuffer/RAM/audio differences remain unchanged.
+
+Evidence is in `GUEST_NATIVE_LUSO_SCREENING_V1.json`,
+`GUEST_NATIVE_LUSO_BEFORE_AFTER_V1.csv`, `GUEST_NATIVE_VISUAL_REVIEW_V1.json`
+and the per-trial admission, flags, capture, audio and stop receipts. The
+individual-trial plan records the next qualification gates. The isolated kit
+is experimental; no new beta is accepted by this screening result.
+The final audit verifies 1,865 protected original/prior files, all 148 installed
+Beta2 files, its archive/launcher and seven runtime kits unchanged. The rig
+is back at MENU and OBS is idle with its original settings. Receipt:
+`GUEST_NATIVE_LUSO_FINAL_AUDIT_V1.json`.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
 unchanged broad audio replays or the resolved writer trace. High-level buffer
 ownership, display-effect write causality around the three changed scanlines,
 and complete RAM semantics remain open before any acceptance proposal.
-Preserve the user's positive visual review. The decoder's live PCM dependency
-is now established, and its first arithmetic candidate has a measured software
-result. Three-route software characterization, Fire's sound-side timing and
-Luso's source-write ordering are complete. Keep both timing candidates disabled.
-Further work on their visual/RAM semantics is deferred while content-reuse
-opportunities are investigated. ARM7's hot windows now have structural roles.
-Keep the current acceptance budget unchanged. A proposal
+Preserve the user's positive visual/audio review. The decoder's live PCM
+dependency, three-route software characterization, Fire's sound-side timing
+and Luso's source-write ordering are established. Repeat the independent
+native candidates and test Fire using bracketing controls and verified scene
+gates. Qualify new save/load, reset/ROM switch and longer transitions before
+a private beta proposal; test the combined set only after individual results
+justify it. Keep release defaults disabled and preserve existing failures.
+ARM7's hot windows have structural roles. Keep the current acceptance budget
+unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
-this milestone does not approve such a proposal. The 0.636–1.041% instruction
-reduction warrants a high bar for accepting risk or adding complexity.
+this milestone does not approve such a proposal. The 0.636–1.041% reference
+instruction reduction and the first native throughput result are different
+metrics; neither establishes full-game safety or proportional speedup.
 
 Decoder whole-block recurrence has now been measured and has zero hits in
 Luso. Rectangle recurrence covers bounded library, movement and spell scenes,
@@ -994,9 +1056,9 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Measure cartridge/filesystem recurrence, metadata work and buffer ownership;
-   repeated buffer addresses or source offsets alone do not authorize skipping I/O.
-2. Consider higher-level reuse of viewport calculations only if it removes
+1. Test the combined vertex/decoder set after individual native qualification;
+   do not assume gains or timing differences add independently.
+2. Investigate higher-level cartridge/filesystem reuse from the exact returned
+   byte audit; repeated addresses/offsets do not authorize skipping completion.
+3. Consider higher-level reuse of viewport calculations only if it removes
    lookup costs and has a proven mutation boundary; do not revive this cache.
-3. A larger dispatch index or ARM7 division specialization needs its own
-   operand/cost and storage/timing proof. Both remain unqualified leads.
