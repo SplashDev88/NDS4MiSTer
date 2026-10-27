@@ -36,6 +36,51 @@ Detector: a bounded loop with a constant record stride, a nullable loaded functi
 
 An active-record index could reduce empty scans only if every registration, deletion and reordering operation is captured and callback order remains identical. Treat an object-update role as an inference until symbols or write watches establish it. Do not replace this with halt or skip callbacks. It is not the current throughput priority while geometry already runs near 60 submissions/sec.
 
+## Linear key/handler dispatch
+
+Detector: scan fixed eight-byte records, compare the first word to a requested
+key, load the second word on a match, call it indirectly, and stop at the first
+match or the signed count bound. `scan_guest_patterns.py` recognizes this ARM
+structure with renamed registers and exact branch targets. Two positive and
+13 negative structural checks cover changed offsets, predicates, loop bounds,
+register aliases and writeback. Existing detector results are unchanged on
+both CPU images of the initial title. This establishes no SDK identity.
+
+Trace entry keys, table/count identity, incoming callers and successful match
+positions. Watch all table writes, including boot, and verify retained bytes
+at checkpoints before deriving work from static table contents. Report misses
+separately: a failed subclass table search can legitimately fall through to a
+different table. Do not remove a whole call or its fallback merely because
+the first lookup misses. A range prefilter, compact search, or offline index
+must preserve first-match precedence, signed count behavior, handler effects,
+registers/flags, memory visibility and whole-game timing. Scratch requires a
+full-replay write watch; no native HLE service is implied.
+
+FFTA2's library window observes 73,667 searches and 40,182 misses across four
+tables. The five statically identified tables have no duplicate keys and no
+post-boot writes in the full 30,000-frame route. Observed hit positions match
+the original search exactly. The resulting 5,384,388 key comparisons are a
+calculation from inputs and table order, not cycles or measured savings.
+No search patch has been qualified.
+
+## Timer, interrupt and sound service loops
+
+Constant-size scans can update live audio channels or schedule runnable
+threads. Trace or disassemble their status-register reads, interrupt-mask
+changes, callbacks and publication stores before proposing idle suppression.
+Repeated reads of a sound-active bit are not evidence that its value is safe
+to cache; a channel can finish asynchronously. Timer reads may compensate for
+pending overflow interrupts. Preserve these dependencies even when a bounded
+replay rarely takes the correction branch.
+
+Use all profile windows above the threshold, not a truncated top-N list.
+One window can straddle several functions. Reference sampling every 256
+instruction entries can alias periodic code; its percentages are neither
+native cycle shares nor shares of combined CPU work. Match observed opcodes
+to the correct CPU's main/autoload map before naming a routine. Shared WRAM
+and ARM7 private WRAM may form one virtual code extent; ARM9 DTCM and ARM7
+main-RAM aliases at the same address do not designate the same storage.
+
 ## Branch-heavy halfword copy
 
 Detector: an ARM loop compares a byte offset against a signed length, then uses

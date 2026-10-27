@@ -9,6 +9,17 @@
 - The parked partial-image cache helped frozen repetitions but slowed changing inputs; it is not a beta candidate. Its row-copy path also needs explicit X-partition ownership before parallel use.
 - Publication pairs are completed screen updates, not necessarily unique animation frames or end-to-end display FPS. OBS timestamps and detector counts are secondary evidence.
 - Native ARM7 PC/cycle counts, per-frame FPGA CPU cycle accounting, missed VBlanks and total cartridge/DMA-byte counters are not all exposed by the retained bitstream. Missing measurements must remain unavailable.
+- ARM7's FFTA2 hotspots include interrupt/scheduler work, timer overflow
+  correction and live sound-status scans. They are not established idle or
+  dead loops. A top-15 profile list omitted an additional >2% window; threshold
+  analysis must use the full profile. Fixed-stride instruction sampling can
+  alias periodic service work and is not native cycle accounting.
+- FFTA2's dispatch misses are real fallbacks between handler tables. Do not
+  delete the dispatch call or return a cached handler result: handlers may
+  have effects. Five tables stayed unchanged after boot in one full library
+  replay, which does not prove immutability in other scenes or reset paths.
+  The 5,384,388 calculated comparisons are original work, not measured savings.
+  No search patch or new beta is qualified by the classification trace.
 
 - **Native flag verification is mandatory.** The release supervisor intentionally strips inherited `NDS*`/`H3D_*` variables. The early lighting and cache A/B launches therefore tested disabled paths in both arms. Those live results cannot establish candidate performance. The isolated supervisor now admits only declared private Boolean flags and asserts the helper's actual environment; the rig checks that record before input/measurement.
 - The native bat-room route uses timed input. Small differences in jumping can put the player on a different platform and change the camera. Inspect the video, exclude mismatched positions, and prefer a reproducible in-game suspend seed. `C3_A` was floor-level while `C3_B`/`C3_A2` were platform-level.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Read-only structural screening of ARM code sections; never authorizes a patch.
 
-Detectors recognize branch-heavy halfword-copy control flow and a redundant
-bitfield shift chain, allowing register renaming. Linear scans can encounter data or Thumb code;
+Detectors recognize copy control flow, redundant shifts, weighted nibble sums,
+and linear key/handler dispatch, allowing register renaming. Linear scans can encounter data or Thumb code;
 execution traces and revision/original-byte guards are still required.
 """
 import argparse
@@ -14,7 +14,8 @@ import struct
 
 from capstone import Cs, CS_ARCH_ARM, CS_MODE_ARM
 from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_CC_NE, ARM_INS_MOV, ARM_INS_CMP, ARM_INS_TST,
-                          ARM_INS_B, ARM_INS_LDRH, ARM_INS_STRH, ARM_INS_ADD,
+                          ARM_INS_B, ARM_INS_LDR, ARM_INS_LDRH, ARM_INS_STRH, ARM_INS_ADD,
+                          ARM_INS_BLX,
                           ARM_INS_BX, ARM_OP_REG, ARM_OP_IMM, ARM_OP_MEM,
                           ARM_REG_LR, ARM_REG_PC, ARM_REG_SP, ARM_INS_LSL,
                           ARM_INS_LSR, ARM_INS_ASR, ARM_SFT_LSL, ARM_SFT_LSR,
@@ -131,13 +132,67 @@ def nibble_step(instructions):
                 required_proof='Positive step divisible by8;15*step fits signed32; entry index valid; exact tables/runtime writes guarded; changed N/Z flags overwritten before use. No middleware identity or safe replacement inferred.')
 
 
+def key_handler_dispatch(instructions):
+    """Find an ordered key/function search, without assuming immutable tables."""
+    ids = [ARM_INS_LDR, ARM_INS_CMP, ARM_INS_B, ARM_INS_LDR, ARM_INS_BLX,
+           ARM_INS_MOV, ARM_INS_B, ARM_INS_ADD, ARM_INS_ADD, ARM_INS_CMP, ARM_INS_B]
+    if len(instructions) != len(ids) or [i.id for i in instructions] != ids:
+        return None
+    if any(i.cc != (ARM_CC_NE if n == 2 else ARM_CC_LT if n == 10 else ARM_CC_AL)
+           or i.writeback or i.update_flags != (n in [1, 9])
+           for n, i in enumerate(instructions)):
+        return None
+
+    def reg(n, k):
+        o = instructions[n].operands[k]
+        assert o.type == ARM_OP_REG and not o.shift.type
+        assert o.reg not in [ARM_REG_SP, ARM_REG_PC]
+        return o.reg
+
+    def imm(n, k):
+        o = instructions[n].operands[k]
+        assert o.type == ARM_OP_IMM
+        return o.imm
+
+    try:
+        key = reg(0, 0)
+        memory = instructions[0].operands[1]
+        assert memory.type == ARM_OP_MEM and not memory.shift.type
+        base = memory.mem.base
+        assert base not in [ARM_REG_SP, ARM_REG_PC]
+        assert not memory.mem.index and memory.mem.disp == 0
+        assert reg(1, 0) == key
+        sought = reg(1, 1)
+        assert imm(2, 0) == instructions[7].address
+        assert reg(3, 0) == base and reg(4, 0) == base
+        handler = instructions[3].operands[1]
+        assert handler.type == ARM_OP_MEM and not handler.shift.type
+        assert handler.mem.base == base and not handler.mem.index and handler.mem.disp == 4
+        reg(5, 0); reg(5, 1)
+        assert imm(6, 0) == instructions[-1].address + 4
+        counter = reg(7, 0)
+        assert reg(7, 1) == counter and imm(7, 2) == 1
+        assert reg(8, 0) == reg(8, 1) == base and imm(8, 2) == 8
+        assert reg(9, 0) == counter
+        length = reg(9, 1)
+        assert imm(10, 0) == instructions[0].address
+        assert len({key, sought, base, counter, length}) == 5
+    except (AssertionError, IndexError):
+        return None
+    return dict(table=instructions[0].reg_name(base), key=instructions[0].reg_name(sought),
+                counter=instructions[0].reg_name(counter), count=instructions[0].reg_name(length),
+                entry_bytes=8, key_offset=0, handler_offset=4,
+                required_proof='Observe callers, lookup keys, table identity and every table write. Preserve first-match order, misses, handler calls, registers/flags and timing. No sortedness, immutability, redundancy or SDK identity inferred.')
+
+
 def scan(data, base):
     decoder = Cs(CS_ARCH_ARM, CS_MODE_ARM)
     decoder.detail = True
     findings = []
     detectors = [('branch-heavy-halfword-copy', 52, 0xffff0fff, 0xe3a00000, halfword_copy),
                  ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain),
-                 ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step)]
+                 ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step),
+                 ('linear-key-handler-dispatch', 44, 0xfff00fff, 0xe5900000, key_handler_dispatch)]
     for at in range((-base) % 4, len(data) - 19, 4):
         word = struct.unpack_from('<I', data, at)[0]
         for pattern, size, mask, value, detect in detectors:

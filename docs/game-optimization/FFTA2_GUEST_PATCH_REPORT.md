@@ -572,6 +572,81 @@ arithmetic proof and measured instruction reduction remain useful evidence,
 but neither overrides whole-replay differences. Do not repeat the completed
 three-route or source/writer traces without a new question.
 
+## Remaining hotspot classification and dispatch evidence
+
+The next pass verifies the six retained profile hashes against
+`GUEST_PATCH_HOTSPOT_REVIEW.json` and the original ROM identity. Every sampled
+opcode within the mapped main/autoload sections matches the image bytes.
+Unmapped BIOS/overlay addresses remain explicitly unresolved. All sampled
+instructions in the reviewed hot windows are full ARM opcodes; the observer's
+Thumb path fetches 16-bit instructions. No Thumb or overlay patch is inferred.
+
+ARM7 starts with 488 bytes at `02380000`, then autoloads 62,340 bytes at
+`037f8000` and 96,340 bytes at `027e0000`. The first extent crosses from shared
+WRAM into private ARM7 WRAM at `03800000`; `027e0000` is a main-RAM alias for
+ARM7, not ARM9 DTCM. Retained checkpoint bytes confirm the shared-WRAM image
+and sampled private-WRAM instructions. Seven initialized private-WRAM data
+words have changed, so the whole initialized section is not immutable.
+See `GUEST_REMAINING_HOTSPOT_MAP_V1.json` and the completed classification
+receipt `GUEST_REMAINING_HOTSPOT_FINDINGS_V1.json`.
+
+All 20 ARM7 address windows exceeding 2% in at least one retained route now
+have a structural classification. These describe observed code, not official
+SDK symbols or safe patches:
+
+| ARM7 window(s) | Observed role and evidence |
+| --- | --- |
+| `037fb400`, `037fb500` | Interrupt dispatch and scheduler/context return: IE/IF/IME access, handler pointer table, CPSR/SPSR and register saves. |
+| `037fb900` | Interrupt enable/disable/acknowledgement helpers accessing `04000208/210/214`; no hot initialization polling loop. |
+| `037fbe00`, `037fc300` | Runnable-thread list traversal and scheduling using record state at `+48` and links at `+4c`. |
+| `037fd100`, `037fd200` | Extended timer read and alarm programming; timer-0 read, pending-overflow correction, timer-1 control writes. |
+| `037fd300`, `037fd600` | Periodic deadline arithmetic, timer alarm queue and callback dispatch. |
+| `037fdc00` | CPSR interrupt-disable and restore helpers, not dead work. |
+| `037feb00`, `03801c00` | Sound-channel active-bit reads and publication of a 16-channel status mask plus capture status. |
+| `037ff100`, `037ff300` | Two 16-channel dirty-state scans and channel parameter update; writes include sound start bits. |
+| `037fff00`, `03800000`, `03800a00` | Nested sound sequence/track record scans and indexed track lookup. Semantic names are inferred from their audio consumers. |
+| `03800b00`, `03800c00` | Audio parameter arithmetic, linked channel updates and the next track-processing loop. |
+| `03806c00` | Unrolled software division steps; operand distribution and an appropriate replacement remain unproven. |
+
+The older top-15 listing omitted `037fb900`, which exceeds 2% in all three
+routes. The new review computes the threshold from the full profiles. No
+service call is removed, and no ARM7 patch is added. The diagnostic patch
+loader currently admits only initially loaded ARM9 main code; ARM7 autoload
+patching would need explicit generic lifecycle support and qualification.
+
+ARM9 window `0208b000` contains several functions. The bounded signed-16
+rectangle/viewport predicate at `0208b0bc..0208b123` uses 256-by-192 bounds and
+has three static call sites, including the known vertex-submission path.
+Its input recurrence and safe reuse are not established. Another function,
+`0203c094..0203c0d7`, searches key/handler tables and invokes the first match.
+
+| ARM9 function | Luso instruction sample share | Fire | Library |
+| --- | ---: | ---: | ---: |
+| Rectangle predicate | 2.690% | 2.693% | 4.837% |
+| Key/handler dispatcher | 0.180% | 0.003% | 5.025% |
+
+These are software instruction-entry samples, including predicated entries,
+not native cycle or frame-time shares. Native gain remains unmeasured.
+
+The unpatched dispatch trace watches function entry and successful match sites
+in library frames 23,300–29,999, and all writes to five statically identified
+tables across all 30,000 frames. It reproduces every golden screen, RAM state,
+audio sample and save; both PC profile files also remain identical. There are
+73,667 entries, 33,485 successes and 40,182 misses. All observed successful
+positions agree with the original tables. Eleven table/key pairs repeat
+6,697 times each. Keys `0x10` and `0x3` miss three tables before reaching the
+base table; keys `0x16f`, `0x194` and `0x124` match the 138-entry table.
+This is fallback dispatch, not a loop whose calls can simply be dropped.
+
+All 660 table-word stores occur at boot with the original values; there are
+no later writes. Both added RAM checkpoints retain the exact five tables.
+The observed inputs imply 5,384,388 original key comparisons, without claiming
+any reduction yet. `GUEST_DISPATCH_FINDINGS_LIBRARY_V1.json` records the trace,
+and `GUEST_DISPATCH_PATTERN_CHECKS_V1.json` records detector admission checks.
+The next bounded investigation is a guarded, in-place miss/search fast path
+that preserves fallback, handler execution and the full validation gate.
+No new patch, native experiment or beta is produced by this classification.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -589,8 +664,10 @@ to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
-Establish decoder input-content recurrence and classify remaining ARM7
-hotspots. More vertex arithmetic remains a lead,
+Investigate dispatch miss reduction, then establish rectangle input recurrence
+and decoder source-content recurrence. ARM7's hot windows have structural
+classifications, but dynamic caller/operand and dependency evidence is still
+needed before any service optimization. More vertex arithmetic remains a lead,
 but do not repeat rejected versions or reinterpret the budget silently.
 For any later candidate, complete replay comparison precedes cold boot,
 in-game save/reload, reset, overlay transitions, an unrelated scene and paired
@@ -604,9 +681,9 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Establish decoder source-content recurrence, including predictor state,
-   before proposing reuse; broaden qualification of the arithmetic candidate.
-2. Classify ARM7's remaining sampled audio/service loops and their cross-CPU
-   dependencies; a CPU address window alone is not a function identity.
-3. Trace repeated cartridge sectors and filesystem lookups before proposing
-   reuse; preserve data-ready, completion, destination and invalidation behavior.
+1. Develop an in-place dispatch miss/search fast path with exact table guards;
+   preserve first matches, fallbacks, register/stack effects and timing gates.
+2. Trace rectangle inputs and mutation boundaries before considering reuse in
+   the graphics submission path; equal output alone does not prove redundancy.
+3. Measure decoder input recurrence including predictor state, then cartridge
+   and filesystem recurrence with completion and buffer-ownership evidence.
