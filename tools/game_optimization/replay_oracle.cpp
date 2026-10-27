@@ -3,6 +3,7 @@
 #include "replay/GameQueryProfile.h"
 #include "NDS.h"
 #include "replay_memory_watch.h"
+#include "replay_video_capture.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -222,6 +223,13 @@ int main(int argc,char**argv) {
  }
  std::ofstream log(out+"/frames.csv"),thumbs(out+"/thumbs.rgb",std::ios::binary),audio(out+"/audio.s16le",std::ios::binary);
  log<<"frame,timestamp,hash_top,hash_bottom,audio_samples,disp_a,disp_b\n";
+ ReplayVideoCapture videoCapture;std::ofstream videoPixels,videoIndex;
+ if(const char* ranges=std::getenv("NDS_REPLAY_VIDEO_FRAMES")){
+  videoCapture.Load(ranges,frameCount);
+  videoPixels.open(out+"/video_frames.bgra",std::ios::binary);videoIndex.open(out+"/video_frames.csv");
+  if(!videoPixels||!videoIndex)return 8;
+  videoCapture.Header(videoIndex);
+ }
  struct Input{unsigned first,last,mask;};std::vector<Input> inputs;std::ifstream replay(argv[5]);Input v;while(replay>>v.first>>v.last>>std::hex>>v.mask>>std::dec)inputs.push_back(v);
  std::ifstream watches(argv[6]);u32 watch;while(watches>>std::hex>>watch)replay_watches.push_back(watch);replay_watch.open(out+"/watches.csv");
  std::ofstream state(out+"/state.csv");state<<"frame,arm9_insn,arm7_insn,mainram,itcm,dtcm,arm7wram,sharedwram,save\n";
@@ -308,9 +316,11 @@ int main(int argc,char**argv) {
    for(int y=0;y<48;++y)for(int x=0;x<64;++x){u32 p=pix[(y*4+2)*256+x*4+2];char rgb[3]={(char)p,(char)(p>>8),(char)(p>>16)};thumbs.write(rgb,3);}
   }
   s16 buf[4096];int n=nds->SPU.ReadOutput(buf,2048);audio.write((char*)buf,n*4);
+  videoCapture.Frame(frame,top,bottom,unsigned(n),hashes[0],hashes[1],videoPixels,videoIndex);
   log<<frame<<','<<nds->GetSysClockCycles(2)<<','<<hashes[0]<<','<<hashes[1]<<','<<n<<','<<nds->ARM9Read32(0x04000000)<<','<<nds->ARM9Read32(0x04001000)<<'\n';
   if(frame%120==0){std::ofstream pixels(out+"/frame_"+std::to_string(frame)+".rgba",std::ios::binary);pixels.write((char*)top,256*192*4);pixels.write((char*)bottom,256*192*4);std::cout<<frame<<std::endl;}
  }
+ videoCapture.Finish(videoPixels,videoIndex);
  for(int cpu=0;cpu<2;++cpu){std::ofstream prof(out+"/pc"+std::to_string(cpu+1)+".csv");prof<<"pc,count,opcode\n";for(auto [pc,v]:replay_samples[cpu])prof<<std::hex<<pc<<std::dec<<","<<v.first<<","<<std::hex<<v.second<<"\n";}
  std::ofstream saveout(out+"/save.bin",std::ios::binary);saveout.write((char*)nds->GetNDSSave(),nds->GetNDSSaveLength());
  if(!replay_memory.sites.empty()) {

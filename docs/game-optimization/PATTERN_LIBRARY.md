@@ -390,3 +390,29 @@ consumers before labeling a changing RAM word harmless. The observed FFTA2
 fields feed a 60/60/1000-limited counter. They are live accounting data, not
 patch scratch. Equal images/saves do not authorize masking them or accepting
 unclassified audio differences.
+
+## Perceptual review of a retained exact-match failure
+
+Keep the failed comparison and original candidate bytes. An explicit request
+to watch an experimental patch permits recording it; it does not silently
+change the release budget. Record the control and each candidate separately
+with the same replay, oracle and original image identity. Require the new
+recordings to reproduce their retained screen, RAM, audio and save results,
+including the known failures, before interpreting the media.
+
+`replay_video_capture.h` copies completed framebuffers at declarative frame
+ranges and indexes the existing stereo output. It adds no emulated memory
+access. `verify_replay_video.cpp` checks every recorded screen against the
+oracle's existing pixel hashes. `render_replay_comparison.py` pairs both
+screens by replay frame, plays the control and candidate audio separately,
+and derives presentation timestamps from the original audio sample counts.
+Its MOV output must decode to the exact concatenated PCM samples. No mixing,
+normalization, time stretching or hidden frame alignment is allowed.
+
+Label these as software replay comparisons, not native speed measurements.
+The H.264 picture is compressed even when the source capture is exact; retain
+lossless stills for known visual differences. `make_review_mp4.py` preserves
+the encoded video but creates a lossy AAC convenience copy. Use the PCM MOV
+for original-sound review. Human observation can inform a proposed budget;
+it cannot retroactively make a digital mismatch exact or qualify untested
+gameplay, lifecycle, combined-patch or native behavior.

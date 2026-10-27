@@ -150,3 +150,11 @@
   exhaustive rejection of all memoization. Do not allocate game scratch or
   install this component; volatile/flag integration and miss insertion are
   deliberately unimplemented.
+- Experimental review recordings run at deterministic replay game time.
+  They do not demonstrate a native MiSTer speedup. Their H.264 picture is
+  compressed; retain the original full-resolution hashes and lossless stills
+  when discussing tiny color differences. MOV audio is checked sample for
+  sample against the original stereo PCM. MP4 copies use AAC and cannot
+  substitute for the original audio in an audibility assessment. Recording
+  a failed candidate does not accept it, its combination with another patch,
+  or its full-game/native behavior.

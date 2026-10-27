@@ -900,6 +900,53 @@ Four accounting tests cover eviction/collision/hit ordering, alignment
 fallback without insertion, conflicting results and capture-window bounds.
 The V2 model retains every prior measured field and adds a perfect-hit bound.
 
+## User-requested individual video previews
+
+The user explicitly requested trying the retained vertex-packing and decoder
+arithmetic candidates and recording each for visual/audio review. The patches
+were selected individually through the existing guarded VirtualRom loader;
+no combined patch, native installation or release acceptance is implied.
+Both remain disabled in the release manifest and accepted Beta2 is unchanged.
+
+The diagnostic V9 frontend copies completed full-resolution framebuffers and
+indexes the existing stereo output for declared windows. The original ROM
+and seed files remain untouched. Eight fresh full replays cover 100,200 frames:
+control, vertex and decoder in Luso and Fire, plus control and vertex through
+the longer story/library route. Every recording reproduces its retained
+screen, RAM, audio, save and immutable image results, including the previously
+measured candidate failures. This validates the recorder's lack of observed
+perturbation; it does not convert those failures into passes.
+
+The comparisons show both DS screens side by side and repeat each scene with
+control audio followed by candidate audio. Presentation timestamps follow the
+original 48 kHz sample counts. The finished vertex sequence is 84.244125 seconds
+and the decoder sequence 76.220958 seconds. Coverage includes the quiet Luso
+sound-buffer boundary, the Fire spell and largest measured decoder audio
+difference, the story route's largest vertex audio difference, and both tiny
+library transition scanlines. Lossless stills reproduce the known vertex
+bounds: 51 pixels with a maximum channel delta of 4 at Fire frame 7640, and
+231/135 pixels with maximum delta 9 at library frames 23878/23885.
+
+The MOV master retains original signed-16 stereo PCM without gain changes,
+filtering, mixing or resampling. The encoder verifies the decoded PCM hash,
+every video presentation timestamp and the decoded frame count. The picture
+uses H.264 after exact 2x nearest-neighbor scaling; original raw captures and
+lossless PNG stills remain available. MP4 convenience copies retain the same
+encoded video and use AAC audio. These are software replay recordings, not
+MiSTer capture-card footage or measured native speed improvements.
+
+Evidence: `GUEST_VIDEO_BUILD_V9.json`, `GUEST_VIDEO_REVIEW_BATCH_V1.json`,
+`GUEST_VIDEO_MEDIA_CHECKS_V1.json`, `GUEST_VIDEO_REVIEW_BEFORE_AFTER_V1.csv`,
+and the video render receipts. The generic capture has 17 unit checks; the
+pixel verifier rejects an intentionally changed source bit. The private review
+files are under `reviews/FFTA2_Guest_Patches_20261027` in the main workspace.
+Human review remains separate from an explicit acceptance-budget decision.
+
+Deferred from this recording request: native integration/performance and full
+lifecycle qualification; interactions between the two patches; and the paused
+cartridge/filesystem content-reuse audit. No hardware ownership was requested
+or changed for these local recordings.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
