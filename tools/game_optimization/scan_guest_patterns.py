@@ -13,7 +13,7 @@ from pathlib import Path
 import struct
 
 from capstone import Cs, CS_ARCH_ARM, CS_MODE_ARM
-from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_INS_MOV, ARM_INS_CMP,
+from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_CC_NE, ARM_INS_MOV, ARM_INS_CMP, ARM_INS_TST,
                           ARM_INS_B, ARM_INS_LDRH, ARM_INS_STRH, ARM_INS_ADD,
                           ARM_INS_BX, ARM_OP_REG, ARM_OP_IMM, ARM_OP_MEM,
                           ARM_REG_LR, ARM_REG_PC, ARM_REG_SP, ARM_INS_LSL,
@@ -94,12 +94,50 @@ def shift_chain(instructions):
     return dict(destination=instructions[0].reg_name(destination), source=instructions[0].reg_name(source))
 
 
+def nibble_step(instructions):
+    """Screen weighted step sums; scaling/overflow invariants need separate proof."""
+    if len(instructions) != 7 or instructions[0].id != ARM_INS_ASR:
+        return None
+    first = instructions[0]
+    if first.cc != ARM_CC_AL or first.update_flags or first.writeback or len(first.operands) != 2:
+        return None
+    dst, src = first.operands
+    if dst.type != ARM_OP_REG or src.type != ARM_OP_REG or dst.shift.type or src.shift.type != ARM_SFT_ASR or src.shift.value != 3:
+        return None
+    accumulator, step, nibble = dst.reg, src.reg, None
+    for n, bit in enumerate([4, 2, 1]):
+        test, add = instructions[1+2*n:3+2*n]
+        if test.id != ARM_INS_TST or test.cc != ARM_CC_AL or not test.update_flags or test.writeback or len(test.operands) != 2:
+            return None
+        if int.from_bytes(test.bytes, 'little') & 0xf00:
+            return None  # Rotated immediates can change carry even with the same printed value.
+        reg, immediate = test.operands
+        if reg.type != ARM_OP_REG or reg.shift.type or immediate.type != ARM_OP_IMM or immediate.imm != bit:
+            return None
+        if nibble is None:
+            nibble = reg.reg
+        elif nibble != reg.reg:
+            return None
+        if add.id != ARM_INS_ADD or add.cc != ARM_CC_NE or add.update_flags or add.writeback or len(add.operands) != 3:
+            return None
+        d, a, s = add.operands
+        if any(o.type != ARM_OP_REG for o in [d, a, s]) or d.shift.type or a.shift.type or d.reg != accumulator or a.reg != accumulator or s.reg != step:
+            return None
+        if (n == 0 and s.shift.type) or (n > 0 and (s.shift.type != ARM_SFT_ASR or s.shift.value != n)):
+            return None
+    if len({accumulator, step, nibble}) != 3 or {accumulator, step, nibble} & {ARM_REG_SP, ARM_REG_PC}:
+        return None
+    return dict(accumulator=first.reg_name(accumulator), step=first.reg_name(step), nibble=first.reg_name(nibble),
+                required_proof='Positive step divisible by8;15*step fits signed32; entry index valid; exact tables/runtime writes guarded; changed N/Z flags overwritten before use. No middleware identity or safe replacement inferred.')
+
+
 def scan(data, base):
     decoder = Cs(CS_ARCH_ARM, CS_MODE_ARM)
     decoder.detail = True
     findings = []
     detectors = [('branch-heavy-halfword-copy', 52, 0xffff0fff, 0xe3a00000, halfword_copy),
-                 ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain)]
+                 ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain),
+                 ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step)]
     for at in range((-base) % 4, len(data) - 19, 4):
         word = struct.unpack_from('<I', data, at)[0]
         for pattern, size, mask, value, detect in detectors:

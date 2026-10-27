@@ -46,6 +46,7 @@ def assemble(source, manifest, patch_ids=()):
         require(len(patches) == len(manifest['patches']), 'Duplicate patch IDs')
         require(requested <= patches.keys(), 'Unknown patch ID')
         image = VirtualRom(source, source.size)
+        data_guards = []
         for patch_id in sorted(requested):
             patch = patches[patch_id]
             require(patch['cpu'] == 'arm9' and patch['target'] == 'arm9.bin/main_loaded', 'Unsupported CPU/target')
@@ -60,6 +61,15 @@ def assemble(source, manifest, patch_ids=()):
             require(8 <= len(before) <= 4096 and len(before) == len(after), 'Invalid same-size patch extent')
             require(address <= at and at + len(before) <= address + len(main.data), 'Patch is outside initial main code')
             require(raw[at-address:at-address+len(before)] == before, 'Original instruction bytes differ')
+            for data_guard in patch.get('data_guards', []):
+                guard_at = int(data_guard['addr'], 0)
+                guard_bytes = bytes.fromhex(data_guard['expect'])
+                require(0 < len(guard_bytes) <= 4096 and address <= guard_at and
+                        guard_at + len(guard_bytes) <= address + len(main.data),
+                        'Data invariant is outside initial main code/data')
+                require(raw[guard_at-address:guard_at-address+len(guard_bytes)] == guard_bytes,
+                        'Original data invariant differs')
+                data_guards.append((offset + guard_at - address, guard_bytes))
             guard = dict(address=at, guard_bytes=min(16, len(before)), phase='main_loaded',
                          guard_sha256=hashlib.sha256(before[:min(16, len(before))]).hexdigest())
             ok, reason = verify_target(guard, lambda a, n: raw[a-address:a-address+n])
@@ -69,6 +79,9 @@ def assemble(source, manifest, patch_ids=()):
                                           bytes=len(after), original_sha256=hashlib.sha256(before).hexdigest(),
                                           replacement_sha256=hashlib.sha256(after).hexdigest()))
         image.finish()
+        for guard_offset, guard_bytes in data_guards:
+            require(b''.join(image.blocks(guard_offset, guard_offset + len(guard_bytes))) == guard_bytes,
+                    'Selected patch changes a protected data invariant')
         require(b''.join(image.blocks(0, 512)) == header, 'Header changed')
         report['state'] = 'applied_to_virtual_image'
         return image, report

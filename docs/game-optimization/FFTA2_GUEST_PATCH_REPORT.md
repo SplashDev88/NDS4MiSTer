@@ -2,7 +2,9 @@
 
 Status: the copy patch is rejected. The vertex patch failed the current
 bit-exact budget and is under **user-authorized timing investigation**.
-Both remain disabled. No new guest patch is installed or release-qualified;
+A third, decoder-arithmetic candidate reduces selected Luso ARM9 instructions
+by 2.512%; all 4,400 screen pairs and save hashes match, but RAM/audio differ.
+All three remain disabled. No new guest patch is installed or release-qualified;
 accepted FFTA2 Beta2 remains unchanged. Platinum is queued, not active.
 
 ## Scope and existing mechanisms
@@ -41,9 +43,10 @@ dialogue after the transition. Ranges may cover part of a larger function.
 | Halfword copy, `020093e0–02009413` | 4.17% | 4.18% | 0.24% |
 | Cartridge receive loop, `0201016c–02010193` | 4.06% | 5.06% | 1.42% |
 
-The decoder classification is an inference from nibble processing, predictor
-updates and clamped table indices; callers and buffer lifetimes remain to be
-traced. The cartridge loop consumes data at `04100010` while polling `040001a4`;
+The decoder uses nibble processing, predictor updates and clamped table
+indices. Follow-up traces below establish copies into active PCM playback
+buffers; no shared SDK or middleware identity is established. The cartridge
+loop consumes data at `04100010` while polling `040001a4`;
 it is not an idle loop that can simply be replaced with halt. ARM7 profiles are
 also retained, with function/caller classification still open. Full disassembly,
 hashes and the ten-pattern screening ledger are in
@@ -382,16 +385,87 @@ state blocks at `02127778` and `02127780`.
 
 The output blocks fill `021c3800–021c47ff`. No actual SPU FIFO fetch in the
 matching replay reads this range directly. Two PCM16 channels instead loop
-over `021c1800–021c27ff` and `021c2800–021c37ff`. This is not evidence that the
-decoder is dead work: intervening copies or mixing must be traced. The next
-bounded input observes the first 16 bytes of each staging buffer and each
-half of those playback rings, using the existing RAM/sound observer. No new
-patch, scratch allocation or decoded-content reuse is proposed yet.
+over `021c1800–021c27ff` and `021c2800–021c37ff`.
+
+The completed consumer trace observes the first 16 bytes of each staging
+buffer and each playback-ring half. Decoder stores at `02020134` are followed
+by the original copy routine's stores at `020093fc`, called from `02020664`
+and `02020674`. Each call copies `0x800` bytes: staging `021c4000` to alternating
+`021c3000`/`021c2800`, and staging `021c3800` to `021c2000`/`021c1800`.
+All 15,392 observed copy halfwords in the selected window match the preceding
+staging values; no DMA is executing. All 12,448 observed sound fetches across
+the full replay agree with preceding captured stores. Unpatched golden outputs
+and existing V5 source traces remain exact. This establishes a bounded live
+audio dependency, not full-content recurrence or permission to remove decoding.
+See `GUEST_NIBBLE_CONSUMER_FINDINGS_LUSO_V1.json` and
+`GUEST_NIBBLE_STAGING_AUDIT_LUSO_V1.json` in private evidence.
 
 Private receipts are `GUEST_NIBBLE_CALLER_FINDINGS_LUSO_V2.json`,
 `GUEST_NIBBLE_RETURN_SHAPE_LUSO_V1.json`, and
 `GUEST_NIBBLE_STAGING_INPUT_V1.json`. V2 corrects the V1 scope sentence to say
 that the direct-SPU intersection was empty; its numeric findings are unchanged.
+
+## Third candidate: exact decoder arithmetic
+
+`nibble-decode-exact-arithmetic` replaces the 200-byte ARM9 main-code function
+at `02020080` in place. The replacement body is 180 bytes with five unreachable
+padding NOPs. It uses XOR for the nibble-parity toggle and replaces seven
+weighted-step instructions with four arithmetic instructions. Literal-pool
+locations, all memory accesses, predictor clamps and persistent state remain.
+Branches and PC-relative literal loads are relocated within the same extent.
+There is no scratch allocation, overlay patch, HLE or new HPS service.
+
+For the exact 89-entry step table, each step is positive and divisible by 256.
+Thus the original weighted sum equals `(step + 2 * step * (nibble & 7)) >> 3`;
+even `15 * step` fits a signed 32-bit word. All 1,424 table/nibble combinations
+pass. The removed unrotated TST instructions preserve C/V; the following
+unchanged `TST nibble,#8` overwrites N/Z before use. Local intermediate flags
+are not identical, so the proof requires that flag liveness condition.
+
+The existing Unicorn runner passes 4,885 synthetic cases comparing every
+register, CPSR, data/stack/table memory and ordered data accesses. Coverage
+includes all initial table indices, NZCV combinations, predictor boundaries,
+zero/negative/odd/even counts, overlap and modeled unaligned data. A 256-output
+call executes 9,487 → 8,207 instructions, 13.492% fewer, preserving 1,180 data
+accesses. This is not interrupt, cache, MMIO or native-cycle qualification.
+
+The loader now accepts declarative `data_guards` for the original literal pool
+and index/step tables. It verifies both the original data and the combined
+virtual image, rejecting another selected patch that changes an invariant.
+Six negative admission cases reject atomically; the existing vertex virtual
+image remains unchanged. These are loading-time guards, not runtime protection.
+The full Luso write watch records the same 108 initialization writes in both
+arms and no writes after frame 0. A separate unpatched full-route entry watch
+observes 12,456 calls, all count 256, with initial indices 0–72 inside the
+required 0–88 range. Its frame-0 profile totals must not be compared with the
+selected-window instruction counts below.
+
+| Luso measurement | Original | Decoder candidate | Interpretation |
+|---|---:|---:|---|
+| ARM9 instructions, frames 2600–4399 | 391,329,973 | 381,498,749 | 2.512% fewer; not native speed |
+| Top / bottom frames differing | 0 / 0 of 4,400 | 0 / 0 of 4,400 | Both screens exact |
+| Every-frame and final save hashes | Reference | Identical | Exact |
+| Frame-2600 main-RAM words outside patch differing | 0 | 0 | DTCM and ARM7 WRAM still differ |
+| Different stereo samples | 0 / 3,530,229 | 7,694 / 3,530,229 | Maximum signed-16 delta 427 |
+| Main-RAM / DTCM / ARM7-WRAM frames differing | 0 / 0 / 0 | 1,579 / 2,356 / 264 | Fails current budget |
+| Native cycles, pacing p50/p95/max, HPS load, load time | No paired measurement | Not measured | No native gain claimed |
+
+ITCM and shared WRAM remain exact. Audio RMS delta is 0.797 in signed-16 units;
+this is not an audibility judgment. The unpatched control reproduces the
+goldens exactly. The patched replay fails the strict RAM/audio gate and the
+manifest remains disabled. Fire, library and native qualification are pending;
+the vertex candidate's causal explanation or measured bounds must not be
+transferred to this different patch.
+
+Private evidence includes `GUEST_NIBBLE_STATIC_CANDIDATE_V1.json`,
+`GUEST_NIBBLE_SYNTHETIC_V1.json`, `GUEST_NIBBLE_STREAM_ADMISSION_V1.json`,
+`GUEST_NIBBLE_FIRST_REPLAY_REVIEW_V1.json` and
+`GUEST_NIBBLE_ENTRY_CONTRACT_LUSO_V1.json`. The immutable tested input is
+`GUEST_NIBBLE_INPUT_MANIFEST_V1.json`; the repository manifest adds outcomes.
+The generic structural scanner finds the weighted-step sequence at `020200e4`
+without game addresses. Ten initial scanner checks and a follow-up carry-flag
+encoding check pass. Detection establishes neither middleware identity nor
+safe replacement; the table, index, flag and runtime-write proofs are separate.
 
 ## Next validation and limits
 
@@ -399,20 +473,18 @@ The bounded Luso source-write ordering is now established. Do not repeat
 unchanged broad audio replays or the resolved writer trace. High-level buffer
 ownership, display-effect write causality around the three changed scanlines,
 and complete RAM semantics remain open before any acceptance proposal.
-Preserve the user's positive visual review. The next optimization work should
-classify the hotter ARM9 nibble routine using unpatched caller/input/output
-evidence, while keeping this low-gain vertex candidate disabled.
-Keep the current acceptance budget and disabled manifest unchanged. A proposal
+Preserve the user's positive visual review. The decoder's live PCM dependency
+is now established, and its first arithmetic candidate has a measured software
+result. Broader software-only Fire/library characterization and classification
+of its RAM/audio differences are next; keep both timing candidates disabled.
+Keep the current acceptance budget unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
-Trace the ADPCM-like decoder's intermediate output consumers and source
-contents, and classify remaining ARM7 hotspots. More vertex arithmetic remains a lead,
+Establish decoder input-content recurrence and classify remaining ARM7
+hotspots. More vertex arithmetic remains a lead,
 but do not repeat rejected versions or reinterpret the budget silently.
-The SPU's observed ADPCM playback does not establish that the sampled ARM9
-nibble-processing routine feeds audio. That upstream role remains an inference
-until callers and destination consumers are traced.
 For any later candidate, complete replay comparison precedes cold boot,
 in-game save/reload, reset, overlay transitions, an unrelated scene and paired
 native measurement. Ask before accepting non-bit-exactness.
@@ -425,8 +497,8 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Follow the observed decoder staging buffers into the separate PCM playback
-   rings and establish source-content recurrence before proposing reuse.
+1. Establish decoder source-content recurrence, including predictor state,
+   before proposing reuse; broaden qualification of the arithmetic candidate.
 2. Classify ARM7's remaining sampled audio/service loops and their cross-CPU
    dependencies; a CPU address window alone is not a function identity.
 3. Trace repeated cartridge sectors and filesystem lookups before proposing

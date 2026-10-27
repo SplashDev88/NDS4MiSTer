@@ -51,6 +51,13 @@ The latter supports only same-size uncompressed ARM9 main-code patches and
 rejects overlays, autoloads, scratch and HLE requests. It is not installed in
 the native host's loading path.
 
+Each patch may declare `data_guards: [{"addr": "0x...", "expect": "..."}]`
+for literal pools or tables used by its proof. Each range must contain 1–4096
+bytes within initially loaded main code/data. Admission checks both original
+bytes and the combined virtual image, so another selected patch cannot change
+a protected invariant. This does not enforce invariants after loading; replay
+write watches and entry-contract checks remain necessary where relevant.
+
 `NDS_REPLAY_CODE_COMPARISON` optionally names a file of `hex_address
 original_hex replacement_hex` rows. The oracle checks the exact code variant
 each frame and writes a separate `code_normalized_state.csv`, restoring only
@@ -168,8 +175,9 @@ synthetic machine states and ordered data accesses using Unicorn. The generic
 runner for a bounded ARM block and declarative register/data cases. Mapped
 MMIO pages model ordinary memory only, not hardware side effects.
 
-`scan_guest_patterns.py ROM --output REPORT` detects branch-heavy copy and
-redundant bitfield shifts in ARM main/autoload sections; optional `--arm9-profile` and
+`scan_guest_patterns.py ROM --output REPORT` detects branch-heavy copy,
+redundant bitfield shifts and scaled nibble-step arithmetic in ARM main/autoload
+sections; optional `--arm9-profile` and
 `--arm7-profile` CSVs add execution sample counts. It does not scan Thumb or
 overlays and cannot establish SDK identity, timing safety or native gain.
 

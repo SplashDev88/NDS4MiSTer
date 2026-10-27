@@ -368,6 +368,104 @@
           "fetches_inconsistent_with_recorded_stores": 0
         }
       }
+    },
+    {
+      "id": "nibble-decode-exact-arithmetic",
+      "pattern": "scaled-nibble-decoder-arithmetic",
+      "cpu": "arm9",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x2020080",
+      "mode": "arm",
+      "expect": "f84f2de9bc409fe500a0a0e302e5a0e3600093e80a70a0e1064194e7a8909fe500e06ee2a4c09fe5220000ea00005ae30780a0110170d004012042e22782a0010f70070200005ae301a0a00308b199e700a0a0130b6096e00060a043580056e35860a0c3c4b1a0e1040018e304b08b10020018e3c4b08b10010018e344b18b10080018e30b5045100b5085000e0055e10e50a0b10c0055e10c50a0c180b085e220409fe5cb83a0e1288c8be04884a0e1064194e7b280c1e0000052e3daffffca600083e8f88fbde8",
+      "replace": "f84f2de9bc409fe500a0a0e302e5a0e3600093e80a70a0e1064194e7a8909fe500e06ee2a4c09fe51d0000ea00005ae30780a0110170d004012042e22782a0010f70070201a02ae208b199e70b6096e00060a043580056e35860a0c307b008e2940b0be08bb084e0cbb1a0e1080018e30b5045100b5085000e0055e10e50a0b10c0055e10c50a0c180b085e234409fe5cb83a0e1288c8be04884a0e1064194e7b280c1e0000052e3dfffffca600083e8f88fbde80000a0e10000a0e10000a0e10000a0e10000a0e1",
+      "data_guards": [
+        {
+          "addr": "0x2020148",
+          "expect": "8c9611024c96110200ff7f00",
+          "purpose": "Unchanged literal pool pointers and predictor clamp"
+        },
+        {
+          "addr": "0x211964c",
+          "expect": "ffffffffffffffffffffffffffffffff02000000040000000600000008000000ffffffffffffffffffffffffffffffff02000000040000000600000008000000000700000008000000090000000a0000000b0000000c0000000d0000000e0000001000000011000000130000001500000017000000190000001c0000001f0000002200000025000000290000002d00000032000000370000003c00000042000000490000005000000058000000610000006b00000076000000820000008f0000009d000000ad000000be000000d1000000e6000000fd0000001701000033010000510100007301000098010000c1010000ee010000200200005602000092020000d40200001c0300006c030000c3030000240400008e040000020500008305000010060000ab0600005607000012080000e0080000c3090000bd0a0000d00b0000ff0c00004c0e0000ba0f00004c11000007130000ee1400000617000054190000dc1b0000a51e0000b621000015250000ca280000df2c00005b3100004b360000b93b0000b2410000444800007e4f0000715700002f600000ce69000062740000ff7f00",
+          "purpose": "Exact index and scaled step tables used by arithmetic proof"
+        }
+      ],
+      "hook": null,
+      "enabled": false,
+      "status": "disabled_strict_Luso_replay_gate_failed_timing_unclassified",
+      "scratch_bytes": 0,
+      "overlay": null,
+      "validated": {
+        "fb": "bit-exact both screens across 4400 Luso frames",
+        "ram": "failed: transient main RAM, DTCM and ARM7 WRAM; frame2600 main RAM exact outside patch",
+        "audio": "failed:7694/3530229 stereo samples differ; maximum signed16 delta427",
+        "save": "bit-exact all frame hashes and final save in Luso",
+        "native": "Not run",
+        "other_replays": "Fire and library not run for this candidate"
+      },
+      "gain": {
+        "target_scene_ARM9_instructions_before": 391329973,
+        "target_scene_ARM9_instructions_after": 381498749,
+        "target_scene_instruction_reduction_percent": 2.512259391896874,
+        "scope": "Software executed ARM9 instructions in Luso frames2600-4399; not native cycles or speed",
+        "native_cycles": null,
+        "native_game_progress": null,
+        "native_frame_time_p50_p95_max": null,
+        "native_dropped_frames": null,
+        "HPS_load": null,
+        "load_times": null,
+        "qualifies_for_release": false
+      },
+      "notes": "Replace duplicate parity compare/two conditional moves with flag-preserving XOR; compute the nibble step contribution with four exact arithmetic instructions instead of seven. Guard positive step values divisible by8 with15*step below signed32 overflow. Compact within the same200-byte function and retain literal locations, all memory accesses, predictor clamps and persistent state. No decoding work or output samples removed. Whole-function equivalence requires the original following TST to overwrite changed N/Z before use; unrotated removed TST immediates preserve C/V. Synthetic proof and exact screens/saves do not approve changed RAM/audio. No native guest hook is installed.",
+      "synthetic_validation": {
+        "cases": 4885,
+        "state": "passed",
+        "checks": [
+          "registers and CPSR",
+          "data/stack/table memory",
+          "ordered data accesses"
+        ],
+        "instructions_per_256_outputs": [
+          9487,
+          8207
+        ],
+        "ordered_accesses": 1180,
+        "receipt": "GUEST_NIBBLE_SYNTHETIC_V1.json",
+        "scope": "Ordinary-memory synthetic cases; no interrupt/DMA/cache/native qualification"
+      },
+      "input_manifest": {
+        "file": "GUEST_NIBBLE_INPUT_MANIFEST_V1.json",
+        "sha256": "c3fe73fcf5713082cbeafe4c640dc4f565fadb66504959a5d2334436336ecc69"
+      },
+      "replay_rejection": {
+        "receipt": "GUEST_NIBBLE_FIRST_REPLAY_REVIEW_V1.json",
+        "different_frames": {
+          "top": 0,
+          "bottom": 0,
+          "mainram": 1579,
+          "dtcm": 2356,
+          "arm7wram": 264,
+          "itcm": 0,
+          "sharedwram": 0
+        },
+        "audio_rms_signed16_delta": 0.7969910731312213,
+        "accepted": false,
+        "no_extra_RAM_masks": true
+      },
+      "invariant_evidence": {
+        "admission": "GUEST_NIBBLE_STREAM_ADMISSION_V1.json",
+        "table_and_literal_watch": "GUEST_NIBBLE_FIRST_REPLAY_REVIEW_V1.json",
+        "writes": 108,
+        "writes_after_initial_frame": 0,
+        "entry_contract": "GUEST_NIBBLE_ENTRY_CONTRACT_LUSO_V1.json",
+        "calls": 12456,
+        "entry_indices": [
+          0,
+          72
+        ],
+        "scope": "Luso route only; loading-time guards are not runtime protection"
+      },
+      "consumer_evidence": "GUEST_NIBBLE_CONSUMER_FINDINGS_LUSO_V1.json"
     }
   ],
   "arm9_crc32": "5f2f17b3"

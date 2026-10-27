@@ -34,8 +34,9 @@
   Callers include toon-table MMIO, VRAM and palette destinations. The cause
   of whole-game divergence is unresolved; do not mask it as harmless timing.
 - FFTA2's cartridge polling loop transfers required data. Do not treat it as
-  pure idle work. Its apparent ADPCM-like decoder is not proven redundant;
-  source-content identity, callers and live output consumers need tracing.
+  pure idle work. Its nibble decoder feeds live PCM rings through intervening
+  copies; it cannot be removed as dead work. Source-content recurrence and
+  predictor-state identity remain unproven for any caching proposal.
 - FFTA2's vertex shift compaction fails the current bit-exact gate. Luso's
   4,400 screen pairs match, but Fire has one changed bottom frame and library
   has two. Library audio changes 233,754 stereo samples, with maximum signed-16
@@ -66,3 +67,12 @@
   still enabled at volume 3/128 and stops 480 callbacks later. This resolves
   the bounded overwrite-order mechanism in the software reference. It does
   not prove native interleaving, high-level ownership safety or acceptance.
+- FFTA2's decoder-arithmetic candidate passes 4,885 synthetic equivalence cases
+  but fails the Luso RAM/audio gate. All 4,400 screen pairs and save hashes
+  match; 7,694 stereo samples differ, maximum signed-16 delta 427. Frame-2600
+  main RAM matches outside code, but DTCM/ARM7 WRAM and transient RAM differ.
+  The 2.512% selected-window instruction reduction is not native speed.
+  Loading-time table guards, a write watch and observed entry indices cover
+  this route only. Other scenes, native timing and lifecycle remain unqualified;
+  the vertex candidate's explanation does not classify these new differences.
+  Keep this patch disabled pending a complete, explicitly approved budget.

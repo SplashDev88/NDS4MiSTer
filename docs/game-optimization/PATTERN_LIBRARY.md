@@ -177,6 +177,38 @@ mixing and ownership before removing the routine or caching its output. An
 empty direct-consumer intersection is a lead to investigate, not dead-code
 proof. Preserve the predictor state as an input when considering reuse.
 
+The follow-up traced original halfword copies from those staging buffers into
+alternating halves of the active PCM rings. All 15,392 observed copied values
+matched preceding staging stores, and all 12,448 captured sound reads matched
+preceding writes. The watch covered only the first 16 bytes of each buffer
+half: it proves this dependency, not complete content recurrence or safe removal.
+
+## Scaled nibble-decoder step arithmetic
+
+Detector: `ASR accumulator,step,#3`, followed by unrotated immediate tests of
+nibble bits 4, 2 and 1 and conditional additions of `step`, `step ASR 1` and
+`step ASR 2`. The generic scanner allows register renaming and rejects shifted
+or rotated tests, changed conditions, flag-setting additions and SP/PC operands.
+It found one hot ARM9 occurrence in FFTA2; no SDK identity is established.
+
+For positive step values divisible by 8, with `15*step` fitting signed 32 bits,
+the sum equals `(step + 2*step*(nibble & 7)) >> 3`. Prove every table entry,
+valid entry indices, overflow/rounding and flags before replacing it. The
+removed tests preserve C/V only for unrotated immediates; N/Z must be overwritten
+before use. Do not infer that from printed disassembly alone. Verify the entire
+function's live state, all branch/literal relocations and ordered accesses.
+
+Declare literal/table bytes as manifest `data_guards`. The existing virtual
+loader checks them against the original and combined patched image. This is
+not runtime enforcement: separately watch table writes and entry contracts
+through each replay, with all instrumentation limits retained. The first
+Luso route had no post-initialization table writes and 12,456 valid entries.
+
+FFTA2's same-size arithmetic candidate passed 4,885 synthetic cases and reduced
+the selected battle instruction count by 2.512%, with exact screens and saves.
+RAM/audio still differ. It remains disabled: local arithmetic equivalence and
+fewer instructions do not establish scheduling safety or native performance.
+
 ## Elapsed-time accounting is not removable debug work
 
 Detector: a hardware-timer read with overflow accounting, storage of a previous
