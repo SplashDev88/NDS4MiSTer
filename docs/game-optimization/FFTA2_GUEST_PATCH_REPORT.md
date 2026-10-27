@@ -739,6 +739,60 @@ checks; the analyzer additionally tests predictor-state identity, output
 conflicts and six invalid call pairings. No guest patch was added or enabled,
 and no native performance improvement is claimed.
 
+## Rectangle predicate recurrence: a bounded reuse lead
+
+The predicate at ARM9 ARM `0x0208b0bc..0x0208b120` compares two four-element
+signed-halfword inputs. The first supplies translation through elements 0–2
+and 1–3; the second supplies rectangle bounds. It returns true when the
+rectangle overlaps the translated 256×192 viewport. Its three identified
+callers use that result to decide whether to submit graphics work. It is not
+dead work. The function writes only its eight-byte stack frame, but it also
+changes temporary registers, flags and execution timing.
+
+The existing observer now supports explicitly mapped ARM9 DTCM, needed for
+the second input on the caller's stack. It does not reinterpret DTCM as main
+RAM. The V8 trace captures both complete eight-byte inputs at entry and the
+saved entry registers at all four return sites. Conditional POP observations
+are paired only when their CPSR condition passes. Every return matches the
+disassembled visibility formula and its saved R3/LR and stack-pointer guards.
+
+The fresh unpatched 30,000-frame library replay remains exact for both
+screens, all recorded RAM regions, audio and saves. Selected ARM9/ARM7
+instruction totals remain 750,160,463 / 99,771,446. Input capture is deliberately
+limited to frames 23300–23419; it does not establish full-route recurrence.
+
+| Bounded capture result | Value |
+| --- | ---: |
+| Predicate calls | 21,600; 180 per frame |
+| Unique complete 16-byte inputs | 171 |
+| Repeated keys with the same boolean output | 21,429; 99.208% |
+| Repeated keys with different outputs | 0 |
+| Immediately repeated keys | 0 |
+| Hypothetical LRU hits, 128 entries | 1,199 |
+| Hypothetical LRU hits, 256 entries | 21,429 |
+| Visible / rejected calls | 17,160 / 4,440 |
+
+All calls in this window return to `0x0208ccc8`. The first input is constant;
+the second has 171 distinct contents. There is only one pointer pair, and it
+produces both return values: a pointer-only cache would be wrong. Reuse is
+mostly on the next frame: 20,349 hits cross frames, 1,080 occur within a frame,
+and the median reuse distance is 180 calls. The 171 unique key/result payloads
+alone need 3,420 bytes; 256 entries need 5,120 before metadata or any additional
+state required for exact replacement. No unused storage has been established.
+
+The observed paths imply 524,760 instruction entries and 166,320 halfword
+input reads in this 120-frame capture. Those are derived work counts, not
+cycles, saved work or native speed. A cache must still pay for lookup and
+maintain complete dependencies, clobbers, stack visibility and timing.
+
+Evidence: `GUEST_RECTANGLE_CONTENT_RECURRENCE_LIBRARY_V1.json`,
+`GUEST_RECTANGLE_SEMANTIC_FINDINGS_LIBRARY_V1.json`,
+`GUEST_RECTANGLE_STATIC_CONTRACT_V1.json` and the V8 build/replay receipts.
+The observer passes 50 mapping/guard checks. Four analyzer tests cover the
+prior recurrence cases, all 240 supported ARM-condition/flag combinations,
+conditional returns, saved-register guards and bounded capture. Prior decoder
+analysis is unchanged. No guest patch or native service was added.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -757,7 +811,8 @@ this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
 Decoder whole-block recurrence has now been measured and has zero hits in
-Luso. Establish rectangle input recurrence next.
+Luso. Rectangle recurrence is substantial in a bounded library window;
+measure active/moving scenes and the other callers before designing a cache.
 ARM7's hot windows have structural
 classifications, but dynamic caller/operand and dependency evidence is still
 needed before any service optimization. More vertex arithmetic remains a lead,
@@ -774,8 +829,8 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Trace rectangle inputs and mutation boundaries before considering reuse in
-   the graphics submission path; equal output alone does not prove redundancy.
+1. Extend rectangle recurrence to active/moving scenes and other callers, then
+   estimate lookup cost and prove storage/mutation safety before proposing reuse.
 2. Measure cartridge and filesystem recurrence with completion and buffer
    ownership evidence; the audio staging addresses alone do not reveal it.
 3. Evaluate a larger dispatch index only after proving space, state and call

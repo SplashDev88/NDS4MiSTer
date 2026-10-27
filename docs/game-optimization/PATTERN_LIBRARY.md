@@ -25,8 +25,9 @@ updated state at exit, and verify invocation pairing and pointer advances.
 Fixed tables and other dependencies require separate immutability evidence.
 
 Reuse the instruction observer's declarative `NDS_REPLAY_MEMORY_WATCH` spans.
-It requires CPU/mode/opcode/register guards, copies canonical main-RAM backing
-bytes without emulated reads, and rejects TCM or aliased mappings. A passed
+It requires CPU/mode/opcode/register guards and copies backing bytes without
+emulated reads. Default main-RAM spans reject TCM and aliases; an explicit
+ARM9 DTCM span validates the local mapping and uses its separate backing. A passed
 unpatched golden replay is required before analysis. The generic
 `analyze_memory_recurrence.py` compares complete byte tuples, checks repeated
 keys for differing outputs, and reports reuse distances and bounded LRU hits.
@@ -38,6 +39,30 @@ and sample count also yields no repeated keys. The selected battle window
 has 7,696 calls and zero hits. A whole-block cache is not justified in this
 workload even with unlimited capacity. Do not extrapolate address repetition
 or a decoder's large sample share into a caching opportunity.
+
+## Repeated spatial predicates with stack inputs
+
+Structural lead: signed halfword loads from two small records, coordinate
+subtractions, four axis-aligned boundary comparisons, conditional early returns,
+and a boolean result consumed before graphics submission. Check signedness,
+boundary equality, arithmetic width, all return paths and actual callers.
+Such work can be necessary even when one viewport record stays constant.
+
+Capture every relevant input byte, including caller-built stack values. A
+shared stack address does not identify unchanged data. Instruction callbacks
+occur before predication: evaluate CPSR before treating a conditional POP as
+a return, and verify the saved entry registers and stack frame. Explicit
+DTCM observation must use ARM9 local memory, not an ARM7/main-RAM alias.
+
+FFTA2's bounded library capture has 21,600 calls, 171 complete 16-byte keys
+and 99.208% recurrence with identical boolean results. One pointer pair has
+both true and false results, ruling out pointer-only reuse. Median reuse
+distance is 180 calls, so a last-result cache has no hits and a 128-entry LRU
+has few; 256 entries retain all repeated keys in this window. A large hit rate
+does not establish a win for a 15–26-entry predicate: account for matching,
+indexing, storage and invalidation, and preserve clobbers and whole-game timing.
+The first early-return path has 11 entries but was not taken in this capture.
+No cache implementation, unused-memory proof or native improvement is implied.
 
 ## Native waiting versus reference instruction counts
 

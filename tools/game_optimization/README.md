@@ -170,24 +170,32 @@ This establishes consistency of captured events, not unrestricted write-watch
 coverage or permission to accept a changed soundtrack.
 
 `NDS_REPLAY_MEMORY_WATCH=SPEC` extends the same instruction observer with
-bounded snapshots of host-backed, canonical DS main RAM. Each row is:
+bounded snapshots of host-backed DS memory. Each row is:
 
 ```text
-CPU PC_HEX arm|thumb OPCODE_HEX ADDRESS_REG SIGNED_OFFSET BYTE_COUNT GUARD_REG GUARD_VALUE_HEX
+CPU PC_HEX arm|thumb OPCODE_HEX ADDRESS_REG SIGNED_OFFSET BYTE_COUNT GUARD_REG GUARD_VALUE_HEX [main|dtcm]
 ```
 
 All fields except those marked hex are decimal. Rows for the same CPU/PC
 form one event with ordered spans; at most 16 sites and 64 spans are allowed.
 Each span is 1–4096 bytes, with a register-relative offset within ±4096.
-The exact opcode, CPU mode and register guard must match. The observer rejects
-noncanonical aliases, MMIO, ARM9 ITCM/DTCM overlap, overflow and non-4-MiB RAM
-mapping. It copies backing bytes directly, with no emulated memory reads or
+The exact opcode, CPU mode and register guard must match. Address registers
+are R0–R14; a guard may also name R15 to check the callback's pipeline PC.
+The default `main` space rejects noncanonical aliases, MMIO, ARM9 ITCM/DTCM
+overlap, overflow and non-4-MiB RAM mapping. Explicit `dtcm` spans require
+ARM9, a currently mapped 16-KiB DTCM range and the correct local backing;
+they reject ITCM overlap, unmapped bytes and ARM7 aliases. No fallback from
+one space to the other is permitted. It copies backing bytes directly, with no emulated memory reads or
 guest writes. Legacy `watches.csv` is unchanged. Capture is at instruction
 entry, before its condition is evaluated; use an appropriate unconditional
 site or account for this in the fixture. Profiling must cover every required
 entry/exit. Every declared site must be hit, or the run fails.
+Optional `NDS_REPLAY_MEMORY_WATCH_FRAMES=FIRST:LAST` limits snapshots to a
+half-open frame window within the profiled replay. The golden comparison
+still covers the entire replay. `memory_watch_window.csv` records actual
+bounds; do not label a bounded capture as full-route recurrence.
 
-`memory_watch.csv` retains complete bytes, addresses, registers and mode;
+`memory_watch.csv` retains complete bytes, address spaces, addresses, registers and mode;
 `memory_watch_summary.csv` records site counts. A new observer build must pass
 an unpatched golden replay before its snapshots support an optimization claim.
 `test_replay_memory_watch.cpp` exercises mapping, guard and output integrity.
@@ -195,7 +203,11 @@ an unpatched golden replay before its snapshots support an optimization claim.
 `analyze_memory_recurrence.py TRACE FIXTURE --status STATUS --output REPORT`
 requires a passed unpatched replay and its retained trace digest. The fixture
 declares entry/exit sites, register deltas, output pointers, input/output spans,
-key registers and selected frames. It rejects incomplete, nested or mismatched
+key registers and selected frames. It can include returned registers and
+verify saved entry registers in captured stack bytes. Multiple conditional
+ARM return sites are supported with explicit CPSR condition evaluation;
+an unexecuted conditional POP does not finish an invocation. A fixture's
+`capture_frames` selects a bounded-window report. It rejects incomplete, nested or mismatched
 invocations. Keys contain actual bytes, sizes and declared register values;
 source-pointer equality alone is insufficient. Reports include exact recurrence,
 output conflicts, reuse distances and hypothetical LRU hit counts. Constant

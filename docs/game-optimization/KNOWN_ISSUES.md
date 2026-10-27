@@ -126,3 +126,10 @@
   scratch or implement it on the strength of repeated buffer addresses.
   This is a route-specific negative result, not proof that all assets or
   smaller operations are unique throughout the game.
+- FFTA2's rectangle predicate has substantial content reuse in a 120-frame
+  library window, but one reused pointer pair supplies 171 inputs and both
+  return values. Pointer-only caching is demonstrably unsafe. A last-result
+  cache has no hits; most reuse is 180 calls later. A 256-entry table needs
+  at least 5,120 payload bytes before metadata and any additional state.
+  Scratch availability, lookup benefit, changing-view coverage, other callers
+  and timing equivalence remain unproven. No cache is enabled or accepted.

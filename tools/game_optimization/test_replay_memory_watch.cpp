@@ -20,8 +20,8 @@ int main() {
  watch.Observe(0,0x02001004,0,regs.data(),0,7,map,out);require(watch.events==0);
  watch.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,7,map,out);
  require(watch.events==1&&watch.sites[0].hits==1);
- require(out.str().find(",2000100,4,12ab0000\n")!=std::string::npos);
- require(out.str().find(",2000200,4,cd000000\n")!=std::string::npos);
+ require(out.str().find(",2000100,4,12ab0000,main\n")!=std::string::npos);
+ require(out.str().find(",2000200,4,cd000000,main\n")!=std::string::npos);
  std::ostringstream summary;watch.Finish(out,summary);require(summary.str()=="cpu,pc,hits\n0,2001000,1\n");
  require(ram==before&&regs==originalRegs);
  auto observe=[&](uint32_t opcode,uint32_t cpsr){watch.Observe(0,0x02001000,opcode,regs.data(),cpsr,8,map,out);};
@@ -44,7 +44,7 @@ int main() {
  regs[0]=0x023ffffc;observe(0xe92d4000,0);require(watch.events==2);
  for(const std::string bad:{"", "0 02001000 arm e92d4000 0 0 0 2 100\n",
   "0 02001000 arm e92d4000 0 0 4097 2 100\n", "0 02001000 arm e92d4000 15 0 4 2 100\n",
-  "0 02001000 arm e92d4000 0 0 4 15 100\n", "0 02001000 arm e92d4000 0 -4097 4 2 100\n",
+  "0 02001000 arm e92d4000 0 0 4 16 100\n", "0 02001000 arm e92d4000 0 -4097 4 2 100\n",
   "2 02001000 arm e92d4000 0 0 4 2 100\n", "0 02001002 arm e92d4000 0 0 4 2 100\n",
   "0 02001001 thumb b500 0 0 4 2 100\n", "0 02001000 thumb e92d4000 0 0 4 2 100\n",
   "0 02001000 other e92d4000 0 0 4 2 100\n", "0 02001000 arm e92d4000 0 0 4 2 100 extra\n"})
@@ -53,6 +53,21 @@ int main() {
  std::string tooMany;for(unsigned n=0;n<65;++n)tooMany+="0 02001000 arm e92d4000 0 0 4 2 100\n";
  rejected([&]{load(tooMany);});
  auto empty=load(spec);rejected([&]{empty.Finish(out,summary);});
+ std::vector<uint8_t> dtcm(0x4000);dtcm[0x100]=0x9a;dtcm[0x101]=0xbc;
+ const auto dtcmBefore=dtcm;map.dtcm=dtcm.data();regs[0]=0x027e0100;regs[15]=0x02001008;
+ auto local=load("0 02001000 arm e92d4000 0 0 2 15 2001008 dtcm\n");
+ local.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,10,map,out);
+ require(out.str().find(",27e0100,2,9abc,dtcm\n")!=std::string::npos);
+ rejected([&]{local.Observe(0,0x02001000,0xe92d4000,originalRegs.data(),0x1f,10,map,out);});
+ regs[0]=0x02000100;rejected([&]{local.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,10,map,out);});
+ regs[0]=0x027e3fff;rejected([&]{local.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,10,map,out);});
+ regs[0]=0x027e0100;map.dtcmMask=0xffff8000;rejected([&]{local.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,10,map,out);});map.dtcmMask=0xffffc000;
+ map.dtcm=nullptr;rejected([&]{local.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,10,map,out);});map.dtcm=dtcm.data();
+ map.itcmSize=0x02800000;rejected([&]{local.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,10,map,out);});map.itcmSize=0x8000;
+ rejected([&]{load("1 02001000 arm e92d4000 0 0 4 2 100 dtcm\n");});
+ rejected([&]{load("0 02001000 arm e92d4000 0 0 4 2 100 itcm\n");});
+ rejected([&]{load("0 02001000 arm e92d4000 0 0 4 2 100 dtcm extra\n");});
+ require(dtcm==dtcmBefore);
  require(ram==before);
  std::cout<<checks<<" memory-watch checks passed\n";
 }

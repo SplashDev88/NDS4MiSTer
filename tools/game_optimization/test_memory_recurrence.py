@@ -2,7 +2,7 @@
 """Check complete-state keys and entry/exit integrity, not just source pointers."""
 import copy
 import unittest
-from analyze_memory_recurrence import analyze, pair_events
+from analyze_memory_recurrence import analyze, pair_events, arm_condition
 
 
 class RecurrenceTests(unittest.TestCase):
@@ -51,6 +51,42 @@ class RecurrenceTests(unittest.TestCase):
                 events.insert(1, events[0])
             with self.subTest(change=change), self.assertRaises(ValueError):
                 pair_events(events, self.fixture)
+
+    def test_arm_condition_truth_tables(self):
+        masks = [0xf0f0, 0x0f0f, 0xcccc, 0x3333, 0xff00, 0x00ff, 0xaaaa, 0x5555,
+                 0x0c0c, 0xf3f3, 0xaa55, 0x55aa, 0x0a05, 0xf5fa, 0xffff]
+        for condition, mask in enumerate(masks):
+            for flags in range(16):
+                self.assertEqual(arm_condition(condition, flags << 28), bool(mask & (1 << flags)))
+        with self.assertRaises(ValueError):
+            arm_condition(15, 0)
+
+    def test_conditional_returns_and_bounded_window(self):
+        fixture = copy.deepcopy(self.fixture)
+        fixture.pop('exit_pc')
+        fixture.update(exit_pcs=['0x1004', '0x1008'], conditional_arm_exits=True,
+                       capture_frames=[0, 1], selected_frames=[0, 1], output_spans=[],
+                       output_registers=[0], output_addresses=[],
+                       saved_entry_registers=[dict(span=0, offset=0, register=14)])
+        events = copy.deepcopy(self.events[:2])
+        events[1].update(mode='arm', opcode=0xd8bd8000, cpsr=0, spans=[(0x02000400, b'\0'*4)])
+        events.append(copy.deepcopy(events[1]))
+        events[2].update(pc=0x1008, opcode=0xe8bd8000)
+        result = analyze(events, fixture)
+        self.assertNotIn('full_route', result)
+        self.assertEqual(result['captured_window']['calls'], 1)
+        self.assertEqual(result['return_sites'], {'0x1008': 1})
+        events[2]['spans'][0] = (0x02000400, b'\1\0\0\0')
+        with self.assertRaises(ValueError):
+            analyze(events, fixture)
+        events[2]['spans'][0] = (0x02000400, b'\0'*4)
+        events[1]['cpsr'] = 0x40000000
+        with self.assertRaises(ValueError):
+            analyze(events, fixture)
+        events[1]['cpsr'] = 0
+        events[0]['frame'] = 1
+        with self.assertRaises(ValueError):
+            analyze(events, fixture)
 
 
 if __name__ == '__main__':

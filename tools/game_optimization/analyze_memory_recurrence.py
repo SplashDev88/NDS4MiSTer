@@ -44,14 +44,19 @@ def read_events(path):
 
 def pair_events(events, fixture):
     stack, calls = [], []
-    entry, exit_pc = (int(fixture[x], 0) for x in ['entry_pc', 'exit_pc'])
+    entry = int(fixture['entry_pc'], 0)
+    exits = {int(x, 0) for x in fixture.get('exit_pcs', [fixture.get('exit_pc')])}
     for event in events:
         require(event['cpu'] == fixture['cpu'], 'Unexpected CPU')
         if event['pc'] == entry:
             require(not stack, 'Nested invocations require separate recurrence analysis')
             stack.append(event)
             continue
-        require(event['pc'] == exit_pc and stack, 'Unpaired exit or unexpected PC')
+        require(event['pc'] in exits and stack, 'Unpaired exit or unexpected PC')
+        if fixture.get('conditional_arm_exits'):
+            require(event['mode'] == 'arm', 'Conditional exits require ARM mode')
+            if not arm_condition(event['opcode'] >> 28, event['cpsr']):
+                continue
         begin = stack.pop()
         for relation in fixture['register_deltas']:
             reg, delta = relation['register'], relation['delta']
@@ -64,15 +69,29 @@ def pair_events(events, fixture):
             require(event['spans'][relation['span']][0] ==
                     (begin['regs'][relation['entry_register']]+relation.get('offset', 0)) & 0xffffffff,
                     'Output span does not match entry pointer')
+        for relation in fixture.get('saved_entry_registers', []):
+            data = event['spans'][relation['span']][1]
+            offset = relation['offset']
+            require(len(data[offset:offset+4]) == 4 and
+                    int.from_bytes(data[offset:offset+4], 'little') == begin['regs'][relation['register']],
+                    'Saved entry register differs')
         inputs = tuple(begin['spans'][n][1] for n in fixture['input_spans'])
         outputs = tuple(event['spans'][n][1] for n in fixture['output_spans'])
+        outputs += tuple(event['regs'][n].to_bytes(4, 'little') for n in fixture.get('output_registers', []))
         key_regs = tuple(begin['regs'][n] for n in fixture['key_registers'])
         calls.append(dict(first_frame=begin['frame'], last_frame=event['frame'],
                           key=(inputs, key_regs), output=outputs,
                           source=begin['spans'][fixture['source_span']][1],
-                          source_address=begin['spans'][fixture['source_span']][0]))
+                          source_address=begin['spans'][fixture['source_span']][0], exit_pc=event['pc']))
     require(not stack and calls, 'Unfinished or empty invocation trace')
     return calls
+
+
+def arm_condition(condition, cpsr):
+    n, z, c, v = (bool(cpsr & (1 << bit)) for bit in [31, 30, 29, 28])
+    require(0 <= condition < 15, 'Unsupported ARM condition')
+    return [z, not z, c, not c, n, not n, v, not v, c and not z,
+            not c or z, n == v, n != v, not z and n == v, z or n != v, True][condition]
 
 
 def recurrence(calls):
@@ -118,6 +137,9 @@ def recurrence(calls):
 
 
 def analyze(events, fixture):
+    if 'capture_frames' in fixture:
+        first, last = fixture['capture_frames']
+        require(all(first <= e['frame'] < last for e in events), 'Event outside capture window')
     calls = pair_events(events, fixture)
     start, end = fixture['selected_frames']
     selected = [c for c in calls if start <= c['first_frame'] < end]
@@ -126,11 +148,16 @@ def analyze(events, fixture):
         if start <= call['first_frame'] < end and call['key'] in prior:
             warm_hits += 1
         prior.add(call['key'])
-    return dict(full_route=recurrence(calls), selected_window=recurrence(selected),
+    result = dict(selected_window=recurrence(selected),
                 selected_window_hits_with_prior_route_history=warm_hits,
                 selected_frames=[start, end], first_call_frame=calls[0]['first_frame'],
                 last_call_frame=calls[-1]['last_frame'], paired_calls=len(calls),
+                return_sites=dict(Counter(hex(c['exit_pc']) for c in calls)),
                 scope='Exact captured inputs only. Declared key completeness and external constant tables need independent proof. LRU counts omit lookup, copy, metadata, invalidation and timing costs; not a cache implementation or native speed result.')
+    result['captured_window' if 'capture_frames' in fixture else 'full_route'] = recurrence(calls)
+    if 'capture_frames' in fixture:
+        result['capture_frames'] = fixture['capture_frames']
+    return result
 
 
 def main():
@@ -155,7 +182,7 @@ def main():
                   accepted=False, native_measured=False)
     require(not args.output.exists(), 'Refusing to overwrite recurrence receipt')
     args.output.write_text(json.dumps(result, indent=2)+'\n')
-    print(json.dumps({k:result[k] for k in ['paired_calls', 'full_route', 'selected_window']}, indent=2))
+    print(json.dumps({k:result[k] for k in ['paired_calls', 'full_route', 'captured_window', 'selected_window'] if k in result}, indent=2))
 
 
 if __name__ == '__main__':
