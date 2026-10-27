@@ -157,6 +157,16 @@ Even an exact mixer-output explanation can contain different source data.
 No caching, delayed write or buffer-lifetime patch is authorized by this
 pattern entry; the writer/dependency evidence must come first.
 
+The follow-up observes main-RAM bus stores and sound fetches in one ordered
+trace, using values already written/read. All 17,272 store payloads match and
+all 9,959 fetches per arm agree with preceding stores. Three ARM9 cartridge
+stores cross the fetch boundary while the channel remains enabled at low
+volume. CPU instruction context plus a zero executing-DMA mask identifies
+the writer; a sound event's incidental CPU PC alone would not. This is a
+concrete example of identical producer work yielding different consumer data
+because of ordering. Do not apply a source-data cache or move a transfer
+without preserving ownership, completion and active-consumer dependencies.
+
 ## Elapsed-time accounting is not removable debug work
 
 Detector: a hardware-timer read with overflow accounting, storage of a previous

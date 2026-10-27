@@ -129,7 +129,7 @@
         "Luso_completed_block_pairs": 549874,
         "Luso_paired_block_payload_or_register_mismatches": 0,
         "unpaired_cutoff_tail": true,
-        "limits": "Full Luso/Fire source and output coverage complete. Fire source/decoded values match; four output changes follow control timing. Luso reads three changed source words at identical addresses/mix index, altering1182 decoded values. Apparent buffer overwrite needs writer/lifetime trace. Library source/paired steps match with37 retained tails. Audibility, scanline causality, RAM semantics and native qualification remain open. Budget unchanged; no release approval.",
+        "limits": "Luso source changes are explained by three identical cartridge stores moving across a fetch boundary while audio remains enabled at3/128 volume. Software trace only; high-level ownership/native interleaving not proven. Fire source/decoded values match with four control-timing output differences; library source/paired steps match with37 retained tails. Scanline causality, full RAM semantics, audibility and native qualification remain open. Budget unchanged; no release approval.",
         "library_completed_block_pairs": 3286148,
         "library_paired_block_payload_or_register_mismatches": 0,
         "library_block_unpaired_tail": false,
@@ -165,7 +165,14 @@
           "GUEST_VERTEX_LUSO_CHANGED_SOURCE_ROM_SEARCH_V5.json": "cd28e83b9129b0e10ec99beac92aab9ce25fb5129f09bc46b47fc215cdcd5a86",
           "GUEST_VERTEX_LUSO_CHANGED_SOURCE_FILES_V5.json": "10f2a6419a5b9e9a8e0c1419b23c6a544c48fa3b18c4d2e93f0f3f24e5230aa5",
           "GUEST_VERTEX_LUSO_SOURCE_FRONTIER_V5.json": "783cba65228abed6509679f6b4e891de2d96260b2147ae73085b0c77da2d1576",
-          "GUEST_SPU_OUTPUT_STREAM_REGRESSION_V5.json": "513a33d6113f6ef75c719a3e70c7cb1eb9276829d54f3642710ad7826e24b7e3"
+          "GUEST_SPU_OUTPUT_STREAM_REGRESSION_V5.json": "513a33d6113f6ef75c719a3e70c7cb1eb9276829d54f3642710ad7826e24b7e3",
+          "GUEST_VERTEX_RAM_WRITER_FINDINGS_LUSO_V6.json": "e85903714e4c5ba12666bccf186b4918a7b44323177adf7e16dfad64120b69fb",
+          "GUEST_VERTEX_RAM_CONTROL_AUDIT_LUSO_V6.json": "ed34ff06c0a6eae4345958fb95aa09eb37d1c8501bde1216819157cf88d5f619",
+          "GUEST_VERTEX_RAM_CANDIDATE_AUDIT_LUSO_V6.json": "dc98ef873adc3f05f37e8f93889df9494c25adefb492dc0d856fa108d2ed0798",
+          "GUEST_RAM_OBSERVER_SOURCE_CHECKS_V6.json": "e9eab7cd03045840b4ba9304e0eb46018699b1c56cffefe14f5e576e5a643677",
+          "GUEST_RAM_BUS_AUDITOR_CHECKS_V6.json": "c277ebfbfaa1272bbcb6d9a2016d413e96faad51bd4b0d8c151d176d7ce22c9a",
+          "GUEST_RAM_BUS_AUDITOR_EMPTY_CHECK_V6.json": "347c22e602a955e391298a42987eb9ab08b4a3079b672de739719859af3b7334",
+          "GUEST_RAM_RANGE_PARSER_CHECKS_V6.json": "72716fa7731a579a7b89259c50aece4d094c6a78e84ae6f70bbe1b3735b71dee"
         },
         "library_fifo_words": 46439652,
         "library_fifo_word_payload_mismatches": 0,
@@ -347,7 +354,18 @@
           "source_word_differences": 3,
           "decoded_value_differences": 1182,
           "sample_positions_formats_and_timestamps_identical": true,
-          "hypothesis": "Live buffer overwrite frontier: old/new sequences each occur once in master/pc.bin; actual writer and lifetime still untraced."
+          "mechanism": "ARM9 cartridge writes overlap active sound reads in both software runs. Three identical stores move before the same sound-fetch boundary; control fetched old words, candidate new words.",
+          "writer_pc": "0x02010180",
+          "writer_opcode": "0x3785010c",
+          "executing_DMA_mask": 0,
+          "candidate_store_earlier_raw_ARM9_ticks": 1740,
+          "channel_cnt_at_fetch": "0xd0400303",
+          "channel_volume_at_fetch": 3,
+          "mix_callbacks_until_disable": 480,
+          "all_observed_write_payloads_equal": true,
+          "observed_writes_per_arm": 17272,
+          "observed_sound_fetches_per_arm": 9959,
+          "fetches_inconsistent_with_recorded_stores": 0
         }
       }
     }

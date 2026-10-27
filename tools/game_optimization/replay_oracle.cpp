@@ -23,9 +23,31 @@ std::ofstream replay_watch;
 NDS* replay_machine=nullptr;
 std::ofstream replay_spu_output;
 u64 replay_spu_writes=0,replay_spu_mixes=0;
+struct RamBusTrace {
+ bool enabled=false;u64 ordinal=0;std::ofstream output;
+ std::vector<std::pair<u32,u32>> ranges;
+ struct Instruction{bool valid=false;u32 pc=0,opcode=0;};Instruction last[2];
+ bool matches(u32 address,unsigned width)const{
+  if(!enabled)return false;
+  for(auto range:ranges)if(u64(address)<range.second&&u64(range.first)<u64(address)+width/8)return true;
+  return false;
+ }
+ void event(const char* kind,unsigned cpu,unsigned channel,u32 generation,unsigned width,u32 address,u32 value,const NDS& nds){
+  const ARM& arm=cpu==0?static_cast<const ARM&>(nds.ARM9):static_cast<const ARM&>(nds.ARM7);
+  u32 dmaMask=0,dmaSource=0,dmaDestination=0,dmaCount=0;
+  for(unsigned n=0;n<8;++n)if(nds.DMAs[n].Executing){dmaMask|=1u<<n;dmaSource=nds.DMAs[n].CurSrcAddr;dmaDestination=nds.DMAs[n].CurDstAddr;dmaCount=nds.DMAs[n].RemCount;}
+  output<<ordinal++<<','<<kind<<','<<replay_frame<<','<<replay_spu_mixes<<','<<nds.ARM9Timestamp<<','<<nds.ARM7Timestamp<<','<<cpu<<','<<channel<<','<<generation<<','<<width<<','<<std::hex<<address<<','<<value<<','<<dmaMask<<','<<dmaSource<<','<<dmaDestination<<','<<dmaCount<<','<<arm.R[15]<<','<<arm.CPSR<<','<<arm.CurInstr<<','<<last[cpu].pc<<','<<last[cpu].opcode<<std::dec<<','<<last[cpu].valid;
+  for(unsigned n=0;n<15;++n)output<<','<<std::hex<<arm.R[n];output<<std::dec<<'\n';
+ }
+} replay_ram_bus;
+void replay_ram_write(const NDS& nds,unsigned cpu,unsigned width,u32 address,u32 value){
+ if(!replay_ram_bus.matches(address,width))return;
+ replay_ram_bus.event("write",cpu,16,0,width,address,value,nds);
+}
 void replay_spu_mix(){if(replay_spu_output.is_open())++replay_spu_mixes;}
 void replay_spu_write(unsigned width,u32 address,u32 value,u64 timestamp){
  if(!replay_spu_output.is_open())return;
+ if(replay_ram_bus.enabled)replay_ram_bus.event("sound_control",1,16,0,width,address,value,*replay_machine);
  replay_spu_output<<replay_spu_writes++<<','<<replay_frame<<','<<timestamp<<','<<replay_spu_mixes<<','<<width<<','<<std::hex<<address<<','<<value<<std::dec<<'\n';
 }
 struct AudioSampleTrace {
@@ -48,6 +70,8 @@ void replay_spu_start(const SPUChannel& channel){
 }
 void replay_spu_fifo(unsigned channel,u32 address,u32 value){
  if(!replay_audio.enabled)return;replay_audio.channel(channel);
+ if((address>>24)==2&&replay_ram_bus.matches(0x02000000u|(address&replay_machine->MainRAMMask),32))
+  replay_ram_bus.event("sound_read",1,channel,replay_audio.generation[channel],32,0x02000000u|(address&replay_machine->MainRAMMask),value,*replay_machine);
  replay_audio.record(replay_audio.fifo[channel],replay_audio.generation[channel],replay_audio.mixIndex(),address,value);++replay_audio.fifoCount[channel];
 }
 void replay_spu_sample(unsigned channel,unsigned type,s32 position,s16 sample){
@@ -85,6 +109,7 @@ struct BlockTrace {
  }
 } replay_block;
 void replay_instruction(unsigned cpu,u32 pc,u32 op,const u32* r){
+ if(replay_ram_bus.enabled)replay_ram_bus.last[cpu]={true,pc,op};
  if((++replay_instructions[cpu]&255)==0){auto& v=replay_samples[cpu][pc];++v.first;v.second=op;}
  if(cpu==0)for(auto w:replay_watches)if(pc==w){replay_watch<<replay_frame<<','<<std::hex<<pc;for(int i=0;i<16;++i)replay_watch<<','<<r[i];replay_watch<<std::dec<<'\n';}
  replay_block.Observe(cpu,pc,op,r);
@@ -122,6 +147,24 @@ int main(int argc,char**argv) {
  std::vector<u8> save(s.tellg());s.seekg(0);s.read((char*)save.data(),save.size());cart->SetSaveMemory(save.data(),save.size());
  NDSArgs args;args.JIT=std::nullopt;auto nds=std::make_unique<NDS>(std::move(args),nullptr);
  replay_machine=nds.get();
+ if(const char* path=std::getenv("NDS_REPLAY_RAM_BUS")){
+#ifndef NDS_REPLAY_HAS_RAM_BUS
+  return 8;
+#else
+  std::ifstream spec(path);std::string line;
+  while(std::getline(spec,line)){
+   std::istringstream row(line);u64 first,last;std::string extra;
+   if(!(row>>std::hex>>first>>last)||(row>>extra)||first<0x02000000ull||last>0x02400000ull||first>=last)return 8;
+   for(auto old:replay_ram_bus.ranges)if(first<old.second&&old.first<last)return 8;
+   replay_ram_bus.ranges.emplace_back(u32(first),u32(last));
+  }
+  if(replay_ram_bus.ranges.empty()||replay_ram_bus.ranges.size()>16)return 8;
+  replay_ram_bus.output.open(std::string(argv[3])+"/ram_bus.csv");if(!replay_ram_bus.output)return 8;
+  replay_ram_bus.output<<"ordinal,kind,frame,mix_calls,arm9_timestamp,arm7_timestamp,cpu_context,channel,generation,width,address,value,dma_executing_mask,dma_source,dma_destination,dma_remaining,raw_r15,cpsr,current_opcode,last_profile_pc,last_profile_opcode,last_profile_valid";
+  for(unsigned n=0;n<15;++n)replay_ram_bus.output<<",r"<<n;replay_ram_bus.output<<'\n';
+  replay_ram_bus.enabled=true;
+#endif
+ }
  if(const char* enabled=std::getenv("NDS_REPLAY_SPU_WRITES")){
   if(std::string(enabled)!="1")return 8;
   replay_spu_output.open(std::string(argv[3])+"/spu_writes.csv");

@@ -138,6 +138,30 @@ can come from changed source data as well as phase; consult the FIFO/decoder
 comparison before claiming a timing-only cause. It does not synthesize a
 replacement soundtrack, remove lag or establish audibility/native equivalence.
 
+`build_replay_oracle.py --trace-ram-bus` adds observations after the six
+ARM9/ARM7 main-RAM bus stores in a private `NDS.cpp` copy. Exact source-site
+guards reject changed or duplicate sites. Set `NDS_REPLAY_RAM_BUS` to a file
+of hexadecimal `first end_exclusive` physical main-RAM ranges. The frontend
+rejects empty, overlapping, reversed, out-of-range or malformed ranges before
+boot. Builds without this observer reject the request rather than silently
+recording nothing. This supports normal NDS with JIT disabled, not DSi or
+arbitrary host/state-loader writes.
+
+With the existing SPU sample observer enabled, `ram_bus.csv` interleaves stores,
+actual sound FIFO reads and sound-control writes. It retains event order,
+both raw CPU timestamps, canonical addresses, values, widths, CPU context and
+executing-DMA masks. CPU registers alongside a sound read are context, not
+the source of that read. `last_profile_pc` is available only after instruction
+profiling starts; it is not a DMA writer PC. DMA source/destination/count
+fields identify one executing channel only when the mask has a single bit.
+No extra emulated memory reads are used to create this trace.
+
+`audit_ram_bus.py TRACE --output REPORT` reconstructs observed little-endian
+byte stores and checks each sound fetch against its preceding writes. Unknown
+bytes and inconsistent reads stay explicit; an empty trace cannot pass.
+This establishes consistency of captured events, not unrestricted write-watch
+coverage or permission to accept a changed soundtrack.
+
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic
 `check_guest_block_patch.py MANIFEST FIXTURE --output REPORT` reuses that

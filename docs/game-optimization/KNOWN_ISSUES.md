@@ -55,7 +55,14 @@
   vertex candidate: Luso reads three different source words from the same
   addresses at the same sound callback. They change 1,182 decoded values.
   Neighboring words match two separate cartridge sequences across an apparent
-  buffer overwrite frontier. The actual writer and buffer lifetime remain
-  unproven. Fire has exact source/decoded values and four control-timing output
+  buffer overwrite frontier. V6 identifies the writer below; the high-level
+  ownership policy remains unproven. Fire has exact source/decoded values and four control-timing output
   differences. Explaining the mixer arithmetic does not establish source-data
   equivalence or make Luso's buffer reuse safe. Keep the patch disabled.
+- V6 identifies that writer as ARM9's cartridge receive instruction `02010180`,
+  with no executing DMA. All 17,272 observed write payloads match, and every
+  one of 9,959 sound fetches per arm agrees with preceding observed stores.
+  Three stores cross from after the sound fetch to before it; channel 6 is
+  still enabled at volume 3/128 and stops 480 callbacks later. This resolves
+  the bounded overwrite-order mechanism in the software reference. It does
+  not prove native interleaving, high-level ownership safety or acceptance.

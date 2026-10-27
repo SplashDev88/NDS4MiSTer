@@ -327,6 +327,43 @@ versus absolute input-path spelling differs. No additional library replay was
 needed. User screenshot feedback remains positive; no audio listening result
 or acceptance approval is inferred.
 
+### Cartridge-write ordering confirmed
+
+The V6 diagnostic adds observations after the six existing NDS main-RAM bus
+stores and interleaves them with actual sound reads and control writes. The
+unpatched replay remains exact, and both arms reproduce their V5 outputs,
+FIFO words, decoder steps and sound-control traces exactly. Six exact store
+sites, four negative source guards, five malformed-range cases, and six
+RAM-auditor cases were checked. No native code or game bytes changed.
+
+All 17,272 captured RAM writes have identical ordered CPU/width/address/value
+and DMA-context payloads across the two runs. Every one of the 9,959 captured
+sound reads in each run matches the preceding observed stores: no unknown
+bytes or inconsistent reads. The three differing words are written by ARM9
+instruction `02010180`, `STRLO r0,[r5,ip,LSL #2]`, in the already identified
+cartridge receive loop. Its preceding read uses `04100010`. No DMA channel
+is executing at these writes; the instruction callback confirms the CPU PC.
+
+| Three-word overwrite | Unpatched control | Vertex candidate |
+|---|---|---|
+| Store order relative to sound fetch | After | Before |
+| Store mix callback | 1,450,863 | 1,450,862 |
+| Sound-fetch mix callback | 1,450,863 | 1,450,863 |
+| New data written | Same three cartridge words | Same three cartridge words |
+| Data fetched | Old words | New words |
+| Channel control at fetch | `d0400303`, enabled, volume 3/128 | Identical |
+| Channel-disable mix callback | 1,451,343 | 1,451,343 |
+
+Each candidate store occurs 1,740 raw ARM9 timestamp ticks earlier. Both
+reference runs overwrite a buffer while channel 6 still consumes it; the
+patch changes which side of the store boundary the fetch observes. The
+channel stops 480 callbacks later, approximately 14.7 ms in this reference.
+This explains the three changed source words and their downstream decoded
+values. It is a software ordering result, not native verification, proof of
+the high-level buffer ownership policy, or approval to accept the audio.
+Evidence is `GUEST_VERTEX_RAM_WRITER_FINDINGS_LUSO_V6.json` and the two
+`GUEST_VERTEX_RAM_*_AUDIT_LUSO_V6.json` receipts.
+
 The generic scanner now detects the five-shift structure with register
 renaming. It finds six ARM9 occurrences, including the profiled hot loop.
 No shared SDK provenance or automatic safety is inferred. Eleven positive and
@@ -334,13 +371,13 @@ negative scanner checks pass.
 
 ## Next validation and limits
 
-For the current timing investigation, trace the Luso buffer writes around
-`02172f90–02172f9b` and mix callback 1,450,863, then establish the buffer's
-ownership and stop/reuse ordering. Full battle source/output coverage is now
-complete; do not repeat those unchanged broad observations. Display-effect
-write causality around the three changed scanlines remains open. Preserve the
-user's positive visual review and prioritize the live audio-buffer finding
-over more near-identical screenshots.
+The bounded Luso source-write ordering is now established. Do not repeat
+unchanged broad audio replays or the resolved writer trace. High-level buffer
+ownership, display-effect write causality around the three changed scanlines,
+and complete RAM semantics remain open before any acceptance proposal.
+Preserve the user's positive visual review. The next optimization work should
+classify the hotter ARM9 nibble routine using unpatched caller/input/output
+evidence, while keeping this low-gain vertex candidate disabled.
 Keep the current acceptance budget and disabled manifest unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
