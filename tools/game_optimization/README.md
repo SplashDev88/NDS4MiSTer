@@ -48,8 +48,25 @@ cartridge stream: ASCII `VROM`, a little-endian 32-bit size, then exactly that
 many bytes and EOF. Use the existing `fmv/prepare.py:VirtualRom` and guarded
 `fmv/guest_byte_patch.py` to construct it; the original ROM remains read-only.
 The latter supports only same-size uncompressed ARM9 main-code patches and
-rejects overlays, autoloads, scratch and HLE requests. It is not installed in
-the native host's loading path.
+rejects overlays, autoloads, scratch and HLE requests.
+
+The native host supports explicit private experiments through its existing
+disposable loader. Set `NDS_GUEST_PATCH_MANIFEST` to the manifest path,
+`NDS_GUEST_PATCH_SHA256` to its exact SHA-256 and `NDS_GUEST_PATCH_IDS` to a
+comma-separated list. Clear all three for the ordinary control. This explicitly
+selects diagnostic candidates even if `enabled` is false; it changes no release
+defaults. A partial selection, wrong pin, unknown ID or failed identity/byte
+guard logs a skip and streams the original image atomically. No disk cache or
+movie preparation is composed with this selection. The loader exits before
+gameplay; there is no per-call HPS service or additional guest round trip.
+
+The normal host download holds reset through stream completion, uploads the
+staged cartridge and retains the original path/save identity. Initial code
+loads therefore see the replacement bytes; this is not a hot patch into a
+running instruction cache. Native reset, ROM-switch and gameplay lifecycle
+checks still qualify each candidate. `verify_guest_native_stream.py` compares
+the actual worker's complete output to previously pinned virtual-image hashes
+without creating a ROM file. This is a load-path check, not a native speed test.
 
 Each patch may declare `data_guards: [{"addr": "0x...", "expect": "..."}]`
 for literal pools or tables used by its proof. Each range must contain 1–4096

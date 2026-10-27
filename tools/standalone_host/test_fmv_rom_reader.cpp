@@ -115,6 +115,21 @@ os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
   unsetenv("NDS_NSMB_PATCH");
   std::cout<<"PASS NSMB experiment requires explicit mode and revision zero; failed identity keeps original bytes\n";
 
+  // Generic guest experiments are opt-in, irrespective of title. The worker
+  // still needs a full pinned manifest and matching bytes before admission.
+  original.replace(12,4,"TEST");
+  std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
+  transfer(fake.string(),true,1000,"off",false); // No selection: native reader.
+  for (const char* key:{"NDS_GUEST_PATCH_MANIFEST","NDS_GUEST_PATCH_SHA256","NDS_GUEST_PATCH_IDS"}) {
+    setenv(key,"invalid",1);
+    assert(RomReader::guestPatchRequested());
+    transfer(fake.string(),false,100,"off",false); // Missing commit proves dispatch.
+    transfer(argv[1],true,1000,"off",false); // Partial selection returns original.
+    unsetenv(key);
+  }
+  assert(!RomReader::guestPatchRequested());
+  std::cout<<"PASS guest selection reuses worker; incomplete selection preserves original\n";
+
   original.replace(12,4,"BMTE");original[30]=0;
   std::ofstream(path,std::ios::binary|std::ios::trunc).write(original.data(),original.size());
   std::ofstream(fake/"stream.py")<<R"PY(import os,sys,struct

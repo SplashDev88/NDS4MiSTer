@@ -34,6 +34,33 @@ if os.environ['NDS_FRAMED_TEST_CASE']=='ok':record(1024,0,8)
       else assert(h.game.empty() && h.loading_progress<167 && !fs::exists(sd/"saves/NDS/framed.sav"));
     }
 
+    // The guest diagnostic uses the legacy byte stream, with the same final
+    // commit requirement. It must work even when movie preparation is off.
+    const auto guest=rom.parent_path()/"guest.nds";
+    std::ofstream(guest,std::ios::binary).write(bytes.data(),bytes.size());
+    std::ofstream(kit/"fmv/stream.py")<<R"PY(import os,sys,struct
+src,dst,parent=map(int,sys.argv[1:]);data=os.pread(src,1024,0)
+os.write(dst,struct.pack('<Qii',1024,0,0));os.write(dst,data)
+if os.environ['NDS_FRAMED_TEST_CASE']=='ok':os.write(dst,struct.pack('<Qii',1024,0,8))
+)PY";
+    unsetenv("NDS_FMV_AUTO");setenv("NDS_GUEST_PATCH_MANIFEST","synthetic-selection",1);
+    Host g(kit.string(),rom.parent_path().string(),sd);
+    for(const char* mode:{"late","ok"}) {
+      setenv("NDS_FRAMED_TEST_CASE",mode,1);g.spi.history.clear();running=1;
+      bool complete=false;try{g.load(guest.string());complete=true;}catch(const std::runtime_error&){}
+      const bool success=std::string(mode)=="ok";assert(complete==success);
+      uint16_t index=0;bool released=false;
+      for(const auto&t:g.spi.history) {
+        if(t.select==Spi::FIO && t.command==0x55)index=t.words.at(0);
+        if(t.select==Spi::FIO && t.command==0x53 && (index&255)==3 && t.words==std::vector<uint16_t>{0})released=true;
+      }
+      assert(released==success && RomMapping::test_live_mappings==0);
+      if(success)assert(g.game==guest && g.loading_progress==167);
+      else assert(g.game.empty() && !fs::exists(sd/"saves/NDS/guest.sav"));
+    }
+    unsetenv("NDS_GUEST_PATCH_MANIFEST");setenv("NDS_FMV_AUTO","1",1);
+    std::cout<<"PASS guest Host::load retains reset/save gate until worker completion\n";
+
     // Exercise writes crossing both physical aperture boundaries. The scaler,
     // Linux console framebuffer and TATE hole must retain their sentinels.
     const auto mapped=root/"mapped-memory";

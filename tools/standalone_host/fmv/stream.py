@@ -33,10 +33,21 @@ def main():
             work.update(0, 3000, min(n, source.size), source.size)
     image = VirtualRom(source, source.size).finish()
     try:
-        registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
-        if registry['version'] != 1:
-            raise ValueError('unsupported profile version')
-        if os.environ.get('NDS_ROM_STREAM_PATCHES') == '1':
+        # Explicit guest experiments reuse this worker, VirtualRom and the
+        # normal reset-held transfer. Never mix them with movie/cache images.
+        guest = any(key in os.environ for key in
+                    ('NDS_GUEST_PATCH_MANIFEST', 'NDS_GUEST_PATCH_SHA256', 'NDS_GUEST_PATCH_IDS'))
+        if guest:
+            from guest_byte_patch import from_environment
+            work = LoadProgress(lambda data: send(output_fd, data))
+            image, report = from_environment(source, os.environ, progress)
+            print('GUEST_PATCH_RESULT '+json.dumps(report, sort_keys=True), file=sys.stderr, flush=True)
+            registry = None
+        else:
+            registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
+            if registry['version'] != 1:
+                raise ValueError('unsupported profile version')
+        if not guest and os.environ.get('NDS_ROM_STREAM_PATCHES') == '1':
             from stream_load import select_plan
             from prepared_cache import cached_transfer
             plan = select_plan(source, registry['profiles'])
@@ -49,14 +60,15 @@ def main():
                     print('FMV_STREAM_READ_FAILED '+str(error), file=sys.stderr, flush=True)
                     return 1
                 return 0
-        work = LoadProgress(lambda data: send(output_fd, data))
-        profile = profile_for(source, registry['profiles'], progress)
-        if profile:
-            image = assemble(source, profile, progress=progress,
-                             work=lambda n, total: work.update(3000, 5000, n, total))
-            print('FMV_AUTO_APPLIED '+profile['key']+' original cartridge; save identity retained',file=sys.stderr,flush=True)
-        else:
-            print('FMV_AUTO_FALLBACK no qualified cartridge profile',file=sys.stderr,flush=True)
+        if not guest:
+            work = LoadProgress(lambda data: send(output_fd, data))
+            profile = profile_for(source, registry['profiles'], progress)
+            if profile:
+                image = assemble(source, profile, progress=progress,
+                                 work=lambda n, total: work.update(3000, 5000, n, total))
+                print('FMV_AUTO_APPLIED '+profile['key']+' original cartridge; save identity retained',file=sys.stderr,flush=True)
+            else:
+                print('FMV_AUTO_FALLBACK no qualified cartridge profile',file=sys.stderr,flush=True)
     except (ValueError, KeyError, IndexError, struct.error, OSError) as error:
         # Nothing has been published: an unknown/modified ROM keeps its normal
         # decoder. An I/O error or mid-load mutation still fails the read below.

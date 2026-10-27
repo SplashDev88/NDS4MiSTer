@@ -7,6 +7,8 @@ scratch allocation. A mismatch falls back atomically to the original stream.
 Game identities, addresses and bytes belong in the supplied manifest.
 """
 import hashlib
+import json
+from pathlib import Path
 import struct
 import zlib
 
@@ -15,7 +17,7 @@ from hook_guard import select_profile, verify_target
 from prepare import VirtualRom, require
 
 
-def assemble(source, manifest, patch_ids=()):
+def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
     requested = set(patch_ids)
     report = {'state': 'unchanged', 'requested': sorted(requested), 'applied': [], 'reason': None}
 
@@ -30,7 +32,7 @@ def assemble(source, manifest, patch_ids=()):
         header = source.read(0, 512)
         require(manifest['header_bytes'] == 352, 'Unsupported identity header extent')
         require(hashlib.sha1(header[:352]).hexdigest() == manifest['header_sha1'], 'Header identity differs')
-        require(source.sha256() == manifest['rom_sha256'], 'Cartridge identity differs')
+        require(source.sha256(progress) == manifest['rom_sha256'], 'Cartridge identity differs')
         offset, entry, address, length = struct.unpack_from('<4I', header, 0x20)
         raw = source.read(offset, length)
         require(hashlib.sha256(raw).hexdigest() == manifest['arm9_sha256'], 'ARM9 identity differs')
@@ -87,3 +89,35 @@ def assemble(source, manifest, patch_ids=()):
         return image, report
     except (ValueError, KeyError, TypeError, IndexError, struct.error) as error:
         return original(str(error))
+
+
+SELECTION_KEYS = ('NDS_GUEST_PATCH_MANIFEST', 'NDS_GUEST_PATCH_SHA256', 'NDS_GUEST_PATCH_IDS')
+
+
+def from_environment(source, environment, progress=lambda n: None):
+    """Explicit diagnostic selection; never enable a manifest by discovery.
+
+    Pin the exact manifest in addition to its ROM/byte guards. This path may
+    select disabled candidates for a private experiment, but changes no release
+    defaults. It does not compose with movie preparation or its disk cache.
+    """
+    try:
+        path, expected, selection = (environment.get(key, '') for key in SELECTION_KEYS)
+        require(path and expected and selection, 'Incomplete guest patch selection')
+        require(len(expected) == 64 and all(c in '0123456789abcdef' for c in expected),
+                'Invalid guest manifest SHA256')
+        patches = selection.split(',')
+        require(all(p and p.strip() == p for p in patches) and len(patches) == len(set(patches)),
+                'Invalid or duplicate guest patch IDs')
+        with Path(path).open('rb') as stream:
+            raw = stream.read(1024*1024+1)
+        require(len(raw) <= 1024*1024, 'Guest manifest is too large')
+        require(hashlib.sha256(raw).hexdigest() == expected, 'Guest manifest identity differs')
+        manifest = json.loads(raw)
+        require(isinstance(manifest, dict), 'Guest manifest must be an object')
+        image, report = assemble(source, manifest, patches, progress)
+        report['manifest_sha256'] = expected
+        return image, report
+    except (ValueError, KeyError, TypeError, IndexError, struct.error, OSError) as error:
+        return VirtualRom(source, source.size).finish(), dict(
+            state='skipped', requested=[], applied=[], reason=str(error))

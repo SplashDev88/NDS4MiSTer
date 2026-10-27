@@ -1,13 +1,21 @@
 # FFTA2 guest-code optimization — 27 October 2026
 
-Status: four guest-patch versions fail the current bit-exact budget and remain
-disabled. The latest compacts handler-table searches: it passes 1,520 synthetic
+Status: the user reviewed the separate vertex and decoder comparison videos
+and reported, "No difference in either one." This is positive perceptual
+evidence for the shown scenes. Both candidates proceed to individual native
+experiments; full-game acceptance and native speed remain unqualified.
+Four guest-patch versions fail the original bit-exact budget and remain
+disabled in the release manifest. The dispatch candidate passes 1,520 synthetic
 cases and reduces selected library ARM9 instructions by 0.713%, but the full
 30,000-frame replay changes one bottom-screen frame, audio and RAM. Saves
 match. No native gain is measured. The earlier copy, vertex and decoder
 results remain below; user-authorized timing investigation did not authorize
 non-bit-exact acceptance. Accepted FFTA2 Beta2 remains unchanged. Platinum is
-queued, not active.
+queued, not active. The native diagnostic loader now reuses the existing
+reset-held ROM transaction with explicit manifest/hash/patch selection. Its
+control, vertex and decoder output hashes match the retained replay images;
+no candidate instruction bytes or original ROM files changed. The unchanged
+Beta2 renderer and rc12 bitstream remain the proposed native comparison base.
 
 ## Scope and existing mechanisms
 
@@ -67,7 +75,8 @@ The existing replay oracle accepts that virtual image over stdin, retains the
 original identity, and writes a separate RAM comparison with only the exact
 52 instruction bytes normalized. It checks original/replacement bytes every
 frame; unexpected code aborts the run. No patched ROM file is created. The
-native host is not wired to this diagnostic candidate.
+original investigation used only the replay loader; the later opt-in native
+loader does not by itself qualify this rejected copy candidate.
 
 The generic `check_halfword_copy_patch.py` diagnostic passes 1,276 synthetic
 cases comparing R0–R12, SP/LR/PC, CPSR, data memory and ordered data accesses.

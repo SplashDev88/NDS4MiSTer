@@ -2921,7 +2921,8 @@ public:
     };
     const char* automatic_movies = std::getenv("NDS_FMV_AUTO");
     const bool prepare_movies = automatic_movies && std::strcmp(automatic_movies, "1") == 0;
-    RomReader reader(path, (prepare_movies || (speed_hacks_available && speed_hacks)) ?
+    RomReader reader(path, (prepare_movies || RomReader::guestPatchRequested() ||
+                           (speed_hacks_available && speed_hacks)) ?
         (fs::path(kit) / "fmv").string() : std::string(), SPEED_MODES[speed_hacks], prepare_movies);
     active_reader = &reader;
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.

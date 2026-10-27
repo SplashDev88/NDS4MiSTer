@@ -34,6 +34,12 @@ public:
   static constexpr uint64_t transferSize(uint64_t size) {
     return RomLayout::transferSize(size);
   }
+  // Private diagnostic selection, separate from game-specific speed menus.
+  // A partial selection still reaches the worker so it can report a fallback.
+  static bool guestPatchRequested() {
+    return std::getenv("NDS_GUEST_PATCH_MANIFEST") ||
+           std::getenv("NDS_GUEST_PATCH_SHA256") || std::getenv("NDS_GUEST_PATCH_IDS");
+  }
 private:
   struct Header { uint64_t size; int error; int operation; };
   static constexpr int padding_progress = 7;
@@ -113,12 +119,13 @@ private:
              std::strcmp(nsmb_mode, "both+bones") == 0);
         const bool portrait = ((code == "ACBE" || code == "ACBP") && header[30] == 0) ||
                               (code == "ACBJ" && header[30] <= 1);
-        if ((allow_movies && portrait) || (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
+        const bool guest_patch = guestPatchRequested();
+        if (guest_patch || (allow_movies && portrait) || (header[30] == 0 && (nsmb || (allow_movies && (code == "BMTE" || code == "B2KJ" || code == "YQUE" ||
                                code == "AXFE" || code == "YWSE" || code == "BMTJ" ||
                                code == "YQUP" || code == "YQUJ" || code == "AXFP" ||
                                code == "AXFJ" || code == "CSNP" || code == "C5RJ" || code == "YR9E" ||
                                code == "YR9P" || code == "YR9J" || code == "YR9K"))))) {
-          const auto script = movie_directory + (nsmb ? "/nsmb_stream.py" : "/stream.py");
+          const auto script = movie_directory + ((nsmb && !guest_patch) ? "/nsmb_stream.py" : "/stream.py");
           const auto input_arg = std::to_string(rom), output_arg = std::to_string(output);
           const auto parent_arg = std::to_string(parent);
           if (fcntl(rom, F_SETFD, 0) || fcntl(output, F_SETFD, 0)) _exit(1);

@@ -2,6 +2,18 @@
 
 Reuse `tools/standalone_host/fmv/hook_guard.py`, `prepare.VirtualRom`, the existing native ARM9 PC sampler and graphics-replay tests. These entries are evidence and admission rules, not permission to patch another title automatically.
 
+## Exact correspondence between replay and native trials
+
+Carry the same guarded virtual cartridge into the existing disposable native
+loader. Pin the manifest and compare the entire emitted image with the replay
+image hash before measuring. Native opt-in patch IDs may select experimental
+disabled candidates, but do not change release defaults. Keep control and
+candidate on the same host/renderer/bitstream, and apply one patch at a time.
+The worker terminates before guest execution; patching initial code under reset
+needs no new HPS service. Do not extend this admission rule to runtime overlays,
+autoload targets or live instruction caches. Perceptual review of selected
+videos is useful evidence, separate from native speed and lifecycle coverage.
+
 ## Redundant graphics state within a primitive
 
 Detector: repeated writes of the same value to a graphics register with only vertex/texture-coordinate submissions between them. Classify the complete dependency set first. Castlevania ACVE r0 writes NORMAL four times per background quad at `0x02004280`; its two static callers are `0x02003dfc` and `0x020041fc`.
