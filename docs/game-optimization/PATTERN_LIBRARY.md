@@ -138,6 +138,25 @@ callback k must not affect k retroactively. It explained every captured
 channel-output record in both runs, without approving mixed-audio differences.
 Always repeat golden-output stability after changing diagnostic instrumentation.
 
+## Active audio-buffer replacement
+
+Detector: sound fetches retain the same channel, start generation, source
+address and mix index, but the fetched word changes. Compare neighboring
+words against known asset content to locate a possible transition between old
+and new contents. Then trace actual CPU/DMA writes, completion, ownership and
+sound-channel stop/reuse order. Matching command payloads or addresses cannot
+prove that the hardware read the same data.
+
+The FFTA2 Luso route provides a concrete lead: three words in one four-word
+fetch burst differ; surrounding data matches two contiguous cartridge
+sequences across an apparent overwrite frontier. Those three words alter
+1,182 decoded samples. The Fire route has exact source/decoded values and
+only four control-timing output differences. Do not generalize one route's
+timing bounds to another or classify changed decoded values as phase alone.
+Even an exact mixer-output explanation can contain different source data.
+No caching, delayed write or buffer-lifetime patch is authorized by this
+pattern entry; the writer/dependency evidence must come first.
+
 ## Elapsed-time accounting is not removable debug work
 
 Detector: a hardware-timer read with overflow accounting, storage of a previous

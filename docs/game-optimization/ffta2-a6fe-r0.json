@@ -129,7 +129,7 @@
         "Luso_completed_block_pairs": 549874,
         "Luso_paired_block_payload_or_register_mismatches": 0,
         "unpaired_cutoff_tail": true,
-        "limits": "Library actual source words and paired decoder values match.37 unpaired tail steps remain at15 note boundaries. Two output windows are explained by observed samples and control timing. Other-scene source coverage, audibility, scanline causality, RAM semantics and native qualification remain open. Budget unchanged; no release approval.",
+        "limits": "Full Luso/Fire source and output coverage complete. Fire source/decoded values match; four output changes follow control timing. Luso reads three changed source words at identical addresses/mix index, altering1182 decoded values. Apparent buffer overwrite needs writer/lifetime trace. Library source/paired steps match with37 retained tails. Audibility, scanline causality, RAM semantics and native qualification remain open. Budget unchanged; no release approval.",
         "library_completed_block_pairs": 3286148,
         "library_paired_block_payload_or_register_mismatches": 0,
         "library_block_unpaired_tail": false,
@@ -153,7 +153,19 @@
           "GUEST_VERTEX_SAMPLE_COMPARISON_LIBRARY_V5.json": "69bdfbe5f14483e840af6e2a7e061275a9d47e864ee8996717c373d4bf1a3e82",
           "GUEST_VERTEX_NOTE_TAIL_REVIEW_V5.json": "cb0735acf150b6d53066ce1281722651a2d8b7e9ace530b3adfdfce4c9b6664b",
           "GUEST_VERTEX_OUTPUT_PHASE_REVIEW_V5.json": "d01237079d51a4ae980d44a72f8ef2cfb5eb0306e4bd0eb124673a1298c676da",
-          "GUEST_VERTEX_CHANNEL_OUTPUT_EXPLANATION_V5.json": "8dd6aee651e7efa9d786e50b14ee8fc69ba0bdd5796fe5ed200f2429feae615c"
+          "GUEST_VERTEX_CHANNEL_OUTPUT_EXPLANATION_V5.json": "8dd6aee651e7efa9d786e50b14ee8fc69ba0bdd5796fe5ed200f2429feae615c",
+          "GUEST_VERTEX_SAMPLE_COMPARISON_UNIT_LUSO_V5.json": "ee9a9f4a745b212b282956ca93a9f940cb7f07020495b25a02d28eb39d72f31f",
+          "GUEST_VERTEX_SAMPLE_COMPARISON_LUSO_V5.json": "07af9da47b6440dd3ed721dbae6384087b34dae1c1ee8ffb92b59759bb523b65",
+          "GUEST_VERTEX_SPU_COMPARISON_LUSO_V5.json": "af48599defb1f5c244db3d66b3c35e1cc1b26a836e9c76f82cf4c5c3e11e5078",
+          "GUEST_VERTEX_CHANNEL_OUTPUT_EXPLANATION_LUSO_V5.json": "76294f6bcd53c3bfdaddb59f6ce96c9a49b99d2f85ed88f51b7f36325c320761",
+          "GUEST_VERTEX_SAMPLE_COMPARISON_UNIT_FIRE_V5.json": "998a4ffad601223ffd723c253eed25f9ede6f1c5ebd1a8bf817dc10dc5bee6a2",
+          "GUEST_VERTEX_SAMPLE_COMPARISON_FIRE_V5.json": "dba233a5153509ebd879ed3e9578058518914679c9f2d6e3ee53cb136022ff2c",
+          "GUEST_VERTEX_SPU_COMPARISON_FIRE_V5.json": "3c973b2e482e3510c7724dd4e1ef08073927ca8603f206a877282531bb1736b3",
+          "GUEST_VERTEX_CHANNEL_OUTPUT_EXPLANATION_FIRE_V5.json": "a697afbbce56846b61fa44c418d0abbd7d101c0476a4375b0d0c175662446e5d",
+          "GUEST_VERTEX_LUSO_CHANGED_SOURCE_ROM_SEARCH_V5.json": "cd28e83b9129b0e10ec99beac92aab9ce25fb5129f09bc46b47fc215cdcd5a86",
+          "GUEST_VERTEX_LUSO_CHANGED_SOURCE_FILES_V5.json": "10f2a6419a5b9e9a8e0c1419b23c6a544c48fa3b18c4d2e93f0f3f24e5230aa5",
+          "GUEST_VERTEX_LUSO_SOURCE_FRONTIER_V5.json": "783cba65228abed6509679f6b4e891de2d96260b2147ae73085b0c77da2d1576",
+          "GUEST_SPU_OUTPUT_STREAM_REGRESSION_V5.json": "513a33d6113f6ef75c719a3e70c7cb1eb9276829d54f3642710ad7826e24b7e3"
         },
         "library_fifo_words": 46439652,
         "library_fifo_word_payload_mismatches": 0,
@@ -182,7 +194,161 @@
           ]
         ],
         "library_channel_output_records_per_arm": 8752960,
-        "library_unexplained_channel_output_records": 0
+        "library_unexplained_channel_output_records": 0,
+        "battle_audio_coverage": {
+          "LUSO": {
+            "totals": {
+              "fifo": {
+                "control": 2291193,
+                "candidate": 2291193,
+                "paired": 2291193,
+                "payload_mismatches": 3,
+                "unpaired": [
+                  0,
+                  0
+                ]
+              },
+              "samples": {
+                "control": 8760071,
+                "candidate": 8760071,
+                "paired": 8760071,
+                "payload_mismatches": 1182,
+                "unpaired": [
+                  0,
+                  0
+                ]
+              },
+              "output": {
+                "control": 38457840,
+                "candidate": 38457840,
+                "paired": 38457840,
+                "payload_mismatches": 467,
+                "unpaired": [
+                  0,
+                  0
+                ]
+              }
+            },
+            "start_counts": [
+              311,
+              311
+            ],
+            "start_payload_mismatches": 0,
+            "unexplained_channel_outputs": [
+              0,
+              0
+            ],
+            "SPU_write_counts": [
+              20403,
+              20403
+            ],
+            "SPU_write_payload_mismatches": 0,
+            "SPU_write_unpaired": [
+              0,
+              0
+            ],
+            "SPU_timing": {
+              "frame": {
+                "differing": 0,
+                "min_delta": 0,
+                "max_delta": 0
+              },
+              "arm7_timestamp": {
+                "differing": 396,
+                "min_delta": -611,
+                "max_delta": 183
+              },
+              "mix_calls": {
+                "differing": 3,
+                "min_delta": -1,
+                "max_delta": 1
+              }
+            }
+          },
+          "FIRE": {
+            "totals": {
+              "fifo": {
+                "control": 4826361,
+                "candidate": 4826361,
+                "paired": 4826361,
+                "payload_mismatches": 0,
+                "unpaired": [
+                  0,
+                  0
+                ]
+              },
+              "samples": {
+                "control": 13939336,
+                "candidate": 13939336,
+                "paired": 13939336,
+                "payload_mismatches": 0,
+                "unpaired": [
+                  0,
+                  0
+                ]
+              },
+              "output": {
+                "control": 78721488,
+                "candidate": 78721488,
+                "paired": 78721488,
+                "payload_mismatches": 4,
+                "unpaired": [
+                  0,
+                  0
+                ]
+              }
+            },
+            "start_counts": [
+              364,
+              364
+            ],
+            "start_payload_mismatches": 0,
+            "unexplained_channel_outputs": [
+              0,
+              0
+            ],
+            "SPU_write_counts": [
+              21251,
+              21251
+            ],
+            "SPU_write_payload_mismatches": 0,
+            "SPU_write_unpaired": [
+              0,
+              0
+            ],
+            "SPU_timing": {
+              "frame": {
+                "differing": 0,
+                "min_delta": 0,
+                "max_delta": 0
+              },
+              "arm7_timestamp": {
+                "differing": 735,
+                "min_delta": -1321,
+                "max_delta": 550
+              },
+              "mix_calls": {
+                "differing": 4,
+                "min_delta": -1,
+                "max_delta": 1
+              }
+            }
+          }
+        },
+        "Luso_source_change": {
+          "channel": 6,
+          "generation": 23,
+          "mix_index": 1450863,
+          "addresses": [
+            "0x02172f90",
+            "0x02172f94",
+            "0x02172f98"
+          ],
+          "source_word_differences": 3,
+          "decoded_value_differences": 1182,
+          "sample_positions_formats_and_timestamps_identical": true,
+          "hypothesis": "Live buffer overwrite frontier: old/new sequences each occur once in master/pc.bin; actual writer and lifetime still untraced."
+        }
       }
     }
   ],

@@ -51,3 +51,11 @@
   remain at 15 note ends with shifted start/stop boundaries. Channel outputs
   in two captured windows are explained exactly by observed sample/control
   timing. This does not qualify other scenes, native behavior or audibility.
+- Full battle tracing disproves a whole-game timing-only assumption for the
+  vertex candidate: Luso reads three different source words from the same
+  addresses at the same sound callback. They change 1,182 decoded values.
+  Neighboring words match two separate cartridge sequences across an apparent
+  buffer overwrite frontier. The actual writer and buffer lifetime remain
+  unproven. Fire has exact source/decoded values and four control-timing output
+  differences. Explaining the mixer arithmetic does not establish source-data
+  equivalence or make Luso's buffer reuse safe. Keep the patch disabled.

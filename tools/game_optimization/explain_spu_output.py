@@ -30,7 +30,7 @@ def control_states(root):
     return updates
 
 
-def observe(root):
+def iter_observations(root):
     with (root / 'spu_starts.csv').open() as source:
         if any(int(row['interpolation']) != 0 for row in csv.DictReader(source)):
             raise ValueError('This explanation requires interpolation disabled')
@@ -39,7 +39,6 @@ def observe(root):
     if [int(row['channel']) for row in totals] != list(range(16)):
         raise ValueError('Invalid channel summary')
     controls = control_states(root)
-    records, summaries = [], []
     for channel, counts in enumerate(totals):
         samples = load_records(root / f'spu_samples_{channel}.bin', int(counts['decoded_samples']))
         output = load_records(root / f'spu_output_{channel}.bin', int(counts['output_samples']))
@@ -70,20 +69,27 @@ def observe(root):
         predicted[(cnt & 0x80000000) == 0] = 0
         actual = output[:, 2].view('<i4').astype(np.int64)
         changed = (predicted != actual) | (pan != output[:, 3])
-        summaries.append(dict(channel=channel,records=len(output),unexplained_records=int(changed.sum()),
+        summary = dict(channel=channel,records=len(output),unexplained_records=int(changed.sum()),
                               first_unexplained=[dict(record=output[i].tolist(),raw_sample=int(raw[i]),
                                                      cnt=hex(int(cnt[i])),predicted=int(predicted[i]),pan=int(pan[i]))
-                                                 for i in np.flatnonzero(changed)[:10]]))
-        records.append(dict(output=output, raw=raw, cnt=cnt, volume=volume, shift=shift, pan=pan, actual=actual))
-    return records, summaries
+                                                 for i in np.flatnonzero(changed)[:10]])
+        yield dict(output=output, raw=raw, cnt=cnt, volume=volume, shift=shift, pan=pan, actual=actual), summary
+
+
+def observe(root):
+    """Materialize observations for callers that explicitly need every channel."""
+    pairs = list(iter_observations(root))
+    return [record for record, _ in pairs], [summary for _, summary in pairs]
 
 
 def compare(control, candidate):
-    a, ar = observe(control)
-    b, br = observe(candidate)
-    result = dict(control=str(control),candidate=str(candidate),control_checks=ar,candidate_checks=br,
+    result = dict(control=str(control),candidate=str(candidate),control_checks=[],candidate_checks=[],
                   channels=[],accepted=False)
-    for channel, (left, right) in enumerate(zip(a, b)):
+    # Keep only one pair of channels live; full-replay output can be large.
+    pairs = zip(iter_observations(control), iter_observations(candidate))
+    for channel, ((left, ar), (right, br)) in enumerate(pairs):
+        result['control_checks'].append(ar)
+        result['candidate_checks'].append(br)
         if not np.array_equal(left['output'][:, 1], right['output'][:, 1]):
             raise ValueError('Different output mix coverage; do not silently align it')
         value = left['actual'] != right['actual']

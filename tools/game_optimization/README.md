@@ -131,9 +131,12 @@ checks captured channel output against the observed last decoded sample and
 recorded volume/shift/pan/enable writes, using the existing SPU arithmetic.
 It supports interpolation disabled only. Writes observed after mix callback
 `k` affect later callbacks; they must not be applied retroactively to `k`.
-The tool reports unexplained records and separates sample-phase from control
-state differences. It does not synthesize a replacement soundtrack, remove
-lag or establish audibility/native equivalence.
+The tool processes one channel pair at a time to bound working memory for
+full-replay captures. It reports unexplained records and separates selected
+sample values from control-state differences. A selected-sample difference
+can come from changed source data as well as phase; consult the FIFO/decoder
+comparison before claiming a timing-only cause. It does not synthesize a
+replacement soundtrack, remove lag or establish audibility/native equivalence.
 
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic

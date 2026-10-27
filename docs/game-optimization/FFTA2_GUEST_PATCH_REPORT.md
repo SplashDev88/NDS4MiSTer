@@ -278,6 +278,55 @@ Evidence: `GUEST_VERTEX_SAMPLE_COMPARISON_LIBRARY_V5.json`,
 difference in the displayed screenshot pairs. This is recorded as positive
 visual feedback, with the acceptance budget unchanged.
 
+### Battle audio coverage and a live-buffer lead
+
+The same pinned V5 observer now covers all 4,400 Luso and 9,000 Fire frames,
+including per-channel output throughout each replay. Both unpatched controls
+reproduce their goldens and earlier profile state exactly. Both candidates
+reproduce their V1 screen/audio/save/RAM/state outputs. No patch bytes or
+acceptance masks changed.
+
+| Full-route audio observation | Luso | Fire |
+|---|---:|---:|
+| Channel starts, identical parameters in both runs | 311 | 364 |
+| Paired actual FIFO words | 2,291,193 | 4,826,361 |
+| Different FIFO word payloads | **3** | 0 |
+| Paired decoded sample steps | 8,760,071 | 13,939,336 |
+| Different decoded sample payloads | **1,182** | 0 |
+| Unpaired FIFO or decoded steps | 0 | 0 |
+| Identical ordered sound-register writes | 20,403 | 21,251 |
+| Register writes crossing a mix boundary | 3 | 4 |
+| Channel-output records per run | 38,457,840 | 78,721,488 |
+| Different channel-output payloads | 467 | 4 |
+| Outputs not reproduced by observed samples/control arithmetic | 0 | 0 |
+| Different mixed records before resampling | 280 | 4 |
+
+Fire's four channel-output differences are control-timing differences; all
+source words and decoded steps match. Luso instead reads three different
+words at `02172f90–02172f9b`, channel 6, start generation 23, at the **same**
+mix callback 1,450,863. These change 1,182 subsequent decoded values. Zero
+unexplained output arithmetic does not make those source changes harmless.
+
+Each differing 12-byte sequence occurs once in the cartridge, at a different
+location within `master/pc.bin`. Neighboring FIFO reads match a contiguous
+sequence from the first location before the mismatch and from the second
+location afterward. In the intervening four-word burst, both runs read the
+new sequence's first word; the control reads three old words and the candidate
+reads three new words. This supports a live-buffer overwrite-frontier
+hypothesis. It does not identify the writer, prove buffer release/ownership,
+or authorize an audio tolerance. Trace the actual writes and their ordering
+relative to the sound fetch before deciding how to treat this difference.
+
+Private evidence includes `GUEST_VERTEX_SAMPLE_COMPARISON_UNIT_LUSO_V5.json`,
+`GUEST_VERTEX_SAMPLE_COMPARISON_UNIT_FIRE_V5.json`, the corresponding sample,
+register and channel-output reports, and
+`GUEST_VERTEX_LUSO_SOURCE_FRONTIER_V5.json`. The output explainer now processes
+one channel pair at a time to keep full-route analysis within available RAM.
+Its result fields match the prior library analysis exactly; only relative
+versus absolute input-path spelling differs. No additional library replay was
+needed. User screenshot feedback remains positive; no audio listening result
+or acceptance approval is inferred.
+
 The generic scanner now detects the five-shift structure with register
 renaming. It finds six ARM9 occurrences, including the profiled hot loop.
 No shared SDK provenance or automatic safety is inferred. Eleven positive and
@@ -285,12 +334,13 @@ negative scanner checks pass.
 
 ## Next validation and limits
 
-For the current timing investigation, extend the source/output observations
-to the Luso and Fire routes and trace display-effect writes around the three
-changed scanlines. Library source-data and windowed channel-output causality
-are now characterized; do not rerun those unchanged observations. Preserve the
-user's positive visual review and prioritize evidence that can change the
-decision rather than more near-identical screenshots.
+For the current timing investigation, trace the Luso buffer writes around
+`02172f90–02172f9b` and mix callback 1,450,863, then establish the buffer's
+ownership and stop/reuse ordering. Full battle source/output coverage is now
+complete; do not repeat those unchanged broad observations. Display-effect
+write causality around the three changed scanlines remains open. Preserve the
+user's positive visual review and prioritize the live audio-buffer finding
+over more near-identical screenshots.
 Keep the current acceptance budget and disabled manifest unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
