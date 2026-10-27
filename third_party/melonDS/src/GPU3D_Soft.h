@@ -1757,10 +1757,20 @@ private:
             }
 #endif
 
-            template<int FirstAttribute = 0, bool KnownLinear = false>
+            template<int FirstAttribute = 0, bool KnownLinear = false, bool ConstantTextureT = false>
             constexpr void Interpolate(s32* values)
             {
                 static_assert(FirstAttribute == 0 || FirstAttribute == 3);
+                static_assert(!ConstantTextureT || (FirstAttribute == 3 && KnownLinear));
+                constexpr int EndAttribute = ConstantTextureT ? 4 : 5;
+                if constexpr (ConstantTextureT)
+                {
+                    assert(Delta[4] == 0);
+                    // T remains at its exact base while S advances shared
+                    // LastX/Valid. A later generic edge can resume T safely:
+                    // its zero step and bounded remainder cannot change it.
+                    values[4] = Base[4];
+                }
                 // The constant-depth interior dispatcher already proved a
                 // positive-width linear span. Carry that proof into this
                 // loop instead of rechecking its mode for every texel.
@@ -1771,7 +1781,7 @@ private:
                 // edge pixel is safe even when depth rejection skipped pixels.
                 if (!KnownLinear && Parent.xdiff == 0)
                 {
-                    for (int i = FirstAttribute; i < 5; ++i)
+                    for (int i = FirstAttribute; i < EndAttribute; ++i)
                         values[i] = Base[i];
                     return;
                 }
@@ -1788,7 +1798,7 @@ private:
                     const u32 ascendingFactor = Parent.yfactor;
                     const u32 descendingFactor =
                         (1u << Parent.shift) - ascendingFactor;
-                    for (int i = FirstAttribute; i < 5; ++i)
+                    for (int i = FirstAttribute; i < EndAttribute; ++i)
                     {
                         const u32 factor = Ascending[i] ?
                             ascendingFactor : descendingFactor;
@@ -1801,7 +1811,7 @@ private:
                 const s32 currentX = Parent.x;
                 if (Valid && currentX == LastX + 1)
                 {
-                    for (int i = FirstAttribute; i < 5; ++i)
+                    for (int i = FirstAttribute; i < EndAttribute; ++i)
                     {
                         Current[i] += StepQuotient[i];
                         Remainder[i] += StepRemainder[i];
@@ -1815,7 +1825,7 @@ private:
                 }
                 else
                 {
-                    for (int i = FirstAttribute; i < 5; ++i)
+                    for (int i = FirstAttribute; i < EndAttribute; ++i)
                     {
                         // This span is clipped inside a native 256-pixel row:
                         // Delta is a 16-bit attribute difference and currentX
@@ -1837,7 +1847,7 @@ private:
 
                 LastX = currentX;
                 Valid = true;
-                for (int i = FirstAttribute; i < 5; ++i)
+                for (int i = FirstAttribute; i < EndAttribute; ++i)
                     values[i] = Current[i];
             }
 
@@ -1846,17 +1856,18 @@ private:
             // non-aliasing lifetime so LTO can keep the values in registers
             // instead of copying them through the caller-owned spanValues
             // array and loading them back for packing.
-            template<bool ConstantColor = false, bool KnownLinear = false>
+            template<bool ConstantColor = false, bool KnownLinear = false, bool ConstantTextureT = false>
             [[gnu::always_inline, gnu::hot]] inline void
             InterpolateCachedPixel(
                 u32& vertexColor, s16& textureS, s16& textureT,
                 u32 packedSpanColor = 0)
             {
+                static_assert(!ConstantTextureT || (ConstantColor && KnownLinear));
                 s32 values[5];
                 if constexpr (ConstantColor)
                 {
                     assert((Delta[0] | Delta[1] | Delta[2]) == 0);
-                    Interpolate<3, KnownLinear>(values);
+                    Interpolate<3, KnownLinear, ConstantTextureT>(values);
                     vertexColor = packedSpanColor;
                     textureS = static_cast<s16>(values[3]);
                     textureT = static_cast<s16>(values[4]);
@@ -2325,7 +2336,7 @@ private:
         Interpolator<0>& interpX,
         Interpolator<0>::SpanDepthInterpolator& spanDepth,
         Interpolator<0>::SpanInterpolator& spanAttributes);
-    template<u8 WrapMode, bool ConstantColor = false, bool ConstantLinearDepth = false, bool NeutralOpaque = false>
+    template<u8 WrapMode, bool ConstantColor = false, bool ConstantLinearDepth = false, bool NeutralOpaque = false, bool ConstantTextureT = false>
     [[gnu::hot, gnu::noinline]] void
     RenderCachedModulateInteriorSpanMode(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,

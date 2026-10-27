@@ -1654,7 +1654,8 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     Interpolator<0>::SpanInterpolator& spanAttributes)
 {
     s16 constantTextureT;
-    if (spanAttributes.GetConstantTextureT(constantTextureT))
+    const bool constantTextureTSpan = spanAttributes.GetConstantTextureT(constantTextureT);
+    if (constantTextureTSpan)
     {
         const auto& state = rp->PixelState;
         const u32 row = NDS4MiSTerCachedTextureIndex(
@@ -1714,6 +1715,10 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
             RenderCachedModulateInteriorSpanMode<0x0u, true, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
+        else if (constantLinearDepth && constantTextureTSpan)
+            RenderCachedModulateInteriorSpanMode<0x0u, true, true, false, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
         else if (constantLinearDepth)
             RenderCachedModulateInteriorSpanMode<0x0u, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
@@ -1732,6 +1737,10 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
                 packedSpanColor, constantSpanDepth);
         else if (neutralOpaque)
             RenderCachedModulateInteriorSpanMode<0x3u, true, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
+        else if (constantLinearDepth && constantTextureTSpan)
+            RenderCachedModulateInteriorSpanMode<0x3u, true, true, false, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
         else if (constantLinearDepth)
@@ -1754,6 +1763,10 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
             RenderCachedModulateInteriorSpanMode<0xFFu, true, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
                 packedSpanColor, constantSpanDepth);
+        else if (constantLinearDepth && constantTextureTSpan)
+            RenderCachedModulateInteriorSpanMode<0xFFu, true, true, false, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
+                packedSpanColor, constantSpanDepth);
         else if (constantLinearDepth)
             RenderCachedModulateInteriorSpanMode<0xFFu, true, true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes,
@@ -1768,7 +1781,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     }
 }
 
-template<u8 WrapMode, bool ConstantColor, bool ConstantLinearDepth, bool NeutralOpaque>
+template<u8 WrapMode, bool ConstantColor, bool ConstantLinearDepth, bool NeutralOpaque, bool ConstantTextureT>
 [[gnu::hot, gnu::noinline]] void
 SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -1808,7 +1821,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
         u32 vertexColor;
         s16 textureS;
         s16 textureT;
-        spanAttributes.InterpolateCachedPixel<ConstantColor, ConstantLinearDepth>(
+        spanAttributes.InterpolateCachedPixel<ConstantColor, ConstantLinearDepth, ConstantTextureT>(
             vertexColor, textureS, textureT, packedSpanColor);
         const u32 texel = pixelState.TexturePixels[
             NDS4MiSTerCachedTextureIndexForMode<WrapMode>(

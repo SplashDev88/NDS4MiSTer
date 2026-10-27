@@ -52,6 +52,7 @@ int main()
     u64 values = 0, pixels = 0, batches = 0, constantBatches = 0;
     u64 specializedPixels = 0, coefficientValues = 0, scalarFlatPixels = 0;
     u64 constantDepthPixels = 0;
+    u64 constantTextureTPixels = 0;
     for (s32 width : widths)
     for (const auto& weight : weights)
     for (bool wbuffer : {false, true})
@@ -105,6 +106,7 @@ int main()
         Interp noFactor = parent;
         Span noFactorSpan(noFactor, a[0], b[0], a[1], b[1], a[2], b[2],
                           a[3], b[3], a[4], b[4]);
+        Span constantTSpan = noFactorSpan;
         Interp::SpanDepthInterpolator noFactorDepth(noFactor, z0, z0);
         s32 constantZ = -1;
         const bool constantDepth = noFactorDepth.GetLinearConstantDepth(constantZ);
@@ -182,6 +184,26 @@ int main()
                     noFactorDepth.Interpolate() != constantZ || constantZ != parent.InterpolateZ(z0, z0))
                     return std::fprintf(stderr, "FAIL constant-depth pixel width=%d x=%d\n", width, x), 1;
                 ++constantDepthPixels;
+                if (a[4] == b[4])
+                {
+                    if (iteration % 4 != 0)
+                        constantTSpan.InterpolateCachedPixel<true, true, true>(
+                            color, s, t, packedSpanColor);
+                    else
+                    {
+                        // Resume all attributes on the same state, as an
+                        // antialiased edge does after the specialized span.
+                        s32 edge[5];
+                        constantTSpan.Interpolate(edge);
+                        for (unsigned i = 0; i < 5; ++i)
+                            if (edge[i] != actual[i])
+                                return std::fprintf(stderr, "FAIL constant-T edge resync\n"), 1;
+                        color = expected; s = s16(edge[3]); t = s16(edge[4]);
+                    }
+                    if (color != expected || s != s16(actual[3]) || t != s16(actual[4]))
+                        return std::fprintf(stderr, "FAIL constant-T interior width=%d x=%d\n", width, x), 1;
+                    ++constantTextureTPixels;
+                }
             }
             // Alternate generic edge pixels with the constant-color interior
             // on the SAME state. Jumps, repeats, zero width and descending
@@ -343,6 +365,8 @@ int main()
         (unsigned long long)scalarFlatPixels);
     std::printf("LINEAR_CONSTANT_DEPTH_PASS pixels=%llu\n",
         (unsigned long long)constantDepthPixels);
+    std::printf("CONSTANT_TEXTURE_T_MIXED_STATE_PASS pixels=%llu\n",
+        (unsigned long long)constantTextureTPixels);
     std::printf("PREPARED_COEFFICIENTS_PASS values=%llu\n",
         (unsigned long long)coefficientValues);
     std::printf("SPAN_SETUP_ORACLE_PASS attributes=%llu depth=%llu batches=%llu constant_batches=%llu specialized_pixels=%llu four_factor_vectors=%llu\n",
