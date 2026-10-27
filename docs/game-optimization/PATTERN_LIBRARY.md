@@ -64,6 +64,21 @@ indexing, storage and invalidation, and preserve clobbers and whole-game timing.
 The first early-return path has 11 entries but was not taken in this capture.
 No cache implementation, unused-memory proof or native improvement is implied.
 
+Repeat the content census across moving scenes and view changes. In FFTA2,
+Luso's moving window has 94.931% recurrence across 19 viewport translations;
+Fire has 85.286% across 51. The complete input working set and miss cost matter:
+a 256-entry LRU captures only 63.784% of Luso calls, versus 94.931% at 512.
+The latter needs at least 10,240 key/boolean bytes before metadata. Derive a
+weighted lookup budget from actual return paths, retaining unavoidable hit
+work and charging every extra miss, preservation and invalidation operation.
+Do not treat hypothetical associative-LRU hits as a free lookup algorithm.
+
+Observe alignment per caller. One FFTA2 caller uses a rectangle pointer at
+2 mod 4; a blind word-load substitution changes ARM9 semantics. Calls can
+also straddle emulator frame boundaries. Pair complete invocations using
+their stack and saved-register guards; a same-frame assumption can discard
+valid evidence. These obligations precede any cache or native-speed claim.
+
 ## Native waiting versus reference instruction counts
 
 Reference instruction sampling identifies executed loops. Native PC sampling measures observed wall time, including halt/DMA periods. Neither is a cycle counter. For ACVE the first cave capture observed 37.2% halted samples; the native geometry stream already submitted about 60 frames/s while completed screen publications were about 21.3/s. Prioritize the limiting stage, not the largest reference loop by itself.

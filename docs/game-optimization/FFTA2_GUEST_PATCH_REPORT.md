@@ -793,6 +793,60 @@ prior recurrence cases, all 240 supported ARM-condition/flag combinations,
 conditional returns, saved-register guards and bounded capture. Prior decoder
 analysis is unchanged. No guest patch or native service was added.
 
+## Moving-scene rectangle coverage and lookup budget
+
+Reference captures were visually reviewed before selecting Luso frames
+3000–3359 (destination selection, unit movement and map-view shift) and Fire
+frames 7440–7799 (target confirmation, camera reframing and spell hit).
+The same pinned V8 observer passes the complete unpatched 4,400-frame Luso
+and 9,000-frame Fire golden comparisons: both screens, all RAM hashes, audio
+and saves. Their selected ARM9/ARM7 instruction totals are unchanged at
+391,329,973 / 21,412,319 and 543,588,049 / 29,444,346 respectively.
+
+| Bounded capture | Calls | Unique complete inputs | Unlimited reuse | LRU 256 hits | LRU 512 hits |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Library, 120 frames | 21,600 | 171 | 99.208% | 21,429 | 21,429 |
+| Luso movement, 360 frames | 88,710 | 4,497 | 94.931% | 56,583 | 84,213 |
+| Fire action, 360 frames | 83,102 | 12,228 | 85.286% | 68,534 | 68,768 |
+
+Every return matches the signed-halfword visibility formula, with no
+conflicting result for an identical complete key. Luso covers 19 viewport
+translations; Fire covers 51 translations from 52 distinct first-input
+records. Both observe callers `0x0208ccc4` and `0x0208e2a0`; `0x0208cfc0`
+remains unobserved in these bounded traces. A single pointer pair still
+produces changing inputs and both boolean values, so pointers cannot be keys.
+
+The second caller supplies its rectangle at an address congruent to 2 mod 4:
+3,915 Luso and 80 Fire calls. A proposed fast path must preserve ARM9 unaligned
+load semantics or use a guarded fallback. Do not replace halfword loads with
+aligned word loads indiscriminately. Nine Luso and fourteen Fire calls cross
+an emulator frame boundary; complete entry/exit and saved-register pairing
+remain valid. The private semantic analyzer now records that fact rather
+than imposing the earlier library-only same-frame assumption. All prior
+library measurements remain unchanged.
+
+An optimistic instruction-entry budget retains only the original PUSH/POP
+on a cache hit and treats all other original predicate entries as removable.
+With hypothetical 512-entry LRU hit counts, the average budget for **all**
+extra lookup, preservation, insertion and invalidation work is 22.119 entries
+per call in Library, 21.663 in Luso and 18.841 in Fire just to break even.
+At 256 entries, Luso's budget drops to 14.469. This model charges no LRU
+maintenance or memory-cycle cost yet; it is a preflight ceiling, not a speed
+measurement or proof that a real lookup can achieve those hits.
+
+A 512-entry key/boolean payload alone takes 10,240 bytes, before indexing,
+validity or additional state. No guest storage has been allocated or proven
+unused. The next step is an isolated lookup-cost/semantics prototype using
+these actual traces. Only a useful result would justify storage/write-watch
+work and a guarded patch; native timing and lifecycle qualification remain
+mandatory. No new guest patch or beta is produced.
+
+Evidence: `GUEST_RECTANGLE_SEMANTIC_FINDINGS_{LUSO,FIRE}_V1.json`,
+`GUEST_RECTANGLE_CONTENT_RECURRENCE_{LUSO,FIRE}_V1.json`,
+`GUEST_RECTANGLE_INPUT_ALIGNMENT_V1.json`,
+`GUEST_RECTANGLE_LOOKUP_COST_BUDGET_V1.json`, and
+`GUEST_RECTANGLE_DYNAMIC_SCENE_SELECTION_V1.json`.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -811,8 +865,9 @@ this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
 Decoder whole-block recurrence has now been measured and has zero hits in
-Luso. Rectangle recurrence is substantial in a bounded library window;
-measure active/moving scenes and the other callers before designing a cache.
+Luso. Rectangle recurrence now covers bounded library, movement and spell
+scenes; measure actual lookup cost before allocating storage or designing an
+in-game cache. A third caller and broader lifecycle states remain unqualified.
 ARM7's hot windows have structural
 classifications, but dynamic caller/operand and dependency evidence is still
 needed before any service optimization. More vertex arithmetic remains a lead,
@@ -829,10 +884,11 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Extend rectangle recurrence to active/moving scenes and other callers, then
-   estimate lookup cost and prove storage/mutation safety before proposing reuse.
-2. Measure cartridge and filesystem recurrence with completion and buffer
+1. Cost an exact-key rectangle lookup in isolation, including misaligned-input
+   fallback, preservation, misses and maintenance, before allocating guest storage.
+2. Prove storage, mutation and third-caller coverage only if that prototype
+   shows useful headroom; complete timing/lifecycle gates before acceptance.
+3. Measure cartridge and filesystem recurrence with completion and buffer
    ownership evidence; the audio staging addresses alone do not reveal it.
-3. Evaluate a larger dispatch index only after proving space, state and call
-   timing requirements; the rejected compaction must stay disabled. ARM7
-   division operand recurrence is another unqualified lead.
+   A larger dispatch index and ARM7 division operand recurrence remain lower
+   priority, unqualified leads.

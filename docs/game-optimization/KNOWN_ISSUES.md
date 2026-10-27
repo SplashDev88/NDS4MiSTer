@@ -133,3 +133,11 @@
   at least 5,120 payload bytes before metadata and any additional state.
   Scratch availability, lookup benefit, changing-view coverage, other callers
   and timing equivalence remain unproven. No cache is enabled or accepted.
+- Moving-scene rectangle reuse does not make a cache automatically useful.
+  Luso needs 512 hypothetical LRU entries to retain its 94.931% recurrence;
+  Fire achieves 82.751% hits at that capacity. Payload alone is 10,240 bytes.
+  The optimistic average lookup/maintenance allowance is about 19–22
+  instruction entries per call before any gain, with memory cycles still
+  unknown. A second caller passes a halfword-aligned rectangle, so word-load
+  shortcuts need alignment handling. The third static caller remains
+  unobserved, and storage and native timing are unqualified.

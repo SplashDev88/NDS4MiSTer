@@ -208,7 +208,9 @@ verify saved entry registers in captured stack bytes. Multiple conditional
 ARM return sites are supported with explicit CPSR condition evaluation;
 an unexecuted conditional POP does not finish an invocation. A fixture's
 `capture_frames` selects a bounded-window report. It rejects incomplete, nested or mismatched
-invocations. Keys contain actual bytes, sizes and declared register values;
+invocations. A complete call may cross an emulator frame boundary; saved
+register and stack guards still apply. Calls cut by the capture boundaries
+are rejected rather than silently discarded. Keys contain actual bytes, sizes and declared register values;
 source-pointer equality alone is insufficient. Reports include exact recurrence,
 output conflicts, reuse distances and hypothetical LRU hit counts. Constant
 tables and other dependencies still need independent proof. Payload storage
