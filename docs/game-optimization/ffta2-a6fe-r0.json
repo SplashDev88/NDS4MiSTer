@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "game_code": "A6FE",
+  "revision": 0,
+  "title": "Final Fantasy Tactics A2: Grimoire of the Rift",
+  "header_sha1": "803a0122db39ea3ddc99b56a7167d623aea004c3",
+  "header_bytes": 352,
+  "rom_sha256": "3b5d469aae5d351de31a89cf2bf592c98cb5b68cb4efc30b34426a119fee2372",
+  "arm9_sha256": "4fcd888fa0730f89aea0252f953401e007165b6ca5230ad3e140511ecdc00a62",
+  "baseline": "rc12 plus accepted FFTA2 Beta2; no new guest patch enabled",
+  "budget": "bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
+  "patches": [
+    {
+      "id": "copy16-compact-branches",
+      "pattern": "branch-heavy-halfword-copy",
+      "cpu": "arm9",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x20093e0",
+      "mode": "arm",
+      "expect": "00c0a0e302005ce1000000ba000000eabc3090e1000000ba000000eabc3081e1000000ba000000ea02c08ce2f4ffffba1eff2fe1",
+      "replace": "00c0a0e302005ce11eff2fa1bc3090e1bc3081e102c08ce202005ce1faffffba1eff2fe10000a0e10000a0e10000a0e10000a0e1",
+      "hook": null,
+      "enabled": false,
+      "status": "rejected_full_replay_mismatch",
+      "scratch_bytes": 0,
+      "overlay": null,
+      "validated": {
+        "fb": "failed: 16 of 4400 top-screen frames differ; bottom screen equal",
+        "ram": "failed after exact 52-byte instruction normalization",
+        "audio": "failed: first sample difference at 12.55127 seconds",
+        "save": "bit-exact in 4400-frame replay",
+        "native": "not run; failed software gate"
+      },
+      "gain": {
+        "native_cycles": null,
+        "native_game_progress": null,
+        "synthetic_copy64_instruction_count": {
+          "before": 266,
+          "after": 164
+        },
+        "software_arm9_instructions_2600_4399": {
+          "before": 391329973,
+          "after": 385205747,
+          "reduction_percent": 1.5649774927922522,
+          "qualifies": false
+        }
+      },
+      "notes": "Rejected and disabled. Synthetic function-level equivalence does not preserve whole-game framebuffer, RAM or audio output. Same halfword accesses and no scratch, but actual callers include RAM, palette, VRAM and toon-table MMIO. Do not accept timing differences as benign without proof and explicit budget approval.",
+      "synthetic_validation": {
+        "cases": 1276,
+        "receipt": "GUEST_COPY16_SYNTHETIC_V1.json",
+        "receipt_sha256": "fd14f1003827076bda5e4a0631b317956e0c2f430d7f21bdbc4138f6ace884fc"
+      },
+      "reference_instruction_sample_share_percent": {
+        "LUSO": 4.172203116470322,
+        "FIRE": 4.175132979224705,
+        "LIBRARY": 0.2368569664748147
+      },
+      "replay_rejection": {
+        "receipt": "GUEST_COPY16_REJECTION_ANALYSIS.json",
+        "receipt_sha256": "06cf894d0ade309f438c2b0ac3718198e282838b42e313161d3c303cc137e80a",
+        "input_manifest": "GUEST_COPY16_REPLAY_INPUT_MANIFEST.json",
+        "input_manifest_sha256": "3b5f5258f5d42fc0312936780f50132aec83a71e166c3086130cc6e7af90668e"
+      }
+    }
+  ],
+  "arm9_crc32": "5f2f17b3"
+}

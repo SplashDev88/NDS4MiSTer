@@ -35,3 +35,48 @@ A returning palette state can reuse the already decoded texture in its original 
 Detector: a bounded loop with a constant record stride, a nullable loaded function pointer and an indirect call, rather than a fixed MMIO address. In ACVE runtime RAM, `0x020126f4` and `0x020128e4` traverse 0x110 records with stride 0x2a0. The second loads `[r5]`, skips nulls and calls `blx r1`; the first also checks `[r5+4]` and flags at `[r5+0xc]`. These account for the two previously unresolved >2% native PC sample sites, but samples are not cycle shares.
 
 An active-record index could reduce empty scans only if every registration, deletion and reordering operation is captured and callback order remains identical. Treat an object-update role as an inference until symbols or write watches establish it. Do not replace this with halt or skip callbacks. It is not the current throughput priority while geometry already runs near 60 submissions/sec.
+
+## Branch-heavy halfword copy
+
+Detector: an ARM loop compares a byte offset against a signed length, then uses
+separate conditional/unconditional branch pairs around a halfword load, store
+and offset increment. These branches all depend on the same comparison flags.
+Flag the structure, not a title-specific address or an assumption that it is a
+particular SDK function. FFTA2 A6FE r0 provides the first observed example.
+
+Candidate: compact the control flow while retaining the exact halfword access
+order, overlap behavior, signed/zero/odd-length handling, final registers and
+NZCV flags. Prefer an in-place replacement with no extra memory. The generic
+`tools/game_optimization/check_halfword_copy_patch.py` takes addresses and bytes
+from a per-game manifest and compares synthetic machine states and data accesses.
+The first candidate passed 1,276 synthetic cases but failed full-game replay:
+16 of 4,400 top-screen frames, audio, and non-code RAM differ. It is rejected,
+despite 1.565% fewer ARM9 instructions in the selected Luso window. Synthetic
+instruction savings do not establish native cycles or whole-game equivalence.
+
+`tools/game_optimization/scan_guest_patterns.py` implements a register-renaming
+structural detector with exact branch destinations and load/store roles. It
+finds this scaffold in both ARM9 and ARM7 code; shared SDK identity is not yet
+proven. It scans ARM main/autoload sections only. An occurrence in data or
+Thumb code can be a false positive; require execution evidence before using it.
+
+Trace actual caller ranges before promotion. MMIO, DMA/interrupt interleavings,
+code-overlap destinations, instruction visibility and timing-sensitive readers
+are separate obligations. Never replace halfword accesses with wider accesses
+or DMA based only on equal final bytes in ordinary RAM.
+
+The observed callers include toon-table MMIO, VRAM and palette uploads as well
+as ordinary RAM. Whole-replay divergence starts before the profiled battle
+window. An optimization applied globally at boot must pass initialization and
+other callers too. Matching every return value and data access in an isolated
+function does not prove equivalent interrupt, DMA, audio or graphics timing.
+
+## Polling that also transfers data
+
+A backward branch on a busy bit is not sufficient evidence of an idle loop.
+Check the full loop for data-ready tests, MMIO data reads, destination stores,
+byte counts and completion behavior. FFTA2's observed cartridge receive loop
+polls ROMCTRL and consumes words from the cartridge data register. A halt or
+NOP shortcut would remove required work unless a separately proven existing
+mechanism performs the same transfer. This detector should prevent unsafe
+idle-loop suggestions in other games.

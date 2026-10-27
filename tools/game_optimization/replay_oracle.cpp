@@ -9,6 +9,9 @@
 #include <filesystem>
 #include <cstdint>
 #include <map>
+#include <cstdlib>
+#include <sstream>
+#include <stdexcept>
 namespace melonDS {
 bool replay_profile_active=false;
 unsigned replay_frame=0;
@@ -30,11 +33,24 @@ int main(int argc,char**argv) {
  const unsigned profileStart = argc==8 ? std::stoul(argv[7]) : 0;
  std::filesystem::create_directories(argv[3]);
  std::ifstream f(argv[1],std::ios::binary|std::ios::ate);if(!f)return 3;
- const u32 len=f.tellg();f.seekg(0);auto rom=std::make_unique<u8[]>(len);f.read((char*)rom.get(),len);if(!f)return 4;
+ u32 len=f.tellg();f.seekg(0);auto rom=std::make_unique<u8[]>(len);f.read((char*)rom.get(),len);if(!f)return 4;
  nds4mister::replay::GameQueryHeader header{};
  if(len<header.size())return 4;
  std::copy_n(rom.get(),header.size(),header.data());
  const auto selected=nds4mister::replay::read_game_query_profile([&](auto& value){value=header;return true;});
+ // A private VirtualRom stream can replace only the in-memory load image.
+ // Keep the original file's cartridge identity and boot name, as the native
+ // virtual-loading path does. No patched cartridge file is needed.
+ if(const char* input=std::getenv("NDS_REPLAY_VIRTUAL_STDIN")){
+  if(std::string(input)!="1")return 4;
+  unsigned char prefix[8]{};std::cin.read((char*)prefix,8);
+  if(!std::cin||std::string((char*)prefix,4)!="VROM")return 4;
+  const u32 virtualLen=u32(prefix[4])|(u32(prefix[5])<<8)|(u32(prefix[6])<<16)|(u32(prefix[7])<<24);
+  if(virtualLen<header.size()||virtualLen>512u*1024u*1024u)return 4;
+  auto image=std::make_unique<u8[]>(virtualLen);std::cin.read((char*)image.get(),virtualLen);
+  if(!std::cin||std::cin.peek()!=std::char_traits<char>::eof())return 4;
+  rom=std::move(image);len=virtualLen;
+ }
  auto cart=NDSCart::ParseROM(std::move(rom),len,nullptr);if(!cart)return 5;
  std::ifstream s(argv[2],std::ios::binary|std::ios::ate);if(!s)return 6;
  std::vector<u8> save(s.tellg());s.seekg(0);s.read((char*)save.data(),save.size());cart->SetSaveMemory(save.data(),save.size());
@@ -46,6 +62,22 @@ int main(int argc,char**argv) {
  struct Input{unsigned first,last,mask;};std::vector<Input> inputs;std::ifstream replay(argv[5]);Input v;while(replay>>v.first>>v.last>>std::hex>>v.mask>>std::dec)inputs.push_back(v);
  std::ifstream watches(argv[6]);u32 watch;while(watches>>std::hex>>watch)replay_watches.push_back(watch);replay_watch.open(out+"/watches.csv");
  std::ofstream state(out+"/state.csv");state<<"frame,arm9_insn,arm7_insn,mainram,itcm,dtcm,arm7wram,sharedwram,save\n";
+ struct CodeComparison{u32 address;std::vector<u8> original,replacement;};std::vector<CodeComparison> codeComparisons;
+ std::ofstream normalized;
+ if(const char* path=std::getenv("NDS_REPLAY_CODE_COMPARISON")){
+  std::ifstream specs(path);if(!specs)return 8;std::string line;
+  auto bytes=[](const std::string& value){std::vector<u8> result;if(value.size()%2||value.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos)throw std::runtime_error("Invalid code hex");for(size_t i=0;i<value.size();i+=2)result.push_back(u8(std::stoul(value.substr(i,2),nullptr,16)));return result;};
+  while(std::getline(specs,line)){std::istringstream row(line);std::string address,before,after,extra;
+   if(!(row>>address>>before>>after)||(row>>extra))return 8;
+   size_t consumed=0;const auto parsed=std::stoull(address,&consumed,16);if(consumed!=address.size()||parsed>0xffffffffu)return 8;
+   CodeComparison c{u32(parsed),bytes(before),bytes(after)};
+   if(c.address<0x02000000u||c.original.size()<8||c.original.size()>4096||c.original.size()!=c.replacement.size()||u64(c.address)+c.original.size()>0x02400000u)return 8;
+   for(const auto& old:codeComparisons)if(c.address<old.address+old.original.size()&&old.address<c.address+c.original.size())return 8;
+   codeComparisons.push_back(std::move(c));
+  }
+  if(codeComparisons.empty())return 8;
+  normalized.open(out+"/code_normalized_state.csv");normalized<<"frame,mainram,original_code_regions,replacement_code_regions\n";
+ }
  auto hash=[](const u8* p,size_t n){u64 h=14695981039346656037ull;for(size_t i=0;i<n;++i)h=(h^p[i])*1099511628211ull;return h;};
  for(unsigned frame=0;frame<frameCount;++frame){
   replay_profile_active=frame>=profileStart;replay_frame=frame;
@@ -56,6 +88,16 @@ int main(int argc,char**argv) {
   std::vector<u8> canonical(nds->MainRAM,nds->MainRAM+0x400000);
 
   state<<frame<<','<<replay_instructions[0]<<','<<replay_instructions[1]<<','<<hash(canonical.data(),canonical.size())<<','<<hash(nds->ARM9.ITCM,0x8000)<<','<<hash(nds->ARM9.DTCM,0x4000)<<','<<hash(nds->ARM7WRAM,0x10000)<<','<<hash(nds->SharedWRAM,0x8000)<<','<<hash(nds->GetNDSSave(),nds->GetNDSSaveLength())<<'\n';
+  if(!codeComparisons.empty()){
+   unsigned originalCount=0,replacementCount=0;
+   for(const auto& c:codeComparisons){auto at=canonical.begin()+(c.address-0x02000000u);
+    if(std::equal(c.original.begin(),c.original.end(),at))++originalCount;
+    else if(std::equal(c.replacement.begin(),c.replacement.end(),at))++replacementCount;
+    else {std::cerr<<"Unexpected code bytes at frame "<<frame<<" address "<<std::hex<<c.address<<std::dec<<'\n';return 9;}
+    std::copy(c.original.begin(),c.original.end(),at);
+   }
+   normalized<<frame<<','<<hash(canonical.data(),canonical.size())<<','<<originalCount<<','<<replacementCount<<'\n';
+  }
   void*top=nullptr;void*bottom=nullptr;if(!nds->GPU.GetFramebuffers(&top,&bottom))return 7;
   uint64_t hashes[2]={14695981039346656037ull,14695981039346656037ull};
   for(int screen=0;screen<2;++screen){auto*pix=(u32*)(screen?bottom:top);

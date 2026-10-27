@@ -22,3 +22,17 @@
 - `PUBF1` is excluded: an early pause press occurred while the suspend was still loading, and the benchmark subsequently counted the pause menu. The harness now proves the pause screen before measuring. A fixed eight-second OBS sample can precede active play; capture validation now uses the recorded measurement interval.
 
 - `PUBK1` is excluded from the Mario Kart speed comparison: the first interval was still at cup selection, and the second crossed the countdown. The qualified regression route adds spaced confirmation presses and checks actual racing captures.
+
+- FFTA2's retained rc12/Beta2 runtime does not expose the ARM9 diagnostic PC tag
+  in the inspected header. Existing sampler source alone does not mean the
+  loaded bitstream supports collection. No RTL modification is authorized by
+  the current guest-patch workflow; mark missing native metrics unavailable.
+- FFTA2's branch-heavy copy candidate is rejected and disabled. Its 1,276
+  synthetic passes did not survive full replay: 16 top-screen frames, audio
+  and non-code RAM differ. The 1.565% instruction reduction in the selected
+  window is not a qualified performance result. No native trial was run.
+  Callers include toon-table MMIO, VRAM and palette destinations. The cause
+  of whole-game divergence is unresolved; do not mask it as harmless timing.
+- FFTA2's cartridge polling loop transfers required data. Do not treat it as
+  pure idle work. Its apparent ADPCM-like decoder is not proven redundant;
+  source-content identity, callers and live output consumers need tracing.
