@@ -63,6 +63,31 @@ the original search exactly. The resulting 5,384,388 key comparisons are a
 calculation from inputs and table order, not cycles or measured savings.
 No search patch has been qualified.
 
+A minimal compaction can combine the key load and the eight-byte pointer
+increment using postindex addressing, adjusting the matched handler load to
+`[table,-4]`. Preserve the indirect call's original address: moving a `BLX`
+changes the link register and can change callee stack data even if its final
+return value matches. `check_dispatch_patch.py` reuses the existing Unicorn
+runner with ARM/Thumb handlers, one of which saves its complete entry state.
+It checks duplicate-key precedence, signed/empty counts, all initial NZCV
+combinations, final CPU/data state and the ordered data accesses. Earlier
+visibility of the updated table-pointer register during an interrupt is a
+separate whole-replay obligation; synthetic passes do not settle timing.
+
+The first postindex candidate passes 1,520 synthetic cases, reducing a
+138-entry miss from 974 to 836 instructions with the same 142 accesses.
+The full library replay uses 0.713% fewer selected ARM9 instructions, but one
+bottom-screen frame, audio and RAM differ. It is rejected under the bit-exact
+budget. Preserving handler entry state and access order does not establish
+equivalent interrupt/audio scheduling or native performance.
+
+When reusing an unpatched control, require an explicit opt-in and verify the
+original virtual-ROM digest, game identity, oracle identity, replay inputs,
+golden comparison and retained output hashes. Different disabled manifests
+can describe the same original stream; a patched or changed control cannot
+be substituted on that basis. `summarize_guest_pair.py` retains exact byte and
+same-index comparisons without aligning differences away.
+
 ## Timer, interrupt and sound service loops
 
 Constant-size scans can update live audio channels or schedule runnable

@@ -20,6 +20,14 @@
   replay, which does not prove immutability in other scenes or reset paths.
   The 5,384,388 calculated comparisons are original work, not measured savings.
   No search patch or new beta is qualified by the classification trace.
+- The later FFTA2 postindexed search patch passes 1,520 synthetic cases and
+  preserves handler link values and ordered accesses, but fails the full
+  library gate: one changed bottom frame, 405,899 changed stereo samples and
+  non-code RAM differences. Its 0.713% reference instruction reduction is not
+  a native speed result. It remains disabled; no battle/lifecycle/native
+  qualification is claimed for this rejected version. New checkpoints show
+  two changed elapsed-time words, which does not justify masking other RAM
+  or classifying the audio difference as benign.
 
 - **Native flag verification is mandatory.** The release supervisor intentionally strips inherited `NDS*`/`H3D_*` variables. The early lighting and cache A/B launches therefore tested disabled paths in both arms. Those live results cannot establish candidate performance. The isolated supervisor now admits only declared private Boolean flags and asserts the helper's actual environment; the rig checks that record before input/measurement.
 - The native bat-room route uses timed input. Small differences in jumping can put the player on a different platform and change the camera. Inspect the video, exclude mismatched positions, and prefer a reproducible in-game suspend seed. `C3_A` was floor-level while `C3_B`/`C3_A2` were platform-level.

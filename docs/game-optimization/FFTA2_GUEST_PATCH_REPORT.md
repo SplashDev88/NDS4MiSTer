@@ -1,14 +1,13 @@
 # FFTA2 guest-code optimization — 27 October 2026
 
-Status: the copy patch is rejected. The vertex patch failed the current
-bit-exact budget and is under **user-authorized timing investigation**.
-A third, decoder-arithmetic candidate reduces selected Luso ARM9 instructions
-by 2.512%; all 4,400 screen pairs and save hashes match, but RAM/audio differ.
-The Fire follow-up has 1,892 changed bottom-screen frames and substantially
-larger audio differences, despite a similar 2.499% instruction reduction.
-The 30,000-frame library/forest route remains exact with no instruction gain.
-All three remain disabled. No new guest patch is installed or release-qualified;
-accepted FFTA2 Beta2 remains unchanged. Platinum is queued, not active.
+Status: four guest-patch versions fail the current bit-exact budget and remain
+disabled. The latest compacts handler-table searches: it passes 1,520 synthetic
+cases and reduces selected library ARM9 instructions by 0.713%, but the full
+30,000-frame replay changes one bottom-screen frame, audio and RAM. Saves
+match. No native gain is measured. The earlier copy, vertex and decoder
+results remain below; user-authorized timing investigation did not authorize
+non-bit-exact acceptance. Accepted FFTA2 Beta2 remains unchanged. Platinum is
+queued, not active.
 
 ## Scope and existing mechanisms
 
@@ -51,7 +50,8 @@ indices. Follow-up traces below establish copies into active PCM playback
 buffers; no shared SDK or middleware identity is established. The cartridge
 loop consumes data at `04100010` while polling `040001a4`;
 it is not an idle loop that can simply be replaced with halt. ARM7 profiles are
-also retained, with function/caller classification still open. Full disassembly,
+also retained; their hot windows are classified in the later section below.
+Full disassembly,
 hashes and the ten-pattern screening ledger are in
 `GUEST_PATCH_HOTSPOT_REVIEW.json` in private evidence.
 
@@ -643,9 +643,66 @@ no later writes. Both added RAM checkpoints retain the exact five tables.
 The observed inputs imply 5,384,388 original key comparisons, without claiming
 any reduction yet. `GUEST_DISPATCH_FINDINGS_LIBRARY_V1.json` records the trace,
 and `GUEST_DISPATCH_PATTERN_CHECKS_V1.json` records detector admission checks.
-The next bounded investigation is a guarded, in-place miss/search fast path
-that preserves fallback, handler execution and the full validation gate.
-No new patch, native experiment or beta is produced by this classification.
+This classification led to the guarded compaction candidate below. A larger
+range-rejection or indexed search remains unimplemented; it needs additional
+space/state proof and cannot inherit this candidate's equivalence result.
+
+## Fourth candidate: postindexed dispatch search
+
+`dispatch-postindex-search` replaces the same 68-byte ARM9 main-code extent
+at `0203c094`. The key load advances the table pointer by eight bytes; on a
+match the handler pointer is loaded at offset minus four. This removes the
+separate pointer increment on a miss. The `BLX` stays at `0203c0b4`, preserving
+the link value visible to handlers and their stack saves. Loop-test and exit
+branches are retargeted inside the same extent. There is no scratch, overlay,
+new HPS service or RTL change. Exact instruction bytes, identity and five
+table guards are in the manifest; the patch is individually disabled.
+
+The generic `check_dispatch_patch.py` passes 1,520 cases covering signed and
+empty counts, first/middle/last hits, misses, unsorted and duplicate keys,
+all initial NZCV combinations, ARM/Thumb handlers and caller returns. An ARM
+handler saves its complete entry state, changes flags/registers and writes
+data. Final registers, CPSR, data/stack bytes and ordered reads/writes match.
+A 138-entry miss falls from 974 to 836 instructions with the same 142 data
+accesses. Thirteen loading/admission checks pass, including all five table
+mismatch guards. Synthetic execution does not model interrupts or native
+cycle timing.
+
+The unchanged V6 oracle and preceding exact unpatched library trace are
+reused. `summarize_guest_pair.py` now permits such reuse only explicitly and
+after checking original-stream identity, game identity, oracle, replay job,
+golden outputs and retained output hashes. Eight negative reuse checks reject
+changed evidence before producing a result; the promoted tool also reproduces
+the earlier decoder comparison's semantic results.
+
+| Library measure | Unpatched | Candidate |
+| --- | ---: | ---: |
+| ARM9 instruction entries, frames 23300–29999 | 750,160,463 | 744,808,170 (−0.713486%) |
+| Changed top-screen frames | 0 | 0 / 30,000 |
+| Changed bottom-screen frames | 0 | 1 / 30,000, at frame 23878 |
+| Changed stereo samples | 0 | 405,899 / 24,069,760 |
+| Maximum signed-16 audio delta | 0 | 4,025 |
+| Main-RAM differing frames, excluding only the patch bytes | 0 | 21,738 |
+| DTCM / ARM7-WRAM differing frames | 0 / 0 | 1,704 / 875 |
+| Save data | Exact | Exact, every frame and final |
+| Native frame time, pacing, HPS load and speed gain | Unavailable | Unavailable |
+
+All 660 watched table-word stores are identical boot stores in both arms;
+none occurs later. The ordinary frame-2600 main-RAM checkpoint is exact after
+only 68 code bytes are normalized. Added checkpoints at 23300 and 29999 have
+two changed words at the previously identified elapsed-time locations
+`02132e8c/94` (minus six and minus seven raw values respectively); their other
+tracked RAM regions match. This does not explain or erase the intervening
+RAM differences. Audio-source identity and audibility were not qualified for
+this candidate, so its audio differences are not classified as harmless phase.
+
+See `GUEST_DISPATCH_PAIR_LIBRARY_V1.json`,
+`GUEST_DISPATCH_CHECKPOINTS_LIBRARY_V1.json` and
+`GUEST_DISPATCH_BEFORE_AFTER_LIBRARY_V1.csv`. This version is rejected under
+the current budget. No further battle, lifecycle or native trials are run for
+the failed version, and no beta is produced. Continue with input-recurrence
+evidence for the remaining guest-code leads, rather than repeating these
+unchanged timing comparisons.
 
 ## Next validation and limits
 
@@ -657,15 +714,15 @@ Preserve the user's positive visual review. The decoder's live PCM dependency
 is now established, and its first arithmetic candidate has a measured software
 result. Three-route software characterization, Fire's sound-side timing and
 Luso's source-write ordering are complete. Keep both timing candidates disabled.
-Further work on their visual/RAM semantics is deferred while the remaining
-ARM7 service hotspots and content-reuse opportunities are classified.
+Further work on their visual/RAM semantics is deferred while content-reuse
+opportunities are investigated. ARM7's hot windows now have structural roles.
 Keep the current acceptance budget unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
-Investigate dispatch miss reduction, then establish rectangle input recurrence
-and decoder source-content recurrence. ARM7's hot windows have structural
+Establish decoder source/predictor recurrence and rectangle input recurrence.
+ARM7's hot windows have structural
 classifications, but dynamic caller/operand and dependency evidence is still
 needed before any service optimization. More vertex arithmetic remains a lead,
 but do not repeat rejected versions or reinterpret the budget silently.
@@ -681,9 +738,10 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Develop an in-place dispatch miss/search fast path with exact table guards;
-   preserve first matches, fallbacks, register/stack effects and timing gates.
+1. Measure decoder input recurrence including the complete predictor state
+   before proposing caching; repeated source addresses alone are insufficient.
 2. Trace rectangle inputs and mutation boundaries before considering reuse in
    the graphics submission path; equal output alone does not prove redundancy.
-3. Measure decoder input recurrence including predictor state, then cartridge
-   and filesystem recurrence with completion and buffer-ownership evidence.
+3. Measure cartridge and filesystem recurrence with completion and buffer
+   ownership evidence. A larger dispatch index remains a lower-priority lead
+   requiring space and state proof; the rejected compaction must stay disabled.
