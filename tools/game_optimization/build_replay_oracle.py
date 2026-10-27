@@ -16,7 +16,10 @@ p.add_argument('--out', required=True, type=Path)
 p.add_argument('--ninja', default='ninja')
 p.add_argument('--trace-spu-writes', action='store_true',
                help='Include optional private audio-register/mix-boundary observation')
+p.add_argument('--trace-spu-samples', action='store_true',
+               help='Also observe existing FIFO/sample values and channel output; implies --trace-spu-writes')
 args = p.parse_args()
+args.trace_spu_writes = args.trace_spu_writes or args.trace_spu_samples
 source = Path(__file__).resolve().parents[2]
 build, out = args.build.resolve(), args.out.resolve()
 out.mkdir(parents=True, exist_ok=True)
@@ -39,7 +42,7 @@ objects = [
 ]
 if args.trace_spu_writes:
     (out / 'SPU.oracle.cpp').write_text(instrument_spu(
-        (source / 'third_party/melonDS/src/SPU.cpp').read_text()))
+        (source / 'third_party/melonDS/src/SPU.cpp').read_text(), samples=args.trace_spu_samples))
     objects.append(('/SPU.cpp', out / 'SPU.oracle.cpp', 'SPU.oracle.o'))
 for original, replacement, obj in objects:
     command = next(line for line in commands if ' -c ' in line and line.rstrip('\'"').endswith(original))

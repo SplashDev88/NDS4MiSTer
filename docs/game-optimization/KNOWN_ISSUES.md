@@ -46,5 +46,8 @@
   the patch remains disabled with no native performance measurement.
   Library tracing matches 3,286,148 completed block payloads/end states and
   539,880 ordered sound-register writes, but 755 sound writes cross a different
-  mix-callback boundary. Sample-buffer contents and per-channel output are not
-  compared yet. Equal register commands do not prove equal audio input data.
+  mix-callback boundary. V5 subsequently matches all 46,439,652 actual FIFO
+  words and 371,300,720 paired decoder steps in library; 37 unmatched steps
+  remain at 15 note ends with shifted start/stop boundaries. Channel outputs
+  in two captured windows are explained exactly by observed sample/control
+  timing. This does not qualify other scenes, native behavior or audibility.

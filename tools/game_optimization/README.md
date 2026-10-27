@@ -93,6 +93,48 @@ reporting timing differences separately. It rejects malformed/discontinuous
 traces, counts unmatched tails, and never aligns away a changed event. Matching
 event payloads do not approve output differences or establish native timing.
 
+`--trace-spu-samples` includes the write observer and adds sample observation
+to the same private source copy. Enable both `NDS_REPLAY_SPU_WRITES=1` and
+`NDS_REPLAY_SPU_SAMPLES=1`. Every channel start is recorded in `spu_starts.csv`;
+each start increments that channel's generation. The observer copies FIFO
+words after the existing memory read and decoded samples after the existing
+decoder step. It never issues another emulated read or changes the audio path.
+
+Binary format version 1 uses four little-endian unsigned 32-bit words per
+record (16 bytes). Per-channel files contain:
+
+| File | Word 0 | Word 1 | Word 2 | Word 3 |
+|---|---|---|---|---|
+| `spu_fifo_N.bin` | start generation | mix index | source address | fetched word |
+| `spu_samples_N.bin` | start generation | mix index | signed sample position bits | format in bits 16–31, signed-16 decoded sample bits in 0–15 |
+| `spu_output_N.bin` | start generation | mix index | signed channel output bits before panning | pan |
+| `spu_mixed.bin` | video frame | mix index | signed-16 left bits | signed-16 right bits |
+
+Source fetches and decoded steps cover the full replay. Set
+`NDS_REPLAY_SPU_OUTPUT_FRAMES=100:200,300:400` for bounded per-channel and mixed
+output capture; intervals are disjoint and end-exclusive. Without intervals,
+those output files are empty. Mixed output is observed after final clamping and
+bit-depth handling, before the existing resampler. Summary CSVs give record
+counts and capture intervals. All data remains private.
+
+`compare_spu_samples.py CONTROL_DIRECTORY CANDIDATE_DIRECTORY --output REPORT`
+compares source/decoded events by channel, start generation and ordinal. It
+reports differing lengths and unmatched tails explicitly, including when a
+note stops or the replay ends. Channel/mixed output is compared at identical
+mix indices in the recorded windows; it does not estimate or remove lag.
+Matching source addresses alone are insufficient: actual fetched words and
+decoded values must be checked too. Revalidate the complete unpatched outputs
+whenever instrumentation changes.
+
+`explain_spu_output.py CONTROL_DIRECTORY CANDIDATE_DIRECTORY --output REPORT`
+checks captured channel output against the observed last decoded sample and
+recorded volume/shift/pan/enable writes, using the existing SPU arithmetic.
+It supports interpolation disabled only. Writes observed after mix callback
+`k` affect later callbacks; they must not be applied retroactively to `k`.
+The tool reports unexplained records and separates sample-phase from control
+state differences. It does not synthesize a replacement soundtrack, remove
+lag or establish audibility/native equivalence.
+
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic
 `check_guest_block_patch.py MANIFEST FIXTURE --output REPORT` reuses that

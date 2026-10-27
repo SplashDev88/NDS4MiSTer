@@ -129,7 +129,7 @@
         "Luso_completed_block_pairs": 549874,
         "Luso_paired_block_payload_or_register_mismatches": 0,
         "unpaired_cutoff_tail": true,
-        "limits": "Observed replay bounds, not global tolerances. Actual channel sample-buffer reads, per-channel output and changed scanline cause remain unqualified. Budget unchanged; no non-bit-exact release approval.",
+        "limits": "Library actual source words and paired decoder values match.37 unpaired tail steps remain at15 note boundaries. Two output windows are explained by observed samples and control timing. Other-scene source coverage, audibility, scanline causality, RAM semantics and native qualification remain open. Budget unchanged; no release approval.",
         "library_completed_block_pairs": 3286148,
         "library_paired_block_payload_or_register_mismatches": 0,
         "library_block_unpaired_tail": false,
@@ -148,8 +148,41 @@
           "GUEST_VERTEX_DIAGNOSTIC_STABILITY_V4.json": "fc17dec5ba79ad1d0049d5dd5e8b3dff63f6d934f0ad08ee6fdee96edef5a9c0",
           "GUEST_VERTEX_BLOCK_COMPARISON_LIBRARY_V4.json": "e45412bb8c474e29a83ef0f886d56b9a775a0a9f7fcf7465ff6bde52e6b97772",
           "GUEST_VERTEX_SPU_COMPARISON_LIBRARY_V4.json": "96662a9bc00d710c5f44ce9637fded5e7dcb28224edcf3009493974f00287424",
-          "GUEST_VERTEX_LIBRARY_PIXEL_REVIEW_V4.json": "98b03c97b6e2289c9fa4064dc3b3740416155a85259a190d427607d82a87d128"
-        }
+          "GUEST_VERTEX_LIBRARY_PIXEL_REVIEW_V4.json": "98b03c97b6e2289c9fa4064dc3b3740416155a85259a190d427607d82a87d128",
+          "GUEST_VERTEX_SAMPLE_COMPARISON_UNIT_V5.json": "319a8b6a596971b5d17427a704555bd6ad81cb80d762f6d57dd26295d240bf07",
+          "GUEST_VERTEX_SAMPLE_COMPARISON_LIBRARY_V5.json": "69bdfbe5f14483e840af6e2a7e061275a9d47e864ee8996717c373d4bf1a3e82",
+          "GUEST_VERTEX_NOTE_TAIL_REVIEW_V5.json": "cb0735acf150b6d53066ce1281722651a2d8b7e9ace530b3adfdfce4c9b6664b",
+          "GUEST_VERTEX_OUTPUT_PHASE_REVIEW_V5.json": "d01237079d51a4ae980d44a72f8ef2cfb5eb0306e4bd0eb124673a1298c676da",
+          "GUEST_VERTEX_CHANNEL_OUTPUT_EXPLANATION_V5.json": "8dd6aee651e7efa9d786e50b14ee8fc69ba0bdd5796fe5ed200f2429feae615c"
+        },
+        "library_fifo_words": 46439652,
+        "library_fifo_word_payload_mismatches": 0,
+        "library_channel_starts": 5309,
+        "library_channel_start_parameter_mismatches": 0,
+        "library_paired_decoded_steps": 371300720,
+        "library_paired_decoded_value_mismatches": 0,
+        "library_unpaired_decoded_steps": [
+          15,
+          22
+        ],
+        "library_note_tails_with_different_lengths": 15,
+        "library_max_note_tail_step_count_difference": 4,
+        "library_paired_sample_mix_delta": [
+          -1,
+          1
+        ],
+        "library_channel_output_windows": [
+          [
+            11900,
+            12400
+          ],
+          [
+            22700,
+            23200
+          ]
+        ],
+        "library_channel_output_records_per_arm": 8752960,
+        "library_unexplained_channel_output_records": 0
       }
     }
   ],

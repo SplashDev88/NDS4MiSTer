@@ -229,6 +229,55 @@ reported differences. Evidence is retained in
 are recorded by `GUEST_VERTEX_LIBRARY_AUDIO_CLIPS_V1.json`; no listening-based
 audibility judgment has been made.
 
+### Actual audio-source and channel-output follow-up
+
+The V5 private observer records values after the existing FIFO read and decoder
+step; it introduces no extra emulated memory reads. Its unpatched library run
+again matches every original output, including the earlier profiling counters.
+The candidate reproduces its V1 output exactly, and both V5 sound-register
+traces are byte-identical to V4. Generic trace/source guards pass 11 checks;
+four further checks cover output arithmetic, callback ordering, partial writes
+and rejection of unsupported interpolation.
+
+| Library observation | Control | Candidate | Comparison |
+|---|---:|---:|---|
+| Channel starts | 5,309 | 5,309 | All start parameters match |
+| Actual FIFO words | 46,439,652 | 46,439,652 | Every address/value matches by channel, start generation and ordinal |
+| Decoded sample steps | 371,300,735 | 371,300,742 | 371,300,720 paired positions/formats/values match; 15 control and 22 candidate tail steps remain |
+| Captured channel-output records | 8,752,960 | 8,752,960 | Two bounded windows; 47,810 value/pan differences, plus two generation-only boundary differences |
+| Captured mixed-output records before resampling | 547,060 | 547,060 | 45,491 differ; maximum signed-16 delta 3,682 |
+
+All 16 channels use ADPCM in this reference route. Paired FIFO/decoder steps
+occur at the same mix callback or one callback earlier/later. The 37 unpaired
+decoder steps are tails of 15 notes, each with a one-callback start or disable
+boundary shift. The largest count difference is four steps in a note. No tail
+is removed from the comparison or declared acceptable automatically.
+
+Output capture covers frames 11900–12399 and 22700–23199, around the largest
+and densest mixed-audio differences. Two notes dominate: channel 2 generation
+143 and channel 12 generation 303 both start one callback later. This is about
+31 microseconds in the reference's 512-cycle, 16,756,991 Hz mixing clock.
+Applying that observed start shift as an explanatory comparison reduces their
+output differences substantially, but it is not used to pass validation.
+
+An exact arithmetic check uses each observed decoded sample and the recorded
+volume/shift/pan/enable updates. It reproduces all 8,752,960 captured channel
+outputs in **each** run, with zero unexplained records. At equal mix indices,
+47,766 differences involve the currently selected sample only, 43 involve
+control state only, and one involves both. Thus these windowed output
+differences are accounted for by sample selection and control timing, without
+changed source audio words. This resolves the source-data concern for this
+library replay; it is not a listening judgment, native timing measurement or
+all-scene qualification.
+
+Evidence: `GUEST_VERTEX_SAMPLE_COMPARISON_LIBRARY_V5.json`,
+`GUEST_VERTEX_SAMPLE_COMPARISON_UNIT_V5.json`,
+`GUEST_VERTEX_NOTE_TAIL_REVIEW_V5.json`,
+`GUEST_VERTEX_OUTPUT_PHASE_REVIEW_V5.json` and
+`GUEST_VERTEX_CHANNEL_OUTPUT_EXPLANATION_V5.json`. The user reports no visible
+difference in the displayed screenshot pairs. This is recorded as positive
+visual feedback, with the acceptance budget unchanged.
+
 The generic scanner now detects the five-shift structure with register
 renaming. It finds six ARM9 occurrences, including the profiled hot loop.
 No shared SDK provenance or automatic safety is inferred. Eleven positive and
@@ -236,10 +285,12 @@ negative scanner checks pass.
 
 ## Next validation and limits
 
-For the current timing investigation, compare the actual sample words fetched
-by each sound channel and its output sequence, then trace display-effect writes
-around the three changed scanlines. These should distinguish altered source
-data from otherwise identical operations that cross a mix/scanline boundary.
+For the current timing investigation, extend the source/output observations
+to the Luso and Fire routes and trace display-effect writes around the three
+changed scanlines. Library source-data and windowed channel-output causality
+are now characterized; do not rerun those unchanged observations. Preserve the
+user's positive visual review and prioritize evidence that can change the
+decision rather than more near-identical screenshots.
 Keep the current acceptance budget and disabled manifest unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
 this milestone does not approve such a proposal. The 0.636–1.041% instruction
@@ -248,6 +299,9 @@ reduction warrants a high bar for accepting risk or adding complexity.
 Trace the ADPCM-like decoder's callers, source contents and output consumers,
 and classify remaining ARM7 hotspots. More vertex arithmetic remains a lead,
 but do not repeat rejected versions or reinterpret the budget silently.
+The SPU's observed ADPCM playback does not establish that the sampled ARM9
+nibble-processing routine feeds audio. That upstream role remains an inference
+until callers and destination consumers are traced.
 For any later candidate, complete replay comparison precedes cold boot,
 in-game save/reload, reset, overlay transitions, an unrelated scene and paired
 native measurement. Ask before accepting non-bit-exactness.

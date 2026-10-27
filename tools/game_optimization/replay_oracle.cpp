@@ -28,6 +28,40 @@ void replay_spu_write(unsigned width,u32 address,u32 value,u64 timestamp){
  if(!replay_spu_output.is_open())return;
  replay_spu_output<<replay_spu_writes++<<','<<replay_frame<<','<<timestamp<<','<<replay_spu_mixes<<','<<width<<','<<std::hex<<address<<','<<value<<std::dec<<'\n';
 }
+struct AudioSampleTrace {
+ bool enabled=false;u32 generation[16]{};u64 fifoCount[16]{},sampleCount[16]{},outputCount[16]{},mixedCount=0;
+ std::ofstream starts,fifo[16],samples[16],output[16],mixed;
+ std::vector<std::pair<unsigned,unsigned>> outputFrames;
+ bool captureOutput()const{for(auto range:outputFrames)if(replay_frame>=range.first&&replay_frame<range.second)return true;return false;}
+ void record(std::ofstream& stream,u32 a,u32 b,u32 c,u32 d){
+  char bytes[16];unsigned at=0;for(u32 word:{a,b,c,d})for(unsigned shift=0;shift<32;shift+=8)bytes[at++]=char(word>>shift);
+  stream.write(bytes,sizeof(bytes));
+ }
+ u32 mixIndex()const{if(replay_spu_mixes>0xffffffffull)throw std::runtime_error("Audio trace mix index overflow");return u32(replay_spu_mixes);}
+ void channel(unsigned n)const{if(n>=16)throw std::runtime_error("Invalid audio trace channel");}
+} replay_audio;
+void replay_spu_start(const SPUChannel& channel){
+ if(!replay_audio.enabled)return;const unsigned n=channel.Num;replay_audio.channel(n);
+ if(replay_audio.generation[n]==0xffffffffu)throw std::runtime_error("Audio trace generation overflow");
+ ++replay_audio.generation[n];
+ replay_audio.starts<<n<<','<<replay_audio.generation[n]<<','<<replay_frame<<','<<replay_audio.mixIndex()<<','<<std::hex<<channel.Cnt<<','<<channel.SrcAddr<<','<<channel.TimerReload<<','<<channel.LoopPos<<','<<channel.Length<<std::dec<<','<<int(channel.InterpType)<<'\n';
+}
+void replay_spu_fifo(unsigned channel,u32 address,u32 value){
+ if(!replay_audio.enabled)return;replay_audio.channel(channel);
+ replay_audio.record(replay_audio.fifo[channel],replay_audio.generation[channel],replay_audio.mixIndex(),address,value);++replay_audio.fifoCount[channel];
+}
+void replay_spu_sample(unsigned channel,unsigned type,s32 position,s16 sample){
+ if(!replay_audio.enabled)return;replay_audio.channel(channel);if(type>4)throw std::runtime_error("Invalid audio sample format");
+ replay_audio.record(replay_audio.samples[channel],replay_audio.generation[channel],replay_audio.mixIndex(),u32(position),(type<<16)|u16(sample));++replay_audio.sampleCount[channel];
+}
+void replay_spu_channel_output(unsigned channel,s32 value,unsigned pan){
+ if(!replay_audio.enabled||!replay_audio.captureOutput())return;replay_audio.channel(channel);
+ replay_audio.record(replay_audio.output[channel],replay_audio.generation[channel],replay_audio.mixIndex(),u32(value),pan);++replay_audio.outputCount[channel];
+}
+void replay_spu_mixed_output(s16 left,s16 right){
+ if(!replay_audio.enabled||!replay_audio.captureOutput())return;
+ replay_audio.record(replay_audio.mixed,replay_frame,replay_audio.mixIndex(),u16(left),u16(right));++replay_audio.mixedCount;
+}
 struct BlockTrace {
  bool enabled=false,active=false;unsigned cpu=0,startFrame=0;u32 begin=0,end=0;
  struct Write{u32 pc;unsigned addressReg,valueReg;};std::vector<Write> writes;
@@ -93,6 +127,30 @@ int main(int argc,char**argv) {
   replay_spu_output.open(std::string(argv[3])+"/spu_writes.csv");
   if(!replay_spu_output)return 8;
   replay_spu_output<<"ordinal,frame,arm7_timestamp,mix_calls,width,address,value\n";
+ }
+ if(const char* enabled=std::getenv("NDS_REPLAY_SPU_SAMPLES")){
+  if(std::string(enabled)!="1"||!replay_spu_output.is_open())return 8;
+  const std::string prefix=std::string(argv[3])+"/spu_";
+  replay_audio.starts.open(prefix+"starts.csv");replay_audio.mixed.open(prefix+"mixed.bin",std::ios::binary);
+  replay_audio.starts<<"channel,generation,frame,mix_calls,cnt,source,timer_reload,loop_bytes,length_bytes,interpolation\n";
+  for(unsigned n=0;n<16;++n){
+   replay_audio.fifo[n].open(prefix+"fifo_"+std::to_string(n)+".bin",std::ios::binary);
+   replay_audio.samples[n].open(prefix+"samples_"+std::to_string(n)+".bin",std::ios::binary);
+   replay_audio.output[n].open(prefix+"output_"+std::to_string(n)+".bin",std::ios::binary);
+   if(!replay_audio.fifo[n]||!replay_audio.samples[n]||!replay_audio.output[n])return 8;
+  }
+  if(!replay_audio.starts||!replay_audio.mixed)return 8;
+  if(const char* windows=std::getenv("NDS_REPLAY_SPU_OUTPUT_FRAMES")){
+   std::istringstream list(windows);std::string value;
+   while(std::getline(list,value,',')){
+    const auto colon=value.find(':');if(colon==std::string::npos||value.find_first_not_of("0123456789:")!=std::string::npos||value.find(':',colon+1)!=std::string::npos)return 8;
+    const auto first=std::stoull(value.substr(0,colon)),last=std::stoull(value.substr(colon+1));if(first>=last||last>frameCount)return 8;
+    for(auto old:replay_audio.outputFrames)if(first<old.second&&old.first<last)return 8;
+    replay_audio.outputFrames.emplace_back(unsigned(first),unsigned(last));
+   }
+   if(replay_audio.outputFrames.empty())return 8;
+  }
+  replay_audio.enabled=true;
  }
  nds->SetNDSCart(std::move(cart));nds->Reset();nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(nds4mister::replay::castlevania_integral_texture_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected));nds->GPU.GPU3D.SetSpriteRasterSpansEnabled(nds4mister::replay::portrait_sprite_raster_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected)||nds4mister::replay::ffta2_raster_only_profile(selected));nds->SetupDirectBoot(std::filesystem::path(argv[1]).filename().string());nds->SPU.SetOutputSampleRate(48000);nds->RTC.SetDateTime(2026,10,24,12,0,0);static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(nds->GetRenderer()).Rend3D.get())->SetFullFrameCompletion(true);nds->Start();
  const std::string out=argv[3];
@@ -196,5 +254,17 @@ int main(int argc,char**argv) {
   if(!replay_spu_mixes)throw std::runtime_error("Audio trace requested without observed mix callbacks; use the instrumented SPU object");
   replay_spu_output.flush();if(!replay_spu_output)throw std::runtime_error("Audio trace write failed");
   std::ofstream summary(out+"/spu_trace_summary.csv");summary<<"writes,mix_calls\n"<<replay_spu_writes<<','<<replay_spu_mixes<<'\n';
+ }
+ if(replay_audio.enabled){
+  auto flush=[](std::ofstream& stream){stream.flush();if(!stream)throw std::runtime_error("Audio sample trace write failed");};
+  flush(replay_audio.starts);flush(replay_audio.mixed);
+  std::ofstream summary(out+"/spu_sample_summary.csv");summary<<"channel,starts,fifo_words,decoded_samples,output_samples\n";
+  u64 starts=0;for(unsigned n=0;n<16;++n){
+   flush(replay_audio.fifo[n]);flush(replay_audio.samples[n]);flush(replay_audio.output[n]);starts+=replay_audio.generation[n];
+   summary<<n<<','<<replay_audio.generation[n]<<','<<replay_audio.fifoCount[n]<<','<<replay_audio.sampleCount[n]<<','<<replay_audio.outputCount[n]<<'\n';
+  }
+  if(!starts)throw std::runtime_error("No observed audio starts; verify sample instrumentation and replay coverage");
+  std::ofstream windows(out+"/spu_output_windows.csv");windows<<"first_frame,last_frame_exclusive\n";for(auto range:replay_audio.outputFrames)windows<<range.first<<','<<range.second<<'\n';
+  std::ofstream mixed(out+"/spu_mixed_summary.csv");mixed<<"records\n"<<replay_audio.mixedCount<<'\n';
  }
 }

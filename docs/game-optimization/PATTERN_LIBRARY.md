@@ -123,6 +123,21 @@ remain. This is evidence for separating work equivalence from scheduling and
 sample-source equivalence. The next diagnostic should observe actual channel
 sample reads, not infer unchanged audio data from unchanged source addresses.
 
+That follow-up matched all 46,439,652 FIFO words and 371,300,720 paired decoded
+steps by channel/note/ordinal. It retained 37 unmatched tail steps across 15
+notes rather than silently aligning them away. The dominant waveform changes
+came from two notes starting one mix callback later. Matching source words can
+therefore coexist with a substantial pointwise waveform delta.
+
+The generic sample observer records values already read/decoded; extra emulated
+reads could change the behavior under investigation. Its comparator keeps
+channel-start generations, ordered payloads, timing and unmatched tails
+separate. The output explainer checks the existing non-interpolated SPU
+arithmetic against recorded samples and control writes. A write observed after
+callback k must not affect k retroactively. It explained every captured
+channel-output record in both runs, without approving mixed-audio differences.
+Always repeat golden-output stability after changing diagnostic instrumentation.
+
 ## Elapsed-time accounting is not removable debug work
 
 Detector: a hardware-timer read with overflow accounting, storage of a previous
