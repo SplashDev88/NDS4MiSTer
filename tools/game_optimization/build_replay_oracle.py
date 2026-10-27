@@ -8,11 +8,14 @@ import argparse
 from pathlib import Path
 import shlex
 import subprocess
+from instrument_spu_trace import instrument as instrument_spu
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--build', required=True, type=Path)
 p.add_argument('--out', required=True, type=Path)
 p.add_argument('--ninja', default='ninja')
+p.add_argument('--trace-spu-writes', action='store_true',
+               help='Include optional private audio-register/mix-boundary observation')
 args = p.parse_args()
 source = Path(__file__).resolve().parents[2]
 build, out = args.build.resolve(), args.out.resolve()
@@ -30,10 +33,15 @@ void ARM::TraceInstructionEntry()
 (out / 'ARM.oracle.cpp').write_text(arm)
 commands = subprocess.check_output(
     [args.ninja, '-C', str(build), '-t', 'commands', 'nds_layer_capture'], text=True).splitlines()
-for original, replacement, obj in [
+objects = [
     ('/ARM.cpp', out / 'ARM.oracle.cpp', 'ARM.oracle.o'),
     ('/src/replay/LayerCapture.cpp', source / 'tools/game_optimization/replay_oracle.cpp', 'oracle.o'),
-]:
+]
+if args.trace_spu_writes:
+    (out / 'SPU.oracle.cpp').write_text(instrument_spu(
+        (source / 'third_party/melonDS/src/SPU.cpp').read_text()))
+    objects.append(('/SPU.cpp', out / 'SPU.oracle.cpp', 'SPU.oracle.o'))
+for original, replacement, obj in objects:
     command = next(line for line in commands if ' -c ' in line and line.rstrip('\'"').endswith(original))
     command = shlex.split(command)
     command[command.index('-o') + 1] = str(out / obj)
@@ -53,5 +61,7 @@ link = [word for word in link if word not in [
     'CMakeFiles/nds_layer_capture.dir/src/melonds/MelonDsBackend.cpp.o']]
 link[link.index('-o') + 1] = str(out / 'replay_oracle')
 link[1:1] = [str(out / 'oracle.o'), str(out / 'ARM.oracle.o')]
+if args.trace_spu_writes:
+    link.insert(1, str(out / 'SPU.oracle.o'))
 subprocess.run(link, cwd=build, check=True)
 print(out / 'replay_oracle')

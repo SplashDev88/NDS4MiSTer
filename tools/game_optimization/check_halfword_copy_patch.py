@@ -27,7 +27,7 @@ REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
         UC_ARM_REG_R12, UC_ARM_REG_SP, UC_ARM_REG_LR]
 
 
-def run(code, entry, memory, values, cpsr):
+def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=()):
     vm = Uc(UC_ARCH_ARM, UC_MODE_ARM)
     page = entry & ~4095
     assert entry + len(code) < page + 0xF00
@@ -35,6 +35,10 @@ def run(code, entry, memory, values, cpsr):
     vm.mem_write(entry, code)
     vm.mem_map(0x03000000, 4096)
     vm.mem_write(0x03000000, memory)
+    for address, data in extra_memory:
+        assert address % 4096 == 0 and len(data) == 4096
+        vm.mem_map(address, 4096)
+        vm.mem_write(address, data)
     vm.reg_write(UC_ARM_REG_CPSR, cpsr)
     for reg, value in zip(REGS, values):
         vm.reg_write(reg, value)
@@ -44,7 +48,7 @@ def run(code, entry, memory, values, cpsr):
 
     def instruction(uc, address, size, user):
         nonlocal count, stopped
-        if address == (values[-1] & ~1):
+        if address == (stop if stop is not None else values[-1] & ~1):
             stopped = True
             uc.emu_stop()
         else:
@@ -64,6 +68,9 @@ def run(code, entry, memory, values, cpsr):
     result = dict(registers=[vm.reg_read(r) for r in REGS],
                   pc=vm.reg_read(UC_ARM_REG_PC), cpsr=vm.reg_read(UC_ARM_REG_CPSR),
                   memory=bytes(vm.mem_read(0x03000000, 4096)), accesses=accesses)
+    if extra_memory:
+        result['extra_memory'] = [(address, bytes(vm.mem_read(address, len(data))))
+                                  for address, data in extra_memory]
     return result, count
 
 

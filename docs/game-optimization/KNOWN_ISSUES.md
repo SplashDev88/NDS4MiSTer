@@ -36,3 +36,15 @@
 - FFTA2's cartridge polling loop transfers required data. Do not treat it as
   pure idle work. Its apparent ADPCM-like decoder is not proven redundant;
   source-content identity, callers and live output consumers need tracing.
+- FFTA2's vertex shift compaction fails the current bit-exact gate. Luso's
+  4,400 screen pairs match, but Fire has one changed bottom frame and library
+  has two. Library audio changes 233,754 stereo samples, with maximum signed-16
+  delta 3,203: the initial Luso maximum of 77 is not a global bound. Two RAM
+  words are live elapsed-time fields; other differences include existing
+  thread stacks and resumable ARM7 context. Do not normalize these away or
+  call the audio harmless. The user authorized timing investigation only;
+  the patch remains disabled with no native performance measurement.
+  Library tracing matches 3,286,148 completed block payloads/end states and
+  539,880 ordered sound-register writes, but 755 sound writes cross a different
+  mix-callback boundary. Sample-buffer contents and per-channel output are not
+  compared yet. Equal register commands do not prove equal audio input data.

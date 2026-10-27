@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <stdexcept>
+#include <set>
 namespace melonDS {
 bool replay_profile_active=false;
 unsigned replay_frame=0;
@@ -19,9 +20,40 @@ u64 replay_instructions[2]{};
 std::map<u32,std::pair<u64,u32>> replay_samples[2];
 std::vector<u32> replay_watches;
 std::ofstream replay_watch;
+NDS* replay_machine=nullptr;
+std::ofstream replay_spu_output;
+u64 replay_spu_writes=0,replay_spu_mixes=0;
+void replay_spu_mix(){if(replay_spu_output.is_open())++replay_spu_mixes;}
+void replay_spu_write(unsigned width,u32 address,u32 value,u64 timestamp){
+ if(!replay_spu_output.is_open())return;
+ replay_spu_output<<replay_spu_writes++<<','<<replay_frame<<','<<timestamp<<','<<replay_spu_mixes<<','<<width<<','<<std::hex<<address<<','<<value<<std::dec<<'\n';
+}
+struct BlockTrace {
+ bool enabled=false,active=false;unsigned cpu=0,startFrame=0;u32 begin=0,end=0;
+ struct Write{u32 pc;unsigned addressReg,valueReg;};std::vector<Write> writes;
+ u64 hash=0,count=0,completed=0,restarted=0,unscopedWrites=0;
+ std::ofstream output;
+ void Observe(unsigned which,u32 pc,u32 opcode,const u32* r){
+  if(!enabled||which!=cpu)return;
+  if(pc==begin){if(active)++restarted;active=true;startFrame=replay_frame;hash=14695981039346656037ull;count=0;}
+  for(const auto& site:writes)if(pc==site.pc){
+   const u32 cpsr=cpu==0?replay_machine->ARM9.CPSR:replay_machine->ARM7.CPSR;
+   if((cpsr&0x20)||opcode!=(0xe5800000u|(site.addressReg<<16)|(site.valueReg<<12)))throw std::runtime_error("Block trace requires an unconditional ARM STR [Rn] at the declared site");
+   if(!active){++unscopedWrites;continue;}
+   for(u32 word:{r[site.addressReg],r[site.valueReg]})for(unsigned shift=0;shift<32;shift+=8)hash=(hash^u8(word>>shift))*1099511628211ull;
+   ++count;
+  }
+  if(pc==end&&active){
+   output<<completed++<<','<<startFrame<<','<<replay_frame<<','<<count<<','<<hash;
+   for(unsigned n=0;n<16;++n)output<<','<<std::hex<<r[n];
+   output<<','<<(cpu==0?replay_machine->ARM9.CPSR:replay_machine->ARM7.CPSR)<<std::dec<<'\n';active=false;
+  }
+ }
+} replay_block;
 void replay_instruction(unsigned cpu,u32 pc,u32 op,const u32* r){
  if((++replay_instructions[cpu]&255)==0){auto& v=replay_samples[cpu][pc];++v.first;v.second=op;}
  if(cpu==0)for(auto w:replay_watches)if(pc==w){replay_watch<<replay_frame<<','<<std::hex<<pc;for(int i=0;i<16;++i)replay_watch<<','<<r[i];replay_watch<<std::dec<<'\n';}
+ replay_block.Observe(cpu,pc,op,r);
 }
 }
 using namespace melonDS;
@@ -55,6 +87,13 @@ int main(int argc,char**argv) {
  std::ifstream s(argv[2],std::ios::binary|std::ios::ate);if(!s)return 6;
  std::vector<u8> save(s.tellg());s.seekg(0);s.read((char*)save.data(),save.size());cart->SetSaveMemory(save.data(),save.size());
  NDSArgs args;args.JIT=std::nullopt;auto nds=std::make_unique<NDS>(std::move(args),nullptr);
+ replay_machine=nds.get();
+ if(const char* enabled=std::getenv("NDS_REPLAY_SPU_WRITES")){
+  if(std::string(enabled)!="1")return 8;
+  replay_spu_output.open(std::string(argv[3])+"/spu_writes.csv");
+  if(!replay_spu_output)return 8;
+  replay_spu_output<<"ordinal,frame,arm7_timestamp,mix_calls,width,address,value\n";
+ }
  nds->SetNDSCart(std::move(cart));nds->Reset();nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(nds4mister::replay::castlevania_integral_texture_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected));nds->GPU.GPU3D.SetSpriteRasterSpansEnabled(nds4mister::replay::portrait_sprite_raster_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected)||nds4mister::replay::ffta2_raster_only_profile(selected));nds->SetupDirectBoot(std::filesystem::path(argv[1]).filename().string());nds->SPU.SetOutputSampleRate(48000);nds->RTC.SetDateTime(2026,10,24,12,0,0);static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(nds->GetRenderer()).Rend3D.get())->SetFullFrameCompletion(true);nds->Start();
  const std::string out=argv[3];
  std::ofstream log(out+"/frames.csv"),thumbs(out+"/thumbs.rgb",std::ios::binary),audio(out+"/audio.s16le",std::ios::binary);
@@ -64,6 +103,31 @@ int main(int argc,char**argv) {
  std::ofstream state(out+"/state.csv");state<<"frame,arm9_insn,arm7_insn,mainram,itcm,dtcm,arm7wram,sharedwram,save\n";
  struct CodeComparison{u32 address;std::vector<u8> original,replacement;};std::vector<CodeComparison> codeComparisons;
  std::ofstream normalized;
+ if(const char* path=std::getenv("NDS_REPLAY_BLOCK_TRACE")){
+  std::ifstream spec(path);std::string line;if(!std::getline(spec,line))return 8;
+  std::istringstream header(line);std::string extra;
+  if(!(header>>replay_block.cpu>>std::hex>>replay_block.begin>>replay_block.end)||(header>>extra)||replay_block.cpu>1||replay_block.begin==replay_block.end)return 8;
+  while(std::getline(spec,line)){
+   std::istringstream row(line);BlockTrace::Write site{};
+   if(!(row>>std::hex>>site.pc>>std::dec>>site.addressReg>>site.valueReg)||(row>>extra)||site.addressReg>=15||site.valueReg>=15)return 8;
+   for(const auto& old:replay_block.writes)if(old.pc==site.pc)return 8;
+   replay_block.writes.push_back(site);
+  }
+  if(replay_block.writes.empty()||replay_block.writes.size()>16)return 8;
+  replay_block.enabled=true;replay_block.output.open(out+"/block_trace.csv");
+  replay_block.output<<"ordinal,start_frame,end_frame,writes,hash";for(unsigned n=0;n<16;++n)replay_block.output<<",r"<<n;replay_block.output<<",cpsr\n";
+ }
+ std::set<unsigned> checkpoints;
+ if(const char* requested=std::getenv("NDS_REPLAY_CHECKPOINT_FRAMES")){
+  std::istringstream list(requested);std::string value;
+  while(std::getline(list,value,',')){
+   if(value.empty()||value.find_first_not_of("0123456789")!=std::string::npos)return 8;
+   size_t consumed=0;const auto frame=std::stoull(value,&consumed);
+   if(consumed!=value.size()||frame>=frameCount)return 8;
+   checkpoints.insert(unsigned(frame));
+  }
+  if(checkpoints.empty())return 8;
+ }
  if(const char* path=std::getenv("NDS_REPLAY_CODE_COMPARISON")){
   std::ifstream specs(path);if(!specs)return 8;std::string line;
   auto bytes=[](const std::string& value){std::vector<u8> result;if(value.size()%2||value.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos)throw std::runtime_error("Invalid code hex");for(size_t i=0;i<value.size();i+=2)result.push_back(u8(std::stoul(value.substr(i,2),nullptr,16)));return result;};
@@ -84,6 +148,16 @@ int main(int argc,char**argv) {
   replay_instructions[0]=replay_instructions[1]=0;
   u32 keys=0xfff;for(auto i:inputs)if(frame>=i.first&&frame<i.last)keys&=~i.mask;nds->SetKeyMask(keys);
   nds->RunFrame();
+  if(checkpoints.count(frame)){
+   const auto prefix=out+"/checkpoint_"+std::to_string(frame)+"_";
+   auto dump=[&](const char* name,const u8* data,size_t bytes){std::ofstream file(prefix+name+".bin",std::ios::binary);file.write((const char*)data,bytes);if(!file)throw std::runtime_error("Checkpoint write failed");};
+   dump("mainram",nds->MainRAM,0x400000);dump("itcm",nds->ARM9.ITCM,0x8000);
+   dump("dtcm",nds->ARM9.DTCM,0x4000);dump("arm7wram",nds->ARM7WRAM,0x10000);dump("sharedwram",nds->SharedWRAM,0x8000);
+   std::ofstream cpu(prefix+"cpus.csv");cpu<<"cpu";for(int r=0;r<16;++r)cpu<<",r"<<r;cpu<<",cpsr\n";
+   cpu<<"arm9";for(int r=0;r<16;++r)cpu<<','<<std::hex<<nds->ARM9.R[r];cpu<<','<<nds->ARM9.CPSR<<'\n';
+   cpu<<"arm7";for(int r=0;r<16;++r)cpu<<','<<std::hex<<nds->ARM7.R[r];cpu<<','<<nds->ARM7.CPSR<<'\n';
+   std::ofstream mapping(prefix+"tcm.csv");mapping<<"dtcm_base,dtcm_mask,itcm_size\n"<<std::hex<<nds->ARM9.DTCMBase<<','<<nds->ARM9.DTCMMask<<','<<nds->ARM9.ITCMSize<<'\n';
+  }
   if(frame==2000||frame==2600){std::ofstream ram(out+"/mainram.bin",std::ios::binary);ram.write((char*)nds->MainRAM,0x400000);std::ofstream tcm(out+"/itcm.bin",std::ios::binary);tcm.write((char*)nds->ARM9.ITCM,0x8000);}
   std::vector<u8> canonical(nds->MainRAM,nds->MainRAM+0x400000);
 
@@ -99,6 +173,11 @@ int main(int argc,char**argv) {
    normalized<<frame<<','<<hash(canonical.data(),canonical.size())<<','<<originalCount<<','<<replacementCount<<'\n';
   }
   void*top=nullptr;void*bottom=nullptr;if(!nds->GPU.GetFramebuffers(&top,&bottom))return 7;
+  if(checkpoints.count(frame)){
+   std::ofstream pixels(out+"/checkpoint_"+std::to_string(frame)+"_screens.rgba",std::ios::binary);
+   pixels.write((const char*)top,256*192*4);pixels.write((const char*)bottom,256*192*4);
+   if(!pixels)throw std::runtime_error("Checkpoint framebuffer write failed");
+  }
   uint64_t hashes[2]={14695981039346656037ull,14695981039346656037ull};
   for(int screen=0;screen<2;++screen){auto*pix=(u32*)(screen?bottom:top);
    for(unsigned i=0;i<256*192;++i)hashes[screen]=(hashes[screen]^pix[i])*1099511628211ull;
@@ -110,4 +189,12 @@ int main(int argc,char**argv) {
  }
  for(int cpu=0;cpu<2;++cpu){std::ofstream prof(out+"/pc"+std::to_string(cpu+1)+".csv");prof<<"pc,count,opcode\n";for(auto [pc,v]:replay_samples[cpu])prof<<std::hex<<pc<<std::dec<<","<<v.first<<","<<std::hex<<v.second<<"\n";}
  std::ofstream saveout(out+"/save.bin",std::ios::binary);saveout.write((char*)nds->GetNDSSave(),nds->GetNDSSaveLength());
+ if(replay_block.enabled){
+  std::ofstream summary(out+"/block_trace_summary.csv");summary<<"completed,restarted,unscoped_writes,unfinished\n"<<replay_block.completed<<','<<replay_block.restarted<<','<<replay_block.unscopedWrites<<','<<replay_block.active<<'\n';
+ }
+ if(replay_spu_output.is_open()){
+  if(!replay_spu_mixes)throw std::runtime_error("Audio trace requested without observed mix callbacks; use the instrumented SPU object");
+  replay_spu_output.flush();if(!replay_spu_output)throw std::runtime_error("Audio trace write failed");
+  std::ofstream summary(out+"/spu_trace_summary.csv");summary<<"writes,mix_calls\n"<<replay_spu_writes<<','<<replay_spu_mixes<<'\n';
+ }
 }

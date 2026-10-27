@@ -1,7 +1,8 @@
 # FFTA2 guest-code optimization — 27 October 2026
 
-Status: the first guest patch is **rejected** after the full Luso replay.
-It remains disabled. No new guest patch is installed or release-qualified;
+Status: the copy patch is rejected. The vertex patch failed the current
+bit-exact budget and is under **user-authorized timing investigation**.
+Both remain disabled. No new guest patch is installed or release-qualified;
 accepted FFTA2 Beta2 remains unchanged. Platinum is queued, not active.
 
 ## Scope and existing mechanisms
@@ -106,11 +107,147 @@ Six positive/negative scanner checks pass. The ARM7 occurrence has no samples
 in the Luso window; shared SDK provenance is not established. Its coverage is
 explicitly limited to ARM main/autoload sections, not overlays or Thumb.
 
+## Second candidate: vertex bitfield packing
+
+`vertex-pack-redundant-shifts` compacts five ARM shifts into two. Both compute
+`((ip >> 8) & 0xffff) << 16` without changing flags. The 116-byte in-place
+region starts at `0208cd44`; its entry jump and loop tail are relocated, while
+the back edge retains its original target. Three padding NOPs execute only on
+loop exit. Every load, texture-coordinate write and vertex write is retained.
+No index multiply, geometry command, scratch memory or HPS service is removed.
+
+The Luso reference trace observes 1,799 function entries from one caller and
+328,653 packing-loop entries. In that window, `r5` is always `04000488` and
+`r4` is `0400048c`, with stack arrays at `sp+4c` and `sp+6c`. All observed inputs
+are aligned. Static ARM branch screening finds only the two internal loop
+branches entering the patch region. This does not prove other routes or
+indirect-entry safety.
+
+The existing Unicorn runner, extended for a bounded block endpoint and extra
+data pages, passes 1,536 cases: all initial NZCV combinations, boundary texture
+words, randomized inputs and all mapped data. It preserves 32 ordered data
+accesses and reduces each four-vertex block from 112 to 103 instructions.
+Its MMIO pages are ordinary-memory models, not hardware-side-effect proof.
+The prior 1,276 copy cases still pass after the runner extension.
+
+| Luso comparison | Original | Vertex candidate | Decision |
+|---|---:|---:|---|
+| ARM9 instructions, frames 2600–4399 | 391,329,973 | 388,375,792 | 0.755% fewer; not native speed |
+| Top and bottom frames differing | 0 / 4,400 | 0 / 4,400 | Both screens exact |
+| Final save | Reference | Identical | Exact |
+| Frame-2600 RAM differing outside patch code | 0 words | 2 words | Fails current budget |
+| Audio differing stereo samples | 0 / 3,530,229 | 1,194 / 3,530,229 | Maximum signed-16 delta 77; fails budget |
+| Native pacing, HPS load, gameplay gain | Existing evidence | Not run | No qualification or new beta |
+
+The changed checkpoint words at `02132e8c` and `02132e94` belong to live
+elapsed-time accounting. Disassembly shows reads from the timer at `04000100`,
+storage of the previous tick, accumulation of the delta, and updates to a
+60/60/1000-limited counter. These are not patch scratch or proven dead/debug
+fields. DTCM differs in 2,599 frames, ARM7 WRAM in 54, and main RAM in 2,959;
+the causes of those transient differences and the audio delta are not fully
+classified. No additional RAM masks or benign-audio assumption are allowed.
+
+`GUEST_VERTEX_REJECTION_ANALYSIS_V1.json`, `GUEST_VERTEX_TIMING_REVIEW_V1.json`
+and `GUEST_VERTEX_BEFORE_AFTER_V1.csv` retain the detailed comparisons in private
+evidence. `GUEST_VERTEX_INPUT_MANIFEST_V1.json` pins the exact tested input.
+The user authorized investigation of bounded timing differences. This is not
+release approval: the patch stays disabled until a complete validation result
+meets an explicitly approved budget. The Fire replay adds one bottom-screen
+mismatch in 9,000 frames: 51 pixels at y=10, x=106–156 differ only in blue by
+4/255. Full-resolution frames 7639, 7641 and 8999 match exactly. This is a
+measured visual difference, not an approved tolerance.
+
+The broader library route exposes larger audio differences. The initial
+Luso/Fire bounds cannot serve as a global allowance. Every top-screen frame
+and every save hash matches across all three routes. These are the selected
+profiling-window instruction counts; audio and screen comparisons cover each
+whole replay:
+
+| Route | ARM9 instructions before → after | Reduction | Bottom frames different | Different stereo samples | Maximum signed-16 delta |
+|---|---:|---:|---:|---:|---:|
+| Luso, 4,400 frames | 391,329,973 → 388,375,792 | 0.755% | 0 | 1,194 / 3,530,229 | 77 |
+| Fire, 9,000 frames | 543,588,049 → 540,131,288 | 0.636% | 1 | 257 / 7,220,926 | 53 |
+| Library, 30,000 frames | 750,160,463 → 742,351,141 | 1.041% | 2 | 233,754 / 24,069,760 | 3,203 |
+
+Library audio differs between approximately 168.504 and 392.574 seconds, with
+overall RMS delta 13.771 in signed-16 units. The largest delta occurs near
+201.707 seconds. A local whole-mix sample-shift comparison does not explain it
+completely. This is neither an audibility assessment nor proof of benign
+timing. Full-resolution captures show 231 changed pixels on bottom row 5 at
+frame 23878, and 135 on row 1 at frame 23885. Maximum channel deltas are 9/255,
+with unchanged alpha. Their immediately adjacent captured frames and frame
+29999 match exactly. Inspection places both differences during the bright
+library transition. This is a measured scanline difference, not proof of its
+cause or an accepted visual tolerance. Native
+cycles, frame pacing, HPS load and gameplay speed remain unmeasured for this
+candidate. The private table is `GUEST_VERTEX_ALL_SCENES_BEFORE_AFTER_V2.csv`.
+
+Named checkpoint captures show why raw frame snapshots need interpretation:
+at frame 1453, ARM9 is executing different rendering functions in the two
+runs; at frame 2600, it is at different points in the same vertex loop while
+DTCM is identical. At 1462, current ARM7 registers match but ten WRAM words
+differ in the saved-context layout at `038074d4`. Save/restore routines
+`037fc604`/`037fc638` establish that these are resumable CPU state. The DTCM
+word at `027e105c` belongs to an existing 2 KiB thread stack whose descriptor
+is `02125f10`. These are live memory roles; neither classification authorizes
+masking or proves that every observed difference is harmless.
+
+The declarative completed-block observer uses the existing instruction
+callback. Across 549,874 paired Luso blocks, every ordered graphics-write
+hash/count and every final register/CPSR matches. There are 1,477 blocks whose
+start or finish falls in a different video frame. The replay cutoff leaves
+one unfinished control block and one extra completed candidate block. This
+supports equivalent work within the paired block, with different scheduling;
+it does not establish complete game-state or audio equivalence. The trace
+starts at boot, so its instruction totals must not be substituted for the
+later profiling-window measurements above.
+
+The complete library trace pairs all 3,286,148 completed blocks, with no
+unpaired tail, restart or unscoped write. All ordered write hashes/counts,
+end registers and CPSR match. Some boundaries move one video frame earlier
+(410 starts, 381 ends). This strengthens the block-equivalence finding across
+the longer route; writes outside this block are not covered by it.
+
+The private SPU observer records all 539,880 sound-register writes in the
+library route. Their width, address, value and order match exactly. Timestamps
+differ for 54,907 writes, bounded in this replay by ±1,323 raw ARM7 clock
+ticks. Of these, 755 writes cross a different mix-callback boundary, by up to
+two callbacks in either direction. One write moves to the previous video
+frame. Thus the traced sound-command payload is unchanged, while scheduling
+differs. The observer does not trace source sample-buffer contents or output
+of individual channels, so it cannot establish that timing accounts for every
+mixed-audio difference. Do not turn these observed bounds into global limits.
+
+The diagnostic control reproduces all 30,000 original frames, RAM hashes,
+audio and saves. The diagnostic candidate reproduces the earlier candidate
+outputs exactly. This checks that the added observers did not create the
+reported differences. Evidence is retained in
+`GUEST_VERTEX_DIAGNOSTIC_STABILITY_V4.json`,
+`GUEST_VERTEX_BLOCK_COMPARISON_LIBRARY_V4.json`,
+`GUEST_VERTEX_SPU_COMPARISON_LIBRARY_V4.json` and
+`GUEST_VERTEX_LIBRARY_PIXEL_REVIEW_V4.json`. Four lossless audio review clips
+are recorded by `GUEST_VERTEX_LIBRARY_AUDIO_CLIPS_V1.json`; no listening-based
+audibility judgment has been made.
+
+The generic scanner now detects the five-shift structure with register
+renaming. It finds six ARM9 occurrences, including the profiled hot loop.
+No shared SDK provenance or automatic safety is inferred. Eleven positive and
+negative scanner checks pass.
+
 ## Next validation and limits
 
-Investigate the vertex function containing `0208ccf4–0208cdb7`, especially its
-repeated shifts and index multiplies. Trace callers and register/memory ranges
-before changing its arithmetic. Retain graphics submissions and access order.
+For the current timing investigation, compare the actual sample words fetched
+by each sound channel and its output sequence, then trace display-effect writes
+around the three changed scanlines. These should distinguish altered source
+data from otherwise identical operations that cross a mix/scanline boundary.
+Keep the current acceptance budget and disabled manifest unchanged. A proposal
+to accept timing differences requires a complete, explicitly reviewed result;
+this milestone does not approve such a proposal. The 0.636–1.041% instruction
+reduction warrants a high bar for accepting risk or adding complexity.
+
+Trace the ADPCM-like decoder's callers, source contents and output consumers,
+and classify remaining ARM7 hotspots. More vertex arithmetic remains a lead,
+but do not repeat rejected versions or reinterpret the budget silently.
 For any later candidate, complete replay comparison precedes cold boot,
 in-game save/reload, reset, overlay transitions, an unrelated scene and paired
 native measurement. Ask before accepting non-bit-exactness.
@@ -123,10 +260,9 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Simplify repeated vertex packing/shifts and loop indexing while preserving
-   every GX write and required register/stack result; investigate before caching
-   or suppressing submissions.
-2. Establish callers, source-content recurrence and output dependencies of the
-   ADPCM-like decoder, then consider an exact arithmetic or resident-data path.
+1. Establish callers, source-content recurrence and output dependencies of the
+   ADPCM-like decoder before proposing exact arithmetic or resident-data reuse.
+2. Classify ARM7's remaining sampled audio/service loops and their cross-CPU
+   dependencies; a CPU address window alone is not a function identity.
 3. Trace repeated cartridge sectors and filesystem lookups before proposing
    reuse; preserve data-ready, completion, destination and invalidation behavior.

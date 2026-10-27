@@ -58,10 +58,49 @@ those declared instruction bytes in a local comparison copy. Raw hashes and
 game memory are untouched. This does not grant permission to mask other RAM
 differences or accept a non-bit-exact candidate.
 
+`NDS_REPLAY_CHECKPOINT_FRAMES=1441,2600` adds uniquely named full main-RAM,
+ITCM, DTCM, ARM7/shared-WRAM dumps, current CPU registers/CPSR, TCM mappings
+and both full-resolution screens. These are raw snapshots at video-frame
+boundaries; a faster routine may be at a different instruction in that snapshot.
+Do not silently mask live data or equate a video frame with a game-operation
+boundary.
+
+`NDS_REPLAY_BLOCK_TRACE` names a declarative file for one observed block. Its
+first row is `cpu_decimal begin_pc_hex end_pc_hex`; subsequent rows are
+`store_pc_hex address_register_decimal value_register_decimal`. At each site,
+the observer requires the actual instruction to be an unconditional ARM
+`STR value,[address]` with no offset or writeback. It hashes ordered 32-bit
+address/value pairs, then records the count, end registers and CPSR for each
+completed block in `block_trace.csv`. The summary reports restarted, unfinished
+and unscoped observations. It observes existing instruction callbacks and never
+writes game memory. This is not a general MMIO/memory tracer. Use profile start
+zero for complete observation from boot; those instruction totals cannot be
+compared directly with totals from a later profiling window.
+
+Build with `--trace-spu-writes` and set `NDS_REPLAY_SPU_WRITES=1` to observe
+audio-register writes. The builder instruments a private `SPU.cpp` copy at the
+three write handlers and the mix callback. `spu_writes.csv` records ordered
+width/address/value payloads, raw ARM7 timestamps and mix-call ordinals. It
+does not change emulated time or registers. The trace includes initialization
+writes before frame zero; frame zero alone is not a timestamp. This observes
+control writes, not sample-buffer contents or channel output. An unpatched
+control must reproduce the original audio, screens, RAM and saves before the
+new trace is used to explain a candidate.
+
+`compare_event_traces.py CONTROL_CSV CANDIDATE_CSV --payload COLUMN ...
+--timing COLUMN ... --output REPORT` compares events in ordinal order while
+reporting timing differences separately. It rejects malformed/discontinuous
+traces, counts unmatched tails, and never aligns away a changed event. Matching
+event payloads do not approve output differences or establish native timing.
+
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic
-`scan_guest_patterns.py ROM --output REPORT` detects the branch-heavy copy
-structure in ARM main/autoload sections; optional `--arm9-profile` and
+`check_guest_block_patch.py MANIFEST FIXTURE --output REPORT` reuses that
+runner for a bounded ARM block and declarative register/data cases. Mapped
+MMIO pages model ordinary memory only, not hardware side effects.
+
+`scan_guest_patterns.py ROM --output REPORT` detects branch-heavy copy and
+redundant bitfield shifts in ARM main/autoload sections; optional `--arm9-profile` and
 `--arm7-profile` CSVs add execution sample counts. It does not scan Thumb or
 overlays and cannot establish SDK identity, timing safety or native gain.
 

@@ -80,3 +80,54 @@ polls ROMCTRL and consumes words from the cartridge data register. A halt or
 NOP shortcut would remove required work unless a separately proven existing
 mechanism performs the same transfer. This detector should prevent unsafe
 idle-loop suggestions in other games.
+
+## Redundant bitfield shift chains
+
+Detector: flag-preserving ARM `LSL d,s,8; ASR d,d,16; LSL d,d,16;
+LSR d,d,16; LSL d,d,16`. The final word equals
+`((s >> 8) & 0xffff) << 16`, so `LSR d,s,8; LSL d,d,16` preserves that
+result. `scan_guest_patterns.py` recognizes the structure with register
+renaming and rejects flag-setting variants and SP/PC operands. It found six
+ARM9 occurrences in the first title; this is not proof of SDK provenance.
+
+Compacting a surrounding block requires every incoming branch, internal back
+edge, literal and live register to remain correct. In the FFTA2 experiment,
+the entry jump targeted the original loop-test location and had to move with
+the tail. Retain all memory accesses and verify complete block state, not
+only the simplified expression. `check_guest_block_patch.py` reuses the
+existing Unicorn runner with a declarative private fixture.
+
+The first patch preserved 32 accesses per four-vertex block and passed 1,536
+synthetic cases, reducing 112 instructions to 103. All 4,400 replay screen
+pairs and save data matched, but audio and RAM did not; the patch is rejected
+under the bit-exact budget. Smaller arithmetic changes still need full-game
+timing validation. Native gain is unknown.
+
+The longer routes subsequently exposed three changed bottom-screen frames
+and larger audio differences. A small observed delta in one scene is not a
+whole-game bound. Register/payload traces should compare complete operations
+separately from their timestamps: the first Luso trace matched 549,874 paired
+blocks, while 1,477 crossed different frame boundaries. Track unfinished and
+unpaired tails explicitly; never truncate them silently to declare equality.
+
+The existing replay oracle now supports declarative completed-block tracing
+and optional private SPU-register tracing. `compare_event_traces.py` compares
+ordered payloads without aligning away changed or missing commands. Matching
+control writes alone does not establish equality of sample-buffer contents,
+interrupt scheduling, mixed audio or native output.
+
+In the longer FFTA2 route, all 3,286,148 block payloads/end states and 539,880
+SPU-register payloads match. Yet 755 sound writes cross different mix-call
+boundaries, mixed audio differs, and two single-scanline image differences
+remain. This is evidence for separating work equivalence from scheduling and
+sample-source equivalence. The next diagnostic should observe actual channel
+sample reads, not infer unchanged audio data from unchanged source addresses.
+
+## Elapsed-time accounting is not removable debug work
+
+Detector: a hardware-timer read with overflow accounting, storage of a previous
+tick, accumulation of the delta and downstream counter updates. Follow the
+consumers before labeling a changing RAM word harmless. The observed FFTA2
+fields feed a 60/60/1000-limited counter. They are live accounting data, not
+patch scratch. Equal images/saves do not authorize masking them or accepting
+unclassified audio differences.

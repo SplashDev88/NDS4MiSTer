@@ -62,6 +62,95 @@
         "input_manifest": "GUEST_COPY16_REPLAY_INPUT_MANIFEST.json",
         "input_manifest_sha256": "3b5f5258f5d42fc0312936780f50132aec83a71e166c3086130cc6e7af90668e"
       }
+    },
+    {
+      "id": "vertex-pack-redundant-shifts",
+      "pattern": "redundant-bitfield-shift-chain",
+      "cpu": "arm9",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x208cd44",
+      "mode": "arm",
+      "expect": "0030a0e3180000ea0c00a0e3930001e0010098e7011088e00004a0e14008a0e10028a0e104c091e50600a0e3930001e00c04a0e14008a0e10008a0e12008a0e10008a0e1220880e1000085e5b10097e1011087e0b210d1e1ba23d6e1013083e2010880e1000084e5002084e5040053e3e4ffffba",
+      "replace": "0030a0e3150000ea0c00a0e3930001e0010098e7011088e00004a0e14008a0e10028a0e104c091e50600a0e3930001e02c04a0e10008a0e1220880e1000085e5b10097e1011087e0b210d1e1ba23d6e1013083e2010880e1000084e5002084e5040053e3e7ffffba0000a0e10000a0e10000a0e1",
+      "hook": null,
+      "enabled": false,
+      "status": "disabled_timing_investigation_current_budget_failed",
+      "scratch_bytes": 0,
+      "overlay": null,
+      "validated": {
+        "fb": "All43400 top frames exact; bottom differs in0/4400 Luso,1/9000 Fire,2/30000 library",
+        "ram": "Failed strict gate: live elapsed-time accounting, existing thread stacks/context and other frame-boundary state need semantic validation",
+        "audio": "Failed: differing stereo samples Luso1194,Fire257,library233754; maximum signed16 deltas77,53,3203 respectively",
+        "save": "All43400 per-frame save hashes and all3 final saves bit-exact",
+        "native": "Not run; no qualified guest-patch speedup"
+      },
+      "gain": {
+        "native_cycles": null,
+        "native_game_progress": null,
+        "software_arm9_instructions_2600_4399": {
+          "before": 391329973,
+          "after": 388375792,
+          "reduction_percent": 0.7549079303465489,
+          "qualifies": false
+        },
+        "software_arm9_instructions_6500_8999": {
+          "before": 543588049,
+          "after": 540131288,
+          "reduction_percent": 0.6359155625954536,
+          "qualifies": false
+        },
+        "software_arm9_instructions_23300_29999": {
+          "before": 750160463,
+          "after": 742351141,
+          "reduction_percent": 1.0410202063661678,
+          "qualifies": false
+        }
+      },
+      "notes": "Compact five shifts to two: both compute ((ip >> 8) & 0xffff) << 16. Preserve flags and every memory access; relocate the entry jump to the loop test and the local tail, retaining the back-edge target. Three NOPs execute once on loop exit. No multiply, graphics command, scratch or game logic is removed.",
+      "synthetic_validation": {
+        "cases": 1536,
+        "receipt": "GUEST_VERTEX_SYNTHETIC_V1.json",
+        "before_instructions": 112,
+        "after_instructions": 103,
+        "data_accesses": 32
+      },
+      "replay_rejection": {
+        "receipt": "GUEST_VERTEX_REJECTION_ANALYSIS_V1.json",
+        "receipt_sha256": "2c9f4bd6e9b822f94e72ff129ac885d176be63369af92289cba00e2a3473dd62",
+        "input_manifest": "GUEST_VERTEX_INPUT_MANIFEST_V1.json",
+        "input_manifest_sha256": "4140545031db7ab873d9f087dee06af9056daf05ef5e618f39eb3e4adf0b2bcb"
+      },
+      "timing_review": {
+        "user_direction": "Investigate bounded timing differences",
+        "acceptance_budget_changed": false,
+        "accepted": false,
+        "report": "GUEST_VERTEX_ALL_SCENES_BEFORE_AFTER_V2.csv",
+        "report_sha256": "eb755a33d1eefc7aec6e19731131d247515b2db5f5cbf47ffd0f4cd9d88372a5",
+        "Luso_completed_block_pairs": 549874,
+        "Luso_paired_block_payload_or_register_mismatches": 0,
+        "unpaired_cutoff_tail": true,
+        "limits": "Observed replay bounds, not global tolerances. Actual channel sample-buffer reads, per-channel output and changed scanline cause remain unqualified. Budget unchanged; no non-bit-exact release approval.",
+        "library_completed_block_pairs": 3286148,
+        "library_paired_block_payload_or_register_mismatches": 0,
+        "library_block_unpaired_tail": false,
+        "library_sound_register_writes": 539880,
+        "library_sound_register_payload_mismatches": 0,
+        "library_sound_write_timestamp_delta_ticks": [
+          -1323,
+          1323
+        ],
+        "library_sound_writes_crossing_mix_boundary": 755,
+        "library_sound_write_mix_boundary_delta": [
+          -2,
+          2
+        ],
+        "evidence": {
+          "GUEST_VERTEX_DIAGNOSTIC_STABILITY_V4.json": "fc17dec5ba79ad1d0049d5dd5e8b3dff63f6d934f0ad08ee6fdee96edef5a9c0",
+          "GUEST_VERTEX_BLOCK_COMPARISON_LIBRARY_V4.json": "e45412bb8c474e29a83ef0f886d56b9a775a0a9f7fcf7465ff6bde52e6b97772",
+          "GUEST_VERTEX_SPU_COMPARISON_LIBRARY_V4.json": "96662a9bc00d710c5f44ce9637fded5e7dcb28224edcf3009493974f00287424",
+          "GUEST_VERTEX_LIBRARY_PIXEL_REVIEW_V4.json": "98b03c97b6e2289c9fa4064dc3b3740416155a85259a190d427607d82a87d128"
+        }
+      }
     }
   ],
   "arm9_crc32": "5f2f17b3"
