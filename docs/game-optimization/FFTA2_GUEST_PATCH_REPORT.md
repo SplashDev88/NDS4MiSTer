@@ -1065,6 +1065,82 @@ all 148 installed Beta2 files, its archive/launcher and seven runtime kits.
 MENU and OBS are restored with original settings. Receipt:
 `GUEST_NATIVE_LUSO_FINAL_AUDIT_V2.json`. Release defaults remain disabled.
 
+## Native Fire screening
+
+The next series ran control C1, vertex V1, control C2, decoder D1 and control
+C3 with the existing opening-battle private save. Each session measured Pina
+idle, her one-tile movement/menu return and Kevyn's Fire/menu return. Runtime,
+patch bytes, clocks and measured inputs stayed unchanged. All five runs
+passed the screenshot gates, staged-byte admission and live setting checks.
+
+| Patch | Scene | Adjacent control mean | Candidate | Change |
+|---|---|---:|---:|---:|
+| Vertex | Pina idle | 23.8488 | 23.8157 | -0.139% |
+| Vertex | Pina movement/menu | 24.2076 | 24.0831 | -0.515% |
+| Vertex | Fire/menu return | 25.7138 | 26.1306 | +1.621% |
+| Decoder | Pina idle | 23.9770 | 23.8385 | -0.578% |
+| Decoder | Pina movement/menu | 24.2751 | 24.2570 | -0.075% |
+| Decoder | Fire/menu return | 25.7334 | 25.6928 | -0.158% |
+
+Units are complete screen-buffer publications per second. Each window lasts
+about 20 seconds and includes settled state; it does not measure isolated
+spell duration, unique animation FPS or whole-game speed. Fire controls span
+25.7068–25.7599, below the vertex result. Vertex movement is below both adjacent
+controls. Decoder has no positive change against its adjacent control means
+in this series. Preserve these results with both prior Luso series: fewer
+guest instructions and positive human review do not establish a native gain.
+
+All fifteen capture/contact-sheet reviews match the intended visible route.
+Fire targets the same 113-HP friendly unit with a 99% hit chance and 27 damage
+preview; all runs return to Kevyn81/81HP2/41MP with Move selected. Actual
+damage is C1=27, V1=25, C2=23, D1=27 and C3=31. Screenshot-gated setup does not
+lock elapsed time from boot, so these are not deterministic native replays.
+The three controls themselves vary. This establishes route variability,
+not patch causality or approval of a gameplay difference. The deterministic
+software comparison failures remain unchanged.
+
+All captures have zero observed hardware errors, no added OBS render/output
+drops, no detected clipping and no audio timestamp gaps. Fourteen pass the
+silence check. Decoder Pina idle fails it: seven consecutive 10-ms windows
+fall below -80 dB, with 73.333 ms of exact stereo zero samples about 13.678 s
+into the measured interval. The retained recording has continuous timestamps;
+source, capture-path and patch causality are unresolved. Keep this failed
+gate and the original recording. It is a separate native observation from
+the user's positive review of the earlier software comparison clips.
+These signal checks do not prove audio equality or audibility. HPS host load
+ranges from 2.80–3.23% of one core; renderer load ranges from 141.88–148.37%.
+All five sessions exit cleanly with the same consumed Quick Save hash,
+`47962e7372e5d6c3bdde0bc830c84c29b9d46ad08fb7554faad2e818d68d2f28`.
+New save/write/reload and other lifecycle tests remain separate gates.
+
+Evidence: `GUEST_NATIVE_FIRE_SCREENING_V1.json`,
+`GUEST_NATIVE_FIRE_BEFORE_AFTER_V1.csv`, `GUEST_NATIVE_FIRE_OUTCOMES_V1.json`
+and the shared visual review plus per-trial receipts. The existing summary
+tool accepts declared scenes/prefixes/seed and requires every visual review.
+Its retained Luso results reproduce exactly. The existing contact-sheet tool
+accepts extra timestamps for brief impacts; default output remains identical.
+Both are offline tooling changes, with native input/measurement code unchanged.
+The aggregate initially stopped at its existing silence assertion. It now
+reports descriptive throughput with an explicit failed-audio-gate state and
+the unchanged thresholds; no failure is waived. Retained clean-series metrics,
+rows and state reproduce exactly, and detailed audio analysis reproduces all
+original summary fields. Receipts: `GUEST_NATIVE_FIRE_AGGREGATE_FAILURE_V1.json`,
+`FFTA2_GUEST1_FIRE_WHITE_IDLE_D1_GAME_AUDIO_DETAIL.json` and
+`GUEST_NATIVE_TOOL_PROVENANCE_V6.json`.
+
+The final preservation audit passes 1,865 protected original/prior files,
+all 148 installed Beta2 files, its archive/launcher and seven runtime kits.
+The rig is back at MENU; OBS is idle with original settings. This file and
+ownership audit does not waive the failed audio behavior gate. Receipt:
+`GUEST_NATIVE_FIRE_FINAL_AUDIT_V1.json`.
+
+The decoder does not currently justify further native qualification or a
+combined release experiment. The vertex Fire result warrants one predeclared
+control–vertex–control repeat, retaining all outcomes. If the small gain does
+not recur beyond the surrounding control variation, close this version for
+lack of dependable benefit. Do not keep repeating it to recover a best result.
+Neither patch is promoted, and all four manifest entries remain disabled.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -1074,8 +1150,9 @@ and complete RAM semantics remain open before any acceptance proposal.
 Preserve the user's positive visual/audio review. The decoder's live PCM
 dependency, three-route software characterization, Fire's sound-side timing
 and Luso's source-write ordering are established. Independent native Luso
-repeats are complete. Test Fire using bracketing controls and verified scene
-gates. Qualify new save/load, reset/ROM switch and longer transitions before
+repeats and the first native Fire series are complete. Repeat only the vertex
+Fire result once with bracketing controls and verified scene gates. Qualify
+new save/load, reset/ROM switch and longer transitions before
 a private beta proposal; test the combined set only after individual results
 justify it. Keep release defaults disabled and preserve existing failures.
 ARM7's hot windows have structural roles. Keep the current acceptance budget

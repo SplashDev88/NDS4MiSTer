@@ -463,3 +463,25 @@ not establish a consistent movement benefit. Verify loaded bytes, flags and
 scene identity before attributing a weaker result to the patch being absent.
 Once a bounded repeat exposes variability, change to the next representative
 scene instead of repeating the easiest scene until a favorable sample appears.
+
+A shared save and matching visible target do not make a native input route
+deterministic. Screenshot-gated setup can change elapsed time before an action
+and therefore RNG state. Record actual outcomes for controls as well as
+candidates, alongside the hit chance and damage preview. Variable control
+outcomes establish a limitation of the route; they neither prove that a patch
+caused a different roll nor authorize calling that difference harmless.
+Keep deterministic software failures separate from native screening.
+
+When the default contact sheet misses a brief event, use declared extra
+timestamps from the retained recording. Preserve the default contacts and
+verify that adding this offline option leaves existing output unchanged.
+An impact still can establish the displayed damage; it cannot by itself
+establish exact spell duration or full-replay behavior.
+
+When aggregate reporting encounters a signal failure, preserve that failure
+and its original recording. Report descriptive performance with an explicit
+failed qualification gate rather than silently excluding the run or weakening
+the threshold. Keep provenance/capture validity and output behavior separate.
+Detailed audio analysis should add a separate receipt and reproduce the
+original statistics before locating quiet intervals. Exact captured zeros
+with continuous timestamps establish an observation, not its source or cause.

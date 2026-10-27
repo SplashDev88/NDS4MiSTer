@@ -164,9 +164,29 @@
   idle and +0.167% movement/menu, with movement between adjacent controls.
   Decoder repeats at +0.463% idle/+1.036% movement, with idle between adjacent
   controls and movement within the broader control range. Neither patch has
-  a qualified gameplay-speed claim. Test Fire next; preserve all results.
+  a qualified gameplay-speed claim. The subsequent Fire series is recorded
+  below; preserve all results.
   Native staged-cartridge readback does not directly verify live ARM9 RAM
   or instruction-cache contents. Consumed-save equality does not qualify
   new save/write/reload, reset, ROM switch or combined-patch behavior.
   Existing RAM/audio and bounded framebuffer differences remain recorded;
   both experimental candidates remain disabled in release defaults.
+- The first native Fire series gives vertex +1.621% publication throughput
+  in the spell/menu window but -0.139% idle and -0.515% movement/menu. Decoder
+  changes -0.578%, -0.075% and -0.158%, respectively. One vertex spell result
+  is not a dependable speed claim; perform at most one focused repeat before
+  deciding whether this version merits further qualification. Decoder has
+  no current benefit case for promotion or combined-patch testing.
+  Actual Fire damage differs even among unpatched controls (27,23,31) with
+  the same visible target and preview. Setup timing is not locked from boot,
+  so native RNG equality is unqualified. Preserve actual outcomes rather
+  than assigning patch causality or benignness from screenshots alone.
+- Decoder Pina idle in the native Fire series fails the silence gate:
+  70 ms of consecutive 10-ms windows below -80 dB, with 73.333 ms of exact
+  stereo zeros about 13.678 s into the measurement. Audio timestamps remain
+  continuous; fourteen other captures pass the signal check. Source audio,
+  capture-path and patch causality are unresolved. Preserve the recording and
+  `FFTA2_GUEST1_FIRE_WHITE_IDLE_D1_GAME_AUDIO_DETAIL.json`. A failed audio gate
+  must remain explicit even when descriptive throughput is available and the
+  file-preservation audit passes. The user's earlier software-clip review
+  does not qualify this newly observed native interval.
