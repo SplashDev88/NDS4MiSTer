@@ -223,6 +223,24 @@ synthetic machine states and ordered data accesses using Unicorn. The generic
 runner for a bounded ARM block and declarative register/data cases. Mapped
 MMIO pages model ordinary memory only, not hardware side effects.
 
+`boolean_cache_lookup_armv5.S` is a synthetic ARMv5 complete-key boolean-cache
+component for cost screening. It has fixed test addresses, 512 direct-mapped
+32-byte slots, two eight-byte input spans and a validity word. It returns
+0/1 on hit, -1 on miss and -2 on unsupported alignment. It is not a loader,
+native hook or allocated game scratch. Assemble its text without relocations
+before passing the raw bytes to `check_boolean_cache_lookup.py CODE --output
+REPORT`, which reuses the existing Unicorn runner. The contract deliberately
+does not promise full volatile-register/flag equivalence or miss insertion.
+
+`estimate_boolean_cache_trace.py TRACE FIXTURE --status STATUS --synthetic
+REPORT --code CODE --output RESULT` verifies an exact unpatched replay and
+the component's pinned checks, then simulates its real hash and collisions.
+The fixture supplies original entry counts per return site and explicit
+prologue/tail credits. Results include an optimistic integrated entry count
+and a perfect-aligned-hit bound. Free restoration/insertion/invalidation are
+identified as omitted costs, not working implementation. No native cycles,
+storage availability, interrupt behavior or accepted patch follows from this.
+
 `scan_guest_patterns.py ROM --output REPORT` detects branch-heavy copy,
 redundant bitfield shifts and scaled nibble-step arithmetic in ARM main/autoload
 sections; optional `--arm9-profile` and

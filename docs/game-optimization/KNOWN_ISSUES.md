@@ -141,3 +141,12 @@
   unknown. A second caller passes a halfword-aligned rectangle, so word-load
   shortcuts need alignment handling. The third static caller remains
   unobserved, and storage and native timing are unqualified.
+- The first concrete rectangle-cache lookup is rejected at cost preflight.
+  Its hit costs 26 ARM entries / 60 data-access bytes versus the original's
+  11–26 / 26–32. Actual direct-mapped hits are only 11.6–19.8% in the retained
+  captures; an optimistic integration model adds 77.2–82.9% instruction
+  entries to this predicate. Even perfect aligned hits do not improve any
+  call's entry count. This is not a native slowdown measurement or an
+  exhaustive rejection of all memoization. Do not allocate game scratch or
+  install this component; volatile/flag integration and miss insertion are
+  deliberately unimplemented.

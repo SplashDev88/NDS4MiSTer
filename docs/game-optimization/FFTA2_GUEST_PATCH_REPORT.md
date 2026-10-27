@@ -847,6 +847,59 @@ Evidence: `GUEST_RECTANGLE_SEMANTIC_FINDINGS_{LUSO,FIRE}_V1.json`,
 `GUEST_RECTANGLE_LOOKUP_COST_BUDGET_V1.json`, and
 `GUEST_RECTANGLE_DYNAMIC_SCENE_SELECTION_V1.json`.
 
+## Concrete rectangle-cache lookup: rejected at cost preflight
+
+An isolated ARMv5 complete-key lookup was assembled for the existing Unicorn
+runner. It uses a 512-slot direct-mapped table, exact comparison of all four
+key words, a validity word, boolean payload and alignment fallback. The
+32-byte slot occupies 16,384 synthetic test bytes for the whole table. These
+addresses exist only in the test VM; no game storage was allocated or patched.
+The component uses the original-shaped eight-byte PUSH/POP frame and preserves
+R3–R11/SP, but does not implement miss insertion or full volatile/flag/return
+integration. It is not a complete or equivalent game patch.
+
+The 608 component cases cover each word's deliberate hash collision, zero and
+random keys, cold/invalid entries, both boolean values, all NZCV states,
+ARM/Thumb returns and unsupported alignment without input/table reads.
+Separately, 640 cases measure the original predicate's five return outcomes
+and both halfword alignments. The lookup hit takes **26 instruction entries
+and 60 data-access bytes**. The original takes **11–26 entries and 26–32
+data-access bytes**. Cold lookup costs 17 entries, collision misses 26 and
+alignment rejection 6, before integration with the original calculation.
+
+Replaying the actual keys through this hash gives much fewer hits than the
+hypothetical associative LRU. The deliberately optimistic integration model
+credits the original PUSH and removes the lookup's miss-return tail, while
+charging nothing for restoring inputs, insertion/eviction, invalidation or
+additional state preservation:
+
+| Capture | Actual direct-mapped hits | Original entries | Optimistic integrated entries | Increase |
+| --- | ---: | ---: | ---: | ---: |
+| Library | 4,285 / 21,600 | 524,760 | 929,881 | 77.201% |
+| Luso movement | 11,283 / 88,710 | 2,202,432 | 3,926,167 | 78.265% |
+| Fire action | 9,624 / 83,102 | 2,059,250 | 3,765,380 | 82.852% |
+
+Even an artificial perfect-hit assumption for all aligned inputs leaves this
+lookup with no per-call instruction-entry improvement: its hit path equals
+the original's longest path and exceeds the shorter paths. Every alignment
+fallback adds overhead. Changing the hash alone cannot create instruction
+headroom for this implementation. These are component measurements and
+derived counts, not native timing or a measured whole-game slowdown.
+
+Reject this lookup design before scratch investigation or an in-game patch.
+It does not establish that every possible cache or higher-level hoist is
+impossible, but repeated input content alone is insufficient justification.
+The next active lead is cartridge/filesystem recurrence and redundant work,
+reusing existing tracing. No new native test or beta is warranted here.
+
+Evidence: `GUEST_BOOLEAN_CACHE_LOOKUP_BUILD_V1.json`,
+`GUEST_BOOLEAN_CACHE_LOOKUP_SYNTHETIC_V1.json`,
+`GUEST_RECTANGLE_REFERENCE_COST_SYNTHETIC_V1.json`, and
+`GUEST_RECTANGLE_CACHE_COST_{LIBRARY,LUSO,FIRE}_V2.json`.
+Four accounting tests cover eviction/collision/hit ordering, alignment
+fallback without insertion, conflicting results and capture-window bounds.
+The V2 model retains every prior measured field and adds a perfect-hit bound.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -865,9 +918,10 @@ this milestone does not approve such a proposal. The 0.636–1.041% instruction
 reduction warrants a high bar for accepting risk or adding complexity.
 
 Decoder whole-block recurrence has now been measured and has zero hits in
-Luso. Rectangle recurrence now covers bounded library, movement and spell
-scenes; measure actual lookup cost before allocating storage or designing an
-in-game cache. A third caller and broader lifecycle states remain unqualified.
+Luso. Rectangle recurrence covers bounded library, movement and spell scenes,
+but the concrete complete-key cache lookup fails the instruction-entry cost
+preflight. Do not allocate storage or repeat this design unchanged. A third
+caller and broader lifecycle states remain unqualified for any future design.
 ARM7's hot windows have structural
 classifications, but dynamic caller/operand and dependency evidence is still
 needed before any service optimization. More vertex arithmetic remains a lead,
@@ -884,11 +938,9 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Cost an exact-key rectangle lookup in isolation, including misaligned-input
-   fallback, preservation, misses and maintenance, before allocating guest storage.
-2. Prove storage, mutation and third-caller coverage only if that prototype
-   shows useful headroom; complete timing/lifecycle gates before acceptance.
-3. Measure cartridge and filesystem recurrence with completion and buffer
-   ownership evidence; the audio staging addresses alone do not reveal it.
-   A larger dispatch index and ARM7 division operand recurrence remain lower
-   priority, unqualified leads.
+1. Measure cartridge/filesystem recurrence, metadata work and buffer ownership;
+   repeated buffer addresses or source offsets alone do not authorize skipping I/O.
+2. Consider higher-level reuse of viewport calculations only if it removes
+   lookup costs and has a proven mutation boundary; do not revive this cache.
+3. A larger dispatch index or ARM7 division specialization needs its own
+   operand/cost and storage/timing proof. Both remain unqualified leads.

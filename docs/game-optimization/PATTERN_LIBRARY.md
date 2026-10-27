@@ -79,6 +79,21 @@ also straddle emulator frame boundaries. Pair complete invocations using
 their stack and saved-register guards; a same-frame assumption can discard
 valid evidence. These obligations precede any cache or native-speed claim.
 
+Measure a concrete guest lookup before allocating storage. The reusable
+`boolean_cache_lookup_armv5.S` is an isolated 512-slot, complete-16-byte-key
+boolean lookup, not a game hook. `check_boolean_cache_lookup.py` reuses the
+existing Unicorn runner for collision/validity/alignment checks and counts.
+Its hit costs 26 entries and 60 data-access bytes; FFTA2's original predicate
+takes 11–26 entries and 26–32 bytes. It therefore establishes no instruction
+headroom even under perfect hits. Actual hashing has many collisions.
+
+`estimate_boolean_cache_trace.py` replays real keys and the exact hash rather
+than borrowing associative-LRU hit rates. Credit any genuinely reused
+prologue and removed diagnostic tail explicitly. Treat free miss insertion,
+state restoration or invalidation as optimistic omissions, never as an
+implementation. This concrete design is rejected; no game memory is allocated
+and no native gain follows from the synthetic test VM.
+
 ## Native waiting versus reference instruction counts
 
 Reference instruction sampling identifies executed loops. Native PC sampling measures observed wall time, including halt/DMA periods. Neither is a cycle counter. For ACVE the first cave capture observed 37.2% halted samples; the native geometry stream already submitted about 60 frames/s while completed screen publications were about 21.3/s. Prioritize the limiting stage, not the largest reference loop by itself.
