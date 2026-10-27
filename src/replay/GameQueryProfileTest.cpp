@@ -26,6 +26,38 @@ int main(int argc, char** argv)
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
     const GameQueryIdentity portrait {{{'A','C','B','E'}}, 0, 0xa9935ea4u};
+    const GameQueryIdentity ffta2 {{{'A','6','F','E'}}, 0, 0x8c766dbbu};
+    check(ffta2_raster_only_profile({GameQueryProfile::Fast, ffta2, true}),
+          "FFTA2 exact USA identity enables only its raster choice");
+    check(game_query_prefix_mode(select_game_query_profile(ffta2)) == 2 &&
+          !castlevania_integral_texture_profile({GameQueryProfile::Fast, ffta2, true}) &&
+          !portrait_sprite_raster_profile({GameQueryProfile::Fast, ffta2, true}) &&
+          !ecclesia_sprite_raster_profile({GameQueryProfile::Fast, ffta2, true}) &&
+          !automatic_movie_receiver_profile({GameQueryProfile::Fast, ffta2, true}),
+          "FFTA2 retains fast queries and existing service/movie policies");
+    check(!ffta2_raster_only_profile({GameQueryProfile::Fast, ffta2, false}) &&
+          !ffta2_raster_only_profile({GameQueryProfile::Fast, known, true}) &&
+          !ffta2_raster_only_profile({GameQueryProfile::Fast, portrait, true}),
+          "unidentified and other titles retain existing raster choices");
+    for (unsigned bit = 0; bit < 32; ++bit) {
+        auto changed = ffta2; changed.header_crc32 ^= 1u << bit;
+        check(!ffta2_raster_only_profile({GameQueryProfile::Fast, changed, true}),
+              "changed FFTA2 header falls back");
+    }
+    for (unsigned byte = 0; byte < 4; ++byte) {
+        for (unsigned value = 0; value < 256; ++value) {
+            if (value == ffta2.code[byte]) continue;
+            auto changed = ffta2; changed.code[byte] = value;
+            check(!ffta2_raster_only_profile({GameQueryProfile::Fast, changed, true}),
+                  "other FFTA2 region or game code falls back");
+        }
+    }
+    for (unsigned revision = 1; revision < 256; ++revision) {
+        auto changed = ffta2; changed.revision = revision;
+        check(!ffta2_raster_only_profile({GameQueryProfile::Fast, changed, true}),
+              "untested FFTA2 revision falls back");
+    }
+    std::cout << "FFTA2_RASTER_ONLY_PROFILE_PASS USA=1 unknown_off=1 query_fast=1\n";
     check(portrait_sprite_raster_profile({GameQueryProfile::Fast, portrait, true}),
           "Portrait exact raster identity");
     check(select_game_query_profile(portrait) == GameQueryProfile::Fast &&
@@ -110,10 +142,12 @@ int main(int argc, char** argv)
     auto raced = read_game_query_profile([&](GameQueryHeader& h) { h[0] = ++calls; return true; });
     check(!raced.identified && raced.profile == GameQueryProfile::Fast, "changing header default");
     check(!castlevania_integral_texture_profile(raced), "changing header disables raster shortcut");
+    check(!ffta2_raster_only_profile(raced), "changing header disables FFTA2 raster choice");
     calls = 0;
     auto short_second = read_game_query_profile([&](GameQueryHeader&) { return ++calls == 1; });
     check(!short_second.identified && short_second.profile == GameQueryProfile::Fast, "second read failure");
     check(!castlevania_integral_texture_profile(short_second), "failed second read disables raster shortcut");
+    check(!ffta2_raster_only_profile(short_second), "failed second read disables FFTA2 raster choice");
     check(!automatic_movie_receiver_profile(raced) &&
           !automatic_movie_receiver_profile(short_second), "unstable identity disables movie receiver");
     check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, known, true}),

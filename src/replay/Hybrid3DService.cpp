@@ -738,7 +738,8 @@ public:
         bool timing_profile_only = false,
         bool matched_recovery_skip = false,
         bool integral_texture_spans = false,
-        bool sprite_raster_spans = false)
+        bool sprite_raster_spans = false,
+        bool raster_only_sprite_spans = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -770,6 +771,7 @@ public:
                                          asynchronous_arm_video_replay && matched_recovery_skip),
           integral_texture_spans_(matched_display_test && integral_texture_spans),
           sprite_raster_spans_(matched_display_test && sprite_raster_spans),
+          raster_only_sprite_spans_(matched_display_test && raster_only_sprite_spans),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -1286,7 +1288,8 @@ private:
         // vertex on the Cortex-A9.
         nds_->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
         nds_->GPU.GPU3D.SetIntegralTextureSpansEnabled(integral_texture_spans_);
-        nds_->GPU.GPU3D.SetSpriteRasterSpansEnabled(sprite_raster_spans_);
+        nds_->GPU.GPU3D.SetSpriteRasterSpansEnabled(
+            sprite_raster_spans_ || raster_only_sprite_spans_);
         matrix_prefix_.reset();
         active_prefix_snapshot_ = nullptr;
         active_prefix_published_ = false;
@@ -5598,6 +5601,8 @@ private:
     bool matched_recovery_skip_enabled_ = false;
     bool integral_texture_spans_ = false;
     bool sprite_raster_spans_ = false;
+    // Does not select the service's Castlevania VRAM-write specializations.
+    bool raster_only_sprite_spans_ = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
     bool fmv_receiver_enabled_ = false;
 #endif
@@ -11322,6 +11327,7 @@ try {
             bool nsmb_recovery = false;
             bool integral_texture_spans = false;
             bool sprite_raster_spans = false;
+            bool raster_only_sprite_spans = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11342,6 +11348,7 @@ try {
                     nds4mister::replay::ecclesia_sprite_raster_profile(selected);
                 sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected) ||
                     nds4mister::replay::ecclesia_sprite_raster_profile(selected);
+                raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                 fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
 #endif
@@ -11365,6 +11372,7 @@ try {
                     << " recovery_skip=" << nsmb_recovery
                     << " integral_texture_spans=" << integral_texture_spans
                     << " sprite_raster_spans=" << sprite_raster_spans
+                    << " raster_only_sprite_spans=" << raster_only_sprite_spans
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11401,7 +11409,8 @@ try {
                 timing_profile_only,
                 nsmb_recovery,
                 integral_texture_spans,
-                sprite_raster_spans);
+                sprite_raster_spans,
+                raster_only_sprite_spans);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif

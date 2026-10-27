@@ -129,6 +129,15 @@ inline bool ecclesia_sprite_raster_profile(const GameQuerySelection& selected)
     return false;
 }
 
+// FFTA2's guarded raster specialization is independent of the Castlevania
+// replay/VRAM and query policies. Admit only the verified USA revision/header.
+inline bool ffta2_raster_only_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'A','6','F','E'}} &&
+        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x8c766dbbu;
+}
+
 // No remembered selection: every reset/reload starts from the fast default.
 // A short/failed read or changing header cannot inherit an earlier game's mode.
 template<class ReadHeader>
