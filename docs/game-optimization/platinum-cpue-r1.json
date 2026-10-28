@@ -280,8 +280,8 @@
       "overlay": null,
       "scratch_bytes": 0,
       "enabled": false,
-      "status": "rejected_screen_and_audio_mismatch",
-      "notes": "Disabled same164-byte ARM9 Thumb function/literal replacement. Compare stored16bit colors with full32bit args; regenerate onmiss. No scratch ornewservice.8672 synthetic cases and1338 observedbattlecall contracts pass;23400-frame fullreplay changes5topscreenframes and61453stereosamples. All6fixedRAMsets/saveexact. No nativequalification,unchangedrepeat,combination orFFTapprovaltransfer. On 2026-10-28 the user explicitly authorized isolated perceptual trials and review videos, superseding the earlier no-native-trial restriction for this experiment only. Trials show no worthwhile gain in screened scenes; retain disabled regardless of visual review. No combined-patch or lifecycle acceptance.",
+      "status": "parked_no_worthwhile_native_menu_bag_battle_gain",
+      "notes": "Disabled same164-byte ARM9 Thumb function/literal replacement. Compare stored16bit colors with full32bit args; regenerate onmiss. No scratch ornewservice.8672 synthetic cases and1338 observedbattlecall contracts pass;23400-frame fullreplay changes5topscreenframes and61453stereosamples. All6fixedRAMsets/saveexact. No nativequalification,unchangedrepeat,combination orFFTapprovaltransfer. On 2026-10-28 the user explicitly authorized isolated perceptual trials and review videos, superseding the earlier no-native-trial restriction for this experiment only. Trials show no worthwhile gain in screened scenes; retain disabled regardless of visual review. No combined-patch or lifecycle acceptance. Later user functional-budget direction admits individually adding this unchanged patch to accepted terrain for screening. Full-route cache contract and native first-turn screen completed; no useful native gain. Historical strict mismatch evidence retained; candidate still disabled and no new lifecycle acceptance.",
       "assembly_source_sha256": "300d9925c68cbe1d59304cc815d72eec6f29af9b753d5f8997058366991d3068",
       "replacement_sha256": "2cc8b108b591ab7a07edc24182a9c447f67707a72bdc90de6645c3648865211c",
       "validated": {
@@ -303,7 +303,8 @@
         "native_cycles": null,
         "native_frame_time": null,
         "qualified": false,
-        "native_screening": "Menu: 14.6755 control versus 14.6349 patched; Bag: 30.2040 versus 30.0610 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4500s patched. No native gain demonstrated."
+        "native_screening": "Menu: 14.6755 control versus 14.6349 patched; Bag: 30.2040 versus 30.0610 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4500s patched. No native gain demonstrated.",
+        "native_battle_screening": "Menu publications -0.026%; first-turn observation +0.030%. Identical text 1.2333s control versus1.2667s candidate. No useful speedup; software ARM9 entries -2.369% is not native cycles."
       },
       "synthetic_validation": {
         "cases": 8672,
@@ -342,6 +343,51 @@
         "review_receipt_sha256": "169895005d8379e3b536c10a68052876da55b37cae7670bcfab18edda93769bf",
         "native_battle_measured": false,
         "user_perceptual_approval": false
+      },
+      "native_battle_screening": {
+        "receipt": "NATIVE_FONT_BATTLE_FINDINGS_V1.json",
+        "receipt_sha256": "995269af0e1965ddf1d1a08bf977d574ba4ce7964c50cb91dfda1047879edb51",
+        "accepted": false,
+        "default_enabled": false,
+        "baseline": "accepted terrain only",
+        "reference_contract": "FONT_TERRAIN_CONTRACT_V1.json",
+        "key_write_contract": "FONT_TERRAIN_METADATA_KEY_WRITES_V1.json",
+        "comparison": [
+          {
+            "scene": "command_menu",
+            "control_publications_per_second": 59.649124882508836,
+            "candidate_publications_per_second": 59.633612633310435,
+            "publication_change_percent": -0.026005828633623995,
+            "control_renderer_cpu_percent": 91.82168470188546,
+            "candidate_renderer_cpu_percent": 93.39602648600545
+          },
+          {
+            "scene": "first_turn",
+            "control_publications_per_second": 59.61911299950796,
+            "candidate_publications_per_second": 59.63703769423135,
+            "publication_change_percent": 0.030065349552477194,
+            "control_renderer_cpu_percent": 88.02978528363103,
+            "candidate_renderer_cpu_percent": 88.32278599296498
+          }
+        ],
+        "text_timing": {
+          "semantic_text": "TURTWIG used Tackle!",
+          "control": {
+            "lower": 1.2166666666666686,
+            "upper": 1.25,
+            "first_present_delta": 1.2333333333333343
+          },
+          "candidate": {
+            "lower": 1.25,
+            "upper": 1.2833333333333314,
+            "first_present_delta": 1.2666666666666657
+          },
+          "point_duration_change_percent": 2.702702702702542,
+          "interpretation": "No shortening observed. One observation per arm; not an estimated regression or statistically qualified speed difference. Intervals only bound capture transition timing, not run-to-run variability."
+        },
+        "native_battle_measured": true,
+        "result": "no_worthwhile_native_gain",
+        "qualification": "Single initial screen with prior control; candidate native victory/save-write/reset not qualified."
       }
     },
     {
@@ -470,7 +516,7 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V6.json",
-    "next_proposal": "AFTER_GEOMETRY_NEXT_STEPS_V1.json",
+    "next_proposal": "AFTER_FONT_NATIVE_NEXT_STEPS_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
@@ -545,6 +591,12 @@
       "functional_review": "OAM_INLINE_BATTLE_VISUAL_REVIEW_V1.json",
       "user_budget": "FUNCTIONAL_BUDGET_STEERING_20261028.json",
       "native": "OAM_NATIVE_FINDINGS_V1.json"
+    },
+    "font_battle_experiment": {
+      "state": "parked_no_worthwhile_native_menu_bag_battle_gain",
+      "receipt": "NATIVE_FONT_BATTLE_FINDINGS_V1.json",
+      "reference": "FONT_TERRAIN_BATTLE_CANDIDATE_V1_STATUS.json",
+      "enabled": false
     }
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",

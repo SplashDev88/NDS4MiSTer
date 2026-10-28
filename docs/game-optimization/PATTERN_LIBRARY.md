@@ -1034,3 +1034,33 @@ turn-window publications. The candidate returns to its menu earlier because the
 opponent uses Scratch instead of Leer; that is not an optimization result.
 Keep the fixed-size upload specialization disabled without positive native
 benefit, despite its large synthetic instruction reduction and coherent play.
+
+
+## Cache-key coherence and native text timing
+
+When reusing an existing small lookup table, trace from initialization through
+the full route. Check the complete key against each call's arguments, validate
+the whole table on every hit, and reconcile all key/table writers with their
+ordered outputs. Recheck this contract when adding an old candidate to a newly
+accepted baseline. A high hit rate or synthetic equivalence alone cannot prove
+that another writer has not invalidated cached data.
+
+Platinum's font reuse on accepted terrain records 8,756 hits among 8,830 calls,
+with every matching-key table correct and 18,944 regeneration halfwords matching
+the model. It removes 2.369% of battle ARM9 instruction entries but does not
+improve native menu publication throughput or the sampled text duration.
+Record cache effectiveness separately from benefit at the limiting stage.
+
+For text-heavy scenes, compare the same message's first and final glyph using
+media timestamps. Configure small pixel regions, require a monotonic transition,
+and inspect the absent/present boundary images. Bound each transition by its
+adjacent captured frames; those bounds are sampling uncertainty, not statistical
+confidence or proof of semantic identity. Avoid input/remote clock subtraction
+for the duration itself. Use fresh interleaved repeats before qualifying an
+apparent gain. A flat initial screen can use a preserved authenticated control
+and be parked without claiming zero possible benefit everywhere.
+
+Compare a shared message before divergent action outcomes. A missed attack or
+a different opponent move changes subsequent work and invalidates whole-turn
+timing. Do not call buffer publications unique guest frames, or interpret a
+single longer message as a proven performance regression.

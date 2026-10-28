@@ -20,8 +20,9 @@ current promotion decision above supersedes them for terrain visibility only.
 
 Earlier isolated native perceptual trials of empty-tail cleanup, FIFO
 predication and font-table reuse found no worthwhile walking/menu/Bag gain.
-Battle benefit remains unmeasured. Later native-screening sections supersede
-historical no-retry restrictions only for the authorized experiments.
+The later OAM and font battle screens also show no worthwhile native gain.
+They remain disabled. Later native-screening sections supersede historical
+no-retry restrictions only for the authorized experiments.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -1732,3 +1733,69 @@ Evidence: `NATIVE_BATTLE_OAM_FINDINGS_V1.json`,
 `NATIVE_BATTLE_OAM_BEFORE_AFTER_V1.csv`, `NATIVE_BATTLE_OAM_TACKLE_REVIEW_V1.png`,
 `PLATINUM_BO1_MENU_CAPTURE.json`, `PLATINUM_BO1_TACKLE_CAPTURE.json`,
 both stop receipts and `NATIVE_BATTLE_FINAL_PRESERVATION_V1.json`.
+
+
+## Font-table reuse on accepted terrain — no worthwhile battle gain
+
+The user's functional timing budget admits a bounded screen of the unchanged
+164-byte font replacement individually added to the accepted terrain baseline.
+OAM remains disabled. No ROM file, runtime service, renderer or FPGA changes.
+The 23,400-frame reference records 8,830 complete font calls, 8,756 reuse hits
+and 74 regeneration misses. The actual battle window has 1,265 calls and 1,201
+hits. Every matching-key entry has the expected 256-halfword table. All 18,944
+generated halfwords and 222 ordered key halfwords match their arguments;
+observed external writers only initialize the table/key or change an unrelated
+metadata byte. This is replay-bounded coherence, not a proof for all scenes.
+
+In frames 18000–23399, ARM9 instruction entries fall from 264,018,986 to
+257,764,054 (2.369%). These are software instruction entries, not native cycles.
+Strict comparison still fails: four upper-screen frames and 95,550 of
+18,774,412 stereo samples differ, along with transient/checkpoint RAM. Bottom
+frames and the save match. Audio maximum signed16 delta is 2,727, RMS 12.9273;
+no audibility conclusion follows. Six inspected battle checkpoint pairs have
+coherent matching phases. All original mismatch evidence is retained.
+
+The native candidate reaches starter selection and the rival battle through
+ordinary inputs. Chimchar uses Leer; Turtwig uses Tackle, misses, and returns to
+the command menu at 21/21 HP. The earlier control has 20/20 HP and its Tackle hits.
+Background appearance also differs. Native RTC/setup timing is uncontrolled;
+these differences are not attributed solely to the patch. A missed attack does
+less work than a hit, so whole-turn duration is excluded as a speed measure.
+
+| Measurement | Accepted terrain | Terrain + font reuse | Observation |
+|---|---:|---:|---|
+| Battle menu buffer publications/s | 59.6491 | 59.6336 | −0.026% |
+| First-turn window buffer publications/s | 59.6191 | 59.6370 | +0.030% |
+| Identical text, first through final glyph | 1.2333s | 1.2667s | No shortening |
+
+The text measurement covers “TURTWIG used Tackle!” before its hit/miss outcome.
+The same pixel regions and thresholds locate the first T and final exclamation;
+all four boundary images were inspected for each arm. Media-PTS sampling bounds
+are 1.2167–1.2500s control and 1.2500–1.2833s candidate. They bound capture timing,
+not run-to-run variation. This single observation neither demonstrates a speedup
+nor establishes a repeatable regression. Publications do not establish unique
+animation FPS. Guest cycles and frame-time percentiles remain unavailable.
+
+This is an initial screen against the preserved same-boot control, not a fresh
+interleaved qualification. With no useful gain, more repeats and lifecycle
+qualification are not warranted. Renderer CPU is 91.82%/93.40% in the menu and
+88.03%/88.32% in the turn window, with host usage about 4%. Captures add no drops.
+The candidate stops cleanly to MENU with its private seed unchanged. A full
+audit preserves 2,442 protected files, 84 staged runtime files and all 3 accepted
+archives. Native candidate victory, save-write/reset and human listening
+approval were not established; no promotion is sought.
+
+Keep font reuse disabled after flat menu/Bag and battle screens. The promoted
+terrain beta remains the testable build. Next investigate complete visibility
+query inputs and their lifetime, then cartridge-request recurrence. A third
+lead is removing repeated geometry state only where all side effects are
+proven. These are investigations, not admitted patches.
+
+Evidence: `FONT_TERRAIN_CONTRACT_V1.json`,
+`FONT_TERRAIN_METADATA_KEY_WRITES_V1.json`,
+`FONT_TERRAIN_BATTLE_VISUAL_REVIEW_V1.json`,
+`NATIVE_FONT_BATTLE_FINDINGS_V1.json`,
+`NATIVE_FONT_BATTLE_BEFORE_AFTER_V1.csv`, both
+`FONT_NATIVE_*_TEXT_TIMING_V1.json`/PNG receipts,
+`PLATINUM_BF1_MENU_CAPTURE.json`, `PLATINUM_BF1_TACKLE_CAPTURE.json`,
+`PLATINUM_BF1_STOP.json`, and `NATIVE_FONT_BATTLE_FINAL_PRESERVATION_V1.json`.

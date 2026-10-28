@@ -465,3 +465,14 @@
   establish attack timing. `PLATINUM_BC1_TACKLE` starts from that verified menu
   and records an actual Leer/Tackle turn. Its near-60 publication rate remains
   a buffer-throughput measurement, not unique gameplay FPS.
+
+- Current font battle update: the user's functional budget permits the later
+  terrain-plus-font screen despite its strict replay mismatch. Full-route key
+  coherence passes, but native menu/turn publications and identical-message
+  timing show no useful gain. Font remains disabled. The earlier statements
+  that native battle was unmeasured describe historical coverage only.
+- The font candidate's first Tackle misses while the prior control hits; whole
+  turn lengths cannot be compared. Native HP/background also differ with
+  uncontrolled RTC/setup timing. Their cause is not isolated. Identical-message
+  PTS timing is only one observation per arm, with no claimed regression or
+  full-game equivalence. Candidate victory/save-write/reset remain unqualified.
