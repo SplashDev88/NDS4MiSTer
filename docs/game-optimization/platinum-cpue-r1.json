@@ -427,17 +427,21 @@
       "hook": null,
       "scratch_bytes": 0,
       "enabled": false,
-      "notes": "Same56-byte extent. Valid manager engine0/1 and OAM range0..127; preserves ordered three16-bit reads/writes and untouched affine halfword. Original zero-length branch and full-copy/affine paths remain. Synthetic cases pass; runtime/native qualification pending; not a generic memcpy rewrite. Native walking/menu screen found no worthwhile gain. Keep disabled; only new target-scene evidence warrants further work.",
+      "notes": "Same56-byte extent. Valid manager engine0/1 and OAM range0..127; preserves ordered three16-bit reads/writes and untouched affine halfword. Original zero-length branch and full-copy/affine paths remain. Synthetic cases pass; bounded reference/native screening complete, broader lifecycle unqualified; not a generic memcpy rewrite. Native walking/menu and first-battle screens found no worthwhile publication-throughput gain. Keep disabled; only new target-scene evidence warrants further work.",
       "validation": {
         "synthetic": "92 complete-function cases: registers, CPSR, memory and ordered data effects match; immutable callback literals excluded",
         "reference": "23400-frame run completed; coherent reviewed battle progression, unchanged save; timing/frame/RAM/audio differences retained",
-        "native": "First paired matched walking/menu route completed; coherent sprites/menu and unchanged save, clean captures/stops. No worthwhile publication-throughput gain; native battle/save-write/reset unmeasured."
+        "native": "Walking/menu pair and first-battle route/turn complete coherently with unchanged disposable save, clean captures/stops. Battle opponent move/rolled stats differ under functional budget. No worthwhile publication-throughput gain demonstrated; unique guest cadence and native candidate battle victory/save-write/reset unqualified."
       },
       "gain": {
         "native_walking_publication_percent": 0.38681611066622157,
         "native_menu_publication_percent": -0.24547073528020658,
         "qualified_game_FPS": null,
-        "source": "OAM_NATIVE_FINDINGS_V1.json"
+        "source": "OAM_NATIVE_FINDINGS_V1.json",
+        "native_battle_menu_publication_percent": -0.0608475590555102,
+        "native_battle_turn_publication_percent": 0.008253804967561784,
+        "battle_source": "NATIVE_BATTLE_OAM_FINDINGS_V1.json",
+        "qualified_whole_turn_speedup": null
       }
     }
   ],

@@ -459,3 +459,9 @@
   within128 sprite slots. Synthetic complete-function tests preserve all ordered
   OAM accesses and the separate affine halfwords. They do not prove interrupt,
   DMA or native behavior. Repeated source bytes alone cannot justify dirty skips.
+- Native battle control `PLATINUM_BC1_COMBAT` section 1 was intended to execute
+  an attack, but the ending screenshot shows Tackle selected at 35/35 PP with
+  both combatants undamaged. Retain it as move-selection coverage; it cannot
+  establish attack timing. `PLATINUM_BC1_TACKLE` starts from that verified menu
+  and records an actual Leer/Tackle turn. Its near-60 publication rate remains
+  a buffer-throughput measurement, not unique gameplay FPS.

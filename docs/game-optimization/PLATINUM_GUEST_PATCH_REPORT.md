@@ -1653,3 +1653,82 @@ Evidence: `OAM_NATIVE_FINDINGS_V1.json`, `NATIVE_OAM_STAGE_V1.json`,
 `OAM_NATIVE_MENU_PHASE_REVIEW_V1.png`, both stop receipts, and
 `NATIVE_OAM_FINAL_PRESERVATION_V1.json`. Raw native recordings are retained;
 no new beta or approval request is justified by this result.
+
+## Native first-battle route and functional control — 28 October 2026
+
+The accepted terrain-only baseline now completes the first rival battle on
+the MiSTer. A new disposable save starts from the already admitted
+`STORY_SAVE_V2` (SHA-256
+`706c9febdf25cb903481c4a6d405f647c4309cfdf841a995a4c56f01157e6292`).
+The exact previously verified OAM experiment kit is reused, with its OAM patch
+off for control. Host, renderer, FPGA, clock and original ROM are unchanged.
+Twenty recorded bounded input segments reach Turtwig versus Chimchar at full
+HP. Each segment has an input receipt and screenshot; timing is real-time and
+the endpoint must be checked before treating a replay as a benchmark.
+
+The control records Chimchar using Leer and Turtwig using Tackle, foe HP loss,
+return to the command menu, subsequent victory, 69 experience points, level-up
+to 23 maximum HP, and the return home to Mom's dialogue. The disposable save
+remains unchanged at clean stop. This is bounded functional progression, not
+full-game equivalence or a new save-write/reset qualification. Original audio
+is recorded; independent human listening approval is not claimed.
+
+| Terrain-only native interval | Seconds | Complete buffer publications/s |
+|---|---:|---:|
+| Command menu | 20.017 | 59.649 |
+| Move selection | 33.042 | 59.621 |
+| First actual Leer/Tackle turn and return | 30.024 | 59.619 |
+
+All captures have zero added rendering/output drops. These counts can include
+repeated game states and do not establish unique gameplay FPS or guest cycles.
+The first attempted attack sequence only opened move selection: Tackle still
+had 35/35 PP and both combatants were undamaged. It is retained as menu coverage,
+not attack timing. The separate Tackle recording starts from the verified move
+selection and visibly executes the turn. Whole turn durations must not be
+compared if RNG changes the opponent's move or critical-hit dialogue.
+
+Evidence: `NATIVE_BATTLE_STAGE_V1.json`, `NATIVE_FIRST_BATTLE_ROUTE_V1.json`,
+`NATIVE_BATTLE_CONTROL_FUNCTIONAL_REVIEW_V1.json`,
+`NATIVE_BATTLE_MEASUREMENTS_PLATINUM_BC1.json`, the `PLATINUM_BC1_COMBAT`,
+`PLATINUM_BC1_TACKLE` and `PLATINUM_BC1_FINISH` capture receipts, and
+`PLATINUM_BC1_HOME.png` / `PLATINUM_BC1_STOP.json`.
+
+## OAM first-battle native screen — remains disabled
+
+The candidate follows the same recorded route, with only
+`oam-six-byte-inline` added to the accepted terrain baseline. Both configurations
+use the same admitted seed, isolated save path, original ROM, runtime hashes and
+1 GHz HPS clock. Fresh loaded-cartridge guards verify the original OAM bytes in
+control and the replacement in the candidate. Both sessions stop cleanly to MENU
+with the disposable save unchanged.
+
+| Interval | Terrain only, publications/s | Terrain + OAM, publications/s | Change |
+|---|---:|---:|---:|
+| Battle command menu | 59.6491 | 59.6128 | −0.061% |
+| First-turn observation window | 59.6191 | 59.6240 | +0.008% |
+
+This single pair demonstrates no worthwhile publication-throughput benefit.
+It does not establish zero possible guest-cadence benefit. Renderer CPU usage
+is 91.82%/92.86% of one core in the menu and 88.03%/88.84% in the turn window;
+host CPU usage remains about 4%. Unique guest FPS, guest cycles and frame-time
+percentiles are unavailable. No recording drops were added.
+
+The candidate's first turn is visually coherent: Chimchar uses Scratch, Turtwig
+takes damage from 21/21 to 18/21 HP, Tackle damages Chimchar, and the command menu
+returns. The control began at 20/20 HP and its opponent used Leer. These native
+RTC/input-dependent rolls are allowed by the user's functional budget, and are
+not attributed solely to the patch. The candidate's earlier menu return cannot
+be called a speedup: Scratch and Leer perform different work. The videos retain
+those differences. Candidate native victory, save-write/reset and broader scenes
+were not qualified, and no promotion is sought.
+
+Keep OAM disabled after the flat walking/menu and battle screens. Do not repeat
+these same trials without a new performance reason. The next bounded candidate
+is the separately disabled font-table reuse in a verified native battle phase;
+complete model/transform/camera visibility reuse and cartridge-read recurrence
+remain larger investigations, not admitted patches.
+
+Evidence: `NATIVE_BATTLE_OAM_FINDINGS_V1.json`,
+`NATIVE_BATTLE_OAM_BEFORE_AFTER_V1.csv`, `NATIVE_BATTLE_OAM_TACKLE_REVIEW_V1.png`,
+`PLATINUM_BO1_MENU_CAPTURE.json`, `PLATINUM_BO1_TACKLE_CAPTURE.json`,
+both stop receipts and `NATIVE_BATTLE_FINAL_PRESERVATION_V1.json`.

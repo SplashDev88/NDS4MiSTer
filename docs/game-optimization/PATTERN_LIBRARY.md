@@ -1019,3 +1019,18 @@ The first native walking/menu pair nevertheless yields only +0.387%/−0.245%
 publication throughput. Keep it disabled without a worthwhile native benefit.
 A large guest instruction reduction can leave a renderer-bound scene unchanged;
 use an active target-scene measurement before generalizing the win.
+
+Before labeling a native interval as an attack or other action, inspect the
+visual state at both ends and in the recording. A bounded button sequence can
+open a submenu without executing the selected command. Preserve that receipt
+as menu coverage and start the action measurement from a verified selection.
+Near-60 screen-buffer publication counts can include repeated game states;
+they do not establish guest FPS or animation cadence. Compare reviewed semantic
+boundaries in the videos, and do not compare entire turns when RNG changes the
+opponent's move, critical-hit dialogue or other work.
+
+Platinum's subsequent native battle pair is also flat: −0.061% menu and +0.008%
+turn-window publications. The candidate returns to its menu earlier because the
+opponent uses Scratch instead of Leer; that is not an optimization result.
+Keep the fixed-size upload specialization disabled without positive native
+benefit, despite its large synthetic instruction reduction and coherent play.
