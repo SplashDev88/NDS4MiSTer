@@ -174,8 +174,8 @@
 - The first native Fire series gives vertex +1.621% publication throughput
   in the spell/menu window but -0.139% idle and -0.515% movement/menu. Decoder
   changes -0.578%, -0.075% and -0.158%, respectively. One vertex spell result
-  is not a dependable speed claim; perform at most one focused repeat before
-  deciding whether this version merits further qualification. Decoder has
+  is not a dependable speed claim; the one focused repeat and closure are
+  recorded below. Decoder has
   no current benefit case for promotion or combined-patch testing.
   Actual Fire damage differs even among unpatched controls (27,23,31) with
   the same visible target and preview. Setup timing is not locked from boot,
@@ -190,3 +190,16 @@
   must remain explicit even when descriptive throughput is available and the
   file-preservation audit passes. The user's earlier software-clip review
   does not qualify this newly observed native interval.
+- The predeclared vertex-only Fire repeat does not reproduce a benefit beyond
+  surrounding controls. Fire is +0.349% against their mean but lies between
+  the two controls; movement is -0.337% and idle +0.208%, barely above the
+  higher idle control. Close this version without another unchanged repeat,
+  combined-patch test or release promotion. Preserve the first +1.621% Fire
+  observation and the earlier variable Luso results.
+- Unpatched-guest control C5 movement in that repeat also fails the silence
+  gate: 80 ms below -80 dB, including 60 ms of exact stereo zeros about
+  8.951 s into the measurement, with continuous timestamps. This is a separate
+  retained observation from the decoder interval. Both use the experimental
+  host and capture path; their causes and relationship remain unresolved.
+  Do not attribute either interruption solely to the guest patch, infer a
+  common cause, or treat a file-preservation pass as an audio behavior pass.

@@ -1141,6 +1141,69 @@ not recur beyond the surrounding control variation, close this version for
 lack of dependable benefit. Do not keep repeating it to recover a best result.
 Neither patch is promoted, and all four manifest entries remain disabled.
 
+## Vertex Fire repeat and disposition
+
+The predeclared final repeat ran control C4, vertex V2 and control C5 with
+the same runtime, save seed, scene gates and three measured windows. It did
+not establish a dependable Fire gain:
+
+| Scene | Control C4 | Vertex V2 | Control C5 | Control mean | Repeat change | First change |
+|---|---:|---:|---:|---:|---:|---:|
+| Pina idle | 23.9814 | 23.9824 | 23.8837 | 23.9325 | +0.208% | -0.139% |
+| Pina movement/menu | 24.1361 | 24.0570 | 24.1404 | 24.1383 | -0.337% | -0.515% |
+| Fire/menu return | 25.6821 | 25.8746 | 25.8874 | 25.7847 | +0.349% | +1.621% |
+
+Units remain screen-buffer publications per second, not isolated action
+duration or unique FPS. The repeated Fire candidate lies between its two
+controls. Its positive change from their mean does not pass the predeclared
+requirement to recur beyond surrounding control variation. Idle is only
+0.0010 publications/sec above the higher control and changes sign from the
+first series; movement is again below both controls. Do not average these
+short runs into a claimed game-wide speedup or add another unchanged repeat.
+
+All nine visual capture reviews match the route. All three runs show 27
+damage and return to Kevyn81/81HP2/41MP with Move selected, but matching rolls
+do not establish deterministic RNG. They exit cleanly with the same consumed
+save hash as the first Fire series. Capture drops and observed hardware error
+counters remain zero. All clips have continuous audio timestamps and no
+detected clipping; eight pass the silence check.
+
+The unpatched-guest control C5 movement capture fails that check: 80 ms of
+10-ms windows below -80 dB, including 60 ms of exact stereo zeros about
+8.951 s into the measured audio. Retain this separately from the earlier
+decoder's 73.333-ms zero interval. Similar signal failures now occur with
+guest patches off as well as with the decoder, in the shared experimental
+host/capture path. This does not identify source or capture causality, prove
+the two observations share a cause, or establish that the decoder is harmless.
+No signal gate is waived. The earlier raster investigation also retained an
+unattributed interruption after its bounded reproduction checks; it did not
+establish a root-cause fix.
+
+Evidence: `GUEST_NATIVE_FIRE_VERTEX_REPEAT_SCREENING_V2.json`,
+`GUEST_NATIVE_FIRE_VERTEX_REPEAT_BEFORE_AFTER_V2.csv`,
+`GUEST_NATIVE_FIRE_VERTEX_REPEAT_OUTCOMES_V2.json`,
+`FFTA2_GUEST1_FIRE_WHITE_MOVE_C5_GAME_AUDIO_DETAIL.json` and
+`GUEST_NATIVE_VERTEX_REPEAT_DECISION_V1.json`. The existing summary tool now
+uses the actual session count and a declared result state; retained full
+results and a three-session subset reproduce as recorded in
+`GUEST_NATIVE_SUMMARY_THREE_SESSION_CHECK_V1.json`. Native code and measurement
+inputs are unchanged. Latest tooling provenance is V7.
+
+The final audit again verifies 1,865 protected files, all 148 installed Beta2
+files, its archive/launcher and seven runtime kits. MENU and original OBS
+settings are restored. Receipt:
+`GUEST_NATIVE_FIRE_VERTEX_REPEAT_FINAL_AUDIT_V2.json`. This preservation pass
+does not waive either retained audio signal failure.
+
+Close this vertex version for insufficient dependable native benefit, keeping
+the first positive result and every weaker result. The decoder remains parked
+for its small/inconsistent native results and unresolved behavior limits.
+Neither proceeds to combined-patch testing or further release qualification.
+The reviewed videos remain positive bounded perceptual evidence; they do not
+override the performance decision or the original exact-match failures.
+Continue the paused higher-level filesystem/page-reuse investigation using
+the existing exact returned-byte audit. All four release entries stay disabled.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -1150,11 +1213,12 @@ and complete RAM semantics remain open before any acceptance proposal.
 Preserve the user's positive visual/audio review. The decoder's live PCM
 dependency, three-route software characterization, Fire's sound-side timing
 and Luso's source-write ordering are established. Independent native Luso
-repeats and the first native Fire series are complete. Repeat only the vertex
-Fire result once with bracketing controls and verified scene gates. Qualify
-new save/load, reset/ROM switch and longer transitions before
-a private beta proposal; test the combined set only after individual results
-justify it. Keep release defaults disabled and preserve existing failures.
+repeats and both planned Fire series are complete. The vertex and decoder
+versions are closed or parked without release qualification; do not repeat
+them unchanged. For any worthwhile future candidate, qualify new save/load,
+reset/ROM switch and longer transitions before a private beta proposal; test
+a combined set only after individual results justify it. Keep release defaults
+disabled and preserve existing failures.
 ARM7's hot windows have structural roles. Keep the current acceptance budget
 unchanged. A proposal
 to accept timing differences requires a complete, explicitly reviewed result;
@@ -1183,8 +1247,8 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Test the combined vertex/decoder set after individual native qualification;
-   do not assume gains or timing differences add independently.
+1. Consider combining only newly justified patch versions after individual
+   qualification; the current vertex/decoder versions do not warrant it.
 2. Investigate higher-level cartridge/filesystem reuse from the exact returned
    byte audit; repeated addresses/offsets do not authorize skipping completion.
 3. Consider higher-level reuse of viewport calculations only if it removes

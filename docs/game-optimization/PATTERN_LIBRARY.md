@@ -485,3 +485,12 @@ the threshold. Keep provenance/capture validity and output behavior separate.
 Detailed audio analysis should add a separate receipt and reproduce the
 original statistics before locating quiet intervals. Exact captured zeros
 with continuous timestamps establish an observation, not its source or cause.
+
+Honor a predeclared repeat decision even when the candidate stays above the
+mean of its controls. FFTA2's vertex Fire result changed from +1.621% to
++0.349%; the repeat lies between the adjacent controls and therefore does
+not establish the required benefit beyond their variation. Retain both rounds
+and close the unchanged version instead of adding runs until favorable.
+Small menu-inclusive publication changes do not establish action-speed gains.
+Likewise, a signal interruption observed in an unpatched control prevents
+sole attribution to a patch, but does not prove shared causality or safety.
