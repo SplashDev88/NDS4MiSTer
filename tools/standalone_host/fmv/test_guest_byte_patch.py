@@ -162,7 +162,7 @@ class GuestPatchTests(unittest.TestCase):
         for framed in [False, True]:
             pieces = []
             environment = dict(env, NDS_ROM_STREAM_PATCHES='1' if framed else '0')
-            def transfer(source, plan, send):
+            def transfer(source, plan, send, **kwargs):
                 self.assertEqual(plan, 'qualified-plan')
                 send(b'existing-framed-path')
             with patch.dict(os.environ, environment, clear=True), \
@@ -183,6 +183,34 @@ class GuestPatchTests(unittest.TestCase):
                 profile.assert_called_once(); assemble_movie.assert_called_once()
                 cached.assert_not_called(); plan.assert_not_called()
         self.assertEqual(self.rom.read_bytes(), self.raw)
+
+    def test_post_hash_guard_failure_keeps_fallback_progress_monotonic(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest['patches'][0]['expect'] = '00'*8
+        env = self.environment(manifest)
+        env['NDS_GUEST_PATCH_FALLBACK_FMV'] = '1'
+        self.assertEqual(self.decode(self.worker(env)), self.raw)
+
+    def test_cumulative_fallback_preserves_existing_nsmb_selector(self):
+        import stream
+        raw = bytearray(self.raw); raw[12:16] = b'A2DE'
+        self.rom.write_bytes(raw)
+        source = Source(self.fd)
+        replacement = VirtualRom(source, len(raw)); replacement.add(600, b'nsmb!'); replacement.finish()
+        expected = bytearray(raw); expected[600:605] = b'nsmb!'
+        env = self.environment()
+        env.update(NDS_GUEST_PATCH_FALLBACK_FMV='1', NDS_NSMB_PATCH='both')
+        pieces = []
+        with patch.dict(os.environ, env, clear=True), \
+                patch.object(sys, 'argv', ['stream', str(self.fd), '1', str(os.getppid())]), \
+                patch.object(stream, 'send', lambda fd, data: pieces.append(bytes(data))), \
+                patch('nsmb_runtime.assemble', return_value=replacement) as nsmb, \
+                patch.object(stream, 'profile_for') as movie:
+            self.assertEqual(stream.main(), 0)
+        nsmb.assert_called_once(); self.assertEqual(nsmb.call_args.args[1], 'both')
+        movie.assert_not_called()
+        self.assertEqual(self.decode(subprocess.CompletedProcess([], 0, b''.join(pieces), b'')), bytes(expected))
+        self.assertEqual(self.rom.read_bytes(), bytes(raw))
 
 
 class OverlayPatchTests(GuestPatchTests):

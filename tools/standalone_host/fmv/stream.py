@@ -46,6 +46,18 @@ def main():
             if (report['state'] == 'skipped' and
                     os.environ.get('NDS_GUEST_PATCH_FALLBACK_FMV') == '1'):
                 guest = False
+                # The host normally selects this existing experiment reader
+                # before FMV dispatch. Preserve that selection in a cumulative
+                # kit, where explicit guest admission takes precedence.
+                from nsmb_runtime import MODES, assemble as assemble_nsmb
+                header = source.read(0, 32)
+                mode = os.environ.get('NDS_NSMB_PATCH', 'off')
+                if (header[12:16] in (b'A2DE', b'A2DP', b'A2DJ', b'A2DK') and
+                        header[30] == 0 and mode in MODES):
+                    image = assemble_nsmb(source, mode, progress)
+                    print('NSMB_RUNTIME_APPLIED '+mode+'; original cartridge and save identity retained',
+                          file=sys.stderr, flush=True)
+                    guest = True
         if not guest:
             registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
             if registry['version'] != 1:
@@ -58,13 +70,13 @@ def main():
                 # After metadata is sent, failures must terminate this stream;
                 # never append the incompatible legacy fallback protocol.
                 try:
-                    cached_transfer(source, plan, lambda data: send(output_fd, data))
+                    cached_transfer(source, plan, lambda data: send(output_fd, data), work=work)
                 except Exception as error:
                     print('FMV_STREAM_READ_FAILED '+str(error), file=sys.stderr, flush=True)
                     return 1
                 return 0
         if not guest:
-            work = LoadProgress(lambda data: send(output_fd, data))
+            work = work or LoadProgress(lambda data: send(output_fd, data))
             profile = profile_for(source, registry['profiles'], progress)
             if profile:
                 image = assemble(source, profile, progress=progress,

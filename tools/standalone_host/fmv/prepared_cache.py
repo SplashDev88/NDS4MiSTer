@@ -215,8 +215,8 @@ def replay(source, entry, emit, image_size=None, work=None):
     source.unchanged()
 
 
-def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None):
-    work = LoadProgress(emit)
+def cached_transfer(source, plan, emit, root=None, loader=None, assembler=None, work=None):
+    work = work or LoadProgress(emit)
     root = root if root is not None else os.environ.get('NDS_ROM_CACHE_DIR', str(DEFAULT_ROOT))
     store, writer, recovery = None, None, False
     image_size = plan[0]['output_size']
