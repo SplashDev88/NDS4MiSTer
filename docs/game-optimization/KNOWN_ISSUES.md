@@ -516,3 +516,12 @@
   improvement in sign/dialogue sequences. Single cold pair, two line repetitions;
   no general slowdown or full-game safety claim. Its 32,608-byte extra heap cost
   and unqualified lifecycle outweigh this bounded gain. It remains disabled.
+
+- Raw ARMv5 Thumb prefetch can contain a second instruction in the upper half.
+  The memory observer now uses the executing halfword and retains exact mode
+  checks. Earlier archive census guard aborts were instrumentation failures,
+  not demonstrated game failures; exclusion receipts are retained.
+- Platinum archive layouts have useful constants, but metadata skipping is
+  unimplemented. Item records are uniform-sized with padding; do not infer
+  their stride from size. File-position/completion effects and already cached
+  reads must be accounted for before a patch is admitted.

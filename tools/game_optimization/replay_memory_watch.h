@@ -62,8 +62,19 @@ public:
               uint32_t cpsr,unsigned frame,const Mapping& memory,std::ostream& out) {
   for(auto& site:sites) {
    if(site.cpu!=cpu||site.pc!=pc)continue;
-   if(bool(cpsr&0x20)!=site.thumb||opcode!=site.opcode)
-    throw std::runtime_error("Memory-watch instruction or mode mismatch");
+   // ARMv5 fetches two Thumb halfwords at once; CurInstr may retain the next
+   // instruction in its upper half. Guard exactly the executing instruction.
+   const bool thumb=bool(cpsr&0x20);
+   const uint32_t instruction=thumb?(opcode&0xffff):opcode;
+   if(thumb!=site.thumb||instruction!=site.opcode) {
+    std::ostringstream error;
+    error<<"Memory-watch instruction or mode mismatch: frame="<<frame
+         <<" cpu="<<cpu<<" pc=0x"<<std::hex<<pc
+         <<" expected="<<(site.thumb?"thumb":"arm")<<":0x"<<site.opcode
+         <<" observed="<<(thumb?"thumb":"arm")<<":0x"<<instruction
+         <<" raw=0x"<<opcode;
+    throw std::runtime_error(error.str());
+   }
    // Buffer the complete event so a failed guard cannot emit a partial snapshot.
    std::ostringstream event;unsigned index=0;
    for(const auto& span:site.spans) {
@@ -88,7 +99,7 @@ public:
      }
     }
     event<<events<<','<<index++<<','<<frame<<','<<cpu<<','<<std::hex<<pc<<','
-         <<(site.thumb?"thumb":"arm")<<','<<opcode<<','<<cpsr;
+         <<(site.thumb?"thumb":"arm")<<','<<instruction<<','<<cpsr;
     for(unsigned n=0;n<16;++n)event<<','<<r[n];
     event<<','<<address<<std::dec<<','<<span.bytes<<',';
     static constexpr char hex[]="0123456789abcdef";

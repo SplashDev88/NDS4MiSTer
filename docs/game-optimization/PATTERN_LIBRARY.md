@@ -1161,3 +1161,18 @@ input-emission timestamps and buffer publication counts separate from text
 latency. A reduction in cartridge requests may yield only a tiny paced-text
 saving; compare that benefit with resident memory and lifecycle cost before
 qualifying a patch. Within-session repeats are not independent cold runs.
+
+
+When an interpreter fetches two Thumb instructions in one word, its raw current
+instruction field may retain the next halfword. Observe CPU mode, compare only
+the executing Thumb halfword, and keep ARM comparisons at full width. Include
+raw value, decoded value, PC, CPU and frame in failed-guard diagnostics. Preserve
+atomic output, unchanged registers/RAM and full replay equivalence. This is an
+observer fix, not permission to ignore changed instruction bytes or mode.
+
+For archive precomputation, inventory header sizes, member lengths, padding and
+payload offsets from the exact owned revision. Uniform lengths do not imply
+contiguous records. Trace existing open/read/close routines before allocating a
+new cache; repeated first-block requests are not all removable metadata reads.
+Exclude nested wrapper double-counting and the block hits already served by the
+SDK cache. Local PC sample share excludes descendant filesystem/IRQ costs.

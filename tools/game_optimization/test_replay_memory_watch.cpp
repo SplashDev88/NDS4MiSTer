@@ -25,6 +25,12 @@ int main() {
  std::ostringstream summary;watch.Finish(out,summary);require(summary.str()=="cpu,pc,hits\n0,2001000,1\n");
  require(ram==before&&regs==originalRegs);
  auto observe=[&](uint32_t opcode,uint32_t cpsr){watch.Observe(0,0x02001000,opcode,regs.data(),cpsr,8,map,out);};
+ const auto beforeMismatch=out.str();
+ std::string mismatch;
+ try{observe(0xe92d4001,0x20);}catch(const std::runtime_error& error){mismatch=error.what();}
+ require(mismatch.find("frame=8 cpu=0 pc=0x2001000")!=std::string::npos);
+ require(mismatch.find("expected=arm:0xe92d4000 observed=thumb:0x4001 raw=0xe92d4001")!=std::string::npos);
+ require(out.str()==beforeMismatch&&watch.events==1&&watch.sites[0].hits==1);
  rejected([&]{observe(0xe92d4001,0);});
  rejected([&]{observe(0xe92d4000,0x20);});
  regs[2]=255;rejected([&]{observe(0xe92d4000,0);});regs=originalRegs;
@@ -90,6 +96,17 @@ int main() {
  regs[15]=0x03800106;
  thumbRegisters.Observe(1,0x03800102,0xdf1b,regs.data(),0x3f,12,noMemory,registerOut);
  require(thumbRegisters.events==1);
+ // ARM9 may retain a prefetched next halfword. It is not part of this Thumb
+ // instruction; all executing bits and the actual CPU mode remain guarded.
+ auto prefetched=load("0 02006c24 thumb b538 0 0 0 15 2006c28 regs\n");
+ regs[15]=0x02006c28;const auto prefetchRegs=regs;
+ std::ostringstream prefetchOut;
+ prefetched.Observe(0,0x02006c24,0x1c05b538,regs.data(),0x3f,10,noMemory,prefetchOut);
+ require(prefetched.events==1&&prefetchOut.str().find(",2006c24,thumb,b538,3f,")!=std::string::npos);
+ const auto beforePrefetchMismatch=prefetchOut.str();
+ rejected([&]{prefetched.Observe(0,0x02006c24,0x1c05b539,regs.data(),0x3f,10,noMemory,prefetchOut);});
+ rejected([&]{prefetched.Observe(0,0x02006c24,0x1c05b538,regs.data(),0x1f,10,noMemory,prefetchOut);});
+ require(prefetchOut.str()==beforePrefetchMismatch&&prefetched.events==1&&regs==prefetchRegs);
  // A failed data span must not emit an otherwise valid register-only prefix.
  auto mixed=load("1 03800100 arm e92d4010 0 0 0 15 3800108 regs\n"
                  "1 03800100 arm e92d4010 0 0 4 15 3800108 main\n");

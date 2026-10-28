@@ -2108,3 +2108,67 @@ Evidence: `NATIVE_MESSAGE_FONT_STAGE_V1.json`,
 `NATIVE_MESSAGE_FONT_VISUAL_REVIEW_V1.json`, and
 `MESSAGE_FONT_NATIVE_BEFORE_AFTER_V32.csv`. Original capture, endpoint-counter,
 ROI-specification and transition-review receipts remain in private evidence.
+
+
+## Archive metadata — owned layout and call census
+
+After parking message-font residency, the existing loader is the next target.
+All 215 owned NARC files have a 16-byte header. The move archive contains 471
+contiguous 16-byte members; personal data has 508 contiguous 44-byte members.
+Item data has 446 members of 34 bytes with padding, so size alone must not be
+used as its stride. These are static facts of the guarded ROM revision, not
+proof of removable cartridge transfers or a new speedup.
+
+The observer reuses the existing full 23,400-frame accepted-terrain replay,
+seven paired NARC routine types and two physical PIO sites. Its 16-site limit
+is unchanged. Entries and returns are paired by routine and saved stack extent;
+constructors identify open archive objects and destructors retire them.
+
+| Battle-window routine | Archive | Completed calls |
+|---|---|---:|
+| resident_partial | `graphic/pl_font.narc` | 1146 |
+| resident_partial | `msgdata/pl_msg.narc` | 276 |
+| alloc_path | `itemtool/itemdata/pl_item_data.narc` | 170 |
+| read_path | `poketool/waza/pl_waza_tbl.narc` | 152 |
+| read_path | `poketool/personal/pl_personal.narc` | 101 |
+| read_path | `battle/skill/sub_seq.narc` | 85 |
+| read_path | `poketool/pokegra/pl_pokegra.narc` | 66 |
+| read_path | `poketool/personal/pl_growtbl.narc` | 51 |
+| read_path | `poketool/icongra/pl_poke_icon.narc` | 24 |
+| resident_partial | `poketool/trmsg/trtbl.narc` | 22 |
+| read_path | `battle/graphic/pl_batt_bg.narc` | 18 |
+| resident_partial | `poketool/poke_edit/pl_poke_data.narc` | 12 |
+
+All 254 comparable accepted-control output files are byte
+identical, including frames, RAM checkpoints, audio, save and full PC profiles.
+The original golden mismatch from the accepted terrain patch is preserved in
+the runner receipt; it is separate from observer qualification. The raw trace
+has 36,376 physical request events, matching the
+existing census. Whole-route samples in local NARC code are
+1,955 of 11,683,023
+(0.0167%). Sampling occurs every 256 ARM9
+instruction entries; this excludes nested filesystem/card/IRQ work and does
+not establish native cycles or the target scene's cycle share. Nested routine
+counts must not be summed as distinct logical reads.
+
+A trace configuration first exceeded the existing site cap; it was narrowed.
+The next attempt exposed a generic observer bug: ARMv5's Thumb prefetch retains
+the next halfword in `CurInstr`, which was incorrectly compared as a full ARM
+instruction. The observer now guards the executing 16-bit Thumb instruction,
+keeps ARM at 32 bits, and reports CPU/frame/PC plus raw and decoded values on
+failure. Wrong opcode/mode and atomic-output checks still pass (75 tests), and
+the full unchanged-control comparison above validates observation behavior.
+No emulator execution, FPGA, renderer, HPS service or save-state format changed.
+
+No archive patch is implemented. Next admission should distinguish repeated
+metadata work from immutable payload reads and the existing one-block cache.
+Prefer a guarded precomputed constant or existing archive object where the
+calling contract and file-position/completion effects can be preserved without
+new persistent heap storage. Fixed layouts alone do not authorize skipping
+file operations. Larger block/visibility caches still need storage and
+side-effect proof. Approved Platinum Beta1 R2 remains unchanged.
+
+Evidence: `ARCHIVE_METADATA_LAYOUT_CENSUS_V1.json`,
+`ARCHIVE_METADATA_ADMISSION_V2.json`, `ARCHIVE_METADATA_CALLS_V4.json`,
+`ARCHIVE_METADATA_FINDINGS_V4.json`, `ARCHIVE_METADATA_QUALIFICATION_V4.json`,
+and `ARCHIVE_METADATA_OBSERVER_EXCLUSIONS_V1.json`.
