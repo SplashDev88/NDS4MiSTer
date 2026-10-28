@@ -1129,3 +1129,27 @@ These deterministic software clips are separate from the native speed tests.
 Evidence: `NATIVE_PERCEPTUAL_RESULTS_V1.json`, native trial `PLATINUM_E2`,
 `PERCEPTUAL_EMPTY_CONTROL_V1_STATUS.json`,
 `PERCEPTUAL_EMPTY_CANDIDATE_V1_STATUS.json`, and `Platinum_Overlay_Review.json`.
+
+## fifo-word-stream-predication — authorized native perceptual screening
+
+The user explicitly authorized testing potentially imperceptible differences and
+recording videos on 28 October. This supersedes the historical no-retry/native
+restriction for this isolated experiment, without accepting its mismatches.
+
+Menu: 14.6755 control versus 14.6280 patched; Bag: 30.2040 versus 30.0440 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4417s patched. No native gain demonstrated. These are endpoint screen-buffer publication counts, not unique gameplay
+FPS, frame-time percentiles or emulated cycles. Native battle benefit remains
+unmeasured. The candidate stays disabled.
+
+The cold-boot trial used the same qualified disposable story save, stock 1 GHz,
+unchanged rc12 FPGA and accepted Beta2 renderer. Expected original bytes and
+the selected virtual-cartridge replacement were guarded; this is not direct
+ARM instruction-cache readback. Saves remained exact and OBS added no dropped
+frames. No RTL, new HPS service, persistent save-state format or ROM file changed.
+
+Reference audiovisual review: `Platinum_FIFO_Review.mov` (verified original PCM),
+with an AAC convenience copy. Both screens are shown side by side; every scene
+repeats with control then candidate audio, without mixing or volume changes.
+These deterministic software clips are separate from the native speed tests.
+Evidence: `NATIVE_PERCEPTUAL_RESULTS_V1.json`, native trial `PLATINUM_Q1`,
+`PERCEPTUAL_FIFO_CONTROL_V1_STATUS.json`,
+`PERCEPTUAL_FIFO_CANDIDATE_V1_STATUS.json`, and `Platinum_FIFO_Review.json`.

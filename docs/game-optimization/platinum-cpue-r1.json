@@ -30,7 +30,7 @@
         "ram": "All5 declared checkpoint sets and retainedframe2600dump match outside40 patch bytes; per-frame mainRAM247,DTCM348,ARM7WRAM107 hashes differ",
         "audio": "Failed:175017 of4813950 stereo samples differ; maximum signed16 delta2146; no audibility judgment",
         "save": "All6000 per-frame save hashes and finalsave bit-exact",
-        "native": "Not run; strict replay gate failed"
+        "native": "User-authorized isolated perceptual screening completed; staged bytes/save/ownership/capture checks passed. No native bit-exact or full lifecycle qualification. Menu: 14.6755 control versus 14.6280 patched; Bag: 30.2040 versus 30.0440 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4417s patched. No native gain demonstrated."
       },
       "gain": {
         "reference_arm9_entries_4200_5999": {
@@ -43,9 +43,10 @@
         },
         "native_cycles": null,
         "native_frame_time": null,
-        "qualified": false
+        "qualified": false,
+        "native_screening": "Menu: 14.6755 control versus 14.6280 patched; Bag: 30.2040 versus 30.0440 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4417s patched. No native gain demonstrated."
       },
-      "notes": "Rejected and disabled. Same40-byte initial ARM9 code extent; no scratch/hook/overlay.1680 synthetic cases preserve registers/CPSR/ordered accesses. Full reference has identical screens/save/fixed RAM checkpoints but changed audio and transient RAM. Do not assume harmless timing, extrapolate FFT video approval, retry unchanged or run natively under the current budget.",
+      "notes": "Rejected and disabled. Same40-byte initial ARM9 code extent; no scratch/hook/overlay.1680 synthetic cases preserve registers/CPSR/ordered accesses. Full reference has identical screens/save/fixed RAM checkpoints but changed audio and transient RAM. Do not assume harmless timing, extrapolate FFT video approval, retry unchanged or run natively under the current budget. On 2026-10-28 the user explicitly authorized isolated perceptual trials and review videos, superseding the earlier no-native-trial restriction for this experiment only. Trials show no worthwhile gain in screened scenes; retain disabled regardless of visual review. No combined-patch or lifecycle acceptance.",
       "synthetic_validation": {
         "cases": 1680,
         "receipt": "FIFO_WORD_STREAM_SYNTHETIC_V1.json",
@@ -58,6 +59,23 @@
         "input_manifest_sha256": "6b8951fe98bd5a995c67df3fea5abcb266340df1dbb755e85e54ed54cc2dc44b",
         "status_receipt": "FIFO_WORD_STREAM_CANDIDATE_V1_STATUS.json",
         "status_sha256": "b4880cb2efd1e52f818365b3b063aa1035464d20975652de9e64b6e9bf5a1e92"
+      },
+      "native_perceptual_screening": {
+        "accepted": false,
+        "default_enabled": false,
+        "scope": "Stock1GHz, unchanged rc12 FPGA and accepted Beta2 renderer; real-time inputs and same disposable qualified seed. Publication counts are not unique gameplay FPS or cycles.",
+        "trial": "Q1",
+        "matched_control_trials": [
+          "C6"
+        ],
+        "receipt": "NATIVE_PERCEPTUAL_RESULTS_V1.json",
+        "receipt_sha256": "6ddbeae9b819127aebc73c8c3c7b3d20f64ed2df3c4f12a3c6cde5c9894d8749",
+        "result": "no_qualified_gain_in_screened_scenes",
+        "reference_review": "Platinum_FIFO_Review.mov",
+        "review_receipt": "Platinum_FIFO_Review.json",
+        "review_receipt_sha256": "d4a6a98f8b65b516313e0c4c6f08fc2ba5bbfd29a5b4d36df9ec6be1683f3947",
+        "native_battle_measured": false,
+        "user_perceptual_approval": false
       }
     },
     {
