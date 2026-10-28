@@ -800,3 +800,65 @@ Evidence: `OUTDOOR_ROUTE_V2_REPEAT_COMPARISON.json`,
 `OUTDOOR_BASELINE_REPEAT_V1.csv`, `REPLAY_SCENE_REVIEW_V4.json`,
 `REPLAY_INPUT_VALIDATION_TESTS_V1.json` and
 `ACTIVE_BATTLE_ROUTE_PROPOSAL_V1.json`.
+
+## Rival story, in-game save and cold-load baseline
+
+Normal inputs now reach the rival's outdoor collision/dialogue event and enter
+his house. Screenshots and checkpoint coordinates show the outdoor event at
+`(105,877)` after the scripted push-back, followed by house 1F, map 412, at
+`(6,10)`. The independent 23,000-frame story-and-save repeat matches all 258
+complete output files, including both screens, every RAM/save hash, seven full
+checkpoint sets, audio and the final save. Unchanged prefixes of every route
+extension also match; the initial navigation profile has a separately declared
+measurement window.
+
+The game menu's normal Save command writes only to the disposable replay
+buffer. Its first 19,600-frame probe ended mid-write and is excluded as a seed.
+The extended run visibly displays "A saved the game" at frame 19920 and returns
+to the room. Save hashes first change at 19435, last change at 19776, and remain
+stable for the final 3,223 frames. The independently repeated save is identical.
+The original ROM and parent save remain unchanged.
+
+| Metric | Baseline | Independent repeat |
+|---|---:|---:|
+| Complete story/save frames | 23,000 | 23,000 |
+| Identical story/save output files | 258 | 258 |
+| Last save-hash change frame | 19,776 | 19,776 |
+| Stable final save frames | 3,223 | 3,223 |
+| Cold-load frames | 3,200 | 3,200 |
+| Identical cold-load output files | 61 | 61 |
+| Native speed improvement | Unmeasured | Unmeasured |
+
+Cold boot with the completed game-generated save restores house 1F at `(6,10)`
+in all three checkpoints (1600, 2600 and 3000), rather than the original bedroom.
+Screenshots and internally consistent avatar/location state agree. The complete
+save remains unchanged on every cold-load frame. A second independent cold-load
+run reproduces all 61 files exactly. This qualifies an unpatched software-reference
+seed for later route construction; it is not native save validation or an emulator
+save-state round trip.
+
+The new 524,288-byte seed has SHA-256
+`706c9febdf25cb903481c4a6d405f647c4309cfdf841a995a4c56f01157e6292`.
+Its admission receipt pins the original parent, complete producing input route,
+save completion evidence, both repeats and cold-load inputs. Keep this provenance
+when using it to shorten future setup. Never use the excluded partial output.
+
+The exploratory navigation/dialogue window at frames 15600–16799 has 30 bins
+above 2% instruction-sample share. They retain previously evidenced roles; all
+21 newly sampled sites match owned code. There is no new removable-work proof.
+Save and cold-load runs disable profiling. All four guest candidates remain
+disabled, with no new native measurement, beta, RTL or product-runtime change.
+
+The next three priorities are rival-house 2F/story progression into a deterministic
+battle, a controlled native walking/battle baseline after fresh ownership checks,
+and candidate selection from that broader workload. The pinned source suggests a
+staircase at `(2,3)` in house 1F; the route around furniture is still a proposal.
+Pitch-cache storage/lifetime and the HBlank callback/IRQ proof remain open.
+
+Evidence: `STORY_SAVE_SEED_ADMISSION_V1.json`,
+`STORY_SAVE_V2_REPEAT_COMPARISON.json`,
+`STORY_COLD_LOAD_V1_REPEAT_COMPARISON.json`,
+`STORY_SAVE_V2_COMPLETION_REVIEW.png`, `STORY_COLD_LOAD_V1_REVIEW.png`,
+`STORY_ROUTE_PREFIX_AUDIT_V3.json`, `STORY_NAVIGATION_PROFILE_SCREEN_V1.json`,
+`STORY_SAVE_RELOAD_BASELINE_REPEAT_V1.csv`, `REPLAY_SCENE_REVIEW_V5.json`
+and `RIVAL_HOUSE_BATTLE_ROUTE_PROPOSAL_V2.json`.

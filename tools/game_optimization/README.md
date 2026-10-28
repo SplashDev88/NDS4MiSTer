@@ -44,6 +44,14 @@ intervals and zero masks retain their existing semantics. Passing syntax checks
 does not prove movement: review actual screenshots and checkpoint state before
 labeling a measurement window as active gameplay.
 
+When creating a new seed through the game's Save command, the oracle's final
+`save.bin` is only the buffer at the last requested frame. A successful exit
+does not mean the game finished writing it. Require the visible completion
+message, a stable save-hash tail, and a separate cold load into the expected
+scene. Preserve the original seed and the producing route/job provenance;
+repeat the save and cold-load routes before calling the new baseline qualified.
+This is in-game save coverage, not an emulator save-state round trip.
+
 Use the same verified ROM/save/input files for both runs. Enable an experimental
 renderer only in its candidate process environment. Compare with:
 

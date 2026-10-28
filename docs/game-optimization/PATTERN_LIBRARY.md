@@ -822,3 +822,11 @@ available. Held buttons, a scene label or a zero exit status do not establish
 active gameplay; collisions, dialogue and missing input are separate cases.
 Retain failed navigation probes with their exclusion reason. Only repeat and
 profile a route as active once the recorded motion supports that description.
+
+Game-generated saves can shorten later replay setup without editing progress
+or inventing an emulator save-state format. Keep the original seed immutable
+and write only to a disposable replay buffer. A final output file is not proof
+of completed saving: inspect the game's completion message and a stable
+per-frame save-hash tail, cold-boot into the expected progressed scene, and
+independently repeat both routes. Preserve the producing inputs, hashes and
+parent seed. Exclude partial writes instead of silently using them as baselines.

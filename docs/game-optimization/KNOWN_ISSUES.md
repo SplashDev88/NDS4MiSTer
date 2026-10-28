@@ -346,3 +346,8 @@
   interpreted as a collision. Preflight the complete file with
   `validate_replay_inputs.py`, pin its hash, and independently inspect actual
   motion before profiling. A successful process exit is insufficient.
+- The oracle emits `save.bin` even if the frame limit interrupts an in-game
+  save operation. Platinum's first story-save probe still changed save hashes
+  through frame 19598 of 19600 and showed "Saving" in its last capture. Its
+  output is excluded as a new seed. Extend the same input route, confirm save
+  completion and a stable tail, then cold-load and repeat before admission.
