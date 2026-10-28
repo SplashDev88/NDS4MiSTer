@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "five_candidates_rejected_no_patch_enabled",
+  "status": "five_candidates_disabled_three_authorized_native_screens_no_qualified_gain",
   "patches": [
     {
       "cpu": "arm9",
@@ -361,7 +361,7 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json",
+    "latest_decision": "NATIVE_PERCEPTUAL_RESULTS_V1.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -425,7 +425,10 @@
     "lookup_table_control": "LOOKUP_TABLE_REUSE_CONTROL_V2_STATUS.json",
     "lookup_table_replay": "LOOKUP_TABLE_REUSE_PAIR_COMPARISON_V1.json",
     "lookup_table_execution": "LOOKUP_TABLE_REUSE_EXECUTION_AUDIT_V1.json",
-    "lookup_table_decision": "LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json"
+    "lookup_table_decision": "LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json",
+    "native_perceptual_authorization": "PERCEPTUAL_TRIAL_USER_DIRECTION_V1.json",
+    "native_perceptual_review": "PERCEPTUAL_REVIEW_V1.md",
+    "native_HPS_profile": "PLATINUM_HPS_BASELINE_ANALYSIS_V1.json"
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
   "arm7_crc32": "67db0960",
