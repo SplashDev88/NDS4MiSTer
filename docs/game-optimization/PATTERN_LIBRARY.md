@@ -830,3 +830,18 @@ of completed saving: inspect the game's completion message and a stable
 per-frame save-hash tail, cold-boot into the expected progressed scene, and
 independently repeat both routes. Preserve the producing inputs, hashes and
 parent seed. Exclude partial writes instead of silently using them as baselines.
+
+For visual scene review, authenticate the capture's channel order from the
+producer, not its filename. The existing software framebuffer is BGRA8888 even
+when a legacy snapshot has a `.rgba` suffix. Use the established BGRA decoder;
+keep the original capture/hash and retain corrected previews as new artifacts.
+An incorrectly decoded contact sheet is not evidence of a game palette or
+texture-cache failure. Pixel equality and native visual accuracy remain
+separate claims.
+
+When extending a route, compare only its genuinely unchanged input prefix.
+Removing a held button or a later A pulse changes that boundary even before a
+new direction is pressed. Declare profiling-counter differences separately and
+compare all game-state fields, audio, screen hashes and shared checkpoints
+without normalization for unpatched runs. Do not label menu/dialogue tails as
+continuous combat merely because the route also contains a battle.

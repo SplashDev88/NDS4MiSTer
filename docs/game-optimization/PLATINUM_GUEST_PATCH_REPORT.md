@@ -7,7 +7,9 @@ binaries, timings and room screenshots are context, not the current baseline.
 Four candidates are rejected and disabled. The latest one-byte ARM7 pitch
 change passes local equivalence and delivery controls, but its full replay
 changes audio and a RAM checkpoint despite identical screens and save data.
-No Platinum speed gain is qualified. Active outdoor and battle coverage is next.
+No Platinum speed gain is qualified. Walking, save/cold-load and the first
+trainer battle now have exact software-reference repeats. Native measurement
+and proof of the newly exposed battle hotspots are next.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -862,3 +864,88 @@ Evidence: `STORY_SAVE_SEED_ADMISSION_V1.json`,
 `STORY_ROUTE_PREFIX_AUDIT_V3.json`, `STORY_NAVIGATION_PROFILE_SCREEN_V1.json`,
 `STORY_SAVE_RELOAD_BASELINE_REPEAT_V1.csv`, `REPLAY_SCENE_REVIEW_V5.json`
 and `RIVAL_HOUSE_BATTLE_ROUTE_PROPOSAL_V2.json`.
+
+## First trainer battle and broader profile — 28 October 2026
+
+Ordinary input from the admitted rival-house save now reaches house 2F,
+Route 201, starter selection and the first rival battle. Turtwig fights Chimchar,
+uses Tackle, takes damage, wins, gains 69 experience points and reaches level 6.
+The 26,000-frame exploratory route then returns home. No coordinates, story
+flags, ROM bytes or save data were edited. Its final save remains the original
+pre-starter checkpoint; it is not a post-battle seed.
+
+An independent 23,400-frame run repeats the exact input prefix and profiles
+frames 18000–23399: trainer introduction, turns, victory, level-up and the exit
+transition. Both screen hashes, frame metadata, every game RAM/save hash,
+18,774,412 stereo audio samples and all 247 shared complete files match. The six
+fixed checkpoint sets include full CPU registers and RAM. Only the declared
+instruction counters and PC-sample files differ because the first run disabled
+profiling. No game data is normalized. The later return-home tail is visually
+reviewed but is outside this independent repeat.
+
+| Metric | Unpatched baseline prefix | Independent profiled repeat |
+|---|---:|---:|
+| Compared frames | 23,400 | 23,400 |
+| Different screen / game-RAM / save frames | 0 | 0 |
+| Different stereo samples | 0 | 0 |
+| Matching complete shared files | 247 | 247 |
+| ARM9 entries, frames 18000–23399 | Profiling disabled | 294,410,989 |
+| ARM7 entries, same window | Profiling disabled | 203,495,901 |
+| Native speed improvement | Unmeasured | Unmeasured |
+
+The profile has 21 bins above 2% of their CPU's periodic instruction samples,
+including seven newly prominent bins. All 502 newly sampled sites in these bins
+match owned code. The six battle checkpoints also match the entire decoded
+overlay 16 body, SHA-256
+`cdee3e91570eca14296be7164b03926d729d914a293d4db5098aeed4bb7f1950`.
+These are 256-byte screening bins, not function cycle shares or native speed.
+
+The leading ARM9 bin is cartridge block-read polling at `020cd400` (27.38%).
+Owned instructions at `020cd488–020cd4ac` poll `040001a4`, read `04100010` when
+data is ready, and store data for a 512-byte block. This is an active transfer
+with request bookkeeping; blindly removing the loop or replacing it with a
+generic interrupt wait is not justified. A request/recurrence census can test
+whether repeated reads offer a safe cache or prefetch opportunity.
+
+Other leads are six-byte strided callback uploads at `020a7e00` (3.33%), a
+four-input packed-nibble lookup-table generator at `0201da00` (2.48%), a
+completion-flag wait at `020cac00` (2.18%), and overlay 16's 256-byte table
+reduction at `02251f00` (2.02%). The generator writes 256 halfwords into existing
+storage; repeated inputs and all table writers have not yet been observed.
+The overlay's nearby helpers mutate its table, so caching the sum requires an
+invalidation/lifetime proof. The wait condition has mode-dependent service
+calls, whose wakeup contract remains unknown. ARM7 adds stateful sound-sequence
+work and a 25-bit IRQ-table scan; neither is established as removable work.
+
+The existing generic ARM scanner was rerun with the new profiles. Its coverage
+still excludes Thumb and overlays; the new generator and reduction are manual
+leads, not reusable automatic signatures or admitted patches. No unchanged
+rejected candidate was retried, and all four patches remain disabled.
+
+The first contact sheet had red and blue swapped because legacy `.rgba` files
+contain BGRA8888. Correct decoding shows the trainer followed by Chimchar;
+there is no retained-trainer evidence in those frames. Corrected previews are
+new artifacts. Raw captures, equality evidence and the renderer are unchanged.
+
+Native tooling was inspected offline only. The old FFT wrapper hard-codes a
+64 KiB save; Platinum needs 512 KiB. Reuse the existing rig with an isolated
+Platinum configuration and fresh ownership/lease/process checks. The diagnostic
+PC collector requires a tagged bitstream; exact rc12 support and overhead are
+unqualified. No hardware was contacted, no new service/RTL was introduced,
+and no new beta or native improvement is claimed.
+
+The next three investigations are the table generator's input/write lifetime,
+cartridge transfer recurrence and phase distribution, and the upload/reduction
+helpers' data contracts. Native walking/battle cadence, pacing and audio remain
+a separate required baseline before accepting a speedup.
+
+Evidence: `FIRST_BATTLE_REPEAT_COMPARISON_V1.json`,
+`FIRST_BATTLE_PROFILE_SCREEN_V1.json`, `FIRST_BATTLE_PATTERN_SCREEN_V1.json`,
+`FIRST_BATTLE_NEW_BINS_DISASSEMBLY_V1.txt`,
+`FIRST_BATTLE_NEW_BINS_CONTEXT_V1.txt`, `FIRST_BATTLE_OVERLAY_IDENTITY_V1.json`,
+`FIRST_BATTLE_ROUTE_V1_REVIEW_BGRA.png`,
+`FIRST_BATTLE_ROUTE_V2_PROGRESS_BGRA.png`, `FIRST_BATTLE_RESULT_REVIEW_BGRA.png`,
+`FIRST_BATTLE_PREVIEW_FORMAT_REVIEW_V1.json`,
+`FIRST_BATTLE_BASELINE_REPEAT_V1.csv`, `REPLAY_SCENE_REVIEW_V6.json`,
+`NATIVE_BASELINE_PREPARATION_FINDINGS_V1.json`
+and `BATTLE_HOTSPOT_CONTRACT_PROPOSAL_V1.json`.

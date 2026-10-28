@@ -351,3 +351,15 @@
   through frame 19598 of 19600 and showed "Saving" in its last capture. Its
   output is excluded as a new seed. Extend the same input route, confirm save
   completion and a stable tail, then cold-load and repeat before admission.
+- Platinum's early private contact sheets decoded legacy `.rgba` snapshots as
+  RGBA, although the renderer writes BGRA8888. This swaps red and blue only in
+  those previews. New battle review sheets use the existing BGRA convention;
+  the original raw captures, hashes and exact replay comparisons are unchanged.
+  The close-up shows the rival trainer at frame 18000 and Chimchar at 19000
+  and 19500; the suspected retained-trainer sprite is not supported. Do not
+  change the renderer or texture cache on that preview evidence.
+- The old private FFT native-session wrapper requires a 65,536-byte save and
+  FFT evidence ownership. Platinum uses 524,288 bytes. Reuse the existing rig
+  with a properly isolated Platinum configuration and fresh ownership checks;
+  do not launch the FFT wrapper unchanged. Native PC collection also requires
+  a diagnostic bitstream tag, whose presence in exact rc12 is unqualified.

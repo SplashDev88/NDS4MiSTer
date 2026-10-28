@@ -29,6 +29,12 @@ profile selector, and requires complete 3D rendering. It records both screen
 hashes, per-frame RAM-region hashes, audio, final saves, selected raw RAM dumps,
 and instruction samples. CPU instruction counts are not FPGA cycle counts.
 
+The software renderer's completed framebuffer is **BGRA8888**. Legacy snapshot
+names ending in `.rgba` still contain those raw BGRA bytes; the suffix is not a
+format declaration. Decode with an explicit BGRA input mode, as
+`render_replay_comparison.py` does. Keep the original bytes and hashes unchanged.
+Reading them as RGBA swaps red and blue in previews without changing the game.
+
 Preflight each new or extended input file before starting the oracle, then pin
 the input and receipt with the job:
 
