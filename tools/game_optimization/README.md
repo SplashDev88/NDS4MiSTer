@@ -371,6 +371,23 @@ capacity stability, IRQ/DMA interactions and the actual address-space mapping
 need separate runtime evidence. Mapped MMIO pages model ordinary memory only,
 not hardware side effects, and cannot be declared as elidable ranges.
 
+For a separately established synchronous ordinary-memory contract, a fixture
+may instead declare `ordinary_memory_effect_ranges`. These must fit existing
+modeled DS RAM pages; MMIO, unmapped, overlapping and crossing-page ranges are
+rejected. Access order may differ only inside these ranges, while every final
+mapped byte, register and CPSR must still match. Outside accesses retain their
+exact order, size and value. `code_literal_read_ranges` additionally permits
+changed read counts/order for literals whose bytes are identical in both code
+versions; any write to those literals fails. These policies cannot be combined
+with `elidable_read_ranges`. This is an explicit stronger assumption about
+concurrent observers, not a relaxed full-replay RAM or audio gate.
+
+Each case may seed existing `extra_pages` using `extra_memory_overrides` rows
+with hexadecimal `address` and `hex` bytes. Empty, unmapped and crossing-page
+overrides fail. Omitting `stop` runs to the case's original LR return target,
+retaining ARM/Thumb interworking checks. Runtime cache-key coherence, IRQ/DMA
+readers, stack ownership and native timing still require independent evidence.
+
 `summarize_guest_pair.py CONTROL CANDIDATE INPUT --output REPORT` reuses the
 guarded replay status and manifest to report screen, audio, RAM and instruction
 differences. Only the declared instruction extent is normalized. If the patch

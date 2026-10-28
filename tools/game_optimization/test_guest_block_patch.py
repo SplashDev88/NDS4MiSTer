@@ -2,7 +2,8 @@
 import unittest
 from unicorn import UC_MEM_READ, UC_MEM_WRITE
 from check_halfword_copy_patch import run
-from check_guest_block_patch import compare_accesses
+from check_guest_block_patch import (compare_accesses, ordinary_ranges,
+                                    compare_ordinary_effects, extra_pages_for_case)
 
 
 class BlockTests(unittest.TestCase):
@@ -37,6 +38,48 @@ class BlockTests(unittest.TestCase):
                 compare_accesses([read, write, other], candidate, ranges)
         with self.assertRaises(AssertionError):
             compare_accesses([], [], [(0x04000000, 0x04001000)])
+
+    def test_effect_contract_requires_mapped_ram_and_identical_literals(self):
+        good = dict(extra_pages=['0x02010000'],
+                    ordinary_memory_effect_ranges=[['0x02010000', '0x02010004']],
+                    code_literal_read_ranges=[['0x02000002', '0x02000004']])
+        self.assertEqual(ordinary_ranges(good, 0x02000000, b'abcd', b'XYcd'),
+                         ([(0x02010000, 0x02010004)], [(0x02000002, 0x02000004)]))
+        for first, end in [('0x04000000', '0x04000004'), ('0x02020000', '0x02020004'),
+                           ('0x02010fff', '0x02011001'), ('0x02010004', '0x02010000')]:
+            bad = dict(good, ordinary_memory_effect_ranges=[[first, end]])
+            with self.assertRaises(AssertionError):
+                ordinary_ranges(bad, 0x02000000, b'abcd', b'XYcd')
+        with self.assertRaises(AssertionError):
+            ordinary_ranges(good, 0x02000000, b'abcd', b'XYce')
+        with self.assertRaises(AssertionError):
+            ordinary_ranges(dict(good, ordinary_memory_effect_ranges=[
+                ['0x02010000', '0x02010004'], ['0x02010002', '0x02010006']]),
+                0x02000000, b'abcd', b'XYcd')
+
+    def test_effect_contract_cannot_hide_external_accesses_or_literal_writes(self):
+        inside = (UC_MEM_WRITE, 0x03000010, 4, 7)
+        outside = (UC_MEM_WRITE, 0x03000020, 4, 9)
+        literal = (UC_MEM_READ, 0x02000002, 2, 11)
+        effects, literals = [(0x03000010, 0x03000014)], [(0x02000002, 0x02000004)]
+        compare_ordinary_effects([literal, inside, outside], [outside, literal], effects, literals)
+        for candidate in [[], [(UC_MEM_WRITE, 0x03000020, 4, 8)],
+                          [outside, (UC_MEM_WRITE, 0x02000002, 2, 11)],
+                          [outside, (UC_MEM_READ, 0x03000012, 4, 0)]]:
+            with self.assertRaises(AssertionError):
+                compare_ordinary_effects([inside, outside], candidate, effects, literals)
+
+    def test_extra_overrides_require_one_existing_page(self):
+        fixture = {'extra_pages': ['0x02010000']}
+        data = extra_pages_for_case(fixture, {'extra_memory_overrides': [
+            {'address': '0x02010003', 'hex': 'abcd'}]})[0][1]
+        self.assertEqual(data[3:5], bytes.fromhex('abcd'))
+        for address, value in [('0x02020000', 'aa'), ('0x02010fff', 'aabb'), ('0x02010000', '')]:
+            with self.assertRaises(AssertionError):
+                extra_pages_for_case(fixture, {'extra_memory_overrides': [
+                    {'address': address, 'hex': value}]})
+        with self.assertRaises(AssertionError):
+            extra_pages_for_case({'extra_pages': ['0x02010000', '0x02010000']}, {})
 
 
 if __name__ == '__main__':

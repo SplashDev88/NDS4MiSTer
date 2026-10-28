@@ -14,6 +14,62 @@ import random
 from check_halfword_copy_patch import run
 
 
+def ordinary_ranges(fixture, entry, before, after):
+    """Validate explicit final-state RAM and immutable literal-read contracts."""
+    effects = [(int(a, 0), int(b, 0)) for a, b in
+               fixture.get('ordinary_memory_effect_ranges', [])]
+    literals = [(int(a, 0), int(b, 0)) for a, b in
+                fixture.get('code_literal_read_ranges', [])]
+    pages = [0x03000000] + [int(a, 0) for a in fixture.get('extra_pages', [])]
+    for first, end in effects:
+        assert (0x02000000 <= first < end <= 0x02400000 or
+                0x03000000 <= first < end <= 0x04000000), 'Not ordinary DS RAM'
+        assert any(p <= first < end <= p+4096 for p in pages), 'Unmapped effect range'
+    for first, end in literals:
+        assert entry <= first < end <= entry+len(before), 'Literal outside code'
+        assert before[first-entry:end-entry] == after[first-entry:end-entry], 'Changed literal'
+    all_ranges = sorted(effects+literals)
+    assert all(a[1] <= b[0] for a, b in zip(all_ranges, all_ranges[1:])), 'Overlapping contracts'
+    return effects, literals
+
+
+def compare_ordinary_effects(original, replacement, effects, literals):
+    """Only explicit ordinary RAM may differ in access order, never final bytes.
+
+    The caller must still compare every mapped byte, register and CPSR. This
+    synchronous contract does not establish IRQ/DMA or concurrent-reader safety.
+    """
+    from unicorn import UC_MEM_READ, UC_MEM_WRITE
+
+    def required(accesses):
+        result = []
+        for access in accesses:
+            kind, address, size, _ = access
+            assert kind in (UC_MEM_READ, UC_MEM_WRITE) and size > 0
+            if any(a <= address and address+size <= b for a, b in literals):
+                assert kind == UC_MEM_READ, 'Write to a declared immutable literal'
+            elif any(a <= address and address+size <= b for a, b in effects):
+                continue
+            else:
+                result.append(access)
+        return result
+
+    assert required(original) == required(replacement), 'Changed access outside ordinary contract'
+
+
+def extra_pages_for_case(fixture, case):
+    pages = {int(address, 0): bytearray(4096) for address in fixture.get('extra_pages', [])}
+    assert len(pages) == len(fixture.get('extra_pages', [])), 'Duplicate extra page'
+    for address in pages:
+        assert address % 4096 == 0 and address != 0x03000000
+    for change in case.get('extra_memory_overrides', []):
+        address, data = int(change['address'], 0), bytes.fromhex(change['hex'])
+        page = address & ~4095
+        assert page in pages and data and address+len(data) <= page+4096, 'Invalid extra override'
+        pages[page][address-page:address-page+len(data)] = data
+    return [(address, bytes(data)) for address, data in pages.items()]
+
+
 def compare_accesses(original, replacement, elidable_read_ranges=()):
     """Allow only a subsequence that drops reads of declared ordinary RAM.
 
@@ -53,17 +109,20 @@ def main():
     assert hashlib.sha256(args.manifest.read_bytes()).hexdigest() == fixture['manifest_sha256']
     patch, = [p for p in manifest['patches'] if p['id'] == fixture['patch_id']]
     assert patch['mode'] in ('arm', 'thumb')
-    entry, stop = int(fixture['entry'], 0), int(fixture['stop'], 0)
+    entry = int(fixture['entry'], 0)
+    stop = int(fixture['stop'], 0) if fixture.get('stop') is not None else None
     before = bytes.fromhex(fixture['code'])
     after = bytearray(before)
     offset = int(patch['addr'], 0) - entry
     expected, replacement = bytes.fromhex(patch['expect']), bytes.fromhex(patch['replace'])
     assert 0 <= offset and offset+len(expected) <= len(before)
     assert before[offset:offset+len(expected)] == expected and len(expected) == len(replacement)
-    assert entry <= stop <= entry+len(before)
+    assert stop is None or entry <= stop <= entry+len(before)
     after[offset:offset+len(expected)] = replacement
     counts = set()
     read_ranges = [(int(a, 0), int(b, 0)) for a, b in fixture.get('elidable_read_ranges', [])]
+    effects, literals = ordinary_ranges(fixture, entry, before, after)
+    assert not (read_ranges and (effects or literals)), 'Mixed access policies'
     for index, case in enumerate(fixture['cases']):
         rng = random.Random(case['memory_seed'])
         memory = bytearray(rng.getrandbits(8) for _ in range(4096))
@@ -72,7 +131,7 @@ def main():
             data = bytes.fromhex(change['hex'])
             assert 0 <= at and at+len(data) <= len(memory)
             memory[at:at+len(data)] = data
-        extra = [(int(address, 0), bytes(4096)) for address in fixture.get('extra_pages', [])]
+        extra = extra_pages_for_case(fixture, case)
         values = [int(value, 0) for value in case['registers']]
         assert len(values) == 15
         cpsr = int(case['cpsr'], 0)
@@ -81,8 +140,12 @@ def main():
         a, ac = run(before, entry, bytes(memory), values, cpsr, **options)
         b, bc = run(bytes(after), entry, bytes(memory), values, cpsr, **options)
         old_accesses, new_accesses = a.pop('accesses'), b.pop('accesses')
-        skipped = compare_accesses(old_accesses, new_accesses, read_ranges)
         assert a == b, (index, [k for k in a if a[k] != b[k]])
+        if effects or literals:
+            compare_ordinary_effects(old_accesses, new_accesses, effects, literals)
+            skipped = None
+        else:
+            skipped = compare_accesses(old_accesses, new_accesses, read_ranges)
         counts.add((ac, bc, len(old_accesses), len(new_accesses), skipped))
     assert fixture['cases']
     result = dict(state='passed_synthetic_block_equivalence', cases=len(fixture['cases']),
@@ -92,8 +155,12 @@ def main():
                                after_data_accesses=m, elided_ordinary_reads=k)
                           for a, b, n, m, k in sorted(counts)],
                   elidable_read_ranges=fixture.get('elidable_read_ranges', []),
+                  ordinary_memory_effect_ranges=fixture.get('ordinary_memory_effect_ranges', []),
+                  code_literal_read_ranges=fixture.get('code_literal_read_ranges', []),
                   exact_checks=['R0-R12', 'SP/LR/PC', 'CPSR', 'all mapped data memory',
-                                'ordered writes and required reads; only declared ordinary reads may be dropped'],
+                                ('ordered accesses outside explicit ordinary RAM/literal contracts'
+                                 if effects or literals else
+                                 'ordered writes and required reads; only declared ordinary reads may be dropped')],
                   limits='Synthetic block only; mapped MMIO pages are ordinary memory. No native timing, interrupt/DMA/cache, full-game or native qualification.')
     args.output.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result))
