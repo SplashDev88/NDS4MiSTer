@@ -404,16 +404,76 @@ Evidence: `ROOM_ROUTE_V9_REVIEW.png`, `ROUTE_COORDINATE_FINDINGS_V1.json`,
 `TOWN_NEW_THRESHOLD_DISASSEMBLY_V1.txt`, `TOWN_GUARDED_FINDINGS_V1.json`,
 `IRQ_MASK_SCAN_PROPOSAL_V1.json` and `REPLAY_SCENE_REVIEW_V3.json`.
 
+## IRQ-handler mask traversal
+
+The guarded town census observes 57,840 complete entry/setup/exit triples.
+Of these, 57,600 select bit 21 and 240 select bit 6. All preserve the expected
+stack, literal-derived DTCM/main-table pointers, selected table effects and
+return operands. An empty-tail cutoff passes 12,262 synthetic cases but has
+only a 0.007389% weighted instruction-count opportunity in this scene, so it
+does not merit a full-game trial. That estimate is not native timing.
+
+The tested replacement instead visits only set bits, in ascending order, with
+ARM9 CLZ. It occupies the same 128-byte initial ARM9 function, changes 97 byte
+values, retains the original eight-byte literal pool and uses no scratch,
+trampoline or HPS service. A separate semantic argument covers zero/high-only
+masks, the 22-bit cap and upper-bit return. All 12,262 synthetic cases preserve
+registers, CPSR, mapped memory and every ordered read/write. V1 assembly was
+never executed; V2 reverses multiplication operands to avoid an ARMv5
+destination/first-source alias.
+
+The unpatched virtual-stream control reproduces all 241 census output files.
+Both code/literal write watches contain exactly the 34 initial-load words and
+no later observed stores. The candidate's 57,840 guarded calls each satisfy the
+same selected-table and saved-stack contract, with the same mask/callback
+histograms. Those checks do not establish whole-game equivalence:
+
+| Metric | Control | Candidate |
+|---|---:|---:|
+| ARM9 reference entries, frames 15000–16799 | 292,331,250 | 285,962,200 |
+| ARM7 reference entries, same window | 45,944,604 | 45,943,922 |
+| Top-screen frame mismatches | 0 | 1, at frame 14359 |
+| Bottom-screen frame mismatches | 0 | 0 |
+| Different stereo samples of 13,479,065 | 0 | 6,591,626 |
+| Maximum signed-16 audio delta | 0 | 6,731 |
+| Failed main-RAM/DTCM/ARM7-WRAM checkpoint sets | 0 | All 11 |
+| Per-frame/final save mismatches | 0 | 0 |
+
+Audio RMS delta is 186.388139 without alignment or masking. Main RAM diverges
+from frame 9, and DTCM/ARM7 WRAM from frame 8. The retained frame-2600 main-RAM
+dump differs by 138,355 words outside the declared code. No timing-only,
+audibility or benign-allocation explanation has been proved. In particular,
+nearly identical screens and an unchanged save do not justify masking the RAM
+or audio differences.
+
+**Rejected and disabled.** The measured 2.178710% reduction is software
+instruction entries, not native cycles, frame time or gameplay speed. Native
+p50/p95/max frame time, dropped frames, HPS load and load-time changes remain
+unmeasured. No optimized reset, native trial, unchanged rerun or beta follows a
+failed replay gate. The accepted FFTA2 Beta2 package remains unchanged.
+
+The generic pattern detector also finds a 25-bit ARM7 loop with no samples in
+this window. It is a separate lead: ARM7 cannot execute the ARM9 CLZ replacement.
+Six detector tests cover renamed registers and unsafe near matches; four
+comparison tests cover explicit combined code/data write watches and existing
+overlay normalization. No game addresses were added to the shared tools.
+
+Evidence: `IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json`, `IRQ_MASK_COST_SCREEN_V1.json`,
+`IRQ_SPARSE_SEMANTIC_ARGUMENT_V2.json`, `IRQ_SPARSE_SYNTHETIC_V2.json`,
+`IRQ_SPARSE_CONTROL_V2_STATUS.json`, `IRQ_SPARSE_CANDIDATE_EFFECT_AUDIT_V2.json`,
+`IRQ_SPARSE_COMPARISON_V2.json`, `IRQ_SPARSE_DECISION_V2.json`,
+`IRQ_SPARSE_BEFORE_AFTER_V2.csv` and `IRQ_SPARSE_PATTERN_SCAN_V1.json`.
+
 Next three investigations:
 
-1. Census actual IRQ-table masks and callback values, then prove a same-size
-   empty-tail cutoff if the observed workload justifies it.
-2. Capture ARM7 pitch/volume operand recurrence before caching or precomputation;
-   preserve stateful envelope updates and audio cadence.
-3. Extend outdoor walking, battle and save-write/reload coverage. The whole-empty
-   HBlank proposal still needs a justified layout and callback/IRQ contract.
-   The rejected compaction lead may merit perceptual review only if the user
-   separately approves that budget; an unchanged strict repeat adds no evidence.
+1. Capture ARM7 pitch/volume operands and caller recurrence before considering
+   arithmetic reuse. Preserve stateful envelope updates and audio cadence.
+2. Extend active outdoor movement, battle and isolated save-write/reload
+   coverage, then profile those scenes before optimizing more town-idle work.
+3. Revisit the whole-empty HBlank proposal only with a proved layout and
+   callback/IRQ contract. A startup- or caller-scoped IRQ optimization would
+   require a new proof and supported delivery, not an unchanged rerun of this
+   rejected patch. Any perceptual budget needs separate user approval.
 
 No RTL, new HPS service, save-state-format change or non-bit-exact acceptance
 is authorized here. No speed improvement or new beta is claimed.

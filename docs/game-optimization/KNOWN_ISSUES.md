@@ -295,6 +295,16 @@
   with 235 identical full files. The repeat intentionally changes only the
   profiling window; counter/PC-file differences are audited, not game-state
   allowances. Town idle does not qualify outdoor combat, save writes, optimized
-  overlay transitions or native performance. The new IRQ-table mask-walk lead
-  still needs a dynamic input census and exact replacement proof; never confuse
-  removing empty scan iterations with suppressing selected IRQ handlers.
+  overlay transitions or native performance. Never confuse removing empty
+  IRQ-table scan iterations with suppressing selected IRQ handlers.
+- Platinum's mask census selects bit 21 in 57,600 of 57,840 calls; an empty-tail
+  exit offers almost no benefit. The same-size set-bit rewrite passes 12,262
+  synchronous synthetic cases and 57,840 guarded candidate table contracts,
+  but changes one screen frame, all 11 fixed main-RAM/DTCM/ARM7-WRAM checkpoint
+  sets and 6,591,626 stereo samples. It is rejected and disabled despite a
+  2.178710% reference-entry reduction. Do not infer harmless timing, mask heap
+  differences, transfer FFT approval, rerun unchanged or trial it natively.
+- The generic mask detector also flags an unsampled ARM7 variant. ARM9 CLZ
+  bytes cannot be used on ARM7. Verify CPU instruction support and multiply
+  operand restrictions independently of a newer-architecture emulator's
+  synthetic result; no SDK identity or cross-game patch is established.

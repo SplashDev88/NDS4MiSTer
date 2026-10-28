@@ -2,7 +2,7 @@
 """Read-only structural screening of ARM code sections; never authorizes a patch.
 
 Detectors recognize copy control flow, redundant shifts, weighted nibble sums,
-and linear key/handler dispatch, allowing register renaming. Linear scans can encounter data or Thumb code;
+linear key/handler dispatch and fixed-width mask walks, allowing register renaming. Linear scans can encounter data or Thumb code;
 execution traces and revision/original-byte guards are still required.
 """
 import argparse
@@ -12,8 +12,9 @@ import json
 from pathlib import Path
 import struct
 
-from capstone import Cs, CS_ARCH_ARM, CS_MODE_ARM
-from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_CC_NE, ARM_INS_MOV, ARM_INS_CMP, ARM_INS_TST,
+from capstone import (Cs, CS_ARCH_ARM, CS_MODE_ARM, CS_GRP_JUMP, CS_GRP_CALL,
+                      CS_GRP_RET, CS_GRP_INT, CS_GRP_IRET)
+from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_CC_NE, ARM_CC_EQ, ARM_INS_MOV, ARM_INS_CMP, ARM_INS_TST,
                           ARM_INS_B, ARM_INS_LDR, ARM_INS_LDRH, ARM_INS_STRH, ARM_INS_ADD,
                           ARM_INS_BLX,
                           ARM_INS_BX, ARM_OP_REG, ARM_OP_IMM, ARM_OP_MEM,
@@ -185,6 +186,68 @@ def key_handler_dispatch(instructions):
                 required_proof='Observe callers, lookup keys, table identity and every table write. Preserve first-match order, misses, handler calls, registers/flags and timing. No sortedness, immutability, redundancy or SDK identity inferred.')
 
 
+def fixed_width_mask_walk(instructions):
+    """Screen a low-bit test with an invariant mask/index body and bounded tail.
+
+    This finds work to profile, not a safe replacement or a known SDK routine.
+    The body can have forward conditional branches but cannot escape, call,
+    change either loop operand or transfer control indirectly.
+    """
+    if not 7 <= len(instructions) <= 64:
+        return None
+    test, skip = instructions[:2]
+    add, compare, shift, back = instructions[-4:]
+    if [i.id for i in [test, skip, add, compare, shift, back]] != [
+            ARM_INS_TST, ARM_INS_B, ARM_INS_ADD, ARM_INS_CMP, ARM_INS_LSR, ARM_INS_B]:
+        return None
+    if any(i.address != test.address + 4*n or i.size != 4 for n, i in enumerate(instructions)):
+        return None
+    selected = [test, skip, add, compare, shift, back]
+    if any(i.cc != cc or i.writeback or i.update_flags != flags
+           for i, cc, flags in zip(selected,
+               [ARM_CC_AL, ARM_CC_EQ, ARM_CC_AL, ARM_CC_AL, ARM_CC_AL, ARM_CC_LT],
+               [True, False, False, True, False, False])):
+        return None
+
+    def reg(i, k):
+        operand = i.operands[k]
+        assert operand.type == ARM_OP_REG and not operand.shift.type
+        assert operand.reg not in [ARM_REG_SP, ARM_REG_PC]
+        return operand.reg
+
+    def imm(i, k):
+        operand = i.operands[k]
+        assert operand.type == ARM_OP_IMM
+        return operand.imm
+
+    try:
+        mask = reg(test, 0)
+        assert imm(test, 1) == 1 and not (int.from_bytes(test.bytes, 'little') & 0xf00)
+        assert imm(skip, 0) == add.address
+        index = reg(add, 0)
+        assert index != mask and reg(add, 1) == index and imm(add, 2) == 1
+        assert reg(compare, 0) == index and 1 <= imm(compare, 1) <= 32
+        assert reg(shift, 0) == mask
+        source = shift.operands[1]
+        assert source.type == ARM_OP_REG and source.reg == mask
+        assert source.shift.type == ARM_SFT_LSR and source.shift.value == 1
+        assert imm(back, 0) == test.address
+        addresses = {i.address for i in instructions[2:-3]}
+        for instruction in instructions[2:-4]:
+            if instruction.id == ARM_INS_B:
+                target = imm(instruction, 0)
+                assert target in addresses and target > instruction.address
+            else:
+                assert not set(instruction.groups) & {
+                    CS_GRP_JUMP, CS_GRP_CALL, CS_GRP_RET, CS_GRP_INT, CS_GRP_IRET}
+                _, written = instruction.regs_access()
+                assert not set(written) & {mask, index, ARM_REG_PC}
+    except (AssertionError, IndexError):
+        return None
+    return dict(mask=test.reg_name(mask), index=test.reg_name(index), width=imm(compare, 1),
+                required_proof='Observe mask histogram and caller contract before choosing an empty-tail or set-bit walk. Preserve high-bit return, zero mask, selected writes and order, stack/registers/flags, literal identity and CPU instruction support. No sparsity, SDK identity, dead work or safe patch inferred.')
+
+
 def scan(data, base):
     decoder = Cs(CS_ARCH_ARM, CS_MODE_ARM)
     decoder.detail = True
@@ -204,6 +267,21 @@ def scan(data, base):
                 findings.append(dict(pattern=pattern, address=hex(base+at),
                                      bytes=size, expect=raw.hex(), roles=roles,
                                      status='static_candidate_requires_execution_and_semantic_proof'))
+        # A forward BEQ following TST mask,#1 identifies the start of the tail.
+        # Bound its extent before decoding; never scan arbitrary branch targets.
+        if word & 0xfff0ffff == 0xe3100001 and at+8 <= len(data):
+            branch = struct.unpack_from('<I', data, at+4)[0]
+            displacement = branch & 0xffffff
+            if displacement & 0x800000:
+                displacement -= 0x1000000
+            size = 12 + displacement*4 + 16
+            if branch >> 24 == 0x0a and 28 <= size <= 256 and at+size <= len(data):
+                raw = data[at:at+size]
+                roles = fixed_width_mask_walk(list(decoder.disasm(raw, base+at)))
+                if roles:
+                    findings.append(dict(pattern='fixed-width-sparse-bitmask-traversal',
+                        address=hex(base+at), bytes=size, expect=raw.hex(), roles=roles,
+                        status='static_candidate_requires_execution_and_semantic_proof'))
     return findings
 
 

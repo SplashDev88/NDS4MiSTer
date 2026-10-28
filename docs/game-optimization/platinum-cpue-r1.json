@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "two_candidates_rejected_no_patch_enabled",
+  "status": "three_candidates_rejected_no_patch_enabled",
   "patches": [
     {
       "cpu": "arm9",
@@ -111,6 +111,60 @@
         "status_receipt": "EMPTY_TAIL_CANDIDATE_V1_STATUS.json",
         "status_sha256": "1a54b57e86827452898591e71c67ba9708df4b885992e3ef3a5c9a6f6d5badaa"
       }
+    },
+    {
+      "id": "irq-mask-sparse-bitwalk",
+      "pattern": "fixed-width-sparse-bitmask-traversal",
+      "cpu": "arm9",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x20c144c",
+      "mode": "arm",
+      "expect": "f8432de90080a0e30c20a0e36c409fe56c609fe50870a0e108e0a0e101c0a0e30230a0e1010010e30f00000a0790a0e1080058e3030000ba0b0058e3085048d2956329d0060000da030058e3030000ba060058e3015088d2956229d0000000da081184e7000059e302508918018088e2160058e3a000a0e1e9ffffbaf883bde8",
+      "replace": "f8432de90c20a0e370409fe570609fe500e0a0e301c0a0e3207ba0e1ff04c0e30305c0e30f5ca0e3785085e3000050e30f00000a009060e2009009e0198f6fe11f8068e20900c0e11c0815e10500000a080058e30190883208904822926929e0025089e8000000ea081184e7000050e3efffff1a0700a0e1020052e1f883bde8",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x20c14cc",
+          "expect": "00007e02f8cb1c02"
+        }
+      ],
+      "notes": "Disabled128-byte ARM9 initial-code replacement;97 bytevalues differ,original8-byte literal pool guarded,no scratch. Preserve all selected IRQ-handler updates in ascending order.12262 synthetic cases and57840 candidate call contracts pass; full16800-frame replay fails screen/RAM/audio. No native qualification,unchanged repeat or FFT approval transfer.",
+      "status": "rejected_screen_checkpoint_RAM_and_audio_mismatch",
+      "validated": {
+        "fb": "One top-screen mismatch atframe14359 of16800;bottom exact",
+        "ram": "All11 fixed mainRAM/DTCM/ARM7-WRAM checkpoint sets fail;retainedframe2600 differs138355 words outside128 codebytes",
+        "audio": "6591626 of13479065 stereo samples differ;maxdelta6731;RMS186.388139;no audibility judgment",
+        "save": "All16800 per-frame save hashes and finalsave exact",
+        "native": "Not run:replay rejected"
+      },
+      "gain": {
+        "reference_arm9_entries_15000_16799": {
+          "before": 292331250,
+          "after": 285962200,
+          "reduction_percent": 2.1787099394950076,
+          "first_frame": 15000,
+          "end_frame_exclusive": 16800,
+          "scope": "Software executed instructions; not native cycles or speed"
+        },
+        "native_cycles": null,
+        "native_frame_time": null,
+        "qualified": false
+      },
+      "synthetic_validation": {
+        "cases": 12262,
+        "receipt": "IRQ_SPARSE_SYNTHETIC_V2.json",
+        "receipt_sha256": "ed43eb715c4bc7de04306de8a6e0df039ff3d6b1facbfe6e1bce7ff8fb9eeb2f"
+      },
+      "replay_rejection": {
+        "receipt": "IRQ_SPARSE_COMPARISON_V2.json",
+        "receipt_sha256": "3a22bd19b323d0f9b214999bdacb38bbcb3924bd1f3466dd11879bacc9276a1b",
+        "input_manifest": "IRQ_SPARSE_INPUT_MANIFEST_V2.json",
+        "input_manifest_sha256": "88a80f1b30af340dae733083a853403d4047c2c4f403bb1a124fafed6e2d3664",
+        "status_receipt": "IRQ_SPARSE_CANDIDATE_V2_STATUS.json",
+        "status_sha256": "aeac47b90c98658533e4b45c50569972745f3875040ce9a1bf3c6ac2dc8be92f"
+      }
     }
   ],
   "arm9_crc32": "4d104949",
@@ -129,7 +183,7 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "EMPTY_TAIL_DECISION_V1.json",
+    "latest_decision": "IRQ_SPARSE_DECISION_V2.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -138,6 +192,12 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V3.json",
-    "next_proposal": "IRQ_MASK_SCAN_PROPOSAL_V1.json"
+    "next_proposal": "ARM7 operand recurrence and active outdoor/battle/save coverage",
+    "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
+    "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
+    "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
+    "irq_mask_synthetic": "IRQ_SPARSE_SYNTHETIC_V2.json",
+    "irq_mask_detector": "IRQ_SPARSE_PATTERN_SCAN_V1.json",
+    "irq_mask_enabled": false
   }
 }

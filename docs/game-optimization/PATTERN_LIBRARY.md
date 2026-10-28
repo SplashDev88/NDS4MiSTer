@@ -680,9 +680,36 @@ return registers and flags. Treat an initially zero mask separately: a shift's
 carry flag can differ from the original loop's final compare. Authenticate
 literal pools and DTCM/main-RAM mappings rather than assuming ordinary RAM.
 
-Platinum's outdoor profile identifies a 22-bit handler-table walk at
-`020c144c..020c14c8`; the surrounding bin is 3.68% of ARM9 PC samples. Exact
-owned bytes support the structure, but dynamic mask recurrence and a replacement
-proof are pending. A potential same-size layout can avoid duplicate zero/stride
-temporaries, retaining all selected IRQ updates. No code has been patched, no
-native saving is established, and no SDK name/signature is yet promoted.
+The generic scanner now recognizes `TST mask,#1`, a forward empty-bit branch,
+a body that preserves mask/index, and an increment/width-compare/right-shift/
+back-edge tail. It permits register renaming and bounded forward body branches,
+and rejects calls, indirect control transfers, escaping branches, changed loop
+operands and malformed bounds. This is structural screening only: table meaning,
+initial index, CPU support and runtime safety still require evidence.
+
+Platinum's outdoor census finds 57,600 masks selecting bit 21 and only 240
+selecting bit 6 over 1,800 frames. An early-zero exit therefore saves almost no
+work in this scene. A same-size 128-byte ARM9 replacement instead isolates the
+lowest set bit, uses CLZ to obtain its index, and visits selected bits in their
+original order. It retains the 22-bit cap, upper-bit return, original literal
+loads, selected table writes, stack and terminal flags. All 12,262 synthetic
+cases pass with identical ordered data accesses and no scratch. Keep ARMv5
+multiply operand restrictions in view; the tested assembly keeps the
+destination distinct from the first multiply source.
+
+The scanner independently finds a 25-bit ARM7 variant with no samples in this
+window. Do not transfer an ARM9 CLZ replacement to ARM7. Neither match establishes
+a shared SDK name or an interchangeable patch.
+
+Despite 57,840 individually valid candidate call contracts and identical mask/
+callback counts, the full replay fails: one screen frame, fixed RAM checkpoints
+and audio differ. Its 2.178710% reduction in aggregate reference instruction
+entries is not a native speedup or an accepted optimization. A correct local
+algorithm can change whole-game behavior through interactions outside its
+synchronous contract. Preserve the failed result; do not label those differences
+harmless or reuse another game's perceptual allowance.
+
+When a write watch covers both code and literal data, the pair summarizer can
+explicitly authenticate original control bytes and replacement candidate bytes.
+Unknown watched addresses and conflicting guards still fail. This changes only
+diagnostic accounting, not RAM comparison masks or any acceptance gate.

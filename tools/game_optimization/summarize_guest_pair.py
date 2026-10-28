@@ -54,9 +54,9 @@ def audio_stats(a, b):
     return result
 
 
-def guard_stats(path, guards):
+def guard_stats(path, guards, instruction_guard=None):
     expected = {}
-    for guard in guards:
+    for guard in list(guards) + ([instruction_guard] if instruction_guard else []):
         base = int(guard['addr'], 0)
         for offset, value in enumerate(bytes.fromhex(guard['expect'])):
             at = base + offset
@@ -73,10 +73,16 @@ def guard_stats(path, guards):
         bad += any(expected[at + i] != byte for i, byte in enumerate(actual))
         later += int(row['frame']) > 0
         observed.update(range(at, at + len(actual)))
-    return dict(writes=writes, writes_not_matching_original_bytes=bad,
+    result = dict(writes=writes, writes_not_matching_expected_bytes=bad,
                 writes_after_frame0=later, guarded_bytes=len(expected),
                 guarded_bytes_observed=len(observed), trace_sha256=sha(path),
+                instruction_bytes_included=(len(bytes.fromhex(instruction_guard['expect']))
+                                            if instruction_guard else 0),
+                expected_bytes_scope='Declared data guards plus explicitly selected original/replacement instruction bytes',
                 scope='Captured main-RAM bus stores only; not arbitrary host/state-loader/JIT coverage')
+    if instruction_guard is None:
+        result['writes_not_matching_original_bytes'] = bad  # Legacy data-only report.
+    return result
 
 
 def normalize_checkpoint(before, after, patch, records):
@@ -121,6 +127,8 @@ def main():
     parser.add_argument('input', type=Path)
     parser.add_argument('--reuse-unpatched-control', action='store_true',
                         help='Verify original-stream identity before reusing a control with a different disabled manifest')
+    parser.add_argument('--include-code-write-watch', action='store_true',
+                        help='Validate watched instruction writes against original control/replacement candidate bytes as well as data guards')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     assert not args.output.exists()
@@ -183,9 +191,11 @@ def main():
                       scope='Existing retained mainram.bin checkpoint; no other memory normalized'),
                   RAM_frame_differences=candidate['differing_state_frames'],
                   save_exact=sha(args.control/'save.bin') == sha(args.candidate/'save.bin') and candidate['differing_state_frames']['save'] == 0,
-                  table_and_literal_write_watch=({name: guard_stats(path/'ram_bus.csv',patch['data_guards'])
+                  table_and_literal_write_watch=({name: guard_stats(path/'ram_bus.csv',patch.get('data_guards',[]),
+                      dict(addr=patch['addr'],expect=patch['expect' if name=='control' else 'replace'])
+                      if args.include_code_write_watch else None)
                       for name,path in [('control',args.control),('candidate',args.candidate)]}
-                      if patch.get('data_guards') else {}),
+                      if patch.get('data_guards') or args.include_code_write_watch else {}),
                   source_manifest_sha256=inputs['manifest_sha256'], input_sha256=sha(args.input),
                   analysis_source_sha256=sha(Path(__file__)), accepted=False, native_measured=False,
                   reused_original_control=reused,
