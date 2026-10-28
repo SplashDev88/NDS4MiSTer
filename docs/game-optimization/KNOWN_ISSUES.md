@@ -363,3 +363,14 @@
   with a properly isolated Platinum configuration and fresh ownership checks;
   do not launch the FFT wrapper unchanged. Native PC collection also requires
   a diagnostic bitstream tag, whose presence in exact rc12 is unqualified.
+- Platinum's font generator uses a different stack from the idle task seen at
+  video-frame checkpoints. A first observer incorrectly requested main-RAM
+  stack bytes and aborted on the mapping guard; that run is excluded. The
+  corrected census observes 8,900 entry SPs in `027e3510–027e3700` and records
+  registers plus the main-RAM table, without claiming dynamic stack captures.
+- An already-correct font table does not authorize a bare early return. The
+  original generator leaves specific volatile registers/flags and 72 bytes of
+  stack effects. Reproduce those under the strict gate; do not normalize them
+  away. The three stored colors predict the correct table in this bounded
+  replay, but input-domain truncation, asynchronous readers, reset/lifetime,
+  code capacity and native benefit remain unqualified for a replacement.

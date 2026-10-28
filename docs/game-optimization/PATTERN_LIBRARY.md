@@ -845,3 +845,28 @@ new direction is pressed. Declare profiling-counter differences separately and
 compare all game-state fields, audio, screen hashes and shared checkpoints
 without normalization for unpatched runs. Do not label menu/dialogue tails as
 continuous combat merely because the route also contains a battle.
+
+## Repeated small lookup-table construction
+
+A small color-dependent decoder table may be rebuilt on every text update.
+Look for fixed nested loops that combine a few input values at constant bit
+shifts and store a bounded sequential table, followed elsewhere by indexed
+loads that expand packed data. This is a manual structural lead; the current
+ARM scanner does not automatically detect the Thumb example.
+
+Use the existing entry/exit register observer and full-route RAM-bus watch.
+Check complete input recurrence, compare the existing table with an independent
+model for each current input, then account for every observed table and key
+writer, including initialization. A stored last-input key can avoid inventing
+new scratch, but only if it reliably describes the actual table. Different
+keys producing equal output, key truncation, partial updates, reentrancy,
+asynchronous readers and reset/lifetime behavior remain separate obligations.
+
+Skipping a table rebuild can leave different volatile registers, flags and
+discarded stack bytes. Model those effects with the existing CPU-equivalence
+runner and retain the strict full-replay comparison. Do not silently exclude
+dead stack data from the RAM gate. Publish recurrence and an optimistic removed-
+instruction bound separately from a real replacement's cost and native gain.
+Platinum's font example has 8,833 already-correct tables in 8,900 calls, but
+needs 72 bytes of stack effects and nontrivial register effects reproduced.
+This establishes an opportunity, not an accepted cache or reusable SDK patch.

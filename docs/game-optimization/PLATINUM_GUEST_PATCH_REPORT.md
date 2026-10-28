@@ -8,8 +8,9 @@ Four candidates are rejected and disabled. The latest one-byte ARM7 pitch
 change passes local equivalence and delivery controls, but its full replay
 changes audio and a RAM checkpoint despite identical screens and save data.
 No Platinum speed gain is qualified. Walking, save/cold-load and the first
-trainer battle now have exact software-reference repeats. Native measurement
-and proof of the newly exposed battle hotspots are next.
+trainer battle now have exact software-reference repeats. A full-route census
+supports reusing an already-correct font lookup table; an exact replacement
+and native measurements remain unfinished.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -949,3 +950,78 @@ Evidence: `FIRST_BATTLE_REPEAT_COMPARISON_V1.json`,
 `FIRST_BATTLE_BASELINE_REPEAT_V1.csv`, `REPLAY_SCENE_REVIEW_V6.json`,
 `NATIVE_BASELINE_PREPARATION_FINDINGS_V1.json`
 and `BATTLE_HOTSPOT_CONTRACT_PROPOSAL_V1.json`.
+
+## Font lookup-table recurrence and complete-function effects
+
+The owned Thumb routine at `0201d9fc` builds 256 halfwords at `021c0500` from
+three color arguments. Its structure matches the pinned decompilation's
+`Text_GenerateFontHalfRowLookupTable`: four nested loops enumerate combinations
+of `[0, foreground, shadow, background]`. That source calls the generator
+before immediate text rendering and during text-printer task updates. It is a
+semantic guide; the exact owned bytes, observed arguments and writes establish
+the contract. No shared SDK or cross-title signature is claimed.
+
+The existing generic memory and RAM-bus observers were enabled for the entire
+23,400-frame route. The first probe incorrectly requested a main-RAM stack
+span and stopped on the existing mapping guard. It is retained and excluded.
+The corrected probe records entry table/metadata and entry/exit registers
+without guessing the stack mapping. All 250 shared complete output files,
+screen/frame metadata, audio, save and game-RAM hashes match the qualified
+unpatched replay. Only declared counters/sample files and new observer files
+differ. No product code or observer binary changed.
+
+| Observation | Full route, 0–23399 | Battle window, 18000–23399 |
+|---|---:|---:|
+| Complete generator calls | 8,900 | 1,338 |
+| Distinct color triples | 12 | 8 |
+| Existing table already correct for current inputs | 8,833 | 1,281 |
+| Existing three-color key falsely predicts a correct table | 0 | 0 |
+| Same-table opportunities | 99.25% | 95.74% |
+
+The generic recurrence tool separately verifies complete argument recurrence
+and the declared R0/R1/R2 output registers. Its fixture does not pretend to
+capture output table bytes. A separate write-contract audit validates every
+one of the 2,278,400 table halfword stores, plus 26,700 color-metadata stores,
+against the exact nested-loop model and paired entry arguments. All 8,900
+invocations complete, and their pre-POP registers and NZCV match the modeled
+original effects.
+
+All 2,305,400 observed writes to the selected ranges are attributed: the
+generator, 130 bootstrap zero-word stores, and 170 writes to an unrelated
+metadata byte at `021c04d8`. After initialization, the generator is the only
+observed table/color-field writer. There are no ARM7 or DMA writes to these
+ranges in this replay. This is bounded interpreter/bus evidence; direct host
+initialization, untested scenes, save-state loading and native cache visibility
+are outside that claim. No unused scratch memory is asserted.
+
+A naive early return would fail exactness even with a correct table. Thirty-two
+synthetic cases using the existing equivalence runner verify that the original
+function also leaves R0=4, R1=510, R2 as the background value replicated by
+bitwise shifts/ORs, R12 and LR equal to entry SP minus 40, and NZCV=`0110`.
+It restores saved registers/SP but writes 72 bytes below entry SP, including
+local counters, pointers, colors and saved registers. The observed entry SPs
+are `027e3510–027e3700`, within the DTCM range shown by the checkpoints; frame
+boundary SP snapshots in a different task did not predict this call stack.
+Dynamic stack bytes were not captured in the corrected census. The synthetic
+model checks their complete original contents and all mapped memory effects.
+
+The original takes 5,247 synthetic instruction entries per call. Eliminating
+every instruction from all 1,281 matching battle calls would remove at most
+6,721,407 entries, or 2.283% of that window's ARM9 total. This intentionally
+optimistic bound excludes the necessary guard, register/stack reproduction and
+fallback costs. It is not a measured candidate improvement or native speedup.
+
+The next patch design should use a guarded replacement within the authenticated
+function extent, preserve the original input-domain semantics and complete CPU/
+stack effects, and retain generation on a miss. No extra validity flag, code
+cave or scratch area is admitted. Cache lifetime, asynchronous readers, reset,
+save/reload and non-target scenes still need qualification. All four earlier
+patches remain rejected and disabled; no new candidate or beta is enabled.
+
+Evidence: `LOOKUP_TABLE_IDENTITY_V1.json`, `LOOKUP_TABLE_SOURCE_GUIDE_V1.json`,
+`LOOKUP_TABLE_CENSUS_V1_EXCLUSION.json`,
+`LOOKUP_TABLE_CENSUS_QUALIFICATION_V1.json`, `LOOKUP_TABLE_RECURRENCE_V1.json`,
+`LOOKUP_TABLE_ENTRY_REUSE_V1.json`, `LOOKUP_TABLE_WRITER_CENSUS_V1.json`,
+`LOOKUP_TABLE_WRITE_CONTRACT_V1.json`,
+`LOOKUP_TABLE_ORIGINAL_EFFECT_MODEL_V1.json`,
+`LOOKUP_TABLE_BEFORE_AFTER_V1.csv` and `LOOKUP_TABLE_REUSE_PROPOSAL_V1.json`.
