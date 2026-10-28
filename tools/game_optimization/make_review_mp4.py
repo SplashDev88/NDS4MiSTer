@@ -22,6 +22,15 @@ def video_digest(path):
     return packet_digest(path)
 
 
+def packet_timing(path, kind, index=0):
+    with av.open(str(path)) as container:
+        stream = getattr(container.streams, kind)[index]
+        return [(packet.pts * packet.time_base if packet.pts is not None else None,
+                 packet.dts * packet.time_base if packet.dts is not None else None,
+                 packet.duration * packet.time_base)
+                for packet in container.demux(stream) if packet.size]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path)
@@ -38,11 +47,13 @@ def main():
             output.metadata['comment'] = ('Original native capture video and selected audio packets, without speed or volume changes.' if copy_audio else
                 'Convenience copy with AAC audio. Use the original PCM MOV for lossless sound comparison. Not native MiSTer performance.')
             video = output.add_stream_from_template(source.streams.video[0])
+            video.time_base = source.streams.video[0].time_base
             if copy_audio:
                 if not 0 <= args.copy_audio_track < len(source.streams.audio):
                     raise ValueError('Audio track is outside the source')
                 selected = source.streams.audio[args.copy_audio_track]
                 audio = output.add_stream_from_template(selected)
+                audio.time_base = selected.time_base
             else:
                 audio = output.add_stream('aac', rate=48000)
                 audio.layout, audio.bit_rate = 'stereo', 320000
@@ -70,6 +81,9 @@ def main():
         audio_digest = packet_digest(args.source, 'audio', args.copy_audio_track)
         if audio_digest != packet_digest(args.output, 'audio'):
             raise ValueError('Encoded audio changed during remux')
+        for kind, index in [('video', 0), ('audio', args.copy_audio_track)]:
+            if packet_timing(args.source, kind, index) != packet_timing(args.output, kind):
+                raise ValueError('Packet timing changed during remux: ' + kind)
     with av.open(str(args.output)) as output:
         audio = output.streams.audio[0]
         result = dict(state='completed_convenience_copy', source=str(args.source),
@@ -77,6 +91,7 @@ def main():
                       video_packet_sha256=after[0], video_packets=after[1],
                       audio_codec=audio.codec_context.name, audio_is_lossy=True,
                       encoded_audio_unchanged=copy_audio,
+                      packet_timestamps_verified=copy_audio,
                       source_audio_track=args.copy_audio_track,
                       audio_packet_digest=audio_digest,
                       duration_seconds=output.duration / av.time_base,
