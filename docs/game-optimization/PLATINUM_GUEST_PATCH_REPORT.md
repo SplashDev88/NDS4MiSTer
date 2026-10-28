@@ -4,7 +4,7 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-Five candidates remain disabled. At the user's request, three were subsequently
+Six candidates remain disabled, including a new terrain-visibility experiment. At the user's request, three were subsequently
 screened as isolated perceptual experiments on native hardware: empty-tail
 cleanup, FIFO predication and font-table reuse. No worthwhile native gain is
 demonstrated in the measured walking/menu/Bag scenes. Battle benefit remains
@@ -1316,3 +1316,59 @@ Evidence: `GEOMETRY_BUILD_V12.json`, `GEOMETRY_OUTDOOR_QUALIFICATION_V1.json`,
 `BOXTEST_REGISTER_CENSUS_V1_EXCLUSION.json`,
 `BOXTEST_REGISTER_QUALIFICATION_V2.json`, `BOXTEST_REGISTER_FINDINGS_V2.json`
 and `BOXTEST_RESULT_DISASSEMBLY_V1.txt`.
+
+
+## overlay5-terrain-visibility — disabled reference experiment
+
+A terrain-only argument census at the owned overlay-5 call `021e8a56` passes
+all 180 retained golden files. It observes 1,200 draws: four render objects,
+300 calls each. Every rotation and scale equals the existing overlay's identity
+matrix at `021faeb8` and unit vector at `021faea0`. The four model pointers and
+positions remain stable in frames 15000–15599. Full-route RAM bus observation
+records loading writes, but none to these model headers or constants during
+that target window; this does not establish globally unused memory.
+
+The experiment replaces exactly 48 bytes at `021e8a2a`, within the original
+terrain function. It calls the game's existing `GFXBoxTest_IsModelInView` with
+that chunk's model and transforms, then draws only on a nonzero result. Props
+continue through the original independent path. Passing the existing immutable
+rotation/scale constants directly frees space previously used for stack copies.
+No trampoline, new storage, HPS service, RTL or ROM-file write is involved.
+Overlay ID 5, its full decoded hash, game/header/ARM9 identities and all original
+bytes are guarded by the existing virtual-cartridge mechanism. The replacement
+inherits overlay loading and reloading; it is not keyed by address alone.
+
+| Target-window measurement | Control | Terrain candidate |
+|---|---:|---:|
+| ARM9 instruction entries | 98,783,080 | 97,162,803 (−1.640%) |
+| ARM7 instruction entries | 16,043,379 | 16,043,379 |
+| Terrain draw-helper calls | 1,200 | 590 |
+| Added terrain box tests | 0 | 1,200 |
+| Existing prop tests: hidden / visible | 1,729 / 671 | 1,729 / 671 |
+| Native speed / frame-time percentiles | Not measured | Not measured |
+
+The new tests return 610 hidden and 590 visible results. Other draw callers
+retain their observed counts. These are reference execution counts, not native
+cycles, geometry work saved, unique FPS or a native speedup. Extra synchronous
+queries could erase the benefit on hardware.
+
+The full 15,600-frame replay fails the strict gate: six top-screen frames differ
+(14357, 14359, 14479, 14481, 14483, 14485), while every bottom screen and the
+final save match. All 600 target-window screen pairs match. Of 12,516,274 stereo
+samples, 239,992 differ, with maximum channel delta 1,215 and RMS 9.153. Fixed
+main-RAM and DTCM checkpoints also differ after normalizing only the exact code
+replacement. Removed stack copies and the added graphics query alter execution,
+but that is not a blanket explanation or acceptance of all RAM/audio changes.
+The differing frames, audio and RAM remain explicit and unaccepted.
+
+The user authorized perceptual experiments, so the next gate is visual review
+of the changed frames and an isolated native A/B if the route remains usable.
+Cold boot is covered by reference replay; native save/load, reset, additional
+transition/overlay and unrelated-scene checks remain pending. The core does not
+currently support persistent save states. Nothing is enabled in a default beta.
+
+Evidence: `DRAW_REGISTER_QUALIFICATION_V1.json`, `DRAW_REGISTER_FINDINGS_V1.json`,
+`TERRAIN_CONTRACT_QUALIFICATION_V1.json`, `TERRAIN_CONTRACT_FINDINGS_V1.json`,
+`TERRAIN_CULL_BUILD_V1.json`, `TERRAIN_CULL_DISASSEMBLY_V1.txt`,
+`TERRAIN_CULL_CONTROL_V1_STATUS.json`, `TERRAIN_CULL_CANDIDATE_V1_STATUS.json`,
+`TERRAIN_CULL_REFERENCE_FINDINGS_V1.json`, `TERRAIN_CULL_RAM_DIFF_V1.json`.

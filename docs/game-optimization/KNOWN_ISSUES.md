@@ -420,3 +420,10 @@
   normalized zero/one boolean. Preserve raw outputs. One model pointer is used
   by multiple instances with opposite visibility outcomes; pointer-only caching
   and reused stack addresses cannot establish equivalent query inputs.
+
+- The disabled Platinum terrain visibility experiment skips 610 of 1,200 terrain
+  draws, but introduces 1,200 synchronous box tests and fails exact RAM/audio
+  comparison. Six top-screen frames before the measured walking route also
+  differ. Direct constant pointers replace stack copies; no dynamic RAM region
+  is excluded from comparison. Do not equate draw-count reduction with native
+  speed, assume all differences are benign, or enable before review/measurement.

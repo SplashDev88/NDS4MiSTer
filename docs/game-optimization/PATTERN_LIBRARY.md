@@ -951,3 +951,15 @@ return under exact instruction guards. In Platinum, 2,400 prop tests include
 visibility outcomes. Capture actual bounds/transforms and camera/projection
 state, not just pointers. Separate terrain, props and character drawing paths:
 a valid-only terrain draw is a lead for coarse culling, not proof of invisibility.
+
+
+For coarse model culling, first distinguish the draw object's model resource
+from its instance transform. Observe arguments at a category-specific caller:
+common draw helpers can mix main-RAM and DTCM pointers across callers. Reuse an
+existing game visibility helper only after authenticating its mode, raw result,
+transform contract and state effects. Immutable transform constants can replace
+stack copies to fit a same-extent experiment, but changed stack residue remains
+a recorded RAM difference. Count skipped draws **and added queries**, then use
+native A/B; a large draw-count reduction can produce a small instruction saving.
+Platinum skips 610 of 1,200 terrain draws but saves only 1.640% of ARM9 entries
+in its outdoor reference window. Native benefit remains unmeasured.

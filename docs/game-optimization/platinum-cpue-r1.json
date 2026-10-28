@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "five_candidates_disabled_three_authorized_native_screens_no_qualified_gain",
+  "status": "six_disabled_candidates_terrain_native_screening_pending",
   "patches": [
     {
       "cpu": "arm9",
@@ -343,6 +343,55 @@
         "native_battle_measured": false,
         "user_perceptual_approval": false
       }
+    },
+    {
+      "id": "overlay5-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 5,
+      "overlay_ram": "0x21d0d80",
+      "overlay_file_id": 5,
+      "overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+      "addr": "0x21e8a2a",
+      "mode": "thumb",
+      "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa34f60df8",
+      "replace": "a05902218902471878680ea9174a154b34f64dfa00280bd038000ea9134a114b34f613f8c046c046c046c046c046c046",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "notes": "Experimental: use existing model box test before terrain draw; props remain on original path. Read unit scale and identity rotation from existing overlay constants instead of stack copies. No new scratch. Additional GPU queries and stale stack differences require validation; native benefit and user approval pending.",
+      "status": "disabled_reference_measured_perceptual_experiment",
+      "validated": {
+        "fb": "15,600 frames: six top-screen differences at 14357,14359,14479,14481,14483,14485; all bottom screens exact. All 600 target-window screen pairs exact.",
+        "ram": "Strict failure: normalized main-RAM and DTCM checkpoints differ; only exact 48-byte code replacement normalized. No dynamic differences accepted.",
+        "audio": "239,992 of 12,516,274 stereo samples differ; maximum channel delta 1,215 and RMS 9.153. Audibility unjudged.",
+        "save": "Final save bit-exact. Save-write/load lifecycle not yet tested for this candidate.",
+        "native": "Not measured."
+      },
+      "gain": {
+        "reference_arm9_entries_15000_15599": {
+          "before": 98783080,
+          "after": 97162803,
+          "reduction_percent": 1.6402373766843503,
+          "scope": "Executed instructions in software replay, not native cycles or speed."
+        },
+        "terrain_draw_calls": {
+          "before": 1200,
+          "after": 590,
+          "new_box_tests": 1200
+        },
+        "native_cycles": null,
+        "native_frame_time": null,
+        "qualified": false
+      },
+      "evidence": [
+        "TERRAIN_CONTRACT_QUALIFICATION_V1.json",
+        "TERRAIN_CONTRACT_FINDINGS_V1.json",
+        "TERRAIN_CULL_BUILD_V1.json",
+        "TERRAIN_CULL_REFERENCE_FINDINGS_V1.json",
+        "TERRAIN_CULL_RAM_DIFF_V1.json"
+      ]
     }
   ],
   "arm9_crc32": "4d104949",
@@ -432,7 +481,11 @@
     "geometry_observer_build": "GEOMETRY_BUILD_V12.json",
     "geometry_observer_qualification": "GEOMETRY_OUTDOOR_QUALIFICATION_V1.json",
     "geometry_census": "GEOMETRY_OUTDOOR_CENSUS_V1.json",
-    "prop_culling_census": "BOXTEST_REGISTER_FINDINGS_V2.json"
+    "prop_culling_census": "BOXTEST_REGISTER_FINDINGS_V2.json",
+    "terrain_visibility_experiment": {
+      "receipt": "TERRAIN_CULL_REFERENCE_FINDINGS_V1.json",
+      "state": "Disabled. Reference ARM9 entries reduced 1.640%; strict framebuffer/RAM/audio differences require review. Native benefit pending."
+    }
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
   "arm7_crc32": "67db0960",
