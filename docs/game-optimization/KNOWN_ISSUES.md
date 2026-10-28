@@ -499,3 +499,8 @@
   startup buffers. Heap 8 has a null handle; ARM9 remains in abort mode. Reject
   this variant under the functional budget. Battle-time free-space snapshots
   missed this earlier demand. A smaller policy requires independent validation.
+
+- Two-font residency completes the first-battle reference but leaves only 3,892
+  application-heap bytes free at field checkpoints. It is disabled in favor of
+  investigating message-only residency. Different HP/turns make the apparent
+  5.327% battle instruction reduction unsuitable as a native/equal-work claim.

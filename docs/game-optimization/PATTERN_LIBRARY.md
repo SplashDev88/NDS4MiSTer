@@ -1130,3 +1130,11 @@ use a separate register-only diagnostic to identify it. Keep the same opcode
 and revision guards, and continue to reject invalid pointers. Prefer a smaller
 existing residency policy only as a new independently tested candidate; static
 checkpoint headroom is not a full-route allocation guarantee.
+
+
+A reduced cache can pass the target route yet leave little parent-heap margin.
+Report free bytes and fragmentation per checkpoint, and choose the highest-use
+asset subset before native screening when it recovers substantial space. Keep
+child-heap creation and full-route allocation limits distinct from snapshots.
+When RNG or turn timing changes, report instruction/read counts as observed
+workload; they do not establish equal-work speedup even when the game progresses.

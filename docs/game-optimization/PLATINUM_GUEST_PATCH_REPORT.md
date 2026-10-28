@@ -1962,3 +1962,43 @@ independently. No existing beta, ROM, seed, renderer or FPGA was modified.
 Evidence: `FONT_RESIDENT_CONTROL_QUALIFICATION_V1.json`,
 `FONT_RESIDENT_CONTROL_FINDINGS_V1.json`, `FONT_RESIDENT_ALL_FAILURE_V2.json`,
 `FONT_RESIDENT_ALL_BEFORE_AFTER_V2.csv`, and the retained V1/V2 traces.
+
+
+## System/message residency — completes replay, insufficient margin for selection
+
+A separate guarded Thumb selector computes `member >> 1`. The owned four-entry
+archive table is also guarded, so system/member 0 and message/member 1 use the
+existing resident path; subscreen/member 2 and Unown/member 3 retain lazy reads.
+The same eight-byte code extent changes one instruction. Resident glyph payload
+falls to 65,152 bytes, excluding allocator overhead.
+
+The 23,400-frame route completes with 7,290 nonnull allocator returns. Both
+resident buffers exactly match their owned archive payload at all 28 recorded
+buffer checkpoints. No resident font is freed during the route; destruction and
+broader lifetime are still unqualified. Field checkpoints leave only 3,892 bytes
+free on application heap 3. Heap 8 now exists with a 98,248-byte data extent,
+consistent with the earlier blanket variant losing a large child allocation.
+This is not a full-route minimum or a full-game memory guarantee.
+
+| Observed replay workload | Accepted terrain | Two resident fonts |
+|---|---:|---:|
+| Full-route CPU-driven 512-byte cart blocks | 36,376 | 26,364 |
+| Full-route font-archive cart blocks | 10,779 | 586 |
+| Battle-window ARM9 instruction entries | 264,018,986 | 249,954,154 |
+| Battle-window CPU-driven cart blocks | 10,232 | 8,274 |
+
+The apparent 5.327% instruction reduction is a screening observation, not a
+controlled speed measurement: battle starts earlier, Turtwig has 21 HP rather
+than 20, and turn/dialogue timing differs. Four inspected framebuffer pairs
+show coherent glyphs and battle progression through the foe's defeat/experience
+message. They do not establish identical combat trajectories or listening
+quality. Strict comparison retains 12,683 differing upper frames, 991 lower
+frames, RAM differences, and 11,365,490 differing stereo samples (maximum channel
+delta 61,454; RMS 5,058.548). Final save is exact.
+
+Keep `font-resident-system-message` disabled and prefer a message-only trial
+before hardware: it recovers another 32,608 bytes including allocation overhead
+while covering most baseline glyph calls. No native gain or new beta is claimed.
+Evidence: `FONT_RESIDENT_SELECTIVE_FINDINGS_V3.json`,
+`FONT_RESIDENT_SELECTIVE_BEFORE_AFTER_V3.csv`, and
+`FONT_RESIDENT_SELECTIVE_CONTACT_V3.png`.

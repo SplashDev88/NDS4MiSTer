@@ -521,6 +521,51 @@
         "FONT_RESIDENT_ALL_FAILURE_V2.json",
         "FONT_RESIDENT_ALL_BEFORE_AFTER_V2.csv"
       ]
+    },
+    {
+      "id": "font-resident-system-message",
+      "pattern": "existing-resident-asset-mode",
+      "cpu": "arm9",
+      "mode": "thumb",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x2002bc8",
+      "expect": "0e20012220f088fb",
+      "replace": "0e204a0820f088fb",
+      "data_guards": [
+        {
+          "addr": "0x020e4cd4",
+          "expect": "00000000010000000200000003000000"
+        }
+      ],
+      "hook": null,
+      "overlay": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "status": "superseded_for_larger_heap_margin",
+      "notes": "Mode equals owned archive member >>1: system0/message1 use immediate0, subscreen2/Unown3 retain lazy1. Exact16-byte four-entry member table is guarded. One Thumb instruction changes, within the existing eight-byte loader guard. Two existing allocations total65152 glyph bytes, excluding overhead; no new scratch/service. This reduced footprint follows a fault in the all-font experiment. Native benefit and broader lifetime unqualified. Completed replay but only3892 application-heap bytes remain at field checkpoints. Superseded by a separately tested message-only candidate to recover margin before native screening.",
+      "validated": {
+        "functional": "23400-frame first-battle replay completes,7290 observed allocations nonnull. Both resident buffers exact in28 checkpoint comparisons. Four inspected battle pairs show coherent text/combat with different timing/HP/turn trajectory. Broader lifecycle unqualified.",
+        "ram": "Only3892 free application-heap bytes at field checkpoints; checkpoint minimum, not full-route minimum. Strict RAM differences retained.",
+        "fb": "12683 top and991 bottom frames differ.",
+        "audio": "11365490 of18774412 stereo samples differ;max61454,RMS5058.548. Different timing/trajectory; no audibility claim.",
+        "save": "Final save exact.",
+        "native": "Not tested; prefer message-only trial with32608 additional allocator bytes free."
+      },
+      "gain": {
+        "qualified": false,
+        "reference_battle_ARM9_entries_before": 264018986,
+        "reference_battle_ARM9_entries_after": 249954154,
+        "reference_battle_PIO_blocks_before": 10232,
+        "reference_battle_PIO_blocks_after": 8274,
+        "scope": "Observed fixed-input replay workload with divergent timing/HP/turns; not an equivalent-work or native speed measurement."
+      },
+      "evidence": [
+        "FONT_RESIDENT_CONTROL_FINDINGS_V1.json",
+        "FONT_RESIDENT_V1_OBSERVER_FAILURE_V1.json",
+        "FONT_RESIDENT_SELECTIVE_FINDINGS_V3.json",
+        "FONT_RESIDENT_SELECTIVE_BEFORE_AFTER_V3.csv",
+        "FONT_RESIDENT_SELECTIVE_CONTACT_V3.png"
+      ]
     }
   ],
   "arm9_crc32": "4d104949",
