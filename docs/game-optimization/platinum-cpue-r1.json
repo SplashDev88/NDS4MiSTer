@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "overlay_delivery_controls_passed_no_patch_enabled",
+  "status": "two_candidates_rejected_no_patch_enabled",
   "patches": [
     {
       "cpu": "arm9",
@@ -59,6 +59,58 @@
         "status_receipt": "FIFO_WORD_STREAM_CANDIDATE_V1_STATUS.json",
         "status_sha256": "b4880cb2efd1e52f818365b3b063aa1035464d20975652de9e64b6e9bf5a1e92"
       }
+    },
+    {
+      "id": "overlay5-empty-tail-exit",
+      "pattern": "repeated-empty-tail-compaction",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 5,
+      "overlay_ram": "0x21d0d80",
+      "overlay_file_id": 5,
+      "overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+      "addr": "0x21ee0a0",
+      "mode": "thumb",
+      "expect": "17d1721c824214da11017b18d96800290bd010013b189c462a1c03cb03c203cb03c200216046c16003e0521c10338242ecdb0020205e",
+      "replace": "18d1721c824215da11017b18d96800290bd010013b189c462a1c03cb03c203cb03c200216046c16004e0521c10338242ecdb461e2088",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "notes": "Disabled scratch-free Thumb empty-tail exit. Six byte values change across five instructions in a guarded54-byte overlay extent. Signed entry count must remain immutable during the call; no queue/IRQ writes are removed. 1338 synthetic cases and bounded pre/post-reset writer contracts pass. Audio alone fails the current budget. Do not rerun unchanged, trial natively, or transfer FFT perceptual approval.",
+      "status": "rejected_audio_mismatch",
+      "validated": {
+        "fb": "All 6000 top/bottom screen pairs bit-exact",
+        "ram": "All five fixed checkpoint sets and retained frame2600 RAM exact outside full-body-qualified patch bytes; transient per-frame mainRAM246/DTCM250/ARM7WRAM19 hashes differ",
+        "audio": "Failed:1660 of4813950 stereo samples differ; max signed16 delta312; RMS0.148479; no audibility judgment",
+        "save": "All6000 save hashes and final save bit-exact",
+        "native": "Not run; audio gate failed"
+      },
+      "gain": {
+        "reference_arm9_entries_4200_5999": {
+          "before": 248802085,
+          "after": 237158299,
+          "reduction_percent": 4.679939076877109,
+          "first_frame": 4200,
+          "end_frame_exclusive": 6000,
+          "scope": "Software executed instructions; not native cycles or speed"
+        },
+        "native_cycles": null,
+        "native_frame_time": null,
+        "qualified": false
+      },
+      "synthetic_validation": {
+        "cases": 1338,
+        "receipt": "EMPTY_TAIL_SYNTHETIC_V1.json",
+        "receipt_sha256": "fd8d90ad20c07ebdee517b19a9f58c7171967990ebb9a24524b1e88da6751ebe"
+      },
+      "replay_rejection": {
+        "receipt": "EMPTY_TAIL_COMPARISON_V1.json",
+        "receipt_sha256": "e0d26ddc9381c72ea9e234b09b3c235c642a52f9832b32dcdee38f98cd79d772",
+        "input_manifest": "EMPTY_TAIL_INPUT_MANIFEST_V1.json",
+        "input_manifest_sha256": "86d047ce9b6cf2113f8facc2d7ae26b391195a265b4a05b318b95874cc6855e8",
+        "status_receipt": "EMPTY_TAIL_CANDIDATE_V1_STATUS.json",
+        "status_sha256": "1a54b57e86827452898591e71c67ba9708df4b885992e3ef3a5c9a6f6d5badaa"
+      }
     }
   ],
   "arm9_crc32": "4d104949",
@@ -68,11 +120,15 @@
     "delivery_proposal": "OVERLAY5_PATCH_DELIVERY_PROPOSAL_V1.json",
     "overlay_id": 5,
     "decoded_overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
-    "implemented": false,
+    "implemented": true,
     "delivery_control": "OVERLAY_DELIVERY_CONTROL_V1_STATUS.json",
     "reset_control": "OVERLAY_DELIVERY_RESET_FINDINGS_V1.json",
     "delivery_implemented": true,
-    "optimization_implemented": false,
-    "native_qualified": false
+    "optimization_implemented": true,
+    "native_qualified": false,
+    "optimization_enabled": false,
+    "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
+    "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
+    "latest_decision": "EMPTY_TAIL_DECISION_V1.json"
   }
 }

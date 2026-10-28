@@ -265,11 +265,9 @@ This is soft reset and Continue, not a save-write test or core save state.
 This qualifies adapter neutrality and a bounded unpatched software reload
 route, not the two optimization ideas. Changed-code execution/cache visibility
 and native lifecycle/benefit still require candidate-specific evidence.
-Before an overlay candidate, make RAM normalization aware of full overlay
-identity and periods when other code occupies the address; the current
-initial-main-code comparison contract is insufficient. Check Thumb support in
-the synthetic runner as well. Existing accepted binaries and beta packages
-remain untouched.
+This stage identified the need for full-overlay RAM comparison and Thumb
+synthetic support. Both are qualified below. Existing accepted binaries and
+beta packages remain untouched.
 
 Evidence: `OVERLAY_DELIVERY_PREFLIGHT_V2.json`,
 `OVERLAY_DELIVERY_TOOL_TESTS_V2.log`, `OVERLAY_DELIVERY_CONTROL_MANIFEST_V1.json`
@@ -280,19 +278,75 @@ upstairs; it does not expand room-transition coverage. Reset evidence is in
 `OVERLAY_RESET_SCENE_REVIEW_V1.json`, `OVERLAY_DELIVERY_RESET_FINDINGS_V1.json`
 and `OVERLAY_DELIVERY_BEFORE_AFTER_V1.csv`.
 
+## Empty-tail exit trial
+
+The disabled `overlay5-empty-tail-exit` candidate changes six byte values across
+five Thumb instructions in a 54-byte extent beginning at `0x021ee0a0`. After
+an unsuccessful inner search it advances the outer index to its limit; active
+records and successful moves bypass that adjustment. The final reload is
+unsigned only after the signed entry test admits a count greater than one.
+The capacity must remain immutable during the call. There is no scratch,
+trampoline, new service or RTL change.
+
+The existing synthetic runner now supports Thumb and explicitly declared
+ordinary-memory read elimination. All 1,338 cases preserve registers, flags,
+complete mapped memory, writes and required reads, including exhaustive small
+occupancies and larger/random/stale-payload cases. The prior 1,680 ARM cases
+still pass. Five Python unit tests and 27 C++ comparison checks pass.
+The comparison accepts only a complete original/replacement overlay body before
+normalizing declared instruction bytes. Partial, absent or different bodies
+remain raw. The new unpatched 6,000/12,000-frame controls match all 100/166
+golden files, including profiles. The first control attempt rejected a
+byte-reversed return-opcode guard; the corrected specification passes without
+relaxing the observer.
+
+There are 900 paired queue entries/returns before reset and 1,800 after reset.
+Every observed queue has 64 empty records with identical complete bytes at
+return. Full-replay bus watches show the original capacity and records are
+initialized at frame 1307, with no subsequent writes through frame 5999.
+After reset the queue moves by `0x60`; its last initialization writes occur at
+7307, before the observed 8400–11999 window. Live-window writes touch only
+the processed-count field and a separate upload flag. Owned-byte disassembly
+corroborates the VBlank functions using the other array at header `+0x10`,
+instead of the compaction queue at `+0x0c`. This is bounded CPU/DMA evidence,
+not proof for arbitrary scenes, native execution or asynchronous host writes.
+
+| Measurement, 6,000-frame trial | Control | Candidate |
+|---|---:|---:|
+| ARM9 executed reference instructions, frames 4200–5999 | 248,802,085 | 237,158,299 (−4.679939%) |
+| ARM7 executed reference instructions, same window | 45,859,032 | 45,859,032 |
+| Both-screen pairs matching golden | 6,000 | 6,000 |
+| Fixed full RAM checkpoint sets matching golden | 5 | 5, excluding qualified patch bytes |
+| Same-length stereo sample count | 4,813,950 | 4,813,950 |
+| Stereo samples differing from golden | 0 | 1,660 |
+| Maximum signed-16 audio delta | 0 | 312 |
+| Save data | Exact | Exact |
+| Native cycles / frame time / FPS | Unmeasured | Unmeasured |
+
+Audio RMS delta is 0.148479 across all signed-16 channels, without alignment or
+masking. No audibility judgment is established. Audio alone fails the requested
+bit-exact budget, so the candidate is rejected and disabled; no optimized reset
+or native trial follows. All fixed checkpoints pass, while 246 main-RAM, 250
+DTCM and 19 ARM7-WRAM frame hashes differ. Those transient differences remain
+diagnostic and are not silently classified as harmless. Reference instruction
+reduction is not a MiSTer speedup. ROM and private save inputs remain unchanged.
+
+Evidence: `EMPTY_TAIL_SYNTHETIC_V1.json`, `EMPTY_TAIL_TOOL_TESTS_V1.json`,
+`EMPTY_TAIL_WRITER_CONTRACT_V1.json`, `EMPTY_TAIL_RESET_WRITER_CONTRACT_V1.json`,
+`EMPTY_TAIL_LIFECYCLE_DISASSEMBLY_V1.json`, `EMPTY_TAIL_COMPARISON_V1.json`,
+`EMPTY_TAIL_DECISION_V1.json` and `EMPTY_TAIL_BEFORE_AFTER_V1.csv`.
+
 Next three investigations:
 
-1. Build a Thumb synthetic proof and overlay-aware RAM comparison for an empty
-   tail early exit, then test changed-code execution on both qualified routes.
-   Preserve record order, stale inactive payload bytes,
-   observable registers and concurrent producer/IRQ behavior. No unused-memory
-   assumption or overlay-lifetime assumption is admitted by these snapshots.
-2. Test conditional suppression of proven dummy HBlank callbacks, preserving
+1. Test conditional suppression of proven dummy HBlank callbacks, preserving
    real callbacks, registrations and interrupt semantics. The current capture
    covers only 120 bedroom frames, not arbitrary scenes or overlay reloads.
-3. Investigate ARM7 pitch/volume lookup recurrence after tracing actual calls;
-   avoid changing audio update cadence. Extend replay coverage to transitions,
-   outdoors, battle, save-write/reload and reset before promoting any candidate.
+2. Investigate ARM7 pitch/volume lookup recurrence after tracing actual calls;
+   avoid changing audio update cadence.
+3. Extend representative replay coverage to transitions, outdoors, battle and
+   save-write/reload. The empty-tail lead may merit bounded perceptual review
+   if the user separately approves that budget; it cannot be promoted under
+   the current one, and an unchanged strict repeat adds no evidence.
 
 No RTL, new HPS service, save-state-format change or non-bit-exact acceptance
 is authorized here. No speed improvement or new beta is claimed.

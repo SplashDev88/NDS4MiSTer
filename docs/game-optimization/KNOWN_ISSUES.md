@@ -253,7 +253,7 @@
   dummy HBlank callbacks in frames 4200–4319. This does not prove that every
   scene has an empty queue, that no IRQ mutates it, or that callbacks remain
   dummy. Preserve inactive record payload bytes and callback registration.
-  Neither proposed optimization has been applied or measured natively.
+  Neither proposed optimization is qualified for native use.
 - Generic `guest_byte_patch` now admits guarded, same-size uncompressed ARM9
   overlay-file diagnostics through the existing virtual stream. Compressed or
   flagged overlays remain rejected. Shared reader `prepare.read_overlay`
@@ -271,5 +271,16 @@
   12,000-frame soft-reset/Continue route. The body is replaced during title/menu
   and restored before 1,800 guarded queue entries. Optimized bytes, native cache
   behavior, room transitions, battle and save-write/reload remain unqualified.
-  The main-code RAM normalization contract must be extended for overlay identity
-  and absent/replaced periods before a candidate; never blindly mask an address.
+  Full-body-aware comparison now handles original/replacement and absent or
+  replaced bodies; the new unpatched frontend matches all 100/166 golden files.
+  Never blindly mask an address or treat an unmatched body as a recognized load.
+- Platinum's empty-tail compaction candidate is rejected and disabled. It
+  preserves 6,000 screen pairs, five fixed RAM checkpoint sets and save data,
+  but changes 1,660 stereo samples (maximum signed-16 delta 312). Transient
+  main-RAM/DTCM/ARM7-WRAM frame hashes also differ. The 4.679939% executed
+  reference instruction reduction is not native speed or permission to accept
+  audio changes. Do not transfer FFT's perceptual approval. The 1,338 synthetic
+  cases and 2,700 unpatched paired calls support only the declared ordinary-
+  memory contract; wider scenes, native timing and optimized reload are untested.
+  The first unpatched observer run rejected a byte-reversed return opcode;
+  corrected V2 guards pass, and the failed attempt remains in evidence.

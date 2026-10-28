@@ -588,12 +588,23 @@ active flags and complete record payloads at entry with the existing observer.
 Preserve stale bytes in inactive records, all externally observable state and
 producer/IRQ interactions; logical queue equality alone is insufficient.
 
-Platinum overlay 5 supplies the first lead: 60 guarded entries in 120 frames
-have 64 inactive records. The original empty-case inner scans make 2,016 flag
-reads; an early exit would make 63. This is static operation counting backed
-by observed entry state, not measured savings or a tested patch. The routine's
-5.816% ARM9 sample share is not a native cycle share. No reusable byte signature
-or SDK identity is established yet.
+Platinum overlay 5 supplies the first lead: initial guarded entries have 64
+inactive records. The original empty-case inner scans make 2,016 flag reads;
+an early exit makes 63. A scratch-free Thumb trial later passes 1,338 synthetic
+cases, with 900 pre-reset and 1,800 post-reset unpatched entry/return pairs and
+full-route writer watches supporting the bounded immutability contract.
+The shared runner permits only declared ordinary-read removal; writes, other
+reads, complete memory, registers and flags remain exact. This is not an
+interrupt/concurrency model. Preserve the signed capacity contract when
+changing a reload or loop exit, and verify stale payload bytes as well as flags.
+
+The candidate removes 4.679939% of selected executed reference ARM9 instructions
+and preserves all 6,000 screen pairs, fixed checkpoint sets and save data.
+However, 1,660 stereo samples differ, so it remains rejected under the audio
+gate. A substantial reduction of redundant work can still affect timing.
+Neither the routine's 5.816% PC sample share nor the trial's instruction
+reduction is native speed. No reusable byte signature or SDK identity is
+established yet.
 
 ## Default callback dispatch
 
@@ -632,3 +643,11 @@ bounded unpatched reload route. Candidate RAM normalization must distinguish
 that overlay's complete original/replacement identity from other content at
 the same address; an initial-main-code assumption is insufficient. Preserve
 raw comparisons when the overlay is absent instead of masking its RAM extent.
+
+The shared comparison now implements that rule: bind the complete original
+body to the manifest, derive the combined replacement, and mask only declared
+instruction bytes after a whole-body match. Partial loads, corruption and other
+overlays remain raw. Both new frontend controls reproduce all 100/166 golden
+files; 27 adversarial C++ checks cover context/overlap/partial-body cases.
+This comparison never writes guest memory and does not qualify native cache
+visibility, state-load behavior or a candidate that fails audio validation.
