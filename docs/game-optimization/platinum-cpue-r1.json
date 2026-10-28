@@ -516,7 +516,7 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V6.json",
-    "next_proposal": "AFTER_VISIBILITY_INPUT_NEXT_STEPS_V1.json",
+    "next_proposal": "AFTER_CART_CENSUS_NEXT_STEPS_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
@@ -604,6 +604,16 @@
       "findings": "VISIBILITY_INPUT_FINDINGS_V1.json",
       "dependencies": "VISIBILITY_INPUT_DEPENDENCY_AUDIT_V1.json",
       "proposal": "VISIBILITY_REUSE_PROPOSAL_V1.json",
+      "patch_implemented": false,
+      "enabled": false
+    },
+    "cartridge_request_census": {
+      "state": "accepted_terrain_PIO_cartridge_recurrence_census_complete",
+      "qualification": "CART_REQUEST_QUALIFICATION_V1.json",
+      "findings": "CART_REQUEST_FINDINGS_V1.json",
+      "file_mapping": "CART_REQUEST_FILE_MAPPING_V1.json",
+      "overlay_mapping": "CART_REQUEST_OVERLAY_MAPPING_V1.json",
+      "font_resident_proposal": "FONT_RESIDENT_MODE_PROPOSAL_V1.json",
       "patch_implemented": false,
       "enabled": false
     }

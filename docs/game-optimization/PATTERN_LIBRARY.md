@@ -1091,3 +1091,28 @@ function. Flushes, matrix-stack operations, material/current-color effects,
 primitive state, GPU result registers and command completion may outlive the
 call. Prove these effects and cache storage/lifetime independently; do not add
 a trampoline or overwrite zero-filled memory based on recurrence alone.
+
+
+## Repeated cartridge reads and existing asset-residency modes
+
+Observe transfer request and completion boundaries, not every poll iteration.
+Reconcile descriptor source/destination/remaining counts, direct versus staging
+paths and delivered words. Distinguish CPU-driven transfers from DMA and other
+commands. Inspect existing partial-block buffering before counting prospective
+cache hits. Platinum already has one buffered block; the observed worker has
+no adjacent repeat benefit for another one-entry cache.
+
+Capture prior-route history and report finite-capacity reuse separately from
+all-history repetition. Source offsets in an immutable virtual image are a
+prioritization key; they do not prove actual returned bytes, safe destination
+reuse or removable completion effects. Keep profile-window differences explicit
+when extending an existing reference trace back to boot.
+
+Map repeated blocks through the owned FAT/FNT and overlay tables before
+building a generic cache. In Platinum, fonts account for 24.78% of observed
+battle CPU-driven requests. Owned code contains an existing allocate/read-once/
+RAM-decompress/free mode, selected by a constructor enum. Such a guarded mode
+switch may avoid new cache machinery. Authenticate it against the revision's
+instructions and live objects, then prove heap headroom, allocation success,
+lifetime and output behavior. Text timers may hide the gain in typewriter
+pacing; measure representative load and instant-text work as well.

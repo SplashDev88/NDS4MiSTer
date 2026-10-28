@@ -484,3 +484,13 @@
 - Visibility reuse is a proposal only. No scratch/code storage or lifetime is
   qualified. A 16-entry simulation covers 57.0% overall but 15.97% of held-button
   calls; the larger all-history repeat count is not a small-cache speed claim.
+
+- Platinum cartridge census covers ARM9's CPU-driven worker, not the separate
+  DMA path or total cartridge traffic. Existing partial-block buffer hits are
+  excluded. Repeated source offsets do not establish actual payload equality,
+  safe scratch, completion behavior or native cache benefit.
+- Overlays 12 and 14 both occupy 0221fc20; repeated loads cannot be blindly skipped.
+- The resident-font mode is an unimplemented proposal. Its owned loader does
+  not check Heap_Alloc for failure before reading. Each font needs 32,576 bytes;
+  live allocation success/headroom, freeing and all relevant scenes must be
+  validated before acceptance. No font-residency patch is enabled.

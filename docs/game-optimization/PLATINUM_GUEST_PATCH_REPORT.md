@@ -1857,3 +1857,69 @@ Evidence: `VISIBILITY_INPUT_QUALIFICATION_V1.json`,
 `VISIBILITY_INPUT_FINDINGS_V1.json`, `VISIBILITY_INPUT_DEPENDENCY_AUDIT_V1.json`,
 `VISIBILITY_INPUT_OWNED_DISASSEMBLY_V1.txt`,
 `VISIBILITY_INPUT_BEFORE_AFTER_V1.csv` and `VISIBILITY_REUSE_PROPOSAL_V1.json`.
+
+
+## Cartridge request census — existing resident-font path identified
+
+The accepted terrain image completes a full 23,400-frame route with guarded
+ARM9 request/completion snapshots. All 251 comparable output files and every
+emulated-state hash column match the accepted reference. Profiling begins at
+frame 0 instead of 18000 to capture prior read history; only those diagnostic
+instruction counts/profiles differ, and counts match exactly in the common
+18000–23399 window. This is observation equivalence, not a new optimization.
+
+The CPU-driven worker at 020cd41c completes 20,179 invocations and 36,376 paired
+512-byte block deliveries. Each completion has 128 delivered words/512 bytes,
+matching descriptor arithmetic and a cleared ROMCTRL busy bit. Its separate
+DMA path and other command types are not captured. The game already serves
+partial reads through a one-block buffer at 021cf480 and helper 020cd080; those
+existing cache hits are not counted as new physical request opportunities.
+
+| Observed transfer metric | Whole route | Battle window |
+|---|---:|---:|
+| CPU-driven block requests | 36,376 | 10,232 |
+| Distinct source blocks | 7,581 | 688 |
+| Delivered block bytes | 18,624,512 | 5,238,784 |
+| Bytes consumed by logical requests | 8,289,577 | 1,646,951 |
+| Direct destination blocks | 14,024 | 2,752 |
+| Staging-buffer blocks | 22,352 | 7,480 |
+
+A simulated two-block cache hits 3,045 battle requests, four blocks 4,491 and
+16 blocks 5,875 when warmed by the route. One entry hits zero: no adjacent source-block repeats remain in this
+observed transfer stream. These are immutable
+source-offset opportunities, not observed byte-cache equivalence or speed.
+Destination data, cache storage, completion effects, copying and IRQ behavior
+would still need proof for a new block-cache implementation.
+
+The owned FAT/FNT maps 2,536 of 10,232 battle requests (24.78%) to
+`graphic/pl_font.narc`, including 1,154 requests for its first 512-byte block.
+Item/move data and battle graphics also recur. Another 2,052 requests load
+overlays 12 and 14, both based at 0221fc20; they share memory and cannot simply
+be retained together or have their reloads skipped.
+
+A more direct font opportunity exists in the game's own code. The owned Thumb
+call at 02002bcc reaches FontManager_New at 020232e0 with lazy-mode argument 1
+set by `0122` at 02002bca. Its existing immediate-mode dispatcher allocates the
+glyph data through Heap_Alloc, reads it once, selects the RAM decompressor, and
+has a matching free path. Four checkpoint manager candidates have mode 1 and
+lazy callback 02023565, corresponding to the owned font archive members 0–3.
+Each contains 509 glyphs of 64 bytes: 32,576 bytes of resident glyph data, or
+130,304 bytes for four managers before allocator overhead.
+
+The proposed guarded change is `0122` → `0022`, selecting the existing resident
+path. It is not implemented or enabled yet. First authenticate live arguments,
+heap IDs, dispatch and allocation lifetimes. The resident loader does not show
+an allocation-failure fallback, so heap headroom and successful allocations are
+required. This uses the game's allocator; no unused-memory or new HPS-service
+claim is made. Keep the previous color-table reuse and OAM patches disabled.
+A native trial must target load/instant-text work as well as normal gameplay;
+typewriter pacing may remain fixed even after fewer cartridge reads.
+
+Next priorities: admit and test the existing resident-font mode, investigate
+repeated archive metadata using the existing loader, and retain visibility
+reuse only with proven storage/state effects. No new beta or native speedup is
+claimed for this census.
+
+Evidence: `CART_REQUEST_QUALIFICATION_V1.json`, `CART_REQUEST_FINDINGS_V1.json`,
+`CART_REQUEST_FILE_MAPPING_V1.json`, `CART_REQUEST_OVERLAY_MAPPING_V1.json`,
+`CART_REQUEST_BEFORE_AFTER_V1.csv` and `FONT_RESIDENT_MODE_PROPOSAL_V1.json`.
