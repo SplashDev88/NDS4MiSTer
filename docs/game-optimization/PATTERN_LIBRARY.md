@@ -1242,3 +1242,31 @@ keep input-emission timestamps and fixed idle waits out of visual latency.
 Fix detector regions from control, review adjacent boundary frames, and apply
 the same conditions to the candidate. Preserve small/neutral native results
 rather than extrapolating eliminated metadata reads into a gameplay speedup.
+
+## Unsigned sum used only as an empty-queue predicate
+
+Look for nested byte-load/add loops followed by comparison of the accumulator
+with zero and a Boolean return. Prove the element type and maximum sum first:
+negative elements or overflow invalidate replacing a sum with an any-nonzero
+test. Inspect the whole function, not just the hot loop: an empty result may
+also clear a timeout or update another field. Inspect all callers for live
+caller-clobbered registers before discarding the actual sum.
+
+Platinum's battle queue is a 4×4×16 unsigned-byte array. Its maximum sum is
+65,280; only its zero/nonzero result is consumed. The empty case resets a
+link timeout. A same-function ordered byte scan can return on the first
+nonzero entry, retaining that reset and the original return blocks. It needs
+no cache, scratch memory or new service. This remains a semantic review
+pattern rather than an automatic safe-patching signature.
+
+Use the existing bounded memory observer to capture the complete array,
+counter, entry/exit registers and code identity. Wider object displacements
+and guarded pipeline-PC snapshots now use the same mapped read path. Qualify
+observer changes against unchanged control output before using their traces.
+For overlay routines, authenticate the complete decoded overlay and individual
+executions; an address match alone is insufficient. Test empty arrays, every
+possible first nonzero position, maximum sums and original timeout effects.
+Native measurements must distinguish cheaper polling from faster game progress.
+In this instance, a 2.22% reduction in reference battle instructions did not
+produce useful native first-turn text or publication-throughput improvement.
+The byte patch remains disabled; the detector/proof pattern remains reusable.

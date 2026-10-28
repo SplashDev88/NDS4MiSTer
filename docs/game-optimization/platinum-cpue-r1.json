@@ -750,6 +750,59 @@
         "ARCHIVE_READ_FIXED_CANONICAL_SELECTION_V1.json",
         "ARCHIVE_METADATA_PATTERN_SCAN_V1.json"
       ]
+    },
+    {
+      "id": "overlay16-battle-queue-early-exit",
+      "pattern": "unsigned-sum-zero-predicate",
+      "cpu": "arm9",
+      "mode": "thumb",
+      "target": "arm9.overlay",
+      "overlay": 16,
+      "overlay_ram": "0x223b140",
+      "overlay_file_id": 16,
+      "overlay_sha256": "cdee3e91570eca14296be7164b03926d729d914a293d4db5098aeed4bb7f1950",
+      "addr": "0x2251fc8",
+      "expect": "f8b50022222486469446071c161c240200203b1c311c5d182d5d491c52191029f9db401c10330428f4db6046401c403784460428ecdb002a03d10549002370464350002a01d10120f8bd0020f8bdc04648310000",
+      "replace": "f8b5864622242402031901252d0204218c4610211a78002a17d10133013df9d109e0c046c046c046c046c046c046c046c046c046c046002a03d10549002370464350002a01d10120f8bd0020f8bdc04648310000",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "status": "parked_native_gain_insufficient",
+      "notes": "Scan the existing256-byte unsigned command queue in the original order and return false on the first nonzero byte. Keep original empty-queue timeout reset and return blocks; no cache or extra storage. R2 changes from full sum to first nonzero byte on nonempty calls; five owned callers consume BooleanR0 only. Other return registers, flags, stack and writes match synthetic cases. Timing/interruption and functional native qualification required. Native first-turn screen shows no worthwhile pacing or throughput gain; keep disabled. Do not repeat this scene unchanged.",
+      "validated": {
+        "synthetic_cases": 940,
+        "observer_byte_equal_files": 254,
+        "reference_frames": 23400,
+        "reference_live_predicate_calls": 3754,
+        "reference_save": "exact",
+        "reference_screens": "one top-frame difference; bottom exact",
+        "reference_audio": "293543/18774412 stereo samples differ; audibility unqualified",
+        "native": "Cold boot and first-turn progression screened; clean capture/stop and unchanged copied save. Tackle text1.2333s control versus1.2500s candidate with overlapping bounds. Different night backdrop/stats; no whole-turn or broader lifecycle qualification."
+      },
+      "gain": {
+        "qualified": false,
+        "modeled_observed_function_instructions_before": 6239380,
+        "modeled_observed_function_instructions_after": 363678,
+        "modeled_reduction_percent": 94.17124778423496,
+        "reference_battle_arm9_entry_reduction_percent": 2.2217958976632035,
+        "native_publications_per_second_control": 59.61911299950796,
+        "native_publications_per_second_candidate": 59.608815949164466,
+        "native_text_seconds_control": 1.2333333333333343,
+        "native_text_seconds_candidate": 1.25
+      },
+      "evidence": [
+        "BATTLE_PENDING_STATIC_IDENTITY_V1.json",
+        "BATTLE_PENDING_CONTRACT_V2.json",
+        "BATTLE_PENDING_BUILD_V1.json",
+        "BATTLE_PENDING_OWNED_DISASSEMBLY_V1.txt",
+        "BATTLE_PENDING_REPLACEMENT_DISASSEMBLY_V1.txt",
+        "BATTLE_PENDING_CANDIDATE_ANALYSIS_V1.json",
+        "BATTLE_PENDING_VISUAL_REVIEW_V1.json",
+        "BATTLE_PENDING_MATCHED_WORKLOAD_V1.json",
+        "NATIVE_BATTLE_PENDING_FINDINGS_V1.json",
+        "NATIVE_BATTLE_PENDING_VISUAL_REVIEW_V1.json",
+        "BATTLE_PENDING_NATIVE_BEFORE_AFTER_V35.csv"
+      ]
     }
   ],
   "arm9_crc32": "4d104949",

@@ -552,3 +552,16 @@
   first-battle transition improves only 50ms (16.1333s to 16.0833s) in one cold
   pair, with no publication improvement. Keep it disabled; do not repeat this
   same screen unchanged or infer a whole-game speedup.
+- The battle queue early-exit trial changes caller-clobbered R2 from the full
+  unsigned sum to the first nonzero byte. Five owned callers use Boolean R0;
+  the other return registers, flags, stack and writes match focused cases.
+  Do not generalize this to signed/overflowing sums or callers that consume
+  the sum. The queue timeout reset must remain on the empty path.
+- This trial completes the bounded first-battle reference with one top-frame
+  difference and 293,543 differing stereo samples; bottom frames and save
+  match. The current functional budget permits continuing investigation, but
+  these data do not establish inaudibility or whole-game safety. The completed
+  native first-turn screen shows no worthwhile gain: publication throughput is
+  flat and identical text takes 1.2333s versus 1.2500s with overlapping bounds.
+  Keep disabled; do not repeat that screen without new workload evidence.
+  Native victory, listening and broader lifecycle remain unqualified.

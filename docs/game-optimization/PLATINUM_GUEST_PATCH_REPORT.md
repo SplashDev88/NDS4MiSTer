@@ -18,6 +18,14 @@ remain unchanged. Actual archive installation is qualified separately.
 Historical disabled/pending statements below are investigation snapshots; the
 current promotion decision above supersedes them for terrain visibility only.
 
+For ongoing work, the user's later instruction, "as long as the game still
+functions lets continue", establishes the functional/perceptual budget.
+Timing, RNG and exact replay differences remain evidence, but do not by
+themselves block investigation or require another permission request. Earlier
+exact-only rejection/no-retry statements are historical. Crashes, save
+corruption, broken progression or perceptible defects remain unacceptable;
+promotion still requires useful measured benefit and appropriate coverage.
+
 Earlier isolated native perceptual trials of empty-tail cleanup, FIFO
 predication and font-table reuse found no worthwhile walking/menu/Bag gain.
 The later OAM and font battle screens also show no worthwhile native gain.
@@ -2397,3 +2405,113 @@ Evidence: `NATIVE_ARCHIVE_READ_FIXED_FINDINGS_V1.json`,
 `ARCHIVE_READ_FIXED_CANONICAL_SELECTION_V1.json`,
 `ARCHIVE_METADATA_PATTERN_SCAN_V1.json` and
 `NATIVE_ARCHIVE_READ_FIXED_FINAL_PRESERVATION_V1.json`.
+
+## Battle command queue early exit — parked after native screen
+
+The remaining-strategy review found a concrete guest-code opportunity in
+overlay 16. `BattleIO_QueueIsEmpty` at Thumb `02251fc8` sums a 256-byte unsigned
+queue and returns whether the sum is zero. The empty path also clears the
+counter at context+`3148`. The owned instructions match the control flow and
+fields in `pret/pokeplatinum` commit
+`579d2d5c65e736a1a4268fb7acbfd70712177c6c`,
+`src/battle/battle_lib.c:266`. Five owned direct callers consume Boolean R0;
+three execute in the observed battle window. This is semantic corroboration,
+not a claim of rebuilding that repository into the owned revision.
+
+The disabled `overlay16-battle-queue-early-exit` patch fits within the original
+84-byte function/literal extent and retains the original push/pop, timeout
+reset, return blocks and literal. It reads in the original order and stops at
+the first nonzero byte. The maximum original sum is 65,280, so overflow cannot
+turn a nonempty queue into an empty result. It uses no scratch/cache and no new
+HPS/RTL hook. Existing full-ROM, header, overlay ID/file/hash and byte guards
+apply; seven negative loader cases fall back atomically to the original image.
+
+The only differing return register is caller-clobbered R2: first nonzero byte
+instead of the complete sum. In 940 focused cases, Boolean R0, all other return
+registers, flags, stack, mapped memory and ordered writes match. Queue reads
+are an exact prefix of the original, and all other data reads match. Cases
+cover every first-nonzero position with three byte values, empty tables with
+all initial NZCV combinations, maximum sum, random tables and observed tables.
+The existing synthetic runner tests identically relocated leaf bodies within
+one page; actual in-place branches and the literal are independently decoded.
+This does not model interrupt/DMA interleavings or native instruction costs.
+
+The extended read-only observer passes 85 focused checks and preserves all
+254 nonobserver outputs over 23,400 accepted-terrain control frames. At each
+of 3,754 observed original and candidate calls, the full function bytes and
+queue/timeout contract match; all six complete-overlay checkpoints match.
+3,696 calls are nonempty. All 3,754 paired calls match in entry frame, context,
+stack, caller, complete queue bytes and timeout value. The replacement models
+94.17% fewer instructions inside this routine for that observed distribution.
+
+| Reference metric | Terrain control | Queue trial |
+|---|---:|---:|
+| ARM9 instruction entries, battle frames 18000–23399 | 264,018,986 | 258,153,023 |
+| ARM9 instruction entries, whole 23,400-frame route | 2,993,746,030 | 2,987,824,920 |
+| Observed queue calls / empty results | 3,754 / 58 | 3,754 / 58 |
+| Save bytes | reference | exact |
+| Differing top / bottom frames | — | 1 / 0 |
+| Differing stereo samples | — | 293,543 of 18,774,412 |
+
+Battle-window instruction entries fall 2.2218%; whole-route entries fall
+0.1978%. These are software instruction counts, not native cycles or gameplay
+speed. The sole top-frame difference is frame 17,970. Sparse visual review
+shows the same battle deployment, Tackle/Leer turns, foe defeat and 69-point
+experience award. The save matches; raw audio/RAM differences remain recorded.
+The latest functional/perceptual budget permits native screening without
+another exact-equality approval request. Native screening is complete below;
+listening and broader save/reset/overlay lifecycle qualification remain open.
+The patch stays disabled and the approved terrain beta is unchanged.
+
+Evidence: `BATTLE_PENDING_STATIC_IDENTITY_V1.json`,
+`BATTLE_PENDING_OBSERVER_QUALIFICATION_V1.json`,
+`BATTLE_PENDING_CONTRACT_V2.json`, `BATTLE_PENDING_BUILD_V1.json`,
+`BATTLE_PENDING_GUARD_TESTS_V1.json`,
+`BATTLE_PENDING_CANDIDATE_ANALYSIS_V1.json` and
+`BATTLE_PENDING_VISUAL_REVIEW_V1.json`.
+
+The isolated native candidate cold-boots and reaches the first rival battle
+through ordinary starter selection. Its recorded first turn shows Chimchar's
+Leer, lowered defense, Turtwig's Tackle, enemy damage and command-menu return.
+Capture has zero added drops. The copied save is unchanged at clean stop.
+The prior terrain-only control is on the same hardware boot, with identical
+runtime files except the guest manifest and matching seed/settings. It is a
+historical control, not a fresh interleaved pair. The candidate has a night
+backdrop and different rolled stats, so whole-turn and renderer-load values
+are descriptive observations, not causal speed measurements.
+
+| Native first-turn screen | Terrain control | Queue trial |
+|---|---:|---:|
+| Buffer publications/s | 59.6191 | 59.6088 |
+| Host CPU, percent of one core | 3.93 | 4.06 |
+| Renderer CPU, percent of one core | 88.03 | 87.42 |
+| “TURTWIG used Tackle!” first-to-final glyph | 1.2333s | 1.2500s |
+| Media-frame bounds on that text interval | 1.2167–1.2500s | 1.2333–1.2667s |
+| Added render/output capture drops | 0 / 0 | 0 / 0 |
+
+Identical control ROIs measure the same text, with adjacent boundary frames
+visually confirmed. No shortening is observed and the intervals overlap;
+one comparison does not establish a regression. Publication change is
+−0.0173%, effectively flat in this screen. Publications are not unique FPS,
+and native cycles/frame-time percentiles are unavailable. The recording retains
+original audio without a listening or inaudibility claim.
+
+Keep the queue patch disabled: its measured reduction in reference instructions
+has not produced a useful native gain in this scene. Do not repeat this exact
+screen unchanged. A newly evidenced CPU-limited battle workload could justify
+reconsideration; native victory, save-write/reset and broader lifecycle work are
+not pursued for this candidate now. Platinum's completion gate is still open:
+the strategy ledger identifies the IRQ sparse scan as unassessed under the
+current functional budget, and separates it from speculative cache/storage work.
+
+Native evidence: `BATTLE_PENDING_NATIVE_CONTROL_ADMISSION_V1.json`,
+`NATIVE_BATTLE_PENDING_FINDINGS_V1.json`,
+`NATIVE_BATTLE_PENDING_VISUAL_REVIEW_V1.json`,
+`BATTLE_PENDING_NATIVE_TEXT_REVIEW_V1.json`,
+`BATTLE_PENDING_NATIVE_BEFORE_AFTER_V35.csv` and
+`PLATINUM_BQ1_TACKLE_CAPTURE.json`.
+
+Final preservation verifies all 3,110 protected native files, 84 kit files,
+the copied seed and all three accepted local archives. MENU is restored and
+no NDS process or recording remains. See
+`NATIVE_BATTLE_PENDING_FINAL_PRESERVATION_V1.json`.
