@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "six_disabled_candidates_terrain_native_gain_pending_review",
+  "status": "terrain_audiovisual_review_approved_lifecycle_pending",
   "patches": [
     {
       "cpu": "arm9",
@@ -360,14 +360,15 @@
       "hook": null,
       "scratch_bytes": 0,
       "enabled": false,
-      "notes": "Experimental: use existing model box test before terrain draw; props remain on original path. Read unit scale and identity rotation from existing overlay constants instead of stack copies. No new scratch. Additional GPU queries and stale stack differences require validation; native benefit and user approval pending.",
-      "status": "disabled_native_gain_pending_user_review_and_validation",
+      "notes": "Experimental terrain culling through the existing model box test and immutable transform constants; no new scratch. Native publication throughput +13.162%. Main-RAM differences classified as graphics work state; liveness, and lifecycle qualification remain pending; user approved the presented audiovisual review.",
+      "status": "disabled_user_av_approved_remaining_validation_pending",
       "validated": {
         "fb": "15,600 frames: six top-screen differences at 14357,14359,14479,14481,14483,14485; all bottom screens exact. All 600 target-window screen pairs exact.",
-        "ram": "Strict failure: normalized main-RAM and DTCM checkpoints differ; only exact 48-byte code replacement normalized. No dynamic differences accepted.",
-        "audio": "239,992 of 12,516,274 stereo samples differ; maximum channel delta 1,215 and RMS 9.153. Audibility unjudged.",
+        "ram": "Strict failure retained. Main-RAM writers classify projection/model/graphics-transfer state; full replay transfer bookkeeping is consistent. DTCM liveness and complete reader equivalence remain unqualified. Only exact48-byte code normalized.",
+        "audio": "239,992 of 12,516,274 stereo samples differ; maximum channel delta 1,215 and RMS 9.153. Audibility unjudged. User approved the presented control/candidate review on2026-10-28.",
         "save": "Final save bit-exact. Save-write/load lifecycle not yet tested for this candidate.",
-        "native": "Two alternating control/candidate outdoor trials, same boundary route, stock 1 GHz, rc12 FPGA and accepted Beta2 renderer. Controls 16.7726/17.2525; candidates 19.1382/19.3653 complete screen-buffer publications/s. All saves preserved and OBS added no drops. Indoor idle 59.7131 versus 59.6371 publications/s. Native save-write/load, soft reset and wider scene qualification pending."
+        "native": "Two alternating control/candidate outdoor trials, same boundary route, stock 1 GHz, rc12 FPGA and accepted Beta2 renderer. Controls 16.7726/17.2525; candidates 19.1382/19.3653 complete screen-buffer publications/s. All saves preserved and OBS added no drops. Indoor idle 59.7131 versus 59.6371 publications/s. Native save-write/load, soft reset and wider scene qualification pending.",
+        "user_review": "Presented reference and native video/audio approved: Everything looks good. Not full RAM/lifecycle qualification."
       },
       "gain": {
         "reference_arm9_entries_15000_15599": {
@@ -401,7 +402,11 @@
         "TERRAIN_CULL_RAM_DIFF_V1.json",
         "TERRAIN_NATIVE_FINDINGS_V1.json",
         "TERRAIN_NATIVE_INTERIOR_FINDINGS_V1.json",
-        "TERRAIN_NATIVE_METRIC_AUDIT_V1.json"
+        "TERRAIN_NATIVE_METRIC_AUDIT_V1.json",
+        "TERRAIN_RAM_WRITER_REPEAT_V1.json",
+        "TERRAIN_RAM_CLASSIFICATION_V1.json",
+        "TERRAIN_TRANSFER_LIFECYCLE_V1.json",
+        "TERRAIN_USER_REVIEW_APPROVAL_V1.json"
       ]
     }
   ],
@@ -495,8 +500,9 @@
     "prop_culling_census": "BOXTEST_REGISTER_FINDINGS_V2.json",
     "terrain_visibility_experiment": {
       "receipt": "TERRAIN_NATIVE_FINDINGS_V1.json",
-      "state": "Native rendering throughput +13.162% in two paired outdoor trials. Disabled pending user review, RAM-effect classification and broader lifecycle validation."
-    }
+      "state": "Native rendering throughput +13.162%; user audiovisual review approved. Disabled pending RAM/lifecycle qualification."
+    },
+    "terrain_ram_classification": "TERRAIN_RAM_CLASSIFICATION_V1.json"
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
   "arm7_crc32": "67db0960",

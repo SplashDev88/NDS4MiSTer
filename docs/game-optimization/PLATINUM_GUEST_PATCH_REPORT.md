@@ -1445,3 +1445,61 @@ The top three optimization ideas not completed are:
 3. Measure the disabled font-table reuse patch in its actual first-battle target
    on hardware. Its prior menu/Bag tests found no benefit and do not establish
    battle performance. Cartridge-request recurrence remains queued after these.
+
+## Terrain visibility — RAM writer and transfer qualification
+
+Two additional 15,600-frame replays reuse the existing main-RAM bus observer.
+All 181 common artifacts match their respective earlier control/candidate runs;
+the observer does not change their results. Its stores reconstruct all watched
+words at all five checkpoints exactly. All 574,730 CPU-store PC observations in
+the target window agree with the instruction profiler. No dynamic RAM is masked.
+
+The recurring differing words at `021cd008` and `021cd00c` are the graphics
+transfer source cursor and remaining byte count, not elapsed-time counters.
+Owned ARM disassembly at `020c4808`, `020c4900` and `020c49ac` establishes their
+initialization, chunk updates of at most 0x1d8 bytes, FIFO destination `04000400`,
+busy flag and completion callback. The observed protocol completes every started
+transfer and has no overlap, invalid pointer/length update or unfinished transfer
+at replay end. These checks concern guest bookkeeping, not physical bus capture.
+
+| Existing graphics transfer path | Control | Terrain patch |
+|---|---:|---:|
+| Full-replay starts / completions | 93,777 / 93,777 | 89,249 / 89,249 |
+| Walking-window starts / completions | 9,371 / 9,371 | 7,831 / 7,831 |
+| Walking-window requested bytes | 23,671,508 | 17,882,308 |
+| Walking-window chunk updates | 54,197 | 41,197 |
+| Protocol violations | 0 | 0 |
+
+Requested bytes through this path fall 24.46%; this is not a measurement of all
+DMA traffic or native bandwidth. A transfer can span a replay-frame boundary,
+so checkpoints may capture different live transfer positions. That explains the
+purpose of these differing fields without establishing general equivalence.
+
+Other watched main-RAM differences resolve to projection/translation state,
+the active model-draw context pointer, a graphics busy flag and its DMA callback.
+The projection word `021c5acc` is copied by the existing field-effect projection
+adjust/restore code; it is not gameplay position. The owned bytes, caller LR and
+store trace support this classification. The DTCM word `027e0054` is the graphics
+FIFO IRQ handler slot: the transfer path installs `020c4900` and restores the
+prior handler. Other DTCM differences include stack contents, but CPU snapshots
+show different live execution points and IRQ modes. They are not all proven dead
+stack. No RAM difference is accepted or excluded on this analysis alone.
+
+The private V6 runner's legacy field
+`checkpoint_RAM_equal_after_exact_code_normalization` describes its early
+`mainram.bin` snapshot only. It must not override the explicit per-checkpoint
+failures or the overall `rejected_replay_mismatch` result. This interpretation is
+recorded without changing historical receipts or weakening the comparison.
+
+Evidence: `TERRAIN_RAM_WRITER_REPEAT_V1.json`,
+`TERRAIN_RAM_WRITER_ANALYSIS_V1.json`, `TERRAIN_TRANSFER_LIFECYCLE_V1.json`,
+`TERRAIN_RAM_CLASSIFICATION_V1.json` and owned disassemblies V1–V4. The existing
+13.162% native publication gain is unchanged; no native session ran for this
+analysis. User audiovisual review, full RAM liveness, native save-write/cold-load,
+soft reset, additional overlay transitions and unrelated-scene validation remain
+pending. All six patches remain disabled and the morning beta remains Beta2.
+
+The user subsequently approved the presented audiovisual review ("Everything
+looks good"). This closes the human video/audio review step for this candidate;
+remaining RAM and lifecycle qualification still gates beta enablement. See
+`TERRAIN_USER_REVIEW_APPROVAL_V1.json`.

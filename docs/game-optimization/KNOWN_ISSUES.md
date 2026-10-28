@@ -433,3 +433,10 @@
   and audio differ. The largest audio differences occur earlier than the outdoor
   target window; the expanded V2 review includes them. Human review, RAM-effect
   classification and wider lifecycle tests remain separate from this speed result.
+- Platinum terrain checkpoint words `021cd008/021cd00c` are live graphics
+  transfer cursor/remaining-length fields, not timing counters. Observed transfer
+  bookkeeping completes consistently in both runs, but this does not authorize
+  excluding those fields or all DTCM differences. CPU snapshots include different
+  live graphics/IRQ execution points; stack liveness remains open. The private V6
+  runner's legacy checkpoint-RAM summary field covers only its early mainram.bin;
+  use the explicit checkpoint comparison and overall rejection status instead.

@@ -968,3 +968,15 @@ queries. Instruction counts alone understate this observed rendering benefit.
 Keep the native counter definition and the remaining framebuffer/RAM/audio
 differences explicit; neither native throughput nor visual review proves full
 behavioral equivalence.
+
+When fixed-frame RAM differs after reducing graphics work, first classify the
+writers and readers. Transfer source pointers, remaining lengths, completion
+callbacks and temporary projection changes may be live at the checkpoint; they
+are not automatically dead state or timing counters. Reuse the RAM-bus observer,
+prove that it reproduces both earlier runs, reconstruct watched checkpoint words
+from stores, and validate CPU attribution against instruction samples. Check
+every transfer's start, chunk arithmetic and completion before drawing a bounded
+conclusion. Count bytes requested through that path separately from total DMA
+bytes or physical bandwidth. Current SP alone cannot prove that differing stack
+bytes are dead, especially across IRQ mode changes. Preserve strict mismatches
+until the relevant liveness and behavioral contract is established.
