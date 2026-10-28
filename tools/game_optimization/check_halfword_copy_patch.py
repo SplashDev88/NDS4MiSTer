@@ -28,15 +28,16 @@ REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
 
 
 def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=(),
-        mode='arm', instruction_limit=20000):
+        mode='arm', instruction_limit=20000, code_address=None):
     assert mode in ('arm', 'thumb') and bool(cpsr & 0x20) == (mode == 'thumb')
     assert entry % (2 if mode == 'thumb' else 4) == 0
     assert 0 < instruction_limit <= 1000000
     vm = Uc(UC_ARCH_ARM, UC_MODE_THUMB if mode == 'thumb' else UC_MODE_ARM)
-    page = entry & ~4095
-    assert entry + len(code) < page + 0xF00
+    code_address = entry if code_address is None else code_address
+    page = code_address & ~4095
+    assert code_address <= entry < code_address + len(code) <= page + 4096
     vm.mem_map(page, 4096)
-    vm.mem_write(entry, code)
+    vm.mem_write(code_address, code)
     vm.mem_map(0x03000000, 4096)
     vm.mem_write(0x03000000, memory)
     for address, data in extra_memory:

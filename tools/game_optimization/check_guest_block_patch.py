@@ -110,18 +110,19 @@ def main():
     patch, = [p for p in manifest['patches'] if p['id'] == fixture['patch_id']]
     assert patch['mode'] in ('arm', 'thumb')
     entry = int(fixture['entry'], 0)
+    code_address = int(fixture.get('code_address', fixture['entry']), 0)
     stop = int(fixture['stop'], 0) if fixture.get('stop') is not None else None
     before = bytes.fromhex(fixture['code'])
     after = bytearray(before)
-    offset = int(patch['addr'], 0) - entry
+    offset = int(patch['addr'], 0) - code_address
     expected, replacement = bytes.fromhex(patch['expect']), bytes.fromhex(patch['replace'])
     assert 0 <= offset and offset+len(expected) <= len(before)
     assert before[offset:offset+len(expected)] == expected and len(expected) == len(replacement)
-    assert stop is None or entry <= stop <= entry+len(before)
+    assert stop is None or code_address <= stop <= code_address+len(before)
     after[offset:offset+len(expected)] = replacement
     counts = set()
     read_ranges = [(int(a, 0), int(b, 0)) for a, b in fixture.get('elidable_read_ranges', [])]
-    effects, literals = ordinary_ranges(fixture, entry, before, after)
+    effects, literals = ordinary_ranges(fixture, code_address, before, after)
     assert not (read_ranges and (effects or literals)), 'Mixed access policies'
     for index, case in enumerate(fixture['cases']):
         rng = random.Random(case['memory_seed'])
@@ -136,6 +137,7 @@ def main():
         assert len(values) == 15
         cpsr = int(case['cpsr'], 0)
         options = dict(stop=stop, extra_memory=extra, mode=patch['mode'],
+                       code_address=code_address,
                        instruction_limit=fixture.get('instruction_limit', 20000))
         a, ac = run(before, entry, bytes(memory), values, cpsr, **options)
         b, bc = run(bytes(after), entry, bytes(memory), values, cpsr, **options)

@@ -7,6 +7,21 @@ from check_guest_block_patch import (compare_accesses, ordinary_ranges,
 
 
 class BlockTests(unittest.TestCase):
+    def test_context_before_entry_and_end_of_page_are_executable(self):
+        # Both functions share a context that extends before their entry.
+        code = bytearray(4096)
+        code[0x100:0x108] = bytes.fromhex('010080e21eff2fe1')
+        code[0xff8:0x1000] = bytes.fromhex('010080e21eff2fe1')
+        regs = [7] + [0]*12 + [0x03000f00, 0x02000108]
+        for entry in [0x02000100, 0x02000ff8]:
+            result, count = run(bytes(code), entry, bytes(4096), regs, 0x1f,
+                                code_address=0x02000000)
+            self.assertEqual(result['registers'][0], 8)
+            self.assertEqual(count, 2)
+        with self.assertRaises(AssertionError):
+            run(bytes(code), 0x01fffffc, bytes(4096), regs, 0x1f,
+                code_address=0x02000000)
+
     def test_thumb_and_arm_arithmetic_match_after_both_return_modes(self):
         for value in (0, 0x7fffffff, 0xffffffff):
             for thumb_return in (0, 1):
