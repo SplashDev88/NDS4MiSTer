@@ -338,8 +338,11 @@
   and reused staging remain raw. The one-byte candidate itself is rejected:
   all 16,800 screen pairs and save hashes match, but 73,833 stereo samples and
   main-RAM/DTCM checkpoint 14300 differ. Native benefit and audibility are
-  unmeasured. Do not rerun unchanged, trial natively, combine or transfer FFT's
-  perceptual approval. Broader active gameplay profiling remains unfinished.
+  unmeasured. The later functional budget supersedes this exact-only rejection.
+  The shipped-core cost screen now parks the candidate for insufficient expected
+  benefit: three local beats per observed call, about 5.18ms across 1,800 frames.
+  This is not a measured native speedup or an all-game bound. Reopen only with
+  a substantially higher representative call rate or an ARM7 pacing bottleneck.
 - The replay oracle's formatted input reader silently stops at comments or
   malformed tokens. Platinum outdoor probe V1 therefore never submitted its
   appended movement. It is excluded from active-gameplay evidence, rather than

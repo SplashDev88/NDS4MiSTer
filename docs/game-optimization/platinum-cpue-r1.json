@@ -218,15 +218,15 @@
       "scratch_bytes": 0,
       "enabled": false,
       "precondition": "Full36-byte preceding arithmetic sequence authenticates R3=ADDS carry and unchangedC flag before MLA. All32-bit entry inputs supported;no BIOS table-value assumption.",
-      "notes": "Rejected one-byte ARM7 MLA predication.6800 local cases and unchanged delivery/comparison controls pass;57827 replacement opcode observations preserve carry contract and captured R0 results. Full16800-frame replay has exact screens/save but73833 changed stereo samples and mainRAM/DTCM checkpoint14300 mismatch. No native trial, unchanged retry, combination or FFT approval transfer.",
-      "status": "rejected_audio_and_fixed_RAM_checkpoint_mismatch",
+      "notes": "Functional-budget reassessment: old exact RAM/audio rejection is historical. Keep disabled because shipped-core source gives only3 removable local ARM7 beats per observed call,173481beats over1800frames (about5.18ms total at33.513982MHz). Native benefit unmeasured; reopen with substantially higher call frequency or an ARM7 pacing bottleneck.",
+      "status": "parked_negligible_prospective_cost_budget",
       "validated": {
         "synthetic": "6800 exact cases",
         "fb": "All16800 screen pairs exact",
         "ram": "10of11 fixed checkpoint sets exact;frame14300 mainRAM49 words andDTCM3 words differ. Retainedframe2600 exact; transient RAM differences retained.",
         "audio": "73833of13479065 stereo samples differ;maxdelta2974,RMS8.593533;no audibility judgment",
         "save": "All16800 per-frame and final save hashes exact",
-        "native": "Not run; exact gate failed"
+        "native": "Not run; source-derived opportunity too small at observed frequency. Not rejected solely for timing/RNG/hash drift."
       },
       "gain": {
         "reference_ARM9_entries": {
@@ -265,6 +265,17 @@
         "receipt_sha256": "187501917c2d2fa338ccfc5a76f217949f90f100ca793c91270a864c824256f5",
         "comparison": "ARM7_PITCH_CARRY_PAIR_COMPARISON_V1.json",
         "comparison_sha256": "0776ac07c5915305d3ccd74636ea2ac72df2660c629f5d316e355948966b2b6d"
+      },
+      "functional_cost_screen": {
+        "receipt": "ARM7_PITCH_FUNCTIONAL_COST_V1.json",
+        "receipt_sha256": "84036196786432b25ad7b1e17db6d2e5c5cfd462f114c822051e921884cf3505",
+        "observed_calls": 57827,
+        "local_extra_clock_beats_per_call": 3,
+        "local_extra_clock_beats_total": 173481,
+        "frames": 1800,
+        "local_seconds_at_shipped_clock": 0.005176376832809661,
+        "native_speedup": null,
+        "scope": "Source-derived local cost screen weighted by reference calls; not a global native speed bound."
       }
     },
     {

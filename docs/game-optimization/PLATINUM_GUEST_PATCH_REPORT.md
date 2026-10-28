@@ -2515,3 +2515,27 @@ Final preservation verifies all 3,110 protected native files, 84 kit files,
 the copied seed and all three accepted local archives. MENU is restored and
 no NDS process or recording remains. See
 `NATIVE_BATTLE_PENDING_FINAL_PRESERVATION_V1.json`.
+
+## ARM7 carry shortcut: functional-budget cost reassessment
+
+The earlier exact-only rejection is no longer the deciding gate. The one-byte
+MLA predication remains disabled because its prospective benefit is too small
+at the observed frequency. The shipped FPGA input archive, authenticated against
+the accepted beta manifest and build-input hashes, instantiates `gba_cpu` for
+ARM7. The MLA decodes R5 as its timed multiplier. All 57,827 observed values
+are 379–1,047, producing one wait beat, one multiply/accumulate beat and one
+completion beat beyond the skipped conditional instruction. Fetch and decode
+remain; the patch removes no memory traffic or renderer work.
+
+That is 173,481 local ARM7 clock beats over 1,800 reference frames, approximately
+5.176 milliseconds total at the shipped 33.513982 MHz clock, or 2.876 microseconds
+per frame. Arbitrary 32-bit multipliers have a five-beat upper bound in this
+local path. This is a source-derived opportunity estimate, not measured native
+cycles or a rigorous whole-game speed bound: native call rate, stalls and event
+interleavings can differ. No additional native trial is justified without a
+substantially larger representative call rate or an ARM7 pacing bottleneck.
+
+The prior 6,800 focused checks, exact screen/save pairs and raw audio/RAM
+differences remain recorded. No new patch bytes, RTL, HPS service, save format
+or beta change results. Evidence: `ARM7_PITCH_FUNCTIONAL_COST_V1.json` and
+`IRQ_FUNCTIONAL_SHIPPED_CORE_SUPPORT_V1.json`.

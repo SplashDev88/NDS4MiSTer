@@ -772,6 +772,14 @@ instruction-entry counts and measured native cycles. An algebraically exact
 instruction can still change asynchronous audio/IRQ behavior through latency.
 ARM7 delivery and the full patched replay remain pending for this example.
 
+A later cost screen uses the actual shipped CPU source, not generic ARM cycle
+tables. Multiply latency depends on the encoded multiplier register, not on
+whichever operand happens to be zero. Platinum's multiplier fits 16 bits, so
+predication removes three local execution beats per observed call while still
+fetching/decoding the instruction. Its weighted opportunity is only about
+5.18 milliseconds over 1,800 frames. Treat that as a prioritization estimate,
+not native speed; timing differences alone no longer reject this candidate.
+
 ## Guarded ARM7 autoload source delivery
 
 Extend the existing virtual cartridge stream when the original boot code
