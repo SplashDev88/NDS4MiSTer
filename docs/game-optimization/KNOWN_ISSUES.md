@@ -222,3 +222,16 @@
   pattern matches are unprofiled and exclude Thumb/overlay coverage. Do not
   transplant FFT's rejected halfword-copy rewrite or reuse an overlay RAM
   address without exact overlay identity and a verified reload mechanism.
+- Platinum's initial movement enters the rival dialogue; inputs issued while
+  it is open do not qualify free walking or menus. The repeated 6,000-frame
+  route later reaches menus and bedroom movement, but stair attempts remain
+  inside the bedroom. Transitions, battle, save-write/reload and native
+  pacing are still unqualified. Exact reference repetition is only a baseline.
+- The owned filename labelled Platinum Europe reports CPUE revision 10 in
+  its header. Do not identify/admit it by filename or infer retail provenance.
+  The preserved original save backup is entirely `ff`, not a gameplay seed.
+- Platinum's sampled fixed-destination word stream is not ordinary memcpy;
+  actual destination and callers remain unobserved. Its large IRQ and
+  DIV/SQRT context-preservation sample shares do not establish idle work or
+  avoidable software arithmetic. Preserve full ARM7/overlay threshold lists,
+  not only the easier-to-disassemble ARM9 ranges.

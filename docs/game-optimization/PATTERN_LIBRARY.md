@@ -535,3 +535,18 @@ Require active-scene samples, actual callers/access types and timing validation
 again for the new title and CPU. An ARM-only static scan says nothing about
 unscanned Thumb or overlay code; Platinum has 122 ARM9 overlays. Preserve the
 exact revision and overlay reload identity before considering a hook.
+
+The repeated 6,000-frame Platinum bedroom/menu control now assigns 4.230%
+of selected ARM9 samples to that halfword-copy extent, with zero samples in
+the ARM7 counterpart. A nearby word loop (`020c4b90–020c4bb8`) accounts for
+5.675% but advances only its source: its repeated destination writes need
+actual argument/access tracing before any memcpy or redundant-upload analogy.
+Screen instruction semantics, not adjacent addresses or similar loop shapes.
+
+Likewise, classify high-cost register operations by their callers. Platinum's
+DIV/SQRT register save/restore region accounts for 9.615% of ARM9 samples and
+is called from the IRQ context path. This is context preservation, not proof
+of an expensive software divide that can be replaced by hardware math. The
+IRQ dispatch/context region itself accounts for 19.114%. Sampling is every
+256th instruction entry and can alias periodic work; none of these shares
+measures native cycles or establishes removable work.
