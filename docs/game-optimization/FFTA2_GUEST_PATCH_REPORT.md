@@ -1204,6 +1204,70 @@ override the performance decision or the original exact-match failures.
 Continue the paused higher-level filesystem/page-reuse investigation using
 the existing exact returned-byte audit. All four release entries stay disabled.
 
+## Cartridge requests: existing cache and five repeated asset ranges
+
+The completed V3 transfer audit verifies all 1,289,216 returned bytes against
+the immutable ROM: 2,518 physical 512-byte transfers, with 68 repeats. Physical
+blocks alone are insufficient to identify logical requests. ARM9 `0200fd64`
+already copies from a tagged partial-block buffer, while `02010100` performs
+the remaining cartridge reads. Its LR changes inside the loop and is not a
+reliable original-caller identity.
+
+Five declarative observation sites in the existing V8 replay binary now record
+the archive wrapper, serialized request arguments, worker entry, completed
+descriptor and callback arguments. No binary or runtime patch was added.
+The current loader has a separately pinned provenance; two preparation
+preflights stopped on historical source/loader hash differences before any
+replay. Those failures and the reviewed resolutions are retained.
+The new unpatched Luso replay reproduces all 4,400 golden frames, every RAM
+checkpoint, audio and save. It also matches the retained V3 state/instruction
+trace. All 2,518 physical transfers reconcile in order with the request model,
+including their source offsets, destinations, returned bytes and frame bounds.
+
+| Luso frames 2600–4399 | Requests | Requested bytes | Repeated requests | Repeated bytes |
+|---|---:|---:|---:|---:|
+| `strm/bgm24.bin` | 962 | 985,088 | 0 | 0 |
+| `master/pc.bin` | 147 | 282,576 | 12 | 18,656 |
+| Total | 1,109 | 1,267,664 | 12 | 18,656 |
+
+The existing cache supplies a 479,612-byte prefix total across 1,065 requests;
+two requests need no physical transfer. This measures use of already-read
+partial blocks, not additional repeated assets or native speed. Every observed
+request uses the same ROM archive context `02120974`, asynchronous flag 1,
+DMA argument 2 and completion callback `0200c5e8`. The wrapper returns to
+`0200b194`; the worker checks completion before invoking the callback. These
+observations do not authorize bypassing completion, synchronization or audio
+buffer ownership.
+
+The 12 repeated chunk requests cover five complete immutable ranges, each read
+twice. Retained archive mappings identify candidate names:
+
+| Asset range | Bytes | Occurrence frames |
+|---|---:|---|
+| `menu/atl_rom/atl.pak`, child 70 | 3,264 | 2757–2758; 3635 |
+| Same pack, child 160 | 3,264 | 2757; 2757 |
+| Same pack, child 209 | 3,264 | 2758; 2781 |
+| `menu/face_rom/face.pak`, child 190 | 6,624 | 2785; 3189 |
+| `battle/calc/sp_calc.sbn` | 2,240 | 2781; 3634–3635 |
+
+Child boundaries and hashes match the original ROM. Repeated bytes account
+for 1.472% of requested bytes in this window. An ideal request-key LRU needs
+512 entries to retain all 12 hits; capacities 1/2/16/256 yield 0/2/4/8 hits.
+These entry counts are recurrence observations, not an implemented cache or
+a cost model. Distinct destinations still require valid copies. Investigate
+asset lifetime and higher-level processing before proposing storage or a hook;
+no unused memory, redundant decoding, safe completion change or native gain
+has been demonstrated. This trace does not cover file-open/name-lookup work.
+
+Evidence: `GUEST_FS_REQUEST_FINDINGS_LUSO_V1.json`,
+`GUEST_FS_REPEATED_ASSET_MAPPING_V1.json`,
+`GUEST_FS_REQUEST_CALLPATH_LISTING_V1.txt`,
+`GUEST_FS_REQUEST_LUSO_V1_STATUS.json` and the prior
+`GUEST_CART_TRANSFER_CONTENT_AUDIT_LUSO_V1.json`. The generic returned-byte
+auditor and its six previously passing tests are now retained in the source
+tree. All four patch-manifest entries remain disabled. No new native
+before/after measurement or beta is claimed; accepted Beta2 remains available.
+
 ## Next validation and limits
 
 The bounded Luso source-write ordering is now established. Do not repeat
@@ -1247,9 +1311,10 @@ save-state round trips. No original ROM or save was changed by this work.
 
 ## Three further ideas, not yet tested
 
-1. Consider combining only newly justified patch versions after individual
-   qualification; the current vertex/decoder versions do not warrant it.
-2. Investigate higher-level cartridge/filesystem reuse from the exact returned
-   byte audit; repeated addresses/offsets do not authorize skipping completion.
-3. Consider higher-level reuse of viewport calculations only if it removes
+1. Trace the callers and ownership of the five repeated asset ranges. Determine
+   whether an existing resident asset or immutable parsed result can be reused
+   before designing a new cache; quantify work and completion dependencies.
+2. Consider higher-level reuse of viewport calculations only if it removes
    lookup costs and has a proven mutation boundary; do not revive this cache.
+3. Measure ARM7 division operand recurrence and dependency boundaries before
+   proposing a math fast path; do not treat live audio or scheduling as idle.

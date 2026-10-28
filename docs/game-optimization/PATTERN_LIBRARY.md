@@ -494,3 +494,33 @@ and close the unchanged version instead of adding runs until favorable.
 Small menu-inclusive publication changes do not establish action-speed gains.
 Likewise, a signal interruption observed in an unpatched control prevents
 sole attribution to a patch, but does not prove shared causality or safety.
+
+## Reconcile physical reads with existing partial-block caching
+
+Before adding an asset cache, identify the actual request descriptor and
+existing cached-block tag. Observe request arguments and completion using the
+existing declarative RAM watcher, with CPU, mode, opcode, mapping and register
+guards. Require unpatched golden equivalence before interpreting the trace.
+Record caller, source, length, destination and asynchronous callback context;
+an internal transfer loop's LR may be overwritten and is not a call stack.
+
+Use `audit_rom_transfer_trace.py` to verify completed returned bytes against a
+pinned immutable source, enforce pairing/ABI guards and classify nonoverlapping
+source regions. Addresses and game-specific ABI definitions belong in fixtures.
+Six tests cover changed payload/destination, pairing, context, mode/opcode/CPU,
+source bounds, overlapping regions and failed or mismatched golden evidence.
+
+Then reconcile physical transfers with the request path, including cache-only
+requests and partial-block prefixes. Do not infer file requests from adjacent
+physical blocks or confuse an archive context with a file identity. Reconcile
+the original path before making any completion or IRQ equivalence claim about
+a replacement. Keep frame-boundary observations explicit.
+
+FFTA2's bounded Luso trace has 2,518 physical transfers but 1,109 requests.
+The existing partial cache supplies 479,612 requested bytes across 1,065
+requests, including two fully cached requests. Only 12 complete request keys
+repeat, covering five asset ranges and 18,656 bytes; none of the 962 music
+requests repeats. Static archive ranges can separate actual repeated assets
+from block-alignment spill. Source-content reuse alone does not prove reusable
+decoded state, valid storage, cheap lookup, redundant copying or native gain.
+Promote this observation method, not the title's addresses or presumed SDK name.

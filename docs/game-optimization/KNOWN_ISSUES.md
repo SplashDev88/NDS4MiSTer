@@ -203,3 +203,14 @@
   host and capture path; their causes and relationship remain unresolved.
   Do not attribute either interruption solely to the guest patch, infer a
   common cause, or treat a file-preservation pass as an audio behavior pass.
+- FFTA2 already caches partial cartridge blocks. Its 2,518 physical reads in
+  the selected Luso window correspond to 1,109 asynchronous archive requests;
+  two requests are served entirely from that cache. Only 12 request keys
+  repeat, totaling 18,656 bytes in five complete asset ranges. A new block
+  cache must not count existing cache hits or alignment spill as fresh gains.
+  The shared archive context and low-level LR do not identify a logical file.
+  All request/callback observations are unpatched: they do not prove that
+  faster completion preserves live audio reads, IRQ ordering or asset lifetime.
+  No new scratch, cache, guest patch or native gain is established by this
+  result. Candidate archive names come from the retained hash/collision map;
+  full asset ownership and processing callers still need dynamic evidence.
