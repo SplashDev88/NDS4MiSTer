@@ -943,3 +943,11 @@ assignment can also reset current vertex color; normal/color commands and
 query/stack effects must be considered. A title-specific culling helper may
 already reject off-screen props while other model categories follow different
 paths. Authenticate each function and category before extending culling.
+
+Before adding visibility culling, census the title's existing query entry and
+return under exact instruction guards. In Platinum, 2,400 prop tests include
+1,729 rejected and 671 accepted draws; the returned true value is raw bit 1
+(value 2). Shared model resources have different instance transforms and
+visibility outcomes. Capture actual bounds/transforms and camera/projection
+state, not just pointers. Separate terrain, props and character drawing paths:
+a valid-only terrain draw is a lead for coarse culling, not proof of invisibility.

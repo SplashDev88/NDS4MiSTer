@@ -1236,3 +1236,83 @@ These deterministic software clips are separate from the native speed tests.
 Evidence: `NATIVE_PERCEPTUAL_RESULTS_V1.json`, native trial `PLATINUM_F1`,
 `PERCEPTUAL_FONT_CONTROL_V1_STATUS.json`,
 `PERCEPTUAL_FONT_CANDIDATE_V1_STATUS.json`, and `Platinum_Font_Review.json`.
+
+## Qualified geometry census and existing prop culling
+
+The next investigation reuses the existing `NDS4MiSTer_2DTrace` sink through a
+bounded, read-only extension of the reference frontend. It changes no core,
+renderer, FPGA, HPS service or game byte. Across the full 15,600-frame outdoor
+replay, all 180 retained golden files remain exact, including screens, audio,
+saves, RAM/CPU checkpoints, profiles and instruction totals. Observation covers
+frames 15000–15599; the scene remains the previously verified walking route.
+
+| Measurement | Golden replay | Geometry observer |
+|---|---:|---:|
+| Retained golden files matching | Reference | 180 / 180 |
+| Selected ARM9 instruction entries | 98,783,080 | 98,783,080 |
+| Selected ARM7 instruction entries | 16,043,379 | 16,043,379 |
+| Native speed/pacing measurement | Not part of this unit | Not part of this unit |
+| Game patches enabled | None | None |
+
+The 600-frame observation has 300 swap submissions and 5,686,767 normalized
+command parameter packets; 4,811,611 occur while DMA is active. Of 299 complete
+swap-bounded intervals, 197 payload hashes are distinct and 102 adjacent pairs
+match. Partial leading traffic is excluded. Matrix, texture, palette and other
+external dependencies still matter; no frame reuse or draw omission is admitted.
+The existing geometry-frame counters report 1,075–1,327 vertices and 280–350
+polygons (medians 1,284 and 339). These are renderer bookkeeping counters, not
+unique animation FPS or guest/native cycle counts.
+
+The leading CPU context is the known word-stream store at `020c4bac`, reached
+from `020b2834`, with 842,156 parameter packets. The guarded disassembly shows
+that this caller sends an opcode to `04000400`, then calls the word-stream
+helper. It is a submission path, not a proof that its payload is redundant.
+DMA traffic is deliberately not attributed to the interrupted instruction.
+
+Owned ARM9 instructions at `0201ced8–0201cf73` match the model-box-test
+structure described in the pinned decompilation: set model transforms, push/
+scale, issue the query, wait for completion, pop and return. The overlay-5 call
+at `021e1824` tests the result and branches around the prop draw at `021e1862`.
+An independently qualified register census matches all 180 golden files and
+records 2,400 complete calls with no partial boundaries: 1,729 return zero and
+671 return two. The owned getter at `020bfe80` explicitly masks GXSTAT with 2;
+raw success is **2**, not 1. Any replacement must preserve that actual value.
+All calls originate at `021e1829` in this scene. This confirms substantial
+existing prop culling, rather than a missing off-screen-prop test.
+
+Only four model resource pointers appear, but several are shared by different
+instances. Model `022fbe64` returns visible 300 times and hidden 900 times, with
+four scale pointers and reused stack position/rotation pointers. Model-pointer
+or stack-pointer equality is not a valid visibility-cache key. Actual object
+transforms, camera/projection, bounds, viewport and all query side effects must
+be captured before proposing a cache.
+
+The first register census stopped on the strict opcode guard: at aligned Thumb
+`0201ced8`, the sampler exposes the two-halfword prefetch value `b08db5f0` although
+the current instruction is `b5f0`. That run is excluded. The corrected observer
+uses `0201ceda`, after the unchanged register push, where R0–R3/LR are intact and
+SP is caller-SP minus 20. The byte/mode guard is retained. No failed trace was
+used to establish runtime behavior.
+
+A separate owned overlay path at `021e89d0–021e8a97` calculates a map-chunk
+position, checks its loaded-valid flag, sets identity rotation/unit scale and
+calls the draw helper at `021e8a56`; it then handles props separately. This
+matches the decompiled terrain path, which lacks the prop-level box test.
+The exact call-site bytes are retained with the decoded overlay identity.
+This is a promising **research lead**, not proof that a loaded terrain chunk is
+invisible or can safely be skipped. Next census its model/transform inputs and
+actual visibility, then prove state effects and a safe patch location. Added
+query/round-trip costs could outweigh saved submissions, so native A/B remains
+mandatory before recommending a beta.
+
+The next three bounded investigations are terrain-chunk draw/visibility
+contracts, complete visibility-query input/state recurrence, and repeated
+strided-upload data/reader lifetimes. Cartridge-request recurrence remains
+queued. No native session, patch enablement or new beta follows this census.
+
+Evidence: `GEOMETRY_BUILD_V12.json`, `GEOMETRY_OUTDOOR_QUALIFICATION_V1.json`,
+`GEOMETRY_OUTDOOR_CENSUS_V1.json`, `GEOMETRY_CALLER_DISASSEMBLY_V1.txt`,
+`GEOMETRY_OVERLAY5_CALL_SITES_V1.json`, `TERRAIN_DRAW_DISASSEMBLY_V1.txt`,
+`BOXTEST_REGISTER_CENSUS_V1_EXCLUSION.json`,
+`BOXTEST_REGISTER_QUALIFICATION_V2.json`, `BOXTEST_REGISTER_FINDINGS_V2.json`
+and `BOXTEST_RESULT_DISASSEMBLY_V1.txt`.

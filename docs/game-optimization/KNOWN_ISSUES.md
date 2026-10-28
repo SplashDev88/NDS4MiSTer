@@ -409,3 +409,14 @@
 - Identical material or polygon parameter values can still have other effects.
   For example, material assignments may update current vertex color. Preserve
   those effects before treating a repeated assignment as unnecessary work.
+- A Thumb instruction-entry sample at an address divisible by four can retain
+  the next halfword in the upper 16 bits of `CurInstr`. The memory-watch loader
+  accepts a 16-bit expected Thumb opcode but currently compares the full sampled
+  word. Platinum's box-test entry guard therefore stopped before producing a
+  usable census. Observe a verified adjacent site with intact arguments or
+  separately qualify an instruction-decoding fix; never weaken identity checks
+  or use the failed run as behavioral evidence.
+- Platinum's box-test getter returns raw GXSTAT bit 1: zero or **two**, not a
+  normalized zero/one boolean. Preserve raw outputs. One model pointer is used
+  by multiple instances with opposite visibility outcomes; pointer-only caching
+  and reused stack addresses cannot establish equivalent query inputs.
