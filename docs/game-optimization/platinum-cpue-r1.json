@@ -489,6 +489,38 @@
         "battle_source": "NATIVE_BATTLE_OAM_FINDINGS_V1.json",
         "qualified_whole_turn_speedup": null
       }
+    },
+    {
+      "id": "font-resident-glyph-mode",
+      "pattern": "existing-resident-asset-mode",
+      "cpu": "arm9",
+      "mode": "thumb",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x2002bc8",
+      "expect": "0e20012220f088fb",
+      "replace": "0e20002220f088fb",
+      "hook": null,
+      "overlay": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "status": "rejected_functional_heap_failure",
+      "notes": "Select existing immediate font mode at02002bca. Eight-byte guard includes unchanged adjacent instructions to meet existing loader minimum; only one Thumb immediate changes. Existing game allocator and free path own glyph buffers; no new scratch or service. Accepted terrain is the sole baseline patch. Native performance and broader heap lifetime unqualified. Rejected after a real allocation/ARM9 fault during field setup. Initial successful allocation and battle-baseline checkpoint headroom did not cover an earlier child-heap demand. Do not enable this blanket variant.",
+      "validated": {
+        "functional": "Fails field setup at frame1318: Heap_Alloc on heap8 sees null handle; ARM9 remains in abort mode at PCffff0108 in all checkpoints1320 onward.",
+        "buffers": "Three startup buffers each32576bytes exactly match the owned font archive at frames60 and1200.",
+        "native": "Not deployed; no native result."
+      },
+      "gain": {
+        "qualified": false,
+        "native_speedup": null
+      },
+      "evidence": [
+        "FONT_RESIDENT_MODE_PROPOSAL_V1.json",
+        "FONT_RESIDENT_CONTROL_FINDINGS_V1.json",
+        "FONT_RESIDENT_CONTROL_QUALIFICATION_V1.json",
+        "FONT_RESIDENT_ALL_FAILURE_V2.json",
+        "FONT_RESIDENT_ALL_BEFORE_AFTER_V2.csv"
+      ]
     }
   ],
   "arm9_crc32": "4d104949",

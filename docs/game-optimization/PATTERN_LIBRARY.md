@@ -1116,3 +1116,17 @@ switch may avoid new cache machinery. Authenticate it against the revision's
 instructions and live objects, then prove heap headroom, allocation success,
 lifetime and output behavior. Text timers may hide the gain in typewriter
 pacing; measure representative load and instant-text work as well.
+
+
+## Resident assets can exhaust later child heaps
+
+Successful initial cache allocation is insufficient. A parent heap can retain
+resident assets yet later fail a large child-heap creation. Capture transitions
+before the profiled target, authenticate null handles and inspect CPU exception
+state. A low instruction count from a stalled game is never a speedup.
+
+If an observer cannot dereference an invalid pointer, preserve the failure and
+use a separate register-only diagnostic to identify it. Keep the same opcode
+and revision guards, and continue to reject invalid pointers. Prefer a smaller
+existing residency policy only as a new independently tested candidate; static
+checkpoint headroom is not a full-route allocation guarantee.

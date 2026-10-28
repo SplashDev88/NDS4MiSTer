@@ -1923,3 +1923,42 @@ claimed for this census.
 Evidence: `CART_REQUEST_QUALIFICATION_V1.json`, `CART_REQUEST_FINDINGS_V1.json`,
 `CART_REQUEST_FILE_MAPPING_V1.json`, `CART_REQUEST_OVERLAY_MAPPING_V1.json`,
 `CART_REQUEST_BEFORE_AFTER_V1.csv` and `FONT_RESIDENT_MODE_PROPOSAL_V1.json`.
+
+
+## All-font residency — rejected for a gameplay failure
+
+The accepted terrain observer reproduces all 254 comparable full-profile output
+files. Live constructors confirm three startup managers on heap 3 (system,
+message and Unown) and the later subscreen manager on heap 5. All 7,229 observed
+ordinary allocator calls return nonnull in the control. Battle checkpoints have
+249,348 free bytes on heap 3, but those snapshots do not establish earlier or
+full-route headroom.
+
+The guarded experiment changes `movs r2,#1` to `movs r2,#0` at 02002bca, within
+an unchanged eight-byte loader guard at 02002bc8. Existing game functions allocate
+and free the glyph data. Each of the three startup buffers contains 32,576 bytes
+and exactly matches its owned archive member at frames 60 and 1200.
+
+The game nevertheless fails during field setup at frame 1318. A request for 84
+bytes on heap 8 reaches Heap_Alloc with a null heap handle. ARM9 subsequently
+remains in abort mode at PC ffff0108 in every recorded checkpoint from 1320
+onward. The first run stopped at the observer's memory-range check; a separate
+diagnostic records the handle without dereferencing it and confirms the fault.
+No guard was weakened to accept the candidate. The exact child-heap allocation
+that failed is not yet traced; added long-lived font allocations implicate heap
+pressure, rather than proving every step of that causal chain.
+
+| Measurement | Accepted terrain | All-font residency |
+|---|---:|---:|
+| Startup resident glyph bytes | 0 | 97,728 |
+| First-battle route completes | Yes | No; field-setup fault |
+| Native speedup | Unmeasured | Rejected before hardware |
+
+Keep `font-resident-glyph-mode` disabled. This exceeds the user's functionality
+budget. A separate system/message-only proposal uses 65,152 bytes and retains
+lazy mode for subscreen and Unown; its benefit and functionality must be tested
+independently. No existing beta, ROM, seed, renderer or FPGA was modified.
+
+Evidence: `FONT_RESIDENT_CONTROL_QUALIFICATION_V1.json`,
+`FONT_RESIDENT_CONTROL_FINDINGS_V1.json`, `FONT_RESIDENT_ALL_FAILURE_V2.json`,
+`FONT_RESIDENT_ALL_BEFORE_AFTER_V2.csv`, and the retained V1/V2 traces.

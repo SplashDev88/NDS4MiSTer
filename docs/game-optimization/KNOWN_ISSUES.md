@@ -490,7 +490,12 @@
   excluded. Repeated source offsets do not establish actual payload equality,
   safe scratch, completion behavior or native cache benefit.
 - Overlays 12 and 14 both occupy 0221fc20; repeated loads cannot be blindly skipped.
-- The resident-font mode is an unimplemented proposal. Its owned loader does
+- The original resident-font proposal has now been tested and rejected below. Its loader does
   not check Heap_Alloc for failure before reading. Each font needs 32,576 bytes;
   live allocation success/headroom, freeing and all relevant scenes must be
   validated before acceptance. No font-residency patch is enabled.
+
+- All-font residency faults during field setup at frame 1318 despite successful
+  startup buffers. Heap 8 has a null handle; ARM9 remains in abort mode. Reject
+  this variant under the functional budget. Battle-time free-space snapshots
+  missed this earlier demand. A smaller policy requires independent validation.
