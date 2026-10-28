@@ -744,3 +744,59 @@ Evidence: `ARM7_PITCH_CARRY_REPLAY_DECISION_V1.json`,
 `ARM7_PITCH_CARRY_CHECKPOINT_DIFF_V1.json`,
 `ARM7_PITCH_CARRY_CANDIDATE_V1_STATUS.json` and
 `ARM7_PITCH_CARRY_REPLAY_BEFORE_AFTER_V1.csv`.
+
+## Bounded outdoor walking baseline
+
+The unpatched route now walks 16 tiles outside the player's house. Five
+checkpoint positions follow `(116,886) → (119,886) → (119,891) → (119,886) →
+(116,886)`. Screenshots, coherent avatar/manager backlinks, stored location and
+fixed-point world position agree. The 600-frame profile window includes turns,
+pauses and a collision at the southern tree boundary. This establishes bounded
+walking coverage, not continuous movement, battle or a representative full-game
+benchmark.
+
+An independent 15,600-frame repeat matches all 180 complete output files:
+both screens, per-frame RAM hashes, five full checkpoint sets, audio, saves and
+profiles. No code bytes or RAM regions are normalized for these unpatched runs.
+
+| Metric | Baseline | Independent repeat |
+|---|---:|---:|
+| Complete replay frames | 15,600 | 15,600 |
+| ARM9 reference entries, frames 15000–15599 | 98,783,080 | 98,783,080 |
+| ARM7 reference entries, same window | 16,043,379 | 16,043,379 |
+| Different complete output files | 0 | 0 |
+| Native speed improvement | Unmeasured | Unmeasured |
+
+All 31 256-byte bins above 2% of that CPU's instruction-sample total were
+screened. The largest ARM9 bins remain IRQ/context dispatch (10.53%), transfer
+helpers (10.40%), and hardware-math context preservation (6.49%). These are bin
+sample shares, not function cycle shares. Two additional ARM7 bins cross the
+threshold: timed callback queue dispatch at `037fa700` (2.23%) and sound sequence
+state traversal at `037fd000` (2.06%). The former changes timer/queue state and
+calls callbacks; the latter traverses 16 state records, advances accumulators
+and invokes sound helpers. Neither is established as dead or redundant work.
+All 133 newly sampled sites in these bins match owned main/autoload bytes;
+overlay 5 matches its complete original body at all five checkpoints.
+
+The generic ARM detector again finds the known copy, sparse-mask and
+carry-predication shapes. This is no reason to reinstate rejected candidates.
+All four remain disabled, and rc12 plus accepted FFTA2 Beta2 are unchanged.
+
+The first navigation probe exposed a tooling issue: a comment stopped the
+oracle's formatted input reader before the added movement. That run is retained
+and excluded. The shared `validate_replay_inputs.py` preflight now rejects
+comments, malformed rows and invalid bounds/masks. Eight tests pass, and the
+actual malformed route is rejected. The corrected route has 127 validated
+intervals. The oracle and product runtime were not rebuilt or changed.
+
+Next priorities are ordinary-input rival/story progression into a battle,
+isolated save-write/cold reload, and candidate selection from that broader
+workload. A pitch cache still requires safe storage/lifetime proof; the
+whole-empty HBlank idea still lacks layout and callback/IRQ proof.
+
+Evidence: `OUTDOOR_ROUTE_V2_REPEAT_COMPARISON.json`,
+`OUTDOOR_ROUTE_V2_REVIEW.png`, `OUTDOOR_ROUTE_V2_COORDINATES.json`,
+`OUTDOOR_PROFILE_SCREEN_V1.json`, `OUTDOOR_PATTERN_SCREEN_V1.json`,
+`OUTDOOR_BASELINE_REPEAT_V1.csv`, `REPLAY_SCENE_REVIEW_V4.json`,
+`REPLAY_INPUT_VALIDATION_TESTS_V1.json` and
+`ACTIVE_BATTLE_ROUTE_PROPOSAL_V1.json`.

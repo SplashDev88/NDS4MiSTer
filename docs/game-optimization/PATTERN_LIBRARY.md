@@ -809,3 +809,16 @@ for all 397 captured input pairs. Local numerical equivalence and fewer
 arithmetic operations therefore do not establish full-system equivalence.
 Keep the failed result; do not infer benign timing, native benefit or a
 perceptual allowance from identical pictures.
+
+## Active-scene evidence before hotspot classification
+
+Validate the complete input file before a run. The existing oracle's formatted
+reader can silently stop at a comment, leaving an apparently successful replay
+that never submits later buttons. `validate_replay_inputs.py` screens syntax,
+frame bounds and button masks without changing the oracle or game behavior.
+Pin its receipt with the route and job. Then corroborate movement using actual
+frames and read-only, internally consistent player/location state where
+available. Held buttons, a scene label or a zero exit status do not establish
+active gameplay; collisions, dialogue and missing input are separate cases.
+Retain failed navigation probes with their exclusion reason. Only repeat and
+profile a route as active once the recorded motion supports that description.

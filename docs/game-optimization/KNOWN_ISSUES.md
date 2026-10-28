@@ -340,3 +340,9 @@
   main-RAM/DTCM checkpoint 14300 differ. Native benefit and audibility are
   unmeasured. Do not rerun unchanged, trial natively, combine or transfer FFT's
   perceptual approval. Broader active gameplay profiling remains unfinished.
+- The replay oracle's formatted input reader silently stops at comments or
+  malformed tokens. Platinum outdoor probe V1 therefore never submitted its
+  appended movement. It is excluded from active-gameplay evidence, rather than
+  interpreted as a collision. Preflight the complete file with
+  `validate_replay_inputs.py`, pin its hash, and independently inspect actual
+  motion before profiling. A successful process exit is insufficient.

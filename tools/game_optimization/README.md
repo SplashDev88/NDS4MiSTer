@@ -29,6 +29,21 @@ profile selector, and requires complete 3D rendering. It records both screen
 hashes, per-frame RAM-region hashes, audio, final saves, selected raw RAM dumps,
 and instruction samples. CPU instruction counts are not FPGA cycle counts.
 
+Preflight each new or extended input file before starting the oracle, then pin
+the input and receipt with the job:
+
+```sh
+python3 tools/game_optimization/validate_replay_inputs.py /path/to/route.tsv \
+  --frames 16800 --output /path/to/input-validation.json
+```
+
+The oracle's formatted reader silently stops at malformed tokens, including
+comments. The preflight rejects those tokens, incomplete rows, invalid frame
+intervals and masks outside the 12 button bits. Blank lines, overlapping button
+intervals and zero masks retain their existing semantics. Passing syntax checks
+does not prove movement: review actual screenshots and checkpoint state before
+labeling a measurement window as active gameplay.
+
 Use the same verified ROM/save/input files for both runs. Enable an experimental
 renderer only in its candidate process environment. Compare with:
 
