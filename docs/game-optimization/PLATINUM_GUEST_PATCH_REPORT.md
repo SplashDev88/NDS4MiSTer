@@ -4,7 +4,8 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-The word-stream candidate is rejected and disabled; no new speed gain is claimed.
+The word-stream candidate is rejected and disabled. Two overlay leads now have
+guarded runtime evidence; no new speed gain is claimed.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -161,16 +162,74 @@ Private evidence: `platinum-optimization-20261027/INPUTS_V1.json`,
 `STATIC_ARM9_HOTSPOT_LEADS_V1.txt` and `WORKFLOW.json`. The last verified
 cumulative beta remains FFTA2 Beta2 until a Platinum change qualifies.
 
+## Overlay and ARM7 classification
+
+All 30 retained bins now have a structural classification. All 1,021 sampled
+instruction sites match the exact ROM main/autoload bytes, checkpoint-matched
+overlay bytes or the reference oracle's embedded FreeBIOS. This screens the
+executed instructions; it does not establish every function's runtime semantics
+or native cost. The ARM7 bins predominantly cover sound-channel arithmetic,
+parameter propagation, modulation and status collection, plus timed callbacks,
+IRQ/CPSR helpers and SWI dispatch/completion. The pitch and volume helpers call
+Thumb SWIs `1b` and `1c`; their actual argument recurrence remains unmeasured.
+The channel update already compares values and sets dirty flags on changes.
+
+The owned ROM's full SHA-1 `0862ec35b24de5c7e2dcb88c9eea0873110d755c`
+matches the decompilation project's USA revision 1 identity. External source is
+pinned to commit `579d2d5c65e736a1a4268fb7acbfd70712177c6c`; no external build
+or downloaded ROM was used. Both large overlay bins belong to overlay 5 at
+`021d0d80`: its entire 201,632-byte decoded body matches all five checkpoints.
+Decoded SHA-256 is
+`6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9`.
+Source names support the matching disassembly, rather than admitting a patch
+by address or symbol alone.
+
+The existing observer captured frames 4200–4319 with exact CPU, Thumb mode,
+opcode, pipeline-PC and memory mapping guards. All 100 baseline output files
+still match across the full 6,000-frame run. The observations are:
+
+| Lead | Unpatched evidence | Patched result |
+|---|---|---|
+| Resource queue compaction, `021ee030` | All 60 entries have 64 empty records; nested searches read 2,016 later-slot flags per empty invocation | Not implemented; an early exit after the first exhausted search would require 63 such reads in this case |
+| HBlank dispatch, `021ef47c` | All 63,120 dispatches, 526 per frame, target the empty `BX LR` routine at `021ef498`; both task slots are unused | Not implemented; real callbacks in other scenes must still execute |
+| Both screens, RAM, audio and save | All six golden comparisons and all 100 retained baseline files match | No new patch trial |
+| Native speed, pacing and HPS load | Not measured in this investigation | No gain claimed |
+
+The queue routine accounts for 5.816% of ARM9 samples, including 5.447% in
+compaction and 5.109% in its inner search. HBlank dispatch and its dummy return
+together account for 4.350%. These are overlapping subextents within the queue
+routine, not additive savings, and no percentage is a native speed estimate.
+The source's [nested compaction loop](https://github.com/pret/pokeplatinum/blob/579d2d5c65e736a1a4268fb7acbfd70712177c6c/src/overlay005/ov5_021ECE40.c#L1552)
+and [HBlank system](https://github.com/pret/pokeplatinum/blob/579d2d5c65e736a1a4268fb7acbfd70712177c6c/src/overlay005/hblank_system.c)
+correspond to these instruction and data observations.
+
+The generic byte-patch path currently rejects overlays. The existing FMV
+`prepare.assemble` path already decodes overlays by ID, checks source and
+instruction identities, reconstructs their virtual cartridge files and updates
+the FAT. Reuse and qualify that code if extending generic overlay support;
+do not build a parallel loader or apply an address-only RAM patch. It currently
+also installs an FMV converter/ITCM extension, so it is not directly a
+scratch-free Platinum adapter. Source/load identity, unchanged reconstruction,
+reloads, instruction-cache visibility and fallback still need qualification.
+No new hardware hook, HPS service or scratch allocation has been introduced.
+
+Evidence: `THRESHOLD_CLASSIFICATION_V1.json`,
+`THRESHOLD_PROFILE_OPCODE_AUDIT_V1.json`, `THRESHOLD_SOURCE_PROVENANCE_V1.json`,
+`ARM7_CLASSIFICATION_SUPPORT_V1.txt`, `OVERLAY5_GUARDED_FINDINGS_V1.json`,
+`OVERLAY5_SAMPLE_EXTENTS_V1.json` and `OVERLAY5_PATCH_DELIVERY_PROPOSAL_V1.json`.
+
 Next three investigations:
 
-1. Classify remaining ARM7 and live-overlay hotspots with exact code identity;
-   seek unnecessary work or actual content recurrence, not another unchanged
-   branch-compaction trial.
-2. Classify interrupt/context costs from actual
-   events; do not remove scheduler, sound or hardware-math preservation work
-   based on sample share alone.
-3. Extend the route to verified transitions, outdoor movement and battle;
-   identify loaded overlays and asset recurrence with the existing observers.
+1. Qualify reuse of the existing overlay preparation path, then test an empty
+   tail early exit. Preserve record order, stale inactive payload bytes,
+   observable registers and concurrent producer/IRQ behavior. No unused-memory
+   assumption or overlay-lifetime assumption is admitted by these snapshots.
+2. Test conditional suppression of proven dummy HBlank callbacks, preserving
+   real callbacks, registrations and interrupt semantics. The current capture
+   covers only 120 bedroom frames, not arbitrary scenes or overlay reloads.
+3. Investigate ARM7 pitch/volume lookup recurrence after tracing actual calls;
+   avoid changing audio update cadence. Extend replay coverage to transitions,
+   outdoors, battle, save-write/reload and reset before promoting any candidate.
 
 No RTL, new HPS service, save-state-format change or non-bit-exact acceptance
 is authorized here. No speed improvement or new beta is claimed.

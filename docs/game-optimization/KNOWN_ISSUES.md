@@ -248,3 +248,20 @@
   ARM7-WRAM per-frame hashes differ. No timing-only or audibility judgment is
   established. Its 1.267% reference instruction reduction is not native speed;
   no native trial or unchanged repeat is warranted under the current budget.
+- Platinum overlay 5 is identified by its entire decoded body at five
+  checkpoints, and guarded Thumb captures confirm empty resource queues and
+  dummy HBlank callbacks in frames 4200–4319. This does not prove that every
+  scene has an empty queue, that no IRQ mutates it, or that callbacks remain
+  dummy. Preserve inactive record payload bytes and callback registration.
+  Neither proposed optimization has been applied or measured natively.
+- Generic `guest_byte_patch` rejects overlay targets. Existing FMV preparation
+  can reconstruct virtual overlay files but also installs a converter/ITCM
+  extension; it is not a qualified scratch-free Platinum adapter. Reuse its
+  code when extending support and prove input/output identities, unchanged
+  reconstruction, reloads, cache visibility and fallback. Never bypass the
+  guard with an address-only patch or infer safe scratch from zero bytes.
+- Platinum ARM7 samples include substantial sound arithmetic, dirty-flag
+  processing and reference FreeBIOS SWI dispatch/completion. The embedded
+  BIOS bytes are matched to the oracle; this is not a native BIOS identity
+  check or proof of the actual SWI argument mix. Already-dirty-checked sound
+  writes and required channel-status reads must not be removed as dead work.

@@ -575,3 +575,39 @@ candidate or establish native benefit. Fixed checkpoints can miss transient
 state, and pixel equality cannot replace the audio gate. Preserve both passing
 checks and failures; do not mask more RAM or generalize another game's
 perceptual approval to this result.
+
+## Repeated empty-tail compaction
+
+Detect nested forward scans over fixed-size records: an outer scan finds an
+inactive record, an inner scan searches later records for an active flag,
+copies the first active record into the hole and clears its former flag.
+After an unsuccessful inner scan, repeating the outer loop rescans an empty
+tail. An early exit can eliminate that work without changing record order.
+Confirm this structure against executed bytes and capture the record count,
+active flags and complete record payloads at entry with the existing observer.
+Preserve stale bytes in inactive records, all externally observable state and
+producer/IRQ interactions; logical queue equality alone is insufficient.
+
+Platinum overlay 5 supplies the first lead: 60 guarded entries in 120 frames
+have 64 inactive records. The original empty-case inner scans make 2,016 flag
+reads; an early exit would make 63. This is static operation counting backed
+by observed entry state, not measured savings or a tested patch. The routine's
+5.816% ARM9 sample share is not a native cycle share. No reusable byte signature
+or SDK identity is established yet.
+
+## Default callback dispatch
+
+Detect fixed-size callback tables invoked at a frequent event, where an unused
+entry is initialized with a default function that only returns. Capture each
+call target, parameter, used flag and CPU/mode; compare the target's exact live
+code, not a pointer value alone. A safe candidate must preserve newly installed
+callbacks and registration/removal ordering. Never disable an entire interrupt
+because the current scene happens to install only dummy callbacks.
+
+Platinum's two HBlank slots make 63,120 guarded dummy dispatches in 120 frames.
+This is a bounded scene observation, not full-route invariance. Both this lead
+and the compaction lead require exact overlay ID/content and reload delivery.
+Reuse the existing `prepare.assemble` overlay reconstruction machinery when
+qualifying generic support; its FMV-specific extension cannot be assumed safe
+or necessary for another title. A whole-overlay checkpoint match identifies
+code at that checkpoint, not every future load.
