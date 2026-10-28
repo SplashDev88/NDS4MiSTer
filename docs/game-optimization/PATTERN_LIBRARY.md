@@ -1138,3 +1138,14 @@ asset subset before native screening when it recovers substantial space. Keep
 child-heap creation and full-route allocation limits distinct from snapshots.
 When RNG or turn timing changes, report instruction/read counts as observed
 workload; they do not establish equal-work speedup even when the game progresses.
+
+
+Select residency by measured asset use, not just available enum values. A
+same-size wrapper can preserve its exact stack layout while selecting a subset;
+validate call arguments, literal addressing and return behavior independently
+of the intentional mode difference. Guard any table that maps the selector.
+
+Keep observed traffic savings separate from timing claims. A changed RNG/turn
+trajectory may reach expensive outdoor rendering sooner, increasing aggregate
+instruction counts even after removing font reads. Compare the same semantic
+phase on hardware, and retain all framebuffer/audio/RAM mismatch evidence.

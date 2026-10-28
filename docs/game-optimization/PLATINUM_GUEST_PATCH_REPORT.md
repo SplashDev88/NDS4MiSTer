@@ -2002,3 +2002,59 @@ while covering most baseline glyph calls. No native gain or new beta is claimed.
 Evidence: `FONT_RESIDENT_SELECTIVE_FINDINGS_V3.json`,
 `FONT_RESIDENT_SELECTIVE_BEFORE_AFTER_V3.csv`, and
 `FONT_RESIDENT_SELECTIVE_CONTACT_V3.png`.
+
+
+## Message-only residency — reference screen complete, native measurement next
+
+The current candidate uses the existing immediate mode only for message font
+member 1. System, subscreen and Unown retain lazy mode. The 52-byte Thumb
+constructor replacement includes its unchanged 12-byte literal pool. Combining
+its existing stack reservation/store into an equivalent push leaves space for
+the selector; no trampoline or unused-memory storage is introduced. Original
+instructions, game/revision hashes and the four-entry archive table are guarded.
+The ROM file is never modified.
+
+All 384 bounded constructor cases preserve the stack bytes, required arguments
+except the intended mode, and post-callee manager store/return behavior. Callee
+entry flags differ intentionally; the owned callee sets flags before its
+conditional use. Wrong header, original bytes, table contents and unknown patch
+IDs all fall back atomically to the original cartridge image.
+
+The 23,400-frame reference completes through the first battle and returns to
+outdoor dialogue. All 7,659 observed allocator calls return nonnull. Its single
+32,576-byte glyph buffer matches the owned archive at all 14 checkpoints.
+Application-heap free space at sampled field checkpoints rises to 36,500 bytes,
+32,608 more than the two-font variant including allocation overhead. These are
+samples, not a proven full-route or full-game minimum. No font destruction is
+exercised, and save-write/reset/unrelated-scene qualification remains pending.
+
+| Observed workload | Accepted terrain | Message-only residency |
+|---|---:|---:|
+| Full-route font-archive 512-byte cart blocks | 10,779 | 1,225 |
+| Full-route CPU-driven cart blocks | 36,376 | 30,609 |
+| Battle-window ARM9 instruction entries | 264,018,986 | 323,410,873 |
+| Battle-window font-archive cart blocks | 2,536 | 584 |
+
+The higher battle-window instruction count is not a demonstrated slowdown:
+the candidate has already returned to outdoor rendering while the control is
+still finishing combat. Turtwig has 21 HP versus 20 and the turn trajectory
+differs. Likewise, the earlier battle end cannot be presented as a speedup.
+Fresh native comparisons must cover the same dialogue or text-heavy transition,
+with matched phase and save, rather than total battle length.
+
+Strict comparison retains 11,414 differing upper frames, 1,339 lower frames,
+RAM differences, and 16,430,574 differing stereo samples (maximum channel delta
+56,430; RMS 5,139.997). The final save matches. Four inspected framebuffer pairs
+show coherent glyphs, combat and the return to outdoor dialogue; audio listening
+quality and full-game equivalence are not claimed. These timing/RNG differences
+remain eligible for investigation under the user's functional budget.
+
+`font-resident-message-only` stays disabled pending measured native benefit,
+video review and lifecycle checks. The all-font and two-font variants remain
+disabled. Approved Platinum Beta1 R2 is unchanged.
+
+Evidence: `FONT_RESIDENT_MESSAGE_BUILD_V4.json`,
+`FONT_RESIDENT_MESSAGE_GUARD_TESTS_V4.json`,
+`FONT_RESIDENT_MESSAGE_FINDINGS_V4.json`,
+`FONT_RESIDENT_MESSAGE_BEFORE_AFTER_V4.csv`, and
+`FONT_RESIDENT_MESSAGE_VISUAL_REVIEW_V4.json`/contact PNG.

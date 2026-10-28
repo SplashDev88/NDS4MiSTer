@@ -504,3 +504,9 @@
   application-heap bytes free at field checkpoints. It is disabled in favor of
   investigating message-only residency. Different HP/turns make the apparent
   5.327% battle instruction reduction unsuitable as a native/equal-work claim.
+
+- Message-only residency completes the bounded battle reference with 36,500
+  sampled free application-heap bytes and exact cached payloads. It remains
+  disabled: native benefit, listening/video review, save-write/reset, font free
+  lifecycle and broader heap demands are not qualified. Its earlier battle end
+  and higher fixed-window instruction count both mix different workloads.
