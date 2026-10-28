@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "three_candidates_rejected_no_patch_enabled",
+  "status": "three_candidates_rejected_one_local_proof_pending_no_patch_enabled",
   "patches": [
     {
       "cpu": "arm9",
@@ -165,6 +165,51 @@
         "status_receipt": "IRQ_SPARSE_CANDIDATE_V2_STATUS.json",
         "status_sha256": "aeac47b90c98658533e4b45c50569972745f3875040ce9a1bf3c6ac2dc8be92f"
       }
+    },
+    {
+      "id": "arm7-pitch-zero-carry-mla",
+      "pattern": "zero-multiplicand-predication",
+      "cpu": "arm7",
+      "target": "arm7.bin/autoload:2",
+      "section_base": "0x37f8000",
+      "section_sha256": "f3290680c123083725ad475baa5220242ed4e9cdd36a9efa8871823f954a0284",
+      "addr": "0x037fbde4",
+      "mode": "arm",
+      "expect": "013890e2c50fa0e1932581e000c0a0e3931021e00030ace2100044e2931521e0000050e3",
+      "replace": "013890e2c50fa0e1932581e000c0a0e3931021e00030ace2100044e293152120000050e3",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "precondition": "Full36-byte preceding arithmetic sequence authenticates R3=ADDS carry and unchangedC flag before MLA. All32-bit entry inputs supported;no BIOS table-value assumption.",
+      "notes": "One condition byte changes MLA AL to MLA CS. The preceding MOVip,0 and ADCr3,ip,0 produceR3=C. Intervening SUB doesnotsetflags. WithC0 originalaccumulates0;withC1 candidateexecutesoriginalMLA. No scratch,BIOSskip or new service. Delivery not yet supported.",
+      "status": "disabled_local_equivalence_passed_delivery_and_replay_pending",
+      "validated": {
+        "synthetic": "6800 cases exact: registers/CPSR/mapped memory/ordered accesses",
+        "fb": "No full candidate replay",
+        "ram": "No full candidate replay",
+        "audio": "No full candidate replay",
+        "save": "No full candidate replay",
+        "native": "Not run"
+      },
+      "gain": {
+        "synthetic_instruction_entries": {
+          "before": 9,
+          "after": 9
+        },
+        "projected_avoided_MLA_executions": 57827,
+        "native_cycles": null,
+        "native_frame_time": null,
+        "qualified": false
+      },
+      "synthetic_validation": {
+        "cases": 6800,
+        "receipt": "ARM7_PITCH_CARRY_SYNTHETIC_V1.json",
+        "receipt_sha256": "3023fcebe093878c2fd86870e94bb7a7338ccc03e45b36e2040da36c839e955e"
+      },
+      "decision": {
+        "receipt": "ARM7_PITCH_CARRY_DECISION_V1.json",
+        "receipt_sha256": "ddc621391aa6c0656c1194d5a6e8fc67c75ee73a385960f930dc20e796647864"
+      }
     }
   ],
   "arm9_crc32": "4d104949",
@@ -183,7 +228,7 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "ARM7_SOUND_DECISION_V1.json",
+    "latest_decision": "ARM7_PITCH_CARRY_DECISION_V1.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -192,7 +237,7 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V3.json",
-    "next_proposal": "ARM7_ZERO_PITCH_PROPOSAL_V1.json",
+    "next_proposal": "ARM7_PITCH_CARRY_DECISION_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
@@ -203,6 +248,14 @@
     "arm7_sound_qualification": "ARM7_SOUND_CENSUS_QUALIFICATION_V1.json",
     "arm7_sound_recurrence": "ARM7_SOUND_RECURRENCE_V1.json",
     "arm7_sound_call_contract": "ARM7_SOUND_CALL_CONTRACT_V1.json",
-    "arm7_guest_patch_implemented": false
-  }
+    "arm7_guest_patch_implemented": false,
+    "arm7_carry_qualification": "ARM7_PITCH_CARRY_CENSUS_QUALIFICATION_V1.json",
+    "arm7_carry_contract": "ARM7_PITCH_CARRY_CALL_CONTRACT_V1.json",
+    "arm7_carry_synthetic": "ARM7_PITCH_CARRY_SYNTHETIC_V1.json",
+    "arm7_carry_detector": "ARM7_PITCH_CARRY_PATTERN_SCAN_V1.json",
+    "arm7_patch_manifest_present": true,
+    "arm7_delivery_implemented": false
+  },
+  "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+  "arm7_crc32": "67db0960"
 }

@@ -746,3 +746,28 @@ is not the same as zero pitch, since nonzero octave offsets can share that
 index. Caller R4 addresses are context observations, not storage ownership or
 proof of a stable voice lifetime. ARM7 patch delivery and BIOS/table invariants
 still need separate qualification; no SDK identity is claimed.
+
+## Predicating a carry-derived zero multiply
+
+A multiply-accumulate into its own accumulator is an identity when either
+multiplicand is zero. If existing code materializes carry as a 0/1 register
+with `MOV zero,#0; ADC carry,zero,#0` and preserves C, changing a later
+non-flag-setting `MLA acc,carry,x,acc` from AL to CS needs no extra guard
+instruction. When C is set, retain the exact original MLA. When C is clear,
+the skipped operation must preserve every destination and flag, not merely
+the returned value. A different accumulator/destination breaks this argument.
+
+The generic scanner recognizes a narrow five-instruction shape with an
+intervening MLA before ADC and a SUB before the target. It verifies zero and
+carry registers are not clobbered, no flags are written, every instruction is
+unconditional, and no PC/SP or ARMv4 multiply destination/first-source alias
+occurs. Check the encoded S bit: Capstone's ADC flag metadata can conflate a
+carry read with a flag write. This is a static lead, not automatic patching.
+Authenticate execution, full context and entry paths; no SDK identity follows.
+
+Platinum supplies a one-byte example with 6,800 exact synthetic cases and
+57,827 unpatched observations of C=0/R3=0. Both versions still enter nine
+instructions in the tested block. Report avoided arithmetic separately from
+instruction-entry counts and measured native cycles. An algebraically exact
+instruction can still change asynchronous audio/IRQ behavior through latency.
+ARM7 delivery and the full patched replay remain pending for this example.

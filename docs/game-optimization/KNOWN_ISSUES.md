@@ -318,3 +318,13 @@
   clamp, and register/flag/BIOS effects remain proof obligations. Zero pitch and
   zero normalized index differ when an octave offset is present. Stateful sound
   envelopes and existing dirty-write checks must remain intact.
+- Platinum's one-byte ARM7 carry-predicated MLA candidate passes 6,800 local
+  cases and observes a zero multiplicand in all 57,827 captured calls. It is
+  still disabled: the current loader rejects ARM7 autoload targets, and no
+  full patched replay, lifecycle or native timing result exists. Nine entries
+  remain nine entries; avoided multiply work is not a measured speed gain.
+  A synchronous proof cannot rule out changed interrupt/audio timing. Preserve
+  the BIOS call and its effects; do not silently substitute the larger variant.
+- For carry-derived arithmetic screening, verify the instruction's encoded S
+  bit. This Capstone build reports ADC as updating flags even with S=0. Reject
+  S=1 and clobbered carry/register context; disassembly text alone is insufficient.

@@ -4,8 +4,9 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-The word-stream candidate is rejected and disabled. Two overlay leads now have
-guarded runtime evidence; no new speed gain is claimed.
+Three candidates are rejected and disabled. A fourth, a one-byte ARM7 pitch
+arithmetic candidate, passes local equivalence checks but awaits guarded
+delivery and full-game validation. No Platinum speed gain is qualified.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -539,3 +540,77 @@ Next three investigations after this census:
 
 No RTL, new HPS service, save-state-format change or non-bit-exact acceptance
 is authorized here. No speed improvement or new beta is claimed.
+
+## Carry-derived zero multiply in the pitch helper — 28 October UTC
+
+The investigation found a smaller change than bypassing the zero-pitch helper.
+Keep the BIOS call, normalization, shifts and clamps. In the ARM7 autoload-2
+routine, `MOV ip,#0; ADC r3,ip,#0` produces `r3=C`. The intervening instructions
+preserve C. At `037fbe00`, `MLA r1,r3,r5,r1` therefore leaves R1 unchanged when
+C is clear. Changing its condition to CS preserves the original operation when
+C is set and skips an identity operation when it is clear. No scratch, new
+service or BIOS-table assumption is needed. Only one byte changes, inside a
+36-byte authenticated context: `e0211593` becomes `20211593`.
+
+The algebra covers arbitrary 32-bit block inputs. All 6,800 synthetic cases,
+including carry boundaries, negative bases and all NZCV combinations, preserve
+R0–R12, SP/LR/PC, CPSR, mapped memory and ordered accesses. Both versions still
+have nine instruction entries and zero data accesses. Failed ARM predicates
+are still fetched and counted; any benefit would come from avoiding multiply
+latency, not fewer instruction entries. Native timing is unmeasured.
+
+The extra unpatched observation site reproduces all 238 game/profile files
+over 16,800 frames. All 462,616 events from the original eight sites also match
+after removing only the event ordinal. The 57,827 additional events reconstruct
+the target's entire register/CPSR pre-state from the lookup-return snapshot.
+Every observed call has C=0 and R3=0. This supports a projected 57,827 avoided
+MLA executions in the observed window; it is not a patched replay or speedup.
+
+| Check | Original | Candidate |
+|---|---:|---:|
+| Synthetic block instruction entries | 9 | 9 |
+| Synthetic block data accesses | 0 | 0 |
+| Exact synchronous cases | Reference | 6,800 passed |
+| Target MLA executions, observed window | 57,827 measured | 0 projected |
+| Full-game patched replay | Unpatched control exact | Not run |
+| Native frame time / cycles / HPS load | Not measured here | Not measured |
+
+A larger three-instruction alternative also passed 65,833 synthetic cases,
+but requires a bounded BIOS return and changes twelve byte values. Preserve it
+as private evidence; prefer the one-byte all-input argument. A direct helper
+skip would also remove BIOS stack/register effects and is not qualified.
+
+The shared scanner now finds the carry-derived shape with renamed registers
+and rejects broken dataflow, flag updates, conditional context, special
+registers and ARMv4 multiply destination/source aliases. Thirteen detector
+tests pass, including the existing dispatch/mask tests. The actual ROM scan
+finds the exact ARM7 autoload-2 sequence, without title-specific scanner logic.
+Capstone reports a carry read as a flag update for ADC in this environment;
+the detector verifies the encoded S bit for these five specific opcodes.
+
+The candidate remains disabled. Current delivery explicitly rejects ARM7
+autoload targets and reproduces all 128 MiB of the original cartridge on that
+fallback. No candidate ROM is written. Extending the existing guarded virtual
+stream needs exact ARM7/section identity, verified load mapping and an unchanged
+control before a changed-code replay. Entry paths, interrupt/audio timing,
+cache visibility, reset and state-load behavior remain separate obligations.
+The three earlier rejected Platinum patches stay disabled; FFTA2 Beta2 is
+unchanged. The proof establishes no perceptual allowance or release readiness.
+
+Evidence: `ARM7_PITCH_CARRY_DECISION_V1.json`,
+`ARM7_PITCH_CARRY_SYNTHETIC_V1.json`,
+`ARM7_PITCH_CARRY_CENSUS_QUALIFICATION_V1.json`,
+`ARM7_PITCH_CARRY_CALL_CONTRACT_V1.json`,
+`ARM7_PITCH_CARRY_DELIVERY_PREFLIGHT_V1.json`,
+`ARM7_PITCH_CARRY_PATTERN_SCAN_V1.json` and
+`ARM7_PITCH_CARRY_BEFORE_AFTER_V1.csv`.
+
+Next three investigations:
+
+1. Qualify ARM7 autoload delivery in the existing virtual-stream loader, then
+   run the one-byte candidate through strict replay comparison. Keep it only
+   if it produces a measurable benefit after all required validation.
+2. Extend active outdoor movement, battle and isolated save-write/reload
+   coverage. Profile those scenes before spending further effort on town idle.
+3. Investigate pitch reuse only if a safe storage/lifetime contract emerges;
+   the apparent cache hit rate alone does not authorize guest scratch.

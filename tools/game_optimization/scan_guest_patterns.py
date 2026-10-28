@@ -2,7 +2,8 @@
 """Read-only structural screening of ARM code sections; never authorizes a patch.
 
 Detectors recognize copy control flow, redundant shifts, weighted nibble sums,
-linear key/handler dispatch and fixed-width mask walks, allowing register renaming. Linear scans can encounter data or Thumb code;
+linear key/handler dispatch, fixed-width mask walks and carry-derived zero
+multiplies, allowing register renaming. Linear scans can encounter data or Thumb code;
 execution traces and revision/original-byte guards are still required.
 """
 import argparse
@@ -16,7 +17,7 @@ from capstone import (Cs, CS_ARCH_ARM, CS_MODE_ARM, CS_GRP_JUMP, CS_GRP_CALL,
                       CS_GRP_RET, CS_GRP_INT, CS_GRP_IRET)
 from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_CC_NE, ARM_CC_EQ, ARM_INS_MOV, ARM_INS_CMP, ARM_INS_TST,
                           ARM_INS_B, ARM_INS_LDR, ARM_INS_LDRH, ARM_INS_STRH, ARM_INS_ADD,
-                          ARM_INS_BLX,
+                          ARM_INS_BLX, ARM_INS_ADC, ARM_INS_MLA, ARM_INS_SUB,
                           ARM_INS_BX, ARM_OP_REG, ARM_OP_IMM, ARM_OP_MEM,
                           ARM_REG_LR, ARM_REG_PC, ARM_REG_SP, ARM_INS_LSL,
                           ARM_INS_LSR, ARM_INS_ASR, ARM_SFT_LSL, ARM_SFT_LSR,
@@ -248,6 +249,59 @@ def fixed_width_mask_walk(instructions):
                 required_proof='Observe mask histogram and caller contract before choosing an empty-tail or set-bit walk. Preserve high-bit return, zero mask, selected writes and order, stack/registers/flags, literal identity and CPU instruction support. No sparsity, SDK identity, dead work or safe patch inferred.')
 
 
+def zero_multiplicand(instructions):
+    """Find an accumulate that is an identity when an unchanged carry is clear.
+
+    This narrow shape materializes C as 0/1 with ADC from a known zero.
+    Predicating the final MLA on CS then preserves its synchronous state.
+    Entry paths, exact bytes, CPU legality and asynchronous behavior still
+    require separate proof; this detector never applies a replacement.
+    """
+    ids = [ARM_INS_MOV, ARM_INS_MLA, ARM_INS_ADC, ARM_INS_SUB, ARM_INS_MLA]
+    if len(instructions) != len(ids) or [i.id for i in instructions] != ids:
+        return None
+    # Read S from the encoding: Capstone can mark ADC's carry read as a
+    # flag update even for ADC (S=0). All five selected opcodes use bit 20.
+    if any(i.cc != ARM_CC_AL or int.from_bytes(i.bytes, 'little') & 0x100000
+           or i.writeback or i.size != 4
+           or i.address != instructions[0].address + 4*n
+           for n, i in enumerate(instructions)):
+        return None
+    if [len(i.operands) for i in instructions] != [2, 4, 3, 3, 4]:
+        return None
+
+    def reg(n, k):
+        operand = instructions[n].operands[k]
+        assert operand.type == ARM_OP_REG and not operand.shift.type
+        assert operand.reg not in [ARM_REG_SP, ARM_REG_PC]
+        return operand.reg
+
+    def imm(n, k):
+        operand = instructions[n].operands[k]
+        assert operand.type == ARM_OP_IMM
+        return operand.imm
+
+    try:
+        zero = reg(0, 0)
+        assert imm(0, 1) == 0
+        first = [reg(1, k) for k in range(4)]
+        assert first[0] != zero and first[0] != first[1]
+        carry = reg(2, 0)
+        assert reg(2, 1) == zero and imm(2, 2) == 0
+        assert reg(3, 0) != carry
+        reg(3, 1); imm(3, 2)
+        last = [reg(4, k) for k in range(4)]
+        assert last[0] == last[3] and last[0] != last[1]
+        assert carry in last[1:3]
+    except (AssertionError, IndexError):
+        return None
+    return dict(zero=instructions[0].reg_name(zero),
+                carry=instructions[0].reg_name(carry),
+                accumulator=instructions[0].reg_name(last[0]),
+                candidate_address=hex(instructions[-1].address), condition='cs',
+                required_proof='Authenticate the full sequence and entry paths; C and the carry-derived multiplicand must remain paired. Preserve registers/flags, interrupt behavior and full-game outputs. Failed predicates still fetch instructions; measure multiply latency rather than claiming fewer instruction entries. No SDK identity or native gain inferred.')
+
+
 def scan(data, base):
     decoder = Cs(CS_ARCH_ARM, CS_MODE_ARM)
     decoder.detail = True
@@ -255,7 +309,8 @@ def scan(data, base):
     detectors = [('branch-heavy-halfword-copy', 52, 0xffff0fff, 0xe3a00000, halfword_copy),
                  ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain),
                  ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step),
-                 ('linear-key-handler-dispatch', 44, 0xfff00fff, 0xe5900000, key_handler_dispatch)]
+                 ('linear-key-handler-dispatch', 44, 0xfff00fff, 0xe5900000, key_handler_dispatch),
+                 ('zero-multiplicand-predication', 20, 0xffff0fff, 0xe3a00000, zero_multiplicand)]
     for at in range((-base) % 4, len(data) - 19, 4):
         word = struct.unpack_from('<I', data, at)[0]
         for pattern, size, mask, value, detect in detectors:
