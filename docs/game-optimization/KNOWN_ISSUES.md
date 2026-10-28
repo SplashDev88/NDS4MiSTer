@@ -421,7 +421,15 @@
   by multiple instances with opposite visibility outcomes; pointer-only caching
   and reused stack addresses cannot establish equivalent query inputs.
 
-- The disabled Platinum terrain visibility experiment skips 610 of 1,200 terrain
+- Promotion update,2026-10-28: the user approved the terrain video/audio and
+  explicitly requested promotion. The exact48-byte CPUE revision1 terrain patch
+  is enabled for private Platinum Beta1; historical disabled/pending statements
+  below describe earlier gates. Six outdoor screen differences and RAM/audio
+  differences remain real. Complete RAM-reader liveness and full-game coverage
+  remain unqualified; do not relabel this as bit-exact or transfer its approval
+  to another candidate. Native ordinary Save/reset/cold-load/room transitions
+  and unpatched save compatibility passed in bounded Twinleaf coverage.
+- The initially disabled Platinum terrain visibility experiment skips 610 of 1,200 terrain
   draws, but introduces 1,200 synchronous box tests and fails exact RAM/audio
   comparison. Six top-screen frames before the measured walking route also
   differ. Direct constant pointers replace stack copies; no dynamic RAM region
@@ -429,7 +437,7 @@
   speed, assume all differences are benign, or enable before review/measurement.
 
 - Platinum terrain visibility has a repeated native publication-throughput gain
-  (+13.162%) but is still disabled: six banner/transition frames, checkpoint RAM
+  (+13.162%) and was initially held disabled: six banner/transition frames, checkpoint RAM
   and audio differ. The largest audio differences occur earlier than the outdoor
   target window; the expanded V2 review includes them. Human review, RAM-effect
   classification and wider lifecycle tests remain separate from this speed result.

@@ -15,6 +15,9 @@ frame differences remain in the evidence. Exact rc12 and accepted Beta2 archives
 remain unchanged. Actual archive installation is qualified separately.
 
 
+Historical disabled/pending statements below are investigation snapshots; the
+current promotion decision above supersedes them for terrain visibility only.
+
 Earlier isolated native perceptual trials of empty-tail cleanup, FIFO
 predication and font-table reuse found no worthwhile walking/menu/Bag gain.
 Battle benefit remains unmeasured. Later native-screening sections supersede
