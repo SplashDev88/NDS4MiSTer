@@ -1,16 +1,15 @@
-# Pokémon Platinum guest-code optimization — 27 October 2026
+# Pokémon Platinum guest-code optimization — 27–28 October 2026
 
 Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-Four candidates are rejected and disabled. The latest one-byte ARM7 pitch
-change passes local equivalence and delivery controls, but its full replay
-changes audio and a RAM checkpoint despite identical screens and save data.
-No Platinum speed gain is qualified. Walking, save/cold-load and the first
-trainer battle now have exact software-reference repeats. A full-route census
-supports reusing an already-correct font lookup table; an exact replacement
-and native measurements remain unfinished.
+Five candidates are rejected and disabled. The latest font-table reuse patch
+reduces battle-window ARM9 reference entries by 2.264%, but changes five
+upper-screen frames and 61,453 stereo samples. All six fixed RAM checkpoint
+sets and save data match. No Platinum speed gain is qualified. Walking,
+save/cold-load and the first trainer battle have exact software-reference
+repeats. Native measurements and the cartridge-transfer contract are next.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -1025,3 +1024,84 @@ Evidence: `LOOKUP_TABLE_IDENTITY_V1.json`, `LOOKUP_TABLE_SOURCE_GUIDE_V1.json`,
 `LOOKUP_TABLE_WRITE_CONTRACT_V1.json`,
 `LOOKUP_TABLE_ORIGINAL_EFFECT_MODEL_V1.json`,
 `LOOKUP_TABLE_BEFORE_AFTER_V1.csv` and `LOOKUP_TABLE_REUSE_PROPOSAL_V1.json`.
+
+## Font-table reuse replacement: rejected by full replay
+
+`font-table-last-colors-reuse` fits in the original 164-byte ARM9 Thumb
+function/literal extent at `0201d9fc`. It compares the three stored 16-bit
+colors with the complete 32-bit arguments. A match reuses the table; a miss
+regenerates it. Both paths reproduce the original register, flags and 72-byte
+stack effects. There is no code cave, new scratch, overlay, HPS service or RTL
+change. The original ROM is read-only; the existing virtual cartridge loader
+streams the guarded replacement into the reference instance.
+
+The existing block checker now supports explicit ordinary-RAM effect ranges
+and reads of unchanged code literals. It still compares every mapped byte,
+all CPU effects and ordered accesses outside the declared ranges. Six focused
+tests and the prior 6,800-case ARM7 suite pass. The new patch passes 8,672 cases:
+all 4,096 four-bit color triples as coherent hits and misses, wider inputs,
+every mismatch branch, all NZCV combinations and ARM/Thumb returns. A deliberate
+matching-key/wrong-table case fails as expected. Table coherence remains a
+precondition, not a consequence of matching the key.
+
+The unchanged virtual-adapter control matches all 253 baseline files across
+23,400 frames. The first control launch used a system Python without NumPy and
+failed before starting the oracle; it is retained and excluded. The successful
+control and candidate use the existing testing-rig virtual environment.
+
+| Measurement | Original | Replacement |
+|---|---:|---:|
+| Synthetic coherent-table hit, entries/call | 5,247 | 42 |
+| Synthetic changed-color miss, entries/call | 5,247 | 6,701–6,707 |
+| ARM9 reference entries, frames 18000–23399 | 294,410,989 | 287,746,374 |
+| ARM7 reference entries, same window | 203,495,901 | 203,495,544 |
+| Upper-screen frames differing from control | 0 | 5 of 23,400 |
+| Lower-screen frames differing from control | 0 | 0 |
+| Stereo samples differing from control | 0 | 61,453 of 18,774,412 |
+| Fixed RAM checkpoint sets matching control | 6 | 6 |
+| Per-frame save hashes and final save | Reference | Exact |
+| Native cycles, pacing, HPS load and load time | Unavailable | Unavailable |
+
+All 1,338 watched battle calls execute the replacement: 1,281 reuse the table
+and 57 regenerate it. Their input sequence and entry/exit frame bounds match
+the original census, and every observed pre-POP CPU state meets the declared
+model. Dynamic stack bytes were not captured; their complete effects were
+checked synthetically. The replacement body is recognized on every replay
+frame. These observations establish execution and the local call contract,
+not full-game equivalence or native cache visibility.
+
+Upper-screen hashes differ at frames 18131, 19457, 20891, 22807 and 22819.
+Audio lengths match, but the maximum signed-16 delta is 2,870 and RMS delta
+15.591, without alignment, masking or an audibility judgment. Per-frame RAM
+hashes differ in 200 main-RAM, 607 DTCM and 75 ARM7-WRAM frames. All six fixed
+checkpoint sets and retained frame-2600 main RAM are exact after normalizing
+only the authenticated code extent; no game RAM or stack is masked.
+
+The measured 2.264% reduction is reference instruction accounting, not native
+speed. The unchanged-call synthetic model predicts 2.237%; the full reference
+also changes execution timing and surrounding work. Reject the patch under
+the current screen/audio gate and retain it disabled. Do not rerun it unchanged,
+combine it with other rejected patches, or transfer FFT's perceptual approval.
+Further reset, save/reload, unrelated-scene and native trials are not performed
+for this rejected version. Accepted Beta2 and exact rc12 remain unchanged.
+
+Next, prepare the native walking/battle baseline using the existing rig with
+an isolated 512 KiB save and fresh ownership/runtime checks. The three deferred
+optimization leads are cartridge-request recurrence and transfer phases,
+small strided upload callbacks/data, and overlay 16 table-reduction lifetime.
+Active cartridge FIFO polling is not proven dead work. Native profiling that
+needs a new diagnostic bitstream remains a proposal requiring approval.
+
+Evidence: `LOOKUP_TABLE_REUSE_BUILD_V1.json`,
+`LOOKUP_TABLE_REUSE_INPUT_MANIFEST_V1.json`,
+`LOOKUP_TABLE_REUSE_SYNTHETIC_SUITE_V1.json`,
+`LOOKUP_TABLE_REUSE_COST_MODEL_V1.json`,
+`LOOKUP_TABLE_REUSE_CONTROL_V1_EXCLUSION.json`,
+`LOOKUP_TABLE_REUSE_CONTROL_V2_STATUS.json`,
+`LOOKUP_TABLE_REUSE_CANDIDATE_V1_STATUS.json`,
+`LOOKUP_TABLE_REUSE_PAIR_COMPARISON_V1.json`,
+`LOOKUP_TABLE_REUSE_EXECUTION_AUDIT_V1.json`,
+`LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json`,
+`LOOKUP_TABLE_REUSE_BEFORE_AFTER_V1.csv`,
+`LOOKUP_TABLE_REUSE_FINAL_AUDIT_V1.json` and
+`AFTER_FONT_REUSE_NEXT_STEPS_V1.json`.

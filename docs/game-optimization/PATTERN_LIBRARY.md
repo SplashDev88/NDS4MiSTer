@@ -870,3 +870,26 @@ instruction bound separately from a real replacement's cost and native gain.
 Platinum's font example has 8,833 already-correct tables in 8,900 calls, but
 needs 72 bytes of stack effects and nontrivial register effects reproduced.
 This establishes an opportunity, not an accepted cache or reusable SDK patch.
+
+The concrete same-extent replacement measures both paths: 42 synthetic entries
+on a coherent hit, 6,701–6,707 on a miss, against 5,247 originally. Apply those
+costs to the observed key sequence before predicting a whole-scene benefit;
+high hit rates alone do not establish it. Compare truncated stored fields with
+complete arguments so out-of-range inputs cannot falsely hit. Include an
+intentionally incoherent key/table fixture to demonstrate that the full-memory
+checker rejects an invalid precondition.
+
+`check_guest_block_patch.py` can declare mapped ordinary-memory effect ranges
+where final contents must be exact but access ordering may differ, plus
+read-only unchanged literal ranges. Registers, CPSR, every mapped memory byte
+and ordered accesses outside those ranges still match. Invalid/unmapped/MMIO
+ranges and literal writes are rejected; this is fixture-specific permission,
+not a global relaxation or asynchronous-reader proof. Synthetic stack effects
+remain in the comparison even when the function has already returned.
+
+Platinum's implementation passes 8,672 synthetic cases and 1,338 observed
+battle-call contracts, yet fails full replay on five upper-screen frames and
+61,453 stereo samples. All fixed RAM checkpoints and saves match. Record it
+as rejected; the 2.264% reduction in ARM9 reference entries is not a native
+speedup. This sharpens the reusable detector/validation procedure but does not
+promote the title-specific bytes into a safe SDK signature.

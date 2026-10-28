@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "four_candidates_rejected_no_patch_enabled",
+  "status": "five_candidates_rejected_no_patch_enabled",
   "patches": [
     {
       "cpu": "arm9",
@@ -229,6 +229,65 @@
         "comparison": "ARM7_PITCH_CARRY_PAIR_COMPARISON_V1.json",
         "comparison_sha256": "0776ac07c5915305d3ccd74636ea2ac72df2660c629f5d316e355948966b2b6d"
       }
+    },
+    {
+      "id": "font-table-last-colors-reuse",
+      "pattern": "repeated-small-lookup-table-construction",
+      "cpu": "arm9",
+      "mode": "thumb",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x0201d9fc",
+      "expect": "f8b58cb0254b0025089509900a920b91d980588008a89a800595029084468646069000200490069801900298006807900020039070460090019800680701009800230068644606022068391c00033043014307985b1c021c0a43690010486d1c241d4252042befdb0098001d00900398401c03900428e2db0198001d01900498401c04900428d3db0298001d02900598401c05900428c4db0cb0f8bdd8041c0200051c02",
+      "replace": "f8b58cb0254b0025089509900a920b915c8884421ed1dc888c421bd19c88944218d10b9a079213001b011a4313001b021a430ca8009001900290042003900490059008a906918c468e46ff21490004280cb0f8bdd98058809a8008ab104c012636020327a80980001858290939408900595809010843a90839408900595809020843290039408900595809030843208002340135b542e5d1c3e7c046d8041c0200051c02",
+      "hook": null,
+      "overlay": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "status": "rejected_screen_and_audio_mismatch",
+      "notes": "Disabled same164-byte ARM9 Thumb function/literal replacement. Compare stored16bit colors with full32bit args; regenerate onmiss. No scratch ornewservice.8672 synthetic cases and1338 observedbattlecall contracts pass;23400-frame fullreplay changes5topscreenframes and61453stereosamples. All6fixedRAMsets/saveexact. No nativequalification,unchangedrepeat,combination orFFTapprovaltransfer.",
+      "assembly_source_sha256": "300d9925c68cbe1d59304cc815d72eec6f29af9b753d5f8997058366991d3068",
+      "replacement_sha256": "2cc8b108b591ab7a07edc24182a9c447f67707a72bdc90de6645c3648865211c",
+      "validated": {
+        "fb": "Failed:5upper-screenframes differ at18131,19457,20891,22807,22819; all23400bottom frames exact",
+        "ram": "All6fixedcheckpoint sets andretainedframe2600 mainRAM exact afteronly164-byte code normalization; perframemainRAM200,DTCM607,ARM7WRAM75 hashesdiffer",
+        "audio": "Failed:61453 of18774412 stereo samples differ;maxsigned16delta2870;RMS15.590998;no audibilityjudgment",
+        "save": "All23400 perframe savehashes andfinalsave bit-exact",
+        "native": "Not run;strictreplay gatefailed"
+      },
+      "gain": {
+        "reference_arm9_entries_18000_23399": {
+          "before": 294410989,
+          "after": 287746374,
+          "reduction_percent": 2.2637113589533846,
+          "first_frame": 18000,
+          "end_frame_exclusive": 23400,
+          "scope": "Software executed instructions; not native cycles or speed"
+        },
+        "native_cycles": null,
+        "native_frame_time": null,
+        "qualified": false
+      },
+      "synthetic_validation": {
+        "cases": 8672,
+        "receipt": "LOOKUP_TABLE_REUSE_SYNTHETIC_SUITE_V1.json",
+        "receipt_sha256": "beab7fff096381887be2e7d0ed8edaa9c7850fa78f8b1fd1a8f7299c4fb0a1b1",
+        "precondition": "Existing last-color metadata andtable mustbe coherent; deliberately incoherentfixture rejects"
+      },
+      "replay_rejection": {
+        "receipt": "LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json",
+        "receipt_sha256": "bdf8cfa9a0825786d41bc0ed32477db4bf3828b5f5eb36d0948890d586727a17",
+        "input_manifest": "LOOKUP_TABLE_REUSE_INPUT_MANIFEST_V1.json",
+        "input_manifest_sha256": "7aa69d9c5e0a0dd3f3e626a8e582373545f504835db8051e82afa27c48fdd75d",
+        "status_receipt": "LOOKUP_TABLE_REUSE_CANDIDATE_V1_STATUS.json",
+        "status_sha256": "1818f224856b3ec3d87f6af1143c416de0e9bd5303d6d09ee31ded34d233c76c"
+      },
+      "execution_audit": {
+        "receipt": "LOOKUP_TABLE_REUSE_EXECUTION_AUDIT_V1.json",
+        "receipt_sha256": "8522db721a309a77029cc02e6ecde19ed170ccb0da95f276c4a8a7df3b3b79ed",
+        "calls": 1338,
+        "reuse_hits": 1281,
+        "generation_misses": 57
+      }
     }
   ],
   "arm9_crc32": "4d104949",
@@ -247,7 +306,7 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "ARM7_PITCH_CARRY_REPLAY_DECISION_V1.json",
+    "latest_decision": "LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -256,7 +315,7 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V6.json",
-    "next_proposal": "LOOKUP_TABLE_REUSE_PROPOSAL_V1.json",
+    "next_proposal": "AFTER_FONT_REUSE_NEXT_STEPS_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
@@ -305,7 +364,13 @@
     "lookup_table_writer_contract": "LOOKUP_TABLE_WRITE_CONTRACT_V1.json",
     "lookup_table_original_effects": "LOOKUP_TABLE_ORIGINAL_EFFECT_MODEL_V1.json",
     "lookup_table_proposal": "LOOKUP_TABLE_REUSE_PROPOSAL_V1.json",
-    "lookup_table_patch_implemented": false
+    "lookup_table_patch_implemented": true,
+    "lookup_table_enabled": false,
+    "lookup_table_synthetic": "LOOKUP_TABLE_REUSE_SYNTHETIC_SUITE_V1.json",
+    "lookup_table_control": "LOOKUP_TABLE_REUSE_CONTROL_V2_STATUS.json",
+    "lookup_table_replay": "LOOKUP_TABLE_REUSE_PAIR_COMPARISON_V1.json",
+    "lookup_table_execution": "LOOKUP_TABLE_REUSE_EXECUTION_AUDIT_V1.json",
+    "lookup_table_decision": "LOOKUP_TABLE_REUSE_REPLAY_DECISION_V1.json"
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
   "arm7_crc32": "67db0960",

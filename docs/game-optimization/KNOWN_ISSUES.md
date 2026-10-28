@@ -374,3 +374,11 @@
   away. The three stored colors predict the correct table in this bounded
   replay, but input-domain truncation, asynchronous readers, reset/lifetime,
   code capacity and native benefit remain unqualified for a replacement.
+- The implemented 164-byte Platinum font-table reuse patch passes 8,672
+  synthetic cases and the observed battle-call contract, but changes five
+  upper-screen frames and 61,453 stereo samples in the 23,400-frame replay.
+  Six fixed RAM checkpoint sets and saves remain exact. Its 2.264% reduction
+  in ARM9 reference entries does not justify acceptance or a native trial.
+  Keep it disabled; do not mask transient RAM, normalize audio, repeat the
+  unchanged version, or borrow FFT's perceptual budget. Native cache/lifecycle
+  safety and native performance remain unqualified.
