@@ -426,3 +426,40 @@ It includes corresponding source and compiler profiles, checks package hashes
 and excludes top-level ROM/save/settings files. Native scene qualification and
 a clean archive-install smoke test are still required; packaging alone does
 not establish performance or correctness.
+
+
+## Configured native captures
+
+`native_session.py CONFIG launch|stop LABEL`, `native_rig.py ACTION LABEL`, and
+`native_capture.py CONFIG SEQUENCE LABEL` promote the existing private rig into
+configuration-driven tools. `native_rig.py` reads `NDS_RIG_CONFIG`; the wrapper
+and recorder set it explicitly. Game identities, original/disposable paths,
+patch IDs, expected staged cartridge bytes and input sequences live in the
+private configuration. The existing supervisor, loader, bounded-input library
+and OBS connector remain in use; these scripts add no HPS service or RTL.
+
+The configuration pins the runtime kit, helper libraries, seed and protected
+files, supplies the SSH argv and evidence/state paths, and declares the allowed
+individual guest selections. Launch requires MENU, no existing host/helper,
+the admitted seed and ROM identity. Every live action checks the owned lease,
+PID epochs, exact executables, sole save descriptor and selection environment.
+Staged-byte checks prove loader delivery, not direct ARM RAM/cache visibility.
+Keep the owned disposable save out of the protected *other files* collection.
+Preserve full hashes at experiment entry and final audit; inode-only changes
+must be hash-verified before using their receipts to refresh a future config.
+
+A capture sequence contains named `input` or `measure` sections and bounded
+`[seconds, [Linux key codes]]` steps. Each step is at most 30 seconds; the total
+section is at most 60 seconds. A measurement ends with `[0.1, []]` outside its
+window. Endpoint screen-publication/source-frame counters and process CPU ticks
+are distinct from unique visual frames, game-clock cadence and gameplay speed.
+Check screenshots and actual input outcomes before naming a workload. Legacy
+benchmark boundaries require explicit scene admission.
+
+The recorder owns only recordings it starts, retains OBS drop counters and
+checks the same session before and after. Inspect audio tracks: some OBS
+profiles put silence on the default track. `make_review_mp4.py SOURCE OUTPUT
+--copy-audio-track N` copies the selected zero-based audio track and video
+packets unchanged, verifying both packet digests. It does not normalize volume,
+resample audio or change playback speed. The existing default mode still makes
+an AAC convenience copy of a lossless reference-replay MOV.
