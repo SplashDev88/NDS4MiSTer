@@ -621,6 +621,66 @@
         "NATIVE_MESSAGE_FONT_VISUAL_REVIEW_V1.json",
         "MESSAGE_FONT_NATIVE_BEFORE_AFTER_V32.csv"
       ]
+    },
+    {
+      "id": "narc-size-dead-position-work",
+      "pattern": "unused-archive-metadata-work",
+      "cpu": "arm9",
+      "mode": "thumb",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x2006bbe",
+      "expect": "03980022261804a8311dc1f00ceb04a803a90422c1f000eb0c34e90004a861180022039fc1f000eb04a802a90422c1f0f2ea04a801a90422c1f0eeeaf21902990832511804a80022c1f0eeea",
+      "replace": "0ae00022261804a8311dc1f00ceb04a803a90422c1f000eb0c34e90004a861180022039fc1f000eb04a802a90422c1f0f2ea04a801a90422c1f0eeea06e002990832511804a80022c1f0eeea",
+      "hook": null,
+      "overlay": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "status": "parked_native_gain_insufficient",
+      "notes": "Two in-function Thumb branches skip BTNF-size seek/read and final payload-position seek in the size-only routine. Return still derives from unchanged BTAF member offsets. No new memory, allocator, trampoline or service. FS_SeekFile writes only local file position; removed FS_Read may alter global cartridge-cache/timing state, requiring full replay/native qualification. Existing missing file close is not changed.",
+      "validated": {
+        "synthetic_valid_members": 808,
+        "synthetic_empty_member_assertions": 1,
+        "reference_frames": 23400,
+        "reference_member_size_returns": 426,
+        "fb": "Sparse paired screens show coherent Continue, rival battle and outdoor return.9560 top and1329 bottom frame hashes differ; different battle trajectory.",
+        "ram": "Strict comparison retained:23246 mainRAM,16566DTCM,22783ARM7WRAM frame hashes differ. No sampled ARM9 abort/undefined mode.",
+        "audio": "5888533 of18774412 stereo samples differ; no listening qualification. Different late battle trajectory.",
+        "save": "All replay save hashes and final save match; no save-write or reset qualification for this patch.",
+        "native": "One cold control/candidate at stock1GHz, unchanged accepted runtime and copied save. Four Bag open/close cycles per arm have identical mean combined near-black time1.7583s and effectively identical publication throughput. Coherent reviewed transitions and exact save on clean exit; broader lifecycle/audio unqualified."
+      },
+      "gain": {
+        "qualified": false,
+        "per_call_FS_reads_before": 6,
+        "per_call_FS_reads_after": 5,
+        "per_call_FS_seeks_before": 5,
+        "per_call_FS_seeks_after": 3,
+        "native_speedup": null,
+        "reference_boot_0_1200": {
+          "arm9_entries_before": 58302294,
+          "arm9_entries_after": 58084099,
+          "PIO_blocks_before": 3651,
+          "PIO_blocks_after": 3621,
+          "size_queries_each": 53
+        },
+        "scope": "Observed software replay workload only; native loading screen pending.",
+        "native_Bag_open_mean_seconds_control": 0.44166666666666665,
+        "native_Bag_open_mean_seconds_candidate": 0.45,
+        "native_Bag_close_mean_seconds_control": 1.3166666666666667,
+        "native_Bag_close_mean_seconds_candidate": 1.3083333333333333,
+        "native_scope": "Single cold session per arm, four within-session cycles. No measurable useful improvement in the screened transition; no universal slowdown/no-benefit claim."
+      },
+      "evidence": [
+        "ARCHIVE_SIZE_SKIP_BUILD_V1.json",
+        "ARCHIVE_SIZE_SKIP_DISASSEMBLY_V1.txt",
+        "ARCHIVE_METADATA_FINDINGS_V4.json",
+        "ARCHIVE_SIZE_SKIP_GUARD_TESTS_V1.json",
+        "ARCHIVE_SIZE_SKIP_FINDINGS_V1.json",
+        "ARCHIVE_SIZE_SKIP_VISUAL_REVIEW_V1.json",
+        "NATIVE_ARCHIVE_SIZE_FINDINGS_V1.json",
+        "NATIVE_ARCHIVE_SIZE_VISUAL_REVIEW_V1.json",
+        "ARCHIVE_SIZE_NATIVE_BEFORE_AFTER_V33.csv",
+        "ARCHIVE_SIZE_CANONICAL_SELECTION_V1.json"
+      ]
     }
   ],
   "arm9_crc32": "4d104949",
@@ -648,7 +708,7 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V6.json",
-    "next_proposal": "AFTER_CART_CENSUS_NEXT_STEPS_V1.json",
+    "next_proposal": "ARCHIVE_FIXED_METADATA_ADMISSION_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
@@ -747,6 +807,20 @@
       "overlay_mapping": "CART_REQUEST_OVERLAY_MAPPING_V1.json",
       "font_resident_proposal": "FONT_RESIDENT_MODE_PROPOSAL_V1.json",
       "patch_implemented": false,
+      "enabled": false
+    },
+    "archive_size_experiment": {
+      "candidate": "narc-size-dead-position-work",
+      "status": "parked_native_gain_insufficient",
+      "reference": "ARCHIVE_SIZE_SKIP_FINDINGS_V1.json",
+      "native": "NATIVE_ARCHIVE_SIZE_FINDINGS_V1.json",
+      "enabled": false,
+      "accepted_beta": "Platinum Beta1 R2 unchanged; terrain only"
+    },
+    "fixed_archive_metadata_admission": {
+      "state": "read_only_static_candidate_screen",
+      "receipt": "ARCHIVE_FIXED_METADATA_ADMISSION_V1.json",
+      "implemented": false,
       "enabled": false
     }
   },

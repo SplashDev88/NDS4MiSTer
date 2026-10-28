@@ -2172,3 +2172,109 @@ Evidence: `ARCHIVE_METADATA_LAYOUT_CENSUS_V1.json`,
 `ARCHIVE_METADATA_ADMISSION_V2.json`, `ARCHIVE_METADATA_CALLS_V4.json`,
 `ARCHIVE_METADATA_FINDINGS_V4.json`, `ARCHIVE_METADATA_QUALIFICATION_V4.json`,
 and `ARCHIVE_METADATA_OBSERVER_EXCLUSIONS_V1.json`.
+
+
+## Size-only archive dead work — reference screen
+
+`narc-size-dead-position-work` replaces two Thumb instructions in the main ARM9
+size-only NARC routine. A branch at `02006bbe` skips the BTNF chunk-size
+seek/read; one at `02006bfa` skips the final payload-position seek. The return
+still subtracts the original BTAF start/end offsets. The full 76-byte span is
+guarded, only four bytes change, and there is no scratch, allocation, overlay,
+trampoline or service. The original member-count/nonzero-size assertions and
+existing missing-close behavior remain.
+
+Owned disassembly of `FS_SeekFile` (`020c81e4..020c8250`) contains no calls and
+only writes the supplied local file-position field at `+0x2c`. That establishes
+the removed seek's local effect, but not the global cache/IRQ effects of the
+removed read. The fixture executes this owned seek body; Init/Open/Read/assert
+are explicit synchronous synthetic models. It tests 808 nonempty members over
+194 present indexed archives plus one empty-member assertion. Return value,
+R3–R11, SP, PC, CPSR, retained reads and memory outside the old stack frame
+match. Caller-save registers and dead stack/file fields may differ. One indexed
+debug archive is absent from the owned ROM and was not tested or observed live.
+
+The existing guest byte-patch loader rejects wrong header, instruction bytes,
+ARM9 identity or patch ID atomically, returning the original virtual image.
+Nothing is written to the ROM. The complete 23,400-frame reference runs with
+accepted terrain plus this candidate; all 426 observed size returns match the
+owned archive table. No checkpoint enters ARM9 abort/undefined mode. Sparse
+paired images show coherent Continue, battle and outdoor progression, and all
+save hashes match. The candidate wins the battle earlier on a different turn
+trajectory; that is not evidence of equal-work speedup.
+
+| Metric | Accepted terrain | Plus size-only skip | Scope |
+|---|---:|---:|---|
+| FS reads per size query | 6 | 5 | Bounded synthetic call contract |
+| FS seeks per size query | 5 | 3 | Bounded synthetic call contract |
+| Size queries, frames 0–1199 | 53 | 53 | Reference boot window |
+| Physical PIO blocks, frames 0–1199 | 3,651 | 3,621 | Reference boot window |
+| ARM9 instruction entries, frames 0–1199 | 58,302,294 | 58,084,099 | Reference; 0.374% fewer |
+| Full-route ARM9 instruction entries | 2,993,746,030 | 3,064,334,437 | Different trajectories |
+| Full-route physical PIO blocks | 36,376 | 39,836 | Different trajectories |
+
+The strict runner rejection is retained: 9,560 top/1,329 bottom frame hashes
+and 5,888,533 of 18,774,412 stereo samples differ. Main RAM, DTCM and ARM7 WRAM
+also differ; no blanket timing exclusion was applied. Under the user's current
+functional budget, these differences permit further investigation but do not
+establish native speed, audio quality, save-write/reset or full lifecycle
+behavior. Keep the patch disabled pending an isolated native loading screen.
+Approved Platinum Beta1 R2 remains unchanged.
+
+Evidence: `ARCHIVE_SIZE_SKIP_BUILD_V1.json`,
+`ARCHIVE_SIZE_SKIP_DISASSEMBLY_V1.txt`, `ARCHIVE_SIZE_SKIP_GUARD_TESTS_V1.json`,
+`ARCHIVE_SIZE_SKIP_FINDINGS_V1.json`, `ARCHIVE_SIZE_SKIP_CALL_RESULTS_V1.json`,
+`ARCHIVE_SIZE_SKIP_BEFORE_AFTER_V1.csv` and `ARCHIVE_SIZE_SKIP_VISUAL_REVIEW_V1.json`.
+
+
+## Size-only archive native screen — parked for insufficient benefit
+
+Fresh control/candidate runs use the same ordinary outdoor save, accepted
+terrain patch, host/renderer, published rc12 FPGA and stock 1GHz clock. Live
+cartridge/replacement bytes and sole disposable-save ownership are verified.
+Both reach the same town and execute four Bag open/close cycles. This seed
+precedes starter acquisition, so it does not provide a party-screen test.
+
+| Native observation | Terrain control | Size-only skip |
+|---|---:|---:|
+| Bag opening near-black intervals | 0.4667 / 0.4333 / 0.4500 / 0.4167s | 0.4667 / 0.4167 / 0.4500 / 0.4667s |
+| Mean opening near-black interval | 0.4417s | 0.4500s |
+| Mean closing near-black interval | 1.3167s | 1.3083s |
+| Mean combined near-black interval | 1.7583s | 1.7583s |
+| Buffer publications per second | 33.651 | 33.624 |
+| Host / renderer CPU, one-core percent | 3.41 / 129.82 | 3.55 / 129.69 |
+
+Media PTS measures only the interval when both screen regions are near black;
+it excludes nonblack fading, input latency and panel animation. All events
+are visually assigned to the correct opening or closing transition. Four
+within-session repeats are not independent cold replicates. No useful native
+improvement appears in this screen; tiny opposite differences in opening and
+closing cancel. Publication counters are not unique FPS or guest cycles. This
+is neither a general slowdown claim nor proof against every asset-heavy scene.
+Native routine-entry counts were not captured, so the workload in the changed
+routine is not quantified for this scene.
+
+Both recordings have zero added render/output drops. Sampled pre/post-transition
+frames show coherent Bag/menu screens and return to the field. Both sessions
+exit cleanly with the copied save unchanged; MENU is restored. Audio is retained
+but no listening-equivalence claim is made. Wider story, save-write/reset and
+lifecycle qualification is not pursued for this parked candidate.
+
+Keep `narc-size-dead-position-work` disabled because useful native benefit was
+not demonstrated, irrespective of the permitted timing differences. The
+canonical manifest's default virtual image still hashes to the accepted
+terrain image; explicit trial selection reproduces the tested candidate image.
+Platinum Beta1 R2 remains unchanged.
+
+A broader next lead is supported by the owned layout census: all 215 NARCs
+have both a 16-byte header and a 16-byte BTNF chunk. Guarded constants in the
+existing read/allocate paths could remove metadata work from more calls.
+This is static admission only: invalid-path/member/allocation behavior,
+resulting payload offsets and actual physical-transfer savings must still be
+proved. No fixed-metadata patch has been implemented.
+
+Evidence: `NATIVE_ARCHIVE_SIZE_FINDINGS_V1.json`,
+`NATIVE_ARCHIVE_SIZE_VISUAL_REVIEW_V1.json`,
+`ARCHIVE_SIZE_NATIVE_BEFORE_AFTER_V33.csv`,
+`ARCHIVE_SIZE_CANONICAL_SELECTION_V1.json` and
+`ARCHIVE_FIXED_METADATA_ADMISSION_V1.json`.

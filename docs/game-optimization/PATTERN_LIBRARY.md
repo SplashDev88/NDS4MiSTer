@@ -1176,3 +1176,29 @@ contiguous records. Trace existing open/read/close routines before allocating a
 new cache; repeated first-block requests are not all removable metadata reads.
 Exclude nested wrapper double-counting and the block hits already served by the
 SDK cache. Local PC sample share excludes descendant filesystem/IRQ costs.
+
+
+## Dead positioning work in size-only archive queries
+
+Detect wrappers that return a member's end-minus-start from an archive table
+but also read later chunk sizes or seek to payload without consuming payload.
+Use dataflow and owned callee disassembly to distinguish the returned table
+fields from dead local file-position work. Prefer in-function branches that
+retain bounds/empty-member checks and original calling convention. Preserve
+existing allocation-failure and close behavior unless independently changed.
+
+Execute the owned seek body when feasible; label any modeled filesystem
+callees explicitly. Compare return values against the owned archive for every
+observed call and edge/random members, while retaining caller-save/dead-stack
+and global cache/IRQ limitations. Count physical requests with completion
+pairing, since skipped reads may already hit a cache. A changed battle or input
+trajectory invalidates aggregate equal-work speed claims even when the game
+progresses. Measure identical semantic loading transitions on hardware.
+
+
+Do not infer a native win from eliminating metadata reads. Pair a representative
+semantic transition and preserve neutral results: opening and closing changes
+can cancel within capture quantization. Report near-black intervals separately
+from total loading and native routine work, and do not call publication counts
+unique FPS. Static header/chunk constants may support a broader revision-guarded
+optimization, but must not become general NARC-format assumptions.

@@ -521,7 +521,21 @@
   The memory observer now uses the executing halfword and retains exact mode
   checks. Earlier archive census guard aborts were instrumentation failures,
   not demonstrated game failures; exclusion receipts are retained.
-- Platinum archive layouts have useful constants, but metadata skipping is
-  unimplemented. Item records are uniform-sized with padding; do not infer
-  their stride from size. File-position/completion effects and already cached
+- Platinum archive layouts have useful constants, but fixed-layout metadata
+  precomputation is unimplemented. Item records are uniform-sized with padding;
+  do not infer their stride from size. File-position/completion effects and already cached
   reads must be accounted for before a patch is admitted.
+
+
+- Platinum's size-only archive skip passes the bounded return contract and
+  reference progression screen, but is parked after a native screen. Four Bag
+  cycles per arm give the same 1.7583s mean combined near-black time and almost
+  identical publication rates. Timing, stack and battle trajectory mismatches
+  are retained; the earlier battle end is not a speedup. Native routine workload,
+  listening and broad lifecycle remain unqualified. Do not repeat this exact
+  screen expecting a new result.
+- Replacing a graphics size/allocate/read sequence with the existing combined
+  archive allocator would remove the caller's null-allocation guard: that helper
+  reads into the result without checking it. This shortcut was not implemented.
+- All 215 owned NARCs share 16-byte headers and 16-byte BTNF chunks. This is a
+  guarded-revision fact, not a universal format guarantee or existing patch.
