@@ -401,3 +401,11 @@
   save after staging recovery. Reseeding then correctly failed the C2 preflight
   before launch. V2 excludes only that owned save; V3 refreshes inode metadata
   already backed by full content-hash verification. Retain the failure receipt.
+- Identical normalized geometry payloads do not establish that the framebuffer
+  can be reused. VRAM/palette contents, external state and readbacks may differ.
+  Platinum has 102 adjacent repeated intervals in its qualified outdoor trace,
+  but no draw or frame is skipped on that evidence. Most observed traffic is
+  DMA; the interrupted CPU PC must not be called the DMA producer.
+- Identical material or polygon parameter values can still have other effects.
+  For example, material assignments may update current vertex color. Preserve
+  those effects before treating a repeated assignment as unnecessary work.

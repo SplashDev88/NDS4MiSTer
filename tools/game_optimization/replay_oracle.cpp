@@ -5,6 +5,7 @@
 #include "replay_memory_watch.h"
 #include "replay_video_capture.h"
 #include "replay_code_comparison.h"
+#include "replay_geometry_trace.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -29,6 +30,31 @@ std::ofstream replay_memory_output;
 unsigned replay_memory_first_frame=0,replay_memory_last_frame=0xffffffffu;
 std::ofstream replay_spu_output;
 u64 replay_spu_writes=0,replay_spu_mixes=0;
+std::ofstream replay_geometry_output;
+unsigned replay_geometry_first=0,replay_geometry_last=0;
+bool replay_geometry_failed=false;
+u64 replay_geometry_ordinal=0;
+std::unique_ptr<ReplayGeometryTrace> replay_geometry;
+struct GeometryInstruction {bool valid=false;u32 pc=0,opcode=0;};
+GeometryInstruction replay_geometry_instruction;
+void replay_geometry_record(NDS4MiSTer::Trace2DRecordType kind,const unsigned char* data,size_t size) {
+ using namespace NDS4MiSTer;
+ u32 coreFrame=0,a=0,b=0,c=0;u64 timestamp=0;const char* name=nullptr;
+ if(kind==Trace2DRecordType::GeometryCommand){Trace2DGeometryCommandPacket p;std::memcpy(&p,data,sizeof(p));coreFrame=p.Frame;timestamp=p.Timestamp;a=p.Command;b=p.Parameter;name="command";}
+ if(kind==Trace2DRecordType::GeometryFrame){Trace2DGeometryFramePacket p;std::memcpy(&p,data,sizeof(p));coreFrame=p.Frame;timestamp=p.Timestamp;a=p.Vertices;b=p.Polygons;c=p.FlushAttributes;name="frame";}
+ if(kind==Trace2DRecordType::GeometryRegister){Trace2DGeometryRegisterPacket p;std::memcpy(&p,data,sizeof(p));coreFrame=p.Frame;timestamp=p.Timestamp;a=p.Address;b=p.Value;c=p.Width;name="register";}
+ if(!name)throw std::runtime_error("Unexpected geometry record");
+ const auto& nds=*replay_machine;u32 dmaMask=0;
+ for(unsigned n=0;n<8;++n)if(nds.DMAs[n].Executing)dmaMask|=1u<<n;
+ const auto& arm=nds.ARM9;
+ replay_geometry_output<<replay_geometry_ordinal++<<','<<name<<','<<replay_frame<<','<<coreFrame<<','<<timestamp<<','<<std::hex<<a<<','<<b<<','<<c<<','<<arm.R[15]<<','<<arm.CPSR<<','<<arm.R[14]<<','<<replay_geometry_instruction.pc<<','<<replay_geometry_instruction.opcode<<','<<dmaMask;
+ for(unsigned n=0;n<4;++n)replay_geometry_output<<','<<arm.R[n];
+ replay_geometry_output<<std::dec<<','<<replay_geometry_instruction.valid<<'\n';
+}
+void replay_geometry_sink(const void* data,size_t size,void*) noexcept {
+ if(replay_geometry_failed)return;
+ try{replay_geometry->Push(data,size);}catch(...){replay_geometry_failed=true;}
+}
 struct RamBusTrace {
  bool enabled=false;u64 ordinal=0;std::ofstream output;
  std::vector<std::pair<u32,u32>> ranges;
@@ -115,6 +141,7 @@ struct BlockTrace {
  }
 } replay_block;
 void replay_instruction(unsigned cpu,u32 pc,u32 op,const u32* r){
+ if(cpu==0&&replay_geometry)replay_geometry_instruction={true,pc,op};
  if(replay_ram_bus.enabled)replay_ram_bus.last[cpu]={true,pc,op};
  if((++replay_instructions[cpu]&255)==0){auto& v=replay_samples[cpu][pc];++v.first;v.second=op;}
  if(cpu==0)for(auto w:replay_watches)if(pc==w){replay_watch<<replay_frame<<','<<std::hex<<pc;for(int i=0;i<16;++i)replay_watch<<','<<r[i];replay_watch<<std::dec<<'\n';}
@@ -267,9 +294,22 @@ int main(int argc,char**argv) {
   if(codeComparisons.HasAutoload())normalized<<",sharedwram,arm7wram,unmatched_autoload_regions";
   normalized<<'\n';
  }
+ if(const char* window=std::getenv("NDS_REPLAY_GEOMETRY_FRAMES")){
+  std::istringstream spec(window);char colon=0,extra=0;
+  if(!(spec>>replay_geometry_first>>colon>>replay_geometry_last)||colon!=':'||
+     (spec>>extra)||replay_geometry_first>=replay_geometry_last||
+     replay_geometry_last>frameCount||replay_geometry_first<profileStart)
+   throw std::runtime_error("Invalid geometry capture window");
+  replay_geometry_output.open(out+"/geometry.csv");
+  if(!replay_geometry_output)throw std::runtime_error("Cannot open geometry trace");
+  replay_geometry_output<<"ordinal,kind,replay_frame,core_frame,timestamp,a,b,c,raw_r15,cpsr,lr,last_profile_pc,last_profile_opcode,dma_executing_mask,r0,r1,r2,r3,last_profile_valid\n";
+  replay_geometry=std::make_unique<ReplayGeometryTrace>(replay_geometry_record);
+ }
  auto hash=[](const u8* p,size_t n){u64 h=14695981039346656037ull;for(size_t i=0;i<n;++i)h=(h^p[i])*1099511628211ull;return h;};
  for(unsigned frame=0;frame<frameCount;++frame){
   replay_profile_active=frame>=profileStart;replay_frame=frame;
+  if(replay_geometry&&frame==replay_geometry_first)NDS4MiSTer::SetTrace2DSink(replay_geometry_sink,nullptr);
+  if(replay_geometry&&frame==replay_geometry_last)NDS4MiSTer::SetTrace2DSink(nullptr,nullptr);
   replay_instructions[0]=replay_instructions[1]=0;
   u32 keys=0xfff;for(auto i:inputs)if(frame>=i.first&&frame<i.last)keys&=~i.mask;nds->SetKeyMask(keys);
   nds->RunFrame();
@@ -317,6 +357,12 @@ int main(int argc,char**argv) {
  videoCapture.Finish(videoPixels,videoIndex);
  for(int cpu=0;cpu<2;++cpu){std::ofstream prof(out+"/pc"+std::to_string(cpu+1)+".csv");prof<<"pc,count,opcode\n";for(auto [pc,v]:replay_samples[cpu])prof<<std::hex<<pc<<std::dec<<","<<v.first<<","<<std::hex<<v.second<<"\n";}
  std::ofstream saveout(out+"/save.bin",std::ios::binary);saveout.write((char*)nds->GetNDSSave(),nds->GetNDSSaveLength());
+ if(replay_geometry){
+  NDS4MiSTer::SetTrace2DSink(nullptr,nullptr);
+  replay_geometry->Finish();replay_geometry_output.flush();
+  if(replay_geometry_failed||!replay_geometry_output)throw std::runtime_error("Geometry trace capture failed");
+  std::ofstream meta(out+"/geometry_window.csv");meta<<"first_frame,last_frame_exclusive,records\n"<<replay_geometry_first<<','<<replay_geometry_last<<','<<replay_geometry_ordinal<<'\n';
+ }
  if(!replay_memory.sites.empty()) {
   std::ofstream summary(out+"/memory_watch_summary.csv");
   replay_memory.Finish(replay_memory_output,summary);

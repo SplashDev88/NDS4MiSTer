@@ -463,3 +463,36 @@ profiles put silence on the default track. `make_review_mp4.py SOURCE OUTPUT
 packets unchanged, verifying both packet digests. It does not normalize volume,
 resample audio or change playback speed. The existing default mode still makes
 an AAC convenience copy of a lossless reference-replay MOV.
+
+## Existing geometry-trace observation
+
+`NDS_REPLAY_GEOMETRY_FRAMES=FIRST:LAST` attaches a filtered observer to the
+existing `NDS4MiSTer_2DTrace` sink for that end-exclusive replay-frame window.
+It must lie within the profiled window. The normal renderer, FPGA and HPS
+services are unchanged. First qualify the observer with an unchanged replay,
+including every retained golden file, before interpreting its census.
+
+`geometry.csv` contains normalized geometry command parameter packets, frame
+records and register writes. Decimal columns are ordinal, frame indices,
+timestamp and PC-valid flag; payload/context words are hexadecimal. Payload
+`a,b,c` means command/parameter/zero for `command`, vertices/polygons/flush
+attributes for `frame`, and address/value/width for `register`. Raw ARM9 PC,
+CPSR, LR, R0–R3, last sampled instruction and an active-DMA mask are context,
+not a reconstructed call stack. DMA commands must not be attributed to the
+interrupted CPU instruction. `geometry_window.csv` records bounds and totals.
+
+The sink consumes fragmented existing trace records; it does not assume every
+callback starts at a packet boundary. Invalid/truncated geometry records,
+empty observations and failed output writes fail the job. The capture retains
+full normalized parameter order. It does not read extra guest memory or change
+emulated timestamps. Native timing and complete rendering dependencies are
+outside this observer's scope.
+
+`summarize_geometry_trace.py TRACE --window WINDOW --qualification RECEIPT
+--output REPORT` requires a `passed_full_unchanged_replay` receipt with SHA-256
+pins for both capture files. It verifies ordinals/window/timestamps, separates
+CPU/DMA contexts, counts parameter packets, and hashes complete intervals
+between observed swap commands. It excludes partial leading/trailing intervals.
+Repeated assignment values and identical command streams are only leads:
+textures, palettes, external state, pipeline side effects and timing must also
+be proven. The report never authorizes skipping a draw or a geometry query.

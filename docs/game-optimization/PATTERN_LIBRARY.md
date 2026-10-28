@@ -920,3 +920,26 @@ and alternate unmodified control/candidate sound instead of mixing tracks.
 Near-black transition windows are a narrow visible-duration metric and must
 not be presented as complete load time. Human approval of a difference and
 measured native benefit remain separate requirements.
+
+## Repeated geometry submissions with complete dependency checks
+
+Start with the existing normalized geometry trace, filtered through the replay
+frontend, before adding a new observer. Require an exact unpatched golden run.
+Count parameter packets separately from multi-parameter commands and use
+observed swap boundaries rather than assuming each emulated frame submits 3D.
+Exclude partial boundary intervals. Keep DMA events separate from CPU callers;
+an instruction interrupted by DMA is not the DMA payload's producer.
+
+Platinum's qualified outdoor window has 300 swap submissions across 600 replay
+frames. Of 299 complete intervals, 102 adjacent pairs have identical normalized
+command/parameter payloads. This does not imply identical texture/palette bytes,
+readbacks or safe frame reuse. Its 5,686,767 parameter packets include 4,811,611
+while DMA is active. Investigate model/display-list ownership instead of
+assuming all expensive traffic comes from the sampled CPU copy helper.
+
+Repeated viewport, texture, material or polygon values are screening leads,
+not automatically redundant commands. In particular, an unchanged material
+assignment can also reset current vertex color; normal/color commands and
+query/stack effects must be considered. A title-specific culling helper may
+already reject off-screen props while other model categories follow different
+paths. Authenticate each function and category before extending culling.
