@@ -4,6 +4,7 @@
 #include "NDS.h"
 #include "replay_memory_watch.h"
 #include "replay_video_capture.h"
+#include "replay_code_comparison.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -233,7 +234,7 @@ int main(int argc,char**argv) {
  struct Input{unsigned first,last,mask;};std::vector<Input> inputs;std::ifstream replay(argv[5]);Input v;while(replay>>v.first>>v.last>>std::hex>>v.mask>>std::dec)inputs.push_back(v);
  std::ifstream watches(argv[6]);u32 watch;while(watches>>std::hex>>watch)replay_watches.push_back(watch);replay_watch.open(out+"/watches.csv");
  std::ofstream state(out+"/state.csv");state<<"frame,arm9_insn,arm7_insn,mainram,itcm,dtcm,arm7wram,sharedwram,save\n";
- struct CodeComparison{u32 address;std::vector<u8> original,replacement;};std::vector<CodeComparison> codeComparisons;
+ ReplayCodeComparison codeComparisons;
  std::ofstream normalized;
  if(const char* path=std::getenv("NDS_REPLAY_BLOCK_TRACE")){
   std::ifstream spec(path);std::string line;if(!std::getline(spec,line))return 8;
@@ -261,18 +262,8 @@ int main(int argc,char**argv) {
   if(checkpoints.empty())return 8;
  }
  if(const char* path=std::getenv("NDS_REPLAY_CODE_COMPARISON")){
-  std::ifstream specs(path);if(!specs)return 8;std::string line;
-  auto bytes=[](const std::string& value){std::vector<u8> result;if(value.size()%2||value.find_first_not_of("0123456789abcdefABCDEF")!=std::string::npos)throw std::runtime_error("Invalid code hex");for(size_t i=0;i<value.size();i+=2)result.push_back(u8(std::stoul(value.substr(i,2),nullptr,16)));return result;};
-  while(std::getline(specs,line)){std::istringstream row(line);std::string address,before,after,extra;
-   if(!(row>>address>>before>>after)||(row>>extra))return 8;
-   size_t consumed=0;const auto parsed=std::stoull(address,&consumed,16);if(consumed!=address.size()||parsed>0xffffffffu)return 8;
-   CodeComparison c{u32(parsed),bytes(before),bytes(after)};
-   if(c.address<0x02000000u||c.original.size()<8||c.original.size()>4096||c.original.size()!=c.replacement.size()||u64(c.address)+c.original.size()>0x02400000u)return 8;
-   for(const auto& old:codeComparisons)if(c.address<old.address+old.original.size()&&old.address<c.address+c.original.size())return 8;
-   codeComparisons.push_back(std::move(c));
-  }
-  if(codeComparisons.empty())return 8;
-  normalized.open(out+"/code_normalized_state.csv");normalized<<"frame,mainram,original_code_regions,replacement_code_regions\n";
+  std::ifstream specs(path);if(!specs)return 8;codeComparisons.Load(specs);
+  normalized.open(out+"/code_normalized_state.csv");normalized<<"frame,mainram,original_code_regions,replacement_code_regions,unmatched_overlay_regions\n";
  }
  auto hash=[](const u8* p,size_t n){u64 h=14695981039346656037ull;for(size_t i=0;i<n;++i)h=(h^p[i])*1099511628211ull;return h;};
  for(unsigned frame=0;frame<frameCount;++frame){
@@ -294,15 +285,9 @@ int main(int argc,char**argv) {
   std::vector<u8> canonical(nds->MainRAM,nds->MainRAM+0x400000);
 
   state<<frame<<','<<replay_instructions[0]<<','<<replay_instructions[1]<<','<<hash(canonical.data(),canonical.size())<<','<<hash(nds->ARM9.ITCM,0x8000)<<','<<hash(nds->ARM9.DTCM,0x4000)<<','<<hash(nds->ARM7WRAM,0x10000)<<','<<hash(nds->SharedWRAM,0x8000)<<','<<hash(nds->GetNDSSave(),nds->GetNDSSaveLength())<<'\n';
-  if(!codeComparisons.empty()){
-   unsigned originalCount=0,replacementCount=0;
-   for(const auto& c:codeComparisons){auto at=canonical.begin()+(c.address-0x02000000u);
-    if(std::equal(c.original.begin(),c.original.end(),at))++originalCount;
-    else if(std::equal(c.replacement.begin(),c.replacement.end(),at))++replacementCount;
-    else {std::cerr<<"Unexpected code bytes at frame "<<frame<<" address "<<std::hex<<c.address<<std::dec<<'\n';return 9;}
-    std::copy(c.original.begin(),c.original.end(),at);
-   }
-   normalized<<frame<<','<<hash(canonical.data(),canonical.size())<<','<<originalCount<<','<<replacementCount<<'\n';
+  if(!codeComparisons.regions.empty()){
+   const auto counts=codeComparisons.Normalize(canonical);
+   normalized<<frame<<','<<hash(canonical.data(),canonical.size())<<','<<counts.original<<','<<counts.replacement<<','<<counts.unmatchedOverlay<<'\n';
   }
   void*top=nullptr;void*bottom=nullptr;if(!nds->GPU.GetFramebuffers(&top,&bottom))return 7;
   if(checkpoints.count(frame)){

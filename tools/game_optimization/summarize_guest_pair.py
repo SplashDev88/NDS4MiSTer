@@ -79,6 +79,41 @@ def guard_stats(path, guards):
                 scope='Captured main-RAM bus stores only; not arbitrary host/state-loader/JIT coverage')
 
 
+def normalize_checkpoint(before, after, patch, records):
+    """Normalize only an authenticated complete code body; leave unknown overlays raw."""
+    assert len(before) == len(after) == 0x400000
+    original, replacement = bytes.fromhex(patch['expect']), bytes.fromhex(patch['replace'])
+    assert len(original) == len(replacement)
+    at = int(patch['addr'], 0) - 0x02000000
+    assert 0 <= at < at + len(original) <= len(before)
+    result = bytearray(after)
+    if patch['target'] != 'arm9.overlay':
+        assert before[at:at+len(original)] == original and result[at:at+len(replacement)] == replacement
+        result[at:at+len(original)] = original
+        return result, ['original', 'replacement']
+    contexts = [r['overlay_context'] for r in records]
+    assert contexts[0] == contexts[1]
+    context = contexts[0]
+    assert context['id'] == patch['overlay'] and context['base'] == patch['overlay_ram']
+    path = Path(context['path'])
+    assert sha(path) == context['sha256'] == patch['overlay_sha256']
+    body = path.read_bytes()
+    base = int(context['base'], 0) - 0x02000000
+    assert 0 <= base <= at < at + len(original) <= base + len(body) <= len(before)
+    relative = at - base
+    assert body[relative:relative+len(original)] == original
+    changed = bytearray(body)
+    changed[relative:relative+len(replacement)] = replacement
+    identities = []
+    for memory in (before, after):
+        loaded = memory[base:base+len(body)]
+        identities.append('original' if loaded == body else 'replacement' if loaded == changed else 'unmatched')
+    assert identities[0] != 'replacement' and identities[1] != 'original'
+    if identities[1] == 'replacement':
+        result[at:at+len(original)] = original
+    return result, identities
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('control', type=Path)
@@ -98,6 +133,8 @@ def main():
     manifest_path = Path(inputs['manifest'])
     assert sha(manifest_path) == candidate['manifest_sha256'] == inputs['manifest_sha256']
     manifest = read(manifest_path)
+    assert control['oracle_sha256'] == candidate['oracle_sha256'] == inputs['oracle_sha256']
+    assert control['job'] == candidate['job']
     reused = control['manifest_sha256'] != candidate['manifest_sha256']
     if reused:
         assert args.reuse_unpatched_control, 'Different control manifest needs explicit verified reuse'
@@ -117,7 +154,6 @@ def main():
         for filename, digest in control['outputs'].items():
             assert sha(args.control / filename) == digest, filename
     patch, = [p for p in manifest['patches'] if p['id'] == inputs['patch_id']]
-    original, replacement = bytes.fromhex(patch['expect']), bytes.fromhex(patch['replace'])
     frame_rows = [rows(p / 'frames.csv') for p in (args.control, args.candidate)]
     assert len(frame_rows[0]) == len(frame_rows[1]) == control['job']['frames']
     differences = {key: [] for key in frame_rows[0][0]}
@@ -127,11 +163,7 @@ def main():
             if old[key] != new[key]:
                 differences[key].append(int(old['frame']))
     before = (args.control / 'mainram.bin').read_bytes()
-    after = bytearray((args.candidate / 'mainram.bin').read_bytes())
-    assert len(before) == len(after)
-    at = int(patch['addr'], 0) - 0x02000000
-    assert before[at:at+len(original)] == original and after[at:at+len(replacement)] == replacement
-    after[at:at+len(original)] = original
+    after, identities = normalize_checkpoint(before, (args.candidate / 'mainram.bin').read_bytes(), patch, records)
     av, bv = np.frombuffer(before, '<u4'), np.frombuffer(after, '<u4')
     changed = np.flatnonzero(av != bv)
     insn = [r['instruction_totals']['arm9_insn'] for r in records]
@@ -146,6 +178,7 @@ def main():
                       first_frame=control['profile_start_actual'], end_frame_exclusive=len(frame_rows[0]),
                       scope='Software executed instructions; not native cycles or speed'),
                   checkpoint_mainRAM=dict(different_words_outside_patch=len(changed),
+                      code_identities=identities,
                       first_words=[dict(address=hex(0x02000000+int(i)*4), before=hex(int(av[i])), after=hex(int(bv[i]))) for i in changed[:20]],
                       scope='Existing retained mainram.bin checkpoint; no other memory normalized'),
                   RAM_frame_differences=candidate['differing_state_frames'],

@@ -99,6 +99,16 @@ those declared instruction bytes in a local comparison copy. Raw hashes and
 game memory are untouched. This does not grant permission to mask other RAM
 differences or accept a non-bit-exact candidate.
 
+For overlays, append `overlay decimal_id hex_base "original_body_path"` to
+the row. Pin that private body's full SHA-256 to the admitted manifest in the
+job. `replay_code_comparison.h` requires the entire loaded body to match its
+original or combined replacement before normalizing any declared instruction
+bytes. Absent, partially loaded, different or corrupted bodies remain raw and
+increment `unmatched_overlay_regions`. Multiple patches in one body can share
+a context; overlapping patch extents, conflicting identities and overlapping
+different contexts are rejected. This is output comparison, not a live patch
+loader. The checkpoint summarizer uses the same complete-body rule.
+
 `NDS_REPLAY_CHECKPOINT_FRAMES=1441,2600` adds uniquely named full main-RAM,
 ITCM, DTCM, ARM7/shared-WRAM dumps, current CPU registers/CPSR, TCM mappings
 and both full-resolution screens. These are raw snapshots at video-frame
@@ -273,8 +283,16 @@ estimated removed instruction entries establishes native speed or safety.
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic
 `check_guest_block_patch.py MANIFEST FIXTURE --output REPORT` reuses that
-runner for a bounded ARM block and declarative register/data cases. Mapped
-MMIO pages model ordinary memory only, not hardware side effects.
+runner for a bounded ARM or Thumb block and declarative register/data cases.
+The mode must agree with CPSR.T and entry alignment. `instruction_limit`
+defaults to 20,000 and is bounded at one million. By default all ordered data
+accesses must match. An optional `elidable_read_ranges` list admits only removal
+of reads within the primary modeled ordinary-memory page. Required reads and
+all writes must retain address, size, value and order; registers, flags and
+all mapped memory still match exactly. This models no asynchronous writer:
+capacity stability, IRQ/DMA interactions and the actual address-space mapping
+need separate runtime evidence. Mapped MMIO pages model ordinary memory only,
+not hardware side effects, and cannot be declared as elidable ranges.
 
 `summarize_guest_pair.py CONTROL CANDIDATE INPUT --output REPORT` reuses the
 guarded replay status and manifest to report screen, audio, RAM and instruction

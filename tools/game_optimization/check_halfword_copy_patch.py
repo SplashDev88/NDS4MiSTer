@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import random
 
-from unicorn import Uc, UC_ARCH_ARM, UC_MODE_ARM, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
+from unicorn import Uc, UC_ARCH_ARM, UC_MODE_ARM, UC_MODE_THUMB, UC_HOOK_CODE, UC_HOOK_MEM_READ, UC_HOOK_MEM_WRITE
 from unicorn.arm_const import (
     UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
     UC_ARM_REG_R4, UC_ARM_REG_R5, UC_ARM_REG_R6, UC_ARM_REG_R7,
@@ -27,8 +27,12 @@ REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
         UC_ARM_REG_R12, UC_ARM_REG_SP, UC_ARM_REG_LR]
 
 
-def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=()):
-    vm = Uc(UC_ARCH_ARM, UC_MODE_ARM)
+def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=(),
+        mode='arm', instruction_limit=20000):
+    assert mode in ('arm', 'thumb') and bool(cpsr & 0x20) == (mode == 'thumb')
+    assert entry % (2 if mode == 'thumb' else 4) == 0
+    assert 0 < instruction_limit <= 1000000
+    vm = Uc(UC_ARCH_ARM, UC_MODE_THUMB if mode == 'thumb' else UC_MODE_ARM)
     page = entry & ~4095
     assert entry + len(code) < page + 0xF00
     vm.mem_map(page, 4096)
@@ -63,8 +67,8 @@ def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=()):
 
     vm.hook_add(UC_HOOK_CODE, instruction)
     vm.hook_add(UC_HOOK_MEM_READ | UC_HOOK_MEM_WRITE, access)
-    vm.emu_start(entry, page + 4096, count=20000)
-    assert stopped, 'copy did not return within bounded case'
+    vm.emu_start(entry | (mode == 'thumb'), page + 4096, count=instruction_limit)
+    assert stopped, 'code did not reach its stop within bounded case'
     result = dict(registers=[vm.reg_read(r) for r in REGS],
                   pc=vm.reg_read(UC_ARM_REG_PC), cpsr=vm.reg_read(UC_ARM_REG_CPSR),
                   memory=bytes(vm.mem_read(0x03000000, 4096)), accesses=accesses)
