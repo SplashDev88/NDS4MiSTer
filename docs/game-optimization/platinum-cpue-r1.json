@@ -586,7 +586,7 @@
       "overlay": null,
       "scratch_bytes": 0,
       "enabled": false,
-      "status": "reference_functional_screen_complete_native_pending",
+      "status": "parked_native_gain_insufficient",
       "notes": "Same52-byte constructor including unchanged12-byte literal pool. Equivalent stack setup frees instruction space for member1-only immediate mode; other three fonts remain lazy. Existing game alloc/free owns32576 glyph bytes. Exact constructor arguments except intended mode and pre-call flags; exact stack bytes and post-call ABI checked. No trampoline, unused memory or new service.",
       "validated": {
         "synthetic": "384 constructor/stack/return contract cases; four atomic-original fallback cases pass.",
@@ -595,7 +595,7 @@
         "fb": "11414 top and1339 bottom frames differ; timing/HP/turn trajectory changes documented.",
         "audio": "16430574 of18774412 stereo samples differ;max56430,RMS5139.997. Different trajectory/timing, no audibility conclusion.",
         "save": "Final save exact; replay does not qualify a new save write.",
-        "native": "Unmeasured; fresh paired text-heavy target and lifecycle/video next."
+        "native": "One cold control/candidate at stock1GHz using identical accepted host/renderer/rc12 FPGA and private seed. Same second dialogue line: control1.9667/1.9833s, candidate1.9333/1.9167s; no publication-throughput gain. Bounded navigation/sign/dialogue pass, save unchanged; broader lifecycle/audio qualification not performed."
       },
       "gain": {
         "qualified": false,
@@ -604,7 +604,11 @@
         "battle_ARM9_entries_before": 264018986,
         "battle_ARM9_entries_after": 323410873,
         "scope": "Different fixed-input trajectory ends candidate battle earlier and adds outdoor work. Neither aggregate instruction count nor total battle duration is an equal-work speed measurement.",
-        "native_speedup": null
+        "native_speedup": null,
+        "native_line_seconds_control": 1.9750000000000005,
+        "native_line_seconds_candidate": 1.924999999999999,
+        "native_line_elapsed_reduction_screening_percent": 2.5316455696203333,
+        "native_scope": "Single cold session per arm, two within-session repetitions of identical second line. About50ms less line time is insufficient to justify32608bytes extra heap and lifecycle cost; no general gameplay speedup."
       },
       "evidence": [
         "FONT_RESIDENT_MESSAGE_BUILD_V4.json",
@@ -612,7 +616,10 @@
         "FONT_RESIDENT_MESSAGE_FINDINGS_V4.json",
         "FONT_RESIDENT_MESSAGE_BEFORE_AFTER_V4.csv",
         "FONT_RESIDENT_MESSAGE_GUARD_TESTS_V4.json",
-        "FONT_RESIDENT_MESSAGE_VISUAL_REVIEW_V4.json"
+        "FONT_RESIDENT_MESSAGE_VISUAL_REVIEW_V4.json",
+        "NATIVE_MESSAGE_FONT_FINDINGS_V1.json",
+        "NATIVE_MESSAGE_FONT_VISUAL_REVIEW_V1.json",
+        "MESSAGE_FONT_NATIVE_BEFORE_AFTER_V32.csv"
       ]
     }
   ],

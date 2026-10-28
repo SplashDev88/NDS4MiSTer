@@ -2058,3 +2058,53 @@ Evidence: `FONT_RESIDENT_MESSAGE_BUILD_V4.json`,
 `FONT_RESIDENT_MESSAGE_FINDINGS_V4.json`,
 `FONT_RESIDENT_MESSAGE_BEFORE_AFTER_V4.csv`, and
 `FONT_RESIDENT_MESSAGE_VISUAL_REVIEW_V4.json`/contact PNG.
+
+
+## Message-font native screen — parked for insufficient benefit
+
+Fresh control and candidate sessions use the same ordinary game-created outdoor
+save, accepted terrain patch, published rc12 FPGA, host/renderer and stock 1GHz
+clock. The only patch-selection difference is message-font residency. Runtime
+identity, original/replacement constructor bytes and the unchanged save are
+verified. Both runs reach the same Twinleaf sign and southern pond NPC.
+
+| Native observation | Terrain control | Message-font candidate |
+|---|---:|---:|
+| Identical dialogue second line, repetition 1 | 1.9667s | 1.9333s |
+| Identical dialogue second line, repetition 2 | 1.9833s | 1.9167s |
+| Six sign cycles, buffer publications/s | 22.003 | 21.068 |
+| NPC page sequence, buffer publications/s | 20.625 | 19.849 |
+| Sign sequence, host / renderer CPU, one-core percent | 3.09 / 166.68 | 3.15 / 165.04 |
+| NPC sequence, host / renderer CPU, one-core percent | 3.02 / 157.39 | 3.11 / 155.44 |
+
+The manually reviewed line is “around the world...wirelessly!”; timing uses its
+first visible `a` through final `!` in media PTS. Control bounds are
+1.9500–1.9833s and 1.9667–2.0000s; candidate bounds are 1.9167–1.9500s and
+1.9000–1.9333s. The mean difference is 50ms, about 2.53% less line time. This is
+one cold session per arm with two within-session repetitions, not independent
+boot replicates or a qualified gameplay speedup. Publication counters include
+fixed waits and repeated visual states; the lower candidate observations do not
+establish a general slowdown. The instant sign panel has fixed animation, so
+it is not used as a typewriter-speed or input-latency measurement.
+
+All four recordings have zero added render/output drops. Cold Continue,
+ordinary movement, six sign read/close cycles and repeated NPC conversations
+show coherent glyphs and return to the field. Both clean exits preserve the
+524,288-byte disposable save exactly. Original audio is retained, but listening
+quality is not claimed. Save-write/reset/rollback, font destruction and wider
+heap demands remain unqualified.
+
+Keep `font-resident-message-only` disabled and park it. The small observed text
+saving and absent throughput improvement do not justify 32,608 extra game-heap
+bytes and further lifecycle cost. This decision is about useful measured gain,
+not exact timing/RNG equality, and does not rule out every text-heavy scene.
+Approved Platinum Beta1 R2 remains the current beta. Continue with repeated
+archive metadata in existing guest loader paths.
+
+Evidence: `NATIVE_MESSAGE_FONT_STAGE_V1.json`,
+`NATIVE_MESSAGE_FONT_SOURCE_ADMISSION_V1.json`,
+`NATIVE_MESSAGE_FONT_MEASUREMENTS_V1.json`,
+`NATIVE_MESSAGE_FONT_FINDINGS_V1.json`,
+`NATIVE_MESSAGE_FONT_VISUAL_REVIEW_V1.json`, and
+`MESSAGE_FONT_NATIVE_BEFORE_AFTER_V32.csv`. Original capture, endpoint-counter,
+ROI-specification and transition-review receipts remain in private evidence.

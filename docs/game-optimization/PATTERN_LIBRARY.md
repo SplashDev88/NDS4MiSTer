@@ -1149,3 +1149,15 @@ Keep observed traffic savings separate from timing claims. A changed RNG/turn
 trajectory may reach expensive outdoor rendering sooner, increasing aggregate
 instruction counts even after removing font reads. Compare the same semantic
 phase on hardware, and retain all framebuffer/audio/RAM mismatch evidence.
+
+
+For paced text, measure an identical semantic substring using first/last glyph
+appearance in media PTS, and visually confirm each boundary. Keep the measured
+line free of held advance input. An already populated previous line can make a
+simple dark-pixel detector ambiguous; a newly empty line provides a cleaner
+boundary. Validate absent/present and monotonic detector conditions rather than
+silently accepting a misplaced ROI. Keep instant-panel animation, fixed waits,
+input-emission timestamps and buffer publication counts separate from text
+latency. A reduction in cartridge requests may yield only a tiny paced-text
+saving; compare that benefit with resident memory and lifecycle cost before
+qualifying a patch. Within-session repeats are not independent cold runs.

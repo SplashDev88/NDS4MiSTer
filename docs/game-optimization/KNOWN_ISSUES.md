@@ -510,3 +510,9 @@
   disabled: native benefit, listening/video review, save-write/reset, font free
   lifecycle and broader heap demands are not qualified. Its earlier battle end
   and higher fixed-window instruction count both mix different workloads.
+
+- Message-font residency is now parked after its native screen: roughly 50ms
+  less elapsed time on a two-second dialogue line, with no publication-throughput
+  improvement in sign/dialogue sequences. Single cold pair, two line repetitions;
+  no general slowdown or full-game safety claim. Its 32,608-byte extra heap cost
+  and unqualified lifecycle outweigh this bounded gain. It remains disabled.
