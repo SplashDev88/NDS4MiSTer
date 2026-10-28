@@ -681,6 +681,75 @@
         "ARCHIVE_SIZE_NATIVE_BEFORE_AFTER_V33.csv",
         "ARCHIVE_SIZE_CANONICAL_SELECTION_V1.json"
       ]
+    },
+    {
+      "id": "narc-read-fixed-metadata",
+      "pattern": "immutable-archive-metadata-precompute",
+      "cpu": "arm9",
+      "mode": "thumb",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x20068ee",
+      "expect": "06a80c210022c1f076ec06a805a90222c1f06aec059c06a8211d0022c1f06cec06a805a90422c1f05eec06a802a90222c1f05aec02a80088a84201dc1cf023f805980022261806a8311dc1f054ec06a805a90422c1f048ec",
+      "replace": "102408e00022c1f076ec06a805a90222c1f06aec059c06a8211d0022c1f06cec06a805a90422c1f05eec06a802a90222c1f05aec02a80088a84201dc1cf023f80598002226181020059005e054ec06a805a90422c1f048ec",
+      "hook": null,
+      "overlay": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "status": "parked_native_gain_insufficient",
+      "notes": "Same-function Thumb constants replace header-size and BTNF-size seek/read pairs. All 215 owned NARCs have both values 16. Full ROM/revision/ARM9/original-byte guards are mandatory; not a general NARC assumption. Member bounds/nonzero assertions, offset/count behavior, payload reads and close remain. No allocator, new storage or service. Global FS/cache/IRQ effects require full replay/native screening.",
+      "validated": {
+        "synthetic_payload_cases": 1644,
+        "synthetic_empty_assertions": 3,
+        "synthetic_invalid_member_or_open_failure_cases": 430,
+        "reference_frames": 23400,
+        "reference_read_ranges_and_lengths": 735,
+        "fb": "Coherent Continue, rival battle, post-battle field and home transition in sampled frames. 10,528 top/1,467 bottom hashes differ; later battle trajectory changes.",
+        "ram": "All 735 observed read arguments, member offsets/lengths and final FSFile positions match owned archives. Live destination bytes not independently sampled. No checkpoint ARM9 abort/undefined mode. Strict RAM differences retained.",
+        "audio": "6,982,861 of 18,774,412 stereo samples differ; no listening-equivalence claim. Later battle trajectory differs.",
+        "save": "All per-frame save hashes and final save match; no new save-write/reset qualification.",
+        "native": "Single cold control/candidate at stock 1GHz, identical accepted runtime and ordinary copied save. Same challenge/full-health battle/menu screens and supplemental first attack work. Both clean exits preserve seed. No new listening/save-write/reset/broad lifecycle qualification."
+      },
+      "gain": {
+        "qualified": false,
+        "per_call_FS_reads_before": 7,
+        "per_call_FS_reads_after": 5,
+        "per_call_FS_seeks_before": 5,
+        "per_call_FS_seeks_after": 3,
+        "native_speedup": null,
+        "reference_matched_call_prefix": {
+          "calls": 448,
+          "associated_PIO_blocks_before": 2086,
+          "associated_PIO_blocks_after": 1759,
+          "scope": "Same ordered archive/member/offset/requested prefix; other scheduler/cache state not held constant"
+        },
+        "reference_prebattle": {
+          "arm9_entries_before": 2729727044,
+          "arm9_entries_after": 2728653519,
+          "PIO_blocks_before": 26144,
+          "PIO_blocks_after": 26017
+        },
+        "scope": "Reference request reduction is real in bounded traces; native visible first-battle transition improves only 50ms/about 0.31% in one pair. Insufficient benefit for promotion; not a universal no-benefit claim.",
+        "native_transition_seconds_before": 16.133333333333333,
+        "native_transition_seconds_after": 16.083333333333336,
+        "native_near_black_total_seconds_before": 1.2333333333333334,
+        "native_near_black_total_seconds_after": 1.2000000000000002
+      },
+      "evidence": [
+        "ARCHIVE_READ_FIXED_BUILD_V1.json",
+        "ARCHIVE_READ_FIXED_OWNED_DISASSEMBLY_V1.txt",
+        "ARCHIVE_READ_FIXED_REPLACEMENT_DISASSEMBLY_V1.txt",
+        "ARCHIVE_FIXED_METADATA_ADMISSION_V1.json",
+        "ARCHIVE_READ_CALL_QUALIFICATION_V1.json",
+        "ARCHIVE_READ_CALL_CONTRACT_V1.json",
+        "ARCHIVE_READ_FIXED_GUARD_TESTS_V1.json",
+        "ARCHIVE_READ_FIXED_FINDINGS_V1.json",
+        "ARCHIVE_READ_FIXED_VISUAL_REVIEW_V1.json",
+        "NATIVE_ARCHIVE_READ_FIXED_FINDINGS_V1.json",
+        "NATIVE_ARCHIVE_READ_FIXED_VISUAL_REVIEW_V1.json",
+        "ARCHIVE_READ_FIXED_NATIVE_BEFORE_AFTER_V34.csv",
+        "ARCHIVE_READ_FIXED_CANONICAL_SELECTION_V1.json",
+        "ARCHIVE_METADATA_PATTERN_SCAN_V1.json"
+      ]
     }
   ],
   "arm9_crc32": "4d104949",
@@ -818,10 +887,17 @@
       "accepted_beta": "Platinum Beta1 R2 unchanged; terrain only"
     },
     "fixed_archive_metadata_admission": {
-      "state": "read_only_static_candidate_screen",
+      "state": "parked_archive_read_fixed_native_gain_insufficient",
       "receipt": "ARCHIVE_FIXED_METADATA_ADMISSION_V1.json",
-      "implemented": false,
-      "enabled": false
+      "implemented": true,
+      "enabled": false,
+      "reference": "ARCHIVE_READ_FIXED_FINDINGS_V1.json",
+      "native": "NATIVE_ARCHIVE_READ_FIXED_FINDINGS_V1.json"
+    },
+    "archive_metadata_detector": {
+      "receipt": "ARCHIVE_METADATA_PATTERN_SCAN_V1.json",
+      "scanner_commit": "4467f74557df5bc37e42b4139b656507e40cdde7",
+      "mode": "Opt-in Thumb structural scan; no profile supplied"
     }
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",

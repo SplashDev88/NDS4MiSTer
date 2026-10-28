@@ -1202,3 +1202,43 @@ can cancel within capture quantization. Report near-black intervals separately
 from total loading and native routine work, and do not call publication counts
 unique FPS. Static header/chunk constants may support a broader revision-guarded
 optimization, but must not become general NARC-format assumptions.
+
+
+## Revision-guarded archive metadata constants
+
+Inventory immutable header/chunk values across every owned archive before
+replacing their reads with constants. Require the full ROM identity, not just
+the game header or executable, because resources can change independently.
+Retain member checks, destination, explicit offset/count and final file position.
+
+Recover stack arguments as well as register arguments. An explicit-length
+archive API may intentionally read across multiple contiguous members; do not
+add a member-size clamp or infer whole-member semantics from a zero offset.
+Use the existing observer to capture argument and local-file state, qualify
+unchanged control output, and include those real tuples in payload fixtures.
+Label modeled SDK callees and separately verify owned callees where feasible.
+Matching file positions establish selected ranges, not independent live output
+bytes. Compare a common ordered call prefix before interpreting transfer counts
+when later RNG/timing changes the scene. Native semantic loading measurements
+remain necessary.
+
+The shared `scan_guest_patterns.py --include-thumb` scanner now detects the
+20-byte stack-local seek/read argument shape as `stack-file-header-halfword-read`.
+It recovers the two call targets and stack slots, allowing relocation and
+different stack layouts. This is a review lead, not proof of NARC semantics,
+constant values or patch safety. The 15-test pattern suite passes, including
+positive and negative cases for this detector. The owned Platinum scan finds three leads at `020068ee`,
+`020069ce` and `02006b7e`, with expected original bytes and the same seek/read
+targets. That scan has no PC profile attached: its zero sample fields mean
+unprovided measurements, not unexecuted code. See the private
+`ARCHIVE_METADATA_PATTERN_SCAN_V1.json` for the complete scan receipt.
+
+
+For native loading tests, use visible semantic checkpoints after navigation.
+A moving NPC or one extra dialogue advance can invalidate a timed route without
+being a game defect. Authenticate the final prompt before capture. Distinguish
+panel removal, loading, animation, first menu label and later attack outcome;
+keep input-emission timestamps and fixed idle waits out of visual latency.
+Fix detector regions from control, review adjacent boundary frames, and apply
+the same conditions to the candidate. Preserve small/neutral native results
+rather than extrapolating eliminated metadata reads into a gameplay speedup.

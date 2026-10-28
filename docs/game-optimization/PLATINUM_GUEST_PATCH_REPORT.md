@@ -2278,3 +2278,122 @@ Evidence: `NATIVE_ARCHIVE_SIZE_FINDINGS_V1.json`,
 `ARCHIVE_SIZE_NATIVE_BEFORE_AFTER_V33.csv`,
 `ARCHIVE_SIZE_CANONICAL_SELECTION_V1.json` and
 `ARCHIVE_FIXED_METADATA_ADMISSION_V1.json`.
+
+
+## Path-based archive reader — fixed metadata candidate
+
+`narc-read-fixed-metadata` replaces two metadata seek/read pairs in the ARM9
+Thumb reader at `020068c8..020069a8`. All 215 NARCs in this exact owned ROM
+have 16-byte headers and 16-byte BTNF chunks. The existing loader checks the
+full cartridge SHA-256 as well as header, revision, ARM9 and original code, so
+these constants cannot silently extend to another asset layout. Two short
+in-function replacements occupy the original 88-byte guarded extent beginning
+at `020068ee`; ten bytes change. No scratch, allocator, overlay or service is
+introduced. Member-count/nonzero assertions, requested offset/count, payload
+read and file close remain.
+
+The first fixture assumption that all observed calls were whole-member reads
+was rejected before any trial. Adding two DTCM spans to the existing 16-site
+observer captured the fifth argument and returned local file structure. All
+254 accepted-control output files remain byte-exact. Of 835 original calls,
+826 use the whole-member wrapper and nine use the explicit-length wrapper.
+Eight read two bytes at offset 1702. The other deliberately reads 7,488 bytes
+starting at the first 16-byte move record, spanning subsequent records. A new
+member-length clamp would break this supported calling behavior.
+
+The fixture covers all 215 owned archives with edge/random whole/partial cases
+and observed argument tuples. All 1,644 payload cases preserve output bytes,
+registers, flags, stack and mapped memory; three empty-member assertions and
+430 modeled invalid-index/open-failure cases retain the assertion behavior.
+The owned SDK seek body executes unchanged. Init/Open/Read/Close/assert are
+explicit synchronous models; actual filesystem errors, cache and IRQ effects
+are not proved by this fixture. Five loader failure cases return the original
+virtual image atomically, including wrong full-ROM identity.
+
+| Reference observation | Accepted terrain | Fixed reader metadata |
+|---|---:|---:|
+| FS reads per path read | 7 | 5 |
+| FS seeks per path read | 5 | 3 |
+| Same ordered read-call prefix | 448 | 448 |
+| PIO blocks associated with that prefix | 2,086 | 1,759 |
+| PIO blocks, frames 0–17999 | 26,144 | 26,017 |
+| ARM9 instruction entries, frames 0–17999 | 2,729,727,044 | 2,728,653,519 |
+| Full-route path read calls | 835 | 735 |
+
+Associated transfers fall about 15.7% in the matching call prefix, but unrelated
+scheduler/cache activity is not independently controlled. Pre-battle total
+instruction work falls only 0.0393%. Full-route totals mix different later
+battle trajectories and do not establish equal-work speedup.
+
+The 23,400-frame candidate completes with all 735 observed read ranges, lengths
+and final file positions matching owned archive metadata. That trace validates
+selected ranges, not independently sampled live destination bytes. Sparse
+paired screens show normal Continue/battle progress and eventual post-battle
+field/home transitions. No sampled ARM9 abort/undefined mode appears, and all
+save hashes match. Strict mismatches remain recorded: 10,528 top and 1,467
+bottom frame hashes, plus 6,982,861 of 18,774,412 stereo samples. The user permits
+functional investigation despite timing/RNG drift; no native, listening or
+broader lifecycle acceptance is claimed. The candidate remains disabled pending
+an isolated native first-battle loading screen, with accepted terrain only as
+control. Approved Platinum Beta1 R2 remains unchanged.
+
+Evidence: `ARCHIVE_READ_CALL_QUALIFICATION_V1.json`,
+`ARCHIVE_READ_CALL_CONTRACT_V1.json`, `ARCHIVE_READ_FIXED_BUILD_V1.json`,
+`ARCHIVE_READ_FIXED_GUARD_TESTS_V1.json`, `ARCHIVE_READ_FIXED_FINDINGS_V1.json`,
+`ARCHIVE_READ_FIXED_BEFORE_AFTER_V1.csv` and `ARCHIVE_READ_FIXED_VISUAL_REVIEW_V1.json`.
+
+
+## Fixed archive reader native screen — parked for insufficient benefit
+
+The control and candidate use the same accepted terrain baseline, ordinary
+copied story save, host/renderer, rc12 FPGA and stock 1GHz clock. Cartridge
+identity and original/replacement bytes are checked live. Historical timed
+navigation encountered an NPC and different dialogue progress; short inspected
+inputs recover the same completed challenge prompt before either measurement.
+A pilot already past the challenge is excluded. One capture configuration was
+rejected before input because it lacked the required endpoint idle marker.
+
+| Native observation | Terrain control | Fixed reader metadata |
+|---|---:|---:|
+| Challenge panel removed to first FIGHT label | 16.1333s | 16.0833s |
+| First transition near-black interval | 0.1000s | 0.1000s |
+| Post-wipe near-black interval | 1.1333s | 1.1000s |
+| Loading-section buffer publications/s | 58.145 | 58.041 |
+| Host / renderer CPU, one-core percent | 3.88 / 93.93 | 3.85 / 93.81 |
+
+The complete visible transition includes battle animation and paced text and
+excludes input-emission delay. The same detector, fixed from control before
+candidate analysis, identifies challenge-panel removal and the first FIGHT
+label; adjacent boundary frames are visually reviewed. Both near-black events
+are also reviewed, and neither is pure filesystem time. One cold pair at 60Hz
+shows only 50ms/about 0.31% shorter overall transition and 33ms less near-black
+time. This does not establish a repeatable, worthwhile speedup. Publication
+counts include idle/repeated screens and are not unique FPS or guest cycles.
+Native archive-entry counts are unavailable for this screen.
+
+Both recordings reach the same full 21/21HP Turtwig/Chimchar setup and normal
+Fight/move menus. The recorded input sequence ends at move selection in both;
+a separate confirm advances the first attack and returns to Fight with reduced
+enemy HP. That supplemental step is outside the recordings and supplies no
+whole-turn performance metric. Both captures have zero added drops. Both clean
+exits preserve the copied save; original audio is retained without a listening
+claim. Further save-write/reset, broad story and lifecycle work is not pursued
+for a candidate without useful native benefit.
+
+Keep `narc-read-fixed-metadata` disabled and retain Platinum Beta1 R2 unchanged.
+Default manifest selection still yields the accepted terrain virtual image;
+explicit selection reproduces the tested archive candidate. This is a bounded
+negative result, not proof that every other asset-heavy scene is unaffected.
+
+The shared scanner now has an opt-in Thumb structural detector for stack-local
+file-header reads. Fifteen pattern tests pass; the owned scan finds the three
+related reader/allocation/size-query sites. The scan has no attached PC profile,
+so zero sample fields mean unprovided measurements. Constants, function meaning
+and safe replacement still require the separate disassembly/data/call proofs.
+
+Evidence: `NATIVE_ARCHIVE_READ_FIXED_FINDINGS_V1.json`,
+`NATIVE_ARCHIVE_READ_FIXED_VISUAL_REVIEW_V1.json`,
+`ARCHIVE_READ_FIXED_NATIVE_BEFORE_AFTER_V34.csv`,
+`ARCHIVE_READ_FIXED_CANONICAL_SELECTION_V1.json`,
+`ARCHIVE_METADATA_PATTERN_SCAN_V1.json` and
+`NATIVE_ARCHIVE_READ_FIXED_FINAL_PRESERVATION_V1.json`.

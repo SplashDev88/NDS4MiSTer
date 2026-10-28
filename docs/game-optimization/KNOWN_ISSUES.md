@@ -522,9 +522,10 @@
   checks. Earlier archive census guard aborts were instrumentation failures,
   not demonstrated game failures; exclusion receipts are retained.
 - Platinum archive layouts have useful constants, but fixed-layout metadata
-  precomputation is unimplemented. Item records are uniform-sized with padding;
-  do not infer their stride from size. File-position/completion effects and already cached
-  reads must be accounted for before a patch is admitted.
+  precomputation is now tested in the path reader but not enabled. Item records
+  are uniform-sized with padding; do not infer their stride from size.
+  File-position/completion effects and already cached reads must be accounted
+  for before a patch is admitted.
 
 
 - Platinum's size-only archive skip passes the bounded return contract and
@@ -538,4 +539,16 @@
   archive allocator would remove the caller's null-allocation guard: that helper
   reads into the result without checking it. This shortcut was not implemented.
 - All 215 owned NARCs share 16-byte headers and 16-byte BTNF chunks. This is a
-  guarded-revision fact, not a universal format guarantee or existing patch.
+  guarded-revision fact, not a universal format guarantee. The path-reader
+  candidate uses these constants and is parked after insufficient native gain.
+
+- The archive reader explicitly supports reads spanning multiple members: one
+  observed call reads 7,488 bytes from the first 16-byte move record. Preserve
+  explicit lengths rather than adding a member-bound clamp.
+- Fixed reader metadata passes synthetic payload and full reference progression
+  screens, with fewer associated cartridge transfers. Different later battle
+  trajectories prevent interpreting whole-route totals as speedup. Live payload
+  bytes, audio listening and broad lifecycle remain unqualified. Its native
+  first-battle transition improves only 50ms (16.1333s to 16.0833s) in one cold
+  pair, with no publication improvement. Keep it disabled; do not repeat this
+  same screen unchanged or infer a whole-game speedup.
