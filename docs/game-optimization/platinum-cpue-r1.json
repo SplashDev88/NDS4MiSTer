@@ -76,14 +76,14 @@
       "hook": null,
       "scratch_bytes": 0,
       "enabled": false,
-      "notes": "Disabled scratch-free Thumb empty-tail exit. Six byte values change across five instructions in a guarded54-byte overlay extent. Signed entry count must remain immutable during the call; no queue/IRQ writes are removed. 1338 synthetic cases and bounded pre/post-reset writer contracts pass. Audio alone fails the current budget. Do not rerun unchanged, trial natively, or transfer FFT perceptual approval.",
+      "notes": "Disabled scratch-free Thumb empty-tail exit. Six byte values change across five instructions in a guarded54-byte overlay extent. Signed entry count must remain immutable during the call; no queue/IRQ writes are removed. 1338 synthetic cases and bounded pre/post-reset writer contracts pass. Audio alone fails the current budget. Do not rerun unchanged, trial natively, or transfer FFT perceptual approval. On 2026-10-28 the user explicitly authorized isolated perceptual trials and review videos, superseding the earlier no-native-trial restriction for this experiment only. Trials show no worthwhile gain in screened scenes; retain disabled regardless of visual review. No combined-patch or lifecycle acceptance.",
       "status": "rejected_audio_mismatch",
       "validated": {
         "fb": "All 6000 top/bottom screen pairs bit-exact",
         "ram": "All five fixed checkpoint sets and retained frame2600 RAM exact outside full-body-qualified patch bytes; transient per-frame mainRAM246/DTCM250/ARM7WRAM19 hashes differ",
         "audio": "Failed:1660 of4813950 stereo samples differ; max signed16 delta312; RMS0.148479; no audibility judgment",
         "save": "All6000 save hashes and final save bit-exact",
-        "native": "Not run; audio gate failed"
+        "native": "User-authorized isolated perceptual screening completed; staged bytes/save/ownership/capture checks passed. No native bit-exact or full lifecycle qualification. Walking: 16.70\u201316.80 control versus 16.65 patched screen publications/s; menu: 14.89\u201315.13 control versus 14.74 patched. No native gain demonstrated."
       },
       "gain": {
         "reference_arm9_entries_4200_5999": {
@@ -96,7 +96,8 @@
         },
         "native_cycles": null,
         "native_frame_time": null,
-        "qualified": false
+        "qualified": false,
+        "native_screening": "Walking: 16.70\u201316.80 control versus 16.65 patched screen publications/s; menu: 14.89\u201315.13 control versus 14.74 patched. No native gain demonstrated."
       },
       "synthetic_validation": {
         "cases": 1338,
@@ -110,6 +111,24 @@
         "input_manifest_sha256": "86d047ce9b6cf2113f8facc2d7ae26b391195a265b4a05b318b95874cc6855e8",
         "status_receipt": "EMPTY_TAIL_CANDIDATE_V1_STATUS.json",
         "status_sha256": "1a54b57e86827452898591e71c67ba9708df4b885992e3ef3a5c9a6f6d5badaa"
+      },
+      "native_perceptual_screening": {
+        "accepted": false,
+        "default_enabled": false,
+        "scope": "Stock1GHz, unchanged rc12 FPGA and accepted Beta2 renderer; real-time inputs and same disposable qualified seed. Publication counts are not unique gameplay FPS or cycles.",
+        "trial": "E2",
+        "matched_control_trials": [
+          "C4",
+          "C5"
+        ],
+        "receipt": "NATIVE_PERCEPTUAL_RESULTS_V1.json",
+        "receipt_sha256": "6ddbeae9b819127aebc73c8c3c7b3d20f64ed2df3c4f12a3c6cde5c9894d8749",
+        "result": "no_qualified_gain_in_screened_scenes",
+        "reference_review": "Platinum_Overlay_Review.mov",
+        "review_receipt": "Platinum_Overlay_Review.json",
+        "review_receipt_sha256": "1e9b49e00266e7a7ba2598113a34ba1b3185a194aec41e32e063dcb46a37b50f",
+        "native_battle_measured": false,
+        "user_perceptual_approval": false
       }
     },
     {
