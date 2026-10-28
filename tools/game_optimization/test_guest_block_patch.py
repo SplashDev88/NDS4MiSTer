@@ -7,6 +7,28 @@ from check_guest_block_patch import (compare_accesses, ordinary_ranges,
 
 
 class BlockTests(unittest.TestCase):
+    def test_external_callee_model_returns_across_modes_without_replacing_target(self):
+        from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_PC, UC_ARM_REG_LR
+        # Thumb push/ldr/blx/pop, calling a mapped ARM callee at 0x02010000.
+        code = bytes.fromhex('00b5014b984700bd00000102')
+        regs = [7] + [0]*12 + [0x03000f00, 0x02000101]
+        seen = []
+        def callee(vm):
+            seen.append(vm.reg_read(UC_ARM_REG_R0))
+            vm.reg_write(UC_ARM_REG_R0, 19)
+            vm.reg_write(UC_ARM_REG_PC, vm.reg_read(UC_ARM_REG_LR))
+        pages = [(0x02010000, bytes(4096))]
+        result, _ = run(code, 0x02000000, bytes(4096), regs, 0x3f,
+                        mode='thumb', extra_memory=pages,
+                        call_handlers={0x02010000: callee})
+        self.assertEqual(seen, [7])
+        self.assertEqual(result['registers'][0], 19)
+        self.assertEqual(result['registers'][13], regs[13])
+        for address in [0x02000002, 0x02020000, 0x02010001]:
+            with self.assertRaises(AssertionError):
+                run(code, 0x02000000, bytes(4096), regs, 0x3f,
+                    mode='thumb', extra_memory=pages, call_handlers={address: callee})
+
     def test_context_before_entry_and_end_of_page_are_executable(self):
         # Both functions share a context that extends before their entry.
         code = bytearray(4096)

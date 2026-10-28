@@ -28,7 +28,11 @@ REGS = [UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3,
 
 
 def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=(),
-        mode='arm', instruction_limit=20000, code_address=None):
+        mode='arm', instruction_limit=20000, code_address=None, call_handlers=None):
+    # Optional synthetic callee models must live outside the tested code extent.
+    # They model a contract only; their implementation and timing are unverified.
+    handlers = dict(call_handlers or {})
+    extra_memory = tuple(extra_memory)
     assert mode in ('arm', 'thumb') and bool(cpsr & 0x20) == (mode == 'thumb')
     assert entry % (2 if mode == 'thumb' else 4) == 0
     assert 0 < instruction_limit <= 1000000
@@ -36,6 +40,10 @@ def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=(),
     code_address = entry if code_address is None else code_address
     page = code_address & ~4095
     assert code_address <= entry < code_address + len(code) <= page + 4096
+    assert all(isinstance(at, int) and at % 2 == 0 and callable(handler) and
+               not code_address <= at < code_address + len(code) and
+               any(base <= at < base + len(data) for base, data in extra_memory)
+               for at, handler in handlers.items())
     vm.mem_map(page, 4096)
     vm.mem_write(code_address, code)
     vm.mem_map(0x03000000, 4096)
@@ -58,6 +66,8 @@ def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=(),
             uc.emu_stop()
         else:
             count += 1
+            if address in handlers:
+                handlers[address](uc)
 
     def access(uc, kind, address, size, value, user):
         # Unicorn supplies a value for writes; collect the actual data on reads.
