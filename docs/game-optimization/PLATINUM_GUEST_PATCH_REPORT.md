@@ -1620,3 +1620,36 @@ no later writes. ARM9 entries in the battle window are 264,018,986 versus
 234,692,591, but differing timing/trajectories prevent treating this as native
 speed. This is sufficient to proceed to the authorized functional native screen,
 not to enable the candidate. See `OAM_INLINE_BATTLE_VISUAL_REVIEW_V1.json`.
+
+## OAM inline native screen — no worthwhile walking/menu gain
+
+The isolated test kit reuses Platinum Beta1 R2's exact host, renderer and FPGA,
+at stock 1 GHz. Both trials cold-load the same disposable save and reach the
+same boundary anchor. Each records two east/west traversals, then eight menu
+open/close cycles. Actual staged bytes authenticate terrain enabled in both,
+with the new 56-byte OAM replacement only in the candidate.
+
+| Complete screen-buffer publications/s | Approved terrain | Terrain + OAM | Change |
+|---|---:|---:|---:|
+| Walking | 18.9384 | 19.0116 | +0.387% |
+| Menu cycles | 16.5761 | 16.5354 | −0.245% |
+
+This first pair does not demonstrate a worthwhile gain. These counters are
+not unique game FPS, guest cycles or frame-time percentiles. Native input and
+RTC remain real-time; no exact trajectory claim is made. Keep OAM disabled.
+Native battle performance remains unmeasured; new target-scene evidence, rather
+than another identical walking trial, is needed to justify further work.
+
+Both recordings have zero added capture drops. Reviewed movement/menu views
+show intact sprites and readable menu entries, matching start/end positions.
+Both sessions stop cleanly to MENU and preserve the disposable save. This is
+not a new save-write/reset test or full-game qualification. The initial staging
+connection timed out after creating the kit; read-only recovery verified 2,274
+protected files and 84 runtime files without rewriting the kit. The separate
+final preservation receipt covers the post-test audit.
+
+Evidence: `OAM_NATIVE_FINDINGS_V1.json`, `NATIVE_OAM_STAGE_V1.json`,
+`PLATINUM_OC1_WALK_MENU_CAPTURE.json`, `PLATINUM_O1_WALK_MENU_CAPTURE.json`,
+`OAM_NATIVE_MENU_PHASE_REVIEW_V1.png`, both stop receipts, and
+`NATIVE_OAM_FINAL_PRESERVATION_V1.json`. Raw native recordings are retained;
+no new beta or approval request is justified by this result.

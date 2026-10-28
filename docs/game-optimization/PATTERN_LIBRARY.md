@@ -1012,3 +1012,10 @@ synthetic runner execute earlier callbacks and later branches unchanged. Retain
 SP/LR/PC, flags, mapped data and ordered device accesses in the comparison.
 Only authenticated immutable literal reads may be excluded. Full-function
 synthetic equality still says nothing about interrupt/DMA timing or native gain.
+
+Platinum's 56-byte in-place specialization passes 92 full-function fixtures,
+including both affine paths, and its battle reference completes coherently.
+The first native walking/menu pair nevertheless yields only +0.387%/−0.245%
+publication throughput. Keep it disabled without a worthwhile native benefit.
+A large guest instruction reduction can leave a renderer-bound scene unchanged;
+use an active target-scene measurement before generalizing the win.

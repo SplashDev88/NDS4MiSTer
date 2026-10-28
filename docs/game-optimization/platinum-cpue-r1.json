@@ -427,11 +427,17 @@
       "hook": null,
       "scratch_bytes": 0,
       "enabled": false,
-      "notes": "Same56-byte extent. Valid manager engine0/1 and OAM range0..127; preserves ordered three16-bit reads/writes and untouched affine halfword. Original zero-length branch and full-copy/affine paths remain. Synthetic cases pass; runtime/native qualification pending; not a generic memcpy rewrite.",
+      "notes": "Same56-byte extent. Valid manager engine0/1 and OAM range0..127; preserves ordered three16-bit reads/writes and untouched affine halfword. Original zero-length branch and full-copy/affine paths remain. Synthetic cases pass; runtime/native qualification pending; not a generic memcpy rewrite. Native walking/menu screen found no worthwhile gain. Keep disabled; only new target-scene evidence warrants further work.",
       "validation": {
         "synthetic": "92 complete-function cases: registers, CPSR, memory and ordered data effects match; immutable callback literals excluded",
         "reference": "23400-frame run completed; coherent reviewed battle progression, unchanged save; timing/frame/RAM/audio differences retained",
-        "native": "pending"
+        "native": "First paired matched walking/menu route completed; coherent sprites/menu and unchanged save, clean captures/stops. No worthwhile publication-throughput gain; native battle/save-write/reset unmeasured."
+      },
+      "gain": {
+        "native_walking_publication_percent": 0.38681611066622157,
+        "native_menu_publication_percent": -0.24547073528020658,
+        "qualified_game_FPS": null,
+        "source": "OAM_NATIVE_FINDINGS_V1.json"
       }
     }
   ],
@@ -529,11 +535,12 @@
     },
     "terrain_ram_classification": "TERRAIN_RAM_CLASSIFICATION_V1.json",
     "oam_inline_experiment": {
-      "state": "disabled_candidate_reference_screen_complete_native_pending",
+      "state": "disabled_no_worthwhile_native_walking_menu_gain",
       "synthetic": "OAM_INLINE_FULL_FUNCTION_PROOF_V1.json",
       "reference": "OAM_INLINE_BATTLE_CANDIDATE_V1_STATUS.json",
       "functional_review": "OAM_INLINE_BATTLE_VISUAL_REVIEW_V1.json",
-      "user_budget": "FUNCTIONAL_BUDGET_STEERING_20261028.json"
+      "user_budget": "FUNCTIONAL_BUDGET_STEERING_20261028.json",
+      "native": "OAM_NATIVE_FINDINGS_V1.json"
     }
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
