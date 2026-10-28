@@ -9,7 +9,7 @@ The terrain-visibility experiment improves native publication throughput by
 and native save, soft reset, cold reload, room entry/exit and unpatched save
 compatibility checks pass. The user then explicitly instructed: "just promote
 it,. works great". Enable only the tested48-byte terrain patch for a cumulative
-private Platinum Beta1. The other five candidates remain disabled. This is
+private Platinum Beta1. Other candidates remain disabled. This is
 perceptual acceptance with bounded coverage; strict RAM/audio and six outdoor
 frame differences remain in the evidence. Exact rc12 and accepted Beta2 archives
 remain unchanged. Actual archive installation is qualified separately.
@@ -1558,3 +1558,55 @@ Cumulative packaging uses an opt-in generic FMV fallback after a guest patch is
 skipped by its identity/byte guards. An admitted guest image remains exclusive;
 other games retain their independently guarded existing movie path. No new
 HPS service, FPGA change, guest clock change or save-state format is introduced.
+
+## Accepted baseline, functional budget and strided uploads — 28 October
+
+Platinum Beta1 R2 was installed and qualified from archive SHA-256
+`716c70cd1be4612b6e8aed50c9536917cb8585bba9c46e7b9bf9696e43e785bb`.
+Further first-battle coverage retains the exact comparison failure: the fixed
+input replay reaches different turn/HP states with terrain enabled. The
+unpatched observer control matches all 253 golden files. The user then stated,
+"I dont care about that. as long as the game still functions lets continue".
+Timing-driven RNG and replay-trajectory differences no longer block progress.
+Continue functional gameplay, progression, save and audiovisual screening;
+do not relabel differing outputs bit-exact or infer that crashes/corruption are
+accepted. The promoted terrain patch stays enabled.
+
+Owned code at `02051ea4–02051ed4` constructs a battle seed from RTC data plus
+the frame counter at `021bf6a8`. Three checkpoint words differ by five between
+the terrain control and original image (`2b0c431c` versus `2b0c4321`). This
+supports a timing explanation but is not a complete causal proof of the HP
+variation. RNG-only tracing is discontinued under the user's direction.
+Its V1 configuration was rejected before replay because its watch began before
+profiling; V2 aborted on an instruction/mode guard at a reused overlay address.
+Neither failed diagnostic validates the private RNG sequence or demonstrates
+a gameplay crash. Keep the guards intact.
+
+The OAM upload census observes 661,368 six-byte copies in the original battle
+window, of which 99.467% repeat. The accepted terrain run records 669,312 copies,
+99.447% repeated. Their different battle trajectories prohibit a direct speed
+comparison. The owned callback table resolves to main/sub OAM, with three
+ordered halfword stores per eight-byte slot and separate affine updates.
+Dirty-write skipping remains unqualified.
+
+The new disabled `oam-six-byte-inline` candidate replaces the 56-byte ARM loop
+at `020a7ed4` in the initial ARM9 image. It removes per-sprite callback and copy
+loop overhead while retaining every three-halfword read/write sequence. It uses
+no scratch, trampoline, hardware hook or HPS service. Existing zero-count,
+full-copy and affine paths remain. Normal manager screen indices must be 0/1
+and sprite ranges within 0–127; broader runtime coverage remains necessary.
+
+The shared synthetic block runner now accepts an explicit code-context base so
+the full original function and its earlier callbacks execute together. All 92
+fixtures pass complete register/CPSR/memory checks and ordered accesses outside
+two authenticated immutable callback literals. Fixtures include zero counts,
+range boundaries, both screens, active/inactive affine paths, initial flags and
+ARM/Thumb returns. For 128 sprites without affine updates, complete-function
+entries fall from 6,435/6,563 to 1,064. This is a synthetic instruction count,
+not native speed. A cumulative first-battle replay against the accepted terrain
+image is the next functional screen. New candidate remains disabled.
+
+Evidence: `FUNCTIONAL_BUDGET_STEERING_20261028.json`,
+`BETA1_UPLOAD_CONTROL_FINDINGS_V1.json`, `BETA1_UPLOAD_ACCEPTED_FINDINGS_V1.json`,
+`BETA1_BATTLE_RNG_OWNED_DISASSEMBLY_V1.txt`, `OAM_INLINE_BUILD_V1.json`,
+`OAM_INLINE_FULL_FUNCTION_PROOF_V1.json` and `OAM_INLINE_BATTLE_CANDIDATE_V1_JOB.json`.

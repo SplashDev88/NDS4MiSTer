@@ -448,3 +448,14 @@
   live graphics/IRQ execution points; stack liveness remains open. The private V6
   runner's legacy checkpoint-RAM summary field covers only its early mainram.bin;
   use the explicit checkpoint comparison and overall rejection status instead.
+
+- Platinum's accepted terrain beta changes a fixed-input first-battle trajectory.
+  The user permits timing/RNG differences provided the game functions. Preserve
+  exact mismatch evidence without blocking work on RNG equality; continue to
+  check gameplay, progression, saves and audiovisual defects. The diagnostic
+  watch at0223f4cc aborted on an instruction/mode mismatch in a reused overlay
+  address. It did not validate RNG steps and is not evidence of a game crash.
+- The new disabled OAM inline loop assumes normal manager indices0/1 and ranges
+  within128 sprite slots. Synthetic complete-function tests preserve all ordered
+  OAM accesses and the separate affine halfwords. They do not prove interrupt,
+  DMA or native behavior. Repeated source bytes alone cannot justify dirty skips.

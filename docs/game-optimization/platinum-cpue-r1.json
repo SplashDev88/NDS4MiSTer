@@ -414,6 +414,25 @@
         "TERRAIN_RESET_FINDINGS_V1.json",
         "TERRAIN_PROMOTION_AUTHORIZATION_V1.json"
       ]
+    },
+    {
+      "id": "oam-six-byte-inline",
+      "pattern": "fixed-size-strided-upload",
+      "cpu": "arm9",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x020a7ed4",
+      "mode": "arm",
+      "expect": "0680a0e30600a0e10410a0e10820a0e139ff2fe1082084e201008ae20018a0e10208a0e1210855e12048a0e1086086e221a8a0e1f2ffff8a",
+      "replace": "0015a0e1071481e2041081e006c0a0e304e04fe2b230d6e0b230c1e0b230d6e0b230c1e0b430d6e0b430c1e0015055e2f7ffff1a0000a0e1",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "notes": "Same56-byte extent. Valid manager engine0/1 and OAM range0..127; preserves ordered three16-bit reads/writes and untouched affine halfword. Original zero-length branch and full-copy/affine paths remain. Synthetic cases pass; runtime/native qualification pending; not a generic memcpy rewrite.",
+      "validation": {
+        "synthetic": "92 complete-function cases: registers, CPSR, memory and ordered data effects match; immutable callback literals excluded",
+        "reference": "pending",
+        "native": "pending"
+      }
     }
   ],
   "arm9_crc32": "4d104949",
