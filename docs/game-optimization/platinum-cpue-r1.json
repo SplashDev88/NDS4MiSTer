@@ -2,13 +2,64 @@
   "schema_version": 1,
   "game_code": "CPUE",
   "revision": 1,
-  "title": "Pokémon Platinum Version (USA) (Rev 1)",
+  "title": "Pok\u00e9mon Platinum Version (USA) (Rev 1)",
   "header_sha1": "5b5bc6e7e15499337acf5662e3e7652c7fc3b665",
   "header_bytes": 352,
   "rom_sha256": "fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb",
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "bounded_reference_baseline_established_no_patch",
-  "patches": []
+  "status": "candidate_rejected_no_patch_enabled",
+  "patches": [
+    {
+      "cpu": "arm9",
+      "mode": "arm",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x20c4b90",
+      "expect": "02c080e00c0050e1000000ba000000ea0400b0e8000000ba000000ea002081e5f7ffffba1eff2fe1",
+      "scratch_bytes": 0,
+      "overlay": null,
+      "hook": null,
+      "enabled": false,
+      "id": "fifo-word-stream-predication",
+      "pattern": "branch-heavy-fixed-destination-word-stream",
+      "replace": "02c080e00c0050e10400b0b8002081b5fbffffba1eff2fe10000a0e10000a0e10000a0e10000a0e1",
+      "status": "rejected_audio_and_transient_RAM_mismatch",
+      "validated": {
+        "fb": "All6000 top/bottom screen pairs bit-exact",
+        "ram": "All5 declared checkpoint sets and retainedframe2600dump match outside40 patch bytes; per-frame mainRAM247,DTCM348,ARM7WRAM107 hashes differ",
+        "audio": "Failed:175017 of4813950 stereo samples differ; maximum signed16 delta2146; no audibility judgment",
+        "save": "All6000 per-frame save hashes and finalsave bit-exact",
+        "native": "Not run; strict replay gate failed"
+      },
+      "gain": {
+        "reference_arm9_entries_4200_5999": {
+          "before": 248802085,
+          "after": 245648794,
+          "reduction_percent": 1.2673892986065611,
+          "first_frame": 4200,
+          "end_frame_exclusive": 6000,
+          "scope": "Software executed instructions; not native cycles or speed"
+        },
+        "native_cycles": null,
+        "native_frame_time": null,
+        "qualified": false
+      },
+      "notes": "Rejected and disabled. Same40-byte initial ARM9 code extent; no scratch/hook/overlay.1680 synthetic cases preserve registers/CPSR/ordered accesses. Full reference has identical screens/save/fixed RAM checkpoints but changed audio and transient RAM. Do not assume harmless timing, extrapolate FFT video approval, retry unchanged or run natively under the current budget.",
+      "synthetic_validation": {
+        "cases": 1680,
+        "receipt": "FIFO_WORD_STREAM_SYNTHETIC_V1.json",
+        "receipt_sha256": "9a8aadaf1f1e6551bbdba52d01c32be334dc6c47b6f01678bb9ee2a9ec484eb5"
+      },
+      "replay_rejection": {
+        "receipt": "FIFO_WORD_STREAM_COMPARISON_V1.json",
+        "receipt_sha256": "35dfacf2159523c2d10014d77f33cb17910e56a805bf38470ca25ac120422007",
+        "input_manifest": "FIFO_WORD_STREAM_INPUT_MANIFEST_V1.json",
+        "input_manifest_sha256": "6b8951fe98bd5a995c67df3fea5abcb266340df1dbb755e85e54ed54cc2dc44b",
+        "status_receipt": "FIFO_WORD_STREAM_CANDIDATE_V1_STATUS.json",
+        "status_sha256": "b4880cb2efd1e52f818365b3b063aa1035464d20975652de9e64b6e9bf5a1e92"
+      }
+    }
+  ],
+  "arm9_crc32": "4d104949"
 }

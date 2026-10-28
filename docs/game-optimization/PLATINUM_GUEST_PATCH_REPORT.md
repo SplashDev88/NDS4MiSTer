@@ -4,11 +4,11 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-No guest patch is enabled and no new speed gain is claimed.
+The word-stream candidate is rejected and disabled; no new speed gain is claimed.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
-The identity-only manifest is `platinum-cpue-r1.json`. Original ROM and saves
+The guarded patch manifest is `platinum-cpue-r1.json`. Original ROM and saves
 remain untouched. The earlier hardware-created room save loads successfully.
 The original backup is entirely `ff` and contains no saved checkpoint; it is
 preserved. A fresh read-only CIFS header inventory finds files reporting CPUJ
@@ -74,8 +74,9 @@ for both CPUs, including unresolved ARM7 and live-overlay regions.
 The listed code bytes match the unpacked ROM at all five live checkpoints.
 Static disassembly and existing emulator register definitions support these
 bounded interpretations. The transfer census below adds runtime mode guards
-and actual arguments; other hotspots still require them. A fixed-destination word stream must not be treated
-as ordinary memcpy, nor a large interrupt sample share as removable dead work.
+and actual arguments; other hotspots still require them. A fixed-destination
+word stream must not be treated as ordinary memcpy, nor a large interrupt
+sample share as removable dead work.
 
 ## Guarded transfer census
 
@@ -106,29 +107,53 @@ accesses is not justified. OAM callers return to `020a7ee8`, `020a7f9c`,
 `020a7fac`, `020a7fbc` and `020a7fcc`; the five RAM calls return to Thumb
 address `0200aeb5`. The routines themselves were observed in ARM mode.
 
-The first concrete candidate to investigate is branch compaction of the word
-stream while retaining every ordered word load and FIFO write. Its original
-control flow accounts for `6 * words + 8 * calls` instruction entries. A
-proposed predicated loop would account for `4 * words + 6 * calls`, a nominal
-4,390,320 fewer entries (1.765% of this selected ARM9 workload), assuming
-unchanged calls and timing behavior. This is arithmetic from the unpatched
-trace, not a tested patch, native cycle estimate or measured speedup. Synthetic
-equivalence, whole-game exactness and lifecycle/native gates remain required.
-
 Evidence: `TRANSFER_CALL_FINDINGS_V2.json`,
 `TRANSFER_CALL_AUDIT_FIXTURE_V2.json` and
 `TRANSFER_GUARDED_V1_COMPARISON.json`. V1 findings retained DTCM sources as
 unclassified; V2 labels them using the mapped ARM9 DTCM range without rerunning
-or changing the replay. No patch or scratch allocation has been installed.
+or changing the replay. No beta patch or scratch allocation is installed.
 
-| Measurement | Baseline | Candidate |
-|---|---|---|
-| Exact ROM and private seed identity | Verified and unchanged | No candidate |
-| Bounded bedroom/menu replay | 6,000 frames, exact independent repeat | Not run |
-| ARM9/ARM7 reference instruction entries, frames 4200–5999 | 248,802,085 / 45,859,032 | Not run |
-| Native speed, pacing and audio | Not measured in this workflow | Not measured |
-| Golden framebuffer/RAM/audio/save comparison | All required files match; all 100 outputs match | Not run |
-| Transition, battle, save-write/reload, reset coverage | Pending | Not run |
+## Word-stream branch trial — rejected
+
+`fifo-word-stream-predication` replaces 40 bytes of initial ARM9 ARM code at
+`020c4b90`. Predicated LDM/STR instructions retain the ordered source reads and
+fixed-destination writes while removing branch scaffolding. It uses no scratch,
+overlay hook, new service or RTL. The existing guarded VirtualRom loader admits
+the exact CPUE revision 1 header/ROM/raw-ARM9 identity and original bytes;
+only 26 byte values change within the declared 40-byte extent. Four negative
+admission cases preserve the complete original stream. No ROM file is written.
+
+The existing synthetic runner passes 1,680 cases with identical registers,
+CPSR, mapped memory and ordered data accesses, including zero/null calls,
+odd lengths, alignment, overlap, signed-address boundaries, wraparound and
+ARM/Thumb returns. Synthetic MMIO remains ordinary memory and does not prove
+interrupt or native hardware equivalence. The unpatched virtual adapter
+reproduces the golden replay before the candidate is run.
+
+| Measurement | Unpatched control | Candidate |
+|---|---:|---:|
+| Screen pairs | 6,000 | All 6,000 bit-exact |
+| Declared full RAM checkpoint sets | 5 | All 5 exact outside 40 patch bytes |
+| Additional per-frame main RAM / DTCM / ARM7 WRAM hash differences | 0 / 0 / 0 | 247 / 348 / 107 |
+| Stereo samples | 4,813,950 | 175,017 differ; maximum signed-16 delta 2,146 |
+| Save data | Original private seed | Bit-exact throughout and at end |
+| ARM9 reference entries, frames 4200–5999 | 248,802,085 | 245,648,794 (−1.267%) |
+| Native cycles, frame time, pacing and HPS load | Unavailable in this trial | Not run |
+| Transition, battle, save-write/reload and reset coverage | Pending | Not run |
+
+Audio mismatch rejects this version under the strict budget, despite identical
+screens, saves and fixed RAM checkpoints. The additional transient RAM changes
+are unexplained; do not classify the differences as harmless timing or infer
+audibility from their maximum alone. The earlier fixed-workload estimate was
+4,390,320 fewer entries (1.765%), from `6 * words + 8 * calls` versus
+`4 * words + 6 * calls`. The empirical reduction is smaller; neither value is
+native speed. Do not repeat this unchanged version, trial it natively or
+include it in a beta. FFT's earlier perceptual review does not qualify a new
+Platinum soundtrack.
+
+Private trial evidence: `FIFO_WORD_STREAM_SYNTHETIC_V1.json`,
+`FIFO_WORD_STREAM_PREFLIGHT_V1.json`, `FIFO_WORD_STREAM_COMPARISON_V1.json`,
+`FIFO_WORD_STREAM_BEFORE_AFTER_V1.csv` and `FIFO_WORD_STREAM_DECISION_V1.json`.
 
 Private evidence: `platinum-optimization-20261027/INPUTS_V1.json`,
 `STATIC_PATTERN_SCREEN_V1.json`, `ROOM_ROUTE_V4_COMPLETE_REPEAT_AUDIT.json`,
@@ -138,10 +163,10 @@ cumulative beta remains FFTA2 Beta2 until a Platinum change qualifies.
 
 Next three investigations:
 
-1. Test the guarded word-stream branch-compaction proposal with the existing
-   synthetic runner and virtual in-memory loader, preserving every ordered
-   load/FIFO write. Reject any whole-route output mismatch or absent native gain.
-2. Classify interrupt/context costs and remaining ARM7 bins from actual
+1. Classify remaining ARM7 and live-overlay hotspots with exact code identity;
+   seek unnecessary work or actual content recurrence, not another unchanged
+   branch-compaction trial.
+2. Classify interrupt/context costs from actual
    events; do not remove scheduler, sound or hardware-math preservation work
    based on sample share alone.
 3. Extend the route to verified transitions, outdoor movement and battle;

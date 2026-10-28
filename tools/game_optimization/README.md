@@ -259,6 +259,14 @@ synthetic machine states and ordered data accesses using Unicorn. The generic
 runner for a bounded ARM block and declarative register/data cases. Mapped
 MMIO pages model ordinary memory only, not hardware side effects.
 
+`summarize_guest_pair.py CONTROL CANDIDATE INPUT --output REPORT` reuses the
+guarded replay status and manifest to report screen, audio, RAM and instruction
+differences. Only the declared instruction extent is normalized. If the patch
+declares data guards, the corresponding RAM-bus traces remain required for
+table/literal write analysis. With no data guards, that section is empty;
+an unrelated table observer is not required. The report never accepts a patch
+or treats instruction reduction as native speed.
+
 `boolean_cache_lookup_armv5.S` is a synthetic ARMv5 complete-key boolean-cache
 component for cost screening. It has fixed test addresses, 512 direct-mapped
 32-byte slots, two eight-byte input spans and a validity word. It returns

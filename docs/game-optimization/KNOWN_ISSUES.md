@@ -241,3 +241,10 @@
   that crosses a frame boundary. The 2/6-byte OAM fields include 2-mod-4
   addresses. Argument equality is not command/pixel-data recurrence, and a
   theoretical branch-entry reduction is not a tested or native speed gain.
+- Platinum's word-stream predication candidate is rejected and disabled.
+  Although 1,680 synthetic cases and all 6,000 screen pairs pass, 175,017
+  stereo samples differ (maximum signed-16 delta 2,146). Five fixed RAM
+  checkpoint sets and save data match, while 247 main-RAM, 348 DTCM and 107
+  ARM7-WRAM per-frame hashes differ. No timing-only or audibility judgment is
+  established. Its 1.267% reference instruction reduction is not native speed;
+  no native trial or unchanged repeat is warranted under the current budget.

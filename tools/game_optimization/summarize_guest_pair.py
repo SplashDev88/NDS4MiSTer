@@ -150,8 +150,9 @@ def main():
                       scope='Existing retained mainram.bin checkpoint; no other memory normalized'),
                   RAM_frame_differences=candidate['differing_state_frames'],
                   save_exact=sha(args.control/'save.bin') == sha(args.candidate/'save.bin') and candidate['differing_state_frames']['save'] == 0,
-                  table_and_literal_write_watch={name: guard_stats(path/'ram_bus.csv',patch['data_guards'])
-                      for name,path in [('control',args.control),('candidate',args.candidate)]},
+                  table_and_literal_write_watch=({name: guard_stats(path/'ram_bus.csv',patch['data_guards'])
+                      for name,path in [('control',args.control),('candidate',args.candidate)]}
+                      if patch.get('data_guards') else {}),
                   source_manifest_sha256=inputs['manifest_sha256'], input_sha256=sha(args.input),
                   analysis_source_sha256=sha(Path(__file__)), accepted=False, native_measured=False,
                   reused_original_control=reused,

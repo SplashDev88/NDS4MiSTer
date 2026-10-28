@@ -565,3 +565,13 @@ effects, not transferred bytes or content recurrence. An estimate from
 instruction paths is a candidate-selection aid, not measured savings. A
 branch-only proposal must retain every ordered FIFO/OAM access and still pass
 whole-game output/timing and native benefit gates.
+
+Platinum's fixed-destination predication trial demonstrates the distinction:
+1,680 synthetic cases retain registers, flags and ordered accesses, but the
+6,000-frame replay changes 175,017 stereo samples and transient RAM hashes.
+All screen pairs, save data and five fixed RAM checkpoint sets match. The
+1.267% selected reference instruction reduction does not qualify the rejected
+candidate or establish native benefit. Fixed checkpoints can miss transient
+state, and pixel equality cannot replace the audio gate. Preserve both passing
+checks and failures; do not mask more RAM or generalize another game's
+perceptual approval to this result.
