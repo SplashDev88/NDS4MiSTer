@@ -8,7 +8,7 @@
   "rom_sha256": "fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb",
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
-  "budget": "Terrain visibility only: user-approved perceptual private beta with known non-bit-exact differences and bounded coverage. Other candidates remain disabled under their recorded decisions.",
+  "budget": "Approved terrain private beta retained. User20261028 permits timing/RNG trajectory differences provided gameplay functions. New candidates require functional/save/audio screening, measured native benefit and review video when worthwhile; exact mismatches retained.",
   "status": "terrain_accepted_user_directed_private_beta",
   "patches": [
     {
@@ -430,7 +430,7 @@
       "notes": "Same56-byte extent. Valid manager engine0/1 and OAM range0..127; preserves ordered three16-bit reads/writes and untouched affine halfword. Original zero-length branch and full-copy/affine paths remain. Synthetic cases pass; runtime/native qualification pending; not a generic memcpy rewrite.",
       "validation": {
         "synthetic": "92 complete-function cases: registers, CPSR, memory and ordered data effects match; immutable callback literals excluded",
-        "reference": "pending",
+        "reference": "23400-frame run completed; coherent reviewed battle progression, unchanged save; timing/frame/RAM/audio differences retained",
         "native": "pending"
       }
     }
@@ -527,7 +527,14 @@
       "receipt": "TERRAIN_NATIVE_FINDINGS_V1.json",
       "state": "Accepted by explicit user direction; enabled for private beta."
     },
-    "terrain_ram_classification": "TERRAIN_RAM_CLASSIFICATION_V1.json"
+    "terrain_ram_classification": "TERRAIN_RAM_CLASSIFICATION_V1.json",
+    "oam_inline_experiment": {
+      "state": "disabled_candidate_reference_screen_complete_native_pending",
+      "synthetic": "OAM_INLINE_FULL_FUNCTION_PROOF_V1.json",
+      "reference": "OAM_INLINE_BATTLE_CANDIDATE_V1_STATUS.json",
+      "functional_review": "OAM_INLINE_BATTLE_VISUAL_REVIEW_V1.json",
+      "user_budget": "FUNCTIONAL_BUDGET_STEERING_20261028.json"
+    }
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
   "arm7_crc32": "67db0960",

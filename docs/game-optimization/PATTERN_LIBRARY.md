@@ -1003,3 +1003,12 @@ fixed-size loop specialization that retains those accesses before considering
 dirty checks. Preserve callback selection, register/flag liveness, address
 wrapping and the separate affine path. A code-derived instruction-share model
 is a prioritization aid, not native cycles or measured speedup.
+
+Compare the complete surrounding function when a same-extent inline loop uses
+registers differently. Registers dead at loop exit may be overwritten on both
+continuation paths or restored by the epilogue; that must be demonstrated, not
+assumed from calling conventions. An explicit code-context base lets the shared
+synthetic runner execute earlier callbacks and later branches unchanged. Retain
+SP/LR/PC, flags, mapped data and ordered device accesses in the comparison.
+Only authenticated immutable literal reads may be excluded. Full-function
+synthetic equality still says nothing about interrupt/DMA timing or native gain.

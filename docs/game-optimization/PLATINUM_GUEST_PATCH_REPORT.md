@@ -1610,3 +1610,13 @@ Evidence: `FUNCTIONAL_BUDGET_STEERING_20261028.json`,
 `BETA1_UPLOAD_CONTROL_FINDINGS_V1.json`, `BETA1_UPLOAD_ACCEPTED_FINDINGS_V1.json`,
 `BETA1_BATTLE_RNG_OWNED_DISASSEMBLY_V1.txt`, `OAM_INLINE_BUILD_V1.json`,
 `OAM_INLINE_FULL_FUNCTION_PROOF_V1.json` and `OAM_INLINE_BATTLE_CANDIDATE_V1_JOB.json`.
+
+The cumulative 23,400-frame candidate replay completed. Compared with approved
+terrain alone, 1,596 top-screen and 127 bottom-screen hashes differ; reviewed
+checkpoints show coherent trainer introduction and battle turns without obvious
+sprite/UI corruption. Save and ITCM match; RAM/audio differences remain. The
+callback-table writer trace contains only the two expected startup stores and
+no later writes. ARM9 entries in the battle window are 264,018,986 versus
+234,692,591, but differing timing/trajectories prevent treating this as native
+speed. This is sufficient to proceed to the authorized functional native screen,
+not to enable the candidate. See `OAM_INLINE_BATTLE_VISUAL_REVIEW_V1.json`.
