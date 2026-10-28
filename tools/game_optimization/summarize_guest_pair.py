@@ -5,6 +5,8 @@ import csv
 import hashlib
 import json
 from pathlib import Path
+import struct
+import sys
 
 import numpy as np
 
@@ -85,9 +87,80 @@ def guard_stats(path, guards, instruction_guard=None):
     return result
 
 
+RAM_SPACES = {'mainram': (0x02000000, 0x400000),
+              'sharedwram': (0x037f8000, 0x8000), 'arm7wram': (0x03800000, 0x10000)}
+
+
+def checked_autoload_contexts(contexts):
+    """Explicit physical RAM views; unknown aliases and overlapping guards fail."""
+    assert isinstance(contexts, list) and 0 < len(contexts) <= 64
+    checked = []
+    for item in contexts:
+        assert set(item) == {'space', 'addr', 'expect', 'replace'}
+        space = item['space']; base, size = RAM_SPACES[space]
+        address = int(item['addr'], 0)
+        original, replacement = [bytes.fromhex(item[k]) for k in ('expect', 'replace')]
+        assert 8 <= len(original) <= 4096 and len(original) == len(replacement)
+        assert base <= address < address+len(original) <= base+size
+        for old_space, old_address, old_original, _ in checked:
+            assert old_space != space or address+len(original) <= old_address or old_address+len(old_original) <= address
+        checked.append((space, address, original, replacement))
+    return checked
+
+
+def autoload_comparison_rows(contexts):
+    checked_autoload_contexts(contexts)
+    return ''.join(f"{r['addr']} {r['expect']} {r['replace']} autoload {r['space']}\n" for r in contexts)
+
+
+def arm7_comparison_contexts(source, manifest, patch):
+    """Derive both copies from the existing authenticated virtual-ROM loader."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'standalone_host/fmv'))
+    from guest_byte_patch import assemble, read_arm7_autoload
+    assert patch['cpu'] == 'arm7' and patch['target'].startswith('arm7.bin/autoload:')
+    _, admission = assemble(source, manifest, [patch['id']])
+    assert admission['state'] == 'applied_to_virtual_image', admission
+    header = source.read(0, 512)
+    loaded = read_arm7_autoload(source, header, manifest, patch['target'])
+    file_offset, _, initial, _ = struct.unpack_from('<4I', header, 0x30)
+    address = int(patch['addr'], 0)
+    staging = initial + loaded['file_offset']-file_offset + address-loaded['base']
+    target_space = 'sharedwram' if address < 0x03800000 else 'arm7wram'
+    result = [dict(space=space, addr=hex(at), expect=patch['expect'], replace=patch['replace'])
+              for space, at in [('mainram', staging), (target_space, address)]]
+    checked_autoload_contexts(result)
+    return result
+
+
+def normalize_autoload_memory(memory, space, contexts):
+    """Comparison copy only: absent, partial and overwritten contexts remain raw."""
+    base, size = RAM_SPACES[space]
+    assert len(memory) == size
+    result = bytearray(memory); identities = {}
+    for context_space, address, original, replacement in checked_autoload_contexts(contexts):
+        if context_space != space:
+            continue
+        at = address-base; value = memory[at:at+len(original)]
+        identity = 'original' if value == original else 'replacement' if value == replacement else 'unmatched'
+        identities[f'{space}:{hex(address)}'] = identity
+        if identity == 'replacement':
+            for n, (old, new) in enumerate(zip(original, replacement)):
+                if old != new:
+                    result[at+n] = old
+    return result, identities
+
+
 def normalize_checkpoint(before, after, patch, records):
     """Normalize only an authenticated complete code body; leave unknown overlays raw."""
     assert len(before) == len(after) == 0x400000
+    if patch.get('cpu') == 'arm7':
+        contexts = records[0]['autoload_contexts']
+        assert contexts == records[1]['autoload_contexts']
+        original, old_ids = normalize_autoload_memory(before, 'mainram', contexts)
+        result, new_ids = normalize_autoload_memory(after, 'mainram', contexts)
+        assert original == before and 'replacement' not in old_ids.values()
+        assert 'original' not in new_ids.values()
+        return result, [old_ids, new_ids]
     original, replacement = bytes.fromhex(patch['expect']), bytes.fromhex(patch['replace'])
     assert len(original) == len(replacement)
     at = int(patch['addr'], 0) - 0x02000000
@@ -162,6 +235,12 @@ def main():
         for filename, digest in control['outputs'].items():
             assert sha(args.control / filename) == digest, filename
     patch, = [p for p in manifest['patches'] if p['id'] == inputs['patch_id']]
+    if patch['cpu'] == 'arm7':
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'standalone_host/fmv'))
+        from prepare import Source
+        with Path(control['command'][1]).open('rb') as stream:
+            contexts = arm7_comparison_contexts(Source(stream.fileno()), manifest, patch)
+        assert contexts == control['autoload_contexts'] == candidate['autoload_contexts']
     frame_rows = [rows(p / 'frames.csv') for p in (args.control, args.candidate)]
     assert len(frame_rows[0]) == len(frame_rows[1]) == control['job']['frames']
     differences = {key: [] for key in frame_rows[0][0]}

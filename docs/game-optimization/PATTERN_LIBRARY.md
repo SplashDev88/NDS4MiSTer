@@ -791,3 +791,21 @@ cartridge and replay before testing a replacement. Trace copy stores using
 the existing register observer, including source/destination pointers and
 word values. The initial staging buffer can later become game data; address-only
 comparison normalization there would hide real errors.
+
+For comparison, bind both loaded and staging copies to the authenticated
+manifest/source mapping. Use explicit physical main/shared/private RAM views,
+not a single ARM9-base subtraction. Require the complete declared code context
+to match original or replacement, and normalize only differing instruction
+bytes in a local copy. Keep absent, partial and reused contexts raw. The
+shared frontend and checkpoint summarizer implement these rules; their tests
+cover bounds, overlaps, missing views and corruption outside the changed byte.
+Preserve legacy ARM9/overlay behavior and qualify the rebuilt observer against
+unchanged replays before interpreting any candidate differences.
+
+Platinum's one-byte carry-predicated MLA then passes all 16,800 screen pairs
+and save checks but fails audio (73,833 stereo samples) and one fixed RAM
+checkpoint. Its 57,827 observed calls still satisfy C=0/R3=0 and preserve R0
+for all 397 captured input pairs. Local numerical equivalence and fewer
+arithmetic operations therefore do not establish full-system equivalence.
+Keep the failed result; do not infer benign timing, native benefit or a
+perceptual allowance from identical pictures.

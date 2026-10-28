@@ -102,8 +102,8 @@ copy. This does not claim a live-memory `autoload_complete` hook. Qualify an
 identical-byte full-image/replay control, actual source-to-destination copying,
 changed instruction fetch, reset and native mapping before use. Staging RAM
 can be reused after copying, so never mask that source address unconditionally.
-The current replay comparison helper still supports ARM9 main/overlay RAM
-only; ARM7 candidate comparisons require a separately qualified extension.
+ARM7 comparison must also account for the transient staging copy, as described
+below. Delivery controls alone do not qualify a changed-code replay.
 
 Each patch may declare `data_guards: [{"addr": "0x...", "expect": "..."}]`
 for literal pools or tables used by its proof. Each range must contain 1–4096
@@ -128,6 +128,25 @@ increment `unmatched_overlay_regions`. Multiple patches in one body can share
 a context; overlapping patch extents, conflicting identities and overlapping
 different contexts are rejected. This is output comparison, not a live patch
 loader. The checkpoint summarizer uses the same complete-body rule.
+
+For pinned ARM7 autoload code, append `autoload mainram`, `autoload sharedwram`
+or `autoload arm7wram` to a context row. These explicitly name complete physical
+comparison views: canonical 4 MiB main RAM, 32 KiB shared WRAM at the final
+`037f8000` alias, and 64 KiB private WRAM at `03800000`. Other aliases,
+cross-bank spans, overlapping contexts and missing/wrong-sized buffers fail.
+The row's full original/replacement context must match before any changed byte
+is normalized. Partial, absent, corrupted or reused context remains raw and
+increments `unmatched_autoload_regions`. No live emulated memory is written.
+
+Use `summarize_guest_pair.arm7_comparison_contexts` to derive both the staging
+and loaded contexts from the existing authenticated loader and exact ROM.
+The runner must pin that specification, verify it against the manifest and
+mapping, and compare the correct physical space at checkpoints. The frontend
+adds normalized shared/private-WRAM hashes only when autoload rows are present;
+legacy comparison columns remain unchanged otherwise. Raw hashes/dumps are
+always retained. The shared Python checkpoint comparison follows the same
+context and changed-byte rules; never apply the legacy main-RAM subtraction to
+an ARM7 code address or mask staging after it is overwritten.
 
 `NDS_REPLAY_CHECKPOINT_FRAMES=1441,2600` adds uniquely named full main-RAM,
 ITCM, DTCM, ARM7/shared-WRAM dumps, current CPU registers/CPSR, TCM mappings

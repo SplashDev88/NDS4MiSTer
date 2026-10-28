@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "three_candidates_rejected_ARM7_delivery_control_passed_no_patch_enabled",
+  "status": "four_candidates_rejected_no_patch_enabled",
   "patches": [
     {
       "cpu": "arm9",
@@ -181,22 +181,26 @@
       "scratch_bytes": 0,
       "enabled": false,
       "precondition": "Full36-byte preceding arithmetic sequence authenticates R3=ADDS carry and unchangedC flag before MLA. All32-bit entry inputs supported;no BIOS table-value assumption.",
-      "notes": "One condition byte changes MLA AL to MLA CS. MOVip,0 and ADCr3,ip,0 produceR3=C; intervening SUB preserves flags. All32-bit local proof passes. Existing virtual stream now supports the pinned ARM7 autoload source; unchanged controls pass241 town and83 boot files. Candidate execution, lifecycle and native gain remain unqualified.",
-      "status": "disabled_unchanged_delivery_qualified_candidate_replay_pending",
+      "notes": "Rejected one-byte ARM7 MLA predication.6800 local cases and unchanged delivery/comparison controls pass;57827 replacement opcode observations preserve carry contract and captured R0 results. Full16800-frame replay has exact screens/save but73833 changed stereo samples and mainRAM/DTCM checkpoint14300 mismatch. No native trial, unchanged retry, combination or FFT approval transfer.",
+      "status": "rejected_audio_and_fixed_RAM_checkpoint_mismatch",
       "validated": {
-        "synthetic": "6800 cases exact: registers/CPSR/mapped memory/ordered accesses",
-        "fb": "No full candidate replay",
-        "ram": "No full candidate replay",
-        "audio": "No full candidate replay",
-        "save": "No full candidate replay",
-        "native": "Not run"
+        "synthetic": "6800 exact cases",
+        "fb": "All16800 screen pairs exact",
+        "ram": "10of11 fixed checkpoint sets exact;frame14300 mainRAM49 words andDTCM3 words differ. Retainedframe2600 exact; transient RAM differences retained.",
+        "audio": "73833of13479065 stereo samples differ;maxdelta2974,RMS8.593533;no audibility judgment",
+        "save": "All16800 per-frame and final save hashes exact",
+        "native": "Not run; exact gate failed"
       },
       "gain": {
-        "synthetic_instruction_entries": {
-          "before": 9,
-          "after": 9
+        "reference_ARM9_entries": {
+          "before": 292331250,
+          "after": 292330960
         },
-        "projected_avoided_MLA_executions": 57827,
+        "reference_ARM7_entries": {
+          "before": 45944604,
+          "after": 45944758
+        },
+        "scope": "Software instruction entries;not native cycles or speed",
         "native_cycles": null,
         "native_frame_time": null,
         "qualified": false
@@ -218,6 +222,12 @@
         "boot_replay_files": 83,
         "original_copy_stores": 40316,
         "candidate_executed": false
+      },
+      "replay_rejection": {
+        "receipt": "ARM7_PITCH_CARRY_REPLAY_DECISION_V1.json",
+        "receipt_sha256": "187501917c2d2fa338ccfc5a76f217949f90f100ca793c91270a864c824256f5",
+        "comparison": "ARM7_PITCH_CARRY_PAIR_COMPARISON_V1.json",
+        "comparison_sha256": "0776ac07c5915305d3ccd74636ea2ac72df2660c629f5d316e355948966b2b6d"
       }
     }
   ],
@@ -237,7 +247,7 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "ARM7_AUTOLOAD_DECISION_V1.json",
+    "latest_decision": "ARM7_PITCH_CARRY_REPLAY_DECISION_V1.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -246,7 +256,7 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V3.json",
-    "next_proposal": "ARM7_AUTOLOAD_DECISION_V1.json",
+    "next_proposal": "ACTIVE_OUTDOOR_ROUTE_PROPOSAL_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
@@ -257,7 +267,7 @@
     "arm7_sound_qualification": "ARM7_SOUND_CENSUS_QUALIFICATION_V1.json",
     "arm7_sound_recurrence": "ARM7_SOUND_RECURRENCE_V1.json",
     "arm7_sound_call_contract": "ARM7_SOUND_CALL_CONTRACT_V1.json",
-    "arm7_guest_patch_implemented": false,
+    "arm7_guest_patch_implemented": true,
     "arm7_carry_qualification": "ARM7_PITCH_CARRY_CENSUS_QUALIFICATION_V1.json",
     "arm7_carry_contract": "ARM7_PITCH_CARRY_CALL_CONTRACT_V1.json",
     "arm7_carry_synthetic": "ARM7_PITCH_CARRY_SYNTHETIC_V1.json",
@@ -267,7 +277,10 @@
     "arm7_delivery_control": "ARM7_AUTOLOAD_CONTROL_V1_STATUS.json",
     "arm7_boot_copy_mapping": "ARM7_AUTOLOAD_BOOT_MAPPING_V1.json",
     "arm7_candidate_virtual_stream_preflight": true,
-    "arm7_candidate_runtime_executed": false
+    "arm7_candidate_runtime_executed": true,
+    "arm7_comparison_qualified": true,
+    "arm7_carry_replay": "ARM7_PITCH_CARRY_PAIR_COMPARISON_V1.json",
+    "arm7_carry_enabled": false
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
   "arm7_crc32": "67db0960",

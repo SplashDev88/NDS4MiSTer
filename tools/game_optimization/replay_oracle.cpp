@@ -263,7 +263,9 @@ int main(int argc,char**argv) {
  }
  if(const char* path=std::getenv("NDS_REPLAY_CODE_COMPARISON")){
   std::ifstream specs(path);if(!specs)return 8;codeComparisons.Load(specs);
-  normalized.open(out+"/code_normalized_state.csv");normalized<<"frame,mainram,original_code_regions,replacement_code_regions,unmatched_overlay_regions\n";
+  normalized.open(out+"/code_normalized_state.csv");normalized<<"frame,mainram,original_code_regions,replacement_code_regions,unmatched_overlay_regions";
+  if(codeComparisons.HasAutoload())normalized<<",sharedwram,arm7wram,unmatched_autoload_regions";
+  normalized<<'\n';
  }
  auto hash=[](const u8* p,size_t n){u64 h=14695981039346656037ull;for(size_t i=0;i<n;++i)h=(h^p[i])*1099511628211ull;return h;};
  for(unsigned frame=0;frame<frameCount;++frame){
@@ -286,8 +288,15 @@ int main(int argc,char**argv) {
 
   state<<frame<<','<<replay_instructions[0]<<','<<replay_instructions[1]<<','<<hash(canonical.data(),canonical.size())<<','<<hash(nds->ARM9.ITCM,0x8000)<<','<<hash(nds->ARM9.DTCM,0x4000)<<','<<hash(nds->ARM7WRAM,0x10000)<<','<<hash(nds->SharedWRAM,0x8000)<<','<<hash(nds->GetNDSSave(),nds->GetNDSSaveLength())<<'\n';
   if(!codeComparisons.regions.empty()){
-   const auto counts=codeComparisons.Normalize(canonical);
-   normalized<<frame<<','<<hash(canonical.data(),canonical.size())<<','<<counts.original<<','<<counts.replacement<<','<<counts.unmatchedOverlay<<'\n';
+   std::vector<u8> shared,arm7;
+   if(codeComparisons.HasAutoload()){
+    shared.assign(nds->SharedWRAM,nds->SharedWRAM+0x8000);
+    arm7.assign(nds->ARM7WRAM,nds->ARM7WRAM+0x10000);
+   }
+   const auto counts=codeComparisons.Normalize(canonical,shared.empty()?nullptr:&shared,arm7.empty()?nullptr:&arm7);
+   normalized<<frame<<','<<hash(canonical.data(),canonical.size())<<','<<counts.original<<','<<counts.replacement<<','<<counts.unmatchedOverlay;
+   if(codeComparisons.HasAutoload())normalized<<','<<hash(shared.data(),shared.size())<<','<<hash(arm7.data(),arm7.size())<<','<<counts.unmatchedAutoload;
+   normalized<<'\n';
   }
   void*top=nullptr;void*bottom=nullptr;if(!nds->GPU.GetFramebuffers(&top,&bottom))return 7;
   if(checkpoints.count(frame)){

@@ -3,7 +3,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from summarize_guest_pair import normalize_checkpoint, guard_stats
+from summarize_guest_pair import (normalize_checkpoint, guard_stats, normalize_autoload_memory,
+                                  checked_autoload_contexts, autoload_comparison_rows, RAM_SPACES)
 
 
 class OverlayCheckpointTest(unittest.TestCase):
@@ -77,6 +78,55 @@ class CombinedWriteWatchTest(unittest.TestCase):
             with self.assertRaises(AssertionError):
                 guard_stats(path,[dict(addr='0x02000100',expect='11')],
                             dict(addr='0x02000100',expect='22'))
+
+
+class AutoloadComparisonTest(unittest.TestCase):
+    def contexts(self):
+        return [dict(space=space, addr=hex(base+16), expect='1011121314151617',
+                     replace='101112131415aa17') for space,(base,_) in RAM_SPACES.items()]
+
+    def test_all_spaces_normalize_only_qualified_changes(self):
+        contexts=self.contexts()
+        for space,(_,size) in RAM_SPACES.items():
+            with self.subTest(space=space):
+                before=bytearray(size); before[16:24]=bytes.fromhex(contexts[0]['expect'])
+                after=before.copy(); after[22]=0xaa
+                normalized,ids=normalize_autoload_memory(after,space,contexts)
+                self.assertEqual(normalized,before);self.assertEqual(list(ids.values()),['replacement'])
+                self.assertEqual(after[22],0xaa)  # Input stays raw.
+                after[17]^=1
+                normalized,ids=normalize_autoload_memory(after,space,contexts)
+                self.assertEqual(normalized,after);self.assertEqual(list(ids.values()),['unmatched'])
+                absent=bytearray(size)
+                self.assertEqual(normalize_autoload_memory(absent,space,contexts)[0],absent)
+                self.assertEqual(list(normalize_autoload_memory(before,space,contexts)[1].values()),['original'])
+
+    def test_bad_views_aliases_overlaps_and_extents_rejected(self):
+        for space,(_,size) in RAM_SPACES.items():
+            with self.assertRaises(AssertionError):normalize_autoload_memory(bytes(size-1),space,self.contexts())
+        original=self.contexts()
+        for field,value in [('space','itcm'),('addr','0x03000010'),('addr','0x037ffffc'),
+                            ('expect','00'),('replace','00'*9)]:
+            contexts=[dict(original[1],**{field:value})]
+            with self.assertRaises((AssertionError,KeyError)):checked_autoload_contexts(contexts)
+        for contexts in [[],original+[original[0]],original+[dict(original[0],addr='0x02000014')]]:
+            with self.assertRaises(AssertionError):checked_autoload_contexts(contexts)
+
+    def test_row_format_and_legacy_main_checkpoint_entry(self):
+        contexts=self.contexts()
+        text=autoload_comparison_rows(contexts)
+        self.assertEqual(len(text.splitlines()),3)
+        self.assertTrue(text.endswith('autoload arm7wram\n'))
+        before=bytearray(0x400000);before[16:24]=bytes.fromhex(contexts[0]['expect'])
+        after=before.copy();after[22]=0xaa
+        records=[dict(autoload_contexts=contexts)]*2
+        got,ids=normalize_checkpoint(before,after,dict(cpu='arm7'),records)
+        self.assertEqual(got,before)
+        before[16]=after[16]=0
+        got,ids=normalize_checkpoint(before,after,dict(cpu='arm7'),records)
+        self.assertEqual(got,after)  # Reused staging is never masked.
+        bad=[records[0],dict(autoload_contexts=contexts[:1])]
+        with self.assertRaises(AssertionError):normalize_checkpoint(before,after,dict(cpu='arm7'),bad)
 
 
 if __name__ == '__main__':

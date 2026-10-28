@@ -4,10 +4,10 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-Three candidates are rejected and disabled. A fourth, a one-byte ARM7 pitch
-arithmetic candidate, passes local equivalence checks. Its unchanged delivery
-controls now pass; changed-code replay and native validation remain pending.
-No Platinum speed gain is qualified.
+Four candidates are rejected and disabled. The latest one-byte ARM7 pitch
+change passes local equivalence and delivery controls, but its full replay
+changes audio and a RAM checkpoint despite identical screens and save data.
+No Platinum speed gain is qualified. Active outdoor and battle coverage is next.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -674,3 +674,73 @@ Evidence: `ARM7_AUTOLOAD_DECISION_V1.json`,
 `ARM7_AUTOLOAD_CANDIDATE_PREFLIGHT_V1.json`, `ARM7_AUTOLOAD_CONTROL_V1_STATUS.json`,
 `ARM7_AUTOLOAD_BOOT_MAPPING_V1.json`, `ARM7_AUTOLOAD_BOOT_CONTROL_V1_STATUS.json`
 and `ARM7_AUTOLOAD_BEFORE_AFTER_V1.csv`.
+
+## ARM7 comparison qualification
+
+The existing comparison helper now accepts explicit main/shared/private RAM
+views for authenticated autoload contexts. It checks the full 36-byte context
+before normalizing the single changed byte in a local copy. Unloaded, partial
+and reused contents remain raw. Both initial staging and executing copies are
+derived from the existing guarded loader; no alternate patch loader or live
+memory mutation is involved. Legacy ARM9 and full-body overlay behavior remains.
+
+All 51 C++ comparison checks and seven Python tests pass. Only the diagnostic
+frontend is rebuilt as `arm7_compare_oracle_v11`; the linked CPU, core, renderer
+and audio objects remain identical. Its unpatched town control reproduces all
+241 files over 16,800 frames, and its boot control reproduces all 83 files over
+2,601 frames. Normalized main/shared/private RAM hashes equal the raw control
+hashes on every frame. The counters explicitly retain unmatched staging after
+reuse instead of masking it by address. This qualifies comparison controls,
+not the candidate's asynchronous behavior or native performance.
+
+Evidence: `ARM7_COMPARISON_TESTS_V1.json`, `ARM7_COMPARISON_BUILD_V11.json`,
+`ARM7_COMPARISON_QUALIFICATION_V1.json`, `ARM7_PITCH_CARRY_CONTROL_V2_STATUS.json`
+and `ARM7_COMPARISON_BOOT_CONTROL_V1_STATUS.json`.
+
+## One-byte ARM7 pitch trial — rejected
+
+The changed stream completed all 16,800 frames. The observer fetched the new
+`20211593` opcode in all 57,827 target calls, each with C=0 and R3=0. Pitch
+still has 397 captured input pairs, with identical R0 results for every shared
+pair. This verifies bounded changed-instruction execution in the software
+reference; it does not prove native fetch/cache behavior or whole-game equality.
+
+| Metric | Control | Candidate |
+|---|---:|---:|
+| ARM9 reference entries, frames 15000–16799 | 292,331,250 | 292,330,960 |
+| ARM7 reference entries, same window | 45,944,604 | 45,944,758 |
+| Top / bottom screen mismatches | 0 / 0 | 0 / 0 |
+| Different stereo samples of 13,479,065 | 0 | 73,833 |
+| Maximum signed-16 audio delta | 0 | 2,974 |
+| Main-RAM / DTCM word differences at checkpoint 14300 | 0 / 0 | 49 / 3 |
+| Per-frame / final save mismatches | 0 / 0 | 0 / 0 |
+
+Audio RMS delta is 8.593533, with no alignment, masking or audibility judgment.
+Ten of eleven fixed RAM checkpoint sets match; frame 14300 fails main RAM and
+DTCM. Its ARM7 private/shared RAM and ITCM still match after exact code
+normalization. The retained frame-2600 main-RAM dump also matches. Transient
+per-frame differences occur in main RAM on 30 frames, DTCM on 110 and ARM7
+private WRAM on 618; normalized shared WRAM and save hashes match throughout.
+The reference frame timestamp differs on 445 frames, with identical per-frame
+audio sample counts. No benign or timing-only explanation has been established
+for the differing data, and the output gate is not relaxed.
+
+**Rejected and disabled.** The two CPU entry totals are reference observations,
+not native cycles or gameplay speed. The failed predicate still has an
+instruction entry; skipping the multiply does not make the nine-entry block
+shorter. No native frame-time, dropped-frame, HPS-load or load-time improvement
+is qualified. Do not repeat the unchanged candidate, combine it, transfer FFT's
+perceptual allowance or promote it to a beta. The existing Beta2 stays intact.
+
+The shared ARM7 loader and comparison remain useful for future candidates.
+The next priority is a visually reviewed active outdoor route, then a battle
+and isolated save-write/cold-reload coverage, followed by profiling those
+scenes. A safe pitch cache and the whole-empty HBlank callback idea remain
+deferred; neither has a storage/lifecycle or layout proof.
+
+Evidence: `ARM7_PITCH_CARRY_REPLAY_DECISION_V1.json`,
+`ARM7_PITCH_CARRY_PAIR_COMPARISON_V1.json`,
+`ARM7_PITCH_CARRY_EXECUTION_AUDIT_V1.json`,
+`ARM7_PITCH_CARRY_CHECKPOINT_DIFF_V1.json`,
+`ARM7_PITCH_CARRY_CANDIDATE_V1_STATUS.json` and
+`ARM7_PITCH_CARRY_REPLAY_BEFORE_AFTER_V1.csv`.

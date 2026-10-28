@@ -333,3 +333,10 @@
   not a runtime hook or proof of cache visibility. The ARM7 boot prefix and
   copy table are preserved. Do not assume the existing ARM9 main/overlay RAM
   comparison can normalize ARM7 WRAM or an overwritten staging buffer.
+- Explicit ARM7/main staging comparison is now qualified by 241-file town and
+  83-file boot controls. Only exact code context is normalized; partial loads
+  and reused staging remain raw. The one-byte candidate itself is rejected:
+  all 16,800 screen pairs and save hashes match, but 73,833 stereo samples and
+  main-RAM/DTCM checkpoint 14300 differ. Native benefit and audibility are
+  unmeasured. Do not rerun unchanged, trial natively, combine or transfer FFT's
+  perceptual approval. Broader active gameplay profiling remains unfinished.
