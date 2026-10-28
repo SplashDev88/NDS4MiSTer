@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Guarded, same-size patches to initially loaded, uncompressed ARM9 code.
+"""Guarded, same-size patches to uncompressed ARM9 main or overlay files.
 
 This extends the existing VirtualRom preparation path. It never writes a ROM
-file and deliberately rejects overlays, compressed/autoload targets and
-scratch allocation. A mismatch falls back atomically to the original stream.
+file and deliberately rejects compressed/autoload targets and scratch
+allocation. Overlay bytes arrive through the normal file-load path; lifecycle
+qualification remains per-game. A mismatch falls back atomically to the original stream.
 Game identities, addresses and bytes belong in the supplied manifest.
 """
 import hashlib
@@ -14,7 +15,7 @@ import zlib
 
 from ndspy import code, codeCompression
 from hook_guard import select_profile, verify_target
-from prepare import VirtualRom, require
+from prepare import VirtualRom, read_overlay, require
 
 
 def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
@@ -49,11 +50,30 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         require(requested <= patches.keys(), 'Unknown patch ID')
         image = VirtualRom(source, source.size)
         data_guards = []
+        overlay_files = {}
         for patch_id in sorted(requested):
             patch = patches[patch_id]
-            require(patch['cpu'] == 'arm9' and patch['target'] == 'arm9.bin/main_loaded', 'Unsupported CPU/target')
-            require(patch.get('overlay') is None and patch.get('hook') is None and patch.get('scratch_bytes', 0) == 0,
-                    'Overlay, hook or scratch requires a separately qualified mechanism')
+            require(patch['cpu'] == 'arm9' and patch['target'] in ('arm9.bin/main_loaded', 'arm9.overlay'),
+                    'Unsupported CPU/target')
+            require(patch.get('hook') is None and patch.get('scratch_bytes', 0) == 0,
+                    'Hook or scratch requires a separately qualified mechanism')
+            overlay = None
+            if patch['target'] == 'arm9.overlay':
+                overlay = read_overlay(source, header, patch['overlay'], int(patch['overlay_ram'], 0))
+                info = overlay['info']
+                require(type(patch['overlay_file_id']) is int and info[6] == patch['overlay_file_id'],
+                        'Overlay file identity differs')
+                require(info[7] == 0 and overlay['decoded'] == overlay['stored'],
+                        'Compressed or flagged overlay is unsupported by this byte-patch path')
+                require(hashlib.sha256(overlay['decoded']).hexdigest() == patch['overlay_sha256'],
+                        'Overlay content identity differs')
+                region, base, cartridge = overlay['decoded'], info[1], overlay['file_offset']
+                require(0x02000000 <= base < base + len(region) <= 0x02400000,
+                        'Overlay code is outside canonical ARM9 main RAM')
+                overlay_files[info[0]] = (overlay, patch['overlay_sha256'])
+            else:
+                require(patch.get('overlay') is None, 'Overlay ID on initial main target')
+                region, base, cartridge = raw[:len(main.data)], address, offset
             mode = patch['mode']
             require(mode in ('arm', 'thumb'), 'Unknown instruction mode')
             at = int(patch['addr'], 0)
@@ -61,23 +81,24 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
             alignment = 4 if mode == 'arm' else 2
             require(at % alignment == 0 and len(before) % alignment == 0, 'Unaligned instruction patch')
             require(8 <= len(before) <= 4096 and len(before) == len(after), 'Invalid same-size patch extent')
-            require(address <= at and at + len(before) <= address + len(main.data), 'Patch is outside initial main code')
-            require(raw[at-address:at-address+len(before)] == before, 'Original instruction bytes differ')
+            require(base <= at and at + len(before) <= base + len(region), 'Patch is outside declared code')
+            require(region[at-base:at-base+len(before)] == before, 'Original instruction bytes differ')
             for data_guard in patch.get('data_guards', []):
                 guard_at = int(data_guard['addr'], 0)
                 guard_bytes = bytes.fromhex(data_guard['expect'])
-                require(0 < len(guard_bytes) <= 4096 and address <= guard_at and
-                        guard_at + len(guard_bytes) <= address + len(main.data),
-                        'Data invariant is outside initial main code/data')
-                require(raw[guard_at-address:guard_at-address+len(guard_bytes)] == guard_bytes,
+                require(0 < len(guard_bytes) <= 4096 and base <= guard_at and
+                        guard_at + len(guard_bytes) <= base + len(region),
+                        'Data invariant is outside declared code/data')
+                require(region[guard_at-base:guard_at-base+len(guard_bytes)] == guard_bytes,
                         'Original data invariant differs')
-                data_guards.append((offset + guard_at - address, guard_bytes))
-            guard = dict(address=at, guard_bytes=min(16, len(before)), phase='main_loaded',
-                         guard_sha256=hashlib.sha256(before[:min(16, len(before))]).hexdigest())
-            ok, reason = verify_target(guard, lambda a, n: raw[a-address:a-address+n])
-            require(ok, reason)
-            image.add(offset + at - address, after)
-            report['applied'].append(dict(id=patch_id, address=at, cartridge_offset=offset+at-address,
+                data_guards.append((cartridge + guard_at - base, guard_bytes))
+            if overlay is None:
+                guard = dict(address=at, guard_bytes=min(16, len(before)), phase='main_loaded',
+                             guard_sha256=hashlib.sha256(before[:min(16, len(before))]).hexdigest())
+                ok, reason = verify_target(guard, lambda a, n: raw[a-address:a-address+n])
+                require(ok, reason)
+            image.add(cartridge + at - base, after)
+            report['applied'].append(dict(id=patch_id, address=at, cartridge_offset=cartridge+at-base,
                                           bytes=len(after), original_sha256=hashlib.sha256(before).hexdigest(),
                                           replacement_sha256=hashlib.sha256(after).hexdigest()))
         image.finish()
@@ -85,6 +106,20 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
             require(b''.join(image.blocks(guard_offset, guard_offset + len(guard_bytes))) == guard_bytes,
                     'Selected patch changes a protected data invariant')
         require(b''.join(image.blocks(0, 512)) == header, 'Header changed')
+        if overlay_files:
+            fat, fat_size = struct.unpack_from('<II', header, 0x48)
+            oe, osize = struct.unpack_from('<II', header, 0x50)
+            for first, length in ((fat, fat_size), (oe, osize)):
+                require(b''.join(image.blocks(first, first + length)) == source.read(first, length),
+                        'Overlay delivery metadata changed')
+            report['overlays'] = []
+            for overlay_id, (loaded, original_hash) in sorted(overlay_files.items()):
+                first, length = loaded['file_offset'], len(loaded['stored'])
+                output = b''.join(image.blocks(first, first + length))
+                report['overlays'].append(dict(id=overlay_id, file_id=loaded['info'][6],
+                    ram=loaded['info'][1], bytes=length, original_sha256=original_hash,
+                    output_sha256=hashlib.sha256(output).hexdigest(),
+                    delivery='unchanged-layout uncompressed overlay file'))
         report['state'] = 'applied_to_virtual_image'
         return image, report
     except (ValueError, KeyError, TypeError, IndexError, struct.error) as error:

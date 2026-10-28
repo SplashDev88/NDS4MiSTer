@@ -203,25 +203,88 @@ The source's [nested compaction loop](https://github.com/pret/pokeplatinum/blob/
 and [HBlank system](https://github.com/pret/pokeplatinum/blob/579d2d5c65e736a1a4268fb7acbfd70712177c6c/src/overlay005/hblank_system.c)
 correspond to these instruction and data observations.
 
-The generic byte-patch path currently rejects overlays. The existing FMV
-`prepare.assemble` path already decodes overlays by ID, checks source and
-instruction identities, reconstructs their virtual cartridge files and updates
-the FAT. Reuse and qualify that code if extending generic overlay support;
-do not build a parallel loader or apply an address-only RAM patch. It currently
-also installs an FMV converter/ITCM extension, so it is not directly a
-scratch-free Platinum adapter. Source/load identity, unchanged reconstruction,
-reloads, instruction-cache visibility and fallback still need qualification.
-No new hardware hook, HPS service or scratch allocation has been introduced.
+The initial generic byte-patch path rejected overlays. Investigation of the
+existing FMV preparation code found that overlay 5 is already uncompressed:
+its 201,632 stored bytes equal its decoded body. It therefore needs no FAT,
+compression, file-layout, converter or ITCM-extension change. The implementation
+below reuses the existing reader and virtual stream. No new hardware hook,
+HPS service or scratch allocation has been introduced.
 
 Evidence: `THRESHOLD_CLASSIFICATION_V1.json`,
 `THRESHOLD_PROFILE_OPCODE_AUDIT_V1.json`, `THRESHOLD_SOURCE_PROVENANCE_V1.json`,
 `ARM7_CLASSIFICATION_SUPPORT_V1.txt`, `OVERLAY5_GUARDED_FINDINGS_V1.json`,
 `OVERLAY5_SAMPLE_EXTENTS_V1.json` and `OVERLAY5_PATCH_DELIVERY_PROPOSAL_V1.json`.
 
+## Unchanged overlay delivery qualification
+
+`prepare.read_overlay` now supplies the shared ID/table/FAT decoder to both
+FMV preparation and the existing `guest_byte_patch` loader. Generic overlay
+diagnostics require the exact full ROM/header/ARM9 identities, overlay ID,
+file ID, RAM base, entire decoded SHA-256 and expected instruction bytes.
+They admit only uncompressed, unflagged ARM9 overlays in canonical main RAM.
+The original header, FAT and overlay table remain byte-exact. Mismatches fall
+back atomically to the original virtual image; each selection remains explicit.
+
+The all-overlay check exposed a limitation in the old unconditional compression
+autodetection: uncompressed overlay 62 contains bytes that resemble a compressed
+footer. The shared reader now follows the table's compression flag, as the
+normal overlay decoder does. All 122 owned overlays match the independent
+`ndspy` overlay decoder. A regression test covers the misleading-footer case;
+compressed FMV-reader support is also exercised. The selected byte-patch path
+continues to reject compressed or flagged overlays.
+
+All 38 loader/preparation/guard tests pass, including the actual disposable
+stream-worker protocol, IDs sharing one RAM address, mixed main/overlay atomic
+fallback, wrong content/metadata/bytes, protected data, source mutation and
+unchanged repeated file reads. The owned-ROM preflight passes one selected
+unchanged-overlay case and nine rejection cases, each producing the original
+complete 128 MiB SHA-256. The selected `expect == replace` diagnostic then
+passes the full 6,000-frame replay: all 100 baseline output files are identical,
+with no RAM normalization. No instruction is optimized in this control.
+
+| Measurement | Original baseline | Selected unchanged-overlay control |
+|---|---:|---:|
+| Complete virtual cartridge | Original SHA-256 | Identical |
+| Both-screen pairs | 6,000 | All exact |
+| Retained baseline output files | 100 | All exact |
+| ARM9 selected reference entries | 248,802,085 | 248,802,085 |
+| ARM7 selected reference entries | 45,859,032 | 45,859,032 |
+| Instruction byte changes / enabled optimizations | 0 / 0 | 0 / 0 |
+| Native speed and changed-code fetch after reload | Not measured here | Not qualified |
+
+An additional 12,000-frame route performs the game's L+R+Start+Select soft
+reset at frame 6000, returns through the copyright/intro/Continue screens and
+loads the saved bedroom again. Overlay 5's body is still present at checkpoint
+6100, differs at 6400 and 7200, then matches all 201,632 bytes at 8400, 10000
+and 11500. The selected unchanged-overlay repeat matches all 166 baseline
+files. The existing observer records 1,800 post-reset Thumb compaction entries
+in frames 8400–11999 with exact opcode/pipeline guards; all have 64 empty
+records. Both runs preserve the original 6,000-frame prefix and private save.
+This is soft reset and Continue, not a save-write test or core save state.
+
+This qualifies adapter neutrality and a bounded unpatched software reload
+route, not the two optimization ideas. Changed-code execution/cache visibility
+and native lifecycle/benefit still require candidate-specific evidence.
+Before an overlay candidate, make RAM normalization aware of full overlay
+identity and periods when other code occupies the address; the current
+initial-main-code comparison contract is insufficient. Check Thumb support in
+the synthetic runner as well. Existing accepted binaries and beta packages
+remain untouched.
+
+Evidence: `OVERLAY_DELIVERY_PREFLIGHT_V2.json`,
+`OVERLAY_DELIVERY_TOOL_TESTS_V2.log`, `OVERLAY_DELIVERY_CONTROL_MANIFEST_V1.json`
+and `OVERLAY_DELIVERY_CONTROL_V1_STATUS.json`. The failed initial reader check
+is retained as `OVERLAY_DELIVERY_PREFLIGHT_V1_FAILED.json`; no replay started
+on that failure. The later staircase approach in `ROOM_ROUTE_V5` still remains
+upstairs; it does not expand room-transition coverage. Reset evidence is in
+`OVERLAY_RESET_SCENE_REVIEW_V1.json`, `OVERLAY_DELIVERY_RESET_FINDINGS_V1.json`
+and `OVERLAY_DELIVERY_BEFORE_AFTER_V1.csv`.
+
 Next three investigations:
 
-1. Qualify reuse of the existing overlay preparation path, then test an empty
-   tail early exit. Preserve record order, stale inactive payload bytes,
+1. Build a Thumb synthetic proof and overlay-aware RAM comparison for an empty
+   tail early exit, then test changed-code execution on both qualified routes.
+   Preserve record order, stale inactive payload bytes,
    observable registers and concurrent producer/IRQ behavior. No unused-memory
    assumption or overlay-lifetime assumption is admitted by these snapshots.
 2. Test conditional suppression of proven dummy HBlank callbacks, preserving

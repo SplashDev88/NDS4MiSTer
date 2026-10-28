@@ -47,8 +47,17 @@ For guest-code diagnostics, `NDS_REPLAY_VIRTUAL_STDIN=1` accepts an in-memory
 cartridge stream: ASCII `VROM`, a little-endian 32-bit size, then exactly that
 many bytes and EOF. Use the existing `fmv/prepare.py:VirtualRom` and guarded
 `fmv/guest_byte_patch.py` to construct it; the original ROM remains read-only.
-The latter supports only same-size uncompressed ARM9 main-code patches and
-rejects overlays, autoloads, scratch and HLE requests.
+The latter supports same-size uncompressed ARM9 main-code patches and
+uncompressed ARM9 overlay files. It rejects compressed code, autoloads,
+scratch and HLE requests. Overlay targets use `target: "arm9.overlay"` with
+`overlay` (integer ID), `overlay_ram` (hex address), `overlay_file_id` and
+`overlay_sha256` (entire decoded body), alongside the usual CPU, mode,
+address, expected/replacement bytes and complete game/ROM identities.
+It reuses `prepare.read_overlay`, also used by FMV preparation, to resolve
+the original overlay table and FAT. Flagged/compressed files are rejected;
+file size, header, FAT and overlay metadata stay unchanged. Only declared
+instruction bytes in the virtual file change. Overlays sharing a RAM address
+remain distinct targets. Data guards are relative to the selected code body.
 
 The native host supports explicit private experiments through its existing
 disposable loader. Set `NDS_GUEST_PATCH_MANIFEST` to the manifest path,
@@ -60,6 +69,14 @@ guard logs a skip and streams the original image atomically. No disk cache or
 movie preparation is composed with this selection. The loader exits before
 gameplay; there is no per-call HPS service or additional guest round trip.
 
+Overlay replacements arrive through the game's normal overlay file loads,
+including reloads of that file. This is not a live address-only RAM hook.
+Qualification must still observe actual overlay loads, reset/reload behavior
+and fetch/cache visibility for the game. Begin with an explicitly selected
+`expect == replace` diagnostic and verify the complete virtual image is
+identical to the original and the full replay matches. Stable repeated file
+reads alone do not qualify guest overlay lifecycle or native behavior.
+
 The normal host download holds reset through stream completion, uploads the
 staged cartridge and retains the original path/save identity. Initial code
 loads therefore see the replacement bytes; this is not a hot patch into a
@@ -70,7 +87,7 @@ without creating a ROM file. This is a load-path check, not a native speed test.
 
 Each patch may declare `data_guards: [{"addr": "0x...", "expect": "..."}]`
 for literal pools or tables used by its proof. Each range must contain 1–4096
-bytes within initially loaded main code/data. Admission checks both original
+bytes within the selected main or overlay code/data body. Admission checks both original
 bytes and the combined virtual image, so another selected patch cannot change
 a protected invariant. This does not enforce invariants after loading; replay
 write watches and entry-contract checks remain necessary where relevant.

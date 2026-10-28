@@ -290,6 +290,37 @@ def extension_layout(profile, sections):
     return address, size
 
 
+def read_overlay(source, header, overlay_id, ram_address):
+    """Resolve an ARM9 overlay through its original table and FAT entry.
+
+    Callers authenticate the complete source first. Return both stored and
+    decoded bytes so a same-layout caller can reject compression explicitly.
+    This reads source files only; it does not install a live-memory hook.
+    """
+    require(type(overlay_id) is int and overlay_id >= 0,
+            'invalid overlay ID')
+    fat, fat_size = struct.unpack_from('<II', header, 0x48)
+    oe, osize = struct.unpack_from('<II', header, 0x50)
+    require(fat_size % 8 == 0 and osize % 32 == 0 and
+            512 <= fat <= fat + fat_size <= source.size and
+            512 <= oe <= oe + osize <= source.size,
+            'overlay table or FAT outside cartridge')
+    row = oe + overlay_id * 32
+    require(row + 32 <= oe + osize, 'overlay index out of range')
+    info = struct.unpack('<8I', source.read(row, 32))
+    require(info[0] == overlay_id and info[1] == ram_address,
+            'overlay layout differs')
+    require(info[6] * 8 + 8 <= fat_size, 'overlay file ID invalid')
+    first, last = struct.unpack('<II', source.read(fat + info[6] * 8, 8))
+    stored = source.read(first, last - first)
+    # Data in an uncompressed overlay can resemble a BLZ footer. The table,
+    # rather than a heuristic over instruction bytes, declares compression.
+    raw = codeCompression.decompress(stored) if info[7] & 0x01000000 else stored
+    require(len(raw) == info[2], 'overlay size differs')
+    return dict(info=info, row=row, file_offset=first, stored=stored,
+                decoded=bytearray(raw))
+
+
 def assemble(source, profile, root=ROOT, progress=lambda n: None,
              work=lambda done, total: None):
     require(source.sha256(progress) == profile['source_sha256'], 'cartridge revision/content differs')
@@ -297,21 +328,14 @@ def assemble(source, profile, root=ROOT, progress=lambda n: None,
     armoff, entry, load, size = struct.unpack_from('<4I', header, 32)
     main = code.MainCodeFile(source.read(armoff,size), load)
     fat, fat_size = struct.unpack_from('<II', header, 0x48)
-    oe, osize = struct.unpack_from('<II', header, 0x50)
     backing = CompactedFiles(source, profile['compact_files'], profile['movies']) \
         if 'compact_files' in profile else source
     image = VirtualRom(backing, profile['output_size'])
     overlays = {}
     for spec in profile['overlays']:
-        row = oe+spec['id']*32
-        require(row+32 <= oe+osize, 'overlay index out of range')
-        info = struct.unpack('<8I', source.read(row,32))
-        require(info[0] == spec['id'] and info[1] == spec['ram'], 'overlay layout differs')
-        require(info[6]*8+8 <= fat_size, 'overlay file ID invalid')
-        a,b = struct.unpack('<II',source.read(fat+info[6]*8,8))
-        raw = bytearray(codeCompression.decompress(source.read(a,b-a)))
-        require(len(raw) == info[2], 'overlay size differs')
-        overlays[spec['id']] = (raw,info[1],row,info[6],spec)
+        loaded = read_overlay(source, header, spec['id'], spec['ram'])
+        info = loaded['info']
+        overlays[spec['id']] = (loaded['decoded'], info[1], loaded['row'], info[6], spec)
 
     def region(pc, overlay):
         if overlay is not None:

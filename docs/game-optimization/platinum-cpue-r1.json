@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "overlay_leads_under_investigation_no_patch_enabled",
+  "status": "overlay_delivery_controls_passed_no_patch_enabled",
   "patches": [
     {
       "cpu": "arm9",
@@ -68,6 +68,11 @@
     "delivery_proposal": "OVERLAY5_PATCH_DELIVERY_PROPOSAL_V1.json",
     "overlay_id": 5,
     "decoded_overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
-    "implemented": false
+    "implemented": false,
+    "delivery_control": "OVERLAY_DELIVERY_CONTROL_V1_STATUS.json",
+    "reset_control": "OVERLAY_DELIVERY_RESET_FINDINGS_V1.json",
+    "delivery_implemented": true,
+    "optimization_implemented": false,
+    "native_qualified": false
   }
 }

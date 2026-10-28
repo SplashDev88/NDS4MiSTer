@@ -611,3 +611,24 @@ Reuse the existing `prepare.assemble` overlay reconstruction machinery when
 qualifying generic support; its FMV-specific extension cannot be assumed safe
 or necessary for another title. A whole-overlay checkpoint match identifies
 code at that checkpoint, not every future load.
+
+For an uncompressed overlay, prefer a same-size replacement in its existing
+virtual cartridge file over relocation or new scratch. The shared
+`prepare.read_overlay` now serves both FMV preparation and guarded guest byte
+patches. Resolve ID/table/FAT/base first and verify the complete decoded body;
+never infer identity from a reused RAM address. Follow the overlay table's
+compression flag: ordinary uncompressed bytes can resemble a compressed
+footer, as Platinum overlay 62 demonstrated. Do not run compression
+autodetection over uncompressed data. An explicitly selected same-byte patch
+should reproduce the entire original cartridge and baseline replay before
+optimization. Platinum passes 122 decoder comparisons, 38 tests, ten full-image
+preflight cases and all 100 baseline files. This control establishes no
+changed-instruction execution, cache visibility, reload safety or speed gain.
+
+Platinum's subsequent soft-reset/Continue control matches all 166 files over
+12,000 frames. The full overlay body is replaced during title/menu and restored
+in the bedroom, with 1,800 guarded Thumb entries after reset. This qualifies a
+bounded unpatched reload route. Candidate RAM normalization must distinguish
+that overlay's complete original/replacement identity from other content at
+the same address; an initial-main-code assumption is insufficient. Preserve
+raw comparisons when the overlay is absent instead of masking its RAM extent.

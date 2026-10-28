@@ -254,14 +254,22 @@
   scene has an empty queue, that no IRQ mutates it, or that callbacks remain
   dummy. Preserve inactive record payload bytes and callback registration.
   Neither proposed optimization has been applied or measured natively.
-- Generic `guest_byte_patch` rejects overlay targets. Existing FMV preparation
-  can reconstruct virtual overlay files but also installs a converter/ITCM
-  extension; it is not a qualified scratch-free Platinum adapter. Reuse its
-  code when extending support and prove input/output identities, unchanged
-  reconstruction, reloads, cache visibility and fallback. Never bypass the
-  guard with an address-only patch or infer safe scratch from zero bytes.
+- Generic `guest_byte_patch` now admits guarded, same-size uncompressed ARM9
+  overlay-file diagnostics through the existing virtual stream. Compressed or
+  flagged overlays remain rejected. Shared reader `prepare.read_overlay`
+  honors the compression flag; the old unconditional autodetection failed on
+  uncompressed Platinum overlay 62. The unchanged overlay-5 control matches
+  the entire original cartridge and all 100 baseline replay files, but proves
+  no changed-code fetch/cache visibility or actual reload safety. No overlay
+  optimization is enabled. Never use an address-only patch or assume scratch.
 - Platinum ARM7 samples include substantial sound arithmetic, dirty-flag
   processing and reference FreeBIOS SWI dispatch/completion. The embedded
   BIOS bytes are matched to the oracle; this is not a native BIOS identity
   check or proof of the actual SWI argument mix. Already-dirty-checked sound
   writes and required channel-status reads must not be removed as dead work.
+- Platinum's unchanged overlay control now also matches all 166 files on a
+  12,000-frame soft-reset/Continue route. The body is replaced during title/menu
+  and restored before 1,800 guarded queue entries. Optimized bytes, native cache
+  behavior, room transitions, battle and save-write/reload remain unqualified.
+  The main-code RAM normalization contract must be extended for overlay identity
+  and absent/replaced periods before a candidate; never blindly mask an address.
