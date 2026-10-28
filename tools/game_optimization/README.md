@@ -85,9 +85,29 @@ checks still qualify each candidate. `verify_guest_native_stream.py` compares
 the actual worker's complete output to previously pinned virtual-image hashes
 without creating a ROM file. This is a load-path check, not a native speed test.
 
+The same explicit diagnostic selection also supports uncompressed ARM7 WRAM
+autoload payloads. Use `cpu: arm7`, `target: arm7.bin/autoload:N` with the
+shared decoder's positive section index, `section_base`, `section_sha256` and
+`section_bss_bytes`. The manifest additionally pins `arm7_sha256`,
+`arm7_crc32` and `arm7_code_settings_offset`; the existing full-ROM/header and
+ARM9 identity gates still apply. The loader requires a contiguous payload and
+final copy table, verifies every decoded entry against raw extents, and admits
+only a selected section within `037f8000..03810000`. This intentionally does
+not support arbitrary aliases, VRAM targets, compressed images or ARM9
+autoload patches. Unsupported layouts fall back to the original stream.
+
+Only the selected source bytes change. The original ARM7 boot prefix, table,
+sizes, BSS and cartridge layout remain intact; the game performs its normal
+copy. This does not claim a live-memory `autoload_complete` hook. Qualify an
+identical-byte full-image/replay control, actual source-to-destination copying,
+changed instruction fetch, reset and native mapping before use. Staging RAM
+can be reused after copying, so never mask that source address unconditionally.
+The current replay comparison helper still supports ARM9 main/overlay RAM
+only; ARM7 candidate comparisons require a separately qualified extension.
+
 Each patch may declare `data_guards: [{"addr": "0x...", "expect": "..."}]`
 for literal pools or tables used by its proof. Each range must contain 1–4096
-bytes within the selected main or overlay code/data body. Admission checks both original
+bytes within the selected main, overlay or autoload code/data body. Admission checks both original
 bytes and the combined virtual image, so another selected patch cannot change
 a protected invariant. This does not enforce invariants after loading; replay
 write watches and entry-contract checks remain necessary where relevant.

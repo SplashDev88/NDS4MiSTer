@@ -268,4 +268,107 @@ class OverlayPatchTests(GuestPatchTests):
         self.assertEqual(self.rom.read_bytes(), self.raw)
 
 
+class Arm7AutoloadPatchTests(GuestPatchTests):
+    def setUp(self):
+        super().setUp()
+        # Separate implicit boot prefix, two copy payloads, then final table.
+        # The first section is main RAM; only section two is a supported WRAM target.
+        arm7 = bytearray(bytes.fromhex('0000a0e1')*70)
+        struct.pack_into('<5I', arm7, 0x20,
+                         0x02380100, 0x02380118, 0x02380080, 0x02380080, 0x02380080)
+        struct.pack_into('<6I', arm7, 0x100,
+                         0x027e0000, 32, 0, 0x037f8000, 96, 32)
+        raw = bytearray(self.raw + arm7)
+        struct.pack_into('<4I', raw, 0x30, 1024, 0x02380000, 0x02380000, len(arm7))
+        self.raw = bytes(raw)
+        self.rom.write_bytes(raw); self.source = Source(self.fd)
+        self.repin(self.manifest, raw)
+        self.manifest['arm7_code_settings_offset'] = '0x20'
+        self.autoload_patch = dict(id='autoload-two', cpu='arm7', target='arm7.bin/autoload:2',
+            section_base='0x037f8000', section_bss_bytes=32,
+            section_sha256=hashlib.sha256(arm7[0xa0:0x100]).hexdigest(),
+            addr='0x037f8010', mode='arm', expect=arm7[0xb0:0xb8].hex(),
+            replace='0100a0e30200a0e3', enabled=False,
+            data_guards=[dict(addr='0x037f8050', expect=arm7[0xf0:0xf8].hex())])
+        self.manifest['patches'].append(self.autoload_patch)
+
+    def repin(self, manifest, raw):
+        first, _, _, size = struct.unpack_from('<4I', raw, 0x30)
+        manifest.update(header_sha1=hashlib.sha1(raw[:352]).hexdigest(),
+            rom_sha256=hashlib.sha256(raw).hexdigest(),
+            arm7_sha256=hashlib.sha256(raw[first:first+size]).hexdigest(),
+            arm7_crc32=f'{zlib.crc32(raw[first:first+size]):08x}')
+
+    def test_autoload_only_and_mixed_selection_preserve_prefix_table_and_other_section(self):
+        for selection in ['autoload-two', 'one,autoload-two']:
+            with self.subTest(selection=selection):
+                got, report = self.result(self.environment(selection=selection))
+                expected = bytearray(self.expected() if selection.startswith('one,') else self.raw)
+                expected[1200:1208] = bytes.fromhex(self.autoload_patch['replace'])
+                self.assertEqual(got, expected)
+                self.assertEqual(report['state'], 'applied_to_virtual_image')
+                self.assertEqual(report['arm7_autoloads'][0]['index'], 2)
+                self.assertEqual(report['arm7_autoloads'][0]['cartridge_offset'], 1184)
+                self.assertEqual(report['arm7_autoloads'][0]['bss_bytes'], 32)
+                self.assertEqual(got[1024:1184], self.raw[1024:1184])
+                self.assertEqual(got[1280:], self.raw[1280:])
+                self.assertEqual(self.rom.read_bytes(), self.raw)
+
+    def test_autoload_noop_control_and_repeated_reads(self):
+        m = copy.deepcopy(self.manifest); m['patches'][1]['replace'] = self.autoload_patch['expect']
+        image, report = assemble(self.source, m, ['autoload-two'])
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
+        self.assertEqual(b''.join(image.blocks()), self.raw)
+        image, report = assemble(self.source, self.manifest, ['autoload-two'])
+        self.assertEqual(b''.join(image.blocks(1184, 1280)), b''.join(image.blocks(1184, 1280)))
+        self.assertEqual(self.rom.read_bytes(), self.raw)
+
+    def test_autoload_identity_and_boundaries_fail_atomically(self):
+        cases = [('target', 'arm7.bin/autoload:0'), ('target', 'arm7.bin/autoload:1'),
+                 ('target', 'arm7.bin/autoload:3'), ('target', 'arm7.bin/autoload:-1'),
+                 ('target', 'arm7.bin/autoload:02'), ('target', 'arm7.bin/autoload:x'),
+                 ('section_base', '0x03800000'), ('section_bss_bytes', 0),
+                 ('section_bss_bytes', True), ('section_sha256', '0'*64),
+                 ('addr', '0x037f8011'), ('addr', '0x037f805c'), ('addr', '0x037f8060'),
+                 ('expect', '00'*8), ('cpu', 'arm9'), ('overlay', 1),
+                 ('hook', 'new-service'), ('scratch_bytes', 8)]
+        for field, value in cases:
+            with self.subTest(field=field, value=value):
+                m = copy.deepcopy(self.manifest); m['patches'][1][field] = value
+                got, report = self.result(self.environment(m, 'one,autoload-two'))
+                self.assertEqual(got, self.raw); self.assertEqual(report['applied'], [])
+                self.assertEqual(report['state'], 'skipped')
+        for field, value in [('arm7_sha256', '0'*64), ('arm7_crc32', '00000000'),
+                             ('arm7_code_settings_offset', '0x24'),
+                             ('arm7_code_settings_offset', '-4')]:
+            m = copy.deepcopy(self.manifest); m[field] = value
+            self.assertEqual(self.result(self.environment(m, 'autoload-two'))[0], self.raw)
+        for field in ['arm7_sha256', 'arm7_crc32', 'arm7_code_settings_offset']:
+            m = copy.deepcopy(self.manifest); del m[field]
+            self.assertEqual(self.result(self.environment(m, 'autoload-two'))[0], self.raw)
+        m = copy.deepcopy(self.manifest); m['patches'][1]['addr'] = '0x037f8050'
+        self.assertEqual(self.result(self.environment(m, 'autoload-two'))[0], self.raw)
+
+    def test_malformed_raw_table_is_not_authorized_by_rehashed_identity(self):
+        # Each corruption is repinned, so the table/mapping checks must reject it.
+        changes = [(0x20, 0x02380104), (0x24, 0x02380114), (0x28, 0x02380084),
+                   (0x28, 0x02380030), (0x104, 0xfffffffc), (0x104, 28),
+                   (0x10c, 0x037f8001), (0x10c, 0x036f8000),
+                   (0x10c, 0x03810000), (0x110, 100), (0x110, 92),
+                   (0x114, 0xfffffff0), (0x114, 31)]
+        for at, value in changes:
+            with self.subTest(at=at, value=hex(value)):
+                raw = bytearray(self.raw); struct.pack_into('<I', raw, 1024+at, value)
+                self.rom.write_bytes(raw); self.source = Source(self.fd)
+                m = copy.deepcopy(self.manifest); self.repin(m, raw)
+                got, report = self.result(self.environment(m, 'one,autoload-two'))
+                self.assertEqual(got, raw); self.assertEqual(report['state'], 'skipped')
+                self.assertEqual(report['applied'], [])
+
+    def test_real_autoload_worker_uses_existing_protocol(self):
+        expected = bytearray(self.raw); expected[1200:1208] = bytes.fromhex(self.autoload_patch['replace'])
+        self.assertEqual(self.decode(self.worker(self.environment(selection='autoload-two'))), expected)
+        self.assertEqual(self.rom.read_bytes(), self.raw)
+
+
 if __name__ == '__main__': unittest.main()

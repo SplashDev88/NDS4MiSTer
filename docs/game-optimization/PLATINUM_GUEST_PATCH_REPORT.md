@@ -5,8 +5,9 @@ FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
 Three candidates are rejected and disabled. A fourth, a one-byte ARM7 pitch
-arithmetic candidate, passes local equivalence checks but awaits guarded
-delivery and full-game validation. No Platinum speed gain is qualified.
+arithmetic candidate, passes local equivalence checks. Its unchanged delivery
+controls now pass; changed-code replay and native validation remain pending.
+No Platinum speed gain is qualified.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -614,3 +615,62 @@ Next three investigations:
    coverage. Profile those scenes before spending further effort on town idle.
 3. Investigate pitch reuse only if a safe storage/lifetime contract emerges;
    the apparent cache hit rate alone does not authorize guest scratch.
+
+## ARM7 autoload delivery control
+
+The existing `guest_byte_patch` loader now supports an explicitly pinned,
+uncompressed ARM7 WRAM autoload section. Platinum's settings are at ARM7
+offset `1d0`; the raw final copy table and all three payloads match the shared
+decoder. Selected section 2 starts at `037f8000`, contains 60,564 bytes and has
+16,952 BSS bytes. Its source starts at cartridge offset `409aa4`. The original
+boot prefix, table, BSS sizes, header and cartridge layout are preserved.
+This prepares bytes in the existing virtual stream; it installs no new hook.
+
+All 33 loader tests pass, including existing ARM9 main/overlay paths, malformed
+table and identity rejection, mixed-selection atomic fallback, protected data,
+same-byte control and the actual stream worker protocol. The original ROM is
+opened read-only. The same-byte control reproduces all 128 MiB, and offline
+preparation of the candidate changes exactly one byte at cartridge `40d8a7`.
+The changed stream has not been executed or delivered as a beta.
+
+The long control reproduces all 241 files of the 16,800-frame town reference,
+including the nine-site register trace. A separate 2,601-frame boot baseline
+and its same-byte control reproduce all 83 files. Their screens, every RAM/save
+frame hash, audio prefix, captures and retained dumps also match the long
+reference's prefix. Only the explicitly different profile window and observer
+diagnostics differ from that long reference.
+
+The existing register observer captures all 40,316 word stores in the original
+ARM7 copy routine at `02380154`, during frames 0–5. Each table pointer, source,
+destination, length/end, data word and return/pipeline link matches the pinned
+image: 47 words for section 1, 15,141 for section 2 and 25,128 for section 3.
+This directly verifies the bounded original boot mapping, beyond inferring it
+from a parser. It does not test changed instruction timing or native mapping.
+
+| Delivery check | Original | Identical-byte control |
+|---|---:|---:|
+| Cartridge bytes | 134,217,728 | All identical |
+| Town replay frames / complete files | 16,800 / 241 | All identical |
+| Boot replay frames / complete files | 2,601 / 83 | All identical |
+| Boot copy word stores | 40,316 | All identical |
+| Changed-code replay / native timing | Not part of control | Not run |
+
+The 36-byte target context is absent from shared WRAM at frame 0 and present
+by frame 1. Its initial staging copy at `02384088` still matches through the
+early checkpoints, but has been overwritten by frame 2600. The comparison
+extension must handle both physical copies and leave reused or unmatched
+memory raw. The current comparator only supports ARM9 main/overlay RAM, so
+it cannot yet authorize an ARM7 candidate comparison. Never blindly subtract
+the patch address from the main-RAM base or mask the staging location forever.
+
+The candidate remains disabled, and no speedup or new beta is claimed. Next:
+qualify context-aware ARM7 shared/private-WRAM and staging comparisons, then
+run the changed stream through exact replay, lifecycle and native-performance
+gates. Broader active outdoor, battle and save-write/cold-reload routes remain
+needed; safe pitch-cache storage is still unproved.
+
+Evidence: `ARM7_AUTOLOAD_DECISION_V1.json`,
+`ARM7_AUTOLOAD_LOADER_TESTS_V1.json`, `ARM7_AUTOLOAD_NOOP_PREFLIGHT_V1.json`,
+`ARM7_AUTOLOAD_CANDIDATE_PREFLIGHT_V1.json`, `ARM7_AUTOLOAD_CONTROL_V1_STATUS.json`,
+`ARM7_AUTOLOAD_BOOT_MAPPING_V1.json`, `ARM7_AUTOLOAD_BOOT_CONTROL_V1_STATUS.json`
+and `ARM7_AUTOLOAD_BEFORE_AFTER_V1.csv`.

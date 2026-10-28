@@ -328,3 +328,8 @@
 - For carry-derived arithmetic screening, verify the instruction's encoded S
   bit. This Capstone build reports ADC as updating flags even with S=0. Reject
   S=1 and clobbered carry/register context; disassembly text alone is insufficient.
+- ARM7 autoload delivery now has an explicit virtual-stream path for a narrow,
+  pinned uncompressed WRAM layout. This is preparation of cartridge bytes,
+  not a runtime hook or proof of cache visibility. The ARM7 boot prefix and
+  copy table are preserved. Do not assume the existing ARM9 main/overlay RAM
+  comparison can normalize ARM7 WRAM or an overwritten staging buffer.

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-only
-"""Guarded, same-size patches to uncompressed ARM9 main or overlay files.
+"""Guarded, same-size patches delivered by the existing virtual cartridge.
 
 This extends the existing VirtualRom preparation path. It never writes a ROM
-file and deliberately rejects compressed/autoload targets and scratch
-allocation. Overlay bytes arrive through the normal file-load path; lifecycle
+file. Supports uncompressed ARM9 main/overlay and explicitly pinned ARM7 WRAM
+autoload sections, with no scratch allocation. Bytes follow the normal load path; lifecycle
 qualification remains per-game. A mismatch falls back atomically to the original stream.
 Game identities, addresses and bytes belong in the supplied manifest.
 """
@@ -16,6 +16,58 @@ import zlib
 from ndspy import code, codeCompression
 from hook_guard import select_profile, verify_target
 from prepare import VirtualRom, read_overlay, require
+
+
+def read_arm7_autoload(source, header, manifest, target):
+    """Resolve an unchanged-layout copy-table payload, not a live-memory hook.
+
+    The explicit settings offset and complete image identity are mandatory.
+    MainCodeFile remains the shared decoder, but its heuristic alone cannot
+    authorize a source offset. Restrict this path to a final, contiguous copy
+    table and a selected section in the last shared-WRAM alias/private WRAM.
+    Actual boot copy, mapping, execution and reset are per-game replay gates.
+    """
+    prefix = 'arm7.bin/autoload:'
+    require(isinstance(target, str) and target.startswith(prefix), 'Unsupported ARM7 target')
+    index = int(target[len(prefix):], 10)
+    require(target == prefix + str(index) and index > 0, 'Invalid autoload section index')
+    offset, entry, address, length = struct.unpack_from('<4I', header, 0x30)
+    require(length > 0 and offset >= 512, 'Invalid ARM7 image extent')
+    raw = source.read(offset, length)
+    require(hashlib.sha256(raw).hexdigest() == manifest['arm7_sha256'] and
+            zlib.crc32(raw) == int(manifest['arm7_crc32'], 16), 'ARM7 identity differs')
+    require(codeCompression.decompress(raw) == raw, 'Compressed ARM7 is unsupported by this byte-patch path')
+    settings = int(manifest['arm7_code_settings_offset'], 0)
+    require(settings % 4 == 0 and 0 <= settings <= len(raw)-20, 'Invalid ARM7 code settings offset')
+    begin, end, payload = (value-address for value in struct.unpack_from('<3I', raw, settings))
+    require(all(n % 4 == 0 for n in (begin, end, payload)) and
+            settings+20 <= payload <= begin < end == len(raw) and
+            (end-begin) % 12 == 0 and (end-begin)//12 <= 64,
+            'Unsupported ARM7 autoload table layout')
+    # Validate raw extents before invoking the shared decoder on the image.
+    cursor = payload
+    entries = []
+    for at in range(begin, end, 12):
+        base, size, bss = struct.unpack_from('<3I', raw, at)
+        require(all(n % 4 == 0 for n in (base, size, bss)) and
+                cursor+size <= begin and base+size+bss <= 0x100000000,
+                'Invalid ARM7 autoload entry')
+        entries.append((base, size, bss, cursor)); cursor += size
+    require(cursor == begin and index <= len(entries), 'ARM7 payload/table mapping differs')
+    arm = code.MainCodeFile(raw, address)
+    require(arm.codeSettingsOffs == settings and len(arm.sections) == len(entries)+1 and
+            arm.sections[0].implicit and arm.sections[0].ramAddress == address and
+            bytes(arm.sections[0].data) == raw[:payload], 'ARM7 decoded settings/main mapping differs')
+    for section, (base, size, bss, first) in zip(arm.sections[1:], entries):
+        require(not section.implicit and section.ramAddress == base and
+                len(section.data) == size and section.bssSize == bss and
+                bytes(section.data) == raw[first:first+size], 'ARM7 decoded autoload mapping differs')
+    base, size, bss, first = entries[index-1]
+    require(0x037f8000 <= base < base+size <= base+size+bss <= 0x03810000,
+            'ARM7 section is outside supported WRAM autoload range')
+    return dict(index=index, base=base, size=size, bss=bss, data=raw[first:first+size],
+                file_offset=offset+first, image_offset=offset, raw=raw,
+                prefix_bytes=payload, table_offset=begin, settings_offset=settings)
 
 
 def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
@@ -51,14 +103,27 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         image = VirtualRom(source, source.size)
         data_guards = []
         overlay_files = {}
+        arm7_sections = {}
         for patch_id in sorted(requested):
             patch = patches[patch_id]
-            require(patch['cpu'] == 'arm9' and patch['target'] in ('arm9.bin/main_loaded', 'arm9.overlay'),
+            arm7 = patch['cpu'] == 'arm7' and isinstance(patch['target'], str) and patch['target'].startswith('arm7.bin/autoload:')
+            require(arm7 or (patch['cpu'] == 'arm9' and patch['target'] in ('arm9.bin/main_loaded', 'arm9.overlay')),
                     'Unsupported CPU/target')
             require(patch.get('hook') is None and patch.get('scratch_bytes', 0) == 0,
                     'Hook or scratch requires a separately qualified mechanism')
             overlay = None
-            if patch['target'] == 'arm9.overlay':
+            if arm7:
+                require(patch.get('overlay') is None, 'Overlay ID on ARM7 autoload target')
+                loaded = read_arm7_autoload(source, header, manifest, patch['target'])
+                require(offset+length <= loaded['image_offset'] or
+                        loaded['image_offset']+len(loaded['raw']) <= offset, 'CPU source images overlap')
+                require(int(patch['section_base'], 0) == loaded['base'] and
+                        type(patch['section_bss_bytes']) is int and patch['section_bss_bytes'] == loaded['bss'] and
+                        hashlib.sha256(loaded['data']).hexdigest() == patch['section_sha256'],
+                        'ARM7 section identity differs')
+                region, base, cartridge = loaded['data'], loaded['base'], loaded['file_offset']
+                arm7_sections[loaded['index']] = loaded
+            elif patch['target'] == 'arm9.overlay':
                 overlay = read_overlay(source, header, patch['overlay'], int(patch['overlay_ram'], 0))
                 info = overlay['info']
                 require(type(patch['overlay_file_id']) is int and info[6] == patch['overlay_file_id'],
@@ -92,7 +157,7 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
                 require(region[guard_at-base:guard_at-base+len(guard_bytes)] == guard_bytes,
                         'Original data invariant differs')
                 data_guards.append((cartridge + guard_at - base, guard_bytes))
-            if overlay is None:
+            if overlay is None and not arm7:
                 guard = dict(address=at, guard_bytes=min(16, len(before)), phase='main_loaded',
                              guard_sha256=hashlib.sha256(before[:min(16, len(before))]).hexdigest())
                 ok, reason = verify_target(guard, lambda a, n: raw[a-address:a-address+n])
@@ -106,6 +171,20 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
             require(b''.join(image.blocks(guard_offset, guard_offset + len(guard_bytes))) == guard_bytes,
                     'Selected patch changes a protected data invariant')
         require(b''.join(image.blocks(0, 512)) == header, 'Header changed')
+        if arm7_sections:
+            report['arm7_autoloads'] = []
+            for index, loaded in sorted(arm7_sections.items()):
+                first = loaded['image_offset']
+                for lo, hi in ((0, loaded['prefix_bytes']), (loaded['table_offset'], len(loaded['raw']))):
+                    require(b''.join(image.blocks(first+lo, first+hi)) == loaded['raw'][lo:hi],
+                            'ARM7 boot prefix or autoload metadata changed')
+                output = b''.join(image.blocks(loaded['file_offset'], loaded['file_offset']+loaded['size']))
+                report['arm7_autoloads'].append(dict(index=index, ram=loaded['base'], bytes=loaded['size'],
+                    bss_bytes=loaded['bss'], cartridge_offset=loaded['file_offset'],
+                    code_settings_offset=loaded['settings_offset'],
+                    original_sha256=hashlib.sha256(loaded['data']).hexdigest(),
+                    output_sha256=hashlib.sha256(output).hexdigest(),
+                    delivery='unchanged-layout ARM7 autoload source; runtime qualification required'))
         if overlay_files:
             fat, fat_size = struct.unpack_from('<II', header, 0x48)
             oe, osize = struct.unpack_from('<II', header, 0x50)

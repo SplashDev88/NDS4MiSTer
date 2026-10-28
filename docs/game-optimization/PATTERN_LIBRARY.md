@@ -771,3 +771,23 @@ instructions in the tested block. Report avoided arithmetic separately from
 instruction-entry counts and measured native cycles. An algebraically exact
 instruction can still change asynchronous audio/IRQ behavior through latency.
 ARM7 delivery and the full patched replay remain pending for this example.
+
+## Guarded ARM7 autoload source delivery
+
+Extend the existing virtual cartridge stream when the original boot code
+already copies a pinned payload into RAM. Require the entire ARM7 image and
+explicit settings-offset identity, validate the raw copy-table extents against
+the shared decoder, then bind the selected section's index, base, bytes and
+BSS. Preserve the boot prefix and metadata in the combined image. Source
+identity is not proof that autoload finished or that the current RAM mapping
+fetches those bytes; keep runtime execution and lifecycle gates separate.
+
+The first supported layout is an uncompressed, contiguous ARM7 payload with
+a final table and a selected section in the last shared-WRAM alias/private
+WRAM range. Unknown layouts and malformed or conflicting guards fall back
+atomically. Keep this restriction explicit rather than guessing compression,
+aliases or unused memory. A same-byte patch must reproduce the entire original
+cartridge and replay before testing a replacement. Trace copy stores using
+the existing register observer, including source/destination pointers and
+word values. The initial staging buffer can later become game data; address-only
+comparison normalization there would hide real errors.
