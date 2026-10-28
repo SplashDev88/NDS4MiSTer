@@ -1799,3 +1799,61 @@ Evidence: `FONT_TERRAIN_CONTRACT_V1.json`,
 `FONT_NATIVE_*_TEXT_TIMING_V1.json`/PNG receipts,
 `PLATINUM_BF1_MENU_CAPTURE.json`, `PLATINUM_BF1_TACKLE_CAPTURE.json`,
 `PLATINUM_BF1_STOP.json`, and `NATIVE_FONT_BATTLE_FINAL_PRESERVATION_V1.json`.
+
+
+## Visibility-query input census on accepted terrain
+
+A read-only observer run reproduces all 183 preserved terrain-baseline output
+files over 15,600 frames, including the 600-frame full-resolution capture,
+state, audio, save, instruction profiles and checkpoints. Only the deliberately
+changed memory-watch diagnostics are excluded from this observer comparison.
+The historical terrain-versus-unpatched strict mismatch remains recorded. No
+new patch or native hardware session occurred.
+
+In frames 15000–15599, the existing box-test helper completes 3,600 calls:
+1,200 terrain and 2,400 props, returning raw 2 for 1,261 and raw 0 for 2,339.
+The trace captures actual model bounds, copied position/rotation, scale, a
+612-byte global context and the exact 252-byte packed graphics submission.
+Every box agrees with model bounds, and copied transforms agree with inputs.
+All 3,600 packets contain the same command sequence, including projection/view
+and object transforms, lighting, materials, viewport and texture state.
+
+| Observed key | Distinct keys | Repeated calls | Different result on repeated key | LRU16 hits |
+|---|---:|---:|---:|---:|
+| Model pointer only | 8 | 3,592 | 661 | 3,592 |
+| Model and transform bytes, no camera | 12 | 3,588 | 519 | 3,588 |
+| Submitted graphics bytes + box + box scale | 780 | 2,820 | 0 | 2,052 |
+| All captured context and submission | 780 | 2,820 | 0 | 2,052 |
+
+These are captured-key counts, not proof of complete hardware-state equivalence.
+One counterexample changes only the view-matrix word at packed offset 0x70:
+identical model/position/rotation/scale returns 2 at frame 15000 and 0 at 15023.
+Ignoring camera state would therefore return an incorrect visibility answer.
+There are 65 distinct view matrices and 12 object transforms in this window.
+
+The 16-entry simulation hits 57.0% overall, but only 276 of 1,728 calls (15.97%)
+while direction buttons are held, versus 1,776 of 1,872 (94.87%) after release.
+These labels describe inputs, not verified per-frame physical motion. Most
+small-cache reuse is concentrated in the less active portion of this route.
+The 78.33% all-history repeat rate needs up to 780 captured keys and must not be
+presented as the practical hit rate of a small cache or a speedup.
+
+A direct 16-entry key/result payload alone needs at least 4,352 bytes before
+validity, replacement metadata, code and alignment. No storage has been proven
+available. The helper has observable global/graphics effects beyond its returned
+boolean: setters and flush, matrix push/scale/pop, polygon attributes, primitive
+begin/end, box-test result and queued-work completion. Matching return values do
+not authorize removing those effects.
+
+Retain this as a concrete lead, with no manifest patch or new beta. Before a
+candidate, prove state effects, safe storage/lifetime and reset/reload/IRQ
+behavior, then measure lookup cost and native benefit. Prioritize the cartridge
+request/transfer-phase census next before investing in cache injection. Other
+remaining ideas are a storage-qualified visibility cache and redundant graphics
+state with all dependent effects preserved. Native speedup and guest-cycle
+savings are unavailable for this census.
+
+Evidence: `VISIBILITY_INPUT_QUALIFICATION_V1.json`,
+`VISIBILITY_INPUT_FINDINGS_V1.json`, `VISIBILITY_INPUT_DEPENDENCY_AUDIT_V1.json`,
+`VISIBILITY_INPUT_OWNED_DISASSEMBLY_V1.txt`,
+`VISIBILITY_INPUT_BEFORE_AFTER_V1.csv` and `VISIBILITY_REUSE_PROPOSAL_V1.json`.

@@ -476,3 +476,11 @@
   uncontrolled RTC/setup timing. Their cause is not isolated. Identical-message
   PTS timing is only one observation per arm, with no claimed regression or
   full-game equivalence. Candidate victory/save-write/reset remain unqualified.
+
+- Platinum's accepted-terrain visibility trace disproves a model/transform-only
+  cache:519 repeated-input observations have different results when camera data
+  is omitted. Captured full-submission keys have no conflicts, but this does not
+  prove external GPU-state completeness or removable side effects.
+- Visibility reuse is a proposal only. No scratch/code storage or lifetime is
+  qualified. A 16-entry simulation covers 57.0% overall but 15.97% of held-button
+  calls; the larger all-history repeat count is not a small-cache speed claim.

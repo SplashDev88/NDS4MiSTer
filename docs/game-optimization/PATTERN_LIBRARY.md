@@ -1064,3 +1064,30 @@ Compare a shared message before divergent action outcomes. A missed attack or
 a different opponent move changes subsequent work and invalidates whole-turn
 timing. Do not call buffer publications unique guest frames, or interpret a
 single longer message as a proven performance regression.
+
+
+## Visibility-result reuse: camera dependencies and finite capacity
+
+Capture the actual graphics submission after the game's setters, as well as
+bounds and scale. Source model/transform recurrence can hide camera changes.
+Use a deliberately incomplete key as a negative control: Platinum has 519
+conflicting result observations when camera state is omitted; the full captured
+submission plus box/scale has none in 3,600 queries. One differing view-matrix
+word is enough to reverse the result. Preserve raw output conventions.
+
+Verify observation itself against the accepted baseline, rather than treating
+an accepted non-bit-exact optimization as a new golden failure. Platinum's
+observer reproduces all 183 prior terrain output files; the original rejection
+against unpatched output remains intact.
+
+Use the existing generic recurrence analyzer to report both all-history reuse
+and bounded-capacity hits, partitioned by target activity. Platinum's 78.33%
+all-history recurrence becomes 57.0% with 16 entries and 15.97% during held-button
+intervals. Input intervals are not proof of physical movement. Include full
+key/result storage and lookup costs before selecting a cache design.
+
+A matching captured key/result is evidence for investigation, not a removable
+function. Flushes, matrix-stack operations, material/current-color effects,
+primitive state, GPU result registers and command completion may outlive the
+call. Prove these effects and cache storage/lifetime independently; do not add
+a trampoline or overwrite zero-filled memory based on recurrence alone.
