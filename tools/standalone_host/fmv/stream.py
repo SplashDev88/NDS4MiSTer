@@ -33,8 +33,9 @@ def main():
             work.update(0, 3000, min(n, source.size), source.size)
     image = VirtualRom(source, source.size).finish()
     try:
-        # Explicit guest experiments reuse this worker, VirtualRom and the
-        # normal reset-held transfer. Never mix them with movie/cache images.
+        # Guest patches reuse this worker and the normal reset-held transfer.
+        # A cumulative kit can retain ordinary FMV handling when admission
+        # skips a guest patch. Never compose two modified cartridge images.
         guest = any(key in os.environ for key in
                     ('NDS_GUEST_PATCH_MANIFEST', 'NDS_GUEST_PATCH_SHA256', 'NDS_GUEST_PATCH_IDS'))
         if guest:
@@ -42,8 +43,10 @@ def main():
             work = LoadProgress(lambda data: send(output_fd, data))
             image, report = from_environment(source, os.environ, progress)
             print('GUEST_PATCH_RESULT '+json.dumps(report, sort_keys=True), file=sys.stderr, flush=True)
-            registry = None
-        else:
+            if (report['state'] == 'skipped' and
+                    os.environ.get('NDS_GUEST_PATCH_FALLBACK_FMV') == '1'):
+                guest = False
+        if not guest:
             registry = json.loads((Path(__file__).parent/'profiles.json').read_text())
             if registry['version'] != 1:
                 raise ValueError('unsupported profile version')

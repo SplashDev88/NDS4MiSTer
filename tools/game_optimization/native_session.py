@@ -85,7 +85,9 @@ print(json.dumps({'rom_sha256':h.hexdigest(),'identity':identity,'save_sha256':h
                config=str(config_path), status='launching', controller_pid=os.getpid(),
                label=label, evidence=str(E))
     update(job)
-    launched = rig('launch', '_LAUNCH')
+    launch_action = C.get('launch_action', 'launch')
+    assert launch_action in ['launch', 'launch_beta']
+    launched = rig(launch_action, '_LAUNCH')
     live = remote('PID=' + repr(launched['pid']) + '\nC=' + repr(C) + '\n' + r'''
 from pathlib import Path
 import json,os,time

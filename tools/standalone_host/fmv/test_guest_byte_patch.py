@@ -10,10 +10,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 
 from guest_byte_patch import assemble, from_environment, SELECTION_KEYS
-from prepare import Source, read_overlay
+from prepare import Source, VirtualRom, read_overlay
 
 
 class GuestPatchTests(unittest.TestCase):
@@ -141,6 +142,47 @@ class GuestPatchTests(unittest.TestCase):
         env = self.environment(); env['NDS_GUEST_PATCH_SHA256'] = '0'*64
         self.assertEqual(self.decode(self.worker(env)), self.raw)
         self.assertEqual(self.decode(self.worker({})), self.raw)
+
+    def test_cumulative_worker_keeps_admitted_patch_exclusive(self):
+        env = self.environment()
+        env['NDS_GUEST_PATCH_FALLBACK_FMV'] = '1'
+        result = self.worker(env)
+        self.assertEqual(self.decode(result), self.expected())
+        self.assertNotIn(b'FMV_AUTO_', result.stderr)
+
+    def test_opt_in_skip_retains_legacy_and_streaming_movie_paths(self):
+        import stream
+        # Exercise both existing dispatch branches. Their actual assembly and
+        # framed-transfer contracts are covered by the prepare/cache tests.
+        env = self.environment()
+        env.update(NDS_GUEST_PATCH_SHA256='0'*64, NDS_GUEST_PATCH_FALLBACK_FMV='1')
+        movie_image = VirtualRom(self.source, len(self.raw))
+        movie_image.add(600, b'movie'); movie_image.finish()
+        expected = bytearray(self.raw); expected[600:605] = b'movie'
+        for framed in [False, True]:
+            pieces = []
+            environment = dict(env, NDS_ROM_STREAM_PATCHES='1' if framed else '0')
+            def transfer(source, plan, send):
+                self.assertEqual(plan, 'qualified-plan')
+                send(b'existing-framed-path')
+            with patch.dict(os.environ, environment, clear=True), \
+                    patch.object(sys, 'argv', ['stream', str(self.fd), '1', str(os.getppid())]), \
+                    patch.object(stream, 'send', lambda fd, data: pieces.append(bytes(data))), \
+                    patch.object(stream, 'profile_for', return_value={'key':'qualified'}) as profile, \
+                    patch.object(stream, 'assemble', return_value=movie_image) as assemble_movie, \
+                    patch('stream_load.select_plan', return_value='qualified-plan') as plan, \
+                    patch('prepared_cache.cached_transfer', side_effect=transfer) as cached:
+                self.assertEqual(stream.main(), 0)
+            if framed:
+                self.assertEqual(b''.join(pieces), b'existing-framed-path')
+                cached.assert_called_once(); plan.assert_called_once()
+                assemble_movie.assert_not_called(); profile.assert_not_called()
+            else:
+                result = subprocess.CompletedProcess([], 0, b''.join(pieces), b'')
+                self.assertEqual(self.decode(result), bytes(expected))
+                profile.assert_called_once(); assemble_movie.assert_called_once()
+                cached.assert_not_called(); plan.assert_not_called()
+        self.assertEqual(self.rom.read_bytes(), self.raw)
 
 
 class OverlayPatchTests(GuestPatchTests):

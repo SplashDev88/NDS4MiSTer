@@ -121,9 +121,9 @@ if C['action'] in ['launch','launch_beta']:
  with log.open('xb') as f:
   launch_env=os.environ.copy()
   if C['setup'].get('guest_trial'):
-   for key in ['NDS_GUEST_PATCH_MANIFEST','NDS_GUEST_PATCH_SHA256','NDS_GUEST_PATCH_IDS']:launch_env.pop(key,None)
+   for key in ['NDS_GUEST_PATCH_MANIFEST','NDS_GUEST_PATCH_SHA256','NDS_GUEST_PATCH_IDS','NDS_GUEST_PATCH_FALLBACK_FMV']:launch_env.pop(key,None)
   for key,value in C['setup'].get('host_environment',{}).items():
-   guest_allowed=C['setup'].get('guest_trial') and ((key=='NDS_GUEST_PATCH_MANIFEST' and value==str(KIT/'fmv/guest_trial_manifest.json')) or (key=='NDS_GUEST_PATCH_SHA256' and value==C['setup']['kit_hashes']['fmv/guest_trial_manifest.json']) or (key=='NDS_GUEST_PATCH_IDS' and value in C['setup'].get('allowed_guest_patch_ids',[])))
+   guest_allowed=C['setup'].get('guest_trial') and ((key=='NDS_GUEST_PATCH_MANIFEST' and value==str(KIT/'fmv/guest_trial_manifest.json')) or (key=='NDS_GUEST_PATCH_SHA256' and value==C['setup']['kit_hashes']['fmv/guest_trial_manifest.json']) or (key=='NDS_GUEST_PATCH_IDS' and value in C['setup'].get('allowed_guest_patch_ids',[])) or (key=='NDS_GUEST_PATCH_FALLBACK_FMV' and value=='1'))
    assert guest_allowed or (key in ['NDS4MISTER_LIGHTING_REUSE','NDS4MISTER_CASTLEVANIA_TILE_CACHE','NDS4MISTER_TEXTURE_HISTORY','NDS4MISTER_PREFIX_TILE_REUSE','NDS4MISTER_RENDER_CACHE_STATS','NDS4MISTER_TIMING_PROFILE'] and value in ['0','1']) or (key=='NDS_FMV_COLOR_FAST' and value in ['0','1']) or (key=='NDS_NSMB_PATCH' and value in ['off','lookup','skip','both'])
    launch_env[key]=value
   command=['python3',str(KIT/'auto_movies.py')]
@@ -134,6 +134,9 @@ if C['action'] in ['launch','launch_beta']:
    assert sha(launcher)==manifest['launcher_sha256']
    assert sha(KIT/'nds_standalone_host')==C['setup']['host_sha256']
    launch_env.pop('NDS_FMV_COLOR_FAST',None) # The actual launcher must enable it.
+   if C['setup'].get('guest_trial'):
+    for key in list(launch_env):
+     if key.startswith('NDS_GUEST_PATCH_'):launch_env.pop(key) # Prove actual launcher selection.
    command=['sh',str(launcher)]
    if C['setup'].get('movie_test_game'):command+=['--game',C['setup']['movie_test_game']]
   rom_args=[] if C['action']=='launch_beta' and (C['setup'].get('movie_test_game') or C['setup'].get('launch_without_rom')) else ['--rom',str(ROM)]
