@@ -893,3 +893,30 @@ battle-call contracts, yet fails full replay on five upper-screen frames and
 as rejected; the 2.264% reduction in ARM9 reference entries is not a native
 speedup. This sharpens the reusable detector/validation procedure but does not
 promote the title-specific bytes into a safe SDK signature.
+
+## Native benefit screening after an authorized perceptual experiment
+
+A byte replacement can reduce reference instruction entries while leaving the
+native limiting stage unchanged. Platinum's empty-tail, FIFO and font-table
+replacements saved 1.27–4.68% of selected ARM9 reference entries, yet showed no
+worthwhile gain in the screened native walking/menu/Bag scenes. This does not
+establish their effect in an unmeasured battle or every game using the pattern.
+
+Use the existing `native_rig.py`, `native_session.py` and `native_capture.py`
+with configuration-owned paths, byte guards, save size/hash, fresh PID/epoch
+ownership and bounded input. Keep game addresses and routes in manifests and
+private fixtures. Endpoint screen publications and published source-frame IDs
+are different counters; neither alone measures unique gameplay FPS, pacing,
+emulated cycles or input-to-ready loading time. Pair each route prefix and
+scene position, retain control repeats and exclude mismatched routes even
+when their raw counter delta looks favorable. A collision anchor removes
+position drift but does not make real-time input or RTC deterministic.
+
+For native audiovisual review, select the actual game-audio stream rather
+than assuming stream zero is audible. Copy encoded packets and verify their
+bytes and exact rational timestamps. For reference comparisons, retain the
+original PCM audio and frame timestamps; clearly label the software replay
+and alternate unmodified control/candidate sound instead of mixing tracks.
+Near-black transition windows are a narrow visible-duration metric and must
+not be presented as complete load time. Human approval of a difference and
+measured native benefit remain separate requirements.

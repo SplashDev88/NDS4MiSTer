@@ -382,3 +382,22 @@
   Keep it disabled; do not mask transient RAM, normalize audio, repeat the
   unchanged version, or borrow FFT's perceptual budget. Native cache/lifecycle
   safety and native performance remain unqualified.
+- The user's 28 October perceptual-trial request supersedes historical
+  no-native-trial restrictions for the three explicitly screened Platinum
+  candidates only. It does not accept their mismatches. Their isolated native
+  walking/menu/Bag trials show no worthwhile gain; all remain disabled. Native
+  battle benefit, cache readback and broader lifecycle behavior remain open.
+- Platinum's first short walking control/candidate pair ended on different
+  vertical tiles. The apparent publication-rate increase is excluded. Later
+  boundary-anchored trials remove that route mismatch and show no improvement.
+  Count source-frame IDs separately from screen publications and avoid calling
+  either unique animation FPS. Native RTC/setup durations still vary.
+- OBS's first audio stream in these native recordings is silent; the second
+  contains game audio. Native review remuxes must select the audible stream.
+  Early remuxes retained packet bytes but rounded video timestamps by less than
+  half a microsecond; the V2 copies preserve and verify exact rational packet
+  PTS/DTS/duration. Original OBS recordings were never altered.
+- A protected-file snapshot accidentally included the trial's own disposable
+  save after staging recovery. Reseeding then correctly failed the C2 preflight
+  before launch. V2 excludes only that owned save; V3 refreshes inode metadata
+  already backed by full content-hash verification. Retain the failure receipt.

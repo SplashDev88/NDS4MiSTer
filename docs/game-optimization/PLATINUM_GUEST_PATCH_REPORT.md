@@ -4,12 +4,14 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-Five candidates are rejected and disabled. The latest font-table reuse patch
-reduces battle-window ARM9 reference entries by 2.264%, but changes five
-upper-screen frames and 61,453 stereo samples. All six fixed RAM checkpoint
-sets and save data match. No Platinum speed gain is qualified. Walking,
-save/cold-load and the first trainer battle have exact software-reference
-repeats. Native measurements and the cartridge-transfer contract are next.
+Five candidates remain disabled. At the user's request, three were subsequently
+screened as isolated perceptual experiments on native hardware: empty-tail
+cleanup, FIFO predication and font-table reuse. No worthwhile native gain is
+demonstrated in the measured walking/menu/Bag scenes. Battle benefit remains
+unmeasured. Review videos preserve their known reference differences, and
+no non-bit-exact acceptance or new beta follows. Later native-screening
+sections supersede historical no-retry restrictions only for these authorized
+experiments. Exact rc12 and accepted Beta2 archives remain the baseline assets.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -1153,3 +1155,60 @@ These deterministic software clips are separate from the native speed tests.
 Evidence: `NATIVE_PERCEPTUAL_RESULTS_V1.json`, native trial `PLATINUM_Q1`,
 `PERCEPTUAL_FIFO_CONTROL_V1_STATUS.json`,
 `PERCEPTUAL_FIFO_CANDIDATE_V1_STATUS.json`, and `Platinum_FIFO_Review.json`.
+
+## Native before/after — 28 October perceptual screening
+
+All trials use the same rc12 FPGA, accepted Beta2 renderer, stock 1 GHz and
+qualified disposable story seed. This comparison isolates each guest patch;
+it is not an overall Beta2-versus-original-rc12 comparison. C4/E2/C5 share the
+boundary-traversal then menu route. F1/Q1/C6 share field anchor, menu, then Bag
+without the traversal warmup. C5 Bag is supplementary control evidence.
+
+| Native scene / metric | Original game code | One patched routine | Result |
+|---|---:|---:|---|
+| Anchored walking, screen publications/s | 16.7975, 16.6995 | Empty tail: 16.6457 | No demonstrated gain |
+| Menu after walking, publications/s | 15.1344, 14.8884 | Empty tail: 14.7406 | No demonstrated gain |
+| Menu from field, publications/s | 14.6755 | Font: 14.6349; FIFO: 14.6280 | No demonstrated gain |
+| Bag cycling, publications/s | 30.2040 | Font: 30.0610; FIFO: 30.0440 | No demonstrated gain |
+| Bag-opening near-black mean, 4 cycles | 0.4333 s | Font: 0.4500 s; FIFO: 0.4417 s | No shorter visible transition |
+| Bag-closing near-black mean, 4 cycles | 1.3208 s | Font/FIFO: 1.3167 s | Sub-frame mean difference; not a qualified gain |
+| HPS helper, menu, percent of one core | 147.54% | Font: 147.30%; FIFO: 147.29% | No worthwhile load reduction |
+| HPS helper, Bag, percent of one core | 122.20% | Font: 122.68%; FIFO: 121.83% | No worthwhile load reduction |
+| Native cycles, unique-frame pacing p50/p95/max, missed VBlanks | Unavailable | Unavailable | Do not infer from publication counts |
+| Capture drops added by OBS | 0 | 0 | Capture health passed, not an emulated dropped-frame metric |
+
+Native real-time input and RTC are not deterministic reference replay. Initial
+short walking C3/E1 trials had a one-tile mismatch and are excluded, including
+their apparent positive delta. The anchored scene snapshots differ only in
+player-foot animation at entry. Staged cartridge hashes and saves match the
+intended trial before/after; direct ARM fetch/cache readback is unavailable.
+No native save-write, soft-reset, unrelated-scene or combined-patch validation
+is claimed. These results justify keeping the screened candidates disabled,
+not declaring all possible Platinum optimizations exhausted.
+
+After all measurements, a separate 15-second, 199 Hz CPU-clock profile collected
+4,668 HPS-helper leaf samples. Symbolization uses the exact accepted renderer
+binary. Functions in `SoftRenderer3D` account for 1,409 samples (30.18%); its
+cached perspective interior batch alone accounts for 332 (7.11%). Additional
+perspective math, command processing and transfer work are recorded individually
+in `PLATINUM_HPS_BASELINE_ANALYSIS_V1.json`; overlapping name groups must not be
+summed. This is HPS sampling, not an ARM9/ARM7 guest profile or cycle share.
+It supports investigating unnecessary game-side graphics submissions before
+spending more effort on small CPU-only loop savings. It does not prove that a
+particular draw call is removable or authorize a renderer/RTL change.
+
+The top three unfinished investigations are:
+
+1. Trace game-side graphics submissions in the slow outdoor scene and classify
+   repeated or provably invisible work. Test visibility/dependency contracts
+   before removing a call; no safe call site or gain has yet been established.
+2. Census the six-byte strided upload callback at `020a7e00`: compare destination,
+   data and reader lifetime to determine whether uploads repeat unnecessarily.
+   A redundant-looking transfer may still synchronize another component.
+3. Census cartridge request recurrence around `020cd488–020cd4ac`, recording
+   actual blocks, consumers and completion semantics. Active FIFO polling is
+   not dead code; any cache must fit existing mechanisms and be proven safe.
+
+The font patch's battle-specific native effect is also unmeasured. A future
+battle test first needs a qualified native route matching the reference scene;
+its reference-entry saving alone is not a reason to enable it.
