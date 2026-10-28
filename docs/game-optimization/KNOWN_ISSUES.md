@@ -284,3 +284,17 @@
   memory contract; wider scenes, native timing and optimized reload are untested.
   The first unpatched observer run rejected a byte-reversed return opcode;
   corrected V2 guards pass, and the failed attempt remains in evidence.
+- Platinum's HBlank `used` flag is not an atomic empty-callback predicate:
+  registration and deletion update it in a different order from the callback
+  pointer. Caller-side IRQ exclusion has not been established. The original
+  dummy call also changes LR. Naive skips are unqualified; a whole-empty fast
+  path needs a proven layout and callback/lifecycle contract. Static instruction
+  counts cannot establish native cycle benefit or exhaust all alternatives.
+- Platinum now has a reproducible software route downstairs and into Twinleaf
+  Town: 16,800 screen pairs, audio/save and per-frame game RAM hashes match,
+  with 235 identical full files. The repeat intentionally changes only the
+  profiling window; counter/PC-file differences are audited, not game-state
+  allowances. Town idle does not qualify outdoor combat, save writes, optimized
+  overlay transitions or native performance. The new IRQ-table mask-walk lead
+  still needs a dynamic input census and exact replacement proof; never confuse
+  removing empty scan iterations with suppressing selected IRQ handlers.

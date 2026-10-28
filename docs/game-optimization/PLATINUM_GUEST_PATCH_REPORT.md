@@ -336,17 +336,84 @@ Evidence: `EMPTY_TAIL_SYNTHETIC_V1.json`, `EMPTY_TAIL_TOOL_TESTS_V1.json`,
 `EMPTY_TAIL_LIFECYCLE_DISASSEMBLY_V1.json`, `EMPTY_TAIL_COMPARISON_V1.json`,
 `EMPTY_TAIL_DECISION_V1.json` and `EMPTY_TAIL_BEFORE_AFTER_V1.csv`.
 
+## HBlank candidate screening
+
+The owned 28-byte dispatcher plus its two-byte dummy return and two-byte
+alignment region does not yet have a demonstrated layout for a whole-empty
+fast path with a preserved real-callback path. The existing synthetic runner
+confirms 25 executed instructions for the two-empty-slot function. A simple
+per-slot target load/compare/branch guard adds work around the two-instruction
+`BLX`/`BX LR` pair it would skip; sharing a constant changes the calculation
+but still needs a layout and machine-state proof. These are instruction counts,
+not native cycle estimates, and do not rule out every HBlank optimization.
+
+Checking `used == FALSE` is insufficient. Registration writes parameter,
+callback and then `used`; deletion clears `used` before replacing callback
+and parameter. The owned sequences contain no IRQ masking, and caller-side
+exclusion has not been proved. A synthetic registration snapshot with `used=0`
+and a live callback still performs that callback's write. Skipping it changes
+behavior. No actual race is claimed to have occurred in the captured scene.
+Even the dummy call sets LR to `0x021ef48d`, so deleting it without reproducing
+the caller-visible state does not satisfy the current equivalence contract.
+
+No HBlank patch is implemented or enabled. Retain a whole-empty fast path as
+a proposal requiring safe code space and complete callback/lifecycle proof;
+do not overwrite the neighboring function, assume scratch or disable the whole
+interrupt. Evidence: `HBLANK_COST_SCREEN_V1.json`,
+`HBLANK_SYNTHETIC_SCREEN_V1.json` and `HBLANK_BEFORE_AFTER_V1.csv`.
+
+## Downstairs and Twinleaf Town reference
+
+`ROOM_ROUTE_V9` now covers the bedroom/menu prefix, the stairs downstairs,
+both conversations and the exit to Twinleaf Town. Earlier V5/V6 attempts
+stopped at grid positions 9,6 and 8,5; continuing north from 8,5 reaches the
+stair warp at 8,4. Read-only RAM analysis uses consistent manager/avatar/object
+backlinks and matching integer, fixed-point and location coordinates. The map
+IDs and screenshots agree: downstairs is 414, then town is 411. These values
+help navigate the recorded replay; no game state or original save is edited.
+
+The independent 16,800-frame cold-boot repeat matches every screen pair, the
+entire audio/save, all per-frame game RAM hashes and 235 complete output files,
+including the retained raw checkpoints. The repeat profiles only stable town
+frames 15000–16799, so three measurement files differ intentionally: the two
+instruction-counter columns are zero before 15000 and match the baseline
+afterward, and the two PC profiles contain that window only. Every other state
+column is exact. The raw comparator's state-file mismatch is retained and
+fully explained in `ROOM_ROUTE_V9_REPEAT_COMPARISON.json`; no game-state
+difference is masked.
+
+The outdoor window has 292,331,250 ARM9 and 45,944,604 ARM7 executed reference
+instructions. All 30 bins above 2% are screened and every sampled opcode in
+them matches owned code or the pinned reference BIOS. Twenty-eight bins reuse
+the prior static interpretation; two new bins contain IRQ-handler table mask
+traversal and sound-envelope state updates. The former is a new candidate
+lead: a 22-position loop continues through empty high positions after the
+remaining mask is zero. Capture actual masks and callback values before
+estimating savings. Preserve the high-bit cap, all selected table writes,
+literal addresses and complete machine state; do not skip an IRQ or handler.
+Its SDK identity is not yet established.
+
+The town observer also records 60 empty 64-record queue entries and 63,120
+dummy HBlank calls over frames 16400–16519. This broadens the unpatched scene
+evidence, not the rejected optimizations' qualification. Outdoor walking beyond
+the exit step, battle, save-write/reload, optimized transitions and all native
+accuracy/cadence/performance work remain pending. No new beta is produced.
+
+Evidence: `ROOM_ROUTE_V9_REVIEW.png`, `ROUTE_COORDINATE_FINDINGS_V1.json`,
+`TOWN_REFERENCE_BEFORE_AFTER_V1.csv`, `TOWN_PROFILE_SCREEN_V1.json`,
+`TOWN_NEW_THRESHOLD_DISASSEMBLY_V1.txt`, `TOWN_GUARDED_FINDINGS_V1.json`,
+`IRQ_MASK_SCAN_PROPOSAL_V1.json` and `REPLAY_SCENE_REVIEW_V3.json`.
+
 Next three investigations:
 
-1. Test conditional suppression of proven dummy HBlank callbacks, preserving
-   real callbacks, registrations and interrupt semantics. The current capture
-   covers only 120 bedroom frames, not arbitrary scenes or overlay reloads.
-2. Investigate ARM7 pitch/volume lookup recurrence after tracing actual calls;
-   avoid changing audio update cadence.
-3. Extend representative replay coverage to transitions, outdoors, battle and
-   save-write/reload. The empty-tail lead may merit bounded perceptual review
-   if the user separately approves that budget; it cannot be promoted under
-   the current one, and an unchanged strict repeat adds no evidence.
+1. Census actual IRQ-table masks and callback values, then prove a same-size
+   empty-tail cutoff if the observed workload justifies it.
+2. Capture ARM7 pitch/volume operand recurrence before caching or precomputation;
+   preserve stateful envelope updates and audio cadence.
+3. Extend outdoor walking, battle and save-write/reload coverage. The whole-empty
+   HBlank proposal still needs a justified layout and callback/IRQ contract.
+   The rejected compaction lead may merit perceptual review only if the user
+   separately approves that budget; an unchanged strict repeat adds no evidence.
 
 No RTL, new HPS service, save-state-format change or non-bit-exact acceptance
 is authorized here. No speed improvement or new beta is claimed.

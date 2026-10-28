@@ -623,6 +623,22 @@ qualifying generic support; its FMV-specific extension cannot be assumed safe
 or necessary for another title. A whole-overlay checkpoint match identifies
 code at that checkpoint, not every future load.
 
+For Thumb callbacks, the observed target's `70 47` (`BX LR`) is a useful
+empty-body signature only after mode, target identity and actual dispatch are
+verified. It does not imply the surrounding call is free of state changes:
+`BLX` sets LR. Count the complete proposed guard and retained register/flag
+work before allocating code space. Platinum's original two-empty-slot function
+takes 25 synthetic instruction entries; a naive per-slot pointer guard can add
+more entries than the call/return pair it removes. Native cycle costs may differ.
+
+Audit registration and deletion stores, not just steady-state slot flags.
+Platinum writes parameter/callback before setting `used`, and clears `used`
+before restoring the dummy callback. A synthetic live-callback snapshot with
+`used=0` performs a write, disproving that flag alone as an empty-call predicate.
+Caller IRQ exclusion remains a separate proof obligation. A fast path needs
+the actual target identity and preserved real-callback path; do not infer that
+alignment padding or a neighboring function is available for a trampoline.
+
 For an uncompressed overlay, prefer a same-size replacement in its existing
 virtual cartridge file over relocation or new scratch. The shared
 `prepare.read_overlay` now serves both FMV preparation and guarded guest byte
@@ -651,3 +667,22 @@ overlays remain raw. Both new frontend controls reproduce all 100/166 golden
 files; 27 adversarial C++ checks cover context/overlap/partial-body cases.
 This comparison never writes guest memory and does not qualify native cache
 visibility, state-load behavior or a candidate that fails audio validation.
+
+## Fixed-width sparse bitmask traversal
+
+Detect a bounded loop that tests bit zero, updates a selected table entry,
+shifts the mask and advances an index through every supported bit. This is
+table maintenance, not an idle wait merely because the table serves IRQs.
+Capture the actual masks, output callback/data values and call counts before
+estimating empty iterations. A possible early-zero exit must preserve selected
+writes and their order, behavior for high bits outside the supported width,
+return registers and flags. Treat an initially zero mask separately: a shift's
+carry flag can differ from the original loop's final compare. Authenticate
+literal pools and DTCM/main-RAM mappings rather than assuming ordinary RAM.
+
+Platinum's outdoor profile identifies a 22-bit handler-table walk at
+`020c144c..020c14c8`; the surrounding bin is 3.68% of ARM9 PC samples. Exact
+owned bytes support the structure, but dynamic mask recurrence and a replacement
+proof are pending. A potential same-size layout can avoid duplicate zero/stride
+temporaries, retaining all selected IRQ updates. No code has been patched, no
+native saving is established, and no SDK name/signature is yet promoted.

@@ -129,6 +129,15 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "EMPTY_TAIL_DECISION_V1.json"
+    "latest_decision": "EMPTY_TAIL_DECISION_V1.json",
+    "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
+    "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
+    "hblank_patch_implemented": false,
+    "route_coordinate_findings": "ROUTE_COORDINATE_FINDINGS_V1.json",
+    "town_route": "room-route-v9.tsv",
+    "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
+    "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
+    "coverage": "REPLAY_SCENE_REVIEW_V3.json",
+    "next_proposal": "IRQ_MASK_SCAN_PROPOSAL_V1.json"
   }
 }
