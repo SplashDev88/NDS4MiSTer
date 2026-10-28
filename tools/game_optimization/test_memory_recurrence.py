@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Check complete-state keys and entry/exit integrity, not just source pointers."""
 import copy
+import csv
+from pathlib import Path
+import tempfile
 import unittest
-from analyze_memory_recurrence import analyze, pair_events, arm_condition
+from analyze_memory_recurrence import analyze, pair_events, arm_condition, read_events
 
 
 class RecurrenceTests(unittest.TestCase):
@@ -87,6 +90,38 @@ class RecurrenceTests(unittest.TestCase):
         events[0]['frame'] = 1
         with self.assertRaises(ValueError):
             analyze(events, fixture)
+
+    def test_register_only_recurrence_without_invented_source(self):
+        fixture = copy.deepcopy(self.fixture)
+        fixture.update(source_span=None,input_spans=[],output_spans=[],output_addresses=[],
+                       key_registers=[2],output_registers=[0])
+        events=copy.deepcopy(self.events)
+        for event in events:
+            event['spans']=[(0,b'')]
+        result=analyze(events,fixture)['full_route']
+        self.assertEqual(result['calls'],4)
+        self.assertEqual(result['unique_complete_inputs'],1)
+        self.assertEqual(result['exact_reuse_calls'],3)
+        self.assertEqual(result['source_snapshot_calls'],0)
+        self.assertEqual(result['unique_source_contents'],0)
+        self.assertEqual(result['unique_source_addresses'],0)
+
+    def test_register_only_csv_requires_explicit_empty_memory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'trace.csv'
+            row=dict(event=0,span=0,frame=1,cpu=1,pc='3800100',mode='arm',opcode='e92d4010',
+                     cpsr='92',address='0',length='0',bytes='',space='regs',
+                     **{f'r{i}':format(i,'x') for i in range(16)})
+            def write(value):
+                with path.open('w',newline='') as stream:
+                    writer=csv.DictWriter(stream,fieldnames=value.keys());writer.writeheader();writer.writerow(value)
+            write(row);events=read_events(path)
+            self.assertEqual(events[0]['regs'],tuple(range(16)))
+            self.assertEqual(events[0]['spans'],[(0,b'')])
+            for mutation in [dict(address='1'),dict(length='1',bytes='00'),dict(space='main')]:
+                with self.subTest(mutation=mutation):
+                    write(dict(row,**mutation))
+                    with self.assertRaises(ValueError):read_events(path)
 
 
 if __name__ == '__main__':

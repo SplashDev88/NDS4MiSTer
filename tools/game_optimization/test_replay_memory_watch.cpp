@@ -69,5 +69,41 @@ int main() {
  rejected([&]{load("0 02001000 arm e92d4000 0 0 4 2 100 dtcm extra\n");});
  require(dtcm==dtcmBefore);
  require(ram==before);
+ // Explicit register-only rows do not inspect an address or require RAM backing.
+ const ReplayMemoryWatch::Mapping noMemory{nullptr,0,0,0,0,nullptr};
+ auto registers=load("1 03800100 arm e92d4010 0 0 0 15 3800108 regs\n");
+ regs[0]=0xffffffff;regs[13]=0x0380f000;regs[15]=0x03800108;
+ const auto beforeRegisters=regs;
+ std::ostringstream registerOut;
+ registers.Observe(0,0x03800100,0,regs.data(),0,12,noMemory,registerOut);
+ require(registerOut.str().empty()&&registers.events==0);
+ registers.Observe(1,0x03800100,0xe92d4010,regs.data(),0x92,12,noMemory,registerOut);
+ require(registers.events==1&&registers.sites[0].hits==1);
+ require(registerOut.str().find(",0,0,,regs\n")!=std::string::npos);
+ require(registerOut.str().find(",380f000,")!=std::string::npos&&regs==beforeRegisters);
+ unchanged=registerOut.str();
+ rejected([&]{registers.Observe(1,0x03800100,0xe92d4011,regs.data(),0x92,12,noMemory,registerOut);});
+ rejected([&]{registers.Observe(1,0x03800100,0xe92d4010,regs.data(),0xb2,12,noMemory,registerOut);});
+ regs[15]=0;rejected([&]{registers.Observe(1,0x03800100,0xe92d4010,regs.data(),0x92,12,noMemory,registerOut);});
+ require(registerOut.str()==unchanged&&registers.events==1);regs=beforeRegisters;
+ auto thumbRegisters=load("1 03800102 thumb df1b 0 0 0 15 3800106 regs\n");
+ regs[15]=0x03800106;
+ thumbRegisters.Observe(1,0x03800102,0xdf1b,regs.data(),0x3f,12,noMemory,registerOut);
+ require(thumbRegisters.events==1);
+ // A failed data span must not emit an otherwise valid register-only prefix.
+ auto mixed=load("1 03800100 arm e92d4010 0 0 0 15 3800108 regs\n"
+                 "1 03800100 arm e92d4010 0 0 4 15 3800108 main\n");
+ regs=beforeRegisters;unchanged=registerOut.str();
+ rejected([&]{mixed.Observe(1,0x03800100,0xe92d4010,regs.data(),0x92,12,noMemory,registerOut);});
+ require(registerOut.str()==unchanged&&mixed.events==0);
+ for(const std::string bad:{
+  "1 03800100 arm e92d4010 1 0 0 15 3800108 regs\n",
+  "1 03800100 arm e92d4010 0 1 0 15 3800108 regs\n",
+  "1 03800100 arm e92d4010 0 0 1 15 3800108 regs\n",
+  "1 03800100 arm e92d4010 0 0 0 16 3800108 regs\n",
+  "1 03800100 arm e92d4010 0 0 0 15 3800108 main\n",
+  "1 03800100 arm e92d4010 0 0 0 15 3800108 regs extra\n"})
+  rejected([&]{load(bad);});
+ require(ram==before&&dtcm==dtcmBefore);
  std::cout<<checks<<" memory-watch checks passed\n";
 }

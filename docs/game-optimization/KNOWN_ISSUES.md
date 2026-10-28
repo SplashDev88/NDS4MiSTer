@@ -308,3 +308,13 @@
   bytes cannot be used on ARM7. Verify CPU instruction support and multiply
   operand restrictions independently of a newer-architecture emulator's
   synthetic result; no SDK identity or cross-game patch is established.
+- Platinum pitch inputs repeat substantially, but recurrence is not a cache
+  contract. A 16-entry hypothetical LRU covers 55,815 of 57,827 calls; a single
+  global last-result slot only 1,233. No safe guest storage, voice lifetime,
+  full CPU-effect proof, native gain or ARM7 patch delivery is established.
+  Do not use a normalized BIOS lookup index as the whole pitch-function key.
+- Zero pitch returns the base timer in 13,874 observed calls, but this does not
+  authorize skipping the helper: the observed base range excludes its lower
+  clamp, and register/flag/BIOS effects remain proof obligations. Zero pitch and
+  zero normalized index differ when an octave offset is present. Stateful sound
+  envelopes and existing dirty-write checks must remain intact.

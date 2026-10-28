@@ -464,7 +464,7 @@ Evidence: `IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json`, `IRQ_MASK_COST_SCREEN_V1.json`
 `IRQ_SPARSE_COMPARISON_V2.json`, `IRQ_SPARSE_DECISION_V2.json`,
 `IRQ_SPARSE_BEFORE_AFTER_V2.csv` and `IRQ_SPARSE_PATTERN_SCAN_V1.json`.
 
-Next three investigations:
+Priorities after the IRQ trial (the sound census is completed below):
 
 1. Capture ARM7 pitch/volume operands and caller recurrence before considering
    arithmetic reuse. Preserve stateful envelope updates and audio cadence.
@@ -474,6 +474,68 @@ Next three investigations:
    callback/IRQ contract. A startup- or caller-scoped IRQ optimization would
    require a new proof and supported delivery, not an unchanged rerun of this
    rejected patch. Any perceptual budget needs separate user approval.
+
+## ARM7 sound arithmetic census
+
+The existing observer now captures registers without dereferencing memory, with
+the same CPU/mode/opcode/pipeline-PC guards. This avoids incorrectly treating
+ARM7 WRAM as main RAM. All 68 observer checks and six recurrence tests pass.
+Only the diagnostic frontend is rebuilt; its linked CPU, audio and renderer
+objects are unchanged. The 16,800-frame unpatched replay reproduces all 238
+game/profile files, including every screen, RAM checkpoint, audio sample, save
+and instruction count. Only the three observer trace files differ intentionally.
+
+The 462,616 guarded events contain 57,827 complete calls each to pitch and
+volume helpers, plus their lookup input/output sites. No incomplete boundary
+call is discarded. Pitch's only observed caller returns to `037fc770`, and
+volume's to `037fc760`. Four-stage audits validate normalization/clamping,
+stack-pointer deltas and BL links. They do not claim saved-stack byte or full
+register/flag equivalence for a replacement.
+
+| Numerical operation | Calls | Distinct captured inputs | Conflicting R0 results | Hypothetical 16-entry LRU hits |
+|---|---:|---:|---:|---:|
+| Pitch, base timer + signed offset | 57,827 | 397 | 0 | 55,815 |
+| Pitch BIOS lookup | 57,827 | 252 | 0 | 56,226 |
+| Volume, signed level | 57,827 | 1,039 | 0 | 9,985 |
+| Volume BIOS lookup | 57,827 | 722 | 0 | 10,385 |
+
+Pitch base timers range from 379 to 1,047 and signed offsets from -960 to
+1,088 in this window. The caller obtains the base with a halfword load; that
+does not prove this narrower observed range for every scene. Zero pitch occurs
+13,874 times, always returning the observed base, whereas normalized lookup
+index zero occurs 16,888 times. Those conditions are not interchangeable.
+Volume levels range from -1,416 to -2 and exercise the lower clamp at -723.
+The existing caller already skips sound-state writes when derived output has
+not changed; that alone does not avoid computing the output.
+
+Pitch reuse is worth further investigation, but no cache is implemented.
+Its 16-entry LRU covers about 96.5% of calls before lookup/storage costs;
+a single global last-result entry covers only 1,233 calls. Volume's weaker
+local reuse makes a small generic cache less attractive. Same-address R4
+contexts do not prove a voice's lifetime or make any fields safe scratch.
+No HPS offload or ARM7 CLZ path is available by assumption. The current byte
+loader supports ARM9 main/uncompressed overlays, so ARM7 delivery needs its
+own guarded mapping and unchanged-stream qualification before a candidate.
+
+The next bounded step is a no-scratch zero-pitch arithmetic proof: retain
+out-of-range/clamped behavior, BIOS/table invariants and all observable CPU
+effects, then screen its actual instruction cost. Do not simply skip the call
+because the captured base values exceed the minimum clamp. No new patch, native
+performance result or beta follows from this census.
+
+Evidence: `REGISTER_WATCH_BUILD_V10.json`, `REGISTER_WATCH_TESTS_V10.json`,
+`ARM7_SOUND_CENSUS_QUALIFICATION_V1.json`, `ARM7_SOUND_WATCH_IDENTITY_V1.json`,
+`ARM7_SOUND_RECURRENCE_V1.json`, `ARM7_SOUND_CALL_CONTRACT_V1.json` and
+`ARM7_SOUND_CENSUS_BEFORE_AFTER_V1.csv`.
+
+Next three investigations after this census:
+
+1. Prove and cost a guarded zero-pitch path without scratch; qualify ARM7
+   in-memory delivery only if a worthwhile exact candidate emerges.
+2. Extend active outdoor movement, battle and isolated save-write/reload
+   coverage, then profile representative scenes.
+3. Evaluate a small pitch cache only after a safe storage/lifetime contract;
+   keep whole-empty HBlank as a separate unresolved layout/callback proposal.
 
 No RTL, new HPS service, save-state-format change or non-bit-exact acceptance
 is authorized here. No speed improvement or new beta is claimed.

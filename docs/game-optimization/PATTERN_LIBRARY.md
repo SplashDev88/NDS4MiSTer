@@ -713,3 +713,36 @@ When a write watch covers both code and literal data, the pair summarizer can
 explicitly authenticate original control bytes and replacement candidate bytes.
 Unknown watched addresses and conflicting guards still fail. This changes only
 diagnostic accounting, not RAM comparison masks or any acceptance gate.
+
+## Repeated sound pitch and volume arithmetic
+
+Observe complete numerical inputs and returned values at guarded entry/exit
+sites before choosing a cache or precomputation. Capture the BIOS lookup input
+and result separately from the surrounding calculation: its key may be smaller,
+but it does not identify the full function's output. Preserve clamping,
+normalization, octave shifts, register/flag side effects and audio timing.
+Stateful envelope updates are not interchangeable with pure numerical helpers.
+
+The existing observer now supports explicit register-only rows for either CPU,
+including ARM7 WRAM-resident code, without reading guest memory. The same
+recurrence analyzer accepts an absent memory source and reports zero source
+snapshots. It keeps incomplete/nested invocation rejection and distinguishes
+captured key/output recurrence from proof that the entire function can be
+replaced. The new frontend reproduces all 238 Platinum game/profile files;
+only its three observer files differ. There is no game patch in this control.
+
+In Platinum town, 57,827 pitch calls use 397 input pairs with no conflicting R0
+results. A hypothetical 16-entry LRU has 55,815 hits (about 96.5%); a single
+global last-value slot has only 1,233. Volume also repeats globally, but its
+16-entry LRU has only 9,985 hits. High aggregate repetition alone does not
+justify a small cache. These counts omit lookup, storage, invalidation and
+timing costs and do not predict native speed.
+
+Zero pitch occurs in 13,874 calls, each returning the observed base timer.
+Prefer investigating a guarded arithmetic shortcut without scratch before
+allocating a cache. Do not generalize the observed base range to other scenes:
+the helper has clamps and wider-input behavior. A zero normalized lookup index
+is not the same as zero pitch, since nonzero octave offsets can share that
+index. Caller R4 addresses are context observations, not storage ownership or
+proof of a stable voice lifetime. ARM7 patch delivery and BIOS/table invariants
+still need separate qualification; no SDK identity is claimed.

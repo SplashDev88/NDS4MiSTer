@@ -214,22 +214,27 @@ This establishes consistency of captured events, not unrestricted write-watch
 coverage or permission to accept a changed soundtrack.
 
 `NDS_REPLAY_MEMORY_WATCH=SPEC` extends the same instruction observer with
-bounded snapshots of host-backed DS memory. Each row is:
+bounded snapshots of registers or host-backed DS memory. Each row is:
 
 ```text
-CPU PC_HEX arm|thumb OPCODE_HEX ADDRESS_REG SIGNED_OFFSET BYTE_COUNT GUARD_REG GUARD_VALUE_HEX [main|dtcm]
+CPU PC_HEX arm|thumb OPCODE_HEX ADDRESS_REG SIGNED_OFFSET BYTE_COUNT GUARD_REG GUARD_VALUE_HEX [main|dtcm|regs]
 ```
 
 All fields except those marked hex are decimal. Rows for the same CPU/PC
 form one event with ordered spans; at most 16 sites and 64 spans are allowed.
-Each span is 1–4096 bytes, with a register-relative offset within ±4096.
+Each memory span is 1–4096 bytes, with a register-relative offset within ±4096.
 The exact opcode, CPU mode and register guard must match. Address registers
 are R0–R14; a guard may also name R15 to check the callback's pipeline PC.
 The default `main` space rejects noncanonical aliases, MMIO, ARM9 ITCM/DTCM
 overlap, overflow and non-4-MiB RAM mapping. Explicit `dtcm` spans require
 ARM9, a currently mapped 16-KiB DTCM range and the correct local backing;
 they reject ITCM overlap, unmapped bytes and ARM7 aliases. No fallback from
-one space to the other is permitted. It copies backing bytes directly, with no emulated memory reads or
+one space to the other is permitted. Explicit `regs` rows require all three
+address/offset/length fields to be zero. They retain CPU, opcode, mode and
+register guards, emit all registers/CPSR, and neither inspect an address nor
+require RAM backing. Their CSV memory fields are `0,0,,regs`; an empty memory
+span without this explicit space still fails. This supports ARM7 register
+censuses without pretending its WRAM stack is main RAM. It copies backing bytes directly, with no emulated memory reads or
 guest writes. Legacy `watches.csv` is unchanged. Capture is at instruction
 entry, before its condition is evaluated; use an appropriate unconditional
 site or account for this in the fixture. Profiling must cover every required
@@ -260,6 +265,10 @@ output conflicts, reuse distances and hypothetical LRU hit counts. Constant
 tables and other dependencies still need independent proof. Payload storage
 omits metadata and alignment; hit counts omit lookup, copy, invalidation and
 timing costs. This diagnostic does not allocate guest scratch or implement a cache.
+For a register-only fixture, use empty input/output span lists, explicit key/
+output registers and `source_span: null`. Source-content/address counts are then
+zero, not a fabricated empty-memory source. This numerical recurrence does not
+prove all CPU side effects, safe cache storage or lookup-table invariance.
 
 `audit_transfer_calls.py TRACE FIXTURE --output REPORT` streams the same
 guarded memory-watch output to census leaf transfer arguments. It binds the

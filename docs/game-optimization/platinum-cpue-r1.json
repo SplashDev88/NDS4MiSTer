@@ -183,7 +183,7 @@
     "optimization_enabled": false,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "IRQ_SPARSE_DECISION_V2.json",
+    "latest_decision": "ARM7_SOUND_DECISION_V1.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -192,12 +192,17 @@
     "town_repeat": "ROOM_ROUTE_V9_REPEAT_COMPARISON.json",
     "town_profile": "TOWN_PROFILE_SCREEN_V1.json",
     "coverage": "REPLAY_SCENE_REVIEW_V3.json",
-    "next_proposal": "ARM7 operand recurrence and active outdoor/battle/save coverage",
+    "next_proposal": "ARM7_ZERO_PITCH_PROPOSAL_V1.json",
     "irq_mask_census": "IRQ_MASK_CENSUS_EFFECT_AUDIT_V1.json",
     "irq_mask_cost_screen": "IRQ_MASK_COST_SCREEN_V1.json",
     "irq_mask_replay": "IRQ_SPARSE_COMPARISON_V2.json",
     "irq_mask_synthetic": "IRQ_SPARSE_SYNTHETIC_V2.json",
     "irq_mask_detector": "IRQ_SPARSE_PATTERN_SCAN_V1.json",
-    "irq_mask_enabled": false
+    "irq_mask_enabled": false,
+    "arm7_sound_identity": "ARM7_SOUND_WATCH_IDENTITY_V1.json",
+    "arm7_sound_qualification": "ARM7_SOUND_CENSUS_QUALIFICATION_V1.json",
+    "arm7_sound_recurrence": "ARM7_SOUND_RECURRENCE_V1.json",
+    "arm7_sound_call_contract": "ARM7_SOUND_CALL_CONTRACT_V1.json",
+    "arm7_guest_patch_implemented": false
   }
 }

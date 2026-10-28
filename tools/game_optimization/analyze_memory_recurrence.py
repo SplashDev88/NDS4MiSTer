@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exact byte recurrence in guarded entry/exit snapshots of an unpatched replay."""
+"""Exact byte/register recurrence in guarded snapshots of an unpatched replay."""
 import argparse
 from collections import Counter, OrderedDict
 import csv
@@ -20,24 +20,29 @@ def require(condition, message):
 
 def read_events(path):
     events = []
-    for row in csv.DictReader(Path(path).open()):
-        number = int(row['event'])
-        if number == len(events):
-            events.append(dict(frame=int(row['frame']), cpu=int(row['cpu']),
-                               pc=int(row['pc'], 16), mode=row['mode'],
-                               opcode=int(row['opcode'], 16), cpsr=int(row['cpsr'], 16),
-                               regs=tuple(int(row['r'+str(n)], 16) for n in range(16)), spans=[]))
-        require(number == len(events)-1, 'Noncontiguous event order')
-        event = events[-1]
-        require(int(row['span']) == len(event['spans']), 'Noncontiguous span order')
-        require((int(row['frame']), int(row['cpu']), int(row['pc'], 16), row['mode'],
-                 int(row['opcode'], 16), int(row['cpsr'], 16),
-                 tuple(int(row['r'+str(n)], 16) for n in range(16))) ==
-                (event['frame'], event['cpu'], event['pc'], event['mode'],
-                 event['opcode'], event['cpsr'], event['regs']), 'Span event metadata differs')
-        data = bytes.fromhex(row['bytes'])
-        require(len(data) == int(row['length']) > 0, 'Snapshot length differs')
-        event['spans'].append((int(row['address'], 16), data))
+    with Path(path).open() as stream:
+        for row in csv.DictReader(stream):
+            number = int(row['event'])
+            if number == len(events):
+                events.append(dict(frame=int(row['frame']), cpu=int(row['cpu']),
+                                   pc=int(row['pc'], 16), mode=row['mode'],
+                                   opcode=int(row['opcode'], 16), cpsr=int(row['cpsr'], 16),
+                                   regs=tuple(int(row['r'+str(n)], 16) for n in range(16)), spans=[]))
+            require(number == len(events)-1, 'Noncontiguous event order')
+            event = events[-1]
+            require(int(row['span']) == len(event['spans']), 'Noncontiguous span order')
+            require((int(row['frame']), int(row['cpu']), int(row['pc'], 16), row['mode'],
+                     int(row['opcode'], 16), int(row['cpsr'], 16),
+                     tuple(int(row['r'+str(n)], 16) for n in range(16))) ==
+                    (event['frame'], event['cpu'], event['pc'], event['mode'],
+                     event['opcode'], event['cpsr'], event['regs']), 'Span event metadata differs')
+            data = bytes.fromhex(row['bytes'])
+            address, length = int(row['address'], 16), int(row['length'])
+            if row.get('space') == 'regs':
+                require(address == length == 0 and not data, 'Register-only snapshot carries memory')
+            else:
+                require(len(data) == length > 0, 'Snapshot length differs')
+            event['spans'].append((address, data))
     require(events, 'Empty snapshots')
     return events
 
@@ -79,10 +84,10 @@ def pair_events(events, fixture):
         outputs = tuple(event['spans'][n][1] for n in fixture['output_spans'])
         outputs += tuple(event['regs'][n].to_bytes(4, 'little') for n in fixture.get('output_registers', []))
         key_regs = tuple(begin['regs'][n] for n in fixture['key_registers'])
+        source = begin['spans'][fixture['source_span']] if fixture['source_span'] is not None else (None, None)
         calls.append(dict(first_frame=begin['frame'], last_frame=event['frame'],
                           key=(inputs, key_regs), output=outputs,
-                          source=begin['spans'][fixture['source_span']][1],
-                          source_address=begin['spans'][fixture['source_span']][0], exit_pc=event['pc']))
+                          source=source[1], source_address=source[0], exit_pc=event['pc']))
     require(not stack and calls, 'Unfinished or empty invocation trace')
     return calls
 
@@ -127,8 +132,9 @@ def recurrence(calls):
                 repeated_inputs_with_different_outputs=output_conflicts,
                 adjacent_reuse_calls=adjacent, reuse_distance_calls=distribution(distances),
                 reuse_distance_frames=distribution(frame_distances),
-                unique_source_contents=len({c['source'] for c in calls}),
-                unique_source_addresses=len({c['source_address'] for c in calls}),
+                source_snapshot_calls=sum(c['source'] is not None for c in calls),
+                unique_source_contents=len({c['source'] for c in calls if c['source'] is not None}),
+                unique_source_addresses=len({c['source_address'] for c in calls if c['source_address'] is not None}),
                 lru_hits_by_entry_capacity=lru,
                 unique_input_payload_bytes=sum(sum(map(len, key[0]))+4*len(key[1]) for key in seen),
                 unique_output_payload_bytes=sum(sum(map(len, c['output'])) for c in seen.values()),
