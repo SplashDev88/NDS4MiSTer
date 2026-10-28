@@ -167,14 +167,14 @@
           "expect": "00007e02f8cb1c02"
         }
       ],
-      "notes": "Disabled128-byte ARM9 initial-code replacement;97 bytevalues differ,original8-byte literal pool guarded,no scratch. Preserve all selected IRQ-handler updates in ascending order.12262 synthetic cases and57840 candidate call contracts pass; full16800-frame replay fails screen/RAM/audio. No native qualification,unchanged repeat or FFT approval transfer.",
-      "status": "rejected_screen_checkpoint_RAM_and_audio_mismatch",
+      "notes": "Functional-budget reassessment retains exact differences but admits isolated native trial. Unchanged128-byte patch plus accepted terrain completes23400referenceframes and first battle victory. Five atomic fallback checks pass;82new battle table contracts pass, including oneIRQ-enabled single-bit call. Fresh native walking/menu screen finds no useful gain. Keep disabled; no unchanged repeat without a different CPU-limited workload.",
+      "status": "parked_native_gain_insufficient",
       "validated": {
-        "fb": "One top-screen mismatch atframe14359 of16800;bottom exact",
-        "ram": "All11 fixed mainRAM/DTCM/ARM7-WRAM checkpoint sets fail;retainedframe2600 differs138355 words outside128 codebytes",
-        "audio": "6591626 of13479065 stereo samples differ;maxdelta6731;RMS186.388139;no audibility judgment",
-        "save": "All16800 per-frame save hashes and finalsave exact",
-        "native": "Not run:replay rejected"
+        "fb": "Current terrain combination:7top hash differences across23400frames;bottomexact. Selected interior/story/battle/victory pairs reviewed.",
+        "ram": "Six complete code/literal checkpoint identities pass; raw game RAM differs and remains unmasked outside exact patch bytes.",
+        "audio": "8744151of18774412stereo samples differ;maxdelta29784,RMS201.409466. No listening/inaudibility claim.",
+        "save": "Current23400frame finalsave matches terrain control; native isolated seed unchanged after both clean stops.",
+        "native": "Fresh same-boot terrain control/IRQ candidate: cold load, paired outdoor traversals and menu open/close function; no useful publication-throughput improvement. No native save-write/reset/full-game qualification."
       },
       "gain": {
         "reference_arm9_entries_15000_16799": {
@@ -187,7 +187,74 @@
         },
         "native_cycles": null,
         "native_frame_time": null,
-        "qualified": false
+        "qualified": false,
+        "current_reference_arm9_entries": [
+          {
+            "first_frame": 0,
+            "end_exclusive": 18000,
+            "control": {
+              "arm9_insn": 2729727044,
+              "arm7_insn": 522918408
+            },
+            "candidate": {
+              "arm9_insn": 2699997893,
+              "arm7_insn": 522913820
+            },
+            "arm9_entry_reduction_percent": 1.0890887814349548
+          },
+          {
+            "first_frame": 18000,
+            "end_exclusive": 23400,
+            "control": {
+              "arm9_insn": 264018986,
+              "arm7_insn": 205172678
+            },
+            "candidate": {
+              "arm9_insn": 263927471,
+              "arm7_insn": 205170447
+            },
+            "arm9_entry_reduction_percent": 0.03466227993164095
+          },
+          {
+            "first_frame": 0,
+            "end_exclusive": 23400,
+            "control": {
+              "arm9_insn": 2993746030,
+              "arm7_insn": 728091086
+            },
+            "candidate": {
+              "arm9_insn": 2963925364,
+              "arm7_insn": 728084267
+            },
+            "arm9_entry_reduction_percent": 0.9960987238453178
+          }
+        ],
+        "current_native_screen": [
+          {
+            "scene": "walking",
+            "control_trials": 1,
+            "candidate_trials": 1,
+            "control_mean": 18.91943725097915,
+            "candidate_mean": 18.84082173149513,
+            "change_percent": -0.41552778997141493,
+            "control_range": [
+              18.91943725097915,
+              18.91943725097915
+            ]
+          },
+          {
+            "scene": "menu",
+            "control_trials": 1,
+            "candidate_trials": 1,
+            "control_mean": 16.59444824931414,
+            "candidate_mean": 16.508847555098715,
+            "change_percent": -0.5158393513864712,
+            "control_range": [
+              16.59444824931414,
+              16.59444824931414
+            ]
+          }
+        ]
       },
       "synthetic_validation": {
         "cases": 12262,
@@ -201,6 +268,15 @@
         "input_manifest_sha256": "88a80f1b30af340dae733083a853403d4047c2c4f403bb1a124fafed6e2d3664",
         "status_receipt": "IRQ_SPARSE_CANDIDATE_V2_STATUS.json",
         "status_sha256": "aeac47b90c98658533e4b45c50569972745f3875040ce9a1bf3c6ac2dc8be92f"
+      },
+      "functional_reassessment": {
+        "receipt": "IRQ_FUNCTIONAL_NATIVE_FINDINGS_V1.json",
+        "receipt_sha256": "7594a4ba982c2f62f80444096401c8e832908b85997837f12289acf7c788f976",
+        "reference_receipt": "IRQ_FUNCTIONAL_BATTLE_ANALYSIS_V1.json",
+        "reference_receipt_sha256": "609e81bfe40fddbdc8cad7b4ccdf903d2dc7ea44d1b1688d753fd34bea3f3699",
+        "review": "IRQ_FUNCTIONAL_NATIVE_REVIEW_V1.json",
+        "review_sha256": "4564306b525885b04a4b963a0d311aadf9db4bdb2bf387946f69ea074532d4fc",
+        "scope": "Current functional budget supersedes old exact-only prohibition; patch remains off for no useful native gain."
       }
     },
     {

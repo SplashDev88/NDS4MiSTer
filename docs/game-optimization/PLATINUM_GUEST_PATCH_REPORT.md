@@ -471,7 +471,8 @@ audibility or benign-allocation explanation has been proved. In particular,
 nearly identical screens and an unchanged save do not justify masking the RAM
 or audio differences.
 
-**Rejected and disabled.** The measured 2.178710% reduction is software
+**Historical exact-only rejection, superseded by the later functional screen.**
+The measured 2.178710% reduction is software
 instruction entries, not native cycles, frame time or gameplay speed. Native
 p50/p95/max frame time, dropped frames, HPS load and load-time changes remain
 unmeasured. No optimized reset, native trial, unchanged rerun or beta follows a
@@ -2539,3 +2540,101 @@ The prior 6,800 focused checks, exact screen/save pairs and raw audio/RAM
 differences remain recorded. No new patch bytes, RTL, HPS service, save format
 or beta change results. Evidence: `ARM7_PITCH_FUNCTIONAL_COST_V1.json` and
 `IRQ_FUNCTIONAL_SHIPPED_CORE_SUPPORT_V1.json`.
+
+## IRQ sparse scan: functional-budget reassessment
+
+The unchanged IRQ patch was retested with accepted terrain visibility under the
+user's functional budget. Its earlier exact-only rejection is historical.
+The original routine still performs all selected handler-table updates; the
+replacement visits set bits in the same order and preserves the literal pool,
+stack, return registers and flags. No service, scratch or RTL change is needed.
+The 12,262-case synchronous proof remains byte-identical, and five current
+wrong-identity/bytes/literal/selection cases fall back atomically to the original
+cartridge stream. The approved terrain image remains unchanged.
+
+Owned caller disassembly shows the main graphics caller explicitly setting the
+IRQ mask before its table update and restoring it afterward. This is not a
+global exclusion guarantee: the new first-battle census has 81 IRQ-disabled
+calls and one IRQ-enabled single-bit call, all 82 satisfying the table/stack
+contract. The new callback and context prevent generalizing the older town
+observation that every call had IRQs disabled. Actual packaged FPGA inputs,
+pinned to the shipped core, confirm the ARM9 CLZ implementation.
+
+The 23,400-frame replay reaches matching inspected story events, Tackle/Leer,
+first-battle victory and 69 experience points. All six checkpoint code/pool
+identities match the replacement. Seven top hashes differ, all bottom hashes
+and the final save match, and 8,744,151 of 18,774,412 stereo samples differ
+(maximum signed-16 delta29,784; RMS201.409466). Raw RAM differences are retained.
+These differences are not automatically rejected under the current budget,
+and are not asserted inaudible or causally explained as timing alone.
+
+| Reference instruction entries | Terrain control | IRQ candidate | Reduction |
+|---|---:|---:|---:|
+| Frames 0–17999, ARM9 | 2,729,727,044 | 2,699,997,893 | 1.0891% |
+| Frames 18000–23399, ARM9 | 264,018,986 | 263,927,471 | 0.0347% |
+| Frames 0–23399, ARM9 | 2,993,746,030 | 2,963,925,364 | 0.9961% |
+
+A fresh native pair uses the same night-time save, exact starting screenshot,
+identical runtime and input sequence on one hardware boot at the stock HPS
+clock. Each recorded run completes two east/west traversals and repeated menu
+open/close operations. Both clean stops preserve the copied seed.
+
+| Native screen | Terrain control | IRQ candidate |
+|---|---:|---:|
+| Walking, publications/s | 18.9194 | 18.8408 |
+| Walking, Host CPU (% of one core) | 2.79 | 2.75 |
+| Walking, Renderer CPU (% of one core) | 150.36 | 150.05 |
+| Menu, publications/s | 16.5944 | 16.5088 |
+| Menu, Host CPU (% of one core) | 2.75 | 2.72 |
+| Menu, Renderer CPU (% of one core) | 149.04 | 148.48 |
+
+Keep the IRQ patch disabled: there is no useful measured native gain in this
+screen. These counters are completed buffer publications, not unique gameplay
+FPS or emulated cycles. A single fresh pair cannot establish a small regression;
+no repeated test or expanded lifecycle qualification is justified by this flat
+result. Native per-frame p50/p95/max and load-time gains remain unmeasured.
+Both recordings retain audio, with zero added capture drops; no listening or
+inaudibility claim is made. Approved Platinum Beta1 R2 stays the testable beta.
+
+Evidence: `IRQ_FUNCTIONAL_ADMISSION_V1.json`,
+`IRQ_FUNCTIONAL_CALLER_EVIDENCE_V1.json`,
+`IRQ_FUNCTIONAL_SHIPPED_CORE_SUPPORT_V1.json`,
+`IRQ_FUNCTIONAL_BATTLE_EFFECT_AUDIT_V1.json`,
+`IRQ_FUNCTIONAL_BATTLE_ANALYSIS_V1.json`,
+`IRQ_FUNCTIONAL_NATIVE_FINDINGS_V1.json`,
+`IRQ_FUNCTIONAL_NATIVE_REVIEW_V1.json` and
+`IRQ_FUNCTIONAL_BEFORE_AFTER_V36.csv`.
+
+## Disposition of the supported patch pass
+
+Retain the user-approved terrain-only Platinum Beta1 R2 and advance to
+HeartGold under the agreed evidence-based exhaustion gate. The supported,
+evidence-backed candidates have now been accepted, rejected for functional
+failure, or parked for insufficient measured/prospective benefit. This is a
+practical pass disposition, not attainment of a native FPS target or proof
+that every conceivable optimization is exhausted. No new beta is warranted
+by the follow-up screens.
+
+The fresh terrain-only walking control uses 150.36% of one HPS core for the
+renderer and 2.79% for the host, at 18.9194 buffer publications/s. Several
+guest arithmetic/housekeeping reductions fail to improve that throughput.
+These observations are consistent with remaining graphics/renderer pressure;
+they do not replace a new function-level causal profile. The older detailed
+HPS profile predates terrain and is not claimed as current.
+
+Three future ideas remain documented, with prerequisites before reconsideration:
+
+1. Visibility-result reuse: prove all graphics-state effects and safe storage/
+   lifetime. The 16-entry estimate hits only 15.972% during held input and needs
+   at least 4,352 payload bytes before metadata/code.
+2. Whole-empty HBlank queue handling: preserve registration/callback ordering
+   and authenticate code space; naive flag guards are unsafe or add overhead.
+3. Archive-call consolidation: retain the caller's null-allocation handling and
+   identify a materially more expensive workload than the two neutral screens.
+
+Final preservation verifies 3,277 protected native files, 84 kit files, the
+copied seed and all three accepted local archives. MENU is restored; no NDS
+process, recording or active job remains. The 08:00 Central handoff retains
+Platinum Beta1 R2 until another game yields a qualified improvement. See
+`PLATINUM_SUPPORTED_PASS_GATE_V36.json`, `STRATEGIES.json` and
+`NATIVE_IRQ_FUNCTIONAL_FINAL_PRESERVATION_V1.json`.

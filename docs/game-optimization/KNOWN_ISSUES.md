@@ -302,8 +302,11 @@
   synchronous synthetic cases and 57,840 guarded candidate table contracts,
   but changes one screen frame, all 11 fixed main-RAM/DTCM/ARM7-WRAM checkpoint
   sets and 6,591,626 stereo samples. It is rejected and disabled despite a
-  2.178710% reference-entry reduction. Do not infer harmless timing, mask heap
-  differences, transfer FFT approval, rerun unchanged or trial it natively.
+  2.178710% reference-entry reduction under the historical exact-only gate.
+  The later functional-budget trial completes the inspected first battle and
+  native walking/menu sequence, but finds no useful native gain. Keep disabled
+  for that reason; retain raw heap/audio differences and do not infer inaudibility.
+  One new battle call has IRQs enabled, unlike the earlier all-masked town census.
 - The generic mask detector also flags an unsampled ARM7 variant. ARM9 CLZ
   bytes cannot be used on ARM7. Verify CPU instruction support and multiply
   operand restrictions independently of a newer-architecture emulator's

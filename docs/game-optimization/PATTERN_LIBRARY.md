@@ -709,6 +709,15 @@ algorithm can change whole-game behavior through interactions outside its
 synchronous contract. Preserve the failed result; do not label those differences
 harmless or reuse another game's perceptual allowance.
 
+Under a later functional budget, Platinum's unchanged sparse scan is also
+screened with its accepted terrain patch. The main graphics caller masks IRQs,
+but a first-battle trace adds an IRQ-enabled single-bit call: do not promote
+a scene-local exclusion observation into a universal precondition. All 82 new
+contracts pass and inspected progression reaches victory. A fresh native
+walking/menu pair finds no useful gain, so the patch stays disabled for cost,
+not for raw timing/hash differences alone. Authenticate instruction support
+against the shipped build-input archive when repository CPU copies differ.
+
 When a write watch covers both code and literal data, the pair summarizer can
 explicitly authenticate original control bytes and replacement candidate bytes.
 Unknown watched addresses and conflicting guards still fail. This changes only
