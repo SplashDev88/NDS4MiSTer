@@ -142,6 +142,60 @@ def recurrence(calls):
                 output_payload_sizes=dict(Counter(sum(map(len, c['output'])) for c in calls)))
 
 
+def snapshot_recurrence(events, fixture):
+    """Compare observed payloads at a site, without claiming destination liveness.
+
+    The caller supplies the complete grouping key for this particular census.
+    Intervening writers, overlapping destinations, and external state are not
+    observed here. A repeated snapshot alone never authorizes skipping a write.
+    """
+    cpu, pc = fixture['cpu'], int(fixture['pc'], 0)
+    span_index, payload_bytes = fixture['span'], fixture['payload_bytes']
+    registers = fixture['key_registers']
+    require(cpu in [0, 1] and 0 <= span_index < 64 and 0 < payload_bytes <= 4096,
+            'Invalid snapshot selection')
+    require(registers and len(set(registers)) == len(registers) and
+            all(0 <= n < 16 for n in registers), 'Invalid snapshot key registers')
+    prior, sources, payloads, frames, keys = {}, set(), set(), Counter(), Counter()
+    total = repeats = comparisons = same_frame = suffix_changes = 0
+    for event in events:
+        if event['cpu'] != cpu or event['pc'] != pc:
+            continue
+        require(span_index < len(event['spans']), 'Missing selected snapshot span')
+        address, data = event['spans'][span_index]
+        require(len(data) >= payload_bytes, 'Snapshot shorter than selected payload')
+        key = tuple(event['regs'][n] for n in registers)
+        payload = data[:payload_bytes]
+        if key in prior:
+            comparisons += 1
+            old_data, old_frame = prior[key]
+            if old_data[:payload_bytes] == payload:
+                repeats += 1
+                same_frame += old_frame == event['frame']
+                suffix_changes += old_data[payload_bytes:] != data[payload_bytes:]
+        prior[key] = (data, event['frame'])
+        sources.add(address); payloads.add(payload)
+        frames[event['frame']] += 1; keys[key] += 1; total += 1
+    require(total, 'No snapshots match selected site')
+    return dict(snapshots=total, payload_bytes=payload_bytes,
+                observed_payload_bytes=total*payload_bytes,
+                key_registers=registers, distinct_keys=len(keys),
+                unique_source_addresses=len(sources), unique_payloads=len(payloads),
+                prior_key_comparisons=comparisons, repeated_payloads=repeats,
+                repeated_payload_percent=100*repeats/total,
+                repeated_within_same_frame=same_frame,
+                repeated_with_different_excluded_suffix=suffix_changes,
+                frame_first=min(frames), frame_last=max(frames),
+                frames_with_snapshots=len(frames),
+                snapshots_per_active_frame=dict(min=min(frames.values()),
+                    median=statistics.median(frames.values()), max=max(frames.values())),
+                per_key_counts=[dict(key=[hex(x) for x in key], snapshots=count)
+                                for key, count in sorted(keys.items())],
+                scope='Captured payload recurrence only. No destination readback, '
+                      'intervening-writer, overlap, invalidation, side-effect or '
+                      'timing proof; not a safe write-skip decision or speedup.')
+
+
 def analyze(events, fixture):
     if 'capture_frames' in fixture:
         first, last = fixture['capture_frames']

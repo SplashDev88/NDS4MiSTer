@@ -980,3 +980,26 @@ conclusion. Count bytes requested through that path separately from total DMA
 bytes or physical bandwidth. Current SP alone cannot prove that differing stack
 bytes are dead, especially across IRQ mode changes. Preserve strict mismatches
 until the relevant liveness and behavioral contract is established.
+
+## Fixed-size uploads within a strided destination
+
+Capture the manager descriptor and every callback's full arguments before
+classifying a bulk-copy hotspot. A six-byte copy repeated at eight-byte offsets
+can deliberately preserve a separately managed halfword. Resolve the actual
+callback table and destination arithmetic from owned bytes; a nearby function
+with a similar name is not evidence of the active path.
+
+The generic `snapshot_recurrence(events, fixture)` compares a selected payload
+prefix, grouped by caller-supplied registers such as callback and destination
+offset. It counts exact byte recurrence and differences in the excluded suffix.
+It does not observe intervening writers, destination readback or invalidation.
+High recurrence alone never authorizes skipping writes.
+
+Platinum's first-battle control records 661,368 six-byte OAM uploads across
+252 callback/offset keys. 657,844 payloads repeat (99.467%), including 70 cases
+where the excluded affine halfword changes. Main/sub callbacks write three
+ordered halfwords to `07000000`/`07000400` plus the offset. Consider in-place
+fixed-size loop specialization that retains those accesses before considering
+dirty checks. Preserve callback selection, register/flag liveness, address
+wrapping and the separate affine path. A code-derived instruction-share model
+is a prioritization aid, not native cycles or measured speedup.
