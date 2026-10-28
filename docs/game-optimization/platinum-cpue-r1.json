@@ -9,7 +9,7 @@
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
   "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "six_disabled_candidates_terrain_native_screening_pending",
+  "status": "six_disabled_candidates_terrain_native_gain_pending_review",
   "patches": [
     {
       "cpu": "arm9",
@@ -361,13 +361,13 @@
       "scratch_bytes": 0,
       "enabled": false,
       "notes": "Experimental: use existing model box test before terrain draw; props remain on original path. Read unit scale and identity rotation from existing overlay constants instead of stack copies. No new scratch. Additional GPU queries and stale stack differences require validation; native benefit and user approval pending.",
-      "status": "disabled_reference_measured_perceptual_experiment",
+      "status": "disabled_native_gain_pending_user_review_and_validation",
       "validated": {
         "fb": "15,600 frames: six top-screen differences at 14357,14359,14479,14481,14483,14485; all bottom screens exact. All 600 target-window screen pairs exact.",
         "ram": "Strict failure: normalized main-RAM and DTCM checkpoints differ; only exact 48-byte code replacement normalized. No dynamic differences accepted.",
         "audio": "239,992 of 12,516,274 stereo samples differ; maximum channel delta 1,215 and RMS 9.153. Audibility unjudged.",
         "save": "Final save bit-exact. Save-write/load lifecycle not yet tested for this candidate.",
-        "native": "Not measured."
+        "native": "Two alternating control/candidate outdoor trials, same boundary route, stock 1 GHz, rc12 FPGA and accepted Beta2 renderer. Controls 16.7726/17.2525; candidates 19.1382/19.3653 complete screen-buffer publications/s. All saves preserved and OBS added no drops. Indoor idle 59.7131 versus 59.6371 publications/s. Native save-write/load, soft reset and wider scene qualification pending."
       },
       "gain": {
         "reference_arm9_entries_15000_15599": {
@@ -383,14 +383,25 @@
         },
         "native_cycles": null,
         "native_frame_time": null,
-        "qualified": false
+        "qualified": false,
+        "native_publication_throughput": {
+          "control_mean": 17.012519283317772,
+          "candidate_mean": 19.251761807913674,
+          "increase_percent": 13.16232174262204,
+          "control_range_percent": 2.82089939355885,
+          "unit": "complete screen-buffer publications per second",
+          "scope": "Two matched 40-second boundary traversal trials per mode; not unique animation FPS, game-clock speed or whole-game gain."
+        }
       },
       "evidence": [
         "TERRAIN_CONTRACT_QUALIFICATION_V1.json",
         "TERRAIN_CONTRACT_FINDINGS_V1.json",
         "TERRAIN_CULL_BUILD_V1.json",
         "TERRAIN_CULL_REFERENCE_FINDINGS_V1.json",
-        "TERRAIN_CULL_RAM_DIFF_V1.json"
+        "TERRAIN_CULL_RAM_DIFF_V1.json",
+        "TERRAIN_NATIVE_FINDINGS_V1.json",
+        "TERRAIN_NATIVE_INTERIOR_FINDINGS_V1.json",
+        "TERRAIN_NATIVE_METRIC_AUDIT_V1.json"
       ]
     }
   ],
@@ -483,8 +494,8 @@
     "geometry_census": "GEOMETRY_OUTDOOR_CENSUS_V1.json",
     "prop_culling_census": "BOXTEST_REGISTER_FINDINGS_V2.json",
     "terrain_visibility_experiment": {
-      "receipt": "TERRAIN_CULL_REFERENCE_FINDINGS_V1.json",
-      "state": "Disabled. Reference ARM9 entries reduced 1.640%; strict framebuffer/RAM/audio differences require review. Native benefit pending."
+      "receipt": "TERRAIN_NATIVE_FINDINGS_V1.json",
+      "state": "Native rendering throughput +13.162% in two paired outdoor trials. Disabled pending user review, RAM-effect classification and broader lifecycle validation."
     }
   },
   "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",

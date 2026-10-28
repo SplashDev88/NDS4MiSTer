@@ -427,3 +427,9 @@
   differ. Direct constant pointers replace stack copies; no dynamic RAM region
   is excluded from comparison. Do not equate draw-count reduction with native
   speed, assume all differences are benign, or enable before review/measurement.
+
+- Platinum terrain visibility has a repeated native publication-throughput gain
+  (+13.162%) but is still disabled: six banner/transition frames, checkpoint RAM
+  and audio differ. The largest audio differences occur earlier than the outdoor
+  target window; the expanded V2 review includes them. Human review, RAM-effect
+  classification and wider lifecycle tests remain separate from this speed result.

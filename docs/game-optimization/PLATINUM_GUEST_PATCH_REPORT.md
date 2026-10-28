@@ -6,8 +6,9 @@ preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
 Six candidates remain disabled, including a new terrain-visibility experiment. At the user's request, three were subsequently
 screened as isolated perceptual experiments on native hardware: empty-tail
-cleanup, FIFO predication and font-table reuse. No worthwhile native gain is
-demonstrated in the measured walking/menu/Bag scenes. Battle benefit remains
+cleanup, FIFO predication and font-table reuse. Those three show no worthwhile native gain in the measured walking/menu/Bag
+scenes. The sixth terrain-visibility experiment subsequently measured +13.162%
+native publication throughput in paired outdoor trials; it remains disabled. Battle benefit remains
 unmeasured. Review videos preserve their known reference differences, and
 no non-bit-exact acceptance or new beta follows. Later native-screening
 sections supersede historical no-retry restrictions only for these authorized
@@ -1345,7 +1346,7 @@ inherits overlay loading and reloading; it is not keyed by address alone.
 | Terrain draw-helper calls | 1,200 | 590 |
 | Added terrain box tests | 0 | 1,200 |
 | Existing prop tests: hidden / visible | 1,729 / 671 | 1,729 / 671 |
-| Native speed / frame-time percentiles | Not measured | Not measured |
+| Later native mean publications/s | 17.0125 | 19.2518 (+13.162%) |
 
 The new tests return 610 hidden and 590 visible results. Other draw callers
 retain their observed counts. These are reference execution counts, not native
@@ -1361,8 +1362,8 @@ replacement. Removed stack copies and the added graphics query alter execution,
 but that is not a blanket explanation or acceptance of all RAM/audio changes.
 The differing frames, audio and RAM remain explicit and unaccepted.
 
-The user authorized perceptual experiments, so the next gate is visual review
-of the changed frames and an isolated native A/B if the route remains usable.
+The user authorized perceptual experiments. Visual inspection and the isolated
+native A/B below are complete; user review and broader qualification remain.
 Cold boot is covered by reference replay; native save/load, reset, additional
 transition/overlay and unrelated-scene checks remain pending. The core does not
 currently support persistent save states. Nothing is enabled in a default beta.
@@ -1372,3 +1373,75 @@ Evidence: `DRAW_REGISTER_QUALIFICATION_V1.json`, `DRAW_REGISTER_FINDINGS_V1.json
 `TERRAIN_CULL_BUILD_V1.json`, `TERRAIN_CULL_DISASSEMBLY_V1.txt`,
 `TERRAIN_CULL_CONTROL_V1_STATUS.json`, `TERRAIN_CULL_CANDIDATE_V1_STATUS.json`,
 `TERRAIN_CULL_REFERENCE_FINDINGS_V1.json`, `TERRAIN_CULL_RAM_DIFF_V1.json`.
+
+
+## Terrain visibility — repeated native gain, approval still pending
+
+Four cold-boot sessions alternate control and candidate using the same qualified
+story seed and the same south/west collision anchor. All four starting views and
+the second pair's ending views were inspected. Stock 1 GHz, unchanged rc12 FPGA,
+accepted Beta2 renderer and the existing virtual-loader host are pinned. The
+48-byte virtual cartridge replacement and CPUE revision 1 identity were checked
+before and after capture; this is not an instruction-cache readback claim.
+
+| Trial | Complete buffer publications/s | Renderer CPU, one core = 100% |
+|---|---:|---:|
+| PLATINUM_TC1 (control) | 16.7726 | 149.88% |
+| PLATINUM_T1 (candidate) | 19.1382 | 150.64% |
+| PLATINUM_TC2 (control) | 17.2525 | 150.73% |
+| PLATINUM_T2 (candidate) | 19.3653 | 151.18% |
+
+The means are **17.0125 → 19.2518 publications/s (+13.162%)**. Both candidate
+runs exceed both controls; control range is 2.821% of its mean. No formal
+statistical confidence interval or whole-game improvement is claimed. The
+20-second interior idle screen stays near its publication ceiling: 59.7131
+control versus 59.6371 patched (−0.127%). That single pair does not qualify every
+interior or battle. Every captured interval reports zero added OBS drops, and
+all disposable saves remain equal to the admitted seed.
+
+The measured ABI word is `frame_publish_sequence` at offset 0x30. The exact
+accepted renderer source commits it after screen-buffer publication; query
+replies use a separate path. More queries do not by themselves count as more
+completed screen buffers. Publications still are not necessarily unique images,
+so this result is a **rendering throughput gain**, not measured animation FPS or
+faster game-clock progression. A preliminary background-motion census shows
+roughly similar crossing durations; it is not a qualified traversal-time test.
+Native ARM9/ARM7 cycles and frame-time percentiles remain unavailable.
+
+Reference clips include all six differing banner/transition frames, the exact
+600-frame walking window, and the largest measured RMS and peak audio-difference
+windows (frames 4958 and 8105). The original PCM comparison alternates control
+and patched sound without gain changes, mixing or resampling. The MP4 is an AAC
+convenience copy. Native recordings retain original encoded game-audio/video
+packets and exact timestamps. The initial shorter reference clip omitted the
+largest audio-difference windows and is superseded by the expanded V2 review.
+
+The archive remains unchanged Beta2. A user-facing review is a request to judge
+these audiovisual differences, not evidence that unclassified RAM changes or
+all game behavior are safe. Native save-write/load, soft reset, additional
+transitions, an unrelated scene and RAM-effect classification remain to be done
+before default enablement. All six Platinum candidates stay disabled.
+
+Operational exclusions are retained: the first staging connection timed out
+in verification after copying its private kit; a fresh idle/full-hash recovery
+admitted the completed files without rewriting them. An early boot-input route
+landed at Continue rather than the field and was corrected before measurement.
+The first interior measurement fixture omitted the required terminal marker;
+it failed before measurement and was replaced by V2. None contributes a result.
+
+Evidence: `TERRAIN_NATIVE_FINDINGS_V1.json`, `TERRAIN_NATIVE_INTERIOR_FINDINGS_V1.json`,
+`TERRAIN_NATIVE_METRIC_AUDIT_V1.json`, `TERRAIN_NATIVE_MOTION_CENSUS_V1.json`,
+`TERRAIN_CULL_AUDIO_WINDOW_AUDIT_V1.json`, `TERRAIN_CULL_PIXEL_FINDINGS_V1.json`,
+`TERRAIN_CULL_VISUAL_AUDIT_V1.json` and the individual capture/status/stop receipts.
+
+The top three optimization ideas not completed are:
+
+1. Reuse visibility results only with complete model/transform/camera keys and
+   proven storage/lifetimes; existing prop queries are frequent, but pointer-only
+   reuse is already disproven. Any cheaper conservative terrain test must retain
+   correctness at camera and map boundaries.
+2. Census the six-byte strided upload at `020a7e00` for repeated data, destination
+   and reader lifetime before removing a transfer.
+3. Measure the disabled font-table reuse patch in its actual first-battle target
+   on hardware. Its prior menu/Bag tests found no benefit and do not establish
+   battle performance. Cartridge-request recurrence remains queued after these.

@@ -962,4 +962,9 @@ stack copies to fit a same-extent experiment, but changed stack residue remains
 a recorded RAM difference. Count skipped draws **and added queries**, then use
 native A/B; a large draw-count reduction can produce a small instruction saving.
 Platinum skips 610 of 1,200 terrain draws but saves only 1.640% of ARM9 entries
-in its outdoor reference window. Native benefit remains unmeasured.
+in its outdoor reference window. The subsequent paired native trial averages
+17.0125 → 19.2518 screen-buffer publications/s (+13.162%), despite the added
+queries. Instruction counts alone understate this observed rendering benefit.
+Keep the native counter definition and the remaining framebuffer/RAM/audio
+differences explicit; neither native throughput nor visual review proves full
+behavioral equivalence.
