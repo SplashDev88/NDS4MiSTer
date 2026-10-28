@@ -281,7 +281,7 @@
       "scratch_bytes": 0,
       "enabled": false,
       "status": "rejected_screen_and_audio_mismatch",
-      "notes": "Disabled same164-byte ARM9 Thumb function/literal replacement. Compare stored16bit colors with full32bit args; regenerate onmiss. No scratch ornewservice.8672 synthetic cases and1338 observedbattlecall contracts pass;23400-frame fullreplay changes5topscreenframes and61453stereosamples. All6fixedRAMsets/saveexact. No nativequalification,unchangedrepeat,combination orFFTapprovaltransfer.",
+      "notes": "Disabled same164-byte ARM9 Thumb function/literal replacement. Compare stored16bit colors with full32bit args; regenerate onmiss. No scratch ornewservice.8672 synthetic cases and1338 observedbattlecall contracts pass;23400-frame fullreplay changes5topscreenframes and61453stereosamples. All6fixedRAMsets/saveexact. No nativequalification,unchangedrepeat,combination orFFTapprovaltransfer. On 2026-10-28 the user explicitly authorized isolated perceptual trials and review videos, superseding the earlier no-native-trial restriction for this experiment only. Trials show no worthwhile gain in screened scenes; retain disabled regardless of visual review. No combined-patch or lifecycle acceptance.",
       "assembly_source_sha256": "300d9925c68cbe1d59304cc815d72eec6f29af9b753d5f8997058366991d3068",
       "replacement_sha256": "2cc8b108b591ab7a07edc24182a9c447f67707a72bdc90de6645c3648865211c",
       "validated": {
@@ -289,7 +289,7 @@
         "ram": "All6fixedcheckpoint sets andretainedframe2600 mainRAM exact afteronly164-byte code normalization; perframemainRAM200,DTCM607,ARM7WRAM75 hashesdiffer",
         "audio": "Failed:61453 of18774412 stereo samples differ;maxsigned16delta2870;RMS15.590998;no audibilityjudgment",
         "save": "All23400 perframe savehashes andfinalsave bit-exact",
-        "native": "Not run;strictreplay gatefailed"
+        "native": "User-authorized isolated perceptual screening completed; staged bytes/save/ownership/capture checks passed. No native bit-exact or full lifecycle qualification. Menu: 14.6755 control versus 14.6349 patched; Bag: 30.2040 versus 30.0610 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4500s patched. No native gain demonstrated."
       },
       "gain": {
         "reference_arm9_entries_18000_23399": {
@@ -302,7 +302,8 @@
         },
         "native_cycles": null,
         "native_frame_time": null,
-        "qualified": false
+        "qualified": false,
+        "native_screening": "Menu: 14.6755 control versus 14.6349 patched; Bag: 30.2040 versus 30.0610 screen publications/s. Bag-opening near-black mean: 0.4333s control versus 0.4500s patched. No native gain demonstrated."
       },
       "synthetic_validation": {
         "cases": 8672,
@@ -324,6 +325,23 @@
         "calls": 1338,
         "reuse_hits": 1281,
         "generation_misses": 57
+      },
+      "native_perceptual_screening": {
+        "accepted": false,
+        "default_enabled": false,
+        "scope": "Stock1GHz, unchanged rc12 FPGA and accepted Beta2 renderer; real-time inputs and same disposable qualified seed. Publication counts are not unique gameplay FPS or cycles.",
+        "trial": "F1",
+        "matched_control_trials": [
+          "C6"
+        ],
+        "receipt": "NATIVE_PERCEPTUAL_RESULTS_V1.json",
+        "receipt_sha256": "6ddbeae9b819127aebc73c8c3c7b3d20f64ed2df3c4f12a3c6cde5c9894d8749",
+        "result": "no_qualified_gain_in_screened_scenes",
+        "reference_review": "Platinum_Font_Review.mov",
+        "review_receipt": "Platinum_Font_Review.json",
+        "review_receipt_sha256": "169895005d8379e3b536c10a68052876da55b37cae7670bcfab18edda93769bf",
+        "native_battle_measured": false,
+        "user_perceptual_approval": false
       }
     }
   ],
