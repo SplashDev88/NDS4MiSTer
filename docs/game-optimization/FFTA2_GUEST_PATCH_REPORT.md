@@ -1,18 +1,22 @@
 # FFTA2 guest-code optimization — 27 October 2026
 
-Status: the user reviewed the separate vertex and decoder comparison videos
-and reported, "No difference in either one." Repeated native Luso screening
-did not reproduce the vertex patch's first approximately 3.4% result: its
-second session measured +1.328% idle and +0.167% movement/menu publication
-throughput. Decoder repeated at +0.463% idle and +1.036% movement/menu.
-Small benefits remain possible, but these variable short-window results do
-not qualify a dependable gameplay speedup or release. Test Fire next.
+Status: parked by explicit user direction on 27 October 2026 due diminishing
+returns. Pokémon Platinum is now the active game. This is a user-directed
+advance, not a claim that FFT reached full speed or exhausted every possible
+optimization. Accepted FFTA2 Beta2 remains its best verified cumulative build.
+
+The user reported no visible or audible difference in the separate vertex and
+decoder clips. Both native Luso series and the planned Fire trials are complete.
+Neither version established dependable native benefit: the final vertex Fire
+repeat was +0.349% against the adjacent-control mean, inside control variation,
+with movement -0.337%. Two native quiet intervals, including one unpatched
+control, remain documented with unresolved cause.
 
 Four guest-patch versions still fail the original bit-exact budget and remain
 disabled in the release manifest. Positive perceptual review covers the shown
 scenes; lifecycle, combined-patch and full-game behavior remain unqualified.
-Accepted FFTA2 Beta2 and immutable rc12 remain unchanged. Platinum is queued,
-not active. The native diagnostic loader reuses the existing reset-held ROM
+Accepted FFTA2 Beta2 and immutable rc12 remain unchanged. The native diagnostic
+loader reuses the existing reset-held ROM
 transaction with explicit manifest/hash/patch selection. Control and both
 candidates use the same new host, unchanged Beta2 renderer and rc12 bitstream.
 No candidate instruction bytes or original ROM files changed.
@@ -1201,8 +1205,8 @@ for its small/inconsistent native results and unresolved behavior limits.
 Neither proceeds to combined-patch testing or further release qualification.
 The reviewed videos remain positive bounded perceptual evidence; they do not
 override the performance decision or the original exact-match failures.
-Continue the paused higher-level filesystem/page-reuse investigation using
-the existing exact returned-byte audit. All four release entries stay disabled.
+The subsequent filesystem/page-reuse investigation is recorded below and is
+now parked by user direction. All four release entries stay disabled.
 
 ## Cartridge requests: existing cache and five repeated asset ranges
 
@@ -1268,7 +1272,25 @@ auditor and its six previously passing tests are now retained in the source
 tree. All four patch-manifest entries remain disabled. No new native
 before/after measurement or beta is claimed; accepted Beta2 remains available.
 
-## Next validation and limits
+## User-directed advance and retained unfinished work
+
+Before the user advanced, one further read-only caller trace completed with
+all 4,400 golden outputs exact. It contains 1,109 dispatch observations. The
+packed reads use descriptor `0212619c`, while music uses `021277f0`; these
+match the previous source/destination/length observations. Static inspection
+identifies a game asset queue and chunked-read worker at `0201f850`, with
+optional post-read decompression branches. Which processing modes the five
+repeated assets use, their producers and their buffer ownership were not yet
+qualified. Do not treat this unfinished lead as an accepted cache or restart
+its experiments without a new user request.
+
+Receipt: `FFTA2_USER_DIRECTED_ADVANCE_20261027.json`. The completed caller
+capture is `GUEST_ASSET_CALLER_LUSO_V1_STATUS.json`; static listings and the
+small filesystem instruction-sample screen are retained. No native session,
+guest patch or new beta was introduced by that unfinished unit. Platinum's
+baseline preparation now uses the existing cumulative rc12 workflow.
+
+## Deferred validation and limits if FFT is reopened
 
 The bounded Luso source-write ordering is now established. Do not repeat
 unchanged broad audio replays or the resolved writer trace. High-level buffer

@@ -524,3 +524,14 @@ requests repeats. Static archive ranges can separate actual repeated assets
 from block-alignment spill. Source-content reuse alone does not prove reusable
 decoded state, valid storage, cheap lookup, redundant copying or native gain.
 Promote this observation method, not the title's addresses or presumed SDK name.
+
+## Reusing a detector across titles
+
+Platinum USA revision 1 main/autoload screening finds the same branch-heavy
+halfword-copy structure at ARM9 `020c4b18` and ARM7 `037fb040`. This is a
+successful reuse of the generic detector, not a patch qualification. FFT's
+rewrite of that structure failed whole-game screen/RAM/audio equivalence.
+Require active-scene samples, actual callers/access types and timing validation
+again for the new title and CPU. An ARM-only static scan says nothing about
+unscanned Thumb or overlay code; Platinum has 122 ARM9 overlays. Preserve the
+exact revision and overlay reload identity before considering a hook.

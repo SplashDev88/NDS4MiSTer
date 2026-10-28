@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "game_code": "CPUE",
+  "revision": 1,
+  "title": "Pokémon Platinum Version (USA) (Rev 1)",
+  "header_sha1": "5b5bc6e7e15499337acf5662e3e7652c7fc3b665",
+  "header_bytes": 352,
+  "rom_sha256": "fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb",
+  "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
+  "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
+  "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
+  "status": "baseline_preparation_no_patch",
+  "patches": []
+}

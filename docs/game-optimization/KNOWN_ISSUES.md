@@ -214,3 +214,11 @@
   No new scratch, cache, guest patch or native gain is established by this
   result. Candidate archive names come from the retained hash/collision map;
   full asset ownership and processing callers still need dynamic evidence.
+- FFTA2 was parked by explicit user direction after diminishing returns;
+  unfinished asset-lifetime, viewport-hoisting and ARM7 math leads are not
+  evidence of a failed completion gate or permission to resume that game.
+  Platinum is now active, with prior player/furniture fixes preserved.
+- Platinum CPUE revision 1 has 122 ARM9 overlays. Initial main/autoload ARM
+  pattern matches are unprofiled and exclude Thumb/overlay coverage. Do not
+  transplant FFT's rejected halfword-copy rewrite or reuse an overlay RAM
+  address without exact overlay identity and a verified reload mechanism.
