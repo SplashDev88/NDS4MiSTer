@@ -49,8 +49,9 @@ int main() {
  map.dtcmBase=0x027e0000;map.dtcmMask=0xffffc000;
  regs[0]=0x023ffffc;observe(0xe92d4000,0);require(watch.events==2);
  for(const std::string bad:{"", "0 02001000 arm e92d4000 0 0 0 2 100\n",
-  "0 02001000 arm e92d4000 0 0 4097 2 100\n", "0 02001000 arm e92d4000 15 0 4 2 100\n",
-  "0 02001000 arm e92d4000 0 0 4 16 100\n", "0 02001000 arm e92d4000 0 -4097 4 2 100\n",
+  "0 02001000 arm e92d4000 0 0 4097 2 100\n", "0 02001000 arm e92d4000 16 0 4 2 100\n",
+  "0 02001000 arm e92d4000 0 0 4 16 100\n", "0 02001000 arm e92d4000 0 -65537 4 2 100\n",
+  "0 02001000 arm e92d4000 0 65537 4 2 100\n",
   "2 02001000 arm e92d4000 0 0 4 2 100\n", "0 02001002 arm e92d4000 0 0 4 2 100\n",
   "0 02001001 thumb b500 0 0 4 2 100\n", "0 02001000 thumb e92d4000 0 0 4 2 100\n",
   "0 02001000 other e92d4000 0 0 4 2 100\n", "0 02001000 arm e92d4000 0 0 4 2 100 extra\n"})
@@ -121,6 +122,31 @@ int main() {
   "1 03800100 arm e92d4010 0 0 0 15 3800108 main\n",
   "1 03800100 arm e92d4010 0 0 0 15 3800108 regs extra\n"})
   rejected([&]{load(bad);});
+ require(ram==before&&dtcm==dtcmBefore);
+ // Object displacements beyond one page and PC-relative code reads remain
+ // ordinary mapped reads. Exercise both displacement limits and whole-event
+ // rejection when a later span crosses the address-space boundary.
+ regs=originalRegs;regs[0]=0x02010100;regs[15]=0x02000104;
+ auto distant=load("0 02001000 arm e92d4000 0 -65536 4 2 100 main\n"
+                   "0 02001000 arm e92d4000 15 -4 4 15 2000104 main\n");
+ const auto displacedRegs=regs;
+ std::ostringstream distantOut;
+ distant.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,13,map,distantOut);
+ require(distant.events==1&&distantOut.str().find(",2000100,4,12ab0000,main\n")!=std::string::npos);
+ auto positive=load("0 02001000 arm e92d4000 0 65536 4 2 100 main\n");
+ regs[0]=0x02000100;
+ positive.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,13,map,distantOut);
+ require(positive.events==1&&distantOut.str().find(",2010100,4,00000000,main\n")!=std::string::npos);
+ auto outside=load("0 02001000 arm e92d4000 0 0 4 2 100 main\n"
+                  "0 02001000 arm e92d4000 15 65536 4 2 100 main\n");
+ for(uint32_t value:{0x023ffffcu,0xfffffffcu}) {
+  regs[15]=value;unchanged=distantOut.str();
+  rejected([&]{outside.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,13,map,distantOut);});
+  require(distantOut.str()==unchanged&&outside.events==0);
+ }
+ regs=displacedRegs;regs[0]=0x00000100;unchanged=distantOut.str();
+ rejected([&]{distant.Observe(0,0x02001000,0xe92d4000,regs.data(),0x1f,13,map,distantOut);});
+ require(distantOut.str()==unchanged&&distant.events==1);
  require(ram==before&&dtcm==dtcmBefore);
  std::cout<<checks<<" memory-watch checks passed\n";
 }

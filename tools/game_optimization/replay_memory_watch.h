@@ -37,9 +37,9 @@ public:
    }
    site.thumb=mode=="thumb";
    if(site.cpu>1||(mode!="arm"&&mode!="thumb")||(site.pc&(site.thumb?1:3))||
-      (site.thumb&&site.opcode>0xffff)||span.reg>=15||span.guardReg>=16||
+      (site.thumb&&site.opcode>0xffff)||span.reg>=16||span.guardReg>=16||
       (span.dtcm&&site.cpu!=0)||
-      span.offset < -4096||span.offset>4096||
+      span.offset < -65536||span.offset>65536||
       (span.registers?(span.reg!=0||span.offset!=0||span.bytes!=0):(span.bytes==0||span.bytes>4096))||++total>64)
     throw std::runtime_error("Memory-watch bounds or mode invalid");
    Site* found=nullptr;
@@ -83,6 +83,9 @@ public:
     if(!span.registers) {
      if(!memory.ram||memory.mask!=0x003fffff)
       throw std::runtime_error("Memory watch requires ordinary 4 MiB DS main RAM");
+     // Large object fields and PC-relative code snapshots use the same bounded
+     // read path. The displacement does not relax the span length, overflow,
+     // mapped-RAM, TCM or explicit register guards below.
      const int64_t first=int64_t(r[span.reg])+span.offset;
      if(first<0||first+span.bytes>0x100000000ll)
       throw std::runtime_error("Memory-watch address overflow");

@@ -290,9 +290,10 @@ CPU PC_HEX arm|thumb OPCODE_HEX ADDRESS_REG SIGNED_OFFSET BYTE_COUNT GUARD_REG G
 
 All fields except those marked hex are decimal. Rows for the same CPU/PC
 form one event with ordered spans; at most 16 sites and 64 spans are allowed.
-Each memory span is 1–4096 bytes, with a register-relative offset within ±4096.
+Each memory span is 1–4096 bytes, with a register-relative offset within ±65536.
 The exact opcode, CPU mode and register guard must match. Address registers
-are R0–R14; a guard may also name R15 to check the callback's pipeline PC.
+and guards may name R0–R15. R15 is the callback's pipeline PC; a PC-relative
+code snapshot must account for that pipeline offset and guard the expected PC.
 The default `main` space rejects noncanonical aliases, MMIO, ARM9 ITCM/DTCM
 overlap, overflow and non-4-MiB RAM mapping. Explicit `dtcm` spans require
 ARM9, a currently mapped 16-KiB DTCM range and the correct local backing;
