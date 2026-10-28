@@ -3,7 +3,8 @@
 
 Detectors recognize copy control flow, redundant shifts, weighted nibble sums,
 linear key/handler dispatch, fixed-width mask walks and carry-derived zero
-multiplies, allowing register renaming. Linear scans can encounter data or Thumb code;
+multiplies, allowing register renaming. An opt-in Thumb detector screens a
+stack-local file seek followed by a header halfword read. Linear scans can encounter data;
 execution traces and revision/original-byte guards are still required.
 """
 import argparse
@@ -13,12 +14,13 @@ import json
 from pathlib import Path
 import struct
 
-from capstone import (Cs, CS_ARCH_ARM, CS_MODE_ARM, CS_GRP_JUMP, CS_GRP_CALL,
+from capstone import (Cs, CS_ARCH_ARM, CS_MODE_ARM, CS_MODE_THUMB, CS_GRP_JUMP, CS_GRP_CALL,
                       CS_GRP_RET, CS_GRP_INT, CS_GRP_IRET)
 from capstone.arm import (ARM_CC_AL, ARM_CC_LT, ARM_CC_NE, ARM_CC_EQ, ARM_INS_MOV, ARM_INS_CMP, ARM_INS_TST,
                           ARM_INS_B, ARM_INS_LDR, ARM_INS_LDRH, ARM_INS_STRH, ARM_INS_ADD,
-                          ARM_INS_BLX, ARM_INS_ADC, ARM_INS_MLA, ARM_INS_SUB,
+                          ARM_INS_BL, ARM_INS_BLX, ARM_INS_ADC, ARM_INS_MLA, ARM_INS_SUB,
                           ARM_INS_BX, ARM_OP_REG, ARM_OP_IMM, ARM_OP_MEM,
+                          ARM_REG_R0, ARM_REG_R1, ARM_REG_R2,
                           ARM_REG_LR, ARM_REG_PC, ARM_REG_SP, ARM_INS_LSL,
                           ARM_INS_LSR, ARM_INS_ASR, ARM_SFT_LSL, ARM_SFT_LSR,
                           ARM_SFT_ASR)
@@ -340,11 +342,85 @@ def scan(data, base):
     return findings
 
 
+def thumb_file_header_read(instructions):
+    """Screen seek(file,12,SET); read(file,&local,2), without naming callees.
+
+    This is a narrow ABI shape, not proof of a filesystem or archive format.
+    The two call targets are recovered for independent authentication.
+    """
+    if len(instructions) != 8:
+        return None
+    expected = [ARM_INS_ADD, ARM_INS_MOV, ARM_INS_MOV, None,
+                ARM_INS_ADD, ARM_INS_ADD, ARM_INS_MOV, None]
+    at = instructions[0].address
+    for n, instruction in enumerate(instructions):
+        size = 4 if n in (3, 7) else 2
+        if instruction.address != at or instruction.size != size or instruction.cc != ARM_CC_AL or instruction.writeback:
+            return None
+        if expected[n] is None:
+            if instruction.id not in (ARM_INS_BL, ARM_INS_BLX):
+                return None
+        elif instruction.id != expected[n]:
+            return None
+        at += size
+
+    def reg(n, k, expected):
+        operand = instructions[n].operands[k]
+        assert operand.type == ARM_OP_REG and not operand.shift.type and operand.reg == expected
+
+    def imm(n, k):
+        operand = instructions[n].operands[k]
+        assert operand.type == ARM_OP_IMM and not operand.shift.type
+        return operand.imm
+
+    try:
+        for n in (0, 4, 5):
+            assert len(instructions[n].operands) == 3
+            reg(n, 0, ARM_REG_R1 if n == 5 else ARM_REG_R0)
+            reg(n, 1, ARM_REG_SP)
+        file_offset = imm(0, 2)
+        value_offset = imm(5, 2)
+        assert imm(4, 2) == file_offset and file_offset != value_offset
+        for n, register, value in [(1, ARM_REG_R1, 12), (2, ARM_REG_R2, 0), (6, ARM_REG_R2, 2)]:
+            assert len(instructions[n].operands) == 2
+            reg(n, 0, register)
+            assert imm(n, 1) == value
+        assert all(len(instructions[n].operands) == 1 for n in (3, 7))
+        seek, read = imm(3, 0), imm(7, 0)
+        assert seek != read
+    except (AssertionError, IndexError):
+        return None
+    return dict(file_stack_offset=file_offset, value_stack_offset=value_offset,
+                seek_position=12, read_bytes=2, seek_target=hex(seek), read_target=hex(read),
+                required_proof='Authenticate both callees, callers and stack arguments; prove immutable header values across the guarded full ROM, payload/position behavior and completion effects. No NARC/SDK identity, constant value or safe replacement inferred.')
+
+
+def scan_thumb_file_metadata(data, base):
+    decoder = Cs(CS_ARCH_ARM, CS_MODE_THUMB)
+    decoder.detail = True
+    findings = []
+    for at in range(0, len(data)-19, 2):
+        # Sixteen-bit SP-relative ADD and immediate ABI arguments; calls may
+        # be BL or BLX. Decode the complete window before accepting a shape.
+        words = struct.unpack_from('<10H', data, at)
+        if words[0] & 0xff00 != 0xa800 or words[1:3] != (0x210c, 0x2200) or words[7] != 0x2202:
+            continue
+        raw = data[at:at+20]
+        roles = thumb_file_header_read(list(decoder.disasm(raw, base+at)))
+        if roles:
+            findings.append(dict(pattern='stack-file-header-halfword-read', address=hex(base+at),
+                                 bytes=20, expect=raw.hex(), roles=roles,
+                                 status='static_candidate_requires_execution_and_semantic_proof'))
+    return findings
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rom', type=Path)
     parser.add_argument('--arm9-profile', type=Path)
     parser.add_argument('--arm7-profile', type=Path)
+    parser.add_argument('--include-thumb', action='store_true',
+                        help='Also screen Thumb stack-local header seek/read shapes')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
@@ -365,13 +441,16 @@ def main():
             target = cpu + '.bin/' + ('main_loaded' if section.implicit else 'autoload:' + str(index))
             sections.append(dict(cpu=cpu, target=target, address=hex(section.ramAddress),
                                  bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
-            for candidate in scan(data, section.ramAddress):
+            candidates = [('arm', c) for c in scan(data, section.ramAddress)]
+            if args.include_thumb:
+                candidates += [('thumb', c) for c in scan_thumb_file_metadata(data, section.ramAddress)]
+            for mode, candidate in candidates:
                 start = int(candidate['address'], 16)
-                candidate.update(cpu=cpu, mode='arm', target=target,
+                candidate.update(cpu=cpu, mode=mode, target=target,
                                  sampled_instructions_in_extent=sum(v for pc, v in samples.items() if start <= pc < start+candidate['bytes']))
                 findings.append(candidate)
     result = dict(rom_sha256=hashlib.sha256(raw).hexdigest(), sections=sections, findings=findings,
-                  coverage='ARM main/autoload sections only; no overlay or Thumb detector. Samples are instruction entries, not cycles. No SDK identity inferred.',
+                  coverage=('ARM main/autoload sections; optional narrow Thumb header-read detector enabled. No overlays.' if args.include_thumb else 'ARM main/autoload sections only; no overlay or Thumb detector.') + ' PC sample counts are not cycles. No SDK identity inferred.',
                   original_rom_preserved=hashlib.sha256(args.rom.read_bytes()).hexdigest() == hashlib.sha256(raw).hexdigest())
     args.output.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(dict(findings=findings, original_rom_preserved=result['original_rom_preserved'])))
