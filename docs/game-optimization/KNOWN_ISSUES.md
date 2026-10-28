@@ -235,3 +235,9 @@
   DIV/SQRT context-preservation sample shares do not establish idle work or
   avoidable software arithmetic. Preserve full ARM7/overlay threshold lists,
   not only the easier-to-disassemble ARM9 ranges.
+- Platinum's guarded census resolves those destinations: geometry FIFO for
+  the word stream and almost exclusively OAM for halfword copies. Preserve
+  the 19,800 zero-length calls as no-access cases and the one word-stream call
+  that crosses a frame boundary. The 2/6-byte OAM fields include 2-mod-4
+  addresses. Argument equality is not command/pixel-data recurrence, and a
+  theoretical branch-entry reduction is not a tested or native speed gain.

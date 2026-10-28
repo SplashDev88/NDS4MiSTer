@@ -68,14 +68,58 @@ for both CPUs, including unresolved ARM7 and live-overlay regions.
 |---|---:|---|
 | `01ff8000–01ff81e4` | 19.114% | IRQ acknowledgment, dispatch and context switching, including CPSR/SPSR and register preservation; not established idle work |
 | `020c99fc–020c9a78` | 9.615% | Register context save/restore around DIV/SQRT MMIO, called by the context path; not evidence of an expensive software divide |
-| `020c4b90–020c4bb8` | 5.675% | Reads successive words and writes repeatedly to one destination; actual callers/destinations still need tracing |
-| `020c4b18–020c4b4c` | 4.230% | Known halfword-copy pattern; access classes, invariants and timing need investigation |
+| `020c4b90–020c4bb8` | 5.675% | Reads successive words and writes repeatedly to one destination; the guarded census below identifies geometry FIFO |
+| `020c4b18–020c4b4c` | 4.230% | Known halfword-copy pattern; the guarded census below identifies mostly tiny OAM fields |
 
 The listed code bytes match the unpacked ROM at all five live checkpoints.
 Static disassembly and existing emulator register definitions support these
-bounded interpretations. Runtime mode guards and actual arguments are still
-required before patching. A fixed-destination word stream must not be treated
+bounded interpretations. The transfer census below adds runtime mode guards
+and actual arguments; other hotspots still require them. A fixed-destination word stream must not be treated
 as ordinary memcpy, nor a large interrupt sample share as removable dead work.
+
+## Guarded transfer census
+
+The existing observer captures 1,206,700 entry/return events with exact ARM9,
+ARM-mode, opcode, pipeline-PC and mapped DTCM-stack guards. Both the preliminary
+register census and guarded capture preserve all six required golden outputs.
+`audit_transfer_calls.py` pairs all 603,350 calls, checks declared leaf-register
+effects, final equal-compare flags and unchanged stack bytes, and binds its
+input to that passing comparison. Seven adversarial tests pass. The measured
+window remains frames 4200–5999; no new gameplay coverage is implied.
+
+| Routine | Calls | Requested bytes | Actual role in this window |
+|---|---:|---:|---|
+| Fixed-destination word stream | 160,545 | 8,138,460 | Destination argument is always geometry FIFO `04000400`; 19,800 calls have length zero and perform no transfer |
+| Halfword copy | 442,805 | 1,778,456 | 442,800 calls / 1,778,400 bytes target OAM; five calls / 56 bytes target main RAM |
+
+The word stream's 140,745 nonempty calls comprise 36,525 main-RAM sources and
+104,220 ARM9 DTCM sources. All observed sources/destinations are word-aligned;
+two return sites are `020b2834` and `020b0fd8`. One complete call crosses an
+emulator frame boundary and remains in the audit. No call is nested in this
+capture. Fixed source addresses or identical lengths do not establish repeated
+command payloads.
+
+The halfword routine mostly copies tiny fields: 223,200 six-byte calls and
+219,600 two-byte calls. Five other calls use lengths 8, 10, 12 or 16. Many
+sources/destinations are 2 mod 4, so replacing these with ordinary aligned word
+accesses is not justified. OAM callers return to `020a7ee8`, `020a7f9c`,
+`020a7fac`, `020a7fbc` and `020a7fcc`; the five RAM calls return to Thumb
+address `0200aeb5`. The routines themselves were observed in ARM mode.
+
+The first concrete candidate to investigate is branch compaction of the word
+stream while retaining every ordered word load and FIFO write. Its original
+control flow accounts for `6 * words + 8 * calls` instruction entries. A
+proposed predicated loop would account for `4 * words + 6 * calls`, a nominal
+4,390,320 fewer entries (1.765% of this selected ARM9 workload), assuming
+unchanged calls and timing behavior. This is arithmetic from the unpatched
+trace, not a tested patch, native cycle estimate or measured speedup. Synthetic
+equivalence, whole-game exactness and lifecycle/native gates remain required.
+
+Evidence: `TRANSFER_CALL_FINDINGS_V2.json`,
+`TRANSFER_CALL_AUDIT_FIXTURE_V2.json` and
+`TRANSFER_GUARDED_V1_COMPARISON.json`. V1 findings retained DTCM sources as
+unclassified; V2 labels them using the mapped ARM9 DTCM range without rerunning
+or changing the replay. No patch or scratch allocation has been installed.
 
 | Measurement | Baseline | Candidate |
 |---|---|---|
@@ -94,9 +138,9 @@ cumulative beta remains FFTA2 Beta2 until a Platinum change qualifies.
 
 Next three investigations:
 
-1. Trace actual callers, destinations, lengths and access types for the two
-   ARM9 transfer routines. Assess branch overhead only after preserving all
-   required memory/MMIO operations and comparing whole-route timing/output.
+1. Test the guarded word-stream branch-compaction proposal with the existing
+   synthetic runner and virtual in-memory loader, preserving every ordered
+   load/FIFO write. Reject any whole-route output mismatch or absent native gain.
 2. Classify interrupt/context costs and remaining ARM7 bins from actual
    events; do not remove scheduler, sound or hardware-math preservation work
    based on sample share alone.

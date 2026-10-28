@@ -550,3 +550,18 @@ of an expensive software divide that can be replaced by hardware math. The
 IRQ dispatch/context region itself accounts for 19.114%. Sampling is every
 256th instruction entry and can alias periodic work; none of these shares
 measures native cycles or establishes removable work.
+
+Platinum's guarded entry/return census resolves the transfer roles. All
+160,545 word-stream calls name the geometry FIFO, including 19,800 zero-length
+calls with no transfer. Nonempty sources include main RAM and ARM9 DTCM;
+the same high address byte does not make both ordinary main RAM. The halfword
+helper has 442,800 OAM calls, overwhelmingly 2/6-byte attribute fields, and five
+RAM calls. Its many 2-mod-4 addresses rule out a blind aligned-word substitution.
+
+Reuse `audit_transfer_calls.py` with declarative ABI/region fixtures and the
+existing guarded observer. Require a matching golden comparison, preserve
+cross-frame calls and reject incomplete pairs. It audits arguments and leaf
+effects, not transferred bytes or content recurrence. An estimate from
+instruction paths is a candidate-selection aid, not measured savings. A
+branch-only proposal must retain every ordered FIFO/OAM access and still pass
+whole-game output/timing and native benefit gates.

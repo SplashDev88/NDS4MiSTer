@@ -234,6 +234,25 @@ tables and other dependencies still need independent proof. Payload storage
 omits metadata and alignment; hit counts omit lookup, copy, invalidation and
 timing costs. This diagnostic does not allocate guest scratch or implement a cache.
 
+`audit_transfer_calls.py TRACE FIXTURE --output REPORT` streams the same
+guarded memory-watch output to census leaf transfer arguments. It binds the
+trace to a fixture and a passing six-file golden comparison, verifies CPU,
+mode, opcode, pipeline PC, ordered entry/return pairing, declared preserved
+registers, source/counter effects, final flags and unchanged stack bytes.
+One stack span per event is supported. Calls crossing frames are paired and
+reported; incomplete boundary calls fail. The fixture declares code sites,
+address regions and either indexed halfword-copy or fixed-destination word-
+stream ABI effects; it contains all game addresses.
+
+This census admits only observed nonnegative lengths at most 1 MiB, divisible
+by the declared 2/4-byte unit. It is not general synthetic equivalence or a
+data-payload recurrence audit. Zero-length calls have no access region, even
+when their destination argument names MMIO. Source advancement does not imply
+destination advancement. Seven tests cover pairing across frames and reject
+mode/opcode changes, changed preserved registers/stack, reused golden evidence,
+event/window errors and incomplete calls. Neither a passing census nor
+estimated removed instruction entries establishes native speed or safety.
+
 `check_halfword_copy_patch.py MANIFEST --patch ID --output REPORT` compares
 synthetic machine states and ordered data accesses using Unicorn. The generic
 `check_guest_block_patch.py MANIFEST FIXTURE --output REPORT` reuses that
