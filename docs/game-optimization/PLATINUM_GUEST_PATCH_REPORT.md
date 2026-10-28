@@ -4,15 +4,21 @@ Platinum became the sole active target when the user explicitly advanced from
 FFT due diminishing returns. Use exact rc12 with cumulative accepted changes;
 preserve the earlier player-character and furniture fixes. Historical PBOX
 binaries, timings and room screenshots are context, not the current baseline.
-Six candidates remain disabled, including a new terrain-visibility experiment. At the user's request, three were subsequently
-screened as isolated perceptual experiments on native hardware: empty-tail
-cleanup, FIFO predication and font-table reuse. Those three show no worthwhile native gain in the measured walking/menu/Bag
-scenes. The sixth terrain-visibility experiment subsequently measured +13.162%
-native publication throughput in paired outdoor trials; it remains disabled. Battle benefit remains
-unmeasured. Review videos preserve their known reference differences, and
-no non-bit-exact acceptance or new beta follows. Later native-screening
-sections supersede historical no-retry restrictions only for these authorized
-experiments. Exact rc12 and accepted Beta2 archives remain the baseline assets.
+The terrain-visibility experiment improves native publication throughput by
+13.162% in paired outdoor trials. The user approved its video/audio comparison,
+and native save, soft reset, cold reload, room entry/exit and unpatched save
+compatibility checks pass. The user then explicitly instructed: "just promote
+it,. works great". Enable only the tested48-byte terrain patch for a cumulative
+private Platinum Beta1. The other five candidates remain disabled. This is
+perceptual acceptance with bounded coverage; strict RAM/audio and six outdoor
+frame differences remain in the evidence. Exact rc12 and accepted Beta2 archives
+remain unchanged. Actual archive installation is qualified separately.
+
+
+Earlier isolated native perceptual trials of empty-tail cleanup, FIFO
+predication and font-table reuse found no worthwhile walking/menu/Bag gain.
+Battle benefit remains unmeasured. Later native-screening sections supersede
+historical no-retry restrictions only for the authorized experiments.
 
 The owned local ROM is USA CPUE revision 1, 128 MiB, SHA-256
 `fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb`.
@@ -1503,3 +1509,49 @@ The user subsequently approved the presented audiovisual review ("Everything
 looks good"). This closes the human video/audio review step for this candidate;
 remaining RAM and lifecycle qualification still gates beta enablement. See
 `TERRAIN_USER_REVIEW_APPROVAL_V1.json`.
+
+## Terrain visibility — native save, reset and reload
+
+The candidate completed an ordinary in-game Save in Twinleaf Town using its
+isolated disposable save. Both Save/overwrite prompts were inspected, followed
+by a return to the field and a changed, stable 524,288-byte save. The timed
+"saved" message itself was not captured. L+R+Start+Select returned to copyright;
+Continue restored the outdoor location. A clean session stop and a new patched
+host/core startup restored the same location again. Entering the rival's house
+and exiting to town also passed. No original user save was changed.
+
+An unpatched control then cold-loaded that same candidate-generated save.
+The post-save, reset-loaded, patched cold-loaded and control cold-loaded PNGs
+are byte-identical. All three sessions stopped cleanly; the generated save hash
+remained unchanged after reset and both reloads. This verifies bounded native
+save compatibility and rollback for this scene, not full-game save equivalence
+or a physical power-cycle test. Exact staged cartridge bytes and fresh process,
+save-FD and kit identities were checked in each session; direct instruction-cache
+readback is not available. Persistent core save states remain unsupported.
+
+The final audit verified all 2,024 protected files, 83 private runtime files,
+the new disposable save and unchanged rc12/Beta2 archives, with MENU restored.
+No OBS recording or settings were changed for these lifecycle checks. Reference
+reset/unrelated-scene comparisons and remaining RAM liveness are still pending.
+The patch remains disabled by default; audiovisual review is already approved.
+
+Evidence: `TERRAIN_NATIVE_SAVE_SEED_V1.json`,
+`TERRAIN_NATIVE_LIFECYCLE_V1.json`,
+`NATIVE_TERRAIN_LIFECYCLE_PRESERVATION_V1.json`, and the
+`PLATINUM_TERRAIN_LIFE1`, `LIFE2`, `LIFE3` input/status/stop receipts.
+
+## Promotion and reset comparison — 28 October
+
+The separate12000-frame bedroom/reset replay has exact top/bottom frames,
+final save, and all seven full checkpoint RAM sets after authenticating and
+normalizing only the48-byte patch. Per-frame transient RAM and audio still differ:
+184514of9627902 stereo samples, maximum channel delta4058 and RMS40.630.
+This reset audio was not included in the earlier review video. It is retained as
+a limitation of the explicitly requested private promotion, not relabelled exact
+or proven inaudible. Full-game coverage and complete RAM-reader liveness remain
+open. Persistent core save states remain unsupported.
+
+Cumulative packaging uses an opt-in generic FMV fallback after a guest patch is
+skipped by its identity/byte guards. An admitted guest image remains exclusive;
+other games retain their independently guarded existing movie path. No new
+HPS service, FPGA change, guest clock change or save-state format is introduced.

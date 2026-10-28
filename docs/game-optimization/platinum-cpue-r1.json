@@ -8,8 +8,8 @@
   "rom_sha256": "fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb",
   "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
   "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
-  "budget": "Bit-exact framebuffers, audio, saves and checkpoint RAM except declared instruction bytes and proven scratch",
-  "status": "terrain_audiovisual_review_approved_lifecycle_pending",
+  "budget": "Terrain visibility only: user-approved perceptual private beta with known non-bit-exact differences and bounded coverage. Other candidates remain disabled under their recorded decisions.",
+  "status": "terrain_accepted_user_directed_private_beta",
   "patches": [
     {
       "cpu": "arm9",
@@ -359,16 +359,17 @@
       "replace": "a05902218902471878680ea9174a154b34f64dfa00280bd038000ea9134a114b34f613f8c046c046c046c046c046c046",
       "hook": null,
       "scratch_bytes": 0,
-      "enabled": false,
-      "notes": "Experimental terrain culling through the existing model box test and immutable transform constants; no new scratch. Native publication throughput +13.162%. Main-RAM differences classified as graphics work state; liveness, and lifecycle qualification remain pending; user approved the presented audiovisual review.",
-      "status": "disabled_user_av_approved_remaining_validation_pending",
+      "enabled": true,
+      "notes": "User reviewed video/audio and explicitly requested promotion on2026-10-28. Exact tested48-byte terrain visibility patch; no new scratch. Known framebuffer/audio/RAM differences remain documented; bounded native gain and save/reset/reload/rollback checks passed. Full-game and complete RAM-liveness qualification are not claimed.",
+      "status": "accepted_user_directed_private_beta",
       "validated": {
         "fb": "15,600 frames: six top-screen differences at 14357,14359,14479,14481,14483,14485; all bottom screens exact. All 600 target-window screen pairs exact.",
         "ram": "Strict failure retained. Main-RAM writers classify projection/model/graphics-transfer state; full replay transfer bookkeeping is consistent. DTCM liveness and complete reader equivalence remain unqualified. Only exact48-byte code normalized.",
         "audio": "239,992 of 12,516,274 stereo samples differ; maximum channel delta 1,215 and RMS 9.153. Audibility unjudged. User approved the presented control/candidate review on2026-10-28.",
-        "save": "Final save bit-exact. Save-write/load lifecycle not yet tested for this candidate.",
-        "native": "Two alternating control/candidate outdoor trials, same boundary route, stock 1 GHz, rc12 FPGA and accepted Beta2 renderer. Controls 16.7726/17.2525; candidates 19.1382/19.3653 complete screen-buffer publications/s. All saves preserved and OBS added no drops. Indoor idle 59.7131 versus 59.6371 publications/s. Native save-write/load, soft reset and wider scene qualification pending.",
-        "user_review": "Presented reference and native video/audio approved: Everything looks good. Not full RAM/lifecycle qualification."
+        "save": "Original reference save exact. Native candidate ordinary Save, soft-reset Continue, patched cold session reload and unpatched control reload passed; all loaded scene PNGs identical and generated save unchanged across resets/reloads. Bounded Twinleaf Town coverage.",
+        "native": "Two alternating control/candidate outdoor trials, same boundary route, stock1GHz, rc12 FPGA and accepted Beta2 renderer. Controls16.7726/17.2525; candidates19.1382/19.3653 complete screen-buffer publications/s. Saves preserved and OBS added no drops. Indoor idle59.7131 versus59.6371. Three further sessions passed native save/reset/cold-load and house entry/exit, including unpatched rollback save compatibility. No physical power-cycle or instruction-cache readback claim. Reference reset comparison completed; full RAM liveness and broader scene coverage remain unqualified.",
+        "user_review": "Everything looks good, followed by explicit just promote it,. works great. Accepted as a perceptual private beta.",
+        "reset_reference": "12000 frames: both screens, final save and all7 full RAM checkpoints exact outside authenticated48 codebytes; transient state/audio differences retained. Audio184514/9627902 stereo samples differ, max4058,RMS40.630. This reset comparison was not in the previously reviewed video."
       },
       "gain": {
         "reference_arm9_entries_15000_15599": {
@@ -384,7 +385,7 @@
         },
         "native_cycles": null,
         "native_frame_time": null,
-        "qualified": false,
+        "qualified": true,
         "native_publication_throughput": {
           "control_mean": 17.012519283317772,
           "candidate_mean": 19.251761807913674,
@@ -392,7 +393,8 @@
           "control_range_percent": 2.82089939355885,
           "unit": "complete screen-buffer publications per second",
           "scope": "Two matched 40-second boundary traversal trials per mode; not unique animation FPS, game-clock speed or whole-game gain."
-        }
+        },
+        "qualification_scope": "Bounded native publication-throughput benefit accepted for private beta, not full-game speed."
       },
       "evidence": [
         "TERRAIN_CONTRACT_QUALIFICATION_V1.json",
@@ -406,7 +408,11 @@
         "TERRAIN_RAM_WRITER_REPEAT_V1.json",
         "TERRAIN_RAM_CLASSIFICATION_V1.json",
         "TERRAIN_TRANSFER_LIFECYCLE_V1.json",
-        "TERRAIN_USER_REVIEW_APPROVAL_V1.json"
+        "TERRAIN_USER_REVIEW_APPROVAL_V1.json",
+        "TERRAIN_NATIVE_LIFECYCLE_V1.json",
+        "NATIVE_TERRAIN_LIFECYCLE_PRESERVATION_V1.json",
+        "TERRAIN_RESET_FINDINGS_V1.json",
+        "TERRAIN_PROMOTION_AUTHORIZATION_V1.json"
       ]
     }
   ],
@@ -422,11 +428,11 @@
     "reset_control": "OVERLAY_DELIVERY_RESET_FINDINGS_V1.json",
     "delivery_implemented": true,
     "optimization_implemented": true,
-    "native_qualified": false,
-    "optimization_enabled": false,
+    "native_qualified": true,
+    "optimization_enabled": true,
     "overlay_comparison_control": "EMPTY_TAIL_CONTROL_V2_STATUS.json",
     "overlay_reset_comparison_control": "EMPTY_TAIL_RESET_CONTROL_V1_STATUS.json",
-    "latest_decision": "NATIVE_PERCEPTUAL_RESULTS_V1.json",
+    "latest_decision": "TERRAIN_PROMOTION_AUTHORIZATION_V1.json",
     "hblank_screen": "HBLANK_COST_SCREEN_V1.json",
     "hblank_synthetic_screen": "HBLANK_SYNTHETIC_SCREEN_V1.json",
     "hblank_patch_implemented": false,
@@ -500,7 +506,7 @@
     "prop_culling_census": "BOXTEST_REGISTER_FINDINGS_V2.json",
     "terrain_visibility_experiment": {
       "receipt": "TERRAIN_NATIVE_FINDINGS_V1.json",
-      "state": "Native rendering throughput +13.162%; user audiovisual review approved. Disabled pending RAM/lifecycle qualification."
+      "state": "Accepted by explicit user direction; enabled for private beta."
     },
     "terrain_ram_classification": "TERRAIN_RAM_CLASSIFICATION_V1.json"
   },
