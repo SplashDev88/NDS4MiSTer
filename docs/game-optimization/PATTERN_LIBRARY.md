@@ -1468,7 +1468,7 @@ then reuse the geometry observer and prove its unchanged-replay behavior before
 classifying redundant packets or hidden geometry. Repeated commands alone do
 not prove dispensable rendering or stable external dependencies.
 
-Re-authenticate overlay identity at each new scene. Starter overlay61 and field
+Re-authenticate overlay identity at each new scene. Starter overlay 61 and field
 overlay1 reuse the same base address; allocator ownership and code placement
 proofs from the field do not automatically transfer to the starter screen.
 
@@ -1653,7 +1653,7 @@ advanced to SoulSilver before a patch, replay or native test; no gain is claimed
 
 For related-game transfers, compare complete stored/decoded overlays, CPU
 sections and every patch-dependent caller/helper/constant. SoulSilver IPGE0
-matches HeartGold IPKE0 in 114/129 decoded overlays, including complete overlay61;
+matches HeartGold IPKE0 in 114/129 decoded overlays, including complete overlay 61;
 overlay1 differs by nine bytes outside the tested patch/dependency spans.
 This supports a guarded transfer candidate, not inherited validation or native
 speed claims. Always retain the destination game's own identity and replay/save.
@@ -1666,3 +1666,21 @@ repeat the original independently, distinguish decoded delivery timing from the
 byte patch, and derive the first full overlay identity from the current trace
 (frame 938 here); never copy another title's load-frame boundary. Preserve
 leading/trailing partial call records when a bounded observer window cuts a call.
+
+### Control guest calendar and distinguish cold starts from soft resets
+
+SoulSilver's exploratory native terrain comparison crossed 18:00. The image colors
+changed with the guest clock and a warm reset changed throughput. A fixed camera,
+save and CPU frequency do not alone establish matched workload. Use the existing
+host `NDS_rtc.cfg` calendar feature in an isolated kit to seed the same date,
+weekday and time before each cold start; verify the actual seed in the host log.
+Let guest time advance normally and restore the private fixture afterward. Never
+change the machine clock or ship a test clock setting with the patch. Keep
+warm-reset measurements separate from cold-session comparisons and disclose
+within-session windows versus independent restarts. No new service is needed.
+
+At the matched noon seed, the SoulSilver 48-byte terrain transfer improves fixed
+plaza publications 6.4663% over original and 6.8766% over unchanged decoded delivery;
+matched indoor throughput stays at the same ceiling. This independently supports
+the earlier guarded related-title transfer. Preserve raw timing/RAM/audio drift
+and exact identity/expected-byte guards; it is not a universal address signature.

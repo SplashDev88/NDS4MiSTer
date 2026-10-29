@@ -760,10 +760,20 @@ SoulSilver's matching starter overlay and terrain patch bytes support transfer
 research only. Use its own full-ROM/header/overlay identities and independent
 save/replay/native checks; do not inherit HeartGold's gains or validation labels.
 
-SoulSilver terrain transfer has a bounded reference work reduction, not native
-qualification. Its sole bottom-screen hash difference is frame 3188; raw
+The initial SoulSilver terrain transfer reference results did not establish
+native qualification; subsequent fixed-noon results are recorded below. Its sole bottom-screen hash difference is frame 3188; raw
 RAM/audio drift is retained. Indoor screen hashes match but reference ARM9 work
-increases 0.2136%; check native indoor cost. Contact previews must decode the
+increases 0.2136%; the later matched native indoor check remains at the same ceiling. Contact previews must decode the
 oracle's `frame_*.rgba` bytes as BGRA, matching the shared comparison renderer.
 The first private SoulSilver contacts had a red/blue channel swap; corrected
 previews supersede them without changing replay hashes or ROM evidence.
+
+SoulSilver's earlier dusk-crossing native figures and 20.497-pairs/s warm-reset
+sample are exploratory, excluded from the matched-noon gain. Pin guest calendar
+through the existing private clock setting before comparative cold launches,
+verify the host seed log, and restore the setting. Never include test RTC or save
+fixtures in a beta. Final bounded gain is 6.4663% over original; this is screen-pair
+publication throughput at one New Bark plaza view, not whole-game FPS or full-game
+qualification. Native transient diagonal lines are visible in the unpatched
+baseline too. The one-frame reference bottom difference was localized in thumbnail
+samples to Save-menu redraw; it was not masked or declared bit-exact.
