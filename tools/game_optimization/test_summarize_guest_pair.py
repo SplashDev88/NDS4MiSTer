@@ -1,13 +1,57 @@
 import hashlib
+import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
 
 from summarize_guest_pair import (normalize_checkpoint, guard_stats, normalize_autoload_memory,
-                                  checked_autoload_contexts, autoload_comparison_rows, RAM_SPACES)
+                                  checked_autoload_contexts, autoload_comparison_rows, RAM_SPACES,
+                                  overlay_comparison_body)
 
 
 class OverlayCheckpointTest(unittest.TestCase):
+    def test_retained_patch_context_normalizes_only_the_new_patch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory); original = root/'original.bin'; baseline = root/'baseline.bin'
+            source = bytes(range(128)); original.write_bytes(source)
+            patch = dict(id='candidate', cpu='arm9', target='arm9.overlay', overlay=7,
+                         overlay_file_id=7, overlay_ram='0x02000100', addr='0x02000108',
+                         expect=source[8:16].hex(), replace='ff'*8,
+                         overlay_sha256=hashlib.sha256(source).hexdigest())
+            retained = dict(patch, id='retained', addr='0x02000120',
+                            expect=source[32:40].hex(), replace='aa'*8)
+            body = bytearray(source); body[32:40] = b'\xaa'*8; baseline.write_bytes(body)
+            context = dict(id=7, base=patch['overlay_ram'], path=str(baseline),
+                           sha256=hashlib.sha256(body).hexdigest(), original_path=str(original),
+                           original_sha256=patch['overlay_sha256'], base_patch_ids=['retained'])
+            manifest = root/'manifest.json'
+            manifest.write_text(json.dumps(dict(patches=[retained, patch])))
+            records = [dict(overlay_context=copy.deepcopy(context), base_patch_ids=['retained'],
+                            manifest=str(manifest), manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
+                            admission=dict(requested=ids)) for ids in [['retained'], ['candidate','retained']]]
+            before = bytearray(0x400000); before[256:384] = body
+            after = before.copy(); after[264:272] = b'\xff'*8
+            got, identities = normalize_checkpoint(before, after, patch, records)
+            self.assertEqual(got, before); self.assertEqual(identities, ['original','replacement'])
+            self.assertEqual(got[288:296], b'\xaa'*8)  # Retained code is never restored/masked.
+            after[288] ^= 1
+            got, identities = normalize_checkpoint(before, after, patch, records)
+            self.assertEqual(got, after); self.assertEqual(identities, ['original','unmatched'])
+            for mutate in [lambda r: r[1].update(base_patch_ids=[]),
+                           lambda r: r[0]['admission'].update(requested=[]),
+                           lambda r: r[1].update(manifest_sha256='0'*64)]:
+                bad = copy.deepcopy(records); mutate(bad)
+                with self.assertRaises(AssertionError):normalize_checkpoint(before, after, patch, bad)
+            for bad in [dict(retained, addr=patch['addr'], expect=patch['expect']),
+                        dict(retained, overlay=8), dict(retained, expect='00'*8),
+                        dict(retained, id='candidate')]:
+                c = dict(context, base_patch_ids=[bad['id']])
+                with self.assertRaises(AssertionError):overlay_comparison_body(c, patch, [bad])
+            body[60] ^= 1; baseline.write_bytes(body)
+            forged = dict(context, sha256=hashlib.sha256(body).hexdigest())
+            with self.assertRaises(AssertionError):overlay_comparison_body(forged, patch, [retained])
+
     def test_full_body_required_and_unknown_bytes_preserved(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'context.bin'

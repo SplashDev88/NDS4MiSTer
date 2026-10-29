@@ -444,7 +444,18 @@ readers, stack ownership and native timing still require independent evidence.
 
 `summarize_guest_pair.py CONTROL CANDIDATE INPUT --output REPORT` reuses the
 guarded replay status and manifest to report screen, audio, RAM and instruction
-differences. Only the declared instruction extent is normalized. If the patch
+differences. Only the declared instruction extent is normalized. For a new
+overlay patch on top of retained patches, both records explicitly pin the same
+`base_patch_ids` and manifest. Their admission selections must be the baseline
+IDs and those IDs plus the candidate respectively. The overlay comparison
+context additionally pins `original_path`, `original_sha256` and the retained
+IDs for that overlay. `overlay_comparison_body` reconstructs the baseline from
+the original full overlay and exact, disjoint retained replacements, then
+checks the complete context file. Only the candidate bytes are normalized;
+retained patches and unknown runtime mutations remain visible. No context can
+substitute for loader admission or source-image/lifecycle qualification.
+
+If the patch
 declares data guards, the corresponding RAM-bus traces remain required for
 table/literal write analysis. With no data guards, that section is empty;
 an unrelated table observer is not required. The report never accepts a patch

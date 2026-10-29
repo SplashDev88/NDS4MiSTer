@@ -150,6 +150,65 @@ def normalize_autoload_memory(memory, space, contexts):
     return result, identities
 
 
+def overlay_comparison_body(context, patch, base_patches=()):
+    """Authenticate a comparison body including explicitly retained patches.
+
+    Admission remains the virtual loader's job. This only derives the exact
+    baseline body for comparison; it never masks retained patches or arbitrary
+    runtime changes. The original full overlay and every replacement are pinned.
+    """
+    assert context['id'] == patch['overlay'] and context['base'] == patch['overlay_ram']
+    path = Path(context['path'])
+    assert sha(path) == context['sha256']
+    body = path.read_bytes()
+    assert context.get('base_patch_ids', []) == [p['id'] for p in base_patches]
+    if not base_patches:
+        assert context['sha256'] == patch['overlay_sha256']
+        return body
+    original = Path(context['original_path'])
+    assert sha(original) == context['original_sha256'] == patch['overlay_sha256']
+    expected = bytearray(original.read_bytes())
+    base = int(patch['overlay_ram'], 0)
+    at = int(patch['addr'], 0) - base
+    candidate = bytes.fromhex(patch['expect'])
+    assert 0 <= at < at + len(candidate) <= len(expected)
+    assert expected[at:at+len(candidate)] == candidate
+    ranges = [(at, at+len(candidate))]; ids = {patch['id']}
+    for retained in base_patches:
+        assert retained['id'] not in ids; ids.add(retained['id'])
+        assert retained['cpu'] == 'arm9' and retained['target'] == 'arm9.overlay'
+        for key in ['overlay', 'overlay_ram', 'overlay_file_id', 'overlay_sha256']:
+            assert retained[key] == patch[key]
+        before, after = (bytes.fromhex(retained[k]) for k in ('expect', 'replace'))
+        first = int(retained['addr'], 0) - base; last = first + len(before)
+        assert 8 <= len(before) <= 4096 and len(before) == len(after)
+        assert 0 <= first < last <= len(expected) and expected[first:last] == before
+        assert all(last <= lo or first >= hi for lo, hi in ranges)
+        ranges.append((first, last)); expected[first:last] = after
+    assert body == expected, 'Comparison context differs from retained patch bytes'
+    return body
+
+
+def retained_overlay_patches(records, patch):
+    """Bind normalization to the same explicit baseline selection in both runs."""
+    ids = records[0].get('base_patch_ids', [])
+    assert ids == records[1].get('base_patch_ids', [])
+    if not ids:
+        return []
+    assert len(ids) == len(set(ids)) and patch['id'] not in ids
+    assert records[0]['manifest_sha256'] == records[1]['manifest_sha256']
+    path = Path(records[0]['manifest'])
+    assert sha(path) == records[0]['manifest_sha256']
+    assert sha(Path(records[1]['manifest'])) == records[1]['manifest_sha256']
+    assert records[0]['admission']['requested'] == sorted(ids)
+    assert records[1]['admission']['requested'] == sorted(ids + [patch['id']])
+    manifest = read(path); patches = {p['id']: p for p in manifest['patches']}
+    assert len(patches) == len(manifest['patches']) and set(ids) <= patches.keys()
+    assert patches[patch['id']] == patch
+    return [patches[i] for i in ids if patches[i]['target'] == 'arm9.overlay' and
+            patches[i]['cpu'] == 'arm9' and patches[i]['overlay'] == patch['overlay']]
+
+
 def normalize_checkpoint(before, after, patch, records):
     """Normalize only an authenticated complete code body; leave unknown overlays raw."""
     assert len(before) == len(after) == 0x400000
@@ -173,10 +232,7 @@ def normalize_checkpoint(before, after, patch, records):
     contexts = [r['overlay_context'] for r in records]
     assert contexts[0] == contexts[1]
     context = contexts[0]
-    assert context['id'] == patch['overlay'] and context['base'] == patch['overlay_ram']
-    path = Path(context['path'])
-    assert sha(path) == context['sha256'] == patch['overlay_sha256']
-    body = path.read_bytes()
+    body = overlay_comparison_body(context, patch, retained_overlay_patches(records, patch))
     base = int(context['base'], 0) - 0x02000000
     assert 0 <= base <= at < at + len(original) <= base + len(body) <= len(before)
     relative = at - base
