@@ -99,6 +99,25 @@ file size, header, FAT and overlay metadata stay unchanged. Only declared
 instruction bytes in the virtual file change. Overlays sharing a RAM address
 remain distinct targets. Data guards are relative to the selected code body.
 
+An explicit manifest `delivery: "append-decoded-overlays-v1"` reuses the existing
+FMV overlay relocation mechanism for compressed ARM9 overlays. Every selected
+patch must target `arm9.overlay` and additionally pin `overlay_stored_sha256`.
+The normal game/header/full-ROM/ARM9, decoded overlay, ID/file-ID and expected
+instruction guards still apply. Other flags, shared overlay file IDs, overlapping
+patches, mixed main/ARM7 targets and protected-data changes fail atomically.
+Decoded overlay bodies are appended only to the virtual stream; their FAT
+extents and compression words are updated, along with capacity, used size and
+header CRC. Both original CPU images retain every stored byte, even when ARM9
+is compressed. Main-code reconstruction is not supported by this mode.
+
+An identical-byte control for this mode is **not** an identical cartridge image:
+file locations, compression work and load timing change. First verify the exact
+allowed stream differences, unchanged decoded code and original files, then
+run a separate gameplay/lifecycle control. Preserve raw differences and qualify
+them under the selected budget before testing a changed-code candidate. Normal
+overlay loading/reloading and cache maintenance remain the game's responsibility;
+the loader does not install a live RAM or per-call HPS hook.
+
 The native host supports explicit private experiments through its existing
 disposable loader. Set `NDS_GUEST_PATCH_MANIFEST` to the manifest path,
 `NDS_GUEST_PATCH_SHA256` to its exact SHA-256 and `NDS_GUEST_PATCH_IDS` to a

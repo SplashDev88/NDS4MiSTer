@@ -330,6 +330,100 @@ class OverlayPatchTests(GuestPatchTests):
         loaded = read_overlay(self.source, raw[:512], 1, 0x02100000)
         self.assertEqual(loaded['decoded'], raw[1536:1600])
 
+    def compressed_append_fixture(self):
+        from ndspy import codeCompression
+        decoded = bytes.fromhex('c046')*2048
+        compressed = codeCompression.compress(decoded, isArm9=False)
+        raw = bytearray(self.raw)
+        raw[1536:1536+len(compressed)] = compressed
+        struct.pack_into('<II', raw, 1032, 1536, 1536+len(compressed))
+        struct.pack_into('<I', raw, 1088+8, len(decoded))
+        struct.pack_into('<I', raw, 1088+28, 0x01000000 | len(compressed))
+        # Preserve a genuinely compressed main image without reconstructing it.
+        main = codeCompression.compress(bytes.fromhex('0000a0e1')*1024, isArm9=False)
+        raw.extend(bytes(max(0, 2048+len(main)-len(raw))))
+        raw[2048:2048+len(main)] = main
+        struct.pack_into('<4I', raw, 0x20, 2048, 0x02000000, 0x02000000, len(main))
+        self.raw = bytes(raw); self.rom.write_bytes(raw); self.source = Source(self.fd)
+        self.manifest.update(delivery='append-decoded-overlays-v1',
+            header_sha1=hashlib.sha1(raw[:352]).hexdigest(), rom_sha256=hashlib.sha256(raw).hexdigest(),
+            arm9_sha256=hashlib.sha256(main).hexdigest(), arm9_crc32=f'{zlib.crc32(main):08x}')
+        self.manifest['patches'][1].update(overlay_sha256=hashlib.sha256(decoded).hexdigest(),
+            overlay_stored_sha256=hashlib.sha256(compressed).hexdigest())
+        return decoded
+
+    def test_appended_compressed_overlay_changes_only_declared_metadata_and_body(self):
+        from ndspy import _common
+        decoded = self.compressed_append_fixture()
+        image, report = assemble(self.source, self.manifest, ['overlay-one'])
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
+        got = b''.join(image.blocks()); first, last = struct.unpack_from('<II', got, 1032)
+        expected = bytearray(decoded); expected[16:24] = bytes.fromhex(self.overlay_patch['replace'])
+        self.assertEqual(got[first:last], expected)
+        self.assertEqual(b''.join(image.blocks(first,last)), expected)
+        self.assertEqual(struct.unpack_from('<I',got,1088+28)[0], 0)
+        self.assertEqual(struct.unpack_from('<I',got,0x80)[0], len(got))
+        self.assertEqual(struct.unpack_from('<H',got,0x15e)[0], _common.crc16(got[:0x15e]))
+        self.assertGreaterEqual(128*1024 << got[0x14], len(got))
+        permitted = [(0x14,0x15),(0x80,0x84),(0x15e,0x160),(1032,1040),(1116,1120)]
+        self.assertTrue(all(a==b or any(lo<=i<hi for lo,hi in permitted)
+                            for i,(a,b) in enumerate(zip(self.raw,got))))
+        self.assertEqual(self.rom.read_bytes(), self.raw)
+
+    def test_appended_identical_byte_control_preserves_decoded_code(self):
+        decoded = self.compressed_append_fixture()
+        self.manifest['patches'][1]['replace'] = self.overlay_patch['expect']
+        got, report = self.result(self.environment(selection='overlay-one'))
+        first,last = struct.unpack_from('<II',got,1032)
+        self.assertEqual(got[first:last], decoded)
+        self.assertNotEqual(got,self.raw)  # Load metadata/timing require qualification.
+        self.assertEqual(report['overlays'][0]['original_sha256'],report['overlays'][0]['output_sha256'])
+
+    def test_appended_overlay_guards_and_mixed_targets_fail_atomically(self):
+        self.compressed_append_fixture()
+        for field,value in [('overlay_stored_sha256','0'*64),('overlay_sha256','0'*64),
+                            ('expect','00'*8),('addr','0x02100011'),('scratch_bytes',4),
+                            ('overlay_file_id',0),('mode','other')]:
+            m=copy.deepcopy(self.manifest);m['patches'][1][field]=value
+            got,report=self.result(self.environment(m,'overlay-one'))
+            self.assertEqual(got,self.raw);self.assertEqual(report['state'],'skipped')
+        for selection in ['one,overlay-one','unknown']:
+            self.assertEqual(self.result(self.environment(selection=selection))[0],self.raw)
+        m=copy.deepcopy(self.manifest);del m['delivery']
+        self.assertEqual(self.result(self.environment(m,'overlay-one'))[0],self.raw)
+        m=copy.deepcopy(self.manifest);m['delivery']='unknown'
+        self.assertEqual(self.result(self.environment(m,'overlay-one'))[0],self.raw)
+        for addr in ['0x02100010','0x02100030']:
+            m=copy.deepcopy(self.manifest);m['patches'].append(dict(m['patches'][1],id='two',addr=addr))
+            self.assertEqual(self.result(self.environment(m,'overlay-one,two'))[0],self.raw)
+
+    def test_appended_worker_transfers_expanded_image_and_finishes(self):
+        self.compressed_append_fixture()
+        expected,_ = self.result(self.environment(selection='overlay-one'))
+        self.assertGreater(len(expected),len(self.raw))
+        result = self.worker(self.environment(selection='overlay-one'))
+        self.assertEqual(result.returncode,0,result.stderr)
+        at=0
+        while True:
+            size,error,op=struct.unpack_from('<Qii',result.stdout,at);at+=16
+            self.assertEqual(error,0)
+            if op==0:break
+            self.assertIn(op,[7,13])
+        self.assertEqual(size,len(expected))
+        self.assertEqual(result.stdout[at:at+size],expected);at+=size
+        self.assertEqual(result.stdout[at:],struct.pack('<Qii',size,0,8))
+        self.assertEqual(self.rom.read_bytes(),self.raw)
+
+    def test_appended_metadata_alias_flags_and_cpu_collision_reject(self):
+        self.compressed_append_fixture(); original=self.raw
+        for at,value in [(1088+28,0x03000000),(1056+24,1),(0x48,2048)]:
+            raw=bytearray(original);struct.pack_into('<I',raw,at,value)
+            self.rom.write_bytes(raw);self.source=Source(self.fd)
+            m=copy.deepcopy(self.manifest)
+            m.update(header_sha1=hashlib.sha1(raw[:352]).hexdigest(),rom_sha256=hashlib.sha256(raw).hexdigest())
+            got,report=self.result(self.environment(m,'overlay-one'))
+            self.assertEqual(got,raw);self.assertEqual(report['state'],'skipped')
+
     def test_real_overlay_worker_uses_existing_stream_protocol(self):
         expected = bytearray(self.raw)
         expected[1552:1560] = bytes.fromhex(self.overlay_patch['replace'])

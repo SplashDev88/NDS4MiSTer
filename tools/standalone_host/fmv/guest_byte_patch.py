@@ -2,8 +2,9 @@
 """Guarded, same-size patches delivered by the existing virtual cartridge.
 
 This extends the existing VirtualRom preparation path. It never writes a ROM
-file. Supports uncompressed ARM9 main/overlay and explicitly pinned ARM7 WRAM
-autoload sections, with no scratch allocation. Bytes follow the normal load path; lifecycle
+file. Supports uncompressed ARM9 main/overlay, explicitly selected compressed
+overlay relocation, and pinned ARM7 WRAM autoload sections, with no scratch allocation.
+Bytes follow the normal load path; lifecycle
 qualification remains per-game. A mismatch falls back atomically to the original stream.
 Game identities, addresses and bytes belong in the supplied manifest.
 """
@@ -13,9 +14,106 @@ from pathlib import Path
 import struct
 import zlib
 
-from ndspy import code, codeCompression
+from ndspy import code, codeCompression, _common
 from hook_guard import select_profile, verify_target
-from prepare import VirtualRom, read_overlay, require
+from prepare import VirtualRom, read_overlay, require, LIMIT
+
+
+def append_decoded_overlays(source, header, manifest, requested, report):
+    """Reuse the FMV overlay relocation path, leaving both CPU images intact.
+
+    This explicit delivery mode accepts only pinned compressed overlay files.
+    It changes their FAT extents and compression words, then appends decoded
+    bodies to the virtual stream. There is no main-code reconstruction, scratch
+    allocation, persistent ROM output or runtime service. Even identical-byte
+    controls change load timing/metadata and require separate qualification.
+    """
+    require(manifest['delivery'] == 'append-decoded-overlays-v1', 'Unknown delivery mode')
+    patches = {p['id']: p for p in manifest['patches']}
+    require(len(patches) == len(manifest['patches']) and requested <= patches.keys(),
+            'Duplicate or unknown patch IDs')
+    overlays = {}
+    fat, _ = struct.unpack_from('<II', header, 0x48)
+    table, table_bytes = struct.unpack_from('<II', header, 0x50)
+    for ident in sorted(requested):
+        patch = patches[ident]
+        require(patch['cpu'] == 'arm9' and patch['target'] == 'arm9.overlay',
+                'Append delivery supports ARM9 overlays only')
+        require(patch.get('hook') is None and patch.get('scratch_bytes', 0) == 0,
+                'Hook or scratch requires a separately qualified mechanism')
+        loaded = read_overlay(source, header, patch['overlay'], int(patch['overlay_ram'], 0))
+        info, region = loaded['info'], loaded['decoded']
+        require(type(patch['overlay_file_id']) is int and info[6] == patch['overlay_file_id'],
+                'Overlay file identity differs')
+        require(info[7] == (0x01000000 | len(loaded['stored'])) and len(loaded['stored']) < len(region),
+                'Expected a compressed overlay with no other flags')
+        require(hashlib.sha256(loaded['stored']).hexdigest() == patch['overlay_stored_sha256'] and
+                hashlib.sha256(region).hexdigest() == patch['overlay_sha256'],
+                'Stored or decoded overlay identity differs')
+        base = info[1]
+        require(base % 4 == 0 and len(region) % 4 == 0 and info[3] % 4 == 0 and
+                0x02000000 <= base < base + len(region) <= base + len(region) + info[3] <= 0x02400000,
+                'Overlay extent is outside canonical ARM9 RAM')
+        require(all(struct.unpack('<I', source.read(row + 24, 4))[0] != info[6]
+                    for row in range(table, table + table_bytes, 32) if row != loaded['row']),
+                'Another overlay shares the selected file ID')
+        if info[0] not in overlays:
+            overlays[info[0]] = dict(loaded=loaded, output=bytearray(region), ranges=[], guards=[], applied=[])
+        item = overlays[info[0]]
+        mode = patch['mode']; require(mode in ('arm', 'thumb'), 'Unknown instruction mode')
+        at = int(patch['addr'], 0); before, after = map(bytes.fromhex, (patch['expect'], patch['replace']))
+        alignment = 4 if mode == 'arm' else 2
+        first, last = at-base, at-base+len(before)
+        require(at % alignment == 0 and len(before) % alignment == 0 and
+                8 <= len(before) <= 4096 and len(before) == len(after), 'Invalid same-size instruction patch')
+        require(0 <= first < last <= len(region) and region[first:last] == before,
+                'Original instruction bytes or extent differ')
+        require(all(last <= lo or first >= hi for lo, hi in item['ranges']), 'Overlapping overlay patches')
+        item['ranges'].append((first, last)); item['output'][first:last] = after
+        for guard in patch.get('data_guards', []):
+            start = int(guard['addr'], 0)-base; value = bytes.fromhex(guard['expect'])
+            require(0 < len(value) <= 4096 and 0 <= start and start+len(value) <= len(region) and
+                    region[start:start+len(value)] == value, 'Original data invariant differs')
+            item['guards'].append((start, value))
+        item['applied'].append(dict(id=ident, address=at, relative_offset=first, bytes=len(after),
+            original_sha256=hashlib.sha256(before).hexdigest(), replacement_sha256=hashlib.sha256(after).hexdigest()))
+    end = (source.size+511) & ~511
+    for item in overlays.values():
+        require(all(item['output'][at:at+len(value)] == value for at, value in item['guards']),
+                'Selected patch changes a protected data invariant')
+        item['offset'] = end; end = (end+len(item['output'])+511) & ~511
+    require(end <= LIMIT, 'Appended overlays exceed cartridge memory')
+    image = VirtualRom(source, end)
+    changed_header = bytearray(header)
+    struct.pack_into('<I', changed_header, 0x80, end)
+    capacity = 0
+    while (128*1024 << capacity) < end:
+        capacity += 1
+    changed_header[0x14] = capacity
+    struct.pack_into('<H', changed_header, 0x15e, _common.crc16(changed_header[:0x15e]))
+    image.add(0, changed_header)
+    report['overlays'] = []
+    for overlay_id, item in overlays.items():
+        loaded, output, first = item['loaded'], item['output'], item['offset']
+        info = loaded['info']
+        image.add(first, output)
+        image.add(fat+info[6]*8, struct.pack('<II', first, first+len(output)))
+        image.add(loaded['row']+28, struct.pack('<I', 0))
+        for applied in item['applied']:
+            applied['cartridge_offset'] = first+applied.pop('relative_offset'); report['applied'].append(applied)
+        report['overlays'].append(dict(id=overlay_id, file_id=info[6], ram=info[1], bytes=len(output),
+            cartridge_offset=first, original_sha256=hashlib.sha256(loaded['decoded']).hexdigest(),
+            output_sha256=hashlib.sha256(output).hexdigest(), delivery='appended decoded overlay; normal file loading'))
+    image.finish()
+    # Verify the stream retains all original ARM9/ARM7 bytes, including their
+    # stored compression format. Metadata collisions must fail atomically.
+    for at in (0x20, 0x30):
+        first, _, _, size = struct.unpack_from('<4I', header, at)
+        require(b''.join(image.blocks(first, first+size)) == source.read(first, size),
+                'Overlay metadata overlaps a CPU image')
+    report.update(state='applied_to_virtual_image', delivery=manifest['delivery'], virtual_bytes=end,
+                  header_sha256=hashlib.sha256(changed_header).hexdigest())
+    return image, report
 
 
 def read_arm7_autoload(source, header, manifest, target):
@@ -92,6 +190,8 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         registry = {'version': 1, 'profiles': [{'game_code': manifest['game_code'],
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
+        if manifest.get('delivery') is not None:
+            return append_decoded_overlays(source, header, manifest, requested, report)
         require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')
         arm = code.MainCodeFile(raw, address)
         main = arm.sections[0]
