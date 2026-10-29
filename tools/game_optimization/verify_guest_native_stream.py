@@ -38,10 +38,11 @@ def main():
     for case in fixture['cases']:
         env = {k:v for k,v in os.environ.items() if not k.startswith('NDS_')}
         env.update(NDS_ROM_LOAD_PROGRESS='1', NDS_ROM_STREAM_PATCHES='1')
-        if case['patch_ids']:
+        selection = case.get('selection', ','.join(case['patch_ids']))
+        if selection:
             env.update(NDS_GUEST_PATCH_MANIFEST=str(a.manifest.resolve()),
                        NDS_GUEST_PATCH_SHA256=fixture['manifest_sha256'],
-                       NDS_GUEST_PATCH_IDS=','.join(case['patch_ids']))
+                       NDS_GUEST_PATCH_IDS=selection)
         with a.rom.open('rb') as source:
             result = subprocess.run([sys.executable, '-E', '-s', '-B', str(directory/'stream.py'),
                 str(source.fileno()), '1', str(os.getpid())], pass_fds=(source.fileno(),),
@@ -66,11 +67,14 @@ def main():
         assert len(wire) == at+16
         records = [json.loads(line.split(' ',1)[1]) for line in result.stderr.decode().splitlines()
                    if line.startswith('GUEST_PATCH_RESULT ')]
-        if case['patch_ids']:
-            assert len(records) == 1 and records[0]['state'] == 'applied_to_virtual_image'
+        if selection:
+            expected_state = case.get('expected_state', 'applied_to_virtual_image')
+            assert expected_state in ('applied_to_virtual_image', 'skipped')
+            assert len(records) == 1 and records[0]['state'] == expected_state
             assert records[0]['requested'] == sorted(case['patch_ids'])
             assert sorted(x['id'] for x in records[0]['applied']) == sorted(case['patch_ids'])
-            assert records[0]['manifest_sha256'] == fixture['manifest_sha256']
+            if expected_state == 'applied_to_virtual_image':
+                assert records[0]['manifest_sha256'] == fixture['manifest_sha256']
         else:
             assert not records
         rows.append(dict(name=case['name'], bytes=size, image_sha256=digest,

@@ -535,4 +535,86 @@ class Arm7AutoloadPatchTests(GuestPatchTests):
         self.assertEqual(self.rom.read_bytes(), self.raw)
 
 
+class CatalogTests(GuestPatchTests):
+    def catalog(self):
+        other = copy.deepcopy(self.manifest)
+        other.update(game_code='OTHR', header_sha1='0'*40)
+        return dict(catalog_version=1, entries=[
+            dict(manifest=other, patch_ids=['one']),
+            dict(manifest=copy.deepcopy(self.manifest), patch_ids=['one'])])
+
+    def test_catalog_routes_only_one_manifest_and_preserves_legacy_image(self):
+        catalog = self.catalog()
+        for entries in [catalog['entries'], list(reversed(catalog['entries']))]:
+            catalog['entries'] = entries
+            env = self.environment(catalog, '@catalog')
+            image, report = self.result(env)
+            self.assertEqual(image, self.expected())
+            self.assertEqual(report['requested'], ['one'])
+            self.assertEqual(report['selected_identity']['game_code'], 'TEST')
+            self.assertEqual(report['manifest_sha256'], env['NDS_GUEST_PATCH_SHA256'])
+            self.assertEqual(self.decode(self.worker(env)), self.expected())
+
+    def test_catalog_requires_explicit_selection_and_pin(self):
+        for manifest, selection in [(self.catalog(), 'one'), (self.manifest, '@catalog')]:
+            got, report = self.result(self.environment(manifest, selection))
+            self.assertEqual(got, self.raw); self.assertEqual(report['state'], 'skipped')
+        env = self.environment(self.catalog(), '@catalog'); env['NDS_GUEST_PATCH_SHA256'] = '0'*64
+        self.assertEqual(self.result(env)[0], self.raw)
+
+    def test_unmatched_wrong_revision_and_changed_rom_fall_back(self):
+        for field, value in [('game_code', 'NOPE'), ('revision', 1),
+                             ('header_sha1', 'f'*40), ('rom_sha256', 'f'*64)]:
+            catalog = self.catalog(); catalog['entries'][1]['manifest'][field] = value
+            env = self.environment(catalog, '@catalog')
+            got, report = self.result(env)
+            self.assertEqual(got, self.raw); self.assertEqual(report['state'], 'skipped')
+            self.assertEqual(report['applied'], [])
+            self.assertEqual(self.decode(self.worker(env)), self.raw)
+
+    def test_malformed_or_ambiguous_catalog_rejects_even_after_matching_entry(self):
+        cases = []
+        for key, value in [('catalog_version', 2), ('catalog_version', True),
+                           ('entries', []), ('entries', 'bad'), ('extra', 1)]:
+            c = self.catalog(); c[key] = value; cases.append(c)
+        c = self.catalog(); c['entries'] *= 17; cases.append(c)
+        c = self.catalog(); c['entries'].append(copy.deepcopy(c['entries'][1])); cases.append(c)
+        c = self.catalog(); c['entries'].append(None); cases.append(c)
+        for ids in [[], ['one', 'one'], ['unknown'], [' one'], [None], 'one']:
+            c = self.catalog(); c['entries'][0]['patch_ids'] = ids; cases.append(c)
+        for field, value in [('revision', True), ('header_sha1', 'bad'), ('rom_sha256', None),
+                             ('patches', None), ('patches', [{'id':'one'}, {'id':'one'}])]:
+            c = self.catalog(); c['entries'][0]['manifest'][field] = value; cases.append(c)
+        for c in cases:
+            with self.subTest(catalog=c):
+                got, report = self.result(self.environment(c, '@catalog'))
+                self.assertEqual(got, self.raw); self.assertEqual(report['state'], 'skipped')
+
+    def test_selected_original_byte_failure_is_atomic(self):
+        catalog = self.catalog()
+        catalog['entries'][1]['manifest']['patches'][0]['expect'] = '00'*8
+        env = self.environment(catalog, '@catalog')
+        env['NDS_GUEST_PATCH_FALLBACK_FMV'] = '1'
+        got, report = self.result(env)
+        self.assertEqual(got, self.raw); self.assertEqual(report['applied'], [])
+        self.assertEqual(self.decode(self.worker(env)), self.raw)
+
+    def test_duplicate_json_keys_are_not_silently_overridden(self):
+        env = self.environment(self.catalog(), '@catalog')
+        raw = self.manifest_path.read_bytes().replace(b'"catalog_version": 1',
+                                                    b'"catalog_version": 2, "catalog_version": 1')
+        self.manifest_path.write_bytes(raw)
+        env['NDS_GUEST_PATCH_SHA256'] = hashlib.sha256(raw).hexdigest()
+        got, report = self.result(env)
+        self.assertEqual(got, self.raw); self.assertEqual(report['reason'], 'Duplicate JSON key')
+
+    def test_unknown_catalog_identity_retains_movie_fallback(self):
+        catalog = self.catalog(); catalog['entries'] = catalog['entries'][:1]
+        env = self.environment(catalog, '@catalog'); env['NDS_GUEST_PATCH_FALLBACK_FMV'] = '1'
+        result = self.worker(env)
+        self.assertEqual(self.decode(result), self.raw)
+        self.assertIn(b'No matching guest catalog identity', result.stderr)
+        self.assertIn(b'FMV_AUTO_FALLBACK', result.stderr)
+
+
 if __name__ == '__main__': unittest.main()

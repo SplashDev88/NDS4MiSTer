@@ -308,6 +308,62 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
 SELECTION_KEYS = ('NDS_GUEST_PATCH_MANIFEST', 'NDS_GUEST_PATCH_SHA256', 'NDS_GUEST_PATCH_IDS')
 
 
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, 'Duplicate JSON key')
+        result[key] = value
+    return result
+
+
+def catalog_selection(source, catalog):
+    """Select one embedded manifest; its complete admission still runs below.
+
+    The outer file pin covers every manifest and explicit patch selection.
+    Validate all entries before selecting, including ambiguity and unknown IDs.
+    Header matching only routes admission; it never substitutes for ROM hashes.
+    """
+    require(type(catalog.get('catalog_version')) is int and catalog['catalog_version'] == 1 and
+            set(catalog) == {'catalog_version', 'entries'}, 'Unknown guest catalog schema')
+    entries = catalog['entries']
+    require(isinstance(entries, list) and 1 <= len(entries) <= 32, 'Invalid guest catalog entries')
+    seen = set(); selected = None
+    header = source.read(0, 512)
+    identity = (header[12:16].decode('ascii', errors='replace'), header[30],
+                hashlib.sha1(header[:352]).hexdigest())
+    for entry in entries:
+        require(isinstance(entry, dict) and set(entry) == {'manifest', 'patch_ids'},
+                'Invalid guest catalog entry')
+        manifest, ids = entry['manifest'], entry['patch_ids']
+        require(isinstance(manifest, dict) and type(manifest.get('schema_version')) is int and
+                manifest['schema_version'] == 1 and manifest.get('header_bytes') == 352,
+                'Invalid catalog manifest schema')
+        game, revision, digest = (manifest[key] for key in ('game_code', 'revision', 'header_sha1'))
+        require(isinstance(game, str) and len(game) == 4 and game.isascii() and
+                type(revision) is int and 0 <= revision <= 255 and
+                isinstance(digest, str) and len(digest) == 40 and
+                all(c in '0123456789abcdef' for c in digest), 'Invalid catalog identity')
+        for name, length in [('rom_sha256', 64), ('arm9_sha256', 64), ('arm9_crc32', 8)]:
+            value = manifest[name]
+            require(isinstance(value, str) and len(value) == length and
+                    all(c in '0123456789abcdef' for c in value), 'Invalid catalog hash')
+        key = (game, revision, digest)
+        require(key not in seen, 'Ambiguous catalog identity'); seen.add(key)
+        require(isinstance(ids, list) and ids and
+                all(isinstance(p, str) and p and p.strip() == p and ',' not in p and p != '@catalog'
+                    for p in ids) and len(ids) == len(set(ids)), 'Invalid catalog patch selection')
+        patches = manifest['patches']
+        require(isinstance(patches, list) and all(isinstance(p, dict) and
+                isinstance(p.get('id'), str) for p in patches), 'Invalid catalog patch definitions')
+        defined = [p['id'] for p in patches]
+        require(len(defined) == len(set(defined)) and set(ids) <= set(defined),
+                'Duplicate or unknown catalog patch IDs')
+        if key == identity:
+            selected = manifest, ids
+    require(selected is not None, 'No matching guest catalog identity')
+    return selected
+
+
 def from_environment(source, environment, progress=lambda n: None):
     """Explicit diagnostic selection; never enable a manifest by discovery.
 
@@ -327,10 +383,18 @@ def from_environment(source, environment, progress=lambda n: None):
             raw = stream.read(1024*1024+1)
         require(len(raw) <= 1024*1024, 'Guest manifest is too large')
         require(hashlib.sha256(raw).hexdigest() == expected, 'Guest manifest identity differs')
-        manifest = json.loads(raw)
+        manifest = json.loads(raw, object_pairs_hook=unique_object)
         require(isinstance(manifest, dict), 'Guest manifest must be an object')
+        catalog = 'catalog_version' in manifest
+        require(catalog == (selection == '@catalog'), 'Catalog requires explicit @catalog selection')
+        if catalog:
+            manifest, patches = catalog_selection(source, manifest)
         image, report = assemble(source, manifest, patches, progress)
         report['manifest_sha256'] = expected
+        if catalog:
+            report['catalog_version'] = 1
+            report['selected_identity'] = {key: manifest[key] for key in
+                ('game_code', 'revision', 'header_sha1')}
         return image, report
     except (ValueError, KeyError, TypeError, IndexError, struct.error, OSError) as error:
         return VirtualRom(source, source.size).finish(), dict(

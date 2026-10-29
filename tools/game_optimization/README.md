@@ -128,6 +128,20 @@ guard logs a skip and streams the original image atomically. No disk cache or
 movie preparation is composed with this selection. The loader exits before
 gameplay; there is no per-call HPS service or additional guest round trip.
 
+A cumulative private kit can pin one embedded catalog using the same three
+variables: the manifest path names the catalog, its SHA-256 pins the complete
+file, and the IDs value is exactly `@catalog`. The format is
+`{"catalog_version":1,"entries":[{"manifest":{...},"patch_ids":["patch-id"]}]}`.
+Each entry embeds an ordinary manifest and an explicit selection. The loader
+validates the bounded catalog, rejects duplicate header identities and patch
+IDs, then routes by game code, revision and the original 352-byte header hash.
+The selected manifest still passes every full-ROM, CPU, overlay and original-byte
+guard. No entry discovery or cross-game composition occurs. Unknown identities,
+invalid catalogs or mismatches skip atomically; the existing explicit
+`NDS_GUEST_PATCH_FALLBACK_FMV=1` retains ordinary movie/NSMB dispatch on a skip.
+Catalog pinning covers every embedded manifest; it never enables newly found
+files. Legacy single-manifest selection remains supported.
+
 Overlay replacements arrive through the game's normal overlay file loads,
 including reloads of that file. This is not a live address-only RAM hook.
 Qualification must still observe actual overlay loads, reset/reload behavior
