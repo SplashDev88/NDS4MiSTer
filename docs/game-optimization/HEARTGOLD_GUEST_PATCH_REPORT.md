@@ -1,6 +1,12 @@
 # HeartGold guest-code optimization — 28 October 2026
 
-Status: USA IPKE revision 0 terrain visibility candidate passes bounded native
+Current disposition (29 October): parked by explicit user direction to move to
+SoulSilver. Cumulative HeartGold Beta2 remains the accepted private build; the
+full-speed target and exhaustion of all supported strategies are not claimed.
+Further HeartGold work requires new user direction. The history below retains
+the measured results and remaining research.
+
+USA IPKE revision 0 terrain visibility candidate passes bounded native
 function checks and improves the longer matched plaza screen by3.07% over the
 original image and3.50% over decoded delivery. These are display-throughput
 results, not whole-game FPS. Cumulative private HeartGold Beta1 explicitly
@@ -1114,4 +1120,32 @@ to synchronous per-prop BOX_TEST queries; inspect model/display-list work that
 actually changes submitted vertices/polygons. Resource totals 3846 vertices and
 1339 polygons are not visible output or permission to remove geometry. Defer
 terrain-only setup reuse after this negative prop result. Do not repeat the
-same pilot to rescue it. No game-queue advance or exhaustive optimum is claimed.
+same pilot to rescue it. No game-queue advance or exhaustive optimum is claimed
+by that experiment.
+
+## User-directed advance and retained shape research (V16)
+
+The user explicitly requested SoulSilver on 29 October. HeartGold Beta2's exact
+archive SHA-256 was reverified and remains unchanged. No new guest patch, replay,
+native session or beta was produced in V16. All earlier parked candidates remain
+disabled. See `HEARTGOLD_USER_DIRECTED_ADVANCE_20261029.json` and `HANDOFF_V16.json`.
+
+The final read-only investigation decoded 18 and 19 shapes from two owned
+terrain models, including their actual local vertex bounds. Most large shapes
+span broad map areas; one localized shape contains 185 pre-clipping polygons.
+Owned SDK execution through the existing synthetic runner captures each shape
+submission, model scaling and material texture-matrix changes. Preliminary
+projection counts suggest further culling opportunities, but do not bind every
+runtime shape/matrix/material state and are not patch qualification. No visible
+geometry removal or native benefit is claimed.
+
+The result-poll helper accounts for less than 0.5% of outdoor ARM9 instruction
+samples; this excludes the caller and hardware wait cost. It does not establish
+the complete native cost of BOX_TEST. Shared model-inspection and bounded matrix
+tools pass 12 focused tests, including core command-arity agreement, signed
+delta wrapping, packed streams, corrupt resources and inherited matrix state.
+
+Preserved deferred ideas: conservative per-shape terrain visibility after
+runtime dependency proof; measured alternatives to synchronous visibility
+queries; model/display-list reductions that remove actual submitted geometry.
+Evidence: `TERRAIN_SHAPE_RESEARCH_V1.json`, `TERRAIN_SDK_DISPATCH_V1.json`.

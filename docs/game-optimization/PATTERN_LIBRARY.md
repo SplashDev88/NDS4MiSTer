@@ -1627,3 +1627,33 @@ fall 2.6970% and profiled ARM9 instructions 1.0710%. Native plaza benefit fails,
 so the patch stays disabled. Track packet reduction separately from submitted
 vertices/polygons and native renderer cost. This is an NNS SDK structural lead,
 not a qualified cross-title address/byte signature or a general flush-skip rule.
+
+## Spatially bounded model shapes (read-only detector)
+
+Use `inspect_model_shapes.py` on a content-pinned raw NNS model. Decode the
+actual packed vertex commands, including signed partial coordinates and
+wrapping 10-bit deltas; do not infer geometry from resource-header totals.
+Track primitive boundaries, inherited coordinates and matrix changes. Shape
+names/material IDs alone do not establish spatial independence: one display
+list may span much of a map.
+
+Before culling, authenticate SBC/node/base/camera transforms and every material
+side effect, then bind the resource hash and shape to observed runtime draws.
+`model_visibility_math.py` can flag a bounding box wholly beyond one XY clip
+plane; its conservative arithmetic is only a lead until runtime state and
+lifecycle are proven. Do not substitute snapshot texture/material state for
+all later frames. Skipping a display list must preserve any required outgoing
+state, ordering and visible animation.
+
+HeartGold's parked V16 investigation decodes 37 shapes across two terrain
+resources. Owned SDK execution in synthetic capture shows model-scale changes
+and texture-matrix loads, with no additional node position transform for these
+two snapshots. Preliminary projection leads remain unqualified. The user
+advanced to SoulSilver before a patch, replay or native test; no gain is claimed.
+
+For related-game transfers, compare complete stored/decoded overlays, CPU
+sections and every patch-dependent caller/helper/constant. SoulSilver IPGE0
+matches HeartGold IPKE0 in 114/129 decoded overlays, including complete overlay61;
+overlay1 differs by nine bytes outside the tested patch/dependency spans.
+This supports a guarded transfer candidate, not inherited validation or native
+speed claims. Always retain the destination game's own identity and replay/save.

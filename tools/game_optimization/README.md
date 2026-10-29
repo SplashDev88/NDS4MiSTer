@@ -589,3 +589,20 @@ all declared raw baseline files from the same virtual image. This supports a
 retained-patch baseline without treating known differences against the original
 game as observer effects. This is a source-buffer census, not destination
 readback, cache invalidation, writer/reader lifetime or patch acceptance.
+
+### Read-only model shape inspection
+
+`inspect_model_shapes.py INPUT --input-sha256 SHA --offset OFFSET --output JSON`
+reads a raw NNS model inside a pinned memory/resource snapshot. It validates
+section, dictionary and display-list bounds, decodes packed commands and reports
+per-shape signed FX12 vertex bounds and primitive counts. `--include-vertices`
+retains the decoded coordinates. Unknown opcodes/truncation fail; inherited
+coordinates, local matrix changes or vertices outside primitives suppress the
+complete-bounds result. Command arities are tested against the existing core.
+
+`model_visibility_math.py` supplies bounded offline matrix calculations for an
+authenticated caller. It requires self-contained projection/position loads,
+rejects unsupported stack operations/overflow and reports conservative XY-plane
+leads with a rounding margin. It does not simulate the renderer, interpret model
+SBC/node animation or prove material, camera, resource lifetime or removability.
+Game fixtures must authenticate those dependencies before proposing any patch.

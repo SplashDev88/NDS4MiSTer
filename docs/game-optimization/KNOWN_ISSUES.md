@@ -749,3 +749,13 @@
   removable geometry. Shape-level bounds need actual display-list/node/material
   and camera analysis. The thin line also appears in unpatched A2 Continue;
   cause/frequency remain unresolved, with no patch-only regression claim.
+# Deferred HeartGold shape bounds and SoulSilver transfers (29 October 2026)
+
+HeartGold was parked by user direction with Beta2 preserved. V16 local shape
+bounds and preliminary projected culling leads are not qualified runtime
+visibility decisions. Captured base transforms plus a model snapshot do not
+prove every later material/node/camera dependency. No shape-removal patch exists.
+
+SoulSilver's matching starter overlay and terrain patch bytes support transfer
+research only. Use its own full-ROM/header/overlay identities and independent
+save/replay/native checks; do not inherit HeartGold's gains or validation labels.
