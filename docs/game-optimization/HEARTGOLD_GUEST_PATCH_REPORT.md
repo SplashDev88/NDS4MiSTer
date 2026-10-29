@@ -744,3 +744,86 @@ test G2D bounds/matrix input recurrence before considering an overlay caller
 change. Current compressed main-code delivery remains unsupported. The
 starter gate must not be extrapolated to gameplay. HeartGold remains active;
 Beta2 and its measured gains are unchanged.
+
+## Active battle, saved victory and data reuse, 2026-10-29
+
+The installed Beta2 completed another native Route29 encounter: level 5 male
+Chikorita defeated level 3 male Sentret with four Tackles, took three damage,
+gained 24 Exp and returned to the field. A normal disposable Save and fresh
+cold Continue restored Route29 and the party at 17/20 HP. Both alternating
+save banks pass CRC checks; the newest counter is 7. The post-victory seed is
+`NATIVE_ROUTE29_POST_BATTLE_SEED_V1.sav`, SHA-256
+`50b168007c64da82ee2b4a6dc69dd09a4077f5d7cdc44b0c300d3c4fa504f5a6`.
+`NATIVE_BATTLE_POST_WIN_V1.json` now matches the Battle1 disposable save.
+The old pre-encounter config must not launch that changed save. Preserve the
+immutable local pre-battle seed for a separately staged A/B alias.
+
+| Unchanged Beta2 native baseline | Publications/s | Renderer CPU, one core |
+|---|---:|---:|
+| First completed Tackle, text and idle | 59.6471 | 87.18% |
+| Fourth Tackle, victory, Exp and field return | 55.2398 | 99.97% |
+
+These are stock 1 GHz observation windows, not a new speedup or unique-animation
+FPS. The second window includes the slower field. Capture drops were zero.
+The input sequence named `HG_ACTIVE1_ATTACK` actually entered the Bag/Potion
+target menu and was cancelled; it is excluded from attack performance. The
+subsequent TURN1/TURNS23/FINISH videos contain the four actual Tackles. Review
+copies preserve encoded video, game-audio track1 and timestamps. No human
+full-motion/listening verdict is claimed. See `ACTIVE_BATTLE_NATIVE_FUNCTIONAL_REVIEW_V1.json`,
+`ACTIVE_BATTLE_NATIVE_BASELINES_V1.json` and `ACTIVE_BATTLE_BEFORE_AFTER_V1.csv`.
+
+The deterministic original-ROM active route repeats all 174 output files
+exactly. Its 7,200 frames reach a different encounter, level 2 Pidgey, and end
+at the 15 Exp message after four Tackles; this reference does not return to the
+field or save. Production Beta2 reaches the same reference outcome and exact
+save, with 852 top and 9 bottom frame hashes different, plus raw timestamp,
+RAM and audio differences retained in `ACTIVE_BATTLE_REFERENCE_REVIEW_V1.json`.
+Native Sentret and reference Pidgey routes are separate functional coverage,
+not an A/B pair. The existing functional budget permits raw drift; it does
+not turn screenshots or audio hashes into a listening verdict.
+
+Active profiling covers frames 3000–7199. ARM9/ARM7 executed instruction totals
+are 192,283,216/169,882,500 in the original. The 27 bins above 2% remain
+instruction-sample shares, not hardware cycle shares. Halfword copy is 14.14%,
+cartridge block read/poll 8.78%, indexed sprite/OAM work 4.26%, IRQ masking
+3.70%, font/text 3.26%, transformed bounds 2.92% and backward decompression
+2.63%. The copy census has 1,049,670 calls; 1,048,824 target OAM, dominated by
+524,412 six-byte and 524,412 two-byte calls. This establishes battle payloads
+but does not reopen parked OAM bulk solely on instruction count.
+
+Two unchanged-code observer runs each preserve all 173 original non-diagnostic
+output files. They isolate three useful leads:
+
+- Font table generation runs 1,171 times; 1,141 calls already have the exact
+  512-byte result for the requested colors. Existing color metadata can be
+  checked without inventing scratch, but initialization, other writers and
+  supported delivery remain unresolved. The routine is in compressed ARM9
+  main code, unsupported by the current patch path.
+- Cartridge tracing observes 3,866 block-request sites covering 344 aligned
+  blocks. Item data, battle subscripts and move data recur. Seven decoder
+  entries alternate overlays 7/10; end-pointer/footer metadata attributes
+  them, not a complete runtime buffer hash. Counts are not measured bandwidth
+  or proof of safe caching.
+- Slow `GetItemAttr` performs 99 allocation/read/free calls. Of these, 97 come
+  from two `Task_GetExp` sites while displaying the experience award. Existing
+  `GetItemVar` already uses the battle-owned item array and runs 888 times in
+  the same route. Both observed readers return the same item-zero bytes.
+
+The preferred next candidate is two same-size Thumb call-site rewrites in
+overlay12, reusing `GetItemVar` with the existing `data->ctx`, item and attribute
+arguments. No new HPS service, storage, trampoline or ROM write is required.
+Owned code proves the array stride is 36 bytes despite 34-byte NARC records;
+all 513 resident records match at 12 checkpoints. The final NARC member513,
+item536 Enigma Stone, is outside the existing allocation. Establish the legal
+held-item scope or a guarded fallback before enabling a general redirect.
+The two effort-value callers lack the same context argument and are excluded.
+All observed held items were zero; Exp Share/Lucky Egg, multiple party slots,
+level-up and move-learning paths need contract and lifecycle checks.
+
+Evidence: `ACTIVE_BATTLE_HOTSPOT_CLASSIFICATION_V1.json`,
+`ACTIVE_BATTLE_CALLER_CENSUS_V1.json`, `ACTIVE_FONT_CART_FINDINGS_V1.json` and
+`ITEM_CACHE_CALLER_FINDINGS_V1.json`. No new patch is enabled or beta produced
+by this unit. Keep Beta2 unchanged while testing the call-site candidate with
+a decoded-overlay delivery control and native action/award latency. The next
+three ideas are resident item-reader reuse, font-table reuse through supported
+delivery, and repeated overlay/archive work. HeartGold remains active.

@@ -1511,3 +1511,40 @@ and comparisons against surface dimensions. Investigate stable input tuples
 and overlay callers before considering caching or bypass. The structural
 pattern alone proves neither redundancy nor safe removal; no generic patch
 or cross-title signature has been qualified by the HeartGold battle screen.
+
+## Reuse an existing resident-data reader before adding a cache
+
+Start with repeated cartridge block requests, map them through the owned FAT
+and archive members, and trace callers of the allocation/read/free accessor.
+Look for an existing game-owned resident array and accessor with the same data
+semantics. HeartGold's experience task calls `GetItemAttr` on each update even
+though battle `GetItemVar` reads the already loaded item array. The active route
+finds 97 slow calls at two task sites and 888 resident reads. Exact code and
+source attribution identify the context, item and attribute ABI; an unrelated
+effort-value helper lacks that context and cannot use the same blind rewrite.
+
+Prove mapping, stride, allocation bounds, initialization and lifetime. File
+record size is not necessarily memory stride: HeartGold has 34-byte item NARC
+members, a 36-byte array stride and only 513 of 514 members resident. Check
+legal input domains and final/sentinel records, not just item zero. Pin the
+overlay and surrounding instructions, keep caller normalization and return
+semantics, and preserve fallback behavior outside the verified domain. Any
+shared SDK/middleware promotion requires a new title's identity and contract;
+this is a detector/proposal, not a qualified cross-title byte signature.
+
+## Recognize repeated lookup-table generation by content
+
+Trace the generator's arguments and existing destination before it writes.
+Recompute the expected bytes independently and compare them to the current
+table, rather than equating unchanged pointers with unchanged data. HeartGold's
+font generator expands four colors into 256 halfwords: 1,141 of 1,171 active
+battle calls already hold the exact result. Existing metadata is useful only
+after checking every writer, first initialization, changed-color cases and
+ABI/side effects. Main-code delivery limits still apply. Recurrence alone is
+not native benefit; measure the resulting interaction or transition latency.
+
+Near-60 screen publication windows can contain idle time and repeated frames.
+For archive/caching candidates, measure matched action/load completion as well
+as publications and CPU use. Keep input mistakes classified by observed game
+behavior: a capture called "attack" that opens the Bag is menu coverage, not
+an attack timing result.

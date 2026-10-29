@@ -670,9 +670,10 @@
   unsupported. Do not infer acceptance from the old strict comparator label,
   or hide raw timing/audio/RAM differences that the functional budget permits.
 
-- HeartGold Beta2 now has one early native wild-battle win, field return and
-  party coverage. This does not cover trainer/boss/link battles or post-victory
-  save reload. The admitted Route29 save precedes the encounter. Its battle
+- HeartGold Beta2 now has two early native wild-battle wins, field return,
+  party coverage and a normal post-victory Save/cold reload. Trainer/boss/link
+  battles remain open. The first admitted Route29 seed precedes the encounter;
+  the later50b168 postwin seed replaces only the disposable Battle1 save. Its battle
   command-menu idle baseline is 59.64 publications/s; do not report a new speedup
   or apply the starter draw gate to battle logic. The repeated reference route
   reaches the same battle with 3,891 consecutive exact screen pairs and an exact
@@ -684,3 +685,19 @@
   stop linear decoding, so use individual hot instructions too. Do not infer
   native cycle share, transfer size, stable matrices or safe event wakeups from
   sampled opcode frequency alone. No new main-code patch support is implied.
+- HeartGold's resident item array contains 513 records at stride36; the NARC
+  has514 members of34 bytes. Item536 Enigma Stone maps to excluded member513.
+  Do not redirect every slow accessor blindly, multiply by34, or assume a
+  few item-zero observations cover Exp Share/Lucky Egg, party slots and XP
+  progression. Two experience-task call sites have a reusable context; two
+  effort-value calls do not. The candidate is not yet implemented or measured.
+- Font-table and cart-block recurrence are promising leads, not promoted
+  caches. Current delivery cannot modify compressed ARM9 main code. Repeated
+  overlay7/10 footer/end-pointer matches are metadata attribution, not runtime
+  full-buffer identity or permission to skip decompression. Cache maintenance
+  and cartridge completion waits must not be removed from sample counts alone.
+- The native active-battle capture named HG_ACTIVE1_ATTACK entered the Bag;
+  use TURN1/TURNS23/FINISH for actual moves. Reference Pidgey and native Sentret
+  are separate routes. Preserve the original pre-battle local seed for a new
+  A/B alias; the remote Battle1 save is now post-victory and requires the
+  NATIVE_BATTLE_POST_WIN_V1 config. A stale seed guard should fail, not be waived.
