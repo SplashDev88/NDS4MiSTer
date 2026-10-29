@@ -3,8 +3,9 @@
 Status: active by explicit user advance from HeartGold. Cumulative SoulSilver
 Beta1 is qualified and separately installed; HeartGold Beta2 remains available
 for rollback. The guarded terrain transfer has the bounded field/house evidence
-below. Starter native qualification and broader coverage are next under the existing
-functional/perceptual budget.
+below. The starter transfer now also has independent bounded native qualification;
+a separate cumulative Beta2 and broader coverage are next under the existing
+functional/perceptual budget. Accepted Beta1 is unchanged.
 
 ## Existing workflow reused
 
@@ -43,7 +44,7 @@ is not claimed.
 
 | HeartGold accepted patch | SoulSilver code evidence | Status |
 | --- | --- | --- |
-| Starter idle draw, overlay 61 | Entire stored and decoded overlay identical; 88 target bytes match | Transfer candidate, disabled |
+| Starter idle draw, overlay 61 | Entire stored and decoded overlay identical; 88 target bytes match | Bounded native qualification, default disabled |
 | Terrain visibility, overlay 1 | 48 target bytes, all data guards and six caller/helper spans match; nine differences elsewhere in the overlay | Bounded native qualification, default disabled |
 
 Each port must use SoulSilver's own full ROM/header/overlay identity. Related
@@ -110,7 +111,7 @@ that effect separate. Reference work reduction does not prove native speedup.
 The existing native worker passes all three stream identity cases: original,
 unchanged decoded delivery and terrain candidate. No ROM is rewritten. The
 candidate remains default-disabled. Native qualification is recorded below;
-actual private beta qualification is recorded below; the starter transfer remains next.
+actual private beta qualification and the subsequent starter transfer are recorded below.
 
 Evidence in `evidence/soulsilver-optimization-20261029`:
 `OUTDOOR_BASELINE_QUALIFICATION_V1.json`, `OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json`,
@@ -249,8 +250,9 @@ normalization. Intermediate RAM/timing and audio differences remain: 16,711
 same-index stereo samples differ out of 2,888,368 (RMS 7.12 signed16 units,
 maximum 3,653). This is not an inaudibility judgment. The legacy strict mismatch
 label remains in the raw receipt under the authorized functional budget.
-Instruction reduction is not native cycles or speed; the starter patch remains
-disabled and absent from accepted SoulSilver Beta1 pending native qualification.
+Instruction reduction is not native cycles or speed; independent native evidence
+is recorded below. The starter patch remains default-disabled and absent from
+accepted SoulSilver Beta1 pending a separately qualified cumulative Beta2.
 
 The candidate also matches both screens on every frame of the 8400-frame
 selection lifecycle, including all 16 paired screen checkpoints, and preserves
@@ -273,12 +275,81 @@ Evidence: `STARTER_ASSET_TRANSFER_AUDIT_V1.json`,
 `STARTER_DRAW_OFF_TARGET_REVIEW_V1.json`,
 `STARTER_DRAW_REFERENCE_BEFORE_AFTER_V1.csv` in the private evidence folder.
 
+## Starter transfer: native qualification
+
+One 88-byte ARM9 Thumb patch at `0x021e5ef8` in overlay61 uses no scratch memory.
+It preserves animation updates and the 104-phase light cycle, retaining phases
+0 and 7 modulo 8 while avoiding 78 duplicate idle draws. The gate applies only
+to application state 5/selection state 0; active selection, rotation, zoom and transitions retain
+their work. Explicit zero return, literal pool and incoming branch are preserved.
+Full SoulSilver ROM/header/stored/decoded overlay identity and original bytes
+guard application through the existing virtual-cartridge/normal-overlay path.
+
+All three arms retain the accepted terrain patch and use the same independent
+pre-starter save. They cold-start separately at stock 1 GHz with identical host,
+renderer, FPGA and renderer settings, with frame skipping off. The only runtime
+data difference from accepted Beta1 is the private trial manifest. Two 30-second
+windows per arm measure:
+
+| Starter idle | Window 1 pairs/s | Window 2 pairs/s | Weighted pairs/s | Renderer CPU, % one core |
+| --- | ---: | ---: | ---: | ---: |
+| Accepted Beta1 terrain | 14.2190 | 14.2430 | 14.2310 | 162.22 |
+| Terrain + unchanged overlay61 delivery | 14.2038 | 14.2237 | 14.2138 | 162.02 |
+| Terrain + starter gate | 44.2226 | 43.6662 | 43.9443 | 109.91 |
+
+Complete screen-pair publications improve **208.7928% over Beta1 (3.0879×)**
+and **209.1670% over matched delivery**, with **32.2445% less renderer CPU use**.
+Host CPU is 3.00% before and 3.40% after, in percent of one core. These are
+within-session windows, not independently repeated cold starts, confidence
+intervals, unique animation FPS, native guest cycles or whole-game speed.
+Existing counters do not supply per-frame guest cycles, p95 frame times,
+missed VBlanks or DMA bytes. Active selection does not inherit the idle gain.
+
+The same four fixed lamp regions give a dominant light period of 3.4833 seconds
+for Beta1 and 3.4667 seconds for delivery and candidate; the difference is one
+60 Hz capture sample. The candidate retains the expected 104/30-second cycle.
+All four captures (three idle arms and candidate selection) have zero added
+render/output drops. Sampled native frames show all three species, rotation in
+both directions, zoom, confirmation, two cancellations and successful Chikorita
+choice. Review MP4s preserve encoded video, the game-audio track and packet
+timestamps. Audio signal presence/statistics and sampled inspection do not
+establish inaudibility or full-motion human approval.
+
+The candidate completes nickname decline/Elm dialogue, writes a normal Save,
+soft-resets and reloads the lab with Chikorita. The resulting save is preserved
+as `61e22264c88bd776a19db92bde916fc6da6bf08d2614dd5e48d04904b3517e24`.
+Both mirrored main/PC banks pass CRC checks; the newer bank is count 6 at
+Location `(61,-1,4,7,0)`. A fresh host/renderer process then cold-loads the same
+save, opens a party screen showing level 5 Chikorita with 19/19 HP, and exits the
+lab through the normal Potion tutorial into New Bark Town/Lyra dialogue.
+The final stop preserves the new save exactly. The owned Draw1 disposable save
+remains at that hash; no original save was edited or replaced. Later dialogue,
+battles and whole-game progression are outside this bounded check.
+
+The source manifest adds only this default-disabled patch. Original, retained
+terrain-only and cumulative streams are verified by the existing actual loader;
+removing the unchanged delivery-control pseudo-patch preserves the exact native
+candidate image. No runtime binary or core save-state format changes. Accepted
+SoulSilver Beta1, HeartGold Beta2 and rc12 remain unchanged; trial qualification
+does not substitute for testing a newly packaged beta.
+
+Evidence: `STARTER_DRAW_NATIVE_QUALIFICATION_V1.json`,
+`STARTER_DRAW_NATIVE_MEASUREMENTS_V1.json`,
+`STARTER_DRAW_NATIVE_BEFORE_AFTER_V1.csv`,
+`STARTER_NATIVE_CANDIDATE_MEDIA_REVIEW_V1.json`,
+`STARTER_NATIVE_SELECTION_VISUAL_REVIEW_V1.json`,
+`STARTER_NATIVE_COLD_VISUAL_REVIEW_V1.json`,
+`NATIVE_DRAW_POST_STARTER_ADMISSION_V1.json`,
+`PUBLIC_STARTER_WORKER_QUALIFICATION_V1.json` and
+`STARTER_DRAW_FINAL_PRESERVATION_V1.json` in the private evidence folder.
+
 ## Next work and HeartGold backports
 
-Measure the incremental starter gain against SoulSilver Beta1 and unchanged decoded
-delivery. Record native light cycles/selection, normal save, reset and cold
-reload before including it in a new beta. Broader field/camera and active battle
-coverage, then measured loading/repeated-resource work, remain the other leads.
+Build and qualify the actual cumulative SoulSilver Beta2 archive and installed
+launcher with terrain plus starter, preserving accepted Beta1. Broader field/camera
+and active battle profiling, then measured loading/repeated-resource work,
+remain the other leads. Do not repeat completed unchanged suites without a new
+reason or treat this starter-idle improvement as a field/battle speedup.
 
 The user now authorizes checking genuinely new, useful SoulSilver gains for a
 HeartGold backport. Verify HeartGold's exact code/assets and independently test

@@ -1704,3 +1704,15 @@ controls. An earlier terrain patch changes SoulSilver's boot/scene timing even
 when no terrain is visible in the final picker. Compare the new gate against
 the same cumulative control, preserve raw differences, and measure native
 benefit before promoting a port or reverse backport.
+
+SoulSilver independently confirms the native benefit: retained-terrain idle
+publications rise from 14.2310 to 43.9443/s while the lamp period stays approximately
+104/30 seconds and renderer CPU falls 32.24%. Classify a duplicate-draw gate by
+both command/state invariance and unchanged visible animation cadence; throughput
+alone can conceal a frozen or accelerated animation. Keep the animation update
+running, limit the gate to proven idle states and separately exercise all active
+selection states. Native normal Save, soft reset, fresh-process Continue/party
+and overlay transitions qualify the related-title lifecycle without importing
+its sibling's save or native measurements. Preserve same-index audio/RAM drift
+and distinguish signal presence from audibility. A byte-identical port still
+needs its own runtime evidence; a new reverse backport follows the same rule.

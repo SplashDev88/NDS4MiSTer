@@ -70,6 +70,49 @@
         "NATIVE_TERRAIN_VISUAL_REVIEW_V1.json"
       ],
       "status": "bounded_native_qualified"
+    },
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e5900",
+      "overlay_file_id": 61,
+      "overlay_sha256": "0e611760f0634ba97ed02053ab5406a5e1c5686b87379ed4e7fdd66c9be89716",
+      "overlay_stored_sha256": "91e057269e046bc2a4b62c4a5977734893436306adafa65b1b413fd5c96659b3",
+      "addr": "0x21e5ef8",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded transfer from HeartGold, independently qualified on owned SoulSilver. Preserves the 104-phase light update and all active selection states; omits duplicate idle draws only in app state5/selection0. No scratch or new service. Default disabled; explicit private beta selection required.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Full ROM/header/stored/decoded overlay61 identity and 88 original Thumb bytes guarded. Exact code/resources support reuse of HeartGold synthetic contract; original receipt retained.",
+        "reference": "All3600 idle and8400 selection screen pairs and saves exact against cumulative delivery control. Unrelated house all65 files exact. Intermediate RAM/audio drift retained.",
+        "native": "Matched cold baseline/delivery/candidate at stock1GHz; light period, all species/rotation/zoom/cancel/choice, normal Save, soft reset, cold Continue/party and lab exit checked.",
+        "scope": "Bounded starter selection and adjacent lab/field coverage. Screen-pair publications are not unique animation FPS or whole-game speed. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_idle_arm9_instruction_reduction_percent": 50.5866388965031,
+        "reference_selection_arm9_instruction_reduction_percent": 7.3602547870344175,
+        "native_baseline_publications_per_second": 14.23100626610488,
+        "native_candidate_publications_per_second": 43.94432321918842,
+        "native_publications_vs_beta1_percent": 208.7928035268603,
+        "native_publications_vs_delivery_percent": 209.16695334845076,
+        "renderer_cpu_reduction_percent": 32.24454773041624,
+        "scope": "Two30-second windows within one independently cold-started session per arm. Complete screen-pair publications, not unique animation FPS, guest cycles, or whole-game speed. No confidence interval claimed."
+      },
+      "evidence": [
+        "SOULSILVER_GUEST_PATCH_REPORT.md",
+        "STARTER_TRANSFER_REFERENCE_QUALIFICATION_V1.json",
+        "STARTER_DRAW_NATIVE_QUALIFICATION_V1.json",
+        "STARTER_DRAW_NATIVE_BEFORE_AFTER_V1.csv"
+      ]
     }
   ]
 }

@@ -784,8 +784,15 @@ screen pairs, but instruction reduction alone is not native speed proof; the
 accepted SoulSilver Beta1 still contains terrain only. Reused HeartGold synthetic
 contracts apply to identical code/assets, not to sound audibility or native
 rendering. Independent candidate selection and off-target replays now pass;
-native candidate light cycles, save/write/reset/reload and speed remain pending.
-Keep intermediate RAM/audio differences.
+native light cycles, selection, normal Save, soft reset and cold Continue/party/lab
+exit now pass. Independent native idle publications improve from 14.2310 to 43.9443/s;
+that is not unique animation FPS or a whole-game gain. The light cycle remains
+about 3.47 seconds. Keep intermediate RAM/audio differences; sampled inspection
+and audio signal statistics do not establish human audiovisual approval. Source
+admission is default-disabled and accepted Beta1 remains terrain-only; testing
+the actual cumulative Beta2 archive/launcher is still required. Persistent core
+save states remain unsupported. Later Lyra dialogue and battles were not completed
+by the bounded starter lifecycle check.
 
 The user's new backport direction permits independent HeartGold qualification
 of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
