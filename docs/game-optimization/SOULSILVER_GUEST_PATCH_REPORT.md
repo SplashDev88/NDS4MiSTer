@@ -54,12 +54,27 @@ Private evidence: `OWNED_IDENTITY_V1.json`, `OWNED_INPUT_TRANSFER_V1.json`,
 
 ## Qualification next
 
-Establish and repeat an unpatched first-save route and cold reload. Reusing
-HeartGold's input timings is an exploratory navigation aid until the SoulSilver
-screens and saved progress are inspected. Then qualify terrain and starter
-ports separately, including unchanged-code delivery controls, scene transitions,
-normal save/reset/reload and native paired measurements. Preserve raw output
-drift; accept only functioning gameplay and useful native benefit.
+The independent 18,000-frame first-save route repeats with all 193 output files
+identical, including both screens, RAM checkpoints, audio and save. Inspected
+frames show Oak's introduction, the bedroom, mother's tutorial and the ordinary
+Save confirmation at frame 16080. The save remains stable for the final 2073
+frames. Two 3600-frame cold boots match all 64 files, preserve that save exactly
+and visibly return to the downstairs room with Save/Bag/Options available.
+Seed SHA-256: `8eaebf214d4314cd910b32f2b92399df97ccc6433f02521f8eeb80013529253f`.
+This is unpatched reference qualification; native/soft-reset/battle checks remain.
+
+Private disabled transfer and unchanged-code delivery manifests now use the
+SoulSilver identities. The existing loader admits the separately selected
+terrain/starter and combined streams. Applying the HeartGold manifest to
+SoulSilver instead fails its identity guard and returns the exact original
+stream. No patched ROM file was written or candidate installed.
+
+Next, visually qualify and repeat the prepared 9600-frame outdoor route. Qualify
+terrain and starter ports separately, including unchanged-code delivery
+controls, scene transitions, normal save/reset/reload and native paired
+measurements. Preserve raw output drift; accept only functioning gameplay and
+useful native benefit. Evidence: `FIRST_SAVE_SEED_ADMISSION_V1.json`,
+`TRANSFER_VIRTUAL_PREFLIGHT_V1.json`, `HANDOFF_V2.json`, `NEXT_WORK_PLAN_V2.json`.
 
 No SoulSilver before/after table is available yet: both candidate throughput
 and baseline native scene measurements are pending. Three subsequent leads are
