@@ -474,3 +474,63 @@ Evidence: `OAM_OBSERVER_QUALIFICATION_V1.json`,
 No game patch or native session was added in this investigation. Keep Beta1
 unchanged. Next: qualify the sub-only bulk path; investigate an empty-main
 skip only with destination/transition proof; extend starter/battle coverage.
+
+
+## Sub-only OAM bulk trial — disabled
+
+The field initializer now has a separately toggleable, disabled manifest trial
+for the existing sub-screen bulk upload/reset path. The sub allocation owns
+all 992 contiguous bytes (sprite slots 0–123, affine matrices 0–30). Main bulk
+remains disabled because its span would include unowned affine matrix 31.
+
+The atomic extent `021e5a6e..021e619c` changes the sole direct call and a
+38-byte initializer; intervening bytes remain unchanged. The initializer uses
+two padding bytes at `021e6176`. A complete 9,600-frame write/fetch trace
+shows no execution there while the authenticated field overlay is present,
+and only the expected same-code reload writes. Earlier boot code does execute
+that address: address-only patching or a global opcode watch would be wrong.
+The first unrestricted context observer stopped at that earlier overlay; it
+was excluded as an observer configuration failure. Restricted field snapshots
+at frames 942/1958 match the owned code, and all 156 prior output files match.
+
+Owned constructor, cache and DMA routines are authenticated. Thirty-two
+synthetic constructor cases execute the real module initialization, allocation
+wrappers and fill routines with a modeled heap allocation. R0, R2–R12,
+SP/LR/PC/CPSR and mapped memory match except the intended sub flag, R1
+(which the next callee overwrites), and one dead saved-return word at SP−28.
+No persistent scratch or new heap allocation is added. Allocation failures,
+async/cache interleavings and full-game indirect references are not proved.
+The source is four-byte, not cache-line aligned; existing flush/invalidate
+operations cover neighboring line bytes. Do not generalize this trial into an
+arbitrary safe DMA substitution.
+
+The candidate completes the same 9,600-frame route. All top frames and the
+final save match; one bottom frame differs. Eight checkpoint pairs preserve
+the visible player/map/menu. RAM changes and 1,762,724 of 7,702,322 stereo
+sample differences remain explicit under the functional budget. Selected
+ARM9 instruction entries fall 2.20598%, from 671,827,915 to 657,007,512.
+That is a reference-work metric, not native speed.
+
+| Arm | Variant | Seconds | Complete publications/s |
+|---|---|---:|---:|
+| A1 | control | 45.036 | 19.7618 |
+| B1 | candidate | 45.097 | 19.6466 |
+| A2 | control | 45.073 | 19.4128 |
+
+Candidate versus the two-control mean: +0.303%.
+It fails the predeclared 1% gain over both controls and their mean, so keep it
+disabled. No useful native plaza benefit is demonstrated; this does not prove
+a general slowdown. The three cold sessions preserve the private save,
+verified patch bytes and scene, with zero capture drops and clean exits.
+Native cycles, missed VBlanks and frame-time percentiles remain unavailable.
+No wider lifecycle, save-state or human listening approval is claimed for this
+no-gain candidate. The raw differences were not the rejection reason.
+
+Evidence: `OAM_BULK_REFERENCE_FINDINGS_V1.json`,
+`OAM_BULK_NATIVE_FINDINGS_V1.json`, `OAM_BULK_NATIVE_BEFORE_AFTER_V1.csv`,
+`OAM_BULK_NATIVE_SCENE_REVIEW_V1.json`. Existing HeartGold Beta1 is unchanged.
+
+Next three leads: profile private starter/battle progression; examine
+transition/archive/decompression work in supported overlays; investigate an
+empty-main-manager skip only after destination/transition liveness is proved.
+Do not repeat this same bulk or queue plaza screen unchanged.

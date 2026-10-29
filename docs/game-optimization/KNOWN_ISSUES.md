@@ -636,3 +636,12 @@
   cross an ownership boundary. Sub-only bulk upload remains a lead requiring
   separate reset/cache/DMA qualification and safe code placement. No spare
   memory or compressed-main patch support is inferred.
+
+- HeartGold sub-only OAM bulk is parked after a native A/B/A plaza screen
+  failed the 1% useful-gain gate, despite 2.21% fewer reference instructions.
+  It is not rejected for raw RAM/audio drift. Main-engine bulk remains unsafe
+  under the observed allocation because it crosses affine31 ownership. The
+  sub source is not32-byte aligned; neighboring cache-line/interleaving safety,
+  full lifecycle, save-state and human listening remain unqualified. Padding
+  at021e6176 is executable in earlier overlays; exact overlay identity is
+  essential. Keep both this and queue candidates disabled in Beta1.

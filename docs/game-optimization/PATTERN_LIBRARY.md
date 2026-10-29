@@ -1418,3 +1418,27 @@ its affine allocation 1–30. A bulk replacement must preserve interleaved field
 owned by other users. The sub allocation 0–123 covers precisely affine 0–30,
 so its existing bulk path merits separate reset/cache/DMA and native checks.
 No optimization or native speed is established by this source-only census.
+
+
+## Enabling an existing bulk mode through an overlay initializer
+
+A hot SDK routine in compressed main code may already expose a cheaper mode
+selected by its instance. Investigate the existing initializer in a supported
+overlay before adding a main-code patch or HPS service. Prove the exact flag,
+allocation ownership, producer/reset contract, cache/DMA behavior and caller
+ABI. Interleaved fields owned by other users remain a hard boundary.
+
+HeartGold's sub-only OAM trial reuses the existing 992-byte path through a
+guarded initializer and sole-call redirection. Full-route fetch/write traces
+qualify the two padding bytes only in the authenticated overlay; an earlier
+overlay executes that address. Bind context observers to verified overlay
+epochs instead of treating a shared address as a global opcode identity. Use
+the existing synthetic harness with actual owned callees and explicitly
+modeled allocator contracts. Declare every permitted register/dead-stack/flag
+difference; do not hide a whole stack or heap region.
+
+This trial reduces reference ARM9 instruction entries by 2.21% but produces
+no useful native plaza gain in a matched A/B/A screen. Existing bulk reset
+also fills more bytes and performs cache/DMA operations; lower instruction
+counts alone do not prove lower elapsed time. Keep the disabled manifest and
+proof reusable, with raw audiovisual/RAM differences and coverage limits.
