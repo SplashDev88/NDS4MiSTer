@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon HeartGold",
+  "game_code": "IPKE",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "1b7be2e5079b10c7122aa048656c1d3a6d6bd0c1",
+  "header_crc32": "3e7b4318",
+  "rom_sha256": "65f02a56842b75aa92d775d56d657a56fe3fa993550b04dc20704ab82d760105",
+  "arm9_sha256": "5eeaa2dcabfb66b4ff5d151687cff2c9214de9e272ba7afdae7a01d57cf319af",
+  "arm9_crc32": "f1ccc042",
+  "arm7_sha256": "746355ed51b324933542a7c4fcf109a5f83755a97c95b834ffd08caf6d4fafea",
+  "arm7_crc32": "3b3c3c25",
+  "arm7_code_settings_offset": "0x198",
+  "patches": [],
+  "status": "reference_seed_qualified_gameplay_profile_in_progress",
+  "budget": "Functional/perceptual; retain measured differences, reject broken progression/crashes/corrupt saves/perceptible defects; require useful native benefit.",
+  "delivery_note": "ARM9 and 127/129 overlays are compressed. Existing guest_byte_patch rejects this main image even for ARM7 requests; no compressed-code support is assumed. Existing prepare.VirtualRom and NSMB/FMV reconstruction are the extension points if profiling justifies it.",
+  "reference_seed_sha256": "756f721263a071ea824d64e36d59d0569c1ed8f3d93d84a1f58e8024f0461a05",
+  "reference_qualification": {
+    "save_creation_frames": 18000,
+    "save_repeat_files_exact": 193,
+    "cold_load_frames": 3600,
+    "cold_repeat_files_exact": 64,
+    "native": false
+  },
+  "initial_profile": {
+    "scene": "idle downstairs room",
+    "frames": [
+      1800,
+      3600
+    ],
+    "arm9_halfword_copy_sample_share_percent": 4.469021939833533,
+    "arm9_fixed_destination_stream_sample_share_percent": 6.151296789038605,
+    "native_speedup": null
+  }
+}

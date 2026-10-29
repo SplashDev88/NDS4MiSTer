@@ -1,5 +1,16 @@
 # Optimization investigation limits
 
+- HeartGold IPKE r0 uses compressed ARM9 code and 127 compressed overlays.
+  The current same-size guest adapter rejects that main image before all
+  patch selection, including ARM7 candidates. Do not bypass admission or
+  infer patchability from decoded scanner matches. Extend the existing
+  virtual-image reconstruction only with content/layout guards and no-op
+  qualification if a useful hotspot warrants it.
+- HeartGold's owned save was entirely `ff`; early button-only input routes
+  stayed in introductory help screens. Neither the save filename nor valid
+  input syntax establishes gameplay coverage. Optional touch replay reuses
+  the same oracle; its disabled path must preserve every baseline output.
+
 - The three-NOP background NORMAL patch is rejected: video equality did not imply RAM/audio equality. No relaxed budget was requested or assumed.
 - Palette uploads in the target room change real colors. Do not remove them or freeze weather/lighting.
 - Whole-ROM hashes and game-code guards do not establish that an overlay is currently loaded. Overlay hooks need live identity checks; no overlay hook is installed by this experiment.

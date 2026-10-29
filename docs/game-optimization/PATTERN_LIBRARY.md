@@ -2,6 +2,37 @@
 
 Reuse `tools/standalone_host/fmv/hook_guard.py`, `prepare.VirtualRom`, the existing native ARM9 PC sampler and graphics-replay tests. These entries are evidence and admission rules, not permission to patch another title automatically.
 
+## Establish code delivery and real input coverage before transferring a pattern
+
+Decode the owned CPU images and overlay table before choosing a patch target.
+A structural match in decoded code does not make its stored bytes directly
+patchable. HeartGold IPKE r0 has compressed ARM9 code and 127 compressed
+overlays out of 129. The same-size guest adapter currently rejects that main
+image even for an ARM7 request. Reuse the existing NSMB/FMV virtual-image
+reconstruction if extending support; require exact stored/decoded identities,
+layout guards and unchanged-code delivery qualification first. Never transfer
+Platinum offsets or assume its native gain from a matching instruction shape.
+
+HeartGold's unchanged main/autoload scanner finds ten static leads: three
+nibble-arithmetic sequences, two mask walks, one halfword copy, three header
+reads and a zero multiply. No execution frequency, SDK identity or safe
+replacement follows from those matches. Overlay screening remains separate.
+
+A valid button script can remain in help screens. Review the actual scene,
+and use the existing oracle's optional touch windows when the interface needs
+them. Pin coordinate events, preserve exact button-only controls after any
+harness change, and qualify a real saved checkpoint before collecting a
+gameplay benchmark. An all-`ff` save file is not evidence of prior progression.
+
+The qualified HeartGold idle-room control later attributes 4.469% of ARM9
+samples to the halfword-copy span and 6.151% to an incrementing-source,
+fixed-destination word stream. Their original decoded bytes match loaded RAM.
+These are useful runtime leads, not native cycle shares or proof that the
+destination is graphics FIFO. Capture arguments, lengths and content during
+movement before selecting an optimization. The initial IRQ-dispatch prefix
+reads and acknowledges real interrupt state; high sample weight does not make
+it dead work.
+
 ## Exact correspondence between replay and native trials
 
 Carry the same guarded virtual cartridge into the existing disposable native
