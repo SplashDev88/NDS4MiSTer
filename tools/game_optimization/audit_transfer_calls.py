@@ -3,7 +3,7 @@
 
 The fixture supplies code identities, ABI and address regions. This supports
 the observed nonnegative, unit-aligned lengths only, not arbitrary function
-equivalence. One stack span per event is required. No payload recurrence,
+equivalence. One stack or authenticated code span per event is required. No payload recurrence,
 MMIO behavior, unused-memory claim or native speed is inferred.
 """
 import argparse
@@ -53,11 +53,25 @@ def audit(trace, fixture):
         return next((name for name, first, last in regions
                      if first <= address and address + length <= last), 'unclassified')
 
-    sites, results = {}, {}
+    snapshot_kind = fixture.get('snapshot_kind', 'stack')
+    require(snapshot_kind in ('stack', 'code'), 'Invalid snapshot kind')
+    sites, results, code_contexts = {}, {}, {}
     for function in fixture['functions']:
         ident = function['id']
         require(ident not in results and function['unit_bytes'] in (2, 4), 'Invalid function')
         require(function['counter_rule'] in ('length', 'source_plus_length'), 'Invalid counter rule')
+        if snapshot_kind == 'code':
+            context = function['code_context']
+            address, expected = int(context['address'], 0), bytes.fromhex(context['expect'])
+            require(address % 4 == 0 and 0 < len(expected) <= 4096 and len(expected) % 4 == 0
+                    and 0x02000000 <= address < address + len(expected) <= 0x02400000,
+                    'Invalid main-RAM code context')
+            for kind in ('entry', 'exit'):
+                relative = int(function[kind], 0) - address
+                require(0 <= relative <= len(expected) - 4 and relative % 4 == 0
+                        and int.from_bytes(expected[relative:relative+4], 'little') ==
+                        int(function[kind + '_opcode'], 0), 'Code context does not cover guarded site')
+            code_contexts[ident] = address, expected
         results[ident] = dict(calls=0, requested_bytes=0, data_units=0, zero_length_calls=0,
                              cross_frame_calls=0, overlapping_ranges=0,
                              source_regions=Counter(), destination_regions=Counter(),
@@ -85,9 +99,15 @@ def audit(trace, fixture):
             regs = [int(row['r' + str(n)], 16) for n in range(16)]
             payload = bytes.fromhex(row['bytes'])
             require(regs[15] == pc + 8, 'Pipeline PC differs')
-            require(row['space'] == fixture['stack_space'] and
-                    int(row['address'], 16) == regs[13] and
-                    len(payload) == int(row['length']) == fixture['stack_bytes'], 'Stack span differs')
+            if snapshot_kind == 'stack':
+                require(row['space'] == fixture['stack_space'] and
+                        int(row['address'], 16) == regs[13] and
+                        len(payload) == int(row['length']) == fixture['stack_bytes'], 'Stack span differs')
+            else:
+                address, expected = code_contexts[function['id']]
+                require(row['space'] == 'main' and int(row['address'], 16) == address and
+                        len(payload) == int(row['length']) == len(expected) and payload == expected,
+                        'Loaded code context differs')
             count += 1
             if kind == 'entry':
                 stack.append((function['id'], frame, regs, cpsr, payload))
@@ -107,7 +127,8 @@ def audit(trace, fixture):
             require(regs[12] == end_counter and regs[1] == destination, 'Counter/destination differs')
             require(length != 0 or regs[2] == old[2], 'Zero-length call changed length register')
             require(cpsr == ((old_cpsr & 0x0fffffff) | 0x60000000), 'Final equal-compare flags differ')
-            require(payload == old_payload, 'Leaf stack bytes changed')
+            require(payload == old_payload, 'Leaf stack bytes changed' if snapshot_kind == 'stack'
+                    else 'Loaded code context changed')
             result = results[function['id']]
             result['calls'] += 1
             result['requested_bytes'] += length
@@ -129,7 +150,11 @@ def audit(trace, fixture):
     return dict(state='passed_guarded_transfer_call_census', events=count, maximum_nested_depth=max_depth,
                 functions=results, window=fixture['window'], trace_sha256=fixture['trace_sha256'],
                 comparison_sha256=fixture['comparison_sha256'],
-                limitations='Arguments and leaf state only; no transferred payload equality/recurrence, MMIO timing, native cycles or patch acceptance.')
+                snapshot_kind=snapshot_kind,
+                limitations=('Arguments and leaf state only; no transferred payload equality/recurrence, '
+                             'MMIO timing, native cycles or patch acceptance.' +
+                             (' Code identity verified at every entry/exit; stack bytes not observed.'
+                              if snapshot_kind == 'code' else '')))
 
 
 def main():

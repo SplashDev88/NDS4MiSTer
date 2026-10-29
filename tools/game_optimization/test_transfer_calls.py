@@ -58,6 +58,48 @@ class CensusTests(unittest.TestCase):
                           result['cross_frame_calls']), (1, 8, 2, 1))
         self.assertEqual(result['destination_regions'], {'port': 1})
 
+    def use_code_context(self):
+        data = bytes.fromhex('02c080e0') + bytes(32) + bytes.fromhex('1eff2fe1')
+        self.fixture['snapshot_kind'] = 'code'
+        self.fixture['functions'][0]['code_context'] = dict(address='0x02001000', expect=data.hex())
+        for row in self.rows:
+            row.update(address='2001000', length=len(data), bytes=data.hex(), space='main')
+
+    def test_authenticated_code_context(self):
+        self.use_code_context()
+        result = self.run_audit()
+        self.assertEqual(result['snapshot_kind'], 'code')
+        self.assertEqual(result['functions']['stream']['calls'], 1)
+        self.assertIn('stack bytes not observed', result['limitations'])
+
+    def test_corrupt_loaded_code(self):
+        self.use_code_context()
+        self.rows[1]['bytes'] = 'ff' + self.rows[1]['bytes'][2:]
+        with self.assertRaisesRegex(ValueError, 'Loaded code context'):
+            self.run_audit()
+
+    def test_wrong_code_mapping(self):
+        self.use_code_context()
+        self.rows[0]['address'] = '2001004'
+        with self.assertRaisesRegex(ValueError, 'Loaded code context'):
+            self.run_audit()
+        self.rows[0]['address'] = '2001000'
+        self.rows[0]['space'] = 'dtcm'
+        with self.assertRaisesRegex(ValueError, 'Loaded code context'):
+            self.run_audit()
+
+    def test_code_context_must_cover_return(self):
+        self.use_code_context()
+        self.fixture['functions'][0]['code_context']['expect'] = '02c080e0'
+        with self.assertRaisesRegex(ValueError, 'cover guarded site'):
+            self.run_audit()
+
+    def test_code_context_does_not_relax_register_contract(self):
+        self.use_code_context()
+        self.rows[1]['r13'] = '2004000'
+        with self.assertRaisesRegex(ValueError, 'Preserved register'):
+            self.run_audit()
+
     def test_mode_and_opcode(self):
         self.rows[1]['mode'] = 'thumb'
         with self.assertRaisesRegex(ValueError, 'Instruction/mode'):

@@ -360,6 +360,15 @@ reported; incomplete boundary calls fail. The fixture declares code sites,
 address regions and either indexed halfword-copy or fixed-destination word-
 stream ABI effects; it contains all game addresses.
 
+For callers with different stack mappings, a fixture may instead set
+`snapshot_kind: "code"`. Each function supplies a `code_context` with a main-RAM
+`address` and exact original `expect` bytes covering both entry and return.
+One code span at each site must match that complete context, including the
+declared opcodes. The same register/counter/flag and pairing checks apply.
+This verifies loaded code identity rather than stack contents; reports state
+that stack bytes were not observed. It does not authorize memory-effect or
+payload-equivalence claims. The default stack mode remains unchanged.
+
 This census admits only observed nonnegative lengths at most 1 MiB, divisible
 by the declared 2/4-byte unit. It is not general synthetic equivalence or a
 data-payload recurrence audit. Zero-length calls have no access region, even
