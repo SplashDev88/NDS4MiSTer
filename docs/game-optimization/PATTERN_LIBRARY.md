@@ -703,6 +703,19 @@ Caller IRQ exclusion remains a separate proof obligation. A fast path needs
 the actual target identity and preserved real-callback path; do not infer that
 alignment padding or a neighboring function is available for a trampoline.
 
+HeartGold independently confirms the same two-slot default-callback pattern.
+Its guarded dispatch-only candidate compacts an existing initializer within
+the same authenticated 84-byte extent; it does not assume padding or scratch.
+Both actual function pointers are compared before an early return, and the
+active path reloads slot2 after slot1. 608 ABI/side-effect cases include
+`used=0` with a published callback and a first callback replacing the second.
+Empty calls fall 25→9 synthetic instructions; the outdoor reference falls 2.1571%.
+The native clean pair is 20.0314→19.7002 publications/s, so the patch stays
+disabled. A second control 19.8837 has one OBS render miss and is descriptive
+only. Lower guest work does not establish useful native speed. Retain
+volatile-register/flag/stack differences honestly under the approved budget;
+do not label ABI equivalence as bit-exact machine-state equivalence.
+
 For an uncompressed overlay, prefer a same-size replacement in its existing
 virtual cartridge file over relocation or new scratch. The shared
 `prepare.read_overlay` now serves both FMV preparation and guarded guest byte

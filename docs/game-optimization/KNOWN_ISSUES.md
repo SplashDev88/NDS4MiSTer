@@ -723,3 +723,15 @@
   new-save/reset/full-victory/off-target coverage remains incomplete. Overlay10
   overlaps overlay7 RAM and must not be retained simultaneously without a
   separately proven design. Beta2 and its accepted coverage remain unchanged.
+
+- HeartGold empty-HBlank dispatch V14 is parked: 2.1571% fewer reference ARM9
+  instructions produces no useful native plaza benefit. Check actual callback
+  pointers, never `used` alone. Active effects/poison/new-save/reset remain
+  unqualified for this disabled candidate; broader IRQ suppression needs a
+  separate registration/start/stop/reactivation proof. No guessed code cave.
+- A thin diagonal line appears in both the HBlank candidate Continue snapshot
+  and unchanged Beta2 control A2 video (45.0s/PTS2700). Cause/frequency remain
+  unresolved; do not claim a new patch regression or that it is imperceptible.
+  A2 has one OBS render miss, so the pilot is not a wholly capture-clean A/B/A
+  series. Clean A1/B1 already fail the useful-benefit gate; retain the defect
+  evidence and do not repeat the pilot merely to obtain a favorable result.

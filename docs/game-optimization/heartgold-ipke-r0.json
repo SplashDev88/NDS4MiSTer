@@ -317,6 +317,61 @@
         "BATTLE_PREDECODE_NATIVE_FINDINGS_V1.json",
         "BATTLE_PREDECODE_BEFORE_AFTER_V1.csv"
       ]
+    },
+    {
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 1,
+      "overlay_ram": "0x21e5900",
+      "overlay_file_id": 1,
+      "overlay_sha256": "70ad543419e7d43bbf2b470b386d322492b66fbe37cd1dbfae7eb40b5306df37",
+      "overlay_stored_sha256": "a35a3a7072daaacbc2d8e5642ab076d4bc4606eb16c4687709a1bc24a80535be",
+      "id": "overlay1-empty-hblank-dispatch",
+      "pattern": "empty-callback-dispatch",
+      "addr": "0x21fb55c",
+      "mode": "thumb",
+      "expect": "38b5031c1c22002119705b1c521efbd100240460051d281c00f006f8641c0c35022cf8db38bd0000002202490260816042607047b1b51f0270b5051c00262c1da968ea68201c9047761c0c350c34022ef6db70bd",
+      "replace": "38b5041c00220260043000f00df8201c103000f009f838bd064ac16891420cd18169914209d17047002202490260816042607047b1b51f02eee770b5041ca168e268201d90476169a269201c1030904770bdc046",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "data_guards": [
+        {
+          "addr": "0x21fb5b0",
+          "expect": "70470000"
+        }
+      ],
+      "notes": "Compare both live callback pointers to the authenticated empty Thumb function before returning. Otherwise call both in order, reloading slot2 after slot1. Compact the existing initializer in its own code extent; no scratch/cave, no IRQ suppression, no altered registration/start/stop. Volatile registers/flags and timing may differ under functional budget; native pilot shows no useful benefit; parked disabled. One candidate snapshot line also occurs in unpatched control footage, with cause/frequency unresolved.",
+      "status": "parked_no_useful_native_plaza_gain",
+      "validated": {
+        "synthetic_cases": 608,
+        "framebuffer": "All9600 top frames exact; bottom frame3187 differs. All8 paired checkpoints inspected.",
+        "ram": "Raw timing/state differences retained;25/41 checkpoint files match after exact code normalization.",
+        "audio": "988085/7702322 stereo samples differ; equal lengths. No listening verdict.",
+        "save": "Reference save exact; three native cold/standing trials preserve admitted private save.",
+        "native": "Cold Continue and matched stationary pilot. A1/B1 capture-clean; A2 one OBS render miss. Active-effect/new-save/reset/broader lifecycle not expanded after no useful gain."
+      },
+      "gain": {
+        "reference_arm9_instruction_reduction_percent": 2.15708928974766,
+        "native_publications_per_second": {
+          "A1": 20.031375395113788,
+          "B1": 19.7002341665991,
+          "A2": 19.8837254120965
+        },
+        "native_candidate_vs_clean_control_percent": -1.6531127892269626,
+        "native_candidate_vs_descriptive_control_mean_percent": -1.289317735905915,
+        "native_speedup": null,
+        "native_scope": "A2 has one OBS render miss; its native counters are retained as descriptive corroboration, but the full A/B/A video series is not capture-clean. No qualified pacing or statistically established slowdown claim."
+      },
+      "evidence": [
+        "OUTDOOR_HBLANK_OBSERVER_QUALIFICATION_V1.json",
+        "OUTDOOR_BETA2_METADATA_ATTRIBUTION_V1.json",
+        "HBLANK_FASTPATH_PREFLIGHT_V1.json",
+        "HBLANK_FASTPATH_SYNTHETIC_V1.json",
+        "HBLANK_FASTPATH_REFERENCE_REVIEW_V1.json",
+        "HBLANK_FASTPATH_NATIVE_FINDINGS_V1.json",
+        "HBLANK_FASTPATH_BEFORE_AFTER_V1.csv"
+      ]
     }
   ],
   "status": "private_beta1_enabled_by_explicit_catalog",

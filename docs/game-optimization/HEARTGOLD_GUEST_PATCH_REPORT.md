@@ -978,3 +978,70 @@ progress. Next prioritize the slower outdoor scene: attribute current Beta2
 geometry/display-list and transformed-bound cost before selecting another
 patch. Other deferred leads are font-table reuse through supported delivery
 and shared-overlay precomputation in a demonstrably load-bound scene.
+
+
+## Empty HBlank callback dispatcher — parked (V14)
+
+The dispatch-only fast path does not improve the measured New Bark plaza.
+Keep `overlay1-empty-hblank-dispatch` disabled; cumulative Beta2 is unchanged.
+Raw timing/RAM/audio drift is permitted and was not the reason for parking.
+
+The accepted Beta2 outdoor profile remains 671,827,915 ARM9 instructions. Its
+raw framebuffer/audio/save outputs match the older terrain-only run. All 20
+changed RAM bytes at each snapshot are attributed to actual virtual header,
+CRC-mirror and overlay61 FAT metadata, retained without hiding raw differences.
+The new read-only observer preserves all 158 other baseline files over 9,600
+frames. During 120 frames it observes 31,560 HBlank dispatches and 63,120 calls
+to the authenticated Thumb `BX LR` default function. The owner and both slots
+are captured; this is bounded scene evidence, not full-game invariance.
+
+An 84-byte same-size ARM9 overlay1 patch at `0x021fb55c` compacts the existing
+initializer, checks both actual callback pointers, and unrolls the retained
+active-callback path. Original entry points, slot initialization, default
+literal/function and callback order remain. The second callback/context is
+loaded after the first call. There is no interrupt suppression, scratch,
+guessed code cave, HPS service, RTL or persistent ROM edit. Expected bytes,
+full ROM/header and stored/decoded overlay identities guard delivery through
+the existing virtual-overlay loader. Volatile registers/flags and stack
+residuals may change under the functional budget; bit-exactness is not claimed.
+
+608 synthetic cases cover ARM/Thumb callbacks/returns, all initial flags,
+published callbacks with `used=0`, second-slot mutation by the first callback,
+volatile clobbers and complete initializer output. Empty dispatches fall 25→9
+instructions. The full 9,600-frame replay preserves all top frames and save;
+one bottom frame 3187 and 988,085/7,702,322 stereo samples differ. Eight paired
+checkpoints show the same route/menu. Native cold Continue works, and all
+three stationary sessions preserve the private save.
+
+| Metric | Control A1 | Candidate B1 | Control A2 |
+| --- | ---: | ---: | ---: |
+| Native screen-pair publications/s | 20.0314 | 19.7002 | 19.8837 |
+| Renderer CPU (% of one HPS core) | 162.18 | 161.31 | 161.67 |
+| OBS render misses | 0 | 0 | 1 |
+
+Reference ARM9 instructions fall 671,827,915→657,335,987 (2.1571%). Native
+candidate publications are -1.6531% below the clean control, failing
+the predeclared 1% useful-gain gate. A2 is descriptive corroboration only:
+one OBS render miss prevents calling the complete video series capture-clean.
+No statistically established slowdown, unique animation FPS or native cycle
+claim is made. Do not rerun this small pilot solely to rescue the candidate.
+
+The thin diagonal line in the candidate Continue snapshot is also visible
+in unpatched A2 video at 45.0 seconds / PTS 2700. Cause and frequency remain open;
+it is not a demonstrated patch-only regression. Original video/audio-track1
+packets and timestamps are retained in the three `HeartGold_HBlank_*.mp4`
+review files. Four frames per clip were inspected, not a human listening or
+full-motion verdict. Active effects/poison, new Save, soft reset and broader
+lifecycle testing were not expanded after the failed benefit gate. No core
+save-state support or format change is introduced.
+
+Evidence: `HBLANK_FASTPATH_NATIVE_FINDINGS_V1.json`,
+`HBLANK_FASTPATH_BEFORE_AFTER_V1.csv`, `HBLANK_FASTPATH_REFERENCE_REVIEW_V1.json`,
+`HBLANK_FASTPATH_SYNTHETIC_V1.json`, and `OUTDOOR_BETA2_METADATA_ATTRIBUTION_V1.json`.
+
+Next leads: inspect the already captured Beta2 geometry trace for expensive
+offscreen/occluded model submission; audit transformed-bound/matrix reuse with
+complete camera/animation dependencies; consider broader empty-IRQ suppression
+only after owner-aware registration/start/stop/reactivation contracts are proven.
+The dispatch-only result does not prove that every IRQ optimization is exhausted.
+No game-queue advance is claimed.
