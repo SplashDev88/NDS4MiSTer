@@ -759,3 +759,11 @@ prove every later material/node/camera dependency. No shape-removal patch exists
 SoulSilver's matching starter overlay and terrain patch bytes support transfer
 research only. Use its own full-ROM/header/overlay identities and independent
 save/replay/native checks; do not inherit HeartGold's gains or validation labels.
+
+SoulSilver terrain transfer has a bounded reference work reduction, not native
+qualification. Its sole bottom-screen hash difference is frame 3188; raw
+RAM/audio drift is retained. Indoor screen hashes match but reference ARM9 work
+increases 0.2136%; check native indoor cost. Contact previews must decode the
+oracle's `frame_*.rgba` bytes as BGRA, matching the shared comparison renderer.
+The first private SoulSilver contacts had a red/blue channel swap; corrected
+previews supersede them without changing replay hashes or ROM evidence.

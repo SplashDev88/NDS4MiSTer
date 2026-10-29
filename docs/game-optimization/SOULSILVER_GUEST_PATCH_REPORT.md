@@ -69,14 +69,47 @@ terrain/starter and combined streams. Applying the HeartGold manifest to
 SoulSilver instead fails its identity guard and returns the exact original
 stream. No patched ROM file was written or candidate installed.
 
-Next, visually qualify and repeat the prepared 9600-frame outdoor route. Qualify
-terrain and starter ports separately, including unchanged-code delivery
-controls, scene transitions, normal save/reset/reload and native paired
-measurements. Preserve raw output drift; accept only functioning gameplay and
-useful native benefit. Evidence: `FIRST_SAVE_SEED_ADMISSION_V1.json`,
-`TRANSFER_VIRTUAL_PREFLIGHT_V1.json`, `HANDOFF_V2.json`, `NEXT_WORK_PLAN_V2.json`.
+## Terrain transfer reference results
 
-No SoulSilver before/after table is available yet: both candidate throughput
-and baseline native scene measurements are pending. Three subsequent leads are
-terrain/visibility work informed by the parked shape census, active battle and
-loading profiles, and recurring model/resource work specific to SoulSilver.
+The 9600-frame independent outdoor route is qualified by an unchanged repeat:
+all 154 baseline files match. Its read-only contract trace observes 1158 terrain
+calls with the expected caller bytes, identity rotation and unit scale. Graphics
+FIFO submission, IRQ/scheduler handling and math context dominate the ARM9
+profile; these are instruction samples, not native cycle shares.
+
+| Bounded measurement | Decoded delivery control | Terrain candidate |
+| --- | ---: | ---: |
+| ARM9 instructions, outdoor frames 6000–9599 | 702,381,026 | 671,801,437 (−4.3537%) |
+| Terrain draws, observed frames 6000–6599 | 1,158 | 429 |
+| Top-screen hashes differing from control | — | 0 / 9,600 |
+| Bottom-screen hashes differing from control | — | 1 / 9,600 |
+| Save bytes | Independent seed | Exact |
+| Indoor ARM9 instructions, recorded window | 270,532,896 | 271,110,642 (+0.2136%) |
+| Native throughput | Pending | Pending |
+
+The real bounding-box query rejects 729 terrain draws. Its constants receive no
+nonmatching writes after complete overlay identity at frame 938 and no writes
+in the target window. This uses existing stack space; there is no unused-memory
+claim or new service. Nine paired outdoor snapshots preserve terrain, objects,
+movement and menus. Bottom frame 3188 differs and remains unclassified visually.
+The separate 3600-frame indoor replay matches both screens on every frame and
+preserves the save; three paired snapshots show the expected room/menu.
+
+Timing/RAM/audio drift is retained under the authorized functional budget.
+Outdoor same-index PCM differs in 593,989 / 7,702,322 stereo samples (RMS 71.33,
+maximum signed16 delta 8600); indoor differs in 2682 samples (RMS 0.158, max178).
+These statistics do not establish audibility. Unchanged decoded delivery also
+changes timing versus compressed original; the matched delivery control keeps
+that effect separate. Reference work reduction does not prove native speedup.
+
+The existing native worker passes all three stream identity cases: original,
+unchanged decoded delivery and terrain candidate. No ROM is rewritten. The
+candidate remains default-disabled and unpromoted pending independent native
+cold boot, scene/save/reset checks, paired throughput and audiovisual captures.
+Starter transfer and active battle/loading remain subsequent work.
+
+Evidence in `evidence/soulsilver-optimization-20261029`:
+`OUTDOOR_BASELINE_QUALIFICATION_V1.json`, `OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json`,
+`TERRAIN_REFERENCE_FINDINGS_V1.json`, `TERRAIN_INDOOR_FINDINGS_V1.json`,
+`TERRAIN_REFERENCE_REVIEW_V1.json`, `TERRAIN_BEFORE_AFTER_V1.csv`, and
+`NATIVE_TERRAIN_WORKER_QUALIFICATION_V1.json`.

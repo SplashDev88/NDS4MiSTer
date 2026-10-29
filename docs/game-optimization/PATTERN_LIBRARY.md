@@ -1657,3 +1657,12 @@ matches HeartGold IPKE0 in 114/129 decoded overlays, including complete overlay6
 overlay1 differs by nine bytes outside the tested patch/dependency spans.
 This supports a guarded transfer candidate, not inherited validation or native
 speed claims. Always retain the destination game's own identity and replay/save.
+
+SoulSilver's independent terrain replay now confirms the transferred caller and
+constant contract for 1158 calls: the existing box query returns zero for 729,
+leaving 429 terrain draws. All 9600 top-screen hashes match the unchanged decoded
+delivery control. Native benefit remains unmeasured. For cross-title ports,
+repeat the original independently, distinguish decoded delivery timing from the
+byte patch, and derive the first full overlay identity from the current trace
+(frame 938 here); never copy another title's load-frame boundary. Preserve
+leading/trailing partial call records when a bounded observer window cuts a call.
