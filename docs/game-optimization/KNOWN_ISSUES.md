@@ -645,3 +645,15 @@
   full lifecycle, save-state and human listening remain unqualified. Padding
   at021e6176 is executable in earlier overlays; exact overlay identity is
   essential. Keep both this and queue candidates disabled in Beta1.
+
+- HeartGold starter selection has bounded native coverage and a reproducible
+  original-ROM profile. Its 14.08 screen-pair publications/s is a single baseline,
+  not a candidate gain or unique animation FPS. Do not prioritize copy/mask
+  micro-optimizations solely from reference sample percentages when renderer
+  work may dominate. Battle and longer progression remain separate checks.
+- Oracle raw `.rgba` snapshots are BGRA8888. Decode with the actual renderer
+  format before judging colors; the first starter reference contact used RGBA
+  and swapped red/blue. The V2 contact corrects the preview without changing
+  raw evidence. Likewise, normal HeartGold saves alternate banks: validate
+  chunk counters/CRCs and cold reload, rather than treating stale bank zero
+  as a failed save.

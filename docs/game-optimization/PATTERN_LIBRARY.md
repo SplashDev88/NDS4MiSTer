@@ -1442,3 +1442,29 @@ no useful native plaza gain in a matched A/B/A screen. Existing bulk reset
 also fills more bytes and performs cache/DMA operations; lower instruction
 counts alone do not prove lower elapsed time. Keep the disabled manifest and
 proof reusable, with raw audiovisual/RAM differences and coverage limits.
+
+## Check display throughput before prioritizing instruction hotspots
+
+Measure the target scene on the native core even when its reference instruction
+profile looks light. Record complete screen-pair publications, frame-identifier
+advance and renderer/host load separately; none alone establishes unique
+animation FPS. HeartGold's starter screen has prominent copy and interrupt-mask
+samples but publishes only 14.08 pairs/s while frame identifiers advance 59.84/s
+and the renderer uses 161.96% of one core. Treat graphics submission as a lead,
+then reuse the geometry observer and prove its unchanged-replay behavior before
+classifying redundant packets or hidden geometry. Repeated commands alone do
+not prove dispensable rendering or stable external dependencies.
+
+Re-authenticate overlay identity at each new scene. Starter overlay61 and field
+overlay1 reuse the same base address; allocator ownership and code placement
+proofs from the field do not automatically transfer to the starter screen.
+
+The qualified starter trace has 25 identical adjacent command streams in 28
+comparisons while each flush reports 1,014 polygons. This supports investigating
+an application-specific unchanged-frame gate, not unconditional frame skipping.
+Prove texture/palette dependencies, first draw, animation-key boundaries,
+input/transition invalidation and native previous-frame retention. Keep UI and
+animation updates outside the skipped drawing work. Existing object fields may
+have unrelated meanings: the starter's `frame` byte is a window-style option,
+not a spare frame counter. Record the proposal until a guarded implementation
+and native benefit exist.

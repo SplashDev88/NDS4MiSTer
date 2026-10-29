@@ -534,3 +534,83 @@ Next three leads: profile private starter/battle progression; examine
 transition/archive/decompression work in supported overlays; investigate an
 empty-main-manager skip only after destination/transition liveness is proved.
 Do not repeat this same bulk or queue plaza screen unchanged.
+
+## Starter checkpoint and native baseline — 29 October 2026
+
+The retained Beta1 completes Elm's introduction and the Chikorita selection
+sequence on the native core, including inspection, zoom, confirmation, return
+to the lab and the nickname prompt. Nicknaming was declined. All saves use the
+separate Starter1 alias and the normal game UI. Original saves remain untouched.
+The lab and machine-approach checkpoints cold-load on hardware. Both mirrored
+save banks have valid main/PC chunk CRCs; choose the newest complete bank rather
+than assuming bank zero. The first lab inspection made that wrong assumption;
+the raw save was preserved and the inspection corrected, with no game failure.
+
+An original-ROM replay opens overlay61 from the machine checkpoint. Repeating
+3,600 frames reproduces all 80 output files exactly, including the unchanged
+save. Full decoded overlay61 bytes match at three selected-window checkpoints
+and the final RAM snapshot. Its address overlaps field overlay1, so the field
+patch must never be selected by address alone. The selected 1,800-frame profile
+contains 87,223,580 ARM9 and 55,214,651 ARM7 instruction entries. The existing
+scanner flags the shared halfword copy (14.13% of ARM9 samples) and interrupt
+mask walk (8.51%); no new structural match occurs in overlay61. These shares
+measure instructions, not cycles, and do not establish a safe deletion.
+
+| Measurement | Retained Beta1 starter idle | New candidate |
+|---|---:|---:|
+| Native observation duration | 30.044 s | None |
+| Complete screen-pair publications/s | 14.079 | None |
+| Published frame-identifier advance/s | 59.845 | None |
+| Renderer CPU, percent of one core | 161.96% | None |
+| Host CPU, percent of one core | 2.93% | None |
+| OBS render/output drops | 0 / 0 | None |
+
+The light reference CPU workload does not translate into fast native display
+publication. This suggests renderer/submission work is the stronger lead than
+another tiny copy-loop rewrite; it is not a causal native profile or a claim
+about unique animation FPS. Keep the turntable, rocking, selection and camera
+animations intact. Source hints about redundant matrices or manager allocation
+must be authenticated at executed sites before proposing changes.
+
+The selection video preserves the original video and game-audio packets and
+timestamps. Sampled frames show the expected sequence; no human audiovisual
+approval or first-battle qualification is inferred. Raw oracle frame files are
+BGRA8888 despite their `.rgba` suffix. A first contact sheet swapped red/blue;
+the corrected V2 sheet uses the renderer's documented `ExpandColor` format.
+Raw hashes and replay comparisons were unaffected. Do not attribute that
+preview-color error to game behavior or timing.
+
+Evidence: `NATIVE_LAB_RELOAD_QUALIFICATION_V1.json`,
+`NATIVE_MACHINE_RELOAD_QUALIFICATION_V1.json`,
+`STARTER_OPEN_REFERENCE_QUALIFICATION_V1.json`, `STARTER_PROFILE_SCREEN_V1.json`,
+`STARTER_NATIVE_BASELINE_FINDINGS_V1.json`, and
+`HeartGold_Beta1_starter_selection_review.mp4`. No new patch or beta is claimed.
+
+The existing geometry observer is neutral: all 80 ordinary replay outputs
+still match. Its 60-frame window contains 444,349 events and 29 complete
+swap intervals. Only four distinct command/parameter streams occur; 25 of 28
+adjacent comparisons match. Each flush reports 2,760 vertices and 1,014
+polygons. These are the existing post-cull/clip counters, not a count of every
+submitted primitive. All observed polygon-attribute face masks are 2 and alpha
+is 31, so a blanket two-sided-geometry optimization is not established.
+
+The resulting lead is an idle-only draw gate that retains the previous 3D
+frame when the visible animation phase is unchanged. First rendering,
+turntable light changes, input, rocking, camera motion, sprite updates and
+scene exits must remain correct. Command recurrence does not prove texture,
+palette or other external dependencies are unchanged, nor that native reuse
+works in this application. Authenticate those dependencies and safe code
+placement before trialing a patch. The source field `work->frame` stores the
+user's window-frame style; it is not spare scratch or an animation counter.
+Evidence: `STARTER_GEOMETRY_OBSERVER_QUALIFICATION_V1.json`,
+`STARTER_GEOMETRY_CENSUS_V1.json`, `STARTER_GRAPHICS_LEAD_V1.json`.
+
+Next three leads: qualify the idle-only unchanged-frame gate; use the normally
+saved post-Chikorita checkpoint for first-battle profiling; examine transition
+and decompression work in supported overlays. HeartGold remains active.
+
+The post-selection normal save also cold-loads in the original reference and
+native Beta1. The native party screen shows one male Chikorita at level 5 with
+20/20 HP. This is bounded save/progression and menu coverage, not a battle test.
+The private seed SHA-256 is
+`7a6f75079357c38569ce2ab54c1fc05a86abb5305f294d95072c98922c20e0c2`.
