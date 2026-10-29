@@ -1,8 +1,10 @@
 # HeartGold guest-code optimization — 28 October 2026
 
-Status: USA IPKE revision 0 moving outdoor control qualified; disabled terrain
-visibility candidate completed its first reference screen. Native A/B is next.
-No patch is enabled and no speedup is claimed.
+Status: USA IPKE revision 0 terrain visibility candidate passes bounded native
+function checks and improves the longer matched plaza screen by3.07% over the
+original image and3.50% over decoded delivery. These are display-throughput
+results, not whole-game FPS. Defaults remain disabled while a cumulative
+private beta is prepared; the accepted beta is unchanged.
 The current user budget permits timing/RNG/hash drift when the game remains
 functional and the result is perceptually acceptable. Keep raw comparisons;
 reject broken progression, crashes, corrupted saves and perceptible defects.
@@ -96,7 +98,7 @@ This is a separate disposable save; the user's original remains untouched.
 Two separate 3,600-frame cold boots reach the expected downstairs scene with
 Save/bag/options retained. All 64 recorded files match on repeat and the save
 buffer remains identical to the generated seed. `FIRST_SAVE_SEED_ADMISSION_V1.json`
-admits this reference seed. Native save/reset coverage remains pending.
+admits this reference seed. Later native save/reset coverage is recorded below.
 
 ## Initial indoor profile
 
@@ -211,7 +213,8 @@ appending 148,064 decoded bytes plus alignment. Only18 original metadata bytes
 change. The actual disposable worker reproduces the complete pinned image.
 Normal overlay-file loading carries the code; it is never keyed by address
 alone. SDK overlay loading invalidates instruction/data ranges, conditionally
-decompresses and flushes the image; native fetch/reset behavior remains to test.
+decompresses and flushes the image. Later native reset/loading checks pass;
+no direct native guest-RAM or cache/fetch probe was added.
 
 The identical-code control has timing differences versus original compression:
 4,550 top and 22 bottom frame hashes differ, and 6,911,734 of 7,702,322 stereo
@@ -220,7 +223,7 @@ the original decoded body. Eight reviewed scene pairs preserve navigation and
 movement. Its repeat matches all 154 files. This is a bounded functional research
 control, not bit-exactness, inaudibility or full-game/lifecycle acceptance.
 
-## overlay1-terrain-visibility — disabled reference candidate
+## overlay1-terrain-visibility — disabled candidate
 
 Owned `MapLoadManager_RenderLoadedMap` at 021f595c checks the loaded-valid flag,
 then draws terrain. Props independently use the existing model visibility helper
@@ -243,7 +246,7 @@ pointers, scale/rotation contents and complete overlay identities.
 |Added terrain box tests|0|1,158|
 |Complete prop box tests|5,124|5,121|
 |Final save buffer|Reference|Exact|
-|Native pacing/throughput/HPS load|Unmeasured|Unmeasured|
+|Native throughput/HPS load|See native screening below|See native screening below|
 
 The candidate's own terrain queries reject728 draws (62.867%) and accept430.
 The control has one leading partial prop return excluded from pairing; timing
@@ -264,9 +267,9 @@ movement; small animation/NPC phase differences remain. Audio maximum delta
 The legacy runner label `rejected_replay_mismatch` reports strict exactness;
 the user's functional budget permits continued investigation with raw evidence.
 
-This result justifies a native screen, not promotion. Keep the patch disabled
-until useful native improvement, full-motion audiovisual review, save-write/
-reload/reset, additional transitions and unrelated-scene checks are complete.
+The reference result justified the native screening below. Release defaults
+remain disabled while a cumulative private beta is prepared. Native checks
+are bounded; no full-game or human audiovisual approval is claimed.
 The core still lacks persistent save states; no save-state format changed.
 
 Evidence: `OUTDOOR_OBSERVER_QUALIFICATION_V1.json`,
@@ -276,8 +279,67 @@ Evidence: `OUTDOOR_OBSERVER_QUALIFICATION_V1.json`,
 `OVERLAY1_DELIVERY_QUALIFICATION_V1.json`, `TERRAIN_REFERENCE_FINDINGS_V2.json`
 and `TERRAIN_BEFORE_AFTER_V1.csv`.
 
-Next three investigations after the native terrain screen: model-load queue
+Next three gameplay investigations: model-load queue
 empty-tail work with live callback/record contracts; repeated OAM payload and
 reader lifetimes; representative starter/battle and transition profiles for
 remaining decompression, archive and ARM7 sound work. The existing08:00 Central
 handoff keeps the last qualified cumulative beta until a useful new one passes.
+
+## Native screen and bounded lifecycle
+
+Six cold sessions reuse the exact accepted host, renderer and rc12 FPGA at
+stock1GHz. Original, decoded-overlay delivery control and terrain candidate
+first run from the same indoor save; three further sessions cold-load one
+new private plaza save written by the candidate. All staged header/byte guards
+pass. A source-header guard is kept separate from the changed staged header.
+
+|45-second plaza measurement|Original|Delivery control|Terrain candidate|
+|---|---:|---:|---:|
+|Completed screen publications/s|18.6837|18.6071|19.2577|
+|Published frame identifiers/s|59.8234|59.7736|59.7922|
+|Host CPU, percent of one core|3.33|3.38|3.42|
+|Renderer CPU, percent of one core|160.92|160.96|161.85|
+|Save after measurement|Exact seed|Exact seed|Exact seed|
+
+The longer matched standing screen improves3.072% over original and3.497%
+over identical-code decoded delivery. The earlier15-second standing intervals
+show18.9018/18.8055/19.8759 publications/s. Report the longer result as the
+conservative screen; do not pool unequal windows into a whole-game guarantee.
+Indoor original/candidate rates are59.6416/59.6307, effectively unchanged.
+Publications are not unique animation FPS or game-clock acceleration. Native
+emulated cycles, missed VBlanks and frame-time percentiles are unavailable.
+
+Identical timed walking inputs end at different positions even in the two
+unchanged-code controls. Their18.8662/19.7210/21.7512 publications/s are
+observations, not equal-work speed estimates. The recorded moving footage
+is useful for function and visual/audio review, not a claimed walking speedup.
+All six captures report zero added render/output drops.
+
+The candidate's soft reset returns through startup and Continue into the
+original indoor seed, then repeats the opening town route. Its new native Save
+returns to normal field control and is read back after clean exit. Original,
+delivery and candidate cold Continue all load the expected plaza. Candidate
+house entry, Bag open, both menu-close levels and return outdoors work. Saves
+remain unchanged during the timed measurements. No original ROM/save is used
+as a write destination. These are bounded checks, not full-game/battle proof.
+
+A separate3600-frame replay never enters the outdoor target scene. It finishes
+indoors with the exact save and expected room/player/menu in all three reviewed
+checkpoint pairs. Raw differences remain:6 top/7 bottom frames, main RAM, DTCM
+and ARM7 WRAM, and2,103,396/2,888,368 stereo samples (max25,616,RMS3,184.534).
+The strict runner's mismatch label is not a rejection under the functional
+budget. Native review copies preserve original video and game-audio packets
+and timestamps; OBS track0 is silent, so track1 is selected without reencoding.
+No inaudibility or human full-motion approval is inferred from levels or stills.
+
+The bounded gain supports private beta preparation. Replacing the inherited
+single-game guest manifest outright would drop accepted Platinum optimization.
+Preserve it through explicitly pinned per-game selection in the existing loader
+before calling the next beta cumulative; no new HPS service is needed. The
+accepted beta remains unchanged while that packaging work proceeds.
+
+Evidence: `NATIVE_TERRAIN_SCREEN_FINDINGS_V1.json`,
+`NATIVE_TERRAIN_REPLICATION_FINDINGS_V1.json`,
+`NATIVE_TERRAIN_REPLICATION_BEFORE_AFTER_V1.csv`,
+`NATIVE_TERRAIN_LIFECYCLE_SCREEN_V1.json`,
+`NATIVE_PLAZA_RELOAD_QUALIFICATION_V1.json`, `TERRAIN_INDOOR_FINDINGS_V1.json`.

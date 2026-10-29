@@ -599,3 +599,22 @@
   flat and identical text takes 1.2333s versus 1.2500s with overlapping bounds.
   Keep disabled; do not repeat that screen without new workload evidence.
   Native victory, listening and broader lifecycle remain unqualified.
+
+## HeartGold native terrain screen
+
+- Identical timed walking input diverges spatially between original and
+  unchanged-code delivery controls. Use the matched plaza save/standing screen
+  for the3.1–3.5% native publication-throughput result; do not claim the larger
+  moving-window difference as equal-work speedup or whole-game FPS.
+- Transient diagonal white lines occur in unpatched native footage as well as
+  control/candidate footage. They are an existing observed rendering artifact,
+  not evidence by themselves that this terrain patch introduced a defect.
+- Native Save/reset/cold load, house and Bag checks plus the separate indoor
+  replay are bounded. Starter/battle, long-game progression and human
+  full-motion/listening review remain open. Direct native guest RAM/cache
+  tracing was not added; staged cartridge bytes and normal load behavior are
+  the available native delivery evidence.
+- The inherited cumulative beta has a single selected guest manifest. A
+  HeartGold-only replacement would remove accepted Platinum terrain selection.
+  Add guarded per-game selection inside the existing loader, retain old single
+  manifest behavior and test both full worker images before cumulative delivery.

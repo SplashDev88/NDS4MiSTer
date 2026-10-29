@@ -1337,3 +1337,23 @@ Native measurements must distinguish cheaper polling from faster game progress.
 In this instance, a 2.22% reduction in reference battle instructions did not
 produce useful native first-turn text or publication-throughput improvement.
 The byte patch remains disabled; the detector/proof pattern remains reusable.
+
+## Native controls for decoded overlay delivery
+
+HeartGold extends coarse offscreen terrain culling to a compressed overlay
+through the existing virtual loader. Test three arms: original compressed
+image, identical-code decoded overlay delivery, and decoded delivery plus
+the patch. The45-second matched plaza screen yields18.6837/18.6071/19.2577
+complete screen publications/s:3.072% over original and3.497% over delivery
+control. Its4.356% reference ARM9-entry reduction is a different measurement.
+The same48-byte Thumb replacement uses existing guarded constants and helper
+calls, with no scratch or native service. Indoor throughput stays near59.64.
+
+Use a verified private save at the target position when input timing drifts.
+HeartGold's identical timed walking scripts diverge spatially even without
+changed game code, so those output rates cannot establish an equal-work gain.
+Keep loading transformation effects, render publication rate, source frame IDs
+and actual animation/game-clock claims separate. Native cold reload of a
+candidate-written save in the original image is useful compatibility evidence.
+Timing/RAM/audio differences remain explicit under a functional budget; levels
+and checkpoint stills do not establish human audiovisual equivalence.

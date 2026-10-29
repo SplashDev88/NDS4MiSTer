@@ -44,38 +44,54 @@
           "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
         }
       ],
-      "notes": "Disabled candidate: call existing model visibility test, draw terrain on nonzero result, leave independent prop path intact. Reuse immutable rotation/scale constants, no new scratch. Requires loader, query effects, lifecycle and native speed qualification.",
+      "notes": "Call the existing model visibility test, draw terrain on nonzero, and preserve the independent prop path. Existing rotation/scale constants require no new scratch. Explicit private selection passes bounded native function and throughput checks; release defaults remain disabled while the cumulative private beta is prepared.",
       "validated": {
         "framebuffer": "4315 top /8 bottom frames differ over9600; eight checkpoint pairs reviewed",
         "ram": "main7606/DTCM8063/ARM7WRAM7636 frame hashes differ; ITCM/sharedWRAM match",
         "audio": "6053116/7702322 stereo samples differ; full listening pending",
-        "save": "exact final buffer; save-write/reset pending",
-        "native": false
+        "save": "Reference final buffer exact. A new private native Save was read back and cold-reloaded by original, delivery-control and candidate images; measured sessions preserve that seed.",
+        "native": "Two cold original/candidate scene pairs, plus two unchanged-code delivery controls. Soft reset, house entry/exit, Bag open/close and cold save compatibility pass bounded visual/input checks. Indoor throughput unchanged. Game audio is recorded; no full-motion human/listening approval or long-game/battle coverage is claimed.",
+        "unrelated_replay": "Separate3600-frame indoor-only cold replay completes with exact save; all three checkpoint pairs preserve room/player/menu.6 top/7 bottom frames differ, plus RAM/audio timing differences."
       },
       "gain": {
         "reference_arm9_instructions_percent": -4.3564178865018395,
         "candidate_terrain_draws_skipped": 728,
         "candidate_terrain_queries": 1158,
-        "native_speedup": null
+        "native_speedup": null,
+        "native_standing_publications_per_second_original": 18.683715193643774,
+        "native_standing_publications_per_second_delivery": 18.607099538172694,
+        "native_standing_publications_per_second_candidate": 19.25773817373352,
+        "native_standing_vs_original_percent": 3.0723171175560893,
+        "native_standing_vs_delivery_percent": 3.4967224968406985,
+        "native_indoor_publications_original": 59.641575012746806,
+        "native_indoor_publications_candidate": 59.630678317661086,
+        "native_scope": "Longer45-second standing intervals from the same private plaza save; stock1GHz and identical accepted host/renderer/rc12 FPGA. Publications are not unique animation FPS. Initial15-second pairs show5.15%/5.69%; walking trajectories diverge and are excluded from speed estimates."
       },
       "evidence": [
         "TERRAIN_REFERENCE_FINDINGS_V2.json",
         "TERRAIN_BEFORE_AFTER_V1.csv",
         "OVERLAY1_DELIVERY_QUALIFICATION_V1.json",
-        "OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json"
-      ]
+        "OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json",
+        "NATIVE_TERRAIN_SCREEN_FINDINGS_V1.json",
+        "NATIVE_TERRAIN_REPLICATION_FINDINGS_V1.json",
+        "NATIVE_TERRAIN_REPLICATION_BEFORE_AFTER_V1.csv",
+        "NATIVE_TERRAIN_LIFECYCLE_SCREEN_V1.json",
+        "NATIVE_PLAZA_RELOAD_QUALIFICATION_V1.json",
+        "TERRAIN_INDOOR_FINDINGS_V1.json"
+      ],
+      "status": "native_bounded_benefit_beta_preparation_pending"
     }
   ],
-  "status": "disabled_terrain_candidate_reference_screen_complete",
+  "status": "native_bounded_benefit_beta_preparation_pending",
   "budget": "Functional/perceptual; retain measured differences, reject broken progression/crashes/corrupt saves/perceptible defects; require useful native benefit.",
-  "delivery_note": "Explicit append-decoded-overlays-v1 preserves both stored CPU images, appends selected decoded overlay1 only in virtual stream and updates FAT/compression/header metadata. Qualified repeated unchanged-code control; native execution/lifecycle pending.",
+  "delivery_note": "Explicit append-decoded-overlays-v1 preserves both stored CPU images and modifies only the virtual stream. Original/unchanged-code delivery/candidate native cold loads, staged bytes, normal overlay loading and bounded soft-reset/save/reload checks pass. No direct native ARM9 cache/fetch tracing hook was added.",
   "reference_seed_sha256": "756f721263a071ea824d64e36d59d0569c1ed8f3d93d84a1f58e8024f0461a05",
   "reference_qualification": {
     "save_creation_frames": 18000,
     "save_repeat_files_exact": 193,
     "cold_load_frames": 3600,
     "cold_repeat_files_exact": 64,
-    "native": false
+    "native": true
   },
   "initial_profile": {
     "scene": "idle downstairs room",
@@ -88,7 +104,7 @@
     "native_speedup": null
   },
   "delivery": "append-decoded-overlays-v1",
-  "target": "Improve moving New Bark Town gameplay by avoiding out-of-view terrain geometry; native throughput and pacing remain unmeasured.",
+  "target": "Improve New Bark Town display throughput while retaining game function. Matched45-second native plaza screen shows3.07% more completed screen publications than the original image on the same rc12-derived runtime; not a whole-game FPS claim.",
   "outdoor_replay": {
     "frames": 9600,
     "profile_window": [
