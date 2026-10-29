@@ -713,3 +713,13 @@
   legal-input synthetic cases do not establish human inaudibility or full-game
   compatibility. The private Item1 save remains the prebattle393c6096 seed;
   the protected Battle1 save remains postwin50b168. No new beta is produced.
+
+- HeartGold overlay7 predecoded-delivery candidate (V13) is parked disabled:
+  a 50 ms shorter same-video loading pause does not establish end-to-end input
+  improvement or meaningful whole-turn gain (25 ms mean, within capture
+  uncertainty). Nominal input timings conflict; clock brackets do not calibrate
+  OBS/HDMI delay. Gender and 0/4/1 prior retreats also differ. Do not promote from
+  the favorable interval alone or rerun the same scene to rescue it. Candidate
+  new-save/reset/full-victory/off-target coverage remains incomplete. Overlay10
+  overlaps overlay7 RAM and must not be retained simultaneously without a
+  separately proven design. Beta2 and its accepted coverage remain unchanged.

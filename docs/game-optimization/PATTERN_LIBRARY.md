@@ -1566,3 +1566,28 @@ Keep CPU relief distinct from measured gameplay benefit. Record first glyph,
 message disappearance and transition boundaries; preserve capture quantization
 and exclude attack/critical-hit messages or different XP/level-up sequences.
 Do not impose a 30-second idle window on an automatically advancing screen.
+
+
+### Precomputed overlay decoding and early visual anchors (HeartGold V13)
+
+Detector: correlate repeated loader/switch entries with overlay IDs and table
+metadata, then authenticate both stored and decoded bodies using the existing
+`read_overlay` parser and full hashes. Group overlapping RAM ranges: alternating
+bodies cannot be kept resident by address alone. A hot decompressor signature
+or repeated footer pointer is attribution, not permission to skip loading.
+Use existing `append-decoded-overlays-v1` delivery with unchanged instruction
+bytes and original normal lifecycle; account for larger cartridge payloads.
+No new runtime service, guessed scratch or game-specific shared-tool branch.
+
+HeartGold overlay7 removes four observed backward decompressions while leaving
+three overlay10 calls. Native loading-pause samples improve 50 ms, but total-turn
+benefit remains unqualified and the candidate is parked. The same technique
+is useful only when measured load cost matters to progression.
+
+For short transitions, identify a visual cue before the optimized work and
+verify its ordering with reference watches. A menu may disappear after loading
+and hide the saving. Keep input emission, guest recognition, video origin and
+visible action separate. Clock synchronization alone does not calibrate the
+capture pipeline. Retain conflicting input/video timing results and quantify
+capture boundaries; do not retrospectively declare a different primary gate
+passed. Measure complete-action context alongside isolated pauses.

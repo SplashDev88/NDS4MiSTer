@@ -903,3 +903,78 @@ only for a newly measured workload where these reads actually delay progress.
 The next three leads are repeated archive/overlay transition work, font-table
 reuse with supported code delivery, and redundant field rendering with complete
 animation/camera/texture dependencies. HeartGold remains active.
+
+
+## Repeated battle-overlay decompression: bounded native screen (V13)
+
+Overlay7 precomputation is **parked disabled**. Its observed loading pause is
+shorter, but the complete turn has no qualified useful gain. Beta2 remains
+unchanged. This is not rejection for permitted framebuffer/RAM/audio drift.
+
+The existing `append-decoded-overlays-v1` loader supplies the unchanged,
+fully decoded original overlay7. The eight-byte Thumb identity guard at
+`0x0221be20` has identical expected/replacement bytes. Whole-ROM and both
+stored/decoded overlay hashes guard the full payload. The normal overlay
+load/unload, BSS initialization and constructors remain; there is no scratch,
+new HPS service, RTL change or original-ROM write. Overlay7 expands from
+78,568 to 113,312 bytes, adding 34,744 guest cartridge-read bytes per load.
+Overlay10 shares the same RAM base and remains compressed. The two cannot
+simply remain resident together.
+
+Owned switch `ov12_02237ED0` selects unload10/load7 for execution or unload7/load10
+for command selection. `HandleLoadOverlay` retains its asynchronous image load,
+wait, close and `FS_StartOverlay` path. Normal cache-maintenance behavior is
+retained; no direct native instruction-fetch trace is claimed. The final 12
+bytes of the owned disassembly are literal words, not Thumb instructions.
+
+The 7,200-frame reference executes the same four Tackles and reaches 15 XP at
+17/20 HP. Four overlay7 decompressions disappear; three overlay10 calls remain.
+ARM9 instructions fall 194,041,013→191,685,588 (1.2139%), not native cycles.
+Top/bottom hashes differ on 1,358/423 frames; 2,236,399 of 5,776,740 stereo
+samples differ. Raw RAM/timestamp differences remain, with the save exact.
+The control preserves all 173 prior non-diagnostic baseline outputs, and
+both video observer repeats preserve all 174 prior outputs. Full virtual
+streams pass the existing worker fixture. No bit-exact or listening verdict
+is inferred from these functional checks.
+
+Native A1/B1/A2 use stock 1 GHz, level 3 Pidgey, full-health level 5 Chikorita,
+one Tackle each side, and return to commands at 17/20 HP. Gender and preceding
+retreat counts differ (0/4/1); this is not identical RNG/cache history.
+
+| Native interval | Control A1 | Candidate B1 | Control A2 |
+| --- | ---: | ---: | ---: |
+| First Tackle flash → first action glyph (s) | 0.3500 | 0.3000 | 0.3500 |
+| Move menu gone → first action glyph (capture frames) | 12 | 12 | 12 |
+| First flash → next command menu (s) | 9.5500 | 9.5167 | 9.5333 |
+| Mixed-window publications/s | 59.6270 | 59.6349 | 59.6127 |
+
+The same-video pause is 50 ms shorter (21→18 captured frames, 14.29%). Reference
+watches show that its flash precedes overlay switching; menu disappearance
+occurs too late to measure the saving. The exploratory full-turn comparison
+is only 25 ms below the control mean 9.5417 s (0.262%), within 33.3 ms comparison
+quantization. It was added after the pilot for context, not as a passed
+prospective gate. Publication rate remains near 60/s and is not animation FPS.
+
+Generic tooling now retains the already emitted native input timestamps and
+brackets local/remote clocks outside recordings. A live capture validates the
+sequence and roughly9 ms clock brackets with zero OBS drops. These do not
+calibrate OBS first-frame phase, HDMI delay or guest input recognition.
+Nominal emitted-input→glyph ranges are 0.3995–0.4093 s,0.4375–0.4475 s and
+0.4930–0.5029 s, so the original emitted-input primary gate is **unqualified**.
+The favorable visual interval is not substituted silently for that gate.
+
+Candidate cold Continue, four retreats/reentries and the complete measured
+turn work; all disposable save hashes remain unchanged. Candidate new Save,
+soft reset, full victory/field return, off-target and broader progression
+qualification were not expanded after the benefit assessment. Persistent
+core save states remain unsupported. Encoded review video/audio-track 1 and
+timestamps are retained; no human audiovisual approval is claimed.
+
+Evidence: `BATTLE_PREDECODE_NATIVE_FINDINGS_V1.json`,
+`BATTLE_PREDECODE_BEFORE_AFTER_V1.csv`, `BATTLE_PREDECODE_REFERENCE_REVIEW_V1.json`,
+`BATTLE_PREDECODE_COVERAGE_V1.json` and `NATIVE_TIMING_TOOL_QUALIFICATION_V1.json`.
+Reopen only for a new workload where repeated decoding materially delays
+progress. Next prioritize the slower outdoor scene: attribute current Beta2
+geometry/display-list and transformed-bound cost before selecting another
+patch. Other deferred leads are font-table reuse through supported delivery
+and shared-overlay precomputation in a demonstrably load-bound scene.

@@ -273,6 +273,50 @@
         "ITEM_READER_NATIVE_FINDINGS_V1.json",
         "ITEM_READER_BEFORE_AFTER_V1.csv"
       ]
+    },
+    {
+      "id": "overlay7-predecoded-battle-execution",
+      "pattern": "precompute-overlay-decompression",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 7,
+      "overlay_ram": "0x221be20",
+      "overlay_file_id": 7,
+      "overlay_sha256": "3bece308154d730f230031747309703e5b8c142992c0408b842fca2f859f6c3b",
+      "overlay_stored_sha256": "161495555acb4a81f7aa92f48fe5eac51bbcc57705b261d6323affff25128b6f",
+      "addr": "0x221be20",
+      "mode": "thumb",
+      "expect": "011c8d3109780029",
+      "replace": "011c8d3109780029",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "status": "parked_bounded_pause_gain_without_qualified_end_to_end_benefit",
+      "notes": "Unchanged instruction bytes, predecoded original overlay7 through existing append-decoded-overlays-v1. Full ROM plus stored/decoded overlay hashes and 8-byte identity guard. Normal load/unload, BSS/constructors retained; no scratch/RTL/new HPS service/ROM-file writes. Four reference overlay7 decompressions removed; overlay10 still compressed. Native 50 ms shorter flash-to-text pause, but 25 ms mean whole-turn difference is within capture uncertainty and emitted-input gate unqualified. Park disabled; Beta2 unchanged.",
+      "validated": {
+        "reference": "bounded functional pass; raw framebuffer/RAM/audio timing differences retained; save exact",
+        "native": "cold saved-game boot, retreats/reentries and one full turn; no new save/reset/full-game qualification",
+        "bit_exact": false
+      },
+      "gain": {
+        "reference_arm9_instruction_reduction_percent": 1.2138799749514817,
+        "native_observed_visual_pause_seconds": [
+          0.35,
+          0.3,
+          0.35
+        ],
+        "native_observed_full_turn_seconds": [
+          9.55,
+          9.516666666666666,
+          9.533333333333335
+        ],
+        "native_full_turn_gain_qualified": false
+      },
+      "evidence": [
+        "BATTLE_PREDECODE_REFERENCE_REVIEW_V1.json",
+        "BATTLE_PREDECODE_NATIVE_FINDINGS_V1.json",
+        "BATTLE_PREDECODE_BEFORE_AFTER_V1.csv"
+      ]
     }
   ],
   "status": "private_beta1_enabled_by_explicit_catalog",
