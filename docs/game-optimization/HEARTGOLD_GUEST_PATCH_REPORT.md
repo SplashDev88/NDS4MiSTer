@@ -424,3 +424,53 @@ HeartGold Beta1 and all previously accepted archives remain unchanged.
 Next three leads: repeated OAM payloads with actual reader lifetimes;
 starter/battle profiling from an isolated save; transition/archive/decompression
 work in supported overlays. Do not repeat this queue screen unchanged.
+
+
+## OAM source recurrence and reset contract
+
+The terrain-only 9,600-frame route was repeated with the existing guarded
+memory observer, without adding emulator callbacks or changing the game.
+All 155 non-observer baseline files match exactly. The 600-frame observation
+window contains 300 upload/reset groups for each sprite manager. The actual
+outer call is overlay 1 at `021e590e`, returning to `021e5913`; its loaded
+bytes match the owned overlay. The copy loops themselves remain in compressed
+main code. The current loader does not yet support patching that code.
+
+`audit_staged_buffers.py` reuses the existing snapshot reader. Its fixture
+supplies all sites, code hashes, instance addresses, phases and strided fields;
+there are no HeartGold addresses or OAM layouts in the tool. Nine focused tests
+cover recurrence, reset differences and rejection of incomplete groups, wrong
+order/code/instances, unguarded sites and invalid field extents.
+
+| Observed source workload | Main engine | Sub engine |
+|---|---:|---:|
+| Sprite slots owned | 4–127 | 0–123 |
+| Affine matrices owned | 1–30 | 0–30 |
+| Used sprites / affine matrices | 0 / 0 | 19 / 4 |
+| Six-byte attribute uploads | 37,200 | 37,200 |
+| Two-byte affine uploads | 36,000 | 37,200 |
+| Compared fields matching previous upload | 100% | 100% |
+| Attribute records changed by reset | 0 | 5,700 |
+
+This accounts for the earlier 147,600 tiny copies and 592,800 payload bytes.
+All declared source fields remain unchanged during upload. Reset changes the
+first halfword of 19 sub-engine records each frame and resets allocation
+cursors; producers rebuild the same visible menu for the next upload. Repeated
+payloads alone do not prove that destination writes or buffer reset can be
+removed. No native gain is claimed from this census.
+
+The existing implementation at `020b7cb8` branches on instance offset `14`.
+Its bulk path flushes and uploads a contiguous range, and its reset routine
+uses a different fill path. Enabling this for both managers is unsafe as stated:
+the main sprite range also spans affine matrix 31, which this manager does not
+own. The sub range exactly covers its owned matrices and is a supported lead
+for a separate trial. Before patching, qualify reset/cursor/cache/DMA behavior
+and find a guarded in-place overlay replacement. The 36-byte initializer at
+`021e6178` and its call at `021e5a6e` are known code, not spare memory. Do not
+claim neighboring alignment, heap or BSS as free trampoline space.
+
+Evidence: `OAM_OBSERVER_QUALIFICATION_V1.json`,
+`OAM_STAGED_BUFFER_CENSUS_V1.json`, `OAM_SOURCE_LIFETIME_FINDINGS_V1.json`.
+No game patch or native session was added in this investigation. Keep Beta1
+unchanged. Next: qualify the sub-only bulk path; investigate an empty-main
+skip only with destination/transition proof; extend starter/battle coverage.

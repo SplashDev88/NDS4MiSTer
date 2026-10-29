@@ -628,3 +628,11 @@
   drift is retained, not used as a rejection gate. Keep disabled; broader
   lifecycle/listening is unqualified, and do not repeat the same screen without
   new workload evidence. Retained terrain-only Beta1 remains the testable build.
+
+- HeartGold OAM payloads repeat in the observed town route, but buffer reset is
+  active and destination persistence is not proved. Do not NOP the upload/reset
+  call on that evidence. Main sprite slots 4–127 also span affine matrix 31,
+  which the manager does not own; turning on its contiguous bulk mode would
+  cross an ownership boundary. Sub-only bulk upload remains a lead requiring
+  separate reset/cache/DMA qualification and safe code placement. No spare
+  memory or compressed-main patch support is inferred.

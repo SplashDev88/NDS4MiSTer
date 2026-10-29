@@ -572,3 +572,20 @@ between observed swap commands. It excludes partial leading/trailing intervals.
 Repeated assignment values and identical command streams are only leads:
 textures, palettes, external state, pipeline side effects and timing must also
 be proven. The report never authorizes skipping a draw or a geometry query.
+
+
+### Staged source-buffer census
+
+`audit_staged_buffers.py TRACE FIXTURE --neutrality RECEIPT --output REPORT`
+reuses `analyze_memory_recurrence.read_events` to join declared phases by
+instance and frame. The fixture supplies guarded PC/mode/opcode/code snapshots,
+header/payload spans, expected instances, and explicitly addressed strided
+fields. It reports per-field recurrence and changes between phases, retaining
+raw header distributions. Incomplete or reordered groups, altered code,
+unknown instances and out-of-bounds fields fail closed.
+
+The neutrality receipt must identify the trace SHA-256 and exact agreement of
+all declared raw baseline files from the same virtual image. This supports a
+retained-patch baseline without treating known differences against the original
+game as observer effects. This is a source-buffer census, not destination
+readback, cache invalidation, writer/reader lifetime or patch acceptance.

@@ -1397,3 +1397,24 @@ separate saves; verify staged bytes and functional scene entry. HeartGold Beta1
 retains exact HeartGold/Platinum/Portrait/Ni no Kuni/NSMB images this way. The
 catalog adds no gameplay service or per-call HPS work and is not itself a speed
 optimization. Keep gameplay performance attribution with the original patch.
+
+
+## Interleaved sprite attributes and affine uploads
+
+A sequence of six-byte copies at an eight-byte stride, plus two-byte copies
+into the gaps, can be a sprite-manager upload rather than inefficient ordinary
+memory copying. Authenticate the callers and destination region. Capture the
+complete source allocation before upload and around reset; compare fields by
+instance, address, width and stride, not by source pointer alone. The generic
+`audit_staged_buffers.py` reads existing guarded snapshots and reports both
+recurrence and phase changes from a fixture. Source equality does not establish
+hardware destination liveness, intervening writers or safe update suppression.
+
+HeartGold's field route supplies 300 groups per engine, with all observed owned
+payloads identical to their previous upload. Nevertheless, reset changes 19
+sub-engine records and allocation cursors each frame. The two managers have
+different ownership: main sprite slots 4–127 overlap affine matrix 31 outside
+its affine allocation 1–30. A bulk replacement must preserve interleaved fields
+owned by other users. The sub allocation 0–123 covers precisely affine 0–30,
+so its existing bulk path merits separate reset/cache/DMA and native checks.
+No optimization or native speed is established by this source-only census.
