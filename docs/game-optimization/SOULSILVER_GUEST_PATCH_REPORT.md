@@ -63,7 +63,8 @@ Save confirmation at frame 16080. The save remains stable for the final 2073
 frames. Two 3600-frame cold boots match all 64 files, preserve that save exactly
 and visibly return to the downstairs room with Save/Bag/Options available.
 Seed SHA-256: `8eaebf214d4314cd910b32f2b92399df97ccc6433f02521f8eeb80013529253f`.
-This is unpatched reference qualification; native/soft-reset/battle checks remain.
+This establishes the unpatched reference baseline. Subsequent bounded native and
+soft-reset checks are recorded below; battle coverage remains pending.
 
 Private disabled transfer and unchanged-code delivery manifests now use the
 SoulSilver identities. The existing loader admits the separately selected
@@ -88,7 +89,7 @@ profile; these are instruction samples, not native cycle shares.
 | Bottom-screen hashes differing from control | — | 1 / 9,600 |
 | Save bytes | Independent seed | Exact |
 | Indoor ARM9 instructions, recorded window | 270,532,896 | 271,110,642 (+0.2136%) |
-| Native throughput | Pending | Pending |
+| Native throughput | See matched native comparison below | See matched native comparison below |
 
 The real bounding-box query rejects 729 terrain draws. Its constants receive no
 nonmatching writes after complete overlay identity at frame 938 and no writes
