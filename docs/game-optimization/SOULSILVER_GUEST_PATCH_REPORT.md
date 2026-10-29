@@ -1,9 +1,9 @@
 # SoulSilver guest-code optimization — 29 October 2026
 
-Status: active by explicit user advance from HeartGold. HeartGold Beta2 remains
-the cumulative private baseline and rollback. The guarded SoulSilver terrain
-transfer is qualified in the bounded field/house tests below; cumulative private
-beta preparation is next. No SoulSilver beta exists yet. Use the existing
+Status: active by explicit user advance from HeartGold. Cumulative SoulSilver
+Beta1 is qualified and separately installed; HeartGold Beta2 remains available
+for rollback. The guarded terrain transfer has the bounded field/house evidence
+below. Starter transfer and broader coverage are next under the existing
 functional/perceptual budget.
 
 ## Existing workflow reused
@@ -110,7 +110,7 @@ that effect separate. Reference work reduction does not prove native speedup.
 The existing native worker passes all three stream identity cases: original,
 unchanged decoded delivery and terrain candidate. No ROM is rewritten. The
 candidate remains default-disabled. Native qualification is recorded below;
-private beta packaging and the starter transfer remain subsequent work.
+actual private beta qualification is recorded below; the starter transfer remains next.
 
 Evidence in `evidence/soulsilver-optimization-20261029`:
 `OUTDOOR_BASELINE_QUALIFICATION_V1.json`, `OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json`,
@@ -176,11 +176,49 @@ Review clips: `SoulSilver_Original_Clocked_V2.mp4`,
 `SoulSilver_Delivery_Control_Clocked_V2.mp4`, and
 `SoulSilver_Terrain_Candidate_Clocked_V2.mp4` in the private SoulSilver evidence folder.
 
+## Cumulative private Beta1
+
+`NDS4MiSTer_SoulSilver_Beta1_20261029.zip` is qualified at SHA-256
+`2b1bd9c0d76f6dc7e1d75d0cbde8738be4f2547b72ebb6ba419c3aa258d19967`
+(55,530,017 bytes). The packaged source is
+`9ba2e280cd38a0b0226a7fcceb7c4b17a18dd857`. This report's later packaging record
+does not change that immutable archive. Run `Scripts/NDS_SoulSilver_Beta1.sh`;
+the separate kit is `Scripts/.NDS_SoulSilver_Beta1_20261029`.
+
+The existing pinned catalog adds only SoulSilver's terrain selection. Host,
+renderer, FPGA and loader bytes remain identical to cumulative HeartGold Beta2;
+all earlier catalog entries are unchanged. Actual ZIP worker tests reproduce the
+measured SoulSilver virtual image and the eight retained HeartGold, Platinum,
+Portrait, Ni no Kuni, NSMB, Dawn, Mario Kart and FFT control images. These are
+packaged stream checks, not new native gameplay coverage for those other games.
+ROMs, saves, user settings, captures and the test RTC fixture are excluded.
+
+All 201 installed files including the launcher are verified. The actual launcher
+cold-loads the candidate-written house-entrance save and selects the expected
+48-byte patch. A short recorded plaza walk, house entry, Bag and house exit pass.
+Normal Save at a different plaza position, soft reset and Continue pass; after
+full process exit and save readback, a second actual-launcher cold boot restores
+that position. Its 512 KiB save remains
+`32f8ab642da1541467c10877875728d1f7f8ae414b1dfa385bf84cc286a43060`.
+Stock 1 GHz and ordinary guest clock seeding with zero offset are verified.
+Six sampled walk frames preserve the scene; source video/game-audio packets and
+timestamps are unchanged in the review copy, with zero added capture drops.
+No human full-motion/listening approval is inferred.
+
+The final audit verifies 4509 protected files, 85 runtime pins, all 200 kit files,
+the launcher and six immutable local archives. MiSTer returns to MENU, OBS stays
+idle with its original scene/video settings, and no test clock file remains.
+Qualification and coverage: `BETA1_INSTALLATION_QUALIFICATION_V1.json`,
+`BETA1_NATIVE_FUNCTIONAL_REVIEW_V1.json`, `BETA1_COVERAGE_V1.json`,
+`BETA1_STREAM_VALIDATION.json`, `BETA1_FINAL_PRESERVATION_V1.json`.
+The separate review clip is `SoulSilver_Beta1_Installed_Walk_V1.mp4`.
+
 ## Next work
 
-Prepare and qualify a cumulative private SoulSilver beta through the existing
-explicit per-game catalog, preserving accepted FFT, Platinum and HeartGold
-selections and exact runtime hashes. Do not package private ROM/save/clock files.
-The next three investigations are the identical starter overlay 61 on independent
-SoulSilver lab/picker seeds, broader field/camera and active battle coverage, and
-loading/repeated-resource work. HeartGold remains user-parked at Beta2.
+Admit an independent SoulSilver Elm-lab/starter-picker save through normal
+progression, then compare Beta1 terrain against terrain plus the identical
+starter overlay 61 transfer. Qualify active selection, light cycles, saves and
+native benefit before including it. The other two investigations are broader
+field/camera and active battle coverage, and loading/repeated-resource work.
+HeartGold remains user-parked at Beta2. The existing 08:00 Central handoff and
+autonomous continuation remain active; no playtest reply is required.
