@@ -7,10 +7,11 @@ Reuse `tools/standalone_host/fmv/hook_guard.py`, `prepare.VirtualRom`, the exist
 Decode the owned CPU images and overlay table before choosing a patch target.
 A structural match in decoded code does not make its stored bytes directly
 patchable. HeartGold IPKE r0 has compressed ARM9 code and 127 compressed
-overlays out of 129. The same-size guest adapter currently rejects that main
-image even for an ARM7 request. Reuse the existing NSMB/FMV virtual-image
-reconstruction if extending support; require exact stored/decoded identities,
-layout guards and unchanged-code delivery qualification first. Never transfer
+overlays out of 129. The default same-layout adapter rejects that main image.
+The explicit `append-decoded-overlays-v1` mode now reuses FMV relocation for
+overlay-only selections while preserving both stored CPU images. Require exact
+stored/decoded identities, layout guards and unchanged-code delivery qualification
+first. An identical-byte patch can still change compression/load timing. Never transfer
 Platinum offsets or assume its native gain from a matching instruction shape.
 
 HeartGold's unchanged main/autoload scanner finds ten static leads: three
@@ -32,6 +33,14 @@ destination is graphics FIFO. Capture arguments, lengths and content during
 movement before selecting an optimization. The initial IRQ-dispatch prefix
 reads and acknowledges real interrupt state; high sample weight does not make
 it dead work.
+
+The later moving HeartGold census authenticates 147,600 tiny OAM copies and
+120,380 fixed-destination stream calls, including 10,242 empty calls. Nonempty
+streams target geometry FIFO; DTCM sources are common. A code-context snapshot
+can authenticate leaf entries/returns without assuming every stack is in one
+RAM mapping. Keep register/counter/opcode/pairing guards and explicitly state
+that stack/payload bytes were not observed. The observer must preserve the
+unchanged replay. High transfer weight does not prove removable traffic.
 
 ## Exact correspondence between replay and native trials
 
@@ -1016,6 +1025,16 @@ queries. Instruction counts alone understate this observed rendering benefit.
 Keep the native counter definition and the remaining framebuffer/RAM/audio
 differences explicit; neither native throughput nor visual review proves full
 behavioral equivalence.
+
+HeartGold independently matches this terrain/prop split in compressed overlay1.
+The same structural method fits a guarded 48-byte Thumb replacement, reusing
+that game's existing visibility helper and immutable transforms. Its first
+reference trial skips 728 of 1,158 terrain draws, adds 1,158 queries, and reduces
+outdoor ARM9 instruction entries 4.356%; native benefit remains unmeasured.
+Keep the control on the same decoded-overlay delivery path: removing overlay
+decompression alone shifts frame/audio timing. A repeated identical-code control
+matches 154 files but is not bit-exact to the original compressed load path.
+Do not transfer Platinum's native gain or audiovisual approval to HeartGold.
 
 When fixed-frame RAM differs after reducing graphics work, first classify the
 writers and readers. Transfer source pointers, remaining lengths, completion

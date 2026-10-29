@@ -1,6 +1,7 @@
 # HeartGold guest-code optimization — 28 October 2026
 
-Status: USA IPKE revision 0 reference seed qualified; gameplay profiling next.
+Status: USA IPKE revision 0 moving outdoor control qualified; disabled terrain
+visibility candidate completed its first reference screen. Native A/B is next.
 No patch is enabled and no speedup is claimed.
 The current user budget permits timing/RNG/hash drift when the game remains
 functional and the result is perceptually acceptable. Keep raw comparisons;
@@ -49,12 +50,10 @@ transfer. No original ROM or save was modified.
 
 The stored ARM9 is compressed (762,644 bytes; initial decoded main section
 1,120,352 bytes). Of 129 ARM9 overlays, 127 are compressed; only tiny overlays
-35 and 124 are uncompressed. The current same-size byte-patch adapter rejects
-a compressed ARM9 before admitting any candidate, including an ARM7 target.
-This is a delivery limitation, not an exhausted-game conclusion. If a measured
-hotspot warrants it, extend the existing virtual-image reconstruction path used
-by NSMB/FMV, with explicit decoded-content and layout guards and no-op delivery
-qualification. Do not build a second patch service or bypass existing guards.
+35 and 124 are uncompressed. The default same-layout adapter still rejects
+compressed main code. The new explicit overlay-only delivery mode below reuses
+FMV relocation while preserving the stored ARM9; it does not enable main-code
+or ARM7 edits on this image. No parallel patch service is introduced.
 
 ## First reusable detector pass
 
@@ -136,3 +135,149 @@ Top three investigations not completed in this intake:
    if a measured candidate justifies extending support.
 3. Content-complete graphics-work recurrence and overlay hotspot identity,
    preserving matrix/visibility results, IRQ behavior and moving-scene effects.
+
+
+## Moving outdoor profile and transfer census
+
+The 9,600-frame route cold-loads the qualified private seed, exits the house,
+completes the first town dialogue, then walks south and alternates west/east
+from frame6,000. Reviewed screenshots show real camera/player movement.
+The earlier short doorway route is excluded. Profile frames 6,000–9,599 contain
+702,392,065 ARM9 and 112,451,250 ARM7 instruction entries on the original image.
+These are reference counts, not native cycles. All 154 baseline files match the
+unchanged transfer/geometry observer replay.
+
+A600-frame guarded census pairs267,980 calls across535,960 events. The halfword
+copy makes147,600 main-RAM-to-OAM calls totaling592,800 bytes, only lengths2/6.
+The word stream makes120,380 calls, including10,242 zero-length calls; all 110,138
+nonempty calls send6,097,932 bytes to geometry FIFO04000400. Its sources are
+main RAM or DTCM. These are real sprite/geometry submissions, not ordinary
+memcpy or proven redundant payloads. The generic auditor now permits complete
+loaded-code snapshots when the stack mapping varies, retaining opcode, mode,
+register, pairing and exact observer qualification. Twelve tests pass; the old
+1,206,700-event Platinum census retains identical function results.
+
+The geometry observer records6,554,000 normalized command-parameter packets;
+5,131,175 occur during DMA. All 298 complete swap intervals have distinct payload
+hashes. Whole-frame reuse is unsupported by this trace. Repeated viewport and
+material assignments remain leads only. Renderer counters span1,254–1,490
+vertices and 356–416 polygons; these are bookkeeping counts, not native FPS.
+
+All 28 profile bins above2% are classified in
+`OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json`. Each bin is256 bytes, not a function:
+
+| ARM9 bin | Samples | Classification |
+|---|---:|---|
+|020d4800|9.306%|Geometry FIFO stream|
+|01ff8000|8.628%|IRQ selection/acknowledgement and scheduling|
+|020d1000|5.647%|Interrupt-handler mask traversal|
+|020d9c00|4.657%|DIV/SQRT context save/restore|
+|020d4700|3.570%|Tiny OAM field copies|
+|021fb500|3.384%|Overlay1 two-callback field task dispatcher|
+|01ff8100|3.379%|IRQ thread context switching|
+|020d3a00|2.538%|CPSR interrupt-mask primitives|
+|021fa500|2.444%|Overlay1 model-load queue/compaction|
+|020d2300|2.252%|CPU context and message-queue routines|
+|020d1f00|2.163%|Runnable-thread selection/wakeup|
+|020d1900|2.053%|Scheduler/context-switch decisions|
+
+ARM7 bins are sound-track updates037fdb00(7.544%)/037fdc00(5.213%), word
+copy037faf00(7.165%), timer/volume037fbd00(4.607%)/037fbc00(3.739%),
+channel processing037fc600(3.746%)/037fc400(3.575%)/037fc300(3.563%)/
+037fc500(2.774%)/037fc200(2.256%), LFO037fcd00(3.599%), track lookup
+037fda00(3.204%), sequence037fcf00(3.043%), interrupt-mask037fad00(2.772%),
+channel status037fba00(2.377%), and BIOS service dispatch00001000(2.790%).
+The BIOS bin uses observed opcodes; it is outside the owned ROM sections.
+The WRAM code bins match the actual shared-WRAM backing at checkpoint6,000.
+A prior diagnostic compared the wrong backing array; that result is excluded.
+
+Owned code shows the DIV/SQRT context routines accessing04000280–040002bc,
+matching pinned NitroSDK context code and the ITCM callers. They are not cache
+maintenance or dead arithmetic. The two overlay hotspots match overlay1's full
+decoded identity and loaded code. Remaining decompression, FS, debug-work and
+battle coverage is not declared exhausted by this outdoor profile.
+
+## Compressed overlay delivery control
+
+`append-decoded-overlays-v1` extends the existing guarded virtual loader and
+FMV FAT/overlay relocation. It pins both stored and decoded hashes, ID, file ID,
+mode, exact bytes and protected constants. It rejects unsupported flags, shared
+file IDs, overlapping/protected edits and mixed CPU/main-code requests.
+Fifty admission/worker tests pass. Both stored CPU images remain unchanged;
+the original ROM/save files are untouched and no HPS service or RTL is added.
+
+For owned overlay1, the virtual image grows from 134,217,728 to 134,366,208 bytes,
+appending 148,064 decoded bytes plus alignment. Only18 original metadata bytes
+change. The actual disposable worker reproduces the complete pinned image.
+Normal overlay-file loading carries the code; it is never keyed by address
+alone. SDK overlay loading invalidates instruction/data ranges, conditionally
+decompresses and flushes the image; native fetch/reset behavior remains to test.
+
+The identical-code control has timing differences versus original compression:
+4,550 top and 22 bottom frame hashes differ, and 6,911,734 of 7,702,322 stereo
+samples differ. Save data matches; all eight loaded-overlay checkpoints match
+the original decoded body. Eight reviewed scene pairs preserve navigation and
+movement. Its repeat matches all 154 files. This is a bounded functional research
+control, not bit-exactness, inaudibility or full-game/lifecycle acceptance.
+
+## overlay1-terrain-visibility — disabled reference candidate
+
+Owned `MapLoadManager_RenderLoadedMap` at 021f595c checks the loaded-valid flag,
+then draws terrain. Props independently use the existing model visibility helper
+at 0201f990. The guarded outdoor contract captures1,158 terrain calls across four
+objects with exact unit scale/identity rotation; positions vary as chunks move.
+Existing prop results are raw0 or2. No visibility result is fabricated or cached.
+
+Replace48 Thumb bytes at 021f5996 inside overlay1 with a call to that same helper,
+then call the original draw helper0201f554 only on nonzero. Reuse existing
+immutable constants instead of stack copies to fit the original extent. Props
+retain their independent code path. No trampoline, spare-memory allocation or
+new scratch is used. The manifest guards the exact original bytes, literal
+pointers, scale/rotation contents and complete overlay identities.
+
+| Measurement | Decoded-delivery control | Terrain candidate |
+|---|---:|---:|
+|ARM9 instruction entries,frames 6000–9599|702,428,642|671,827,915(−4.356%)|
+|ARM7 instruction entries,same window|112,449,590|112,445,779|
+|Terrain draws,frames 6000–6599|1,158|430|
+|Added terrain box tests|0|1,158|
+|Complete prop box tests|5,124|5,121|
+|Final save buffer|Reference|Exact|
+|Native pacing/throughput/HPS load|Unmeasured|Unmeasured|
+
+The candidate's own terrain queries reject728 draws (62.867%) and accept430.
+The control has one leading partial prop return excluded from pairing; timing
+shifts the fixed-window workload. Do not claim identical prop call counts.
+Its observer control preserves all 154 earlier control files. The candidate
+executes the full patched overlay identity on 8,663 frames; the remaining937
+precede its recognition. The constant write trace has52 nonmatching writes
+before the first complete overlay identity, caused by earlier address use;
+none occur afterward, and no watched writes occur in the target window.
+These addresses are existing constants, not unused storage.
+
+All 9,600 candidate frames complete and the save matches. There are4,315 top/
+8 bottom frame differences,6,053,116 differing stereo samples, and main-RAM,
+DTCM and ARM7-WRAM differences. ITCM/shared-WRAM hashes match. Eight reviewed
+full-resolution scene pairs retain the player, terrain, house, dialogue and
+movement; small animation/NPC phase differences remain. Audio maximum delta
+40,337 and RMS3,324.343 are same-index comparisons, not an audibility verdict.
+The legacy runner label `rejected_replay_mismatch` reports strict exactness;
+the user's functional budget permits continued investigation with raw evidence.
+
+This result justifies a native screen, not promotion. Keep the patch disabled
+until useful native improvement, full-motion audiovisual review, save-write/
+reload/reset, additional transitions and unrelated-scene checks are complete.
+The core still lacks persistent save states; no save-state format changed.
+
+Evidence: `OUTDOOR_OBSERVER_QUALIFICATION_V1.json`,
+`OUTDOOR_TRANSFER_AUDIT_V1.json`, `OUTDOOR_GEOMETRY_CENSUS_V1.json`,
+`OUTDOOR_SOURCE_REFERENCE_PINS_V2.json`, `TERRAIN_CONTRACT_FINDINGS_V1.json`,
+`TERRAIN_CULL_BUILD_V1.json`, `OVERLAY1_WORKER_QUALIFICATION_V1.json`,
+`OVERLAY1_DELIVERY_QUALIFICATION_V1.json`, `TERRAIN_REFERENCE_FINDINGS_V2.json`
+and `TERRAIN_BEFORE_AFTER_V1.csv`.
+
+Next three investigations after the native terrain screen: model-load queue
+empty-tail work with live callback/record contracts; repeated OAM payload and
+reader lifetimes; representative starter/battle and transition profiles for
+remaining decompression, archive and ARM7 sound work. The existing08:00 Central
+handoff keeps the last qualified cumulative beta until a useful new one passes.

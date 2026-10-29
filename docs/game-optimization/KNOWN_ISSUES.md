@@ -1,11 +1,28 @@
 # Optimization investigation limits
 
 - HeartGold IPKE r0 uses compressed ARM9 code and 127 compressed overlays.
-  The current same-size guest adapter rejects that main image before all
-  patch selection, including ARM7 candidates. Do not bypass admission or
-  infer patchability from decoded scanner matches. Extend the existing
-  virtual-image reconstruction only with content/layout guards and no-op
-  qualification if a useful hotspot warrants it.
+  Explicit overlay-only append delivery now reuses FMV relocation and leaves
+  both stored CPU images untouched. It does not enable compressed main-code or
+  ARM7 patching. The unchanged-code control shifts compression/load timing:
+  its repeat matches 154 files, but it differs from the original in 4,550 top/
+  22 bottom frames and 6,911,734 stereo samples. Keep raw evidence; do not call
+  this control bit-exact or assume its audio is imperceptibly different.
+- HeartGold's disabled terrain candidate skips 728 of 1,158 eligible draws and
+  uses 4.356% fewer reference ARM9 instruction entries. It completes the bounded
+  route with an exact save buffer, but 4,315 top/8 bottom frames and 6,053,116
+  stereo samples differ. Still pairs retain expected scenes and movement;
+  full-motion/listening, native gain and lifecycle remain pending. The user's
+  functional budget permits continued investigation, not an invented native
+  speed result or automatic promotion.
+- A fixed trace window can begin halfway through a function. The decoded
+  HeartGold control has one leading prop-test return without a captured entry;
+  retain and exclude that partial call from paired counts. Do not force counts
+  to match a timing-shifted candidate. Earlier writes to an overlay's future
+  addresses also do not establish mutation of that overlay's live constants.
+- The hot HeartGold DIV/SQRT routines preserve arithmetic hardware context
+  across scheduling; they are not cache maintenance or dead work. ARM7 code
+  below 03800000 in this replay is backed by shared WRAM, not ARM7 private WRAM.
+  A diagnostic using the wrong backing array is excluded and corrected.
 - HeartGold's owned save was entirely `ff`; early button-only input routes
   stayed in introductory help screens. Neither the save filename nor valid
   input syntax establishes gameplay coverage. Optional touch replay reuses
