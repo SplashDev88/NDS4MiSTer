@@ -827,3 +827,79 @@ by this unit. Keep Beta2 unchanged while testing the call-site candidate with
 a decoded-overlay delivery control and native action/award latency. The next
 three ideas are resident item-reader reuse, font-table reuse through supported
 delivery, and repeated overlay/archive work. HeartGold remains active.
+
+
+## Experience-task resident item reader: native screen (V12)
+
+The two experience-task rewrites are implemented and **parked disabled**. They
+remove redundant item-file allocation/read/free work but do not accelerate the
+measured native award. Beta2, its archive and installed runtime are unchanged.
+
+At Thumb addresses `0x022458e6` and `0x022459b6`, two 12-byte replacements
+retain the original unsigned16-bit item conversion, load `data->ctx` from R4+4,
+and call existing `GetItemVar` at `0x02257e74`. A single 220-byte guarded extent
+preserves all intervening code. Whole-ROM, stored/decoded overlay12 hashes and
+original bytes are required; normal virtual-overlay loading supplies the bytes.
+No scratch, new HPS service, RTL, CPU-clock or original-ROM write is involved.
+The two effort-value callers are excluded because their context differs.
+
+The existing generic CPU harness passes 2,148 cases across both sites, items 0–535,
+the 65535 sentinel and upper-halfword normalization variants. All 147 distinct
+held-effect values, return R0, R4–R11, SP and returnPC agree. The cached array
+is unchanged; only 24 bytes of ordinary nested stack scratch are written.
+Allocation/read/free external contracts are modeled, not native allocator
+side effects. Full-route bus writes and owned source establish context/array
+construction before the task and destruction after it. The existing array
+uses 36-byte stride and 513 records. Item 536 Enigma Stone is outside it, but
+normal Bag/party Give paths reject its prevent-toss flag. Illegal held-key-item
+states are not supported by this candidate.
+
+Against a matching decoded-overlay control, all 7,200 reference screen pairs
+and the save are exact. ARM9 executed instructions fall 194,041,817→188,556,418
+(2.8269%) over frames 3000–7199; the award window 6906–7199 falls 36.1434%.
+The candidate performs 146 redirected task reads and leaves the two unrelated
+slow effort-value calls. Raw RAM/timing differences and 7,934 different stereo
+samples out of 5,776,740 remain recorded. These are instruction counts, not
+native emulated cycles or a speedup claim. The strict comparator result is
+retained; the user functional budget admits those raw differences.
+
+The stock 1 GHz A/B/A hardware screen uses a fresh disposable prebattle save and
+same 23 XP award from level 3 Pidgey. Every trial returns to Route29 without level-up;
+B1 also covers a normal retreat and a second battle entry. A2/B1 finish with
+Chikorita 11/20 HP; A3 finishes 7/20 HP and its fourth Tackle is critical. That extra
+pre-award message, differing encounters and field positions are excluded from
+the matched award comparison. No further input follows the lethal move.
+
+| Recorded interval | Control A2 | Candidate B1 | Control A3 |
+| --- | ---: | ---: | ---: |
+| First XP glyph → fade starts (s) | 6.2333 | 6.2333 | 6.2167 |
+| First XP glyph → message fully dark (s) | 6.7000 | 6.7000 | 6.7000 |
+| First XP glyph → field appears (s) | 8.2833 | 8.2667 | 8.2500 |
+| Mixed final-attack/award/field publications/s | 51.1784 | 51.3689 | 54.1261 |
+
+The primary award duration is 402 captured frames in every run: **0% reduction**,
+below the predeclared 5% useful-latency gate. Adjacent-frame boundaries were
+inspected; endpoint quantization is at most one 60 Hz capture frame each
+(33.3ms per duration), with display/capture phase also limiting precision.
+Field return differs by just one or two frames and has different scenery.
+Mixed-window throughput includes attacks and field rendering; it cannot
+qualify award speed or unique-animation FPS. OBS recorded zero output/render
+drops. Encoded video, game-audio track1 and timestamps are preserved in the
+three review MP4s; no human listening or full-game verdict is claimed.
+
+The initial 30-second XP-idle plan was invalid: the award advances automatically.
+V2 switched to recorded event latency before the candidate measurement. A1 is
+untimed functional coverage; each FINISH1 recording is a nonlethal third Tackle,
+not an award measurement. Native normal Save/new-save reload, candidate reset,
+off-target, actual Exp Share/Lucky Egg/multiple-party/level-up/move-learning
+coverage were not expanded after the failed benefit gate. Persistent core save
+states remain unsupported. No benefit should be inferred from unmeasured
+geometry/DMA/cycle counters or missing whole-game frame-time distributions.
+
+Evidence: `ITEM_READER_NATIVE_FINDINGS_V1.json`, `ITEM_READER_BEFORE_AFTER_V1.csv`,
+`ITEM_READER_REFERENCE_REVIEW_V1.json`, `ITEM_READER_SYNTHETIC_CONTRACT_V1.json`
+and `ITEM_READER_LIFETIME_V1.json`. Keep this candidate out of the beta; reopen
+only for a newly measured workload where these reads actually delay progress.
+The next three leads are repeated archive/overlay transition work, font-table
+reuse with supported code delivery, and redundant field rendering with complete
+animation/camera/texture dependencies. HeartGold remains active.

@@ -227,6 +227,52 @@
         "STARTER_DRAW_NATIVE_BLINK_SCREEN_V1.json",
         "STARTER_DRAW_SAVE_RELOAD_REVIEW_V1.json"
       ]
+    },
+    {
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 12,
+      "overlay_ram": "0x22378c0",
+      "overlay_file_id": 12,
+      "overlay_sha256": "bec67b3e240e94530eb9a21164aab0a5bfe3a39a91366b9d9c07bf63eb669695",
+      "overlay_stored_sha256": "39fa428e676124ce648e3fa69b39849b117f94b15bb18ea9bfd2fcd1b8e2e88b",
+      "mode": "thumb",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "id": "overlay12-exp-resident-item-reader",
+      "pattern": "reuse-owned-resident-data-reader",
+      "addr": "0x22458e6",
+      "expect": "0004000c0121052232f64bfa332811d0281c2cf6e2fe021c61680a984018a4300068104206d1206800216d1cf4f78fff8542dbdb20680021f4f789ff854202d12620a0620de00f980222104209d00f984021084205d16168bc48085ca84200d1171ca06a262801d900f032fd00187844c0880004001487444c001e023602480274028802c002c803e4030204aa04ea056805ea050c066e0622078207540782079a07ba0702082608120982073a098207760982079e095e0882078808aa08fa08040a1a0a400a301c0621002228f6c5fd0004000c0121052232f6e3f9",
+      "replace": "0104090c6068012212f0c1fa332811d0281c2cf6e2fe021c61680a984018a4300068104206d1206800216d1cf4f78fff8542dbdb20680021f4f789ff854202d12620a0620de00f980222104209d00f984021084205d16168bc48085ca84200d1171ca06a262801d900f032fd00187844c0880004001487444c001e023602480274028802c002c803e4030204aa04ea056805ea050c066e0622078207540782079a07ba0702082608120982073a098207760982079e095e0882078808aa08fa08040a1a0a400a301c0621002228f6c5fd0104090c6068012212f059fa",
+      "status": "parked_no_useful_native_experience_latency_gain",
+      "notes": "Two 12-byte Task_GetExp call-site rewrites in one 220-byte guarded extent, reusing the context-owned GetItemVar. Preserve 16-bit item normalization; no scratch/allocation/new service. Native A/B/A 23 XP award is 6.70 seconds in all three runs: 0% gain. Disabled and excluded from Beta2. Normal item domain only; illegal Enigma Stone item 536/member 513 held state is not qualified.",
+      "validated": {
+        "synthetic": "2148 owned-code cases, 147 held-effect values: R0 effect, R4-R11, SP and returnPC agree. Only 24 bytes normal nested stack writes; load/free are modeled external contracts.",
+        "framebuffer": "All 7,200 top/bottom frame hashes exact versus decoded-overlay control.",
+        "ram": "Raw main/TCM/ARM7 and 19 frame timestamps differ; retained under functional budget. No strict bit-exact claim.",
+        "audio": "7934 of 5,776,740 stereo samples differ; equal length. Native game-audio packets and timestamps preserved, no human listening verdict.",
+        "save": "Reference exact; all native trials preserve the same disposable prebattle save. No candidate-written Save/cold-reload qualification.",
+        "native": "At 1 GHz A2/B1/A3 each defeat level 3 Pidgey, gain 23 XP without level-up and return to field. Candidate cold boot, retreat and second battle entry pass bounded visual/input checks. Zero OBS drops.",
+        "lifetime": "Full 7,200-frame original CPU/DMA bus-store watch plus owned construction/task/destruction source establish bounded context/array lifetime.",
+        "save_states": "Persistent core save states unsupported; no format change."
+      },
+      "gain": {
+        "reference_arm9_instruction_reduction_percent": 2.8269159116356857,
+        "reference_award_window_arm9_instruction_reduction_percent": 36.1434,
+        "native_control_award_seconds": 6.7,
+        "native_candidate_award_seconds": 6.7,
+        "native_award_latency_reduction_percent": 0.0,
+        "native_scope": "First XP-message glyph to fully dark message ROI; 402 capture frames at 60 Hz in each trial. Field return 8.283/8.267/8.250 seconds; capture-duration uncertainty<=33.3 ms and differing field positions. Mixed publication counters are not XP or whole-game FPS."
+      },
+      "evidence": [
+        "ITEM_READER_SYNTHETIC_CONTRACT_V1.json",
+        "ITEM_READER_LIFETIME_V1.json",
+        "ITEM_READER_REFERENCE_REVIEW_V1.json",
+        "ITEM_READER_WORKER_QUALIFICATION_V1.json",
+        "ITEM_READER_NATIVE_FINDINGS_V1.json",
+        "ITEM_READER_BEFORE_AFTER_V1.csv"
+      ]
     }
   ],
   "status": "private_beta1_enabled_by_explicit_catalog",

@@ -1548,3 +1548,21 @@ For archive/caching candidates, measure matched action/load completion as well
 as publications and CPU use. Keep input mistakes classified by observed game
 behavior: a capture called "attack" that opens the Bag is menu coverage, not
 an attack timing result.
+
+
+The HeartGold resident-reader candidate now supplies a bounded example, not a
+cross-title byte signature. Two same-size Thumb call-site rewrites reuse the
+owned reader without extra resident storage. The 2,148-case contract covers
+mapping, 16-bit normalization, 147 effect values, preserved registers and the
+normal nested stack. Constructor/task/destructor code plus a full-route store
+watch establish lifetime; special final archive members still need a legal-input
+check. Do not generalize the patch to callers lacking the same context.
+
+Measure event latency when a task performs work every update. HeartGold removes
+36.14% of reference ARM9 instructions in its award window, but native A/B/A
+message duration stays 6.70 seconds in all three recordings. Text printing and
+gauge/wait progression can consume the saved budget without becoming faster.
+Keep CPU relief distinct from measured gameplay benefit. Record first glyph,
+message disappearance and transition boundaries; preserve capture quantization
+and exclude attack/critical-hit messages or different XP/level-up sequences.
+Do not impose a 30-second idle window on an automatically advancing screen.

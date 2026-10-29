@@ -690,7 +690,10 @@
   Do not redirect every slow accessor blindly, multiply by34, or assume a
   few item-zero observations cover Exp Share/Lucky Egg, party slots and XP
   progression. Two experience-task call sites have a reusable context; two
-  effort-value calls do not. The candidate is not yet implemented or measured.
+  effort-value calls do not. V12 implements two guarded call-site rewrites, but parks them: native23XP
+  A/B/A message duration is6.70seconds in all three runs despite reference
+  instruction relief. Broader held-item/level-up/save/reset qualification was
+  not expanded after the failed useful-benefit gate.
 - Font-table and cart-block recurrence are promising leads, not promoted
   caches. Current delivery cannot modify compressed ARM9 main code. Repeated
   overlay7/10 footer/end-pointer matches are metadata attribution, not runtime
@@ -701,3 +704,12 @@
   are separate routes. Preserve the original pre-battle local seed for a new
   A/B alias; the remote Battle1 save is now post-victory and requires the
   NATIVE_BATTLE_POST_WIN_V1 config. A stale seed guard should fail, not be waived.
+
+- HeartGold item-reader captures with suffix FINISH1 are nonlethal third moves.
+  Use FINISH2 and verified first-XP-glyph/message-disappearance boundaries for
+  A2/B1/A3. A3 has an extra critical-hit message before XP; mixed final-attack
+  counters cannot be compared as award speed. First XP glyph to disappearance
+  is402 capture frames in each run. Preserve native audio; frame equality and
+  legal-input synthetic cases do not establish human inaudibility or full-game
+  compatibility. The private Item1 save remains the prebattle393c6096 seed;
+  the protected Battle1 save remains postwin50b168. No new beta is produced.
