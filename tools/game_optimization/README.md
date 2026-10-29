@@ -50,6 +50,17 @@ intervals and zero masks retain their existing semantics. Passing syntax checks
 does not prove movement: review actual screenshots and checkpoint state before
 labeling a measurement window as active gameplay.
 
+Optional `NDS_REPLAY_TOUCH_INPUTS=/path/to/touch.tsv` adds touch windows to the
+same replay. Each row has four decimal fields: `first last_exclusive x y`, with
+coordinates in `0..255` and `0..191`. Windows must be ordered, nonoverlapping
+and within the run. Blank lines are allowed; comments, extra fields, malformed
+numbers and out-of-range coordinates fail before any frame executes. Touch is
+released in gaps, and adjacent windows may move the stylus without releasing.
+The button format is unchanged. With no touch file or an empty file, no touch
+API is called. `touch_inputs.csv` records applied press/movement/release edges.
+Pin the touch file alongside the button file and visually verify the result;
+coordinate validity does not establish that the intended control was activated.
+
 When creating a new seed through the game's Save command, the oracle's final
 `save.bin` is only the buffer at the last requested frame. A successful exit
 does not mean the game finished writing it. Require the visible completion

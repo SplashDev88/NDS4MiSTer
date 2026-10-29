@@ -6,6 +6,7 @@
 #include "replay_video_capture.h"
 #include "replay_code_comparison.h"
 #include "replay_geometry_trace.h"
+#include "replay_touch_input.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -259,6 +260,14 @@ int main(int argc,char**argv) {
   videoCapture.Header(videoIndex);
  }
  struct Input{unsigned first,last,mask;};std::vector<Input> inputs;std::ifstream replay(argv[5]);Input v;while(replay>>v.first>>v.last>>std::hex>>v.mask>>std::dec)inputs.push_back(v);
+ ReplayTouchInput touchInputs;bool touchDown=false;unsigned touchX=0,touchY=0;
+ std::ofstream touchLog;
+ if(const char* path=std::getenv("NDS_REPLAY_TOUCH_INPUTS")){
+  std::ifstream touchFile(path);if(!touchFile)return 8;
+  touchInputs.Load(touchFile,frameCount);
+  touchLog.open(out+"/touch_inputs.csv");if(!touchLog)return 8;
+  touchLog<<"frame,pressed,x,y\n";
+ }
  std::ifstream watches(argv[6]);u32 watch;while(watches>>std::hex>>watch)replay_watches.push_back(watch);replay_watch.open(out+"/watches.csv");
  std::ofstream state(out+"/state.csv");state<<"frame,arm9_insn,arm7_insn,mainram,itcm,dtcm,arm7wram,sharedwram,save\n";
  ReplayCodeComparison codeComparisons;
@@ -312,6 +321,14 @@ int main(int argc,char**argv) {
   if(replay_geometry&&frame==replay_geometry_last)NDS4MiSTer::SetTrace2DSink(nullptr,nullptr);
   replay_instructions[0]=replay_instructions[1]=0;
   u32 keys=0xfff;for(auto i:inputs)if(frame>=i.first&&frame<i.last)keys&=~i.mask;nds->SetKeyMask(keys);
+  if(const auto* touch=touchInputs.At(frame)){
+   nds->TouchScreen(touch->x,touch->y);
+   if(!touchDown||touchX!=touch->x||touchY!=touch->y)
+    touchLog<<frame<<",1,"<<touch->x<<','<<touch->y<<'\n';
+   touchDown=true;touchX=touch->x;touchY=touch->y;
+  }else if(touchDown){
+   nds->ReleaseScreen();touchDown=false;touchLog<<frame<<",0,0,0\n";
+  }
   nds->RunFrame();
   if(checkpoints.count(frame)){
    const auto prefix=out+"/checkpoint_"+std::to_string(frame)+"_";
