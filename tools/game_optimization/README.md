@@ -484,6 +484,12 @@ individual guest selections. Launch requires MENU, no existing host/helper,
 the admitted seed and ROM identity. Every live action checks the owned lease,
 PID epochs, exact executables, sole save descriptor and selection environment.
 Staged-byte checks prove loader delivery, not direct ARM RAM/cache visibility.
+When virtual delivery changes the header, pin `source_cartridge_identity`
+separately from `loaded_cartridge_identity`; omission keeps the legacy shared
+identity check. `staged_cartridge_bytes` may explicitly extend the old128 MiB
+inspection bound up to the supported252 MiB contiguous cartridge window.
+Every inspected byte must remain within that pinned extent; this does not
+authorize an arbitrary physical-memory read or a larger banking layout.
 Keep the owned disposable save out of the protected *other files* collection.
 Preserve full hashes at experiment entry and final audit; inode-only changes
 must be hash-verified before using their receipts to refresh a future config.

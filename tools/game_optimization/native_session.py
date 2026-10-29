@@ -75,7 +75,7 @@ with rom.open('rb') as stream:
  for block in iter(lambda:stream.read(262144),b''):h.update(block)
 assert h.hexdigest()==C['rom_sha256']
 identity={'code':header[12:16].decode('ascii'),'revision':header[30],'header_crc32':format(zlib.crc32(header),'08x')}
-assert identity==C['loaded_cartridge_identity']
+assert identity==C.get('source_cartridge_identity',C['loaded_cartridge_identity'])
 save=Path(C['save']).read_bytes();assert len(save)==C['save_bytes']
 assert hashlib.sha256(save).hexdigest()==C['seed_sha256'], 'Reset only the disposable save from its admitted seed before launching'
 print(json.dumps({'rom_sha256':h.hexdigest(),'identity':identity,'save_sha256':hashlib.sha256(save).hexdigest(),'save_bytes':len(save),'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()}))

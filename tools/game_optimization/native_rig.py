@@ -278,7 +278,10 @@ elif C['action']=='status':
    r['loaded_cartridge_identity']={'code':first[12:16].decode('ascii'),'revision':first[30],'header_crc32':format(zlib.crc32(first),'08x'),'stable_two_reads':True}
   staged=[]
   for guard in C['setup'].get('staged_patch_guards',[]):
-   offset=guard['cartridge_offset'];expected=bytes.fromhex(guard['expect']);assert 0<=offset<128*1024*1024 and 0<len(expected)<=4096
+   offset=guard['cartridge_offset'];expected=bytes.fromhex(guard['expect'])
+   extent=C['setup'].get('staged_cartridge_bytes',128*1024*1024)
+   assert type(extent) is int and 512<=extent<=252*1024*1024
+   assert 0<=offset and 0<len(expected)<=4096 and offset+len(expected)<=extent
    address=0x30000000+offset;page=address&~4095;lo=address-page
    with mmap.mmap(fd,(lo+len(expected)+4095)&~4095,flags=mmap.MAP_SHARED,prot=mmap.PROT_READ,offset=page) as cart:
     value=bytes(cart[lo:lo+len(expected)])
