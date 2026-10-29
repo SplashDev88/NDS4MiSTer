@@ -621,3 +621,10 @@
   cold-load on the actual installed launcher. Keep these cumulative regression
   checks when adding future games. Starter/battle and long-game HeartGold
   coverage remain open; no new human audiovisual approval is inferred.
+
+- HeartGold empty-tail compaction is parked after the native A/B/A plaza screen
+  failed to show useful benefit, despite 3.41% fewer reference ARM9 instruction
+  entries and passing synthetic/checkpoint/save checks. Raw bottom-frame/audio
+  drift is retained, not used as a rejection gate. Keep disabled; broader
+  lifecycle/listening is unqualified, and do not repeat the same screen without
+  new workload evidence. Retained terrain-only Beta1 remains the testable build.

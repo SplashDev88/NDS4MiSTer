@@ -80,6 +80,55 @@
         "TERRAIN_INDOOR_FINDINGS_V1.json"
       ],
       "status": "native_bounded_benefit_beta_preparation_pending"
+    },
+    {
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 1,
+      "overlay_ram": "0x21e5900",
+      "overlay_file_id": 1,
+      "overlay_sha256": "70ad543419e7d43bbf2b470b386d322492b66fbe37cd1dbfae7eb40b5306df37",
+      "overlay_stored_sha256": "a35a3a7072daaacbc2d8e5642ab076d4bc4606eb16c4687709a1bc24a80535be",
+      "id": "overlay1-empty-tail-exit",
+      "pattern": "repeated-empty-tail-compaction",
+      "addr": "0x21fa5d4",
+      "mode": "thumb",
+      "expect": "17d1721c824214da11017b18d96800290bd010013b189c462a1c03cb03c203cb03c200216046c16003e0521c10338242ecdb0020205e",
+      "replace": "18d1721c824215da11017b18d96800290bd010013b189c462a1c03cb03c203cb03c200216046c16004e0521c10338242ecdb461e2088",
+      "hook": null,
+      "scratch_bytes": 0,
+      "enabled": false,
+      "notes": "Exit nested compaction after the first exhausted empty tail; preserve stale record payloads, signed capacity, complete registers/flags, ordered writes and final reset. Separate54-byte Thumb edit; no scratch or HPS hook. Same exact shared block as Platinum, independently authenticated. Native A/B/A plaza screen fails the predeclared1% useful-gain threshold; keep disabled. Raw replay differences are not the reason for parking.",
+      "status": "parked_no_useful_native_plaza_gain",
+      "validated": {
+        "synthetic_cases": 1338,
+        "writer_contract": "299 paired empty64-record calls; full-route writer watch shows capacity/records last written at initialization; IRQ lock/separate-array activity recorded. Bounded route, not a full-game concurrency proof.",
+        "framebuffer": "All9600 top frames exact; one bottom frame differs (3187).",
+        "ram": "All41 checkpoint files exact outside new patch; per-frame timing hashes can differ. Existing terrain patch retained and complete overlay context authenticated.",
+        "audio": "3660/7702322 stereo samples differ; equal length; no audibility claim.",
+        "save": "Reference final save exact; all three native cold-load/standing sessions preserve private plaza seed.",
+        "native": "Same scene/camera/player/menu in three cold45-second sessions; staged bytes verified, capture drops zero, clean exit. Candidate not taken through broader lifecycle after no useful gain."
+      },
+      "gain": {
+        "reference_arm9_instruction_reduction_percent": 3.413490640679913,
+        "native_publications_per_second": {
+          "A1": 19.696885789982865,
+          "B1": 19.398280210713594,
+          "A2": 19.382680379398344
+        },
+        "native_candidate_vs_control_mean_percent": -0.7241783256431211,
+        "native_scope": "Incremental terrain+queue vs terrain-only A/B/A in New Bark plaza. Complete screen publications/s, not unique animation FPS or native cycles. No statistically proven slowdown claimed."
+      },
+      "evidence": [
+        "MODEL_QUEUE_PREFLIGHT_V1.json",
+        "MODEL_QUEUE_CONTRACT_FINDINGS_V1.json",
+        "MODEL_QUEUE_WRITER_FINDINGS_V1.json",
+        "MODEL_QUEUE_SYNTHETIC_V1.json",
+        "MODEL_QUEUE_REFERENCE_FINDINGS_V1.json",
+        "MODEL_QUEUE_WORKER_QUALIFICATION_V1.json",
+        "MODEL_QUEUE_NATIVE_FINDINGS_V1.json",
+        "MODEL_QUEUE_NATIVE_BEFORE_AFTER_V1.csv"
+      ]
     }
   ],
   "status": "private_beta1_enabled_by_explicit_catalog",

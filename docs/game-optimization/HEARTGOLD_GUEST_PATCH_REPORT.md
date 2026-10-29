@@ -374,3 +374,53 @@ See `BETA1_STREAM_VALIDATION.json`, `BETA1_INSTALL.json`,
 `BETA1_NATIVE_LIFECYCLE_V1.json` and `BETA1_ARCHIVE_QUALIFICATION_V1.json`.
 Continue HeartGold's model-load queue, OAM lifetime and starter/battle profiling
 work; this beta does not close the game's evidence-based completion gate.
+
+
+## overlay1-empty-tail-exit — parked after native screen
+
+The owned 90-byte compaction block at 021fa5c2 is identical to Platinum's
+independently guarded overlay 5 block. Replace 54 Thumb bytes at 021fa5d4 to
+stop rescanning after an unsuccessful search proves the tail is empty. The
+patch preserves record order/stale payloads, final reset, registers and flags;
+it uses no scratch, trampoline or service. Full overlay/game/expected-byte
+checks remain mandatory. The shared signature is a lead, not automatic approval.
+
+299 paired calls show 64 empty records. The full-route write watch observes
+capacity/record initialization ending at frame 1986; later IRQ activity updates
+a separate array and lock. This bounded contract plus 1,338 synthetic cases
+supports the trial, without claiming all possible concurrency is modeled.
+
+The 9,600-frame comparison retains terrain visibility in both arms and removes
+3.41349% of selected ARM9 instruction entries (671,827,915 to 648,895,132).
+All top frames, final save and 41 checkpoint RAM files outside the new patch
+match. One bottom frame and 3,660/7,702,322 stereo samples differ. These raw
+differences are retained under the functional budget and do not reject the
+trial. The cumulative comparison tool now authenticates retained patch bytes
+against the full original overlay before normalizing only the new candidate.
+
+Native screening used the same private plaza save, stock 1 GHz, unchanged
+host/renderer/FPGA and ten-second idle warmup after a verified scene anchor.
+The order was control, candidate, control, each a separate cold launch:
+
+| Arm | Measured seconds | Complete publications/s | Renderer CPU, one core |
+|---|---:|---:|---:|
+| A1 — control | 45.083 | 19.6969 | 161.81% |
+| B1 — candidate | 45.107 | 19.3983 | 162.17% |
+| A2 — control | 45.040 | 19.3827 | 162.26% |
+
+The candidate is -0.724% versus the two-control
+mean. It does not satisfy the predeclared 1% gain over each control and their
+mean. Keep it disabled: no useful native plaza benefit was demonstrated.
+This small screen does not prove a general slowdown. Publications are not
+unique animation FPS; native cycles, missed VBlanks and p50/p95 remain
+unavailable. The scene stayed intact, captures had no drops, saves stayed
+unchanged and all three owned hosts exited cleanly. Further lifecycle and
+human listening checks were not pursued for this no-gain candidate.
+
+Evidence: `MODEL_QUEUE_REFERENCE_FINDINGS_V1.json`,
+`MODEL_QUEUE_NATIVE_FINDINGS_V1.json`, `MODEL_QUEUE_NATIVE_BEFORE_AFTER_V1.csv`.
+HeartGold Beta1 and all previously accepted archives remain unchanged.
+
+Next three leads: repeated OAM payloads with actual reader lifetimes;
+starter/battle profiling from an isolated save; transition/archive/decompression
+work in supported overlays. Do not repeat this queue screen unchanged.

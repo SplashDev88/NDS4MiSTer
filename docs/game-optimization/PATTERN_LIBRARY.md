@@ -662,7 +662,13 @@ lock. The same54-byte replacement passes1,338 synthetic cases on HeartGold's
 owned instruction context. Its incremental replay removes3.41349% of selected
 ARM9 instruction work, preserves all top frames/save/checkpoint RAM outside
 the new patch, and changes one bottom frame plus3,660 stereo samples. These
-results justify a native screen, not a speed or full-game correctness claim.
+results justified a native screen. The later HeartGold A/B/A plaza rates are
+19.6969, 19.3983, and 19.3827 complete publications/s; the candidate is
+-0.724% versus the control mean and fails the predeclared useful-gain
+screen. It remains disabled. Save/scene checks pass in that bounded trial; no
+whole-game correctness, inaudibility or statistically proven slowdown is claimed.
+Both titles illustrate why removing guest instructions alone is insufficient
+when a different stage limits native throughput.
 
 ## Default callback dispatch
 
