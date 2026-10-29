@@ -47,6 +47,47 @@ def check(value):
     assert value['save_size'] == C['save_bytes']
     assert all(value['loaded_cartridge_identity'][k] == v for k,v in C['loaded_cartridge_identity'].items())
 
+def clock_alignment():
+    """Bracket remote clocks outside measurement, after the SSH process is ready."""
+    import select
+    import shlex
+    command = ('import json,sys,time\nfrom pathlib import Path\n'
+               'boot=Path("/proc/sys/kernel/random/boot_id").read_text().strip()\n'
+               'print(json.dumps(dict(ready=True,boot_id=boot)),flush=True)\n'
+               'for line in sys.stdin:\n'
+               ' print(json.dumps(dict(monotonic=time.monotonic(),unix=time.time(),boot_id=boot)),flush=True)\n')
+    proc = subprocess.Popen(C['ssh'] + ['python3 -u -c ' + shlex.quote(command)],
+                            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, bufsize=1)
+    def reply():
+        assert select.select([proc.stdout], [], [], 15)[0], 'Clock reply timeout'
+        value = json.loads(proc.stdout.readline())
+        assert value['boot_id'] == record['boot_id']
+        return value
+    samples = []
+    try:
+        assert reply()['ready']
+        for _ in range(5):
+            before, mono_before = time.time(), time.monotonic()
+            proc.stdin.write('sample\n');proc.stdin.flush()
+            remote = reply()
+            mono_after, after = time.monotonic(), time.time()
+            assert abs((after-before)-(mono_after-mono_before)) < .01
+            samples.append(dict(local_before=before, local_after=after, remote=remote,
+                                remote_minus_local_bounds=[remote['unix']-after,
+                                                           remote['unix']-before]))
+        proc.stdin.close()
+        assert proc.wait(timeout=5) == 0
+    finally:
+        if proc.poll() is None:
+            proc.terminate();proc.wait(timeout=5)
+        proc.stdout.close();proc.stderr.close()
+    return dict(samples=samples, narrowest_sample=min(range(len(samples)),
+                key=lambda i: samples[i]['local_after']-samples[i]['local_before']),
+                scope='Temporary clock-only SSH command, before/after recording; no installed '
+                      'service or core polling. Button emission is not guest recognition; '
+                      'OBS start/frame phase and HDMI/capture latency remain separate.')
+
 state['current_jobs']['local'] = dict(kind='native_capture', pid=os.getpid(), receipt=str(output))
 state['active_jobs'] = [v for v in state['current_jobs'].values() if v]
 write(STATE, state)
@@ -70,13 +111,16 @@ def stop():
     raise RuntimeError('Owned recording did not stop')
 
 try:
-    check(rig('status','_BEFORE_STATUS'))
+    before_status=rig('status','_BEFORE_STATUS')
+    check(before_status)
+    record['boot_id']=before_status['boot_id']
     rig('snapshot','_BEFORE')
     obs=OBS()
     assert not obs.call('GetRecordStatus')['outputActive'] and not obs.call('GetStreamStatus')['outputActive']
     assert obs.call('GetCurrentProgramScene')['currentProgramSceneName']==C['obs_scene']
     record['video_settings']=obs.call('GetVideoSettings')
     record['stats_before']=obs.call('GetStats')
+    record['clock_alignment_before']=clock_alignment()
     record['record_start_request_local']=time.time()
     obs.call('StartRecord');started=time.monotonic();owns=True
     record['record_started_local']=time.time()
@@ -91,6 +135,7 @@ try:
     record['stats_after']=obs.call('GetStats')
     record['capture_quality']=capture_quality(record)
     stop()
+    record['clock_alignment_after']=clock_alignment()
     rig('snapshot','_AFTER')
     check(rig('status','_AFTER_STATUS'))
     record['state']='captured_pending_review'

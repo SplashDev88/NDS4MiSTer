@@ -239,7 +239,11 @@ elif C['action'] in ['benchmark','profile','query','measure']:
       collector=subprocess.Popen(['python3','-E','-s','-B',str(KIT/'arm9_pc_profile.py'),'--seconds',str(duration),'--output',str(profile_path)]+native,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL)
     if index==end_index:samples['after']=read_sample(head)
    scope['mark_input']=mark
-   with contextlib.redirect_stdout(io.StringIO()):scope['main']({'host':h,'steps':steps})
+   input_output=io.StringIO()
+   with contextlib.redirect_stdout(input_output):scope['main']({'host':h,'steps':steps})
+   r['input_trace']=[json.loads(line) for line in input_output.getvalue().splitlines() if line.strip()]
+   assert [item['phase'] for item in r['input_trace']]==['ready','complete']
+   r['input_trace_scope']='Native monotonic timestamps of synthetic key emission, not guest recognition. Convert using the surrounding samples; video alignment also requires clock and capture uncertainty.'
  finally:os.close(fd)
  if collector:
   assert collector.wait(timeout=45)==0
