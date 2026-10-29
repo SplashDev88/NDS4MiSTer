@@ -122,8 +122,11 @@ if C['action'] in ['launch','launch_beta']:
   launch_env=os.environ.copy()
   if C['setup'].get('guest_trial'):
    for key in ['NDS_GUEST_PATCH_MANIFEST','NDS_GUEST_PATCH_SHA256','NDS_GUEST_PATCH_IDS','NDS_GUEST_PATCH_FALLBACK_FMV']:launch_env.pop(key,None)
+  guest_file=C['setup'].get('guest_manifest_file','fmv/guest_trial_manifest.json')
+  assert isinstance(guest_file,str) and Path(guest_file).parts==('fmv',Path(guest_file).name) and guest_file.endswith('.json')
+  if C['setup'].get('guest_trial'):assert guest_file in C['setup']['kit_hashes']
   for key,value in C['setup'].get('host_environment',{}).items():
-   guest_allowed=C['setup'].get('guest_trial') and ((key=='NDS_GUEST_PATCH_MANIFEST' and value==str(KIT/'fmv/guest_trial_manifest.json')) or (key=='NDS_GUEST_PATCH_SHA256' and value==C['setup']['kit_hashes']['fmv/guest_trial_manifest.json']) or (key=='NDS_GUEST_PATCH_IDS' and value in C['setup'].get('allowed_guest_patch_ids',[])) or (key=='NDS_GUEST_PATCH_FALLBACK_FMV' and value=='1'))
+   guest_allowed=C['setup'].get('guest_trial') and ((key=='NDS_GUEST_PATCH_MANIFEST' and value==str(KIT/guest_file)) or (key=='NDS_GUEST_PATCH_SHA256' and value==C['setup']['kit_hashes'][guest_file]) or (key=='NDS_GUEST_PATCH_IDS' and value in C['setup'].get('allowed_guest_patch_ids',[])) or (key=='NDS_GUEST_PATCH_FALLBACK_FMV' and value=='1'))
    assert guest_allowed or (key in ['NDS4MISTER_LIGHTING_REUSE','NDS4MISTER_CASTLEVANIA_TILE_CACHE','NDS4MISTER_TEXTURE_HISTORY','NDS4MISTER_PREFIX_TILE_REUSE','NDS4MISTER_RENDER_CACHE_STATS','NDS4MISTER_TIMING_PROFILE'] and value in ['0','1']) or (key=='NDS_FMV_COLOR_FAST' and value in ['0','1']) or (key=='NDS_NSMB_PATCH' and value in ['off','lookup','skip','both'])
    launch_env[key]=value
   command=['python3',str(KIT/'auto_movies.py')]
