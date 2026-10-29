@@ -1661,7 +1661,8 @@ speed claims. Always retain the destination game's own identity and replay/save.
 SoulSilver's independent terrain replay now confirms the transferred caller and
 constant contract for 1158 calls: the existing box query returns zero for 729,
 leaving 429 terrain draws. All 9600 top-screen hashes match the unchanged decoded
-delivery control. Native benefit remains unmeasured. For cross-title ports,
+delivery control. Native benefit was unmeasured at that reference milestone;
+the later native result appears below. For cross-title ports,
 repeat the original independently, distinguish decoded delivery timing from the
 byte patch, and derive the first full overlay identity from the current trace
 (frame 938 here); never copy another title's load-frame boundary. Preserve
@@ -1684,3 +1685,22 @@ plaza publications 6.4663% over original and 6.8766% over unchanged decoded deli
 matched indoor throughput stays at the same ceiling. This independently supports
 the earlier guarded related-title transfer. Preserve raw timing/RAM/audio drift
 and exact identity/expected-byte guards; it is not a universal address signature.
+
+### Reuse contracts only after matching resources as well as instructions
+
+A related-title transfer can reuse a bounded synthetic calling contract when
+the complete target code, replacement, helpers and relevant assets match.
+Preserve the original contract receipt and label it as reused rather than a new
+runtime test. SoulSilver's entire starter archive and 104-frame animation match
+HeartGold, as does overlay61. Its own normally written native save, cold reload,
+3600-frame idle repeat and 8400-frame selection-route repeat establish independent
+scene inputs. The idle candidate preserves all screen hashes and cuts sampled
+ARM9 instructions 50.5866%; this does not inherit HeartGold's native gain.
+The candidate also preserves all 8400 selection-route screen pairs; a separate
+house route matches all 65 output files with the gate enabled or disabled.
+
+Keep retained patches and unchanged decoded-overlay delivery as separate
+controls. An earlier terrain patch changes SoulSilver's boot/scene timing even
+when no terrain is visible in the final picker. Compare the new gate against
+the same cumulative control, preserve raw differences, and measure native
+benefit before promoting a port or reverse backport.

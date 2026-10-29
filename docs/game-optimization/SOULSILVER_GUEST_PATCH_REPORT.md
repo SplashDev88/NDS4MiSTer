@@ -3,7 +3,7 @@
 Status: active by explicit user advance from HeartGold. Cumulative SoulSilver
 Beta1 is qualified and separately installed; HeartGold Beta2 remains available
 for rollback. The guarded terrain transfer has the bounded field/house evidence
-below. Starter transfer and broader coverage are next under the existing
+below. Starter native qualification and broader coverage are next under the existing
 functional/perceptual budget.
 
 ## Existing workflow reused
@@ -213,12 +213,77 @@ Qualification and coverage: `BETA1_INSTALLATION_QUALIFICATION_V1.json`,
 `BETA1_STREAM_VALIDATION.json`, `BETA1_FINAL_PRESERVATION_V1.json`.
 The separate review clip is `SoulSilver_Beta1_Installed_Walk_V1.mp4`.
 
-## Next work
+## Starter transfer: independent scene and reference qualification
 
-Admit an independent SoulSilver Elm-lab/starter-picker save through normal
-progression, then compare Beta1 terrain against terrain plus the identical
-starter overlay 61 transfer. Qualify active selection, light cycles, saves and
-native benefit before including it. The other two investigations are broader
-field/camera and active battle coverage, and loading/repeated-resource work.
-HeartGold remains user-parked at Beta2. The existing 08:00 Central handoff and
-autonomous continuation remain active; no playtest reply is required.
+Normal progression on accepted SoulSilver Beta1 reaches Elm's lab and writes a
+new disposable save beside the starter machine, before choosing a Pokémon.
+Both mirrored main/PC save chunks pass CRC checks; the newer bank has count 5
+and Location `(61,-1,8,5,0)`. A full cold launch restores that position, opens
+the three-ball picker and stops cleanly with the save unchanged. Seed SHA-256:
+`7c1c54f2b663a0f324a788b9afcaa4d6e52c47b714bf5d5425cb2597f47f7b67`.
+No HeartGold save or edited save data is used.
+
+The full starter asset archive `a/0/8/2` (all 18 members), its 104-frame animation
+and the map/event archive match the owned HeartGold image exactly. Together
+with identical overlay61 and target/replacement bytes, this supports reusing
+the existing 4,680-case bounded synthetic ABI/animation contract. Those cases
+were not rerun or represented as new SoulSilver runtime validation.
+
+The independent 3600-frame original picker replay repeats with all 80 files
+identical. A separate 8400-frame original lifecycle repeats all 208 files and
+covers all three species, both rotation directions, zoom, cancellation, choice
+and return to the lab/nickname prompt. The retained terrain plus unchanged
+overlay61 delivery control separates the new starter gate from existing
+terrain/boot timing differences.
+
+| Starter idle, reference frames 1800–3599 | ARM9 instructions |
+| --- | ---: |
+| Original SoulSilver | 87,223,533 |
+| Accepted Beta1 terrain | 87,223,589 |
+| Terrain plus unchanged overlay61 delivery | 87,223,589 |
+| Terrain plus starter idle gate | 43,100,107 (−50.5866%) |
+
+The candidate matches both screens on all 3,600 frames and preserves the save.
+The retained final main-RAM image also matches after exact patch-byte
+normalization. Intermediate RAM/timing and audio differences remain: 16,711
+same-index stereo samples differ out of 2,888,368 (RMS 7.12 signed16 units,
+maximum 3,653). This is not an inaudibility judgment. The legacy strict mismatch
+label remains in the raw receipt under the authorized functional budget.
+Instruction reduction is not native cycles or speed; the starter patch remains
+disabled and absent from accepted SoulSilver Beta1 pending native qualification.
+
+The candidate also matches both screens on every frame of the 8400-frame
+selection lifecycle, including all 16 paired screen checkpoints, and preserves
+the save. ARM9 instructions in frames 1800–8399 fall from 504,652,367 to 467,508,667
+(−7.3603%). All three species, rotation, zoom, both cancellations, Chikorita
+choice and return to the lab/nickname prompt remain covered. The final main-RAM
+checkpoint matches after code normalization. Intermediate state/audio drift
+remains; this route does not write a new normal save after choosing.
+
+A separate 3600-frame downstairs-house route never opens the starter picker.
+Its cumulative control and candidate match all 65 output files, including raw
+screens, RAM, audio, save and instruction profiles. This distinguishes the new
+starter gate from existing terrain/layout differences against the old baseline.
+
+Evidence: `STARTER_ASSET_TRANSFER_AUDIT_V1.json`,
+`STARTER_NATIVE_SCENE_ADMISSION_V1.json`, `STARTER_REFERENCE_ADMISSION_V1.json`,
+`STARTER_LIFECYCLE_ADMISSION_V1.json`, `STARTER_DRAW_CONTRACT_REUSE_V1.json`,
+`STARTER_DRAW_IDLE_COMPARISON_V1.json`,
+`STARTER_DRAW_LIFECYCLE_FUNCTIONAL_REVIEW_V1.json`,
+`STARTER_DRAW_OFF_TARGET_REVIEW_V1.json`,
+`STARTER_DRAW_REFERENCE_BEFORE_AFTER_V1.csv` in the private evidence folder.
+
+## Next work and HeartGold backports
+
+Measure the incremental starter gain against SoulSilver Beta1 and unchanged decoded
+delivery. Record native light cycles/selection, normal save, reset and cold
+reload before including it in a new beta. Broader field/camera and active battle
+coverage, then measured loading/repeated-resource work, remain the other leads.
+
+The user now authorizes checking genuinely new, useful SoulSilver gains for a
+HeartGold backport. Verify HeartGold's exact code/assets and independently test
+functionality and native benefit against retained HeartGold Beta2 before
+packaging. The terrain and starter transfers originated in HeartGold and are
+not new backport opportunities. Unrelated parked HeartGold, FFT and Ecclesia
+research remains parked. The existing 08:00 Central handoff and autonomous
+continuation remain active; no playtest reply is required.

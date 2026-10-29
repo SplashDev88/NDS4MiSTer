@@ -777,3 +777,16 @@ publication throughput at one New Bark plaza view, not whole-game FPS or full-ga
 qualification. Native transient diagonal lines are visible in the unpatched
 baseline too. The one-frame reference bottom difference was localized in thumbnail
 samples to Save-menu redraw; it was not masked or declared bit-exact.
+
+SoulSilver starter transfer now has an independently written/cold-loaded machine
+save and repeatable idle/selection baselines. Its idle candidate matches all 3,600
+screen pairs, but instruction reduction alone is not native speed proof; the
+accepted SoulSilver Beta1 still contains terrain only. Reused HeartGold synthetic
+contracts apply to identical code/assets, not to sound audibility or native
+rendering. Independent candidate selection and off-target replays now pass;
+native candidate light cycles, save/write/reset/reload and speed remain pending.
+Keep intermediate RAM/audio differences.
+
+The user's new backport direction permits independent HeartGold qualification
+of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
+HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
