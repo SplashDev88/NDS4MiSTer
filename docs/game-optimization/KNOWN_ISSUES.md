@@ -614,7 +614,10 @@
   full-motion/listening review remain open. Direct native guest RAM/cache
   tracing was not added; staged cartridge bytes and normal load behavior are
   the available native delivery evidence.
-- The inherited cumulative beta has a single selected guest manifest. A
-  HeartGold-only replacement would remove accepted Platinum terrain selection.
-  Add guarded per-game selection inside the existing loader, retain old single
-  manifest behavior and test both full worker images before cumulative delivery.
+- A single-manifest replacement would drop accepted Platinum terrain selection.
+  HeartGold Beta1 resolves this through the existing loader's explicitly pinned
+  embedded catalog. Both complete game images match their previously qualified
+  hashes, as do retained Portrait/Ni no Kuni/NSMB images; both game selections
+  cold-load on the actual installed launcher. Keep these cumulative regression
+  checks when adding future games. Starter/battle and long-game HeartGold
+  coverage remain open; no new human audiovisual approval is inferred.

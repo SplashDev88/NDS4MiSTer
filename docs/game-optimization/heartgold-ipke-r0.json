@@ -44,7 +44,7 @@
           "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
         }
       ],
-      "notes": "Call the existing model visibility test, draw terrain on nonzero, and preserve the independent prop path. Existing rotation/scale constants require no new scratch. Explicit private selection passes bounded native function and throughput checks; release defaults remain disabled while the cumulative private beta is prepared.",
+      "notes": "Call the existing model visibility test, draw terrain on nonzero, and preserve the independent prop path. Existing rotation/scale constants require no new scratch. Explicit private selection passes bounded native function and throughput checks; the cumulative private Beta1 explicitly selects it through the pinned catalog. General discovery/defaults remain disabled.",
       "validated": {
         "framebuffer": "4315 top /8 bottom frames differ over9600; eight checkpoint pairs reviewed",
         "ram": "main7606/DTCM8063/ARM7WRAM7636 frame hashes differ; ITCM/sharedWRAM match",
@@ -82,7 +82,7 @@
       "status": "native_bounded_benefit_beta_preparation_pending"
     }
   ],
-  "status": "native_bounded_benefit_beta_preparation_pending",
+  "status": "private_beta1_enabled_by_explicit_catalog",
   "budget": "Functional/perceptual; retain measured differences, reject broken progression/crashes/corrupt saves/perceptible defects; require useful native benefit.",
   "delivery_note": "Explicit append-decoded-overlays-v1 preserves both stored CPU images and modifies only the virtual stream. Original/unchanged-code delivery/candidate native cold loads, staged bytes, normal overlay loading and bounded soft-reset/save/reload checks pass. No direct native ARM9 cache/fetch tracing hook was added.",
   "reference_seed_sha256": "756f721263a071ea824d64e36d59d0569c1ed8f3d93d84a1f58e8024f0461a05",
@@ -119,5 +119,14 @@
     "unchanged_observer_files_exact": 154,
     "delivery_repeat_files_exact": 154,
     "scene": "House cold load, front-door transition and New Bark Town walking"
+  },
+  "private_beta": {
+    "name": "HeartGold Beta1 20261029",
+    "catalog_selection": "overlay1-terrain-visibility",
+    "archive_sha256": "7cce7b28151d562722924e83a573c6bf28eb817ae68bafe89c70175c25d4d657",
+    "runtime_source_revision": "c0fd3d7ddaea5ad596c964fc18ae028356fcf4ce",
+    "human_audiovisual_approval": false,
+    "budget": "User-directed functional/perceptual; raw timing/RNG/RAM/audio differences retained; bounded native functional checks and useful gain required.",
+    "scope": "New Bark opening route; starter/battle and full-game coverage remain open."
   }
 }

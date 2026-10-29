@@ -3,8 +3,10 @@
 Status: USA IPKE revision 0 terrain visibility candidate passes bounded native
 function checks and improves the longer matched plaza screen by3.07% over the
 original image and3.50% over decoded delivery. These are display-throughput
-results, not whole-game FPS. Defaults remain disabled while a cumulative
-private beta is prepared; the accepted beta is unchanged.
+results, not whole-game FPS. Cumulative private HeartGold Beta1 explicitly
+selects this patch through its pinned catalog, preserving accepted Platinum
+and FFT behavior. Existing beta kits remain unchanged; general defaults stay
+disabled.
 The current user budget permits timing/RNG/hash drift when the game remains
 functional and the result is perceptually acceptable. Keep raw comparisons;
 reject broken progression, crashes, corrupted saves and perceptible defects.
@@ -268,7 +270,7 @@ The legacy runner label `rejected_replay_mismatch` reports strict exactness;
 the user's functional budget permits continued investigation with raw evidence.
 
 The reference result justified the native screening below. Release defaults
-remain disabled while a cumulative private beta is prepared. Native checks
+remain disabled outside explicit private catalog selection. Native checks
 are bounded; no full-game or human audiovisual approval is claimed.
 The core still lacks persistent save states; no save-state format changed.
 
@@ -332,14 +334,43 @@ budget. Native review copies preserve original video and game-audio packets
 and timestamps; OBS track0 is silent, so track1 is selected without reencoding.
 No inaudibility or human full-motion approval is inferred from levels or stills.
 
-The bounded gain supports private beta preparation. Replacing the inherited
-single-game guest manifest outright would drop accepted Platinum optimization.
-Preserve it through explicitly pinned per-game selection in the existing loader
-before calling the next beta cumulative; no new HPS service is needed. The
-accepted beta remains unchanged while that packaging work proceeds.
+The bounded gain supports the separately installed cumulative private beta.
+The existing loader now supports an explicitly pinned embedded catalog,
+preserving accepted Platinum selection without a new HPS service. Exact
+previously qualified whole-image hashes match for HeartGold, Platinum,
+Portrait, Ni no Kuni and NSMB. All128 loader tests pass, including malformed,
+ambiguous, unknown and wrong-revision selection cases. Existing single-manifest
+behavior and ordinary FMV/NSMB fallback remain intact.
 
 Evidence: `NATIVE_TERRAIN_SCREEN_FINDINGS_V1.json`,
 `NATIVE_TERRAIN_REPLICATION_FINDINGS_V1.json`,
 `NATIVE_TERRAIN_REPLICATION_BEFORE_AFTER_V1.csv`,
 `NATIVE_TERRAIN_LIFECYCLE_SCREEN_V1.json`,
 `NATIVE_PLAZA_RELOAD_QUALIFICATION_V1.json`, `TERRAIN_INDOOR_FINDINGS_V1.json`.
+
+## Cumulative private Beta1
+
+`NDS4MiSTer_HeartGold_Beta1_20261029.zip` has SHA-256
+`7cce7b28151d562722924e83a573c6bf28eb817ae68bafe89c70175c25d4d657`.
+The separate `NDS_HeartGold_Beta1` launcher uses the same accepted host, renderer
+and rc12 FPGA; the archive includes corresponding source and build provenance.
+Runtime source is `c0fd3d7ddaea5ad596c964fc18ae028356fcf4ce`.
+The validation harness additionally permits a configured pinned catalog
+filename in `9cca264`; this does not change the packaged runtime.
+
+The actual installed launcher cold-loads HeartGold's candidate-written plaza
+save with the expected staged header and48 replacement bytes. House entry,
+Bag open/close, return outdoors and clean exit work; the QA save is unchanged.
+A second launch selects Platinum's retained48-byte patch, cold-loads its
+Twinleaf save and responds to bounded walking input. Both use separate save
+aliases. The beta retains the documented Platinum first-battle trajectory
+difference; this packaging pass makes no new full-battle claim.
+
+This is a testable private beta under the user's functional budget. No human
+full-motion/audio verdict is claimed for HeartGold. The same tested terrain
+algorithm and complete image are retained, so the existing native gain and
+review clips apply; an unchanged benchmark was not repeated for packaging.
+See `BETA1_STREAM_VALIDATION.json`, `BETA1_INSTALL.json`,
+`BETA1_NATIVE_LIFECYCLE_V1.json` and `BETA1_ARCHIVE_QUALIFICATION_V1.json`.
+Continue HeartGold's model-load queue, OAM lifetime and starter/battle profiling
+work; this beta does not close the game's evidence-based completion gate.

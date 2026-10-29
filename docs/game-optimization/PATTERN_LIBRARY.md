@@ -1357,3 +1357,19 @@ and actual animation/game-clock claims separate. Native cold reload of a
 candidate-written save in the original image is useful compatibility evidence.
 Timing/RAM/audio differences remain explicit under a functional budget; levels
 and checkpoint stills do not establish human audiovisual equivalence.
+
+## Preserve prior games when packaging a new optimization
+
+A cumulative guest beta must retain explicit selections for earlier games.
+Use the existing loader's pinned embedded catalog: original game/revision/header
+identity routes one manifest, then full-ROM, CPU, overlay and byte guards admit
+it. Duplicate identities/IDs and malformed selections fail atomically. Keep
+ordinary FMV/NSMB fallback and legacy single-manifest semantics unchanged.
+
+Before installation, compare complete outputs from the actual packaged worker
+with previously qualified game images, including unselected movie/NSMB paths.
+Then cold-load both the new and retained game using the packaged launcher and
+separate saves; verify staged bytes and functional scene entry. HeartGold Beta1
+retains exact HeartGold/Platinum/Portrait/Ni no Kuni/NSMB images this way. The
+catalog adds no gameplay service or per-call HPS work and is not itself a speed
+optimization. Keep gameplay performance attribution with the original patch.
