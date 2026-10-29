@@ -614,3 +614,73 @@ native Beta1. The native party screen shows one male Chikorita at level 5 with
 20/20 HP. This is bounded save/progression and menu coverage, not a battle test.
 The private seed SHA-256 is
 `7a6f75079357c38569ce2ab54c1fc05a86abb5305f294d95072c98922c20e0c2`.
+
+
+## Starter identical-redraw patch: native qualification (V9)
+
+The new ARM9 Thumb patch removes redundant drawing from the starter picker's
+idle state. It uses the existing overlay loader and an 88-byte replacement in
+overlay 61, with no new memory, HPS service, FPGA change, or ROM-file write.
+Main state 5 plus selection 0 identifies the stable view; all active selections,
+rotations, camera changes, sprite updates and exits retain their original draw
+path. The animation counter still advances normally. An authenticated 104-tick
+material animation and a full-cycle geometry census identify the boundaries:
+retain phases 0/7 modulo8 and omit only the 78 previously identical phases.
+The extra phase 0 draw is necessary at the cycle wrap.
+
+The owned resource is member 7 of a/0/8/2, SHA-256
+`40d17d989bb118f908404cc46a5ab17f4aa85c47bf5c1b0eac68e6d128c0c478`.
+The whole-ROM identity pins this asset as well as the code. The patch repacks
+the existing three-ball reset and precomputes the fixed animation bound, then
+gates the draw call. It preserves the explicit zero return: the draw helper's
+final void callee happens to leave R0=1. Reusing that register as the app return
+would incorrectly finish the application. No unused-memory claim is involved.
+
+The existing instruction harness passes 4,680 cases. Both framebuffer hashes
+match on every frame in the 3,600-frame idle comparison and the 8,400-frame
+selection lifecycle. The latter covers all species, both rotation directions,
+zoom, two cancellations, choice and overlay unload back into the lab. The
+matched 3,600-frame off-target control/candidate match every output file.
+Comparison against an original-ROM off-target run includes retained terrain
+and delivery differences; those are not attributed to the new starter gate.
+Raw RAM/audio/timestamp differences remain recorded under the approved
+functional budget. The legacy comparator's strict mismatch label is retained
+as evidence, not used as the current acceptance decision.
+
+| Native starter idle, stock 1GHz | Control A1 | Candidate B1 | Control A2 |
+|---|---:|---:|---:|
+| Observation seconds | 30.048 | 30.021 | 30.040 |
+| Complete screen-pair publications/s | 14.177 | 43.170 | 14.248 |
+| Frame-identifier advance/s | 59.838 | 59.859 | 59.854 |
+| Renderer CPU, percent of one core | 161.84% | 109.82% | 162.09% |
+| Host CPU, percent of one core | 3.03% | 3.26% | 2.93% |
+
+Publication throughput is 3.037 times the control mean,
+and renderer CPU falls 32.19%.
+This is not a whole-game or unique-animation FPS gain. The existing renderer
+can reuse unchanged render state when the game avoids unnecessary swaps;
+its implementation and settings remain unchanged. Four lamp regions in native
+video show a dominant cycle of 3.467 seconds for A1 and 3.483 seconds for B1,
+within one 60Hz video sample. This checks the cycle, not all motion or latency.
+The idle reference segment executes 50.59% fewer ARM9 instructions; instruction
+entries are not native cycles. Per-frame native cycle/p50/p95 data was not added.
+
+Native recordings cover every starter, both directions, zoom/backout, choice,
+return to the lab and nickname decline. A normal private save passes both-bank
+CRC/counter checks. Soft reset reaches the game boot, cold Continue restores
+the lab and follower, and the party shows male Chikorita, level 5, 20/20 HP.
+Returning to the field and exiting preserve that save. Original saves and
+accepted betas are preserved separately. No human full-motion/audio verdict
+or persistent core save-state support is claimed.
+
+The new patch remains individually disabled by default in the research
+manifest; a pinned private catalog can explicitly select it alongside terrain.
+Queue compaction and sub-OAM bulk remain parked. Evidence includes
+`STARTER_DRAW_NATIVE_FINDINGS_V1.json`, `STARTER_DRAW_BEFORE_AFTER_V1.csv`,
+the idle/lifecycle/off-target reviews, and `HeartGold_starter_draw_candidate_review.mp4`.
+
+Next three investigations: first-battle rendering/submission hotspots from the
+normal post-starter save; supported transition/decompression work; other
+application states with a complete unchanged-state contract. The earlier
+instruction-only copy/queue/OAM results are not native speed evidence.
+HeartGold remains active; the queue completion gate is not met.

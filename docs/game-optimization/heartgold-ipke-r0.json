@@ -179,6 +179,54 @@
         "OAM_BULK_NATIVE_FINDINGS_V1.json",
         "OAM_BULK_NATIVE_BEFORE_AFTER_V1.csv"
       ]
+    },
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e5900",
+      "overlay_file_id": 61,
+      "overlay_sha256": "0e611760f0634ba97ed02053ab5406a5e1c5686b87379ed4e7fdd66c9be89716",
+      "overlay_stored_sha256": "91e057269e046bc2a4b62c4a5977734893436306adafa65b1b413fd5c96659b3",
+      "addr": "0x21e5ef8",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Skip only identical idle starter redraws when Main state is5 and selection state is0. Preserve the104-tick integral turntable counter and phases0/7 modulo8, plus every active-state draw. Repack the existing tail in place; no scratch or allocation. Whole ROM, stored/decoded overlay61 and88 original bytes are guarded. Normal overlay loading handles delivery; no RTL or HPS changes.",
+      "status": "qualified_bounded_native_benefit_for_explicit_private_selection",
+      "validated": {
+        "synthetic": "4680 bounded Thumb cases preserve data memory, R0 return, R4-R11, SP, returnPC, ball-rock calls and animation progression; renderer effects are not modeled.",
+        "framebuffer": "Both screens match every frame in3600-frame idle and8400-frame lifecycle comparisons against matching decoded/cumulative controls.",
+        "ram": "Raw timing/stack/RNG differences retained. Only the exact88 code bytes are normalized, and only after full7104-byte overlay recognition.",
+        "audio": "Reference audio/timing differences retained under the functional budget; native game audio recorded. No human listening or inaudibility claim.",
+        "off_target": "Matched3600-frame post-starter route matches every output file with the gate on/off.",
+        "native": "Stock1GHz matched30-second A/B/A; all three starters inspected, both rotation directions, zoom/backout, choice and return to lab. Normal private Save has valid alternating-bank CRCs, soft reset boots, cold reload and party return preserve the save.",
+        "save_states": "Persistent core save states remain unsupported; no format change."
+      },
+      "gain": {
+        "reference_idle_arm9_instruction_reduction_percent": 50.58641940631192,
+        "native_control_mean_publications_per_second": 14.212567870169634,
+        "native_candidate_publications_per_second": 43.170383095343695,
+        "native_publication_ratio": 3.0374794681510595,
+        "renderer_cpu_relative_reduction_percent": 32.1916513187816,
+        "native_scope": "Idle starter picker only. Publications are not unique animation FPS. The light cycle remains about3.47 seconds; active selection/rotation drawing is unchanged."
+      },
+      "evidence": [
+        "STARTER_DRAW_STATIC_CONTRACT_V1.json",
+        "STARTER_DRAW_SYNTHETIC_CONTRACT_V1.json",
+        "STARTER_DRAW_IDLE_FUNCTIONAL_REVIEW_V1.json",
+        "STARTER_DRAW_LIFECYCLE_FUNCTIONAL_REVIEW_V1.json",
+        "STARTER_DRAW_OFF_TARGET_REVIEW_V2.json",
+        "STARTER_DRAW_NATIVE_FINDINGS_V1.json",
+        "STARTER_DRAW_BEFORE_AFTER_V1.csv",
+        "STARTER_DRAW_NATIVE_BLINK_SCREEN_V1.json",
+        "STARTER_DRAW_SAVE_RELOAD_REVIEW_V1.json"
+      ]
     }
   ],
   "status": "private_beta1_enabled_by_explicit_catalog",

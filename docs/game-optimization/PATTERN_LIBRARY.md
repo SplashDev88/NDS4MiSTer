@@ -1468,3 +1468,25 @@ animation updates outside the skipped drawing work. Existing object fields may
 have unrelated meanings: the starter's `frame` byte is a window-style option,
 not a spare frame counter. Record the proposal until a guarded implementation
 and native benefit exist.
+
+
+### Qualified unchanged-state gate without a new cache
+
+Extend the existing geometry census through a complete animation cycle and
+correlate each stream with the actual game animation object. Pin the source
+asset, integral frame count and wrap behavior; a short repeated run can miss a
+boundary. HeartGold's 104 phases include a distinct wrap at zero. Retaining
+phases 0/7 modulo8 preserves all framebuffer changes while avoiding 78 duplicate
+idle draws. Keep first rendering, inputs, active animation and transition
+invalidation outside the gate. Do not treat an unrelated field named `frame`
+as scratch. Use the existing same-size patch loader and instruction harness.
+
+The resulting 88-byte overlay patch needs no allocation or per-call HPS work.
+Its guarded idle/lifecycle replays match every screen image; native A/B/A gives
+14.18/43.17/14.25 screen-pair publications per second and 32.19% less renderer
+CPU versus the control mean. The light cycle remains about 3.47 seconds.
+This exploits the existing renderer's retained-state reuse; it does not imply
+that omitting game draw calls always eliminates native raster work. Measure
+native throughput/load and animation cadence separately. Carry the detector
+and proof structure to related engines; never copy an address into another
+revision or overlay without new identity/asset/state evidence.

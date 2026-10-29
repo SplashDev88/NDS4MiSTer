@@ -657,3 +657,15 @@
   raw evidence. Likewise, normal HeartGold saves alternate banks: validate
   chunk counters/CRCs and cold reload, rather than treating stale bank zero
   as a failed save.
+
+
+- HeartGold's starter idle gate is now qualified in bounded reference/native
+  routes. It preserves all 3,600 idle and 8,400 lifecycle screen pairs and
+  improves native publication throughput about 3.04 times; this is not a
+  whole-game or unique-animation FPS result. Active selection/rotation work
+  remains unchanged. Battle, long-game and human listening remain open.
+  Keep the distinct phase 0 animation wrap and the explicit R0=0 return.
+  The fixed 104-frame bound relies on the pinned whole-ROM/asset identity.
+  Normal Save/soft reset/cold reload pass; persistent core save states remain
+  unsupported. Do not infer acceptance from the old strict comparator label,
+  or hide raw timing/audio/RAM differences that the functional budget permits.
