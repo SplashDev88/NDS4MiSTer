@@ -57,7 +57,9 @@ def main():
             if operation == 13:
                 assert last_progress <= size <= 9900
                 last_progress = size; work_updates += 1
-        assert size == before.st_size and size <= 252*1024*1024
+        expected_size = case.get('virtual_bytes', before.st_size)
+        assert type(expected_size) is int and 512 <= expected_size <= 252*1024*1024
+        assert size == expected_size
         digest = hashlib.sha256(wire[at:at+size]).hexdigest(); at += size
         assert digest == case['virtual_image_sha256'], (case['name'], digest)
         assert struct.unpack_from('<Qii', wire, at) == (size,0,8)
