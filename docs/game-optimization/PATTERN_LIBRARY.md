@@ -640,11 +640,29 @@ changing a reload or loop exit, and verify stale payload bytes as well as flags.
 
 The candidate removes 4.679939% of selected executed reference ARM9 instructions
 and preserves all 6,000 screen pairs, fixed checkpoint sets and save data.
-However, 1,660 stereo samples differ, so it remains rejected under the audio
-gate. A substantial reduction of redundant work can still affect timing.
+However, 1,660 stereo samples differ, so the historical strict audio gate
+rejected it. Later authorized native perceptual screening found no useful
+Platinum walking/menu gain; it remains disabled for that reason. A substantial
+reduction of redundant work can still affect timing.
 Neither the routine's 5.816% PC sample share nor the trial's instruction
-reduction is native speed. No reusable byte signature or SDK identity is
-established yet.
+reduction is native speed.
+
+HeartGold overlay1 has the exact same90-byte Thumb compaction block as
+Platinum overlay5, at independently authenticated addresses. The shared
+scanner now flags this exact variant, including branch displacements, signed
+count reload, copy order and return. It also scans explicitly selected ARM9
+overlays through the existing guarded reader. A byte match is a lead only;
+flat PC samples still require live overlay identity before attribution. No
+Nintendo SDK or broader middleware origin is inferred from these two titles.
+
+HeartGold's terrain-only control has299 paired empty64-record calls with exact
+entry/exit contents and a full-route writer watch. Capacity and records last
+change at initialization; observed VBlank/VWait work uses a separate array and
+lock. The same54-byte replacement passes1,338 synthetic cases on HeartGold's
+owned instruction context. Its incremental replay removes3.41349% of selected
+ARM9 instruction work, preserves all top frames/save/checkpoint RAM outside
+the new patch, and changes one bottom frame plus3,660 stereo samples. These
+results justify a native screen, not a speed or full-game correctness claim.
 
 ## Default callback dispatch
 

@@ -480,10 +480,15 @@ identified as omitted costs, not working implementation. No native cycles,
 storage availability, interrupt behavior or accepted patch follows from this.
 
 `scan_guest_patterns.py ROM --output REPORT` detects branch-heavy copy,
-redundant bitfield shifts and scaled nibble-step arithmetic in ARM main/autoload
-sections; optional `--arm9-profile` and
-`--arm7-profile` CSVs add execution sample counts. It does not scan Thumb or
-overlays and cannot establish SDK identity, timing safety or native gain.
+redundant shifts, nibble arithmetic, dispatch, mask walks and zero multiplies
+in ARM main/autoload sections. `--include-thumb` adds narrow header-read and
+exact empty-tail compaction detectors. Repeat `--arm9-overlay ID` to scan
+specific stored/compressed overlays through the existing `read_overlay` path;
+output pins each original stored and decoded body plus ID/file mapping.
+Optional `--arm9-profile` and `--arm7-profile` CSVs add sample counts. Flat PC
+samples cannot distinguish overlays sharing an address, so overlay attribution
+explicitly requires executed-content evidence. Matches never establish SDK
+identity, writer/IRQ safety, a safe replacement or native gain.
 
 `package_private_beta.py` builds a separate launcher/support-folder package from
 a pinned base archive, a tested renderer and a declarative packaging definition.

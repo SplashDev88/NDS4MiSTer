@@ -3,8 +3,9 @@
 
 Detectors recognize copy control flow, redundant shifts, weighted nibble sums,
 linear key/handler dispatch, fixed-width mask walks and carry-derived zero
-multiplies, allowing register renaming. An opt-in Thumb detector screens a
-stack-local file seek followed by a header halfword read. Linear scans can encounter data;
+multiplies, allowing register renaming. Opt-in Thumb detectors screen a
+stack-local header read and an exact empty-tail compaction variant. Explicit
+ARM9 overlay IDs reuse the existing guarded file reader. Linear scans can encounter data;
 execution traces and revision/original-byte guards are still required.
 """
 import argparse
@@ -13,6 +14,7 @@ import hashlib
 import json
 from pathlib import Path
 import struct
+import sys
 
 from capstone import (Cs, CS_ARCH_ARM, CS_MODE_ARM, CS_MODE_THUMB, CS_GRP_JUMP, CS_GRP_CALL,
                       CS_GRP_RET, CS_GRP_INT, CS_GRP_IRET)
@@ -414,19 +416,66 @@ def scan_thumb_file_metadata(data, base):
     return findings
 
 
+THUMB_EMPTY_TAIL_SIGNATURE = bytes.fromhex(
+    '0026a05fe768411e002922dd3d1ce968002917d1721c824214da11017b18'
+    'd96800290bd010013b189c462a1c03cb03c203cb03c200216046c16003e0'
+    '521c10338242ecdb0020205e761c1035411e8e42dddb0020a080f8bd0000')
+
+
+def scan_thumb_empty_tail(data, base):
+    """An exact shared-code variant, not a general safe-patching signature.
+
+    Branch displacements, signed capacity reload, record-copy order and return
+    are all part of the match. Relocation is allowed; register renaming or any
+    opcode change requires another independently qualified variant.
+    """
+    findings = []
+    at = data.find(THUMB_EMPTY_TAIL_SIGNATURE)
+    while at >= 0:
+        if (base+at) % 2 == 0:
+            findings.append(dict(pattern='repeated-empty-tail-compaction', address=hex(base+at),
+                bytes=len(THUMB_EMPTY_TAIL_SIGNATURE), expect=THUMB_EMPTY_TAIL_SIGNATURE.hex(),
+                roles=dict(header='r4', records='r7', record_bytes=16, active_flag_offset=12,
+                           capacity_signed_bits=16,
+                           required_proof='Authenticate executed overlay/code, complete record bytes and capacity; prove writer/IRQ/DMA contract, preserve stale payloads, signed count, registers/flags and final reset. Measure native benefit.'),
+                status='static_candidate_requires_execution_and_semantic_proof'))
+        at = data.find(THUMB_EMPTY_TAIL_SIGNATURE, at+1)
+    return findings
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('rom', type=Path)
     parser.add_argument('--arm9-profile', type=Path)
     parser.add_argument('--arm7-profile', type=Path)
     parser.add_argument('--include-thumb', action='store_true',
-                        help='Also screen Thumb stack-local header seek/read shapes')
+                        help='Also screen Thumb header-read shapes and the exact empty-tail compaction variant')
+    parser.add_argument('--arm9-overlay', type=lambda value: int(value, 0), action='append', default=[],
+                        help='Also scan this ARM9 overlay ID through the existing guarded file reader; repeatable')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     if args.output.exists():
         parser.error('Output already exists')
     raw = args.rom.read_bytes()
     findings, sections = [], []
+    samples_by_cpu = {}
+
+    def inspect(data, base, cpu, target, samples, **identity):
+        sections.append(dict(cpu=cpu, target=target, address=hex(base), bytes=len(data),
+                             sha256=hashlib.sha256(data).hexdigest(), **identity))
+        candidates = [('arm', c) for c in scan(data, base)]
+        if args.include_thumb:
+            candidates += [('thumb', c) for c in
+                           scan_thumb_file_metadata(data, base) + scan_thumb_empty_tail(data, base)]
+        for mode, candidate in candidates:
+            start = int(candidate['address'], 16)
+            candidate.update(cpu=cpu, mode=mode, target=target, **identity,
+                             sampled_instructions_in_extent=sum(v for pc, v in samples.items()
+                                 if start <= pc < start+candidate['bytes']))
+            if 'overlay' in identity:
+                candidate['sample_attribution_requires_runtime_overlay_identity'] = True
+            findings.append(candidate)
+
     for cpu, header_at, profile in [('arm9', 0x20, args.arm9_profile), ('arm7', 0x30, args.arm7_profile)]:
         offset, entry, base, size = struct.unpack_from('<4I', raw, header_at)
         if not size or offset + size > len(raw):
@@ -435,22 +484,35 @@ def main():
         if profile:
             with profile.open() as stream:
                 samples = {int(r['pc'], 16): int(r['count']) for r in csv.DictReader(stream)}
+        samples_by_cpu[cpu] = samples
         code = MainCodeFile(raw[offset:offset+size], base)
         for index, section in enumerate(code.sections):
             data = bytes(section.data)
             target = cpu + '.bin/' + ('main_loaded' if section.implicit else 'autoload:' + str(index))
-            sections.append(dict(cpu=cpu, target=target, address=hex(section.ramAddress),
-                                 bytes=len(data), sha256=hashlib.sha256(data).hexdigest()))
-            candidates = [('arm', c) for c in scan(data, section.ramAddress)]
-            if args.include_thumb:
-                candidates += [('thumb', c) for c in scan_thumb_file_metadata(data, section.ramAddress)]
-            for mode, candidate in candidates:
-                start = int(candidate['address'], 16)
-                candidate.update(cpu=cpu, mode=mode, target=target,
-                                 sampled_instructions_in_extent=sum(v for pc, v in samples.items() if start <= pc < start+candidate['bytes']))
-                findings.append(candidate)
+            inspect(data, section.ramAddress, cpu, target, samples)
+    if args.arm9_overlay:
+        assert len(args.arm9_overlay) == len(set(args.arm9_overlay)) and min(args.arm9_overlay) >= 0
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'standalone_host/fmv'))
+        from prepare import Source, read_overlay
+        with args.rom.open('rb') as stream:
+            source = Source(stream.fileno())
+            assert source.sha256() == hashlib.sha256(raw).hexdigest()
+            table, size = struct.unpack_from('<II', raw, 0x50)
+            for overlay in args.arm9_overlay:
+                assert size % 32 == 0 and 512 <= table <= table+size <= source.size
+                assert (overlay+1)*32 <= size
+                base, = struct.unpack('<I', source.read(table+overlay*32+4, 4))
+                loaded = read_overlay(source, raw[:512], overlay, base)
+                inspect(bytes(loaded['decoded']), base, 'arm9', 'arm9.overlay', samples_by_cpu['arm9'],
+                        overlay=overlay, overlay_file_id=loaded['info'][6],
+                        overlay_ram=hex(base), overlay_sha256=hashlib.sha256(loaded['decoded']).hexdigest(),
+                        overlay_stored_sha256=hashlib.sha256(loaded['stored']).hexdigest())
+            source.unchanged()
     result = dict(rom_sha256=hashlib.sha256(raw).hexdigest(), sections=sections, findings=findings,
-                  coverage=('ARM main/autoload sections; optional narrow Thumb header-read detector enabled. No overlays.' if args.include_thumb else 'ARM main/autoload sections only; no overlay or Thumb detector.') + ' PC sample counts are not cycles. No SDK identity inferred.',
+                  coverage=('ARM main/autoload sections; ' +
+                            ('narrow Thumb header-read and exact compaction detectors enabled. ' if args.include_thumb else 'no Thumb detector. ') +
+                            ('Explicit ARM9 overlay IDs scanned; flat PC samples require runtime overlay identity. ' if args.arm9_overlay else 'No overlays. ') +
+                            'PC sample counts are not cycles. No SDK identity inferred.'),
                   original_rom_preserved=hashlib.sha256(args.rom.read_bytes()).hexdigest() == hashlib.sha256(raw).hexdigest())
     args.output.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(dict(findings=findings, original_rom_preserved=result['original_rom_preserved'])))
