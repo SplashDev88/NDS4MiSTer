@@ -669,3 +669,18 @@
   Normal Save/soft reset/cold reload pass; persistent core save states remain
   unsupported. Do not infer acceptance from the old strict comparator label,
   or hide raw timing/audio/RAM differences that the functional budget permits.
+
+- HeartGold Beta2 now has one early native wild-battle win, field return and
+  party coverage. This does not cover trainer/boss/link battles or post-victory
+  save reload. The admitted Route29 save precedes the encounter. Its battle
+  command-menu idle baseline is 59.64 publications/s; do not report a new speedup
+  or apply the starter draw gate to battle logic. The repeated reference route
+  reaches the same battle with 3,891 consecutive exact screen pairs and an exact
+  save, but retains earlier field-frame, RAM and audio differences. Audio
+  hashes/screenshots do not establish inaudibility. Keep native copied-audio
+  clips available and record any functional or perceptible defect.
+- Battle profile V1 misinterpreted paired Thumb BL samples as ARM. V2 corrects
+  the disassembly display and verifies sampled owned bytes. Literal pools can
+  stop linear decoding, so use individual hot instructions too. Do not infer
+  native cycle share, transfer size, stable matrices or safe event wakeups from
+  sampled opcode frequency alone. No new main-code patch support is implied.

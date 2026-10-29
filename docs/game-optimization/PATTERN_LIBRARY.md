@@ -1490,3 +1490,24 @@ that omitting game draw calls always eliminates native raster work. Measure
 native throughput/load and animation cadence separately. Carry the detector
 and proof structure to related engines; never copy an address into another
 revision or overlay without new identity/asset/state evidence.
+
+## Reclassify workloads after a scene change
+
+Reuse a routine's classification only after matching owned code in the new
+scene. Recollect caller, payload, destination and input recurrence evidence:
+the same copy loop can serve different data. HeartGold's battle idle profile
+again contains the halfword copy, but its field-only tiny-OAM census is not
+proof of battle transfer sizes. A menu already publishing near 60 pairs/s does
+not establish an active-animation bottleneck or a useful copy optimization.
+
+For Thumb profiles, a 32-bit sampled opcode can be a paired Thumb BL rather
+than an ARM instruction. Establish mode from execution/source context and
+decode sampled instructions independently across literal pools. Check actual
+instruction bytes against the owned image before assigning semantic labels.
+
+Transformed-cell bounds tests are a reusable investigation pattern: signed
+fixed-point matrix products, repeated64-bit multiply helpers, extrema ordering
+and comparisons against surface dimensions. Investigate stable input tuples
+and overlay callers before considering caching or bypass. The structural
+pattern alone proves neither redundancy nor safe removal; no generic patch
+or cross-title signature has been qualified by the HeartGold battle screen.

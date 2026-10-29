@@ -684,3 +684,63 @@ normal post-starter save; supported transition/decompression work; other
 application states with a complete unchanged-state contract. The earlier
 instruction-only copy/queue/OAM results are not native speed evidence.
 HeartGold remains active; the queue completion gate is not met.
+
+## First wild battle and Route29 baseline, 2026-10-29
+
+The unchanged, installed Beta2 progressed from the lab through the Pokégear
+and Elm contact events to Route29. A normal disposable save was made before
+the first encounter. A level 5 male Chikorita defeated a level 2 male Pidgey
+with two completed Tackles, took damage to 19/20 HP, gained 15 Exp and returned
+to the field. Party inspection and clean exit passed. The saved state is the
+pre-battle Route29 checkpoint, not the post-victory state; the local admitted
+seed is `NATIVE_ROUTE29_PRE_BATTLE_SEED_V1.sav` with SHA-256
+`393c6096b9baa45b3fadf912e72ae867b700d9defab42746561a640e4b51c01c`.
+Both save banks pass CRC/counter validation. A fresh native cold Continue
+restored Route29, the follower and level 5 Chikorita with 20/20 HP; party exit
+and clean shutdown preserved the save. No original save or ROM was edited.
+
+| Native command-menu idle, unchanged Beta2 | Result |
+|---|---:|
+| Observation seconds | 30.0285 |
+| Complete screen-pair publications/s | 59.6433 |
+| Frame-identifier advance/s | 59.8099 |
+| Renderer CPU, percent of one core | 92.0792% |
+| Host CPU, percent of one core | 4.0295% |
+
+This is one stock 1 GHz baseline, not an A/B improvement or unique-animation
+FPS measurement. It is already near the publication ceiling while waiting
+for input. Attacks, transitions and heavier battles require separate profiles.
+Native captures have no OBS render/output drops. Three review copies retain
+the original encoded video, game-audio packets and timestamps: entry, attacks
+and finish. The attacks clip contains one actual completed Tackle; the finish
+clip contains the second. Planned input sections are not counted as moves.
+
+The 6,000-frame original-ROM route repeated with all 116 output files exact.
+The production Beta2 virtual image reaches the same encounter and command
+menu; both screen hashes match on every frame 2109–5999, and the save matches.
+Earlier top/bottom images differ on 352/9 frames. Audio differs in 1,664,496
+scalar samples before frame 2109 and 7,402 thereafter; no inaudibility or human
+listening verdict is inferred. Raw RAM/timestamp/audio differences and the
+strict comparator's mismatch label remain in the evidence. The authorized
+functional budget permits investigating these differences without treating
+hash mismatch alone as broken gameplay. The reference route does not attack;
+the native victory is separate evidence.
+
+The reproducible reference profile covers frames 4200–5999, sampled every 256
+executed instructions. Its 27 bins above 2% are classified with owned code and
+bounded source/inference evidence in `BATTLE_HOTSPOT_CLASSIFICATION_V1.json`.
+The largest ARM9 bin is the branch-heavy halfword copy 14.18%; transformed
+G2D cell bounds, affine matrices and the 64-bit multiply helper are other
+substantial contributors. ARM7 remains mainly sound processing/copies with
+scheduler and IRQ-table work. These are instruction shares, not native cycle
+shares. The old field copy-size census does not establish battle payloads.
+Thumb BL sample width initially confused the disassembly display; V2 corrects
+mode detection and independently checks hot opcodes against owned bytes.
+No replay, beta or game bytes changed during that correction.
+
+No new patch is proposed from idle-menu samples alone. Next: profile active
+attacks/transitions; collect battle copy caller/size/destination evidence;
+test G2D bounds/matrix input recurrence before considering an overlay caller
+change. Current compressed main-code delivery remains unsupported. The
+starter gate must not be extrapolated to gameplay. HeartGold remains active;
+Beta2 and its measured gains are unchanged.
