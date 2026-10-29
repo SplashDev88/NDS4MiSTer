@@ -1045,3 +1045,73 @@ complete camera/animation dependencies; consider broader empty-IRQ suppression
 only after owner-aware registration/start/stop/reactivation contracts are proven.
 The dispatch-only result does not prove that every IRQ optimization is exhausted.
 No game-queue advance is claimed.
+
+
+## Query-backed prop geometry setup — parked (V15)
+
+`overlay1-prop-query-state-reuse` reduces repeated graphics setup, but the
+native New Bark pilot demonstrates no useful throughput gain. Keep it disabled;
+the accepted Beta2 remains the available test build. Raw output drift was not
+the reason for parking.
+
+The qualified read-only model census records 720 successful query/draw pairs
+over 120 frames. Their complete 252-byte global geometry payloads are identical:
+600 prop pairs and 120 terrain pairs. The owned query pushes/scales/pops the
+position/vector matrix and changes polygon attributes to `0x30c1`. Simply
+omitting the second flush would leave that state behind. A second caller of the
+shape wrapper has no query, so a blanket wrapper bypass would also be unsafe.
+Evidence: `MODEL_SUBMISSION_FINDINGS_V1.json`, owned `asm/unk_0201F990.s`,
+`src/field/map_prop_manager.c` and `asm/model_attributes.s`.
+
+The 200-byte Thumb rewrite at overlay1 `0x021f3a3c` compacts only the existing
+prop caller and its literal pool. It restores current global polygon attributes,
+then submits the full model or enters the unchanged shape loop through an
+equivalent stack prologue. Other callers retain the original public wrapper.
+No new scratch, code cave, HPS service, RTL, save-state format or ROM-file edit.
+ROM/header and stored/decoded overlay hashes, expected bytes and dependent
+constants/code guard the existing virtual-overlay delivery path.
+
+96 synthetic caller cases preserve query/draw order and arguments, attribute
+selection, material truncation, callee-saved registers and stack balance.
+Real replay completes 9600 frames with all top frames and save exact. Bottom
+frame 3187, 289901/7702322 stereo samples and raw timing/RAM differ;28/41
+checkpoint files match after exact code normalization. All 8 paired screenshots
+agree. The 96 synthetic cases model geometry effects; the full replay supplies
+the actual renderer check, with bounded early-game coverage.
+
+| Metric | Control A1 | Candidate B1 | Control A2 |
+| --- | ---: | ---: | ---: |
+| Native screen-pair publications/s | 19.7781 | 19.3484 | 19.3590 |
+| Renderer CPU (% of one HPS core) | 162.11 | 162.07 | 161.13 |
+| OBS render misses | 0 | 1 | 0 |
+
+Profiled ARM9 instructions fall 671827915→664632744 (1.0710%). Captured geometry
+parameter packets fall 1268065→1233865 (2.6970%); DMA packets, all 120 geometry
+frame rows, vertices and polygons are unchanged. Native publications are
+-1.1249% below the descriptive control mean and below both controls.
+The predeclared 1% benefit gate fails. B1's one OBS render miss means the video
+series is not wholly capture-clean; no statistically established slowdown,
+native cycle, unique-animation FPS or full-game performance claim is made.
+
+Cold Continue succeeds in all 3 runs and disposable saves remain unchanged.
+Twelve sampled video frames preserve the same scene/menu. The thin diagonal
+line also appears in unchanged control A2 Continue, consistent with the open
+V14 issue; its cause/frequency remain unknown. Review MP4s retain original
+video and game-audio track 1 packets/timestamps. No human listening or full-motion
+approval is claimed. New-save/reset/moving/indoor/off-target lifecycle was not
+expanded after the failed benefit gate. Persistent core save states remain
+unsupported; no format change is introduced.
+
+Evidence: `PROP_QUERY_REUSE_NATIVE_FINDINGS_V1.json`,
+`PROP_QUERY_REUSE_BEFORE_AFTER_V1.csv`, `PROP_QUERY_REUSE_REFERENCE_REVIEW_V1.json`,
+`PROP_QUERY_REUSE_GEOMETRY_COMPARISON_V1.json` and the 3
+`HeartGold_prop_query_*.mp4` recordings. The manifest contains the individually
+toggleable disabled patch. Reuse the existing generic observers and analyses.
+
+Top 3 remaining leads: inspect the 19 shapes in the large terrain resource for
+conservative spatial visibility; determine the cost and supported alternatives
+to synchronous per-prop BOX_TEST queries; inspect model/display-list work that
+actually changes submitted vertices/polygons. Resource totals 3846 vertices and
+1339 polygons are not visible output or permission to remove geometry. Defer
+terrain-only setup reuse after this negative prop result. Do not repeat the
+same pilot to rescue it. No game-queue advance or exhaustive optimum is claimed.

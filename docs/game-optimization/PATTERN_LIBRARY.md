@@ -1604,3 +1604,26 @@ visible action separate. Clock synchronization alone does not calibrate the
 capture pipeline. Retain conflicting input/video timing results and quantify
 capture boundaries; do not retrospectively declare a different primary gate
 passed. Measure complete-action context alongside isolated pauses.
+
+
+## Geometry query followed by duplicate draw setup (HeartGold V15)
+
+Detector: authenticate query/draw entry and exit sites, capture model identity,
+caller, transform inputs and the full global FIFO setup block, then pair only
+successful queries with their immediate same-model draws. Address alone is
+insufficient when model resources reload. Use existing guarded memory-watch
+events and geometry census, with an unchanged replay qualification.
+
+Identical bytes do not imply identical graphics state: bounding-box queries
+may push/scale/pop position/vector matrices, alter polygon attributes and drain
+the FIFO. Audit all intervening routines and restore query side effects before
+removing setup. Keep no-query callers on their original path. Reuse authenticated
+function space and normal stack frames; do not infer a scratch area from zeros.
+
+HeartGold 600 prop pairs omit duplicate projection/view/base matrix, light,
+material, viewport and texture-default writes after explicit polygon-attribute
+restoration. All 9600 top frames and geometry frame counts match; command packets
+fall 2.6970% and profiled ARM9 instructions 1.0710%. Native plaza benefit fails,
+so the patch stays disabled. Track packet reduction separately from submitted
+vertices/polygons and native renderer cost. This is an NNS SDK structural lead,
+not a qualified cross-title address/byte signature or a general flush-skip rule.

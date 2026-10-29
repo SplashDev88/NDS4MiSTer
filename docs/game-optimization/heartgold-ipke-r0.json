@@ -372,6 +372,65 @@
         "HBLANK_FASTPATH_NATIVE_FINDINGS_V1.json",
         "HBLANK_FASTPATH_BEFORE_AFTER_V1.csv"
       ]
+    },
+    {
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 1,
+      "overlay_ram": "0x21e5900",
+      "overlay_file_id": 1,
+      "overlay_sha256": "70ad543419e7d43bbf2b470b386d322492b66fbe37cd1dbfae7eb40b5306df37",
+      "overlay_stored_sha256": "a35a3a7072daaacbc2d8e5642ab076d4bc4606eb16c4687709a1bc24a80535be",
+      "id": "overlay1-prop-query-state-reuse",
+      "pattern": "query-draw-shared-geometry-setup",
+      "addr": "0x21f3a3c",
+      "mode": "thumb",
+      "expect": "f8b592b02e4c03920493061c029106ab042203cc03c3521efbd12068189d186000276868002844d0a868002841d12c1c143403cc0fab1a1c03c3206818600f9930682b1c08180f901199b0682c33081811902869111c406d06aa2bf67bff002827d0029807f0a8ff041c0398012805d129690498496d134af6f77cff2868211c05aaf6f79bfe05a800880fa9002806d12b1c286906aa2c332bf63efd09e0009428682b1c0190286906aa406d2c3300f04bf87f1c3835202fb3db12b0f8bdc046906a2002330f0000",
+      "replace": "f8b592b00392049306000291189d0027686800283cd0a868002839d16869316840180f90a8691090e869b168401811902869406d0fa91b4a2b002c332bf68aff002825d0292018490122cef650ed029807f0b2ff04000398012805d129690498496d124af6f786ff2868210005aaf6f7a5fe05a80088002803d12869ccf606e906e00094286801902869406d00f006f801373835202fbbdb12b0f8bdf8b5070067e0c046906a200238a51d02330f0000000000000000000000000000000000000000000000000000",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "data_guards": [
+        {
+          "addr": "0x2206a90",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        },
+        {
+          "addr": "0x21f3b84",
+          "expect": "f8b5071c081c141c1d1ccbf622ea1c49201ce0f6c8ee1b49a420ca6f8243281cca67cbf62eeacbf6f6e900aa07980699023200abf6f724fe00a800880699f6f72bfe061c00a84088ff250024002815dda0003218305a854203d00006050e012300e000235288381c291ccef6b0ea601c0006040e00a840888442e9dbf8bdc04658a51d021ca51d02"
+        }
+      ],
+      "notes": "Disabled candidate. Reuse only this caller's successful visibility query transform; restore global polygon attributes before full/shape draw. Keep other callers and public shape wrapper unchanged. Compact the existing caller body and reuse its original stack allocation; no new scratch/cave. Raw timing differences permitted; native pilot has no useful benefit; parked disabled. Broader lifecycle remains unqualified.",
+      "status": "parked_no_useful_native_plaza_gain",
+      "validated": {
+        "synthetic_cases": 96,
+        "framebuffer": "All9600 top frames exact; bottom frame3187 differs. All8 paired checkpoints inspected.",
+        "ram": "28/41 checkpoint files exact after code normalization; raw timing/stack/state drift retained.",
+        "audio": "289901/7702322 stereo samples differ, equal length; no human listening verdict.",
+        "save": "Reference final save exact; all3 native cold-load/standing sessions preserve private seed.",
+        "native": "Matched scene in3 cold Continue snapshots and12 sampled video frames. No useful native benefit; B1 has one OBS render miss. Broader lifecycle not expanded."
+      },
+      "gain": {
+        "reference_arm9_instruction_reduction_percent": 1.0709842266676262,
+        "reference_geometry_parameter_reduction_percent": 2.697022628966181,
+        "native_publications_per_second": {
+          "A1": 19.778136553856264,
+          "B1": 19.34844999662416,
+          "A2": 19.359020042116747
+        },
+        "native_candidate_vs_descriptive_control_mean_percent": -1.1249069708093917,
+        "native_speedup": null,
+        "native_scope": "B1 has one OBS render miss, with zero encoded-output skips. The candidate rate and full A/B/A series are descriptive; no capture-clean pacing or statistically established slowdown claim."
+      },
+      "evidence": [
+        "MODEL_SUBMISSION_FINDINGS_V1.json",
+        "PROP_QUERY_REUSE_PREFLIGHT_V1.json",
+        "PROP_QUERY_REUSE_SYNTHETIC_V1.json",
+        "PROP_QUERY_REUSE_REFERENCE_REVIEW_V1.json",
+        "PROP_QUERY_REUSE_GEOMETRY_COMPARISON_V1.json",
+        "PROP_QUERY_REUSE_NATIVE_FINDINGS_V1.json",
+        "PROP_QUERY_REUSE_BEFORE_AFTER_V1.csv"
+      ]
     }
   ],
   "status": "private_beta1_enabled_by_explicit_catalog",

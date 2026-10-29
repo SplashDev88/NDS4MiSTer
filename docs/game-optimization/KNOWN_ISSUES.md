@@ -735,3 +735,17 @@
   A2 has one OBS render miss, so the pilot is not a wholly capture-clean A/B/A
   series. Clean A1/B1 already fail the useful-benefit gate; retain the defect
   evidence and do not repeat the pilot merely to obtain a favorable result.
+
+- HeartGold query/draw setup reuse V15 is parked disabled: 2.6970% fewer reference
+  command-parameter packets and 1.0710% fewer ARM9 instructions do not establish
+  native gameplay benefit. B1 has one OBS render miss; native rates are
+  descriptive and below both controls. Do not rerun only to rescue the result.
+  BOX_TEST changes polygon attributes; omitting the second flush without
+  restoration is unsafe. A second shape-wrapper caller lacks a query and must
+  retain setup. Broader new-save/reset/indoor/moving/active-effect coverage is
+  incomplete for this disabled candidate; raw audio differences remain retained.
+- HeartGold terrain header counts (large model: 3846 vertices / 1339 polygons,
+  19 shapes) describe the resource, not per-frame native output or safely
+  removable geometry. Shape-level bounds need actual display-list/node/material
+  and camera analysis. The thin line also appears in unpatched A2 Continue;
+  cause/frequency remain unresolved, with no patch-only regression claim.
