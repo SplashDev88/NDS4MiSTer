@@ -1,35 +1,38 @@
-# NDS4MiSTer v0.9.0-rc.12
+# NDS4MiSTer v0.9.0-rc.13 — install guide
 
-Faster Castlevania: Order of Ecclesia gameplay, smoother opening movies across all four supported regions, and restored Ni no Kuni story video.
+This release candidate carries the accepted game optimizations developed from rc12: faster Final Fantasy Tactics A2 rendering, terrain optimizations for Pokémon Platinum, HeartGold and SoulSilver, and faster starter-selection rendering in HeartGold and SoulSilver.
 
-## What's new since rc.11
+## Changes since rc12
 
-- **Faster Order of Ecclesia gameplay.** Rendering and replay optimizations improve throughput and frame pacing. Tested EU, Japan and Korea combat scenes improved from about 34 to 55 completed paired-screen updates per second, roughly 59%. These are screen-update measurements; full-game steady 60 fps is not guaranteed.
-- **Smoother Order of Ecclesia opening movie.** Accelerated decoding preserves the original movie and audio at its native approximately 15 fps.
-- **Ecclesia regional coverage.** Both improvements support USA, Europe, Japan and Korea retail revision 0. These are all four variants in the current project catalog. Unlisted revisions and modified ROMs are not implicitly supported by acceleration.
-- **Fixed Ni no Kuni story movies showing black video after New Game.** Supports Japanese retail and the English v1.0 translation. The English intro, first story movie, movement and dialogue passed a MiSTer test with 3,215 movie-frame decodes and zero decoder errors.
+- **Final Fantasy Tactics A2 (USA revision 0):** accepted renderer optimizations reduce repeated rendering work. Demanding scenes still run below native speed.
+- **Pokémon Platinum (USA revision 1):** skip terrain models outside the tested visibility bounds. The measured outdoor route gained about 13% in completed screen-buffer updates.
+- **Pokémon HeartGold (USA revision 0):** terrain visibility filtering improves the measured plaza scene by about 3%; the starter screen avoids repeating identical idle drawing work.
+- **Pokémon SoulSilver (USA revision 0):** the corresponding independently checked terrain patch improves the measured plaza by about 6.5%. Starter idle rendering rose from 14.23 to 43.94 completed screen-buffer updates per second compared with the previous SoulSilver beta.
+- Guest patches activate automatically for exact verified ROM identities. They affect the loaded game image; original ROM files are not rewritten. Unknown revisions and regions retain their ordinary loading path.
 
-RC11's Portrait of Ruin improvements, digital menu rotation and Direct Video 1 menu alignment fixes are retained. The FPGA image and 1 GHz ARM clock are unchanged. Movie acceleration activates automatically for verified ROM versions; original ROM files are not rewritten.
+These are bounded scene measurements, not whole-game speedups, unique animation FPS or changes to the game's clock rate. Pokémon patches use the accepted functional/perceptual budget: timing, RAM, RNG or audio can differ from unpatched runs. They are not certified bit-exact across an entire game.
+
+RC12's Order of Ecclesia improvements, Ni no Kuni story-video fix, 21 movie profiles, NSMB regional optimizations and earlier display/menu work are retained. The FPGA image and stock 1 GHz ARM clock are unchanged. No new Animal Crossing or Phantom Hourglass patch is enabled.
 
 ## Install or update
 
-1. Exit the core with **System → Reboot**.
+1. Exit through **System → Reboot**.
 2. Back up `Scripts/NDS4MiSTer.sh`, the hidden `Scripts/.NDS_Standalone` folder, `saves/NDS` and `config/NDS_storage.cfg`.
-3. Extract **NDS4MiSTer_v0.9.0-rc.12_Standalone.zip** to the root of your SD card. Include hidden files, merge the `Scripts` folder, and overwrite existing program files.
+3. Extract **NDS4MiSTer_v0.9.0-rc.13_Standalone.zip** to the SD-card root, including hidden files. Merge `Scripts` and overwrite program files.
 4. Run **Scripts → NDS4MiSTer**, choose **Load *.NDS**, and select your ROM.
 
-A first load of a large ROM from network storage may take several minutes while it is verified and prepared. Later loads can reuse the verified cache. Existing display settings, controller mappings and saves are retained.
+Existing saves, controller mappings and display settings are retained. A first large-ROM load from network storage can take several minutes while the image is verified. For rollback, exit and restore the matching backed-up launcher and entire support folder together; keep your current saves unless you intend to undo game progress.
 
 ## Known limitations
 
-- This release candidate has limited testing. Gameplay does not consistently hold 60 fps; slowdown, graphical glitches and crashes may still occur. Heavy Ecclesia warp effects remain slow. FPGA static setup/recovery timing remains unresolved.
-- The Ni no Kuni movie sweep completed all 15 story clips, but clip S07 has a one-frame screen-clear difference before playback. Later story triggers and return scenes have not all been tested in their natural gameplay context; this is not a full-playthrough qualification.
-- The NSMB goal-pole background glitch remains.
-- RetroTINK LCD Grid 2 can darken or cause banding in some layouts. The optional DS Lite-style recipe applies to the documented Tate setup; other layouts may need separate profiles or the effect disabled.
-- Not yet supported: save states, persistent lid-close resume, RTC alarms/interrupts, wireless multiplayer, DSi mode and PAL 50 Hz output.
+- Testing covers specific scenes and save/reset/reload paths, not full playthroughs. Broader Pokémon battle and later-game behavior needs more coverage. In Platinum's fixed-input battle replay, battle progress and HP diverged; coherent scenes and a matching saved file do not establish identical battle behavior.
+- Additional Pokémon revisions and regional releases are inventoried but are not enabled by resemblance to the USA versions. See `VERSION_COVERAGE.md` for exact support.
+- Slowdown, audio hitches, graphical glitches and crashes remain possible. FPGA static setup/recovery timing remains unresolved; this package does not introduce new RTL.
+- The inherited NSMB goal-pole background glitch remains. Ni no Kuni clip S07 has a one-frame screen-clear difference, and later story triggers are not fully qualified in natural gameplay.
+- Save states, persistent lid-close resume, RTC alarms/interrupts, wireless multiplayer, DSi mode and PAL 50 Hz output remain unsupported. RetroTINK LCD Grid 2 can darken or band outside the tested layout.
 
-Source, build instructions, validation records and licenses are included in `Scripts/.NDS_Standalone/source` and `licenses`. No ROMs, user saves or personal display settings are included.
+The release-specific host rebuild changes only the version text. The accepted beta runtime was tested on MiSTer; this exact release ZIP has offline package/stream validation and has not been launched on hardware. Detailed scope, component hashes, corresponding source and build instructions are included.
 
-## Thanks
+## Credits
 
-Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend (saneFriend), Corn and skmp. FFmpeg and ndspy credits and licenses are included.
+Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend (saneFriend), Corn and skmp. Included license notices cover FFmpeg, ndspy and other dependencies. No commercial ROMs, BIOS dumps, user saves or personal settings are included.

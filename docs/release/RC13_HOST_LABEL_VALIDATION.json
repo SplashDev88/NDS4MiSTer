@@ -1,0 +1,17 @@
+{
+  "state": "passed_host_label_only_rebuild",
+  "old_host_sha256": "d187d83a9b31cdbed4ac450a9af514374a4a5f08b94df4356f3a9fa020a77fb4",
+  "new_host_sha256": "7126bc4b5356d4aa33830baab47e3ff70047e6c2a414d825fc803c6e0ea23515",
+  "changed_sections": [
+    ".note.gnu.build-id",
+    ".rodata"
+  ],
+  "executable_code_identical": true,
+  "rodata_change": "NDS4MiSTer v0.9.0-rc12 -> NDS4MiSTer v0.9.0-rc13 only",
+  "build_container": "sha256:b196be9f1d989f2388969ae8ba89c447db2792c46c90eb2b4554fa2fee4941bc",
+  "tests": [
+    "test_fmv_rom_reader passed",
+    "test_host_framed passed"
+  ],
+  "supervisor_difference_from_accepted_beta": "Release version text only"
+}

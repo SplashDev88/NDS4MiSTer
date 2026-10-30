@@ -1,0 +1,30 @@
+{
+  "scope": "Provenance hashes for private bounded-validation records; see VALIDATION_RC13.md for the public summary",
+  "records": [
+    {
+      "record": "BETA2_INSTALLATION_QUALIFICATION_V1.json",
+      "sha256": "9a5b2adcc492facce8a21379e6d4f8003214613d4e868a79e6365891731084d8",
+      "included": false,
+      "location": "Maintainer local evidence"
+    },
+    {
+      "record": "BETA2_STREAM_VALIDATION.json",
+      "sha256": "19bc1c78b0b01f4e2585320389690e1a05cfd4fa04d537de84cd0d73c5630af1",
+      "included": false,
+      "location": "Maintainer local evidence"
+    },
+    {
+      "record": "NATIVE_DISPATCH_FINAL_PRESERVATION_V1.json",
+      "sha256": "f833e25c9b8dcd29ecb7fc1e8baa3caae63e94e12601c3dfb6f638af1e379020",
+      "included": false,
+      "location": "Maintainer local evidence"
+    },
+    {
+      "record": "BETA1_BATTLE_FOLLOWUP_ISSUE_V1.json",
+      "sha256": "171e985a2bb21429856c0a3d86d8aa3396619c5d722cd36edabd95d8d140a817",
+      "included": false,
+      "location": "Maintainer local evidence"
+    }
+  ],
+  "published": false
+}

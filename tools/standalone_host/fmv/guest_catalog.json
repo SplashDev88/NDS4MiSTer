@@ -1,0 +1,506 @@
+{
+  "catalog_version": 1,
+  "entries": [
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUE",
+        "revision": 1,
+        "title": "Pok\u00e9mon Platinum Version (USA) (Rev 1)",
+        "header_sha1": "5b5bc6e7e15499337acf5662e3e7652c7fc3b665",
+        "header_bytes": 352,
+        "rom_sha256": "fbce4c4def0c7797f8dd238a3d7a5e48b4a7e3abd86890ac65f6321cef781bdb",
+        "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
+        "baseline": "Exact rc12 with cumulative accepted FFTA2 Beta2 changes; prior Platinum character and furniture fixes retained",
+        "budget": "Terrain visibility only: user-approved perceptual private beta with known non-bit-exact differences and bounded coverage. Other candidates remain disabled under their recorded decisions.",
+        "status": "accepted_user_directed_private_beta",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "overlay_ram": "0x21d0d80",
+            "overlay_file_id": 5,
+            "overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+            "addr": "0x21e8a2a",
+            "mode": "thumb",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa34f60df8",
+            "replace": "a05902218902471878680ea9174a154b34f64dfa00280bd038000ea9134a114b34f613f8c046c046c046c046c046c046",
+            "hook": null,
+            "scratch_bytes": 0,
+            "enabled": true,
+            "notes": "User reviewed video/audio and explicitly requested promotion on2026-10-28. Exact tested48-byte terrain visibility patch; no new scratch. Known framebuffer/audio/RAM differences remain documented; bounded native gain and save/reset/reload/rollback checks passed. Full-game and complete RAM-liveness qualification are not claimed.",
+            "status": "accepted_user_directed_private_beta",
+            "validated": {
+              "fb": "15,600 frames: six top-screen differences at 14357,14359,14479,14481,14483,14485; all bottom screens exact. All 600 target-window screen pairs exact.",
+              "ram": "Strict failure retained. Main-RAM writers classify projection/model/graphics-transfer state; full replay transfer bookkeeping is consistent. DTCM liveness and complete reader equivalence remain unqualified. Only exact48-byte code normalized.",
+              "audio": "239,992 of 12,516,274 stereo samples differ; maximum channel delta 1,215 and RMS 9.153. Audibility unjudged. User approved the presented control/candidate review on2026-10-28.",
+              "save": "Original reference save exact. Native candidate ordinary Save, soft-reset Continue, patched cold session reload and unpatched control reload passed; all loaded scene PNGs identical and generated save unchanged across resets/reloads. Bounded Twinleaf Town coverage.",
+              "native": "Two alternating control/candidate outdoor trials, same boundary route, stock1GHz, rc12 FPGA and accepted Beta2 renderer. Controls16.7726/17.2525; candidates19.1382/19.3653 complete screen-buffer publications/s. Saves preserved and OBS added no drops. Indoor idle59.7131 versus59.6371. Three further sessions passed native save/reset/cold-load and house entry/exit, including unpatched rollback save compatibility. No physical power-cycle or instruction-cache readback claim. Reference reset comparison completed; full RAM liveness and broader scene coverage remain unqualified.",
+              "user_review": "Everything looks good, followed by explicit just promote it,. works great. Accepted as a perceptual private beta.",
+              "reset_reference": "12000 frames: both screens, final save and all7 full RAM checkpoints exact outside authenticated48 codebytes; transient state/audio differences retained. Audio184514/9627902 stereo samples differ, max4058,RMS40.630. This reset comparison was not in the previously reviewed video."
+            },
+            "gain": {
+              "reference_arm9_entries_15000_15599": {
+                "before": 98783080,
+                "after": 97162803,
+                "reduction_percent": 1.6402373766843503,
+                "scope": "Executed instructions in software replay, not native cycles or speed."
+              },
+              "terrain_draw_calls": {
+                "before": 1200,
+                "after": 590,
+                "new_box_tests": 1200
+              },
+              "native_cycles": null,
+              "native_frame_time": null,
+              "qualified": true,
+              "native_publication_throughput": {
+                "control_mean": 17.012519283317772,
+                "candidate_mean": 19.251761807913674,
+                "increase_percent": 13.16232174262204,
+                "control_range_percent": 2.82089939355885,
+                "unit": "complete screen-buffer publications per second",
+                "scope": "Two matched 40-second boundary traversal trials per mode; not unique animation FPS, game-clock speed or whole-game gain."
+              },
+              "qualification_scope": "Bounded native publication-throughput benefit accepted for private beta, not full-game speed."
+            },
+            "evidence": [
+              "TERRAIN_CONTRACT_QUALIFICATION_V1.json",
+              "TERRAIN_CONTRACT_FINDINGS_V1.json",
+              "TERRAIN_CULL_BUILD_V1.json",
+              "TERRAIN_CULL_REFERENCE_FINDINGS_V1.json",
+              "TERRAIN_CULL_RAM_DIFF_V1.json",
+              "TERRAIN_NATIVE_FINDINGS_V1.json",
+              "TERRAIN_NATIVE_INTERIOR_FINDINGS_V1.json",
+              "TERRAIN_NATIVE_METRIC_AUDIT_V1.json",
+              "TERRAIN_RAM_WRITER_REPEAT_V1.json",
+              "TERRAIN_RAM_CLASSIFICATION_V1.json",
+              "TERRAIN_TRANSFER_LIFECYCLE_V1.json",
+              "TERRAIN_USER_REVIEW_APPROVAL_V1.json",
+              "TERRAIN_NATIVE_LIFECYCLE_V1.json",
+              "NATIVE_TERRAIN_LIFECYCLE_PRESERVATION_V1.json",
+              "TERRAIN_RESET_FINDINGS_V1.json",
+              "TERRAIN_PROMOTION_AUTHORIZATION_V1.json"
+            ]
+          }
+        ],
+        "arm9_crc32": "4d104949"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "patch_ids": [
+        "overlay1-terrain-visibility",
+        "overlay61-starter-idle-identical-draw"
+      ],
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold",
+        "game_code": "IPKE",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "1b7be2e5079b10c7122aa048656c1d3a6d6bd0c1",
+        "header_crc32": "3e7b4318",
+        "rom_sha256": "65f02a56842b75aa92d775d56d657a56fe3fa993550b04dc20704ab82d760105",
+        "arm9_sha256": "5eeaa2dcabfb66b4ff5d151687cff2c9214de9e272ba7afdae7a01d57cf319af",
+        "arm9_crc32": "f1ccc042",
+        "arm7_sha256": "746355ed51b324933542a7c4fcf109a5f83755a97c95b834ffd08caf6d4fafea",
+        "arm7_crc32": "3b3c3c25",
+        "arm7_code_settings_offset": "0x198",
+        "patches": [
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "overlay_ram": "0x21e5900",
+            "overlay_file_id": 1,
+            "overlay_sha256": "70ad543419e7d43bbf2b470b386d322492b66fbe37cd1dbfae7eb40b5306df37",
+            "overlay_stored_sha256": "a35a3a7072daaacbc2d8e5642ab076d4bc4606eb16c4687709a1bc24a80535be",
+            "addr": "0x21f5996",
+            "mode": "thumb",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6c7fd",
+            "replace": "a05902218902471878680ea9164a144b29f6f3ff00280bd038000ea9124a104b29f6cdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "data_guards": [
+              {
+                "addr": "0x21f59f8",
+                "expect": "d86b2002e46b2002"
+              },
+              {
+                "addr": "0x2206bd8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206be4",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "notes": "Call the existing model visibility test, draw terrain on nonzero, and preserve the independent prop path. Existing rotation/scale constants require no new scratch. Explicit private selection passes bounded native function and throughput checks; the cumulative private Beta1 explicitly selects it through the pinned catalog. General discovery/defaults remain disabled.",
+            "validated": {
+              "framebuffer": "4315 top /8 bottom frames differ over9600; eight checkpoint pairs reviewed",
+              "ram": "main7606/DTCM8063/ARM7WRAM7636 frame hashes differ; ITCM/sharedWRAM match",
+              "audio": "6053116/7702322 stereo samples differ; full listening pending",
+              "save": "Reference final buffer exact. A new private native Save was read back and cold-reloaded by original, delivery-control and candidate images; measured sessions preserve that seed.",
+              "native": "Two cold original/candidate scene pairs, plus two unchanged-code delivery controls. Soft reset, house entry/exit, Bag open/close and cold save compatibility pass bounded visual/input checks. Indoor throughput unchanged. Game audio is recorded; no full-motion human/listening approval or long-game/battle coverage is claimed.",
+              "unrelated_replay": "Separate3600-frame indoor-only cold replay completes with exact save; all three checkpoint pairs preserve room/player/menu.6 top/7 bottom frames differ, plus RAM/audio timing differences."
+            },
+            "gain": {
+              "reference_arm9_instructions_percent": -4.3564178865018395,
+              "candidate_terrain_draws_skipped": 728,
+              "candidate_terrain_queries": 1158,
+              "native_speedup": null,
+              "native_standing_publications_per_second_original": 18.683715193643774,
+              "native_standing_publications_per_second_delivery": 18.607099538172694,
+              "native_standing_publications_per_second_candidate": 19.25773817373352,
+              "native_standing_vs_original_percent": 3.0723171175560893,
+              "native_standing_vs_delivery_percent": 3.4967224968406985,
+              "native_indoor_publications_original": 59.641575012746806,
+              "native_indoor_publications_candidate": 59.630678317661086,
+              "native_scope": "Longer45-second standing intervals from the same private plaza save; stock1GHz and identical accepted host/renderer/rc12 FPGA. Publications are not unique animation FPS. Initial15-second pairs show5.15%/5.69%; walking trajectories diverge and are excluded from speed estimates."
+            },
+            "evidence": [
+              "TERRAIN_REFERENCE_FINDINGS_V2.json",
+              "TERRAIN_BEFORE_AFTER_V1.csv",
+              "OVERLAY1_DELIVERY_QUALIFICATION_V1.json",
+              "OUTDOOR_HOTSPOT_CLASSIFICATION_V1.json",
+              "NATIVE_TERRAIN_SCREEN_FINDINGS_V1.json",
+              "NATIVE_TERRAIN_REPLICATION_FINDINGS_V1.json",
+              "NATIVE_TERRAIN_REPLICATION_BEFORE_AFTER_V1.csv",
+              "NATIVE_TERRAIN_LIFECYCLE_SCREEN_V1.json",
+              "NATIVE_PLAZA_RELOAD_QUALIFICATION_V1.json",
+              "TERRAIN_INDOOR_FINDINGS_V1.json"
+            ],
+            "status": "native_bounded_benefit_beta_preparation_pending"
+          },
+          {
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "overlay_ram": "0x21e5900",
+            "overlay_file_id": 1,
+            "overlay_sha256": "70ad543419e7d43bbf2b470b386d322492b66fbe37cd1dbfae7eb40b5306df37",
+            "overlay_stored_sha256": "a35a3a7072daaacbc2d8e5642ab076d4bc4606eb16c4687709a1bc24a80535be",
+            "id": "overlay1-empty-tail-exit",
+            "pattern": "repeated-empty-tail-compaction",
+            "addr": "0x21fa5d4",
+            "mode": "thumb",
+            "expect": "17d1721c824214da11017b18d96800290bd010013b189c462a1c03cb03c203cb03c200216046c16003e0521c10338242ecdb0020205e",
+            "replace": "18d1721c824215da11017b18d96800290bd010013b189c462a1c03cb03c203cb03c200216046c16004e0521c10338242ecdb461e2088",
+            "hook": null,
+            "scratch_bytes": 0,
+            "enabled": false,
+            "notes": "Exit nested compaction after the first exhausted empty tail; preserve stale record payloads, signed capacity, complete registers/flags, ordered writes and final reset. Separate54-byte Thumb edit; no scratch or HPS hook. Same exact shared block as Platinum, independently authenticated. Native A/B/A plaza screen fails the predeclared1% useful-gain threshold; keep disabled. Raw replay differences are not the reason for parking.",
+            "status": "parked_no_useful_native_plaza_gain",
+            "validated": {
+              "synthetic_cases": 1338,
+              "writer_contract": "299 paired empty64-record calls; full-route writer watch shows capacity/records last written at initialization; IRQ lock/separate-array activity recorded. Bounded route, not a full-game concurrency proof.",
+              "framebuffer": "All9600 top frames exact; one bottom frame differs (3187).",
+              "ram": "All41 checkpoint files exact outside new patch; per-frame timing hashes can differ. Existing terrain patch retained and complete overlay context authenticated.",
+              "audio": "3660/7702322 stereo samples differ; equal length; no audibility claim.",
+              "save": "Reference final save exact; all three native cold-load/standing sessions preserve private plaza seed.",
+              "native": "Same scene/camera/player/menu in three cold45-second sessions; staged bytes verified, capture drops zero, clean exit. Candidate not taken through broader lifecycle after no useful gain."
+            },
+            "gain": {
+              "reference_arm9_instruction_reduction_percent": 3.413490640679913,
+              "native_publications_per_second": {
+                "A1": 19.696885789982865,
+                "B1": 19.398280210713594,
+                "A2": 19.382680379398344
+              },
+              "native_candidate_vs_control_mean_percent": -0.7241783256431211,
+              "native_scope": "Incremental terrain+queue vs terrain-only A/B/A in New Bark plaza. Complete screen publications/s, not unique animation FPS or native cycles. No statistically proven slowdown claimed."
+            },
+            "evidence": [
+              "MODEL_QUEUE_PREFLIGHT_V1.json",
+              "MODEL_QUEUE_CONTRACT_FINDINGS_V1.json",
+              "MODEL_QUEUE_WRITER_FINDINGS_V1.json",
+              "MODEL_QUEUE_SYNTHETIC_V1.json",
+              "MODEL_QUEUE_REFERENCE_FINDINGS_V1.json",
+              "MODEL_QUEUE_WORKER_QUALIFICATION_V1.json",
+              "MODEL_QUEUE_NATIVE_FINDINGS_V1.json",
+              "MODEL_QUEUE_NATIVE_BEFORE_AFTER_V1.csv"
+            ]
+          },
+          {
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "overlay_ram": "0x21e5900",
+            "overlay_file_id": 1,
+            "overlay_sha256": "70ad543419e7d43bbf2b470b386d322492b66fbe37cd1dbfae7eb40b5306df37",
+            "overlay_stored_sha256": "a35a3a7072daaacbc2d8e5642ab076d4bc4606eb16c4687709a1bc24a80535be",
+            "id": "overlay1-sub-oam-bulk",
+            "pattern": "owned-contiguous-oam-bulk",
+            "addr": "0x21e5a6e",
+            "mode": "thumb",
+            "expect": "00f083fb3df663f9042035f606f9a06000f0ebfa0020012175f631fd201c04215af65ffe5049e8190df786e8002904d04c484d4a002128f63cfc042069f0dbfe1221090160506be000f07ffc412080002058211c0090231cc031cc33606b0968626d1b6815f0b3ff211cc031096804200df0abfd211c9c310860201c00f0b9fc201c00f0d8fc201c00f043fde06855f662ff55f640ff011c6068c06805f0a9fb216a201c09686ff626fb002806d1201cc43001680120c043814203d1201c002102f0e7f9201c03215af60bfe042015f0c0fc6168c8616068c06915f0d4fc61680420c96915f03ffd6168086218e005f0dcf915e005f0e7f9002802d001200190e06600f05cfd00280ad1fa2218480021920028f6cefb1548164a002128f6c9fb3068401c3060019802b0f8bdc046a1e6dc007b0000005000000450100004a9661e02cf040000d9661e02020000000400000003000000b9661e02a1030000690d000049e303027910000015030000956509027805000010b521f65dfb041c00f072f9002807d00121201c0a1c10f019fe201c00f080f9211cbc310968201c0906090e00f0d6f9e06e002801d0002010bd012010bd0000f8b50e1c944d21f63bfb041ce06a0ff05dfa3068002806d0012800d19fe0022800d1e4e015e18d490020f3f688e8201c7ef65cfe8a4879f0daec8a494143e06a6d1810f04dfb206c76f606fd216a8860206c76f607fd216ac860206c76f6e8fc216a0861201c9830006815f0c3fb606d002801d13ff640fce06a10f0abfa7a4879f000ec002801d1012100e00021774848432d18606d02f0b5fe606d02f014ff201c583003f084f84120800020581ef047fd201ccc3000681ef0aafc201cc83000681ef0c7fa6a4879f054ec002801d1012100e000218b200f1c47436068006905f05afa5d490020f3f652e86068006905f062fa6068002101615e49e8190cf740ef002904d05c485c4a002128f6f6fae06b78f6c7fbe06b13f088fae06b79f60bfc606c0bf054fb201c1ff069fba06b00f0a4fc0020a0635149e8190cf720ef002904d04c484f4a002128f6d7fa9c3420680df073fc3068401c306079e0e06a10f0a2fa012874d1201cc03000681ef077f9201c343015f0d3fde06a10f086fa201c04f043ff201c503004f069faa06e0df0ccff6068806809f02efe6068c06805f036fa6068006a15f020fc6068c06915f07efb606880696ff664fc201c4c3004f02cfd201c483004f086fd00f0d4f912200001205869f07bfda06800f09af9201c05f0a5f83068401c306031e0201c05f0acf800282cd000f0faf93df6aafc3af6c2fb39f608fc6068406800f080fc0020011c34f660f9a06834f665fe606834f662fe00206060042034f6b9fd606f00680002000f08d0134821f68df8134821f68af8124821f687f81ff647ff0120f8bd0020f8bdc046cfaa2a007b000000c9661e023b020000dd661e028d010000e1661e02ad08000049e30302a51e0000eb040000dd04000002000000040000000300000008b558f643fa44f66bfd44f6fbff002801d1012008bd002008bd000038b5051c286c76f6cffb041c286c76f6d1fb2a6a91688c4202d1d168884204d09460296ac860012038bd002038bd0000f8b582b0051c286c76f6b6fb0111c90e4118286c4c1176f6b5fb0111c90e41184a11286b211c55f67bf8041c286a0668b44202d102b00020f8bde86855f640fd071c286a211c0460281c55f67bfb281c01216df66ff8281c55f6f6fb0190281c55f6f6fb0090e86b019b311c221c78f6c7f8296a281c09686ef6f0ff011c281c01226ff629f8281c55f690fb381c55f6f7fc011c6868c06805f08cf9301c55f6e3f9061c201c55f6dff9864202d0281c09f0a0fd012002b0f8bd000038b5051c0c1c6af6e3fa002802d1281c6ff622fa286d04f065f94120800028581ef0fcfba86a04f0d1fe281c0df0d4fe0120204203d06868006905f08bf80820204204d0281cc83000681ef0a1f90220204202d0e86a0ff06bf80420204202d0281c00f0fdf838bd10b58ab0054c00ab052203cc03c3521efbd100a83cf6d4fd0ab010bd50632002004b184759601e02004b184739611e0238b59ab0324d16ab041c1a1c03cd03c303cd03c3101c34f61ffe2e4d0fab03cd1a1c03c303cd03c303cd03c3286801211860201c002335f6a9f8012020210022042336f693f8201c012136f61dfd224d08ab03cd1a1c03c303cd03c303cd03c3286802211860201c002335f68ff8022020210022042336f679f8201c022136f603fd164d01ab03cd1a1c03c303cd03c303cd03c3286803211860201c002335f675f8032020210022042336f65ff8201c032136f6e9fc002000a908800221ecf6beeb00a800210222e9f6a4ed1ab038bdec62200218632002fc6220023463200210b5041c012000213cf68efd022000213cf68afd042000213cf686fd082000213cf682fd201c012135f6f4fc201c022135f6f0fc201c032135f6ecfc10bd000000b585b0d1f6aaeb002000907c21019102901f23039304220492021c24f6dcff05b000bd",
+            "replace": "00f082fb3df663f9042035f606f9a06000f0ebfa0020012175f631fd201c04215af65ffe5049e8190df786e8002904d04c484d4a002128f63cfc042069f0dbfe1221090160506be000f07ffc412080002058211c0090231cc031cc33606b0968626d1b6815f0b3ff211cc031096804200df0abfd211c9c310860201c00f0b9fc201c00f0d8fc201c00f043fde06855f662ff55f640ff011c6068c06805f0a9fb216a201c09686ff626fb002806d1201cc43001680120c043814203d1201c002102f0e7f9201c03215af60bfe042015f0c0fc6168c8616068c06915f0d4fc61680420c96915f03ffd6168086218e005f0dcf915e005f0e7f9002802d001200190e06600f05cfd00280ad1fa2218480021920028f6cefb1548164a002128f6c9fb3068401c3060019802b0f8bdc046a1e6dc007b0000005000000450100004a9661e02cf040000d9661e02020000000400000003000000b9661e02a1030000690d000049e303027910000015030000956509027805000010b521f65dfb041c00f072f9002807d00121201c0a1c10f019fe201c00f080f9211cbc310968201c0906090e00f0d6f9e06e002801d0002010bd012010bd0000f8b50e1c944d21f63bfb041ce06a0ff05dfa3068002806d0012800d19fe0022800d1e4e015e18d490020f3f688e8201c7ef65cfe8a4879f0daec8a494143e06a6d1810f04dfb206c76f606fd216a8860206c76f607fd216ac860206c76f6e8fc216a0861201c9830006815f0c3fb606d002801d13ff640fce06a10f0abfa7a4879f000ec002801d1012100e00021774848432d18606d02f0b5fe606d02f014ff201c583003f084f84120800020581ef047fd201ccc3000681ef0aafc201cc83000681ef0c7fa6a4879f054ec002801d1012100e000218b200f1c47436068006905f05afa5d490020f3f652e86068006905f062fa6068002101615e49e8190cf740ef002904d05c485c4a002128f6f6fae06b78f6c7fbe06b13f088fae06b79f60bfc606c0bf054fb201c1ff069fba06b00f0a4fc0020a0635149e8190cf720ef002904d04c484f4a002128f6d7fa9c3420680df073fc3068401c306079e0e06a10f0a2fa012874d1201cc03000681ef077f9201c343015f0d3fde06a10f086fa201c04f043ff201c503004f069faa06e0df0ccff6068806809f02efe6068c06805f036fa6068006a15f020fc6068c06915f07efb606880696ff664fc201c4c3004f02cfd201c483004f086fd00f0d4f912200001205869f07bfda06800f09af9201c05f0a5f83068401c306031e0201c05f0acf800282cd000f0faf93df6aafc3af6c2fb39f608fc6068406800f080fc0020011c34f660f9a06834f665fe606834f662fe00206060042034f6b9fd606f00680002000f08d0134821f68df8134821f68af8124821f687f81ff647ff0120f8bd0020f8bdc046cfaa2a007b000000c9661e023b020000dd661e028d010000e1661e02ad08000049e30302a51e0000eb040000dd04000002000000040000000300000008b558f643fa44f66bfd44f6fbff002801d1012008bd002008bd000038b5051c286c76f6cffb041c286c76f6d1fb2a6a91688c4202d1d168884204d09460296ac860012038bd002038bd0000f8b582b0051c286c76f6b6fb0111c90e4118286c4c1176f6b5fb0111c90e41184a11286b211c55f67bf8041c286a0668b44202d102b00020f8bde86855f640fd071c286a211c0460281c55f67bfb281c01216df66ff8281c55f6f6fb0190281c55f6f6fb0090e86b019b311c221c78f6c7f8296a281c09686ef6f0ff011c281c01226ff629f8281c55f690fb381c55f6f7fc011c6868c06805f08cf9301c55f6e3f9061c201c55f6dff9864202d0281c09f0a0fd012002b0f8bd000038b5051c0c1c6af6e3fa002802d1281c6ff622fa286d04f065f94120800028581ef0fcfba86a04f0d1fe281c0df0d4fe0120204203d06868006905f08bf80820204204d0281cc83000681ef0a1f90220204202d0e86a0ff06bf80420204202d0281c00f0fdf838bd10b58ab0054c00ab052203cc03c3521efbd100a83cf6d4fd0ab010bd50632002004b184759601e02004b184739611e0238b59ab0324d16ab041c1a1c03cd03c303cd03c3101c34f61ffe2e4d0fab03cd1a1c03c303cd03c303cd03c3286801211860201c002335f6a9f8012020210022042336f693f8201c012136f61dfd224d08ab03cd1a1c03c303cd03c303cd03c3286802211860201c002335f68ff8022020210022042336f679f8201c022136f603fd164d01ab03cd1a1c03c303cd03c303cd03c3286803211860201c002335f675f8032020210022042336f65ff8201c032136f6e9fc002000a908800221ecf6beeb00a800210222e9f6a4ed1ab038bdec62200218632002fc6220023463200210b5041c012000213cf68efd022000213cf68afd042000213cf686fd082000213cf682fd201c012135f6f4fc201c022135f6f0fc201c032135f6ecfc10bd08b5d1f6aceb00207c2104220092021c1f230fb424f6e1ff05b001490968086300bdb00e1d02",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Enable existing sub-only bulk OAM upload/reset after field manager creation. One guarded atomic extent redirects the sole direct call and repacks initializer into38 bytes including two observed unused field-overlay padding bytes. Intervening bytes unchanged; no persistent scratch. Main remains slow because its contiguous span crosses affine31 ownership. Reference function and native scene screen pass bounded checks, but native A/B/A does not meet1% useful-gain threshold. Keep disabled.",
+            "validated": {
+              "synthetic": "32 real-constructor cases through existing Unicorn harness; explicit sub flag, caller-clobbered R1 and one dead saved-return word differ. Allocation is modeled; failure/interrupt/cache behavior unqualified.",
+              "placement": "Full9600-frame write/fetch route plus two guarded initializer epochs; owned main/overlay code and direct references authenticated. Earlier boot overlays execute the padding address, so full overlay identity is mandatory.",
+              "framebuffer": "All9600 top frames exact; one bottom frame differs; eight checkpoint pairs reviewed.",
+              "ram": "Sub flag1/mainflag0 at all eight checkpoints. Owned staging/reset and other timing RAM changes remain raw; only exact candidate code bytes normalized.",
+              "audio": "1762724/7702322 stereo samples differ, equal length; no human listening/inaudibility claim.",
+              "save": "Reference save exact; three native cold-load/standing sessions preserve private plaza seed. No new candidate-written save, broader lifecycle or save-state qualification.",
+              "native": "Three matched45-second cold sessions, stock1GHz, verified staged bytes, no capture drops, clean host exits. Static endpoints and sampled video frames reviewed; no full-game or human audiovisual approval."
+            },
+            "gain": {
+              "reference_arm9_instruction_reduction_percent": 2.2059820184756718,
+              "native_publications_per_second": {
+                "A1": 19.76177329113102,
+                "B1": 19.64661395159422,
+                "A2": 19.41276259371081
+              },
+              "native_candidate_vs_control_mean_percent": 0.3029825769870431,
+              "native_scope": "Incremental terrain+sub bulk versus terrain-only A/B/A in New Bark plaza. Publications/s is not unique animation FPS/native cycles; no statistically proven slowdown."
+            },
+            "status": "parked_no_useful_native_plaza_gain",
+            "evidence": [
+              "OAM_PLACEMENT_QUALIFICATION_V2.json",
+              "OAM_INITIALIZER_CONTEXT_QUALIFICATION_V2.json",
+              "OAM_STATIC_CONTRACT_V2.json",
+              "OAM_INITIALIZER_SYNTHETIC_QUALIFICATION_V1.json",
+              "OAM_BULK_RUNTIME_CONTRACT_V1.json",
+              "OAM_BULK_REFERENCE_FINDINGS_V1.json",
+              "OAM_BULK_WORKER_QUALIFICATION_V1.json",
+              "OAM_BULK_NATIVE_FINDINGS_V1.json",
+              "OAM_BULK_NATIVE_BEFORE_AFTER_V1.csv"
+            ]
+          },
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e5900",
+            "overlay_file_id": 61,
+            "overlay_sha256": "0e611760f0634ba97ed02053ab5406a5e1c5686b87379ed4e7fdd66c9be89716",
+            "overlay_stored_sha256": "91e057269e046bc2a4b62c4a5977734893436306adafa65b1b413fd5c96659b3",
+            "addr": "0x21e5ef8",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Skip only identical idle starter redraws when Main state is5 and selection state is0. Preserve the104-tick integral turntable counter and phases0/7 modulo8, plus every active-state draw. Repack the existing tail in place; no scratch or allocation. Whole ROM, stored/decoded overlay61 and88 original bytes are guarded. Normal overlay loading handles delivery; no RTL or HPS changes.",
+            "status": "qualified_bounded_native_benefit_for_explicit_private_selection",
+            "validated": {
+              "synthetic": "4680 bounded Thumb cases preserve data memory, R0 return, R4-R11, SP, returnPC, ball-rock calls and animation progression; renderer effects are not modeled.",
+              "framebuffer": "Both screens match every frame in3600-frame idle and8400-frame lifecycle comparisons against matching decoded/cumulative controls.",
+              "ram": "Raw timing/stack/RNG differences retained. Only the exact88 code bytes are normalized, and only after full7104-byte overlay recognition.",
+              "audio": "Reference audio/timing differences retained under the functional budget; native game audio recorded. No human listening or inaudibility claim.",
+              "off_target": "Matched3600-frame post-starter route matches every output file with the gate on/off.",
+              "native": "Stock1GHz matched30-second A/B/A; all three starters inspected, both rotation directions, zoom/backout, choice and return to lab. Normal private Save has valid alternating-bank CRCs, soft reset boots, cold reload and party return preserve the save.",
+              "save_states": "Persistent core save states remain unsupported; no format change."
+            },
+            "gain": {
+              "reference_idle_arm9_instruction_reduction_percent": 50.58641940631192,
+              "native_control_mean_publications_per_second": 14.212567870169634,
+              "native_candidate_publications_per_second": 43.170383095343695,
+              "native_publication_ratio": 3.0374794681510595,
+              "renderer_cpu_relative_reduction_percent": 32.1916513187816,
+              "native_scope": "Idle starter picker only. Publications are not unique animation FPS. The light cycle remains about3.47 seconds; active selection/rotation drawing is unchanged."
+            },
+            "evidence": [
+              "STARTER_DRAW_STATIC_CONTRACT_V1.json",
+              "STARTER_DRAW_SYNTHETIC_CONTRACT_V1.json",
+              "STARTER_DRAW_IDLE_FUNCTIONAL_REVIEW_V1.json",
+              "STARTER_DRAW_LIFECYCLE_FUNCTIONAL_REVIEW_V1.json",
+              "STARTER_DRAW_OFF_TARGET_REVIEW_V2.json",
+              "STARTER_DRAW_NATIVE_FINDINGS_V1.json",
+              "STARTER_DRAW_BEFORE_AFTER_V1.csv",
+              "STARTER_DRAW_NATIVE_BLINK_SCREEN_V1.json",
+              "STARTER_DRAW_SAVE_RELOAD_REVIEW_V1.json"
+            ]
+          }
+        ],
+        "status": "private_beta1_enabled_by_explicit_catalog",
+        "budget": "Functional/perceptual; retain measured differences, reject broken progression/crashes/corrupt saves/perceptible defects; require useful native benefit.",
+        "delivery_note": "Explicit append-decoded-overlays-v1 preserves both stored CPU images and modifies only the virtual stream. Original/unchanged-code delivery/candidate native cold loads, staged bytes, normal overlay loading and bounded soft-reset/save/reload checks pass. No direct native ARM9 cache/fetch tracing hook was added.",
+        "reference_seed_sha256": "756f721263a071ea824d64e36d59d0569c1ed8f3d93d84a1f58e8024f0461a05",
+        "reference_qualification": {
+          "save_creation_frames": 18000,
+          "save_repeat_files_exact": 193,
+          "cold_load_frames": 3600,
+          "cold_repeat_files_exact": 64,
+          "native": true
+        },
+        "initial_profile": {
+          "scene": "idle downstairs room",
+          "frames": [
+            1800,
+            3600
+          ],
+          "arm9_halfword_copy_sample_share_percent": 4.469021939833533,
+          "arm9_fixed_destination_stream_sample_share_percent": 6.151296789038605,
+          "native_speedup": null
+        },
+        "delivery": "append-decoded-overlays-v1",
+        "target": "Improve New Bark Town display throughput while retaining game function. Matched45-second native plaza screen shows3.07% more completed screen publications than the original image on the same rc12-derived runtime; not a whole-game FPS claim.",
+        "outdoor_replay": {
+          "frames": 9600,
+          "profile_window": [
+            6000,
+            9600
+          ],
+          "observer_window": [
+            6000,
+            6600
+          ],
+          "input_sha256": "e69fe92f2f73aa4310f72bacf3b1ec3759fa524df44654bf77d9deee928220ff",
+          "unchanged_observer_files_exact": 154,
+          "delivery_repeat_files_exact": 154,
+          "scene": "House cold load, front-door transition and New Bark Town walking"
+        },
+        "private_beta": {
+          "name": "HeartGold Beta1 20261029",
+          "catalog_selection": "overlay1-terrain-visibility",
+          "archive_sha256": "7cce7b28151d562722924e83a573c6bf28eb817ae68bafe89c70175c25d4d657",
+          "runtime_source_revision": "c0fd3d7ddaea5ad596c964fc18ae028356fcf4ce",
+          "human_audiovisual_approval": false,
+          "budget": "User-directed functional/perceptual; raw timing/RNG/RAM/audio differences retained; bounded native functional checks and useful gain required.",
+          "scope": "New Bark opening route; starter/battle and full-game coverage remain open."
+        }
+      }
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver",
+        "game_code": "IPGE",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "a91340f00feab7b2e4ba9299b22517e0f2bb85e2",
+        "header_crc32": "3a631784",
+        "rom_sha256": "51d0f94a16af7d77c067b4cb7d821ba890a13203a2e2c76049623332c0582e20",
+        "arm9_sha256": "86cbdfa319442e3cadb0dc7a40e0d8d476f9ae8ef87d7d04043b3016529f542a",
+        "arm9_crc32": "63d4835c",
+        "arm7_sha256": "746355ed51b324933542a7c4fcf109a5f83755a97c95b834ffd08caf6d4fafea",
+        "arm7_crc32": "3b3c3c25",
+        "arm7_code_settings_offset": "0x198",
+        "delivery": "append-decoded-overlays-v1",
+        "status": "bounded_native_qualified_private_beta_preparation",
+        "budget": "User-authorized functional/perceptual budget. Raw timing/RAM/audio differences retained.",
+        "patches": [
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "overlay_ram": "0x21e5900",
+            "overlay_file_id": 1,
+            "overlay_sha256": "b6e5572a8098eb76c5527c6dcd873870cb497ea5a7ec4549aa9fd219336756e7",
+            "overlay_stored_sha256": "7365d028537207cf4c72eeb62c0aac28a8323d2f5b93adb30e595aff509ca591",
+            "addr": "0x21f5996",
+            "mode": "thumb",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6c7fd",
+            "replace": "a05902218902471878680ea9164a144b29f6f3ff00280bd038000ea9124a104b29f6cdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "data_guards": [
+              {
+                "addr": "0x21f59f8",
+                "expect": "d86b2002e46b2002"
+              },
+              {
+                "addr": "0x2206bd8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206be4",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "notes": "Guarded transfer of the accepted HeartGold implementation, independently qualified on owned SoulSilver. Test-only guest-clock fixture excluded from packages. Default disabled; private beta selection must be explicit.",
+            "validated": {
+              "static": "Owned IPGErev0 ROM/header/stored/decoded overlay identity; expected Thumb bytes and constants guarded. No scratch or new service.",
+              "reference": "9600 top-screen hashes exact versus decoded delivery; one bottom-menu redraw difference. Indoor3600 screens exact. RAM/audio timing drift retained.",
+              "native": "Independent native Save and soft-reset reload; cold original/control/candidate loads; house entry/exit and Bag; matched noon stationary views at1GHz.",
+              "scope": "New Bark Town and house only. No whole-game or native full-motion human acceptance claim.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instruction_reduction_percent": 4.353703740282988,
+              "native_plaza_publications_vs_original_percent": 6.466292568434251,
+              "native_plaza_publications_vs_delivery_percent": 6.876572418441795,
+              "native_original_publications_per_second": 18.81204791282064,
+              "native_candidate_publications_per_second": 20.02848996897765,
+              "scope": "Two45-second within-session windows per separately cold-started arm at the same guest noon seed; complete screen-pair publications, not unique FPS."
+            },
+            "evidence": [
+              "SOULSILVER_GUEST_PATCH_REPORT.md",
+              "NATIVE_TERRAIN_CLOCKED_FINDINGS_V1.json",
+              "TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "NATIVE_TERRAIN_VISUAL_REVIEW_V1.json"
+            ],
+            "status": "bounded_native_qualified"
+          },
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e5900",
+            "overlay_file_id": 61,
+            "overlay_sha256": "0e611760f0634ba97ed02053ab5406a5e1c5686b87379ed4e7fdd66c9be89716",
+            "overlay_stored_sha256": "91e057269e046bc2a4b62c4a5977734893436306adafa65b1b413fd5c96659b3",
+            "addr": "0x21e5ef8",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded transfer from HeartGold, independently qualified on owned SoulSilver. Preserves the 104-phase light update and all active selection states; omits duplicate idle draws only in app state5/selection0. No scratch or new service. Default disabled; explicit private beta selection required.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Full ROM/header/stored/decoded overlay61 identity and 88 original Thumb bytes guarded. Exact code/resources support reuse of HeartGold synthetic contract; original receipt retained.",
+              "reference": "All3600 idle and8400 selection screen pairs and saves exact against cumulative delivery control. Unrelated house all65 files exact. Intermediate RAM/audio drift retained.",
+              "native": "Matched cold baseline/delivery/candidate at stock1GHz; light period, all species/rotation/zoom/cancel/choice, normal Save, soft reset, cold Continue/party and lab exit checked.",
+              "scope": "Bounded starter selection and adjacent lab/field coverage. Screen-pair publications are not unique animation FPS or whole-game speed. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_idle_arm9_instruction_reduction_percent": 50.5866388965031,
+              "reference_selection_arm9_instruction_reduction_percent": 7.3602547870344175,
+              "native_baseline_publications_per_second": 14.23100626610488,
+              "native_candidate_publications_per_second": 43.94432321918842,
+              "native_publications_vs_beta1_percent": 208.7928035268603,
+              "native_publications_vs_delivery_percent": 209.16695334845076,
+              "renderer_cpu_reduction_percent": 32.24454773041624,
+              "scope": "Two30-second windows within one independently cold-started session per arm. Complete screen-pair publications, not unique animation FPS, guest cycles, or whole-game speed. No confidence interval claimed."
+            },
+            "evidence": [
+              "SOULSILVER_GUEST_PATCH_REPORT.md",
+              "STARTER_TRANSFER_REFERENCE_QUALIFICATION_V1.json",
+              "STARTER_DRAW_NATIVE_QUALIFICATION_V1.json",
+              "STARTER_DRAW_NATIVE_BEFORE_AFTER_V1.csv"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay1-terrain-visibility",
+        "overlay61-starter-idle-identical-draw"
+      ]
+    }
+  ]
+}

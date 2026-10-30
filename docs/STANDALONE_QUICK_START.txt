@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.12
+NDS4MiSTer v0.9.0-rc.13
 
 START HERE
 
@@ -415,9 +415,9 @@ Jam with the Band. Save states and DS wireless multiplayer are not implemented.
 
 RELEASE IDENTIFICATION
 
-The launcher, host and release manifest identify rc.10. Use
+The launcher, host and release manifest identify rc.13. Use
 Scripts -> NDS4MiSTer with its matching .NDS_Standalone folder.
-See VALIDATION_RC10.md for component provenance and testing coverage.
+See VALIDATION_RC13.md for component provenance and testing coverage.
 
 SOURCE AND CREDITS
 
@@ -472,7 +472,7 @@ Qualified movie and NSMB optimizations activate automatically. There is no
 Speed hacks menu. The first load may show Preparing FMV cache; subsequent
 loads reuse verified cached data. The cache uses up to 2 GiB on the SD card.
 ROM files are not rewritten. Unsupported revisions keep the ordinary path.
-See VERSION_COVERAGE.md and VALIDATION_RC12.md for current coverage.
+See VERSION_COVERAGE.md and VALIDATION_RC13.md for current coverage.
 
 WarioWare D.I.Y. uses a 16 MiB NAND save; Jam with the Band uses 8 MiB. If the
 loader rejects an old incorrectly sized fallback save, back it up and move
@@ -481,7 +481,7 @@ converted. Band Brothers DX remains unsupported. Use the game's normal save
 process before System -> Reboot; power-cut safety is not guaranteed.
 
 The support folder retains historical private-beta validation records. Their
-old launcher names and installation instructions do not apply to rc.12. Use
+old launcher names and installation instructions do not apply to rc.13. Use
 Scripts -> NDS4MiSTer and this quick start for the current public package.
 
 RC11 DISPLAY AND MOVIES
@@ -498,4 +498,12 @@ Order of Ecclesia USA, Europe, Japan and Korea retail revision 0 receive the
 accepted gameplay optimizations and approximately 15 fps opening movie
 acceleration. Ni no Kuni Japanese retail and English v1.0 include the story
 video fix. A first large-ROM load over CIFS can take several minutes.
-See RELEASE_NOTES.md, VERSION_COVERAGE.md and VALIDATION_RC12.md.
+See RELEASE_NOTES.md, VERSION_COVERAGE.md and VALIDATION_RC13.md.
+
+RC13 GAME OPTIMIZATIONS
+
+Accepted FFTA2 USA renderer changes and exact-identity Pokémon Platinum USA
+Rev 1, HeartGold USA Rev 0 and SoulSilver USA Rev 0 guest patches activate
+automatically. Other revisions and regions are not implicitly admitted.
+These Pokémon patches permit documented timing/RAM/audio differences under
+the functional/perceptual budget. See RELEASE_NOTES.md and VERSION_COVERAGE.md.
