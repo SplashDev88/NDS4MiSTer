@@ -2,8 +2,6 @@
 
 Modest speed improvements for **Final Fantasy Tactics A2**, **Pokémon Platinum**, **Pokémon HeartGold** and **Pokémon SoulSilver** (USA).
 
-All rc12 improvements are retained. No FPGA changes.
-
 ## Install or update
 
 1. Exit via **System → Reboot**.
