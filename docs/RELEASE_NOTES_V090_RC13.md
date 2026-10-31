@@ -13,7 +13,6 @@ Saves and settings carry over.
 
 ## Known issues
 
-- Pokémon patches can cause minor timing or RNG differences; battles have had less testing.
 - These new optimizations cover only verified USA revisions of the games listed above — see `VERSION_COVERAGE.md`.
 - Slowdown and glitches are still possible in demanding scenes.
 - Save states, wireless multiplayer, DSi mode and PAL 50 Hz output are not supported.
