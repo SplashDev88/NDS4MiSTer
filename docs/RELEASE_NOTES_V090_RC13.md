@@ -1,6 +1,6 @@
 # NDS4MiSTer v0.9.0-rc.13
 
-Modest speed improvements for **Final Fantasy Tactics A2**, **Pokémon Platinum**, **Pokémon HeartGold** and **Pokémon SoulSilver** (USA). Patches apply automatically to verified ROMs; your ROM files are never modified.
+Modest speed improvements for **Final Fantasy Tactics A2**, **Pokémon Platinum**, **Pokémon HeartGold** and **Pokémon SoulSilver** (USA).
 
 All rc12 improvements are retained. No FPGA changes.
 
