@@ -799,7 +799,7 @@ of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
 HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
 
 Regional starter candidates have matching patch bytes/assets and relocated
-synthetic contracts. German, French and Italian SoulSilver's starter gates are bounded-native-qualified;
+synthetic contracts. German, French, Italian and Spanish SoulSilver's starter gates are bounded-native-qualified;
 the other regional candidates remain unqualified. External-call prefixes and
 bounded overlay instruction matches do not prove whole-program equivalence.
 Do not promote them from static evidence or reuse USA performance/approval labels.
@@ -831,3 +831,17 @@ Italian qualification has the same bounded imported-checkpoint scope: its own
 selection/save/soft-reset/cold-party checks pass, but this does not establish
 independent new-game progression, battle coverage or human audio approval.
 Italian terrain remains unqualified.
+
+Spanish qualification likewise covers imported-checkpoint starter choices and
+adjacent lab/party save/restart behavior, not a full playthrough or battles. Raw
+audio/timing/RAM differences are retained; no human audiovisual approval is
+claimed. The Spanish starter port is queued for a future private package and is
+not present in immutable Regional Beta2. Spanish terrain remains unqualified.
+
+The initial Japanese/Korean terrain-query signature misses were locator limits:
+linear Thumb decoding stopped at embedded data, and the supplied extent also
+contains unreached code. A direct-flow probe now locates matching reached
+instruction layouts/internal calls across all six SoulSilver regions. Unreached
+bytes were excluded, not validated; external callees and literal-referenced
+objects remain pending. These read-only findings must not enable terrain patches
+or be described as whole-function equivalence.

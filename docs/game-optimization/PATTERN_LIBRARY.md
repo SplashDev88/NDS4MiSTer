@@ -1751,3 +1751,21 @@ to control at capture resolution. All three regions preserve every idle screen
 pair and pass localized choices, normal save, soft reset and cold party checks.
 Keep these measurements attached to each exact identity; do not replace regional
 admission or active-state evidence with a family-wide performance claim.
+
+### Locate reached code across embedded literal pools
+
+A bounded disassembly extent can contain several helpers, literal words and
+unrelated code. A linear Thumb decoder stopped at a literal at relative `0x134`
+in the HGSS bounding-box query extent, leaving later call encodings unclassified.
+Follow direct branches and same-mode calls from the known entry; retain explicit
+ARM/Thumb transitions, returns, literal references and unresolved transfers.
+Here, calls at `0x40` and `0x84` reach helpers at `0x114` and `0x138`.
+
+The private read-only flow probe matches 118 reached instruction layouts and
+both internal call edges across all six SoulSilver regions. Its locator excludes
+unreached bytes explicitly and masks direct-call encodings; it does not declare
+excluded code/data or external callees equivalent. Record candidate call targets
+and literal values for the next dependency audit. Never broaden patch admission
+from this signature alone. Evidence: `SOULSILVER_BBOX_FLOW_LAYOUT_V1.json` and
+`SOULSILVER_TERRAIN_FLOW_MASKED_CANDIDATES_V3.json` in the regional report's
+private evidence directory. This probe has not qualified a terrain port.

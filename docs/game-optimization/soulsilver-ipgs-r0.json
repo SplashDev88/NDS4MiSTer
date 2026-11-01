@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon SoulSilver (Spain)",
+  "game_code": "IPGS",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "e497c1a6cd5ba679d19d90f7c9ef25ff90ff8b5d",
+  "header_crc32": "6bf88c86",
+  "rom_sha256": "c1573ed5e01051e85310c3210d01629c338dfd12a92b8bfff72e560e62f2cf4b",
+  "arm9_sha256": "de6ae6fa560960aef6e23e1dee412d43a65d10e75ea0f827649b4c0efaa71b53",
+  "arm9_crc32": "bac93d79",
+  "delivery": "append-decoded-overlays-v1",
+  "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+  "status": "bounded_native_qualified_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e5940",
+      "overlay_file_id": 61,
+      "overlay_sha256": "2cf9e4fb2dec790f0ec2cab346b9ed91dc2f990683e5ea300dae75b5d37e6720",
+      "overlay_stored_sha256": "7f9deb1e36532ab9dd6270b94bce6d55c6866eee8a4a7e831b66e81273373858",
+      "addr": "0x21e5f38",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+        "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+        "ram": "Raw state/timing differences retained under the authorized functional budget.",
+        "audio": "Raw sample differences retained. Native game-audio signal/capture checks pass; no human audibility approval claimed.",
+        "native": "Spanish Chikorita/Cyndaquil/Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice exercised; sampled images show intact models/text and return to lab with follower.",
+        "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+        "unrelated": "Fresh-process post-save Continue to lab and party input replay does not enter starter scene. Shared delivery/static proof and German independent unrelated software replay are reused; no separate Spanish software collateral pair or full playthrough claimed.",
+        "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+        "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for Spanish target-scene A/B and compatibility only; not independent Spanish new-game progression.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "ORIGINAL": 87221604,
+          "DELIVERY": 87221604,
+          "CANDIDATE": 43098689
+        },
+        "reference_instruction_reduction_percent": 50.587140085155966,
+        "native_completed_screen_pairs_per_second": {
+          "original": 14.172339971629192,
+          "candidate": 43.20245719093538
+        },
+        "renderer_cpu_percent_one_core": {
+          "original": 161.784247140922,
+          "candidate": 110.58763135998879
+        },
+        "native_light_period_seconds": {
+          "original": 3.4833333333331353,
+          "candidate": 3.4666666666664696
+        }
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPGS_STARTER_QUALIFICATION_V1.json",
+        "IPGS_STARTER_REFERENCE_REVIEW_V1.json",
+        "IPGS_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPGS_ORIGINAL1_MEDIA_REVIEW.json",
+        "IPGS_CANDIDATE1_MEDIA_REVIEW.json",
+        "IPGS_CANDIDATE1_SELECTION_MEDIA_V1.json",
+        "IPGS_CANDIDATE1_LIFECYCLE_DONE.json",
+        "IPGS_COLD_VISUAL_REVIEW_V1.json",
+        "IPGS_COLD1_STOP.json",
+        "IPGS_POSTSTARTER_SAVE_READBACK_V1.json",
+        "IPGS_STARTER_VARIANTS_V1.json"
+      ]
+    }
+  ]
+}

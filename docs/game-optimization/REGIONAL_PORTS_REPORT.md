@@ -2,8 +2,9 @@
 
 Regional work branches from the unpublished RC13 candidate, source
 `2fb28bd437834cb76300d1fca5aa14dbf58cf711`. The packaged candidate and accepted
-betas are preserved. German, French and Italian SoulSilver's starter gates are qualified for explicit
-private catalog inclusion. Source manifests remain disabled by default.
+betas are preserved. The qualified regional starter ports described below are
+eligible for explicit private catalog inclusion. Source manifests remain disabled
+by default.
 
 ## HGSS starter candidates, 2026-10-31
 
@@ -106,8 +107,8 @@ Private qualification: `IPGD_STARTER_QUALIFICATION_V1.json`. Videos:
 `SoulSilver_German_Starter_Original_V1.mp4`,
 `SoulSilver_German_Starter_Candidate_V1.mp4`, and
 `SoulSilver_German_Starter_Selection_V1.mp4`. No ROMs, saves or captured private
-code are included in this repository. Remaining regional candidates and German,
-French and Italian terrain remain unqualified.
+code are included in this repository. Remaining regional starter candidates and
+all regional terrain ports remain unqualified.
 
 ### French SoulSilver starter qualification
 
@@ -176,6 +177,54 @@ Private receipts: `IPGI_STARTER_QUALIFICATION_V1.json` and
 `SoulSilver_Italian_Starter_`. Actual archive/launcher validation remains a
 separate packaging gate. The manifest is default-disabled and contains only
 the starter patch; Italian terrain remains unqualified.
+
+### Spanish SoulSilver starter qualification
+
+`soulsilver-ipgs-r0.json` authenticates IPGS revision 0 and its distinct overlay
+61 identity. Shared asset/dependency checks and the existing six-layout CPU
+contract are reused. Its original/delivery/candidate replay preserves all 3,600
+screen pairs and the save. ARM9 instructions fall from 87,221,604 to 43,098,689
+(50.5871%) in frames 1800–3599. Raw RAM/timing/audio differences are retained.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.1723 | 43.2025 (3.0484×) |
+| Renderer CPU, percent of one core | 161.78% | 110.59% |
+| Measured light cycle | 3.4833 s | 3.4667 s |
+
+The measured light-period difference is one captured frame. Capture quality and
+game-audio signal checks pass; human listening approval is not claimed. Native
+selection exercises Chikorita, Cyndaquil and Totodile with Spanish prompts,
+both rotation directions, inspect/cancel/confirm and final Chikorita selection.
+Normal Save writes a changed 512 KiB file, soft-reset Continue restores the lab
+and follower, and a fresh-process cold Continue/party run restores female
+Chikorita at level 5 with 20/20 HP. The cold run leaves the save unchanged.
+
+The cold lab/party input replay supplies unrelated-scene coverage without loading
+the starter scene. Shared German software collateral evidence is reused; there
+is no separate Spanish software collateral pair or independent Spanish new-game
+playthrough. The target checkpoint is imported from USA. Native cycle/frame-time
+percentile/DMA/cartridge counters remain unavailable; publications are not unique
+animation FPS or whole-game speed.
+
+Private receipts: `IPGS_STARTER_QUALIFICATION_V1.json` and
+`IPGS_STARTER_BEFORE_AFTER_V1.csv`. Videos use the prefix
+`SoulSilver_Spanish_Starter_`. The source manifest is default-disabled and queued
+for a later cumulative private beta; the immutable Regional Beta2 does not include
+this Spanish port. Spanish terrain remains unqualified.
+
+### Terrain dependency locating, read-only
+
+The direct-flow locator finds unique candidates for six bounded dependency spans
+in each of the six SoulSilver regions. For the bounding-box query, 118 reached
+Thumb instruction layouts and both internal call edges match the USA reference.
+The earlier Japanese/Korean misses came from stopping at embedded literal data
+and comparing unreached code in the supplied extent. The revised locator excludes
+unreached bytes explicitly, records external call targets and literal values, and
+does not claim their equivalence. External callee/data checks and regional runtime
+qualification remain necessary; no terrain patch has been generated or enabled.
+See `SOULSILVER_BBOX_FLOW_LAYOUT_V1.json` and
+`SOULSILVER_TERRAIN_FLOW_MASKED_CANDIDATES_V3.json` for private evidence.
 
 The next three porting areas after the starter qualification are:
 
