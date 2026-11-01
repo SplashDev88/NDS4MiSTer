@@ -60,10 +60,10 @@ extracted code context or private resource is added to this source repository.
 ## Qualification and remaining work
 
 All twelve owned non-USA HGSS revision-0 starter ports are qualified and packaged
-in immutable Regional Beta4 R2. German, French, Italian, Spanish and Japanese
-SoulSilver IPGD/IPGF/IPGI/IPGS/IPGJ revision 0 terrain are qualified separately
-and queued for a new cumulative private package. Korean SoulSilver terrain,
-HeartGold terrain, Platinum and FFT A2 regional ports remain pending. No unowned revision or quarantined identity is admitted.
+in immutable Regional Beta4 R2. All six owned German, French, Italian, Spanish,
+Japanese and Korean SoulSilver revision-0 terrain ports are qualified separately
+and queued for a new cumulative private package. HeartGold terrain, Platinum
+and FFT A2 regional ports remain pending. No unowned revision or quarantined identity is admitted.
 
 Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
@@ -886,3 +886,65 @@ memory, RTL change or repeated starter test is needed. Evidence:
 Next three areas: Korean SoulSilver terrain qualification; HeartGold terrain
 transfer; then owned Platinum and FFT A2 revision/region ports. Regional Beta4
 R2 stays immutable and does not contain this new terrain addition.
+
+### Korean SoulSilver terrain qualification, 2026-11-01
+
+`soulsilver-ipgk-r0.json` retains the qualified starter gate and adds the guarded
+48-byte terrain visibility gate. Both remain disabled by default. The exported
+two-patch stream equals the tested cumulative native image; it is eligible for
+a new separately verified private package. Regional Beta4 R2 stays immutable.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 703,609,149 | 672,891,217 | −4.3658% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.7223 | 19.5991 | +4.6829% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 430 | 728 omitted |
+
+All 9,600 top hashes, all 3,600 target screen pairs, the initial 1,800 home/boot
+pairs and save bytes match cumulative decoded delivery. One bottom hash differs
+at frame 3187 during earlier menu brightening. Retained thumbnails cover that
+transition; the individual full-resolution frame was not captured. Seven paired
+full-resolution checkpoints preserve the expected home, town, player, NPCs,
+buildings, water and Korean menus. Other sampled query/draw counts are unchanged.
+
+Raw RAM/timing drift and 287,971 differing same-index stereo samples remain
+recorded. Both audio streams contain 7,702,322 stereo samples; maximum signed-16
+delta is 1,861 and RMS delta is 30.4018. This is not whole-run audiovisual
+bit-exactness or a listening verdict. Original versus decoded delivery has its
+own camera/input timing shift; native A/B uses the same fixed saved anchor.
+
+The native measurement is one clean 30-second window per separately cold-started
+arm at stock 1 GHz. Publications are not unique animation FPS, cycle counts or
+whole-game speed; no confidence interval or native decoded-control window is
+claimed. Host CPU was 3.359% versus 3.328% of one core; renderer CPU was 160.59%
+versus 161.88%. Review copies preserve game-audio packets and timestamps.
+Sampled views retain terrain and changing windmill poses.
+
+Home entry, Korean Bag, return outdoors, normal Save, soft-reset Continue and
+fresh-process cold field/Bag checks pass. The cold launch preserves the new
+save. All four general/storage blocks have valid payload CRCs and Korean footer
+magic `0x20070903`. MENU, stopped OBS, preserved settings and clear owned jobs
+are verified at completion.
+
+The private home/plaza fixtures are copies of documented own-title USA saves.
+Only initialized footer markers were converted: two in the home fixture and
+four in the plaza fixture. Payload bytes and CRCs were unchanged; erased banks
+were preserved. Unpatched Korean reference and native cold scene admission
+precede optimized testing. These fixtures are neither distributed nor a runtime
+save converter, and do not establish independent regional new-game progression.
+Battles, later areas and human audiovisual approval remain outside this scope.
+
+Reuse the six-region direct-flow proof, constant guards and existing loader.
+No new signature, runtime service, scratch memory, RTL change or repeated starter
+test is needed. Evidence: `IPGK_TERRAIN_QUALIFICATION_V1.json`,
+`IPGK_TERRAIN_BEFORE_AFTER_V1.csv`, `IPGK_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`IPGK_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json`, `IPGK_TERRAIN_COLD_VISUAL_REVIEW_V1.json`
+and `IPGK_TERRAIN_SEED_CONVERSIONS_V1.json`. Review videos:
+`SoulSilver_Korean_Terrain_Original_V1.mp4` and
+`SoulSilver_Korean_Terrain_Candidate_V1.mp4`.
+
+All six owned non-USA SoulSilver revision-0 terrain identities are now qualified
+for this bounded route. Package and verify their cumulative images before the
+morning handoff. The next three porting areas are HeartGold terrain, Platinum
+regions/revisions and FFT A2 regions/revisions. Unknown or unowned identities
+remain unsupported.

@@ -919,8 +919,8 @@ remain unmatched within eight neighboring control frames. Raw audio differs
 substantially at equal sample indices, and a roughly 750-sample timing offset
 does not remove all differences. Sampled views and normal save/reload pass;
 these observations are not framebuffer equivalence or human listening approval.
-Preserve both review videos and the unmatched-frame counts. Korean terrain
-remains disabled pending its own runtime qualification.
+Preserve both review videos and the unmatched-frame counts. All six regional
+terrain ports now have their own bounded runtime qualification.
 
 Japanese SoulSilver terrain passes the bounded native home/Bag/save route and
 matches every target screen pair, but three earlier screen pairs differ during
@@ -929,3 +929,11 @@ RAM/audio/timing differences remain under the authorized functional budget.
 Sampled scenes and save/reload pass; later areas, battles and human listening
 remain unqualified. Preserve the reference differences and both review clips.
 The qualified source addition needs its own cumulative archive verification.
+
+Korean SoulSilver terrain has one earlier menu-frame difference and raw
+RAM/audio/timing drift, despite exact target screen pairs and save bytes.
+Its own native home/Bag/save/reset/cold route passes. Private test fixtures use
+verified Korean footer-marker copies, not a distributed save conversion.
+All regional terrain results remain limited to the documented New Bark route;
+later areas, battles and human listening are unqualified. A separately verified
+cumulative archive is still required before delivery.

@@ -1892,3 +1892,13 @@ frames. The existing timing diagnostic records these sparse differences without
 masking them. Native home/Bag/save/reset/cold checks pass under the functional
 budget. No new signature or repeated starter audit is required. Evidence:
 `IPGJ_TERRAIN_QUALIFICATION_V1.json` and `IPGJ_TERRAIN_TIMING_DIAGNOSTIC_V2.json`.
+
+Korean SoulSilver IPGK completes the six-region transfer of the same guarded
+terrain gate: 4.3658% fewer reference ARM9 entries and 4.6829% higher native
+fixed-plaza publication throughput. Target screen pairs and save bytes match;
+one earlier menu frame and raw RAM/audio differences remain. The shared
+281-instruction/51-edge dependency proof and existing loader are reused.
+Unpatched admission of copied Korean-format test fixtures precedes native
+qualification; normal game-written saves retain valid Korean markers/CRCs.
+No new signature or repeated starter audit is needed. Evidence:
+`IPGK_TERRAIN_QUALIFICATION_V1.json`.
