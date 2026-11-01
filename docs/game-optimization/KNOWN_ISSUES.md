@@ -973,3 +973,12 @@ native pair gained 2.9496%; one predeclared extra pair yields 3.6537% pooled, wi
 both initial windows retained. Its home/Bag/Save/reset/cold route passes. This
 bounded imported-save test does not qualify later areas, battles, independent
 regional progression or human listening. Absent from frozen Regional Beta5.
+
+Korean HeartGold terrain passes the bounded home/Bag/Save/reset/cold route but
+retains broader reference differences: 3,031 target top hashes differ, with
+2,462 pairs unmatched within eight neighboring frames. Initial screen pairs and
+save bytes match. Audio alignment leaves residual changes; no human listening
+or perceptual-equivalence verdict is claimed. Four save payload CRCs and Korean
+footer markers validate. Imported fixtures do not establish independent regional
+progression; later areas and battles remain unqualified. All six HeartGold terrain
+source additions need cumulative archive qualification and are absent from Beta5.

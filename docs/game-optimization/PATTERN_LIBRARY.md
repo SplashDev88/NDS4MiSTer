@@ -1944,3 +1944,13 @@ seeds, clock, capture settings/sequence, saved bytes and packet-preserving media
 Keep the two earlier frame differences and raw RAM/audio evidence. Receipts:
 `IPKJ_TERRAIN_REPEAT_PLAN_V1.json`, `IPKJ_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V2.json`,
 `IPKJ_TERRAIN_QUALIFICATION_V1.json`. No new game signature or runtime service.
+
+Korean HeartGold IPKK completes the six-region guarded terrain transfer:
+4.3731% fewer reference ARM9 entries and 4.9934% higher native plaza publications.
+Reuse the 281-instruction/51-edge dependency proof, relocated watches and loader.
+The generic timing diagnostic preserves 2,462 target pairs unmatched within eight
+frames and residual audio changes after alignment; sampled scenery and native
+save/reload do not prove perceptual equivalence. Private Korean fixture footer
+conversion is validated before unpatched admission and is never distributed.
+Receipts: `IPKK_TERRAIN_QUALIFICATION_V1.json`,
+`IPKK_TERRAIN_TIMING_DIAGNOSTIC_V2.json`. No new signature or runtime service.

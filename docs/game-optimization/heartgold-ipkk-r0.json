@@ -11,7 +11,7 @@
   "arm9_crc32": "6cf0de3a",
   "delivery": "append-decoded-overlays-v1",
   "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
-  "status": "bounded_native_qualified_private_catalog_eligible",
+  "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
   "patches": [
     {
       "id": "overlay61-starter-idle-identical-draw",
@@ -81,6 +81,70 @@
         "IPKK_IMPORTED_SAVE_CONVERSION_V1.json",
         "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
         "IPKK_NATIVE_SAVE_FOOTERS_V1.json"
+      ]
+    },
+    {
+      "id": "overlay1-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 1,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21e6300",
+      "overlay_file_id": 1,
+      "overlay_sha256": "fc140a70c1daefe23c6f975966acc3f4c9f9fa02300e648d3c6d43b4923071a9",
+      "overlay_stored_sha256": "836133d739fe0a1da379b583133327c18320c7c2e1ec5805023506083967b843",
+      "addr": "0x21f6396",
+      "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f693f8",
+      "replace": "a05902218902471878680ea9164a144b29f6bffa00280bd038000ea9124a104b29f699f8c046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21f63f8",
+          "expect": "d8752002e4752002"
+        },
+        {
+          "addr": "0x22075d8",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x22075e4",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "bounded_native_qualified",
+      "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+      "validated": {
+        "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+        "reference": "Initial 1800 home/boot screen pairs and save bytes match cumulative decoded delivery. Across 9600 frames, 4439 top hashes and two bottom hashes differ; 3031 target top hashes differ, with 2462 target pairs still unmatched within eight neighboring frames. Before the target, 1408 differences match the next control pair; menu frame 3188 remains unmatched. Seven paired full-resolution home/town views retain terrain, buildings, player, NPCs and menus. Raw RAM/audio/timing differences retained; later audio offsets near 750 samples reduce but do not remove residual differences. Not bit-exactness or human approval. Functional-budget native qualification required.",
+        "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+        "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 703209055,
+          "candidate": 672456709,
+          "reduction_percent": 4.37314419962923,
+          "frames": "6000-9599"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 18.563703133185854,
+          "candidate": 19.4906713190749
+        },
+        "native_publications_vs_original_percent": 4.993444353416354,
+        "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPKK_TERRAIN_REFERENCE_FINDINGS_V1.json",
+        "IPKK_TERRAIN_REFERENCE_REVIEW_V1.json",
+        "IPKK_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPKK_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+        "IPKK_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+        "IPKK_TERRAIN_QUALIFICATION_V1.json"
       ]
     }
   ]

@@ -1244,3 +1244,55 @@ Videos: `HeartGold_Japanese_Terrain_Original_V1.mp4`,
 Next three areas: Korean HeartGold terrain, Platinum regions/revisions, and
 FFT A2 regions/revisions. Korean guarded streams and private own-title save
 fixtures are prepared; regional runtime qualification remains pending.
+
+### Korean HeartGold terrain qualification, 2026-11-01
+
+`heartgold-ipkk-r0.json` retains the starter patch and adds the guarded 48-byte
+terrain gate, both default-disabled. The two-patch release stream exactly matches
+the native trial image. All six regional HeartGold terrain ports are now qualified
+for a new cumulative private beta; frozen Regional Beta5 is unchanged.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 703,209,055 | 672,456,709 | −4.3731% |
+| Native fixed-plaza screen pairs/s | 18.5637 | 19.4907 | +4.9934% |
+| Terrain draws, frames 6000–6599 | 1,157 | 429 | 728 omitted |
+
+One 30-second window per cold-start arm, stock 1 GHz, same plaza seed and test RTC.
+Host CPU is 3.327%→3.326% of one core; renderer 160.29%→161.65%. No repeat,
+confidence interval, unique animation FPS, native decoded-control measurement or
+whole-game speed claim. Captures pass integrity checks and review copies retain
+game-audio packets and timestamps. Sampled plaza views retain the expected terrain,
+buildings, player, windmill and water. The terrain query records 429 nonzero and
+726 zero returns in the partial watch window; another draw changes 1,740→1,739,
+and two others remain 1,495 each. Other query return counts also change slightly.
+
+Initial 1,800 screen pairs and save bytes match decoded delivery. Across 9,600
+frames, 4,439 top and two bottom hashes differ; the 3,600-frame target has 3,031
+top differences and no bottom differences. Of these target pairs, 569 match the
+next control frame and 2,462 remain unmatched within eight neighboring frames.
+Seven full-size checkpoint views retain expected scenery, with later animation
+pose differences; sampled review is not full-run equivalence. Raw RAM/timing and
+5,218,796 differing stereo samples of 7,702,322 remain: maximum signed-16 delta
+28,574, RMS 2,917.73. Later audio alignment by about 750 samples leaves residual
+RMS 227–324. No human listening or inaudibility claim. Original versus decoded
+delivery has 68 top/14 bottom earlier differences; target pairs, seven full-size
+checkpoints and save bytes match.
+
+Home/Bag/return, normal Save, soft-reset Continue and fresh cold field/Bag pass.
+All four save payload CRCs and Korean footer markers validate; cold reload preserves
+the new 512 KiB save. MENU, OBS settings and protected files are preserved. Private
+own-title imported fixtures change only verified Korean footer markers, not payload
+or CRC, and are not shipped or applied to user saves. Later areas, battles and
+independent regional new-game progression remain outside this qualification.
+
+Reuse the shared 281-instruction/51-edge dependency proof, relocated watches,
+existing loader and generic timing diagnostic. Evidence:
+`IPKK_TERRAIN_QUALIFICATION_V1.json`, `IPKK_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`IPKK_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json`, `IPKK_TERRAIN_BEFORE_AFTER_V1.csv`.
+Videos: `HeartGold_Korean_Terrain_Original_V1.mp4` and
+`HeartGold_Korean_Terrain_Candidate_V1.mp4`.
+
+Next three areas: package/install/smoke the cumulative Regional Beta6; port
+Platinum regions/revisions; port FFT A2 regions/revisions. Broader later-area and
+battle coverage remains future work. No public release is authorized.
