@@ -1853,3 +1853,25 @@ each region's replay, original/candidate scene admission and save lifecycle
 separate. The French two-patch release stream exactly matches its native trial
 after removal of the trial-only no-op entry. Evidence:
 `IPGF_TERRAIN_QUALIFICATION_V1.json`. No additional signature is necessary.
+
+### Diagnose timing drift without hiding unmatched output
+
+When an optimization changes same-index framebuffer hashes, compare each screen
+pair against nearby control frames before assuming missing geometry. Preserve
+raw counts and report the offset distribution and unmatched frames separately.
+For audio, bounded cross-correlation can locate a sample offset; measure the
+residual on both channels afterward. Alignment is a diagnostic, not a modified
+golden reference or an inaudibility verdict.
+
+`diagnose_replay_timing.py` operates on retained replay output. Its window bounds,
+search radii and thumbnail frames come from a separate specification. Italian
+SoulSilver shows a one-frame advance during the early town transition, while
+1,394 target screen pairs remain unmatched within eight control frames. Its
+roughly 750-sample audio offset also leaves residual differences. This prevents
+overstating a partial timing explanation. Native scene, progression, save and
+gain checks remain separate requirements under the user's chosen budget.
+
+Evidence: `IPGI_TERRAIN_TIMING_DIAGNOSTIC_V1.json`,
+`REFERENCE_TIMING_DIAGNOSTIC_CHECKS_V1.json` and
+`IPGI_TERRAIN_QUALIFICATION_V1.json`. The generic extraction reproduced the
+diagnostic values and thumbnail bytes without another game replay.

@@ -909,6 +909,15 @@ frame and raw RAM/audio/timing drift; original versus decoded delivery also
 changes the fixed input route's camera timing. A fixed native saved anchor
 separates that route effect from the measured comparison. Native audio signal
 and clean recording checks are not human listening approval. Later areas and
-battles remain unqualified. The four other SoulSilver terrain candidates remain
-disabled despite matching direct-call dependencies. Regional Beta4 R2 is
+battles remain unqualified. Regional Beta4 R2 is
 immutable; the new terrain port needs a separately verified cumulative package.
+
+Italian SoulSilver terrain passes the native home/Bag/save route under the
+authorized functional budget, but has broader reference timing drift than the
+German and French ports. Its target has 2,495 differing top hashes; 1,394 pairs
+remain unmatched within eight neighboring control frames. Raw audio differs
+substantially at equal sample indices, and a roughly 750-sample timing offset
+does not remove all differences. Sampled views and normal save/reload pass;
+these observations are not framebuffer equivalence or human listening approval.
+Preserve both review videos and the unmatched-frame counts. Spanish, Japanese
+and Korean terrain remain disabled pending their own runtime qualification.

@@ -60,9 +60,10 @@ extracted code context or private resource is added to this source repository.
 ## Qualification and remaining work
 
 All twelve owned non-USA HGSS revision-0 starter ports are qualified and packaged
-in immutable Regional Beta4 R2. German and French SoulSilver IPGD/IPGF revision 0
-terrain are qualified separately and queued for a new cumulative private package. The other
-four SoulSilver terrain regions, HeartGold terrain, Platinum and FFT A2 regional
+in immutable Regional Beta4 R2. German, French and Italian SoulSilver
+IPGD/IPGF/IPGI revision 0 terrain are qualified separately and queued for a new
+cumulative private package. The other three SoulSilver terrain regions,
+HeartGold terrain, Platinum and FFT A2 regional
 ports remain pending. No unowned revision or quarantined identity is admitted.
 
 Use regional starter inputs, unchanged decoded delivery controls,
@@ -720,3 +721,61 @@ Private evidence: `IPGF_TERRAIN_QUALIFICATION_V1.json`,
 Next three porting areas: qualify the remaining Italian, Spanish, Japanese and
 Korean SoulSilver terrain identities; transfer the dependency method to
 HeartGold terrain; then qualify the owned Platinum and FFT A2 identities.
+
+### Italian SoulSilver terrain qualification, 2026-11-01
+
+The guarded 48-byte terrain gate in `soulsilver-ipgi-r0.json` is qualified under
+the existing functional/perceptual budget, alongside its unchanged starter gate.
+Both remain default-disabled and await explicit private catalog selection.
+The exported two-patch stream exactly equals the tested cumulative native image.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 702,347,452 | 671,810,303 | −4.3479% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.8814 | 19.8948 | +5.3670% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 429 | 729 omitted |
+
+Each native arm has one separately cold-started 30-second window at the same
+saved tile/camera. These are publication rates, not unique animation FPS,
+native cycle counts or whole-game speed. Renderer CPU was 161.56% versus
+161.19% of one core; host CPU was 3.324% versus 3.294%. Both recordings have
+zero added render/output drops and retain encoded game-audio packets/timestamps.
+
+This port is **not framebuffer bit-exact**. Relative to cumulative decoded
+delivery, 4,482 of 9,600 top hashes and eight bottom hashes differ. All 1,800
+initial home/boot screen pairs match. In the 3,600-frame target window, 2,495
+top hashes differ and all bottom hashes match. Early scene-transition differences
+match the next control frame; one earlier menu-brightening frame remains unmatched.
+During the target walk, 1,394 pairs remain unmatched even within eight control
+frames. Sampled full-resolution views retain the town geometry, player and NPCs,
+with animation-phase differences. Do not describe the whole difference as a
+proven uniform frame shift. Other callers' draw/query counts also vary slightly.
+
+Save bytes match the reference control. Raw RAM/timing drift and 5,928,601
+differing same-index stereo samples remain recorded. Equal-length audio windows
+after the transition show a roughly 750-sample offset, with residual differences
+after alignment; this does not establish inaudibility. Temporal diagnostics
+explain part of the divergence without changing any captured output or its hashes.
+
+Native house entry, Italian Bag, return outdoors, normal Save, soft-reset Continue
+and fresh-process cold field/Bag checks pass. The cold load preserves the new
+save and all four general/storage payload CRCs validate. Sampled plaza frames
+retain terrain and moving windmill poses. No human audiovisual approval or
+independent regional new-game/battle coverage is claimed. The board returns to
+MENU, all jobs clear, with OBS stopped and settings unchanged.
+
+The existing six-region direct-flow and constant-guard proof is reused. The
+new read-only timing diagnostic is generic and takes its scene windows from
+data. Its results and thumbnails match the original retained-data calculation;
+no gameplay replay was repeated to check the extracted tool.
+
+Evidence: `IPGI_TERRAIN_QUALIFICATION_V1.json`,
+`IPGI_TERRAIN_REFERENCE_REVIEW_V1.json`, `IPGI_TERRAIN_TIMING_DIAGNOSTIC_V1.json`,
+`IPGI_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json`,
+`IPGI_TERRAIN_COLD_VISUAL_REVIEW_V1.json` and `IPGI_TERRAIN_BEFORE_AFTER_V1.csv`.
+Videos: `SoulSilver_Italian_Terrain_Original_V1.mp4` and
+`SoulSilver_Italian_Terrain_Candidate_V1.mp4`.
+
+Next three areas: Spanish/Japanese/Korean SoulSilver terrain qualification;
+HeartGold terrain transfer; then the owned Platinum and FFT A2 identities.
+Regional Beta4 R2 remains immutable and does not contain this terrain addition.

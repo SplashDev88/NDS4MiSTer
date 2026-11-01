@@ -623,3 +623,19 @@ reached instruction, direct edge, literal, unresolved transfer and conflicting
 mapping. BSS-relative correspondence is a location check, not a runtime-state
 proof. No patch is generated or enabled. Run the focused synthetic checks with
 `python3 -m unittest test_regional_direct_flow` from this directory.
+
+## Retained replay timing diagnostics
+
+`diagnose_replay_timing.py PLAN.json SPEC.json` reads existing replay outputs
+without running the game or modifying captures. The plan supplies `directory`
+and `prefix`; the tool reads `PREFIX_DELIVERY_V1` and `PREFIX_CANDIDATE_V1`
+using the existing `frames.csv`, `audio.s16le` and `thumbs.rgb` formats.
+
+The specification supplies `windows` (exclusive end), `frame_radii`,
+`audio_radius_samples`, `audio_window_samples`, `audio_starts`,
+`thumbnail_frames` and a fresh `output_suffix`. NumPy and Pillow are required.
+Outputs report nearby screen-pair matches, unmatched frames, bounded audio
+offsets and residuals, plus labeled thumbnails. Audio offset estimation uses
+one channel; residual measurements cover both. The tool does not enable a patch
+or declare visual, audio or gameplay equivalence. Preserve the raw comparison
+and review unexplained differences under the explicitly chosen test budget.
