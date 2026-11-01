@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "title": "Final Fantasy Tactics A2: Grimoire of the Rift",
+  "optimization": "Existing raster-only sprite spans with accepted constant-texture-row specialization",
+  "runtime_selector": "src/replay/GameQueryProfile.h:ffta2_raster_only_profile",
+  "guest_patches_enabled": 0,
+  "rtl_changed": false,
+  "new_hps_service": false,
+  "identities": [
+    {
+      "game_code": "A6FJ",
+      "revision": 0,
+      "header_sha1": "67c8020c669fd545d4de44a60e8034495a06d1f6",
+      "header_crc32": "c724dea9",
+      "rom_sha256": "95aec791f427c4aa1bf54ab5e604f8c9bef33210f934ac567167c26313455330"
+    },
+    {
+      "game_code": "A6FP",
+      "revision": 0,
+      "header_sha1": "1817510b8766a2143bf5bdb78d22f826b97f698b",
+      "header_crc32": "7a72b5f0",
+      "rom_sha256": "f9beac8372ec07cd368265289673294d5be73af38935e9c4194f63f2e3735b59"
+    },
+    {
+      "game_code": "A6FE",
+      "revision": 0,
+      "header_sha1": "803a0122db39ea3ddc99b56a7167d623aea004c3",
+      "header_crc32": "8c766dbb",
+      "rom_sha256": "3b5d469aae5d351de31a89cf2bf592c98cb5b68cb4efc30b34426a119fee2372"
+    }
+  ],
+  "guard": "Stable two-read code, revision and 352-byte header CRC32 match; exact owned ROM SHA256 recorded for provenance. Unknown or unstable identities fall back. This enables renderer policy and does not patch guest bytes.",
+  "validation": "Bounded European/Japanese cold battle comparisons, live profile checks, normal Quick Save writes and Japanese new-save cold reload completed. Actual packaged European new-save cold reload remains a delivery gate.",
+  "scope": "Only the three owned revision-0 identities. No unavailable revision or full playthrough claim.",
+  "native_measurements": {
+    "A6FP": {
+      "before": 21.31294181498653,
+      "after": 23.064729646104894,
+      "gain_percent": 8.219361955403869,
+      "metric": "Completed screen pairs/s in one30-second fixed battle window per cold arm; not whole-game FPS"
+    },
+    "A6FJ": {
+      "before": 21.07447211958984,
+      "after": 23.116385994970642,
+      "gain_percent": 9.689039249921416,
+      "metric": "Completed screen pairs/s in one30-second fixed battle window per cold arm; not whole-game FPS"
+    }
+  }
+}

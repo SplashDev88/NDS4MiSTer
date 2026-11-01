@@ -1496,3 +1496,7 @@ The existing 48-byte terrain gate was relocated using the shared dependency proo
 ### CPUK revision 0: user-directed private port
 
 The existing 48-byte terrain gate was relocated using the shared dependency proof and admitted by exact ROM, header, ARM9, overlay, original-byte and data guards. Remaining gameplay validation was explicitly waived on 2026-11-01. This port is unvalidated on native hardware; no regional speed or save/lifecycle result is claimed. Source defaults remain disabled; explicit private catalog selection is authorized. Evidence: `CPUK_R0_TERRAIN_USER_WAIVER_ACCEPTANCE_V1.json`.
+
+### FFT A2 European and Japanese renderer profiles
+
+The accepted renderer profile now admits A6FP/A6FJ revision0 exact owned headers. The matched battle view improves completed screen publications by8.2194% and9.6890%, respectively, at stock1GHz. Renderer algorithms and guest patches are unchanged. Bounded native/save evidence and limitations are in `FFT_REGIONAL_REPORT.md`.

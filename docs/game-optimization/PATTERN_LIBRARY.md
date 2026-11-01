@@ -1990,3 +1990,7 @@ masking waveforms or declaring inaudibility. Native Save/reset/cold and declared
 Platinum save validation pass. No new signature or runtime service. Receipts:
 `CPUF_R0_TERRAIN_QUALIFICATION_V1.json`,
 `CPUF_R0_TERRAIN_AUDIO_FRAME_COUNT_DIAGNOSTIC_V1.json`.
+
+### Reuse an accepted renderer profile across exact regional identities
+
+Before relocating guest patches, inspect the shipped selector: an accepted gain may live in a shared renderer path. FFT A2 uses this pattern. Extend only the exact code/revision/header table, test changed identities and independent policies, preserve the accepted raster implementation, and verify the live profile plus a matched regional scene. This avoids reviving unrelated guest experiments or changing FPGA/HPS protocols. Shared renderer proofs can be reused; regional lifecycle/performance claims still require their own evidence.

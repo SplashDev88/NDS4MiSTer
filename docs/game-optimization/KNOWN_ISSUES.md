@@ -1013,3 +1013,7 @@ Retain this evidence; no harmlessness, inaudibility or human audiovisual verdict
 The 16.8094% native gain is scene-specific. Later areas, battles and independent
 French new-game progression remain unqualified. Absent from frozen Regional Beta6;
 cumulative archive verification is pending.
+
+### Regional Beta7 validation coverage
+
+Platinum CPUI/CPUS/CPUJ/CPUK revision0 ports retain static identity/byte guards but remaining gameplay checks were explicitly waived by the user on2026-11-01. They have no regional native gain or lifecycle qualification. FFT A2 EU/JP tests cover an imported Luso battle checkpoint, not later areas/full playthroughs. Japanese imported USA name encoding also occurs in the unmodified baseline. A speculative warm return after Quick Save remained black; the save stayed intact and a fresh-process Continue restored it. The warm sequence is unqualified, not an established renderer defect. Unknown/unavailable revisions and the provenance-unresolved Pokémon revision10 images remain excluded.

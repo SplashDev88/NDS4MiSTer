@@ -129,13 +129,22 @@ inline bool ecclesia_sprite_raster_profile(const GameQuerySelection& selected)
     return false;
 }
 
-// FFTA2's guarded raster specialization is independent of the Castlevania
-// replay/VRAM and query policies. Admit only the verified USA revision/header.
+// FFTA2's existing raster specialization is independent of the Castlevania
+// replay/VRAM and query policies. Match each owned retail revision/header;
+// unknown identities retain the established renderer path.
 inline bool ffta2_raster_only_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'A','6','F','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x8c766dbbu;
+    if (!selected.identified) return false;
+    static constexpr GameQueryIdentity identities[] = {
+        {{{'A','6','F','E'}}, 0, 0x8c766dbbu},
+        {{{'A','6','F','P'}}, 0, 0x7a72b5f0u},
+        {{{'A','6','F','J'}}, 0, 0xc724dea9u},
+    };
+    for (const auto& identity : identities)
+        if (selected.identity.code == identity.code &&
+            selected.identity.revision == identity.revision &&
+            selected.identity.header_crc32 == identity.header_crc32) return true;
+    return false;
 }
 
 // No remembered selection: every reset/reload starts from the fast default.
