@@ -61,8 +61,8 @@ extracted code context or private resource is added to this source repository.
 
 All twelve owned non-USA HGSS revision-0 starter ports and all six owned German,
 French, Italian, Spanish, Japanese and Korean SoulSilver revision-0 terrain
-ports are packaged in immutable Regional Beta5. German, French and Italian
-HeartGold terrain are qualified separately for a later private package; the other three HeartGold
+ports are packaged in immutable Regional Beta5. German, French, Italian and
+Spanish HeartGold terrain are qualified separately for a later private package; Japanese and Korean HeartGold
 terrain ports, Platinum and FFT A2 regional ports remain pending. No unowned
 revision or quarantined identity is admitted. Earlier dated sections retain
 their historical packaging status.
@@ -1146,3 +1146,49 @@ Next three areas: remaining HeartGold terrain regions (Spanish next, then Japan
 and Korea), Platinum regions/revisions, and FFT A2 regions/revisions. The Spanish
 plan and guarded streams are prepared; its runtime qualification is pending.
 Unknown identities remain unsupported.
+
+### Spanish HeartGold terrain qualification, 2026-11-01
+
+`heartgold-ipks-r0.json` retains the starter patch and adds the guarded 48-byte
+terrain gate, both default-disabled. Its two-patch release stream exactly matches
+the tested native image. Frozen Regional Beta5 is unchanged; this addition awaits
+a later cumulative archive. Use HeartGold's own address, not Spanish SoulSilver's.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 703,699,739 | 672,956,977 | −4.3687% |
+| Native screen pairs/s, fixed plaza at 1 GHz | 18.7605 | 19.6620 | +4.8054% |
+| Terrain draws, frames 6000–6599 | 1,158 | 430 | 728 omitted |
+
+All 3,600 target screen pairs, initial 1,800 home/boot pairs and save bytes match
+decoded delivery. Two earlier pairs differ: top 2029 matches the next control
+frame; bottom 3189 remains unmatched within eight frames during menu brightening.
+Seven paired full-size checkpoints and transition thumbnails retain the expected
+scenes. Other sampled query/draw counts are unchanged. Raw RAM/timing differences
+and 274,709 differing stereo samples of 7,702,322 remain; maximum signed-16 delta
+is 12,793 and RMS delta 64.7207. This is not whole-run bit-exactness or human
+listening approval. Original versus decoded delivery has 68 top/14 bottom
+changes before frame 1932, none in the target; all seven full-size pairs and save match.
+
+Native results use one 30-second cold-start window per arm at stock 1 GHz and the
+same saved plaza, with no confidence interval or native decoded-control window.
+Publications are not unique animation FPS or whole-game speed. Host CPU was
+3.354%→3.327% of one core; renderer CPU 161.04%→161.95%. Both captures add zero
+drops; review copies preserve game-audio packets/timestamps and have audio signal.
+Sampled views retain the plaza and changing windmill poses.
+
+Home/Bag/return, normal Save, soft-reset Continue and fresh cold field/Bag checks
+pass. The cold run preserves the new 512 KiB save; all four payload CRCs and
+international footer markers validate. MENU, stopped OBS, settings and protected
+files are preserved. Own-title imported saves do not establish independent
+Spanish new-game progression. Later areas, battles and human listening remain
+outside the shared bounded qualification. No new service, scratch or RTL change.
+
+Reuse the six-region dependency proof and generic timing diagnostic. Receipts:
+`IPKS_TERRAIN_QUALIFICATION_V1.json`, `IPKS_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`IPKS_TERRAIN_TIMING_DIAGNOSTIC_V2.json`, `IPKS_TERRAIN_BEFORE_AFTER_V1.csv`.
+Videos: `HeartGold_Spanish_Terrain_Original_V1.mp4` and
+`HeartGold_Spanish_Terrain_Candidate_V1.mp4`.
+
+Next three areas: Japanese/Korean HeartGold terrain (Japanese plan and verified
+streams ready), Platinum region/revision ports, and FFT A2 region/revision ports.

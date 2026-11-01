@@ -961,3 +961,8 @@ this is not human listening or perceptual-equivalence approval. Keep both videos
 and raw diagnostic evidence. Later areas, battles and independent regional
 new-game progression remain unqualified. Its source addition is absent from
 frozen Regional Beta5 and needs later cumulative archive validation.
+
+Spanish HeartGold terrain has exact target screen pairs/save but two earlier
+transition/menu pairs and raw RAM/audio/timing differences. Its native home/Bag/
+save/reset/cold route passes; later areas, battles and human listening remain
+unqualified. This addition is absent from frozen Regional Beta5.

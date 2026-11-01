@@ -1929,3 +1929,8 @@ timing diagnostic. Preserve 1,060 target pairs unmatched within eight frames
 and the residual audio differences; sampled views and save/reload do not prove
 perceptual equivalence. Native home/Bag/save/reset/cold checks pass. Evidence:
 `IPKI_TERRAIN_QUALIFICATION_V1.json`, `IPKI_TERRAIN_TIMING_DIAGNOSTIC_V2.json`.
+
+Spanish HeartGold IPKS reuses the same guard/detector and timing diagnostic:
+4.3687% fewer reference ARM9 entries and 4.8054% higher native plaza publications.
+Target pairs/save match; retain two earlier screen differences and raw audio/RAM.
+Native save/lifecycle checks pass. Evidence: `IPKS_TERRAIN_QUALIFICATION_V1.json`.
