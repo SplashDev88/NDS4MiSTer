@@ -1003,3 +1003,13 @@ Platinum 20-byte layout, including the unchanged unused storage bank. Later area
 battles and independent German new-game progression remain unqualified. Its
 16.7762% publication gain is scene-specific. Absent from frozen Regional Beta6;
 new cumulative archive verification is pending.
+
+French Platinum CPUF revision 0 passes its imported-save town/house/Bag/Save/reset/
+cold route, with exact target screen pairs/save but nine earlier top-frame and raw
+RAM/audio differences. Unlike the prior ports, intermediate main RAM/DTCM checkpoints
+and mainram.bin differ while the 1200/5999 checkpoint sets match outside code bytes.
+Eight frame audio counts shift by one or two samples despite equal total lengths.
+Retain this evidence; no harmlessness, inaudibility or human audiovisual verdict.
+The 16.8094% native gain is scene-specific. Later areas, battles and independent
+French new-game progression remain unqualified. Absent from frozen Regional Beta6;
+cumulative archive verification is pending.

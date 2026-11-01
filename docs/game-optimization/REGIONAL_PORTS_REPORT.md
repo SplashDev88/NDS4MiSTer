@@ -1419,3 +1419,64 @@ Evidence: `CPUD_R0_TERRAIN_QUALIFICATION_V1.json`,
 Next three areas: qualify the five remaining prepared Platinum regions, port FFT
 A2 regions/revisions, and broaden later-area/battle coverage. USA revision 0 and
 German ports are queued for a future cumulative private beta; no public release.
+
+### French Platinum revision 0 terrain qualification, 2026-11-01
+
+`platinum-cpuf-r0.json` adds the guarded 48-byte terrain visibility gate for CPUF
+revision 0, default-disabled for explicit private catalog selection. Its release
+stream matches the native candidate without the no-op control. It is absent from
+immutable Regional Beta6 and awaits cumulative archive verification.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 4200–5999 | 309,465,364 | 285,184,882 | −7.8459% |
+| Native fixed-town screen pairs/s | 18.1573 | 21.2094 | +16.8094% |
+| Terrain draws, frames 4200–4799 | 1,174 | 300 | 874 omitted |
+
+One 30-second window per cold-start arm at stock 1 GHz, same saved tile/camera
+and matched private test RTC. Host CPU is 3.292%→3.225% of one core; renderer
+159.558%→163.060%. No repeat or confidence interval. Publications are not unique
+animation FPS, native cycles, whole-game speed or a matched comparison with the
+historical USA traversal result. Both capture checks pass; review copies preserve
+game-audio packets and timestamps. Sampled native views retain the expected town.
+
+All 1,800 target screen pairs and save bytes match. Nine earlier top frames around
+the town-entry banner differ and remain unmatched within eight neighboring frames;
+all bottom hashes match. Raw RAM/audio/timing differences remain: 129,212 of
+4,813,950 stereo samples differ, maximum signed-16 delta 2,067, RMS 15.8525. Eight
+per-frame audio counts differ by one or two samples, including two target frames;
+total stream lengths match. Three sampled audio windows prefer zero offset but
+retain residual differences. No human listening, inaudibility or bit-exactness claim.
+
+French RAM checkpoint behavior differs from the previous ports: mainram.bin and
+the main RAM/DTCM checkpoints at 1800, 3000, 4200, 4320, 4440, 4800 and 5880 differ.
+The complete fixed checkpoint sets at 1200 and 5999 match outside the 48 code bytes;
+other fixed-checkpoint memory spaces match. Per-frame hashes still differ for main
+RAM (2,326), DTCM (2,322) and ARM7 WRAM (134). These differences are preserved, not
+masked or classified as harmless. Native lifecycle checks cover only the bounded route.
+
+The target watch has 874 zero/300 nonzero terrain-query returns and 300 terrain
+draws. Other captured query/draw counts match. Guarded constant/pointer bytes have
+no writes after complete overlay recognition or during the target window. Reuse
+the shared seven-identity 281-instruction/51-edge query proof and relocated watches.
+Original and unchanged-delivery images are byte-identical, so their admitted
+original replay is explicitly reused; no independent delivery run is claimed.
+
+The imported own-title save loads the French CONTINUER menu and completes the town
+walk. Native house/return, SAC, normal SAUVER, soft-reset Continue and fresh-process
+field/Bag reload pass. Cold reload preserves the new 512 KiB save. Both general
+blocks and active storage have valid Platinum 20-byte footer/CRCs and matching
+selected global counters; the unused storage block remains identically erased.
+MENU, OBS settings and protected files are preserved. Later areas, battles and
+independent French new-game progression remain outside this qualification.
+
+Evidence: `CPUF_R0_TERRAIN_QUALIFICATION_V1.json`,
+`CPUF_R0_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`CPUF_R0_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json`,
+`CPUF_R0_TERRAIN_AUDIO_FRAME_COUNT_DIAGNOSTIC_V1.json`,
+`CPUF_R0_TERRAIN_BEFORE_AFTER_V1.csv`. Videos:
+`Platinum_French_Original_V1.mp4`, `Platinum_French_Candidate_V1.mp4`.
+
+Next three areas: qualify the four remaining prepared Platinum regions, port FFT
+A2 regions/revisions, and broaden later-area/battle coverage. Three new Platinum
+ports await a future cumulative private beta; no public release is authorized.

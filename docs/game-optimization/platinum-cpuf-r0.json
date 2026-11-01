@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "game_code": "CPUF",
+  "revision": 0,
+  "title": "Pokemon - Version Platine (France)",
+  "header_sha1": "3923cfca3431d176156b5f7569192abbfd919183",
+  "header_bytes": 352,
+  "rom_sha256": "1cfd024519116c1c6285d6af2dbdfcec778e9d74c7c18585e22032e81aaa7eb8",
+  "arm9_sha256": "aa839663333c97d61083f58b855c0a9faa1508ad0be96608053497fe8a575c46",
+  "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+  "budget": "User-authorized functional/perceptual budget; retain raw differences and require useful native benefit plus lifecycle/save checks.",
+  "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay5-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 5,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21d0f60",
+      "overlay_file_id": 5,
+      "overlay_sha256": "f06dd5ee19ccd51a9ff31819c76c19b099bd555c732ba7147215ff7a25322e6f",
+      "overlay_stored_sha256": "f06dd5ee19ccd51a9ff31819c76c19b099bd555c732ba7147215ff7a25322e6f",
+      "addr": "0x21e8c5a",
+      "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f62dff",
+      "replace": "a05902218902471878680ea9174a154b34f66df900280bd038000ea9134a114b33f633ffc046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21e8cc0",
+          "expect": "88b01f02a0b01f02"
+        },
+        {
+          "addr": "0x21fb088",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x21fb0a0",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "bounded_native_qualified",
+      "notes": "Guarded transfer of the accepted48-byte terrain visibility gate to verified France revision0. Reuses the existing query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is the fixed saved Twinleaf Town view with a documented imported own-title save. Default disabled; explicit private catalog selection required.",
+      "validated": {
+        "static": "Exact France identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Reached visibility-query direct-flow closure matches281 instructions and51 edges; per-identity ARM9/overlay hashes retained.",
+        "reference": "All1800 target screen pairs and save bytes match. Nine earlier top frames differ around town-entry banner transitions and remain unmatched within eight neighboring frames; bottom screens exact. RAM/audio differences retained: mainram.bin and intermediate1800/3000/4200/4320/4440/4800/5880 mainRAM/DTCM checkpoints differ;1200 and5999 fixed checkpoint sets match outside48 codebytes. Eight per-frame audio sample-count values differ(two target), although total audio lengths match. Original/no-op delivery images are byte-identical and explicitly share one admitted original replay.",
+        "native": "Stock1GHz cold original/candidate fixed-town capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Platinum20-byte save-block footer/CRC and selected counters verified against the documented layout.",
+        "scope": "Twinleaf Town, home and Bag only. No independent France revision0 new-game progression, battles, whole-game or human audiovisual approval. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 309465364,
+          "candidate": 285184882,
+          "reduction_percent": 7.845944918087833,
+          "frames": "4200-5999"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 18.157307396725148,
+          "candidate": 21.20944675999853
+        },
+        "native_publications_vs_original_percent": 16.809427172136026,
+        "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Original/no-op delivery virtual images are byte-identical and explicitly reuse the original software replay. No separate delivery replay or native control window claimed."
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "CPUF_R0_TERRAIN_REFERENCE_FINDINGS_V1.json",
+        "CPUF_R0_TERRAIN_REFERENCE_REVIEW_V1.json",
+        "CPUF_R0_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "CPUF_R0_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+        "CPUF_R0_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+        "CPUF_R0_TERRAIN_QUALIFICATION_V1.json"
+      ]
+    }
+  ],
+  "arm9_crc32": "c0b29d1e",
+  "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+  "arm7_crc32": "67db0960"
+}

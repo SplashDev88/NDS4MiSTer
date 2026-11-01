@@ -1979,3 +1979,14 @@ Plan-driven input capture reuses the same native rig for house/Bag/Save/reset/co
 checks; declared Platinum save geometry validates the normal German save without
 forcing four valid HGSS footers. No new signature or runtime service. Receipts:
 `CPUD_R0_TERRAIN_QUALIFICATION_V1.json`, `CPUD_R0_TERRAIN_REFERENCE_REVIEW_V1.json`.
+
+French Platinum CPUF revision 0 reuses the guarded terrain transfer and shared
+query proof: 7.8459% fewer reference ARM9 entries, 16.8094% higher native fixed-town
+publications. Target pairs/save match, but preserve nine earlier image differences,
+intermediate RAM checkpoints and raw audio changes. Equal audio length does not
+imply equal per-frame allocation: eight counts differ by one or two samples, with
+the opposite shift on the next frame. The diagnostic records those values without
+masking waveforms or declaring inaudibility. Native Save/reset/cold and declared
+Platinum save validation pass. No new signature or runtime service. Receipts:
+`CPUF_R0_TERRAIN_QUALIFICATION_V1.json`,
+`CPUF_R0_TERRAIN_AUDIO_FRAME_COUNT_DIAGNOSTIC_V1.json`.
