@@ -2,7 +2,7 @@
 
 Regional work branches from the unpublished RC13 candidate, source
 `2fb28bd437834cb76300d1fca5aa14dbf58cf711`. The packaged candidate and accepted
-betas are preserved. German SoulSilver's starter gate is qualified for explicit
+betas are preserved. German and French SoulSilver's starter gates are qualified for explicit
 private catalog inclusion. Source manifests remain disabled by default.
 
 ## HGSS starter candidates, 2026-10-31
@@ -106,8 +106,42 @@ Private qualification: `IPGD_STARTER_QUALIFICATION_V1.json`. Videos:
 `SoulSilver_German_Starter_Original_V1.mp4`,
 `SoulSilver_German_Starter_Candidate_V1.mp4`, and
 `SoulSilver_German_Starter_Selection_V1.mp4`. No ROMs, saves or captured private
-code are included in this repository. French SoulSilver is next; remaining
-regional candidates and German terrain remain unqualified.
+code are included in this repository. Remaining regional candidates and German
+and French terrain remain unqualified.
+
+### French SoulSilver starter qualification
+
+`soulsilver-ipgf-r0.json` authenticates IPGF revision 0 and its distinct overlay
+61 hash/base. The shared asset/dependency audit and six-layout CPU contract are
+reused. Its own 3,600-frame original/delivery/candidate comparison preserves every
+screen pair and save. ARM9 instructions fall from 87,221,604 to 43,098,689
+(50.5871%) in frames 1800–3599. Raw RAM/timing/audio differences are retained.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.2359 | 42.7749 (3.0047×) |
+| Renderer CPU, percent of one core | 161.72% | 110.30% |
+| Measured light cycle | 3.4667 s | 3.4833 s |
+
+The difference in measured light period is one captured frame. Video capture
+quality and game-audio signal checks pass; human audibility approval is not
+claimed. Native inspection covers Germignon, Héricendre and Kaiminus, both
+rotation directions, inspect/cancel/confirm and final Germignon choice. Normal
+Save writes a changed 512 KiB file; soft-reset Continue restores the lab and
+follower. A fresh-process cold Continue/party check restores Germignon at level 5,
+20/20 HP, and leaves the saved file unchanged.
+
+This final cold input replay supplies unrelated lab/menu coverage without
+entering the starter scene. The common delivery proof and German unrelated
+software replay are reused; a separate French software collateral comparison
+is not claimed. The target checkpoint is imported from USA and is not independent
+French new-game progression. Native cycle/frame-time percentile/DMA/cart counters
+remain unavailable, and publications are not unique animation or whole-game FPS.
+
+Private receipts: `IPGF_STARTER_QUALIFICATION_V1.json` and
+`IPGF_STARTER_BEFORE_AFTER_V1.csv`. Review videos use the prefix
+`SoulSilver_French_Starter_`. Actual cumulative archive/launcher qualification
+remains a separate packaging gate.
 
 The next three porting areas after the starter qualification are:
 

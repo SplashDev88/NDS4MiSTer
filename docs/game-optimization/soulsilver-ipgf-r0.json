@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon SoulSilver (France)",
+  "game_code": "IPGF",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "4aea83ea49e1b602c7af2f32c92d8d115cf2f61b",
+  "header_crc32": "ca5fa4e3",
+  "rom_sha256": "bd224ab12e954c6469abcad66415a3dbeda68cebb14f66db4e29f4460f7502ca",
+  "arm9_sha256": "4a5093c9e658c1825f2a3496d31ccfaef974484c33f7f243a7acd52005babef5",
+  "arm9_crc32": "80591d29",
+  "delivery": "append-decoded-overlays-v1",
+  "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+  "status": "bounded_native_qualified_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e5920",
+      "overlay_file_id": 61,
+      "overlay_sha256": "2479cf8373f781d088df30ef3f6efbd87d15ce4586f33f00a819bfec74790797",
+      "overlay_stored_sha256": "c2338404e1d4b82236e2a5d9ee786461ebbbceff9bd32fe334dd8a74cc8cc04f",
+      "addr": "0x21e5f18",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+        "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+        "ram": "Raw state/timing differences retained under the authorized functional budget.",
+        "audio": "Raw sample differences retained. Native game-audio signal/capture checks pass; no human audibility approval claimed.",
+        "native": "All three localized species (Germignon, Hericendre, Kaiminus), rotation both directions, inspect/cancel/confirm, final Germignon choice and return to lab visually reviewed.",
+        "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+        "unrelated": "Final fresh-process cold Continue/party input replay stays in the lab/menu and does not enter starter selection. Existing shared loader/code proofs and German unrelated replay are reused; no separate French software collateral replay is claimed.",
+        "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+        "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for French target-scene A/B and compatibility only. This does not establish independent French new-game progression.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "ORIGINAL": 87221604,
+          "DELIVERY": 87221604,
+          "CANDIDATE": 43098689
+        },
+        "reference_instruction_reduction_percent": 50.587140085155966,
+        "native_completed_screen_pairs_per_second": {
+          "original": 14.23594945910715,
+          "candidate": 42.77493443454497
+        },
+        "renderer_cpu_percent_one_core": {
+          "original": 161.7177249303247,
+          "candidate": 110.30203108471837
+        },
+        "native_light_period_seconds": {
+          "original": 3.4666666666664696,
+          "candidate": 3.4833333333331353
+        }
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPGF_STARTER_QUALIFICATION_V1.json",
+        "IPGF_STARTER_REFERENCE_REVIEW_V1.json",
+        "IPGF_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPGF_ORIGINAL1_MEDIA_REVIEW.json",
+        "IPGF_CANDIDATE1_MEDIA_REVIEW.json",
+        "IPGF_CANDIDATE1_SELECTION_MEDIA_V1.json",
+        "IPGF_CANDIDATE1_LIFECYCLE_DONE.json",
+        "IPGF_COLD_VISUAL_REVIEW_V1.json",
+        "IPGF_COLD1_STOP.json",
+        "IPGF_POSTSTARTER_SAVE_READBACK_V1.json",
+        "IPGF_STARTER_VARIANTS_V1.json"
+      ]
+    }
+  ]
+}

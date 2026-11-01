@@ -1737,3 +1737,10 @@ each admitted identity and check its translated active states, normal save and
 cold reload. One native pair can establish a large effect; repeat for ambiguity,
 not mechanically. Compare visible cadence separately from publications. Source
 manifests remain default-disabled. See `REGIONAL_PORTS_REPORT.md`.
+
+French SoulSilver independently confirms this gate: 50.59% fewer sampled ARM9
+instructions and 3.00× native publications, with the light period within one
+captured frame of control. Reuse the shared static/CPU proof, while retaining
+the region's own original/delivery/candidate replay, native measurements and
+localized active-state/save/cold-load evidence. A post-save cold lab/party input
+replay provides unrelated-scene coverage without repeating a full introduction.

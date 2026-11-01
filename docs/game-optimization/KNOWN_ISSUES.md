@@ -799,7 +799,7 @@ of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
 HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
 
 Regional starter candidates have matching patch bytes/assets and relocated
-synthetic contracts. German SoulSilver's starter gate is bounded-native-qualified;
+synthetic contracts. German and French SoulSilver's starter gates are bounded-native-qualified;
 the other regional candidates remain unqualified. External-call prefixes and
 bounded overlay instruction matches do not prove whole-program equivalence.
 Do not promote them from static evidence or reuse USA performance/approval labels.
@@ -820,3 +820,9 @@ Audio signal presence is not human audibility approval. The unrelated first-room
 check retains virtual-header/FAT/startup RAM differences and one DTCM-hash frame;
 screens, audio, save and instruction traces match. See the regional report for
 the bounded evidence and excluded wrong-scene/input-limit attempts.
+
+French qualification also uses a documented imported checkpoint. Its native
+cold lab/party replay supplies unrelated-scene coverage; no separate French
+software collateral comparison or human audio approval is claimed. German and
+French terrain ports remain unqualified and must not be enabled with the starter
+catalog entries.
