@@ -1875,3 +1875,11 @@ Evidence: `IPGI_TERRAIN_TIMING_DIAGNOSTIC_V1.json`,
 `REFERENCE_TIMING_DIAGNOSTIC_CHECKS_V1.json` and
 `IPGI_TERRAIN_QUALIFICATION_V1.json`. The generic extraction reproduced the
 diagnostic values and thumbnail bytes without another game replay.
+
+Spanish SoulSilver IPGS reuses the same terrain gate and dependency proof with
+4.3543% fewer reference ARM9 entries and 5.5358% higher native fixed-plaza
+publication throughput. All target screen pairs and the save match cumulative
+decoded delivery; one earlier menu frame and raw RAM/audio timing differences
+remain recorded. Its own normal-save, reset and cold-load checks pass. No new
+signature or repeated starter audit is needed. Evidence:
+`IPGS_TERRAIN_QUALIFICATION_V1.json`.

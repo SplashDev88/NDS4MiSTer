@@ -903,7 +903,7 @@ qualify regional terrain, battles, independent new-game progression or human
 audio approval. The port is eligible for the next private package only after
 actual archive and launcher verification.
 
-German and French SoulSilver terrain are qualified only for the documented New Bark Town,
+German, French and Spanish SoulSilver terrain are qualified only for the documented New Bark Town,
 home and Bag/save route. Each reference control retains one earlier menu redraw
 frame and raw RAM/audio/timing drift; original versus decoded delivery also
 changes the fixed input route's camera timing. A fixed native saved anchor
@@ -919,5 +919,5 @@ remain unmatched within eight neighboring control frames. Raw audio differs
 substantially at equal sample indices, and a roughly 750-sample timing offset
 does not remove all differences. Sampled views and normal save/reload pass;
 these observations are not framebuffer equivalence or human listening approval.
-Preserve both review videos and the unmatched-frame counts. Spanish, Japanese
-and Korean terrain remain disabled pending their own runtime qualification.
+Preserve both review videos and the unmatched-frame counts. Japanese and Korean
+terrain remain disabled pending their own runtime qualification.
