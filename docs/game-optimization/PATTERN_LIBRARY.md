@@ -1845,3 +1845,11 @@ pointers and callees. Evidence: `SOULSILVER_BBOX_DEPENDENCY_AUDIT_V1.json` and
 `SOULSILVER_BBOX_AUDITOR_CHECKS_V1.json`. German runtime qualification then
 independently records 4.3513% fewer reference ARM9 entries and 6.2662% higher
 fixed-plaza native publication throughput. Static matches alone enable no port.
+
+French SoulSilver IPGF independently confirms the same pattern: 4.3510% fewer
+reference ARM9 entries and 5.5788% higher fixed-plaza native publication
+throughput. Reuse the unchanged six-region code/dependency audit, while keeping
+each region's replay, original/candidate scene admission and save lifecycle
+separate. The French two-patch release stream exactly matches its native trial
+after removal of the trial-only no-op entry. Evidence:
+`IPGF_TERRAIN_QUALIFICATION_V1.json`. No additional signature is necessary.

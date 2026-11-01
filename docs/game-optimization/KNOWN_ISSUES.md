@@ -903,13 +903,12 @@ qualify regional terrain, battles, independent new-game progression or human
 audio approval. The port is eligible for the next private package only after
 actual archive and launcher verification.
 
-German SoulSilver terrain is qualified only for the documented New Bark Town,
-home and Bag/save route. Its reference control retains one earlier menu redraw
+German and French SoulSilver terrain are qualified only for the documented New Bark Town,
+home and Bag/save route. Each reference control retains one earlier menu redraw
 frame and raw RAM/audio/timing drift; original versus decoded delivery also
 changes the fixed input route's camera timing. A fixed native saved anchor
 separates that route effect from the measured comparison. Native audio signal
 and clean recording checks are not human listening approval. Later areas and
-battles remain unqualified, and transient diagonal geometry lines already occur
-in original captures. The five other SoulSilver terrain candidates remain
+battles remain unqualified. The four other SoulSilver terrain candidates remain
 disabled despite matching direct-call dependencies. Regional Beta4 R2 is
 immutable; the new terrain port needs a separately verified cumulative package.

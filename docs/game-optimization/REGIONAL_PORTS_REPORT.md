@@ -60,9 +60,9 @@ extracted code context or private resource is added to this source repository.
 ## Qualification and remaining work
 
 All twelve owned non-USA HGSS revision-0 starter ports are qualified and packaged
-in immutable Regional Beta4 R2. German SoulSilver IPGD revision 0 terrain is now
-qualified separately and queued for a new cumulative private package. The other
-five SoulSilver terrain regions, HeartGold terrain, Platinum and FFT A2 regional
+in immutable Regional Beta4 R2. German and French SoulSilver IPGD/IPGF revision 0
+terrain are qualified separately and queued for a new cumulative private package. The other
+four SoulSilver terrain regions, HeartGold terrain, Platinum and FFT A2 regional
 ports remain pending. No unowned revision or quarantined identity is admitted.
 
 Use regional starter inputs, unchanged decoded delivery controls,
@@ -667,3 +667,56 @@ Private evidence: `IPGD_TERRAIN_QUALIFICATION_V1.json`,
 Next: qualify the five remaining SoulSilver terrain regions; reuse the dependency
 method for HeartGold; then port the owned Platinum and FFT A2 identities. Later
 areas, battles and human listening remain outside this bounded qualification.
+
+### French SoulSilver terrain qualification, 2026-11-01
+
+`soulsilver-ipgf-r0.json` now includes the accepted 48-byte terrain visibility
+gate alongside the unchanged French starter gate. Both remain disabled by
+default. The two-patch release stream exactly matches the tested cumulative
+native image, with the trial-only no-op entry removed. This addition is queued
+for the next private package; immutable Regional Beta4 R2 remains starter-only
+for this regional identity.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 instruction entries, frames 6000–9599 | 702,309,826 | 671,751,984 | −4.3510% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.7584 | 19.8049 | +5.5788% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 430 | 728 omitted |
+
+The shared six-region dependency audit is reused: 281 reached instructions,
+51 direct edges, authenticated calls, corresponding state-pointer offsets and
+guarded immutable transforms. This region's reference and native runs remain
+independent. No new detector, scratch memory, service or RTL change is needed.
+
+All 9,600 top-screen hashes, all 3,600 target-window screen pairs, the initial
+1,800 home/boot screen pairs and the save match cumulative decoded delivery.
+One earlier bottom-screen frame differs during menu brightening at frame 3187.
+Raw RAM/timing differences and 264,472 differing same-index stereo samples are
+retained: equal sample lengths, maximum signed-16 delta 2,684 and RMS delta
+20.5608. These figures do not establish inaudibility. Original compressed versus
+decoded delivery has its own camera/input timing shift, recorded separately.
+
+Native measurements use the same documented own-title plaza save, fixed tile
+and camera, with one 30-second window per separately cold-started arm. Both
+captures have zero added render/output drops; review copies preserve encoded
+game-audio packets and timestamps. Publications are not unique animation FPS,
+native CPU cycles or whole-game speed; no confidence interval is claimed.
+
+House entry, the French Bag, return outdoors, normal Save, soft-reset Continue
+and fresh-process cold field/Bag checks pass. The cold session preserves the
+new save, and all four general/storage block payload CRCs validate. Both source
+and candidate game audio are present. Sampled visual review is recorded without
+claiming human listening approval. Imported checkpoints establish this route's
+compatibility, not an independent regional new-game playthrough. The board is
+back at MENU, all owned jobs are clear and OBS is stopped with settings preserved.
+
+Private evidence: `IPGF_TERRAIN_QUALIFICATION_V1.json`,
+`IPGF_TERRAIN_BEFORE_AFTER_V1.csv`, `IPGF_TERRAIN_REFERENCE_FINDINGS_V1.json`,
+`IPGF_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json` and
+`IPGF_TERRAIN_COLD_VISUAL_REVIEW_V1.json`. Review videos:
+`SoulSilver_French_Terrain_Original_V1.mp4` and
+`SoulSilver_French_Terrain_Candidate_V1.mp4`.
+
+Next three porting areas: qualify the remaining Italian, Spanish, Japanese and
+Korean SoulSilver terrain identities; transfer the dependency method to
+HeartGold terrain; then qualify the owned Platinum and FFT A2 identities.
