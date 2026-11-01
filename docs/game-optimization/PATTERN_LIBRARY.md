@@ -1883,3 +1883,12 @@ decoded delivery; one earlier menu frame and raw RAM/audio timing differences
 remain recorded. Its own normal-save, reset and cold-load checks pass. No new
 signature or repeated starter audit is needed. Evidence:
 `IPGS_TERRAIN_QUALIFICATION_V1.json`.
+
+Japanese SoulSilver IPGJ reuses the guarded terrain gate and the same direct-flow
+proof, reducing reference ARM9 entries by 4.3798% and increasing native fixed-plaza
+publication throughput by 4.2378%. All target screen pairs and the save match;
+three earlier transition/menu pairs remain unmatched within eight control
+frames. The existing timing diagnostic records these sparse differences without
+masking them. Native home/Bag/save/reset/cold checks pass under the functional
+budget. No new signature or repeated starter audit is required. Evidence:
+`IPGJ_TERRAIN_QUALIFICATION_V1.json` and `IPGJ_TERRAIN_TIMING_DIAGNOSTIC_V2.json`.

@@ -11,7 +11,7 @@
   "arm9_crc32": "b6eb1a81",
   "delivery": "append-decoded-overlays-v1",
   "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
-  "status": "bounded_native_qualified_private_catalog_eligible",
+  "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
   "patches": [
     {
       "id": "overlay61-starter-idle-identical-draw",
@@ -79,6 +79,70 @@
         "IPGJ_STARTER_VARIANTS_V1.json",
         "IPGJ_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
         "IPGJ_CANDIDATE1_SELECTION_ENCODING_GAP_V1.json"
+      ]
+    },
+    {
+      "id": "overlay1-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 1,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21e4e40",
+      "overlay_file_id": 1,
+      "overlay_sha256": "19345c76304eb7210d89779db687f1df4a0489d4b77abba454752931e40a944a",
+      "overlay_stored_sha256": "e0967b7daa6d99affa5206f80989d561db33eda79ab08be00be9e393936ffbbc",
+      "addr": "0x21f4d5e",
+      "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa2af63dfa",
+      "replace": "a05902218902471878680ea9164a144b2af669fc00280bd038000ea9124a104b2af643fac046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21f4dc0",
+          "expect": "8c5f2002985f2002"
+        },
+        {
+          "addr": "0x2205f8c",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x2205f98",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "bounded_native_qualified",
+      "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+      "validated": {
+        "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+        "reference": "All3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. Two earlier top hashes differ at2025/2031 during scene brightening and one bottom hash at3187 during menu brightening; these do not match adjacent control hashes within two frames. Seven paired full-resolution checkpoints and retained transition thumbnails preserve the expected scene. Raw RAM/audio/timing differences retained; not full-run bit-exactness or human approval.",
+        "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+        "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 703823938,
+          "candidate": 672998062,
+          "reduction_percent": 4.379770896624436,
+          "frames": "6000-9599"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 18.75305841124146,
+          "candidate": 19.54776741741288
+        },
+        "native_publications_vs_original_percent": 4.237756790087288,
+        "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPGJ_TERRAIN_REFERENCE_FINDINGS_V1.json",
+        "IPGJ_TERRAIN_REFERENCE_REVIEW_V1.json",
+        "IPGJ_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPGJ_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+        "IPGJ_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+        "IPGJ_TERRAIN_QUALIFICATION_V1.json"
       ]
     }
   ]

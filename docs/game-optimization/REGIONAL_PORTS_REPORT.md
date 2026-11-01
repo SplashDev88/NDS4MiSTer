@@ -60,11 +60,10 @@ extracted code context or private resource is added to this source repository.
 ## Qualification and remaining work
 
 All twelve owned non-USA HGSS revision-0 starter ports are qualified and packaged
-in immutable Regional Beta4 R2. German, French, Italian and Spanish SoulSilver
-IPGD/IPGF/IPGI/IPGS revision 0 terrain are qualified separately and queued for a new
-cumulative private package. The other two SoulSilver terrain regions,
-HeartGold terrain, Platinum and FFT A2 regional
-ports remain pending. No unowned revision or quarantined identity is admitted.
+in immutable Regional Beta4 R2. German, French, Italian, Spanish and Japanese
+SoulSilver IPGD/IPGF/IPGI/IPGS/IPGJ revision 0 terrain are qualified separately
+and queued for a new cumulative private package. Korean SoulSilver terrain,
+HeartGold terrain, Platinum and FFT A2 regional ports remain pending. No unowned revision or quarantined identity is admitted.
 
 Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
@@ -828,3 +827,62 @@ and `IPGS_TERRAIN_COLD_VISUAL_REVIEW_V1.json`. Videos:
 
 Next three areas: Japanese/Korean SoulSilver terrain qualification; HeartGold
 terrain transfer; then owned Platinum and FFT A2 revision/region ports.
+
+### Japanese SoulSilver terrain qualification, 2026-11-01
+
+`soulsilver-ipgj-r0.json` adds the guarded 48-byte terrain visibility gate to
+the unchanged qualified starter gate. Both source patches remain disabled by
+default. The exported two-patch stream matches the tested cumulative native
+image exactly; a separately verified private package is still required.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 703,823,938 | 672,998,062 | −4.3798% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.7531 | 19.5478 | +4.2378% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 430 | 728 omitted |
+
+All 3,600 target screen pairs, the initial 1,800 home/boot pairs and save bytes
+match cumulative decoded delivery. Two earlier top hashes differ at frames
+2025/2031 during scene brightening; one bottom hash differs at 3187 during
+menu brightening. None of these three pairs matches within eight neighboring
+control frames. Retained thumbnails cover the differences; their individual
+full-resolution frames were not captured. Seven full-resolution checkpoints
+retain the home, town, player, NPCs, buildings, water and Japanese menus.
+Other sampled draw/query counts are unchanged.
+
+Raw RAM/timing differences and 199,211 differing same-index stereo samples
+remain recorded. Both streams contain 7,702,322 stereo samples; maximum
+signed-16 delta is 9,954 and RMS delta is 55.9352. No inaudibility, whole-run
+bit-exactness or human audiovisual approval is claimed. The original versus
+decoded delivery control separately changes camera/input timing. Native A/B
+uses the same saved plaza anchor rather than relying on that input route.
+
+One clean 30-second window per cold-started arm was measured at stock 1 GHz.
+Publications are not unique animation FPS, native cycle counts or whole-game
+speed; no confidence interval or native decoded-control window is claimed.
+Host CPU was 3.325% versus 3.358% of one core; renderer CPU was 160.30% versus
+161.54%. Review videos retain the game-audio packets and timestamps. Sampled
+windmill poses change, while the fixed camera and town scene remain intact.
+
+Home entry, Japanese Bag, return outdoors, normal Save, soft-reset Continue,
+and fresh-process cold field/Bag checks pass. The cold launch preserves the
+new save, and all four general/storage payload CRCs validate. The imported
+own-title checkpoint does not establish independent Japanese new-game
+progression. Battles, later areas and human listening remain outside this
+bounded qualification. MENU, stopped OBS, preserved settings and clear owned
+jobs are verified at completion.
+
+The shared six-region dependency proof is reused: 281 reached instructions,
+51 direct edges, exact non-branch bytes and guarded constants, with changed
+globals at matching BSS-relative offsets. No new runtime service, scratch
+memory, RTL change or repeated starter test is needed. Evidence:
+`IPGJ_TERRAIN_QUALIFICATION_V1.json`, `IPGJ_TERRAIN_BEFORE_AFTER_V1.csv`,
+`IPGJ_TERRAIN_REFERENCE_REVIEW_V1.json`, `IPGJ_TERRAIN_TIMING_DIAGNOSTIC_V2.json`,
+`IPGJ_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json` and
+`IPGJ_TERRAIN_COLD_VISUAL_REVIEW_V1.json`. Review videos:
+`SoulSilver_Japanese_Terrain_Original_V1.mp4` and
+`SoulSilver_Japanese_Terrain_Candidate_V1.mp4`.
+
+Next three areas: Korean SoulSilver terrain qualification; HeartGold terrain
+transfer; then owned Platinum and FFT A2 revision/region ports. Regional Beta4
+R2 stays immutable and does not contain this new terrain addition.

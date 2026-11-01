@@ -919,5 +919,13 @@ remain unmatched within eight neighboring control frames. Raw audio differs
 substantially at equal sample indices, and a roughly 750-sample timing offset
 does not remove all differences. Sampled views and normal save/reload pass;
 these observations are not framebuffer equivalence or human listening approval.
-Preserve both review videos and the unmatched-frame counts. Japanese and Korean
-terrain remain disabled pending their own runtime qualification.
+Preserve both review videos and the unmatched-frame counts. Korean terrain
+remains disabled pending its own runtime qualification.
+
+Japanese SoulSilver terrain passes the bounded native home/Bag/save route and
+matches every target screen pair, but three earlier screen pairs differ during
+scene/menu brightening and do not match within eight neighboring frames. Raw
+RAM/audio/timing differences remain under the authorized functional budget.
+Sampled scenes and save/reload pass; later areas, battles and human listening
+remain unqualified. Preserve the reference differences and both review clips.
+The qualified source addition needs its own cumulative archive verification.
