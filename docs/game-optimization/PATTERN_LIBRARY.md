@@ -1921,3 +1921,11 @@ publication throughput. Reuse the six-region dependency proof and detector;
 retain identity-specific bytes/hashes and the raw timing/audio differences.
 Its own home/Bag/save/reset/cold checks pass. No new signature or repeated
 starter audit is needed. Evidence: `IPKF_TERRAIN_QUALIFICATION_V1.json`.
+
+Italian HeartGold IPKI confirms the same terrain gate under the functional
+budget: 4.3574% fewer reference ARM9 entries and 4.2959% higher native fixed-plaza
+publication throughput. Reuse the six-region direct-flow proof and generic
+timing diagnostic. Preserve 1,060 target pairs unmatched within eight frames
+and the residual audio differences; sampled views and save/reload do not prove
+perceptual equivalence. Native home/Bag/save/reset/cold checks pass. Evidence:
+`IPKI_TERRAIN_QUALIFICATION_V1.json`, `IPKI_TERRAIN_TIMING_DIAGNOSTIC_V2.json`.

@@ -61,8 +61,8 @@ extracted code context or private resource is added to this source repository.
 
 All twelve owned non-USA HGSS revision-0 starter ports and all six owned German,
 French, Italian, Spanish, Japanese and Korean SoulSilver revision-0 terrain
-ports are packaged in immutable Regional Beta5. German and French HeartGold
-terrain are qualified separately for a later private package; the other four HeartGold
+ports are packaged in immutable Regional Beta5. German, French and Italian
+HeartGold terrain are qualified separately for a later private package; the other three HeartGold
 terrain ports, Platinum and FFT A2 regional ports remain pending. No unowned
 revision or quarantined identity is admitted. Earlier dated sections retain
 their historical packaging status.
@@ -1078,3 +1078,71 @@ The next three porting areas are the remaining four HeartGold terrain regions
 (Italian next), Platinum regions/revisions and FFT A2 regions/revisions. The
 Italian plan and guarded streams are prepared; its runtime qualification is
 pending. Unknown identities remain unsupported.
+
+### Italian HeartGold terrain qualification, 2026-11-01
+
+`heartgold-ipki-r0.json` retains the qualified starter patch and adds the guarded
+48-byte terrain visibility gate, both default-disabled. The exported two-patch
+stream equals the tested cumulative native image. This source addition is
+eligible for a later separately verified private package; frozen Regional Beta5
+is unchanged and contains no regional HeartGold terrain ports.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 702,433,057 | 671,825,027 | −4.3574% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 19.0074 | 19.8239 | +4.2959% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 430 | 728 omitted |
+
+The authorized functional budget applies: all initial 1,800 home/boot screen
+pairs and save bytes match cumulative decoded delivery, but 4,315 top and eight
+bottom hashes differ across 9,600 frames. In the target, 2,327 of 3,600 top hashes
+differ; all target bottom hashes match. Early scene-transition differences match
+the next control frame, except later menu frame 3187. In the target, 1,060 pairs
+remain unmatched within eight neighboring control frames. Seven paired full-size
+checkpoints and selected thumbnails retain the expected town, buildings, water,
+player, NPCs and Italian menus with differing animation phases. No missing static
+terrain is observed in these samples; temporal alignment does not explain every
+raw difference. Other sampled query/draw counts also change slightly with timing.
+
+Raw RAM/timing drift and 5,984,071 differing same-index stereo samples are
+retained. Both audio streams contain 7,702,322 samples; maximum signed-16 delta
+is 40,958 and RMS delta is 3,321.6497. Later sampled audio windows align best at
+roughly 750–751 samples of offset, but still have RMS residuals of 243.65–337.52.
+This is not audiovisual bit-exactness or an inaudibility/listening verdict.
+The existing generic timing diagnostic is reused without replaying or masking
+raw evidence.
+
+Original versus decoded delivery separately has 7,640 top and 29 bottom hash
+differences, with all 3,600 target top hashes different and an unchanged save.
+Sampled outdoor player/camera positions shift while the same route remains
+functional. Native A/B therefore uses the same fixed own-title saved plaza.
+
+Each native arm has one verified 30-second cold-start window at stock 1 GHz.
+Host CPU was 3.362% versus 3.293% of one core; renderer CPU was 161.81% versus
+161.59%. Publications are not unique animation FPS, cycles or whole-game speed;
+no confidence interval or native decoded-control window is claimed. Capture
+checks pass with no added drops, and review copies preserve game-audio packets
+and timestamps. Four sampled views per arm retain the same plaza and changing
+windmill poses; audio signal presence does not establish human listening approval.
+
+Home entry, Italian Bag, return outdoors, normal Save, soft-reset Continue and
+fresh-process cold field/Bag checks pass. The cold run leaves the new 512 KiB
+save unchanged. All four general/storage payload CRCs and international footer
+markers validate. MENU, stopped OBS, unchanged capture settings and clear owned
+jobs are verified. Fixtures are documented own-title imported HeartGold saves,
+not independent Italian new-game progression. Later areas and battles remain
+outside this qualification.
+
+Reuse the completed six-region HeartGold direct-flow proof, constant guards and
+existing loader. No new signature, scratch, HPS service, RTL change or repeated
+starter test is needed. Evidence: `IPKI_TERRAIN_QUALIFICATION_V1.json`,
+`IPKI_TERRAIN_BEFORE_AFTER_V1.csv`, `IPKI_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`IPKI_TERRAIN_TIMING_DIAGNOSTIC_V2.json`, `IPKI_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json`
+and `IPKI_TERRAIN_COLD_VISUAL_REVIEW_V1.json`. Review videos:
+`HeartGold_Italian_Terrain_Original_V1.mp4` and
+`HeartGold_Italian_Terrain_Candidate_V1.mp4`.
+
+Next three areas: remaining HeartGold terrain regions (Spanish next, then Japan
+and Korea), Platinum regions/revisions, and FFT A2 regions/revisions. The Spanish
+plan and guarded streams are prepared; its runtime qualification is pending.
+Unknown identities remain unsupported.

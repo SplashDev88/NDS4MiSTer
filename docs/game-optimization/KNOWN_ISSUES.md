@@ -952,3 +952,12 @@ RAM/audio/timing differences. Normal Save, reset, cold reload and four save
 payload CRCs pass. This does not qualify later areas, battles, independent
 regional new-game progression or human listening. French and German terrain
 remain outside frozen Regional Beta5 until later cumulative archive validation.
+
+Italian HeartGold terrain passes its native home/Bag/save/reset/cold route but
+retains broader reference differences: 2,327 target top hashes differ, with
+1,060 pairs unmatched within eight neighboring frames. Initial home/boot pairs
+and save bytes match. A roughly 750-sample audio offset leaves residual changes;
+this is not human listening or perceptual-equivalence approval. Keep both videos
+and raw diagnostic evidence. Later areas, battles and independent regional
+new-game progression remain unqualified. Its source addition is absent from
+frozen Regional Beta5 and needs later cumulative archive validation.
