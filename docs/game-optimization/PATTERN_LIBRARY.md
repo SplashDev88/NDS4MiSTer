@@ -1716,3 +1716,18 @@ and overlay transitions qualify the related-title lifecycle without importing
 its sibling's save or native measurements. Preserve same-index audio/RAM drift
 and distinguish signal presence from audibility. A byte-identical port still
 needs its own runtime evidence; a new reverse backport follows the same rule.
+
+### Relocate a contract without broadening identity admission
+
+Regional HGSS starter code supplies six relocated address layouts with the same
+88 target bytes and all eighteen matching starter assets. Re-run the bounded
+CPU contract at each distinct layout, including internal call destinations,
+incoming branches, literal pools and ARM/Thumb alignment. A modeled callee can
+share the tested code page only outside the tested byte extent; never remap that
+page to install a fixture. The regional audit passed 28,080 synthetic cases.
+
+Matching patch bytes and assets identify candidates, not supported releases.
+Retain separate full-ROM/header/stored-overlay/decoded-overlay guards, inspect
+changed external calls and global-data literals, and require independent scene,
+save/lifecycle and native benefit evidence. The regional manifests remain
+disabled at this checkpoint. See `REGIONAL_PORTS_REPORT.md`.

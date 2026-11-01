@@ -797,3 +797,16 @@ by the bounded starter lifecycle check.
 The user's new backport direction permits independent HeartGold qualification
 of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
 HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
+
+Regional starter candidates have matching patch bytes/assets and relocated
+synthetic contracts, but are not yet native-qualified. External-call prefixes and
+bounded overlay instruction matches do not prove whole-program equivalence.
+Do not promote them from static evidence or reuse USA performance/approval labels.
+The Europe-labelled HeartGold IPKE revision 10 file is quarantined until its
+release provenance is established. Original fallback is required.
+
+German SoulSilver intro timing differs from the USA replay: shifting movement
+without preserving intervening confirmation pulses only delays the dialogue and
+still misses the exit. The third independent route establishes a first save and
+bit-exact cold repeat; earlier exploratory routes are excluded. First-room
+success does not qualify the starter patch or later progression.
