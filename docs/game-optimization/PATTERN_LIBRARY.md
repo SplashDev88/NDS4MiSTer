@@ -1818,3 +1818,30 @@ from elapsed time or a fixed button count alone.
 The French HeartGold run confirms the plan-driven confirmation route: three
 spaced confirmations completed normal Save on the first attempt, with the
 changed-file guard still enforced before reset and successful cold party reload.
+
+### Close regional direct-call dependencies before relocating an inline gate
+
+A matching prefix or masked body identifies a candidate but does not authenticate
+its callees or state pointers. `audit_regional_direct_flow.py` walks paired ARM
+and Thumb instructions from explicit reference/regional entries, follows direct
+branches and calls (including interworking), and checks every reached non-branch
+instruction byte. Conditional returns retain their fallthrough; terminal returns
+do not decode the following literal pool. Conflicting address mappings, changed
+instructions, indirect transfers and instruction limits remain explicit failures.
+
+Resolve each PC-relative literal independently. A pointer with the same offset
+inside authenticated static-BSS bounds identifies the corresponding state field;
+it does not establish equal runtime state or initialization. Other changed values
+remain unresolved. Keep immutable object bytes and pointer-table guards separate
+from this code audit. Unknown functions and indirect callbacks are not inferred.
+
+The HGSS query audit closes 281 instructions and 51 direct edges across six owned
+SoulSilver regions, including the geometry buffer/flush and box-result helpers.
+All changed literals retain BSS-relative offsets; MMIO and scalar constants match.
+Five synthetic regressions cover conditional-return/literal separation, changed
+state fields, non-branch instructions, direct callees and indirect transfers.
+Three additional owned-image mutation checks reject wrong instructions, global
+pointers and callees. Evidence: `SOULSILVER_BBOX_DEPENDENCY_AUDIT_V1.json` and
+`SOULSILVER_BBOX_AUDITOR_CHECKS_V1.json`. German runtime qualification then
+independently records 4.3513% fewer reference ARM9 entries and 6.2662% higher
+fixed-plaza native publication throughput. Static matches alone enable no port.

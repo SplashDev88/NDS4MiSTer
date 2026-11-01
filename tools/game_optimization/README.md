@@ -606,3 +606,20 @@ rejects unsupported stack operations/overflow and reports conservative XY-plane
 leads with a rounding margin. It does not simulate the renderer, interpret model
 SBC/node animation or prove material, camera, resource lifetime or removability.
 Game fixtures must authenticate those dependencies before proposing any patch.
+
+## Regional direct-flow correspondence
+
+`audit_regional_direct_flow.py PLAN.json RECEIPT.json` compares paired ARM/Thumb
+entries in authenticated captured ARM9 images. The plan supplies the capture path,
+reference game code/revision, and candidate code/revision/entry pairs; game
+addresses and identities do not live in the tool. It requires Capstone and ndspy,
+as used by the existing private analysis environment.
+
+The capture uses one JSON object per line with game code, revision and an ARM9
+object containing base address, SHA-256 and base64 bytes. Each candidate supplies
+`roots` with `reference`, `candidate` (hex addresses) and `mode` (`arm` or `thumb`).
+An optional `instruction_limit` bounds the traversal. The receipt retains every
+reached instruction, direct edge, literal, unresolved transfer and conflicting
+mapping. BSS-relative correspondence is a location check, not a runtime-state
+proof. No patch is generated or enabled. Run the focused synthetic checks with
+`python3 -m unittest test_regional_direct_flow` from this directory.

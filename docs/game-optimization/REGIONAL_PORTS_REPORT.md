@@ -59,10 +59,11 @@ extracted code context or private resource is added to this source repository.
 
 ## Qualification and remaining work
 
-All six owned non-USA SoulSilver revision-0 starter ports and German/French
-HeartGold IPKD/IPKF revision 0 are qualified within the bounded scope below. The remaining
-HeartGold starter regions are next; regional terrain and other-game ports remain
-pending. No unowned revision or quarantined identity is admitted by these results.
+All twelve owned non-USA HGSS revision-0 starter ports are qualified and packaged
+in immutable Regional Beta4 R2. German SoulSilver IPGD revision 0 terrain is now
+qualified separately and queued for a new cumulative private package. The other
+five SoulSilver terrain regions, HeartGold terrain, Platinum and FFT A2 regional
+ports remain pending. No unowned revision or quarantined identity is admitted.
 
 Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
@@ -600,3 +601,69 @@ The next three porting areas after the starter qualification are:
 
 Missing or quarantined versions keep unchanged fallback. Broader game coverage
 and unmeasured native counters must remain explicitly unqualified or unavailable.
+
+### German SoulSilver terrain qualification, 2026-11-01
+
+The accepted 48-byte terrain visibility gate now applies to owned IPGD revision 0
+through `soulsilver-ipgd-r0.json`, alongside its unchanged qualified starter gate.
+Both patches remain disabled in source and require explicit private catalog
+selection. Removing the trial-only no-op delivery entry produces exactly the
+same virtual cartridge bytes as the native candidate. Regional Beta4 R2 remains
+immutable and contains only the regional starter port; this terrain addition
+requires a new package and actual archive verification.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 instruction entries, frames 6000–9599 | 702,350,657 | 671,789,121 | −4.3513% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.7714 | 19.9476 | +6.2662% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 430 | 728 omitted |
+| Added visibility queries in that window | 0 | 1,158 | 728 false, 430 true |
+
+Native values are one verified 30-second window per separately cold-started arm,
+not unique animation FPS, native CPU cycles, whole-game speed or a confidence
+interval. The reference comparison includes original, unchanged decoded delivery
+and cumulative candidate; native measurements compare original and cumulative
+candidate only. No redundant native control or repeat was needed for this bounded
+6.27% effect, consistent with the earlier USA result.
+
+All 9,600 top-screen hashes, all 3,600 target-window screen pairs, the initial
+1,800 home/boot screen pairs and the save match the decoded control. One bottom
+hash differs at frame 3187 during menu brightening before the target window.
+Stored thumbnails retain that event; its full-resolution framebuffer was not
+saved. Raw RAM/timing differences and 305,257 differing same-index stereo samples
+remain recorded. Sample lengths match; this is not an inaudibility claim.
+
+The original compressed and cumulative decoded delivery routes already differ
+in camera/input timing before the measured window. Keep that control difference
+separate from the terrain patch. Native A/B therefore uses the same documented
+own-title native plaza save and verified fixed tile/camera. The noon RTC is a
+disposable test fixture only; no clock adjustment is part of the patch/package.
+The imported save establishes regional compatibility and this test route, not
+independent German new-game progression.
+
+Native house entry, German Bag, return outdoors, normal Save, soft-reset Continue
+and fresh-process cold field/Bag checks pass. The cold session preserves the new
+save, and both banks' general/storage payload CRCs validate. Both captures have
+zero added render/output drops and preserve game-audio packets and timestamps in
+the review copies. Sampled views match the scene; transient thin diagonal lines
+also occur in baseline captures. No frequency or human audiovisual approval is
+claimed. The board returns to MENU with OBS stopped and settings preserved.
+
+The shared dependency audit follows the existing visibility query through all
+reachable direct callees: 281 instructions and 51 branch/call edges match across
+all six SoulSilver regions, modulo authenticated targets and corresponding
+BSS-relative state pointers. Expected replacement bytes and immutable transforms
+are separately guarded. No scratch or native service is introduced. This shared
+static evidence does not qualify the five still-disabled terrain candidates.
+
+Private evidence: `IPGD_TERRAIN_QUALIFICATION_V1.json`,
+`IPGD_TERRAIN_REFERENCE_FINDINGS_V1.json`,
+`IPGD_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json`,
+`IPGD_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json`, and
+`IPGD_TERRAIN_COLD_VISUAL_REVIEW_V1.json`. Review videos are
+`SoulSilver_German_Terrain_Original_V1.mp4` and
+`SoulSilver_German_Terrain_Candidate_V1.mp4`.
+
+Next: qualify the five remaining SoulSilver terrain regions; reuse the dependency
+method for HeartGold; then port the owned Platinum and FFT A2 identities. Later
+areas, battles and human listening remain outside this bounded qualification.
