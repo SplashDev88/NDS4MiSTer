@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon SoulSilver (Germany)",
+  "game_code": "IPGD",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "6d12843381c67b07df60bee52117b8b77259a161",
+  "header_crc32": "689cc317",
+  "rom_sha256": "7d3b9affa155d4a899bdb65deb36d927b733cc5b7cefa0f2064efda90938fd63",
+  "arm9_sha256": "d63064399e9e8f9d7b35843fc6816a75b00c6f2b135460a09be83fd612bd15ee",
+  "arm9_crc32": "6a4fe53d",
+  "delivery": "append-decoded-overlays-v1",
+  "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+  "status": "bounded_native_qualified_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e58e0",
+      "overlay_file_id": 61,
+      "overlay_sha256": "fcae19adda16952828f5dd11fb536e1a060bea7d75938f2f72b1fe41e5c8946f",
+      "overlay_stored_sha256": "df4c3951c935dbae10a554dd70a0bb37de05793cea161c37bfc9ccbfe63956cd",
+      "addr": "0x21e5ed8",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded regional port of the accepted USA 88-byte starter-idle gate. No scratch, new service, RTL or ROM-file writes. Native throughput is screen-pair publication efficiency in this idle scene, not whole-game FPS. Target-scene tests use a documented imported checkpoint; independent German blank-save first-room and cold-repeat evidence is separate. Source remains default-disabled; explicit private catalog packaging is pending.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Exact owned identity, overlay61 hash, expected 88 bytes, branches, draw spans, assets and relocated synthetic calling contract checked.",
+        "framebuffer": "All 3600 idle screen pairs bit-exact versus unchanged delivery and original.",
+        "ram": "Raw timing/state differences retained under the authorized functional budget.",
+        "audio": "Raw sample differences retained. Native captures contain game audio; no human audibility approval claimed.",
+        "save": "Native normal Save, soft-reset Continue and fresh-process cold Continue/party passed; selected Endivie intact and save unchanged by final cold session.",
+        "native": "Stock 1 GHz, one verified 30-second original/candidate idle window each. Both-direction rotation, all three species, cancellation, final Endivie choice and return to lab visually reviewed.",
+        "unrelated": "3600 first-room frames, full audio, save and instruction traces exact. 36 persistent metadata/startup RAM bytes and one frame of DTCM hash drift retained; no target overlay loaded.",
+        "scope": "Starter selection plus adjacent lab/save/cold-load and unrelated first-room replay. Imported USA pre-starter checkpoint explicitly retained; separate independent German blank-save first-room evidence exists.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 87222620,
+          "candidate": 43105090,
+          "reduction_percent": 50.58037697101967,
+          "frames": "1800-3599"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 14.301182327161204,
+          "candidate": 43.96873562304914
+        },
+        "renderer_cpu_percent_one_core": {
+          "original": 161.96920449598852,
+          "candidate": 110.28824518781492
+        },
+        "native_light_period_seconds": {
+          "original": 3.4666666666664696,
+          "candidate": 3.4833333333331353
+        }
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPGD_STARTER_REFERENCE_REVIEW_V1.json",
+        "IPGD_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPGD_ORIGINAL2_MEDIA_REVIEW.json",
+        "IPGD_CANDIDATE2_MEDIA_REVIEW.json",
+        "IPGD_CANDIDATE2_SELECTION_MEDIA_V1.json",
+        "IPGD_CANDIDATE2_LIFECYCLE_DONE.json",
+        "IPGD_STARTER_QUALIFICATION_V1.json",
+        "IPGD_UNRELATED_REFERENCE_REVIEW_V1.json"
+      ]
+    }
+  ]
+}

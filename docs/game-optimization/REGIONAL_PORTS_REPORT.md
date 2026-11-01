@@ -2,7 +2,8 @@
 
 Regional work branches from the unpublished RC13 candidate, source
 `2fb28bd437834cb76300d1fca5aa14dbf58cf711`. The packaged candidate and accepted
-betas are preserved. No new regional patch is enabled by this checkpoint.
+betas are preserved. German SoulSilver's starter gate is qualified for explicit
+private catalog inclusion. Source manifests remain disabled by default.
 
 ## HGSS starter candidates, 2026-10-31
 
@@ -31,7 +32,8 @@ semantic proof. Whole overlay hashes differ and must remain identity-specific.
 | Wrong USA identity on German input | Unchanged fallback | No accidental cross-region application |
 | German independent first save | Generated from blank save | Regional new-game progression |
 | German cold-load repeat | Two identical 3,600-frame runs; save unchanged | Repeatable first-room baseline |
-| Regional candidate gameplay/native gain | Pending | No regional speedup claimed yet |
+| German starter idle | 3,600 screen pairs exact | Regional target-scene replay |
+| German native lifecycle | Selection, Save, soft reset and cold party passed | Bounded functional qualification |
 
 The CPU harness now permits a modeled callee in the tested code's mapped page
 when it does not overlap the tested extent. This supports relocated Thumb
@@ -39,7 +41,7 @@ layouts without remapping executable pages. Target overlap and invalid mappings
 remain rejected. The meaningful harness regression tests pass; runtime binaries
 are unchanged.
 
-German SoulSilver IPGD revision 0 is the active qualification target. The first
+German SoulSilver IPGD revision 0 is the first qualified starter port. The first
 two exploratory input recordings missed the bedroom exit because of dialogue
 timing; neither is a qualified save route. The third recording maintains intro
 confirmation pulses and delays movement, reaches a successful normal Save, and
@@ -56,12 +58,56 @@ extracted code context or private resource is added to this source repository.
 
 ## Qualification and remaining work
 
-Use independent regional starter inputs, unchanged decoded delivery controls,
+Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
 unrelated scenes and paired native measurements. Preserve the authorized raw
 timing/RAM/audio differences. Do not transfer the USA speed percentages or
 human approval to a region. Confirm visible animation cadence separately from
 screen-pair publication throughput.
+
+### German SoulSilver starter qualification
+
+`soulsilver-ipgd-r0.json` authenticates the owned IPGD revision 0 ROM and overlay
+61. The tested single-patch release stream exactly matches the native trial
+stream. It remains default-disabled until explicit private catalog selection.
+
+| Metric, bounded starter idle | Original/control | Candidate |
+| --- | ---: | ---: |
+| Reference ARM9 instructions, frames 1800–3599 | 87,222,620 | 43,105,090 (−50.58%) |
+| Native completed screen pairs/s, stock 1 GHz | 14.3012 | 43.9687 (3.0745×) |
+| Renderer CPU, percent of one core | 161.97% | 110.29% |
+| Measured light cycle | 3.4667 s | 3.4833 s |
+
+One verified 30-second native window per arm suffices for this large effect;
+no variance estimate or whole-game FPS claim is made. The light-period difference
+is one captured 60 Hz frame. Capture quality and game-audio signal checks pass;
+they do not establish human audibility approval. Native CPU-cycle, DMA/cart-byte
+and frame-time percentile counters are unavailable in this run.
+
+All 3,600 reference screen pairs match both original and unchanged decoded
+delivery. Raw RAM/timing/audio differences are retained under the authorized
+functional budget. Native inspection covers all three localized species,
+rotation both ways, inspect/cancel/confirm, final Endivie choice and return to
+the lab. Normal Save, soft-reset Continue and a fresh-process cold Continue/party
+check pass; the selected Pokémon remains intact and the cold session leaves the
+newly written save unchanged. The target scene uses a documented imported USA
+checkpoint; it is not independent German new-game progression.
+
+An unrelated 3,600-frame first-room candidate replay reuses the already captured
+German baseline. Both screens, full audio, save and instruction traces match.
+There are 36 persistent main-RAM differences: 28 exactly match changed virtual
+header/FAT bytes, with eight additional startup-area bytes retained raw. One
+frame has a DTCM hash difference. These are not claimed bit-exact or hidden by
+normalization. The target overlay is absent, as intended; the target-scene
+runner's absent-overlay assertion is recorded separately from the completed
+output comparison, avoiding an unnecessary rerun.
+
+Private qualification: `IPGD_STARTER_QUALIFICATION_V1.json`. Videos:
+`SoulSilver_German_Starter_Original_V1.mp4`,
+`SoulSilver_German_Starter_Candidate_V1.mp4`, and
+`SoulSilver_German_Starter_Selection_V1.mp4`. No ROMs, saves or captured private
+code are included in this repository. French SoulSilver is next; remaining
+regional candidates and German terrain remain unqualified.
 
 The next three porting areas after the starter qualification are:
 

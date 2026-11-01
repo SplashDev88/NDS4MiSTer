@@ -1729,5 +1729,11 @@ page to install a fixture. The regional audit passed 28,080 synthetic cases.
 Matching patch bytes and assets identify candidates, not supported releases.
 Retain separate full-ROM/header/stored-overlay/decoded-overlay guards, inspect
 changed external calls and global-data literals, and require independent scene,
-save/lifecycle and native benefit evidence. The regional manifests remain
-disabled at this checkpoint. See `REGIONAL_PORTS_REPORT.md`.
+save/lifecycle and native benefit evidence. German SoulSilver now qualifies the
+starter gate in bounded reference/native checks. A compatible imported checkpoint
+can avoid redundant regional introductions when its provenance and coverage limits
+are explicit. Reuse relocated contracts once per distinct layout; still measure
+each admitted identity and check its translated active states, normal save and
+cold reload. One native pair can establish a large effect; repeat for ambiguity,
+not mechanically. Compare visible cadence separately from publications. Source
+manifests remain default-disabled. See `REGIONAL_PORTS_REPORT.md`.

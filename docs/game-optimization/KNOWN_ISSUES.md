@@ -799,7 +799,8 @@ of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
 HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
 
 Regional starter candidates have matching patch bytes/assets and relocated
-synthetic contracts, but are not yet native-qualified. External-call prefixes and
+synthetic contracts. German SoulSilver's starter gate is bounded-native-qualified;
+the other regional candidates remain unqualified. External-call prefixes and
 bounded overlay instruction matches do not prove whole-program equivalence.
 Do not promote them from static evidence or reuse USA performance/approval labels.
 The Europe-labelled HeartGold IPKE revision 10 file is quarantined until its
@@ -810,3 +811,12 @@ without preserving intervening confirmation pulses only delays the dialogue and
 still misses the exit. The third independent route establishes a first save and
 bit-exact cold repeat; earlier exploratory routes are excluded. First-room
 success does not qualify the starter patch or later progression.
+
+German starter qualification now includes native selection, normal Save, soft
+reset and cold Continue/party. The target checkpoint was imported from USA, so
+this does not establish independent German new-game progression to the lab.
+Native publication throughput is not unique animation FPS or whole-game speed.
+Audio signal presence is not human audibility approval. The unrelated first-room
+check retains virtual-header/FAT/startup RAM differences and one DTCM-hash frame;
+screens, audio, save and instruction traces match. See the regional report for
+the bounded evidence and excluded wrong-scene/input-limit attempts.
