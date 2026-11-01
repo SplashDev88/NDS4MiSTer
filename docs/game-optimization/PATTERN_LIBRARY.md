@@ -1789,3 +1789,19 @@ must load the intended overlay before the converted fixture is admitted.
 This is test-fixture preparation, not a runtime patch, user-save migration or
 proof of independent regional progression. Private evidence:
 `IPGK_IMPORTED_SAVE_CONVERSION_V1.json`; the failed original V1 run is retained.
+
+Carry the checkpoint's game index, seed hash, reference input route and native
+opener in the run plan. Shared engine code does not imply identical saved player
+position. The retained HeartGold fixture needs one northward approach; the
+SoulSilver fixture starts adjacent to the machine. The HeartGold route is pinned
+by `HG_DRAW_A2_OPEN.json` and its own `starter-open-v1.tsv`. Regional reference
+and native helpers now accept the base job and bounded opener batches as data.
+Use that same identity-matched opener for the installed-archive smoke. Verify
+the expected overlay and visible scene before recording any performance result.
+
+Treat Save confirmations as input-route data too. The German HeartGold run
+remained at its overwrite prompt after the inherited two-confirmation sequence.
+The unchanged-save guard prevented a premature reset; one observed confirmation
+then completed Save. Preserve the stopped attempt, check the written file, and
+continue the remaining reset/cold-load tests. Never infer successful persistence
+from elapsed time or a fixed button count alone.

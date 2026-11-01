@@ -869,3 +869,18 @@ Its native selection, normal Save, soft-reset Continue and fresh-process party
 checks pass; the normal Korean save's four block footers and payload CRCs also
 validate. This bounded starter qualification does not qualify Korean terrain,
 battles, independent new-game progression or human audio approval.
+
+German HeartGold IPKD revision 0 uses its own verified USA HeartGold checkpoint,
+game index and approach route. Its starter selection, normal Save, soft reset
+and cold party checks pass, with unchanged measured light cadence. The initial
+two-confirmation Save input recipe stopped at the overwrite prompt; the unchanged
+file guard prevented reset. An observed extra confirmation completed Save before
+the remaining lifecycle checks. A local PNG export error was recovered from the
+already captured framebuffer, without repeating input. These are retained test
+route/artifact corrections, not evidence of game save corruption.
+
+The German HeartGold port remains default-disabled in source and queued for
+the next private package; it is absent from immutable Regional Beta3. Its scope
+does not include German terrain, battles, an independent new-game playthrough or
+human audio approval. Shared accepted HeartGold off-target software evidence and
+this region's native cold lab/party replay are reused explicitly.

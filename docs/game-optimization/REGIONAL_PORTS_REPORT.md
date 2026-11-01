@@ -59,10 +59,10 @@ extracted code context or private resource is added to this source repository.
 
 ## Qualification and remaining work
 
-All six owned non-USA SoulSilver revision-0 starter ports are now qualified
-within the bounded scope below. HeartGold regional starter qualification is next;
-regional terrain and other-game ports remain pending. No unowned revision or
-quarantined identity is admitted by these results.
+All six owned non-USA SoulSilver revision-0 starter ports and German HeartGold
+IPKD revision 0 are now qualified within the bounded scope below. The remaining
+HeartGold starter regions are next; regional terrain and other-game ports remain
+pending. No unowned revision or quarantined identity is admitted by these results.
 
 Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
@@ -315,6 +315,50 @@ percentile/DMA/cartridge counters remain unavailable.
 
 Private receipts: `IPGK_STARTER_QUALIFICATION_V1.json` and
 `IPGK_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
+eligible for explicit private catalog inclusion only after separate actual
+archive and launcher verification. Regional terrain remains unqualified.
+
+### Pokemon HeartGold (Germany) starter qualification
+
+`heartgold-ipkd-r0.json` authenticates IPKD revision 0 with its own
+ROM/header/ARM9/overlay identities and expected bytes. Shared code/asset and
+relocated CPU-contract evidence is reused. Its original/delivery/candidate
+replay preserves all 3,600 screen pairs and the save. ARM9 instructions fall
+from 87,225,014 to 43,101,630 (50.5857%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.2164 | 43.5805 (3.0655×) |
+| Renderer CPU, percent of one core | 161.74% | 110.78% |
+| Measured light cycle | 3.4667 s | 3.4667 s |
+
+German HeartGold Endivie, Feurigel and Karnimani previews, both rotations,
+inspect/cancel/confirm and final Endivie choice were exercised. Clean
+recording and independent framebuffer endpoint show intact localized
+models/text and return to lab.
+
+Normal Save, soft-reset Continue and fresh-process cold Continue/party passed.
+Fresh-process Continue restores the German HeartGold neutral lab and Endivie
+follower. Party shows male Endivie at level 5 with 20/20 HP and intact
+localized selection/exit text. The cold run leaves the saved file unchanged
+and does not enter the starter scene.
+
+Verified USA HeartGold native pre-starter checkpoint imported unchanged for
+German target-scene compatibility/A-B; not independent German new-game
+progression. Uses HeartGold approach/input route and game index 4.
+
+The measured light period remains within one captured frame of control.
+Quality checks passed for both idle recordings and the game audio signal;
+human listening approval is not claimed. Raw timing/RAM/audio differences
+remain under the existing functional budget. Target checkpoints are imported
+from USA, not independent regional new-game playthroughs. Shared software
+collateral proof and this region’s native cold lab/party replay are reused; a
+separate regional software collateral pair is not claimed. Publications are
+not unique animation FPS or whole-game speed. Native cycle/frame-time
+percentile/DMA/cartridge counters remain unavailable.
+
+Private receipts: `IPKD_STARTER_QUALIFICATION_V1.json` and
+`IPKD_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
 eligible for explicit private catalog inclusion only after separate actual
 archive and launcher verification. Regional terrain remains unqualified.
 
