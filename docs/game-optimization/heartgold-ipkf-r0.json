@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon HeartGold (France)",
+  "game_code": "IPKF",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "57b21b4aef04e25e1e9e44998801563cfd6e55d5",
+  "header_crc32": "ff5edb64",
+  "rom_sha256": "ee540ea4eff5268e8b7a85bc63db654c627dd82c25ebe921211870646b25356a",
+  "arm9_sha256": "391b8355eda64151d185f8e8836ef5f184b9ed3cfe6cc2ea00efd5bac297e7b1",
+  "arm9_crc32": "0dcb32e2",
+  "delivery": "append-decoded-overlays-v1",
+  "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+  "status": "bounded_native_qualified_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e5920",
+      "overlay_file_id": 61,
+      "overlay_sha256": "2479cf8373f781d088df30ef3f6efbd87d15ce4586f33f00a819bfec74790797",
+      "overlay_stored_sha256": "c2338404e1d4b82236e2a5d9ee786461ebbbceff9bd32fe334dd8a74cc8cc04f",
+      "addr": "0x21e5f18",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+        "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+        "ram": "Raw state/timing differences retained under the authorized functional budget.",
+        "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+        "native": "French HeartGold Germignon, Hericendre and Kaiminus previews, both rotation directions, inspect/cancel/confirm and final Germignon choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+        "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+        "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new French software collateral pair or independent new-game playthrough is claimed.",
+        "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+        "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported unchanged for France target-scene compatibility/A-B; not independent regional new-game progression. Uses HeartGold approach/input route and game index 4.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "ORIGINAL": 87223806,
+          "DELIVERY": 87223806,
+          "CANDIDATE": 43100688
+        },
+        "reference_instruction_reduction_percent": 50.58609572712294,
+        "native_completed_screen_pairs_per_second": {
+          "original": 14.151355037355255,
+          "candidate": 43.16062984738764
+        },
+        "renderer_cpu_percent_one_core": {
+          "original": 162.05798815719535,
+          "candidate": 110.13287261212263
+        },
+        "native_light_period_seconds": {
+          "original": 3.4666666666664696,
+          "candidate": 3.4666666666664696
+        }
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPKF_STARTER_QUALIFICATION_V1.json",
+        "IPKF_STARTER_REFERENCE_REVIEW_V1.json",
+        "IPKF_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPKF_ORIGINAL1_MEDIA_REVIEW.json",
+        "IPKF_CANDIDATE1_MEDIA_REVIEW.json",
+        "IPKF_CANDIDATE1_SELECTION_MEDIA_V1.json",
+        "IPKF_CANDIDATE1_LIFECYCLE_DONE.json",
+        "IPKF_COLD_VISUAL_REVIEW_V1.json",
+        "IPKF_COLD1_STOP.json",
+        "IPKF_POSTSTARTER_SAVE_READBACK_V1.json",
+        "IPKF_STARTER_VARIANTS_V1.json",
+        "IPKF_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+        "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json"
+      ]
+    }
+  ]
+}

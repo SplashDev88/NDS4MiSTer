@@ -884,3 +884,10 @@ the next private package; it is absent from immutable Regional Beta3. Its scope
 does not include German terrain, battles, an independent new-game playthrough or
 human audio approval. Shared accepted HeartGold off-target software evidence and
 this region's native cold lab/party replay are reused explicitly.
+
+French HeartGold IPKF revision 0 passes the same bounded starter, Save, soft
+reset and cold party gates using its own imported HeartGold checkpoint. The
+plan-driven confirmation route succeeds without a retry. Regional terrain,
+battles, independent new-game progression and human audio approval remain outside
+this qualification. It is queued for the next private package and is absent
+from immutable Regional Beta3.

@@ -1805,3 +1805,7 @@ The unchanged-save guard prevented a premature reset; one observed confirmation
 then completed Save. Preserve the stopped attempt, check the written file, and
 continue the remaining reset/cold-load tests. Never infer successful persistence
 from elapsed time or a fixed button count alone.
+
+The French HeartGold run confirms the plan-driven confirmation route: three
+spaced confirmations completed normal Save on the first attempt, with the
+changed-file guard still enforced before reset and successful cold party reload.

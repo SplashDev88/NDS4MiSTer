@@ -59,8 +59,8 @@ extracted code context or private resource is added to this source repository.
 
 ## Qualification and remaining work
 
-All six owned non-USA SoulSilver revision-0 starter ports and German HeartGold
-IPKD revision 0 are now qualified within the bounded scope below. The remaining
+All six owned non-USA SoulSilver revision-0 starter ports and German/French
+HeartGold IPKD/IPKF revision 0 are qualified within the bounded scope below. The remaining
 HeartGold starter regions are next; regional terrain and other-game ports remain
 pending. No unowned revision or quarantined identity is admitted by these results.
 
@@ -359,6 +359,50 @@ percentile/DMA/cartridge counters remain unavailable.
 
 Private receipts: `IPKD_STARTER_QUALIFICATION_V1.json` and
 `IPKD_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
+eligible for explicit private catalog inclusion only after separate actual
+archive and launcher verification. Regional terrain remains unqualified.
+
+### Pokemon HeartGold (France) starter qualification
+
+`heartgold-ipkf-r0.json` authenticates IPKF revision 0 with its own
+ROM/header/ARM9/overlay identities and expected bytes. Shared code/asset and
+relocated CPU-contract evidence is reused. Its original/delivery/candidate
+replay preserves all 3,600 screen pairs and the save. ARM9 instructions fall
+from 87,223,806 to 43,100,688 (50.5861%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.1514 | 43.1606 (3.0499×) |
+| Renderer CPU, percent of one core | 162.06% | 110.13% |
+| Measured light cycle | 3.4667 s | 3.4667 s |
+
+French HeartGold Germignon, Hericendre and Kaiminus previews, both rotation
+directions, inspect/cancel/confirm and final Germignon choice were exercised.
+Clean recording and independent framebuffer endpoint show intact localized
+models/text and return to lab.
+
+Normal Save, soft-reset Continue and fresh-process cold Continue/party passed.
+Fresh-process Continue restores the French HeartGold neutral lab and Germignon
+follower. Party shows male Germignon at level5 with20/20HP and intact
+localized selection/exit text. The cold run leaves the saved file unchanged
+and does not enter the starter scene.
+
+Verified USA HeartGold native pre-starter checkpoint imported unchanged for
+France target-scene compatibility/A-B; not independent regional new-game
+progression. Uses HeartGold approach/input route and game index 4.
+
+The measured light period remains within one captured frame of control.
+Quality checks passed for both idle recordings and the game audio signal;
+human listening approval is not claimed. Raw timing/RAM/audio differences
+remain under the existing functional budget. Target checkpoints are imported
+from USA, not independent regional new-game playthroughs. Shared software
+collateral proof and this region’s native cold lab/party replay are reused; a
+separate regional software collateral pair is not claimed. Publications are
+not unique animation FPS or whole-game speed. Native cycle/frame-time
+percentile/DMA/cartridge counters remain unavailable.
+
+Private receipts: `IPKF_STARTER_QUALIFICATION_V1.json` and
+`IPKF_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
 eligible for explicit private catalog inclusion only after separate actual
 archive and launcher verification. Regional terrain remains unqualified.
 
