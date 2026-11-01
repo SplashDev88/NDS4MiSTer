@@ -982,3 +982,15 @@ or perceptual-equivalence verdict is claimed. Four save payload CRCs and Korean
 footer markers validate. Imported fixtures do not establish independent regional
 progression; later areas and battles remain unqualified. All six HeartGold terrain
 source additions need cumulative archive qualification and are absent from Beta5.
+
+Platinum USA CPUE revision 0 is qualified only for the imported own-title
+Twinleaf/house/Bag/save route. All 1,800 target screen pairs and save bytes match,
+but nine earlier transition top frames and raw RAM/audio differences remain;
+no inaudibility or human audiovisual approval is claimed. Normal Save/reset/cold
+and the selected Platinum save-block checks pass. The entirely erased unused
+storage bank is preserved, not rewritten to satisfy the HGSS footer validator.
+The 18.8634% native result uses a fixed town view, so it is not a matched gain
+over USA revision 1's older traversal measurement or whole-game FPS. Battles,
+later areas and independent revision 0 new-game progression remain unqualified.
+Absent from frozen Regional Beta6; cumulative archive verification is pending.
+Europe-labelled CPUE revision 10 remains excluded pending revision provenance.

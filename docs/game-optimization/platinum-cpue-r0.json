@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "game_code": "CPUE",
+  "revision": 0,
+  "title": "Pokemon - Platinum Version (USA)",
+  "header_sha1": "dba0a5913fd29c1b6a7dd3e1ee9f8b64c9b50afd",
+  "header_bytes": 352,
+  "rom_sha256": "ede62292aa7f7014ff27d42097e769753380531739889c29b968b67b80f80678",
+  "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
+  "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+  "budget": "User-authorized functional/perceptual budget; retain raw differences and require useful native benefit plus lifecycle/save checks.",
+  "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay5-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 5,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21d0d80",
+      "overlay_file_id": 5,
+      "overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+      "overlay_stored_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+      "addr": "0x21e8a2a",
+      "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa34f60df8",
+      "replace": "a05902218902471878680ea9174a154b34f64dfa00280bd038000ea9134a114b34f613f8c046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21e8a90",
+          "expect": "a0ae1f02b8ae1f02"
+        },
+        {
+          "addr": "0x21faea0",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x21faeb8",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "bounded_native_qualified",
+      "notes": "Guarded transfer of the accepted48-byte terrain visibility gate to verified USA revision0. Reuses the existing query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is the fixed saved Twinleaf Town view with a documented imported own-title save. Default disabled; explicit private catalog selection required.",
+      "validated": {
+        "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Reached visibility-query direct-flow closure matches281 instructions and51 edges. USA revision0 and accepted revision1 ARM9/overlay5 bytes match; header/full ROM identities are separate.",
+        "reference": "All1800 target screen pairs and save bytes match. Nine earlier top frames differ during town-entry banner transitions, unmatched within eight neighboring frames; bottom screens exact. Raw RAM/audio differences retained. Eight fixed RAM checkpoint sets match outside48 codebytes; final5999 mainRAM/DTCM differ. Original/no-op delivery images are identical and explicitly share one admitted original replay.",
+        "native": "Stock1GHz cold original/candidate fixed-town capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Platinum20-byte save-block footer/CRC and selected counters verified against the documented layout.",
+        "scope": "Twinleaf Town, home and Bag only. No independent revision0 new-game progression, battles, whole-game or human audiovisual approval. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 310414516,
+          "candidate": 286100276,
+          "reduction_percent": 7.832829570380017,
+          "frames": "4200-5999"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 17.9409596522488,
+          "candidate": 21.32523717732061
+        },
+        "native_publications_vs_original_percent": 18.863414168860302,
+        "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Original/no-op delivery virtual images are byte-identical and explicitly reuse the original software replay. No separate delivery replay or native control window claimed."
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "CPUE_R0_TERRAIN2_REFERENCE_FINDINGS_V1.json",
+        "CPUE_R0_TERRAIN2_REFERENCE_REVIEW_V1.json",
+        "CPUE_R0_TERRAIN2_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "CPUE_R0_TERRAIN2_NATIVE_VISUAL_REVIEW_V1.json",
+        "CPUE_R0_TERRAIN2_COLD_VISUAL_REVIEW_V1.json",
+        "CPUE_R0_TERRAIN2_QUALIFICATION_V1.json"
+      ]
+    }
+  ],
+  "arm9_crc32": "4d104949",
+  "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+  "arm7_crc32": "67db0960"
+}

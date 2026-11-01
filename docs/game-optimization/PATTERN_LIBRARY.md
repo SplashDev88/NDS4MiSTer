@@ -1954,3 +1954,18 @@ save/reload do not prove perceptual equivalence. Private Korean fixture footer
 conversion is validated before unpatched admission and is never distributed.
 Receipts: `IPKK_TERRAIN_QUALIFICATION_V1.json`,
 `IPKK_TERRAIN_TIMING_DIAGNOSTIC_V2.json`. No new signature or runtime service.
+
+Platinum CPUE revision 0 reuses the accepted 48-byte terrain gate with separate
+ROM/header identity despite identical ARM9/overlay 5 bytes to USA revision 1.
+Seven prepared Platinum identities share the 281-instruction/51-edge reached
+query proof; each still requires runtime qualification. The uncompressed
+unchanged-delivery control is byte-identical to the original, so its admitted
+replay is explicitly reused without a redundant execution. Revision 0 measures
+7.8328% fewer reference ARM9 entries and 18.8634% higher native fixed-Twinleaf
+publications. Preserve nine earlier image differences and raw RAM/audio changes.
+Its own house/Bag/Save/reset/cold route passes. Save validators declare footer
+layout and bank-selection constraints: Platinum uses 20-byte footers and permits
+an unchanged erased storage bank, unlike the HGSS fixture. Generic negative
+checks reject payload corruption. No new game signature or runtime service.
+Receipts: `CPUE_R0_TERRAIN2_QUALIFICATION_V1.json`,
+`PLATINUM_BBOX_DEPENDENCY_AUDIT_V1.json`, `PLATINUM_SAVE_VALIDATOR_CHECK_V1.json`.

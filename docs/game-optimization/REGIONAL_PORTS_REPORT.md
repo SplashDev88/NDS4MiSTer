@@ -1296,3 +1296,70 @@ Videos: `HeartGold_Korean_Terrain_Original_V1.mp4` and
 Next three areas: package/install/smoke the cumulative Regional Beta6; port
 Platinum regions/revisions; port FFT A2 regions/revisions. Broader later-area and
 battle coverage remains future work. No public release is authorized.
+
+### Platinum USA revision 0 terrain qualification, 2026-11-01
+
+`platinum-cpue-r0.json` adds the accepted 48-byte terrain visibility gate for the
+separate CPUE revision 0 identity, default-disabled for explicit private catalog
+selection. Its ARM9 and uncompressed overlay 5 match accepted USA revision 1;
+full ROM/header guards remain distinct. No other Platinum experiments are enabled.
+The release stream exactly matches the native candidate, without its no-op control.
+This port is not present in immutable Regional Beta6 and needs cumulative packaging.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 4200–5999 | 310,414,516 | 286,100,276 | −7.8328% |
+| Native fixed-Twinleaf screen pairs/s | 17.9410 | 21.3252 | +18.8634% |
+| Terrain draws, frames 4200–4799 | 1,174 | 300 | 874 omitted |
+
+One 30-second window per cold-start arm at stock 1 GHz, same saved tile/camera
+and matched private test RTC. Host CPU is 3.283%→3.294% of one core; renderer
+159.114%→164.248%. These are completed screen publications, not unique animation
+FPS, native CPU cycles or whole-game speed. No repeat or confidence interval is
+claimed. The historical USA revision 1 result used a different boundary-traversal
+route; this is not an additional optimization or a matched improvement over that
+revision. Both captures pass integrity checks; review copies retain game-audio
+packets and timestamps. Sampled views preserve the expected town and player.
+
+All 1,800 target top/bottom screen pairs and save bytes match. Across 6,000 frames,
+nine earlier top frames differ around town-entry banner transitions and remain
+unmatched within eight neighboring frames; all bottom hashes match. Raw RAM/audio
+and timing differences remain under the functional budget: 170,077 of 4,813,950
+stereo samples differ, maximum signed-16 delta 3,035, RMS 14.645. Eight fixed RAM
+checkpoint sets match outside the 48 patch bytes; final frame 5999 main RAM/DTCM
+differ. Do not claim bit-exactness, inaudibility or human audiovisual approval.
+
+The 600-frame watch records 874 zero/300 nonzero terrain-query returns; 300 draws
+remain. Other query/draw counters have small timing differences. The 56 guarded
+constant/pointer bytes have no writes after complete overlay recognition. Reuse
+the seven-identity 281-instruction/51-edge dependency proof and guarded loader.
+Original and unchanged-delivery virtual images are byte-identical: their admitted
+original replay is explicitly reused rather than claiming a second execution.
+
+House entry/return, Bag navigation, normal Save, soft-reset Continue and a fresh
+cold field/Bag load pass. The normal 512 KiB save remains unchanged by cold reload.
+Both general blocks and active storage have valid Platinum 20-byte footer/CRCs;
+selected global counters match. The other storage block is byte-identical to the
+entirely erased baseline, which the game accepts. This is not the HGSS 16-byte,
+four-valid-footer layout. The validator also rejects four injected payload faults
+without modifying save files. MENU, OBS settings and protected files are preserved.
+The imported own-title USA revision 1 save establishes target-scene compatibility,
+not independent revision 0 new-game progression or later-area/battle coverage.
+
+Retained setup corrections: an earlier imported fixture stayed indoors and was
+excluded before candidate execution; a private identity lacked ARM9 CRC metadata
+and failed closed before runtime; staging's inode-only metadata check was recovered
+only after content/mtime verification; the fixture namespace guard was extended to
+explicit revision-qualified kit names before launch. None establishes a game defect.
+
+Evidence: `CPUE_R0_TERRAIN2_QUALIFICATION_V1.json`,
+`CPUE_R0_TERRAIN2_REFERENCE_REVIEW_V1.json`,
+`CPUE_R0_TERRAIN2_NATIVE_IDLE_MEASUREMENTS_V1.json`,
+`CPUE_R0_TERRAIN2_NATIVE_SAVE_FOOTERS_V1.json`,
+`CPUE_R0_TERRAIN2_BEFORE_AFTER_V1.csv`. Review videos:
+`Platinum_USA_Rev0_Original_V1.mp4`, `Platinum_USA_Rev0_Candidate_V1.mp4`.
+
+Next three areas: qualify the six prepared Platinum region identities; port FFT A2
+regions/revisions; expand later-area/battle coverage when playtest evidence permits.
+Europe-labelled CPUE revision 10 stays quarantined pending revision provenance.
+No public release is authorized.
