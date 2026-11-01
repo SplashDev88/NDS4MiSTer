@@ -538,6 +538,56 @@ Private receipts: `IPKJ_STARTER_QUALIFICATION_V1.json` and
 eligible for explicit private catalog inclusion only after separate actual
 archive and launcher verification. Regional terrain remains unqualified.
 
+### Pokemon HeartGold (Korea) starter qualification
+
+`heartgold-ipkk-r0.json` authenticates IPKK revision 0 with its own
+ROM/header/ARM9/overlay identities and expected bytes. Shared code/asset and
+relocated CPU-contract evidence is reused. Its original/delivery/candidate
+replay preserves all 3,600 screen pairs and the save. ARM9 instructions fall
+from 86,975,841 to 42,848,968 (50.7346%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.1669 | 43.8340 (3.0941×) |
+| Renderer CPU, percent of one core | 161.72% | 110.02% |
+| Measured light cycle | 3.4833 s | 3.4833 s |
+
+Korean HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation
+directions, inspect/cancel/confirm and final Chikorita choice were exercised.
+Clean recording and independent framebuffer endpoint show intact localized
+models/text and return to lab.
+
+Normal Save, soft-reset Continue and fresh-process cold Continue/party passed.
+Fresh-process Continue restores the Korean HeartGold neutral lab and Chikorita
+follower. Party shows male Chikorita at level5 with20/20HP and intact
+localized name, selection and exit text. The cold run leaves the saved file
+unchanged and does not enter the starter scene.
+
+Verified USA HeartGold native pre-starter checkpoint imported through a
+disposable Korean save-footer conversion (12 changed bytes, payload/CRCs
+untouched). Own HeartGold input/approach route; not independent Korean
+new-game progression.
+
+The measured light period remains within one captured frame of control.
+Quality checks passed for both idle recordings and the game audio signal;
+human listening approval is not claimed. Raw timing/RAM/audio differences
+remain under the existing functional budget. Target checkpoints are imported
+from USA, not independent regional new-game playthroughs. Shared software
+collateral proof and this region’s native cold lab/party replay are reused; a
+separate regional software collateral pair is not claimed. Publications are
+not unique animation FPS or whole-game speed. Native cycle/frame-time
+percentile/DMA/cartridge counters remain unavailable.
+
+The converted fixture passes both unpatched reference and native cold-load
+checks. The normal game-written save retains all four Korean footer markers
+and valid payload CRCs; see `IPKK_NATIVE_SAVE_FOOTERS_V1.json`. The converter
+is used only to prepare the disposable test fixture.
+
+Private receipts: `IPKK_STARTER_QUALIFICATION_V1.json` and
+`IPKK_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
+eligible for explicit private catalog inclusion only after separate actual
+archive and launcher verification. Regional terrain remains unqualified.
+
 The next three porting areas after the starter qualification are:
 
 1. Relocate the HGSS terrain caller and its data/call dependencies; twelve

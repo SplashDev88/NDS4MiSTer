@@ -891,3 +891,14 @@ plan-driven confirmation route succeeds without a retry. Regional terrain,
 battles, independent new-game progression and human audio approval remain outside
 this qualification. It is queued for the next private package and is absent
 from immutable Regional Beta3.
+
+Korean HeartGold IPKK revision 0 independently passes the bounded starter and
+save lifecycle gates with a converted copy of its own verified HeartGold seed.
+Its first reference batch and unpatched native cold boot reach the expected
+scene without a retry.
+The normal game-written HeartGold save has valid Korean markers and payload CRCs
+in all four general/storage block footers. The conversion is private fixture
+preparation, never a runtime save converter or a distributed save. This does not
+qualify regional terrain, battles, independent new-game progression or human
+audio approval. The port is eligible for the next private package only after
+actual archive and launcher verification.

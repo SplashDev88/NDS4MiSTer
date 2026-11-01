@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon HeartGold (Korea)",
+  "game_code": "IPKK",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "24427d5acc98bb7686d815bbbd9819a2d50dafb3",
+  "header_crc32": "f34681fa",
+  "rom_sha256": "66e34019c30fb0d77c530ebc254a0ac94b6fba1a73e0a1bd0bfb57dc6f475658",
+  "arm9_sha256": "a7af9696d570c1d4dd4a47024964fe0d204229c435d539461ed8f6fc8eb729d1",
+  "arm9_crc32": "6cf0de3a",
+  "delivery": "append-decoded-overlays-v1",
+  "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+  "status": "bounded_native_qualified_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e6300",
+      "overlay_file_id": 61,
+      "overlay_sha256": "4a766c535d7957bb8e549040baaec072a3c66c7443cde9f479143d46fff119ed",
+      "overlay_stored_sha256": "0d14d6d6a337d7af059348065a27cf9748e7b050ba39863d6a8097c8060a68a7",
+      "addr": "0x21e68f8",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+        "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+        "ram": "Raw state/timing differences retained under the authorized functional budget.",
+        "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+        "native": "Korean HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+        "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+        "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new Korean software collateral pair or independent new-game playthrough is claimed.",
+        "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+        "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported through a disposable Korean save-footer conversion (12 changed bytes, payload/CRCs untouched). Own HeartGold input/approach route; not independent Korean new-game progression.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "ORIGINAL": 86975841,
+          "DELIVERY": 86975841,
+          "CANDIDATE": 42848968
+        },
+        "reference_instruction_reduction_percent": 50.73463216067091,
+        "native_completed_screen_pairs_per_second": {
+          "original": 14.166872817883629,
+          "candidate": 43.83402345030456
+        },
+        "renderer_cpu_percent_one_core": {
+          "original": 161.7218368858406,
+          "candidate": 110.0180694957112
+        },
+        "native_light_period_seconds": {
+          "original": 3.4833333333331353,
+          "candidate": 3.4833333333331353
+        }
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPKK_STARTER_QUALIFICATION_V1.json",
+        "IPKK_STARTER_REFERENCE_REVIEW_V1.json",
+        "IPKK_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPKK_ORIGINAL1_MEDIA_REVIEW.json",
+        "IPKK_CANDIDATE1_MEDIA_REVIEW.json",
+        "IPKK_CANDIDATE1_SELECTION_MEDIA_V1.json",
+        "IPKK_CANDIDATE1_LIFECYCLE_DONE.json",
+        "IPKK_COLD_VISUAL_REVIEW_V1.json",
+        "IPKK_COLD1_STOP.json",
+        "IPKK_POSTSTARTER_SAVE_READBACK_V1.json",
+        "IPKK_STARTER_VARIANTS_V1.json",
+        "IPKK_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+        "IPKK_IMPORTED_SAVE_CONVERSION_V1.json",
+        "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
+        "IPKK_NATIVE_SAVE_FOOTERS_V1.json"
+      ]
+    }
+  ]
+}

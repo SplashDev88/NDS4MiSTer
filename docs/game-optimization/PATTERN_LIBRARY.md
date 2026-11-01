@@ -1790,6 +1790,15 @@ This is test-fixture preparation, not a runtime patch, user-save migration or
 proof of independent regional progression. Private evidence:
 `IPGK_IMPORTED_SAVE_CONVERSION_V1.json`; the failed original V1 run is retained.
 
+The same bounded recipe is independently verified for Korean HeartGold IPKK,
+using its own verified HeartGold checkpoint. Unpatched
+reference and native cold loads reach the intended scene. After normal native
+Save, all four footer markers and payload CRCs validate, and the saved party
+survives soft reset and a fresh process. Evidence:
+`IPKK_IMPORTED_SAVE_CONVERSION_V1.json` and `IPKK_NATIVE_SAVE_FOOTERS_V1.json`.
+Reuse the layout and checksum method; keep each title's seed and admission proof
+separate.
+
 Carry the checkpoint's game index, seed hash, reference input route and native
 opener in the run plan. Shared engine code does not imply identical saved player
 position. The retained HeartGold fixture needs one northward approach; the
