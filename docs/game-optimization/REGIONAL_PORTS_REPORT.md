@@ -2,7 +2,7 @@
 
 Regional work branches from the unpublished RC13 candidate, source
 `2fb28bd437834cb76300d1fca5aa14dbf58cf711`. The packaged candidate and accepted
-betas are preserved. German and French SoulSilver's starter gates are qualified for explicit
+betas are preserved. German, French and Italian SoulSilver's starter gates are qualified for explicit
 private catalog inclusion. Source manifests remain disabled by default.
 
 ## HGSS starter candidates, 2026-10-31
@@ -106,8 +106,8 @@ Private qualification: `IPGD_STARTER_QUALIFICATION_V1.json`. Videos:
 `SoulSilver_German_Starter_Original_V1.mp4`,
 `SoulSilver_German_Starter_Candidate_V1.mp4`, and
 `SoulSilver_German_Starter_Selection_V1.mp4`. No ROMs, saves or captured private
-code are included in this repository. Remaining regional candidates and German
-and French terrain remain unqualified.
+code are included in this repository. Remaining regional candidates and German,
+French and Italian terrain remain unqualified.
 
 ### French SoulSilver starter qualification
 
@@ -142,6 +142,40 @@ Private receipts: `IPGF_STARTER_QUALIFICATION_V1.json` and
 `IPGF_STARTER_BEFORE_AFTER_V1.csv`. Review videos use the prefix
 `SoulSilver_French_Starter_`. Actual cumulative archive/launcher qualification
 remains a separate packaging gate.
+
+### Italian SoulSilver starter qualification
+
+`soulsilver-ipgi-r0.json` authenticates IPGI revision 0 and its own overlay 61
+identity. The existing loader, shared asset/dependency audit and six-layout CPU
+contract are reused. Its original/delivery/candidate replay preserves all 3,600
+top/bottom screen pairs and the save. Sampled ARM9 instructions fall from
+87,222,076 to 43,099,161 (50.5869%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.2831 | 44.8013 (3.1367×) |
+| Renderer CPU, percent of one core | 162.03% | 110.04% |
+| Measured light cycle | 3.4833 s | 3.4833 s |
+
+Capture quality and game-audio signal checks pass. Native selection exercises
+the Italian Chikorita, Cyndaquil and Totodile previews, both rotation directions,
+inspect/cancel/confirm and final Chikorita choice. Normal Save changes the 512 KiB
+save, soft-reset Continue restores the lab and follower, and a fresh-process
+cold Continue/party check restores male Chikorita at level 5 with 20/20 HP.
+The cold run leaves the saved file unchanged and does not enter the target scene.
+
+The imported USA checkpoint and common German unrelated software evidence are
+reused; independent Italian new-game progression, a separate Italian software
+collateral comparison and human listening approval are not claimed. Raw
+timing/RAM/audio differences remain within the existing functional test budget.
+Publications are not unique animation FPS or whole-game speed. Native cycle,
+frame-time percentile, DMA and cartridge counters remain unavailable.
+
+Private receipts: `IPGI_STARTER_QUALIFICATION_V1.json` and
+`IPGI_STARTER_BEFORE_AFTER_V1.csv`; videos use the prefix
+`SoulSilver_Italian_Starter_`. Actual archive/launcher validation remains a
+separate packaging gate. The manifest is default-disabled and contains only
+the starter patch; Italian terrain remains unqualified.
 
 The next three porting areas after the starter qualification are:
 

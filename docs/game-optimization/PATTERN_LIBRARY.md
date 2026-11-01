@@ -1744,3 +1744,10 @@ captured frame of control. Reuse the shared static/CPU proof, while retaining
 the region's own original/delivery/candidate replay, native measurements and
 localized active-state/save/cold-load evidence. A post-save cold lab/party input
 replay provides unrelated-scene coverage without repeating a full introduction.
+
+Italian SoulSilver repeats the same qualification with 50.59% fewer sampled ARM9
+instructions and 3.14× native publications. Its measured light cycle is identical
+to control at capture resolution. All three regions preserve every idle screen
+pair and pass localized choices, normal save, soft reset and cold party checks.
+Keep these measurements attached to each exact identity; do not replace regional
+admission or active-state evidence with a family-wide performance claim.

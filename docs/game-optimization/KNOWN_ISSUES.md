@@ -799,7 +799,7 @@ of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
 HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
 
 Regional starter candidates have matching patch bytes/assets and relocated
-synthetic contracts. German and French SoulSilver's starter gates are bounded-native-qualified;
+synthetic contracts. German, French and Italian SoulSilver's starter gates are bounded-native-qualified;
 the other regional candidates remain unqualified. External-call prefixes and
 bounded overlay instruction matches do not prove whole-program equivalence.
 Do not promote them from static evidence or reuse USA performance/approval labels.
@@ -826,3 +826,8 @@ cold lab/party replay supplies unrelated-scene coverage; no separate French
 software collateral comparison or human audio approval is claimed. German and
 French terrain ports remain unqualified and must not be enabled with the starter
 catalog entries.
+
+Italian qualification has the same bounded imported-checkpoint scope: its own
+selection/save/soft-reset/cold-party checks pass, but this does not establish
+independent new-game progression, battle coverage or human audio approval.
+Italian terrain remains unqualified.
