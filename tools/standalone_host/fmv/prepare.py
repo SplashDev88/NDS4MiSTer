@@ -52,8 +52,9 @@ class Source:
             return self._sha256
         h = hashlib.sha256()
         for at in range(0, self.size, CHUNK):
-            h.update(self.read(at, min(CHUNK, self.size - at)))
-            progress(at)
+            size = min(CHUNK, self.size - at)
+            h.update(self.read(at, size))
+            progress(at + size)
         self.unchanged()
         self._sha256 = h.hexdigest()
         return self._sha256

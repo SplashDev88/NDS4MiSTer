@@ -27,10 +27,11 @@ def main():
         return 1
     source = Source(source_fd)
     work = None
+    verification_end = 3000
     def progress(n):
         send(output_fd, struct.pack('<Qii', n, 0, 7))
         if work:
-            work.update(0, 3000, min(n, source.size), source.size)
+            work.update(0, verification_end, min(n, source.size), source.size)
     image = VirtualRom(source, source.size).finish()
     try:
         # Guest patches reuse this worker and the normal reset-held transfer.
@@ -41,6 +42,10 @@ def main():
         if guest:
             from guest_byte_patch import from_environment
             work = LoadProgress(lambda data: send(output_fd, data))
+            # Guest byte patches do not convert movies. Their full-ROM check
+            # accounts for the preparation half of the bar; avoid the old
+            # artificial 30% -> 50% step after that check finishes.
+            verification_end = 5000
             image, report = from_environment(source, os.environ, progress)
             print('GUEST_PATCH_RESULT '+json.dumps(report, sort_keys=True), file=sys.stderr, flush=True)
             if (report['state'] == 'skipped' and
@@ -76,6 +81,7 @@ def main():
                     return 1
                 return 0
         if not guest:
+            verification_end = 3000
             work = work or LoadProgress(lambda data: send(output_fd, data))
             profile = profile_for(source, registry['profiles'], progress)
             if profile:
@@ -99,8 +105,9 @@ def main():
         done += len(block)
         progress(done)
     source.unchanged()
-    if work:
-        work.update(3000, 5000)
+    # Keep the progress actually earned above. Unknown/unpatched cartridges
+    # can skip preparation entirely; reserving 50% for that absent stage made
+    # their bar jump from empty to half full before the first transfer byte.
     send(output_fd,struct.pack('<Qii',image.size,0,0))
     for block in image.blocks(0,transfer):
         send(output_fd,block)

@@ -138,6 +138,44 @@ class GuestPatchTests(unittest.TestCase):
         self.assertNotIn(b'FMV_AUTO_APPLIED', result.stderr)
         self.assertEqual(self.rom.read_bytes(), self.raw)
 
+    def preparation_progress(self, result):
+        self.assertEqual(result.returncode, 0, result.stderr)
+        values = []
+        at = 0
+        while True:
+            size, error, op = struct.unpack_from('<Qii', result.stdout, at)
+            at += 16
+            self.assertEqual(error, 0)
+            if op == 0:
+                break
+            self.assertIn(op, [7, 13])
+            if op == 13:
+                values.append(size)
+        self.assertEqual(values, sorted(values))
+        return values
+
+    def test_guest_hash_progress_has_no_halfway_jump(self):
+        # A realistic multi-block source, with the same small guarded patch.
+        # Only metadata may change: decoded output and source bytes still match.
+        self.raw += b'\xff' * (8 * 1024**2 - len(self.raw))
+        self.rom.write_bytes(self.raw)
+        self.manifest['rom_sha256'] = hashlib.sha256(self.raw).hexdigest()
+        result = self.worker(self.environment())
+        self.assertEqual(self.decode(result), self.expected())
+        values = self.preparation_progress(result)
+        self.assertEqual((values[0], values[-1]), (0, 5000))
+        self.assertGreater(len(values), 20)
+        self.assertLessEqual(max(b-a for a, b in zip(values, values[1:])), 200)
+        self.assertEqual(self.rom.read_bytes(), self.raw)
+
+    def test_skipped_preparation_does_not_reserve_half_the_bar(self):
+        for fallback in ['0', '1']:
+            env = self.environment()
+            env.update(NDS_GUEST_PATCH_SHA256='0'*64, NDS_GUEST_PATCH_FALLBACK_FMV=fallback)
+            result = self.worker(env)
+            self.assertEqual(self.decode(result), self.raw)
+            self.assertEqual(self.preparation_progress(result), [0])
+
     def test_real_worker_wrong_pin_and_no_selection_preserve_original(self):
         env = self.environment(); env['NDS_GUEST_PATCH_SHA256'] = '0'*64
         self.assertEqual(self.decode(self.worker(env)), self.raw)
