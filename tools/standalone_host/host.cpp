@@ -433,6 +433,12 @@ class Host {
   static constexpr unsigned MIC_BUTTON = GAME_BUTTON_COUNT + 2;
   static constexpr unsigned SCREEN_PEEK_BUTTON = GAME_BUTTON_COUNT + 3;
   static constexpr uint32_t LID_MASK = 1u << 13, MIC_MASK = 1u << 14;
+  static constexpr uint32_t TOUCH_MASK = 1u << 12;
+  // rc12's FPGA selects the right stick on a joystick Touch rising edge.
+  // Route that button through the mouse protocol while a mouse owns position.
+  bool touch_mouse_owner = false;
+  unsigned touch_button_mouse = 0;
+  uint16_t touch_analog_sent = 0;
   static constexpr std::array<const char *, GAME_BUTTON_COUNT + 3> button_names = {
       "Right", "Left", "Down", "Up",     "A",     "B",    "X",
       "Y",     "L",    "R",    "Select", "Start", "Touch", "Cycle Video Layout",
@@ -1610,7 +1616,27 @@ class Host {
     osd(true);
     dirty = false;
   }
+  unsigned mouseButtons() const {
+    unsigned buttons = 0;
+    for (const auto &p : pads)
+      if (!p.disconnected) buttons |= p.mouse;
+    return buttons;
+  }
+  void touchAnalog(uint16_t analog) {
+    if (analog != touch_analog_sent) {
+      // Release the synthesized mouse press BEFORE the analog write: a mouse
+      // packet sent afterwards would hand position straight back to the mouse.
+      if (touch_button_mouse) {
+        touch_button_mouse = 0;
+        spi.cmd(Spi::IO, 4, {uint16_t(8 | mouseButtons()), 0, 0});
+      }
+      touch_mouse_owner = false;
+      touch_analog_sent = analog;
+    }
+    spi.cmd(Spi::IO, 0x3d, {0, analog});
+  }
   void neutralInput() {
+    touch_button_mouse = 0;
     spi.cmd(Spi::IO, 4, {8, 0, 0});
     joy(0);
   }
@@ -1634,7 +1660,7 @@ class Host {
     if (!menu)
       for (const auto &p : pads)
         if (p.touch_analog_valid) {
-          spi.cmd(Spi::IO, 0x3d, {0, expandTouchAnalog(rotateTouchAnalog(p.analog, touch_rotation), touch_range)});
+          touchAnalog(expandTouchAnalog(rotateTouchAnalog(p.analog, touch_rotation), touch_range));
           break;
         }
     log(menu ? "menu opened" : "menu closed");
@@ -2338,10 +2364,12 @@ class Host {
           message = "Controller disconnected";
           dirty = true;
         }
-        if (it->lastmouse)
-          spi.cmd(Spi::IO, 4, {8, 0, 0});
+        const bool mouse_release = it->lastmouse != 0;
+        it->mouse = 0;
+        if (mouse_release)
+          spi.cmd(Spi::IO, 4, {uint16_t(8 | mouseButtons() | touch_button_mouse), 0, 0});
         if (it->touch_analog_valid)
-          spi.cmd(Spi::IO, 0x3d, {0, 0});
+          touchAnalog(0);
         if (repeat_pad == it->id)
           repeat_action = -1;
         close(it->fd);
@@ -2716,9 +2744,10 @@ class Host {
           p.joy = p.menujoy = p.combo = 0;
           p.pressed.fill(false);
           p.analog = 0;
-          spi.cmd(Spi::IO, 0x3d, {0, 0});
-          spi.cmd(Spi::IO, 4, {8, 0, 0});
-          p.mouse = 0;
+          p.mouse = p.lastmouse = 0;
+          touch_button_mouse = 0;
+          spi.cmd(Spi::IO, 4, {uint16_t(8 | mouseButtons()), 0, 0});
+          touchAnalog(0);
           p.x = p.y = 0;
         } else if (e.type == EV_KEY && e.value != 2) {
           if (e.code >= BTN_LEFT && e.code <= BTN_MIDDLE) {
@@ -2746,7 +2775,7 @@ class Host {
             const auto previous = p.analog;
             p.analog = (p.analog & ~(255 << shift)) | (uint8_t(value) << shift);
             if (!menu && p.analog != previous)
-              spi.cmd(Spi::IO, 0x3d, {0, expandTouchAnalog(rotateTouchAnalog(p.analog, touch_rotation), touch_range)});
+              touchAnalog(expandTouchAnalog(rotateTouchAnalog(p.analog, touch_rotation), touch_range));
           }
           if (mapping_step >= 0) {
             const auto &a = p.abs[e.code];
@@ -2787,6 +2816,7 @@ class Host {
           // and analog halves of a physical control have been released.
           finishMappingReport();
           if (!menu && (p.x || p.y || p.mouse != p.lastmouse)) {
+            touch_mouse_owner = true;
             // PS/2 Y points upward; rotate in screen coordinates, then convert
             // back for the core's mouse protocol. Buttons remain unchanged.
             auto [dx, dy] = rotateTouch(std::clamp(p.x, -127, 127),
@@ -2794,7 +2824,7 @@ class Host {
             int x = dx, y = -dy;
             spi.cmd(
                 Spi::IO, 4,
-                {uint16_t(8 | p.mouse | (x < 0 ? 16 : 0) | (y < 0 ? 32 : 0)),
+                {uint16_t(8 | mouseButtons() | touch_button_mouse | (x < 0 ? 16 : 0) | (y < 0 ? 32 : 0)),
                  uint16_t(uint8_t(x)), uint16_t(uint8_t(y))});
           }
           p.lastmouse = p.mouse;
@@ -2806,15 +2836,21 @@ class Host {
         p.joy = 0;
         p.pressed.fill(false);
         p.analog = 0;
-        spi.cmd(Spi::IO, 0x3d, {0, 0});
+        touchAnalog(0);
         if (repeat_pad == p.id)
           repeat_action = -1;
         if (p.lastmouse)
-          spi.cmd(Spi::IO, 4, {8, 0, 0});
+          spi.cmd(Spi::IO, 4, {uint16_t(8 | mouseButtons() | touch_button_mouse), 0, 0});
         p.mouse = p.lastmouse = 0;
         nextscan = 0;
       }
       j |= p.joy;
+    }
+    const unsigned touch_mouse = !menu && touch_mouse_owner && (j & TOUCH_MASK) ? 1 : 0;
+    if (touch_mouse) j &= ~TOUCH_MASK;
+    if (touch_mouse != touch_button_mouse) {
+      touch_button_mouse = touch_mouse;
+      spi.cmd(Spi::IO, 4, {uint16_t(8 | mouseButtons() | touch_mouse), 0, 0});
     }
     syncScreenPeek();
     joy(menu ? 0 : j);

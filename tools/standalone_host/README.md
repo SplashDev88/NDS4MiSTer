@@ -73,6 +73,15 @@ menu behavior, persistence and the reported sideways-game directions.
 
 ## Controller motion sensors
 
+A controller or keyboard button mapped to **Touch** presses at the current
+mouse/trackball cursor after using that pointer. Hold Touch while rolling the
+trackball to drag. Moving the right stick takes over; its centered noise does
+not. The mouse's own left button remains usable independently. This host-side
+fix for [issue #43](https://github.com/SplashDev88/NDS4MiSTer/issues/43) works
+with the existing rc12 FPGA. `test_host_touch_mouse.cpp` exercises separate
+evdev devices and the outgoing SPI messages, including menu, reset and
+disconnect releases. Thanks to apeekaboo for the report and workaround.
+
 The root menu’s **Right Stick Range** setting expands the stylus reach for controllers that
 cannot reach the touchscreen corners. Choose **100%, 125%, 150%, 175% or 200%**.
 Start at **150%** for limited diagonal travel, then use the lowest setting that

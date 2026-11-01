@@ -92,7 +92,8 @@ struct HostTest {
     emit(fds[1], EV_KEY, BTN_LEFT, 1); emit(fds[1], EV_SYN, SYN_REPORT, 0); poll(h);
     assert(last(h,4) == (std::vector<uint16_t>{9,30,20}));
     h.key(h.pads[0], KEY_UP, true); h.key(h.pads[0], KEY_SPACE, true); poll(h);
-    assert(h.lastjoy == (8 | 4096));
+    assert(h.lastjoy == 8);
+    assert(last(h,4) == (std::vector<uint16_t>{9,0,0})); // Touch at mouse cursor.
     emit(fds[1], EV_SYN, SYN_DROPPED, 0); poll(h);
     assert(last(h,0x3d) == (std::vector<uint16_t>{0,0}) && h.lastjoy == 0);
     close(fds[1]);

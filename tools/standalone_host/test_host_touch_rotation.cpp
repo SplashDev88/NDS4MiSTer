@@ -108,7 +108,8 @@ struct HostTest {
     host.key(host.pads[0], KEY_SPACE, true);
     host.key(host.pads[0], KEY_F11, true);
     poll(host);
-    assert(host.lastjoy == (8 | 4096 | Host::MIC_MASK));
+    assert(host.lastjoy == (8 | Host::MIC_MASK));
+    assert(last(host, 4) == (std::vector<uint16_t>{9, 0, 0})); // Touch at mouse cursor.
     emit(fds[1], EV_SYN, SYN_DROPPED, 0);
     poll(host);
     assert(last(host, 0x3d) == (std::vector<uint16_t>{0, 0}));
