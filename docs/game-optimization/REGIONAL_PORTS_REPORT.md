@@ -1480,3 +1480,7 @@ Evidence: `CPUF_R0_TERRAIN_QUALIFICATION_V1.json`,
 Next three areas: qualify the four remaining prepared Platinum regions, port FFT
 A2 regions/revisions, and broaden later-area/battle coverage. Three new Platinum
 ports await a future cumulative private beta; no public release is authorized.
+
+### CPUI revision 0: user-directed private port
+
+The existing 48-byte terrain gate was relocated using the shared dependency proof and admitted by exact ROM, header, ARM9, overlay, original-byte and data guards. Remaining gameplay validation was explicitly waived on 2026-11-01. This port is unvalidated on native hardware; no regional speed or save/lifecycle result is claimed. Source defaults remain disabled; explicit private catalog selection is authorized. Evidence: `CPUI_R0_TERRAIN_USER_WAIVER_ACCEPTANCE_V1.json`.
