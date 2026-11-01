@@ -42,8 +42,12 @@ def run(code, entry, memory, values, cpsr, *, stop=None, extra_memory=(),
     assert code_address <= entry < code_address + len(code) <= page + 4096
     assert all(isinstance(at, int) and at % 2 == 0 and callable(handler) and
                not code_address <= at < code_address + len(code) and
-               any(base <= at < base + len(data) for base, data in extra_memory)
+               (page <= at < page + 4096 or
+                any(base <= at < base + len(data) for base, data in extra_memory))
                for at, handler in handlers.items())
+    # A relocated callee may share the existing code page. It still must be
+    # outside the tested extent; never remap or overwrite that page as data.
+    assert all(address not in (page, 0x03000000) for address, _ in extra_memory)
     vm.mem_map(page, 4096)
     vm.mem_write(code_address, code)
     vm.mem_map(0x03000000, 4096)

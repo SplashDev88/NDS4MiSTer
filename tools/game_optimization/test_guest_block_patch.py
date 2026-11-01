@@ -7,6 +7,24 @@ from check_guest_block_patch import (compare_accesses, ordinary_ranges,
 
 
 class BlockTests(unittest.TestCase):
+    def test_callee_in_existing_code_page_without_overwriting_tested_code(self):
+        from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_PC, UC_ARM_REG_LR
+        code = bytes.fromhex('00b5014b984700bd80000002')
+        regs = [7] + [0]*12 + [0x03000f00, 0x02000101]
+        def callee(vm):
+            self.assertEqual(bytes(vm.mem_read(0x02000000, len(code))), code)
+            vm.reg_write(UC_ARM_REG_R0, 23)
+            vm.reg_write(UC_ARM_REG_PC, vm.reg_read(UC_ARM_REG_LR))
+        result, _ = run(code, 0x02000000, bytes(4096), regs, 0x3f,
+                        mode='thumb', call_handlers={0x02000080: callee})
+        self.assertEqual(result['registers'][0], 23)
+        self.assertEqual(result['registers'][13], regs[13])
+        for page in [0x02000000, 0x03000000]:
+            with self.assertRaises(AssertionError):
+                run(code, 0x02000000, bytes(4096), regs, 0x3f,
+                    mode='thumb', extra_memory=[(page, bytes(4096))],
+                    call_handlers={0x02000080: callee})
+
     def test_external_callee_model_returns_across_modes_without_replacing_target(self):
         from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_PC, UC_ARM_REG_LR
         # Thumb push/ldr/blx/pop, calling a mapped ARM callee at 0x02010000.
