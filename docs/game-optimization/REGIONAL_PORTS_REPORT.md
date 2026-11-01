@@ -406,6 +406,50 @@ Private receipts: `IPKF_STARTER_QUALIFICATION_V1.json` and
 eligible for explicit private catalog inclusion only after separate actual
 archive and launcher verification. Regional terrain remains unqualified.
 
+### Pokemon HeartGold (Italy) starter qualification
+
+`heartgold-ipki-r0.json` authenticates IPKI revision 0 with its own
+ROM/header/ARM9/overlay identities and expected bytes. Shared code/asset and
+relocated CPU-contract evidence is reused. Its original/delivery/candidate
+replay preserves all 3,600 screen pairs and the save. ARM9 instructions fall
+from 87,220,281 to 43,097,605 (50.5876%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.1340 | 44.3702 (3.1393×) |
+| Renderer CPU, percent of one core | 161.59% | 110.43% |
+| Measured light cycle | 3.4833 s | 3.4667 s |
+
+Italian HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation
+directions, inspect/cancel/confirm and final Chikorita choice were exercised.
+Clean recording and independent framebuffer endpoint show intact localized
+models/text and return to lab.
+
+Normal Save, soft-reset Continue and fresh-process cold Continue/party passed.
+Fresh-process Continue restores the Italian HeartGold neutral lab and
+Chikorita follower. Party shows male Chikorita at level5 with20/20HP and
+intact localized selection/exit text. The cold run leaves the saved file
+unchanged and does not enter the starter scene.
+
+Verified USA HeartGold native pre-starter checkpoint imported unchanged for
+Italy target-scene compatibility/A-B; not independent regional new-game
+progression. Uses HeartGold approach/input route and game index 4.
+
+The measured light period remains within one captured frame of control.
+Quality checks passed for both idle recordings and the game audio signal;
+human listening approval is not claimed. Raw timing/RAM/audio differences
+remain under the existing functional budget. Target checkpoints are imported
+from USA, not independent regional new-game playthroughs. Shared software
+collateral proof and this region’s native cold lab/party replay are reused; a
+separate regional software collateral pair is not claimed. Publications are
+not unique animation FPS or whole-game speed. Native cycle/frame-time
+percentile/DMA/cartridge counters remain unavailable.
+
+Private receipts: `IPKI_STARTER_QUALIFICATION_V1.json` and
+`IPKI_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
+eligible for explicit private catalog inclusion only after separate actual
+archive and launcher verification. Regional terrain remains unqualified.
+
 The next three porting areas after the starter qualification are:
 
 1. Relocate the HGSS terrain caller and its data/call dependencies; twelve
