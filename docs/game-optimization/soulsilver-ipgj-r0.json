@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "title": "Pokemon SoulSilver (Japan)",
+  "game_code": "IPGJ",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "2e64f26b2c8e377d276abf3531020ea8ccd2ffd8",
+  "header_crc32": "f0f072e7",
+  "rom_sha256": "a6abac6b4bada789bddf4a96ff63f1d1f3d99662f0976b088d3d035ac69beaa0",
+  "arm9_sha256": "683391140640389d856aeec2dd9dfb1750ee670719b95a6813f024c64bc4c90e",
+  "arm9_crc32": "b6eb1a81",
+  "delivery": "append-decoded-overlays-v1",
+  "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+  "status": "bounded_native_qualified_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay61-starter-idle-identical-draw",
+      "pattern": "identical-idle-display-list",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 61,
+      "overlay_ram": "0x21e4e40",
+      "overlay_file_id": 61,
+      "overlay_sha256": "cab46abffcb9704dcbe9f4476a552e7dc602c92a2dcf565cc37e7f1ae3d24451",
+      "overlay_stored_sha256": "19d3a2178aa6b2719b2b265ebb661cd5d1a49c611ae159630ef4490f94a99443",
+      "addr": "0x21e5438",
+      "mode": "thumb",
+      "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+      "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+      "status": "bounded_native_qualified",
+      "validated": {
+        "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+        "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+        "ram": "Raw state/timing differences retained under the authorized functional budget.",
+        "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+        "native": "Japanese Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Sampled images and the direct framebuffer endpoint show intact models/text and return to the lab. The selection recording lost one OBS encoded frame (zero render drops, continuous decoded timestamps); it is used only for visual checkpoints, not selection cadence or audio equivalence. Separate idle captures passed recording quality and establish unchanged measured light cadence.",
+        "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+        "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Shared delivery/static proof and German unrelated software replay are reused; no separate Japanese software collateral pair or full playthrough is claimed.",
+        "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+        "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for Japanese target-scene A/B and compatibility only; not independent Japanese new-game progression.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "ORIGINAL": 87456282,
+          "DELIVERY": 87456282,
+          "CANDIDATE": 43334237
+        },
+        "reference_instruction_reduction_percent": 50.45040103579981,
+        "native_completed_screen_pairs_per_second": {
+          "original": 14.262581462405096,
+          "candidate": 43.75891051724931
+        },
+        "renderer_cpu_percent_one_core": {
+          "original": 161.67583601789275,
+          "candidate": 110.86256705625796
+        },
+        "native_light_period_seconds": {
+          "original": 3.4666666666664696,
+          "candidate": 3.4666666666664696
+        }
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPGJ_STARTER_QUALIFICATION_V1.json",
+        "IPGJ_STARTER_REFERENCE_REVIEW_V1.json",
+        "IPGJ_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPGJ_ORIGINAL1_MEDIA_REVIEW.json",
+        "IPGJ_CANDIDATE1_MEDIA_REVIEW.json",
+        "IPGJ_CANDIDATE1_SELECTION_MEDIA_V1.json",
+        "IPGJ_CANDIDATE1_LIFECYCLE_DONE.json",
+        "IPGJ_COLD_VISUAL_REVIEW_V1.json",
+        "IPGJ_COLD1_STOP.json",
+        "IPGJ_POSTSTARTER_SAVE_READBACK_V1.json",
+        "IPGJ_STARTER_VARIANTS_V1.json",
+        "IPGJ_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+        "IPGJ_CANDIDATE1_SELECTION_ENCODING_GAP_V1.json"
+      ]
+    }
+  ]
+}

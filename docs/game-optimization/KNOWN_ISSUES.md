@@ -799,8 +799,9 @@ of genuinely new measured SoulSilver gains. It does not reopen unrelated parked
 HeartGold leads or turn the existing HeartGold-to-SoulSilver ports into new gains.
 
 Regional starter candidates have matching patch bytes/assets and relocated
-synthetic contracts. German, French, Italian and Spanish SoulSilver's starter gates are bounded-native-qualified;
-the other regional candidates remain unqualified. External-call prefixes and
+synthetic contracts. Only identities with completed per-region runtime evidence
+in their manifests and the regional report qualify for private catalog inclusion;
+other candidates remain unqualified. External-call prefixes and
 bounded overlay instruction matches do not prove whole-program equivalence.
 Do not promote them from static evidence or reuse USA performance/approval labels.
 The Europe-labelled HeartGold IPKE revision 10 file is quarantined until its
@@ -845,3 +846,11 @@ instruction layouts/internal calls across all six SoulSilver regions. Unreached
 bytes were excluded, not validated; external callees and literal-referenced
 objects remain pending. These read-only findings must not enable terrain patches
 or be described as whole-function equivalence.
+
+The Japanese starter-selection recording lost one OBS encoded frame. The render
+skip delta is zero and decoded timestamps remain continuous, so the lost frame
+cannot be located from timestamps. Its raw recording-quality result remains
+failed; sampled visual checkpoints and the independent direct framebuffer
+endpoint are retained, with no selection frame-continuity/cadence/audio-equivalence
+claim. Separate clean idle captures establish measured cadence and native benefit.
+Do not silently relabel this selection recording as a clean pacing test.

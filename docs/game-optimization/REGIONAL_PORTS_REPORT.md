@@ -226,6 +226,49 @@ qualification remain necessary; no terrain patch has been generated or enabled.
 See `SOULSILVER_BBOX_FLOW_LAYOUT_V1.json` and
 `SOULSILVER_TERRAIN_FLOW_MASKED_CANDIDATES_V3.json` for private evidence.
 
+### Pokemon SoulSilver (Japan) starter qualification
+
+`soulsilver-ipgj-r0.json` authenticates IPGJ revision 0 with its own
+ROM/header/ARM9/overlay identities and expected bytes. Shared code/asset and
+relocated CPU-contract evidence is reused. Its original/delivery/candidate
+replay preserves all 3,600 screen pairs and the save. ARM9 instructions fall
+from 87,456,282 to 43,334,237 (50.4504%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.2626 | 43.7589 (3.0681×) |
+| Renderer CPU, percent of one core | 161.68% | 110.86% |
+| Measured light cycle | 3.4667 s | 3.4667 s |
+
+Japanese Chikorita, Cyndaquil and Totodile previews, both rotation directions,
+inspect/cancel/confirm and final Chikorita choice were exercised. Sampled
+images and the direct framebuffer endpoint show intact models/text and return
+to the lab. The selection recording lost one OBS encoded frame (zero render
+drops, continuous decoded timestamps); it is used only for visual checkpoints,
+not selection cadence or audio equivalence. Separate idle captures passed
+recording quality and establish unchanged measured light cadence.
+
+Normal Save, soft-reset Continue and fresh-process cold Continue/party passed.
+Fresh-process Continue restores the Japanese neutral lab and Chikorita
+follower. Party shows male Chikorita at level 5 with 19/19 HP and localized
+selection/exit text, with no obvious visual corruption. The cold run leaves
+the saved file unchanged and does not enter the starter scene.
+
+The measured light period remains within one captured frame of control. Quality
+checks passed for both idle recordings and the game audio signal; human listening
+approval is not claimed. Raw timing/RAM/audio differences remain under the existing
+functional budget. Target checkpoints are imported from USA, not independent
+regional new-game playthroughs. Shared software collateral proof and this
+region’s native cold lab/party replay are reused; a separate regional software
+collateral pair is not claimed. Publications are not unique animation FPS or
+whole-game speed. Native cycle/frame-time percentile/DMA/cartridge counters
+remain unavailable.
+
+Private receipts: `IPGJ_STARTER_QUALIFICATION_V1.json` and
+`IPGJ_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
+eligible for explicit private catalog inclusion only after separate actual archive and launcher
+verification. Regional terrain remains unqualified.
+
 The next three porting areas after the starter qualification are:
 
 1. Relocate the HGSS terrain caller and its data/call dependencies; twelve
