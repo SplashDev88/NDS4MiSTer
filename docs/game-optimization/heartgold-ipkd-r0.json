@@ -11,7 +11,7 @@
   "arm9_crc32": "bd4cb6fa",
   "delivery": "append-decoded-overlays-v1",
   "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
-  "status": "bounded_native_qualified_private_catalog_eligible",
+  "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
   "patches": [
     {
       "id": "overlay61-starter-idle-identical-draw",
@@ -80,6 +80,70 @@
         "IPKD_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
         "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
         "IPKD_CANDIDATE1_SAVE_CONFIRMATION_CORRECTION_V1.json"
+      ]
+    },
+    {
+      "id": "overlay1-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 1,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21e58e0",
+      "overlay_file_id": 1,
+      "overlay_sha256": "41b9a8f3ae7393e90f0ef40e900019e19506fc1ae2440905039d0d9ba090139c",
+      "overlay_stored_sha256": "6eeaeb950b22daf35fc6bcd36e96f5cf4d1ec9ac887f8dabd0ad0ad77c8de8ba",
+      "addr": "0x21f5976",
+      "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6d7fd",
+      "replace": "a05902218902471878680ea9164a144b2af603f800280bd038000ea9124a104b29f6ddfdc046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21f59d8",
+          "expect": "b86b2002c46b2002"
+        },
+        {
+          "addr": "0x2206bb8",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x2206bc4",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "bounded_native_qualified",
+      "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+      "validated": {
+        "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+        "reference": "All9600 top hashes, all3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. One bottom hash differs at3188 during earlier menu brightening; raw RAM/audio/timing differences retained. Not full-run audiovisual bit-exactness or human approval.",
+        "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+        "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 702385380,
+          "candidate": 671811392,
+          "reduction_percent": 4.3528793267308625,
+          "frames": "6000-9599"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 18.64552346028983,
+          "candidate": 19.82712783595767
+        },
+        "native_publications_vs_original_percent": 6.337201410217053,
+        "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "IPKD_TERRAIN_REFERENCE_FINDINGS_V1.json",
+        "IPKD_TERRAIN_REFERENCE_REVIEW_V1.json",
+        "IPKD_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "IPKD_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+        "IPKD_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+        "IPKD_TERRAIN_QUALIFICATION_V1.json"
       ]
     }
   ]

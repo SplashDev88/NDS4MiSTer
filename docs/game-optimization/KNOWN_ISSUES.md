@@ -937,3 +937,11 @@ verified Korean footer-marker copies, not a distributed save conversion.
 All regional terrain results remain limited to the documented New Bark route;
 later areas, battles and human listening are unqualified. A separately verified
 cumulative archive is still required before delivery.
+
+German HeartGold terrain is qualified for the documented New Bark/home/Bag
+route only. Target screen pairs and save bytes match; one earlier menu frame
+and raw RAM/audio/timing differences remain. All four normal game-written save
+blocks validate, and reset/cold reload pass. The imported own-title checkpoint
+does not establish independent regional new-game progression. Later areas,
+battles and human listening remain unqualified. This source addition is absent
+from frozen Regional Beta5 and needs a separately verified cumulative package.

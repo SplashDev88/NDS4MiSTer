@@ -59,11 +59,13 @@ extracted code context or private resource is added to this source repository.
 
 ## Qualification and remaining work
 
-All twelve owned non-USA HGSS revision-0 starter ports are qualified and packaged
-in immutable Regional Beta4 R2. All six owned German, French, Italian, Spanish,
-Japanese and Korean SoulSilver revision-0 terrain ports are qualified separately
-and queued for a new cumulative private package. HeartGold terrain, Platinum
-and FFT A2 regional ports remain pending. No unowned revision or quarantined identity is admitted.
+All twelve owned non-USA HGSS revision-0 starter ports and all six owned German,
+French, Italian, Spanish, Japanese and Korean SoulSilver revision-0 terrain
+ports are packaged in immutable Regional Beta5. German HeartGold terrain is
+qualified separately for a later private package; the other five HeartGold
+terrain ports, Platinum and FFT A2 regional ports remain pending. No unowned
+revision or quarantined identity is admitted. Earlier dated sections retain
+their historical packaging status.
 
 Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
@@ -948,3 +950,72 @@ for this bounded route. Package and verify their cumulative images before the
 morning handoff. The next three porting areas are HeartGold terrain, Platinum
 regions/revisions and FFT A2 regions/revisions. Unknown or unowned identities
 remain unsupported.
+
+### German HeartGold terrain qualification, 2026-11-01
+
+`heartgold-ipkd-r0.json` retains the qualified starter patch and adds the guarded
+48-byte terrain visibility gate. Both remain disabled by default. The exported
+two-patch stream equals the tested cumulative native image. This addition is
+eligible for a later separately verified private package; frozen Regional Beta5
+is unchanged and does not contain regional HeartGold terrain.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 702,385,380 | 671,811,392 | −4.3529% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.6455 | 19.8271 | +6.3372% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 429 | 729 omitted |
+
+All 9,600 top hashes, all 3,600 target screen pairs, the initial 1,800 home/boot
+pairs and save bytes match cumulative decoded delivery. One bottom hash differs
+at frame 3188 during earlier menu brightening. Retained thumbnails cover that
+transition; its individual full-resolution frame was not captured. Seven paired
+full-resolution checkpoints preserve the home, town, player, NPCs, buildings,
+water and German menus. The existing visibility caller has identical query
+results; one unrelated wrapper draw differs by one call in the bounded window.
+
+Raw RAM/timing drift and 389,247 differing same-index stereo samples remain
+recorded. Both audio streams contain 7,702,322 stereo samples; maximum signed-16
+delta is 8,600 and RMS delta is 68.9661. These results are not whole-run
+audiovisual bit-exactness or human listening approval. Original versus decoded
+delivery has 68 top and 14 bottom differences before frame 1932, none in the
+target window, and exact saves. The earlier private delivery review incorrectly
+carried a SoulSilver camera-shift description; its V2 correction records this
+HeartGold evidence without inferring a camera shift.
+
+The native measurement is one clean 30-second window per separately cold-started
+arm at stock 1 GHz. Publications are not unique animation FPS, cycle counts or
+whole-game speed; no confidence interval or native decoded-control window is
+claimed. Host CPU was 3.396% versus 3.327% of one core; renderer CPU was 160.52%
+versus 162.14%. Review copies preserve game-audio packets and timestamps.
+Four sampled views per arm retain the same plaza and changing windmill poses.
+
+Home entry, German Bag, return outdoors, normal Save, soft-reset Continue and
+fresh-process cold field/Bag checks pass. The cold launch preserves the new
+save. All four general/storage block payload CRCs and international footer
+markers validate. MENU, stopped OBS, preserved settings and clear owned jobs
+are verified. The target fixtures are documented own-title USA HeartGold saves,
+not independent German new-game progression. Later areas, battles and human
+listening remain outside this bounded qualification.
+
+The accepted USA HeartGold and SoulSilver patches have matching original and
+replacement bytes and six bounded dependency spans. The HeartGold caller audit
+covers all 168 bytes, including its final literal. Each of the six regional
+HeartGold layouts has a separate 281-instruction/51-edge visibility-query proof:
+reached non-branch bytes match, direct calls resolve, changed globals preserve
+BSS-relative offsets, and MMIO/constants match. Runtime BSS values are not proved
+by this static audit. Regional expected bytes and 56 constant/pointer bytes remain
+guarded; the target-window write watch is clear. No scratch memory, runtime
+service, RTL change or repeated starter test is needed.
+
+Evidence: `IPKD_TERRAIN_QUALIFICATION_V1.json`,
+`IPKD_TERRAIN_BEFORE_AFTER_V1.csv`, `IPKD_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`IPKD_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json`, `IPKD_TERRAIN_COLD_VISUAL_REVIEW_V1.json`,
+`HEARTGOLD_BBOX_DEPENDENCY_AUDIT_V1.json` and
+`HEARTGOLD_TERRAIN_STATIC_CANDIDATES_V1.json`. Review videos:
+`HeartGold_German_Terrain_Original_V1.mp4` and
+`HeartGold_German_Terrain_Candidate_V1.mp4`.
+
+The next three porting areas are the remaining five HeartGold terrain regions
+(French next), Platinum regions/revisions, and FFT A2 regions/revisions. The
+French plan and guarded streams are prepared; its runtime qualification is
+pending. Existing owned-identity gates continue to exclude unknown revisions.

@@ -1902,3 +1902,15 @@ Unpatched admission of copied Korean-format test fixtures precedes native
 qualification; normal game-written saves retain valid Korean markers/CRCs.
 No new signature or repeated starter audit is needed. Evidence:
 `IPGK_TERRAIN_QUALIFICATION_V1.json`.
+
+German HeartGold IPKD transfers the same guarded terrain visibility gate with
+4.3529% fewer reference ARM9 entries and 6.3372% higher native fixed-plaza
+publication throughput. Its own six-region audit covers the full 168-byte caller
+and 281 reached instructions/51 direct edges of the visibility-query closure.
+Do not copy paired SoulSilver addresses: Spanish HeartGold's caller differs,
+and every title/region keeps its own overlay hash, expected bytes and guards.
+Static BSS-relative correspondence is not proof of runtime object values.
+Target screen pairs/save match; raw timing/audio differences remain. Native
+home/Bag/save/reset/cold checks pass. Reuse the existing detector and loader;
+no new signature or repeated starter audit is needed. Evidence:
+`IPKD_TERRAIN_QUALIFICATION_V1.json`, `HEARTGOLD_BBOX_DEPENDENCY_AUDIT_V1.json`.
