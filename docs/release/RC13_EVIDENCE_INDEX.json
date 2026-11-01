@@ -1,30 +1,17 @@
 {
-  "scope": "Provenance hashes for private bounded-validation records; see VALIDATION_RC13.md for the public summary",
-  "records": [
-    {
-      "record": "BETA2_INSTALLATION_QUALIFICATION_V1.json",
-      "sha256": "9a5b2adcc492facce8a21379e6d4f8003214613d4e868a79e6365891731084d8",
-      "included": false,
-      "location": "Maintainer local evidence"
-    },
-    {
-      "record": "BETA2_STREAM_VALIDATION.json",
-      "sha256": "19bc1c78b0b01f4e2585320389690e1a05cfd4fa04d537de84cd0d73c5630af1",
-      "included": false,
-      "location": "Maintainer local evidence"
-    },
-    {
-      "record": "NATIVE_DISPATCH_FINAL_PRESERVATION_V1.json",
-      "sha256": "f833e25c9b8dcd29ecb7fc1e8baa3caae63e94e12601c3dfb6f638af1e379020",
-      "included": false,
-      "location": "Maintainer local evidence"
-    },
-    {
-      "record": "BETA1_BATTLE_FOLLOWUP_ISSUE_V1.json",
-      "sha256": "171e985a2bb21429856c0a3d86d8aa3396619c5d722cd36edabd95d8d140a817",
-      "included": false,
-      "location": "Maintainer local evidence"
-    }
+  "baseline_archive_sha256": "6aad40a987eafb757e8e802c8247f7960f56b641b2881e14b0ca0d3c3f878e02",
+  "gameplay_validation_waived": [
+    "CPUI0",
+    "CPUS0",
+    "CPUJ0",
+    "CPUK0"
   ],
-  "published": false
+  "private_receipt_sha256": {
+    "FFTA2_REGIONS_QUALIFICATION_V1.json": "b3b80a76c14bdcb5c941cf77f8677961dbafdca296705a2fbfb701c5deff0886",
+    "ISSUE43_NATIVE_REVIEW_V1.json": "0a9aa4dacdb9364019e36b57998f29a521f84b2cf21fcf8dc0dd298b61a950a7",
+    "LOAD_PROGRESS_LOCAL_VALIDATION_V1.json": "a756019003f22e1441a4de7a83fd72759fb6d0256f35c8167238ea4687d5760d",
+    "REGIONAL_BETA9_INSTALLATION_QUALIFICATION_V1.json": "5262b42d854b9e445e732680d06b79bc592608452b01dc2e9dd6f8544e82a305",
+    "REGIONAL_BETA9_STREAM_VALIDATION.json": "c0707add04f195cbdb964f1d13f2f178fce249611046e8fa3cfdf67cfe105fff"
+  },
+  "scope": "Retained Beta9 and earlier bounded native/software evidence; not new RC13 gameplay runs."
 }

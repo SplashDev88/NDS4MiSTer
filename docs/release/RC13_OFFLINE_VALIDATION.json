@@ -1,25 +1,66 @@
 {
-  "state": "passed_prepackage_component_tests",
-  "python_suites": {
-    "HOST_PYTHON_TESTS.log": {
-      "tests": 63,
-      "status": "passed",
-      "sha256": "106fb47863c60b1659d86b42cdad4a2606d94b411ebb3a43c773bf6add1ebe8a"
-    },
-    "LOADER_PYTHON_TESTS.log": {
-      "tests": 128,
-      "status": "passed",
-      "sha256": "3e79d1f31941934c2ccce18f48490c4a90a807c21529a82cb6b25ddb6770f5f9"
-    }
+  "baseline_stream_validation": {
+    "archive_sha256": "6aad40a987eafb757e8e802c8247f7960f56b641b2881e14b0ca0d3c3f878e02",
+    "cases": [
+      {
+        "game": "CPUE_R0",
+        "image_sha256": "a71ab8e97fd6584c3d89af5c4edce290e95f423f019cf6c6fe899da1b9691805",
+        "matched_qualified_image": true,
+        "max_progress_step": 10,
+        "protocol_records": {
+          "0": 1,
+          "13": 513,
+          "7": 512,
+          "8": 1
+        },
+        "source_sha256": "ede62292aa7f7014ff27d42097e769753380531739889c29b968b67b80f80678",
+        "source_unchanged": true
+      },
+      {
+        "game": "A6FP",
+        "image_sha256": "f9beac8372ec07cd368265289673294d5be73af38935e9c4194f63f2e3735b59",
+        "matched_qualified_image": true,
+        "max_progress_step": 0,
+        "protocol_records": {
+          "0": 1,
+          "13": 1,
+          "8": 1
+        },
+        "source_sha256": "f9beac8372ec07cd368265289673294d5be73af38935e9c4194f63f2e3735b59",
+        "source_unchanged": true
+      },
+      {
+        "game": "PORTRAIT",
+        "image_sha256": "6fc4f85b95b7e0e20f13770d6fde50823422558285502a3f6be0d84bb52e914e",
+        "matched_qualified_image": true,
+        "max_progress_step": 200,
+        "protocol_records": {
+          "0": 1,
+          "13": 273,
+          "7": 257,
+          "8": 1
+        },
+        "source_sha256": "1174a36fd91f79e95e90b76aa1268af8fc09f69c04cc8e5b4ff791e872254abd",
+        "source_unchanged": true
+      },
+      {
+        "game": "NSMB",
+        "image_sha256": "ac461e06637cf8e7067b3830be3dbfa7520588fdd6e959311047d291b9d2653d",
+        "matched_qualified_image": true,
+        "max_progress_step": 40,
+        "protocol_records": {
+          "0": 1,
+          "13": 129,
+          "7": 130,
+          "8": 1
+        },
+        "source_sha256": "9f67fef1b4c73e966767f6153431ada3751dc1b0da2c70f386c14a5e3017f354",
+        "source_unchanged": true
+      }
+    ],
+    "state": "passed_actual_archive_guest_and_retained_movie_images"
   },
-  "host_cpp_tests": [
-    "test_fmv_rom_reader",
-    "test_host_framed"
-  ],
-  "host_cpp_status": "passed",
-  "renderer_compiled_inputs_unchanged_from": "70e35668b43a8da4f544324fbe13a42d2fee0ceb",
-  "generated_guest_inputs": "34 authenticated files restored from accepted beta before loader suite; initial checkout lacked ignored generated hook binary",
+  "current_release_archive_checks": "Generated externally after source commit as RC13_PACKAGE_VALIDATION.json and RC13_EXTRACTED_VALIDATION.json",
   "release_zip_hardware_launch": false,
-  "publication_performed": false,
-  "post_package_checks": "External RC13_PACKAGE_VALIDATION.json, RC13_EXTRACTED_VALIDATION.json and RC13_STREAM_VALIDATION.json are generated after the source commit and immutable ZIP."
+  "state": "retained_passed_beta9_component_and_actual_archive_checks"
 }

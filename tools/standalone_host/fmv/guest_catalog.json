@@ -501,6 +501,2398 @@
         "overlay1-terrain-visibility",
         "overlay61-starter-idle-identical-draw"
       ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver (Germany)",
+        "game_code": "IPGD",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "6d12843381c67b07df60bee52117b8b77259a161",
+        "header_crc32": "689cc317",
+        "rom_sha256": "7d3b9affa155d4a899bdb65deb36d927b733cc5b7cefa0f2064efda90938fd63",
+        "arm9_sha256": "d63064399e9e8f9d7b35843fc6816a75b00c6f2b135460a09be83fd612bd15ee",
+        "arm9_crc32": "6a4fe53d",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e58e0",
+            "overlay_file_id": 61,
+            "overlay_sha256": "fcae19adda16952828f5dd11fb536e1a060bea7d75938f2f72b1fe41e5c8946f",
+            "overlay_stored_sha256": "df4c3951c935dbae10a554dd70a0bb37de05793cea161c37bfc9ccbfe63956cd",
+            "addr": "0x21e5ed8",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted USA 88-byte starter-idle gate. No scratch, new service, RTL or ROM-file writes. Native throughput is screen-pair publication efficiency in this idle scene, not whole-game FPS. Target-scene tests use a documented imported checkpoint; independent German blank-save first-room and cold-repeat evidence is separate. Source remains default-disabled; explicit private catalog packaging is pending.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact owned identity, overlay61 hash, expected 88 bytes, branches, draw spans, assets and relocated synthetic calling contract checked.",
+              "framebuffer": "All 3600 idle screen pairs bit-exact versus unchanged delivery and original.",
+              "ram": "Raw timing/state differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Native captures contain game audio; no human audibility approval claimed.",
+              "save": "Native normal Save, soft-reset Continue and fresh-process cold Continue/party passed; selected Endivie intact and save unchanged by final cold session.",
+              "native": "Stock 1 GHz, one verified 30-second original/candidate idle window each. Both-direction rotation, all three species, cancellation, final Endivie choice and return to lab visually reviewed.",
+              "unrelated": "3600 first-room frames, full audio, save and instruction traces exact. 36 persistent metadata/startup RAM bytes and one frame of DTCM hash drift retained; no target overlay loaded.",
+              "scope": "Starter selection plus adjacent lab/save/cold-load and unrelated first-room replay. Imported USA pre-starter checkpoint explicitly retained; separate independent German blank-save first-room evidence exists.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 87222620,
+                "candidate": 43105090,
+                "reduction_percent": 50.58037697101967,
+                "frames": "1800-3599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.301182327161204,
+                "candidate": 43.96873562304914
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.96920449598852,
+                "candidate": 110.28824518781492
+              },
+              "native_light_period_seconds": {
+                "original": 3.4666666666664696,
+                "candidate": 3.4833333333331353
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGD_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPGD_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGD_ORIGINAL2_MEDIA_REVIEW.json",
+              "IPGD_CANDIDATE2_MEDIA_REVIEW.json",
+              "IPGD_CANDIDATE2_SELECTION_MEDIA_V1.json",
+              "IPGD_CANDIDATE2_LIFECYCLE_DONE.json",
+              "IPGD_STARTER_QUALIFICATION_V1.json",
+              "IPGD_UNRELATED_REFERENCE_REVIEW_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e58e0",
+            "overlay_file_id": 1,
+            "overlay_sha256": "d2beaa485f0f20c0dd2289d1b4d80240626ea408d547d25edcaabbb98356b9d7",
+            "overlay_stored_sha256": "f69edada1fb7bc628343a6b82ebecd7a3da5f3f7ba20a141598fb7c765ebdcdd",
+            "addr": "0x21f5976",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6d7fd",
+            "replace": "a05902218902471878680ea9164a144b2af603f800280bd038000ea9124a104b29f6ddfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f59d8",
+                "expect": "b86b2002c46b2002"
+              },
+              {
+                "addr": "0x2206bb8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206bc4",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All9600 top hashes and all3600 target screen pairs match cumulative decoded delivery. One earlier bottom-screen frame and raw RAM/audio/timing differences retained; save exact. Initial1800 home/boot screen pairs also match.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702350657,
+                "candidate": 671789121,
+                "reduction_percent": 4.351321621957283,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.771370833741752,
+                "candidate": 19.94761700321843
+              },
+              "native_publications_vs_original_percent": 6.266170861439502,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGD_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPGD_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPGD_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGD_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPGD_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPGD_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver (France)",
+        "game_code": "IPGF",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "4aea83ea49e1b602c7af2f32c92d8d115cf2f61b",
+        "header_crc32": "ca5fa4e3",
+        "rom_sha256": "bd224ab12e954c6469abcad66415a3dbeda68cebb14f66db4e29f4460f7502ca",
+        "arm9_sha256": "4a5093c9e658c1825f2a3496d31ccfaef974484c33f7f243a7acd52005babef5",
+        "arm9_crc32": "80591d29",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e5920",
+            "overlay_file_id": 61,
+            "overlay_sha256": "2479cf8373f781d088df30ef3f6efbd87d15ce4586f33f00a819bfec74790797",
+            "overlay_stored_sha256": "c2338404e1d4b82236e2a5d9ee786461ebbbceff9bd32fe334dd8a74cc8cc04f",
+            "addr": "0x21e5f18",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Native game-audio signal/capture checks pass; no human audibility approval claimed.",
+              "native": "All three localized species (Germignon, Hericendre, Kaiminus), rotation both directions, inspect/cancel/confirm, final Germignon choice and return to lab visually reviewed.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Final fresh-process cold Continue/party input replay stays in the lab/menu and does not enter starter selection. Existing shared loader/code proofs and German unrelated replay are reused; no separate French software collateral replay is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for French target-scene A/B and compatibility only. This does not establish independent French new-game progression.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87221604,
+                "DELIVERY": 87221604,
+                "CANDIDATE": 43098689
+              },
+              "reference_instruction_reduction_percent": 50.587140085155966,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.23594945910715,
+                "candidate": 42.77493443454497
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.7177249303247,
+                "candidate": 110.30203108471837
+              },
+              "native_light_period_seconds": {
+                "original": 3.4666666666664696,
+                "candidate": 3.4833333333331353
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGF_STARTER_QUALIFICATION_V1.json",
+              "IPGF_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPGF_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGF_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPGF_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPGF_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPGF_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPGF_COLD_VISUAL_REVIEW_V1.json",
+              "IPGF_COLD1_STOP.json",
+              "IPGF_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPGF_STARTER_VARIANTS_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e5920",
+            "overlay_file_id": 1,
+            "overlay_sha256": "89027958b02a503446a79265074bcce4fa638b304872a445390c653f44b9901a",
+            "overlay_stored_sha256": "c98350f4d7437b6c317d523e865220c6727aa46d090ca052e9d0f5870298b66b",
+            "addr": "0x21f59b6",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6b7fd",
+            "replace": "a05902218902471878680ea9164a144b29f6e3ff00280bd038000ea9124a104b29f6bdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f5a18",
+                "expect": "f86b2002046c2002"
+              },
+              {
+                "addr": "0x2206bf8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206c04",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All9600 top hashes and all3600 target screen pairs match cumulative decoded delivery. One earlier bottom-screen frame and raw RAM/audio/timing differences retained; save exact. Initial1800 home/boot screen pairs also match.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702309826,
+                "candidate": 671751984,
+                "reduction_percent": 4.351048621096753,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.75843714281317,
+                "candidate": 19.804924552896583
+              },
+              "native_publications_vs_original_percent": 5.57875585325267,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGF_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPGF_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPGF_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGF_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPGF_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPGF_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver (Italy)",
+        "game_code": "IPGI",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "1f3868005aefaeee141bad01b00e096942251163",
+        "header_crc32": "ee555edb",
+        "rom_sha256": "deae3fa3ffc4456aaf922b5dfe4b238a15d36a821c1f79c9afdce8a7be58e85e",
+        "arm9_sha256": "dd6d55d6367e677abefb90e000d37b517ae476d61fed22b996c9c66acdd9022c",
+        "arm9_crc32": "b89b804c",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e58a0",
+            "overlay_file_id": 61,
+            "overlay_sha256": "0855ec32326125c614a988b3aa0e5151627a4e4fa072cf7841304305182326b9",
+            "overlay_stored_sha256": "04eb651a89b86d5c0f5618f1bc1ede3e3002d69cabf877b2d34bbfa3bb9c0946",
+            "addr": "0x21e5e98",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Native game-audio signal/capture checks pass; no human audibility approval claimed.",
+              "native": "Italian Chikorita/Cyndaquil/Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita selection exercised. Sampled images show correct models, Italian text and return to lab with follower.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save Continue to lab and party input replay never enters starter scene; common delivery/static evidence and German independent unrelated software replay are reused. No separate Italian software collateral pair or full playthrough claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for Italian target-scene A/B and compatibility only; not independent Italian new-game progression.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87222076,
+                "DELIVERY": 87222076,
+                "CANDIDATE": 43099161
+              },
+              "reference_instruction_reduction_percent": 50.58686633416063,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.283123552027442,
+                "candidate": 44.801265161483876
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 162.0304108995113,
+                "candidate": 110.03936301921671
+              },
+              "native_light_period_seconds": {
+                "original": 3.4833333333331353,
+                "candidate": 3.4833333333331353
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGI_STARTER_QUALIFICATION_V1.json",
+              "IPGI_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPGI_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGI_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPGI_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPGI_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPGI_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPGI_COLD_VISUAL_REVIEW_V1.json",
+              "IPGI_COLD1_STOP.json",
+              "IPGI_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPGI_STARTER_VARIANTS_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e58a0",
+            "overlay_file_id": 1,
+            "overlay_sha256": "3c5139ad2b29bab1a3268cad205758cb51dcfdd383a20299ad2a7d534da470e2",
+            "overlay_stored_sha256": "a62796ab4d55239def2c48779bccc1b4bd1555c31819372355a62103df12c10f",
+            "addr": "0x21f5936",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6f7fd",
+            "replace": "a05902218902471878680ea9164a144b2af623f800280bd038000ea9124a104b29f6fdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f5998",
+                "expect": "786b2002846b2002"
+              },
+              {
+                "addr": "0x2206b78",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206b84",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All1800 initial home/boot screen pairs and save bytes match cumulative decoded delivery. Of9600 frames,4482 top and8 bottom hashes differ;2495 top hashes differ in3600 target frames and all target bottom hashes match. Early transition differences match the next control frame except one later menu-brightening frame.1394 target pairs remain unmatched within eight control frames. Sampled full-resolution town views retain terrain, buildings, player and NPCs with animation-phase differences. Raw RAM/audio/timing differences retained; not bit-exact or human-approved. Functional-budget native qualification required.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702347452,
+                "candidate": 671810303,
+                "reduction_percent": 4.3478692651397255,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.88142394609253,
+                "candidate": 19.894782696326686
+              },
+              "native_publications_vs_original_percent": 5.366961480910293,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGI_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPGI_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPGI_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGI_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPGI_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPGI_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver (Spain)",
+        "game_code": "IPGS",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "e497c1a6cd5ba679d19d90f7c9ef25ff90ff8b5d",
+        "header_crc32": "6bf88c86",
+        "rom_sha256": "c1573ed5e01051e85310c3210d01629c338dfd12a92b8bfff72e560e62f2cf4b",
+        "arm9_sha256": "de6ae6fa560960aef6e23e1dee412d43a65d10e75ea0f827649b4c0efaa71b53",
+        "arm9_crc32": "bac93d79",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e5940",
+            "overlay_file_id": 61,
+            "overlay_sha256": "2cf9e4fb2dec790f0ec2cab346b9ed91dc2f990683e5ea300dae75b5d37e6720",
+            "overlay_stored_sha256": "7f9deb1e36532ab9dd6270b94bce6d55c6866eee8a4a7e831b66e81273373858",
+            "addr": "0x21e5f38",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Native game-audio signal/capture checks pass; no human audibility approval claimed.",
+              "native": "Spanish Chikorita/Cyndaquil/Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice exercised; sampled images show intact models/text and return to lab with follower.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save Continue to lab and party input replay does not enter starter scene. Shared delivery/static proof and German independent unrelated software replay are reused; no separate Spanish software collateral pair or full playthrough claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for Spanish target-scene A/B and compatibility only; not independent Spanish new-game progression.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87221604,
+                "DELIVERY": 87221604,
+                "CANDIDATE": 43098689
+              },
+              "reference_instruction_reduction_percent": 50.587140085155966,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.172339971629192,
+                "candidate": 43.20245719093538
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.784247140922,
+                "candidate": 110.58763135998879
+              },
+              "native_light_period_seconds": {
+                "original": 3.4833333333331353,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGS_STARTER_QUALIFICATION_V1.json",
+              "IPGS_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPGS_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGS_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPGS_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPGS_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPGS_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPGS_COLD_VISUAL_REVIEW_V1.json",
+              "IPGS_COLD1_STOP.json",
+              "IPGS_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPGS_STARTER_VARIANTS_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e5940",
+            "overlay_file_id": 1,
+            "overlay_sha256": "47c7087f1897999cfb54f76be9ee1eedd6a07f4e8990a0eb246f610bab94f90b",
+            "overlay_stored_sha256": "5b68efdb01f5cd720b9a058a3572bc4573347fed0743e9bd44228caa04ccdf40",
+            "addr": "0x21f59d6",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6a7fd",
+            "replace": "a05902218902471878680ea9164a144b29f6d3ff00280bd038000ea9124a104b29f6adfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f5a38",
+                "expect": "186c2002246c2002"
+              },
+              {
+                "addr": "0x2206c18",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206c24",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All9600 top hashes, all3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. One bottom hash differs at3188 during earlier menu brightening; raw RAM/audio/timing differences retained. Not full-run audiovisual bit-exactness or human approval.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702350848,
+                "candidate": 671768698,
+                "reduction_percent": 4.3542554390138655,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.648199274425302,
+                "candidate": 19.68051921351599
+              },
+              "native_publications_vs_original_percent": 5.535762053478499,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGS_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPGS_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPGS_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGS_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPGS_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPGS_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver (Japan)",
+        "game_code": "IPGJ",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "2e64f26b2c8e377d276abf3531020ea8ccd2ffd8",
+        "header_crc32": "f0f072e7",
+        "rom_sha256": "a6abac6b4bada789bddf4a96ff63f1d1f3d99662f0976b088d3d035ac69beaa0",
+        "arm9_sha256": "683391140640389d856aeec2dd9dfb1750ee670719b95a6813f024c64bc4c90e",
+        "arm9_crc32": "b6eb1a81",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e4e40",
+            "overlay_file_id": 61,
+            "overlay_sha256": "cab46abffcb9704dcbe9f4476a552e7dc602c92a2dcf565cc37e7f1ae3d24451",
+            "overlay_stored_sha256": "19d3a2178aa6b2719b2b265ebb661cd5d1a49c611ae159630ef4490f94a99443",
+            "addr": "0x21e5438",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "Japanese Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Sampled images and the direct framebuffer endpoint show intact models/text and return to the lab. The selection recording lost one OBS encoded frame (zero render drops, continuous decoded timestamps); it is used only for visual checkpoints, not selection cadence or audio equivalence. Separate idle captures passed recording quality and establish unchanged measured light cadence.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Shared delivery/static proof and German unrelated software replay are reused; no separate Japanese software collateral pair or full playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Retained verified USA native pre-starter checkpoint, imported for Japanese target-scene A/B and compatibility only; not independent Japanese new-game progression.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87456282,
+                "DELIVERY": 87456282,
+                "CANDIDATE": 43334237
+              },
+              "reference_instruction_reduction_percent": 50.45040103579981,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.262581462405096,
+                "candidate": 43.75891051724931
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.67583601789275,
+                "candidate": 110.86256705625796
+              },
+              "native_light_period_seconds": {
+                "original": 3.4666666666664696,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGJ_STARTER_QUALIFICATION_V1.json",
+              "IPGJ_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPGJ_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGJ_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPGJ_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPGJ_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPGJ_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPGJ_COLD_VISUAL_REVIEW_V1.json",
+              "IPGJ_COLD1_STOP.json",
+              "IPGJ_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPGJ_STARTER_VARIANTS_V1.json",
+              "IPGJ_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "IPGJ_CANDIDATE1_SELECTION_ENCODING_GAP_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e4e40",
+            "overlay_file_id": 1,
+            "overlay_sha256": "19345c76304eb7210d89779db687f1df4a0489d4b77abba454752931e40a944a",
+            "overlay_stored_sha256": "e0967b7daa6d99affa5206f80989d561db33eda79ab08be00be9e393936ffbbc",
+            "addr": "0x21f4d5e",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa2af63dfa",
+            "replace": "a05902218902471878680ea9164a144b2af669fc00280bd038000ea9124a104b2af643fac046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f4dc0",
+                "expect": "8c5f2002985f2002"
+              },
+              {
+                "addr": "0x2205f8c",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2205f98",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. Two earlier top hashes differ at2025/2031 during scene brightening and one bottom hash at3187 during menu brightening; these do not match adjacent control hashes within two frames. Seven paired full-resolution checkpoints and retained transition thumbnails preserve the expected scene. Raw RAM/audio/timing differences retained; not full-run bit-exactness or human approval.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 703823938,
+                "candidate": 672998062,
+                "reduction_percent": 4.379770896624436,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.75305841124146,
+                "candidate": 19.54776741741288
+              },
+              "native_publications_vs_original_percent": 4.237756790087288,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGJ_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPGJ_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPGJ_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGJ_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPGJ_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPGJ_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon SoulSilver (Korea)",
+        "game_code": "IPGK",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "7e7874739c47a74ab36a5ad10f14f7bfc3e36410",
+        "header_crc32": "8a20aef7",
+        "rom_sha256": "abb6ddcac6abaa5f99806a636410d21b8648d84fcf0277c826f20929794bdfdd",
+        "arm9_sha256": "f09d0460c5678e1cd5611fd9d6426f7c11741f6e375ef0574775ea710951b8f6",
+        "arm9_crc32": "a06738bd",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e6300",
+            "overlay_file_id": 61,
+            "overlay_sha256": "974d75cdea5087c35ecbd6cad0ab107b26550060d8645c85a099bdd655d028d0",
+            "overlay_stored_sha256": "e7b717663bef1535ce6ac44a0c71beaac3211cf0e89a6f8cc6f31d6407e71509",
+            "addr": "0x21e68f8",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "Korean Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Clean selection recording and independent framebuffer endpoint show intact localized models/text and return to the lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Shared delivery/static proof and German unrelated software replay are reused; no separate Korean software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA native pre-starter checkpoint imported through a disposable Korean save-footer magic conversion (12 changed bytes, payload/CRCs untouched); not independent Korean new-game progression.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 86762900,
+                "DELIVERY": 86762900,
+                "CANDIDATE": 42642671
+              },
+              "reference_instruction_reduction_percent": 50.85149182427051,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.314180109128865,
+                "candidate": 43.86744813813602
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.85010160601055,
+                "candidate": 110.35144698682204
+              },
+              "native_light_period_seconds": {
+                "original": 3.4833333333331353,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGK_STARTER_QUALIFICATION_V1.json",
+              "IPGK_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPGK_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGK_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPGK_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPGK_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPGK_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPGK_COLD_VISUAL_REVIEW_V1.json",
+              "IPGK_COLD1_STOP.json",
+              "IPGK_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPGK_STARTER_VARIANTS_V1.json",
+              "IPGK_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "IPGK_IMPORTED_SAVE_CONVERSION_V1.json",
+              "IPGK_NATIVE_SAVE_FOOTERS_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e6300",
+            "overlay_file_id": 1,
+            "overlay_sha256": "d8225539b4adb5eb0be1dbb29319a07d08a17ec83d999a6a667aabc6b6a3f0b7",
+            "overlay_stored_sha256": "fa28e1fa5b9361c3b0624a0034f3026ee403bbddeeb3e79dae6d49a92d30fa4b",
+            "addr": "0x21f6396",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f693f8",
+            "replace": "a05902218902471878680ea9164a144b29f6bffa00280bd038000ea9124a104b29f699f8c046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f63f8",
+                "expect": "d8752002e4752002"
+              },
+              {
+                "addr": "0x22075d8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x22075e4",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All9600 top hashes, all3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. One bottom hash differs at3187 during earlier menu brightening; raw RAM/audio/timing differences retained. Not full-run audiovisual bit-exactness or human approval.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 703609149,
+                "candidate": 672891217,
+                "reduction_percent": 4.365766426382834,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.72230820014783,
+                "candidate": 19.599055670112925
+              },
+              "native_publications_vs_original_percent": 4.682902666660382,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPGK_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPGK_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPGK_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPGK_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPGK_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPGK_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold (Germany)",
+        "game_code": "IPKD",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "d50af41ce716eddf4e432b809123c564cc551d99",
+        "header_crc32": "c04ca0be",
+        "rom_sha256": "cd31f3185db0cba00c388ae67b575f9af5c9a79ec134e7a2a55102e80b12fb68",
+        "arm9_sha256": "8327a5fe5aa24faa5016fbc90a6311ac6224c54c2afa93608e4bc2f5478ec20a",
+        "arm9_crc32": "bd4cb6fa",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e58e0",
+            "overlay_file_id": 61,
+            "overlay_sha256": "fcae19adda16952828f5dd11fb536e1a060bea7d75938f2f72b1fe41e5c8946f",
+            "overlay_stored_sha256": "df4c3951c935dbae10a554dd70a0bb37de05793cea161c37bfc9ccbfe63956cd",
+            "addr": "0x21e5ed8",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "German HeartGold Endivie, Feurigel and Karnimani previews, both rotations, inspect/cancel/confirm and final Endivie choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. The accepted USA HeartGold matched3600-frame off-target proof is reused for the shared unchanged gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new German software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported unchanged for German target-scene compatibility/A-B; not independent German new-game progression. Uses HeartGold approach/input route and game index 4.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87225014,
+                "DELIVERY": 87225014,
+                "CANDIDATE": 43101630
+              },
+              "reference_instruction_reduction_percent": 50.58570010662309,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.216445468482274,
+                "candidate": 43.580530810393704
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.7411992643721,
+                "candidate": 110.78384170073323
+              },
+              "native_light_period_seconds": {
+                "original": 3.4666666666664696,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKD_STARTER_QUALIFICATION_V1.json",
+              "IPKD_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPKD_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKD_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPKD_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPKD_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPKD_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPKD_COLD_VISUAL_REVIEW_V1.json",
+              "IPKD_COLD1_STOP.json",
+              "IPKD_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPKD_STARTER_VARIANTS_V1.json",
+              "IPKD_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
+              "IPKD_CANDIDATE1_SAVE_CONFIRMATION_CORRECTION_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e58e0",
+            "overlay_file_id": 1,
+            "overlay_sha256": "41b9a8f3ae7393e90f0ef40e900019e19506fc1ae2440905039d0d9ba090139c",
+            "overlay_stored_sha256": "6eeaeb950b22daf35fc6bcd36e96f5cf4d1ec9ac887f8dabd0ad0ad77c8de8ba",
+            "addr": "0x21f5976",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6d7fd",
+            "replace": "a05902218902471878680ea9164a144b2af603f800280bd038000ea9124a104b29f6ddfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f59d8",
+                "expect": "b86b2002c46b2002"
+              },
+              {
+                "addr": "0x2206bb8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206bc4",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All9600 top hashes, all3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. One bottom hash differs at3188 during earlier menu brightening; raw RAM/audio/timing differences retained. Not full-run audiovisual bit-exactness or human approval.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702385380,
+                "candidate": 671811392,
+                "reduction_percent": 4.3528793267308625,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.64552346028983,
+                "candidate": 19.82712783595767
+              },
+              "native_publications_vs_original_percent": 6.337201410217053,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKD_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPKD_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPKD_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKD_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPKD_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPKD_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold (France)",
+        "game_code": "IPKF",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "57b21b4aef04e25e1e9e44998801563cfd6e55d5",
+        "header_crc32": "ff5edb64",
+        "rom_sha256": "ee540ea4eff5268e8b7a85bc63db654c627dd82c25ebe921211870646b25356a",
+        "arm9_sha256": "391b8355eda64151d185f8e8836ef5f184b9ed3cfe6cc2ea00efd5bac297e7b1",
+        "arm9_crc32": "0dcb32e2",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e5920",
+            "overlay_file_id": 61,
+            "overlay_sha256": "2479cf8373f781d088df30ef3f6efbd87d15ce4586f33f00a819bfec74790797",
+            "overlay_stored_sha256": "c2338404e1d4b82236e2a5d9ee786461ebbbceff9bd32fe334dd8a74cc8cc04f",
+            "addr": "0x21e5f18",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "French HeartGold Germignon, Hericendre and Kaiminus previews, both rotation directions, inspect/cancel/confirm and final Germignon choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new French software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported unchanged for France target-scene compatibility/A-B; not independent regional new-game progression. Uses HeartGold approach/input route and game index 4.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87223806,
+                "DELIVERY": 87223806,
+                "CANDIDATE": 43100688
+              },
+              "reference_instruction_reduction_percent": 50.58609572712294,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.151355037355255,
+                "candidate": 43.16062984738764
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 162.05798815719535,
+                "candidate": 110.13287261212263
+              },
+              "native_light_period_seconds": {
+                "original": 3.4666666666664696,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKF_STARTER_QUALIFICATION_V1.json",
+              "IPKF_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPKF_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKF_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPKF_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPKF_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPKF_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPKF_COLD_VISUAL_REVIEW_V1.json",
+              "IPKF_COLD1_STOP.json",
+              "IPKF_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPKF_STARTER_VARIANTS_V1.json",
+              "IPKF_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e5920",
+            "overlay_file_id": 1,
+            "overlay_sha256": "6226d25232f5a7dcacbfb9394aaf796bef4e3ebc94f7075dd6206bd354a49d9f",
+            "overlay_stored_sha256": "3df25ad41c4b9edb1a3adec49df90eb2143a3fec443789cdc5eea6e3d90fad6a",
+            "addr": "0x21f59b6",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6b7fd",
+            "replace": "a05902218902471878680ea9164a144b29f6e3ff00280bd038000ea9124a104b29f6bdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f5a18",
+                "expect": "f86b2002046c2002"
+              },
+              {
+                "addr": "0x2206bf8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206c04",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All9600 top hashes, all3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. One bottom hash differs at3188 during earlier menu brightening; raw RAM/audio/timing differences retained. Not full-run audiovisual bit-exactness or human approval.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702433607,
+                "candidate": 671847033,
+                "reduction_percent": 4.354372241759785,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.82697762876247,
+                "candidate": 19.570329673038405
+              },
+              "native_publications_vs_original_percent": 3.948334453535951,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKF_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPKF_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPKF_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKF_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPKF_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPKF_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold (Italy)",
+        "game_code": "IPKI",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "c61d72cd94094904ef18e0d903fa290e4a015435",
+        "header_crc32": "510faf3d",
+        "rom_sha256": "013d04f5512b01ad98735a5f850dc039f0ee80bc57035b3a10e8b650be690ce1",
+        "arm9_sha256": "2a460d2f86cae9353fdc301b225d04d8f3f555cba106094f55fe2c188947f726",
+        "arm9_crc32": "2205c063",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e58a0",
+            "overlay_file_id": 61,
+            "overlay_sha256": "0855ec32326125c614a988b3aa0e5151627a4e4fa072cf7841304305182326b9",
+            "overlay_stored_sha256": "04eb651a89b86d5c0f5618f1bc1ede3e3002d69cabf877b2d34bbfa3bb9c0946",
+            "addr": "0x21e5e98",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "Italian HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new Italian software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported unchanged for Italy target-scene compatibility/A-B; not independent regional new-game progression. Uses HeartGold approach/input route and game index 4.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87220281,
+                "DELIVERY": 87220281,
+                "CANDIDATE": 43097605
+              },
+              "reference_instruction_reduction_percent": 50.58763339687016,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.133952682925386,
+                "candidate": 44.37018688019888
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.5926496149046,
+                "candidate": 110.4258029338283
+              },
+              "native_light_period_seconds": {
+                "original": 3.4833333333331353,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKI_STARTER_QUALIFICATION_V1.json",
+              "IPKI_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPKI_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKI_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPKI_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPKI_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPKI_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPKI_COLD_VISUAL_REVIEW_V1.json",
+              "IPKI_COLD1_STOP.json",
+              "IPKI_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPKI_STARTER_VARIANTS_V1.json",
+              "IPKI_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
+              "IPKI_PATTERN_LIBRARY_REUSE_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e58a0",
+            "overlay_file_id": 1,
+            "overlay_sha256": "2aa3e02e2e02da56b6bc8b95b94a84b51535ed5e57889bb5e5da58db68bcd0b6",
+            "overlay_stored_sha256": "623ed37e114d7f0459000e15f1205a58a8083291220d255e4b77d44d80f75fe8",
+            "addr": "0x21f5936",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6f7fd",
+            "replace": "a05902218902471878680ea9164a144b2af623f800280bd038000ea9124a104b29f6fdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f5998",
+                "expect": "786b2002846b2002"
+              },
+              {
+                "addr": "0x2206b78",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206b84",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All1800 initial home/boot screen pairs and save bytes match cumulative decoded delivery. Of9600 frames,4315 top and8 bottom hashes differ;2327 top hashes differ in3600 target frames and all target bottom hashes match. Early transition differences match the next control frame except later menu frame3187.1060 target pairs remain unmatched within eight neighboring control frames. Sampled full-resolution town views retain terrain, buildings, player and NPCs with animation-phase differences. Raw RAM/audio/timing differences retained; not bit-exact or human-approved. Functional-budget native qualification required.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 702433057,
+                "candidate": 671825027,
+                "reduction_percent": 4.357430177150679,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 19.00740178341864,
+                "candidate": 19.823938995029874
+              },
+              "native_publications_vs_original_percent": 4.295890732017615,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKI_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPKI_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPKI_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKI_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPKI_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPKI_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold (Spain)",
+        "game_code": "IPKS",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "3f82f047e6d1a0999b34db9d6d31f8f3c69995c3",
+        "header_crc32": "02d72917",
+        "rom_sha256": "c1c6ecfbb602cc7676b277e1c533a1ef0d80af238fca237e6d34ad83d230660a",
+        "arm9_sha256": "722ccc6d0b645cc95e2aaab2674f468f348f1791f96f27cbd999250cf90f4cc8",
+        "arm9_crc32": "4250e412",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e5920",
+            "overlay_file_id": 61,
+            "overlay_sha256": "9d3fc583798f7b3fd9e502ceb720d5ef05ccacfc42a6b8f4d585ef5d942f4d28",
+            "overlay_stored_sha256": "1292279e33bc69653d2a2ee7e4646a40cbae1d891a49802672cc4885403d514a",
+            "addr": "0x21e5f18",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "Spanish HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new Spanish software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported unchanged for Spain target-scene compatibility/A-B; not independent regional new-game progression. Uses HeartGold approach/input route and game index 4.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87456700,
+                "DELIVERY": 87456700,
+                "CANDIDATE": 43334223
+              },
+              "reference_instruction_reduction_percent": 50.45065386642762,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.109081429973562,
+                "candidate": 44.484247398165266
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 162.10504617073153,
+                "candidate": 110.61127983286303
+              },
+              "native_light_period_seconds": {
+                "original": 3.4666666666664696,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKS_STARTER_QUALIFICATION_V1.json",
+              "IPKS_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPKS_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKS_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPKS_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPKS_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPKS_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPKS_COLD_VISUAL_REVIEW_V1.json",
+              "IPKS_COLD1_STOP.json",
+              "IPKS_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPKS_STARTER_VARIANTS_V1.json",
+              "IPKS_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
+              "IPKS_PATTERN_LIBRARY_REUSE_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e5920",
+            "overlay_file_id": 1,
+            "overlay_sha256": "b5d08c2e2f6bbd69cef46c6c8cc58cda78e62824920e61feb8c80869e66c0b74",
+            "overlay_stored_sha256": "eb176f34288210b0a0ba7999e5fc6e139816708e0cfc0ed0d9958b9eb3d8c8e0",
+            "addr": "0x21f59b6",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f6b7fd",
+            "replace": "a05902218902471878680ea9164a144b29f6e3ff00280bd038000ea9124a104b29f6bdfdc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f5a18",
+                "expect": "f86b2002046c2002"
+              },
+              {
+                "addr": "0x2206bf8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2206c04",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All3600 target screen pairs, initial1800 home/boot pairs and save bytes match cumulative decoded delivery. Of9600 frames, one earlier top hash at2029 and one bottom hash at3189 differ. Frame2029 matches the next control pair; menu frame3189 remains unmatched within eight neighboring frames. Sampled full-resolution home/town views retain terrain, buildings, player, NPCs and menus. Raw RAM/audio/timing differences retained; not full-run bit-exactness or human approval. Functional-budget native qualification required.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 703699739,
+                "candidate": 672956977,
+                "reduction_percent": 4.3687328978816105,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.760493897269658,
+                "candidate": 19.662014749236878
+              },
+              "native_publications_vs_original_percent": 4.805421738381965,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKS_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPKS_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPKS_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKS_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPKS_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPKS_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold (Japan)",
+        "game_code": "IPKJ",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "89caef3cc39beaa586ba1988397c6c1cfc6aae93",
+        "header_crc32": "8ae9c715",
+        "rom_sha256": "24aa2207ed9d6f44869197e8c70a580b738ebe4064a68c99105651d88453a0f1",
+        "arm9_sha256": "713d99c0f2a698dbc37ea40bedd841f3a6ae3d4fc8f7669e13f669afe7576a47",
+        "arm9_crc32": "3482b534",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e4e40",
+            "overlay_file_id": 61,
+            "overlay_sha256": "cab46abffcb9704dcbe9f4476a552e7dc602c92a2dcf565cc37e7f1ae3d24451",
+            "overlay_stored_sha256": "19d3a2178aa6b2719b2b265ebb661cd5d1a49c611ae159630ef4490f94a99443",
+            "addr": "0x21e5438",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "Japanese HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new Japanese software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported unchanged for Japan target-scene compatibility/A-B; not independent regional new-game progression. Uses HeartGold approach/input route and game index 4.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 87455193,
+                "DELIVERY": 87455193,
+                "CANDIDATE": 43333303
+              },
+              "reference_instruction_reduction_percent": 50.45085201515707,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.327955541137143,
+                "candidate": 44.618934111799064
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 162.48299582414552,
+                "candidate": 110.04893823842977
+              },
+              "native_light_period_seconds": {
+                "original": 3.4833333333331353,
+                "candidate": 3.4666666666664696
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKJ_STARTER_QUALIFICATION_V1.json",
+              "IPKJ_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPKJ_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKJ_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPKJ_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPKJ_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPKJ_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPKJ_COLD_VISUAL_REVIEW_V1.json",
+              "IPKJ_COLD1_STOP.json",
+              "IPKJ_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPKJ_STARTER_VARIANTS_V1.json",
+              "IPKJ_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
+              "IPKJ_PATTERN_LIBRARY_REUSE_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e4e40",
+            "overlay_file_id": 1,
+            "overlay_sha256": "110d6ce74ff70ea909bd38350f67fad8f57a4b49fdc7ba1024577fd2c5413967",
+            "overlay_stored_sha256": "867c358f579583aa0280f614c0e4c34c66330440b0767056e500c81c4bd5f81b",
+            "addr": "0x21f4d5e",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa2af63dfa",
+            "replace": "a05902218902471878680ea9164a144b2af669fc00280bd038000ea9124a104b2af643fac046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f4dc0",
+                "expect": "8c5f2002985f2002"
+              },
+              {
+                "addr": "0x2205f8c",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x2205f98",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "All 3600 target screen pairs, initial 1800 home/boot pairs and save bytes match cumulative decoded delivery. Of 9600 frames, one earlier top hash at 2026 and one bottom hash at 3188 differ; both pairs remain unmatched within eight neighboring frames. Sampled full-resolution home/town views retain terrain, buildings, player, NPCs and menus. Raw RAM/audio/timing differences retained; not full-run bit-exactness or human approval. Functional-budget native qualification required.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 703847573,
+                "candidate": 673008601,
+                "reduction_percent": 4.381484455299811,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.845481182908326,
+                "candidate": 19.534039530505947
+              },
+              "native_publications_vs_original_percent": 3.653705314895861,
+              "scope": "Two 30-second verified cold-start windows per arm at stock 1 GHz, pooled using total pairs / total seconds. Initial pair retained; one extra pair predeclared for a borderline result. Publications are not unique animation FPS, cycle counts or whole-game speed. No native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKJ_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPKJ_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPKJ_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V2.json",
+              "IPKJ_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPKJ_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPKJ_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "title": "Pokemon HeartGold (Korea)",
+        "game_code": "IPKK",
+        "revision": 0,
+        "header_bytes": 352,
+        "header_sha1": "24427d5acc98bb7686d815bbbd9819a2d50dafb3",
+        "header_crc32": "f34681fa",
+        "rom_sha256": "66e34019c30fb0d77c530ebc254a0ac94b6fba1a73e0a1bd0bfb57dc6f475658",
+        "arm9_sha256": "a7af9696d570c1d4dd4a47024964fe0d204229c435d539461ed8f6fc8eb729d1",
+        "arm9_crc32": "6cf0de3a",
+        "delivery": "append-decoded-overlays-v1",
+        "budget": "Existing functional/perceptual budget; preserve raw differences and require progression/save integrity and measured benefit.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay61-starter-idle-identical-draw",
+            "pattern": "identical-idle-display-list",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 61,
+            "overlay_ram": "0x21e6300",
+            "overlay_file_id": 61,
+            "overlay_sha256": "4a766c535d7957bb8e549040baaec072a3c66c7443cde9f479143d46fff119ed",
+            "overlay_stored_sha256": "0d14d6d6a337d7af059348065a27cf9748e7b050ba39863d6a8097c8060a68a7",
+            "addr": "0x21e68f8",
+            "mode": "thumb",
+            "expect": "11e0022803d1201c00f0c8fc0be0d1218900605800220260081c083020581031026060580260da20800023185a68012011680003081810605a689068116880880003814201db00201060201c00f05af9002010b0f8bdc046",
+            "replace": "0ee0022803d1201c00f0c8fc08e0d121890009190a6810608a6810600a691060db20800022581168090b0131682900d300210b0313602b68052b07d13c302058002803d101314907890f02d1201c00f059f9002010b0f8bd",
+            "enabled": false,
+            "hook": null,
+            "scratch_bytes": 0,
+            "notes": "Guarded regional port of the accepted 88-byte starter-idle gate. No scratch or new service. Explicit private catalog selection required. Native publications are not unique animation FPS or whole-game speed. Imported checkpoint provenance and bounded coverage are retained.",
+            "status": "bounded_native_qualified",
+            "validated": {
+              "static": "Exact ROM/header/ARM9/stored and decoded overlay identity, expected bytes, relocated calls/layout and all 18 assets checked. Shared six-layout CPU contract reused.",
+              "framebuffer": "All 3600 idle screen pairs match original and unchanged decoded delivery.",
+              "ram": "Raw state/timing differences retained under the authorized functional budget.",
+              "audio": "Raw sample differences retained. Both idle captures pass game-audio signal and recording-quality checks. Selection recording limits are retained in native notes and qualification; no human audibility approval claimed.",
+              "native": "Korean HeartGold Chikorita, Cyndaquil and Totodile previews, both rotation directions, inspect/cancel/confirm and final Chikorita choice were exercised. Clean recording and independent framebuffer endpoint show intact localized models/text and return to lab.",
+              "save": "Normal Save, soft-reset Continue and fresh-process cold Continue/party passed",
+              "unrelated": "Fresh-process post-save lab and party input replay does not enter the starter scene. Accepted USA HeartGold matched3600-frame off-target proof is reused for the shared gate (HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json); no new Korean software collateral pair or independent new-game playthrough is claimed.",
+              "scope": "Starter idle/active selection, adjacent lab, normal Save, soft reset and cold-load/party. The final cold input replay does not load the starter scene.",
+              "checkpoint_provenance": "Verified USA HeartGold native pre-starter checkpoint imported through a disposable Korean save-footer conversion (12 changed bytes, payload/CRCs untouched). Own HeartGold input/approach route; not independent Korean new-game progression.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "ORIGINAL": 86975841,
+                "DELIVERY": 86975841,
+                "CANDIDATE": 42848968
+              },
+              "reference_instruction_reduction_percent": 50.73463216067091,
+              "native_completed_screen_pairs_per_second": {
+                "original": 14.166872817883629,
+                "candidate": 43.83402345030456
+              },
+              "renderer_cpu_percent_one_core": {
+                "original": 161.7218368858406,
+                "candidate": 110.0180694957112
+              },
+              "native_light_period_seconds": {
+                "original": 3.4833333333331353,
+                "candidate": 3.4833333333331353
+              }
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKK_STARTER_QUALIFICATION_V1.json",
+              "IPKK_STARTER_REFERENCE_REVIEW_V1.json",
+              "IPKK_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKK_ORIGINAL1_MEDIA_REVIEW.json",
+              "IPKK_CANDIDATE1_MEDIA_REVIEW.json",
+              "IPKK_CANDIDATE1_SELECTION_MEDIA_V1.json",
+              "IPKK_CANDIDATE1_LIFECYCLE_DONE.json",
+              "IPKK_COLD_VISUAL_REVIEW_V1.json",
+              "IPKK_COLD1_STOP.json",
+              "IPKK_POSTSTARTER_SAVE_READBACK_V1.json",
+              "IPKK_STARTER_VARIANTS_V1.json",
+              "IPKK_CANDIDATE1_SELECTION_VISUAL_REVIEW.json",
+              "IPKK_IMPORTED_SAVE_CONVERSION_V1.json",
+              "HEARTGOLD_SHARED_UNRELATED_PROOF_V1.json",
+              "IPKK_NATIVE_SAVE_FOOTERS_V1.json"
+            ]
+          },
+          {
+            "id": "overlay1-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 1,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21e6300",
+            "overlay_file_id": 1,
+            "overlay_sha256": "fc140a70c1daefe23c6f975966acc3f4c9f9fa02300e648d3c6d43b4923071a9",
+            "overlay_stored_sha256": "836133d739fe0a1da379b583133327c18320c7c2e1ec5805023506083967b843",
+            "addr": "0x21f6396",
+            "expect": "184b0baa03cb03c21868164b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa29f693f8",
+            "replace": "a05902218902471878680ea9164a144b29f6bffa00280bd038000ea9124a104b29f699f8c046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21f63f8",
+                "expect": "d8752002e4752002"
+              },
+              {
+                "addr": "0x22075d8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x22075e4",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded regional transfer of the accepted48-byte terrain visibility gate. Reuses existing game query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is a fixed New Bark plaza view with documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Full reached visibility-query direct-flow closure matches281 instructions and51 edges; changed globals retain BSS-relative offsets.",
+              "reference": "Initial 1800 home/boot screen pairs and save bytes match cumulative decoded delivery. Across 9600 frames, 4439 top hashes and two bottom hashes differ; 3031 target top hashes differ, with 2462 target pairs still unmatched within eight neighboring frames. Before the target, 1408 differences match the next control pair; menu frame 3188 remains unmatched. Seven paired full-resolution home/town views retain terrain, buildings, player, NPCs and menus. Raw RAM/audio/timing differences retained; later audio offsets near 750 samples reduce but do not remove residual differences. Not bit-exactness or human approval. Functional-budget native qualification required.",
+              "native": "Stock1GHz cold original/candidate fixed-plaza capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Four save-block payload CRCs valid.",
+              "scope": "New Bark Town, home and Bag only. No independent regional new-game progression, battle/whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 703209055,
+                "candidate": 672456709,
+                "reduction_percent": 4.37314419962923,
+                "frames": "6000-9599"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.563703133185854,
+                "candidate": 19.4906713190749
+              },
+              "native_publications_vs_original_percent": 4.993444353416354,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Decoded delivery separately compared in the reference replay; no native decoded-control window or confidence interval claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "IPKK_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "IPKK_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "IPKK_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "IPKK_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "IPKK_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "IPKK_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ]
+      },
+      "patch_ids": [
+        "overlay61-starter-idle-identical-draw",
+        "overlay1-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUE",
+        "revision": 0,
+        "title": "Pokemon - Platinum Version (USA)",
+        "header_sha1": "dba0a5913fd29c1b6a7dd3e1ee9f8b64c9b50afd",
+        "header_bytes": 352,
+        "rom_sha256": "ede62292aa7f7014ff27d42097e769753380531739889c29b968b67b80f80678",
+        "arm9_sha256": "df6b2a565733621064a2dd2ea5eb69f87a949124434721d450acc566e902e5a5",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "User-authorized functional/perceptual budget; retain raw differences and require useful native benefit plus lifecycle/save checks.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d0d80",
+            "overlay_file_id": 5,
+            "overlay_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+            "overlay_stored_sha256": "6e2095b04c6db198d2c16f81964732d5b2119fa66edb907bec3b3774f41d43f9",
+            "addr": "0x21e8a2a",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa34f60df8",
+            "replace": "a05902218902471878680ea9174a154b34f64dfa00280bd038000ea9134a114b34f613f8c046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e8a90",
+                "expect": "a0ae1f02b8ae1f02"
+              },
+              {
+                "addr": "0x21faea0",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21faeb8",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded transfer of the accepted48-byte terrain visibility gate to verified USA revision0. Reuses the existing query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is the fixed saved Twinleaf Town view with a documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Reached visibility-query direct-flow closure matches281 instructions and51 edges. USA revision0 and accepted revision1 ARM9/overlay5 bytes match; header/full ROM identities are separate.",
+              "reference": "All1800 target screen pairs and save bytes match. Nine earlier top frames differ during town-entry banner transitions, unmatched within eight neighboring frames; bottom screens exact. Raw RAM/audio differences retained. Eight fixed RAM checkpoint sets match outside48 codebytes; final5999 mainRAM/DTCM differ. Original/no-op delivery images are identical and explicitly share one admitted original replay.",
+              "native": "Stock1GHz cold original/candidate fixed-town capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Platinum20-byte save-block footer/CRC and selected counters verified against the documented layout.",
+              "scope": "Twinleaf Town, home and Bag only. No independent revision0 new-game progression, battles, whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 310414516,
+                "candidate": 286100276,
+                "reduction_percent": 7.832829570380017,
+                "frames": "4200-5999"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 17.9409596522488,
+                "candidate": 21.32523717732061
+              },
+              "native_publications_vs_original_percent": 18.863414168860302,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Original/no-op delivery virtual images are byte-identical and explicitly reuse the original software replay. No separate delivery replay or native control window claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "CPUE_R0_TERRAIN2_REFERENCE_FINDINGS_V1.json",
+              "CPUE_R0_TERRAIN2_REFERENCE_REVIEW_V1.json",
+              "CPUE_R0_TERRAIN2_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "CPUE_R0_TERRAIN2_NATIVE_VISUAL_REVIEW_V1.json",
+              "CPUE_R0_TERRAIN2_COLD_VISUAL_REVIEW_V1.json",
+              "CPUE_R0_TERRAIN2_QUALIFICATION_V1.json"
+            ]
+          }
+        ],
+        "arm9_crc32": "4d104949",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUD",
+        "revision": 0,
+        "title": "Pokemon - Platin-Edition (Germany)",
+        "header_sha1": "c69c06674312a40498a0ea656ddfab0f1d4e367f",
+        "header_bytes": 352,
+        "rom_sha256": "9ffc28ff2b2d8fab60454548f92e60dd5d44f0dcc456e6e00e756424b3259217",
+        "arm9_sha256": "36fd8274830e111f01b0632a710c3644e36ffb4661314fd52b3878f3c63ffbfd",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "User-authorized functional/perceptual budget; retain raw differences and require useful native benefit plus lifecycle/save checks.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d0f20",
+            "overlay_file_id": 5,
+            "overlay_sha256": "edd6bc551f59e7f1316ab86342f02d62236aa888dc2cbebb14b819e1330cfe1b",
+            "overlay_stored_sha256": "edd6bc551f59e7f1316ab86342f02d62236aa888dc2cbebb14b819e1330cfe1b",
+            "addr": "0x21e8c2e",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f643ff",
+            "replace": "a05902218902471878680ea9174a154b34f683f900280bd038000ea9134a114b33f649ffc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e8c94",
+                "expect": "5cb01f0274b01f02"
+              },
+              {
+                "addr": "0x21fb05c",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21fb074",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded transfer of the accepted48-byte terrain visibility gate to verified German revision0. Reuses the existing query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is the fixed saved Twinleaf Town view with a documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact German identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Reached visibility-query direct-flow closure matches281 instructions and51 edges; per-identity ARM9/overlay hashes retained.",
+              "reference": "All1800 target screen pairs and save bytes match. Nine earlier top frames differ around town-entry banner transitions, unmatched within eight neighboring frames; bottom screens exact. Raw RAM/audio differences retained. Eight fixed RAM checkpoint sets match outside48 codebytes; final5999 mainRAM/DTCM differ. Original/no-op delivery images are byte-identical and explicitly share one admitted original replay.",
+              "native": "Stock1GHz cold original/candidate fixed-town capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Platinum20-byte save-block footer/CRC and selected counters verified against the documented layout.",
+              "scope": "Twinleaf Town, home and Bag only. No independent German revision0 new-game progression, battles, whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 309655513,
+                "candidate": 285404621,
+                "reduction_percent": 7.831571207970067,
+                "frames": "4200-5999"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.06586428141398,
+                "candidate": 21.09662539921786
+              },
+              "native_publications_vs_original_percent": 16.77617561271012,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Original/no-op delivery virtual images are byte-identical and explicitly reuse the original software replay. No separate delivery replay or native control window claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "CPUD_R0_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "CPUD_R0_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "CPUD_R0_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "CPUD_R0_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "CPUD_R0_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "CPUD_R0_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ],
+        "arm9_crc32": "14ac281f",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUF",
+        "revision": 0,
+        "title": "Pokemon - Version Platine (France)",
+        "header_sha1": "3923cfca3431d176156b5f7569192abbfd919183",
+        "header_bytes": 352,
+        "rom_sha256": "1cfd024519116c1c6285d6af2dbdfcec778e9d74c7c18585e22032e81aaa7eb8",
+        "arm9_sha256": "aa839663333c97d61083f58b855c0a9faa1508ad0be96608053497fe8a575c46",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "User-authorized functional/perceptual budget; retain raw differences and require useful native benefit plus lifecycle/save checks.",
+        "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d0f60",
+            "overlay_file_id": 5,
+            "overlay_sha256": "f06dd5ee19ccd51a9ff31819c76c19b099bd555c732ba7147215ff7a25322e6f",
+            "overlay_stored_sha256": "f06dd5ee19ccd51a9ff31819c76c19b099bd555c732ba7147215ff7a25322e6f",
+            "addr": "0x21e8c5a",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f62dff",
+            "replace": "a05902218902471878680ea9174a154b34f66df900280bd038000ea9134a114b33f633ffc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e8cc0",
+                "expect": "88b01f02a0b01f02"
+              },
+              {
+                "addr": "0x21fb088",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21fb0a0",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "bounded_native_qualified",
+            "notes": "Guarded transfer of the accepted48-byte terrain visibility gate to verified France revision0. Reuses the existing query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is the fixed saved Twinleaf Town view with a documented imported own-title save. Default disabled; explicit private catalog selection required.",
+            "validated": {
+              "static": "Exact France identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Reached visibility-query direct-flow closure matches281 instructions and51 edges; per-identity ARM9/overlay hashes retained.",
+              "reference": "All1800 target screen pairs and save bytes match. Nine earlier top frames differ around town-entry banner transitions and remain unmatched within eight neighboring frames; bottom screens exact. RAM/audio differences retained: mainram.bin and intermediate1800/3000/4200/4320/4440/4800/5880 mainRAM/DTCM checkpoints differ;1200 and5999 fixed checkpoint sets match outside48 codebytes. Eight per-frame audio sample-count values differ(two target), although total audio lengths match. Original/no-op delivery images are byte-identical and explicitly share one admitted original replay.",
+              "native": "Stock1GHz cold original/candidate fixed-town capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Platinum20-byte save-block footer/CRC and selected counters verified against the documented layout.",
+              "scope": "Twinleaf Town, home and Bag only. No independent France revision0 new-game progression, battles, whole-game or human audiovisual approval. Persistent core save states unsupported.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "reference_arm9_instructions": {
+                "control": 309465364,
+                "candidate": 285184882,
+                "reduction_percent": 7.845944918087833,
+                "frames": "4200-5999"
+              },
+              "native_completed_screen_pairs_per_second": {
+                "original": 18.157307396725148,
+                "candidate": 21.20944675999853
+              },
+              "native_publications_vs_original_percent": 16.809427172136026,
+              "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Original/no-op delivery virtual images are byte-identical and explicitly reuse the original software replay. No separate delivery replay or native control window claimed."
+            },
+            "evidence": [
+              "REGIONAL_PORTS_REPORT.md",
+              "CPUF_R0_TERRAIN_REFERENCE_FINDINGS_V1.json",
+              "CPUF_R0_TERRAIN_REFERENCE_REVIEW_V1.json",
+              "CPUF_R0_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+              "CPUF_R0_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+              "CPUF_R0_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+              "CPUF_R0_TERRAIN_QUALIFICATION_V1.json"
+            ]
+          }
+        ],
+        "arm9_crc32": "c0b29d1e",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUI",
+        "revision": 0,
+        "title": "Pokemon - Versione Platino (Italy)",
+        "header_sha1": "9e31c0895a60a39149e06c38780ef38bb9f64d5e",
+        "header_bytes": 352,
+        "rom_sha256": "9738c8fdb1adad1b4209531b692dd0cb7fb86329b30f54a72837128cdb3eb353",
+        "arm9_sha256": "97b6d9aa1d467d072b843bf6471d2bc550b1c6e263e137487472cbdc7254a412",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "Functional budget; remaining gameplay validation explicitly waived by user on 2026-11-01. Exact identity and original-byte guards retained.",
+        "status": "user_authorized_private_port_gameplay_validation_skipped",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d0ee0",
+            "overlay_file_id": 5,
+            "overlay_sha256": "ab85dce0f4cdd7fcdd82e8afab1430a178ebc09ff6ab368c285c6fa4da54badf",
+            "overlay_stored_sha256": "ab85dce0f4cdd7fcdd82e8afab1430a178ebc09ff6ab368c285c6fa4da54badf",
+            "addr": "0x21e8be2",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f669ff",
+            "replace": "a05902218902471878680ea9174a154b34f6a9f900280bd038000ea9134a114b33f66fffc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e8c48",
+                "expect": "10b01f0228b01f02"
+              },
+              {
+                "addr": "0x21fb010",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21fb028",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "static_port_gameplay_unvalidated",
+            "notes": "Relocated accepted inline implementation; expected original bytes and immutable constants verified. Bounded direct dependency audit passed. Runtime behavior, save compatibility and native gain remain unqualified.",
+            "validated": {
+              "static": "Existing seven-identity direct dependency and relocation proof; exact ROM/header/ARM9/overlay/original bytes and data guards checked by the existing loader.",
+              "reference": "Italian 6000-frame comparison reviewed; raw timing/RAM/audio differences retained.",
+              "native": "Not run; user waived remaining validation.",
+              "lifecycle": "Not run for this regional port.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "native": null,
+              "scope": "No per-region speed measurement; do not substitute gains measured in another version."
+            },
+            "user_validation_waiver": "PLATINUM_REMAINING_VALIDATION_WAIVER_20261101.json"
+          }
+        ],
+        "arm9_crc32": "edd15660",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUS",
+        "revision": 0,
+        "title": "Pokemon - Edicion Platino (Spain)",
+        "header_sha1": "65229e6f00c73d6cc401eb1c83d5da5a27683466",
+        "header_bytes": 352,
+        "rom_sha256": "b420059bb0b982e7ddcc9d33f21b85547e443f77f6424ff0ff7522d386d05fab",
+        "arm9_sha256": "aa8630e6c3a017b414e2c3662a841c2787953bb9286947992d874493707ef05e",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "Functional budget; remaining gameplay validation explicitly waived by user on 2026-11-01. Exact identity and original-byte guards retained.",
+        "status": "user_authorized_private_port_gameplay_validation_skipped",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d0f80",
+            "overlay_file_id": 5,
+            "overlay_sha256": "1406ac44322d09422485898e29090a08d3e5c3dd57220758ff7618a02f2126fb",
+            "overlay_stored_sha256": "1406ac44322d09422485898e29090a08d3e5c3dd57220758ff7618a02f2126fb",
+            "addr": "0x21e8c7a",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f61dff",
+            "replace": "a05902218902471878680ea9174a154b34f65df900280bd038000ea9134a114b33f623ffc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e8ce0",
+                "expect": "a8b01f02c0b01f02"
+              },
+              {
+                "addr": "0x21fb0a8",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21fb0c0",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "static_port_gameplay_unvalidated",
+            "notes": "Relocated accepted inline implementation; expected original bytes and immutable constants verified. Bounded direct dependency audit passed. Runtime behavior, save compatibility and native gain remain unqualified.",
+            "validated": {
+              "static": "Existing seven-identity direct dependency and relocation proof; exact ROM/header/ARM9/overlay/original bytes and data guards checked by the existing loader.",
+              "reference": "Not run; user waived remaining validation.",
+              "native": "Not run; user waived remaining validation.",
+              "lifecycle": "Not run for this regional port.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "native": null,
+              "scope": "No per-region speed measurement; do not substitute gains measured in another version."
+            },
+            "user_validation_waiver": "PLATINUM_REMAINING_VALIDATION_WAIVER_20261101.json"
+          }
+        ],
+        "arm9_crc32": "d3f8273f",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUJ",
+        "revision": 0,
+        "title": "Pocket Monsters - Platinum (Japan)",
+        "header_sha1": "b21c50bf7ed926e3eadff65061f6f9432d43ae0b",
+        "header_bytes": 352,
+        "rom_sha256": "532f3044b58ce5da524abf9b411150b25d445e371dec1b19c5a091376c209182",
+        "arm9_sha256": "096352e48684a91751fb02c7f5aea7eeae01948250f0dff0d66e792d241b7806",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "Functional budget; remaining gameplay validation explicitly waived by user on 2026-11-01. Exact identity and original-byte guards retained.",
+        "status": "user_authorized_private_port_gameplay_validation_skipped",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d0180",
+            "overlay_file_id": 5,
+            "overlay_sha256": "1c1b58209dd3fe338f0785127daa99406c5e25b6c2efc040eb8338fa95f09168",
+            "overlay_stored_sha256": "1c1b58209dd3fe338f0785127daa99406c5e25b6c2efc040eb8338fa95f09168",
+            "addr": "0x21e7d42",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa34f6d5fc",
+            "replace": "a05902218902471878680ea9174a154b34f615ff00280bd038000ea9134a114b34f6dbfcc046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e7da8",
+                "expect": "90a01f02a8a01f02"
+              },
+              {
+                "addr": "0x21fa090",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21fa0a8",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "static_port_gameplay_unvalidated",
+            "notes": "Relocated accepted inline implementation; expected original bytes and immutable constants verified. Bounded direct dependency audit passed. Runtime behavior, save compatibility and native gain remain unqualified.",
+            "validated": {
+              "static": "Existing seven-identity direct dependency and relocation proof; exact ROM/header/ARM9/overlay/original bytes and data guards checked by the existing loader.",
+              "reference": "Not run; user waived remaining validation.",
+              "native": "Not run; user waived remaining validation.",
+              "lifecycle": "Not run for this regional port.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "native": null,
+              "scope": "No per-region speed measurement; do not substitute gains measured in another version."
+            },
+            "user_validation_waiver": "PLATINUM_REMAINING_VALIDATION_WAIVER_20261101.json"
+          }
+        ],
+        "arm9_crc32": "9370b1bd",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CPUK",
+        "revision": 0,
+        "title": "Pocket Monsters Pt - Giratina (Korea)",
+        "header_sha1": "ef9d5dd8e931aaebf684c7a8ac302bfa284fa47b",
+        "header_bytes": 352,
+        "rom_sha256": "b7f37ec3085a8bb468de5ec9478042faadc81632053035bd6c1f335beaf495e7",
+        "arm9_sha256": "13a703984bd23fc7e095f52ab5d9edb2dbe48cc0de913202eceeeb855ad26b75",
+        "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+        "budget": "Functional budget; remaining gameplay validation explicitly waived by user on 2026-11-01. Exact identity and original-byte guards retained.",
+        "status": "user_authorized_private_port_gameplay_validation_skipped",
+        "patches": [
+          {
+            "id": "overlay5-terrain-visibility",
+            "pattern": "coarse-offscreen-model-culling",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 5,
+            "mode": "thumb",
+            "hook": null,
+            "scratch_bytes": 0,
+            "overlay_ram": "0x21d1c80",
+            "overlay_file_id": 5,
+            "overlay_sha256": "977f5060c231f6f1c77d2739a2613fbd7be78a13124c3582f51f3b7c8149f916",
+            "overlay_stored_sha256": "977f5060c231f6f1c77d2739a2613fbd7be78a13124c3582f51f3b7c8149f916",
+            "addr": "0x21e996e",
+            "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f61bf9",
+            "replace": "a05902218902471878680ea9174a154b33f65bfb00280bd038000ea9134a114b33f621f9c046c046c046c046c046c046",
+            "enabled": false,
+            "data_guards": [
+              {
+                "addr": "0x21e99d4",
+                "expect": "98bd1f02b0bd1f02"
+              },
+              {
+                "addr": "0x21fbd98",
+                "expect": "001000000010000000100000"
+              },
+              {
+                "addr": "0x21fbdb0",
+                "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+              }
+            ],
+            "status": "static_port_gameplay_unvalidated",
+            "notes": "Relocated accepted inline implementation; expected original bytes and immutable constants verified. Bounded direct dependency audit passed. Runtime behavior, save compatibility and native gain remain unqualified.",
+            "validated": {
+              "static": "Existing seven-identity direct dependency and relocation proof; exact ROM/header/ARM9/overlay/original bytes and data guards checked by the existing loader.",
+              "reference": "Not run; user waived remaining validation.",
+              "native": "Not run; user waived remaining validation.",
+              "lifecycle": "Not run for this regional port.",
+              "human_audiovisual_approval": false
+            },
+            "gain": {
+              "native": null,
+              "scope": "No per-region speed measurement; do not substitute gains measured in another version."
+            },
+            "user_validation_waiver": "PLATINUM_REMAINING_VALIDATION_WAIVER_20261101.json"
+          }
+        ],
+        "arm9_crc32": "bae2ad4b",
+        "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+        "arm7_crc32": "67db0960"
+      },
+      "patch_ids": [
+        "overlay5-terrain-visibility"
+      ]
     }
   ]
 }

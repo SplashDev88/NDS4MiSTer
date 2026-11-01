@@ -1,0 +1,20 @@
+{
+  "baseline": "7cc3e456a12330ce226ad9eca7f8f6253393364a",
+  "binary": "renderer-ffta2-regions",
+  "candidate_accepted": false,
+  "command_file": "ARM_BUILD_COMMAND.txt",
+  "command_sha256": "dc8d8bc9371de0ba0c6338e3b81cddf6aafe31cdfaf3661d3a0cf5fc8d6e1390",
+  "compiler_profiles": "Same Portrait combo3 PGO inputs and partial-training/coverage-mismatch fallback as rc12 control",
+  "finished_utc": "2026-11-01T18:45:03.524857+00:00",
+  "game_profile_test": "passed including FFTA2 identity/fallback and retained fast queries",
+  "hardware_tested": false,
+  "log": "ffta2-regions-arm-build.log",
+  "pid": 96964,
+  "public_record_note": "Private absolute paths reduced to basenames; input hashes and original build outcomes retained.",
+  "renderer_self_test": "passed in Docker ARM environment; never on MiSTer",
+  "sha256": "9090782e550b963ed752f60da2a449803c5912a73e0f8ded5caebe8695c18fca",
+  "source_inputs_reverified": true,
+  "source_manifest": "ffta2-regions-source.json",
+  "started_utc": "2026-11-01T18:44:19.959115+00:00",
+  "state": "passed"
+}

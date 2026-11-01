@@ -1,0 +1,28 @@
+{
+  "baseline_regression": "Original packaged host source fails at first off-center Touch; new host passes",
+  "binary": "nds_standalone_host-issue43",
+  "command_file": "ISSUE43_HOST_BUILD.sh",
+  "command_sha256": "14679704cf465ecab92406d1af3211750cad0545a687bf7ed16f63a93c4fd3b8",
+  "fpga_changed": false,
+  "native_hardware_tested": false,
+  "public_record_note": "Private absolute paths reduced to basenames; input hashes and original build outcomes retained.",
+  "renderer_changed": false,
+  "sha256": "0c989e15a7d941f85eb630abf21d608dfac7dd99e33a5a4219e355d8cd438733",
+  "source_inputs_reverified": true,
+  "source_manifest": "ISSUE43_HOST_INPUTS_V1.json",
+  "source_revision": "934329df3ad27999384886420d8f616914467fae",
+  "state": "passed",
+  "test_logs": {
+    "ISSUE43_BASELINE_REPRODUCTION_V1.log": "7487927d4ac56537e08aacfe1f9bb1b691ae29aabceb17c96ace6983c559128a",
+    "ISSUE43_INPUT_TESTS_V1.log": "4edb5fbada339e865359c6d451c10d310161229875c4aeb0ae041bd9b23be096",
+    "ISSUE43_INPUT_TESTS_V2.log": "451a1807b8b59709e8419a8ba79ce181067c3eee3d9cd3b637a19649c6d0db07"
+  },
+  "tests": [
+    "test_host_touch_mouse (both evdev orders)",
+    "test_host_touch_rotation",
+    "test_host_touch_range",
+    "test_host_motion_input",
+    "test_host_lid_mic",
+    "test_host_screen_peek"
+  ]
+}

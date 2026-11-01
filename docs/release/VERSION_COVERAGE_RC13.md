@@ -1,31 +1,19 @@
-# RC13 game and revision coverage
+# NDS4MiSTer rc.13 version coverage
 
-Coverage means the named optimization is admitted for the exact guarded identity; it does not certify a full playthrough. File names and regional resemblance never substitute for identity checks.
-
-| New accepted optimization | Exact admitted version | Scope |
+| Game / identity | Included optimization | Evidence |
 | --- | --- | --- |
-| FFTA2 renderer | A6FE, USA revision 0, header CRC32 8c766dbb | Existing renderer identity guard; bounded battle/opening scenes |
-| Platinum terrain | CPUE, USA revision 1 | Full-ROM/header/ARM9/overlay guards; bounded outdoor, save and reset checks |
-| HeartGold terrain + starter idle | IPKE, USA revision 0 | Independent full-ROM/header/ARM9/overlay guards |
-| SoulSilver terrain + starter idle | IPGE, USA revision 0 | Independent full-ROM/header/ARM9/overlay guards; installed-beta lifecycle checks |
+| Platinum USA CPUE rev1 | Existing terrain gate | Previously accepted |
+| Platinum USA CPUE rev0, Germany CPUD rev0, France CPUF rev0 | Terrain gate | Reference, native scene/performance, Save/reset/cold checks completed |
+| Platinum Italy CPUI rev0 | Terrain gate | Static identity/bytes and software reference reviewed; remaining gameplay checks skipped by user |
+| Platinum Spain CPUS rev0, Japan CPUJ rev0, Korea CPUK rev0 | Terrain gate | Static identity/bytes checked; gameplay validation skipped by user |
+| HeartGold and SoulSilver USA + Germany/France/Italy/Spain/Japan/Korea rev0 | Existing starter and terrain optimizations | Beta6 bounded qualification retained |
+| FFT A2 USA A6FE rev0 | Accepted renderer optimization | Prior USA qualification retained |
+| FFT A2 Europe A6FP rev0, Japan A6FJ rev0 | Same renderer profile enabled for exact headers | Regional evidence in the bundled source: docs/game-optimization/ffta2-regional-raster-profiles.json |
 
-`fmv/guest_catalog.json` contains the exact hashes, original/replacement bytes, CPU/mode and selected patch IDs for all three Pokémon identities. The release ships that catalog byte-for-byte from the accepted cumulative beta. ROM images are read-only; guarded virtual overlay contents are supplied through the existing loader so overlay reloads retain the same authenticated patch. Unknown identities fall back to the ordinary loader or their independently qualified FMV path. No address-only regional substitution is used.
+The four Platinum ports with skipped gameplay checks are included explicitly under the user's request, not labeled tested or performance-qualified. No measured gain is assigned to them. All guest patch identity and original-byte guards remain active.
 
-Thirteen additional owned HGSS identities have been inventoried without admission. This includes regional variants and a Europe-labelled HeartGold image reporting IPKE revision 10 whose provenance remains unresolved. All need independent identity, behavior and performance checks. FFTA2 Europe/Japan are not newly enabled. No additional Animal Crossing or Phantom Hourglass patch is accepted.
+Unknown ROM revisions/identities fall back. Europe-labelled Platinum CPUE rev10 and HeartGold IPKE rev10 remain excluded because revision provenance is unresolved. No other unavailable revision is claimed supported. ROM identity coverage does not establish a full playthrough or every language/menu path.
 
-## Retained rc12 coverage
+Accepted guest-code experiments that failed performance/behavior gates are not revived. FFT's accepted optimization is a renderer profile, not a newly enabled guest patch. Save states, wireless multiplayer, DSi mode and PAL output remain unsupported.
 
-### RC12 game-version coverage
-
-| Game | Version | RC12 scope |
-| --- | --- | --- |
-| Order of Ecclesia | USA YR9E, Europe YR9P, Japan YR9J, Korea YR9K; all revision 0 | Faster gameplay and accelerated opening movie |
-| Ni no Kuni | Japanese B2KJ revision 0 | Story movie video fix; all 15 story clips exercised through the real player in an opening-scene playlist |
-| Ni no Kuni | English translation v1.0, B2KJ revision 0 | Same fix; all-clip software coverage, physical intro/first-story/gameplay test |
-| Portrait of Ruin | USA ACBE0, Europe ACBP0, Japan ACBJ0 and ACBJ1 | Retained RC11 movie acceleration; gameplay performance qualification remains bounded USA revision 0 |
-
-Ecclesia's four regional entries cover the project's current retail catalog. Unknown revisions, translations and modified dumps are not implicitly qualified. Movie preparation verifies the full ROM SHA-256 and relevant code/assets. Unrecognized movie versions retain the original movie path when the ROM otherwise fits the supported cartridge layout. The gameplay selector uses guarded cartridge headers, rather than a full-ROM proof.
-
-The runtime retains all 21 registered automatic movie profiles. The precise identity registry, including older supported games, is `fmv/profiles.json` inside the hidden kit. Its hashes identify user-supplied files; the release contains no games or movie assets.
-
-Ecclesia movies are natively 14.985 fps; Ni no Kuni story clips are natively 12 fps. These are not 60 fps conversions. Later gameplay and every natural story trigger remain outside full qualification.
+The Touch fix applies to the standalone host across games. Existing rc12 FMV and gameplay coverage is retained; see the movie catalog and prior qualification records in the bundled source.
