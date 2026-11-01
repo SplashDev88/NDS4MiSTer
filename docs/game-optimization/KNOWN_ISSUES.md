@@ -966,3 +966,10 @@ Spanish HeartGold terrain has exact target screen pairs/save but two earlier
 transition/menu pairs and raw RAM/audio/timing differences. Its native home/Bag/
 save/reset/cold route passes; later areas, battles and human listening remain
 unqualified. This addition is absent from frozen Regional Beta5.
+
+Japanese HeartGold terrain retains two earlier transition/menu screen differences
+and raw RAM/audio/timing changes; target screen pairs and save match. The first
+native pair gained 2.9496%; one predeclared extra pair yields 3.6537% pooled, with
+both initial windows retained. Its home/Bag/Save/reset/cold route passes. This
+bounded imported-save test does not qualify later areas, battles, independent
+regional progression or human listening. Absent from frozen Regional Beta5.

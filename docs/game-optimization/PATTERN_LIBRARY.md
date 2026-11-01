@@ -1934,3 +1934,13 @@ Spanish HeartGold IPKS reuses the same guard/detector and timing diagnostic:
 4.3687% fewer reference ARM9 entries and 4.8054% higher native plaza publications.
 Target pairs/save match; retain two earlier screen differences and raw audio/RAM.
 Native save/lifecycle checks pass. Evidence: `IPKS_TERRAIN_QUALIFICATION_V1.json`.
+
+Japanese HeartGold IPKJ reuses the same guarded terrain detector with relocated
+query watches from the shared direct-flow proof: 4.3815% fewer reference ARM9
+entries and 3.6537% higher pooled native plaza publications. Preserve the first
+borderline 2.9496% result; one extra pair was predeclared and all windows pooled,
+not selected by best gain. The generic repeat summary checks matching scene
+seeds, clock, capture settings/sequence, saved bytes and packet-preserving media.
+Keep the two earlier frame differences and raw RAM/audio evidence. Receipts:
+`IPKJ_TERRAIN_REPEAT_PLAN_V1.json`, `IPKJ_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V2.json`,
+`IPKJ_TERRAIN_QUALIFICATION_V1.json`. No new game signature or runtime service.

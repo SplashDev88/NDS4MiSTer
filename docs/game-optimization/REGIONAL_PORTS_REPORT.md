@@ -1192,3 +1192,55 @@ Videos: `HeartGold_Spanish_Terrain_Original_V1.mp4` and
 
 Next three areas: Japanese/Korean HeartGold terrain (Japanese plan and verified
 streams ready), Platinum region/revision ports, and FFT A2 region/revision ports.
+
+### Japanese HeartGold terrain qualification, 2026-11-01
+
+`heartgold-ipkj-r0.json` retains the starter patch and adds the guarded 48-byte
+terrain gate, both default-disabled. The release stream exactly matches the
+native trial image. This source addition awaits a new cumulative private archive;
+frozen Regional Beta5 is unchanged.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 703,847,573 | 673,008,601 | −4.3815% |
+| First native pair, screen pairs/s | 18.7820 | 19.3359 | +2.9496% |
+| Predeclared repeat, screen pairs/s | 18.9090 | 19.7321 | +4.3530% |
+| Pooled native result, screen pairs/s | 18.8455 | 19.5340 | +3.6537% |
+| Terrain draws, frames 6000–6599 | 1,158 | 429 | 729 omitted |
+
+The first native result was borderline to the existing 3% gate. One extra pair
+was declared before measurement; both pairs remain in the pooled total-pairs /
+total-seconds result. Both individual gains are positive. Each window is 30 seconds
+at stock 1 GHz, from the same cold-loaded plaza save and test RTC. No confidence
+interval, unique animation FPS, native decoded-control or whole-game speed is
+claimed. Pooled host CPU is 3.340%→3.294% of one core; renderer 161.30%→161.56%.
+All four captures add zero drops; review copies preserve game-audio packets and
+timestamps. Sampled plaza views retain terrain and changing windmill poses.
+
+All 3,600 target screen pairs, initial 1,800 pairs and save bytes match decoded
+delivery. Earlier top frame 2026 and bottom frame 3188 differ during scene/menu
+transitions; both pairs remain unmatched within eight neighboring frames.
+Seven full-size checkpoint pairs retain the expected scenes. Another sampled draw
+caller changes 1,742→1,741; two others remain 1,500 each. Raw RAM/timing changes
+and 264,020 differing stereo samples of 7,702,322 remain: maximum signed-16 delta
+8,254, RMS 62.5027. No human listening or full-run bit-exactness is claimed.
+Original versus decoded delivery has 68 top/15 bottom differences, no target
+screen differences; all seven full-size pairs and save match.
+
+Home/Bag/return, normal Save, soft-reset Continue and fresh cold field/Bag pass.
+All four save payload CRCs validate; the cold run preserves the new 512 KiB save.
+MENU, OBS settings, protected files and isolated saves are preserved. Imported
+own-title saves do not establish independent regional new-game progression;
+later areas and battles remain outside this qualification.
+
+Reuse the six-region dependency proof, relocated watches and existing loader.
+The generic repeat adapters preserve the first result and enforce the predeclared
+pooled rule. Evidence: `IPKJ_TERRAIN_QUALIFICATION_V1.json`,
+`IPKJ_TERRAIN_REFERENCE_REVIEW_V1.json`, `IPKJ_TERRAIN_REPEAT_PLAN_V1.json`,
+`IPKJ_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V2.json`, `IPKJ_TERRAIN_BEFORE_AFTER_V1.csv`.
+Videos: `HeartGold_Japanese_Terrain_Original_V1.mp4`,
+`HeartGold_Japanese_Terrain_Candidate_V1.mp4`, and their `_Repeat_V1.mp4` versions.
+
+Next three areas: Korean HeartGold terrain, Platinum regions/revisions, and
+FFT A2 regions/revisions. Korean guarded streams and private own-title save
+fixtures are prepared; regional runtime qualification remains pending.
