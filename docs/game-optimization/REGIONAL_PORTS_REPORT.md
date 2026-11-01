@@ -1363,3 +1363,59 @@ Next three areas: qualify the six prepared Platinum region identities; port FFT 
 regions/revisions; expand later-area/battle coverage when playtest evidence permits.
 Europe-labelled CPUE revision 10 stays quarantined pending revision provenance.
 No public release is authorized.
+
+### German Platinum revision 0 terrain qualification, 2026-11-01
+
+`platinum-cpud-r0.json` adds the guarded 48-byte terrain visibility gate for CPUD
+revision 0, default-disabled for explicit private catalog selection. Its release
+stream exactly matches the native candidate without the no-op control. This port
+is absent from immutable Regional Beta6 and awaits cumulative archive verification.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 4200–5999 | 309,655,513 | 285,404,621 | −7.8316% |
+| Native fixed-town screen pairs/s | 18.0659 | 21.0966 | +16.7762% |
+| Terrain draws, frames 4200–4799 | 1,174 | 300 | 874 omitted |
+
+One 30-second window per cold-start arm at stock 1 GHz, same tile/camera/save and
+matched private test RTC. Host CPU is 3.221%→3.228% of one core; renderer
+159.338%→162.750%. No repeat or confidence interval. Publications are not unique
+animation FPS, native CPU cycles or whole-game speed, nor a matched comparison
+against the historical USA traversal result. Both recordings pass capture checks;
+review copies preserve game-audio packets and timestamps. Sampled views retain
+expected scenery and player position.
+
+All 1,800 target screen pairs and save bytes match. Nine earlier top frames differ
+around the town-entry banner and remain unmatched within eight neighboring frames;
+all bottom hashes match. Raw RAM/audio/timing differences are retained: 72,719 of
+4,813,950 stereo samples differ, maximum signed-16 delta 2,452, RMS 5.193. Three
+sampled audio windows prefer zero offset but retain residual differences. Eight
+fixed RAM checkpoint sets match outside the 48 patch bytes; final frame 5999 main
+RAM/DTCM differ. No human listening, inaudibility or bit-exactness claim.
+
+The target watch records 874 zero/300 nonzero terrain-query returns and 300 terrain
+draws; other call counts have small timing differences. No guarded constant/pointer
+writes occur after full overlay recognition or in the target window. Reuse the
+shared seven-identity, 281-instruction/51-edge query proof and relocated watches.
+Original and unchanged-delivery images are byte-identical, so the admitted original
+replay is explicitly reused; no second delivery execution is claimed.
+
+The imported own-title USA save loads the German WEITER menu and completes the
+software town walk. Native house entry/return, BEUTEL, normal SICHERN, soft-reset
+Continue and fresh-process field/Bag reload pass. Cold reload leaves the new
+512 KiB save unchanged. Both general blocks and active storage have valid Platinum
+20-byte footer/CRCs and matching selected global counters; the other storage block
+remains identically erased. Reuse the already-checked declared-layout validator.
+MENU, OBS settings and protected files are preserved. Later areas, battles and
+independent German new-game progression remain outside this bounded qualification.
+
+Evidence: `CPUD_R0_TERRAIN_QUALIFICATION_V1.json`,
+`CPUD_R0_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`CPUD_R0_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json`,
+`CPUD_R0_TERRAIN_NATIVE_SAVE_FOOTERS_V1.json`,
+`CPUD_R0_TERRAIN_BEFORE_AFTER_V1.csv`. Review videos:
+`Platinum_German_Original_V1.mp4`, `Platinum_German_Candidate_V1.mp4`.
+
+Next three areas: qualify the five remaining prepared Platinum regions, port FFT
+A2 regions/revisions, and broaden later-area/battle coverage. USA revision 0 and
+German ports are queued for a future cumulative private beta; no public release.

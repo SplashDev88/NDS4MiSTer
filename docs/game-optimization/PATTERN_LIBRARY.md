@@ -1969,3 +1969,13 @@ an unchanged erased storage bank, unlike the HGSS fixture. Generic negative
 checks reject payload corruption. No new game signature or runtime service.
 Receipts: `CPUE_R0_TERRAIN2_QUALIFICATION_V1.json`,
 `PLATINUM_BBOX_DEPENDENCY_AUDIT_V1.json`, `PLATINUM_SAVE_VALIDATOR_CHECK_V1.json`.
+
+German Platinum CPUD revision 0 reuses the shared terrain-query closure and
+identity-specific 48-byte gate: 7.8316% fewer reference ARM9 entries, 16.7762%
+higher native fixed-town publications. Target screen pairs/save match; preserve
+nine earlier banner-frame differences and raw RAM/audio changes. The identical
+uncompressed delivery control reuses the admitted original replay explicitly.
+Plan-driven input capture reuses the same native rig for house/Bag/Save/reset/cold
+checks; declared Platinum save geometry validates the normal German save without
+forcing four valid HGSS footers. No new signature or runtime service. Receipts:
+`CPUD_R0_TERRAIN_QUALIFICATION_V1.json`, `CPUD_R0_TERRAIN_REFERENCE_REVIEW_V1.json`.

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "game_code": "CPUD",
+  "revision": 0,
+  "title": "Pokemon - Platin-Edition (Germany)",
+  "header_sha1": "c69c06674312a40498a0ea656ddfab0f1d4e367f",
+  "header_bytes": 352,
+  "rom_sha256": "9ffc28ff2b2d8fab60454548f92e60dd5d44f0dcc456e6e00e756424b3259217",
+  "arm9_sha256": "36fd8274830e111f01b0632a710c3644e36ffb4661314fd52b3878f3c63ffbfd",
+  "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+  "budget": "User-authorized functional/perceptual budget; retain raw differences and require useful native benefit plus lifecycle/save checks.",
+  "status": "bounded_native_qualified_cumulative_private_catalog_eligible",
+  "patches": [
+    {
+      "id": "overlay5-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 5,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21d0f20",
+      "overlay_file_id": 5,
+      "overlay_sha256": "edd6bc551f59e7f1316ab86342f02d62236aa888dc2cbebb14b819e1330cfe1b",
+      "overlay_stored_sha256": "edd6bc551f59e7f1316ab86342f02d62236aa888dc2cbebb14b819e1330cfe1b",
+      "addr": "0x21e8c2e",
+      "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f643ff",
+      "replace": "a05902218902471878680ea9174a154b34f683f900280bd038000ea9134a114b33f649ffc046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21e8c94",
+          "expect": "5cb01f0274b01f02"
+        },
+        {
+          "addr": "0x21fb05c",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x21fb074",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "bounded_native_qualified",
+      "notes": "Guarded transfer of the accepted48-byte terrain visibility gate to verified German revision0. Reuses the existing query and immutable transforms; no scratch, HPS service, RTL or original-ROM write. Native scope is the fixed saved Twinleaf Town view with a documented imported own-title save. Default disabled; explicit private catalog selection required.",
+      "validated": {
+        "static": "Exact German identity, original48 Thumb bytes, relocated calls/literals and56 constant/pointer bytes guarded. Reached visibility-query direct-flow closure matches281 instructions and51 edges; per-identity ARM9/overlay hashes retained.",
+        "reference": "All1800 target screen pairs and save bytes match. Nine earlier top frames differ around town-entry banner transitions, unmatched within eight neighboring frames; bottom screens exact. Raw RAM/audio differences retained. Eight fixed RAM checkpoint sets match outside48 codebytes; final5999 mainRAM/DTCM differ. Original/no-op delivery images are byte-identical and explicitly share one admitted original replay.",
+        "native": "Stock1GHz cold original/candidate fixed-town capture; house entry, Bag, return outdoors, normal Save, soft-reset Continue, fresh-process cold field/Bag and unchanged save passed. Platinum20-byte save-block footer/CRC and selected counters verified against the documented layout.",
+        "scope": "Twinleaf Town, home and Bag only. No independent German revision0 new-game progression, battles, whole-game or human audiovisual approval. Persistent core save states unsupported.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "reference_arm9_instructions": {
+          "control": 309655513,
+          "candidate": 285404621,
+          "reduction_percent": 7.831571207970067,
+          "frames": "4200-5999"
+        },
+        "native_completed_screen_pairs_per_second": {
+          "original": 18.06586428141398,
+          "candidate": 21.09662539921786
+        },
+        "native_publications_vs_original_percent": 16.77617561271012,
+        "scope": "One30-second verified cold-start window per arm at stock1GHz; publications are not unique animation FPS, cycle counts or whole-game speed. Original/no-op delivery virtual images are byte-identical and explicitly reuse the original software replay. No separate delivery replay or native control window claimed."
+      },
+      "evidence": [
+        "REGIONAL_PORTS_REPORT.md",
+        "CPUD_R0_TERRAIN_REFERENCE_FINDINGS_V1.json",
+        "CPUD_R0_TERRAIN_REFERENCE_REVIEW_V1.json",
+        "CPUD_R0_TERRAIN_NATIVE_IDLE_MEASUREMENTS_V1.json",
+        "CPUD_R0_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json",
+        "CPUD_R0_TERRAIN_COLD_VISUAL_REVIEW_V1.json",
+        "CPUD_R0_TERRAIN_QUALIFICATION_V1.json"
+      ]
+    }
+  ],
+  "arm9_crc32": "14ac281f",
+  "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+  "arm7_crc32": "67db0960"
+}

@@ -994,3 +994,12 @@ over USA revision 1's older traversal measurement or whole-game FPS. Battles,
 later areas and independent revision 0 new-game progression remain unqualified.
 Absent from frozen Regional Beta6; cumulative archive verification is pending.
 Europe-labelled CPUE revision 10 remains excluded pending revision provenance.
+
+German Platinum CPUD revision 0 passes the imported-save town/house/Bag/Save/reset/
+cold route, with exact target screen pairs/save but nine earlier top-frame and raw
+RAM/audio differences. Retain the zero-offset audio residuals; no inaudibility or
+human audiovisual approval is claimed. Normal save blocks validate under the
+Platinum 20-byte layout, including the unchanged unused storage bank. Later areas,
+battles and independent German new-game progression remain unqualified. Its
+16.7762% publication gain is scene-specific. Absent from frozen Regional Beta6;
+new cumulative archive verification is pending.
