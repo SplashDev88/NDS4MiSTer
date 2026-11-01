@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "game_code": "CPUS",
+  "revision": 0,
+  "title": "Pokemon - Edicion Platino (Spain)",
+  "header_sha1": "65229e6f00c73d6cc401eb1c83d5da5a27683466",
+  "header_bytes": 352,
+  "rom_sha256": "b420059bb0b982e7ddcc9d33f21b85547e443f77f6424ff0ff7522d386d05fab",
+  "arm9_sha256": "aa8630e6c3a017b414e2c3662a841c2787953bb9286947992d874493707ef05e",
+  "baseline": "RC12-derived accepted cumulative runtime; separate exact regional identity",
+  "budget": "Functional budget; remaining gameplay validation explicitly waived by user on 2026-11-01. Exact identity and original-byte guards retained.",
+  "status": "user_authorized_private_port_gameplay_validation_skipped",
+  "patches": [
+    {
+      "id": "overlay5-terrain-visibility",
+      "pattern": "coarse-offscreen-model-culling",
+      "cpu": "arm9",
+      "target": "arm9.overlay",
+      "overlay": 5,
+      "mode": "thumb",
+      "hook": null,
+      "scratch_bytes": 0,
+      "overlay_ram": "0x21d0f80",
+      "overlay_file_id": 5,
+      "overlay_sha256": "1406ac44322d09422485898e29090a08d3e5c3dd57220758ff7618a02f2126fb",
+      "overlay_stored_sha256": "1406ac44322d09422485898e29090a08d3e5c3dd57220758ff7618a02f2126fb",
+      "addr": "0x21e8c7a",
+      "expect": "194b0baa03cb03c21868174b106002aa042703cb03c27f1efbd118680bab10600220a159800208180ea902aa33f61dff",
+      "replace": "a05902218902471878680ea9174a154b34f65df900280bd038000ea9134a114b33f623ffc046c046c046c046c046c046",
+      "enabled": false,
+      "data_guards": [
+        {
+          "addr": "0x21e8ce0",
+          "expect": "a8b01f02c0b01f02"
+        },
+        {
+          "addr": "0x21fb0a8",
+          "expect": "001000000010000000100000"
+        },
+        {
+          "addr": "0x21fb0c0",
+          "expect": "001000000000000000000000000000000010000000000000000000000000000000100000"
+        }
+      ],
+      "status": "static_port_gameplay_unvalidated",
+      "notes": "Relocated accepted inline implementation; expected original bytes and immutable constants verified. Bounded direct dependency audit passed. Runtime behavior, save compatibility and native gain remain unqualified.",
+      "validated": {
+        "static": "Existing seven-identity direct dependency and relocation proof; exact ROM/header/ARM9/overlay/original bytes and data guards checked by the existing loader.",
+        "reference": "Not run; user waived remaining validation.",
+        "native": "Not run; user waived remaining validation.",
+        "lifecycle": "Not run for this regional port.",
+        "human_audiovisual_approval": false
+      },
+      "gain": {
+        "native": null,
+        "scope": "No per-region speed measurement; do not substitute gains measured in another version."
+      },
+      "user_validation_waiver": "PLATINUM_REMAINING_VALIDATION_WAIVER_20261101.json"
+    }
+  ],
+  "arm9_crc32": "d3f8273f",
+  "arm7_sha256": "77146657cd179d1cb4053d291e4da1c8bc33e611814131dc4c04bba70eb65a81",
+  "arm7_crc32": "67db0960"
+}
