@@ -854,3 +854,18 @@ failed; sampled visual checkpoints and the independent direct framebuffer
 endpoint are retained, with no selection frame-continuity/cadence/audio-equivalence
 claim. Separate clean idle captures establish measured cadence and native benefit.
 Do not silently relabel this selection recording as a clean pacing test.
+
+The Korean starter reference initially entered new-game introduction because
+the unchanged imported USA save had the Japanese/international footer marker.
+That failed original V1 run remains excluded; no delivery/candidate tests followed
+it. A new disposable fixture changes only the four verified footer markers
+(12 bytes), preserves gameplay payloads and their CRCs, and loads the expected
+starter overlay on both unpatched reference and native cold boots. See
+`IPGK_IMPORTED_SAVE_CONVERSION_V1.json`. This fixture does not establish a Korean
+new-game playthrough and must never be distributed or used to rewrite user saves.
+
+The corrected Korean V2 reference preserves all 3,600 screen pairs and the save.
+Its native selection, normal Save, soft-reset Continue and fresh-process party
+checks pass; the normal Korean save's four block footers and payload CRCs also
+validate. This bounded starter qualification does not qualify Korean terrain,
+battles, independent new-game progression or human audio approval.

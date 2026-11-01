@@ -59,6 +59,11 @@ extracted code context or private resource is added to this source repository.
 
 ## Qualification and remaining work
 
+All six owned non-USA SoulSilver revision-0 starter ports are now qualified
+within the bounded scope below. HeartGold regional starter qualification is next;
+regional terrain and other-game ports remain pending. No unowned revision or
+quarantined identity is admitted by these results.
+
 Use regional starter inputs, unchanged decoded delivery controls,
 active selections and transitions, normal save/cold reload, soft reset,
 unrelated scenes and paired native measurements. Preserve the authorized raw
@@ -268,6 +273,50 @@ Private receipts: `IPGJ_STARTER_QUALIFICATION_V1.json` and
 `IPGJ_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
 eligible for explicit private catalog inclusion only after separate actual archive and launcher
 verification. Regional terrain remains unqualified.
+
+### Pokemon SoulSilver (Korea) starter qualification
+
+`soulsilver-ipgk-r0.json` authenticates IPGK revision 0 with its own
+ROM/header/ARM9/overlay identities and expected bytes. Shared code/asset and
+relocated CPU-contract evidence is reused. Its original/delivery/candidate
+replay preserves all 3,600 screen pairs and the save. ARM9 instructions fall
+from 86,762,900 to 42,642,671 (50.8515%) in frames 1800–3599.
+
+| Native starter idle, one 30-second window per arm at 1 GHz | Original | Candidate |
+| --- | ---: | ---: |
+| Completed screen pairs/s | 14.3142 | 43.8674 (3.0646×) |
+| Renderer CPU, percent of one core | 161.85% | 110.35% |
+| Measured light cycle | 3.4833 s | 3.4667 s |
+
+Korean Chikorita, Cyndaquil and Totodile previews, both rotation directions,
+inspect/cancel/confirm and final Chikorita choice were exercised. Clean
+selection recording and independent framebuffer endpoint show intact localized
+models/text and return to the lab.
+
+Normal Save, soft-reset Continue and fresh-process cold Continue/party passed.
+Fresh-process Continue restores the Korean neutral lab and Chikorita follower.
+Party shows male Chikorita at level 5 with 20/20 HP and localized
+selection/exit text, without obvious visual corruption. The cold run leaves
+the saved file unchanged and does not enter the starter scene.
+
+Verified USA native pre-starter checkpoint imported through a disposable
+Korean save-footer magic conversion (12 changed bytes, payload/CRCs
+untouched); not independent Korean new-game progression.
+
+The measured light period remains within one captured frame of control.
+Quality checks passed for both idle recordings and the game audio signal;
+human listening approval is not claimed. Raw timing/RAM/audio differences
+remain under the existing functional budget. Target checkpoints are imported
+from USA, not independent regional new-game playthroughs. Shared software
+collateral proof and this region’s native cold lab/party replay are reused; a
+separate regional software collateral pair is not claimed. Publications are
+not unique animation FPS or whole-game speed. Native cycle/frame-time
+percentile/DMA/cartridge counters remain unavailable.
+
+Private receipts: `IPGK_STARTER_QUALIFICATION_V1.json` and
+`IPGK_STARTER_BEFORE_AFTER_V1.csv`. The default-disabled source manifest is
+eligible for explicit private catalog inclusion only after separate actual
+archive and launcher verification. Regional terrain remains unqualified.
 
 The next three porting areas after the starter qualification are:
 

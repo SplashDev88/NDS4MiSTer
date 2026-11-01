@@ -1769,3 +1769,23 @@ and literal values for the next dependency audit. Never broaden patch admission
 from this signature alone. Evidence: `SOULSILVER_BBOX_FLOW_LAYOUT_V1.json` and
 `SOULSILVER_TERRAIN_FLOW_MASKED_CANDIDATES_V3.json` in the regional report's
 private evidence directory. This probe has not qualified a terrain port.
+
+### Verify imported checkpoint compatibility before patch testing
+
+An unchanged imported checkpoint can silently enter new-game flow on another
+region. Require the expected scene/overlay before continuing A/B measurements.
+Korean HGSS uses save-footer magic `0x20070903`; Japanese/international HGSS uses
+`0x20060623`. The owned Korean ARM9 contains the former value. The public
+[PKHeX SAV4 implementation](https://github.com/kwsch/PKHeX/blob/master/PKHeX.Core/Saves/SAV4.cs)
+and [HGSS block layout](https://github.com/kwsch/PKHeX/blob/master/PKHeX.Core/Saves/SAV4HGSS.cs)
+describe the marker and checksum boundaries.
+
+For the retained pre-starter fixture only, validate both general/storage block
+footers and their payload CRCs, confirm extra blocks are erased, and convert the
+four footer markers in a new disposable copy. This changes 12 bytes outside the
+checked payloads; never replace arbitrary matching words throughout a save.
+Keep source/converted hashes and exact differences. An unpatched cold reference
+must load the intended overlay before the converted fixture is admitted.
+This is test-fixture preparation, not a runtime patch, user-save migration or
+proof of independent regional progression. Private evidence:
+`IPGK_IMPORTED_SAVE_CONVERSION_V1.json`; the failed original V1 run is retained.
