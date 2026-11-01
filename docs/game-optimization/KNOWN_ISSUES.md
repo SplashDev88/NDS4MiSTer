@@ -945,3 +945,10 @@ blocks validate, and reset/cold reload pass. The imported own-title checkpoint
 does not establish independent regional new-game progression. Later areas,
 battles and human listening remain unqualified. This source addition is absent
 from frozen Regional Beta5 and needs a separately verified cumulative package.
+
+French HeartGold terrain has the same bounded New Bark/home/Bag qualification:
+exact target screen pairs/save, one earlier menu frame and retained raw
+RAM/audio/timing differences. Normal Save, reset, cold reload and four save
+payload CRCs pass. This does not qualify later areas, battles, independent
+regional new-game progression or human listening. French and German terrain
+remain outside frozen Regional Beta5 until later cumulative archive validation.

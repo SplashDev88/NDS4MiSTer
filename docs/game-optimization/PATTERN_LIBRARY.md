@@ -1914,3 +1914,10 @@ Target screen pairs/save match; raw timing/audio differences remain. Native
 home/Bag/save/reset/cold checks pass. Reuse the existing detector and loader;
 no new signature or repeated starter audit is needed. Evidence:
 `IPKD_TERRAIN_QUALIFICATION_V1.json`, `HEARTGOLD_BBOX_DEPENDENCY_AUDIT_V1.json`.
+
+French HeartGold IPKF independently confirms the same guarded terrain transfer:
+4.3544% fewer reference ARM9 entries and 3.9483% higher native fixed-plaza
+publication throughput. Reuse the six-region dependency proof and detector;
+retain identity-specific bytes/hashes and the raw timing/audio differences.
+Its own home/Bag/save/reset/cold checks pass. No new signature or repeated
+starter audit is needed. Evidence: `IPKF_TERRAIN_QUALIFICATION_V1.json`.

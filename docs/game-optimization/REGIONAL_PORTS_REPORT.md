@@ -61,8 +61,8 @@ extracted code context or private resource is added to this source repository.
 
 All twelve owned non-USA HGSS revision-0 starter ports and all six owned German,
 French, Italian, Spanish, Japanese and Korean SoulSilver revision-0 terrain
-ports are packaged in immutable Regional Beta5. German HeartGold terrain is
-qualified separately for a later private package; the other five HeartGold
+ports are packaged in immutable Regional Beta5. German and French HeartGold
+terrain are qualified separately for a later private package; the other four HeartGold
 terrain ports, Platinum and FFT A2 regional ports remain pending. No unowned
 revision or quarantined identity is admitted. Earlier dated sections retain
 their historical packaging status.
@@ -1019,3 +1019,62 @@ The next three porting areas are the remaining five HeartGold terrain regions
 (French next), Platinum regions/revisions, and FFT A2 regions/revisions. The
 French plan and guarded streams are prepared; its runtime qualification is
 pending. Existing owned-identity gates continue to exclude unknown revisions.
+
+### French HeartGold terrain qualification, 2026-11-01
+
+`heartgold-ipkf-r0.json` retains the qualified starter patch and adds the same
+48-byte terrain visibility gate with its own ROM/overlay/expected-byte identity.
+Both remain default-disabled. The two-patch release stream equals the tested
+cumulative native image. Frozen Regional Beta5 is unchanged; this addition needs
+a later separately verified private archive.
+
+| Metric and scope | Original/control | Candidate | Change |
+| --- | ---: | ---: | ---: |
+| Reference ARM9 entries, frames 6000–9599 | 702,433,607 | 671,847,033 | −4.3544% |
+| Native completed screen pairs/s, fixed plaza at 1 GHz | 18.8270 | 19.5703 | +3.9483% |
+| Terrain draws, reference frames 6000–6599 | 1,158 | 429 | 729 omitted |
+
+All 9,600 top hashes, 3,600 target screen pairs, initial 1,800 home/boot pairs
+and save bytes match cumulative decoded delivery. One earlier bottom hash
+at frame 3188 differs during menu brightening; retained thumbnails show that
+transition. Its individual full-resolution frame was not captured. Seven paired
+full-resolution checkpoints retain the expected French home/town scenes. The
+existing visibility caller has matching results; one other wrapper draw differs
+by one call in the bounded trace window.
+
+Raw RAM/timing differences and 356,143 differing same-index stereo samples are
+retained. Both audio streams contain 7,702,322 samples; maximum signed-16 delta
+is 8,836 and RMS delta is 63.1229. Original versus decoded delivery has 68 top
+and 14 bottom differences before frame 1932, none in the target window, and an
+exact save. These results are not whole-run audiovisual bit-exactness or human
+listening approval. The native comparison uses the same fixed saved anchor.
+
+Each native arm has one verified 30-second cold-start window at stock 1 GHz.
+Host CPU was 3.360% versus 3.262% of one core; renderer CPU was 161.56% versus
+161.16%. Publications are not unique animation FPS, cycle counts or whole-game
+speed. No confidence interval or native decoded-control window is claimed.
+Capture-quality and game-audio presence checks pass; review copies preserve
+encoded packets and timestamps. Four sampled views per arm retain the plaza
+and changing windmill poses.
+
+Home entry, French Bag, return outdoors, normal Save, soft-reset Continue and
+fresh-process cold field/Bag checks pass. The cold run leaves the new 512 KiB
+save unchanged; all four general/storage payload CRCs and international footer
+markers validate. MENU, stopped OBS, unchanged capture settings and clear owned
+jobs are verified. Fixtures are documented own-title imported HeartGold saves,
+not independent French new-game progression. Later areas, battles and human
+listening remain outside this qualification.
+
+The completed six-region HeartGold dependency audit, constant guards and existing
+loader are reused. No new signature, scratch, HPS service, RTL change or repeated
+starter test is needed. Evidence: `IPKF_TERRAIN_QUALIFICATION_V1.json`,
+`IPKF_TERRAIN_BEFORE_AFTER_V1.csv`, `IPKF_TERRAIN_REFERENCE_REVIEW_V1.json`,
+`IPKF_TERRAIN_NATIVE_VISUAL_REVIEW_V1.json` and
+`IPKF_TERRAIN_COLD_VISUAL_REVIEW_V1.json`. Review videos:
+`HeartGold_French_Terrain_Original_V1.mp4` and
+`HeartGold_French_Terrain_Candidate_V1.mp4`.
+
+The next three porting areas are the remaining four HeartGold terrain regions
+(Italian next), Platinum regions/revisions and FFT A2 regions/revisions. The
+Italian plan and guarded streams are prepared; its runtime qualification is
+pending. Unknown identities remain unsupported.
