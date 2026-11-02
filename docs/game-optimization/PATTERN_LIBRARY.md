@@ -649,6 +649,33 @@ a checked indexed lookup with fallback, but does not prove whole-game table
 immutability or duplicate-key behavior. No auto-patch or SDK identity is
 admitted. Keep game identities and addresses in the per-game report.
 
+A bounded shortcut can calculate `key - first_key`, check the indexed key and
+both immediate neighbors, and fall back to the original binary search when
+the candidate is absent or non-unique. This relies on the original sorted-table
+contract; it is not a substitute for proving sortedness at the scoped caller.
+Guard CPU/mode, comparator, stride, count, alignment and address extent. Keep
+the original duplicate-key selection and missing-key behavior through fallback.
+Do not retain a pointer or result between calls without a lifetime proof.
+
+Preserve the original stack layout and all observed return registers/flags,
+including caller-visible scratch registers and LR when practical. Differential
+routine tests should include sparse/duplicate tables, missing keys, empty/null
+inputs and fallback arguments. The Strange Journey trial passes 998 such cases
+and removes 3.7267% of reference target ARM9 instructions, while still changing
+frame-indexed HUD/map animation and raw RAM. Exact routine outputs do not prove
+identical scheduling, and reference instruction savings are not native speed.
+This trial is rejected: pooled native publications change only +0.2513% within
+2.8212% baseline spread. Preserve the negative result before trying sibling
+callers or promoting this into a general SDK optimization.
+
+For placement in an existing autoload reservation, trace the entire replay,
+including initialization, through the existing RAM observer extended to ITCM.
+Record boot stores explicitly; exclude only declared code bytes in comparisons.
+Normal main-RAM tracing alone cannot prove an ITCM slot is unused. This title's
+256-byte surveyed slot receives 64 initialization stores at frame 0 and no
+later interpreter stores during the 9,000-frame route. This proof remains
+bounded to that route and the observer's documented access paths.
+
 For bounded loop censuses, group payload spans by **PC and local span index**.
 Span numbers restart at each watched PC. Entry/exit calls can straddle a frame;
 pair by sequence, code, SP/LR and arguments rather than requiring equal frame

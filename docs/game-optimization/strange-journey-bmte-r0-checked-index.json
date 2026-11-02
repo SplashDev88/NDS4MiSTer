@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "title": "Shin Megami Tensei: Strange Journey",
+  "game_code": "BMTE",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "029a372ec97d02fca4ab8cbc6529c8aca89112cf",
+  "rom_sha256": "f4709745c10fca7024bd34dec4c0c6251a29088037aad596c8d52b63409a49ab",
+  "arm9_sha256": "0290af0553bd8a1efb68d663ccba373ab284e330f7ca8e5e447bb2556c629801",
+  "arm9_crc32": "c2e76e65",
+  "patches": [
+    {
+      "id": "checked-index-before-binary-search",
+      "pattern": "checked-index-before-binary-search",
+      "cpu": "arm9",
+      "mode": "arm",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x2099dcc",
+      "expect": "8fdefdeb",
+      "replace": "8b97fdeb",
+      "hook": {
+        "kind": "guest-arm-routine",
+        "address": "0x1fffc00",
+        "bytes": 240,
+        "expect": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "replace": "f84f2de900800fe1000050e300005113000052132e00000a100053e32c00001a010852e32a00008a010010e32800001a010011e32600001a020451e32400003a090551e32200002a027281e0090557e31f00008a28709de580409fe5040057e11b00001ab040d0e1b050d1e1055044e0020055e11600002a056281e0b070d6e1040057e11200001a000055e30200000ab07156e1040057e10d00002a017085e2020057e10200002ab071d6e1040057e10700009a0600a0e10610a0e10420a0e1000055e31ce09f051ce09f15000050e1f88fbde808f028e1f84fbde800f09fe590980902101801024418010280180102",
+        "sha256": "d77bdae89f56e9542b06bd9b131469ce24def6df18aa691944bfcc3884281b31",
+        "placement": "existing released ITCM autoload reservation",
+        "write_watch": "SEARCH_HOOK_RESERVATION_AUDIT_V1.json"
+      },
+      "enabled": false,
+      "scratch_bytes": 0,
+      "validated": {
+        "synthetic": "998 sorted-table cases: full return state and all memory exact",
+        "write_watch": "9000-frame replay: only 64 boot initialization stores into 256-byte reservation; no later writes",
+        "framebuffer": "3798/9000 frame pairs differ; sampled dungeon geometry and player markers match; HUD/map animation phase differs",
+        "native": "Rejected: no repeatable useful native speed gain; limited cold-load/dungeon smoke only",
+        "ram": "raw main RAM, DTCM and ARM7 differences retained; not bit-exact",
+        "audio": "all 14441852 channel samples exact",
+        "save": "exact"
+      },
+      "gain": {
+        "target_arm9_instructions": "-3.726742% (reference interpreter; not native speed)",
+        "native_publications_pooled": "+0.251295% within 2.821246% baseline spread; not established speedup"
+      },
+      "notes": "One scoped caller; verify stride, comparator, count, main-RAM range, candidate key and neighbors. Preserve duplicate/missing-key behavior through original search fallback. Original stack layout, register return and flags retained. Full-image identity guard and original-byte branch guard; no new HPS service. Disabled after A-B-B-A native test; do not promote or distribute as a beta."
+    }
+  ]
+}

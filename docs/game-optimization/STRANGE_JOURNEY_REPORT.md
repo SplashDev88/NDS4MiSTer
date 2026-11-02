@@ -1,6 +1,6 @@
 # Strange Journey exploration investigation
 
-Status: first candidate rejected for no repeatable native benefit. Early Antlia walking/turning route, profiling and reusable save are qualified; released baseline restored. No new optimization accepted or beta promoted.
+Status: word-stream and checked-index candidates both rejected for no repeatable native benefit. Early Antlia walking/turning route, profiling and reusable save are qualified; released baseline restored. No new optimization accepted or beta promoted.
 
 The user prioritized dungeon exploration on 2026-11-02 after a report that the intro movie now works but gameplay remains uneven. The baseline is released rc13, revision `8cbbc353b112be6168a8aacc265fd076ce7f5fdb`, retaining accepted rc12-derived improvements. The separate Scaler menu experiment is parked. The FPGA, host, renderer and clocks are unchanged.
 
@@ -83,6 +83,89 @@ The existing scanner now recognizes the exact fixed-destination word-stream shap
 
 ## Next three leads
 
-1. Investigate a checked direct lookup for the repeated 100-entry search, with fallback and duplicate/missing-key behavior preserved; no unverified scratch allocation.
+1. Establish native rendering cost and examine redundant or occluded geometry work. The existing geometry trace rejects whole-frame reuse; recurrence alone does not justify removing draws.
 2. Hoist repeated range-mask bounds only after checking aliases and concurrent mutation. Retain clearing and negative-index paths.
 3. Identify the sample-processing loop's input/history contract and investigate exact arithmetic reuse, without reducing audio quality or adding an HPS service.
+
+## Checked-index lookup investigation
+
+A second private candidate redirects only the ARM-mode main-code call at
+`02099dcc` from `02011810` to a 240-byte guest routine at `01fffc00`. It checks
+an indexed candidate and its neighbors, with the original search as fallback.
+No persistent cache, scratch buffer, HPS service or RTL change is involved.
+The full ROM/header/revision guard, original branch bytes, placement bytes and
+replacement routine are in `strange-journey-bmte-r0-checked-index.json`.
+
+The slot belongs to the existing released FMV autoload reservation; it is not
+an assumed free RAM address. The unchanged full-replay ITCM observer reproduces
+all six reference outputs. It sees 64 zero-word initialization stores to the
+256-byte surveyed slot at frame 0, with no later interpreter writes. The
+1,600-byte table is written only at frame 38. The complete target census sees
+281,400 calls with the same table, count and stride. These are bounded route
+proofs, not claims about every scene or host/state-loading write path.
+
+The routine retains the original 40-byte stack layout, return registers and
+flags. A 998-case differential suite compares all modeled memory, stack residue,
+R0–R12/SP/LR/PC and CPSR, including sparse and duplicate sorted tables, missing
+keys, empty/null inputs and guarded fallback cases. The shortcut never assumes
+that a failed indexed lookup means the key is absent. Sortedness remains the
+original search's required contract; no unsorted or concurrent-mutating-table
+claim is made. See `SEARCH_HOOK_SYNTHETIC_V1.json` and
+`SEARCH_HOOK_RESERVATION_AUDIT_V1.json`.
+
+The completed 9,000-frame candidate route reduces target ARM9 instructions
+from 501,439,673 to 482,752,309 (3.726742%). ARM7 instructions change from
+34,158,270 to 34,161,012 (+0.008027%). All 14,441,852 audio channel samples and
+final save bytes match exactly. At 12,100 guarded target entries/returns, the
+expected pointer, key, restored registers, LR and flags match the contract.
+The candidate reservation is still written only at boot; the table only at
+frame 38.
+
+This is not a bit-exact full-game patch: 3,798 frame pairs differ, starting at
+frame 5202. Captured top-screen differences are confined to HUD rows 2–17;
+reviewed dungeon geometry and map-player marker masks match. The animated map
+background also differs. Main-RAM/DTCM/ARM7 checkpoint differences are retained
+without assuming that every word is benign; before dungeon entry, checkpoints
+2400, 4200 and 4800 match after excluding only the declared code bytes. ITCM
+outside the declared routine and shared WRAM match at all checkpoints.
+`SEARCH_REPLAY_COMPARISON_V1.json`, `SEARCH_TOP_DIFF_BOUNDS_V1.json` and the
+contact images retain the raw observations. Visual spot checks do not prove
+all-frame visual equivalence or long-play safety.
+
+The first candidate recording reached frame 8999, then failed its recorder's
+mandatory-site check because the fallback site was never observed. That output
+is retained as incomplete. The repeat removes only that mandatory watch and
+finishes normally; the patch and input route are unchanged.
+
+The native A-B-B-A comparison rejects the candidate. Baseline trials are
+24.7721 and 24.0924 publications/s; candidate trials are 24.0670 and 24.9175/s.
+Pooled rates are 24.4326 versus 24.4940/s (+0.2513%), within the 2.8212% baseline
+spread. The first pair regresses and ranges overlap. The reference instruction
+saving therefore has no established useful native benefit. Mean renderer CPU
+use remains approximately 153% for both; this is not a causal bottleneck proof.
+
+| Checked-index metric | Released baseline | Disabled candidate |
+| --- | --- | --- |
+| Target ARM9 instructions | 501,439,673 | 482,752,309 (-3.726742%) |
+| Audio channel samples | 14,441,852 | All exact |
+| Final save | Reference | Exact |
+| Frame pairs | 9,000 | 3,798 differ; HUD/map differences retained |
+| Native publications/s, first trial | 24.7721 | 24.0670 |
+| Native publications/s, second trial | 24.0924 | 24.9175 |
+| Pooled native publications/s | 24.4326 | 24.4940 (+0.2513%; within variation) |
+
+The second candidate recording has two OBS render skips. Its separate MiSTer
+counter measurement is retained, but that recording is not visual-equivalence
+evidence. The other three recordings pass capture-quality checks. Sampled
+native videos show the expected walk/turn route, and before/after screenshots
+return to the same entrance tile and heading; this does not claim full native
+video/audio equivalence. The untouched private seed survives both cold loads
+and the candidate exit. Full patched movie/new-save/reset/broader-overlay
+qualification stops at this rejection. No new beta or release is promoted.
+
+The released baseline is restored at Antlia. All 11 protected original
+settings/firmware/save files pass the final frozen-content audit. The original
+ROM was accessed through read-only aliases. Full results:
+`NATIVE_SEARCH_AB_COMPARISON_V1.json`, `FINAL_PROTECTED_FILES_AUDIT_V2.json`.
+Tooling commit `44b17c3` adds optional ITCM tracing to the existing replay
+builder; the observer changes no emulated reads or timing counters.

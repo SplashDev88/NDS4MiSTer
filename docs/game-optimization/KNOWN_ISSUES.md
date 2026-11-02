@@ -15,10 +15,18 @@
   variation and does not establish repeatable benefit. The candidate is
   rejected, no beta promoted, and the released baseline restored. Additional
   patched movie/reset/save-state lifecycle checks were not run after rejection.
-- Strange Journey's repeated-search and range-mask leads are unpatched.
-  Consecutive table keys in a short trace do not justify blind indexed lookup;
-  stable entry/exit bounds do not rule out intermediate IRQ/DMA writes. Do not
-  reuse a cache across changing tables or assume unused memory from zero bytes.
+- Strange Journey's checked-index search trial remains disabled. Its scoped
+  fallback preserves 998 synthetic return/memory cases, but the 9,000-frame
+  game replay has HUD/map animation and RAM differences despite exact audio
+  and save bytes. The 3.7267% reference ARM9 instruction reduction is not a
+  native-speed claim. A-B-B-A native trials yield only +0.2513% pooled screen
+  publications within 2.8212% baseline spread; reject this candidate. The B2
+  video has two OBS render skips and is not visual-equivalence evidence.
+  ITCM reservation and table write coverage are bounded
+  to this route and interpreter stores; do not infer all-game/state-loader
+  safety. The range-mask lead remains unpatched: stable entry/exit bounds do
+  not rule out intermediate IRQ/DMA writes. Do not reuse a cache across changing
+  tables or assume unused memory from zero bytes.
 
 - HeartGold IPKE r0 uses compressed ARM9 code and 127 compressed overlays.
   Explicit overlay-only append delivery now reuses FMV relocation and leaves
