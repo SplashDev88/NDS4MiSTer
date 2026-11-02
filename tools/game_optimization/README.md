@@ -310,6 +310,16 @@ boot. Builds without this observer reject the request rather than silently
 recording nothing. This supports normal NDS with JIT disabled, not DSi or
 arbitrary host/state-loader writes.
 
+`--trace-itcm-writes` additionally instruments the four ARM9 interpreter ITCM
+store paths in a private `CP15.cpp` copy and implies `--trace-ram-bus`.
+`instrument_itcm_trace.py` guards the source sites and canonicalizes physical
+32 KiB aliases to `01ff8000..01ffffff`. Watch ranges must remain wholly within
+main RAM or this ITCM space; a build without the ITCM observer rejects ITCM
+watches. The trace excludes reset-time host memset, debug/state loading, JIT
+and DSi host writes. A zero-filled region is not an unused-memory proof:
+record the whole replay, distinguish boot initialization from later writes,
+and qualify observer outputs against the unchanged reference first.
+
 With the existing SPU sample observer enabled, `ram_bus.csv` interleaves stores,
 actual sound FIFO reads and sound-control writes. It retains event order,
 both raw CPU timestamps, canonical addresses, values, widths, CPU context and

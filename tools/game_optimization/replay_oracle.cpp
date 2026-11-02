@@ -193,7 +193,14 @@ int main(int argc,char**argv) {
   std::ifstream spec(path);std::string line;
   while(std::getline(spec,line)){
    std::istringstream row(line);u64 first,last;std::string extra;
-   if(!(row>>std::hex>>first>>last)||(row>>extra)||first<0x02000000ull||last>0x02400000ull||first>=last)return 8;
+   // ITCM aliases are normalized by the optional interpreter-write observer.
+   // These are two distinct physical spaces; a watch must not straddle them.
+   if(!(row>>std::hex>>first>>last)||(row>>extra)||first>=last||
+      !((first>=0x02000000ull&&last<=0x02400000ull)||
+        (first>=0x01ff8000ull&&last<=0x02000000ull)))return 8;
+#ifndef NDS_REPLAY_HAS_ITCM_BUS
+   if(first<0x02000000ull)return 8;
+#endif
    for(auto old:replay_ram_bus.ranges)if(first<old.second&&old.first<last)return 8;
    replay_ram_bus.ranges.emplace_back(u32(first),u32(last));
   }
