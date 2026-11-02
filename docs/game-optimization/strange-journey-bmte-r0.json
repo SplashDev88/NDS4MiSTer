@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "title": "Shin Megami Tensei: Strange Journey",
+  "game_code": "BMTE",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "029a372ec97d02fca4ab8cbc6529c8aca89112cf",
+  "rom_sha256": "f4709745c10fca7024bd34dec4c0c6251a29088037aad596c8d52b63409a49ab",
+  "arm9_sha256": "0290af0553bd8a1efb68d663ccba373ab284e330f7ca8e5e447bb2556c629801",
+  "arm9_crc32": "c2e76e65",
+  "patches": [
+    {
+      "id": "word-stream-branch-collapse",
+      "pattern": "branch-heavy-fixed-destination-word-stream",
+      "cpu": "arm9",
+      "target": "arm9.bin/main_loaded",
+      "addr": "0x20086e4",
+      "mode": "arm",
+      "expect": "02c080e00c0050e1000000ba000000ea0400b0e8000000ba000000ea002081e5f7ffffba1eff2fe1",
+      "replace": "02c080e00c0050e10400b0b8002081b5fbffffba1eff2fe10000a0e10000a0e10000a0e10000a0e1",
+      "hook": null,
+      "enabled": false,
+      "scratch_bytes": 0,
+      "validated": {
+        "synthetic_instruction_equivalence": "1024 cases passed",
+        "framebuffer": "Both screens exact: 9000-frame walking route, 9600-frame idle route, 4800-frame off-route",
+        "ram": "Raw main RAM/DTCM differences retained; roles unresolved",
+        "audio": "Walking route: 70/14441852 channel samples differ, maximum delta 34, before target; no inaudibility claim",
+        "native": "Two matched route trials per variant; candidate range 24.6937..24.7681 publications/s, baseline 24.1450..24.7962. Private load/patch guards and seed preservation pass.",
+        "save": "Final bytes exact on all three routes",
+        "runtime_census": "10668 paired geometry-FIFO calls pass existing guarded transfer auditor"
+      },
+      "gain": {
+        "software_target_arm9_instruction_change_percent": -0.9215936131164448,
+        "native_speedup_percent": null,
+        "observed_pooled_publication_rate_change_percent": 1.0636064762291175
+      },
+      "notes": "Disabled source manifest. Isolated private profile reuses exact release FMV reconstruction, layout and all movie fixes. No scratch, new HPS service or RTL changes. Reference instruction reduction is not native speed. Pooled +1.0636% is within observed baseline variation and does not establish a repeatable useful gain. Dropped before additional candidate lifecycle qualification.",
+      "status": "rejected_no_repeatable_native_gain"
+    }
+  ]
+}

@@ -1,5 +1,25 @@
 # Optimization investigation limits
 
+- Strange Journey BMTE r0: the ordinary software oracle does not instantiate
+  the HPS decoder for released packed FMVs. Encoded scanlines during opening
+  playback are a harness limitation, not evidence of a release regression.
+  Cold-loading a normal in-game save avoids that unsupported path and works
+  with the exact released prepared cartridge. Preserve native movie coverage.
+- Strange Journey's disabled word-stream trial passes 1,024 synthetic cases,
+  4,800 off-route, 9,600 idle-dungeon and 9,000 walking-route screen pairs/save
+  bytes, but retains reproducible RAM/audio changes. Walking checkpoints have
+  main-RAM/DTCM differences after code normalization. Audio differs in 70 channel
+  samples before the target window, max delta 34; identical screenshots and
+  small deltas do not prove inaudibility. The private native A/B changes only
+  guarded guest bytes; its pooled +1.0636% publication change is within baseline
+  variation and does not establish repeatable benefit. The candidate is
+  rejected, no beta promoted, and the released baseline restored. Additional
+  patched movie/reset/save-state lifecycle checks were not run after rejection.
+- Strange Journey's repeated-search and range-mask leads are unpatched.
+  Consecutive table keys in a short trace do not justify blind indexed lookup;
+  stable entry/exit bounds do not rule out intermediate IRQ/DMA writes. Do not
+  reuse a cache across changing tables or assume unused memory from zero bytes.
+
 - HeartGold IPKE r0 uses compressed ARM9 code and 127 compressed overlays.
   Explicit overlay-only append delivery now reuses FMV relocation and leaves
   both stored CPU images untouched. It does not enable compressed main-code or

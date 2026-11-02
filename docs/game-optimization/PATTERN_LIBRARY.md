@@ -616,6 +616,47 @@ state, and pixel equality cannot replace the audio gate. Preserve both passing
 checks and failures; do not mask more RAM or generalize another game's
 perceptual approval to this result.
 
+The structural scanner now also flags the existing 40-byte fixed-destination
+word-stream shape automatically. It requires the exact branch graph, word load
+with source writeback, fixed destination store, signed comparison, flag behavior
+and LR return; register renaming is allowed. Changed branch targets, flag-setting
+ADD, store writeback, extra loaded registers and aliases that corrupt the loop
+controls are rejected. This is a discovery aid, not authorization to substitute
+memcpy or suppress FIFO commands.
+
+Strange Journey BMTE r0 supplies another match at `020086e4`. Its main ARM9
+image is compressed, but the released SJ movie profile already reconstructs
+it. A private candidate reuses that exact path and changes only the guarded
+40-byte extent, preserving all movie assets, stubs and layout. Do not introduce
+a parallel loader or assume a generic same-layout compressed-main patch works.
+Its 4,800-frame command-room comparison preserves both screens and save but
+changes RAM/audio. An unchanged baseline repeats exactly; the differences
+cannot be dismissed as harness noise. The later 9,000-frame walking route also
+preserves both screens/save, with 0.9216% fewer reference ARM9 instructions.
+The existing guarded transfer auditor passes 10,668 idle-dungeon calls, all to
+geometry FIFO. The predeclared two native trials per variant yield pooled
++1.0636% publications within baseline variation, with the first pair regressing.
+Keep this candidate rejected and disabled. A cheaper instruction sequence is
+not itself a useful game speedup; retain this negative result for other titles.
+
+### Repeated searches over consecutive keys
+
+Sample the actual key bytes, full table and comparator, not just pointers.
+Strange Journey's target window makes 100 searches/frame over a 100-entry,
+16-byte-stride table. Four captured frames use keys 111..210 and identical
+table bytes; comparator code subtracts two unsigned halfwords. This suggests
+a checked indexed lookup with fallback, but does not prove whole-game table
+immutability or duplicate-key behavior. No auto-patch or SDK identity is
+admitted. Keep game identities and addresses in the per-game report.
+
+For bounded loop censuses, group payload spans by **PC and local span index**.
+Span numbers restart at each watched PC. Entry/exit calls can straddle a frame;
+pair by sequence, code, SP/LR and arguments rather than requiring equal frame
+numbers. The Strange Journey range-mask census has 22,401 alternating pairs,
+116 crossing a frame boundary, identical endpoint bounds and disjoint source/
+destination ranges. Endpoint stability is not a write-watch proof against
+temporary IRQ/DMA changes.
+
 ## Repeated empty-tail compaction
 
 Detect nested forward scans over fixed-size records: an outer scan finds an

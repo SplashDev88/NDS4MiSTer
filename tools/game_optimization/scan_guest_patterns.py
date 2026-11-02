@@ -77,6 +77,32 @@ def halfword_copy(instructions):
                     [instructions[0].reg_name(r) for r in roles]))
 
 
+def fixed_destination_word_stream(instructions):
+    """Screen the existing branch-heavy stream pattern, not ordinary memcpy."""
+    if len(instructions) != 10 or any(i.size != 4 for i in instructions):
+        return None
+    words = [int.from_bytes(i.bytes, 'little') for i in instructions]
+    first = words[0]
+    if first & 0xfff00ff0 != 0xe0800000:
+        return None  # Unshifted ADD end, source, length; no flag update.
+    source, end, length = (first >> 16) & 15, (first >> 12) & 15, first & 15
+    store = words[7]
+    destination, data = (store >> 16) & 15, (store >> 12) & 15
+    if len({source, end, destination}) != 3:
+        return None
+    if {source, end, destination} & {length, data} or max(source, end, length, destination, data) >= 13:
+        return None
+    expected = [first, 0xe1500000 | source << 16 | end,
+                0xba000000, 0xea000000, 0xe8b00000 | source << 16 | 1 << data,
+                0xba000000, 0xea000000, 0xe5800000 | destination << 16 | data << 12,
+                0xbafffff7, 0xe12fff1e]
+    if words != expected:
+        return None
+    return dict(source=f'r{source}', end=f'r{end}', length=f'r{length}',
+                destination=f'r{destination}', data=f'r{data}',
+                required_proof='Authenticate loaded code and all entry paths; capture actual arguments and ordered accesses. Fixed destination may be MMIO. Preserve zero-length behavior, flags, IRQ/DMA effects and output timing; measure native benefit.')
+
+
 def shift_chain(instructions):
     if len(instructions) != 5:
         return None
@@ -311,6 +337,7 @@ def scan(data, base):
     decoder.detail = True
     findings = []
     detectors = [('branch-heavy-halfword-copy', 52, 0xffff0fff, 0xe3a00000, halfword_copy),
+                 ('branch-heavy-fixed-destination-word-stream', 40, 0xfff00ff0, 0xe0800000, fixed_destination_word_stream),
                  ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain),
                  ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step),
                  ('linear-key-handler-dispatch', 44, 0xfff00fff, 0xe5900000, key_handler_dispatch),
