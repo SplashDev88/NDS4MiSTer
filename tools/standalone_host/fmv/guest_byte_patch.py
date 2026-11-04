@@ -177,6 +177,9 @@ def recompress_arm9_autoload(source, header, manifest, requested, report):
     ordinary boot loader copies these bytes into their original destination;
     this is not a live write into an instruction cache or a scratch allocation.
     """
+    delivery = manifest['delivery']
+    require(delivery in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1'),
+            'Unknown compressed ARM9 delivery')
     offset, _, address, length = struct.unpack_from('<4I', header, 0x20)
     require(offset >= 512 and length > 0, 'Invalid ARM9 image extent')
     raw = source.read(offset, length)
@@ -249,6 +252,42 @@ def recompress_arm9_autoload(source, header, manifest, requested, report):
             replacement_sha256=hashlib.sha256(after).hexdigest()))
     require(all(expected[at:at+len(value)] == value for at, value in guards),
             'Selected patch changes a protected data invariant')
+    if delivery == 'append-decoded-arm9-autoload-v1':
+        # Reuse the existing FMV preparation's uncompressed MainCodeFile boot
+        # image and VirtualRom relocation. No encoder, live patch, new memory
+        # region, or runtime service is involved. Even a no-op selection uses
+        # this delivery and needs its own unpatched replay qualification.
+        require(address == 0x02000000 and address+len(decoded) <= 0x02400000 and
+                offset >= 512 and decoded[:0x800] == raw[:0x800],
+                'Unsupported decoded boot extent or secure area')
+        compression_word = settings+20
+        require(struct.unpack_from('<I', decoded, compression_word)[0] == address+length,
+                'Compressed static-end pointer differs')
+        struct.pack_into('<I', expected, compression_word, 0)
+        output = bytes(arm.save(compress=False))
+        require(output == bytes(expected), 'Decoded boot changes undeclared bytes')
+        first = (source.size+511) & ~511
+        end = (first+len(output)+511) & ~511
+        require(end <= LIMIT, 'Decoded boot exceeds cartridge memory')
+        changed_header = bytearray(header)
+        struct.pack_into('<I', changed_header, 0x20, first)
+        struct.pack_into('<I', changed_header, 0x2c, len(output))
+        struct.pack_into('<I', changed_header, 0x80, end)
+        capacity = 0
+        while (128*1024 << capacity) < end:
+            capacity += 1
+        changed_header[0x14] = capacity
+        struct.pack_into('<H', changed_header, 0x15e, _common.crc16(changed_header[:0x15e]))
+        image = VirtualRom(source, end)
+        image.add(0, changed_header); image.add(first, output); image.finish()
+        report.update(state='applied_to_virtual_image', delivery=delivery, virtual_bytes=end,
+                      arm9_output_sha256=hashlib.sha256(output).hexdigest(),
+                      arm9_cartridge_offset=first, arm9_output_bytes=len(output),
+                      decoded_output_sha256=hashlib.sha256(expected).hexdigest(),
+                      header_sha256=hashlib.sha256(changed_header).hexdigest(),
+                      metadata_changes=['ARM9 cartridge offset/length', 'used ROM size/capacity',
+                                        'header CRC16', 'ARM9 compressed-static-end word cleared'])
+        return image, report
     # Avoid a redundant HPS compression pass. Complete decoded-image equality
     # below proves that the encoder changed only the selected instructions.
     # A no-op control keeps the original encoding, rather than re-encoding it.
@@ -286,7 +325,7 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
         if manifest.get('delivery') is not None:
-            if manifest['delivery'] == 'recompress-arm9-autoload-v1':
+            if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1'):
                 return recompress_arm9_autoload(source, header, manifest, requested, report)
             return append_decoded_overlays(source, header, manifest, requested, report)
         require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')

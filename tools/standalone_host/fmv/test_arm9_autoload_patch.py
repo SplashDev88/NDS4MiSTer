@@ -112,6 +112,45 @@ class Arm9AutoloadTests(unittest.TestCase):
         self.assertEqual(got, self.raw)
         self.assertEqual(report['state'], 'applied_to_virtual_image')
 
+    def test_appended_decoded_boot_changes_only_declared_bytes_and_metadata(self):
+        for changed in (False, True):
+            manifest = copy.deepcopy(self.manifest)
+            manifest['delivery'] = 'append-decoded-arm9-autoload-v1'
+            if not changed:
+                manifest['patches'][0]['replace'] = manifest['patches'][0]['expect']
+            with patch.object(codeCompression, 'compress', side_effect=AssertionError('encoder used')):
+                got, report = self.run_image(manifest)
+            self.assertEqual(report['state'], 'applied_to_virtual_image')
+            first, _, _, length = struct.unpack_from('<4I', got, 0x20)
+            self.assertGreaterEqual(first, len(self.raw))
+            self.assertEqual(first % 512, 0)
+            self.assertEqual(got[512:len(self.raw)], self.raw[512:])
+            expected = bytearray(codeCompression.decompress(self.stored))
+            struct.pack_into('<I', expected, 0x20+20, 0)
+            expected[24592:24600] = bytes.fromhex(manifest['patches'][0]['replace'])
+            self.assertEqual(got[first:first+length], expected)
+            self.assertEqual(self.path.read_bytes(), self.raw)
+
+    def test_appended_decoded_boot_rejects_undeclared_encoder_change(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest['delivery'] = 'append-decoded-arm9-autoload-v1'
+        original_save = code.MainCodeFile.save
+        def broken(instance, **kwargs):
+            result = bytearray(original_save(instance, **kwargs)); result[4096] ^= 1
+            return result
+        with patch.object(code.MainCodeFile, 'save', broken):
+            got, report = self.run_image(manifest)
+        self.assertEqual(got, self.raw)
+        self.assertEqual(report['state'], 'skipped')
+
+    def test_appended_decoded_boot_keeps_original_byte_guards(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest['delivery'] = 'append-decoded-arm9-autoload-v1'
+        manifest['patches'][0]['expect'] = 'ff'*8
+        got, report = self.run_image(manifest)
+        self.assertEqual(got, self.raw)
+        self.assertEqual(report['state'], 'skipped')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -667,6 +667,18 @@ by discovery. Recompression cost and native cold/reset behavior still require
 per-game qualification. `test_arm9_autoload_patch.py` covers synthetic byte
 preservation, identical controls, admission failures, overlap and size changes.
 
+`append-decoded-arm9-autoload-v1` reuses the existing FMV preparation's
+uncompressed `MainCodeFile` boot delivery when runtime recompression is too
+expensive. It shares the same instruction/section/data admission guards,
+appends the boot image through `VirtualRom`, and changes only the selected
+instructions, compressed-static-end word, ARM9 file offset/length and ROM
+size/capacity/header CRC. It requires an exact full decoded-byte comparison
+and unchanged secure area. It neither allocates new guest RAM nor invokes an
+encoder. Original files and all other cartridge payloads remain untouched.
+Even an identical-byte control changes boot timing and header metadata; run
+and record it separately from both the original compressed boot and the
+candidate. Matching racing frames cannot erase boot/menu/audio differences.
+
 ### Deterministic private cold-boot storage
 
 The reference core leaves some initial hardware data registers indeterminate.
