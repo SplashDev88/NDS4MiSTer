@@ -88,7 +88,7 @@ cartridge stream: ASCII `VROM`, a little-endian 32-bit size, then exactly that
 many bytes and EOF. Use the existing `fmv/prepare.py:VirtualRom` and guarded
 `fmv/guest_byte_patch.py` to construct it; the original ROM remains read-only.
 The latter supports same-size uncompressed ARM9 main-code patches and
-uncompressed ARM9 overlay files. It rejects compressed code, autoloads,
+uncompressed ARM9 overlay files. Its default delivery rejects compressed code, autoloads,
 scratch and HLE requests. Overlay targets use `target: "arm9.overlay"` with
 `overlay` (integer ID), `overlay_ram` (hex address), `overlay_file_id` and
 `overlay_sha256` (entire decoded body), alongside the usual CPU, mode,
@@ -649,3 +649,32 @@ offsets and residuals, plus labeled thumbnails. Audio offset estimation uses
 one channel; residual measurements cover both. The tool does not enable a patch
 or declare visual, audio or gameplay equivalence. Preserve the raw comparison
 and review unexplained differences under the explicitly chosen test budget.
+
+### Compressed ARM9 ITCM boot payloads
+
+Explicit `recompress-arm9-autoload-v1` delivery in `guest_byte_patch.py` reuses
+`MainCodeFile` and `VirtualRom`. It admits pinned ITCM autoload sections only,
+with code-settings offset, full stored/decoded identities, expected instruction
+bytes, mode/alignment and data guards. Unchanged recompression must reproduce
+the original stored image exactly. A selected patch must retain the original
+compressed extent and every decoded byte outside its declared replacement;
+header, copy table, other sections and cartridge layout stay unchanged.
+Normal boot performs the copy into ITCM, with no live instruction-cache write,
+new allocation in guest memory, hardware hook or HPS runtime service. Each
+selection falls back atomically on mismatch. This mode is not release-enabled
+by discovery. Recompression cost and native cold/reset behavior still require
+per-game qualification. `test_arm9_autoload_patch.py` covers synthetic byte
+preservation, identical controls, admission failures, overlap and size changes.
+
+### Deterministic private cold-boot storage
+
+The reference core leaves some initial hardware data registers indeterminate.
+A virtual cartridge can reuse memory filled with ROM padding, producing a
+repeatable but different control run. Mario Kart exposed this first in saved
+DIV/SQRT thread context; initializing those registers alone still left a later
+entropy difference. The oracle now zeroes its NDS object storage before normal
+construction and pins math data registers after reset. This is an explicit
+software fixture, not a claim about all hardware power-on values or a change
+to the released core. Requalify unchanged controls after changing fixtures.
+Mario Kart's 3,300-frame direct and identical virtual controls now match the
+previous direct golden in frames, state, audio, save and both PC profiles.
