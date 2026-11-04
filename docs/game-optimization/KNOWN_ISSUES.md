@@ -2,8 +2,13 @@
 
 - Mario Kart's separate inline FIFO candidate remains disabled. Two 3,300-frame
   software routes match both screens/save and reduce ARM9 instruction samples
-  1.4184%/1.5199%, but RAM/audio differ. The retained variant uses LDM and has
-  software/ABI evidence only. The earlier LDR variant booted and played on
+  1.4184%/1.5199%, but RAM/audio differ. The retained LDM variant completed a
+  visually checked stationary native control/candidate/control comparison:
+  20.9498/21.1555/21.2297 publications per second. Its apparent gain over the
+  first control is smaller than variation between controls and does not
+  establish a repeatable benefit. Keep it disabled; full lifecycle/regional
+  testing is not justified without a new performance lead.
+  The earlier LDR variant booted and played on
   MiSTer, but automated mode selection/attract transitions prevented a trusted
   matched native comparison. Its warm Time Trials rates must not be compared
   causally with the differently initialized control. No native gain, audio

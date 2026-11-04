@@ -1,8 +1,9 @@
 # Mario Kart DS in-memory optimization investigation
 
-Status: second software investigation pass complete; the native gain gate is
-unresolved and there is no accepted speedup. The DMA and inline FIFO candidates
-remain disabled. Results and limitations are recorded below. No candidate
+Status: software and bounded native FIFO investigation complete; the native
+control/candidate/control comparison does not establish a repeatable speedup.
+The DMA and inline FIFO candidates remain disabled. Results and limitations
+are recorded below. No candidate
 beta has been promoted or release changed. The Scaler menu experiment
 remains separate; no FPGA, renderer, clock, save-state format or HPS service
 changes are part of this experiment.
@@ -183,9 +184,9 @@ DMA change or command removal. The adjacent literal pool is guarded.
 
 The first variant used a post-indexed LDR; the recorded second variant retains
 the original helper's LDM instruction class. Both variants have identical
-screen, save and audio artifacts in the two reference routes below. Only the
-first variant was deployed privately on MiSTer; the LDM variant is not
-native-qualified.
+screen, save and audio artifacts in the two reference routes below. Both were
+deployed privately on MiSTer. The latest LDM variant completed the controlled
+native comparison below, but did not meet the performance acceptance gate.
 
 The full helper body is identical in owned USA/Europe code. Its new generic
 scanner signature is a profiling lead; only USA is admitted by this manifest.
@@ -220,7 +221,7 @@ audio/RAM differ from the original compressed boot. All 900 frames 2400–3299
 of the Time Trials racing scene are exact, and its instruction count differs
 by one sample. Candidate comparisons above use their matched decoded control.
 
-Native observations are not a trusted paired result. Three initial Time Trials
+Earlier LDR observations are not a trusted paired result. Three initial Time Trials
 control windows average 21.1747 completed screen publications/second. Three
 first-variant windows average 18.6150 after a GP/quit transition. Different
 initialization histories prevent attributing that difference to the patch;
@@ -229,11 +230,41 @@ selected GP/VS or entered attract mode and are excluded. Navigation was also
 inconsistent under the unpatched control; it is not a confirmed patch defect.
 See `INLINE_NATIVE_RESULT_V1.json` and `INLINE_NATIVE_EXCLUSIONS_V1.json`.
 
-These counts are not unique animation/game FPS. Paired native frame-time
-percentiles, dropped-game-frame results, moving-race speed, full lifecycle,
-other courses/regions and audiovisual review remain unqualified. No video
-or beta is presented as demonstrating a gain. The released rc13 baseline
-is restored and the protected files/runtime are audited separately.
+### Latest LDM native control/candidate/control comparison
+
+Short button edges and an image check after each menu transition reached the
+same Time Trials/Mario/B Dasher/Figure-8 Circuit start-line view in three fresh
+ROM/host/helper launches. The private route stops on an unexpected screen;
+its templates reject all 90 wrong-menu pairings. No product input fix was
+made and no underlying input defect is inferred. Every menu and post-window
+scene check passed, with the driver stationary and all three mushrooms unused.
+The staged original/candidate bytes, private save, stock FPGA/host/renderer
+and 1 GHz CPU clock were checked. All launches share the same board boot;
+these are fresh game launches, not physical power cycles.
+
+Each row is the mean of three 20-second windows, with three seconds after
+resuming before measurement. The controls use the same decoded delivery as
+the candidate, with identical original/replacement instruction bytes.
+
+| Fresh launch | Screen publications/second | Host CPU | Renderer CPU |
+| --- | ---: | ---: | ---: |
+| A: unchanged control | 20.9498 | 3.36% | 145.92% |
+| B: inline LDM candidate | 21.1555 | 3.41% | 146.47% |
+| C: unchanged control repeated | 21.2297 | 3.35% | 146.79% |
+
+The candidate is 0.9820% above the first control but 0.3491% below the closing
+control; the unchanged control means differ by 1.3357%. This does not establish
+a causal speedup or regression. The initial apparent gain is smaller than
+observed variation between control launches. Keep the patch disabled and do
+not spend further lifecycle/regional validation on it without a new performance
+lead. Evidence: `INLINE_NATIVE_RESULT_V2.json`, `FIFO2_A/B/C_*`,
+`NATIVE_CHECKED_ROUTE_RECEIPT_V1.json` and `NATIVE_ROUTE_NEGATIVE_CHECK_V1.json`.
+
+These counts are not unique animation/game FPS. Native frame-time percentiles,
+dropped-game-frame results, moving-race speed, full lifecycle, other
+courses/regions and audiovisual review remain unqualified. No video or beta
+is presented as demonstrating a gain. The released rc13 baseline is restored;
+`INLINE_FINAL_PROTECTED_AUDIT_V2.json` records the original-input/runtime audit.
 
 ## Next three ideas not implemented
 

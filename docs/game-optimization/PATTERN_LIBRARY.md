@@ -2156,6 +2156,17 @@ Retain the original load instruction class when comparing an inline form:
 the recorded second variant uses LDM rather than the first trial's LDR.
 Its reference screens/save/audio equal the first variant's, but this does
 not establish native instruction timing. Native LDR observations have
-different transition histories and are not a trusted gain/regression pair;
-the LDM variant has no native measurement. Mode selection, attract playback
-and cold/warm history must be visually qualified before calculating a gain.
+different transition histories and are not a trusted gain/regression pair.
+The later LDM control/candidate/control comparison averages 20.9498, 21.1555
+and 21.2297 screen publications/second in the same stationary Time Trials view.
+The apparent 0.9820% gain over the first control does not survive the closing
+control; this pattern has no accepted Mario Kart native gain. Instruction
+savings alone are insufficient to justify promotion.
+
+Qualify mode selection, attract playback and launch history visually before
+calculating a gain. Use short button edges with image checks after each menu
+transition; stop on a mismatch instead of continuing a blind input sequence.
+Check scene/camera after every measurement. For small effects, repeat the
+unchanged control across launches: low variation among windows in one launch
+does not bound variation between launches. Preserve all windows and report
+screen publications separately from unique game frames.

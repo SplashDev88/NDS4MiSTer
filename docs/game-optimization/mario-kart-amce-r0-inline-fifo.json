@@ -32,14 +32,14 @@
         "ram": "Raw checkpoint differences retained.",
         "audio": "Raw differences retained; no inaudibility verdict. LDM variant audio equals first variant in both reference routes.",
         "abi": "146 cases: ordered FIFO writes, empty sends, callee-saved state, stack and ARM/Thumb returns.",
-        "native": "Latest LDM variant not deployed. First LDR variant cold-started and played, but no trusted matched native A/B or lifecycle qualification."
+        "native": "Latest LDM variant cold-loaded and completed nine scene-checked 20-second stationary Time Trials windows across control/candidate/control launches. Staged bytes and private save verified. Full lifecycle and moving-race qualification remain untested."
       },
       "gain": {
         "time_trials_arm9_instruction_samples": "-1.418367% (not cycles/FPS)",
         "grand_prix_arm9_instruction_samples": "-1.519923% (not cycles/FPS)",
-        "native": "Unestablished; candidate disabled."
+        "native": "No repeatable gain established: control 20.9498, candidate 21.1555, repeated control 21.2297 screen publications/s. Not unique game FPS. Keep disabled."
       },
-      "notes": "Experimental variant 2 retains the original LDM instruction class while inlining the fixed-FIFO sender. No command omission, scratch, new service or RTL change. First variant used LDR and has confounded native observations; latest variant has software/ABI evidence only. Native benefit, full lifecycle, audio review and other courses/regions remain gates.",
+      "notes": "Experimental variant 2 retains the original LDM instruction class while inlining the fixed-FIFO sender. No command omission, scratch, new service or RTL change. First LDR variant observations remain confounded. Latest LDM native apparent +0.9820% versus initial control is smaller than 1.3357% variation between control launches and does not survive the closing control. Do not promote or expand lifecycle/regional tests without a new performance lead. Raw RAM/audio differences and broader behavior remain unqualified.",
       "data_guards": [
         {
           "addr": "0x01ff9138",
