@@ -1,8 +1,9 @@
 # Mario Kart DS in-memory optimization investigation
 
-Status: first investigation pass complete, with no accepted speedup. The DMA
-threshold candidate remains disabled after native preparation failed before
-game start; no candidate beta was promoted or release changed. The Scaler menu experiment
+Status: second software investigation pass complete; the native gain gate is
+unresolved and there is no accepted speedup. The DMA and inline FIFO candidates
+remain disabled. Results and limitations are recorded below. No candidate
+beta has been promoted or release changed. The Scaler menu experiment
 remains separate; no FPGA, renderer, clock, save-state format or HPS service
 changes are part of this experiment.
 
@@ -109,7 +110,7 @@ Zero-initializing the private NDS object storage before normal construction
 resolved the control: direct and virtual runs now reproduce all six golden
 outputs exactly across 3,300 frames. No product reset behavior changed.
 
-## Next three leads
+## First-pass leads (subsequently investigated below)
 
 1. Check whether static model display lists can use fewer vertex-command words
    without changing coordinates. Prove exact representability first; any
@@ -147,3 +148,100 @@ released runtime files. The released private baseline is restored for use.
 One game patch manifest is recorded, individually selectable and disabled.
 No source from the decompilation, ROM, save or extracted asset is included in
 these source commits.
+
+## Second pass: exact geometry and material-cache screening
+
+The bounded packed-list detector parses 75 source spans that match at five
+race checkpoints. Weighted by the existing 30,467-call census, these contain
+1,341,786 VTX16 commands. None can use exact VTX10, preserved-axis or signed
+10-bit-delta replacement. Existing shorter commands and redundant-state
+elimination already cover the straightforward reductions. No coordinates
+were rounded and no geometry was removed. The weighted totals are leads
+derived from checkpoint snapshots, not a full lifetime/write-watch proof.
+
+A qualified Time Trials memory observer captures 12,000 material computations
+over 400 frames, with all six unchanged-replay artifacts identical to the
+control. Every allocated material-result-cache pointer is null at the selection branch.
+The apparent repeats of material indices 0 and 1 belong to different model
+material pointers; each material occurs once per sampled draw. Enabling the
+existing shared per-draw cache would not avoid these computations. A cache
+across frames would require separate storage and dependency/invalidation
+proof and was not added.
+
+Evidence: `DISPLAY_LIST_CENSUS_V1.json`,
+`REDUNDANT_COMMAND_CONDITIONAL_CENSUS_V1.json`,
+`MATERIAL_CENSUS_SUMMARY_V2.json`. The reusable packed-list detector has five
+synthetic parsing/state tests and agrees with all 75 observed source spans.
+
+## Second pass: inline FIFO trial
+
+`mario-kart-amce-r0-inline-fifo.json` replaces the seven-instruction tail at
+ARM9 ITCM `01ff911c` within its original 28-byte extent. It writes the same
+command and ordered parameter words directly instead of converting the count,
+moving arguments and calling `MIi_CpuSend32`. It uses no scratch, new service,
+DMA change or command removal. The adjacent literal pool is guarded.
+
+The first variant used a post-indexed LDR; the recorded second variant retains
+the original helper's LDM instruction class. Both variants have identical
+screen, save and audio artifacts in the two reference routes below. Only the
+first variant was deployed privately on MiSTer; the LDM variant is not
+native-qualified.
+
+The full helper body is identical in owned USA/Europe code. Its new generic
+scanner signature is a profiling lead; only USA is admitted by this manifest.
+146 instruction-level cases preserve every FIFO store, empty sends,
+callee-saved state, stack and ARM/Thumb returns. They save ten instructions
+per nonempty call and six per empty call; they do not establish FPGA cycles.
+
+| Matched decoded-delivery replay | Control | Inline FIFO |
+| --- | ---: | ---: |
+| Time Trials ARM9 instruction samples | 165,613 | 163,264 (-1.4184%) |
+| Time Trials ARM7 instruction samples | 58,943 | 58,943 |
+| GP ARM9 instruction samples | 293,436 | 288,976 (-1.5199%) |
+| GP ARM7 instruction samples | 69,870 | 69,873 |
+| Screen pairs | 3,300 per route | Every pair exact in both routes |
+| Save | Original seed | Exact in both routes |
+
+Raw RAM/audio differ. Time Trials changes 892,972 of 5,295,342 channel samples
+(max absolute 9,695, RMS 252.48); GP changes 1,080,311 (max 21,113, RMS 845.65).
+These are unaligned signed-16 comparisons, with no inaudibility verdict.
+
+To avoid the previous HPS compression timeout, the existing `MainCodeFile` /
+`VirtualRom` preparation now admits an explicit decoded boot relocation.
+The complete output must equal the original decoded image plus selected
+instructions and the cleared compressed-static-end word. Only documented
+header offset/length, capacity/used-size and CRC metadata also change. It
+requires no extra guest memory. The 84 loader tests pass. Both native control
+and candidate cold-start and their staged bytes/header identities are verified.
+Native preparation takes about 25 seconds in the observed candidate launch.
+
+This delivery is not an identical-stream control: boot/menu screens and raw
+audio/RAM differ from the original compressed boot. All 900 frames 2400–3299
+of the Time Trials racing scene are exact, and its instruction count differs
+by one sample. Candidate comparisons above use their matched decoded control.
+
+Native observations are not a trusted paired result. Three initial Time Trials
+control windows average 21.1747 completed screen publications/second. Three
+first-variant windows average 18.6150 after a GP/quit transition. Different
+initialization histories prevent attributing that difference to the patch;
+no native gain/regression percentage is assigned. Other automated routes
+selected GP/VS or entered attract mode and are excluded. Navigation was also
+inconsistent under the unpatched control; it is not a confirmed patch defect.
+See `INLINE_NATIVE_RESULT_V1.json` and `INLINE_NATIVE_EXCLUSIONS_V1.json`.
+
+These counts are not unique animation/game FPS. Paired native frame-time
+percentiles, dropped-game-frame results, moving-race speed, full lifecycle,
+other courses/regions and audiovisual review remain unqualified. No video
+or beta is presented as demonstrating a gain. The released rc13 baseline
+is restored and the protected files/runtime are audited separately.
+
+## Next three ideas not implemented
+
+1. Profile the game's course/object visibility tests and identify geometry
+   submitted despite being provably outside the view. Any omission needs a
+   conservative visibility proof across camera changes; no lower detail level.
+2. Prove static-material dependencies across draws before considering an
+   existing allocator/cache API. The per-draw cache alone does not help here.
+3. Investigate exact arithmetic/loop improvements in the sampled audio
+   processing routine. Do not remove filtering or assume CPU savings solve
+   the native rendering bottleneck.

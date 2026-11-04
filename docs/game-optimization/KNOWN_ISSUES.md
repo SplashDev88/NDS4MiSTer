@@ -1,5 +1,16 @@
 # Optimization investigation limits
 
+- Mario Kart's separate inline FIFO candidate remains disabled. Two 3,300-frame
+  software routes match both screens/save and reduce ARM9 instruction samples
+  1.4184%/1.5199%, but RAM/audio differ. The retained variant uses LDM and has
+  software/ABI evidence only. The earlier LDR variant booted and played on
+  MiSTer, but automated mode selection/attract transitions prevented a trusted
+  matched native comparison. Its warm Time Trials rates must not be compared
+  causally with the differently initialized control. No native gain, audio
+  approval, complete lifecycle, other-course or regional qualification exists.
+  Decoded boot delivery changes header metadata/startup timing and adds about
+  25 seconds preparation in the observed candidate launch. It needs its own
+  control; neither candidate is enabled in the public catalog.
 - Mario Kart DS AMCE r0: the disabled 256-to-128-byte display-list DMA trial
   matches all 3,300 Time Trials screen pairs and the save, but changes raw
   RAM/audio. 705,560 of 5,295,342 channel samples differ (max 14,676, RMS 105.90);

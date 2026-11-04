@@ -2099,3 +2099,63 @@ do not label changed AI behavior or instruction totals as an optimization.
 The oracle's deterministic storage fixture reproduces the prior direct
 3,300-frame golden through both direct and virtual loading. This is private
 reference setup, not a product reset change or hardware power-on guarantee.
+
+## Check existing exporter optimizations before rewriting geometry
+
+`inspect_gx_display_list.py` decodes one hash-pinned, bounded packed command
+list and tracks raw vertex coordinates from unknown initial state. Test
+VTX16 values for exact VTX10 representation, preserved-axis forms and signed
+10-bit differences. Count words, not the two parameter packets of VTX16 as
+two vertices. A match is a lead only: command packing, subsequent relative
+vertices and pipeline timing still require proof.
+
+Mario Kart's 75 sampled lists are identical at five race checkpoints; their
+weighted census covers 30,467 calls and 1,341,786 VTX16 commands. It finds no
+exact reduction. This is a checkpoint-based estimate, not a write-watch
+proof. Existing shorter forms and removal of repeated normals/texture
+coordinates already account for the obvious opportunities. Quantizing
+vertices would be a separate, output-changing experiment, not this pattern.
+
+## Material-cache flags need actual reuse and valid storage
+
+Profile both material computation and cache selection, retaining object,
+material pointer, index and draw boundaries. A repeated index on a reused
+render-state stack is not necessarily the same model/material. Check the
+existing SDK's result pointer and per-draw record/reuse flags before proposing
+new storage or enabling a cache.
+
+Mario Kart's qualified Time Trials observer sees 12,000 computations in 400
+frames, no allocated result-cache pointer, and no repeated material within
+the sampled draws. The two repeated indices belong to different material
+pointers/models. Simply enabling the SDK shared per-draw cache would add
+work; caching across draws requires proven global/animation invalidation.
+
+## Inline small fixed-FIFO helper calls into existing code space
+
+A caller that already holds a source pointer, word count and FIFO address
+may spend unnecessary instructions converting the count, reshuffling
+registers and calling a generic sender. A same-extent loop can retain every
+ordered store while reducing call/setup overhead. Preserve empty sends,
+callee-saved registers, stack balance, ARM/Thumb return semantics and the
+MMIO address; this is not arbitrary memcpy or permission to batch registers.
+The shared scanner now recognizes the six-instruction predicated SDK sender
+as `predicated-fixed-destination-word-stream`, including register renaming.
+An incrementing destination or different loop target is rejected. The same
+complete helper body was verified in the owned USA/Europe ARM9 images; this
+signature is a profiling lead, not regional patch admission.
+
+Mario Kart's experimental 28-byte ITCM tail saves ten instructions per
+nonempty call and six per empty call in 146 isolated ABI checks. Two 3,300-frame
+software replays (Time Trials and GP) match every screen pair and save;
+ARM9 sample counts fall 1.4184% and 1.5199% against their matched delivery
+controls. Raw RAM/audio differ. Native benefit remains a separate acceptance
+gate; these figures are not FPS or cycle improvements. Manifest selection
+remains explicit and disabled by default.
+
+Retain the original load instruction class when comparing an inline form:
+the recorded second variant uses LDM rather than the first trial's LDR.
+Its reference screens/save/audio equal the first variant's, but this does
+not establish native instruction timing. Native LDR observations have
+different transition histories and are not a trusted gain/regression pair;
+the LDM variant has no native measurement. Mode selection, attract playback
+and cold/warm history must be visually qualified before calculating a gain.
