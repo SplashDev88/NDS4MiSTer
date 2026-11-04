@@ -9,6 +9,7 @@
 struct HostTest {
   static void discover(Host &h, uint16_t flags) {
     h.spi.response = [flags](uint32_t, uint16_t command, size_t index, uint16_t) {
+      if (command == 0x47) return uint16_t(index == 0 ? 0x5943 : 0);
       if (command != 0x46) return uint16_t(0);
       return uint16_t(index == 0 ? 0x4456 : index == 1 ? flags : 0x5350);
     };
@@ -70,8 +71,12 @@ struct HostTest {
         h.status=selected;
         h.display_menu=true;h.cursor=Host::DV_TARGET_CURSOR;h.action(2);
         assert(!h.direct_video_crt && h.status==selected);
+        assert(h.yc_target_sent==0 && h.spi.history.back().command==0x47);
+        assert(h.spi.history.back().words==std::vector<uint16_t>{0x5940});
         assert(((h.liveStatus()>>5)&3)==layout);
         h.action(2);assert(h.direct_video_crt && h.status==selected);h.display_menu=false;
+        assert(h.yc_target_sent==1 && h.spi.history.back().command==0x47);
+        assert(h.spi.history.back().words==std::vector<uint16_t>{0x5941});
       }
     // Main keeps quick selectors; Direct Video Target lives in Display options.
     h.cursor=1;h.action(1);assert(h.cursor==2);
