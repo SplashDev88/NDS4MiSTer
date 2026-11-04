@@ -103,6 +103,30 @@ def fixed_destination_word_stream(instructions):
                 required_proof='Authenticate loaded code and all entry paths; capture actual arguments and ordered accesses. Fixed destination may be MMIO. Preserve zero-length behavior, flags, IRQ/DMA effects and output timing; measure native benefit.')
 
 
+def predicated_fixed_destination_word_stream(instructions):
+    """Compact SDK FIFO sender; a caller-inline lead, not a memcpy patch."""
+    if len(instructions) != 6 or any(i.size != 4 for i in instructions):
+        return None
+    words = [int.from_bytes(i.bytes, 'little') for i in instructions]
+    first = words[0]
+    if first & 0xfff00ff0 != 0xe0800000:
+        return None
+    source, end, length = (first >> 16) & 15, (first >> 12) & 15, first & 15
+    destination, data = (words[3] >> 16) & 15, (words[3] >> 12) & 15
+    if (len({source, end, destination}) != 3 or
+            {source, end, destination} & {length, data} or
+            max(source, end, length, destination, data) >= 13):
+        return None
+    if words != [first, 0xe1500000 | source << 16 | end,
+                 0xb8b00000 | source << 16 | 1 << data,
+                 0xb5800000 | destination << 16 | data << 12,
+                 0xbafffffb, 0xe12fff1e]:
+        return None
+    return dict(source=f'r{source}', end=f'r{end}', length=f'r{length}',
+                destination=f'r{destination}', data=f'r{data}',
+                required_proof='Profile actual callers and lengths; fixed destination may be MMIO. Inlining must preserve ordered accesses, empty calls, callee-saved state and ARM/Thumb returns. Fewer instructions need not mean fewer native cycles.')
+
+
 def shift_chain(instructions):
     if len(instructions) != 5:
         return None
@@ -338,6 +362,7 @@ def scan(data, base):
     findings = []
     detectors = [('branch-heavy-halfword-copy', 52, 0xffff0fff, 0xe3a00000, halfword_copy),
                  ('branch-heavy-fixed-destination-word-stream', 40, 0xfff00ff0, 0xe0800000, fixed_destination_word_stream),
+                 ('predicated-fixed-destination-word-stream', 24, 0xfff00ff0, 0xe0800000, predicated_fixed_destination_word_stream),
                  ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain),
                  ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step),
                  ('linear-key-handler-dispatch', 44, 0xfff00fff, 0xe5900000, key_handler_dispatch),
