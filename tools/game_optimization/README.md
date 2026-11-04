@@ -652,6 +652,14 @@ and review unexplained differences under the explicitly chosen test budget.
 
 ### Compressed ARM9 ITCM boot payloads
 
+`inspect_gx_display_list.py INPUT --offset HEX --length HEX --sha256 HASH
+--output REPORT` performs a read-only census of one bounded packed geometry
+list. It rejects unknown/truncated commands and tracks known vertex components
+from an unknown initial state. VTX10, partial-coordinate and signed-delta
+counts are mutually exclusive exact-coordinate leads. They do not authorize
+rewriting a list or establish pipeline/timing equivalence. Reset the analysis
+at every independently submitted list boundary.
+
 Explicit `recompress-arm9-autoload-v1` delivery in `guest_byte_patch.py` reuses
 `MainCodeFile` and `VirtualRom`. It admits pinned ITCM autoload sections only,
 with code-settings offset, full stored/decoded identities, expected instruction
