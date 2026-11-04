@@ -655,8 +655,9 @@ and review unexplained differences under the explicitly chosen test budget.
 Explicit `recompress-arm9-autoload-v1` delivery in `guest_byte_patch.py` reuses
 `MainCodeFile` and `VirtualRom`. It admits pinned ITCM autoload sections only,
 with code-settings offset, full stored/decoded identities, expected instruction
-bytes, mode/alignment and data guards. Unchanged recompression must reproduce
-the original stored image exactly. A selected patch must retain the original
+bytes, mode/alignment and data guards. An identical-byte control retains the
+original stored image directly. A changed selection uses one compression pass
+and must retain the original
 compressed extent and every decoded byte outside its declared replacement;
 header, copy table, other sections and cartridge layout stay unchanged.
 Normal boot performs the copy into ITCM, with no live instruction-cache write,

@@ -94,17 +94,23 @@ class Arm9AutoloadTests(unittest.TestCase):
         manifest['patches'].append(dict(manifest['patches'][0], id='two'))
         self.assertEqual(self.run_image(manifest, ['one','two'])[0], self.raw)
 
-    def test_nonidentical_control_and_resized_output_are_rejected(self):
+    def test_resized_or_incorrect_decoded_output_is_rejected(self):
         original_save = code.MainCodeFile.save
-        for failure_call in [1,2]:
-            calls = []
+        for resized in [True,False]:
             def broken(instance, **kwargs):
-                calls.append(1)
                 output = original_save(instance, **kwargs)
-                return output+b'\0' if len(calls)==failure_call else output
+                return output+b'\0' if resized else self.stored
             with patch.object(code.MainCodeFile, 'save', broken):
                 got, report = self.run_image()
             self.assertEqual(got, self.raw); self.assertEqual(report['state'], 'skipped')
+
+    def test_identical_control_does_not_invoke_encoder(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest['patches'][0]['replace'] = manifest['patches'][0]['expect']
+        with patch.object(code.MainCodeFile, 'save', side_effect=AssertionError('unnecessary encoding')):
+            got, report = self.run_image(manifest)
+        self.assertEqual(got, self.raw)
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
 
 
 if __name__ == '__main__':
