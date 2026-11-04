@@ -1,5 +1,19 @@
 # Optimization investigation limits
 
+- Mario Kart DS AMCE r0: the disabled 256-to-128-byte display-list DMA trial
+  matches all 3,300 Time Trials screen pairs and the save, but changes raw
+  RAM/audio. 705,560 of 5,295,342 channel samples differ (max 14,676, RMS 105.90);
+  no inaudibility verdict. Grand Prix AI trajectories differ. Native candidate
+  gameplay/speed is unmeasured: both compressed-ARM9 preparation attempts hit
+  the existing no-progress watchdog before ROM start. This is a loader failure,
+  not a demonstrated game crash. Do not enable, regionalize or promote it.
+- Mario Kart exposed allocation-sensitive software controls. Reference DIV/SQRT
+  operands were indeterminate at boot; pinning only those fields was not enough.
+  The private oracle's zeroed object-storage fixture restores exact direct vs
+  unchanged-virtual replay controls. Requalify controls after fixture changes;
+  do not infer native power-on register values or retroactively rewrite prior
+  evidence. The released core and FPGA are unchanged.
+
 - Strange Journey BMTE r0: the ordinary software oracle does not instantiate
   the HPS decoder for released packed FMVs. Encoded scanlines during opening
   playback are a harness limitation, not evidence of a release regression.

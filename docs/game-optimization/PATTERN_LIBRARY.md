@@ -2062,3 +2062,40 @@ Platinum save validation pass. No new signature or runtime service. Receipts:
 ### Reuse an accepted renderer profile across exact regional identities
 
 Before relocating guest patches, inspect the shipped selector: an accepted gain may live in a shared renderer path. FFT A2 uses this pattern. Extend only the exact code/revision/header table, test changed identities and independent policies, preserve the accepted raster implementation, and verify the live profile plus a matched regional scene. This avoids reviving unrelated guest experiments or changing FPGA/HPS protocols. Shared renderer proofs can be reused; regional lifecycle/performance claims still require their own evidence.
+
+## Existing display-list DMA threshold
+
+Look for a command-list entry point that receives a source pointer and byte
+length, compares length against a constant, then selects between fixed-FIFO
+CPU streaming and an already configured DMA channel/callback. Follow both
+branches and the completion wait before treating the threshold as tunable.
+This is distinct from replacing arbitrary memcpy with DMA: short lists can
+live on a caller's stack, and asynchronous submission can outlive their data.
+
+Mario Kart USA's guarded model-list census observes 2,396 calls of 128–255
+bytes over 400 race frames, all through one model-drawing caller. Lowering its
+256-byte threshold to 128 is a candidate, not a generally faster default.
+Account for DMA setup, completion interrupts, busy waits, source lifetime,
+cache visibility and the receiving renderer's throughput. Time Trials adds
+0.2065% reference ARM9 instruction samples despite exact screens; the GP
+instruction decrease has a different AI trajectory and is not matched work.
+Native comparison is required. Both native preparation attempts stalled
+before ROM start, so this candidate has no native gain measurement and stays
+disabled. No new DMA service or RTL hook is involved.
+
+For compressed boot payloads, preserve the complete decoded image outside
+selected instruction bytes and verify the unchanged delivery control. The
+new explicit ITCM autoload adapter retains compressed extent and copy-table
+metadata. Recompression can be costly on HPS and is a separate delivery gate.
+
+## Allocation-independent software controls
+
+Require an identical virtual-stream control whenever cartridge delivery
+changes. Identical source and output hashes alone do not prove identical
+emulation: undefined initial register storage can depend on host allocation.
+Mario Kart exposed saved DIV/SQRT operands differing before the first race.
+Pin the private cold-boot fixture and repeat complete unpatched controls;
+do not label changed AI behavior or instruction totals as an optimization.
+The oracle's deterministic storage fixture reproduces the prior direct
+3,300-frame golden through both direct and virtual loading. This is private
+reference setup, not a product reset change or hardware power-on guarantee.
