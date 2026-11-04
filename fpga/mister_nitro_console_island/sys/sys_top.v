@@ -294,7 +294,7 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 reg [15:0] cfg;
 reg        cfg_set      = 0;
 // Explicit standalone target, not inferred from a saved layout/CRT status.
-// Default off until a compatible host selects CRT through command 0x47.
+// Default off until a compatible host selects CRT through command 0x48.
 reg        nds_dv1_crt_target = 0;
 
 `ifdef NDS_HDMI_SCALER_ONLY
@@ -454,7 +454,7 @@ always@(posedge clk_sys) begin
 			// Read-only standalone display handoff: use the actual Main-loaded
 			// flags, including alternate INI selection and per-core overrides.
 			if(io_din[7:0] == 'h46) io_dout_sys <= 16'h4456;
-			if(io_din[7:0] == 'h47) io_dout_sys <= 16'h5943; // YC target ABI v1
+			if(io_din[7:0] == 'h48) io_dout_sys <= 16'h5943; // YC target ABI v1
 `endif
 		end
 		else begin
@@ -522,7 +522,7 @@ always@(posedge clk_sys) begin
 			end
 `ifdef NDS_NATIVE_OUTPUTS
 			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
-            if(cmd == 'h47 && cnt == 0 && io_din[15:1] == 15'h2ca0)
+            if(cmd == 'h48 && cnt == 0 && io_din[15:1] == 15'h2ca0)
                 nds_dv1_crt_target <= io_din[0]; // 0x5940 Scaler / 0x5941 CRT
             if(cmd == 'h46 && cnt == 1) io_dout_sys <= 16'h5350; // split-output ABI v1
             // Only horizontal side-by-side uses game-pixel menu sampling.

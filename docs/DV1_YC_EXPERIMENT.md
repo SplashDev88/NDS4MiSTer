@@ -7,12 +7,15 @@ independent outputs, and `vga_mode=svideo`. Scaler-targeted DV1 retains RGB
 at the FPGA output. Component transmitter setup is unchanged. The existing
 non-split Y/C/CVBS fallback is retained; new independent raw CVBS is out of scope.
 
-The standalone host probes UIO command 0x47 for signature 0x5943, then writes
+The standalone host probes UIO command 0x48 for signature 0x5943, then writes
 0x5941 for CRT or 0x5940 otherwise. The FPGA defaults to disabled and ignores
 other payloads. This session-only control is separate from persistent status
 words: old saved CRT/layout flags cannot opt the Scaler target into Y/C.
 The host sends a change only after discovering actual Direct Video flags.
 Older cores receive no target payload and remain supported.
+Command 0x47 remains reserved for the RTC mailbox. A combined bus regression
+checks both interfaces; the first internal candidate collided with that command
+and was rejected during the hardware game-load test.
 
 Both encoders use the same 60 MHz clock and Main-provided carrier/burst settings,
 with independent pixels and sync/blanking inputs. Each routes its delayed sync
