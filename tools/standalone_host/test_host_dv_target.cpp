@@ -25,6 +25,24 @@ struct HostTest {
     std::ofstream(kit/"NDS_v1.CFG",std::ios::binary).write((const char*)original.data(), sizeof(original));
     const auto saved = bytes(kit/"NDS_v1.CFG");
     Host h(kit.string(), (sd/"games/NDS").string(), sd);
+    // Unknown/old cores receive no target payload. A new session can probe
+    // the capability and then updates it only when the actual target changes.
+    assert(h.yc_target_sent==-1);
+    h.yc_target_sent=-2;
+    h.spi.response=[](uint32_t, uint16_t command, size_t index, uint16_t) {
+      return uint16_t(command==0x47 && index==0 ? 0x5943 : 0);
+    };
+    h.video_flags=1u<<10;h.video_flags_known=true;h.sendstatus();
+    assert(h.yc_target_sent==1 && h.spi.history.back().command==0x47);
+    assert(h.spi.history.back().words==std::vector<uint16_t>{0x5941});
+    const auto transactions=h.spi.history.size();h.sendstatus();
+    assert(h.spi.history.size()==transactions+1); // Only normal status repeated.
+    h.direct_video_crt=false;h.status|=CRT_TIMING;h.sendstatus();
+    assert(h.yc_target_sent==0 && h.spi.history.back().command==0x47);
+    assert(h.spi.history.back().words==std::vector<uint16_t>{0x5940});
+    h.direct_video_crt=true;h.video_flags=0;h.sendstatus();
+    assert(h.yc_target_sent==0); // CRT preference alone cannot enable HDMI YC.
+    h.status=original[0];h.yc_target_sent=-2;
     // First status write, before flags discovery, never emits the saved 31kHz layout.
     const auto first = std::find_if(h.spi.history.begin(), h.spi.history.end(), [](const auto &t) { return t.command == 0x1e; });
     assert(first != h.spi.history.end());

@@ -329,6 +329,7 @@ class Host {
   bool screen_peek = false; // Temporary display override; status keeps the selection.
   bool direct_video_crt = true; // Shared with startup Advanced Options; CRT-safe default.
   bool video_flags_known = false;
+  int yc_target_sent = -2; // -2 unprobed, -1 unsupported, 0 Scaler, 1 CRT.
   TouchRotation touch_rotation = TouchRotation::Normal;
   unsigned touch_range = 0; // 100%, stored separately from FPGA status/mappings.
   bool speed_hacks_available = false;
@@ -1335,6 +1336,11 @@ class Host {
     for (int i = 1; i < 8; i++)
       spi.word(full_status[i]);
     spi.end();
+    if (video_flags_known && yc_target_sent != -1) {
+      const int target = crtDirectVideo() ? 1 : 0;
+      if (target != yc_target_sent)
+        yc_target_sent = nds_video::setCrtYcTarget(spi, target) ? target : -1;
+    }
   }
   void joy(uint32_t j) {
     if (lid_closed) j |= LID_MASK;
