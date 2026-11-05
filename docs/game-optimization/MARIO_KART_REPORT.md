@@ -1,6 +1,6 @@
 # Mario Kart DS in-memory optimization investigation
 
-Status: software and bounded native FIFO investigation complete; the native
+Status: optimization investigation continues. The bounded native FIFO
 control/candidate/control comparison does not establish a repeatable speedup.
 The DMA and inline FIFO candidates remain disabled. Results and limitations
 are recorded below. No candidate
@@ -276,3 +276,32 @@ is presented as demonstrating a gain. The released rc13 baseline is restored;
 3. Investigate exact arithmetic/loop improvements in the sampled audio
    processing routine. Do not remove filtering or assume CPU savings solve
    the native rendering bottleneck.
+
+## ARM7 channel scan: no native benefit
+
+The `audio-channel-inline-scan` candidate retains sixteen ordered slot reads
+and active-channel callbacks, removing repeated lookup calls and bounds checks
+in one loop. The 400-frame census records 68,160 lookups at this caller and
+45,438 empty slots. It uses existing ARM7 autoload delivery, retains compressed
+ARM9/header bytes and uses no scratch. 1,344 instruction-model cases cover slot
+values, callback mutations, unaligned contexts and ARM/Thumb returns, preserving
+reads, callback arguments and final registers.
+
+| Comparison | Control | Candidate |
+| --- | ---: | ---: |
+| TT ARM7 instruction samples | 58,946 | 55,947 (-5.0877%) |
+| GP ARM7 instruction samples | 68,969 | 63,688 (-7.6571%) |
+| Native screen publications/s | 21.1887 | 21.1332 (-0.2620%) |
+
+Each native variant has three scene-qualified twenty-second windows at 1 GHz
+in the same stationary Time Trials view. No useful native gain was established;
+the patch stays disabled. Racing screen pairs and saves match in both reference
+routes. Boot frame 96 differs, as do RAM and raw audio (408 TT / 283 GP channel
+samples, maximum difference 30). No inaudibility claim, lifecycle or regional
+admission follows. Evidence: `CHANNEL_INLINE_ABI_V1.json`,
+`CHANNEL_INLINE_REFERENCE_V1.json`, `CHANNEL_INLINE_NATIVE_RESULT_V1.json`.
+
+The existing loader now preserves compressed ARM9 when selecting only ARM7
+autoload patches. Explicit decoded-main-section delivery also reuses VirtualRom
+without extra guest memory. Identity and original bytes remain mandatory; main
+secure-area/settings overlaps fail closed. Ninety synthetic loader tests pass.

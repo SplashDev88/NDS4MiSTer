@@ -2170,3 +2170,18 @@ Check scene/camera after every measurement. For small effects, repeat the
 unchanged control across launches: low variation among windows in one launch
 does not bound variation between launches. Preserve all windows and report
 screen publications separately from unique game frames.
+
+## Inline bounded byte-slot lookup inside a fixed scan
+
+Screen a fixed-count loop that passes its index to a checked lookup helper,
+then invokes a callback for nonempty slots. The helper shape `CMP index,limit;
+MOVGT result,0; BXGT lr; ADD base,base,index; LDRB slot; CMP slot,255;
+MOVEQ result,0; LDRNE table,literal; ADDNE result,table,slot,LSL stride; BX lr`
+is a lead. Authenticate the loop bound before removing checks. Read slots in
+order: callbacks can mutate later slots. Guard the table literal and preserve
+ARM7 interworking. This textual signature does not authorize a patch.
+
+Mario Kart removes 160–192 instructions per scan in isolated cases and
+5.09–7.66% of ARM7 reference samples, but native delivery remains within noise
+(21.1887 versus 21.1332 publications/s). Keep this candidate disabled: a sound
+CPU saving does not establish a renderer-limited scene speedup.

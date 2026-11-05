@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "title": "Mario Kart DS (USA)",
+  "game_code": "AMCE",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "a804fde97be47f0d7ac06bbf966d342b07daecbb",
+  "rom_sha256": "0ea8a91a0ae3e9db26337c25a6a8568f6737fa36c1e0761988c0fa0ecbf210ed",
+  "arm7_sha256": "00778bd51d96ef14bf278d6b27f6ad063ddc6c343769ca643a5a042baa3f839f",
+  "arm7_crc32": "3cb95f4c",
+  "arm7_code_settings_offset": "0x198",
+  "patches": [
+    {
+      "id": "audio-channel-inline-scan",
+      "pattern": "bounded-table-scan-inline",
+      "cpu": "arm7",
+      "target": "arm7.bin/autoload:2",
+      "section_base": "0x37f8000",
+      "section_bss_bytes": 16452,
+      "section_sha256": "c0057bf6441a15e639ace0ffdd6d823a26abf6ce08e30dc7aaca9d6aa6fbc561",
+      "addr": "0x37fe044",
+      "mode": "arm",
+      "expect": "70402de90060a0e10050a0e30140a0e30600a0e10510a0e1a00000eb000050e30200000a0610a0e10420a0e1040000eb015085e2100055e3f4ffffba7040bde81eff2fe1",
+      "replace": "70402de90060a0e1084080e2105084e20110d4e4ff0051e30000a0030400000aa0029fe5010380e00610a0e10120a0e3030000eb050054e1f4ffff3a7040bde81eff2fe1",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "data_guards": [
+        {
+          "addr": "0x37fe30c",
+          "expect": "4c868003"
+        }
+      ],
+      "notes": "Private candidate; ordered byte reads and active callbacks preserved; no audio arithmetic removed. ABI, replay and native gates pending. Keep disabled: fewer ARM7 samples did not improve native delivery. No broader lifecycle or regional admission justified.",
+      "validated": {
+        "instruction_model_cases": 1344,
+        "racing_screens": "exact in both 3300-frame routes; boot frame96 differs",
+        "save": "exact",
+        "audio": "raw differences retained; no inaudibility verdict",
+        "native": "six scene-qualified stationary windows; no useful gain"
+      },
+      "gain": {
+        "tt_arm7_instruction_samples": "-5.0877%",
+        "gp_arm7_instruction_samples": "-7.6571%",
+        "native_publications_per_second": "21.1887 control / 21.1332 candidate (-0.262%); no gain"
+      }
+    }
+  ],
+  "arm9_sha256": "403f7db12cdb7ce21b9bf9fa98a2b407600375a22986972646b480b3c950b352",
+  "arm9_crc32": "a37fafa7"
+}
