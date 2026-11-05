@@ -2306,6 +2306,34 @@ changes across four repeated native scenes and were excluded from the beta. Thei
 authored source/build snapshots remain in private evidence; product source omits
 the rejected paths. Default builds retain the prior helper bytes exactly.
 
+### Port guarded geometry bundles by asset identity and dependency structure
+
+Mario Kart DS regional work (2026-11-05) reuses the USA Course Beta3 resource
+selection only after matching all 31 stored resource hashes. Resolve files by
+filesystem name first: Japan and Korea have different file IDs despite identical
+resource bytes. Hash both input and transformed output; never infer equivalence
+from a shared course title or reuse another region's file IDs blindly.
+
+Relocate the helper's code/table/global dependencies from each revision's actual
+instructions and sections. A matching function body does not establish its
+literal targets. In MKDS, the original ITCM literal at 0x01ff8af8 independently
+anchors the regional global-state structure; guard that literal as well as the
+OAM tables and concatenation routine. Recompile and compare the helper payload,
+then run its arithmetic/ABI harness against the regional original code. Audit
+direct dependencies separately and record unresolved indirect callbacks.
+
+Keep each identity's complete code/resource bundle atomic. Catalog packaging
+may append several manifests, but must reject duplicate identities and partial
+bundles. Exercise both positive stream hashes and exact-original fallback for
+wrong identities, expected bytes, dependencies and resource hashes. Software
+save/restart coverage and native execution are still required: identical assets
+allow reuse of geometry proofs, not transfer of every timing or compatibility
+claim. Match native menu routes and review the race clock alongside output rate.
+
+Evidence: `evidence/mario-kart-regional-20261105/REGIONAL_STRUCTURAL_V1.json`,
+`DIRECT_FLOW_V1.json`, `REGIONAL_ABI_V1.json`, `REGIONAL_LOADER_V1.json`,
+and `MARIO_KART_REGIONAL_REPORT.md`.
+
 ### Gate output-rate gains on native game progress
 
 More screen-buffer publications can coexist with slower game logic. For a fixed

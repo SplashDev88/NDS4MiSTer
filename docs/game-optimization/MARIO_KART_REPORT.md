@@ -164,3 +164,12 @@ Owned ROM SHA256: `0ea8a91a0ae3e9db26337c25a6a8568f6737fa36c1e0761988c0fa0ecbf21
 Header SHA1: `a804fde97be47f0d7ac06bbf966d342b07daecbb`. No ROM, BIOS, save, derived course assets or cache
 payloads are included in the distributable. Private evidence lives in
 `evidence/mario-kart-optimization-20261104` in the testing workspace.
+
+## Regional Beta4 coverage
+
+The USA Course Beta3 results above are unchanged. Exact revision-0 Europe, Japan
+and Korea ports, their independent measurements and limits are documented in
+[MARIO_KART_REGIONAL_REPORT.md](MARIO_KART_REGIONAL_REPORT.md) and
+[MARIO_KART_VERSION_COVERAGE.md](MARIO_KART_VERSION_COVERAGE.md). The older USA-only
+qualification statements above describe the original campaign, not the expanded
+private catalog.

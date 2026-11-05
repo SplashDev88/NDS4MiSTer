@@ -1201,3 +1201,21 @@ and remained slower than stock. It was not retained. Sky Garden's 14,000 compare
 reference frames and save match stock, while raw audio differs. This is an explicit
 functional/perceptual private-beta limitation; do not claim a Sky Garden speedup,
 native timing equivalence, or human audiovisual approval.
+
+Regional Beta4 (2026-11-05) inherits the same Sky Garden limitation. The 31 course
+resources are byte-identical across the admitted USA/Europe/Japan/Korea revision-0
+ROMs, but neither file IDs nor code/global addresses may be copied blindly.
+Japan/Korea require resource-ID remapping and all three ports require dependency
+relocation. Demos and unseen revisions remain unpatched.
+
+Europe's initial native Figure-8 pair, reached through different menu retries,
+showed about 5.8% fewer screen publications despite preserved race-clock pace.
+A fresh matched-route pair showed a gain consistent with Japan/Korea. Retain
+both observations: the port does not resolve launch/menu-history sensitivity,
+and the favorable fixed-view result is not a guarantee for every launch or race.
+See `MARIO_KART_REGIONAL_REPORT.md` and `REGIONAL_NATIVE_RESULTS_V1.json`.
+
+Regional software checks reopen an unchanged save and restart a race; they do
+not qualify new-record writes, all battle/mission modes, multiplayer, every
+overlay path, native soft reset or long sessions. Raw audio/framebuffer/RAM
+differences remain; human audiovisual acceptance is still pending.
