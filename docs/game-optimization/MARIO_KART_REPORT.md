@@ -305,3 +305,56 @@ The existing loader now preserves compressed ARM9 when selecting only ARM7
 autoload patches. Explicit decoded-main-section delivery also reuses VirtualRom
 without extra guest memory. Identity and original bytes remain mandatory; main
 secure-area/settings overlaps fail closed. Ninety synthetic loader tests pass.
+
+## Compact sprite transforms: no native benefit
+
+A read-only census records 11,642 OAM-function calls and 25,642 coordinate
+extractions over400 TT frames. The routine copies OAM attributes, extracts
+signed coordinates, applies affine/position transforms and updates attributes.
+It is actual HUD work, not debug code. The same-extent `oam-compact-transform`
+candidate replaces916 bytes at ARM9 main020224e0 with680 bytes of equivalent
+code and unreachable padding. It uses the existing stack and no new storage.
+
+The authored implementation removes redundant shifts/spills and has an exact
+identity-matrix path. 1,800 isolated cases preserve non-stack test RAM, callee-
+saved registers, return count and ARM/Thumb returns. They cover valid sprite
+shapes, size/flip/affine fields, full-range matrices/positions, doubled mode and
+zero/clipped counts. Aggregate instructions in these cases fall36.52%; these
+are function tests, not game speed. No freed code space is assigned as scratch.
+
+| Matched decoded-delivery check | Control | Compact V2 |
+| --- | ---: | ---: |
+| TT ARM9 samples | 165,613 | 161,654 (-2.3905%) |
+| TT screen pairs | 3,300 | All exact |
+| Native screen publications/s | 21.2532 | 21.2281 (-0.1181%) |
+
+The native means each cover three scene-qualified20-second stationary Time
+Trials windows at1GHz. There is no useful gain, so the patch stays disabled.
+The smaller coordinate-only trial (0.7868% fewer TT ARM9 samples) was superseded
+without further native testing. GP differs in884 screen pairs from frame2165;
+its lower counts are not a matched-workload result. Both saves match. Raw audio
+differences remain:490,482 TT and1,224,133 GP channel samples, maximum21,545 and
+58,732 respectively. No perceptual or whole-game qualification is claimed.
+
+The original released private baseline was restored after this trial. Evidence:
+`OAM_COMPACT_ABI_V2.json`, `OAM_COMPACT_TT_REFERENCE_V2.json`,
+`OAM_COMPACT_GP_REFERENCE_V2.json`, `OAM_COMPACT_NATIVE_RESULT_V1.json`,
+`OAM_CLOSED_BASELINE_STATUS_V1.json`. Authored source and build artifacts are
+`oam_compact_v2.c/.o/.bin` in private evidence; clang ARMv5TE ARM/O2, wrapping
+signed arithmetic, no strict aliasing, freestanding. No public default changed.
+
+## Continuing lead: conservative visibility rejection
+
+A read-only observer retains matrix commands from reset, then records full
+geometry for60 TT frames. All six golden outputs remain exact. Existing
+`GxMatrixPrefix` and fixed-point matrix arithmetic classify12,704 of24,720
+complete primitive groups as wholly outside a clip plane, covering71,797 of
+204,900 submitted vertices.1,080 groups with internal matrix changes are
+excluded. This35.04% submitted-vertex screening result is not a speedup or
+permission to omit commands. Whole state-separated bursts offer only9,000
+of196,440 vertices, so coarser rejection has less potential.
+
+Before patching, establish the actual course transform and preserve all color,
+texture/current-vertex state crossing skipped groups, resource lifetimes and
+cache coherence. No culling patch, asset rewrite, new HPS service or RTL change
+has been made. This remains an unexhausted opportunity.

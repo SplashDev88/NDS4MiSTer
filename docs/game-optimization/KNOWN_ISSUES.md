@@ -1082,3 +1082,11 @@ The disabled channel-scan patch has no measured native gain despite fewer ARM7
 samples. Boot frame 96 and raw RAM/audio differ. Racing screens and saves match
 in two bounded references; audibility, other courses, lifecycle and regional
 releases remain unqualified. Do not promote from instruction counts alone.
+
+### Mario Kart compact OAM trial
+
+The disabled compact sprite-transform routine reduces TT ARM9 samples2.39%
+with exact screens/save but has no native speedup (21.2532 versus21.2281
+publications/s). GP screens diverge fromframe2165; raw audio/RAM differ in both
+routes. Do not claim GP matched-workload gain, inaudibility or lifecycle/region
+coverage. The original baseline is restored; geometry culling remains research.
