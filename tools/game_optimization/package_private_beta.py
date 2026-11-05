@@ -12,6 +12,31 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def extend_guest_catalog(catalog, definition, root):
+    """Append explicitly selected, independently guarded regional manifests."""
+    assert ('guest_entry' in definition) != ('guest_entries' in definition)
+    additions = definition.get('guest_entries', [definition.get('guest_entry')])
+    assert isinstance(additions, list) and additions
+    entries = list(catalog['entries'])
+    identity = lambda m: (m['game_code'], m['revision'], m['header_sha1'])
+    seen = {identity(e['manifest']) for e in entries}
+    assert len(seen) == len(entries) and len(entries) + len(additions) <= 32
+    for entry in additions:
+        path = Path(entry['manifest'])
+        assert not path.is_absolute() and '..' not in path.parts
+        guest = json.loads((root / path).read_text())
+        assert guest['delivery'] == 'append-decoded-arm9-gx-spans-v1'
+        ids = entry['patch_ids']
+        assert isinstance(ids, list) and ids and len(ids) == len(set(ids))
+        assert len(guest['patches']) == len(ids)
+        assert set(ids) == {p['id'] for p in guest['patches']}
+        key = identity(guest)
+        assert key not in seen, 'Duplicate guest ROM identity'
+        seen.add(key)
+        entries.append(dict(manifest=guest, patch_ids=ids))
+    return dict(catalog, entries=entries)
+
+
 def package_guest_beta(args, definition):
     """Keep the frozen runtime and add guarded guest-loader source/manifest files."""
     root = Path(__file__).resolve().parents[2]
@@ -39,15 +64,8 @@ def package_guest_beta(args, definition):
         assert not Path(source).is_absolute() and '..' not in Path(source).parts
         assert target not in definition['frozen_runtime_sha256'] and target != 'manifest.json'
         files[new + target] = (root / source).read_bytes()
-    entry = definition['guest_entry']
-    guest = json.loads((root / entry['manifest']).read_text())
-    assert guest['delivery'] == 'append-decoded-arm9-gx-spans-v1'
-    assert set(entry['patch_ids']) == {p['id'] for p in guest['patches']}
     catalog = json.loads(files[new + 'fmv/guest_catalog.json'])
-    identity = lambda m: (m['game_code'], m['revision'], m['header_sha1'])
-    assert all(identity(e['manifest']) != identity(guest) for e in catalog['entries'])
-    catalog['entries'].append(dict(manifest=guest, patch_ids=entry['patch_ids']))
-    assert len(catalog['entries']) <= 32
+    catalog = extend_guest_catalog(catalog, definition, root)
     files[new + 'fmv/guest_catalog.json'] = (json.dumps(catalog, indent=2) + '\n').encode()
     launcher = 'Scripts/' + launcher_name
     asset_cache = definition.get('asset_preparation_cache', False)
