@@ -2232,3 +2232,17 @@ counts in a renderer-limited view. This is scene-specific and not bit-exact:
 reference timing/RAM/audio/screens differ, saves match, and perceptual/full-game
 approval remains separate. Do not apply the pattern to another model/camera or
 region without its own identity, transform, state and lifetime evidence.
+
+For additional resources, screen their node transforms, position scales and
+command vocabulary first. Matching scale alone is insufficient. Mario Kart's
+Yoshi Falls model passes the same scale-64 composition at all 11,265 observed
+draws across 15 shapes, with an observer that preserves all six replay outputs.
+The same helper bytes can then serve a separately guarded resource recipe.
+
+The loader also accepts an explicit `assets` list instead of `asset`. Every
+resource must pass its original/member/output hashes before any prepared stream
+is exposed. Reject duplicate file IDs, ambiguous selectors and partial code
+selections. A failure in the second resource returns the entire original ROM
+stream and no applied-patch report. Synthetic tests exercise both FAT entries,
+both payloads and rollback after later-resource failures. Combined replay output
+must be compared to each qualified individual candidate, not just to stock.

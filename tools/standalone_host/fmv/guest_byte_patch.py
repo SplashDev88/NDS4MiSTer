@@ -344,12 +344,29 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
             ids = [p['id'] for p in manifest['patches']]
             require(1 <= len(ids) <= 8 and len(ids) == len(set(ids)) and
                     requested == set(ids), 'Atomic code/asset selection required')
+            require(('asset' in manifest) != ('assets' in manifest),
+                    'Select one resource recipe or a resource recipe list')
+            assets = manifest.get('assets', [manifest.get('asset')])
+            require(isinstance(assets, list) and 1 <= len(assets) <= 32 and
+                    all(isinstance(a, dict) and type(a.get('file_id')) is int
+                        for a in assets), 'Invalid resource recipe list')
+            require(len({a['file_id'] for a in assets}) == len(assets),
+                    'Duplicate resource file ID')
             from gx_span_asset import append_asset
             boot_manifest = dict(manifest, delivery='append-decoded-arm9-sections-v1')
-            image, report = recompress_arm9_autoload(source, header, boot_manifest, requested, report)
-            image, report = append_asset(source, image, report, manifest['asset'])
-            report['delivery'] = manifest['delivery']
-            return image, report
+            # Keep partial preparation out of the returned report as well as
+            # the cartridge stream if any later resource fails its guards.
+            trial_report = dict(report, applied=[])
+            image, trial_report = recompress_arm9_autoload(
+                source, header, boot_manifest, requested, trial_report)
+            asset_reports = []
+            for asset in assets:
+                image, trial_report = append_asset(source, image, trial_report, asset)
+                asset_reports.append(trial_report.pop('asset'))
+            trial_report['assets' if 'assets' in manifest else 'asset'] = (
+                asset_reports if 'assets' in manifest else asset_reports[0])
+            trial_report['delivery'] = manifest['delivery']
+            return image, trial_report
         if manifest.get('delivery') is not None:
             if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1',
                                         'append-decoded-arm9-sections-v1'):

@@ -1109,3 +1109,19 @@ write watch covers the helper/constants/concat code but this oracle build lacks
 ITCM write notifications; boot delivery, snapshots and native staged-code guards
 are the available ITCM evidence. An initial black restart snapshot was transitional;
 a later snapshot returns to normal racing. No new save-state support is implied.
+
+The Yoshi Falls extension uses the identical helper but expands its course-model
+allocation by 48,176 bytes. Its 6,000-frame acceleration/steering/edge replay has
+matching save bytes and differing timing, screens, RAM and raw audio. It is not
+a full-race, progression-save, multiplayer or long-session qualification.
+The static archive census includes battle, mission, award and unused resources;
+45 successful transforms and 21 models with one node and scale 64 do not mean
+that many playable courses are admitted. Only explicitly qualified recipes belong
+in the private manifest. Other revisions and regions remain unsupported here.
+
+Combining the two course recipes changes in-memory cartridge metadata: the FAT
+entries, used-size fields and header-CRC copies. At the racing checkpoints these
+account for the 19/23 changed main-RAM bytes relative to each individual
+candidate; the live FAT and header copies match the generated virtual cartridge.
+Both courses retain exact screen/audio/save outputs relative to their separate
+candidates. Do not describe the combined stream as RAM-bit-exact.

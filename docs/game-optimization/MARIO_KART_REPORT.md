@@ -1,7 +1,8 @@
 # Mario Kart DS in-memory optimization investigation
 
-Status: a private Figure-8 Circuit candidate establishes a repeatable native
-screen-publication gain of 13.55% against pooled opening/closing controls.
+Status: private Course Beta 2 adds Yoshi Falls (15.70% native stationary
+screen-publication gain) and retains the Figure-8 Circuit optimization (13.55%).
+Both figures use pooled opening/closing controls and are scene-specific.
 The beta remains experimental: raw reference timing, RAM, framebuffer and
 audio differences require perceptual review. Earlier FIFO, ARM7 and OAM-only
 trials remain disabled. No public release, FPGA, renderer, clock, save-state
@@ -446,3 +447,80 @@ it is neither a measured gain nor an exhausted idea.
    no extra code space has been assumed or deployed.
 3. Measure moving races with more opponents and investigate persistent material
    caching only where native profiles justify its storage/invalidation cost.
+
+
+## Yoshi Falls extension and private Course Beta 2
+
+The next qualified course is Yoshi Falls, NitroFS file 39 `bank_course.carc`,
+member 0 `course_model.nsbmd`. All 11,265 observed draws across its 15 shapes
+match the existing scale-64 camera/projection composition. The observer preserves
+screens, RAM/state, audio, save and both PC profiles. The 916-byte shared guest
+helper and ITCM call bytes are identical to Figure-8; no new runtime service,
+code space, hardware or renderer changes are introduced.
+
+The span transformer preserves primitive order, vertices and attributes in all
+313 Yoshi Falls spans. Its normal model allocation grows by 48,176 bytes. Full
+replay write watches observe 449 boot writes and no later writes in guarded RAM
+code/table regions, and ten main/ITCM checkpoint guards retain their bytes.
+The existing ITCM write-observer limitation still applies.
+
+| Yoshi Falls fixed Time Trials view, 1 GHz | Mean screen publications/s |
+| --- | ---: |
+| Opening stock control, three 20-second windows | 16.9975 |
+| Course-span candidate, three 20-second windows | 19.6984 |
+| Closing stock control, three 20-second windows | 17.0547 |
+| Gain versus pooled controls | **15.70%** |
+
+All nine windows pass the scene checks. This is 15.89% versus the opening control
+and 15.50% versus the closing control. Renderer usage is 155.0% of one HPS core
+in the candidate versus 150.7% and 150.8% in controls. These rates
+measure completed screen publications, not unique animation frames, native CPU
+cycles or whole-game FPS. Moving-race speed is not quantified.
+
+The 3,300-frame reference changes 748 top-screen and 477 bottom-screen hashes;
+save bytes match. It changes 1,224,616 raw audio channel samples (maximum 58,330).
+The extended 6,000-frame acceleration, steering and fence/waterfall-edge replay
+also finishes with matching save bytes. Its screens/timing differ, and 5,556,934
+of 9,627,900 raw audio channel samples differ (maximum 65,535). These are unaligned
+raw comparisons and do not establish inaudibility. Selected image pairs show the
+same scenery with slightly different timing/positions; full race completion,
+new progression saves, multiplayer and long sessions remain unqualified.
+
+Native clips use the same bounded acceleration/steering input sequence. Both
+capture-quality checks pass with no added rendering lag or output skips. Their
+presentation-only crop/rotation retains the exact decoded device audio; the clips
+are not aligned frame-for-frame. Human audiovisual approval remains pending.
+
+`mario-kart-amce-r0-two-course-spans.json` admits both resources through the
+existing virtual-cartridge loader. The original Figure-8-only manifest remains
+available. All components stay disabled in the normal release; the private beta
+catalog selects the complete combined manifest. A failure in either resource
+rolls back the entire stream and report. The 99 loader tests include second-asset
+failure, duplicate/ambiguous selection, both FAT entries and source preservation.
+
+The combined stream reproduces each individual candidate's screen, audio, save
+and PC-profile outputs in both 3,300-frame replays. RAM differs because the live
+FAT entries, cartridge used-size and header-CRC copies change: 19 bytes for
+Figure-8 and 23 for Yoshi at both racing checkpoints inspected. Those fields
+match the generated cartridge metadata. Yoshi also has 11 early-frame DTCM hash
+differences; DTCM matches at the racing checkpoints. No RAM-bit-exact claim is made.
+
+The archive census screens 59 main model resources, including missions, awards,
+battle and unused content: 45 pass the span transform; 21 have one node and the
+current scale. These are leads, not additional admissions. Unsupported state
+commands or layout fail closed. Other revisions and regions remain unqualified.
+
+Primary private evidence: `YOSHI_MATRIX_VALIDATION_V1.json`,
+`YOSHI_WRITEWATCH_RESULT_V1.json`, `YOSHI_REFERENCE_RESULT_V1.json`,
+`YOSHI_MOVING_RESULT_V1.json`, `YOSHI_NATIVE_RESULT_V1.json`,
+`TWO_COURSE_REPLAY_EQUIVALENCE_V1.json`,
+`TWO_COURSE_METADATA_RAM_VALIDATION_V1.json`, `GX_MULTI_ASSET_TESTS_V2.log`,
+`YOSHI_BASE_VIDEO_V1_CAPTURE.json` and `YOSHI_CANDIDATE_VIDEO_V1_CAPTURE.json`.
+
+Next three opportunities:
+
+1. Qualify Cheep Cheep Beach's scale-64 model and camera lifetime, then measure it.
+2. Test grouping adjacent retained spans to reduce guest submission overhead
+   without assuming more code space or rounding rendered vertices.
+3. Measure moving races with opponents and complete progression/save tests before
+   broadening claims beyond the fixed views.

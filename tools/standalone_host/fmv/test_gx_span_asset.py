@@ -14,15 +14,15 @@ import test_arm9_autoload_patch as boot_fixtures
 sha = lambda b: hashlib.sha256(b).hexdigest()
 
 
-def geometry_fixture():
-    return pack([(0x20,(31,)), (0x22,(0x100020,)), (0x40,(0,)),
+def geometry_fixture(color=31):
+    return pack([(0x20,(color,)), (0x22,(0x100020,)), (0x40,(0,)),
         (0x23,(1 | (2<<16),3)), (0x25,(4 | (5<<16),)), (0x26,(6 | (7<<16),)), (0x41,()),
         (0x40,(0,)), (0x27,(8 | (9<<16),)), (0x28,(1 | (2<<10) | (3<<20),)),
         (0x23,(0xffff | (0xfffe<<16),0xfffd)), (0x41,()), (0x20,(0x1234,))])
 
 
-def archive_fixture():
-    dl = geometry_fixture(); model = bytearray(120)+dl
+def archive_fixture(color=31):
+    dl = geometry_fixture(color); model = bytearray(120)+dl
     struct.pack_into('<5I',model,0,len(model),64,64,64,len(model))
     model[0x17:0x1a]=bytes([1,1,1])
     struct.pack_into('<BBHHHI',model,64,0,1,40,8,0,0x17f)
@@ -104,6 +104,51 @@ class AtomicAssetTests(unittest.TestCase):
     def test_bad_code_guard_prevents_resource_change(self):
         m,_,_,_=self.setup_asset(); m['patches'][1]['expect']='ff'*8
         got,report=self.run_image(m,['one','two']); self.assertEqual(got,self.raw); self.assertEqual(report['applied'],[])
+
+    def setup_two_assets(self):
+        m,output,fat,original=self.setup_asset()
+        raw=bytearray(self.raw)
+        second,model=archive_fixture(color=1023)
+        raw.extend(bytes(-len(raw)%4)); start=len(raw); raw.extend(second)
+        struct.pack_into('<I',raw,0x4c,16)
+        struct.pack_into('<II',raw,fat+8,start,len(raw))
+        self.path.write_bytes(raw); self.raw=bytes(raw); self.source=Source(self.fd)
+        m.update(rom_sha256=sha(raw),header_sha1=hashlib.sha1(raw[:352]).hexdigest())
+        first=m.pop('asset'); cfg=dict(first,file_id=1,stored_sha256=sha(second),
+                                     member_sha256=sha(model))
+        second_output,_=transform_archive(second,cfg); cfg['output_sha256']=sha(second_output)
+        m['assets']=[first,cfg]
+        return m,[output,second_output],fat
+
+    def test_two_resources_keep_both_fat_rows_and_payloads(self):
+        m,outputs,fat=self.setup_two_assets(); got,report=self.run_image(m,['one','two'])
+        self.assertEqual(report['state'],'applied_to_virtual_image')
+        rows=[struct.unpack_from('<II',got,fat+8*i) for i in range(2)]
+        self.assertLessEqual(rows[0][1],rows[1][0])
+        self.assertNotEqual(outputs[0],outputs[1])
+        for (lo,hi),output in zip(rows,outputs):
+            self.assertGreaterEqual(lo,len(self.raw)); self.assertEqual(got[lo:hi],output)
+        self.assertEqual([a['file_id'] for a in report['assets']],[0,1])
+        self.assertEqual(self.path.read_bytes(),self.raw)
+
+    def test_second_resource_failure_rolls_back_everything(self):
+        m,_,_=self.setup_two_assets()
+        for key in ['stored_sha256','member_sha256','output_sha256']:
+            bad=copy.deepcopy(m); bad['assets'][1][key]='0'*64
+            with self.subTest(key=key):
+                got,report=self.run_image(bad,['one','two']); self.assertEqual(got,self.raw)
+                self.assertEqual(report['state'],'skipped'); self.assertEqual(report['applied'],[])
+                self.assertNotIn('assets',report); self.assertNotIn('asset',report)
+
+    def test_ambiguous_duplicate_or_invalid_resource_lists_fail_closed(self):
+        m,_,_=self.setup_two_assets()
+        bads=[dict(m,asset=m['assets'][0]),dict(m,assets=[]),dict(m,assets={}),
+              dict(m,assets=[m['assets'][0]]*2),dict(m,assets=[None]),
+              dict(m,assets=[dict(m['assets'][0],file_id=True)]),
+              dict(m,assets=[dict(m['assets'][0],file_id=i) for i in range(33)])]
+        for bad in bads:
+            got,report=self.run_image(bad,['one','two']); self.assertEqual(got,self.raw)
+            self.assertEqual(report['applied'],[])
 
 
 if __name__=='__main__':unittest.main()
