@@ -501,6 +501,52 @@ class Arm7AutoloadPatchTests(GuestPatchTests):
             arm7_sha256=hashlib.sha256(raw[first:first+size]).hexdigest(),
             arm7_crc32=f'{zlib.crc32(raw[first:first+size]):08x}')
 
+    def compressed_arm9_fixture(self):
+        from ndspy import codeCompression
+        decoded = bytes.fromhex('0000a0e1') * 1024
+        compressed = codeCompression.compress(decoded, isArm9=False)
+        self.assertEqual(codeCompression.decompress(compressed), decoded)
+        self.assertLess(len(compressed), len(decoded))
+        raw = bytearray(self.raw)
+        first = len(raw)
+        raw.extend(compressed)
+        struct.pack_into('<4I', raw, 0x20, first, 0x02000000, 0x02000000, len(compressed))
+        self.raw = bytes(raw)
+        self.rom.write_bytes(raw)
+        self.source = Source(self.fd)
+        self.repin(self.manifest, raw)
+        self.manifest.update(arm9_sha256=hashlib.sha256(compressed).hexdigest(),
+                             arm9_crc32=f'{zlib.crc32(compressed):08x}')
+        return first, compressed
+
+    def test_arm7_only_preserves_compressed_arm9_and_header_exactly(self):
+        first, compressed = self.compressed_arm9_fixture()
+        got, report = self.result(self.environment(selection='autoload-two'))
+        expected = bytearray(self.raw)
+        expected[1200:1208] = bytes.fromhex(self.autoload_patch['replace'])
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
+        self.assertEqual(got, expected)
+        self.assertEqual(got[first:], compressed)
+        self.assertEqual(got[:512], self.raw[:512])
+        self.assertEqual(self.rom.read_bytes(), self.raw)
+
+    def test_compressed_arm9_mixed_selection_still_falls_back_atomically(self):
+        self.compressed_arm9_fixture()
+        got, report = self.result(self.environment(selection='one,autoload-two'))
+        self.assertEqual(got, self.raw)
+        self.assertEqual(report['state'], 'skipped')
+        self.assertEqual(report['applied'], [])
+
+    def test_compressed_arm9_identity_is_required_for_arm7_only(self):
+        self.compressed_arm9_fixture()
+        for name, value in [('arm9_sha256', '0'*64), ('arm9_crc32', '00000000')]:
+            manifest = copy.deepcopy(self.manifest)
+            manifest[name] = value
+            got, report = self.result(self.environment(manifest, 'autoload-two'))
+            self.assertEqual(got, self.raw)
+            self.assertEqual(report['state'], 'skipped')
+            self.assertEqual(report['applied'], [])
+
     def test_autoload_only_and_mixed_selection_preserve_prefix_table_and_other_section(self):
         for selection in ['autoload-two', 'one,autoload-two']:
             with self.subTest(selection=selection):

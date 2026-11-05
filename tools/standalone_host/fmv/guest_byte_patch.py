@@ -328,14 +328,22 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
             if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1'):
                 return recompress_arm9_autoload(source, header, manifest, requested, report)
             return append_decoded_overlays(source, header, manifest, requested, report)
-        require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')
-        arm = code.MainCodeFile(raw, address)
-        main = arm.sections[0]
-        require(main.implicit and main.ramAddress == address and bytes(main.data) == raw[:len(main.data)],
-                'Initial main-code mapping differs')
         patches = {p['id']: p for p in manifest['patches']}
         require(len(patches) == len(manifest['patches']), 'Duplicate patch IDs')
         require(requested <= patches.keys(), 'Unknown patch ID')
+        arm7_only = all(patches[ident]['cpu'] == 'arm7' and
+                        isinstance(patches[ident]['target'], str) and
+                        patches[ident]['target'].startswith('arm7.bin/autoload:')
+                        for ident in requested)
+        # An ARM7-only selection does not rewrite or map ARM9. Keep its exact
+        # stored image (including compression) and all existing identity guards.
+        # Mixed/ARM9 selections retain the original uncompressed-main contract.
+        if not arm7_only:
+            require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')
+            arm = code.MainCodeFile(raw, address)
+            main = arm.sections[0]
+            require(main.implicit and main.ramAddress == address and bytes(main.data) == raw[:len(main.data)],
+                    'Initial main-code mapping differs')
         image = VirtualRom(source, source.size)
         data_guards = []
         overlay_files = {}
@@ -403,6 +411,9 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
                                           bytes=len(after), original_sha256=hashlib.sha256(before).hexdigest(),
                                           replacement_sha256=hashlib.sha256(after).hexdigest()))
         image.finish()
+        if arm7_only:
+            require(b''.join(image.blocks(offset, offset+length)) == raw,
+                    'ARM7-only selection changed ARM9')
         for guard_offset, guard_bytes in data_guards:
             require(b''.join(image.blocks(guard_offset, guard_offset + len(guard_bytes))) == guard_bytes,
                     'Selected patch changes a protected data invariant')
