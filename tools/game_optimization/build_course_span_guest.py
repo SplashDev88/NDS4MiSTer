@@ -55,6 +55,9 @@ def main():
         struct.pack_into('<HH',oam,offset,0xf000|((delta>>12)&0x7ff),0xf800|((delta>>1)&0x7ff))
     stub=bytes.fromhex('7847c046')+struct.pack('<5I',0xe00c0390,0xe02cc192,0xe0810092,0xe081100c,0xe12fff1e)
     blob=struct.pack('<2I',0xe28fc001,0xe12fff1c)+oam+stub+helper
+    padding=m.get('padding_bytes',0)
+    assert type(padding) is int and padding in (0,2,4)
+    blob+=bytes.fromhex('c046')*(padding//2)
     assert len(blob)==m['extent_bytes'] and hashlib.sha256(blob).hexdigest()==m['expected_sha256'],'Compiler output differs from qualified bytes'
     with a.output.open('xb') as f:f.write(blob)
     print(json.dumps(dict(bytes=len(blob),sha256=hashlib.sha256(blob).hexdigest(),entry=hex(entry),cull_entry=hex(mul+len(stub)+1))))

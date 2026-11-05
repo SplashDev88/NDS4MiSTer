@@ -12,7 +12,11 @@ def digest(data):
 
 
 def transform_archive(data, config):
-    require(config['transform'] == 'narc-model-gx-spans-v1', 'Unknown asset transform')
+    require(config['transform'] in ('narc-model-gx-spans-v1','narc-model-gx-spans-v2','narc-model-gx-spans-v3'), 'Unknown asset transform')
+    v2 = config['transform'] != 'narc-model-gx-spans-v1'
+    v3 = config['transform'] == 'narc-model-gx-spans-v3'
+    require(v3 == ('matrix_normalize_shift' in config), 'Normalization requires span format v3')
+    require(v2 or 'span_options' not in config, 'Options require span format v2')
     require(4 <= len(data) <= 8*1024*1024 and data[0] == 0x10 and
             16 <= int.from_bytes(data[1:4], 'little') <= 8*1024*1024,
             'Unsupported LZ10 extent')
@@ -44,7 +48,8 @@ def transform_archive(data, config):
     offset = config['model_offset']
     require(type(offset) is int and 0 <= offset < len(files[member]), 'Invalid model offset')
     old_bytes = len(files[member])
-    files[member], stats, _ = transform(files[member], offset)
+    files[member], stats, _ = transform(files[member], offset, config.get('span_options',{}) if v2 else None,
+                                      config['matrix_normalize_shift'] if v3 else None)
     require(len(files[member]) <= 8*1024*1024, 'Expanded model is too large')
     newfat, newbody = bytearray(fat), bytearray()
     for i, payload in enumerate(files):

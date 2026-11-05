@@ -7,7 +7,8 @@ import unittest
 from ndspy import lz10
 from prepare import Source
 from guest_byte_patch import assemble
-from gx_spans import spans, pack, semantic
+from gx_spans import spans, pack, semantic, transform, group_spans, polygons, split_independent_polygons
+from gx_model import inspect_model
 from gx_span_asset import transform_archive
 import test_arm9_autoload_patch as boot_fixtures
 
@@ -164,6 +165,117 @@ class AtomicAssetTests(unittest.TestCase):
         for bad in bads:
             got,report=self.run_image(bad,['one','two']); self.assertEqual(got,self.raw)
             self.assertEqual(report['applied'],[])
+
+
+def v2_model_fixture(texture=False, scale_shift=6):
+    first=geometry_fixture(); second=pack([(0x21,(123,))])+geometry_fixture(1023)
+    model=bytearray(160)+first+second
+    struct.pack_into('<5I',model,0,len(model),64,64,64,len(model))
+    model[0x17:0x1a]=bytes([1,2,2])
+    struct.pack_into('<2I',model,28,4096<<scale_shift,4096>>scale_shift)
+    struct.pack_into('<BBHHHI',model,64,0,2,64,8,0,0x17f)
+    struct.pack_into('<HH2I',model,84,4,12,64,80)
+    model[96:112]=b'plain-shape\0\0\0\0\0'
+    model[112:128]=b'lit-shape\0\0\0\0\0\0\0'
+    struct.pack_into('<HHIII',model,128,0,16,0,32,len(first))
+    struct.pack_into('<HHIII',model,144,0,16,0,16+len(first),len(second))
+    prefix=bytearray(68)
+    struct.pack_into('<4sHHIHHI',prefix,0,b'BMD0',0xfeff,2,68+len(model),16,1,20)
+    struct.pack_into('<4sI',prefix,20,b'MDL0',48+len(model))
+    prefix[29]=1;struct.pack_into('<I',prefix,48,48)
+    data=bytes(prefix+model)
+    if texture:
+        tex=b'TEX0'+struct.pack('<I',24)+b'UNCHANGEDTEXTURE'
+        data=bytearray(data[:16])+struct.pack('<2I',24,len(data)+4)+data[20:]+tex
+        struct.pack_into('<H',data,14,2);struct.pack_into('<I',data,8,len(data))
+        return bytes(data),72
+    return data,68
+
+
+class SpanV2Tests(unittest.TestCase):
+    def test_independent_polygon_splitting_preserves_order_attributes_and_vertex_count(self):
+        for mode,size in [(0,3),(1,4)]:
+            cmds=[(0x40,(mode,))]
+            for i in range(12*size):
+                xyz=((32760+i*3)&65535,(i*911)&65535,(-i*701)&65535)
+                cmds += [(0x20,(i*13,)),(0x22,(i*179,)),
+                         (0x23,(xyz[0]|(xyz[1]<<16),xyz[2]))]
+            cmds += [(0x41,()),(0x20,(255,)),(0x22,(0x12345678,))]
+            original=pack(cmds);changed=split_independent_polygons(original,3)
+            self.assertEqual(polygons(changed),polygons(original))
+            self.assertEqual(len(spans(changed)),4)
+            self.assertEqual(sum(e[0]=='v' for e in semantic(changed)[0]),12*size)
+            self.assertEqual(semantic(changed)[1],semantic(original)[1])
+
+    def test_strips_are_not_restarted_or_duplicated(self):
+        for mode in [2,3]:
+            cmds=[(0x20,(31,)),(0x22,(17,)),(0x40,(mode,))]
+            cmds += [(0x23,(i|(i<<16),i)) for i in range(40)]
+            cmds.append((0x41,()));original=pack(cmds)
+            self.assertEqual(split_independent_polygons(original,2),original)
+
+    def test_normalized_header_and_error_margin(self):
+        data,offset=v2_model_fixture()
+        for normalization in range(4):
+            output,_,segments=transform(data,offset,{'shape_indices':[0]},normalization)
+            descriptor=offset+128
+            at=descriptor+struct.unpack_from('<I',output,descriptor+8)[0]
+            self.assertEqual(struct.unpack_from('<IHBB',output,at),(0x334c5344,2,6,normalization))
+            for index,s in enumerate(segments[0]):
+                expected=(sum(max(abs(a),abs(b)) for a,b in zip(s['lo'],s['hi']))+32)*(2 if normalization else 1)
+                self.assertEqual(struct.unpack_from('<I',output,at+8+24*index+20)[0],expected)
+        for invalid in (-1,4,True,'1'):
+            with self.assertRaises(ValueError):transform(data,offset,{'shape_indices':[0]},invalid)
+
+    def test_selective_shape_and_texture_are_preserved(self):
+        for texture in (False,True):
+            for shift in (3,4,5,6,7):
+                data,offset=v2_model_fixture(texture,shift)
+                output,stats,segments=transform(data,offset,{'shape_indices':[0]})
+                self.assertEqual([s['shape'] for s in stats],[0])
+                old=inspect_model(data,offset)
+                a=old['shapes'][1];descriptor=offset+a['descriptor_offset']
+                self.assertEqual(data[descriptor:descriptor+16],output[descriptor:descriptor+16])
+                lo=offset+a['display_list_offset'];hi=lo+a['display_list_bytes']
+                self.assertEqual(data[lo:hi],output[lo:hi])
+                descriptor=offset+old['shapes'][0]['descriptor_offset']
+                at=descriptor+struct.unpack_from('<I',output,descriptor+8)[0]
+                self.assertEqual(struct.unpack_from('<IHH',output,at),(0x324c5344,2,shift))
+                self.assertEqual(segments[1],[])
+                if texture:
+                    oldtex=struct.unpack_from('<I',data,20)[0];newtex=struct.unpack_from('<I',output,20)[0]
+                    self.assertEqual(data[oldtex:],output[newtex:])
+                    self.assertEqual(newtex-oldtex,len(output)-len(data))
+
+    def test_grouping_preserves_geometry_and_encloses_every_primitive(self):
+        original=spans(geometry_fixture())
+        grouped=group_spans(original,2)
+        self.assertEqual(semantic(grouped[0]['data']),semantic(geometry_fixture()))
+        for item in original:
+            self.assertTrue(all(a<=b for a,b in zip(grouped[0]['lo'],item['lo'])))
+            self.assertTrue(all(a>=b for a,b in zip(grouped[0]['hi'],item['hi'])))
+        data,offset=v2_model_fixture()
+        output,stats,_=transform(data,offset,{'shape_indices':[0],'group_size':2})
+        self.assertEqual(output,data)
+        self.assertEqual(stats,[])
+
+    def test_unsupported_shapes_and_bad_options_fail_closed(self):
+        data,offset=v2_model_fixture()
+        for options in [{},{'shape_indices':[1]},{'shape_indices':[]},
+                        {'shape_indices':[True]},{'shape_indices':[0,0]},
+                        {'shape_indices':[2]},{'shape_indices':[0],'group_size':0},
+                        {'shape_indices':[0],'group_size':True},{'unknown':1}]:
+            with self.subTest(options=options),self.assertRaises(ValueError):transform(data,offset,options)
+        bad=bytearray(data);struct.pack_into('<I',bad,offset+28,123456)
+        with self.assertRaises(ValueError):transform(bytes(bad),offset,{'shape_indices':[0]})
+
+    def test_bad_container_offsets_and_unknown_blocks_are_rejected(self):
+        data,offset=v2_model_fixture(True)
+        for at,value,fmt in [(8,len(data)-1,'I'),(16,28,'I'),(20,len(data)+4,'I'),(33,2,'B'),(52,44,'I')]:
+            bad=bytearray(data);struct.pack_into('<'+fmt,bad,at,value)
+            with self.subTest(at=at),self.assertRaises(ValueError):transform(bytes(bad),offset,{'shape_indices':[0]})
+        bad=bytearray(data);at=struct.unpack_from('<I',bad,20)[0];bad[at:at+4]=b'BAD0'
+        with self.assertRaises(ValueError):transform(bytes(bad),offset,{'shape_indices':[0]})
 
 
 if __name__=='__main__':unittest.main()

@@ -1125,3 +1125,79 @@ account for the 19/23 changed main-RAM bytes relative to each individual
 candidate; the live FAT and header copies match the generated virtual cartridge.
 Both courses retain exact screen/audio/save outputs relative to their separate
 candidates. Do not describe the combined stream as RAM-bit-exact.
+
+### Mario Kart all-course investigation, November 5
+
+The new coverage distinguishes real racing courses from battle, mission, award
+and unused assets. All 32 racing courses have paired short references, matrix
+composition evidence and full-race CPU-driver references for the split-span
+candidate. The latter complete 64 races and 196 normal laps, including Baby
+Park's five-lap races. They exercise a private CPU-driver fixture and are not
+normal player-input equivalence. The menu-unlock and CPU-driver patches must
+never appear in a beta catalog or release manifest.
+
+Timing and driver trajectories can change noticeably in the fixture, including
+DK Pass and Mushroom Bridge. New Time Trials record saves therefore differ.
+Raw audio, RAM and screen hashes differ as well; a completed race or matching
+sampled scenery does not prove identical behavior or inaudible differences.
+Human audiovisual approval, multiplayer, every race mode, other revisions and
+other regions remain separate gates. Native stationary screen publications are
+not unique animation frames, game-clock cadence or full-race speed.
+
+Three shapes using unsupported normal commands remain unchanged. Do not strip
+lighting or restart triangle/quad strips to obtain a smaller command stream.
+Independent triangle/quad splitting must preserve polygon order, attributes,
+vertex count and outgoing state. Matrix normalization only affects conservative
+visibility tests; it must not alter rendered coordinates or remove the fail-open
+path for arithmetic bounds outside the qualified range.
+
+Uncached preparation of 32 resources took 700.745 seconds on the MiSTer. The
+existing progress callback now prevents the reader's 120-second stall timeout
+after source verification. Verified local cache entries avoid repeat conversion;
+their contents are derived from the user's ROM and must stay out of packages.
+The first cached native launch took 27.409 seconds and verified all 32 entries.
+
+Reusing a shared live course matrix could reduce repeated concatenations, but
+endpoint RAM snapshots show identity view state and do not prove a usable cache
+or its invalidation rules. Treat that as a proposal until live dependencies,
+storage ownership, code capacity and full-replay writes are established. Do not
+use a zero-filled region or an endpoint matrix match as unused-memory proof.
+
+The five additional shared-helper trials did not establish a useful broad gain:
+mean changes across four repeated native views ranged from -0.23% to +0.26%,
+with mixed course/repeat effects. The final beta retains the simpler 916-byte
+helper and the original DMA threshold. Experimental fast dispatch, coalescing,
+unrolled culling and external multiply paths were removed from product source;
+private authored snapshots preserve their reproduction. Both the selected helper
+and the prior Beta2 helper still reproduce their exact qualified bytes.
+
+A before/after HUD-clock cross-check advances 23.155 versus 23.145 seconds across
+the standardized active interval. Delivery-rate improvements must not be called
+proportional race-clock or physics acceleration. Native per-frame percentiles
+and true unique-animation FPS are not exposed by the current measurement rig.
+
+The broader native HUD-clock audit caught a serious selection error before beta
+packaging: Airship Fortress's split-span setting increased screen publications
+while advancing its timer only 11.566 seconds versus the control's 23.199 seconds
+over the same active interval. Its normalized recipe also lost timer cadence.
+Grouping pairs of primitives preserved normal timer advancement in screening.
+Waluigi Pinball's finer splitting lost about 2.5% timer advancement, and Sky
+Garden's lost about 11.4%. Reject these settings despite their larger publication
+counts. Review native game progress alongside wall time on every course; reference
+race completion and matching scenery alone do not establish native speed.
+
+Sky Garden's additional group-of-four trial gained about 1.94% in screen
+publications but lost more than 2.5% in timer advancement in both matched repeats.
+The final beta retains Sky Garden's original resource. All 32 tracks were
+investigated; 31 course-resource optimizations are admitted. Course order can also
+affect output rates substantially: compare matched repeat order and retain the
+individual windows, rather than pooling unrelated course histories indiscriminately.
+
+Keeping Sky Garden's original resource does not remove the shared code changes.
+Isolated native checks still measured approximately 4.07% and 0.85% less timer
+advancement with the selected helper. A final trial of the existing fast dispatcher
+improved those measurements by only 1.09% and 0.009% relative to the selected helper
+and remained slower than stock. It was not retained. Sky Garden's 14,000 compared
+reference frames and save match stock, while raw audio differs. This is an explicit
+functional/perceptual private-beta limitation; do not claim a Sky Garden speedup,
+native timing equivalence, or human audiovisual approval.

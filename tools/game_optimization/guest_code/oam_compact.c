@@ -7,8 +7,13 @@ __attribute__((used,noinline))
 u32 candidate(u32* out,u32 count,const struct Source* source,const s32* matrix,const s32* pos,u32 index,u32 doubled){
  const u16 *width=(const u16*)OAM_WIDTH_TABLE_ADDRESS,*height=(const u16*)OAM_HEIGHT_TABLE_ADDRESS;
  if(count>=source->count)count=source->count;
+#ifdef OAM_POINTER_LOOP
+ u16 *dst=(u16*)out;const u16 *src=source->attrs;
+ for(u32 i=0;i<count;++i,dst+=4,src+=3){
+#else
  for(u32 i=0;i<count;++i){
   u16 *dst=(u16*)((char*)out+i*8);const u16 *src=source->attrs+i*3;
+#endif
   dst[0]=src[0];dst[1]=src[1];dst[2]=src[2];
   if(!matrix&&!pos)continue;
   u32 attr=*(u32*)dst;

@@ -2269,3 +2269,51 @@ the first native cached launch reports 32 verified hits and 27.409 seconds total
 ROM preparation. These are loading measurements, not gameplay gains. The exact
 staged loader subset passes 130 tests, including changed recipes, corrupt and
 rehashed-wrong outputs, partial writes, unavailable storage and atomic rollback.
+
+### Qualify additional geometry spans without changing rendered coordinates
+
+The versioned span adapter accepts explicit shape selection, power-of-two model
+scales, adjacent primitive grouping and bounded splitting of independent triangle
+or quad lists. It retains strips and unsupported normal/state shapes unchanged.
+Grouping reduces helper overhead; splitting can reject smaller off-screen areas.
+Compare both on hardware: neither is universally faster. Verify polygon order,
+attributes, total submitted vertex count and final command state after splitting.
+A trailing TEX0 block is retained byte-for-byte with its container offset relocated.
+
+Format v3 carries a visibility-only matrix normalization shift. Arithmetic shifts
+can keep large model scales inside the helper's conservative arithmetic bounds;
+a doubled error margin bounds lost matrix precision. This never changes geometry
+coordinates. Out-of-range matrices retain all spans. Mario Kart's all-course
+matrix proof covers 519 shapes and 467,100 calls without composition mismatches.
+The three unsupported normal-command shapes remain ordinary display lists.
+
+A separate helper candidate combines consecutive visible payloads before calling
+the original sender. This requires an explicit consecutive-payload contract:
+every span is nonempty, word-aligned and covers the generated payload without gaps.
+Independent variable-length tests compare the complete ordered byte stream, not
+just the list of span indices. Fewer calls can outweigh extra helper instructions;
+measure native output before selecting this alternative.
+
+When helper space is constrained, an existing guarded library routine can replace
+a duplicate local stub only after exact ABI/body proof. The private experimental builder's optional
+`external_lmul` requires an original-byte guard and emits Thumb-to-ARM BLX with
+aligned PC-relative range checks. Mario Kart's original ARM 64-bit multiply at
+02133048 passes 1,800 OAM-equivalence cases and a full-race write watch. Reusing it
+saves 24 bytes, fitting the unrolled/coalescing candidate inside the existing
+944-byte OAM function/literal extent. This is a space proof; native benefit is a
+separate gate. These extra helper variants measured only -0.23% to +0.26% mean
+changes across four repeated native scenes and were excluded from the beta. Their
+authored source/build snapshots remain in private evidence; product source omits
+the rejected paths. Default builds retain the prior helper bytes exactly.
+
+### Gate output-rate gains on native game progress
+
+More screen-buffer publications can coexist with slower game logic. For a fixed
+scene, compare a game-owned progress indicator (for example, its race timer)
+before and after the same bounded native active interval, alongside publications
+and CPU load. Keep the image regions, reference values and scene identity in the
+per-game evidence. Do not infer gameplay speed from the output counter alone.
+The Mario Kart all-course audit rejected a roughly 45% publication-rate gain on
+Airship Fortress because its race timer advanced at approximately half the control
+rate. Larger primitive groups restored cadence in screening, illustrating why
+both guest helper overhead and renderer savings must participate in selection.
