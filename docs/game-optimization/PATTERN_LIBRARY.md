@@ -2185,3 +2185,18 @@ Mario Kart removes 160–192 instructions per scan in isolated cases and
 5.09–7.66% of ARM7 reference samples, but native delivery remains within noise
 (21.1887 versus 21.1332 publications/s). Keep this candidate disabled: a sound
 CPU saving does not establish a renderer-limited scene speedup.
+
+## Conditional signed-byte extraction
+
+The scanner's `conditional-signed-byte-to-fx12` detector recognizes an eight-
+instruction AND/shift/compare/conditional-sign-extension chain with register
+renaming. A left shift by24 followed by arithmetic right shift12 can produce
+the same signed8-bit value in FX12. Changed flags must be overwritten before
+use and no control-flow entry may enter the eliminated instructions. Exhaust
+the field domain and verify surrounding writes and ABI before replacement.
+
+Mario Kart's coordinate-only trial passes4,352 instruction cases and all
+131,072 X/Y field pairs. It saves0.7868% of Time Trials ARM9 samples with exact
+screens; it is superseded by the broader sprite-transform experiment. This
+is a reusable arithmetic signature, not confirmed middleware provenance or
+a native speed claim.

@@ -127,6 +127,29 @@ def predicated_fixed_destination_word_stream(instructions):
                 required_proof='Profile actual callers and lengths; fixed destination may be MMIO. Inlining must preserve ordered accesses, empty calls, callee-saved state and ARM/Thumb returns. Fewer instructions need not mean fewer native cycles.')
 
 
+def conditional_signed_byte(instructions):
+    """Screen a verbose signed-byte-to-FX12 sequence; not patch permission."""
+    if len(instructions) != 8 or any(i.size != 4 for i in instructions):
+        return None
+    words = [int.from_bytes(i.bytes, 'little') for i in instructions]
+    first = words[0]
+    if first & 0xfff00fff != 0xe20000ff:
+        return None
+    source, destination = (first >> 16) & 15, (first >> 12) & 15
+    if max(source, destination) >= 13:
+        return None
+    d = destination
+    expected = [first, 0xe1a00800 | d << 12 | d, 0xe1a00840 | d << 12 | d,
+                0xe350007f | d << 16, 0xc3800cff | d << 16 | d << 12,
+                0xc1a00800 | d << 12 | d, 0xc1a00840 | d << 12 | d,
+                0xe1a00600 | d << 12 | d]
+    if words != expected:
+        return None
+    return dict(source=f'r{source}', destination=f'r{destination}',
+                signed_bits=8, output_fraction_bits=12,
+                required_proof='Authenticate entry paths and loaded code. Exhaust the signed field domain and confirm changed NZCV flags are overwritten before use. This is a CPU arithmetic lead, not an established SDK identity or native gain.')
+
+
 def shift_chain(instructions):
     if len(instructions) != 5:
         return None
@@ -364,6 +387,7 @@ def scan(data, base):
                  ('branch-heavy-fixed-destination-word-stream', 40, 0xfff00ff0, 0xe0800000, fixed_destination_word_stream),
                  ('predicated-fixed-destination-word-stream', 24, 0xfff00ff0, 0xe0800000, predicated_fixed_destination_word_stream),
                  ('redundant-bitfield-shift-chain', 20, 0xffff0ff0, 0xe1a00400, shift_chain),
+                 ('conditional-signed-byte-to-fx12', 32, 0xfff00fff, 0xe20000ff, conditional_signed_byte),
                  ('scaled-nibble-decoder-arithmetic', 28, 0xffff0ff0, 0xe1a001c0, nibble_step),
                  ('linear-key-handler-dispatch', 44, 0xfff00fff, 0xe5900000, key_handler_dispatch),
                  ('zero-multiplicand-predication', 20, 0xffff0fff, 0xe3a00000, zero_multiplicand)]
