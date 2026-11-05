@@ -1090,3 +1090,22 @@ with exact screens/save but has no native speedup (21.2532 versus21.2281
 publications/s). GP screens diverge fromframe2165; raw audio/RAM differ in both
 routes. Do not claim GP matched-workload gain, inaudibility or lifecycle/region
 coverage. The original baseline is restored; geometry culling remains research.
+
+### Mario Kart course-span beta
+
+The private USA revision 0 Figure-8 Circuit culling candidate improves stationary
+native screen publication rate by 13.55% across opening/candidate/closing runs.
+It is not whole-game FPS or bit-exact qualification: TT/GP reference framebuffer,
+RAM, audio and timing differ; saves match. Native captures preserve device audio
+for human review; no inaudibility or user approval is asserted. Additional guest
+CPU work and a 41,564-byte larger course-model allocation may behave differently
+under other workloads. Full race completion/progress saves, long sessions,
+multiplayer, other modes/courses and regional releases remain unqualified.
+
+The helper occupies part of an equivalent compact OAM routine's existing extent;
+it must never be enabled separately from its call-site and guarded resource
+recipe. The new delivery mode rejects partial selections atomically. The RAM
+write watch covers the helper/constants/concat code but this oracle build lacks
+ITCM write notifications; boot delivery, snapshots and native staged-code guards
+are the available ITCM evidence. An initial black restart snapshot was transitional;
+a later snapshot returns to normal racing. No new save-state support is implied.

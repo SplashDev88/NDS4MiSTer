@@ -337,6 +337,19 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         registry = {'version': 1, 'profiles': [{'game_code': manifest['game_code'],
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
+        if manifest.get('delivery') == 'append-decoded-arm9-gx-spans-v1':
+            # One logical optimization can need code in two boot sections plus
+            # a resource recipe. Never expose a partial selection or resource
+            # without its helper. All guards run before the stream is returned.
+            ids = [p['id'] for p in manifest['patches']]
+            require(1 <= len(ids) <= 8 and len(ids) == len(set(ids)) and
+                    requested == set(ids), 'Atomic code/asset selection required')
+            from gx_span_asset import append_asset
+            boot_manifest = dict(manifest, delivery='append-decoded-arm9-sections-v1')
+            image, report = recompress_arm9_autoload(source, header, boot_manifest, requested, report)
+            image, report = append_asset(source, image, report, manifest['asset'])
+            report['delivery'] = manifest['delivery']
+            return image, report
         if manifest.get('delivery') is not None:
             if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1',
                                         'append-decoded-arm9-sections-v1'):

@@ -2200,3 +2200,35 @@ Mario Kart's coordinate-only trial passes4,352 instruction cases and all
 screens; it is superseded by the broader sprite-transform experiment. This
 is a reusable arithmetic signature, not confirmed middleware provenance or
 a native speed claim.
+
+## Conservatively reject complete off-screen primitive spans
+
+Screen static display lists for BEGIN/END groups whose exact local-coordinate
+bounds lie outside one homogeneous clip plane. Establish the actual matrix
+composition from reset, including camera/intro transitions; SDK globals alone
+are not proof. Preserve original primitive order and every coordinate submitted.
+Restore incoming color/texture/current-position dependencies at each independently
+retained span, and retain the final span when needed to restore outgoing state.
+Unsupported matrix/normal/state commands fail closed in the preprocessor.
+
+`gx_model.py` is now the shared bounded command/model parser used by the CLI and
+asset adapter. `gx_spans.py` derives independent spans and checks full/subset
+semantics. `gx_span_asset.py` pins the original compressed resource, selected
+member and transformed output, using the original game resource allocation.
+The explicit atomic delivery mode accepts the complete helper/call/resource
+combination or returns the original VirtualRom. It does not recognize games by
+address; all identities, addresses, source tables and scale values are manifests.
+
+Use conservative arithmetic bounds and error margins rather than rounding any
+rendered vertex. Validate the generated machine code, ARM/Thumb interworking,
+callee ABI and existing-code-space ownership. The small helper uses the normal
+stack and existing matrix/send routines; it introduces no per-call HPS service.
+Code compaction that creates helper space is a dependency, not a standalone gain.
+
+Mario Kart's Figure-8 private trial increases guest ARM9 work but improves native
+screen delivery 13.55% versus pooled controls (21.1360 / 23.9488 / 21.0467 in an
+A/B/A comparison). Reduced geometry traffic can matter more than instruction
+counts in a renderer-limited view. This is scene-specific and not bit-exact:
+reference timing/RAM/audio/screens differ, saves match, and perceptual/full-game
+approval remains separate. Do not apply the pattern to another model/camera or
+region without its own identity, transform, state and lifetime evidence.

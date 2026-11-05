@@ -1,12 +1,11 @@
 # Mario Kart DS in-memory optimization investigation
 
-Status: optimization investigation continues. The bounded native FIFO
-control/candidate/control comparison does not establish a repeatable speedup.
-The DMA and inline FIFO candidates remain disabled. Results and limitations
-are recorded below. No candidate
-beta has been promoted or release changed. The Scaler menu experiment
-remains separate; no FPGA, renderer, clock, save-state format or HPS service
-changes are part of this experiment.
+Status: a private Figure-8 Circuit candidate establishes a repeatable native
+screen-publication gain of 13.55% against pooled opening/closing controls.
+The beta remains experimental: raw reference timing, RAM, framebuffer and
+audio differences require perceptual review. Earlier FIFO, ARM7 and OAM-only
+trials remain disabled. No public release, FPGA, renderer, clock, save-state
+format or HPS runtime service changed. The Scaler menu experiment is separate.
 
 ## Baseline and existing architecture
 
@@ -309,17 +308,17 @@ secure-area/settings overlaps fail closed. Ninety synthetic loader tests pass.
 ## Compact sprite transforms: no native benefit
 
 A read-only census records 11,642 OAM-function calls and 25,642 coordinate
-extractions over400 TT frames. The routine copies OAM attributes, extracts
+extractions over 400 TT frames. The routine copies OAM attributes, extracts
 signed coordinates, applies affine/position transforms and updates attributes.
 It is actual HUD work, not debug code. The same-extent `oam-compact-transform`
-candidate replaces916 bytes at ARM9 main020224e0 with680 bytes of equivalent
+candidate replaces 916 bytes at ARM9 main 020224e0 with 680 bytes of equivalent
 code and unreachable padding. It uses the existing stack and no new storage.
 
 The authored implementation removes redundant shifts/spills and has an exact
 identity-matrix path. 1,800 isolated cases preserve non-stack test RAM, callee-
 saved registers, return count and ARM/Thumb returns. They cover valid sprite
 shapes, size/flip/affine fields, full-range matrices/positions, doubled mode and
-zero/clipped counts. Aggregate instructions in these cases fall36.52%; these
+zero/clipped counts. Aggregate instructions in these cases fall 36.52%; these
 are function tests, not game speed. No freed code space is assigned as scratch.
 
 | Matched decoded-delivery check | Control | Compact V2 |
@@ -328,12 +327,12 @@ are function tests, not game speed. No freed code space is assigned as scratch.
 | TT screen pairs | 3,300 | All exact |
 | Native screen publications/s | 21.2532 | 21.2281 (-0.1181%) |
 
-The native means each cover three scene-qualified20-second stationary Time
-Trials windows at1GHz. There is no useful gain, so the patch stays disabled.
+The native means each cover three scene-qualified 20-second stationary Time
+Trials windows at 1 GHz. There is no useful gain, so the patch stays disabled.
 The smaller coordinate-only trial (0.7868% fewer TT ARM9 samples) was superseded
-without further native testing. GP differs in884 screen pairs from frame2165;
+without further native testing. GP differs in 884 screen pairs from frame 2165;
 its lower counts are not a matched-workload result. Both saves match. Raw audio
-differences remain:490,482 TT and1,224,133 GP channel samples, maximum21,545 and
+differences remain: 490,482 TT and 1,224,133 GP channel samples, maximum 21,545 and
 58,732 respectively. No perceptual or whole-game qualification is claimed.
 
 The original released private baseline was restored after this trial. Evidence:
@@ -343,18 +342,107 @@ The original released private baseline was restored after this trial. Evidence:
 `oam_compact_v2.c/.o/.bin` in private evidence; clang ARMv5TE ARM/O2, wrapping
 signed arithmetic, no strict aliasing, freestanding. No public default changed.
 
-## Continuing lead: conservative visibility rejection
+## Conservative course visibility: private beta gain
 
-A read-only observer retains matrix commands from reset, then records full
-geometry for60 TT frames. All six golden outputs remain exact. Existing
-`GxMatrixPrefix` and fixed-point matrix arithmetic classify12,704 of24,720
-complete primitive groups as wholly outside a clip plane, covering71,797 of
-204,900 submitted vertices.1,080 groups with internal matrix changes are
-excluded. This35.04% submitted-vertex screening result is not a speedup or
-permission to omit commands. Whole state-separated bursts offer only9,000
-of196,440 vertices, so coarser rejection has less potential.
+The candidate precomputes independent primitive spans in the verified Figure-8
+course model, then skips a whole span only when its bounds are strictly outside
+one homogeneous clip plane. Rendered vertex coordinates are unchanged. Explicit
+starting color/texture coordinates and a full first vertex preserve state across
+skips; the final primitive is always sent to preserve outgoing state. The course
+resource is prepared through VirtualRom and loaded into its normal game-owned
+allocation. The original ROM is untouched. The model allocation grows 41,564
+bytes; broader memory-pressure cases remain unqualified.
 
-Before patching, establish the actual course transform and preserve all color,
-texture/current-vertex state crossing skipped groups, resource lifetimes and
-cache coherence. No culling patch, asset rewrite, new HPS service or RTL change
-has been made. This remains an unexhausted opportunity.
+A matrix-prefix observer from reset confirms the helper's camera/projection
+composition in all 17,928 Time Trials and 26,784 Grand Prix course calls, including
+intro cameras. Guest RAM, screens, audio and save remain exact under that observer;
+only the profile-counter start differs. The existing matrix-concat routine passes
+500 arithmetic cases. The helper passes 2,113 matrix cases / 19,017 span tests,
+including 11,653 conservatively rejected boxes and out-of-range fallbacks.
+
+The 376-byte Thumb helper shares an existing 916-byte OAM function extent with
+an equivalent smaller OAM implementation and multiplication stub. This is existing
+code space, not a guessed zero-filled allocation. The OAM replacement passes
+1,800 ABI/behavior cases. A static screen finds 170 external direct branch entries
+at the original function start, with no interior branch or pointer candidates.
+Full TT/GP RAM write watches see only boot writes in the helper, literal/table and
+concat ranges, with all six replay outputs equal to their unobserved candidates.
+The ITCM call changes via ordinary boot loading; the RAM observer does not cover
+ITCM writes. Checkpoints and native cartridge guards retain the expected code.
+
+The shared loader's explicit `append-decoded-arm9-gx-spans-v1` mode requires all
+code components together. A missing component, wrong original bytes, wrong ROM,
+resource/member identity or transformed-asset hash returns the complete original
+stream. It uses the existing VirtualRom mechanism, with no new runtime service.
+The refactored shared GX parser has 12 model tests; 96 loader tests and 21 pattern
+tests pass. Authored generic C sources and a reproducible build recipe regenerate
+the exact qualified 916-byte helper, SHA256
+`72d659f4ee14a6b3c2a768f433ee153c893db38a259c4f1f4e53d817d14058dd`.
+
+| Native fixed Time Trials view, 1 GHz | Mean screen publications/s |
+| --- | ---: |
+| Opening rc13 control, three 20-second windows | 21.1360 |
+| Course-span candidate, three 20-second windows | 23.9488 |
+| Closing rc13 control, three 20-second windows | 21.0467 |
+| Gain versus pooled controls | **13.55%** |
+
+All nine windows pass scene/camera checks. The gain is 13.31% versus the opening
+control and 13.79% versus the closing control. It is a Figure-8 Circuit stationary
+view result, not whole-game FPS or unique animation frames. Renderer CPU usage
+is approximately 149.2% of one HPS core for the candidate versus 146.1–146.4%
+for controls; host usage stays near 3.35%. No native CPU-cycle, p50/p95 frame-time
+or dropped-game-frame claim is made.
+
+The tradeoff is more guest CPU work. TT ARM9 samples rise from 165,613 to 272,908
+(+64.79%); GP counts also rise but are not a matched-workload comparison. In a
+60-frame prediction using captured reference matrices, course vertices fall from
+146,760 to 85,108 and command bytes from 2,023,920 to 1,196,616; send calls rise
+from 1,440 to 6,087. These are selection predictions, not native hardware counters.
+The native result establishes that the reduced geometry load wins in this view.
+
+Reference saves match in both 3,300-frame routes. TT has 744 differing screen
+pairs from frame 2556; GP has 1,106 top and 1,103 bottom differences. Timing,
+RAM and audio differ. Raw TT audio has 1,218,111 differing channel samples
+(maximum 53,604); GP has 1,803,819 (maximum 65,145). These are not bit-exact or
+inaudibility results. Native gameplay videos use identical bounded input sequences
+but are not aligned frame-for-frame. Their separate capture-device audio packets
+are retained unchanged, with verified exact decoded audio after presentation-only
+crop/rotation. Both OBS captures report no added render lag or output skips.
+
+The atomic-loader beta cold-loads normally, reaches Time Trials, responds to
+acceleration/steering and restarts into the race. The first restart snapshot was
+black during transition; a later snapshot confirms normal racing. The course-change path reaches
+unmodified Yoshi Falls normally, exercising the original display-list fallback. Full race completion,
+progress-save round trips, long sessions, all other modes/courses, multiplayer and
+regional releases remain unqualified. Save states remain unsupported by rc13.
+The per-game manifest stays disabled in the normal release; only the private beta
+selects it. Human audiovisual approval has not been claimed.
+
+Primary private evidence: `COURSE_MATRIX_FULL_VALIDATION_V1.json`,
+`COURSE_CULL_HELPER_ABI_V1.json`, `COURSE_CULL_OAM_ABI_V1.json`,
+`COURSE_CODE_EXTENT_AUDIT_V1.json`, `COURSE_CULL_WRITEWATCH_RESULT_V1.json`,
+`COURSE_CULL_TT_REFERENCE_V1.json`, `COURSE_CULL_GP_REFERENCE_V1.json`,
+`COURSE_CULL_NATIVE_RESULT_V1.json`, `COURSE_CULL_ADMITTED_STREAM_V1.json`,
+`COURSE_BETA_VIDEO_V1_CAPTURE.json` and `MARIO_REVIEW_VIDEO_AUDIO_PRESERVATION_V1.json`.
+
+## Other screened leads and next three opportunities
+
+The remaining large ITCM hotspot `01ffdee4` reads the live course KCL collision
+header: its area origins/masks/shifts match the owned course collision resource.
+It is gameplay collision work, not unused debug code. The stereo filter prototype
+has more hot-loop instructions than the original and was not deployed. Existing
+material caches have no allocated result storage and no repeated material within
+a sampled draw; a persistent cache needs storage and invalidation proof.
+
+The original DMA-threshold candidate now passes decoded-delivery TT replay with
+all 3,300 screen pairs/save exact, but ARM9 samples rise 0.20% and raw audio differs.
+Its native retest is deferred while the proven culling candidate is qualified;
+it is neither a measured gain nor an exhausted idea.
+
+1. Extend conservative culling to other course models only after proving each
+   model's transforms, attributes, allocation and camera lifetimes.
+2. Batch adjacent retained spans to reduce guest send-call overhead. The current
+   merged-run prototype needs 448 bytes, exceeding the 376-byte helper budget;
+   no extra code space has been assumed or deployed.
+3. Measure moving races with more opponents and investigate persistent material
+   caching only where native profiles justify its storage/invalidation cost.

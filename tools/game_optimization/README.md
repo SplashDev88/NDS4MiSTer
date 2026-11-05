@@ -699,3 +699,29 @@ software fixture, not a claim about all hardware power-on values or a change
 to the released core. Requalify unchanged controls after changing fixtures.
 Mario Kart's 3,300-frame direct and identical virtual controls now match the
 previous direct golden in frames, state, audio, save and both PC profiles.
+
+### Atomic precomputed GX span experiments
+
+`guest_byte_patch.py` also accepts the explicit
+`append-decoded-arm9-gx-spans-v1` delivery mode. All manifest patch IDs must be
+selected together. Existing decoded ARM9 boot guards run first, then the pinned
+compressed NARC member/model is transformed into independent primitive spans.
+Any code/resource/output-hash mismatch returns the whole original stream.
+`gx_model.py` is shared with `inspect_model_shapes.py`; no second model parser or
+per-game loader path is introduced. `gx_spans.py` rejects unsupported geometry
+state and preserves vertex/attribute semantics before runtime visibility decisions.
+
+The optional manifest `build` record parameterizes generic authored guest C
+sources. Reproduce the qualified helper without a ROM:
+
+```
+python tools/game_optimization/build_course_span_guest.py \
+  docs/game-optimization/mario-kart-amce-r0-course-spans.json \
+  --output /tmp/course-spans.bin
+```
+
+Compiler output must match the manifest hash. This offline build does not apply
+a patch or enable the experiment. Visibility matrices, code-space/stack lifetime,
+resource allocations, replay differences and native benefit remain per-game gates.
+The private-beta packager's `guarded-guest` mode retains pinned runtime binaries,
+adds a separately selected catalog entry and uses its own launcher/support folder.
