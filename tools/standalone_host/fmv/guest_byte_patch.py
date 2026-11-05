@@ -178,7 +178,8 @@ def recompress_arm9_autoload(source, header, manifest, requested, report):
     this is not a live write into an instruction cache or a scratch allocation.
     """
     delivery = manifest['delivery']
-    require(delivery in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1'),
+    require(delivery in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1',
+                        'append-decoded-arm9-sections-v1'),
             'Unknown compressed ARM9 delivery')
     offset, _, address, length = struct.unpack_from('<4I', header, 0x20)
     require(offset >= 512 and length > 0, 'Invalid ARM9 image extent')
@@ -214,17 +215,26 @@ def recompress_arm9_autoload(source, header, manifest, requested, report):
     for ident in sorted(requested):
         patch = patches[ident]; prefix = 'arm9.bin/autoload:'
         target = patch['target']
-        require(patch['cpu'] == 'arm9' and isinstance(target, str) and target.startswith(prefix),
-                'Compressed delivery supports ARM9 autoload sections only')
-        index = int(target[len(prefix):], 10)
-        require(target == prefix+str(index) and 1 <= index <= len(entries), 'Invalid autoload index')
+        main = target == 'arm9.bin/main'
+        require(patch['cpu'] == 'arm9' and isinstance(target, str) and
+                (main or target.startswith(prefix)), 'Unsupported compressed ARM9 target')
+        if main:
+            require(delivery == 'append-decoded-arm9-sections-v1',
+                    'Main section requires explicit decoded-sections delivery')
+            index = 0
+        else:
+            index = int(target[len(prefix):], 10)
+            require(target == prefix+str(index) and 1 <= index <= len(entries), 'Invalid autoload index')
         require(patch.get('overlay') is None and patch.get('hook') is None and
                 patch.get('scratch_bytes', 0) == 0, 'Overlay, hook or scratch is unsupported')
-        base, size, bss, first = entries[index-1]
+        base, size, bss, first = ((address, payload, arm.sections[0].bssSize, 0)
+                                 if main else entries[index-1])
         # Only physical ITCM-sized boot sections; no RAM or hardware aliases.
-        require((0 <= base < base+size+bss <= 0x8000 or
-                 0x01ff8000 <= base < base+size+bss <= 0x02000000) and size > 0,
-                'Selected autoload is outside supported ITCM ranges')
+        require(size > 0 and ((main and base == 0x02000000 and
+                              base+size+bss <= 0x02400000) or
+                (not main and (0 <= base < base+size+bss <= 0x8000 or
+                 0x01ff8000 <= base < base+size+bss <= 0x02000000))),
+                'Selected section is outside supported RAM ranges')
         region = decoded[first:first+size]
         require(int(patch['section_base'], 0) == base and type(patch['section_bss_bytes']) is int and
                 patch['section_bss_bytes'] == bss and
@@ -239,6 +249,9 @@ def recompress_arm9_autoload(source, header, manifest, requested, report):
                 0 <= at < at+len(before) <= size and region[at:at+len(before)] == before,
                 'Original instruction bytes, alignment or extent differ')
         lo, hi = first+at, first+at+len(before)
+        if main:
+            require(lo >= 0x800 and (hi <= settings or lo >= settings+24),
+                    'Main patch overlaps secure area or boot settings')
         require(all(hi <= a or lo >= b for a, b in ranges), 'Overlapping autoload patches')
         ranges.append((lo, hi)); expected[lo:hi] = after
         arm.sections[index].data[at:at+len(after)] = after
@@ -252,7 +265,7 @@ def recompress_arm9_autoload(source, header, manifest, requested, report):
             replacement_sha256=hashlib.sha256(after).hexdigest()))
     require(all(expected[at:at+len(value)] == value for at, value in guards),
             'Selected patch changes a protected data invariant')
-    if delivery == 'append-decoded-arm9-autoload-v1':
+    if delivery in ('append-decoded-arm9-autoload-v1', 'append-decoded-arm9-sections-v1'):
         # Reuse the existing FMV preparation's uncompressed MainCodeFile boot
         # image and VirtualRom relocation. No encoder, live patch, new memory
         # region, or runtime service is involved. Even a no-op selection uses
@@ -325,7 +338,8 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
         if manifest.get('delivery') is not None:
-            if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1'):
+            if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1',
+                                        'append-decoded-arm9-sections-v1'):
                 return recompress_arm9_autoload(source, header, manifest, requested, report)
             return append_decoded_overlays(source, header, manifest, requested, report)
         patches = {p['id']: p for p in manifest['patches']}

@@ -151,6 +151,48 @@ class Arm9AutoloadTests(unittest.TestCase):
         self.assertEqual(got, self.raw)
         self.assertEqual(report['state'], 'skipped')
 
+    def main_manifest(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest['delivery'] = 'append-decoded-arm9-sections-v1'
+        main = bytes(code.MainCodeFile(self.stored, 0x02000000).sections[0].data)
+        manifest['patches'][0].update(target='arm9.bin/main', section_base='0x02000000',
+            section_sha256=hashlib.sha256(main).hexdigest(), addr='0x02001000',
+            expect=main[4096:4104].hex(), replace='0100a0e10200a0e1', data_guards=[])
+        return manifest
+
+    def test_main_decoded_delivery_preserves_every_undeclared_byte(self):
+        manifest = self.main_manifest()
+        got, report = self.run_image(manifest)
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
+        first, _, _, length = struct.unpack_from('<4I', got, 0x20)
+        expected = bytearray(codeCompression.decompress(self.stored))
+        struct.pack_into('<I', expected, 0x34, 0)
+        expected[4096:4104] = bytes.fromhex(manifest['patches'][0]['replace'])
+        self.assertEqual(got[first:first+length], expected)
+        self.assertEqual(got[512:len(self.raw)], self.raw[512:])
+        self.assertEqual(self.path.read_bytes(), self.raw)
+
+    def test_main_identity_extent_and_explicit_delivery_are_required(self):
+        for field, value in [('section_sha256', '0'*64), ('section_base', '0x02000004'),
+                             ('addr', '0x02000020'), ('addr', '0x020007fc'),
+                             ('addr', '0x02006000'), ('target', 'arm9.bin/autoload:0')]:
+            manifest = self.main_manifest(); manifest['patches'][0][field] = value
+            got, report = self.run_image(manifest)
+            self.assertEqual(got, self.raw); self.assertEqual(report['state'], 'skipped')
+        manifest = self.main_manifest(); manifest['delivery'] = 'append-decoded-arm9-autoload-v1'
+        self.assertEqual(self.run_image(manifest)[1]['state'], 'skipped')
+
+    def test_main_and_autoload_apply_atomically(self):
+        manifest = self.main_manifest()
+        second = dict(self.manifest['patches'][0], id='two')
+        manifest['patches'].append(second)
+        got, report = self.run_image(manifest, ['one', 'two'])
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
+        self.assertEqual(len(report['applied']), 2)
+        second['expect'] = '00'*8
+        got, report = self.run_image(manifest, ['one', 'two'])
+        self.assertEqual(got, self.raw); self.assertEqual(report['applied'], [])
+
 
 if __name__ == '__main__':
     unittest.main()
