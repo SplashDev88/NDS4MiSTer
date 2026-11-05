@@ -2246,3 +2246,26 @@ selections. A failure in the second resource returns the entire original ROM
 stream and no applied-patch report. Synthetic tests exercise both FAT entries,
 both payloads and rollback after later-resource failures. Combined replay output
 must be compared to each qualified individual candidate, not just to stock.
+
+### Cache deterministic resource preparation in the existing bounded store
+
+When several guarded resource transforms make startup expensive, cache their
+exact prepared bytes using the existing `prepared_cache.Store` and `Writer`.
+Do not add another service or an independent cache budget. Key entries by the
+complete recipe, including original and expected output hashes. Verify the
+full original ROM through ordinary admission on every load, then authenticate
+each cached payload against the manifest output hash before exposing it.
+Corrupt, partial, unavailable or disabled caches fall back to normal preparation.
+
+`gx_span_cache.py` uses an explicit `NDS_GX_ASSET_CACHE=1` opt-in. Its payloads
+are local disposable data derived from the user's ROM and are excluded from
+distributable packages. Report each completed, verified resource through the
+existing progress callback so a large batch does not trip the reader's stall
+deadline after source verification. Progress does not release reset early.
+
+Mario Kart's 32-resource cold/warm comparisons produce identical virtual streams.
+Local preparation drops from 33.9–36.3 seconds to 0.48–0.50 seconds on cache hits;
+the first native cached launch reports 32 verified hits and 27.409 seconds total
+ROM preparation. These are loading measurements, not gameplay gains. The exact
+staged loader subset passes 130 tests, including changed recipes, corrupt and
+rehashed-wrong outputs, partial writes, unavailable storage and atomic rollback.

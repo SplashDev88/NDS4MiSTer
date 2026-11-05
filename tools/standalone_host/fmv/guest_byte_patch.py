@@ -363,6 +363,10 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
             for asset in assets:
                 image, trial_report = append_asset(source, image, trial_report, asset)
                 asset_reports.append(trial_report.pop('asset'))
+                # A multi-resource transform can outlast the reader's stall
+                # deadline after its full-ROM check. Report completed work
+                # through the existing protocol; no timer or early release.
+                progress(source.size)
             trial_report['assets' if 'assets' in manifest else 'asset'] = (
                 asset_reports if 'assets' in manifest else asset_reports[0])
             trial_report['delivery'] = manifest['delivery']

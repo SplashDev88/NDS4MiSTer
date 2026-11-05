@@ -77,7 +77,8 @@ def append_asset(source, image, report, config):
             'Invalid cartridge asset extent')
     original = source.read(lo, hi-lo)
     require(digest(original) == config['stored_sha256'], 'Asset identity differs')
-    output, stats = transform_archive(original, config)
+    from gx_span_cache import prepared_asset
+    output, stats = prepared_asset(original, config, transform_archive)
     require(digest(output) == config['output_sha256'], 'Transformed asset identity differs')
     at = (image.size+511) & ~511
     end = (at+len(output)+511) & ~511

@@ -50,10 +50,15 @@ def package_guest_beta(args, definition):
     assert len(catalog['entries']) <= 32
     files[new + 'fmv/guest_catalog.json'] = (json.dumps(catalog, indent=2) + '\n').encode()
     launcher = 'Scripts/' + launcher_name
+    asset_cache = definition.get('asset_preparation_cache', False)
+    assert type(asset_cache) is bool
+    if asset_cache:
+        assert 'fmv/gx_span_cache.py' in definition['files']
     files[launcher] = ('#!/bin/sh\n# ' + definition['name'] + '\n'
         'export NDS_GUEST_PATCH_MANIFEST=/media/fat/' + new + 'fmv/guest_catalog.json\n'
         'export NDS_GUEST_PATCH_SHA256=' + sha(files[new + 'fmv/guest_catalog.json']) + '\n'
         'export NDS_GUEST_PATCH_IDS=@catalog\nexport NDS_GUEST_PATCH_FALLBACK_FMV=1\n'
+        + ('export NDS_GX_ASSET_CACHE=1\n' if asset_cache else '') +
         'exec python3 /media/fat/' + new + 'auto_movies.py "$@"\n').encode()
     modes[launcher] = 0o755
     files[new + 'source/private-guest-source.tar.gz'] = subprocess.check_output(
@@ -71,6 +76,7 @@ def package_guest_beta(args, definition):
         public_release_qualified=False, source_revision=revision, package_revision=definition['version'],
         remote_kit='/media/fat/' + new.rstrip('/'), launcher_sha256=sha(files[launcher]),
         base_zip_sha256=definition['base_zip_sha256'], guest_validation=definition['validation'],
+        asset_preparation_cache=asset_cache,
         installation_scope='Separate launcher/support directory; saves are shared when loading the original game path.',
         guest_source_archive='source/private-guest-source.tar.gz', guest_source_revision=revision)
     files[new + 'manifest.json'] = (json.dumps(manifest, indent=2) + '\n').encode()

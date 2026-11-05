@@ -131,6 +131,21 @@ class AtomicAssetTests(unittest.TestCase):
         self.assertEqual([a['file_id'] for a in report['assets']],[0,1])
         self.assertEqual(self.path.read_bytes(),self.raw)
 
+    def test_completed_resources_service_the_existing_reader_deadline(self):
+        m,_,_=self.setup_two_assets(); verification=[]
+        self.source.sha256(verification.append)
+        self.source=Source(self.fd)
+        progress=[]
+        _,report=assemble(self.source,m,['one','two'],progress.append)
+        self.assertEqual(report['state'],'applied_to_virtual_image')
+        self.assertEqual(progress,verification+[self.source.size]*2)
+        m['assets'][1]['output_sha256']='0'*64; progress=[]
+        self.source=Source(self.fd)
+        image,report=assemble(self.source,m,['one','two'],progress.append)
+        self.assertEqual(report['state'],'skipped')
+        self.assertEqual(progress,verification+[self.source.size])
+        self.assertEqual(b''.join(image.blocks()),self.raw)
+
     def test_second_resource_failure_rolls_back_everything(self):
         m,_,_=self.setup_two_assets()
         for key in ['stored_sha256','member_sha256','output_sha256']:
