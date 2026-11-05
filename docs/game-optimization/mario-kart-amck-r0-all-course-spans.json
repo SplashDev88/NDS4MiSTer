@@ -1,0 +1,1501 @@
+{
+  "schema_version": 1,
+  "title": "Mario Kart DS \u2014 Korea",
+  "game_code": "AMCK",
+  "revision": 0,
+  "header_bytes": 352,
+  "header_sha1": "ecdc35f52af5ed5ec0c842cf997c62ad661e71ba",
+  "rom_sha256": "011637e4dd39472ed590395687de08e020b82b7a97e01e60ea86e1c6597a1e7d",
+  "arm9_sha256": "3d5fc0bcdcb160b6400e30cd84d1868cf1593a0015ad1f5044cd728f00a39850",
+  "arm9_crc32": "82319564",
+  "arm9_code_settings_offset": "0xb4c",
+  "delivery": "append-decoded-arm9-gx-spans-v1",
+  "patches": [
+    {
+      "id": "course-span-helper",
+      "pattern": "conservative-offscreen-primitive-spans",
+      "cpu": "arm9",
+      "target": "arm9.bin/main",
+      "section_base": "0x2000000",
+      "section_bss_bytes": 0,
+      "section_sha256": "469ced563d2ab5a6dbeae8eb1825eff0c4f3b64b3f22ccad9f7692c9959d580b",
+      "addr": "0x2022544",
+      "mode": "arm",
+      "expect": "f04f2de934d04de2b050d2e160409de558a09de560408de5050051e10510a0210040a0e3000051e300408de5d400009abc45dde1844ca0e104408de500409de514408de5014ca0e30c408de5034ca0e308408de50140a0e310408de500509de50660a0e3950606e0048092e500409de5857180e0b65098e18441a0e1069088e0b45080e1b240d9e1000053e3b240c7e1b440d9e1b440c7e10100001a00005ae3b000000a005097e5e4429fe5044005e02448a0e10448a0e14448a0e1ff0054e3ff4c84c30448a0c14448a0c10446a0e120408de5004097e5ff4004e20448a0e14448a0e17f0054e3ff4c84c30448a0c14448a0c10446a0e124408de5000053e38000000a005097e5036c05e2010c56e30300000a030c56e30100000a034205e2046086e1030c56e31200001a64429fe564829fe5045005e0034905e24467a0e1034105e2244fa0e18440a0e1868188e0b89094e144829fe520509de5866188e0895585e020508de5b64094e124509de5844585e024408de560409de5085093e5000054e308809d1520408de20c809d050460a0e1030c58e310909d0501caa0e314909d15040054e124409de528608d0295b4c4e00c509be000b0a4e2004093e520e09de5945eebe02546a0e10b4a84e1004086e50c4093e524509de504e093e594b5c5e00cb09be00040a5e228508de2050056e120509de59eb5e4e02b56a0e1045a85e1045086e528509d052c409d0520508d0524408d05010c58e30700000a030c58e30500000a005097e570419fe5044005e0084084e1004087e5060000ea005097e558419fe5044005e0085084e104409de5054084e1004087e5006097e530519fe5000059e3058006e0035908e24567a0e1035108e21c819fe5255fa0e18550a0e1868188e0b89095e10c819fe520409de5866188e0c9b0a0e1b65095e10b86a0e1006093e500c068e2c590a0e196cb2ce0085093e595c926e0066084e020608de504c093e50956a0e11cc08de50cc093e500e065e218c08de51cc09de524409de59ceb2be018c09de5086046109cb929e0094084e024408de50540441020608d1524408d1500005ae30700000a20609de500409ae524509de5044086e020408de504409ae5044085e024408de520409de5006097e5025b84e264409fe5454604e060509fe5056006e024509de5025b85e24556a0e1ff5005e2055086e1044885e1004087e500409de5014084e20448a0e12448a0e100408de5010054e135ffff3a0100a0e134d08de2f04fbde81eff2fe1",
+      "replace": "01c08fe21cff2fe1f0b597b01f0006001c9b380007931843454245410120089003020320000205901e980390002804939c46604600d005981d9b5c061388994200d3190001910019029008980003119052680c0016970695002c00d1bae010883080508870809088b080002d00d0ade0139414923468e001c5125948054020060313002f1ad004980442564800d00598210b0c220a4012922040059988420fd1a00f1299084340004c4a115ac902cb1815931018008bc002451902e007996ce015934948044002980443b868109038680e90f8680a9078680f963460eb170d93002631002a0000f085f80f00119940180990b44661460b967741159ad3170c9315920a9800f076f8099a101879410905000b4018a10f129a114349002f4b5a5a560832030a92801a5918098b4f0816994968794340181699c9687143401812900e98c1172a000d9b00f054f80d00119940180e900b9845411098c117159a0c9b00f048f80e9a101869410905000b401816990968794309183803169f091aba6872438d180399002904d00a99129a531a2d1a00e0129b07990f9e002903d04868c3180868451911480440089ad003290108180f4908400019d1025918090bff220a4080183060069d149a139c641e921d083641e7019817b0f0bdc04654d1140200f0ffff00020030fffcffc100ff00fe0000ff017847c04690030ce092c12ce0920081e00c1081e01eff2fe1f0b5bfb00468594b594a944222d1039000202faa5749032310281ed004001c408508032c03d1032d05d000240fe0032d04d1002604e00124240308e0039eb6790c276f43cd19a4002c19646cb44010c2401ce1e798473fb0f0bd2fa81fad464b2a0098470398c079012102910021434a434b10290fd00c299446664600d31e002c680441a7197600b74201d90026029610c5491cede71fa80c30002107af012205921fab06291bd04c08a4001c190d00059a154000260697402e0dd0a359002d00d05b4282599b18302e01d01b1200e01b0108c71036efe7069f1037491ce0e70398010008310023182200920191069180888342afd200995943019a511804915b1c05930299002922d0059981421fd2049840694042002207ab062a18d0110107ac6118cf680024069d0c2c0bd01959002901d40e2600e00826ae5f4e43f719ad1c241df1e71033521c8742e5da06e0049a1068039908185168044a90470698183006900398059bc2e7c0464491ff0144534c3324a616023c1c1402ffff0700ffffff00c046c046",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "validated": {
+        "status": "regional functional/perceptual private beta",
+        "abi": "passed",
+        "boot": "passed",
+        "grand_prix": "6000-frame control/candidate",
+        "save_reopen_restart": "9000-frame control/candidate",
+        "fb": "raw differences; bounded screenshot review passed",
+        "ram": "raw differences; watched code/dependencies stable after boot",
+        "audio": "raw differences; human review pending",
+        "save": "unchanged in bounded checks"
+      },
+      "gain": {
+        "scope": "Atomic helper/call/31-resource bundle; no independent component speed claim",
+        "scene": "Figure-8 Time Trials stationary starting view",
+        "screen_publications_pct": 11.9698,
+        "race_clock_change_pct": -0.0576
+      },
+      "notes": "Qualified compact OAM replacement with conservative static-course visibility helper (normalized). ARM entry interworks with Thumb code; guarded existing code/literal extent and library routines only. Requires the complete atomic helper/call/resource bundle.",
+      "data_guards": [
+        {
+          "addr": "0x214d154",
+          "expect": "080010002000400008000800100020001000200020004000080010002000400010002000200040000800080010002000"
+        },
+        {
+          "addr": "0x2141c3c",
+          "expect": "f04f2de944d04de2045090e5103091e502c0a0e19563c4e0009090e5003091e501005ce19963e4e008a090e5203091e50c8090e59a63e4e0303091e500208d029863e4e02636a0e1043a83e1003082e5143091e5044091e59573c6e09974e6e0243091e5344091e59a73e6e09874e6e02736a0e1063a83e1043082e51c3091e50c4091e59573c6e09974e6e02c3091e53c4091e59a73e6e09874e6e02736a0e1063a83e10c3082e5186091e5087091e59546c3e09947e3e0289091e5385091e59a49e3e09845e3e02446a0e1034a84e1084082e5148090e510a090e59846c3e09a47e3e0187090e51c6090e59749e3e09645e3e02446a0e1034a84e1184082e5143091e5044091e598b3c3e09ab4e3e0245091e5349091e597b5e3e096b9e3e02b46a0e1034a84e1144082e51c3091e50c4091e598b3c3e09ab4e3e02c5091e53c9091e597b5e3e096b9e3e02b46a0e1034a84e11c4082e5109091e500b091e59849c3e09a4be3e0205091e5308091e59745e3e09648e3e02446a0e1034a84e1104082e5246090e5207090e59649c3e0974be3e028a090e500e08de29a45e3e02c5090e50e0052e19548e3e02446a0e1034a84e1204082e5143091e5044091e596b3c3e097b4e3e0248091e5349091e59ab8e3e095b9e3e02b46a0e1034a84e1244082e51c3091e50c4091e596b3c3e097b4e3e02c8091e53c9091e59ab8e3e095b9e3e02b46a0e1034a84e12c4082e5189091e5088091e59649c3e09748e3e0287091e5386091e59a47e3e09546e3e02446a0e1034a84e1284082e5345090e5304090e595a9c9e0383090e594a8e9e093a7e9e03c0090e544d08d1290a6e9e02a66a0e1096a86e1386082e5146091e5047091e595a6c6e094a7e6e0248091e5349091e593a8e6e090a9e6e02a76a0e1067a87e1347082e5106091e5007091e595a6c6e094a7e6e0208091e5309091e593a8e6e090a9e6e02a76a0e1067a87e1307082e53c8091e52c7091e50c6091e51c1091e59591c1e09496e1e09397e1e09098e1e02906a0e1010a80e13c0082e5f04fbd181eff2f110f00bee80f00ace80f00bee80f00ace80f00bee80f00ace80f009ee80f008ce844d08de2f04fbde81eff2fe1"
+        }
+      ]
+    },
+    {
+      "id": "course-span-call",
+      "pattern": "conservative-offscreen-primitive-spans",
+      "cpu": "arm9",
+      "target": "arm9.bin/autoload:1",
+      "section_base": "0x1ff8000",
+      "section_bss_bytes": 0,
+      "section_sha256": "9c2498c774bf5d8ff2a64a46a327aff378e6da27ea2d1bc5836d84b46f287073",
+      "addr": "0x1ff867c",
+      "mode": "arm",
+      "expect": "b00200eb030055e3",
+      "replace": "33a800fa030055e3",
+      "enabled": false,
+      "hook": null,
+      "scratch_bytes": 0,
+      "validated": {
+        "status": "regional functional/perceptual private beta",
+        "abi": "passed",
+        "boot": "passed",
+        "grand_prix": "6000-frame control/candidate",
+        "save_reopen_restart": "9000-frame control/candidate",
+        "fb": "raw differences; bounded screenshot review passed",
+        "ram": "raw differences; watched code/dependencies stable after boot",
+        "audio": "raw differences; human review pending",
+        "save": "unchanged in bounded checks"
+      },
+      "gain": {
+        "scope": "Atomic helper/call/31-resource bundle; no independent component speed claim",
+        "scene": "Figure-8 Time Trials stationary starting view",
+        "screen_publications_pct": 11.9698,
+        "race_clock_change_pct": -0.0576
+      },
+      "notes": "Guarded ARM9 ITCM call redirects to the shared Thumb helper, preserving the original sender for ordinary display lists. Requires the complete atomic bundle.",
+      "data_guards": [
+        {
+          "addr": "0x01ff8af8",
+          "expect": "1ca61602"
+        }
+      ]
+    }
+  ],
+  "status": "Qualified for private regional beta; human audiovisual review pending",
+  "scope": "AMCK revision 0; same 31 guarded course recipes as USA Course Beta3",
+  "risk_budget": "Functional/perceptual beta. Raw timing, framebuffer, audio and record saves can differ. Human audiovisual review pending.",
+  "build": {
+    "recipe": "compact-oam-and-cull-thumb-v1",
+    "entry": "0x2022544",
+    "extent_bytes": 916,
+    "expected_sha256": "e2cd955a163d8f8894c62c7d2042b207c9033cab917170cfabde34277c7200ad",
+    "oam_defines": {
+      "OAM_WIDTH_TABLE_ADDRESS": "0x214d16c",
+      "OAM_HEIGHT_TABLE_ADDRESS": "0x214d154",
+      "OAM_POINTER_LOOP": "1"
+    },
+    "cull_defines": {
+      "ORIGINAL_SEND_ADDRESS": "0x01ff9144",
+      "MATRIX_CONCAT_ADDRESS": "0x2141c3c",
+      "GLOBAL_STATE_ADDRESS": "0x216a61c",
+      "MODEL_SCALE_SHIFT": "6",
+      "DYNAMIC_MODEL_SCALE": "1",
+      "DYNAMIC_MATRIX_NORMALIZE": "1"
+    },
+    "padding_bytes": 4
+  },
+  "assets": [
+    {
+      "file_id": 38,
+      "member": 0,
+      "member_sha256": "7450f47e8b1247098472e93ce304d11288f04c379ba99dbf94fed7046f76cb44",
+      "model_offset": 68,
+      "stored_sha256": "d5502670888a8d38f0749ece0c8266a92769a4432187f01ad6b7c8c1fc4fe452",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "e1db28a2f7e4e83432d0cad276d3a16743ce2e2bf3c9cdacc58cf2fd0138fd65",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 30,
+      "member": 0,
+      "member_sha256": "b18c66b72c225f800e5f047c30e6bd7a97523a19024983083def600b923fd30e",
+      "model_offset": 68,
+      "stored_sha256": "5ec8563ad9f5db65abbad5ffa49ca45f907acc7f57ca89afc9db49b3cab9cd3e",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "1946317fb9f72efeb253af906b9fd21fa50ccbbf84c87bc98b47bac4d2a7c823",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 32,
+      "member": 0,
+      "member_sha256": "2d2731bb94dfe51d328a462b86202548651b6f798b2ee50f6a87f8b556b3c0fe",
+      "model_offset": 68,
+      "stored_sha256": "1541b5327b98727315b2bcc5994af0f2550b503e53654444873937a253239c2a",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "e21ad4e16b8211be8716c534f9c85ba059d937a03b8463b7c31e9a6c539ad5a2",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 54,
+      "member": 0,
+      "member_sha256": "8ee3dcc8605a4cd291a75340cacc2a8cbf0a065659726fc69e3d0ee988ae95a4",
+      "model_offset": 68,
+      "stored_sha256": "8db7405f397450395107fdd7914a2840820a54321514d3dad3f2d82c79a53a0b",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "570c4ca1b9f40cf2f3a0b933507d845d98814ca816ba721d4bd05b0a046e9b02",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 42,
+      "member": 0,
+      "member_sha256": "9f5bc9aea717c13fcc8d75d007116da24cb447f0e0ba36d568b27d95d5398b97",
+      "model_offset": 68,
+      "stored_sha256": "3c9b7ab11b1e9e5a7c57e4ae8b7470f1ebab4953d56896a71c690ae87cf406d1",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "5d4174812d8b94da05a0d4cac5b9b5d589bcf4246ce7736c7e14760fbae7d828",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 140,
+      "member": 0,
+      "member_sha256": "b678c333a8b399e2263fb09fcf6c616a53a24f6275793937caa14cbbfa198885",
+      "model_offset": 68,
+      "stored_sha256": "87ce03a262a28427004b39db8cc145db80ca138104161012a5b8e57187cd842d",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "33da3476406dd2beec8a38eebf9cd229f376f360d92c04e102b4202d2bd7eaed",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 122,
+      "member": 0,
+      "member_sha256": "a88f1bd0dd82ed5a66b2731dd440ffb5e3141937dad540e0186f305a939c15b4",
+      "model_offset": 68,
+      "stored_sha256": "b5449fce7cc24218daf0cfe453034b75b47fba2509c6576007e9e09b2e0d8624",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "d79c16418c8df58de8fea3af775821bac1842f83eb926afd4a4b75a9b23d0c84",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 126,
+      "member": 0,
+      "member_sha256": "054d833eaa4456849ef028693acafd2a0ad8fe18e5f873b15fc04c4e1429715c",
+      "model_offset": 68,
+      "stored_sha256": "c7b29c45ef2d1bb75668bcb6d9035b190aafbf9539865971a554de4c79a42741",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "6a84c8ddad35ecc5f5317168704bb58d0b19d905b0227a357a246dd146388be9",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 128,
+      "member": 0,
+      "member_sha256": "330d1016e6910fbc0574f7352fcd9f2247921190534ada28192f9bb9e0c73a21",
+      "model_offset": 68,
+      "stored_sha256": "8e61d224c1c8833421f50e5d0cb8bdd04122e6ec23723cd1113ea3cc27e09f0a",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "ecf65b07f0ae6746f21e6b6fb2e0fbb9e3f7279c1b4534361dcce52448e6e166",
+      "matrix_normalize_shift": 2
+    },
+    {
+      "file_id": 36,
+      "member": 0,
+      "member_sha256": "7a28ccffe9488cc5b16c1fbfd5812a8bb29c757d26ed62867472a2f5acf07f31",
+      "model_offset": 68,
+      "stored_sha256": "aad51cb94305b4ad5eef09d440de1dc5cc52b96d83656197793f649dd058c116",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "01f1fef659648555c45c901cb503d17389a30c7af9c3bd9f5b304c0470269736",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 58,
+      "member": 0,
+      "member_sha256": "2a2e0945860bea38f9c698a2554bd28285f2dbd4391b2b4a08c2819465b36f85",
+      "model_offset": 68,
+      "stored_sha256": "de0e61e4dae37699b70e5fa1be49f4f1311f5e17f2bb3ebf1899df2da6ccb32e",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "ec14d4d4c03c70ae429740c0ca510915c66fee4b16eea81ff71e576904e0dcee",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 26,
+      "member": 0,
+      "member_sha256": "acb807cd5f11bce0d7a75f9dddfce765459118cc40f9e479036539c353c023f7",
+      "model_offset": 68,
+      "stored_sha256": "2d1e6cb111d1803ce78020c29c9ccc968c6d7417b44ae8648a41521041dcdcd4",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "group_size": 2
+      },
+      "output_sha256": "08bdbdbef1db9bca2df95e496bbe9715c63f9c4c7efb10a157118ca54318f3e6",
+      "matrix_normalize_shift": 2
+    },
+    {
+      "file_id": 130,
+      "member": 0,
+      "member_sha256": "1cfa29867aef6bf91e056c4febe5c59c60b3ca96ce87547f4738a2d123263aa3",
+      "model_offset": 68,
+      "stored_sha256": "fe7e1aa0ba40dc640e8d606826d3c466cb99aa805ab19de28eb110ac504120a3",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "7ee1be4fc6b553b220481e03aa55478151bea6bbd7ed5d9c6dff12b5d218e02c",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 48,
+      "member": 0,
+      "member_sha256": "7d20ee896c4b750362ce4bf0fa5307f7137beaa52ec206f2c836a835b99d39cc",
+      "model_offset": 68,
+      "stored_sha256": "12f6dd9085b2d8fe1763260fab9593ccd6a9e06743100ecabada71a125267053",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "b478dabe1f3906346985e412f5212dea96cdc0c0e41fb7d75d01251837318c33",
+      "matrix_normalize_shift": 2
+    },
+    {
+      "file_id": 50,
+      "member": 0,
+      "member_sha256": "0a9586063ca131443da87d133caa988288934ac115dde72292f9801137822825",
+      "model_offset": 68,
+      "stored_sha256": "db2bdecd1f981629753a6a85935c22cf686ccd4d89b56217a7484bc11d955511",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "e86a5322c0c1cb17472b17c3fbef160bada483a652fc7a363f3a41dd0f8e53d0",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 124,
+      "member": 0,
+      "member_sha256": "cac1976b4ae0fdf6fa07401ec86ccafad712ebdcd645d9b2c129acd83a772bd9",
+      "model_offset": 68,
+      "stored_sha256": "687ac3ebae48a4d3117d317c1cafa81361c9bf816a8b11072b92a427238c55ab",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "d4aba0355b589ff5f207704da185e51e62d0a6b9b6562012a67741bd85f6415f",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 108,
+      "member": 0,
+      "member_sha256": "cd6caf5dc091610fbb041937f361ab16a5ee060e86f1ed43277e5726094bacc3",
+      "model_offset": 68,
+      "stored_sha256": "82cd4a0faec0d8010644add29569f575615ed87d7e2f3e1c40f054b9f1b8d3fd",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "d084bcc4924c2e24e675b93500b55f321ba26618d23bc7618763fa38b818e6b7",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 110,
+      "member": 0,
+      "member_sha256": "b03d2ca44173a77fd308a5dce6f73b339d87121839775f82a1aba72d86bd8fac",
+      "model_offset": 68,
+      "stored_sha256": "7ed0a7f1f06153c3dc6dd6cee113f7133e03a6d5bcf772272af494eb3a84126d",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "4817fe6e50b1844c02dc32c0aeb6357dc035b0214e256ce792fedfc6b344ebbe",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 116,
+      "member": 0,
+      "member_sha256": "5c980942aefa0d7acdd9a0be1d781e7b9d36b24724a8a0e4e6bd91dabd54042f",
+      "model_offset": 68,
+      "stored_sha256": "5595724b21857522913c37405443f862e09dfc4de31714fa97d0d186c654f340",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          6,
+          7,
+          8
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "dca54587e2f732d599b17aa154761c10040ded52e8ee854b5fda621c5786fad7",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 102,
+      "member": 0,
+      "member_sha256": "74c30fd15373c7848abed0e84fb5de4693c8a1fa59b41a932c5c99b11dcdbdde",
+      "model_offset": 68,
+      "stored_sha256": "1fdafeaa3ae8204b317dc06cba6ddde0ecf7916e1a0ed952f3427eeb05abd17f",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "fb1ae72308bd66db1c15e02ed76c5344c29636a0c21c802845ec3936082b495a",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 90,
+      "member": 0,
+      "member_sha256": "3faec7812136c38cee14dc4b15112fa8a8d1d3ccf32f5010de67690ae8b01f6c",
+      "model_offset": 68,
+      "stored_sha256": "b3f298c1126f976a3d14930cfa435dc84f253c562a87c11fdc027c716f35e9e6",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "e8b87dc1bdcf44b57bbb45ad3f9974052cf0ff2fa015cb3a1d4e81d516914801",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 92,
+      "member": 0,
+      "member_sha256": "b8886afa3058fec7b8a3c615c3ed546b505e7746409357a33a0ae3de0161ebc1",
+      "model_offset": 68,
+      "stored_sha256": "0cebfa6c67ef37d4170941aeedf8edef4828ba4278d2cd806df824b9998262a0",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "8c8cc39715eab790d024f7028eacb3fd58f6853013b989eabf08ac67a648a03c",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 98,
+      "member": 0,
+      "member_sha256": "1972d4ed445045a7ac93a04bc994e8c4a572409d8a6b2fdfda5e7f1c3cde4080",
+      "model_offset": 68,
+      "stored_sha256": "870abcf34e9d50233e7de6e0d7c74b0dcad0be8e9705065946057e3777b104fb",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "d60f637db51d8136feeade70496eac133af7aecdd45c1bdaf15286c979646f13",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 84,
+      "member": 0,
+      "member_sha256": "1ae1ac7b9de458a3cfadce3c4d988e044d7e467c965479647556b45a5bcfb611",
+      "model_offset": 68,
+      "stored_sha256": "3e1285f5ecf76f1d394dfb27197406183b581b9b4a4a40c7c60776f7db3a9524",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "199bdd41070e542a4c6dca4b1752e1f80de52f80848e848c6ca5dde45622c542",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 114,
+      "member": 0,
+      "member_sha256": "d2dbb18a9cb013533e1c576337cb5716c27a5c17cbf9fa62b72612246be1ba19",
+      "model_offset": 68,
+      "stored_sha256": "1aa17501d461330c6e1bb6bbc49c3fada38b54732fcf17305b952c37cc245a31",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "3198ed407968ecfbffcd0ca34ab32cfc54feab9fdb64db11bc6aa0d48ef9c95f",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 86,
+      "member": 0,
+      "member_sha256": "1f83e363ec7206cf29198a6a111a5d69f76bc98256b5762e3c63d09ac1b7d7e2",
+      "model_offset": 68,
+      "stored_sha256": "01062b6e363442bf21f020add8f1c21b39ea3a45bdfd449942a58e03c310f72b",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "2b8fd7bab7243b3d1e2d2bed25610eb5726948fe6cb61178d34ed3abb153404b",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 100,
+      "member": 0,
+      "member_sha256": "da061bb3e4889d3f123f7bfbc76641a160bfd9c0cb0465b1ce213095bd2aeede",
+      "model_offset": 68,
+      "stored_sha256": "841dfd7fa01d316666ba005f97a7820d91682c739ef4ee46a867802c6cd8e5bd",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "3e5bcb9c509554e6fc790a8e269814a75ae7efb4b4b22e8184dcbdbb487115cc",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 96,
+      "member": 0,
+      "member_sha256": "31449b60bfb24314daa03dda8f8bf6c3ac742848e0afa6a2472ba8cf89e23443",
+      "model_offset": 68,
+      "stored_sha256": "f9c81684bfac4e0a92f4a66c23bb35da36c9a20519504792ec1decd5e5e610b6",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "27ddf59fca16b15a32601ea3c100983fc9569d35324ebd6bd784ab0dc71086b6",
+      "matrix_normalize_shift": 2
+    },
+    {
+      "file_id": 88,
+      "member": 0,
+      "member_sha256": "751b3689778c99756ffa4679f1be380cf4eeabecc49b3e62b7276f2925f2499b",
+      "model_offset": 68,
+      "stored_sha256": "7af8720a4bea65cfacac8dd2447d88e081533635919119e59bec01103211674d",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "70aadc109ca8b17362e62264c30d73b9c48811beb142237be12016852fd42a69",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 94,
+      "member": 0,
+      "member_sha256": "9b7a8b386e9016afe4ca3cde494bd43e75c49b5f9ca535b001f8be32f1bb7b99",
+      "model_offset": 68,
+      "stored_sha256": "9b133ec5a5b8b039325f0623c952358a796b0954e7d8905cf17523bade636d6f",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16
+        ],
+        "group_size": 1,
+        "max_polygons": 8
+      },
+      "output_sha256": "6098171f90bbf2f02f8b330d42ec95aeb7027b1e1bed182474fa5954360935fd",
+      "matrix_normalize_shift": 0
+    },
+    {
+      "file_id": 120,
+      "member": 0,
+      "member_sha256": "71b8d1de135d66ea0f54b8a7e166fc56fc963a905ade54194a3ed1f8bc835786",
+      "model_offset": 68,
+      "stored_sha256": "e77b4a8da4d3639667ff27b400c811d64e0199b5b36307c2fa29a45454b17af9",
+      "transform": "narc-model-gx-spans-v3",
+      "span_options": {
+        "shape_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "group_size": 1
+      },
+      "output_sha256": "3f261fae1bd3207739926da234ba4b5a5864b5d85ab1fd47881f41a23b3a9b41",
+      "matrix_normalize_shift": 2
+    }
+  ],
+  "selection": {
+    "state": "approved_for_final31_qualification",
+    "helper": "normalized",
+    "dma128": false,
+    "courses": [
+      {
+        "index": 0,
+        "title": "Figure-8 Circuit",
+        "recipe": "normalized",
+        "screened_gain_pct": 16.218804012815546,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": -0.6397489257623512
+      },
+      {
+        "index": 1,
+        "title": "Yoshi Falls",
+        "recipe": "normalized",
+        "screened_gain_pct": 18.265936366297232,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": -2.877511865212179
+      },
+      {
+        "index": 2,
+        "title": "Cheep Cheep Beach",
+        "recipe": "normalized",
+        "screened_gain_pct": 11.09979276778379,
+        "recipe_advantage_over_normalized_pct": 0.21206660293451307,
+        "control_drift_pct": -1.9123275134993345
+      },
+      {
+        "index": 3,
+        "title": "Luigi's Mansion",
+        "recipe": "split8",
+        "screened_gain_pct": 4.848833466704017,
+        "recipe_advantage_over_normalized_pct": 3.5464675256696276,
+        "control_drift_pct": 0.06672917080097207
+      },
+      {
+        "index": 4,
+        "title": "Desert Hills",
+        "recipe": "normalized",
+        "screened_gain_pct": 15.643374393224875,
+        "recipe_advantage_over_normalized_pct": 0.5073533230844918,
+        "control_drift_pct": 0.2856246845982957
+      },
+      {
+        "index": 5,
+        "title": "Delfino Square",
+        "recipe": "split8",
+        "screened_gain_pct": 5.512382839814212,
+        "recipe_advantage_over_normalized_pct": 3.269000311083925,
+        "control_drift_pct": -0.561415368959095
+      },
+      {
+        "index": 6,
+        "title": "Waluigi Pinball",
+        "recipe": "normalized",
+        "screened_gain_pct": 4.79321677439295,
+        "recipe_advantage_over_normalized_pct": 2.498001461176269,
+        "control_drift_pct": -0.01939427034473029
+      },
+      {
+        "index": 7,
+        "title": "Shroom Ridge",
+        "recipe": "normalized",
+        "screened_gain_pct": 25.72119358088416,
+        "recipe_advantage_over_normalized_pct": 0.6289650499112565,
+        "control_drift_pct": 0.11185352115778979
+      },
+      {
+        "index": 8,
+        "title": "DK Pass",
+        "recipe": "normalized",
+        "screened_gain_pct": 16.124936578057557,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": 0.07630851583737552
+      },
+      {
+        "index": 9,
+        "title": "Tick-Tock Clock",
+        "recipe": "split8",
+        "screened_gain_pct": 21.993951832146653,
+        "recipe_advantage_over_normalized_pct": 2.7487189123512223,
+        "control_drift_pct": -0.961299209859956
+      },
+      {
+        "index": 10,
+        "title": "Mario Circuit",
+        "recipe": "split8",
+        "screened_gain_pct": 13.298212556415168,
+        "recipe_advantage_over_normalized_pct": 3.934610098977709,
+        "control_drift_pct": -1.7665575511226494
+      },
+      {
+        "index": 11,
+        "title": "Airship Fortress",
+        "recipe": "group2",
+        "screened_gain_pct": 46.053602544134066,
+        "recipe_advantage_over_normalized_pct": 2.02496502226559,
+        "control_drift_pct": -0.28659613696983
+      },
+      {
+        "index": 12,
+        "title": "Wario Stadium",
+        "recipe": "normalized",
+        "screened_gain_pct": 16.381098847763997,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": 0.1538919817639428
+      },
+      {
+        "index": 13,
+        "title": "Peach Gardens",
+        "recipe": "normalized",
+        "screened_gain_pct": 5.166088857216078,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": 1.1096471654595153
+      },
+      {
+        "index": 14,
+        "title": "Bowser's Castle",
+        "recipe": "normalized",
+        "screened_gain_pct": 2.125220267265693,
+        "recipe_advantage_over_normalized_pct": 1.1430729760144365,
+        "control_drift_pct": -0.3984483141305728
+      },
+      {
+        "index": 15,
+        "title": "Rainbow Road",
+        "recipe": "normalized",
+        "screened_gain_pct": 19.704597012984017,
+        "recipe_advantage_over_normalized_pct": 0.8961369425874999,
+        "control_drift_pct": -0.023503771322119782
+      },
+      {
+        "index": 16,
+        "title": "SNES Mario Circuit 1",
+        "recipe": "normalized",
+        "screened_gain_pct": 8.466180134274314,
+        "recipe_advantage_over_normalized_pct": 1.4419136684473255,
+        "control_drift_pct": -0.6257253132842311
+      },
+      {
+        "index": 17,
+        "title": "N64 Moo Moo Farm",
+        "recipe": "normalized",
+        "screened_gain_pct": 16.71627032422933,
+        "recipe_advantage_over_normalized_pct": 0.2607768452060011,
+        "control_drift_pct": 0.25142340605164293
+      },
+      {
+        "index": 18,
+        "title": "GBA Peach Circuit",
+        "recipe": "normalized",
+        "screened_gain_pct": 6.450930637604002,
+        "recipe_advantage_over_normalized_pct": 1.2778214455999137,
+        "control_drift_pct": 0.5047797425185463
+      },
+      {
+        "index": 19,
+        "title": "GCN Luigi Circuit",
+        "recipe": "normalized",
+        "screened_gain_pct": 7.932709543085736,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": 0.012879035060819888
+      },
+      {
+        "index": 20,
+        "title": "SNES Donut Plains 1",
+        "recipe": "normalized",
+        "screened_gain_pct": 16.08420544209297,
+        "recipe_advantage_over_normalized_pct": 0.3930060632819865,
+        "control_drift_pct": -0.2993330776705938
+      },
+      {
+        "index": 21,
+        "title": "N64 Frappe Snowland",
+        "recipe": "normalized",
+        "screened_gain_pct": 24.433150579086906,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": -0.6020929813510545
+      },
+      {
+        "index": 22,
+        "title": "GBA Bowser Castle 2",
+        "recipe": "split8",
+        "screened_gain_pct": 10.557500995206915,
+        "recipe_advantage_over_normalized_pct": 8.246509112791035,
+        "control_drift_pct": -0.7459830418091284
+      },
+      {
+        "index": 23,
+        "title": "GCN Baby Park",
+        "recipe": "normalized",
+        "screened_gain_pct": 2.7425999743863505,
+        "recipe_advantage_over_normalized_pct": 0.0,
+        "control_drift_pct": 0.17694655016222693
+      },
+      {
+        "index": 24,
+        "title": "SNES Koopa Beach 2",
+        "recipe": "normalized",
+        "screened_gain_pct": 24.810406452779432,
+        "recipe_advantage_over_normalized_pct": 0.25452408393475956,
+        "control_drift_pct": -0.23604252907027945
+      },
+      {
+        "index": 25,
+        "title": "N64 Choco Mountain",
+        "recipe": "normalized",
+        "screened_gain_pct": 21.70338662579645,
+        "recipe_advantage_over_normalized_pct": 0.13243610567827968,
+        "control_drift_pct": -0.43807911401196886
+      },
+      {
+        "index": 26,
+        "title": "GBA Luigi Circuit",
+        "recipe": "split8",
+        "screened_gain_pct": 10.6705845164619,
+        "recipe_advantage_over_normalized_pct": 8.197506528429589,
+        "control_drift_pct": -0.23089207045758897
+      },
+      {
+        "index": 27,
+        "title": "GCN Mushroom Bridge",
+        "recipe": "split8",
+        "screened_gain_pct": 18.638865171226993,
+        "recipe_advantage_over_normalized_pct": 2.724456544850118,
+        "control_drift_pct": -0.3359915152636006
+      },
+      {
+        "index": 28,
+        "title": "SNES Choco Island 2",
+        "recipe": "normalized",
+        "screened_gain_pct": 14.198168929932864,
+        "recipe_advantage_over_normalized_pct": 1.1295839422130083,
+        "control_drift_pct": 0.24747884007307874
+      },
+      {
+        "index": 29,
+        "title": "N64 Banshee Boardwalk",
+        "recipe": "split8",
+        "screened_gain_pct": 8.858257287543903,
+        "recipe_advantage_over_normalized_pct": 2.1328436102488135,
+        "control_drift_pct": -0.7159003077742865
+      },
+      {
+        "index": 30,
+        "title": "GBA Sky Garden",
+        "recipe": "original",
+        "screened_gain_pct": 7.964831548093576,
+        "recipe_advantage_over_normalized_pct": 4.141829529842589,
+        "control_drift_pct": -1.8589479348641968,
+        "reason": "Four resource granularity choices did not establish a native gain without slower HUD timer advancement; preserve original SkyGarden resource."
+      },
+      {
+        "index": 31,
+        "title": "GCN Yoshi Circuit",
+        "recipe": "normalized",
+        "screened_gain_pct": 25.37536925716397,
+        "recipe_advantage_over_normalized_pct": 1.8853649959457819,
+        "control_drift_pct": -0.7025328542108134
+      }
+    ],
+    "recipe_rule": "Retain normalized unless another recipe is at least 2% faster in the first screening window; final candidate and weak cases still need confirmation.",
+    "reason": "Native HUD clocks reveal output-count gains can hide game-speed loss. Pinball normalized preserves cadence; Airship group2 preserves cadence; SkyGarden group4 is a bounded follow-up, otherwise retain original asset.",
+    "rejected_helper_trials": [
+      {
+        "variant": "UNROLL",
+        "mean_gain_pct": 0.15263516399125765,
+        "minimum_gain_pct": -0.33343766732055746
+      },
+      {
+        "variant": "FAST",
+        "mean_gain_pct": -0.17957041818079666,
+        "minimum_gain_pct": -0.6075770862684626
+      },
+      {
+        "variant": "DMA128",
+        "mean_gain_pct": -0.061707129045651676,
+        "minimum_gain_pct": -0.7500911815998323
+      },
+      {
+        "variant": "COALESCE",
+        "mean_gain_pct": -0.22452974131086656,
+        "minimum_gain_pct": -0.5307903876953457
+      },
+      {
+        "variant": "COALESCE_UNROLL",
+        "mean_gain_pct": 0.262791854375527,
+        "minimum_gain_pct": -0.04296293139938179
+      }
+    ],
+    "proofs": [
+      "ALL_TRACK_NATIVE_SCREENING_V1.json",
+      "NATIVE_REFINEMENTS_RESULT_V1.json",
+      "ALL_TRACK_MATRIX_VALIDATION_V5.json",
+      "ALL_TRACK_AI_LONG_REVIEW_V1.json"
+    ],
+    "human_approval": false,
+    "supersedes": "ALL_TRACK_FINAL_SELECTION_V2.json",
+    "evidence_scope": "Course selection and listed per-course observations inherited from USA Course Beta3. Regional native evidence is separate under native_measurement; asset identity does not transfer all timing claims."
+  },
+  "qualification": {
+    "state": "passed_for_private_beta",
+    "game": "Mario Kart DS Korea AMCK revision 0",
+    "phase": "Source qualification. Exact ZIP stream, installed launcher and final protected-file audit recorded separately.",
+    "inherited_usa_source": "mario-kart-amce-r0-all-course-spans.json",
+    "resources_identical_to_usa": 31,
+    "full_regional_32_track_campaign": false,
+    "abi": "REGIONAL_ABI_V1.json",
+    "loader": "REGIONAL_LOADER_V1.json",
+    "grand_prix": "REGIONAL_GP_COMPARISON_V1.json",
+    "save_reopen_and_restart": "REGIONAL_LIFECYCLE_COMPARISON_V1.json",
+    "native": "REGIONAL_NATIVE_RESULTS_V1.json",
+    "code_write_watch": "REGIONAL_RUNTIME_GUARDS_V1.json",
+    "frames_ram_audio_bit_exact": false,
+    "save_seed_unchanged": true,
+    "fixtures": "No menu-unlock or CPU-driver patches in regional checks or delivery.",
+    "risk_budget": "Functional/perceptual beta. Raw timing, framebuffer, audio and record saves can differ. Human audiovisual review pending.",
+    "known_limits": [
+      "Only this exact revision-0 identity admitted.",
+      "Native speed is stationary Figure-8 Time Trials, not complete-race or all-track regional FPS.",
+      "Sky Garden keeps original resource; shared helper timing limitation inherited from USA.",
+      "Multiplayer, all battle/mission modes, long sessions and new-record writes remain unqualified.",
+      "Save states unsupported."
+    ]
+  },
+  "native_measurement": {
+    "game_code": "AMCK",
+    "region": "Korea",
+    "scene": "Figure-8 Circuit; normal Time Trials, Mario/standard kart, stationary starting view",
+    "metric": "screen-buffer publications/sec, not unique or game FPS",
+    "control_pub_s": 21.441924380027544,
+    "candidate_pub_s": 24.008469968136467,
+    "gain_pct": 11.969753939154714,
+    "timer_change_pct": -0.057581573896359206,
+    "control": {
+      "label": "AMCK_NATIVE_A1_MEASURE",
+      "mean_pub_s": 21.441924380027544,
+      "mean_hud_advance": 23.445,
+      "windows": [
+        {
+          "measurement": "AMCK_NATIVE_A1_MEASURE_W1.json",
+          "publications_per_sec": 21.484864263340096,
+          "seconds": 20.014089673990384,
+          "hud_before": 12.248,
+          "hud_after": 35.697,
+          "hud_advance": 23.449000000000005,
+          "host_cpu_one_core_pct": 3.3976064416444802,
+          "helper_cpu_one_core_pct": 146.496795395612
+        },
+        {
+          "measurement": "AMCK_NATIVE_A1_MEASURE_W2.json",
+          "publications_per_sec": 21.398984496714988,
+          "seconds": 20.047680303046945,
+          "hud_before": 35.697,
+          "hud_after": 59.138,
+          "hud_advance": 23.440999999999995,
+          "host_cpu_one_core_pct": 3.292151461033075,
+          "helper_cpu_one_core_pct": 146.45085893322891
+        }
+      ]
+    },
+    "candidate": {
+      "label": "AMCK_NATIVE_B1_MEASURE",
+      "mean_pub_s": 24.008469968136467,
+      "mean_hud_advance": 23.4315,
+      "windows": [
+        {
+          "measurement": "AMCK_NATIVE_B1_MEASURE_W1.json",
+          "publications_per_sec": 23.98431012147712,
+          "seconds": 20.013083452009596,
+          "hud_before": 12.192,
+          "hud_after": 35.621,
+          "hud_advance": 23.429000000000002,
+          "host_cpu_one_core_pct": 3.297842641703104,
+          "helper_cpu_one_core_pct": 148.90259200417046
+        },
+        {
+          "measurement": "AMCK_NATIVE_B1_MEASURE_W2.json",
+          "publications_per_sec": 24.03262981479581,
+          "seconds": 20.014455500990152,
+          "hud_before": 35.621,
+          "hud_after": 59.055,
+          "hud_advance": 23.433999999999997,
+          "host_cpu_one_core_pct": 3.297616565023958,
+          "helper_cpu_one_core_pct": 148.9423481869154
+        }
+      ]
+    },
+    "clock_khz": 1000000,
+    "route": "run_compact_native_route_v1.py",
+    "review": "Paused view and HUD manually reviewed for each window; normal three-mushroom TT item and starting position maintained"
+  },
+  "regional_source_manifest": "mario-kart-amce-r0-all-course-spans.json"
+}
