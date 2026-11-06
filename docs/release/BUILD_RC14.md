@@ -5,8 +5,8 @@ files, instructions and licenses. Matching development material is supplied
 separately in `NDS4MiSTer_v0.9.0-rc.14_Sources.zip`.
 
 `NDS4MiSTer-rc14-source.tar.gz` is the committed release tree. It includes
-the host, supervisor, loader, accepted 26-entry guest catalog and generated
-stubs, renderer and kernel-module sources, vendored libraries, and packaging
+the host, supervisor, loader, accepted 26-entry guest catalog and hook
+assembly, renderer and kernel-module sources, vendored libraries, and packaging
 tools. The remaining `components/` files preserve the exact older inputs
 used for the unchanged FPGA and renderer binaries.
 
@@ -58,8 +58,9 @@ self-tests only in the container, without opening a live MiSTer device.
 
 ## Loader and kernel modules
 
-Runtime Python, JSON and compiled guest stubs match the committed release
-source. `fmv/guest_catalog.json` is the exact accepted combined catalog.
+Runtime Python and JSON match the committed release source. The compiled
+guest stubs are reproduced from its assembly and match the accepted bytes.
+`fmv/guest_catalog.json` is the exact accepted combined catalog.
 The normal launcher pins its hash and enables the existing bounded asset
 preparation cache. No ROM or prepared cartridge asset is included or needed
 to build these tools. The existing `fmv/build_guest.py` regenerates compiled
@@ -72,6 +73,10 @@ release source tree. Build recipes name the required external kernel and
 cross-toolchain inputs.
 
 ## Packaging
+
+Build the host above and run `python3 tools/standalone_host/fmv/build_guest.py`
+inside the cross-build container first. Generated hook binaries are ignored
+by Git; the packager verifies them against the accepted runtime bytes.
 
 The maintainer packager authenticates the accepted Beta5 runtime ZIP, the
 original source-complete Y/C Beta2 ZIP, and Mr. Moro's supplied profile ZIP:
