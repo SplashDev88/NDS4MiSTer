@@ -1,0 +1,16 @@
+{
+  "credit": "Mr. Moro",
+  "supplied_archive": "NDS4MiSTER - Retrotink 4K Profile.zip",
+  "release_asset": "NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip",
+  "sha256": "ea1ca681eceffae91a1702aaa6e3e53319ce9a82b9aa5d532e00bf731ed6b3ad",
+  "bytes": 12628,
+  "files": {
+    "NDS4MiSTER/image/MrMoro/NDS.bmp": "5baadd6ee4cd9305f98d14fcf0932e7be0bf74eb2c18960aa0360de26f33a5e9",
+    "NDS4MiSTER/profile/MiSTer/NDS/info.txt": "13009d9f59aa192c383f98fe1effe19ed97578e97f5bddc182e7efa1f7857fcb",
+    "NDS4MiSTER/profile/MiSTer/NDS/NDS Default.rt4": "1b543d850630926348e7dc576c7a06cea3177e18ad60bc5bb38f3ae54b985384",
+    "NDS4MiSTER/profile/MiSTer/NDS/NDS Rotate.rt4": "d1543c59581b33d52c19f2c61c374a1bdd1a5d06d747931bc81e520b19faf42b"
+  },
+  "archive_preserved_byte_exact": true,
+  "hardware_tested_during_release_preparation": false,
+  "firmware_version_specified": false
+}

@@ -1,4 +1,4 @@
-NDS4MiSTer v0.9.0-rc.13
+NDS4MiSTer v0.9.0-rc.14
 
 START HERE
 
@@ -256,7 +256,8 @@ This setting applies only to Direct Video through HDMI. The native analog
 outputs are supported automatically; standard scaled HDMI is unaffected.
 Display options shows Direct Video Target when Direct Video is active:
 
-  CRT (default): HDMI-to-VGA adapter -> RGB CRT / SCART. One 240p screen,
+  CRT (default): compatible HDMI-to-VGA DAC -> CRT, with RGB/SCART or
+    an active Y/C adapter. One 240p screen,
     Main or Touch. Screen Peek and Cycle Video Layout stay within those panels.
   Scaler (RetroTINK / Scaler): HDMI -> compatible external scaler. All four digital
     layouts remain available, with independent native analog Main/Touch.
@@ -292,8 +293,8 @@ Boot transitions can briefly interrupt sync while MiSTer loads the core; the
 standalone menu no longer remains in the legacy stacked/blank analog mode.
 
 The native CRT line rate is 15.625 kHz with a fixed 262-line frame,
-approximately 59.6374 Hz. RGBS240p passed through RetroTINK-4K; physical CRT
-acceptance remains pending. Use a profile compatible with your display and
+approximately 59.6374 Hz. RGBS240p passed through RetroTINK-4K, and the
+DV1 Y/C beta worked on a tester setup. Use a profile compatible with your display and
 encoder. Analog output requires the appropriate hardware and cable.
 
 SuperStation One composite or S-Video with the FPGA encoder:
@@ -312,6 +313,25 @@ combines the Y/C signals, so do not change SVID to cvbs for that socket.
 External Sony encoder mode instead uses switch 3 DOWN with vga_mode=subcarrier.
 Other encoders/adapters need their own profiles; generic packed-composite
 adapters can use vga_mode=cvbs. No INI profile or yc.txt is bundled or changed.
+
+DV1 Y/C THROUGH AN ACTIVE ADAPTER (RC14)
+
+Select Direct Video Target CRT. Use a compatible HDMI-to-VGA Direct Video
+DAC and active MiSTer Y/C adapter; select the board's Direct Video input mode.
+For the tested NTSC setup, use Rotation Off and these effective NDS INI values:
+  direct_video=1
+  dvi_mode=0
+  vga_scaler=0
+  forced_scandoubler=0
+  composite_sync=1
+  vga_mode=svideo
+  ntsc_mode=0
+Keep svideo selected when using the active board's composite RCA socket;
+the board combines Y and C. Retain the DAC's proven range settings. Apply
+INI changes through normal MiSTer before launching this package.
+DV1 and native analog encode their independently selected screens. Scaler
+target keeps RGB for direct HDMI to a RetroTINK or similar receiver. Adapter
+compatibility is not universal; PAL 50 Hz and a new raw-CVBS path are not added.
 
 Component CRT with a compatible analog I/O board and component cable:
   vga_mode=ypbpr
@@ -415,15 +435,17 @@ Jam with the Band. Save states and DS wireless multiplayer are not implemented.
 
 RELEASE IDENTIFICATION
 
-The launcher, host and release manifest identify rc.13. Use
+The launcher, host and release manifest identify rc.14. Use
 Scripts -> NDS4MiSTer with its matching .NDS_Standalone folder.
-See VALIDATION_RC13.md for component provenance and testing coverage.
+See VALIDATION_RC14.md for component provenance and testing coverage.
 
 SOURCE AND CREDITS
 
-Corresponding source archives, build instructions and licenses are included
-in Scripts/.NDS_Standalone/source and licenses. Install the Standalone ZIP;
-GitHub's Source code archives are for developers.
+Install the Standalone ZIP. License notices are in Scripts/.NDS_Standalone/licenses.
+Corresponding source, frozen component inputs and build instructions are in
+the separate NDS4MiSTer_v0.9.0-rc.14_Sources.zip release asset. It is not
+needed to run the core. GitHub's automatic Source code archives contain the
+repository snapshot only; the Sources ZIP also includes frozen build inputs.
 
 Built on work from the MiSTer community, FPGAzumSpass, Nitro_DarkSide and
 melonDS contributors, heni, and InsaneFriend (GitHub: saneFriend). Thanks to
@@ -472,7 +494,7 @@ Qualified movie and NSMB optimizations activate automatically. There is no
 Speed hacks menu. The first load may show Preparing FMV cache; subsequent
 loads reuse verified cached data. The cache uses up to 2 GiB on the SD card.
 ROM files are not rewritten. Unsupported revisions keep the ordinary path.
-See VERSION_COVERAGE.md and VALIDATION_RC13.md for current coverage.
+See VERSION_COVERAGE.md and VALIDATION_RC14.md for current coverage.
 
 WarioWare D.I.Y. uses a 16 MiB NAND save; Jam with the Band uses 8 MiB. If the
 loader rejects an old incorrectly sized fallback save, back it up and move
@@ -480,8 +502,8 @@ that one file aside for a fresh start. Existing progress is not automatically
 converted. Band Brothers DX remains unsupported. Use the game's normal save
 process before System -> Reboot; power-cut safety is not guaranteed.
 
-The support folder retains historical private-beta validation records. Their
-old launcher names and installation instructions do not apply to rc.13. Use
+The separate source download retains historical validation records. Their
+old launcher names and installation instructions do not apply to rc.14. Use
 Scripts -> NDS4MiSTer and this quick start for the current public package.
 
 RC11 DISPLAY AND MOVIES
@@ -498,7 +520,7 @@ Order of Ecclesia USA, Europe, Japan and Korea retail revision 0 receive the
 accepted gameplay optimizations and approximately 15 fps opening movie
 acceleration. Ni no Kuni Japanese retail and English v1.0 include the story
 video fix. A first large-ROM load over CIFS can take several minutes.
-See RELEASE_NOTES.md, VERSION_COVERAGE.md and VALIDATION_RC13.md.
+See RELEASE_NOTES.md, VERSION_COVERAGE.md and VALIDATION_RC14.md.
 
 RC13 GAME OPTIMIZATIONS
 
@@ -507,3 +529,23 @@ Rev 1, HeartGold USA Rev 0 and SoulSilver USA Rev 0 guest patches activate
 automatically. Other revisions and regions are not implicitly admitted.
 These Pokémon patches permit documented timing/RAM/audio differences under
 the functional/perceptual budget. See RELEASE_NOTES.md and VERSION_COVERAGE.md.
+
+RC14 MARIO KART DS
+
+Exact retail revision-0 USA (AMCE), Europe (AMCP), Japan (AMCJ) and Korea
+(AMCK) receive the selected 31-course optimizations. Other versions and
+modified images keep the original stream. The first uncached preparation
+can take about 12 minutes; later loads reuse verified cached assets. Original
+ROM files and normal save identities are retained. GBA Sky Garden keeps its
+original course data but retains the shared-helper timing cost. Improvements
+vary by scene; no whole-race/full-speed guarantee or new multiplayer support
+is implied. See VERSION_COVERAGE.md and VALIDATION_RC14.md.
+
+OPTIONAL RETROTINK-4K PROFILES FROM MR. MORO
+
+A separate optional ZIP supplies NDS Default, NDS Rotate and a custom
+background, courtesy of Mr. Moro. Merge its inner NDS4MiSTER folder's image
+and profile folders onto the RetroTINK SD card. NDS Rotate is for a physically
+rotated display: choose Direct Video Target Scaler and Video Rotation 90 CW
+or 90 CCW in the core. Leave RT4K Pro RoTATE off for that profile.
+See RETROTINK_MR_MORO.md and the supplied info.txt for the contributor's notes.

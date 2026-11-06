@@ -1,0 +1,44 @@
+{
+  "state": "passed",
+  "parent_reproduction": "byte-exact before relabeling",
+  "source_changes": "VERSION and generated CORE_VERSION literal only; compiled host logic unchanged",
+  "host_sha256": "0fd7d6f999c4f63172258a6ad00cb6b21496f700a46c266de545e5d539fbbf41",
+  "parent_host_sha256": "5e8767c3a51794a78b1b9ba227d89ff8098d3ece17167ba0d51f3174377b2442",
+  "host_version": "v0.9.0-rc14",
+  "compiler_image": "nds4mister-armhf:ubuntu-24.04",
+  "compiler_image_id": "sha256:b196be9f1d989f2388969ae8ba89c447db2792c46c90eb2b4554fa2fee4941bc",
+  "command": "bash tools/standalone_host/build.sh",
+  "flags": "-std=c++17 -O2 -Wall -Wextra -Werror -static -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard",
+  "changed_elf_sections": [
+    ".note.gnu.build-id",
+    ".text",
+    ".rodata",
+    ".ARM.extab",
+    ".ARM.exidx",
+    ".data.rel.ro",
+    ".got",
+    ".data",
+    ".symtab"
+  ],
+  "binary_byte_identical": false,
+  "binary_note": "Shorter release string changes section addresses and references; executable byte identity is not claimed.",
+  "host_tests": {
+    "test_host_dv_target": "passed",
+    "test_direct_video": "passed",
+    "test_host_dv1_osd": "passed",
+    "test_host_game_clock": "passed",
+    "test_host_firmware": "passed",
+    "test_fmv_rom_reader": "passed",
+    "test_host_framed": "passed"
+  },
+  "python_tests": {
+    "launcher": {
+      "tests": 48,
+      "result": "passed"
+    },
+    "loader": {
+      "tests": 138,
+      "result": "passed"
+    }
+  }
+}
