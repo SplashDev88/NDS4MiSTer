@@ -1,6 +1,6 @@
 # NDS4MiSTer v0.9.0-rc.14
 
-[Download ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.14/NDS4MiSTer_v0.9.0-rc.14_Standalone.zip) · [Release page](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.14)
+[Download ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.14/NDS4MiSTer_v0.9.0-rc.14_Standalone.zip) · [Release page](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.14) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview)
 
 Fixes Y/C output over CRT-targeted Direct Video 1 and adds optional RetroTINK-4K profiles courtesy of Mr. Moro.
 
