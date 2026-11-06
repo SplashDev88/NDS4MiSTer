@@ -293,6 +293,9 @@ cyclonev_hps_interface_mpu_general_purpose h2f_gp
 
 reg [15:0] cfg;
 reg        cfg_set      = 0;
+// Explicit standalone target, not inferred from a saved layout/CRT status.
+// Default off until a compatible host selects CRT through command 0x48.
+reg        nds_dv1_crt_target = 0;
 
 `ifdef NDS_HDMI_SCALER_ONLY
 	wire    vga_fb       = 0;
@@ -451,6 +454,7 @@ always@(posedge clk_sys) begin
 			// Read-only standalone display handoff: use the actual Main-loaded
 			// flags, including alternate INI selection and per-core overrides.
 			if(io_din[7:0] == 'h46) io_dout_sys <= 16'h4456;
+			if(io_din[7:0] == 'h48) io_dout_sys <= 16'h5943; // YC target ABI v1
 `endif
 		end
 		else begin
@@ -518,6 +522,8 @@ always@(posedge clk_sys) begin
 			end
 `ifdef NDS_NATIVE_OUTPUTS
 			if(cmd == 'h46 && cnt == 0) io_dout_sys <= cfg;
+            if(cmd == 'h48 && cnt == 0 && io_din[15:1] == 15'h2ca0)
+                nds_dv1_crt_target <= io_din[0]; // 0x5940 Scaler / 0x5941 CRT
             if(cmd == 'h46 && cnt == 1) io_dout_sys <= 16'h5350; // split-output ABI v1
             // Only horizontal side-by-side uses game-pixel menu sampling.
             // Use the exact raster gate so opening the menu cannot change
@@ -1489,7 +1495,18 @@ always @(posedge clk_vid) begin
 end
 
 `ifndef MISTER_DISABLE_YC
-	assign {dv_data_osd, dv_hs_osd, dv_vs_osd, dv_cs_osd } = (nds_split_active || ~yc_en) ? {vga_data_osd, vga_hs_osd, vga_vs_osd, vga_cs_osd } : {yc_o, yc_hs, yc_vs, yc_cs };
+    nds_dv1_yc dv1_yc (
+        .clk(clk_vid),
+        .native_dv1(direct_video && !cfg[7] && !cfg[13] && !vga_fb && !vga_scaler),
+        .crt_target(nds_dv1_crt_target), .crt_raster(nds_crt_active),
+        .split_active(nds_split_active), .yc_enable(yc_en), .cvbs(cvbs),
+        .pal_enable(pal_en), .phase_inc(PhaseInc), .burst_range(ColorBurst_Range),
+        .rgb(vga_data_osd), .hs(vga_hs_osd), .vs(vga_vs_osd),
+        .cs(vga_cs_osd), .de(vga_de_osd),
+        .analog_yc(yc_o), .analog_hs(yc_hs), .analog_vs(yc_vs), .analog_cs(yc_cs),
+        .data_out(dv_data_osd), .hs_out(dv_hs_osd), .vs_out(dv_vs_osd),
+        .cs_out(dv_cs_osd), .independent_yc()
+    );
 `else
 	assign {dv_data_osd, dv_hs_osd, dv_vs_osd, dv_cs_osd } = {vga_data_osd, vga_hs_osd, vga_vs_osd, vga_cs_osd };
 `endif
@@ -1646,6 +1663,7 @@ assign HDMI_TX_D  = hdmi_out_d;
 `endif
 
 wire nds_split_active;
+wire nds_crt_active;
 wire [23:0] nds_analog_data;
 wire nds_analog_hs, nds_analog_vs, nds_analog_de, nds_analog_ce;
 wire [23:0] vga_data_sl;
@@ -2172,6 +2190,7 @@ emu emu
     .NDS_NATIVE_OUTPUT_ALLOWED(~vga_fb & ~vga_scaler),
 `endif
     .NDS_SPLIT_ACTIVE(nds_split_active),
+    .NDS_CRT_ACTIVE(nds_crt_active),
     .NDS_ANALOG_R(nds_analog_data[23:16]),
     .NDS_ANALOG_G(nds_analog_data[15:8]),
     .NDS_ANALOG_B(nds_analog_data[7:0]),

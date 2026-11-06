@@ -14,6 +14,17 @@
 #include <unistd.h>
 
 namespace nds_video {
+// Session-only target handoff. Older FPGA builds do not acknowledge 0x48;
+// never write the target word unless this exact ABI is present.
+template<class SPI> bool setCrtYcTarget(SPI &spi, bool crt) {
+  const auto signature = spi.begin(SPI::IO, 0x48);
+  try {
+    if (signature == 0x5943) spi.word(crt ? 0x5941 : 0x5940);
+    spi.end();
+  } catch (...) { spi.end(); throw; }
+  return signature == 0x5943;
+}
+
 struct Geometry {
   uint32_t width = 0, height = 0, clocks = 0;
   uint32_t line_ticks = 0, frame_ticks = 0;

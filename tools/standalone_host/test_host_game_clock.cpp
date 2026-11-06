@@ -18,10 +18,16 @@ struct HostTest {
     std::array<uint8_t,8> captured{},seed{};
     uint32_t sequence=0,captured_sequence=0;
     unsigned seeds=0,requests=0;
+    int yc_target=-1;
     bool ready=false,old=false,stuck=false;
     explicit Device(Host &host):h(host) {
       h.spi.response=[&](uint32_t select,uint16_t command,size_t pos,uint16_t value)->uint16_t {
         assert(select==Spi::IO);
+        if(command==0x48) {
+          if(!pos)return 0x5943;
+          if(pos==1 && (value==0x5940 || value==0x5941))yc_target=value&1;
+          return 0;
+        }
         if(command==0x22 && pos) {
           seed[(pos-1)*2]=uint8_t(value);seed[(pos-1)*2+1]=uint8_t(value>>8);
           if(pos==4){++seeds;live=nds_clock::unpack(seed);}
@@ -46,9 +52,14 @@ struct HostTest {
     const nds_clock::Date now{26,10,14,3,13,15,42},edit{45,2,28,2,23,59,59};
     {
       Host h((base/"kit").string(),(base/"roms").string(),base/"sd");Device d(h);
+      // Both interfaces share the IO bus. Y/C target changes must not claim
+      // the RTC mailbox command or prevent game-clock seeding/polling.
+      h.video_flags_known=true;h.video_flags=1u<<10;h.yc_target_sent=-2;
+      h.direct_video_crt=true;h.sendstatus();assert(d.yc_target==1);
       h.game_clock_now=[&]{return now;};
       d.old=true;rejects([&]{h.seedGameClock();});assert(!d.seeds && !h.spi.selected && !h.game_clock_seeded);
       d.old=false;h.seedGameClock();assert(d.seeds==1 && d.live==now);
+      h.direct_video_crt=false;h.sendstatus();assert(d.yc_target==0);
       h.seedGameClock();assert(d.seeds==1);
       assert(!fs::exists(h.gameClockPath()));
       h.serviceGameClock();h.serviceGameClock();assert(!fs::exists(h.gameClockPath()));

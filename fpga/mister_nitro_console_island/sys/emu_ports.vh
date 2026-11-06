@@ -38,6 +38,7 @@ output        VGA_DISABLE, // analog out is off
 // NDS experimental independent native analog output.
 input         NDS_NATIVE_OUTPUT_ALLOWED,
 output        NDS_SPLIT_ACTIVE,
+output        NDS_CRT_ACTIVE,
 output [7:0]  NDS_ANALOG_R, NDS_ANALOG_G, NDS_ANALOG_B,
 output        NDS_ANALOG_HS, NDS_ANALOG_VS, NDS_ANALOG_DE, NDS_ANALOG_CE,
 

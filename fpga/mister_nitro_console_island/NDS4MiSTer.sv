@@ -87,6 +87,7 @@ module emu
     wire video_crt_active;
     wire video_split_active;
     assign NDS_SPLIT_ACTIVE=video_split_active;
+    assign NDS_CRT_ACTIVE=video_crt_active;
     // Translate the menu ordering back to scanout's 0/1/2/3 =
     // 0/8/16/24-pixel ABI.
     wire [1:0] video_gap_select = status[9:8] == 2'd0 ? 2'd1 :
