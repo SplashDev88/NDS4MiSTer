@@ -316,8 +316,11 @@ adapters can use vga_mode=cvbs. No INI profile or yc.txt is bundled or changed.
 
 DV1 Y/C THROUGH AN ACTIVE ADAPTER (RC14)
 
-Select Direct Video Target CRT. Use a compatible HDMI-to-VGA Direct Video
-DAC and active MiSTer Y/C adapter; select the board's Direct Video input mode.
+Select Direct Video Target CRT. The reported MiSTer Addons setup uses a
+compatible HDMI-to-VGA Direct Video DAC with the MiSTer Addons YC Active
+Encoder Board for S-Video or composite. Select the encoder board's Direct
+Video input mode. Product and adapter guidance:
+https://misteraddons.com/products/yc-active-encoder-board
 For the tested NTSC setup, use Rotation Off and these effective NDS INI values:
   direct_video=1
   dvi_mode=0

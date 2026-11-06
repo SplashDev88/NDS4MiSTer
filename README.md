@@ -9,10 +9,12 @@ optimizations are retained.
 ## Direct Video Y/C
 
 CRT-targeted DV1 can now encode its selected DS screen independently of the
-native analog output. This fixes the missing-color case with compatible
-Direct Video DACs and active Y/C adapters. Scaler-targeted DV1 retains RGB.
+native analog output. This fixes the reported black-and-white output when
+using a compatible Direct Video DAC with the
+[MiSTer Addons YC Active Encoder Board](https://misteraddons.com/products/yc-active-encoder-board)
+for S-Video or composite. Scaler-targeted DV1 retains RGB.
 
-For a compatible DAC and active Y/C board, select **Direct Video Target → CRT**
+For this DAC and MiSTer Addons encoder setup, select **Direct Video Target → CRT**
 and keep `vga_mode=svideo`, including when using the board's composite socket.
 Use the adapter's Direct Video setting and the appropriate MiSTer INI profile.
 See [Quick start](docs/STANDALONE_QUICK_START.txt) for the NTSC setup. This does not add PAL 50 Hz output.
