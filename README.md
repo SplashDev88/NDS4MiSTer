@@ -16,7 +16,7 @@ To install or update:
 3. Extract the **Standalone ZIP** at the SD-card root, including hidden files, and merge/overwrite the program files.
 4. Run **Scripts → NDS4MiSTer → Load *.NDS**.
 
-Use the complete matching package. Saves and existing display/controller settings carry over. The install ZIP contains runtime files and license notices; corresponding sources and build records are a separate optional download for developers.
+Use the complete matching package. Saves and existing display/controller settings carry over. The install ZIP contains runtime files and license notices.
 
 Known issues:
 
