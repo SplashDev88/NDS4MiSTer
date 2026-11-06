@@ -88,7 +88,7 @@ cartridge stream: ASCII `VROM`, a little-endian 32-bit size, then exactly that
 many bytes and EOF. Use the existing `fmv/prepare.py:VirtualRom` and guarded
 `fmv/guest_byte_patch.py` to construct it; the original ROM remains read-only.
 The latter supports same-size uncompressed ARM9 main-code patches and
-uncompressed ARM9 overlay files. Its default delivery rejects compressed code, autoloads,
+uncompressed ARM9 overlay files. It rejects compressed code, autoloads,
 scratch and HLE requests. Overlay targets use `target: "arm9.overlay"` with
 `overlay` (integer ID), `overlay_ram` (hex address), `overlay_file_id` and
 `overlay_sha256` (entire decoded body), alongside the usual CPU, mode,
@@ -309,16 +309,6 @@ rejects empty, overlapping, reversed, out-of-range or malformed ranges before
 boot. Builds without this observer reject the request rather than silently
 recording nothing. This supports normal NDS with JIT disabled, not DSi or
 arbitrary host/state-loader writes.
-
-`--trace-itcm-writes` additionally instruments the four ARM9 interpreter ITCM
-store paths in a private `CP15.cpp` copy and implies `--trace-ram-bus`.
-`instrument_itcm_trace.py` guards the source sites and canonicalizes physical
-32 KiB aliases to `01ff8000..01ffffff`. Watch ranges must remain wholly within
-main RAM or this ITCM space; a build without the ITCM observer rejects ITCM
-watches. The trace excludes reset-time host memset, debug/state loading, JIT
-and DSi host writes. A zero-filled region is not an unused-memory proof:
-record the whole replay, distinguish boot initialization from later writes,
-and qualify observer outputs against the unchanged reference first.
 
 With the existing SPU sample observer enabled, `ram_bus.csv` interleaves stores,
 actual sound FIFO reads and sound-control writes. It retains event order,
@@ -649,79 +639,3 @@ offsets and residuals, plus labeled thumbnails. Audio offset estimation uses
 one channel; residual measurements cover both. The tool does not enable a patch
 or declare visual, audio or gameplay equivalence. Preserve the raw comparison
 and review unexplained differences under the explicitly chosen test budget.
-
-### Compressed ARM9 ITCM boot payloads
-
-`inspect_gx_display_list.py INPUT --offset HEX --length HEX --sha256 HASH
---output REPORT` performs a read-only census of one bounded packed geometry
-list. It rejects unknown/truncated commands and tracks known vertex components
-from an unknown initial state. VTX10, partial-coordinate and signed-delta
-counts are mutually exclusive exact-coordinate leads. They do not authorize
-rewriting a list or establish pipeline/timing equivalence. Reset the analysis
-at every independently submitted list boundary.
-
-Explicit `recompress-arm9-autoload-v1` delivery in `guest_byte_patch.py` reuses
-`MainCodeFile` and `VirtualRom`. It admits pinned ITCM autoload sections only,
-with code-settings offset, full stored/decoded identities, expected instruction
-bytes, mode/alignment and data guards. An identical-byte control retains the
-original stored image directly. A changed selection uses one compression pass
-and must retain the original
-compressed extent and every decoded byte outside its declared replacement;
-header, copy table, other sections and cartridge layout stay unchanged.
-Normal boot performs the copy into ITCM, with no live instruction-cache write,
-new allocation in guest memory, hardware hook or HPS runtime service. Each
-selection falls back atomically on mismatch. This mode is not release-enabled
-by discovery. Recompression cost and native cold/reset behavior still require
-per-game qualification. `test_arm9_autoload_patch.py` covers synthetic byte
-preservation, identical controls, admission failures, overlap and size changes.
-
-`append-decoded-arm9-autoload-v1` reuses the existing FMV preparation's
-uncompressed `MainCodeFile` boot delivery when runtime recompression is too
-expensive. It shares the same instruction/section/data admission guards,
-appends the boot image through `VirtualRom`, and changes only the selected
-instructions, compressed-static-end word, ARM9 file offset/length and ROM
-size/capacity/header CRC. It requires an exact full decoded-byte comparison
-and unchanged secure area. It neither allocates new guest RAM nor invokes an
-encoder. Original files and all other cartridge payloads remain untouched.
-Even an identical-byte control changes boot timing and header metadata; run
-and record it separately from both the original compressed boot and the
-candidate. Matching racing frames cannot erase boot/menu/audio differences.
-
-### Deterministic private cold-boot storage
-
-The reference core leaves some initial hardware data registers indeterminate.
-A virtual cartridge can reuse memory filled with ROM padding, producing a
-repeatable but different control run. Mario Kart exposed this first in saved
-DIV/SQRT thread context; initializing those registers alone still left a later
-entropy difference. The oracle now zeroes its NDS object storage before normal
-construction and pins math data registers after reset. This is an explicit
-software fixture, not a claim about all hardware power-on values or a change
-to the released core. Requalify unchanged controls after changing fixtures.
-Mario Kart's 3,300-frame direct and identical virtual controls now match the
-previous direct golden in frames, state, audio, save and both PC profiles.
-
-### Atomic precomputed GX span experiments
-
-`guest_byte_patch.py` also accepts the explicit
-`append-decoded-arm9-gx-spans-v1` delivery mode. All manifest patch IDs must be
-selected together. Existing decoded ARM9 boot guards run first, then the pinned
-compressed NARC member/model is transformed into independent primitive spans.
-Any code/resource/output-hash mismatch returns the whole original stream.
-`gx_model.py` is shared with `inspect_model_shapes.py`; no second model parser or
-per-game loader path is introduced. `gx_spans.py` rejects unsupported geometry
-state and preserves vertex/attribute semantics before runtime visibility decisions.
-
-The optional manifest `build` record parameterizes generic authored guest C
-sources. Reproduce the qualified helper without a ROM:
-
-```
-python tools/game_optimization/build_course_span_guest.py \
-  docs/game-optimization/mario-kart-amce-r0-course-spans.json \
-  --output /tmp/course-spans.bin
-```
-
-Compiler output must match the manifest hash. This offline build does not apply
-a patch or enable the experiment. Visibility matrices, code-space/stack lifetime,
-resource allocations, replay differences and native benefit remain per-game gates.
-The private-beta packager's `guarded-guest` mode retains pinned runtime binaries,
-adds a separately selected catalog entry and uses its own launcher/support folder.

@@ -168,153 +168,6 @@ def read_arm7_autoload(source, header, manifest, target):
                 prefix_bytes=payload, table_offset=begin, settings_offset=settings)
 
 
-def recompress_arm9_autoload(source, header, manifest, requested, report):
-    """Patch an existing autoload payload without changing cartridge layout.
-
-    Identical-byte controls retain the original stored image. A changed
-    selected result must retain the exact compressed size, settings and copy
-    table, and every decoded byte outside the declared replacements. The
-    ordinary boot loader copies these bytes into their original destination;
-    this is not a live write into an instruction cache or a scratch allocation.
-    """
-    delivery = manifest['delivery']
-    require(delivery in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1',
-                        'append-decoded-arm9-sections-v1'),
-            'Unknown compressed ARM9 delivery')
-    offset, _, address, length = struct.unpack_from('<4I', header, 0x20)
-    require(offset >= 512 and length > 0, 'Invalid ARM9 image extent')
-    raw = source.read(offset, length)
-    decoded = codeCompression.decompress(raw)
-    require(decoded != raw, 'Expected compressed ARM9')
-    arm = code.MainCodeFile(raw, address)
-    settings = int(manifest['arm9_code_settings_offset'], 0)
-    require(arm.codeSettingsOffs == settings and settings % 4 == 0 and
-            0 <= settings <= len(decoded)-24, 'ARM9 code settings differ')
-    begin, end, payload = (n-address for n in struct.unpack_from('<3I', decoded, settings))
-    require(all(n % 4 == 0 for n in (begin, end, payload)) and
-            settings+24 <= payload <= begin < end == len(decoded) and
-            (end-begin) % 12 == 0 and (end-begin)//12 <= 64,
-            'Unsupported ARM9 autoload layout')
-    entries = []; cursor = payload
-    for at in range(begin, end, 12):
-        base, size, bss = struct.unpack_from('<3I', decoded, at)
-        require(all(n % 4 == 0 for n in (base, size, bss)) and cursor+size <= begin,
-                'Invalid ARM9 autoload entry')
-        entries.append((base, size, bss, cursor)); cursor += size
-    require(cursor == begin and len(arm.sections) == len(entries)+1 and
-            arm.sections[0].implicit and bytes(arm.sections[0].data) == decoded[:payload],
-            'ARM9 copy-table mapping differs')
-    for section, (base, size, bss, first) in zip(arm.sections[1:], entries):
-        require(not section.implicit and section.ramAddress == base and
-                section.bssSize == bss and bytes(section.data) == decoded[first:first+size],
-                'ARM9 decoded section differs')
-    patches = {p['id']: p for p in manifest['patches']}
-    require(len(patches) == len(manifest['patches']) and requested <= patches.keys(),
-            'Duplicate or unknown patch IDs')
-    expected = bytearray(decoded); ranges = []; guards = []
-    for ident in sorted(requested):
-        patch = patches[ident]; prefix = 'arm9.bin/autoload:'
-        target = patch['target']
-        main = target == 'arm9.bin/main'
-        require(patch['cpu'] == 'arm9' and isinstance(target, str) and
-                (main or target.startswith(prefix)), 'Unsupported compressed ARM9 target')
-        if main:
-            require(delivery == 'append-decoded-arm9-sections-v1',
-                    'Main section requires explicit decoded-sections delivery')
-            index = 0
-        else:
-            index = int(target[len(prefix):], 10)
-            require(target == prefix+str(index) and 1 <= index <= len(entries), 'Invalid autoload index')
-        require(patch.get('overlay') is None and patch.get('hook') is None and
-                patch.get('scratch_bytes', 0) == 0, 'Overlay, hook or scratch is unsupported')
-        base, size, bss, first = ((address, payload, arm.sections[0].bssSize, 0)
-                                 if main else entries[index-1])
-        # Only physical ITCM-sized boot sections; no RAM or hardware aliases.
-        require(size > 0 and ((main and base == 0x02000000 and
-                              base+size+bss <= 0x02400000) or
-                (not main and (0 <= base < base+size+bss <= 0x8000 or
-                 0x01ff8000 <= base < base+size+bss <= 0x02000000))),
-                'Selected section is outside supported RAM ranges')
-        region = decoded[first:first+size]
-        require(int(patch['section_base'], 0) == base and type(patch['section_bss_bytes']) is int and
-                patch['section_bss_bytes'] == bss and
-                hashlib.sha256(region).hexdigest() == patch['section_sha256'],
-                'ARM9 section identity differs')
-        mode = patch['mode']; require(mode in ('arm', 'thumb'), 'Unknown instruction mode')
-        alignment = 4 if mode == 'arm' else 2
-        at = int(patch['addr'], 0)-base
-        before, after = map(bytes.fromhex, (patch['expect'], patch['replace']))
-        require(at % alignment == 0 and len(before) % alignment == 0 and
-                8 <= len(before) <= 4096 and len(before) == len(after) and
-                0 <= at < at+len(before) <= size and region[at:at+len(before)] == before,
-                'Original instruction bytes, alignment or extent differ')
-        lo, hi = first+at, first+at+len(before)
-        if main:
-            require(lo >= 0x800 and (hi <= settings or lo >= settings+24),
-                    'Main patch overlaps secure area or boot settings')
-        require(all(hi <= a or lo >= b for a, b in ranges), 'Overlapping autoload patches')
-        ranges.append((lo, hi)); expected[lo:hi] = after
-        arm.sections[index].data[at:at+len(after)] = after
-        for guard in patch.get('data_guards', []):
-            g = int(guard['addr'], 0)-base; value = bytes.fromhex(guard['expect'])
-            require(0 < len(value) <= 4096 and 0 <= g and g+len(value) <= size and
-                    region[g:g+len(value)] == value, 'Original data invariant differs')
-            guards.append((first+g, value))
-        report['applied'].append(dict(id=ident, address=base+at, bytes=len(after),
-            section=index, original_sha256=hashlib.sha256(before).hexdigest(),
-            replacement_sha256=hashlib.sha256(after).hexdigest()))
-    require(all(expected[at:at+len(value)] == value for at, value in guards),
-            'Selected patch changes a protected data invariant')
-    if delivery in ('append-decoded-arm9-autoload-v1', 'append-decoded-arm9-sections-v1'):
-        # Reuse the existing FMV preparation's uncompressed MainCodeFile boot
-        # image and VirtualRom relocation. No encoder, live patch, new memory
-        # region, or runtime service is involved. Even a no-op selection uses
-        # this delivery and needs its own unpatched replay qualification.
-        require(address == 0x02000000 and address+len(decoded) <= 0x02400000 and
-                offset >= 512 and decoded[:0x800] == raw[:0x800],
-                'Unsupported decoded boot extent or secure area')
-        compression_word = settings+20
-        require(struct.unpack_from('<I', decoded, compression_word)[0] == address+length,
-                'Compressed static-end pointer differs')
-        struct.pack_into('<I', expected, compression_word, 0)
-        output = bytes(arm.save(compress=False))
-        require(output == bytes(expected), 'Decoded boot changes undeclared bytes')
-        first = (source.size+511) & ~511
-        end = (first+len(output)+511) & ~511
-        require(end <= LIMIT, 'Decoded boot exceeds cartridge memory')
-        changed_header = bytearray(header)
-        struct.pack_into('<I', changed_header, 0x20, first)
-        struct.pack_into('<I', changed_header, 0x2c, len(output))
-        struct.pack_into('<I', changed_header, 0x80, end)
-        capacity = 0
-        while (128*1024 << capacity) < end:
-            capacity += 1
-        changed_header[0x14] = capacity
-        struct.pack_into('<H', changed_header, 0x15e, _common.crc16(changed_header[:0x15e]))
-        image = VirtualRom(source, end)
-        image.add(0, changed_header); image.add(first, output); image.finish()
-        report.update(state='applied_to_virtual_image', delivery=delivery, virtual_bytes=end,
-                      arm9_output_sha256=hashlib.sha256(output).hexdigest(),
-                      arm9_cartridge_offset=first, arm9_output_bytes=len(output),
-                      decoded_output_sha256=hashlib.sha256(expected).hexdigest(),
-                      header_sha256=hashlib.sha256(changed_header).hexdigest(),
-                      metadata_changes=['ARM9 cartridge offset/length', 'used ROM size/capacity',
-                                        'header CRC16', 'ARM9 compressed-static-end word cleared'])
-        return image, report
-    # Avoid a redundant HPS compression pass. Complete decoded-image equality
-    # below proves that the encoder changed only the selected instructions.
-    # A no-op control keeps the original encoding, rather than re-encoding it.
-    output = raw if expected == decoded else bytes(arm.save(compress=True))
-    require(len(output) == length and codeCompression.decompress(output) == bytes(expected),
-            'Recompression changed extent or undeclared decoded bytes')
-    image = VirtualRom(source, source.size)
-    image.add(offset, output); image.finish()
-    report.update(state='applied_to_virtual_image', delivery=manifest['delivery'],
-                  virtual_bytes=source.size, arm9_output_sha256=hashlib.sha256(output).hexdigest(),
-                  decoded_output_sha256=hashlib.sha256(expected).hexdigest())
-    return image, report
-
-
 def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
     requested = set(patch_ids)
     report = {'state': 'unchanged', 'requested': sorted(requested), 'applied': [], 'reason': None}
@@ -337,61 +190,16 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         registry = {'version': 1, 'profiles': [{'game_code': manifest['game_code'],
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
-        if manifest.get('delivery') == 'append-decoded-arm9-gx-spans-v1':
-            # One logical optimization can need code in two boot sections plus
-            # a resource recipe. Never expose a partial selection or resource
-            # without its helper. All guards run before the stream is returned.
-            ids = [p['id'] for p in manifest['patches']]
-            require(1 <= len(ids) <= 8 and len(ids) == len(set(ids)) and
-                    requested == set(ids), 'Atomic code/asset selection required')
-            require(('asset' in manifest) != ('assets' in manifest),
-                    'Select one resource recipe or a resource recipe list')
-            assets = manifest.get('assets', [manifest.get('asset')])
-            require(isinstance(assets, list) and 1 <= len(assets) <= 32 and
-                    all(isinstance(a, dict) and type(a.get('file_id')) is int
-                        for a in assets), 'Invalid resource recipe list')
-            require(len({a['file_id'] for a in assets}) == len(assets),
-                    'Duplicate resource file ID')
-            from gx_span_asset import append_asset
-            boot_manifest = dict(manifest, delivery='append-decoded-arm9-sections-v1')
-            # Keep partial preparation out of the returned report as well as
-            # the cartridge stream if any later resource fails its guards.
-            trial_report = dict(report, applied=[])
-            image, trial_report = recompress_arm9_autoload(
-                source, header, boot_manifest, requested, trial_report)
-            asset_reports = []
-            for asset in assets:
-                image, trial_report = append_asset(source, image, trial_report, asset)
-                asset_reports.append(trial_report.pop('asset'))
-                # A multi-resource transform can outlast the reader's stall
-                # deadline after its full-ROM check. Report completed work
-                # through the existing protocol; no timer or early release.
-                progress(source.size)
-            trial_report['assets' if 'assets' in manifest else 'asset'] = (
-                asset_reports if 'assets' in manifest else asset_reports[0])
-            trial_report['delivery'] = manifest['delivery']
-            return image, trial_report
         if manifest.get('delivery') is not None:
-            if manifest['delivery'] in ('recompress-arm9-autoload-v1', 'append-decoded-arm9-autoload-v1',
-                                        'append-decoded-arm9-sections-v1'):
-                return recompress_arm9_autoload(source, header, manifest, requested, report)
             return append_decoded_overlays(source, header, manifest, requested, report)
+        require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')
+        arm = code.MainCodeFile(raw, address)
+        main = arm.sections[0]
+        require(main.implicit and main.ramAddress == address and bytes(main.data) == raw[:len(main.data)],
+                'Initial main-code mapping differs')
         patches = {p['id']: p for p in manifest['patches']}
         require(len(patches) == len(manifest['patches']), 'Duplicate patch IDs')
         require(requested <= patches.keys(), 'Unknown patch ID')
-        arm7_only = all(patches[ident]['cpu'] == 'arm7' and
-                        isinstance(patches[ident]['target'], str) and
-                        patches[ident]['target'].startswith('arm7.bin/autoload:')
-                        for ident in requested)
-        # An ARM7-only selection does not rewrite or map ARM9. Keep its exact
-        # stored image (including compression) and all existing identity guards.
-        # Mixed/ARM9 selections retain the original uncompressed-main contract.
-        if not arm7_only:
-            require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')
-            arm = code.MainCodeFile(raw, address)
-            main = arm.sections[0]
-            require(main.implicit and main.ramAddress == address and bytes(main.data) == raw[:len(main.data)],
-                    'Initial main-code mapping differs')
         image = VirtualRom(source, source.size)
         data_guards = []
         overlay_files = {}
@@ -459,9 +267,6 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
                                           bytes=len(after), original_sha256=hashlib.sha256(before).hexdigest(),
                                           replacement_sha256=hashlib.sha256(after).hexdigest()))
         image.finish()
-        if arm7_only:
-            require(b''.join(image.blocks(offset, offset+length)) == raw,
-                    'ARM7-only selection changed ARM9')
         for guard_offset, guard_bytes in data_guards:
             require(b''.join(image.blocks(guard_offset, guard_offset + len(guard_bytes))) == guard_bytes,
                     'Selected patch changes a protected data invariant')

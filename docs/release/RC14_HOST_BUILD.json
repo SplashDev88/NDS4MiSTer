@@ -33,12 +33,13 @@
   },
   "python_tests": {
     "launcher": {
-      "tests": 48,
+      "tests": 63,
       "result": "passed"
     },
     "loader": {
-      "tests": 138,
+      "tests": 136,
       "result": "passed"
     }
-  }
+  },
+  "package_revision_note": "Host unchanged; Mario Kart loader additions removed. Python tests rerun on restored RC13 loader."
 }

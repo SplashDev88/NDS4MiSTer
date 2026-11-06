@@ -530,17 +530,6 @@ automatically. Other revisions and regions are not implicitly admitted.
 These Pokémon patches permit documented timing/RAM/audio differences under
 the functional/perceptual budget. See RELEASE_NOTES.md and VERSION_COVERAGE.md.
 
-RC14 MARIO KART DS
-
-Exact retail revision-0 USA (AMCE), Europe (AMCP), Japan (AMCJ) and Korea
-(AMCK) receive the selected 31-course optimizations. Other versions and
-modified images keep the original stream. The first uncached preparation
-can take about 12 minutes; later loads reuse verified cached assets. Original
-ROM files and normal save identities are retained. GBA Sky Garden keeps its
-original course data but retains the shared-helper timing cost. Improvements
-vary by scene; no whole-race/full-speed guarantee or new multiplayer support
-is implied. See VERSION_COVERAGE.md and VALIDATION_RC14.md.
-
 OPTIONAL RETROTINK-4K PROFILES FROM MR. MORO
 
 A separate optional ZIP supplies NDS Default, NDS Rotate and a custom

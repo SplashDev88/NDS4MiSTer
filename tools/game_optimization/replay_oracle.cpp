@@ -18,8 +18,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <set>
-#include <new>
-#include <cstddef>
 namespace melonDS {
 bool replay_profile_active=false;
 unsigned replay_frame=0;
@@ -186,16 +184,7 @@ int main(int argc,char**argv) {
  auto cart=NDSCart::ParseROM(std::move(rom),len,nullptr);if(!cart)return 5;
  std::ifstream s(argv[2],std::ios::binary|std::ios::ate);if(!s)return 6;
  std::vector<u8> save(s.tellg());s.seekg(0);s.read((char*)save.data(),save.size());cart->SetSaveMemory(save.data(),save.size());
- NDSArgs args;args.JIT=std::nullopt;
- // Pin otherwise indeterminate cold-boot storage in this private fixture.
- // Cartridge staging must not change initial hardware-register values merely
- // by reusing an allocation previously filled with cartridge padding.
- static_assert(alignof(NDS)<=alignof(std::max_align_t));
- const auto freeStorage=[](void* p){::operator delete(p);};
- std::unique_ptr<void,decltype(freeStorage)> storage(::operator new(sizeof(NDS)),freeStorage);
- std::memset(storage.get(),0,sizeof(NDS));
- auto nds=std::unique_ptr<NDS>(::new(storage.get()) NDS(std::move(args),nullptr));
- storage.release();
+ NDSArgs args;args.JIT=std::nullopt;auto nds=std::make_unique<NDS>(std::move(args),nullptr);
  replay_machine=nds.get();
  if(const char* path=std::getenv("NDS_REPLAY_RAM_BUS")){
 #ifndef NDS_REPLAY_HAS_RAM_BUS
@@ -204,14 +193,7 @@ int main(int argc,char**argv) {
   std::ifstream spec(path);std::string line;
   while(std::getline(spec,line)){
    std::istringstream row(line);u64 first,last;std::string extra;
-   // ITCM aliases are normalized by the optional interpreter-write observer.
-   // These are two distinct physical spaces; a watch must not straddle them.
-   if(!(row>>std::hex>>first>>last)||(row>>extra)||first>=last||
-      !((first>=0x02000000ull&&last<=0x02400000ull)||
-        (first>=0x01ff8000ull&&last<=0x02000000ull)))return 8;
-#ifndef NDS_REPLAY_HAS_ITCM_BUS
-   if(first<0x02000000ull)return 8;
-#endif
+   if(!(row>>std::hex>>first>>last)||(row>>extra)||first<0x02000000ull||last>0x02400000ull||first>=last)return 8;
    for(auto old:replay_ram_bus.ranges)if(first<old.second&&old.first<last)return 8;
    replay_ram_bus.ranges.emplace_back(u32(first),u32(last));
   }
@@ -252,17 +234,7 @@ int main(int argc,char**argv) {
   }
   replay_audio.enabled=true;
  }
- nds->SetNDSCart(std::move(cart));nds->Reset();
- // The reference core resets DIVCNT/SQRTCNT but leaves their data registers
- // indeterminate. Pin the private cold-boot fixture before guest execution:
- // otherwise virtual-stream allocation changes can seed different thread
- // contexts and RNG despite an identical cartridge. No product reset change.
- for(unsigned n=0;n<2;++n){
-  nds->DivNumerator[n]=0;nds->DivDenominator[n]=0;
-  nds->DivQuotient[n]=0;nds->DivRemainder[n]=0;nds->SqrtVal[n]=0;
- }
- nds->SqrtRes=0;
- nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(nds4mister::replay::castlevania_integral_texture_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected));nds->GPU.GPU3D.SetSpriteRasterSpansEnabled(nds4mister::replay::portrait_sprite_raster_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected)||nds4mister::replay::ffta2_raster_only_profile(selected));nds->SetupDirectBoot(std::filesystem::path(argv[1]).filename().string());nds->SPU.SetOutputSampleRate(48000);nds->RTC.SetDateTime(2026,10,24,12,0,0);static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(nds->GetRenderer()).Rend3D.get())->SetFullFrameCompletion(true);nds->Start();
+ nds->SetNDSCart(std::move(cart));nds->Reset();nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(nds4mister::replay::castlevania_integral_texture_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected));nds->GPU.GPU3D.SetSpriteRasterSpansEnabled(nds4mister::replay::portrait_sprite_raster_profile(selected)||nds4mister::replay::ecclesia_sprite_raster_profile(selected)||nds4mister::replay::ffta2_raster_only_profile(selected));nds->SetupDirectBoot(std::filesystem::path(argv[1]).filename().string());nds->SPU.SetOutputSampleRate(48000);nds->RTC.SetDateTime(2026,10,24,12,0,0);static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(nds->GetRenderer()).Rend3D.get())->SetFullFrameCompletion(true);nds->Start();
  const std::string out=argv[3];
  if(const char* path=std::getenv("NDS_REPLAY_MEMORY_WATCH")) {
   std::ifstream spec(path);replay_memory.Load(spec);

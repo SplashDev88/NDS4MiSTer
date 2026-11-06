@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the accepted Mario Kart/Y-C beta as separate runtime and source ZIPs."""
+"""Package DV1 Y/C with the RC13 loader; Mario Kart experiments are excluded."""
 from pathlib import Path
 import argparse
 import ast
@@ -15,17 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 common.ROOT = ROOT
 VERSION = 'v0.9.0-rc.14'
 PREFIX = 'Scripts/.NDS_Standalone/'
-BETA_PREFIX = 'Scripts/.NDS_MarioKart_RegionalYCBeta5_20261106/'
-BETA_LAUNCHER = 'Scripts/NDS_MarioKart_Regional_YC_Beta5.sh'
-BETA_SHA = 'be0c12ea4923e570c546d3b174ceae9c79357e26136f6a163285b11680ce396c'
 YC_PREFIX = 'Scripts/.NDS_DV1_YC_Beta2_20261103/'
+YC_LAUNCHER = 'Scripts/NDS_DV1_YC_Beta2.sh'
 YC_SHA = 'c4e74bda8f5da1c9d34f22d28af13bad5574765ca30c29556e04511d4756b9c8'
 PROFILE_SHA = 'ea1ca681eceffae91a1702aaa6e3e53319ce9a82b9aa5d532e00bf731ed6b3ad'
 PROFILE_NAME = 'NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip'
 PINS = {
     'NDS_Standalone.rbf': 'e297b21a877b41128f7762e54907ba460c49e43d294ece5a32e550784651f5da',
     'support/nds_hybrid_3d_service': '9090782e550b963ed752f60da2a449803c5912a73e0f8ded5caebe8695c18fca',
-    'fmv/guest_catalog.json': '43062a4782cbc16f55843f9e09babdf2fe00488f43c6f2308ff308210e117598',
+    'fmv/guest_catalog.json': 'f25d282ac2af1f102865179041937fc50ee3f11c0c5970a9830a49383bd4cfd0',
 }
 DOCS = {
     'README.md': 'docs/STANDALONE_INSTALL_README.md',
@@ -87,22 +85,24 @@ def audit(files):
     need(b'NDS4MiSTer v0.9.0-rc13-yc-beta2\0' not in files[PREFIX + 'nds_standalone_host'], 'Stale host version')
     catalog = json.loads(files[PREFIX + 'fmv/guest_catalog.json'])
     identities = [e['manifest']['game_code'] + str(e['manifest']['revision']) for e in catalog['entries']]
-    need(len(identities) == 26 and len(set(identities)) == 26, 'Unexpected catalog coverage')
-    need({'AMCE0', 'AMCP0', 'AMCJ0', 'AMCK0'} <= set(identities), 'Missing Mario Kart region')
+    need(len(identities) == 22 and len(set(identities)) == 22, 'Unexpected catalog coverage')
+    need(not any(i.startswith('AMC') for i in identities), 'Mario Kart optimization present')
+    need(not any('/gx_' in n or 'mario_kart' in n.lower() for n in files), 'Mario Kart preparation code present')
     launcher = files['Scripts/NDS4MiSTer.sh']
-    for value in [b'NDS_GX_ASSET_CACHE=1', b'NDS_GUEST_PATCH_IDS=@catalog',
+    need(b'NDS_GX_ASSET_CACHE' not in launcher, 'Mario Kart cache enabled')
+    for value in [b'NDS_GUEST_PATCH_IDS=@catalog',
                   b'NDS_GUEST_PATCH_FALLBACK_FMV=1',
                   ('NDS_GUEST_PATCH_SHA256=' + PINS['fmv/guest_catalog.json']).encode(),
                   ('NDS_GUEST_PATCH_MANIFEST=/media/fat/' + PREFIX + 'fmv/guest_catalog.json').encode()]:
         need(b'export ' + value in launcher, 'Launcher setting missing')
     need(files['SHA256SUMS'] == checksums({n: b for n, b in files.items() if n != 'SHA256SUMS'}), 'Root checksums differ')
     return dict(state='passed', files=len(files), runtime_files=len(m['automatic_movie_files']),
-                catalog_entries=26, guest_identities=identities, version_labels='passed',
+                catalog_entries=22, guest_identities=identities, version_labels='passed',
+                mario_kart_optimizations_included=False,
                 no_development_sources_or_personal_data=True)
 
 
-def assemble(beta_path, yc_path, profile_path, out):
-    need(sha(beta_path.read_bytes()) == BETA_SHA, 'Wrong accepted Beta 5 ZIP')
+def assemble(yc_path, profile_path, out):
     need(sha(yc_path.read_bytes()) == YC_SHA, 'Wrong Y/C source archive')
     need(sha(profile_path.read_bytes()) == PROFILE_SHA, 'Wrong contributed profile ZIP')
     profile_receipt = json.loads((ROOT / 'docs/release/RC14_RETROTINK_PROFILE.json').read_text())
@@ -116,13 +116,17 @@ def assemble(beta_path, yc_path, profile_path, out):
                 need(sha(z.read(item)) == profile_receipt['files'][item.filename], 'Profile input differs')
     need(not common.git('status', '--porcelain'), 'Commit release source before packaging')
     revision = common.git('rev-parse', 'HEAD').decode().strip()
-    beta, beta_modes = common.read_zip(beta_path)
-    original = {n[len(BETA_PREFIX):]: b for n, b in beta.items() if n.startswith(BETA_PREFIX)}
+    yc, yc_modes = common.read_zip(yc_path)
+    original = {n[len(YC_PREFIX):]: b for n, b in yc.items() if n.startswith(YC_PREFIX)}
     old = json.loads(original['manifest.json'])
     for name, digest in old['automatic_movie_files'].items():
-        need(sha(original[name]) == digest, 'Accepted beta pin mismatch: ' + name)
-    files = {PREFIX + n: b for n, b in original.items() if n != 'manifest.json'}
-    modes = {PREFIX + n: beta_modes[BETA_PREFIX + n] for n in original if n != 'manifest.json'}
+        need(sha(original[name]) == digest, 'Accepted Y/C beta pin mismatch: ' + name)
+    runtime = {n: b for n, b in original.items()
+               if (n in common.ROOT_RUNTIME or n.startswith(('fmv/', 'support/', 'licenses/')))
+               and not Path(n).name.startswith(('test_', 'verify_', 'build_'))
+               and not n.endswith(('.S', '.ld'))}
+    files = {PREFIX + n: b for n, b in runtime.items()}
+    modes = {PREFIX + n: yc_modes[YC_PREFIX + n] for n in runtime}
     host = ROOT / 'tools/standalone_host'
     files[PREFIX + 'nds_standalone_host'] = (host / 'nds_standalone_host').read_bytes()
     build = json.loads((ROOT / 'docs/release/RC14_HOST_BUILD.json').read_text())
@@ -135,15 +139,15 @@ def assemble(beta_path, yc_path, profile_path, out):
         if relative in old['automatic_movie_files'] and (relative.startswith('fmv/') or relative.endswith(('.py', '.sh'))):
             need((host / relative).read_bytes() == data, 'Packaged runtime differs from source: ' + relative)
     files['Scripts/NDS4MiSTer.sh'] = (host / 'NDS4MiSTer.sh').read_bytes()
-    need(files['Scripts/NDS4MiSTer.sh'].splitlines()[2:] == beta[BETA_LAUNCHER].replace(
-        BETA_PREFIX.encode(), PREFIX.encode()).splitlines()[2:], 'Release launcher behavior differs')
+    need(files['Scripts/NDS4MiSTer.sh'].strip().splitlines()[2:] == yc[YC_LAUNCHER].replace(
+        YC_PREFIX.encode(), PREFIX.encode()).strip().splitlines()[2:], 'Release launcher behavior differs')
     modes['Scripts/NDS4MiSTer.sh'] = modes[PREFIX + 'nds_standalone_host'] = 0o755
     for name, source in DOCS.items():
         files[name] = (ROOT / source).read_bytes()
     source_name = 'NDS4MiSTer_' + VERSION + '_Sources.zip'
     m = dict(old)
     m.update(name='NDS4MiSTer', version=VERSION, menu_version='v0.9.0-rc14',
-             release_channel='release candidate', package_revision=1,
+             release_channel='release candidate', package_revision=2,
              remote_kit='/media/fat/Scripts/.NDS_Standalone', source_revision=revision,
              host_source_revision=revision, supervisor_source_revision=revision,
              host_sha256=sha(files[PREFIX + 'nds_standalone_host']),
@@ -151,9 +155,18 @@ def assemble(beta_path, yc_path, profile_path, out):
              launcher_sha256=sha(files['Scripts/NDS4MiSTer.sh']),
              source_download=source_name, release_preparation_authorized=True,
              publication_authorized=False, published=False,
-             validation_scope='Accepted Beta 5 components plus release-specific offline validation; final release ZIP not relaunched on hardware',
-             automatic_movie_files={n: sha(files[PREFIX + n]) for n in old['automatic_movie_files']})
-    m.pop('private_test_ready', None)
+             installation_scope='Normal standalone kit; existing settings and saves retained',
+             mario_kart_optimizations_included=False,
+             validation_scope='Accepted Y/C Beta2 with RC13 loader/catalog; all four Mario Kart ROMs verified unmodified; final release ZIP not relaunched on hardware',
+             automatic_movie_files={n: sha(files[PREFIX + n]) for n in runtime if not n.startswith('licenses/')})
+    for key in list(m):
+        if (key in ('private_test_ready', 'source_and_validation_sha256', 'source_archive_sha256',
+                    'fpga_source_manifest_sha256', 'public_release_qualified', 'public_release_scope')
+                or key.endswith(('_source_archive', '_source_archive_sha256', '_build_record'))):
+            m.pop(key)
+    m.update(source_commit=revision, packaging_source_revision=revision,
+             runtime_source_revision=revision, host_build_source_revision=revision,
+             loader_source_revision=revision)
     files[PREFIX + 'manifest.json'] = js(m)
     files[PREFIX + 'SHA256SUMS'] = checksums({n[len(PREFIX):]: b for n, b in files.items() if n.startswith(PREFIX)})
     files['SHA256SUMS'] = checksums(files)
@@ -161,7 +174,6 @@ def assemble(beta_path, yc_path, profile_path, out):
 
     # The normal install ZIP stays small. Complete matching component sources,
     # frozen FPGA inputs, renderer profiles and third-party source are separate.
-    yc, _ = common.read_zip(yc_path)
     source = {'NDS4MiSTer-rc14-source.tar.gz': common.git('archive', '--format=tar.gz', 'HEAD')}
     for name in ['dv1-yc-fpga-inputs.tar.gz', 'Regional_Renderer_source.tar.gz',
                  'Regional_Renderer_inputs.json', 'Regional_Renderer_build.json',
@@ -175,11 +187,12 @@ def assemble(beta_path, yc_path, profile_path, out):
                                json.loads(source['components/Regional_Renderer_inputs.json'])['files'])
     source['BUILD.md'] = (ROOT / 'docs/release/BUILD_RC14.md').read_bytes()
     source['LICENSE.txt'] = (ROOT / 'LICENSE.txt').read_bytes()
-    provenance = dict(version=VERSION, source_revision=revision, accepted_beta_sha256=BETA_SHA,
+    provenance = dict(version=VERSION, source_revision=revision, accepted_yc_beta_sha256=YC_SHA,
                       host_build=build, fpga_sha256=PINS['NDS_Standalone.rbf'],
                       renderer_sha256=PINS['support/nds_hybrid_3d_service'],
                       guest_catalog_sha256=PINS['fmv/guest_catalog.json'],
                       frozen_fpga_files_verified=fpga_count, frozen_renderer_files_verified=renderer_count,
+                      mario_kart_optimizations_included=False,
                       static_timing_closed=False, published=False)
     source['BUILD_PROVENANCE.json'] = js(provenance)
     for name, data in source.items():
@@ -213,7 +226,6 @@ def assemble(beta_path, yc_path, profile_path, out):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--beta-zip', type=Path)
     parser.add_argument('--yc-zip', type=Path)
     parser.add_argument('--profile-zip', type=Path)
     parser.add_argument('--out-dir', type=Path)
@@ -223,9 +235,9 @@ def main():
         files, _ = common.read_zip(args.audit)
         result = audit(files)
     else:
-        need(args.beta_zip and args.yc_zip and args.profile_zip and args.out_dir,
-             'Provide both parent ZIPs, contributed profile ZIP, and output directory')
-        result = assemble(args.beta_zip, args.yc_zip, args.profile_zip, args.out_dir)
+        need(args.yc_zip and args.profile_zip and args.out_dir,
+             'Provide the Y/C parent ZIP, contributed profile ZIP, and output directory')
+        result = assemble(args.yc_zip, args.profile_zip, args.out_dir)
     print(json.dumps(result, indent=2))
 
 

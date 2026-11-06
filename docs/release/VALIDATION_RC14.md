@@ -1,49 +1,48 @@
 # RC14 validation and scope
 
-RC14 packages the accepted Mario Kart Regional + DV1 Y/C Beta5. The game
-loader, 26-entry catalog, all four Mario Kart regional recipes, compiled
-guest stubs, FPGA and renderer are retained. The normal standalone launcher
-path and release labels are updated. The source histories are integrated;
-no new analog layout or rotation feature is part of this release.
+RC14 packages independent CRT-targeted DV1 Y/C with the original RC13 game
+loader and 22-entry guest catalog. Mario Kart course optimizations, their
+regional recipes, preparation code and cache enablement are excluded.
+Earlier game and FMV optimizations, including the existing movie cache,
+remain unchanged. No new analog layout or rotation feature is included.
 
-The accepted host was reproduced byte for byte before a version-only source
-rebuild. Compiled host logic is unchanged; the shorter release label changes
-binary addresses, so executable byte identity is not claimed.
+The FPGA is the accepted Y/C Beta2 binary. The renderer is unchanged from
+RC13. The host is the previously verified RC14 version-only rebuild of the
+Y/C Beta2 host; no new host or FPGA build was needed for this package revision.
+The prior host was reproduced byte for byte before relabeling. The shorter
+release label changes addresses, so binary identity with Beta2 is not claimed.
 
-Release checks include seven host tests covering Direct Video target control,
-DV1 menu geometry, RTC/game clock, firmware, the guarded Python ROM reader,
-and framed transfer; 48 launcher/recovery/display/clock tests; and 138
-guest-loader, ARM9 delivery, course-asset and cache tests. Package audits
-check complete hashes, executable permissions, source/runtime agreement,
-normal installation paths, frozen source inventories, and absence of personal
-data. The final extracted package is checked against all four previously
-qualified Mario Kart optimized cartridge streams and a seeded upgrade fixture.
+Release checks include 63 launcher/recovery/display/clock/preflight tests and
+136 loader, progress, preparation and movie-cache tests. The compiled host's
+Python ROM-reader integration is rerun against the restored loader. Earlier
+Direct Video, menu, RTC, firmware and framed-transfer checks still apply to
+the unchanged host. Package audits check hashes, permissions, source/runtime
+agreement, normal installation paths, frozen source inventories and absence
+of personal data.
 
-The integrated Beta5 production video test passed 1,024 routing combinations,
+The extracted runtime is tested with original Mario Kart USA, Europe, Japan
+and Korea revision-0 inputs. Both catalog selection and the complete worker
+stream must return the original ROM byte for byte without preparing course
+assets, including when a leftover course-cache setting is present. A seeded
+upgrade fixture verifies that display/controller/clock settings, saves, INI
+and storage configuration survive extraction. The unchanged RC13 catalog and
+loader are checked byte for byte against the accepted Y/C package.
+
+The retained Y/C production video test covered 1,024 routing combinations,
 six carrier/burst waveforms and independent-picture tests. The shared RTC/Y/C
 command test passed and rejected the original command-collision negative
-control. These inputs are unchanged in RC14.
-
-Y/C Beta2 passed bounded RT4K checks for game startup, menus, Main/Touch
+control. Y/C Beta2 passed bounded RT4K checks for startup, menus, Main/Touch
 selection, timing and CRT/Scaler switching. The user subsequently reported
-that its Y/C output worked well on the tester setup. Mario Kart qualification
-includes the USA course campaign and bounded regional ABI, loader, Grand
-Prix, movement/restart/save-reopen and native Figure-8 comparisons. See the
-Mario Kart reports in `docs/game-optimization` in the separate source archive.
+that Y/C output worked well on the tester setup.
 
-The final RC14 archive and Mr. Moro's contributed display profiles have not
-been relaunched on hardware. No live game session was interrupted to prepare
-this release. Component and offline validation do not establish all adapter,
-game, firmware, or display combinations.
+This revised RC14 archive and Mr. Moro's contributed display profiles have
+not been relaunched on hardware. The active game session was not changed.
+These checks do not establish all adapters, games, firmware or displays.
+FPGA timing remains unclosed. Save states, wireless multiplayer, DSi mode,
+PAL 50 Hz and full-playthrough certification are not added. Four inherited
+Platinum gameplay-validation gaps remain in VERSION_COVERAGE.md.
 
-Existing limitations remain: FPGA timing is not closed; GBA Sky Garden keeps
-its original course data and the shared-helper timing cost; the full course
-campaign was not repeated in every region; all battle/mission modes, wireless
-multiplayer and full playthroughs are not newly qualified. No PAL 50 Hz,
-save-state or DSi support is added. The earlier four Platinum gameplay
-validation gaps remain documented in `VERSION_COVERAGE.md`.
-
-Installable runtime and corresponding source are separate ZIPs. Mr. Moro's
-original profile ZIP is a third, optional asset with its original bytes and
-instructions preserved. Each asset has a SHA-256 sidecar. Package-specific
-receipts are retained with the prepared release artifacts.
+The runtime and corresponding source are separate ZIPs. Mr. Moro's original
+profile ZIP is an optional third asset with its bytes and instructions
+preserved. Each asset has a SHA-256 sidecar. Package-specific receipts are
+retained with the prepared release artifacts.

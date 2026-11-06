@@ -2,19 +2,9 @@
 
 [Download ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.14/NDS4MiSTer_v0.9.0-rc.14_Standalone.zip) · [Release page](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.14)
 
-Adds Mario Kart DS gameplay optimizations and fixes independent Y/C output
-over CRT-targeted Direct Video 1.
-
-## Mario Kart DS
-
-- Optimizes 31 racing courses for the exact retail revision-0 USA, Europe,
-  Japan and Korea versions. Improvements vary by course and scene.
-- Preserves the original ROM and normal save identity. Unknown or modified
-  versions keep the original game stream.
-- The first uncached preparation can take about 12 minutes on MiSTer.
-  Later loads reuse verified prepared assets.
-- GBA Sky Garden keeps its original course data. The shared helper can still
-  slow its race-clock advancement slightly; no Sky Garden speedup is claimed.
+Fixes independent Y/C output over CRT-targeted Direct Video 1 and includes
+optional RetroTINK-4K profiles courtesy of Mr. Moro. Existing RC13 game
+optimizations are retained.
 
 ## Direct Video Y/C
 
@@ -53,11 +43,10 @@ download for developers.
 
 - Existing RC13 game and FMV optimizations are retained. Exact version
   coverage varies; see [version coverage](docs/release/VERSION_COVERAGE_RC14.md).
-- Slowdown, audio hitches and graphical glitches remain possible. Mario Kart
-  results do not establish full-speed gameplay or full-playthrough coverage.
+- Slowdown, audio hitches and graphical glitches remain possible.
+  Full-speed gameplay and full-playthrough coverage are not guaranteed.
 - Italian, Spanish, Japanese and Korean Platinum gameplay validation remains
-  incomplete. The full Mario Kart course campaign was not repeated in each
-  region, and all mission/battle modes remain unqualified.
+  incomplete.
 - Save states, wireless multiplayer, DSi mode and PAL 50 Hz output are not
   supported. FPGA static timing remains unresolved.
 
