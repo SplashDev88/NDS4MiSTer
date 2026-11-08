@@ -7,11 +7,12 @@ only a report for its exact bitstream/helper hashes can qualify the beta.
 
 Supported raster work includes opaque and translucent modulated or untextured
 polygons, partial texture alpha, Z/W depth, perspective and linear interpolation,
-two-layer antialiasing, fog, decal texturing, and shadow masks/polygons. Toon mode, wireframe,
-edge marking, bitmap clear, and work exceeding the memory contract use the
+two-layer antialiasing, fog, decal texturing, shadow masks/polygons, toon/highlight
+shading, and edge marking. Wireframe, bitmap clear, unsupported shadow modes,
+and work exceeding the memory contract use the
 original software renderer. No approximation or partial image is published.
 
-## F3D5 producer and memory ownership
+## F3D6 producer and memory ownership
 
 | Physical range | Ownership |
 | --- | --- |
@@ -223,3 +224,29 @@ texture bytes, and exact software fallback. All 706 native fixture files
 remain byte-identical; 235 first-row timeouts, 192 shadow cases, transport
 checks, actual RTL streaming negative controls, and the full service self-test
 pass. C30 hardware performance and display qualification remain pending.
+
+## C31 commercial compatibility candidate
+
+F3D6 adds a third row of top depth/attributes for exact four-neighbor edge
+marking. The previous row is resolved after its lower neighbor is rasterized;
+edge marking precedes fog and antialiasing. Original native dirty bounds are
+carried on each flush, including exceptional thin spans. Clear-border depth,
+polygon ID and the eight edge colors are explicit frame configuration.
+
+Decoded textures with at most 256 distinct RGBA values use a lossless palette
+and byte indices. Textures with more colors remain raw. Every frame rebuilds
+its contents; cached commands rebind both the physical address and encoding.
+The 768 KiB texture arena and command publication boundaries are unchanged.
+Toon/highlight tables are uploaded when used. Exceptional perspective spans
+use native per-pixel attribute/depth setup, while FPGA texture sampling,
+depth tests, shading, blending and coverage remain active.
+
+The first synthesis passed, but fitting exceeded available logic blocks.
+The candidate now uses a 2 KiB texture cache (32 lines of 64 bytes), releasing
+six M10Ks for top/lower pixel attributes previously held in distributed RAM.
+Indexed textures retain the same number of cached texels as the former 8 KiB
+RGBA cache; raw textures have less cache capacity. This tradeoff requires
+measurement on hardware. Core/helper pairing is mandatory; F3D5 is rejected.
+Hardware correctness, visible output and game performance remain unqualified
+until measured against the exact candidate hashes. No 60 FPS claim follows
+from the new feature coverage.

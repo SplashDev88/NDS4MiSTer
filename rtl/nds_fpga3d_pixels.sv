@@ -31,13 +31,13 @@ module nds_fpga3d_pixels(
  output wire [63:0] flush_pair
 );
  // Three top-metadata rows retain both neighbors for edge marking. Colors
- // and the lower layer need only two rows. Small attribute stores use MLABs
- // to preserve the existing core's exhausted M10K block budget.
+ // and the lower layer need only two rows. Attribute stores use the six
+ // M10Ks released by the indexed-texel cache, preserving logic capacity.
  (* ramstyle="M10K" *) logic [31:0] color0_even[0:255],color0_odd[0:255];
  (* ramstyle="M10K" *) logic [31:0] color1[0:511];
- (* ramstyle="MLAB" *) logic [31:0] attr0[0:767];
+ (* ramstyle="M10K" *) logic [31:0] attr0[0:767];
  (* ramstyle="M10K" *) logic [31:0] depth0[0:767],depth1[0:511];
- (* ramstyle="MLAB" *) logic [31:0] attr1[0:511];
+ (* ramstyle="M10K" *) logic [31:0] attr1[0:511];
  logic [31:0] c0e,c0o,c1;
  // Generation tags make a mask-group clear constant-time. A bounded frame
  // has at most 8128 commands, so 14-bit generations cannot wrap in one job.

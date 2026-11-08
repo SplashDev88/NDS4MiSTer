@@ -174,12 +174,15 @@ module nds_fpga3d #(
  logic [11:0] p_ma;
  logic p_ce,p_hit,p_miss,p_bad_alpha,p_override;
  logic [63:0] p_override_data;
- logic [8:0] p_clear_index;
+ logic [4:0] p_clear_index;
  logic [2:0] tex_beat;
- (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:1023];
- (* ramstyle = "M10K" *) logic [19:0] p_cache_tags[0:127];
+ // Indexed texels need one quarter of the old RGBA cache footprint. Use
+ // 32 complete 64-byte lines; the six freed M10Ks hold pixel attributes
+ // instead of consuming scarce logic blocks as distributed memory.
+ (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:255];
+ (* ramstyle = "M10K" *) logic [21:0] p_cache_tags[0:31];
  logic [63:0] p_cache_q;
- logic [19:0] p_tag_q;
+ logic [21:0] p_tag_q;
  integer i;
 
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
@@ -220,7 +223,7 @@ module nds_fpga3d #(
   p_ts=texture_coord(p_av[10][3][15:0],tex_size_s,tex_mask_s,cmd[14][8],cmd[14][10]);
   p_tt=texture_coord(p_av[10][4][15:0],tex_size_t,tex_mask_t,cmd[14][9],cmd[14][11]);
   p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
-  p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:10]};
+  p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:8]};
   p_texel=cmd[14][12]?(palette_index[0]?palette_odd[palette_index[7:1]]:palette_even[palette_index[7:1]]):
                        (p_half[12]?texture_word[63:32]:texture_word[31:0]);
   p_vr=p_av[12][0][8:3];p_vg=p_av[12][1][8:3];p_vb=p_av[12][2][8:3];
@@ -250,14 +253,14 @@ module nds_fpga3d #(
   if(state==PALETTE_WAIT && dout_ready)begin
    palette_even[palette_word]<=dout[31:0];palette_odd[palette_word]<=dout[63:32];
   end
-  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index[6:0]]<=0;
+  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index]<=0;
   else if(state==TEX_WAIT && dout_ready)begin
-   if(tex_beat==7)p_cache_tags[tex_addr[9:3]]<={1'b1,tex_addr[28:10]};
-   p_cache_data[{tex_addr[9:3],tex_beat}]<=dout;
+   if(tex_beat==7)p_cache_tags[tex_addr[7:3]]<={1'b1,tex_addr[28:8]};
+   p_cache_data[{tex_addr[7:3],tex_beat}]<=dout;
   end
   if(p_ce)begin
-   p_cache_q<=p_cache_data[p_addr[11][9:0]];
-   p_tag_q<=p_cache_tags[p_addr[11][9:3]];
+   p_cache_q<=p_cache_data[p_addr[11][7:0]];
+   p_tag_q<=p_cache_tags[p_addr[11][7:3]];
   end
   if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
   else begin
@@ -382,7 +385,7 @@ module nds_fpga3d #(
      if((!param_device && !param_wc) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
-    CACHE_CLEAR:if(p_clear_index==127)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
+    CACHE_CLEAR:if(p_clear_index==31)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
     STENCIL_READ:if(!busy)begin cache_fill_beat<=0;stencil_index<=0;state<=STENCIL_WAIT;end
     STENCIL_WAIT:if(dout_ready)begin
      if(cache_fill_beat==63)state<=SEED_READ;else cache_fill_beat<=cache_fill_beat+1'b1;
