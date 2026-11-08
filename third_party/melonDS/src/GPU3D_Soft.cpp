@@ -4329,9 +4329,16 @@ bool SoftRenderer3D::TryFpgaFrame()
     {
         const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
         if(rp.PolyData->IsShadow || rp.PolyData->IsShadowMask || ps.Wireframe ||
-           ps.BlendMode!=0) return false;
-        if(ps.TextureEnabled && (!ps.CachedModulate ||
-           !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight)))return false;
+           ps.BlendMode!=0 || (ps.TextureEnabled && !ps.CachedModulate)) return false;
+    }
+    // Reject unsupported frames before copying any decoded textures. Shadow
+    // polygons commonly sort after opaque geometry, so a single combined pass
+    // would copy most of a frame's textures before selecting software fallback.
+    for(int i=0;i<CurrentPolygonCount;i++)
+    {
+        const auto& ps=PolygonList[i].PixelState;
+        if(ps.TextureEnabled &&
+           !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight))return false;
     }
     if(GPU3D.RenderDispCnt & (1u<<7))
     {

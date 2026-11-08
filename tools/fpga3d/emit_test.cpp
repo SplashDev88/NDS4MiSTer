@@ -34,7 +34,7 @@ int main(int argc,char** argv)try{
     else if(scenario==44)for(unsigned i=0;i<g.RenderNumPolygons;i++){g.RenderPolygonRAM[i]->Attr&=~(31u<<16);g.RenderPolygonRAM[i]->Attr|=15u<<16;}
     else if(scenario==45)for(unsigned i=0;i<g.RenderNumPolygons;i++)g.RenderPolygonRAM[i]->Attr&=~(31u<<16);
     else if(scenario==46)for(unsigned i=0;i<g.RenderNumPolygons;i++)g.RenderPolygonRAM[i]->Attr=(g.RenderPolygonRAM[i]->Attr&~48u)|32u;
-    else for(unsigned i=0;i<g.RenderNumPolygons;i++)g.RenderPolygonRAM[i]->IsShadow=true;
+    else g.RenderPolygonRAM[g.RenderNumPolygons-1]->IsShadow=true;
    }
    if(scenario>=48){
     if(scenario<80 || (scenario&1) || scenario>=144)g.RenderDispCnt|=16;
@@ -95,7 +95,7 @@ int main(int argc,char** argv)try{
    const auto* a=ref->GetRenderer().Get3DScanline(y);const auto* b=test->GetRenderer().Get3DScanline(y);
    require(!std::memcmp(a,b,1024),"timeout fallback changed software pixels");expected.insert(expected.end(),a,a+256);
   }
-  if(!supported){require(soft.FpgaFrame.commands.empty(),"unsupported frame submitted");std::printf("FALLBACK_PASS scenario=%u\n",scenario);fallbacks++;continue;}
+  if(!supported){require(soft.FpgaFrame.commands.empty(),"unsupported frame submitted");require(soft.FpgaFrame.textures.empty(),"unsupported frame copied textures before feature preflight");std::printf("FALLBACK_PASS scenario=%u\n",scenario);fallbacks++;continue;}
   require(soft.FpgaFrame.valid && soft.FpgaFrame.commands.size()>384,"fixture not admitted");
   auto prefix=std::string(argv[1])+"/"+std::to_string(captures);
   save(prefix+".commands",soft.FpgaFrame.commands);save(prefix+".textures",soft.FpgaFrame.textures);save(prefix+".expected",expected);
