@@ -36,6 +36,13 @@ int main(int argc,char** argv)try{
   for(unsigned i=0;i<tex.size();i++)require(sim.word(Textures+i*4)==tex[i],"immutable texture overwritten by commands");
  }
 
+ // A complete batch at an unaligned WC page offset must split prefetch at
+ // page boundaries, independently of where scanline publication happens.
+ f.reset();require(f.addTexture(tex.data(),tex.size()),"page-boundary texture admission");
+ f.startStream();sim.guardedBase=f.commandBase;sim.guardedCount=0;
+ for(unsigned y=0;y<192;y++){f.append(clear(y,0x1f010203,0xffffff));f.append(flush(y));}
+ require(f.submit(dst.data()+8,258),"unaligned WC batch failed");
+ for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)require(dst[8+y*258+x]==0x1f010203,"unaligned WC batch output");
  // Real emitted packets through the CPU transport and actual RTL together.
  std::vector<std::string> fixtures;
  for(unsigned n:{0u,100u,200u,235u,236u,237u})fixtures.push_back("build-fpga3d/fixtures/"+std::to_string(n));

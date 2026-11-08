@@ -455,7 +455,4 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_osd_raster.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_rotate_read.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_yc.sv
 
-# FPGA3D C13 diagnostic: isolate retirement/busy compatibility; keep compact HBlank storage.
-set_global_assignment -name VERILOG_MACRO "NDS_HBLANK_RUN_QUEUE_EXPERIMENT=1"
-
-set_global_assignment -name VERILOG_MACRO "NDS_ARM9_PC_PROFILE=1"
+# FPGA3D C14 uses C8 synchronization settings; visual hardware qualification required.

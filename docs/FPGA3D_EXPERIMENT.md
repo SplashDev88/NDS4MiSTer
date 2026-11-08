@@ -33,7 +33,8 @@ metadata are visible before the sequence commit. Each scanline's packed
 commands become visible before its prefix count advances. Hardware validates
 the base, capacity, monotonic count, session and texture/command separation.
 It waits when the published prefix ends, and reads at most 16 published
-commands per burst. An open producer cannot complete, even after line 191.
+commands per burst without crossing a 4 KiB page. An open producer cannot
+complete, even after line 191.
 
 Feature admission occurs before starting hardware. If later span preparation
 or capacity admission fails, the producer closes and drains its partial work;
@@ -75,12 +76,14 @@ GPU source credits use registered occupancy to shorten CPU backpressure paths.
 
 ## Compatibility and validation
 
-C12 passed accelerator timing and 319 hardware pixel fixtures, but NSMB and
-Mario Kart showed black screens despite advancing counters. Software-only mode
-also failed; the same helper displayed NSMB with the released FPGA. C13 isolates
-that regression by retaining compact HBlank storage, disabling GX SWAP
-retirement/busy overrides, and exposing ARM9 PC telemetry. This candidate
-inherits those isolation settings pending actual visual gameplay checks.
+C12 and C13 passed accelerator timing but failed visual game startup, including
+in software-only mode. C13's ARM9 telemetry showed a shared startup-ready polling
+loop. The same new helper booted both NSMB and Mario Kart with C8's FPGA.
+This candidate returns to C8's legacy HBlank storage, leaves GX SWAP retirement
+and busy overrides disabled, and removes the diagnostic PC sampler from the
+build. These controlled comparisons establish a working reference, but do not
+identify compact HBlank storage as the sole cause; placement and inherited
+whole-core timing also differ. Actual visual gameplay checks are still required.
 
 Validation includes native software-renderer fixtures, streamed prefix and
 address guards, shared-fabric contention, reset and enable-loss interruption,

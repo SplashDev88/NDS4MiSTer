@@ -49,6 +49,7 @@ struct Sim {
   if(!v.busy && (v.rd || v.wr)) {
    require(!(v.rd&&v.wr),"read/write overlap");
    uint32_t a=v.addr*8;
+   if(v.rd)require((a&4095)+v.burst*8<=4096,"physical read crossed a 4 KiB page");
    if(v.rd){if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}if(guardedBase && a>=guardedBase && a<(guardedBase==Commands?Commands+MaxCommands*64:0x3fe00000))require(uint64_t(a)+v.burst*8<=uint64_t(guardedBase)+guardedCount*64,"read beyond published immutable command prefix");require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?readLatency+rng()%7:0;}
    else {
     if(!writeRemaining){require(v.burst>0,"zero write burst");writeRemaining=v.burst;writeAt=a;writeBase=a;writeBurst=v.burst;}

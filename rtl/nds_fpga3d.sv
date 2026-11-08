@@ -45,7 +45,12 @@ module nds_fpga3d #(
  logic [4:0] cached_commands;
  logic [3:0] cache_slot;
  logic [6:0] cache_fill_beat,cache_last_beat;
- wire [4:0] fetch_commands=count-index>16?5'd16:5'(count-index);
+ // Keep each read inside one 4 KiB page even when the WC arena begins at
+ // an arbitrary 64-byte boundary. Never prefetch an unpublished record.
+ wire [5:0] command_page_index=command_base[11:6]+index[5:0];
+ wire [6:0] page_commands=7'd64-{1'b0,command_page_index};
+ wire [4:0] fetch_limit=page_commands>16?5'd16:page_commands[4:0];
+ wire [4:0] fetch_commands=count-index>fetch_limit?fetch_limit:5'(count-index);
  wire [7:0] fetch_words={fetch_commands,3'b0};
  always_ff @(posedge clk)begin
   if(state==FETCH_WAIT && dout_ready)command_cache[cache_fill_beat]<=dout;
