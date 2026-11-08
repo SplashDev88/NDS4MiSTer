@@ -250,3 +250,14 @@ measurement on hardware. Core/helper pairing is mandatory; F3D5 is rejected.
 Hardware correctness, visible output and game performance remain unqualified
 until measured against the exact candidate hashes. No 60 FPS claim follows
 from the new feature coverage.
+
+C31 passed 621 hardware reference frames (30,523,392 pixels and 98,304 stencil
+bytes), and the textured demo maintained 59.64 paired publications/s. Platinum
+in Twinleaf Town used the FPGA continuously but fell to 18.27 publications/s
+from the C24 baseline of 20.78. Its static spans were fully cached, while the
+helper still waited about 26.5 ms for FPGA completion with indexed textures.
+The next helper prefers raw texels when all unique decoded textures and the
+full write-combined command budget fit together. Larger scenes keep lossless
+indexed admission. This avoids palette loads without reducing supported
+features or expanding the physical memory contract. Its performance requires
+a new measured comparison; it uses the already-fitted F3D6 core.

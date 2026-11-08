@@ -4621,6 +4621,25 @@ bool SoftRenderer3D::TryFpgaFrame()
     }
     const FpgaPreparationAffinity preparationAffinity;
     trace.next(fpga3d::Stage::Textures);
+    if(fpga3d::adaptiveAdmission)
+    {
+        // Raw texels avoid per-span palette reloads. Prefer them when every
+        // unique texture and the full WC command budget already fit. Larger
+        // scenes retain lossless indexed admission; no feature is disabled.
+        constexpr size_t rawBudget=fpga3d::TextureBytes-fpga3d::MaxCommands*64;
+        std::map<const u32*,size_t> unique;
+        size_t bytes=0;
+        for(int i=0;i<CurrentPolygonCount;i++)
+        {
+            const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
+            if(rp.PolyData->IsShadowMask || !ps.TextureEnabled)continue;
+            const size_t count=size_t(ps.TextureWidth)*ps.TextureHeight;
+            if(!unique.emplace(ps.TexturePixels,count).second)continue;
+            if(count>rawBudget/4 || bytes>rawBudget-count*4){bytes=rawBudget+1;break;}
+            bytes+=count*4;
+        }
+        FpgaFrame.allowIndexed=bytes>rawBudget;
+    }
     // Reject unsupported frames before copying any decoded textures. Shadow
     // polygons commonly sort after opaque geometry, so a single combined pass
     // would copy most of a frame's textures before selecting software fallback.

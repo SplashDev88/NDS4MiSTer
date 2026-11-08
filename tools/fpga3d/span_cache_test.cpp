@@ -90,6 +90,9 @@ int main()try {
   soft(*ref).FpgaSpanCacheEnabled=false;
   for(unsigned step=0;step<33;step++) {
    currentStep=step;
+   // Alternate runtime raw admission with forced indexed fixture encoding.
+   // Unchanged polygons must rebind cached commands across either format.
+   fpga3d::adaptiveAdmission=(step&1)!=0;
    if(step==2) {change(*ref,23);change(*test,23);}
    if(step>=3) {change(*ref,step-3);change(*test,step-3);}
    emit(*ref);const auto expected=commands(*ref);emit(*test,false,packed);
@@ -104,6 +107,7 @@ int main()try {
   }
   // Start with empty entries, interrupt production on the first row, then
   // recover into a complete frame. Partial entries must never be reused.
+  fpga3d::adaptiveAdmission=false;
   soft(*test).FpgaSpanCache.clear();soft(*test).FpgaSpanCacheScratch.clear();emit(*test,true);
   require(soft(*test).FpgaFrame.transportError,"early timeout missing");
   emit(*ref);const auto expected=commands(*ref);emit(*test,false,packed);

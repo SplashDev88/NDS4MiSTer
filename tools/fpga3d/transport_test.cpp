@@ -58,6 +58,11 @@ int main(){
    const auto size=f.textures.size();check(f.addTexture(data[t].data(),data[t].size()) && f.textures.size()==size);
   }
   check(f.textures.size()*4==16*(1024+16384));
+  f.reset();f.allowIndexed=false;
+  check(f.addTexture(data[0].data(),data[0].size()) && !(f.textureOffsets.at(data[0].data())&1));
+  check(f.textures==data[0]);
+  f.reset();check(f.allowIndexed);
+  check(f.addTexture(data[0].data(),data[0].size()) && (f.textureOffsets.at(data[0].data())&1));
   f.reset();for(unsigned i=0;i<data[0].size();i++)data[0][i]=0x1f000000|i;
   check(f.addTexture(data[0].data(),data[0].size()) && !(f.textureOffsets.at(data[0].data())&1));
   check(f.textures==data[0]);

@@ -79,7 +79,7 @@ struct Frame {
  std::vector<uint32_t> textures;
  std::map<const uint32_t*,uint32_t> textureOffsets;
  Outcome failure=Outcome::SubmitFailed;
- bool valid=true,active=false,transportError=false,recyclePublished=false;
+ bool valid=true,active=false,transportError=false,recyclePublished=false,allowIndexed=true;
  unsigned deadlineMs=100;
  uint8_t* stencil=nullptr;
  uint64_t uploadUs=0,waitUs=0,copyUs=0;
@@ -91,7 +91,7 @@ struct Frame {
   // An abandoned producer must never reuse bytes still owned by the FPGA.
   if(active){poisonedSession=frameSession;++failedFrames;}
   failure=Outcome::SubmitFailed;commands.clear();packedCommands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
-  published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;
+  published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;allowIndexed=true;
  }
  size_t commandCount()const{return recyclePublished?published+packedCommands.size():commands.size();}
  void append(const Command& c){
@@ -116,7 +116,7 @@ struct Frame {
   // This keeps the fixed, non-overlapping DDR arena while admitting up to
   // nearly four times the decoded texture data. Every frame is rebuilt from
   // current pixels, so palette animation and recycled cache pointers are safe.
-  if(count>=2048 && count+1024<=TextureBytes){
+  if(allowIndexed && count>=2048 && count+1024<=TextureBytes){
    std::array<uint32_t,256> palette{};
    std::array<uint16_t,1024> slots{};
    std::vector<uint32_t> indices(count/4,0);
