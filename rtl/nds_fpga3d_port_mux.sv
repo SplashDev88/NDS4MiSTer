@@ -17,11 +17,14 @@ module nds_fpga3d_port_mux (
  input logic busy,accepted,input logic [63:0] dout,input logic valid,
  output logic protocol_error
 );
- logic locked,owner,read_pending,prefer_accel;
+ logic locked,owner,read_pending,grant_dwell;
  logic [7:0] remaining;
  wire c_request=c_rd||c_wr;
  wire a_request=a_rd||a_wr;
- wire selected=locked?owner:(a_request && (!c_request || prefer_accel));
+ // The control initializer forms RD/WR combinationally from !busy. Selecting
+ // an owner from that request would feed busy back into itself. Grant state
+ // must be registered, including the idle/empty-client handoff.
+ wire selected=owner;
  wire enqueued=!locked && (rd||wr) && !busy;
  always_comb begin
   rd=0;wr=0;burst=selected?a_burst:c_burst;addr=selected?a_addr:c_addr;
@@ -38,19 +41,27 @@ module nds_fpga3d_port_mux (
  end
  always_ff @(posedge clk)begin
   if(reset)begin
-   locked<=0;owner<=0;read_pending<=0;remaining<=0;prefer_accel<=0;protocol_error<=0;
+   locked<=0;owner<=0;read_pending<=0;remaining<=0;grant_dwell<=0;protocol_error<=0;
   end else begin
    if(enqueued)begin
-    locked<=1;owner<=selected;read_pending<=rd;remaining<=burst;
+    locked<=1;read_pending<=rd;remaining<=burst;grant_dwell<=0;
     if((wr && burst!=1) || (rd && wr) || burst==0)protocol_error<=1;
+   end else if(!locked && !busy)begin
+    // Give a registered requester a complete grant cycle to advertise work.
+    // An empty accelerator immediately yields to the ordinary control path.
+    if(owner && !a_request)begin owner<=0;grant_dwell<=0;end
+    else if(!owner && !c_request && a_request)begin
+     if(grant_dwell)begin owner<=1;grant_dwell<=0;end
+     else grant_dwell<=1;
+    end
    end
    if(accepted && !locked)protocol_error<=1;
    if(valid && (!locked || !read_pending || remaining==0))protocol_error<=1;
    if(locked)begin
     if(read_pending && valid)begin
      remaining<=remaining-1'b1;
-     if(remaining==1)begin locked<=0;prefer_accel<=!owner;end
-    end else if(!read_pending && accepted)begin locked<=0;prefer_accel<=!owner;end
+     if(remaining==1)begin locked<=0;owner<=!owner && a_request;grant_dwell<=0;end
+    end else if(!read_pending && accepted)begin locked<=0;owner<=!owner && a_request;grant_dwell<=0;end
    end
   end
  end

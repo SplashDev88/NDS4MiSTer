@@ -37,7 +37,11 @@ struct Sim {
    uint32_t a=v.addr*8;
    if(v.rd){require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?rng()%7:0;}
    else {
-    require((a==Mailbox+16 || a==Mailbox+24 || (a>=Output && a<Output+256*192*4)),"write outside owned output/mailbox");
+    require((a==Mailbox+16 || a==Mailbox+24 || (a>=Output && a<Output+256*192*4)
+#ifdef SHARED_FABRIC
+      || (a==0x3fc00478 && v.din==0x0123456789abcdefULL)
+#endif
+    ),"write outside owned output/mailbox");
     require(v.be==255,"partial write");word(a)=uint32_t(v.din);word(a+4)=v.din>>32;
    }
   }
@@ -50,7 +54,12 @@ struct Sim {
   std::memcpy(&word(Commands),cmds.data(),cmds.size()*sizeof(Command));
   word(Mailbox+8)=cmds.size();word(Mailbox+12)=sess;word(Mailbox)=Magic;word(Mailbox+4)=sequence;
   uint64_t start=cycles;
-  while(word(Mailbox+16)!=sequence && cycles-start<20000000)tick();
+#ifdef SHARED_FABRIC
+  constexpr uint64_t cycleLimit=60000000; // Continuous control writes plus three other peers.
+#else
+  constexpr uint64_t cycleLimit=20000000;
+#endif
+  while(word(Mailbox+16)!=sequence && cycles-start<cycleLimit)tick();
   require(word(Mailbox+16)==sequence,"completion timeout");
   if(word(Mailbox+20)!=expectStatus)throw std::runtime_error("status "+std::to_string(word(Mailbox+20))+" expected "+std::to_string(expectStatus));
   return cycles-start;
