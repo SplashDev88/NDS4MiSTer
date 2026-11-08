@@ -2471,7 +2471,7 @@ private:
     bool FpgaEmitting = false;
     bool TryFpgaFrame();
     // Only exact, fully generated polygon rows may survive between frames.
-    // Texture data is uploaded afresh; its current physical binding is keyed.
+    // Texture data is uploaded afresh; reused commands receive its current binding.
     struct FpgaPolygonSpans
     {
         std::array<u32,128> Key {};
@@ -2479,9 +2479,11 @@ private:
         std::vector<fpga3d::PackedCommand> PackedCommands;
         std::vector<u16> RowEnds;
         s32 FirstLine=0, EndLine=0;
+        u32 Hash=0, KeyWords=0, TextureAddress=0;
         bool Ready=false, Hit=false, Record=false;
     };
     std::vector<FpgaPolygonSpans> FpgaSpanCache;
+    std::vector<FpgaPolygonSpans> FpgaSpanCacheScratch;
     bool FpgaSpanCacheEnabled=true;
     u32 FpgaSpanCacheHits=0, FpgaSpanCacheCommands=0;
     void PrepareFpgaSpanCache();

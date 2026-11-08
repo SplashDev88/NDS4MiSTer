@@ -36,6 +36,12 @@ int main(){
    check(a[i]==expected && b[i]==expected);
   }
  }
+ for(unsigned i=0;i<1000;i++){
+  Span s;s.flags|=Textured;s.texture=Textures+(rng()%(TextureBytes/8))*8;
+  auto c=span(s);auto p=pack(c);
+  c[13]=Textures+(rng()%(TextureBytes/8))*8;rebindTexture(p,c[13]);
+  check(p==pack(c));
+ }
  std::vector<uint32_t> source(256*192),dest(258*192+16,guard),texture(8192),target(8200,guard);
  for(auto& w:source)w=rng();for(auto& w:texture)w=rng();
  for(bool wc:{false,true}){

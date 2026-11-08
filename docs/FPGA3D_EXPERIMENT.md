@@ -211,3 +211,15 @@ packing. Batch fixture generation retains the readable 128-byte logical ABI.
 The physical descriptor budget, immutable prefix and completion fences are
 unchanged. Tests compare logical, packed and actual RTL memory paths,
 including unknown opcodes, cancellation and cumulative capacity exhaustion.
+
+C29 measured 25.13 completed frames/s on the same map, within the range of
+C27 rather than an additional material improvement. C30 matches exact span
+inputs across polygon reordering and rebinds reused descriptors to each
+frame's fresh texture allocation. A hash selects a lookup bucket only; the
+full input key must match. Both cache generations have a combined retained
+capacity bound. The expanded 360-case test covers reordered geometry and
+texture allocation changes in logical and streaming descriptors, fresh
+texture bytes, and exact software fallback. All 706 native fixture files
+remain byte-identical; 235 first-row timeouts, 192 shadow cases, transport
+checks, actual RTL streaming negative controls, and the full service self-test
+pass. C30 hardware performance and display qualification remain pending.

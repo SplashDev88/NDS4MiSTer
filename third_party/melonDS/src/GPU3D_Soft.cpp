@@ -4402,7 +4402,22 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
     // A changing workload cannot accumulate a large history per polygon slot.
     size_t capacity=0;
     for (const auto& c:FpgaSpanCache) capacity+=c.Commands.capacity()+c.PackedCommands.capacity();
-    if (capacity>2*fpga3d::MaxCommands) FpgaSpanCache.clear();
+    for (const auto& c:FpgaSpanCacheScratch) capacity+=c.Commands.capacity()+c.PackedCommands.capacity();
+    if (capacity>4*fpga3d::MaxCommands) { FpgaSpanCache.clear();FpgaSpanCacheScratch.clear(); }
+    // Match values across polygon sorting/insertion. Hashes only select a
+    // bucket: full exact key equality is required before moving any entry.
+    FpgaSpanCache.swap(FpgaSpanCacheScratch);
+    auto& previous=FpgaSpanCacheScratch;
+    std::array<s16,1024> heads;heads.fill(-1);
+    std::array<s16,MaxRendererPolygons> next;
+    std::array<u8,MaxRendererPolygons> used {};
+    for (size_t i=0;i<previous.size();i++)
+    {
+        const auto& c=previous[i];
+        if (!c.Ready) continue;
+        const auto bucket=c.Hash&1023;
+        next[i]=heads[bucket];heads[bucket]=i;
+    }
     FpgaSpanCache.resize(CurrentPolygonCount);
     for (int i=0;i<CurrentPolygonCount;i++)
     {
@@ -4414,19 +4429,18 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
         // Shadow-mask grouping has cross-polygon state; keep both shadow
         // forms on the established producer path.
         if (p.IsShadowMask || p.IsShadow) { c.Ready=false; continue; }
-        std::array<u32,128> key {};
+        std::array<u32,128> key;
         size_t k=0;
         const auto add=[&](u32 v){key[k++]=v;};
         add(FpgaFrame.recyclePublished);
         add(GPU3D.RenderDispCnt);add(GPU3D.RenderAlphaRef);
-        add(p.NumVertices);add(p.Attr);add(p.TexParam);add(p.TexPalette);
+        add(p.NumVertices);add(p.Attr);
         add(p.WBuffer);add(p.FacingView);add(p.Type);
         add(p.VTop);add(p.VBottom);add(p.YTop);add(p.YBottom);
         add(p.XTop);add(p.XBottom);add(rp.PolyAttr);
         add(ps.TextureEnabled);add(ps.TextureWidth);add(ps.TextureHeight);
         add(ps.TextureWidthShift);add(ps.TextureWrapFlags);add(ps.BlendMode);
         add(ps.PolyAlpha);add(ps.CachedModulate);add(ps.ConstantVertexColor);
-        add(ps.TextureEnabled?FpgaFrame.textureOffsets.at(ps.TexturePixels):0);
         // Explicit values avoid pointer identity, padding and hash collisions.
         // These are every vertex input consumed by edge setup/interpolation.
         for (u32 v=0;v<p.NumVertices;v++)
@@ -4440,16 +4454,29 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
         const s32 first=std::clamp(p.YTop,0,VisibleScanlines);
         const s32 end=p.YTop==p.YBottom && p.YTop>=0 && p.YTop<VisibleScanlines?
             first+1:std::clamp(p.YBottom,0,VisibleScanlines);
-        if (c.Ready && c.Key==key)
+        u32 hash=2166136261u;
+        for (size_t word=0;word<k;word++) hash=(hash^key[word])*16777619u;
+        int match=-1;
+        for (int j=heads[hash&1023];j>=0;j=next[j])
         {
-            c.Hit=true;++FpgaSpanCacheHits;
+            const auto& old=previous[j];
+            if (!used[j] && old.Hash==hash && old.KeyWords==k &&
+                !std::memcmp(old.Key.data(),key.data(),k*sizeof(u32)))
+            { match=j;break; }
+        }
+        if (match>=0)
+        {
+            used[match]=1;std::swap(c,previous[match]);
+            c.Hit=true;c.Record=false;++FpgaSpanCacheHits;
         }
         else
         {
-            c.Key=key;c.Commands.clear();c.PackedCommands.clear();c.RowEnds.clear();
+            std::copy_n(key.begin(),k,c.Key.begin());c.Hash=hash;c.KeyWords=k;
+            c.Commands.clear();c.PackedCommands.clear();c.RowEnds.clear();
             c.FirstLine=first;c.EndLine=end;c.Ready=false;
             c.Record=first<end;
         }
+        c.TextureAddress=ps.TextureEnabled?FpgaFrame.textureOffsets.at(ps.TexturePixels):0;
     }
 }
 
@@ -4466,9 +4493,14 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
         const unsigned end=c->RowEnds[row];
         prevIsShadowMask=false;
         if (FpgaFrame.recyclePublished)
-            for (unsigned i=begin;i<end;i++) FpgaFrame.appendPacked(c->PackedCommands[i]);
+            for (unsigned i=begin;i<end;i++) FpgaFrame.appendPacked(c->PackedCommands[i],c->TextureAddress);
         else
-            for (unsigned i=begin;i<end;i++) FpgaFrame.append(c->Commands[i]);
+            for (unsigned i=begin;i<end;i++)
+            {
+                auto command=c->Commands[i];
+                if (c->TextureAddress) command[13]=c->TextureAddress;
+                FpgaFrame.append(command);
+            }
         FpgaSpanCacheCommands+=end-begin;
         return;
     }

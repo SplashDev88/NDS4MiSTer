@@ -3,6 +3,10 @@
 #include "abi.h"
 namespace fpga3d {
 using PackedCommand=std::array<uint32_t,16>;
+inline void rebindTexture(PackedCommand& p,uint32_t address){
+ // F3D5 texture address is an aligned offset in descriptor bits 134..150.
+ p[4]=(p[4]&~(0x1ffffu<<6))|(((address-Textures)>>3)<<6);
+}
 template<unsigned Bit,unsigned Width> inline void put(PackedCommand& p,uint32_t x){
  static_assert(Width<=32 && Bit+Width<=512);
  if constexpr(Width<32)x&=(uint32_t(1)<<Width)-1;

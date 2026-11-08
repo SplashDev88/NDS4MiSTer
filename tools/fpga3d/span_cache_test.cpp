@@ -42,6 +42,7 @@ static void change(NDS& n,unsigned kind) {
  case 22: g.RenderDispCnt^=1;break;
  case 23: std::swap(g.RenderPolygonRAM[2],g.RenderPolygonRAM[3]);break;
  case 24: n.GPU.VRAM_A[0]^=255;std::memset(n.GPU.VRAMDirty[0].Data,255,sizeof(n.GPU.VRAMDirty[0].Data));break;
+ case 25: g.RenderPolygonRAM[0]->TexParam^=1u<<20;break;
  }
 }
 int main()try {
@@ -77,22 +78,23 @@ int main()try {
   frame(*ref,variant);frame(*test,variant);
   ref->GPU.GPU3D.RenderDispCnt=test->GPU.GPU3D.RenderDispCnt=1|8|16;
   soft(*ref).FpgaSpanCacheEnabled=false;
-  for(unsigned step=0;step<27;step++) {
+  for(unsigned step=0;step<29;step++) {
    currentStep=step;
-   if(step>=2) {change(*ref,step-2);change(*test,step-2);}
+   if(step==2) {change(*ref,23);change(*test,23);}
+   if(step>=3) {change(*ref,step-3);change(*test,step-3);}
    emit(*ref);const auto expected=commands(*ref);emit(*test,false,packed);
    require(soft(*ref).FpgaFrame.valid==soft(*test).FpgaFrame.valid,"cache changed span admission");
    require(expected==commands(*test),"cached physical commands differ from cold producer");
    if(!packed)require(soft(*ref).FpgaFrame.commands==soft(*test).FpgaFrame.commands,"cached logical commands differ from cold producer");
    require(soft(*ref).FpgaFrame.textures==soft(*test).FpgaFrame.textures,"cached frame reused stale texture contents");
    for(unsigned y=0;y<192;y++)require(!std::memcmp(ref->GetRenderer().Get3DScanline(y),test->GetRenderer().Get3DScanline(y),1024),"cached timeout fallback changed pixels");
-   if(step==1)require(soft(*test).FpgaFrame.valid && soft(*test).FpgaSpanCacheHits==10 && soft(*test).FpgaSpanCacheCommands>0,"identical frame did not hit cache");
-   if(step>=2 && step<26)require(soft(*test).FpgaSpanCacheHits<10,"changed geometry or binding did not invalidate");
+   if(step==1 || step==2)require(soft(*test).FpgaFrame.valid && soft(*test).FpgaSpanCacheHits==10 && soft(*test).FpgaSpanCacheCommands>0,"identical or reordered geometry did not hit cache");
+   if(step>=3 && step<27 && step-3!=14 && step-3!=23)require(soft(*test).FpgaSpanCacheHits<10,"changed span inputs did not invalidate");
    comparisons++;
   }
   // Start with empty entries, interrupt production on the first row, then
   // recover into a complete frame. Partial entries must never be reused.
-  soft(*test).FpgaSpanCache.clear();emit(*test,true);
+  soft(*test).FpgaSpanCache.clear();soft(*test).FpgaSpanCacheScratch.clear();emit(*test,true);
   require(soft(*test).FpgaFrame.transportError,"early timeout missing");
   emit(*ref);const auto expected=commands(*ref);emit(*test,false,packed);
   require(expected==commands(*test),"partial cache survived early timeout");

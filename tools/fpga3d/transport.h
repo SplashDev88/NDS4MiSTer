@@ -97,9 +97,12 @@ struct Frame {
   else if(recyclePublished)packedCommands.push_back(pack(c));
   else commands.push_back(c);
  }
- void appendPacked(const PackedCommand& c){
+ void appendPacked(const PackedCommand& c,uint32_t texture=0){
   if(!recyclePublished || commandCount()>=commandCapacity)valid=false;
-  else packedCommands.push_back(c);
+  else {
+   packedCommands.push_back(c);
+   if(texture)rebindTexture(packedCommands.back(),texture);
+  }
  }
  bool addTexture(const uint32_t* pixels,size_t count){
   if(active)return false;
