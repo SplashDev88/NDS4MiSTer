@@ -190,19 +190,22 @@ module nds_h3d_frame_packet_writer #(
         ddram_write_data = 64'd0;
         ddram_byte_enable = 8'hff;
 
+        // Advertise retained requests independently of grant/waitrequest.
+        // Payload advances only on physical acceptance, including each burst
+        // continuation; a stalled stream must keep WE and its data asserted.
         case (state)
             READ_SESSION_ISSUE: begin
                 ddram_address = SESSION_WORD;
-                ddram_read = !ddram_busy;
+                ddram_read = 1'b1;
             end
             READ_PRODUCER_ISSUE: begin
                 ddram_address = PRODUCER_WORD;
-                ddram_read = !ddram_busy;
+                ddram_read = 1'b1;
             end
             READ_ACK_INIT_ISSUE,
             READ_ACK_ISSUE: begin
                 ddram_address = ACK_WORD;
-                ddram_read = !ddram_busy;
+                ddram_read = 1'b1;
             end
             WRITE_BURST: begin
                 // Avalon burst: the start address and count stay constant for
@@ -212,27 +215,27 @@ module nds_h3d_frame_packet_writer #(
                 ddram_write_data = burst_beat[0] ?
                     buf_record[burst_beat >> 1][127:64] :
                     buf_record[burst_beat >> 1][63:0];
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER0: begin
                 ddram_address = slot_base;
                 ddram_write_data = {32'h00400001, 32'h31423348};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER1: begin
                 ddram_address = slot_base + 29'd1;
                 ddram_write_data = {32'd0, latched_session};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER2: begin
                 ddram_address = slot_base + 29'd2;
                 ddram_write_data = {32'd0, packet_sequence};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER3: begin
                 ddram_address = slot_base + 29'd3;
                 ddram_write_data = {close_flags, packet_frame};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER4: begin
                 ddram_address = slot_base + 29'd4;
@@ -240,27 +243,27 @@ module nds_h3d_frame_packet_writer #(
                     32'(record_count),
                     (32'(record_count) << 4)
                 };
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER5: begin
                 ddram_address = slot_base + 29'd5;
                 ddram_write_data = {32'd0, 30'd0, slot_index};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_HEADER6: begin
                 ddram_address = slot_base + 29'd6;
                 ddram_write_data = 64'd0;
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_COMMIT: begin
                 ddram_address = slot_base + 29'd7;
                 ddram_write_data = {32'd0, packet_sequence};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             WRITE_PRODUCER: begin
                 ddram_address = PRODUCER_WORD;
                 ddram_write_data = {32'd0, packet_sequence};
-                ddram_write = !ddram_busy;
+                ddram_write = 1'b1;
             end
             default: begin end
         endcase

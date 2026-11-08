@@ -91,7 +91,8 @@ module nds_h3d_ddr_fabric #(
         .STICKY_GRANT_LIMIT(STICKY_GRANT_LIMIT),
         .CLIENT_ENABLE_MASK(4'b1111),
         .VIDEO_PRIORITY_GRANT(1'b1),
-        .VIDEO_PRIORITY_FAIR_CREDIT(1'b1)
+        .VIDEO_PRIORITY_FAIR_CREDIT(1'b1),
+        .FAIR_PROBE_INTERVAL(8)
     ) fabric (
         .clk,
         .reset,

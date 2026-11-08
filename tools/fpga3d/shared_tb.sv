@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Exercise the console fabric with a busy-dependent control request (as used
 // by nds_h3d_control_init), cartridge and priority scanout reads plus checked event write bursts.
-module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
+module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0,FAIR_PROBE_INTERVAL=8)(
  input clk,reset,enable,input [31:0] session,
  output rd,wr,output [7:0] burst,output [28:0] addr,output [63:0] din,output [7:0] be,
  input busy,input [63:0] dout,input dout_ready
@@ -25,8 +25,8 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
   assign cn=1;assign cc=29'h07f8008f;assign ci=64'h0123456789abcdef;assign ce=8'hff;
   assign released=1;assign control_fault=0;assign control_fault_bits=0;
  end endgenerate
- fpga3d_peer #(.BEATS(4),.PAUSE(31)) cart(clk,reset,lr,lb,lo,lv);
- fpga3d_peer #(.BEATS(8),.PAUSE(59)) video(clk,reset,vr,vb,vo,vv);
+ fpga3d_peer #(.BEATS(4),.PAUSE(0)) cart(clk,reset,lr,lb,lo,lv);
+ fpga3d_peer #(.BEATS(8),.PAUSE(0)) video(clk,reset,vr,vb,vo,vv);
  wire mr,mw,mb,mv;wire [7:0] mn,me;wire [28:0] ma;wire [63:0] mi,mo;
  wire e1,e2,ma_accept,ca;
  wire er,ew,eb,ev,ea;wire [63:0] eo,ei;
@@ -36,7 +36,7 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
  .c_rd(cr),.c_wr(cw),.c_burst(cn),.c_addr(cc),.c_din(ci),.c_be(ce),.c_busy(cb),.c_dout(co),.c_valid(cv),.c_accepted(ca),
  .a_rd(ar),.a_wr(aw),.a_burst(an),.a_addr(aa),.a_din(ai),.a_be(ae),.a_busy(ab),.a_dout(ao),.a_valid(av),
  .rd(mr),.wr(mw),.burst(mn),.addr(ma),.din(mi),.be(me),.busy(mb),.dout(mo),.valid(mv),.accepted(ma_accept),.protocol_error(e1));
- nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b1111),.VIDEO_PRIORITY_GRANT(1),.VIDEO_PRIORITY_FAIR_CREDIT(1)) outer(
+ nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b1111),.VIDEO_PRIORITY_GRANT(1),.VIDEO_PRIORITY_FAIR_CREDIT(1),.FAIR_PROBE_INTERVAL(FAIR_PROBE_INTERVAL)) outer(
  .clk,.reset,
  .cpu_rd(lr),.cpu_we(1'b0),.cpu_burstcnt(8'd4),.cpu_addr(29'h07f80080),.cpu_din(64'd0),.cpu_be(8'hff),.cpu_busy(lb),.cpu_dout(lo),.cpu_dout_ready(lv),.cpu_command_accepted(),
  .video_rd(vr),.video_we(1'b0),.video_burstcnt(8'd8),.video_addr(29'h07f80080),.video_din(64'd0),.video_be(8'hff),.video_busy(vb),.video_dout(vo),.video_dout_ready(vv),.video_command_accepted(),
@@ -105,22 +105,24 @@ module fpga3d_event_peer(input clk,reset,output rd,wr,output [63:0] din,
  input busy,accepted,input [63:0] dout,input valid);
  reg [2:0] state;
  reg [31:0] serial;
+ reg stream_started;
  integer beat,pause_cycles,age;
  function automatic [63:0] payload(input [31:0] seqno,input integer beatno);
   payload=64'hca7e000000000000|({32'd0,seqno}<<16)|64'(beatno);
  endfunction
- assign rd=state==3;
- assign wr=state==1;
+ assign rd=state==3 && !busy;
+ assign wr=state==1 && (stream_started || !busy);
  assign din=payload(serial,beat);
  always @(posedge clk)begin
-  if(reset)begin state<=0;serial<=0;beat<=0;pause_cycles<=23;age<=0;end
+  if(reset)begin state<=0;serial<=0;stream_started<=0;beat<=0;pause_cycles<=23;age<=0;end
   else begin
    age<=age+1;
    if(age>10000)$fatal(1,"event burst client starved");
    case(state)
     0:if(pause_cycles==0)begin state<=1;beat<=0;end else pause_cycles<=pause_cycles-1;
     1:if(accepted)begin
-      if(beat==15)begin state<=2;beat<=0;end else beat<=beat+1;
+      stream_started<=1;
+      if(beat==15)begin state<=2;beat<=0;stream_started<=0;end else beat<=beat+1;
      end
     2:state<=3;
     3:if(!busy)state<=4;

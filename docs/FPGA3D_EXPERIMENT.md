@@ -41,6 +41,12 @@ It forwards physical acceptance separately from local enqueue and locks read
 ownership through the last response. This prevents control requests from
 becoming invisible under event burst-write and display contention. The tests
 include all four clients, burst write/readback sequence checking, and negative
-controls for premature acceptance, combinational grants, and hidden requests.
+controls for premature acceptance, combinational grants, and disabled grant
+probes under saturated traffic. The outer H3D fabric probes every enabled
+client once per eight eligible transactions, rotating the probe owner. Priority
+video still returns its borrowed grant before another probe turn is consumed.
+This bounds access even for producers that wait for busy to drop before
+advertising work. The packet writer holds each request through physical
+acceptance, including write bursts with waitrequest asserted.
 GPU source credit uses registered queue occupancy; an initially full queue
 reopens on the cycle after a pop to shorten the sink-to-CPU timing path.

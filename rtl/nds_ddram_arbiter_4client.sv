@@ -54,7 +54,10 @@ module nds_ddram_arbiter_4client #(
     // then resumes that owner immediately after the injected video command.
     // Keep the default disabled so existing candidate bitstreams retain their
     // exact scheduling until they opt in.
-    parameter bit VIDEO_PRIORITY_FAIR_CREDIT = 0
+    parameter bit VIDEO_PRIORITY_FAIR_CREDIT = 0,
+    // Probe every enabled owner even while other clients advertise work.
+    // Busy-dependent producers otherwise remain invisible indefinitely.
+    parameter integer FAIR_PROBE_INTERVAL = 0
 ) (
     input  logic        clk,
     input  logic        reset,
@@ -134,11 +137,15 @@ module nds_ddram_arbiter_4client #(
         if (RESET_QUIET_CYCLES < 1 || RESET_QUIET_CYCLES > 256)
             $fatal(1,
                 "RESET_QUIET_CYCLES must be in the range 1..256");
+        if (FAIR_PROBE_INTERVAL<0 || FAIR_PROBE_INTERVAL>255)
+            $fatal(1,"FAIR_PROBE_INTERVAL must be in 0..255");
         if (!CLIENT_ENABLE_MASK[0])
             $fatal(1,
                 "four-client DDR arbiter requires CPU/boot client zero");
     end
 
+    logic [7:0] probe_count;
+    logic [1:0] probe_owner;
     logic [1:0] grant_owner;
     logic       grant_dwell;
     logic [7:0] sticky_count;
@@ -201,6 +208,15 @@ module nds_ddram_arbiter_4client #(
     wire accepting_read_command =
         accepting_queued_command && command_read;
     wire response_has_owner = read_pending || accepting_read_command;
+    wire transaction_completed =
+        (accepting_queued_command &&
+          ((command_read && ddram_dout_ready && command_burst<=1) ||
+           (command_write && command_burst<=1))) ||
+        (accepting_stream_beat && write_beats_remaining<=1) ||
+        (read_pending && ddram_dout_ready && beats_remaining<=1);
+    wire [1:0] completed_owner = accepting_queued_command ? command_owner :
+        write_stream_pending ? write_stream_owner : read_owner;
+    wire probe_turn = FAIR_PROBE_INTERVAL>0 && probe_count>=FAIR_PROBE_INTERVAL-1;
     wire [3:0] request_vector = {
         credit_rd || credit_we,
         sound_rd || sound_we,
@@ -273,6 +289,11 @@ module nds_ddram_arbiter_4client #(
                             completed_sticky_count + 1'b1;
                     end
                 end
+            end
+
+            if (probe_turn) begin
+                normal_owner = probe_owner;
+                normal_sticky_count = 8'd0;
             end
 
             chosen_owner = normal_owner;
@@ -509,6 +530,8 @@ module nds_ddram_arbiter_4client #(
 
     always_ff @(posedge clk) begin
         if (reset) begin
+            probe_count <= 0;
+            probe_owner <= 0;
             grant_owner <= 2'd0;
             grant_dwell <= 1'b1;
             sticky_count <= 8'd0;
@@ -540,6 +563,8 @@ module nds_ddram_arbiter_4client #(
             beats_remaining <= 8'd0;
             write_stream_pending <= 1'b0;
             write_beats_remaining <= 8'd0;
+            probe_count <= 0;
+            probe_owner <= 0;
             grant_owner <= 2'd0;
             grant_dwell <= 1'b1;
             sticky_count <= 8'd0;
@@ -554,6 +579,16 @@ module nds_ddram_arbiter_4client #(
                 quiet_count <= quiet_count + 1'b1;
             end
         end else begin
+            // A priority video completion that owes a resume grant cannot
+            // consume a new probe turn. The promised owner runs next.
+            if (transaction_completed && FAIR_PROBE_INTERVAL>0 &&
+                !(VIDEO_PRIORITY_FAIR_CREDIT && completed_owner==1 &&
+                  video_priority_resume_valid)) begin
+                if (probe_turn) begin
+                    probe_count<=0;
+                    probe_owner<=next_enabled_owner(probe_owner);
+                end else probe_count<=probe_count+1'b1;
+            end
             if (ddram_dout_ready && !response_has_owner)
                 protocol_error <= 1'b1;
 

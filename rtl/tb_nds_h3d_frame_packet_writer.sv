@@ -66,6 +66,10 @@ module tb_nds_h3d_frame_packet_writer;
     logic random_stalls = 0;
     logic [31:0] stall_lfsr = 32'h79a4c31d;
 
+    logic ddr_held = 0;
+    logic [110:0] held_ddr_payload;
+    wire [110:0] ddr_payload={ddram_read,ddram_write,ddram_burst_count,
+        ddram_address,ddram_write_data,ddram_byte_enable};
     logic input_held = 0;
     logic [127:0] held_record;
     logic [31:0] held_frame;
@@ -339,8 +343,10 @@ module tb_nds_h3d_frame_packet_writer;
             $fatal(1, "writer used partial DDR byte enable");
         if (ddram_read && (ddram_burst_count !== 8'd1 || burst_index != 0))
             $fatal(1, "read interrupted a payload burst");
-        if (ddram_busy && (ddram_read || ddram_write))
-            $fatal(1, "writer requested DDR while busy was asserted");
+        if (!reset && !session_flush && ddr_held && ddr_payload!==held_ddr_payload)
+            $fatal(1,"writer changed request before physical acceptance");
+        ddr_held = !reset && !session_flush && (ddram_read || ddram_write) && !ddram_command_accepted;
+        held_ddr_payload = ddr_payload;
         if ((ddram_read || ddram_write) && !ddram_busy &&
             !ddram_command_accepted)
             unaccepted_request_cycles = unaccepted_request_cycles + 1;
