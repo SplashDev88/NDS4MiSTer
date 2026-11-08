@@ -2132,7 +2132,23 @@ void SoftRenderer3D::RenderPolygonScanline(
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
-    if (rp->PixelState.FlatRectangle && !FpgaEmitting)
+    // Keep the FPGA producer's hot code and stack separate from the software
+    // pixel loops, while retaining one source for edge and coverage math.
+    if (FpgaEmitting)
+        RenderPolygonScanlineImpl<true>(rp,y,prevIsShadowMask,stencilBuffer,
+            clipStartX,clipEndX,finalPassMinX,finalPassMaxX);
+    else
+        RenderPolygonScanlineImpl<false>(rp,y,prevIsShadowMask,stencilBuffer,
+            clipStartX,clipEndX,finalPassMinX,finalPassMaxX);
+}
+
+template<bool EmitFpga>
+void SoftRenderer3D::RenderPolygonScanlineImpl(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
+{
+    if (rp->PixelState.FlatRectangle && !EmitFpga)
     {
         if (rp->DepthTest == DepthTest_LessThan_FrontFacing)
             RenderFlatRectangleScanline<true>(rp, y, prevIsShadowMask, stencilBuffer,
@@ -2290,7 +2306,7 @@ void SoftRenderer3D::RenderPolygonScanline(
     s32 sr = interp_end->Interpolate(vrcur->TexCoords[0], vrnext->TexCoords[0]);
     s32 tr = interp_end->Interpolate(vrcur->TexCoords[1], vrnext->TexCoords[1]);
 
-    if (FpgaEmitting)
+    if constexpr (EmitFpga)
     {
         const auto clampX = [](s32 x) { return std::clamp(x, 0, 256); };
         s32 begin = clampX(xstart);

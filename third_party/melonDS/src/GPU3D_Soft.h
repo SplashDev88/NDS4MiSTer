@@ -2405,6 +2405,11 @@ private:
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
         u16* finalPassMinX, u16* finalPassMaxX);
+    template<bool EmitFpga>
+    void RenderPolygonScanlineImpl(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
     u32 BuildScanlinePolygonLists(int npolys);
     void RenderScanline(
         s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
