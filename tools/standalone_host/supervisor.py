@@ -587,6 +587,9 @@ def main():
         texture_choice = os.environ.get("NDS4MISTER_TEXTURE_HISTORY", "1")
         assert texture_choice in ("0", "1"), "Invalid texture-history choice"
         env["NDS4MISTER_TEXTURE_HISTORY"] = texture_choice
+        fpga3d_choice = os.environ.get("NDS4MISTER_FPGA3D", "1")
+        assert fpga3d_choice in ("0", "1"), "Invalid FPGA3D choice"
+        env["NDS4MISTER_FPGA3D"] = fpga3d_choice
         if os.environ.get("NDS4MISTER_RENDER_CACHE_STATS") == "1":
             env["NDS4MISTER_RENDER_CACHE_STATS"] = "1"
         stage("start verified helper")
@@ -609,6 +612,7 @@ def main():
         state["wc_mapping_present"] = "/dev/nds_mem_wc" in Path("/proc/%d/maps" % release_pid).read_text()
         assert state["wc_mapping_present"], "Renderer did not establish a write-combining mapping"
         assert actual_env.get("NDS4MISTER_TEXTURE_HISTORY") == texture_choice
+        assert actual_env.get("NDS4MISTER_FPGA3D") == fpga3d_choice
         state["renderer_environment"] = actual_env
         state["release"] = "v0.9.0-rc.14"
         write()

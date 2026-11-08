@@ -119,3 +119,5 @@ set_global_assignment -name MISC_FILE nds_save_profile_entries.hex
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_nitro_console_island.sv
 set_global_assignment -name SYSTEMVERILOG_FILE NDS4MiSTer.sv
 set_global_assignment -name SDC_FILE NDS4MiSTer.sdc
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_fpga3d.sv

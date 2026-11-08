@@ -23,6 +23,7 @@
 #include "GPU3D_Texcache.h"
 #include "NDS4MiSTer_FastDivide.h"
 #include "Platform.h"
+#include "../../../tools/fpga3d/transport.h"
 #include <algorithm>
 #include <thread>
 #include <atomic>
@@ -2460,6 +2461,9 @@ private:
     u8 UploadBanksAtStart[9] {};
     u32 UploadTextureMapping[4] {}, UploadPaletteMapping[8] {};
     bool UseTextureCache;
+    fpga3d::Frame FpgaFrame;
+    bool FpgaEmitting = false;
+    bool TryFpgaFrame();
     bool TextureHistoryEnabled=false;
     u64 TextureHistoryFrames=0;
 

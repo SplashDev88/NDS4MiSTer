@@ -2073,7 +2073,7 @@ void SoftRenderer3D::RenderPolygonScanline(
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
-    if (rp->PixelState.FlatRectangle)
+    if (rp->PixelState.FlatRectangle && !FpgaEmitting)
     {
         if (rp->DepthTest == DepthTest_LessThan_FrontFacing)
             RenderFlatRectangleScanline<true>(rp, y, prevIsShadowMask, stencilBuffer,
@@ -2230,6 +2230,44 @@ void SoftRenderer3D::RenderPolygonScanline(
 
     s32 sr = interp_end->Interpolate(vrcur->TexCoords[0], vrnext->TexCoords[0]);
     s32 tr = interp_end->Interpolate(vrcur->TexCoords[1], vrnext->TexCoords[1]);
+
+    if (FpgaEmitting)
+    {
+        const auto clampX = [](s32 x) { return std::clamp(x, 0, 256); };
+        s32 begin = clampX(xstart);
+        s32 finish = begin;
+        const s32 leftEnd = clampX(std::min(xstart + l_edgelen, xend + 1));
+        if (l_filledge) finish = std::max(finish, leftEnd);
+        else begin = finish = leftEnd;
+        finish = std::max(finish, clampX(std::min(xend-r_edgelen+1, xend+1)));
+        if (r_filledge) finish = std::max(finish, clampX(xend+1));
+        if (begin < finish && FpgaFrame.valid)
+        {
+            fpga3d::Span sp;
+            sp.first=begin;sp.end=finish;sp.origin=xstart;sp.width=xend+1-xstart;
+            sp.w0=wl;sp.w1=wr;sp.z0=zl;sp.z1=zr;
+            sp.left={rl,gl,bl,sl,tl};sp.right={rr,gr,br,sr,tr};
+            sp.flags=((wl==wr && !(wl&127))?fpga3d::Linear:0) |
+                (polygon->WBuffer?fpga3d::WBuffer:0) |
+                (rp->DepthTest==DepthTest_LessThan_FrontFacing?fpga3d::Front:0) |
+                ((rp->PolyAttr&16)?fpga3d::Back:0) |
+                ((rp->DepthTest==DepthTest_Equal_Z || rp->DepthTest==DepthTest_Equal_W)?fpga3d::Equal:0);
+            sp.alphaRef=GPU3D.RenderAlphaRef;
+            if(rp->PixelState.TextureEnabled)
+            {
+                sp.flags|=fpga3d::Textured;
+                sp.texture=FpgaFrame.textureOffsets.at(rp->PixelState.TexturePixels);
+                sp.shiftS=rp->PixelState.TextureWidthShift;
+                sp.shiftT=__builtin_ctz(static_cast<unsigned>(rp->PixelState.TextureHeight));
+                sp.wrap=rp->PixelState.TextureWrapFlags;
+            }
+            try { FpgaFrame.append(fpga3d::span(sp)); }
+            catch(const std::invalid_argument&) { FpgaFrame.valid=false; }
+        }
+        rp->XL = rp->SlopeL.Step();
+        rp->XR = rp->SlopeR.Step();
+        return;
+    }
 
     // in wireframe mode, there are special rules for equal Z (TODO)
 
@@ -4261,6 +4299,46 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
     return 224;
 }
 
+bool SoftRenderer3D::TryFpgaFrame()
+{
+    // Whole-frame admission occurs before any hardware submission. Software
+    // handles all unsupported effects without approximating or dropping them.
+    if (!FullFrameCompletion || !fpga3d::available() ||
+        (GPU3D.RenderDispCnt & ((1u<<4)|(1u<<5)|(1u<<7)|(1u<<14)))) return false;
+    FpgaFrame.reset();
+    for(int i=0;i<CurrentPolygonCount;i++)
+    {
+        const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
+        if(rp.PolyData->IsShadow || rp.PolyData->IsShadowMask || ps.Wireframe ||
+           ps.PolyAlpha!=31 || ps.BlendMode!=0) return false;
+        if(ps.TextureEnabled && (!ps.CachedModulate ||
+           !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight)))return false;
+    }
+    FpgaEmitting=true;
+    for(int y=0;y<192 && FpgaFrame.valid;y++)
+    {
+        const auto offset=FirstPixelOffset+y*ScanlineWidth;
+        FpgaFrame.append(fpga3d::clear(y,ColorBuffer[offset],DepthBuffer[offset],(AttrBuffer[offset]&16)!=0));
+        RenderScanline(y,PolygonList,ActivePolygonMask,PrevIsShadowMask,StencilBuffer,
+            0,256,FinalPassMinX,FinalPassMaxX);
+        FpgaFrame.append(fpga3d::flush(y));
+    }
+    FpgaEmitting=false;
+    if(FpgaFrame.valid && FpgaFrame.submit(ColorBuffer+FirstPixelOffset,ScanlineWidth))
+    {
+        // Hardware returned a full color plane; the next sparse clear must
+        // reset every potentially modified color/depth/attribute location.
+        std::fill_n(FinalPassMinX,VisibleScanlines,0);
+        std::fill_n(FinalPassMaxX,VisibleScanlines,256);
+        CancelRasterIfRequested();
+        return true;
+    }
+    // Command preparation advanced edge state. Reconstruct it before taking
+    // the original renderer path. No framebuffer was modified on failure.
+    SetupRenderPolygons(&GPU3D.RenderPolygonRAM[0],GPU3D.RenderNumPolygons);
+    return false;
+}
+
 void SoftRenderer3D::RenderPolygonsDualCore(
     bool threaded, Polygon** polygons, int npolys, bool overlapClear)
 {
@@ -4277,6 +4355,8 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         // A cancellation still consumes the posted job's completion. This
         // fence also protects the next frame, reset and publication.
         Platform::Semaphore_Wait(Sema_ParallelRasterDone);
+    if (TryFpgaFrame()) return;
+
     const bool antiAliasOnlyFinalPass =
         NDS4MiSTerUseAntiAliasOnlyFinalPass(GPU3D.RenderDispCnt);
     if (CancelRasterIfRequested()) return;
@@ -4623,6 +4703,7 @@ void SoftRenderer3D::FinalPassRows(
 void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npolys)
 {
     SetupRenderPolygons(polygons, npolys);
+    if (TryFpgaFrame()) return;
 
     if (CancelRasterIfRequested()) return;
 

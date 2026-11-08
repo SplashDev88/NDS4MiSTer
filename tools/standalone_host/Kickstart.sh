@@ -684,6 +684,7 @@ start_service()
         NDS4MISTER_RASTER_BAND_QUEUE=1 \
         NDS4MISTER_RASTER_X_PARTITION=1 \
         NDS4MISTER_DIRECT_PLANE_PUBLICATION=1 \
+        NDS4MISTER_FPGA3D=${NDS4MISTER_FPGA3D:-1} \
         NDS4MISTER_H3D_DISABLE_WC=${NDS4MISTER_H3D_DISABLE_WC:-0} \
         "$start_stop_daemon" -S -b -m -N -20 \
             -p "$pidfile" -x "$service" --
@@ -828,4 +829,3 @@ case "${1:-start}" in
         exit 2
         ;;
 esac
-
