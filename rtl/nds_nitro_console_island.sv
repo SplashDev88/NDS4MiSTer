@@ -1244,6 +1244,7 @@ wire [27:1] fb5_addr, fb6_addr;
 wire [63:0] fb5_din, fb6_dout;
 wire fb5_req, fb5_next, fb5_ready;
 wire fb6_req, fb6_valid, fb6_ready;
+wire fb6_pending;
 logic pf_tgl, pf_scr, pf_bank, pf_external;
 logic pf_slot, pf_ticket, split_frame_toggle;
 wire [3:0] pf_completed, lb_selected_slot;
@@ -2074,7 +2075,8 @@ always_comb begin
 `endif
 end
 
-ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(H3D_READBACK_BURST)) island_ddram (
+ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(H3D_READBACK_BURST),
+        .SCANOUT_READ_PRIORITY(1)) island_ddram (
     .*,
     .ch1_addr(27'd0),.ch1_dout(),.ch1_din(16'd0),
     .ch1_req(1'b0),.ch1_rnw(1'b1),.ch1_ready(),
@@ -2095,7 +2097,8 @@ ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(H3D_READBACK_BURST)) island_ddram (
     .ch5_addr(fb5_addr),.ch5_din(fb5_din),.ch5_req(fb5_req),
     .ch5_burst(FB_BURST),.ch5_next(fb5_next),.ch5_ready(fb5_ready),
     .ch6_addr(fb6_addr),.ch6_burst(FB_BURST),.ch6_req(fb6_req),
-    .ch6_dout(fb6_dout),.ch6_valid(fb6_valid),.ch6_ready(fb6_ready)
+    .ch6_dout(fb6_dout),.ch6_valid(fb6_valid),.ch6_ready(fb6_ready),
+    .ch6_pending(fb6_pending)
 );
 
 `ifdef NDS_HYBRID_3D
@@ -2128,6 +2131,7 @@ nds_fpga3d_port_mux fpga3d_control_mux (
 
 nds_h3d_ddr_fabric h3d_ddr_fabric (
     .clk(ddr_clk), .reset(h3d_fabric_reset),
+    .legacy_scanout_pending(fb6_pending),
     .legacy_read(DDRAM_RD), .legacy_write(DDRAM_WE),
     .legacy_burst_count(DDRAM_BURSTCNT), .legacy_address(DDRAM_ADDR),
     .legacy_write_data(DDRAM_DIN), .legacy_byte_enable(DDRAM_BE),

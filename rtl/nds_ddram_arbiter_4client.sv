@@ -57,10 +57,15 @@ module nds_ddram_arbiter_4client #(
     parameter bit VIDEO_PRIORITY_FAIR_CREDIT = 0,
     // Probe every enabled owner even while other clients advertise work.
     // Busy-dependent producers otherwise remain invisible indefinitely.
-    parameter integer FAIR_PROBE_INTERVAL = 0
+    parameter integer FAIR_PROBE_INTERVAL = 0,
+    parameter bit CPU_PRIORITY_ENABLE = 0
 ) (
     input  logic        clk,
     input  logic        reset,
+    // A fixed-deadline scanout may sit behind the busy-dependent legacy
+    // controller. Its urgency must be visible before that controller can
+    // advertise RD. Only affects the next grant; never preempts a command.
+    input  logic        cpu_priority,
 
     input  logic        cpu_rd,
     input  logic        cpu_we,
@@ -327,6 +332,10 @@ module nds_ddram_arbiter_4client #(
                     chosen_video_priority_resume_valid = 1'b1;
                     chosen_video_priority_resume_owner = normal_owner;
                 end
+            end
+            if (CPU_PRIORITY_ENABLE && cpu_priority) begin
+                chosen_owner = 2'd0;
+                chosen_sticky_count = 8'd0;
             end
             next_grant_state = {
                 chosen_video_priority_resume_valid,

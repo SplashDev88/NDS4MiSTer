@@ -20,7 +20,8 @@
 //
 
 module ddram #(parameter bit CART_WIDE_BANK = 0,
-               parameter bit CH3_READ_BURST = 0)
+               parameter bit CH3_READ_BURST = 0,
+               parameter bit SCANOUT_READ_PRIORITY = 0)
 (
 	input         DDRAM_CLK,
 	input         DDRAM_BUSY,
@@ -85,7 +86,8 @@ module ddram #(parameter bit CART_WIDE_BANK = 0,
 	input         ch6_req,
 	output [63:0] ch6_dout,
 	output        ch6_valid,  // one pulse per beat, qualifies ch6_dout
-	output        ch6_ready
+	output        ch6_ready,
+    output        ch6_pending
 );
 
 reg  [7:0] ram_burst;
@@ -152,6 +154,15 @@ wire p3 = ch_rq[3] | ch3_req;
 wire p4 = ch_rq[4] | ch4_req;
 wire p6 = ch_rq[6] | ch6_req;
 wire p5 = ch_rq[5] | ch5_req;
+// A cartridge refill acknowledges its requested word before its read-ahead
+// tail drains. The next cartridge request can therefore already be queued
+// at every idle edge. Scanout must not wait for a gap in that traffic: its
+// complete line has a fixed display deadline. Prioritize only a pending ch6
+// request, at transaction boundaries; all accepted bursts still drain intact.
+wire scanout_first = SCANOUT_READ_PRIORITY && p6;
+// The outer fabric must see this before our busy-dependent request can be
+// advertised. Retain it through the response so the whole fetch has priority.
+assign ch6_pending = p6 || state == 3'd4;
 
 // ch5_din is consumed at the burst grant (first beat) and on every accepted
 // beat that still has data behind it; the feeder advances one word per pulse
@@ -173,7 +184,7 @@ always @(posedge DDRAM_CLK) begin
 		ram_read  <= 0;
 
 		case(state)
-			0: if(p1) begin
+			0: if(p1 && !scanout_first) begin
 					ch_rq[1]         <= 0;
 					ram_altbank      <= 1'b0;
 					ch               <= 1;
@@ -193,7 +204,7 @@ always @(posedge DDRAM_CLK) begin
 						state         <= 1;
 					end
 				end
-			   else if(p2) begin
+			   else if(p2 && !scanout_first) begin
 					ch_rq[2]         <= 0;
 					ram_altbank      <= ch2_altbank;
 					ch               <= 2;
@@ -230,7 +241,7 @@ always @(posedge DDRAM_CLK) begin
 						state         <= 5;
 					end
 				end
-			   else if(p3) begin
+			   else if(p3 && !scanout_first) begin
 					// Same shape as ch4 below. The old arm cleared cached[2] on a
 					// write - a copy-paste from the ch2 block that invalidated the
 					// CARD ROM beat cache, not ch3's (ch3 has none; `cached` is
@@ -258,7 +269,7 @@ always @(posedge DDRAM_CLK) begin
 						end else state <= 1;
 					end
 				end
-			   else if(p4) begin
+			   else if(p4 && !scanout_first) begin
 					ch_rq[4]         <= 0;
 					ram_altbank      <= 1'b0;
 					ch               <= 4;

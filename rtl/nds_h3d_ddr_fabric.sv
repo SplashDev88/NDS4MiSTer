@@ -20,6 +20,7 @@ module nds_h3d_ddr_fabric #(
 ) (
     input  logic        clk,
     input  logic        reset,
+    input  tri0         legacy_scanout_pending,
 
     // Client 0: complete pre-H3D Nitro DDR controller.
     input  logic        legacy_read,
@@ -92,10 +93,12 @@ module nds_h3d_ddr_fabric #(
         .CLIENT_ENABLE_MASK(4'b1111),
         .VIDEO_PRIORITY_GRANT(1'b1),
         .VIDEO_PRIORITY_FAIR_CREDIT(1'b1),
-        .FAIR_PROBE_INTERVAL(8)
+        .FAIR_PROBE_INTERVAL(8),
+        .CPU_PRIORITY_ENABLE(1'b1)
     ) fabric (
         .clk,
         .reset,
+        .cpu_priority(legacy_scanout_pending),
 
         .cpu_rd(legacy_read),
         .cpu_we(legacy_write),
