@@ -20,7 +20,7 @@ module nds_fpga3d #(
  localparam [31:0] MAGIC=32'h31443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,FETCH,FETCH_WAIT,DECODE,CLEAR_LINE,
- PIXEL,PIXEL_WAIT,DIVIDE,ATTRS,DEPTH,TEX_ADDR,TEX_READ,TEX_WAIT,SHADE,NEXT_PIXEL,
+ PIXEL,PIXEL_WAIT,DIVIDE,ATTRS,DEPTH,TEX_ADDR,TEX_CACHE,TEX_READ,TEX_WAIT,SHADE,NEXT_PIXEL,
  FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE} state_t;
  state_t state;
  logic [31:0] cmd[0:31];
@@ -197,8 +197,13 @@ module nds_fpga3d #(
     DEPTH:if(pass_depth)begin if(cmd[2][2])state<=TEX_ADDR;else state<=SHADE;end else state<=NEXT_PIXEL;
     TEX_ADDR:begin
      tex_addr<=29'(cmd[13]>>3)+29'(tex_index>>1);tex_half<=tex_index[0];
-     if(cache_valid && cache_addr==29'(cmd[13]>>3)+29'(tex_index>>1))begin
-      texel<=tex_index[0]?cache_data[63:32]:cache_data[31:0];state<=SHADE;
+     state<=TEX_CACHE;
+    end
+    TEX_CACHE:begin
+     // Separate wrapped-coordinate/address arithmetic from the cache match
+     // and data mux. This path must meet the shell's 60 MHz clock.
+     if(cache_valid && cache_addr==tex_addr)begin
+      texel<=tex_half?cache_data[63:32]:cache_data[31:0];state<=SHADE;
      end else state<=TEX_READ;
     end
     TEX_READ:if(!busy)state<=TEX_WAIT;
