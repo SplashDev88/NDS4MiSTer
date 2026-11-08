@@ -2,6 +2,13 @@
 
 Base: rc.14 commit `1cb66a5727549a5185d8a7460af18180eadb452e`.
 This is a private experimental branch. The released core is untouched.
+The FPGA project retains the exact QSF configuration from RC14's shipped
+`components/dv1-yc-fpga-inputs.tar.gz` (source 4554f915). Repository defaults
+omit three overrides that the released binary uses: GX SWAP retirement,
+compact HBlank run storage, and GX busy status. Restoring those settings is
+required to preserve the released geometry/transport behavior; source defaults
+alone are not a faithful rebuild of the shipped bitstream. The separate source
+archive comparison records the remaining accelerator and optional-source changes.
 
 The target is hardware scanline rasterization with the existing ARM geometry,
 texture decoding and 2D composition. The expanded F3D2 candidate supports opaque and translucent modulated or
@@ -24,7 +31,9 @@ holds the immutable color, offset, shift, and 34 density-table entries. Its nine
 exact perspective divider feeds a pixel pipeline, with one pixel per clock on
 a texture-cache hit. A 512-entry direct-mapped texel-pair cache is invalidated
 for every frame; a miss freezes the pipeline until its DDR response arrives.
-Spans drain before the next descriptor can change interpolation state. The baseline has 35,094/41,910 ALMs and
+Texture sizes and masks are latched once per descriptor to shorten the
+coordinate-to-address timing path. Spans drain before the next descriptor
+can change interpolation state. The baseline has 35,094/41,910 ALMs and
 538/553 M10Ks. Actual fitting and hardware measurements are required; simulator
 cycle rates alone do not establish full-speed gameplay.
 

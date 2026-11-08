@@ -55,7 +55,7 @@ module nds_fpga3d #(
  logic [31:0] p_z[0:12];
  logic [28:0] p_addr[11:12];
  logic p_half[11:12],p_pass[11:12];
- logic [15:0] p_ts,p_tt;
+ logic [15:0] p_ts,p_tt,tex_size_s,tex_size_t,tex_mask_s,tex_mask_t;
  logic [19:0] p_index;
  logic [31:0] p_texel,p_color;
  logic [12:0] p_mr,p_mg,p_mb;
@@ -70,11 +70,10 @@ module nds_fpga3d #(
  integer i;
 
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
-    input logic [3:0] shift,input logic repeat_mode,input logic flip_mode);
+    input logic [15:0] size,mask,input logic repeat_mode,input logic flip_mode);
    logic signed [15:0] coord;
-   logic [15:0] size,mask;
    begin
-    coord=value>>>4;size=16'd1<<shift;mask=size-1'b1;
+    coord=value>>>4;
     if(repeat_mode)texture_coord=(flip_mode && ((coord&size)!=0))?mask-(coord&mask):(coord&mask);
     else if(coord<0)texture_coord=0;
     else if(coord>$signed(mask))texture_coord=mask;
@@ -95,8 +94,8 @@ module nds_fpga3d #(
    p_interpolate_z=base_value+32'(product_value>>>8);end
  endfunction
  always_comb begin
-  p_ts=texture_coord(p_av[10][3][15:0],cmd[14][3:0],cmd[14][8],cmd[14][10]);
-  p_tt=texture_coord(p_av[10][4][15:0],cmd[14][7:4],cmd[14][9],cmd[14][11]);
+  p_ts=texture_coord(p_av[10][3][15:0],tex_size_s,tex_mask_s,cmd[14][8],cmd[14][10]);
+  p_tt=texture_coord(p_av[10][4][15:0],tex_size_t,tex_mask_t,cmd[14][9],cmd[14][11]);
   p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
   p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:9]};
   p_texel=p_override ? (p_half[12]?p_override_data[63:32]:p_override_data[31:0]) :
@@ -237,6 +236,8 @@ module nds_fpga3d #(
           ({1'b0,cmd[13]}+(33'd4<<({1'b0,cmd[14][3:0]}+{1'b0,cmd[14][7:4]})))<=33'h03fe00000)))begin
       x<=cmd[1][8:0];last<=cmd[1][24:16];span_width<=cmd[3][9:0];dx<=cmd[3][24:16];
       w0<=cmd[4][15:0];w1<=cmd[4][31:16];
+      tex_size_s<=16'd1<<cmd[14][3:0];tex_mask_s<=(16'd1<<cmd[14][3:0])-16'd1;
+      tex_size_t<=16'd1<<cmd[14][7:4];tex_mask_t<=(16'd1<<cmd[14][7:4])-16'd1;
       zlinear<=$signed(cmd[5]);zstep<=$signed(cmd[6]);zrem<=cmd[7][12:0];zrstep<=cmd[7][28:16];
       for(i=0;i<5;i=i+1)begin
        av[i]<={{16{cmd[8+i][15]}},cmd[8+i][15:0]};
