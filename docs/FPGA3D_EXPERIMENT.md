@@ -201,3 +201,13 @@ native fallback pixels, changes each vertex/render input category, updates
 texture bytes without changing the binding, and interrupts production before
 recovery. Hardware FPS and HDMI checks are required before qualifying this
 candidate. The commercial-game 60 FPS goal is not yet met.
+
+
+The first logical-span cache (C28) measured 24.09 FPS on that map and was
+rejected as a performance improvement. It copied too much command history.
+C29 instead caches the FPGA-ready 64-byte descriptors and keeps only the
+current packed scanline in the live producer. Cache hits bypass descriptor
+packing. Batch fixture generation retains the readable 128-byte logical ABI.
+The physical descriptor budget, immutable prefix and completion fences are
+unchanged. Tests compare logical, packed and actual RTL memory paths,
+including unknown opcodes, cancellation and cumulative capacity exhaustion.

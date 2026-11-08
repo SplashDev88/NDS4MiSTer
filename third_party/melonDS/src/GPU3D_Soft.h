@@ -2476,6 +2476,7 @@ private:
     {
         std::array<u32,128> Key {};
         std::vector<fpga3d::Command> Commands;
+        std::vector<fpga3d::PackedCommand> PackedCommands;
         std::vector<u16> RowEnds;
         s32 FirstLine=0, EndLine=0;
         bool Ready=false, Hit=false, Record=false;

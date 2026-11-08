@@ -4401,7 +4401,7 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
     // Bound retained capacities as well as this frame's logical contents.
     // A changing workload cannot accumulate a large history per polygon slot.
     size_t capacity=0;
-    for (const auto& c:FpgaSpanCache) capacity+=c.Commands.capacity();
+    for (const auto& c:FpgaSpanCache) capacity+=c.Commands.capacity()+c.PackedCommands.capacity();
     if (capacity>2*fpga3d::MaxCommands) FpgaSpanCache.clear();
     FpgaSpanCache.resize(CurrentPolygonCount);
     for (int i=0;i<CurrentPolygonCount;i++)
@@ -4417,6 +4417,7 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
         std::array<u32,128> key {};
         size_t k=0;
         const auto add=[&](u32 v){key[k++]=v;};
+        add(FpgaFrame.recyclePublished);
         add(GPU3D.RenderDispCnt);add(GPU3D.RenderAlphaRef);
         add(p.NumVertices);add(p.Attr);add(p.TexParam);add(p.TexPalette);
         add(p.WBuffer);add(p.FacingView);add(p.Type);
@@ -4445,7 +4446,7 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
         }
         else
         {
-            c.Key=key;c.Commands.clear();c.RowEnds.clear();
+            c.Key=key;c.Commands.clear();c.PackedCommands.clear();c.RowEnds.clear();
             c.FirstLine=first;c.EndLine=end;c.Ready=false;
             c.Record=first<end;
         }
@@ -4464,11 +4465,15 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
         const unsigned begin=row?c->RowEnds[row-1]:0;
         const unsigned end=c->RowEnds[row];
         prevIsShadowMask=false;
-        for (unsigned i=begin;i<end;i++) FpgaFrame.append(c->Commands[i]);
+        if (FpgaFrame.recyclePublished)
+            for (unsigned i=begin;i<end;i++) FpgaFrame.appendPacked(c->PackedCommands[i]);
+        else
+            for (unsigned i=begin;i<end;i++) FpgaFrame.append(c->Commands[i]);
         FpgaSpanCacheCommands+=end-begin;
         return;
     }
-    const size_t begin=FpgaFrame.commands.size();
+    const size_t begin=FpgaFrame.recyclePublished?
+        FpgaFrame.packedCommands.size():FpgaFrame.commands.size();
     RenderPolygonScanlineImpl<true>(rp,y,prevIsShadowMask,stencilBuffer,
         clipStartX,clipEndX,finalPassMinX,finalPassMaxX);
     if (c && c->Record)
@@ -4478,9 +4483,18 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
             c->Record=c->Ready=false;
             return;
         }
-        c->Commands.insert(c->Commands.end(),FpgaFrame.commands.begin()+begin,
-            FpgaFrame.commands.end());
-        c->RowEnds.push_back(c->Commands.size());
+        if (FpgaFrame.recyclePublished)
+        {
+            c->PackedCommands.insert(c->PackedCommands.end(),FpgaFrame.packedCommands.begin()+begin,
+                FpgaFrame.packedCommands.end());
+            c->RowEnds.push_back(c->PackedCommands.size());
+        }
+        else
+        {
+            c->Commands.insert(c->Commands.end(),FpgaFrame.commands.begin()+begin,
+                FpgaFrame.commands.end());
+            c->RowEnds.push_back(c->Commands.size());
+        }
         // A sealed entry is independent of transport completion. An early
         // producer stop can never turn a partial polygon into a future hit.
         c->Ready=y+1==c->EndLine;
@@ -4530,7 +4544,6 @@ bool SoftRenderer3D::TryFpgaFrame()
             return false;
         }
     }
-    PrepareFpgaSpanCache();
     if(GPU3D.RenderDispCnt & (1u<<7))
     {
         const u32 raw=GPU3D.RenderFogColor;
@@ -4539,6 +4552,7 @@ bool SoftRenderer3D::TryFpgaFrame()
         FpgaFrame.append(fpga3d::fog(color,GPU3D.RenderFogOffset,GPU3D.RenderFogShift,GPU3D.RenderFogDensityTable));
     }
     FpgaFrame.startStream();
+    PrepareFpgaSpanCache();
     FpgaEmitting=true;
     for(int y=0;y<192 && FpgaFrame.valid && !FpgaFrame.transportError;y++)
     {

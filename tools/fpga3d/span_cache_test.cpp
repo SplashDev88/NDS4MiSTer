@@ -5,7 +5,7 @@
 #include "GPU_Soft.h"
 #include "GPU3D_Soft.h"
 
-static unsigned currentVariant=0,currentStep=0;
+static unsigned currentVariant=0,currentStep=0;static bool currentPacked=false;
 static SoftRenderer3D& soft(NDS& n) {
  return *static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n.GetRenderer()).Rend3D.get());
 }
@@ -46,16 +46,31 @@ static void change(NDS& n,unsigned kind) {
 }
 int main()try {
  std::vector<uint32_t> control(0x100000/4),output(0x300000/4);
- auto emit=[&](NDS& n,bool early=false) {
+ auto emit=[&](NDS& n,bool early=false,bool packed=false) {
   std::fill(control.begin(),control.end(),0);control[0]=0x31443348;control[2]=19;
   control[(fpga3d::Mailbox-0x3fc00000+24)/4]=fpga3d::Magic;
   control[(fpga3d::Mailbox-0x3fc00000+28)/4]=19;
   fpga3d::poisonedSession=0;soft(n).FullFrameCompletion=true;
-  soft(n).FpgaFrame.deadlineMs=early?0:1;
-  fpga3d::bind(control.data(),output.data(),true,early);
+  soft(n).FpgaFrame.deadlineMs=early?0:packed?100:1;
+  fpga3d::bind(control.data(),output.data(),true,early || packed);
   render(n);fpga3d::bind(nullptr,nullptr,false);
  };
+ auto commands=[&](NDS& n) {
+  const auto& f=soft(n).FpgaFrame;std::vector<fpga3d::PackedCommand> result;
+  if(!f.recyclePublished)for(const auto& c:f.commands)result.push_back(fpga3d::pack(c));
+  else {
+   const uint32_t* p=f.commandBase==fpga3d::Commands?
+       control.data()+(f.commandBase-0x3fc00000)/4:
+       output.data()+(f.commandBase-0x3fd00000)/4;
+   for(size_t i=0;i<f.published;i++) {
+    fpga3d::PackedCommand c;std::copy_n(p+i*16,16,c.begin());result.push_back(c);
+   }
+  }
+  return result;
+ };
  unsigned comparisons=0;
+ for(bool packed:{false,true}) {
+ currentPacked=packed;
  for(unsigned variant:{0u,8u,16u,24u,16384u|8u,16384u|24u}) {
   currentVariant=variant;
   auto ref=machine(true),test=machine(true);
@@ -65,9 +80,10 @@ int main()try {
   for(unsigned step=0;step<27;step++) {
    currentStep=step;
    if(step>=2) {change(*ref,step-2);change(*test,step-2);}
-   emit(*ref);emit(*test);
+   emit(*ref);const auto expected=commands(*ref);emit(*test,false,packed);
    require(soft(*ref).FpgaFrame.valid==soft(*test).FpgaFrame.valid,"cache changed span admission");
-   require(soft(*ref).FpgaFrame.commands==soft(*test).FpgaFrame.commands,"cached commands differ from cold producer");
+   require(expected==commands(*test),"cached physical commands differ from cold producer");
+   if(!packed)require(soft(*ref).FpgaFrame.commands==soft(*test).FpgaFrame.commands,"cached logical commands differ from cold producer");
    require(soft(*ref).FpgaFrame.textures==soft(*test).FpgaFrame.textures,"cached frame reused stale texture contents");
    for(unsigned y=0;y<192;y++)require(!std::memcmp(ref->GetRenderer().Get3DScanline(y),test->GetRenderer().Get3DScanline(y),1024),"cached timeout fallback changed pixels");
    if(step==1)require(soft(*test).FpgaFrame.valid && soft(*test).FpgaSpanCacheHits==10 && soft(*test).FpgaSpanCacheCommands>0,"identical frame did not hit cache");
@@ -78,10 +94,11 @@ int main()try {
   // recover into a complete frame. Partial entries must never be reused.
   soft(*test).FpgaSpanCache.clear();emit(*test,true);
   require(soft(*test).FpgaFrame.transportError,"early timeout missing");
-  emit(*test);emit(*ref);
-  require(soft(*ref).FpgaFrame.commands==soft(*test).FpgaFrame.commands,"partial cache survived early timeout");
+  emit(*ref);const auto expected=commands(*ref);emit(*test,false,packed);
+  require(expected==commands(*test),"partial cache survived early timeout");
   comparisons++;
  }
- std::printf("PASS %u cold/cached command, fresh-texture and native-fallback comparisons; all vertex/render input invalidations and early producer timeouts\n",comparisons);
+ }
+ std::printf("PASS %u cold/cached logical and streamed physical command, fresh-texture and native-fallback comparisons; all vertex/render input invalidations and early producer timeouts\n",comparisons);
  return 0;
-}catch(const std::exception& e){std::fprintf(stderr,"FAIL variant=%u step=%u %s\n",currentVariant,currentStep,e.what());return 1;}
+}catch(const std::exception& e){std::fprintf(stderr,"FAIL packed=%u variant=%u step=%u %s\n",currentPacked,currentVariant,currentStep,e.what());return 1;}

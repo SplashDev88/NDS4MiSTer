@@ -27,7 +27,7 @@ int main(int argc,char** argv)try{
    for(int i=0;i<2000;i++)progress();
    require(sim.word(Mailbox+16)!=f.sequence,"transport prematurely completed");
    f.append(clear(y,0x1f000000+y,0xffffff));f.append(flush(y));f.publish();
-   require(f.commands.empty() && f.commandCount()==2*(y+1),"CPU row buffer retained history or lost cumulative count");
+   require(f.commands.empty() && f.packedCommands.empty() && f.commandCount()==2*(y+1),"CPU row buffer retained history or lost cumulative count");
   }
   require(f.submit(dst.data()+8,258),"streamed transport submission");
   require(!f.active && !f.transportError,"transport ownership remained active");
@@ -88,7 +88,7 @@ int main(int argc,char** argv)try{
  f.reset();f.stencil=stencil.data();f.startStream();sim.guardedBase=f.commandBase;sim.guardedCount=0;
  f.append(clear(0,0,0xffffff));Span p;p.first=0;p.end=1;p.width=1;p.alphaRef=31;
  for(unsigned i=0;i<MaxCommands;i++)f.append(span(p));
- require(!f.valid && f.commands.size()==MaxCommands,"stream capacity not bounded");
+ require(!f.valid && f.commandCount()==MaxCommands,"stream capacity not bounded");
  require(!f.submit(dst.data()+8,258) && !f.active && failedFrames==failures,"capacity cancel did not drain cleanly");
  for(auto w:dst)require(w==0xa1b2c3d4,"capacity cancel copied partial frame");
  require(stencil==preservedStencil,"capacity cancel copied stencil");

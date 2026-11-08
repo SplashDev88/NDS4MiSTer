@@ -59,18 +59,22 @@ inline void copyOutput(uint32_t* destination,size_t stride){
 // F3D5 permits an immutable producer prefix. WC command storage follows the
 // immutable decoded textures in the existing WC mapping; Device storage is
 // retained for batch callers without a WC mapping. No overlapping aliases.
-inline void uploadCommand(volatile uint32_t* target,const Command& c,bool wc){
- const auto packed=pack(c);
+inline void uploadPackedCommand(volatile uint32_t* target,const PackedCommand& packed,bool wc){
  if(wc)std::memcpy(const_cast<uint32_t*>(target),packed.data(),sizeof(packed));
  else {
-  const unsigned count=commandWords(c);unsigned i=0;
+  const unsigned opcode=packed[0];
+  const unsigned count=opcode==1?7:opcode==3 || opcode==5?2:opcode==4?13:16;unsigned i=0;
   for(;i+1<count;i+=2)
    *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(packed[i])|(uint64_t(packed[i+1])<<32);
   if(i<count)target[i]=packed[i];
  }
 }
+inline void uploadCommand(volatile uint32_t* target,const Command& c,bool wc){
+ uploadPackedCommand(target,pack(c),wc);
+}
 struct Frame {
  std::vector<Command> commands;
+ std::vector<PackedCommand> packedCommands;
  std::vector<uint32_t> textures;
  std::map<const uint32_t*,uint32_t> textureOffsets;
  bool valid=true,active=false,transportError=false,recyclePublished=false;
@@ -84,11 +88,19 @@ struct Frame {
  void reset(){
   // An abandoned producer must never reuse bytes still owned by the FPGA.
   if(active){poisonedSession=frameSession;++failedFrames;}
-  commands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
+  commands.clear();packedCommands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
   published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;
  }
- size_t commandCount()const{return (recyclePublished?published:0)+commands.size();}
- void append(const Command& c){if(commandCount()>=commandCapacity)valid=false;else commands.push_back(c);}
+ size_t commandCount()const{return recyclePublished?published+packedCommands.size():commands.size();}
+ void append(const Command& c){
+  if(commandCount()>=commandCapacity)valid=false;
+  else if(recyclePublished)packedCommands.push_back(pack(c));
+  else commands.push_back(c);
+ }
+ void appendPacked(const PackedCommand& c){
+  if(!recyclePublished || commandCount()>=commandCapacity)valid=false;
+  else packedCommands.push_back(c);
+ }
  bool addTexture(const uint32_t* pixels,size_t count){
   if(active)return false;
   if(textureOffsets.count(pixels))return true;
@@ -125,7 +137,13 @@ struct Frame {
  }
  // Native fixture generation keeps batch behavior; live WC rendering starts
  // only after feature/texture admission and before scanline command emission.
- void startStream(){if(writeCombined && streaming && start())recyclePublished=true;}
+ void startStream(){
+  if(writeCombined && streaming && start()){
+   recyclePublished=true;
+   for(const auto& c:commands)packedCommands.push_back(pack(c));
+   commands.clear();
+  }
+ }
  bool ownershipHealthy(){
   if(control[2]==frameSession && control[0]==0x31443348 && std::chrono::steady_clock::now()<=deadline)return true;
   poisonedSession=frameSession;transportError=true;active=false;++failedFrames;return false;
@@ -139,8 +157,8 @@ struct Frame {
    // Published descriptors already have immutable FPGA-owned storage. Reuse
    // the small CPU row buffer instead of carrying a 1 MiB logical command
    // history through the shared Cortex-A9 cache on every frame.
-   for(size_t i=0;i<commands.size();i++)uploadCommand(target+(published+i)*16,commands[i],writeCombined && commandBase!=Commands);
-   published+=commands.size();commands.clear();
+   for(size_t i=0;i<packedCommands.size();i++)uploadPackedCommand(target+(published+i)*16,packedCommands[i],writeCombined && commandBase!=Commands);
+   published+=packedCommands.size();packedCommands.clear();
   }else{
    for(;published<commands.size();published++)uploadCommand(target+published*16,commands[published],writeCombined && commandBase!=Commands);
   }

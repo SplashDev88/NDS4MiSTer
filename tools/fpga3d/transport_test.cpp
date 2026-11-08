@@ -25,6 +25,17 @@ int main(){
    check(buffer[i]==expected);
   }
  }
+ // Both logical and already-packed single-command paths must preserve the
+ // invalid-opcode marker and the same partial Device-word write contract.
+ for(bool wc:{false,true})for(const auto& c:cmds){
+  alignas(8) uint32_t a[20],b[20];std::fill_n(a,20,guard);std::fill_n(b,20,guard);
+  const auto packed=pack(c);
+  uploadCommand(a+2,c,wc);uploadPackedCommand(b+2,packed,wc);
+  for(unsigned i=0;i<20;i++){
+   const uint32_t expected=i>=2 && i<2+(wc?16:commandWords(c))?packed[i-2]:guard;
+   check(a[i]==expected && b[i]==expected);
+  }
+ }
  std::vector<uint32_t> source(256*192),dest(258*192+16,guard),texture(8192),target(8200,guard);
  for(auto& w:source)w=rng();for(auto& w:texture)w=rng();
  for(bool wc:{false,true}){
