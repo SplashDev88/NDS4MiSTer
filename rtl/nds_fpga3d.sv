@@ -52,10 +52,14 @@ module nds_fpga3d #(
  wire [4:0] fetch_limit=page_commands>16?5'd16:page_commands[4:0];
  wire [4:0] fetch_commands=count-index>fetch_limit?fetch_limit:5'(count-index);
  wire [7:0] fetch_words={fetch_commands,3'b0};
+ // One explicitly multiplexed synchronous read port is required for Quartus
+ // 17 to infer M10K RAM instead of 8192 flip-flops plus an asynchronous mux.
+ wire cache_read_en=state==CMD_LOAD_FIRST || (state==CMD_LOAD && beat<7);
+ wire [6:0] cache_read_addr=state==CMD_LOAD_FIRST?{cache_slot,3'd0}:
+                            {cache_slot,3'd0}+7'(beat)+7'd1;
  always_ff @(posedge clk)begin
   if(state==FETCH_WAIT && dout_ready)command_cache[cache_fill_beat]<=dout;
-  if(state==CMD_LOAD_FIRST)command_cache_q<=command_cache[{cache_slot,3'd0}];
-  else if(state==CMD_LOAD && beat<7)command_cache_q<=command_cache[{cache_slot,3'd0}+7'(beat)+7'd1];
+  if(cache_read_en)command_cache_q<=command_cache[cache_read_addr];
  end
  logic [8:0] x,last,dx,line_y,flush_x;
  logic [9:0] span_width;
@@ -95,10 +99,10 @@ module nds_fpga3d #(
  logic [63:0] p_override_data;
  logic [8:0] p_clear_index;
  logic [2:0] tex_beat;
- (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:511];
- (* ramstyle = "M10K" *) logic [20:0] p_cache_tags[0:63];
+ (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:1023];
+ (* ramstyle = "M10K" *) logic [19:0] p_cache_tags[0:127];
  logic [63:0] p_cache_q;
- logic [20:0] p_tag_q;
+ logic [19:0] p_tag_q;
  integer i;
 
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
@@ -129,7 +133,7 @@ module nds_fpga3d #(
   p_ts=texture_coord(p_av[10][3][15:0],tex_size_s,tex_mask_s,cmd[14][8],cmd[14][10]);
   p_tt=texture_coord(p_av[10][4][15:0],tex_size_t,tex_mask_t,cmd[14][9],cmd[14][11]);
   p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
-  p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:9]};
+  p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:10]};
   p_texel=p_override ? (p_half[12]?p_override_data[63:32]:p_override_data[31:0]) :
                        (p_half[12]?p_cache_q[63:32]:p_cache_q[31:0]);
   p_mr=({1'b0,p_texel[5:0]}+7'd1)*({1'b0,p_av[12][0][8:3]}+7'd1)-13'd1;
@@ -143,14 +147,14 @@ module nds_fpga3d #(
   p_ce=state==PIPE_RUN && !reset && enable && !p_miss && !p_bad_alpha;
  end
  always_ff @(posedge clk)begin
-  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index[5:0]]<=0;
+  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index[6:0]]<=0;
   else if(state==TEX_WAIT && dout_ready)begin
-   if(tex_beat==7)p_cache_tags[tex_addr[8:3]]<={1'b1,tex_addr[28:9]};
-   p_cache_data[{tex_addr[8:3],tex_beat}]<=dout;
+   if(tex_beat==7)p_cache_tags[tex_addr[9:3]]<={1'b1,tex_addr[28:10]};
+   p_cache_data[{tex_addr[9:3],tex_beat}]<=dout;
   end
   if(p_ce)begin
-   p_cache_q<=p_cache_data[p_addr[11][8:0]];
-   p_tag_q<=p_cache_tags[p_addr[11][8:3]];
+   p_cache_q<=p_cache_data[p_addr[11][9:0]];
+   p_tag_q<=p_cache_tags[p_addr[11][9:3]];
   end
   if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
   else begin
@@ -250,7 +254,7 @@ module nds_fpga3d #(
      if((!param_device && !param_wc) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
-    CACHE_CLEAR:if(p_clear_index==63)state<=AVAILABLE;else p_clear_index<=p_clear_index+1'b1;
+    CACHE_CLEAR:if(p_clear_index==127)state<=AVAILABLE;else p_clear_index<=p_clear_index+1'b1;
     AVAILABLE:begin
      if(index<count)state<=cached_commands!=0?CMD_LOAD_FIRST:FETCH;
      else if(producer_final)begin

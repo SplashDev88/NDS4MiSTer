@@ -455,4 +455,4 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_osd_raster.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_rotate_read.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_yc.sv
 
-# FPGA3D C14 uses C8 synchronization settings; visual hardware qualification required.
+# FPGA3D C15 uses C8 synchronization settings; visual hardware qualification required.

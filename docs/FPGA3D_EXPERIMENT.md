@@ -54,7 +54,7 @@ is the measure used for displayed-frame throughput.
 ## Raster pipeline and shared DDR
 
 The exact nine-stage perspective divider feeds the pixel pipeline. Early depth
-checks on both layers reject hidden fragments before texture access. A 4 KiB
+checks on both layers reject hidden fragments before texture access. An 8 KiB
 cache stores 64-byte texture lines, fetched with eight-beat DDR reads and
 invalidated for each frame. Descriptor prefetch is bounded by the CPU's
 published prefix. Spans drain before their interpolation state can change.
@@ -95,3 +95,8 @@ visual game startup and gameplay, and measured completed-frame publication.
 Simulator cycle rates alone do not establish full-speed gameplay. The inherited
 whole-core timing failures remain a limitation; this experiment does not
 claim general timing closure or full-speed compatibility with every DS game.
+
+C14 synthesis expanded the descriptor prefetch RAM into 8,192 flip-flops and
+failed device capacity. C15 uses one explicitly multiplexed synchronous RAM
+read port, and doubles texture cache capacity to 8 KiB. Both changes require
+fresh synthesis, pixel comparisons, and hardware qualification.
