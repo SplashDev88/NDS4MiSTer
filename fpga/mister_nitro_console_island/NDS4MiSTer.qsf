@@ -455,8 +455,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_osd_raster.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_rotate_read.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_yc.sv
 
-# Private isolated SWAP busy experiment; source defaults remain off.
-set_global_assignment -name VERILOG_MACRO "NDS_GX_SWAP_RETIREMENT_EXPERIMENT=1"
+# FPGA3D C13 diagnostic: isolate retirement/busy compatibility; keep compact HBlank storage.
 set_global_assignment -name VERILOG_MACRO "NDS_HBLANK_RUN_QUEUE_EXPERIMENT=1"
-set_global_assignment -name VERILOG_MACRO "NDS_GX_BUSY_STATUS_EXPERIMENT=1"
 
+set_global_assignment -name VERILOG_MACRO "NDS_ARM9_PC_PROFILE=1"

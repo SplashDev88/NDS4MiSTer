@@ -21,8 +21,8 @@ iverilog -g2012 -s tb_nds_h3d_swap_retirement -o "$tmp/cdc" \
     "$root/rtl/nds_gx_fifo_packet_frontend.sv" "$root/rtl/nds_h3d_frame_record_cdc.sv" \
     "$root/rtl/tb_nds_h3d_swap_retirement.sv"
 vvp "$tmp/cdc"
-# Check both preprocessed configurations. This FPGA3D branch retains the
-# enabled settings from the shipped RC14 FPGA source archive.
+# Check both preprocessed configurations independently of the selected build.
+# The frozen input manifest records the diagnostic macro selection.
 python3 - "$root" <<'PYCODE'
 from pathlib import Path
 import re
@@ -41,6 +41,5 @@ for enabled in (0, 1):
     assert ".lcd_vblank(h3d_lcd_vblank)" in s
     assert ".vblank_out(h3d_lcd_vblank)" in s
 qsf = (root / "fpga/mister_nitro_console_island/NDS4MiSTer.qsf").read_text()
-assert re.search(r'^\s*set_global_assignment -name VERILOG_MACRO "NDS_GX_SWAP_RETIREMENT_EXPERIMENT=1"', qsf, re.M)
-print("PASS: shipped RC14 SWAP retirement setting retained; both configurations use native VBlank")
+print("PASS: both retirement configurations use native VBlank")
 PYCODE

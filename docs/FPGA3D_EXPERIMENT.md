@@ -95,3 +95,13 @@ form `destination + ((source - destination) * weight >> shift)`. An exhaustive
 RTL test covers 663,552 channel combinations. Secondary color and primary
 attributes each use one scanline RAM; the primary color remains banked for
 64-bit burst output. Timing still requires a fresh four-corner hardware build.
+
+C13 compatibility isolation: C12 passed four-corner accelerator timing, 238
+synthetic hardware frames, and 81 native game-frame pixel comparisons, but
+both NSMB and Mario Kart displayed black screens while source-frame counters
+continued. NSMB was also black with acceleration explicitly disabled. The
+same C12 helper displayed NSMB correctly with the original released FPGA.
+This diagnostic build retains compact HBlank storage, disables the two GX
+retirement/busy overrides, and exposes existing ARM9 PC telemetry. These are
+isolation settings; this candidate is not qualified until visual gameplay
+and actual published-frame measurements pass. Raster RTL is unchanged from C12.
