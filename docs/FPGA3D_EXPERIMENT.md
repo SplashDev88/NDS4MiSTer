@@ -4,13 +4,23 @@ Base: rc.14 commit `1cb66a5727549a5185d8a7460af18180eadb452e`.
 This is a private experimental branch. The released core is untouched.
 
 The target is hardware scanline rasterization with the existing ARM geometry,
-texture decoding and 2D composition. Initial compatibility is deliberately
-bounded: opaque modulated or untextured polygons, binary texture alpha,
-Z/W buffering, perspective and linear interpolation. Unsupported frames must
-fall back in their entirety before submitting hardware work. Geometry, shadows,
-translucency, antialiasing, fog and edge marking are not claimed as FPGA features.
+texture decoding and 2D composition. The expanded F3D2 candidate supports opaque and translucent modulated or
+untextured polygons, partial texture alpha, Z/W buffering, perspective and
+linear interpolation, two-layer antialiasing, and fog. Unsupported frames
+fall back in their entirety before submitting hardware work. Geometry, shadow
+polygons, toon/decal modes, wireframe, edge marking, and bitmap clear remain
+outside this accelerator. Capacity checks also retain whole-frame fallback.
+The previously qualified F3D1 beta is preserved in a separate worktree.
 
-The rasterizer uses scanline color/depth RAM and shared DDR. Its nine-stage
+The rasterizer uses two layers of scanline color/depth/attribute RAM and
+shared DDR. Opaque edge coverage advances only after passing depth and alpha
+tests. Translucent blending checks polygon IDs independently on both layers,
+with the native fog-flag conjunction and optional depth writes. Fog processes
+both layers before antialiasing and preserves 32-bit depth-shift wraparound,
+table interpolation, density 127-to-128 promotion, and alpha-only mode.
+The F3D2 mailbox magic prevents mixing this helper with the earlier F3D1 core.
+The scanline clear descriptor carries render flags; a leading fog descriptor
+holds the immutable color, offset, shift, and 34 density-table entries. Its nine-stage
 exact perspective divider feeds a pixel pipeline, with one pixel per clock on
 a texture-cache hit. A 512-entry direct-mapped texel-pair cache is invalidated
 for every frame; a miss freezes the pipeline until its DDR response arrives.

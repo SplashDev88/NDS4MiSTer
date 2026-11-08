@@ -167,9 +167,15 @@ int main(int argc,char** argv){try{
  sim.run({},++seq,1);
  auto extent=span(Span{});extent[2]|=Textured;extent[13]=0x3fd40000;extent[14]=10|(10<<4);
  sim.run({clear(0,0,0xffffff),extent},++seq,1);
- // Unsupported texel alpha must fail without publishing a completed image.
+ // Fog requires a leading configuration, validates the shift, and may
+ // never reuse configuration implicitly from an earlier submitted frame.
+ sim.run({clear(0,0,0xffffff,false,0,128)},++seq,1);
+ std::array<uint8_t,34> fogTable{};auto badFog=fog(0,0,0,fogTable.data());badFog[3]=16;
+ sim.run({badFog},++seq,1);
+ sim.run({clear(0,0,0xffffff),fog(0,0,0,fogTable.data())},++seq,1);
+ // Out-of-range texel alpha must fail without publishing a completed image.
  Span alpha;alpha.first=0;alpha.end=1;alpha.width=1;alpha.flags=Linear|Textured;
- sim.word(Textures)=0x0f123456;
+ sim.word(Textures)=0x3f123456;
  sim.run({clear(0,0,0xffffff),span(alpha)},++seq,3);
  // Three spans alias the same direct-mapped cache entry (A, B, A), then
  // replace the underlying texture bytes in a new immutable frame epoch.

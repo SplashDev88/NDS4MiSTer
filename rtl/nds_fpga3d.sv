@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Experimental pipelined opaque DS scanline rasterizer. See tools/fpga3d/abi.h.
+// Experimental pipelined DS scanline rasterizer with two-layer AA and alpha blending. See tools/fpga3d/abi.h.
 // All addresses are physical 64-bit DDR word addresses. Commands and textures
 // are immutable until completion. This block never writes cartridge memory.
 module nds_fpga3d #(
@@ -17,11 +17,11 @@ module nds_fpga3d #(
  input logic dout_ready,accepted
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
- localparam [31:0] MAGIC=32'h31443346;
+ localparam [31:0] MAGIC=32'h32443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,FETCH,FETCH_WAIT,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
- FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE,CACHE_CLEAR,PIPE_RUN} state_t;
+ FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE,CACHE_CLEAR,PIPE_RUN,RESOLVE_RUN} state_t;
  state_t state;
  logic [31:0] cmd[0:31];
  logic [31:0] seq,seen,count,index,status,epoch;
@@ -31,12 +31,13 @@ module nds_fpga3d #(
  logic [9:0] span_width;
  logic line_open,flush_inflight;
  wire [6:0] flush_read=(state==FLUSH_WRITE && accepted)?flush_x[7:1]+7'd1:flush_x[7:1];
- (* ramstyle = "M10K" *) logic [31:0] color_even[0:127],color_odd[0:127];
- (* ramstyle = "M10K" *) logic [32:0] depth_back[0:255];
- logic line_we;
- logic [31:0] line_color;
- logic [32:0] line_depth;
- logic [63:0] flush_pair;
+ wire [63:0] flush_pair;
+ logic [31:0] line_config,fog_color,fog_offset;
+ logic [3:0] fog_shift;
+ logic [271:0] fog_table;
+ logic fog_configured;
+ logic [1:0] resolve_mode;
+ wire pixels_pending;
  logic [15:0] w0,w1;
  logic signed [31:0] av[0:4],delta[0:4],steps[0:4];
  logic [15:0] rems[0:4],rsteps[0:4];
@@ -52,13 +53,13 @@ module nds_fpga3d #(
  logic [8:0] p_f[0:9],p_x[0:12];
  logic signed [31:0] p_av[0:12][0:4];
  logic [31:0] p_z[0:12];
- logic [32:0] p_old[0:10];
  logic [28:0] p_addr[11:12];
  logic p_half[11:12],p_pass[11:12];
  logic [15:0] p_ts,p_tt;
  logic [19:0] p_index;
  logic [31:0] p_texel,p_color;
  logic [12:0] p_mr,p_mg,p_mb;
+ logic [11:0] p_ma;
  logic p_ce,p_hit,p_miss,p_bad_alpha,p_override;
  logic [63:0] p_override_data;
  logic [8:0] p_clear_index;
@@ -66,7 +67,6 @@ module nds_fpga3d #(
  (* ramstyle = "M10K" *) logic [20:0] p_cache_tags[0:511];
  logic [63:0] p_cache_q;
  logic [20:0] p_tag_q;
- wire [8:0] write_x=state==CLEAR_LINE?x:p_x[12];
  integer i;
 
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
@@ -94,14 +94,6 @@ module nds_fpga3d #(
    product_value=delta_value*$signed({1'b0,factor});
    p_interpolate_z=base_value+32'(product_value>>>8);end
  endfunction
- function automatic p_depth_pass(input [31:0] new_z,input [32:0] prior);
-  begin
-   if(cmd[2][5])begin
-    if(cmd[2][1])p_depth_pass=({1'b0,new_z}+33'd255>={1'b0,prior[31:0]})&&({1'b0,prior[31:0]}+33'd255>={1'b0,new_z});
-    else p_depth_pass=({1'b0,new_z}+33'd512>={1'b0,prior[31:0]})&&({1'b0,prior[31:0]}+33'd512>={1'b0,new_z});
-   end else p_depth_pass=new_z<prior[31:0] || (cmd[2][3] && prior[32] && new_z==prior[31:0]);
-  end
- endfunction
  always_comb begin
   p_ts=texture_coord(p_av[10][3][15:0],cmd[14][3:0],cmd[14][8],cmd[14][10]);
   p_tt=texture_coord(p_av[10][4][15:0],cmd[14][7:4],cmd[14][9],cmd[14][11]);
@@ -112,10 +104,11 @@ module nds_fpga3d #(
   p_mr=({1'b0,p_texel[5:0]}+7'd1)*({1'b0,p_av[12][0][8:3]}+7'd1)-13'd1;
   p_mg=({1'b0,p_texel[13:8]}+7'd1)*({1'b0,p_av[12][1][8:3]}+7'd1)-13'd1;
   p_mb=({1'b0,p_texel[21:16]}+7'd1)*({1'b0,p_av[12][2][8:3]}+7'd1)-13'd1;
-  p_color=cmd[2][2]?{p_texel[31:24],2'd0,p_mb[11:6],2'd0,p_mg[11:6],2'd0,p_mr[11:6]}:
-             {8'd31,2'd0,p_av[12][2][8:3],2'd0,p_av[12][1][8:3],2'd0,p_av[12][0][8:3]};
+  p_ma=({1'b0,p_texel[28:24]}+6'd1)*({1'b0,cmd[31][4:0]}+6'd1)-12'd1;
+  p_color=cmd[2][2]?{3'd0,p_ma[9:5],2'd0,p_mb[11:6],2'd0,p_mg[11:6],2'd0,p_mr[11:6]}:
+             {3'd0,cmd[31][4:0],2'd0,p_av[12][2][8:3],2'd0,p_av[12][1][8:3],2'd0,p_av[12][0][8:3]};
   p_miss=p_valid[12] && p_pass[12] && cmd[2][2] && !p_hit;
-  p_bad_alpha=p_valid[12] && p_pass[12] && cmd[2][2] && p_hit && p_texel[31:24]!=0 && p_texel[31:24]!=31;
+  p_bad_alpha=p_valid[12] && p_pass[12] && cmd[2][2] && p_hit && p_texel[31:24]>31;
   p_ce=state==PIPE_RUN && !reset && enable && !p_miss && !p_bad_alpha;
  end
  always_ff @(posedge clk)begin
@@ -133,24 +126,24 @@ module nds_fpga3d #(
    if(state==TEX_WAIT && dout_ready)begin p_override<=1;p_override_data<=dout;end
    if(p_ce)begin
     p_override<=0;p_valid<={p_valid[11:0],x<last};
-    p_x[0]<=x;p_z[0]<=zlinear;p_old[0]<=depth_back[x[7:0]];
+    p_x[0]<=x;p_z[0]<=zlinear;
     p_rem[0]<=32'(dx)*32'(w0)<<8;
     p_den[0]<=32'(dx)*32'(w0)+(32'(span_width)-32'(dx))*32'(w1);
     p_f[0]<=0;
     for(integer a=0;a<5;a=a+1)p_av[0][a]<=av[a];
     for(integer k=1;k<=9;k=k+1)begin
-     p_x[k]<=p_x[k-1];p_z[k]<=p_z[k-1];p_old[k]<=p_old[k-1];
+     p_x[k]<=p_x[k-1];p_z[k]<=p_z[k-1];
      p_den[k]<=p_den[k-1];p_rem[k]<=p_rem[k-1];p_f[k]<=p_f[k-1];
      for(integer a=0;a<5;a=a+1)p_av[k][a]<=p_av[k-1][a];
      if((!cmd[2][0] || cmd[2][1]) && p_den[k-1]!=0 && p_rem[k-1]>=(p_den[k-1]<<(9-k)))begin
       p_rem[k]<=p_rem[k-1]-(p_den[k-1]<<(9-k));p_f[k]<=p_f[k-1]|(9'd1<<(9-k));
      end
     end
-    p_x[10]<=p_x[9];p_old[10]<=p_old[9];
+    p_x[10]<=p_x[9];
     p_z[10]<=cmd[2][1]?p_interpolate_z(cmd[15],cmd[26],p_f[9]):p_z[9];
     for(integer a=0;a<5;a=a+1)
      p_av[10][a]<=cmd[2][0]?p_av[9][a]:p_interpolate($signed({{16{cmd[8+a][15]}},cmd[8+a][15:0]}),delta[a],p_f[9]);
-    p_x[11]<=p_x[10];p_z[11]<=p_z[10];p_pass[11]<=p_depth_pass(p_z[10],p_old[10]);
+    p_x[11]<=p_x[10];p_z[11]<=p_z[10];p_pass[11]<=1'b1;
     p_addr[11]<=29'(cmd[13]>>3)+29'(p_index>>1);p_half[11]<=p_index[0];
     p_x[12]<=p_x[11];p_z[12]<=p_z[11];p_pass[12]<=p_pass[11];
     p_addr[12]<=p_addr[11];p_half[12]<=p_half[11];
@@ -175,29 +168,28 @@ module nds_fpga3d #(
   if(reset || (!enable && !flush_inflight))begin rd=0;wr=0;end
   for(integer k=0;k<5;k=k+1)sums[k]={1'b0,rems[k]}+{1'b0,rsteps[k]};
   zsum={1'b0,zrem}+{1'b0,zrstep};
-  line_we=!reset && enable && ((state==CLEAR_LINE) ||
-    (p_ce && p_valid[12] && p_pass[12] && p_color[31:24]>cmd[2][12:8] &&
-      (!cmd[2][2] || p_texel[31:24]==31)));
-  line_color=state==CLEAR_LINE?cmd[1]:p_color;
-  line_depth=state==CLEAR_LINE?{cmd[3][0],cmd[2]}:{cmd[2][4],p_z[12]};
  end
+ nds_fpga3d_pixels pixels(
+  .clk,.reset(reset || (!enable && !flush_inflight)),
+  .ce(p_ce || (state==RESOLVE_RUN && enable && !reset)),
+  .clear_we(state==CLEAR_LINE && enable && !reset),.clear_x(x[7:0]),
+  .clear_color(cmd[1]),.clear_depth(cmd[2]),.clear_attr(cmd[5]|(cmd[3][0]?32'd16:32'd0)),
+  .span_start(state==DECODE && cmd[0]==2),.flags(cmd[2][5:0]),
+  .poly_attr(cmd[27]),.left_cov(cmd[28]),.right_cov(cmd[29]),
+  .left_end(cmd[30][8:0]),.right_begin(cmd[30][24:16]),.y_edge(cmd[31][9:6]),
+  .antialias(line_config[4]),.blend_enable(line_config[3]),.translucent_depth_write(cmd[31][5]),
+  .pixel_valid(p_ce && p_valid[12] && p_color[31:24]>cmd[2][12:8]),
+  .resolve_valid(state==RESOLVE_RUN && x<256),.resolve_mode,
+  .fog_color,.fog_offset,.fog_shift,.fog_table,.fog_alpha_only(line_config[6]),
+  .pixel_x(state==RESOLVE_RUN?x[7:0]:p_x[12][7:0]),.pixel_color(p_color),.pixel_depth(p_z[12]),
+  .pending(pixels_pending),
+  .flush_en(state==FLUSH_LOAD || state==FLUSH_WAIT || (state==FLUSH_WRITE && accepted)),
+  .flush_index(flush_read),.flush_pair
+ );
  always_ff @(posedge clk)begin
-  // One write port per inferred RAM. Depth reads use the input pixel while
-  // writes use the pipeline output; a span drains before any address repeats.
-  // Split even/odd colors let flush read a pair without an extra RAM port.
-  if(line_we)begin
-   if(write_x[0])color_odd[write_x[7:1]]<=line_color;
-   else color_even[write_x[7:1]]<=line_color;
-   depth_back[write_x[7:0]]<=line_depth;
-  end
-  // Depth read belongs to pipeline stage zero.
-  // Prime the first pair before WR, then advance only on physical DDR
-  // acceptance. Local queue credit must never skip or duplicate a pixel.
-  if(state!=FLUSH_WRITE || accepted)
-   flush_pair<={color_odd[flush_read],color_even[flush_read]};
   if(reset || (!enable && !flush_inflight))begin
    state<=INIT;seen<=0;seq<=0;index<=0;status<=0;epoch<=session;poll<=0;
-   line_open<=0;line_y<=0;flush_x<=0;x<=0;flush_inflight<=0;
+   line_open<=0;line_y<=0;flush_x<=0;x<=0;flush_inflight<=0;line_config<=0;fog_configured<=0;resolve_mode<=0;
   end else begin
    if(state==FLUSH_WRITE && !busy)flush_inflight<=1;
    case(state)
@@ -213,7 +205,7 @@ module nds_fpga3d #(
     end
     HEADER:if(!busy)state<=HEADER_WAIT;
     HEADER_WAIT:if(dout_ready)begin
-     status<=0;index<=0;line_y<=0;line_open<=0;p_clear_index<=0;
+     status<=0;index<=0;line_y<=0;line_open<=0;p_clear_index<=0;fog_configured<=0;
      count<=dout[31:0];
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
      else if(dout[31:0]==0 || dout[31:0]>4064)begin status<=1;state<=COMPLETE;end
@@ -226,12 +218,19 @@ module nds_fpga3d #(
      if(beat==15)state<=DECODE;else beat<=beat+1'b1;
     end
     DECODE:begin
-     if(cmd[0]==1 && !line_open && line_y<192 && cmd[4]==line_y)begin
-      x<=0;line_open<=1;state<=CLEAR_LINE;
+     if(cmd[0]==4 && index==0 && !line_open && line_y==0 && cmd[3]<=15)begin
+      fog_color<=cmd[1];fog_offset<=cmd[2];fog_shift<=cmd[3][3:0];
+      for(integer f=0;f<34;f=f+1)fog_table[8*f+:8]<=cmd[4+f/4][8*(f%4)+:8];
+      fog_configured<=1;state<=NEXT_COMMAND;
+     end else if(cmd[0]==1 && !line_open && line_y<192 && cmd[4]==line_y &&
+       (!cmd[6][7] || fog_configured))begin
+      x<=0;line_open<=1;line_config<=cmd[6];state<=CLEAR_LINE;
      end else if(cmd[0]==3 && line_open && cmd[1]==line_y)begin
-      flush_x<=0;state<=FLUSH_LOAD;
+      flush_x<=0;x<=0;resolve_mode<=line_config[7]?2'd1:2'd3;
+      state<=(line_config[4] || line_config[7])?RESOLVE_RUN:FLUSH_LOAD;
      end else if(cmd[0]==2 && line_open && cmd[1][15:0]<cmd[1][31:16] &&
-       cmd[1][31:16]<=256 && cmd[3][15:0]>0 && cmd[3][15:0]<=256 &&
+       cmd[1][31:16]<=256 && cmd[30][15:0]<=cmd[30][31:16] && cmd[30][31:16]<=256 &&
+       cmd[31][31:10]==0 && cmd[3][15:0]>0 && cmd[3][15:0]<=256 &&
        ({1'b0,cmd[3][31:16]}+{1'b0,cmd[1][31:16]}-{1'b0,cmd[1][15:0]})<={1'b0,cmd[3][15:0]} &&
        (!cmd[2][2] || (cmd[13]>=32'h3fd40000 && cmd[13][2:0]==0 &&
           cmd[14][3:0]>=3 && cmd[14][3:0]<=10 && cmd[14][7:4]>=3 && cmd[14][7:4]<=10 &&
@@ -261,7 +260,15 @@ module nds_fpga3d #(
         av[i]<=av[i]+steps[i]+32'(sums[i]>={7'd0,span_width});
         rems[i]<=16'(sums[i]>={7'd0,span_width}?sums[i]-{7'd0,span_width}:sums[i]);
        end
-      end else if(p_valid==0)state<=NEXT_COMMAND;
+      end else if(p_valid==0 && !pixels_pending)state<=NEXT_COMMAND;
+     end
+    end
+    RESOLVE_RUN:begin
+     if(x<256)x<=x+1'b1;
+     else if(!pixels_pending)begin
+      if(resolve_mode==1)begin resolve_mode<=2; x<=0;end
+      else if(resolve_mode==2 && line_config[4])begin resolve_mode<=3;x<=0;end
+      else state<=FLUSH_LOAD;
      end
     end
     FLUSH_LOAD:state<=FLUSH_WAIT;

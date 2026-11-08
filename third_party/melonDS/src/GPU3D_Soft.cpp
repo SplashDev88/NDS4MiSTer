@@ -2241,7 +2241,15 @@ void SoftRenderer3D::RenderPolygonScanline(
         else begin = finish = leftEnd;
         finish = std::max(finish, clampX(std::min(xend-r_edgelen+1, xend+1)));
         if (r_filledge) finish = std::max(finish, clampX(xend+1));
-        if (begin < finish && FpgaFrame.valid)
+        const s32 interiorEnd=clampX(std::min(xend-r_edgelen+1,xend+1));
+        const u32 spanYEdge=y==polygon->YTop?4:y==polygon->YBottom-1?8:0;
+        // The cached software interior assigns x=xlimit even when empty.
+        // Preserve that revisit on narrow polygons: it changes the AA layer.
+        const bool rewindRight=r_filledge && interiorEnd<leftEnd &&
+            NDS4MiSTerUseCachedModulateInterior(spanYEdge,rp->PixelState.CachedModulate,
+                polyalpha,polygon->IsShadow,polygon->IsShadowMask,
+                fnDepthTest==DepthTest_LessThan_FrontFacing);
+        if ((begin < finish || rewindRight) && FpgaFrame.valid)
         {
             fpga3d::Span sp;
             sp.first=begin;sp.end=finish;sp.origin=xstart;sp.width=xend+1-xstart;
@@ -2253,6 +2261,9 @@ void SoftRenderer3D::RenderPolygonScanline(
                 ((rp->PolyAttr&16)?fpga3d::Back:0) |
                 ((rp->DepthTest==DepthTest_Equal_Z || rp->DepthTest==DepthTest_Equal_W)?fpga3d::Equal:0);
             sp.alphaRef=GPU3D.RenderAlphaRef;
+            sp.polyAttr=polyattr;sp.polyAlpha=polyalpha;sp.depthWrite=(polygon->Attr&(1u<<11))!=0;
+            sp.yEdge=spanYEdge;sp.leftCov=l_edgecov;sp.rightCov=r_edgecov;
+            sp.leftEnd=leftEnd;sp.rightBegin=std::max(leftEnd,interiorEnd);
             if(rp->PixelState.TextureEnabled)
             {
                 sp.flags|=fpga3d::Textured;
@@ -2261,7 +2272,15 @@ void SoftRenderer3D::RenderPolygonScanline(
                 sp.shiftT=__builtin_ctz(static_cast<unsigned>(rp->PixelState.TextureHeight));
                 sp.wrap=rp->PixelState.TextureWrapFlags;
             }
-            try { FpgaFrame.append(fpga3d::span(sp)); }
+            try {
+                if(rewindRight) {
+                    sp.end=leftEnd;
+                    if(sp.first<sp.end)FpgaFrame.append(fpga3d::span(sp));
+                    sp.first=interiorEnd;sp.end=clampX(xend+1);
+                    sp.leftEnd=0;sp.rightBegin=interiorEnd;
+                    if(sp.first<sp.end)FpgaFrame.append(fpga3d::span(sp));
+                } else FpgaFrame.append(fpga3d::span(sp));
+            }
             catch(const std::invalid_argument&) { FpgaFrame.valid=false; }
         }
         rp->XL = rp->SlopeL.Step();
@@ -4304,21 +4323,29 @@ bool SoftRenderer3D::TryFpgaFrame()
     // Whole-frame admission occurs before any hardware submission. Software
     // handles all unsupported effects without approximating or dropping them.
     if (!FullFrameCompletion || !CurrentPolygonCount || !fpga3d::available() ||
-        (GPU3D.RenderDispCnt & ((1u<<4)|(1u<<5)|(1u<<7)|(1u<<14)))) return false;
+        (GPU3D.RenderDispCnt & ((1u<<5)|(1u<<14)))) return false;
     FpgaFrame.reset();
     for(int i=0;i<CurrentPolygonCount;i++)
     {
         const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
         if(rp.PolyData->IsShadow || rp.PolyData->IsShadowMask || ps.Wireframe ||
-           ps.PolyAlpha!=31 || ps.BlendMode!=0) return false;
+           ps.BlendMode!=0) return false;
         if(ps.TextureEnabled && (!ps.CachedModulate ||
            !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight)))return false;
+    }
+    if(GPU3D.RenderDispCnt & (1u<<7))
+    {
+        const u32 raw=GPU3D.RenderFogColor;
+        auto expand=[](u32 v){v&=31;return (v<<1)|(v!=0);};
+        const u32 color=expand(raw)|(expand(raw>>5)<<8)|(expand(raw>>10)<<16)|(((raw>>16)&31)<<24);
+        FpgaFrame.append(fpga3d::fog(color,GPU3D.RenderFogOffset,GPU3D.RenderFogShift,GPU3D.RenderFogDensityTable));
     }
     FpgaEmitting=true;
     for(int y=0;y<192 && FpgaFrame.valid;y++)
     {
         const auto offset=FirstPixelOffset+y*ScanlineWidth;
-        FpgaFrame.append(fpga3d::clear(y,ColorBuffer[offset],DepthBuffer[offset],(AttrBuffer[offset]&16)!=0));
+        FpgaFrame.append(fpga3d::clear(y,ColorBuffer[offset],DepthBuffer[offset],(AttrBuffer[offset]&16)!=0,
+            AttrBuffer[offset],GPU3D.RenderDispCnt));
         RenderScanline(y,PolygonList,ActivePolygonMask,PrevIsShadowMask,StencilBuffer,
             0,256,FinalPassMinX,FinalPassMaxX);
         FpgaFrame.append(fpga3d::flush(y));

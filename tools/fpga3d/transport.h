@@ -32,7 +32,7 @@ inline bool available(){
 }
 // Device command pages retain volatile accesses. Only fields read by each
 // opcode are transferred; fixed 128-byte descriptor spacing is unchanged.
-inline unsigned commandWords(const Command& c){return c[0]==1?5:c[0]==2?27:c[0]==3?2:32;}
+inline unsigned commandWords(const Command& c){return c[0]==1?7:c[0]==2?32:c[0]==3?2:c[0]==4?13:32;}
 typedef uint64_t MMIO64 __attribute__((__may_alias__));
 inline void uploadCommands(volatile uint32_t* target,const std::vector<Command>& commands){
  const bool aligned=(reinterpret_cast<uintptr_t>(target)&7)==0;
@@ -66,7 +66,7 @@ struct Frame {
  bool addTexture(const uint32_t* pixels,size_t count){
   if(textureOffsets.count(pixels))return true;
   if(!pixels || count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return false;
-  for(size_t i=0;i<count;i++)if((pixels[i]>>24)!=0 && (pixels[i]>>24)!=31)return false;
+  for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return false;
   textureOffsets[pixels]=Textures+textures.size()*4;
   textures.insert(textures.end(),pixels,pixels+count);return true;
  }

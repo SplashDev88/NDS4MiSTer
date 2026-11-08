@@ -121,4 +121,5 @@ set_global_assignment -name SYSTEMVERILOG_FILE NDS4MiSTer.sv
 set_global_assignment -name SDC_FILE NDS4MiSTer.sdc
 
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_fpga3d.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_fpga3d_pixels.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_fpga3d_port_mux.sv

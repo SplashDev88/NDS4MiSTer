@@ -20,7 +20,7 @@ int main(int argc,char** argv)try{
  nds4mister::h3d::memory::Mapping mapping("/dev/mem");bind(mapping.data(),mapping.publication_data(),true,mapping.write_combined());
  require(available(),"accelerator unavailable/session mismatch");
  Frame frame;frame.deadlineMs=5000;std::vector<uint32_t> result(256*192);
- int count=std::stoi(argv[2]);require(count>=1&&count<=100,"fixture count");
+ int count=std::stoi(argv[2]);require(count>=1&&count<=256,"fixture count");
  for(int j=0;j<count;j++){
   auto prefix=std::string(argv[1])+"/"+std::to_string(j);
   frame.commands=load<Command>(prefix+".commands");frame.textures=load<uint32_t>(prefix+".textures");auto expected=load<uint32_t>(prefix+".expected");

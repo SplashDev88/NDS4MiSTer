@@ -8,7 +8,7 @@ void check(bool ok){if(!ok)throw std::runtime_error("transport guard/data mismat
 int main(){
  std::mt19937 rng(9716);const uint32_t guard=0xa93c51e7;
  std::vector<Command> cmds(MaxCommands);for(unsigned i=0;i<cmds.size();i++){
-  for(auto& w:cmds[i])w=rng();cmds[i][0]=i%4==3?99:i%4+1;
+  for(auto& w:cmds[i])w=rng();cmds[i][0]=i%5==4?99:i%5+1;
  }
  for(unsigned offset:{32u,33u}){
   std::vector<uint32_t> buffer((MaxCommands+2)*32,guard);

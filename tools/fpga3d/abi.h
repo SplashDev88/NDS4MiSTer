@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 namespace fpga3d {
-constexpr uint32_t Magic=0x31443346; // F3D1
+constexpr uint32_t Magic=0x32443346; // F3D2
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t TextureBytes=0xc0000, MaxCommands=0x7f000/128;
@@ -17,20 +17,31 @@ struct Span {
  int32_t z0=0,z1=0;
  std::array<int32_t,5> left{},right{};
  uint32_t flags=Linear,texture=Textures,shiftS=3,shiftT=3,wrap=0,alphaRef=0;
+ uint32_t polyAttr=0,leftCov=31,rightCov=31,leftEnd=0,rightBegin=256,polyAlpha=31,yEdge=0;
+ bool depthWrite=false;
 };
 inline int64_t floorDiv(int64_t n,int64_t d) {
  if(d<=0)throw std::invalid_argument("nonpositive divisor");
  return n/d-((n<0 && n%d)!=0);
 }
-inline Command clear(uint32_t y,uint32_t color,uint32_t depth,bool back=false) {
- Command c{};c[0]=1;c[1]=color;c[2]=depth;c[3]=back;c[4]=y;return c;
+inline Command clear(uint32_t y,uint32_t color,uint32_t depth,bool back=false,uint32_t attr=0,uint32_t config=0) {
+ Command c{};c[0]=1;c[1]=color;c[2]=depth;c[3]=back;c[4]=y;c[5]=attr|(back?16:0);c[6]=config;return c;
+}
+inline Command fog(uint32_t color,uint32_t offset,uint32_t shift,const uint8_t* table) {
+ if(shift>15 || !table)throw std::invalid_argument("invalid fog configuration");
+ Command c{};c[0]=4;c[1]=color;c[2]=offset;c[3]=shift;
+ for(unsigned i=0;i<34;i++){
+  if(table[i]>127)throw std::invalid_argument("invalid fog density");
+  c[4+i/4]|=uint32_t(table[i])<<(8*(i%4));
+ }
+ return c;
 }
 inline Command flush(uint32_t y) {Command c{};c[0]=3;c[1]=y;return c;}
 inline Command span(const Span& s) {
  if(s.first<0 || s.end>256 || s.first>=s.end || s.width<1 || s.width>256 ||
     s.first<s.origin || s.end>s.origin+s.width || s.w0<0 || s.w0>65535 || s.w1<0 || s.w1>65535 ||
     s.z0<0 || s.z1<0 || s.z0>0xffffff || s.z1>0xffffff || s.alphaRef>31 ||
-    s.shiftS<3 || s.shiftS>10 || s.shiftT<3 || s.shiftT>10 || (s.flags&~63u))
+    s.shiftS<3 || s.shiftS>10 || s.shiftT<3 || s.shiftT>10 || (s.flags&~63u) || s.polyAlpha>31 || s.leftEnd>s.rightBegin || s.rightBegin>256 || (s.yEdge&~12u))
     throw std::invalid_argument("span outside hardware contract");
  Command c{};const int dx=s.first-s.origin;
  c[0]=2;c[1]=s.first|(s.end<<16);c[2]=s.flags|(s.alphaRef<<8);
@@ -53,6 +64,8 @@ inline Command span(const Span& s) {
  }
  c[13]=s.texture;c[14]=s.shiftS|(s.shiftT<<4)|(s.wrap<<8);
  c[15]=s.z0;c[26]=s.z1;
+ c[27]=s.polyAttr|((s.flags&Back)?16:0);c[28]=s.leftCov;c[29]=s.rightCov;
+ c[30]=s.leftEnd|(s.rightBegin<<16);c[31]=s.polyAlpha|(s.depthWrite?32:0)|(s.yEdge<<6);
  return c;
 }
 // Independent closed-form pixel oracle (no RTL recurrence state).
