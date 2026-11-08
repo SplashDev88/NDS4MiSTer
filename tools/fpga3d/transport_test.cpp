@@ -41,6 +41,28 @@ int main(){
   auto c=span(s);auto p=pack(c);
   c[13]=Textures+(rng()%(TextureBytes/8))*8;rebindTexture(p,c[13]);
   check(p==pack(c));
+  c[13]=Textures+(rng()%(TextureBytes/64))*64;c[14]|=1u<<12;
+  rebindTexture(p,c[13]|1u);check(p==pack(c));
+  c[14]&=~(1u<<12);rebindTexture(p,c[13]);check(p==pack(c));
+ }
+ // More decoded data than the original 768 KiB arena, with exact RGBA
+ // reconstruction, duplicate bindings, mutation, and the 256-color boundary.
+ {
+  Frame f;std::vector<std::vector<uint32_t>> data(16,std::vector<uint32_t>(128*128));
+  for(unsigned t=0;t<data.size();t++){
+   for(unsigned i=0;i<data[t].size();i++)data[t][i]=((i+t)&31)<<24|((i&63)<<16)|(((i>>2)&63)<<8)|((i*7+t)&63);
+   check(f.addTexture(data[t].data(),data[t].size()));
+   const auto binding=f.textureOffsets.at(data[t].data());check(binding&1);
+   const auto base=((binding&~1u)-Textures)/4;
+   for(unsigned i=0;i<data[t].size();i++)check(f.textures[base+((f.textures[base+256+i/4]>>(8*(i%4)))&255)]==data[t][i]);
+   const auto size=f.textures.size();check(f.addTexture(data[t].data(),data[t].size()) && f.textures.size()==size);
+  }
+  check(f.textures.size()*4==16*(1024+16384));
+  f.reset();for(unsigned i=0;i<data[0].size();i++)data[0][i]=0x1f000000|i;
+  check(f.addTexture(data[0].data(),data[0].size()) && !(f.textureOffsets.at(data[0].data())&1));
+  check(f.textures==data[0]);
+  f.reset();data[0].back()=0xff000000;
+  check(!f.addTexture(data[0].data(),data[0].size()) && f.textures.empty());
  }
  std::vector<uint32_t> source(256*192),dest(258*192+16,guard),texture(8192),target(8200,guard);
  for(auto& w:source)w=rng();for(auto& w:texture)w=rng();

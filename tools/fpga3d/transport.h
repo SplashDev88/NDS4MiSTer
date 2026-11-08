@@ -33,7 +33,7 @@ inline bool available(){
 }
 // Compact physical descriptors use fixed 64-byte spacing. Logical commands
 // remain 128 bytes so native fixtures retain their independent readable ABI.
-inline unsigned commandWords(const Command& c){return c[0]==1?7:c[0]==2?16:(c[0]==3 || c[0]==5)?2:c[0]==4?13:16;}
+inline unsigned commandWords(const Command& c){return (c[0]==1 || c[0]==6)?7:c[0]==2?16:(c[0]==3 || c[0]==5)?2:c[0]==4?13:c[0]==7?10:16;}
 typedef uint64_t MMIO64 __attribute__((__may_alias__));
 inline void uploadCommands(volatile uint32_t* target,const std::vector<Command>& commands){
  const bool aligned=(reinterpret_cast<uintptr_t>(target)&7)==0;
@@ -63,7 +63,7 @@ inline void uploadPackedCommand(volatile uint32_t* target,const PackedCommand& p
  if(wc)std::memcpy(const_cast<uint32_t*>(target),packed.data(),sizeof(packed));
  else {
   const unsigned opcode=packed[0];
-  const unsigned count=opcode==1?7:opcode==3 || opcode==5?2:opcode==4?13:16;unsigned i=0;
+  const unsigned count=(opcode==1 || opcode==6)?7:opcode==3 || opcode==5?2:opcode==4?13:opcode==7?10:16;unsigned i=0;
   for(;i+1<count;i+=2)
    *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(packed[i])|(uint64_t(packed[i+1])<<32);
   if(i<count)target[i]=packed[i];
@@ -107,7 +107,37 @@ struct Frame {
  bool addTexture(const uint32_t* pixels,size_t count){
   if(active)return false;
   if(textureOffsets.count(pixels))return true;
-  if(!pixels || count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return false;
+  if(!pixels || !count || count>TextureBytes || (count&63))return false;
+  // DS palette formats often contain at most 256 exact decoded RGBA values.
+  // Store those without quantization: a 1 KiB palette followed by byte indices.
+  // This keeps the fixed, non-overlapping DDR arena while admitting up to
+  // nearly four times the decoded texture data. Every frame is rebuilt from
+  // current pixels, so palette animation and recycled cache pointers are safe.
+  if(count>=2048 && count+1024<=TextureBytes){
+   std::array<uint32_t,256> palette{};
+   std::array<uint16_t,1024> slots{};
+   std::vector<uint32_t> indices(count/4,0);
+   unsigned colors=0;bool indexed=true;
+   for(size_t i=0;i<count;i++){
+    const uint32_t color=pixels[i];if((color>>24)>31)return false;
+    unsigned slot=(color*2654435761u)>>22;
+    while(slots[slot] && palette[slots[slot]-1]!=color)slot=(slot+1)&1023;
+    if(!slots[slot]){
+     if(colors==256){indexed=false;break;}
+     palette[colors]=color;slots[slot]=++colors;
+    }
+    indices[i/4]|=uint32_t(slots[slot]-1)<<(8*(i%4));
+   }
+   if(indexed){
+    const size_t aligned=(textures.size()+15)&~size_t(15);
+    if(aligned+palette.size()+indices.size()>TextureBytes/4)return false;
+    textures.resize(aligned,0);
+    textureOffsets[pixels]=(Textures+uint32_t(aligned*4))|1u;
+    textures.insert(textures.end(),palette.begin(),palette.end());
+    textures.insert(textures.end(),indices.begin(),indices.end());return true;
+   }
+  }
+  if(count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return false;
   for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return false;
   textureOffsets[pixels]=Textures+textures.size()*4;
   textures.insert(textures.end(),pixels,pixels+count);return true;

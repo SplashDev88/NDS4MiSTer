@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 namespace fpga3d {
-constexpr uint32_t Magic=0x35443346; // F3D5: exact shadow stencil handoff
+constexpr uint32_t Magic=0x36443346; // F3D6: edge marking and lossless indexed textures
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t StencilInput=0x3fc80e00, StencilOutput=0x3fd30000;
@@ -20,7 +20,7 @@ struct Span {
  uint32_t flags=Linear,texture=Textures,shiftS=3,shiftT=3,wrap=0,alphaRef=0;
  uint32_t polyAttr=0,leftCov=31,rightCov=31,leftEnd=0,rightBegin=256,polyAlpha=31,yEdge=0;
  bool depthWrite=false;
- uint32_t mode=0; // modulate, decal, shadow mask, shadow
+ uint32_t mode=0; // modulate, decal, shadow mask, shadow, toon/highlight
 };
 inline int64_t floorDiv(int64_t n,int64_t d) {
  if(d<=0)throw std::invalid_argument("nonpositive divisor");
@@ -39,6 +39,18 @@ inline Command fog(uint32_t color,uint32_t offset,uint32_t shift,const uint8_t* 
  return c;
 }
 inline Command stencilClear(uint32_t y){Command c{};c[0]=5;c[1]=y;return c;}
+inline Command edge(uint32_t borderDepth,uint32_t borderAttr,const uint16_t* table){
+ if(!table)throw std::invalid_argument("missing edge color table");
+ Command c{};c[0]=6;c[1]=borderDepth;c[2]=borderAttr;
+ for(unsigned i=0;i<8;i++)c[3+i/2]|=uint32_t(table[i])<<(16*(i%2));
+ return c;
+}
+inline Command toon(unsigned half,const uint16_t* table){
+ if(half>1 || !table)throw std::invalid_argument("invalid toon table");
+ Command c{};c[0]=7;c[1]=half;
+ for(unsigned i=0;i<16;i++)c[2+i/2]|=uint32_t(table[16*half+i])<<(16*(i%2));
+ return c;
+}
 inline Command flush(uint32_t y) {Command c{};c[0]=3;c[1]=y;return c;}
 constexpr auto smallReciprocals=[](){std::array<uint32_t,257> a{};for(unsigned d=2;d<=256;d++)a[d]=(uint64_t(1)<<32)/d;return a;}();
 constexpr auto depthReciprocals=[](){std::array<uint32_t,257> a{};for(unsigned d=1;d<=256;d++)a[d]=(1u<<22)/d;return a;}();
@@ -53,7 +65,7 @@ inline Command spanRegular(const Span& s) {
  if(s.first<0 || s.end>256 || s.first>=s.end || s.width<1 || s.width>256 ||
     s.first<s.origin || s.end>s.origin+s.width || s.w0<0 || s.w0>65535 || s.w1<0 || s.w1>65535 ||
     s.z0<0 || s.z1<0 || s.z0>0xffffff || s.z1>0xffffff || s.alphaRef>31 ||
-    s.shiftS<3 || s.shiftS>10 || s.shiftT<3 || s.shiftT>10 || (s.flags&~63u) || s.polyAlpha>31 || s.mode>3 || s.leftEnd>s.rightBegin || s.rightBegin>256 || (s.yEdge&~12u))
+    s.shiftS<3 || s.shiftS>10 || s.shiftT<3 || s.shiftT>10 || (s.flags&~63u) || s.polyAlpha>31 || s.mode>4 || s.leftEnd>s.rightBegin || s.rightBegin>256 || (s.yEdge&~12u))
     throw std::invalid_argument("span outside hardware contract");
  Command c{};const int dx=s.first-s.origin;
  c[0]=2;c[1]=s.first|(s.end<<16);c[2]=s.flags|(s.alphaRef<<8);
@@ -77,7 +89,9 @@ inline Command spanRegular(const Span& s) {
     c[21+i]=uint32_t(n-qn*s.width)|(uint32_t(delta-qd*s.width)<<16);
    }
  }
- c[13]=s.texture;c[14]=s.shiftS|(s.shiftT<<4)|(s.wrap<<8);
+ // Texture bindings use bit zero for lossless indexed storage. Physical
+ // bases remain 64-byte aligned for indexed palette/texel bursts.
+ c[13]=s.texture&~1u;c[14]=s.shiftS|(s.shiftT<<4)|(s.wrap<<8)|((s.texture&1u)<<12);
  c[15]=s.z0;c[26]=s.z1;
  c[27]=s.polyAttr|((s.flags&Back)?16:0);c[28]=s.leftCov;c[29]=s.rightCov;
  c[30]=s.leftEnd|(s.rightBegin<<16);c[31]=s.polyAlpha|(s.depthWrite?32:0)|(s.yEdge<<6)|(s.mode<<10);
@@ -121,6 +135,13 @@ inline Command span(const Span& s){
     s.width>=1 && s.width<=256 && int64_t(s.first)==int64_t(s.origin)-1 &&
     int64_t(s.end)<=int64_t(s.origin)+s.width)return spanLinearExtrapolated(s);
  return spanRegular(s);
+}
+inline Command literalPixel(Span s,int x,int32_t depthValue,
+                           const std::array<int32_t,5>& attributes,bool continued){
+ s.first=s.origin=x;s.end=x+1;s.width=1;s.z0=s.z1=0;
+ s.flags|=Linear;s.left=s.right=attributes;
+ auto c=spanRegular(s);c[5]=c[15]=c[26]=uint32_t(depthValue);
+ c[31]|=(1u<<13)|(continued?1u<<14:0);return c;
 }
 // Independent closed-form pixel oracle (no RTL recurrence state).
 inline uint32_t factor(const Span& s,int x) {

@@ -3,6 +3,12 @@
 // the input pipeline and this synchronous RAM stage have both drained.
 module nds_fpga3d_pixels(
  input logic clk,reset,ce,
+ input logic [1:0] bank,
+ input logic color_bank,
+ input logic edge_read,input logic [1:0] edge_bank,input logic [7:0] edge_x,
+ output wire [31:0] edge_attr,edge_depth,edge_color,
+ input logic edge_write,input logic [7:0] edge_write_x,
+ input logic [31:0] edge_write_color,edge_write_attr,
  input logic clear_we,input logic [7:0] clear_x,
  input logic [31:0] clear_color,clear_depth,clear_attr,
  input logic span_start,input logic [5:0] flags,
@@ -24,10 +30,14 @@ module nds_fpga3d_pixels(
  input logic flush_en,input logic [6:0] flush_index,
  output wire [63:0] flush_pair
 );
- (* ramstyle="M10K" *) logic [31:0] color0_even[0:127],color0_odd[0:127];
- (* ramstyle="M10K" *) logic [31:0] color1[0:255];
- (* ramstyle="M10K" *) logic [31:0] attr0[0:255];
- (* ramstyle="M10K" *) logic [31:0] depth0[0:255],depth1[0:255],attr1[0:255];
+ // Three top-metadata rows retain both neighbors for edge marking. Colors
+ // and the lower layer need only two rows. Small attribute stores use MLABs
+ // to preserve the existing core's exhausted M10K block budget.
+ (* ramstyle="M10K" *) logic [31:0] color0_even[0:255],color0_odd[0:255];
+ (* ramstyle="M10K" *) logic [31:0] color1[0:511];
+ (* ramstyle="MLAB" *) logic [31:0] attr0[0:767];
+ (* ramstyle="M10K" *) logic [31:0] depth0[0:767],depth1[0:511];
+ (* ramstyle="MLAB" *) logic [31:0] attr1[0:511];
  logic [31:0] c0e,c0o,c1;
  // Generation tags make a mask-group clear constant-time. A bounded frame
  // has at most 8128 commands, so 14-bit generations cannot wrap in one job.
@@ -50,6 +60,10 @@ module nds_fpga3d_pixels(
   else if(stencil_clear)stencil_generation[stencil_row]<=stencil_generation[stencil_row]+1'b1;
  end
  logic [31:0] a0_mem,a1_mem,d0_mem,d1_mem,precheck_z;
+ logic edge_read_odd;
+ assign edge_attr=a0_mem;
+ assign edge_depth=d0_mem;
+ assign edge_color=edge_read_odd?c0o:c0e;
  logic [31:0] a0_delay[0:1],a1_delay[0:1],d0_delay[0:1],d1_delay[0:1];
  // Raster depth tests always consume the aligned precheck pipeline. Resolve
  // passes use their synchronous RAM outputs directly; avoid putting their
@@ -74,18 +88,21 @@ module nds_fpga3d_pixels(
  wire [31:0] fog_z=resolve_q==2?d1_mem:d0_mem;
  assign pending=pixel_pending || |fog_valid;
  logic [18:0] left_count,right_count;
- wire [6:0] read_pair=flush_en?flush_index:pixel_x[7:1];
+ wire [7:0] read_pair={color_bank,edge_read?edge_x[7:1]:flush_en?flush_index:pixel_x[7:1]};
+ wire [9:0] metadata_read=edge_read?{edge_bank,edge_x}:{bank,depth_read_x};
  wire [31:0] old_c0=x_q[0]?c0o:c0e;
  wire [31:0] old_c1=c1;
  wire [31:0] old_a0=a0;
  assign flush_pair={c0o,c0e};
 
  function automatic logic depth_pass(input logic [31:0] z,prior,attr);
+  logic [31:0] diff;
   begin
+   diff=prior-z;
    if(flags[5])begin
-    if(flags[1])depth_pass=({1'b0,z}+33'd255>={1'b0,prior})&&({1'b0,prior}+33'd255>={1'b0,z});
-    else depth_pass=({1'b0,z}+33'd512>={1'b0,prior})&&({1'b0,prior}+33'd512>={1'b0,z});
-   end else depth_pass=z<prior || (flags[3] && attr[4] && !attr[22] && z==prior);
+    if(flags[1])depth_pass=(diff+32'd255)<=32'd510;
+    else depth_pass=(diff+32'd512)<=32'd1024;
+   end else depth_pass=$signed(z)<$signed(prior) || (flags[3] && attr[4] && !attr[22] && z==prior);
   end
  endfunction
  assign precheck_pass=shadow_mode[1] || depth_pass(precheck_z,d0_mem,a0_mem) ||
@@ -207,14 +224,14 @@ module nds_fpga3d_pixels(
     end else begin
      if(target0 && (shadow_mode==3 && !old_a0[22]?
             old_a0[29:24]!=poly_attr[29:24]:old_a0[22:16]!=trans_attr0[22:16]))begin
-      color_we0=1;attr_we0=1;depth_we0=translucent_depth_write;
+      color_we0=1;attr_we0=1;depth_we0=translucent_depth_write && !depth_q[31];
       new_c0=blend_color(color_q,old_c0);new_a0=trans_attr0;new_d0=depth_q;
      end
      // Native DS blending also visits the lower layer below an existing
      // edge, without a second depth test, even if its top ID was rejected.
      if((target1 || (target0 && old_a0[3:0]!=0 && (shadow_mode!=3 || stencil_bits[1]))) &&
           (shadow_mode==3 && !a1[22]?a1[29:24]!=poly_attr[29:24]:a1[22:16]!=trans_attr1[22:16]))begin
-      color_we1=1;attr_we1=1;depth_we1=translucent_depth_write;
+      color_we1=1;attr_we1=1;depth_we1=translucent_depth_write && !depth_q[31];
       new_c1=blend_color(color_q,old_c1);new_a1=trans_attr1;new_d1=depth_q;
      end
     end
@@ -227,14 +244,15 @@ module nds_fpga3d_pixels(
   end
  end
  always_ff @(posedge clk)begin
-  if(flush_en || (ce && (pixel_valid || resolve_valid)))begin
+  if(edge_read || flush_en || (ce && (pixel_valid || resolve_valid)))begin
    c0e<=color0_even[read_pair];c0o<=color0_odd[read_pair];
-   c1<=color1[pixel_x];
+   c1<=color1[{color_bank,pixel_x}];
+   edge_read_odd<=edge_x[0];
 
   end
-  if(ce && (precheck_valid || resolve_valid))begin
-   a0_mem<=attr0[depth_read_x];a1_mem<=attr1[depth_read_x];
-   d0_mem<=depth0[depth_read_x];d1_mem<=depth1[depth_read_x];
+  if(edge_read || (ce && (precheck_valid || resolve_valid)))begin
+   a0_mem<=attr0[metadata_read];a1_mem<=attr1[{color_bank,depth_read_x}];
+   d0_mem<=depth0[metadata_read];d1_mem<=depth1[{color_bank,depth_read_x}];
    precheck_z<=precheck_depth;
   end
   if(ce)begin
@@ -243,25 +261,29 @@ module nds_fpga3d_pixels(
   end
   if(clear_we)begin
    if(clear_x[0])begin
-    color0_odd[clear_x[7:1]]<=clear_color;
+    color0_odd[{color_bank,clear_x[7:1]}]<=clear_color;
    end else begin
-    color0_even[clear_x[7:1]]<=clear_color;
+    color0_even[{color_bank,clear_x[7:1]}]<=clear_color;
    end
-   color1[clear_x]<=clear_color;attr0[clear_x]<=clear_attr;
-   depth0[clear_x]<=clear_depth;depth1[clear_x]<=clear_depth;attr1[clear_x]<=clear_attr;
+   color1[{color_bank,clear_x}]<=clear_color;attr0[{bank,clear_x}]<=clear_attr;
+   depth0[{bank,clear_x}]<=clear_depth;depth1[{color_bank,clear_x}]<=clear_depth;attr1[{color_bank,clear_x}]<=clear_attr;
+  end else if(edge_write)begin
+   if(edge_write_x[0])color0_odd[{color_bank,edge_write_x[7:1]}]<=edge_write_color;
+   else color0_even[{color_bank,edge_write_x[7:1]}]<=edge_write_color;
+   attr0[{bank,edge_write_x}]<=edge_write_attr;
   end else begin
    if(color_we0)begin
-    if(color_write_x[0])color0_odd[color_write_x[7:1]]<=new_c0;else color0_even[color_write_x[7:1]]<=new_c0;
+    if(color_write_x[0])color0_odd[{color_bank,color_write_x[7:1]}]<=new_c0;else color0_even[{color_bank,color_write_x[7:1]}]<=new_c0;
    end
    if(color_we1)begin
-    color1[color_write_x]<=new_c1;
+    color1[{color_bank,color_write_x}]<=new_c1;
    end
    if(attr_we0)begin
-    attr0[x_q]<=new_a0;
+    attr0[{bank,x_q}]<=new_a0;
    end
-   if(attr_we1)attr1[x_q]<=new_a1;
-   if(depth_we0)depth0[x_q]<=new_d0;
-   if(depth_we1)depth1[x_q]<=new_d1;
+   if(attr_we1)attr1[{color_bank,x_q}]<=new_a1;
+   if(depth_we0)depth0[{bank,x_q}]<=new_d0;
+   if(depth_we1)depth1[{color_bank,x_q}]<=new_d1;
   end
   if(reset || clear_we)begin pixel_pending<=0;resolve_q<=0;fog_valid<=0;end
   else if(ce)begin

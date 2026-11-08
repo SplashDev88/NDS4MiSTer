@@ -4,8 +4,9 @@
 namespace fpga3d {
 using PackedCommand=std::array<uint32_t,16>;
 inline void rebindTexture(PackedCommand& p,uint32_t address){
- // F3D5 texture address is an aligned offset in descriptor bits 134..150.
- p[4]=(p[4]&~(0x1ffffu<<6))|(((address-Textures)>>3)<<6);
+ // Rebind both the immutable storage base and its lossless format flag.
+ p[4]=(p[4]&~(0x1ffffu<<6))|((((address&~1u)-Textures)>>3)<<6);
+ p[15]=(p[15]&~(1u<<17))|((address&1u)<<17);
 }
 template<unsigned Bit,unsigned Width> inline void put(PackedCommand& p,uint32_t x){
  static_assert(Width<=32 && Bit+Width<=512);
@@ -24,18 +25,21 @@ inline uint32_t signed16(uint32_t x){return uint32_t(int32_t(x<<16)>>16);}
 inline PackedCommand pack(const Command& c){
  PackedCommand p{};
  if(c[0]!=2){
-  unsigned n=c[0]==1?7:(c[0]==3 || c[0]==5)?2:c[0]==4?13:1;
-  std::copy_n(c.begin(),n,p.begin());if(c[0]!=1 && c[0]!=3 && c[0]!=4 && c[0]!=5)p[15]=0x80000000;return p;
+  unsigned n=(c[0]==1 || c[0]==6)?7:(c[0]==3 || c[0]==5)?2:c[0]==4?13:c[0]==7?10:1;
+  std::copy_n(c.begin(),n,p.begin());if(c[0]!=1 && c[0]!=3 && c[0]!=4 && c[0]!=5 && c[0]!=6 && c[0]!=7)p[15]=0x80000000;return p;
  }
  unsigned first=c[1]&65535,end=c[1]>>16,width=c[3]&65535,dx=c[3]>>16;
  bool invalid=first>=end || end>256 || !width || width>256 || dx+end-first>width ||
-  (c[2]&~0x1f3fu) || (c[27]&~0x3f008010u) || (c[31]&~0xf3fu) ||
+  (c[2]&~0x1f3fu) || (c[27]&~0x3f008010u) || (c[31]&~0x7f3fu) || ((c[31]>>10)&7)>4 ||
   (c[30]&65535)>(c[30]>>16) || (c[30]>>16)>256;
  if(c[2]&Textured)invalid|=c[13]<Textures || c[13]>=Textures+TextureBytes || (c[13]&7) ||
-  (c[14]&15)<3 || (c[14]&15)>10 || ((c[14]>>4)&15)<3 || ((c[14]>>4)&15)>10 || (c[14]&~0xfffu);
- uint32_t a=(c[2]&WBuffer)?c[15]:c[5],b=(c[2]&WBuffer)?c[26]:c[6];
+  (c[14]&15)<3 || (c[14]&15)>10 || ((c[14]>>4)&15)<3 || ((c[14]>>4)&15)>10 || (c[14]&~0x1fffu) ||
+  ((c[14]&0x1000u) && (c[13]&63));
+ const bool literal=c[31]&(1u<<13);
+ invalid|=literal && (width!=1 || end!=first+1 || dx!=0 || !(c[2]&Linear));
+ uint32_t a=literal?c[5]:(c[2]&WBuffer)?c[15]:c[5],b=literal?0:(c[2]&WBuffer)?c[26]:c[6];
  if(!(c[2]&WBuffer) && width==1)b=0;
- invalid|=a>0xffffff || ((c[2]&WBuffer)?b>0xffffff:signed24(b)!=b);
+ invalid|=(!literal && a>0xffffff) || ((c[2]&WBuffer)?b>0xffffff:signed24(b)!=b);
  put<0,3>(p,2);put<3,8>(p,first);put<11,8>(p,end);put<19,8>(p,width);put<27,8>(p,dx);
  put<35,6>(p,c[2]);put<41,5>(p,c[2]>>8);put<46,5>(p,c[31]);put<51,1>(p,c[31]>>5);put<52,2>(p,c[31]>>8);
  put<54,24>(p,a);put<78,24>(p,b);put<102,32>(p,c[4]);put<134,17>(p,(c[13]-Textures)>>3);
@@ -68,7 +72,9 @@ inline PackedCommand pack(const Command& c){
  put<357,32>(p,attr);
  invalid|=(c[25]&65535)>255 || (c[25]>>16)>255;
  put<453,8>(p,c[25]);put<461,8>(p,c[25]>>16);}
- put<495,2>(p,c[31]>>10);put<469,13>(p,c[7]);put<482,13>(p,c[7]>>16);put<511,1>(p,invalid);return p;
+ put<495,2>(p,c[31]>>10);put<498,1>(p,c[31]>>12);put<497,1>(p,c[14]>>12);
+ put<499,1>(p,c[31]>>14);put<500,1>(p,literal);if(literal)put<501,8>(p,a>>24);
+ put<469,13>(p,c[7]);put<482,13>(p,c[7]>>16);put<511,1>(p,invalid);return p;
 }
 inline Command unpack(const PackedCommand& p){
  Command c{};
@@ -78,13 +84,14 @@ inline Command unpack(const PackedCommand& p){
  c[1]=get<3,8>(p)|(end<<16);c[2]=get<35,6>(p)|(get<41,5>(p)<<8);
  c[3]=width|(get<27,8>(p)<<16);c[4]=get<102,32>(p);
  c[5]=get<54,24>(p);c[6]=signed24(get<78,24>(p));c[15]=get<54,24>(p);c[26]=get<78,24>(p);
+ if(get<500,1>(p))c[5]=c[15]=c[26]=c[5]|(get<501,8>(p)<<24);
  c[7]=get<469,13>(p)|(get<482,13>(p)<<16);
- c[13]=Textures+(get<134,17>(p)<<3);c[14]=(get<151,3>(p)+3)|((get<154,3>(p)+3)<<4)|(get<157,4>(p)<<8);
+ c[13]=Textures+(get<134,17>(p)<<3);c[14]=(get<151,3>(p)+3)|((get<154,3>(p)+3)<<4)|(get<157,4>(p)<<8)|(get<497,1>(p)<<12);
  c[27]=(get<161,6>(p)<<24)|(get<167,1>(p)<<4)|(get<168,1>(p)<<15);
  auto cov=[](uint32_t v){return (v&1023)|(((v>>10)&1023)<<12)|((v>>20)<<31);};
  c[28]=cov(get<169,21>(p));c[29]=cov(get<190,21>(p));
  c[30]=get<211,9>(p)|(get<220,9>(p)<<16);
- c[31]=get<46,5>(p)|(get<51,1>(p)<<5)|(get<52,2>(p)<<8)|(get<495,2>(p)<<10);
+ c[31]=get<46,5>(p)|(get<51,1>(p)<<5)|(get<52,2>(p)<<8)|(get<495,2>(p)<<10)|(get<498,1>(p)<<12)|(get<500,1>(p)<<13)|(get<499,1>(p)<<14);
  c[8]=get<229,32>(p);c[16]=signed16(c[8]>>16);
  if(c[2]&Linear)c[8]&=65535;
  c[21]=get<389,8>(p)|(get<397,8>(p)<<16);

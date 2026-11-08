@@ -21,7 +21,7 @@ int main(int argc,char** argv)try{
  std::vector<uint32_t> control(0x100000/4),output(0x300000/4);
  unsigned captures=0,fallbacks=0;
  std::ofstream manifest(std::string(argv[1])+"/scenarios.json");manifest<<"[\n";
- for(unsigned scenario=0;scenario<240;scenario++){
+ for(unsigned scenario=0;scenario<432;scenario++){
   currentScenario=scenario;fpga3d::bind(nullptr,nullptr,false);
   auto ref=machine(true),test=machine(true);
   unsigned pattern=scenario<48?scenario:scenario-48;
@@ -29,8 +29,9 @@ int main(int argc,char** argv)try{
   if(scenario>=112)fixture=(fixture&~3u)|((scenario&1)?1:2);
   if(scenario>=144 && scenario<160)fixture|=16384u|((9u+(scenario&1))<<20);
   if(scenario>=224)fixture|=16384u|(4u<<17);
+  if(scenario>=400)fixture=16384u|8192u|((scenario&1)?16u:0)|((9u+((scenario>>1)&1))<<20);
   frame(*ref,fixture);frame(*test,fixture);
-  bool supported=!(scenario>=40 && scenario<48 && scenario!=40 && scenario!=42 && scenario!=44);
+  bool supported=!(scenario>=40 && scenario<48 && scenario!=40 && scenario!=41 && scenario!=42 && scenario!=44 && scenario!=46);
   for(auto* n:{ref.get(),test.get()}){
    auto& g=n->GPU.GPU3D;g.RenderDispCnt=1|8;
    if(scenario>=40 && scenario<48){
@@ -73,7 +74,7 @@ int main(int argc,char** argv)try{
      if((f&8) || i%3!=0)p->Attr|=1u<<15;else p->Attr&=~(1u<<15);
     }
    }
-   if(scenario>=224){
+   if(scenario>=224 && scenario<240){
     // Equal-depth front faces may pass an opaque back face, but never a
     // translucent back face. Both layers and fog/AA combinations matter.
     g.RenderDispCnt&=~1u;
@@ -83,6 +84,60 @@ int main(int argc,char** argv)try{
      p->Attr=(p->Attr&~((31u<<16)|(1u<<14)|(1u<<11)))|(alpha<<16)|
          ((scenario&4)?0:1u<<11)|((scenario&8)?1u<<14:0);
      for(unsigned v=0;v<p->NumVertices;v++)p->FinalZ[v]=i<2?0x100000:0x200000;
+    }
+   }
+   if(scenario==41 || scenario>=240){
+    g.RenderDispCnt|=1u<<5;
+    for(unsigned i=0;i<8;i++)g.RenderEdgeTable[i]=((i*5+scenario)&31)|(((i*11+3)&31)<<5)|(((i*7+19)&31)<<10);
+    if(scenario>=240){
+     const unsigned e=scenario-240;
+     if(e&1)g.RenderDispCnt|=1u<<4;else g.RenderDispCnt&=~(1u<<4);
+     if(e&2)g.RenderDispCnt|=1u<<7;else g.RenderDispCnt&=~(1u<<7);
+     g.RenderClearAttr1=(g.RenderClearAttr1&~(63u<<24))|(((e*7)&63)<<24);
+     g.RenderClearAttr2=(g.RenderClearAttr2&~0x7fffu)|((e&4)?0x7fff:0x1000);
+     for(unsigned i=0;i<g.RenderNumPolygons;i++){
+      auto* p=g.RenderPolygonRAM[i];
+      p->Attr=(p->Attr&~(63u<<24))|(((e&8)?i*9:e*3)&63)<<24;
+     }
+    }
+   }
+   if(scenario>=304 && scenario<400){
+    const unsigned formats[]={4,1,6,7};
+    for(unsigned i=0;i<32768;i++)n->GPU.VRAM_A[i]=uint8_t((i*37+(i>>7)*13+scenario)&255);
+    for(unsigned i=0;i<256;i++){
+     uint16_t rgb=(i&31)|(((i>>3)&31)<<5)|(((i*7)&31)<<10);
+     std::memcpy(n->GPU.VRAM_E+2*i,&rgb,2);
+    }
+    std::memset(n->GPU.VRAMDirty[0].Data,255,sizeof(n->GPU.VRAMDirty[0].Data));
+    std::memset(n->GPU.VRAMDirty[4].Data,255,sizeof(n->GPU.VRAMDirty[4].Data));
+    for(unsigned i=0;i<g.RenderNumPolygons;i++){
+     auto* p=g.RenderPolygonRAM[i];
+     p->TexParam=(formats[(scenario+i/3)&3]<<26)|(4u<<20)|(4u<<23)|((scenario&4)?15u<<16:0)|(1u<<29);
+     for(unsigned v=0;v<p->NumVertices;v++){
+      p->Vertices[v]->TexCoords[0]=s16(p->Vertices[v]->FinalPosition[0]*29-2048);
+      p->Vertices[v]->TexCoords[1]=s16(p->Vertices[v]->FinalPosition[1]*31-1024);
+     }
+    }
+   }
+   if(scenario==46 || (scenario>=336 && scenario<400)){
+    if(scenario&1)g.RenderDispCnt|=2;else g.RenderDispCnt&=~2u;
+    if(scenario&2)g.RenderDispCnt&=~1u;
+    for(unsigned i=0;i<32;i++)g.RenderToonTable[i]=((i*5+scenario)&31)|(((i*7+3)&31)<<5)|(((i*11+1)&31)<<10);
+    for(unsigned i=0;i<g.RenderNumPolygons;i++){
+     auto* p=g.RenderPolygonRAM[i];p->Attr=(p->Attr&~48u)|((i%3==0)?16u:32u);
+    }
+   }
+   if(scenario>=400){
+    g.RenderDispCnt=1|8|((scenario&4)?16:0)|((scenario&8)?32:0);
+    for(unsigned i=0;i<g.RenderNumPolygons;i++){
+     auto* p=g.RenderPolygonRAM[i];
+     p->Attr=(p->Attr&~(31u<<16))|(31u<<16);
+     p->WBuffer=(scenario&16)!=0;
+     for(unsigned v=0;v<p->NumVertices;v++){
+      p->FinalW[v]=49267-(p->Vertices[v]->FinalPosition[0]>128?264:0);
+      p->FinalZ[v]=0x100000+((scenario&2)?int(v)*4096:0);
+      for(unsigned c=0;c<3;c++)p->Vertices[v]->FinalColor[c]=63<<3;
+     }
     }
    }
   }
