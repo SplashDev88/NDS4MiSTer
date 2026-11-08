@@ -4631,8 +4631,6 @@ bool SoftRenderer3D::TryFpgaFrame()
         if(rp.PolyData->IsShadow && !(ps.BlendMode&1)) return trace.finish(Outcome::ShadowMode);
         if(!rp.PolyData->IsShadowMask && ps.TextureEnabled && !ps.TexturePixels) return trace.finish(Outcome::TextureMissing);
     }
-    const FpgaPreparationAffinity preparationAffinity;
-    trace.next(fpga3d::Stage::Textures);
     std::vector<fpga3d::Frame::TextureUse> textureUses;
     if(fpga3d::adaptiveAdmission)
     {
@@ -4657,6 +4655,11 @@ bool SoftRenderer3D::TryFpgaFrame()
         }
         FpgaFrame.allowIndexed=bytes>rawBudget;
     }
+    // A native admission decision must not migrate its renderer to CPU1.
+    // Restoring an unrestricted affinity mask would still leave the caller
+    // there until the scheduler moves it, competing with the native worker.
+    const FpgaPreparationAffinity preparationAffinity;
+    trace.next(fpga3d::Stage::Textures);
     // Reject unsupported frames before copying any decoded textures. Shadow
     // polygons commonly sort after opaque geometry, so a single combined pass
     // would copy most of a frame's textures before selecting software fallback.

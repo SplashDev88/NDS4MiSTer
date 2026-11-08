@@ -296,3 +296,10 @@ supported scenes retain the FPGA path. The service-only diagnostic setting
 qualification; normal launchers do not enable it. The encoder, indexed FPGA
 support, and exact software fallback remain available. C35 live measurements
 are required before release; full-speed commercial 3D remains unfinished.
+
+C35 retained 23.60 publications/s in Twinleaf Town, but its native Dawn path
+measured 44.36. C36 moves the texture-budget decision before CPU1 preparation
+affinity: a rejected frame must stay on its original CPU instead of competing
+with the native raster worker after restoring an unrestricted affinity mask.
+Eligible FPGA frames still use scoped CPU1 preparation. C36 needs its own
+live comparison before this scheduling correction is qualified.
