@@ -36,6 +36,31 @@ int main() try {
   for(unsigned y=0;y<192;y++)require(!std::memcmp(ref->GetRenderer().Get3DScanline(y),test->GetRenderer().Get3DScanline(y),1024),"admission fallback pixels");
   require(!std::memcmp(get(*ref).StencilBuffer,soft.StencilBuffer,512) && get(*ref).PrevIsShadowMask==soft.PrevIsShadowMask,"admission fallback stencil state");
  }
+ {
+  auto test=machine(true);frame(*test,0);
+  auto& soft=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(test->GetRenderer()).Rend3D.get());
+  auto& g=test->GPU.GPU3D;g.RenderDispCnt=1|8;
+  soft.SetupRenderPolygons(&g.RenderPolygonRAM[0],g.RenderNumPolygons);
+  soft.CurrentPolygonCount=1;soft.FullFrameCompletion=true;
+  auto& rp=soft.PolygonList[0];uint32_t pixel=0x1f010203;
+  rp.PolyData->IsShadowMask=false;rp.PolyData->IsShadow=false;
+  rp.PixelState.Wireframe=false;rp.PixelState.BlendMode=0;
+  rp.PixelState.TextureEnabled=true;rp.PixelState.TexturePixels=&pixel;
+  rp.PixelState.TextureWidth=1024;rp.PixelState.TextureHeight=1024;
+  std::vector<uint32_t> control(0x100000/4),output(0x300000/4,0xa1b2c3d4);
+  control[0]=0x31443348;control[2]=17;
+  control[(fpga3d::Mailbox-0x3fc00000+24)/4]=fpga3d::Magic;
+  control[(fpga3d::Mailbox-0x3fc00000+28)/4]=17;
+  const auto untouched=control;fpga3d::poisonedSession=0;
+  fpga3d::adaptiveAdmission=true;fpga3d::bind(control.data(),output.data(),true,true);
+  require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==60,"texture rejection did not bound retries");
+  for(unsigned i=0;i<60;i++)require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==59-i,"texture retry boundary");
+  require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==60,"texture rejection retry failed");
+  require(control==untouched && std::all_of(output.begin(),output.end(),[](auto x){return x==0xa1b2c3d4;}),"texture rejection touched shared memory");
+  require(soft.FpgaFrame.textures.empty() && soft.FpgaFrame.commands.empty() && !soft.FpgaFrame.active,"texture rejection acquired ownership");
+  fpga3d::bind(nullptr,nullptr,false);fpga3d::adaptiveAdmission=false;
+  puts("PASS oversized texture admission: bounded retries and untouched mailbox/arenas");
+ }
  puts("PASS adaptive admission: 60-frame bounded retry, reset, work boundaries, 786432 exact native fallback pixels and untouched mailbox/arenas");
  return 0;
 }catch(const std::exception& e){std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}

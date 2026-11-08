@@ -4377,7 +4377,13 @@ bool SoftRenderer3D::TryFpgaFrame()
     {
         const auto& ps=PolygonList[i].PixelState;
         if(!PolygonList[i].PolyData->IsShadowMask && ps.TextureEnabled &&
-           !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight))return false;
+           !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight))
+        {
+            // Texture admission can fail after scanning/copying earlier
+            // bindings. Bound retries just like late span/capacity failures.
+            if (fpga3d::adaptiveAdmission) FpgaAdmission.unsupported();
+            return false;
+        }
     }
     if(GPU3D.RenderDispCnt & (1u<<7))
     {
