@@ -2468,6 +2468,7 @@ private:
     bool UseTextureCache;
     fpga3d::Frame FpgaFrame;
     fpga3d::Admission FpgaAdmission;
+    fpga3d::Profile FpgaProfile;
     bool FpgaEmitting = false;
     bool TryFpgaFrame();
     // Only exact, fully generated polygon rows may survive between frames.

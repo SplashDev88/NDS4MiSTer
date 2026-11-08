@@ -11314,6 +11314,8 @@ try {
             const bool matched_display = memory_path == "/dev/mem" &&
                 matched_requested && std::strcmp(matched_requested, "1") == 0;
             const char* fpga3d_requested=std::getenv("NDS4MISTER_FPGA3D");
+            const char* fpga_profile=std::getenv("NDS4MISTER_FPGA3D_PROFILE");
+            fpga3d::profileEnabled=fpga_profile && std::strcmp(fpga_profile,"1")==0;
             fpga3d::adaptiveAdmission=true;
             fpga3d::bind(mapping.data(),mapping.publication_data(),
                 matched_display && fpga3d_requested && std::strcmp(fpga3d_requested,"1")==0,

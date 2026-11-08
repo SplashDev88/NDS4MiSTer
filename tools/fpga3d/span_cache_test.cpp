@@ -43,6 +43,10 @@ static void change(NDS& n,unsigned kind) {
  case 23: std::swap(g.RenderPolygonRAM[2],g.RenderPolygonRAM[3]);break;
  case 24: n.GPU.VRAM_A[0]^=255;std::memset(n.GPU.VRAMDirty[0].Data,255,sizeof(n.GPU.VRAMDirty[0].Data));break;
  case 25: g.RenderPolygonRAM[0]->TexParam^=1u<<20;break;
+ case 26: p.TexParam=(p.TexParam&~(7u<<26))|(7u<<26);break;
+ case 27: p.TexParam=(p.TexParam&~(7u<<26))|(4u<<26);break;
+ case 28: p.Attr=(p.Attr&~48u)|32u;break;
+ case 29: for(auto& c:g.RenderToonTable)c^=0x7fff;break;
  }
 }
 int main()try {
@@ -72,13 +76,19 @@ int main()try {
  unsigned comparisons=0;
  for(bool packed:{false,true}) {
  currentPacked=packed;
- for(unsigned variant:{0u,8u,16u,24u,16384u|8u,16384u|24u}) {
+ for(unsigned variant:{0u,8u,16u,24u,16384u|8u,16384u|24u,0x10000000u,0x10000018u}) {
   currentVariant=variant;
   auto ref=machine(true),test=machine(true);
   frame(*ref,variant);frame(*test,variant);
+  if(variant&0x10000000u)for(auto* n:{ref.get(),test.get()}){
+   for(unsigned i=0;i<32768;i++)n->GPU.VRAM_A[i]=uint8_t((i*37+(i>>7)*13)&255);
+   std::memset(n->GPU.VRAMDirty[0].Data,255,sizeof(n->GPU.VRAMDirty[0].Data));
+   auto& g=n->GPU.GPU3D;
+   for(unsigned i=0;i<g.RenderNumPolygons;i++)g.RenderPolygonRAM[i]->TexParam|=(4u<<20)|(4u<<23);
+  }
   ref->GPU.GPU3D.RenderDispCnt=test->GPU.GPU3D.RenderDispCnt=1|8|16;
   soft(*ref).FpgaSpanCacheEnabled=false;
-  for(unsigned step=0;step<29;step++) {
+  for(unsigned step=0;step<33;step++) {
    currentStep=step;
    if(step==2) {change(*ref,23);change(*test,23);}
    if(step>=3) {change(*ref,step-3);change(*test,step-3);}

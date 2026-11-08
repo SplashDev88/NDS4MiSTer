@@ -319,6 +319,7 @@ void SoftRenderer3D::Reset()
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
     FpgaAdmission.reset();
+    FpgaProfile.reset();
     RasterBalance.Reset();
     RasterBandQueueActive = false;
     RasterBandHeavyFrames = 0;
@@ -1435,7 +1436,7 @@ void SoftRenderer3D::RenderShadowMaskScanline(
             sp.flags=((wl==wr && !(wl&127))?fpga3d::Linear:0)|(polygon->WBuffer?fpga3d::WBuffer:0)|
                 (rp->DepthTest==DepthTest_LessThan_FrontFacing?fpga3d::Front:0)|((rp->PolyAttr&16)?fpga3d::Back:0)|
                 ((rp->DepthTest==DepthTest_Equal_Z || rp->DepthTest==DepthTest_Equal_W)?fpga3d::Equal:0);
-            try{FpgaFrame.append(fpga3d::span(sp));}catch(const std::invalid_argument&){FpgaFrame.valid=false;}
+            try{FpgaFrame.append(fpga3d::span(sp));}catch(const std::invalid_argument&){FpgaFrame.valid=false;FpgaFrame.failure=fpga3d::Outcome::Span;}
         }
         rp->XL=rp->SlopeL.Step();rp->XR=rp->SlopeR.Step();return;
     }
@@ -2385,7 +2386,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                     if(sp.first<sp.end)emitSpan(sp);
                 } else emitSpan(sp);
             }
-            catch(const std::invalid_argument&) { FpgaFrame.valid=false; }
+            catch(const std::invalid_argument&) { FpgaFrame.valid=false;FpgaFrame.failure=fpga3d::Outcome::Span; }
         }
         rp->XL = rp->SlopeL.Step();
         rp->XR = rp->SlopeR.Step();
@@ -4566,19 +4567,23 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
 
 bool SoftRenderer3D::TryFpgaFrame()
 {
+    fpga3d::Attempt trace(FpgaProfile,CurrentPolygonCount,GPU3D.RenderDispCnt);
+    using Outcome=fpga3d::Outcome;
     // Feature admission precedes hardware work. A later span/capacity failure
     // closes and drains the producer, then retries the entire frame in software.
-    if (!FullFrameCompletion || !CurrentPolygonCount || !fpga3d::available() ||
-        (GPU3D.RenderDispCnt & (1u<<14))) return false;
+    if (!FullFrameCompletion) return trace.finish(Outcome::NotFullFrame);
+    if (!CurrentPolygonCount) return trace.finish(Outcome::Empty);
+    if (!fpga3d::available()) return trace.finish(Outcome::Unavailable);
+    if (GPU3D.RenderDispCnt & (1u<<14)) return trace.finish(Outcome::BitmapClear);
     if (fpga3d::adaptiveAdmission)
     {
-        if (FpgaAdmission.defer()) return false;
+        if (FpgaAdmission.defer()) return trace.finish(Outcome::Cooldown);
         if (CurrentPolygonCount >= 32)
         {
             u32 lineWork[VisibleScanlines] {};
             if (fpga3d::lightScene(CurrentPolygonCount,
                     BuildRasterScanlineWork(CurrentPolygonCount,lineWork)))
-                return false;
+                return trace.finish(Outcome::LightScene);
         }
     }
     FpgaFrame.reset();
@@ -4589,10 +4594,12 @@ bool SoftRenderer3D::TryFpgaFrame()
     {
         const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
         needsToon|=ps.BlendMode==2 && !rp.PolyData->IsShadowMask;
-        if(ps.Wireframe || (rp.PolyData->IsShadow && !(ps.BlendMode&1)) ||
-           (!rp.PolyData->IsShadowMask && ps.TextureEnabled && !ps.TexturePixels)) return false;
+        if(ps.Wireframe) return trace.finish(Outcome::Wireframe);
+        if(rp.PolyData->IsShadow && !(ps.BlendMode&1)) return trace.finish(Outcome::ShadowMode);
+        if(!rp.PolyData->IsShadowMask && ps.TextureEnabled && !ps.TexturePixels) return trace.finish(Outcome::TextureMissing);
     }
     const FpgaPreparationAffinity preparationAffinity;
+    trace.next(fpga3d::Stage::Textures);
     // Reject unsupported frames before copying any decoded textures. Shadow
     // polygons commonly sort after opaque geometry, so a single combined pass
     // would copy most of a frame's textures before selecting software fallback.
@@ -4605,9 +4612,11 @@ bool SoftRenderer3D::TryFpgaFrame()
             // Texture admission can fail after scanning/copying earlier
             // bindings. Bound retries just like late span/capacity failures.
             if (fpga3d::adaptiveAdmission) FpgaAdmission.unsupported();
-            return false;
+            if(fpga3d::profileEnabled)std::fprintf(stderr,"FPGA3D_TEXTURE_REJECT reason=%s width=%u height=%u staged_bytes=%zu bindings=%zu\n",fpga3d::outcomeNames[unsigned(FpgaFrame.failure)],ps.TextureWidth,ps.TextureHeight,FpgaFrame.textures.size()*4,FpgaFrame.textureOffsets.size());
+            return trace.finish(FpgaFrame.failure);
         }
     }
+    trace.next(fpga3d::Stage::Emit);
     if(GPU3D.RenderDispCnt & (1u<<7))
     {
         const u32 raw=GPU3D.RenderFogColor;
@@ -4633,6 +4642,7 @@ bool SoftRenderer3D::TryFpgaFrame()
         FpgaFrame.publish();
     }
     FpgaEmitting=false;
+    trace.next(fpga3d::Stage::Submit);
     if(FpgaFrame.submit(ColorBuffer+FirstPixelOffset,ScanlineWidth))
     {
         if (fpga3d::completedFrames==1 || fpga3d::completedFrames%600==0)
@@ -4643,7 +4653,7 @@ bool SoftRenderer3D::TryFpgaFrame()
         std::fill_n(FinalPassMinX,VisibleScanlines,0);
         std::fill_n(FinalPassMaxX,VisibleScanlines,256);
         CancelRasterIfRequested();
-        return true;
+        return trace.finish(Outcome::Accepted,FpgaFrame.commandCount(),FpgaFrame.textures.size()*4,FpgaFrame.uploadUs,FpgaFrame.waitUs,FpgaFrame.copyUs);
     }
     // Command preparation advanced edge state. Reconstruct it before taking
     // the original renderer path. No framebuffer was modified on failure.
@@ -4651,7 +4661,7 @@ bool SoftRenderer3D::TryFpgaFrame()
         FpgaAdmission.unsupported();
     PrevIsShadowMask=initialShadowMask;
     SetupRenderPolygons(&GPU3D.RenderPolygonRAM[0],GPU3D.RenderNumPolygons);
-    return false;
+    return trace.finish(FpgaFrame.transportError?Outcome::Transport:FpgaFrame.failure);
 }
 
 void SoftRenderer3D::RenderPolygonsDualCore(

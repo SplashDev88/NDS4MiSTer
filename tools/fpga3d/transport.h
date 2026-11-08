@@ -2,6 +2,7 @@
 #pragma once
 #include "codec.h"
 #include "admission.h"
+#include "profile.h"
 #include <chrono>
 #include <cstring>
 #include <cstdio>
@@ -77,6 +78,7 @@ struct Frame {
  std::vector<PackedCommand> packedCommands;
  std::vector<uint32_t> textures;
  std::map<const uint32_t*,uint32_t> textureOffsets;
+ Outcome failure=Outcome::SubmitFailed;
  bool valid=true,active=false,transportError=false,recyclePublished=false;
  unsigned deadlineMs=100;
  uint8_t* stencil=nullptr;
@@ -88,26 +90,27 @@ struct Frame {
  void reset(){
   // An abandoned producer must never reuse bytes still owned by the FPGA.
   if(active){poisonedSession=frameSession;++failedFrames;}
-  commands.clear();packedCommands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
+  failure=Outcome::SubmitFailed;commands.clear();packedCommands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
   published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;
  }
  size_t commandCount()const{return recyclePublished?published+packedCommands.size():commands.size();}
  void append(const Command& c){
-  if(commandCount()>=commandCapacity)valid=false;
+  if(commandCount()>=commandCapacity){valid=false;failure=Outcome::CommandCapacity;}
   else if(recyclePublished)packedCommands.push_back(pack(c));
   else commands.push_back(c);
  }
  void appendPacked(const PackedCommand& c,uint32_t texture=0){
-  if(!recyclePublished || commandCount()>=commandCapacity)valid=false;
+  if(!recyclePublished || commandCount()>=commandCapacity){valid=false;failure=Outcome::CommandCapacity;}
   else {
    packedCommands.push_back(c);
    if(texture)rebindTexture(packedCommands.back(),texture);
   }
  }
  bool addTexture(const uint32_t* pixels,size_t count){
-  if(active)return false;
+  const auto reject=[&](Outcome why){failure=why;return false;};
+  if(active)return reject(Outcome::TextureState);
   if(textureOffsets.count(pixels))return true;
-  if(!pixels || !count || count>TextureBytes || (count&63))return false;
+  if(!pixels || !count || count>TextureBytes || (count&63))return reject(Outcome::TextureCapacity);
   // DS palette formats often contain at most 256 exact decoded RGBA values.
   // Store those without quantization: a 1 KiB palette followed by byte indices.
   // This keeps the fixed, non-overlapping DDR arena while admitting up to
@@ -119,7 +122,7 @@ struct Frame {
    std::vector<uint32_t> indices(count/4,0);
    unsigned colors=0;bool indexed=true;
    for(size_t i=0;i<count;i++){
-    const uint32_t color=pixels[i];if((color>>24)>31)return false;
+    const uint32_t color=pixels[i];if((color>>24)>31)return reject(Outcome::TextureAlpha);
     unsigned slot=(color*2654435761u)>>22;
     while(slots[slot] && palette[slots[slot]-1]!=color)slot=(slot+1)&1023;
     if(!slots[slot]){
@@ -130,15 +133,15 @@ struct Frame {
    }
    if(indexed){
     const size_t aligned=(textures.size()+15)&~size_t(15);
-    if(aligned+palette.size()+indices.size()>TextureBytes/4)return false;
+    if(aligned+palette.size()+indices.size()>TextureBytes/4)return reject(Outcome::TextureCapacity);
     textures.resize(aligned,0);
     textureOffsets[pixels]=(Textures+uint32_t(aligned*4))|1u;
     textures.insert(textures.end(),palette.begin(),palette.end());
     textures.insert(textures.end(),indices.begin(),indices.end());return true;
    }
   }
-  if(count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return false;
-  for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return false;
+  if(count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return reject(Outcome::TextureCapacity);
+  for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return reject(Outcome::TextureAlpha);
   textureOffsets[pixels]=Textures+textures.size()*4;
   textures.insert(textures.end(),pixels,pixels+count);return true;
  }
