@@ -349,7 +349,11 @@ int main(int argc,char** argv){try{
   require(guard<3000000,"did not reach stencil transaction interruption");
   require(sim.word(Mailbox+16)!=interrupted,"stencil interruption too late");
   sim.v.enable=0;for(unsigned k=0;k<10000;k++)sim.tick();
-  require(sim.remaining==0 && sim.writeRemaining==0,"disabled stencil transaction did not drain");
+  // Other DDR clients continue after the rasterizer is disabled. Only its
+  // seed/output transactions must be gone; the shared bus need not be idle.
+  require(!(sim.remaining && sim.readat>=StencilInput && sim.readat<StencilInput+512) &&
+          !(sim.writeRemaining && sim.writeBase>=StencilOutput && sim.writeBase<StencilOutput+512),
+          "disabled stencil transaction did not drain");
   require(sim.word(Mailbox+16)!=interrupted,"interrupted stencil frame completed");
   sim.v.enable=1;for(unsigned k=0;k<1000;k++)sim.tick();
   checkCache(0x1f091527,0x1f342618);
