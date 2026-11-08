@@ -27,6 +27,7 @@ int main(int argc,char** argv)try{
    for(int i=0;i<2000;i++)progress();
    require(sim.word(Mailbox+16)!=f.sequence,"transport prematurely completed");
    f.append(clear(y,0x1f000000+y,0xffffff));f.append(flush(y));f.publish();
+   require(f.commands.empty() && f.commandCount()==2*(y+1),"CPU row buffer retained history or lost cumulative count");
   }
   require(f.submit(dst.data()+8,258),"streamed transport submission");
   require(!f.active && !f.transportError,"transport ownership remained active");
@@ -91,6 +92,19 @@ int main(int argc,char** argv)try{
  require(!f.submit(dst.data()+8,258) && !f.active && failedFrames==failures,"capacity cancel did not drain cleanly");
  for(auto w:dst)require(w==0xa1b2c3d4,"capacity cancel copied partial frame");
  require(stencil==preservedStencil,"capacity cancel copied stencil");
+ // Recycling CPU rows must not recycle the physical command budget. Fill it
+ // over many publications, then reject one more descriptor and drain safely.
+ f.reset();f.stencil=stencil.data();f.startStream();sim.guardedBase=f.commandBase;sim.guardedCount=0;
+ f.append(clear(0,0,0xffffff));
+ for(unsigned i=1;i<MaxCommands;i++){
+  f.append(span(p));
+  if(i%64==63)f.publish();
+ }
+ f.publish();require(f.valid && f.commands.empty() && f.commandCount()==MaxCommands,"recycled stream capacity accounting");
+ f.append(span(p));require(!f.valid && f.commandCount()==MaxCommands,"recycled stream exceeded physical arena");
+ require(!f.submit(dst.data()+8,258) && !f.active && failedFrames==failures,"recycled capacity cancel did not drain cleanly");
+ for(auto w:dst)require(w==0xa1b2c3d4,"recycled capacity cancel copied partial frame");
+ require(stencil==preservedStencil,"recycled capacity cancel copied stencil");
  // The live batch policy must leave the mailbox and arenas untouched while
  // the CPU prepares commands, then preserve the same pixels and stencil.
  streaming=false;

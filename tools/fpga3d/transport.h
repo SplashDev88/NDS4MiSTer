@@ -73,7 +73,7 @@ struct Frame {
  std::vector<Command> commands;
  std::vector<uint32_t> textures;
  std::map<const uint32_t*,uint32_t> textureOffsets;
- bool valid=true,active=false,transportError=false;
+ bool valid=true,active=false,transportError=false,recyclePublished=false;
  unsigned deadlineMs=100;
  uint8_t* stencil=nullptr;
  uint64_t uploadUs=0,waitUs=0,copyUs=0;
@@ -84,10 +84,11 @@ struct Frame {
  void reset(){
   // An abandoned producer must never reuse bytes still owned by the FPGA.
   if(active){poisonedSession=frameSession;++failedFrames;}
-  commands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;
+  commands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
   published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;
  }
- void append(const Command& c){if(commands.size()>=commandCapacity)valid=false;else commands.push_back(c);}
+ size_t commandCount()const{return (recyclePublished?published:0)+commands.size();}
+ void append(const Command& c){if(commandCount()>=commandCapacity)valid=false;else commands.push_back(c);}
  bool addTexture(const uint32_t* pixels,size_t count){
   if(active)return false;
   if(textureOffsets.count(pixels))return true;
@@ -124,7 +125,7 @@ struct Frame {
  }
  // Native fixture generation keeps batch behavior; live WC rendering starts
  // only after feature/texture admission and before scanline command emission.
- void startStream(){if(writeCombined && streaming)start();}
+ void startStream(){if(writeCombined && streaming && start())recyclePublished=true;}
  bool ownershipHealthy(){
   if(control[2]==frameSession && control[0]==0x31443348 && std::chrono::steady_clock::now()<=deadline)return true;
   poisonedSession=frameSession;transportError=true;active=false;++failedFrames;return false;
@@ -134,7 +135,15 @@ struct Frame {
   if(mailbox[4]==sequence){transportError=true;return;}
   const auto t=std::chrono::steady_clock::now();
   volatile uint32_t* target=commandBase==Commands?control+(commandBase-0x3fc00000)/4:publication+(commandBase-0x3fd00000)/4;
-  for(;published<commands.size();published++)uploadCommand(target+published*16,commands[published],writeCombined && commandBase!=Commands);
+  if(recyclePublished){
+   // Published descriptors already have immutable FPGA-owned storage. Reuse
+   // the small CPU row buffer instead of carrying a 1 MiB logical command
+   // history through the shared Cortex-A9 cache on every frame.
+   for(size_t i=0;i<commands.size();i++)uploadCommand(target+(published+i)*16,commands[i],writeCombined && commandBase!=Commands);
+   published+=commands.size();commands.clear();
+  }else{
+   for(;published<commands.size();published++)uploadCommand(target+published*16,commands[published],writeCombined && commandBase!=Commands);
+  }
   // The consumer may read only this committed immutable prefix.
   barrier();mailbox[2]=uint32_t(published);barrier();
   uploadUs+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-t).count();
@@ -173,7 +182,7 @@ struct Frame {
   barrier();mailbox[14]=sequence;
   if(completedFrames==1 || completedFrames%600==0)
    std::fprintf(stderr,"FPGA3D completed=%llu failures=%llu commands=%zu texture_bytes=%zu upload_us=%llu wait_us=%llu copy_us=%llu\n",
-    (unsigned long long)completedFrames,(unsigned long long)failedFrames,commands.size(),textures.size()*4,
+    (unsigned long long)completedFrames,(unsigned long long)failedFrames,commandCount(),textures.size()*4,
     (unsigned long long)uploadUs,(unsigned long long)waitUs,(unsigned long long)copyUs);
   return true;
  }
