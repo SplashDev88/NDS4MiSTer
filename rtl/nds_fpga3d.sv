@@ -101,6 +101,9 @@ module nds_fpga3d #(
  logic [1:0] render_bank,output_bank,edge_bank,edge_phase;
  logic [8:0] output_y;
  logic [31:0] row_config[0:2],output_config;
+ logic [8:0] row_first[0:2],row_end[0:2],output_first,output_end;
+ wire [8:0] command_first=cmd[2][31]?cmd[2][8:0]:9'd0;
+ wire [8:0] command_end=cmd[2][31]?cmd[2][24:16]:9'd256;
  wire output_active=state==RESOLVE_START || state==RESOLVE_RUN ||
      state==EDGE_READ || state==EDGE_CENTER || state==EDGE_NEIGHBOR || state==EDGE_APPLY ||
      state==FLUSH_LOAD || state==FLUSH_WAIT || state==FLUSH_WRITE;
@@ -325,7 +328,7 @@ module nds_fpga3d #(
   .antialias(pixel_config[4]),.blend_enable(pixel_config[3]),.translucent_depth_write(cmd[31][5]),
   .precheck_valid(p_valid[10]),.precheck_x(p_x[10][7:0]),.precheck_depth(p_z[10]),.precheck_pass(p_depth_pass),
   .pixel_valid(p_ce && p_valid[12] && p_pass[12] && p_color[31:24]>cmd[2][12:8]),
-  .resolve_valid(state==RESOLVE_RUN && x<256),.resolve_mode,
+  .resolve_valid(state==RESOLVE_RUN && x<output_end),.resolve_mode,
   .shadow_mode(cmd[31][11:10]),.stencil_row(line_y[0]),
   .stencil_frame_start(state==CACHE_CLEAR && p_clear_index==0),
   .stencil_clear(state==DECODE && cmd[0]==5 && line_open && cmd[1]==line_y),
@@ -346,6 +349,7 @@ module nds_fpga3d #(
    palette_valid<=0;palette_word<=0;
    toon_configured<=0;
    coverage_valid<=0;
+   output_first<=0;output_end<=256;
   end else begin
    if((state==FLUSH_WRITE || state==DUMP_WRITE) && !busy)flush_inflight<=1;
    case(state)
@@ -457,7 +461,7 @@ module nds_fpga3d #(
      end else if(packed_command[31:0]==1)begin
       for(integer k=0;k<7;k=k+1)cmd[k]<=packed_command[32*k+:32];
      end else if(packed_command[31:0]==3 || packed_command[31:0]==5)begin
-      cmd[0]<=packed_command[31:0];cmd[1]<=packed_command[32+:32];
+      cmd[0]<=packed_command[31:0];cmd[1]<=packed_command[32+:32];cmd[2]<=packed_command[64+:32];
      end else if(packed_command[31:0]==4)begin
       for(integer k=0;k<13;k=k+1)cmd[k]<=packed_command[32*k+:32];
      end else if(packed_command[31:0]==6)begin
@@ -483,13 +487,17 @@ module nds_fpga3d #(
      end else if(cmd[0]==1 && !line_open && line_y<192 && cmd[4]==line_y &&
        (!cmd[6][7] || fog_configured) && (!cmd[6][5] || edge_configured))begin
       x<=0;line_open<=1;line_config<=cmd[6];row_config[render_bank]<=cmd[6];coverage_valid<=0;state<=CLEAR_LINE;
-     end else if(cmd[0]==3 && line_open && cmd[1]==line_y)begin
+     end else if(cmd[0]==3 && line_open && cmd[1]==line_y &&
+       (cmd[2]==0 || (cmd[2][31] && cmd[2][15:0]<={1'b0,cmd[2][30:16]} && cmd[2][30:16]<=256)))begin
+      row_first[render_bank]<=command_first;row_end[render_bank]<=command_end;
       if(edge_configured && line_y==0)begin
        line_open<=0;line_y<=1;render_bank<=next_bank(render_bank);state<=NEXT_COMMAND;
       end else begin
        output_bank<=edge_configured?prev_bank(render_bank):render_bank;
        output_y<=edge_configured?line_y-9'd1:line_y;
        output_config<=edge_configured?row_config[prev_bank(render_bank)]:line_config;
+       output_first<=edge_configured?row_first[prev_bank(render_bank)]:command_first;
+       output_end<=edge_configured?row_end[prev_bank(render_bank)]:command_end;
        state<=RESOLVE_START;
       end
      end else if(cmd[0]==2 && line_open && cmd[1][15:0]<cmd[1][31:16] &&
@@ -545,8 +553,8 @@ module nds_fpga3d #(
      end
     end
     RESOLVE_START:begin
-     x<=0;flush_x<=0;resolve_mode<=output_config[7]?2'd1:2'd3;
-     state<=output_config[5]?EDGE_READ:(output_config[4] || output_config[7])?RESOLVE_RUN:FLUSH_LOAD;
+     x<=output_first;flush_x<=0;resolve_mode<=output_config[7]?2'd1:2'd3;
+     state<=output_first==output_end?FLUSH_LOAD:output_config[5]?EDGE_READ:(output_config[4] || output_config[7])?RESOLVE_RUN:FLUSH_LOAD;
     end
     EDGE_READ:state<=EDGE_CENTER;
     EDGE_CENTER:begin
@@ -558,14 +566,14 @@ module nds_fpga3d #(
      if(edge_phase==3)state<=EDGE_APPLY;else edge_phase<=edge_phase+1'b1;
     end
     EDGE_APPLY:begin
-     if(x==255)begin x<=0;state<=(output_config[4] || output_config[7])?RESOLVE_RUN:FLUSH_LOAD;end
+     if(x+9'd1==output_end)begin x<=output_first;state<=(output_config[4] || output_config[7])?RESOLVE_RUN:FLUSH_LOAD;end
      else begin x<=x+1'b1;state<=EDGE_READ;end
     end
     RESOLVE_RUN:begin
-     if(x<256)x<=x+1'b1;
+     if(x<output_end)x<=x+1'b1;
      else if(!pixels_pending)begin
-      if(resolve_mode==1)begin resolve_mode<=2; x<=0;end
-      else if(resolve_mode==2 && output_config[4])begin resolve_mode<=3;x<=0;end
+      if(resolve_mode==1)begin resolve_mode<=2; x<=output_first;end
+      else if(resolve_mode==2 && output_config[4])begin resolve_mode<=3;x<=output_first;end
       else state<=FLUSH_LOAD;
      end
     end
@@ -576,6 +584,7 @@ module nds_fpga3d #(
       flush_inflight<=0;
       if(edge_configured && line_y==191 && output_y==190)begin
        output_bank<=render_bank;output_y<=191;output_config<=line_config;state<=RESOLVE_START;
+       output_first<=row_first[render_bank];output_end<=row_end[render_bank];
       end else begin
        line_open<=0;line_y<=line_y+1'b1;render_bank<=next_bank(render_bank);state<=NEXT_COMMAND;
       end

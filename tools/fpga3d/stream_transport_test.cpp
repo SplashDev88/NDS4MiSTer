@@ -66,6 +66,9 @@ int main(int argc,char** argv)try{
  // A full texture arena keeps all 8128 Device descriptors available. The
  // last texture line must not alias command storage or leave its arena.
  f.reset();f.stencil=stencil.data();std::vector<uint32_t> largeTexture(TextureBytes/4,0x1f12342a);
+ // More than 256 colors deliberately prevents the new lossless palette
+ // encoding, so this still tests the full Device command/texture boundary.
+ for(unsigned i=0;i<largeTexture.size();i++)largeTexture[i]=0x1f000000|(i&63)|(((i>>6)&63)<<8)|(((i>>12)&63)<<16);
  require(f.addTexture(largeTexture.data(),largeTexture.size()),"full texture admission");
  f.startStream();require(f.active && f.commandBase==Commands && f.commandCapacity==MaxCommands,"texture-heavy Device stream admission");
  sim.guardedBase=Commands;sim.guardedCount=0;
@@ -75,7 +78,7 @@ int main(int argc,char** argv)try{
   f.append(flush(y));f.publish();for(int i=0;i<1000;i++)progress();
  }
  require(f.submit(dst.data()+8,258),"texture-heavy Device stream failed");
- for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)require(dst[8+y*258+x]==(y==0&&x==0?0x1f12342au:0x1f000001u),"texture-heavy Device stream output");
+ for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)require(dst[8+y*258+x]==(y==0&&x==0?largeTexture[largeTexture.size()-64]:0x1f000001u),"texture-heavy Device stream output");
  for(unsigned i=0;i<largeTexture.size();i++)require(sim.word(Textures+i*4)==largeTexture[i],"Device stream overwrote texture arena");
  std::fill(dst.begin(),dst.end(),0xa1b2c3d4);
  const auto preservedStencil=stencil;

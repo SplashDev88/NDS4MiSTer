@@ -34,7 +34,7 @@ inline bool available(){
 }
 // Compact physical descriptors use fixed 64-byte spacing. Logical commands
 // remain 128 bytes so native fixtures retain their independent readable ABI.
-inline unsigned commandWords(const Command& c){return (c[0]==1 || c[0]==6)?7:c[0]==2?16:(c[0]==3 || c[0]==5)?2:c[0]==4?13:c[0]==7?10:16;}
+inline unsigned commandWords(const Command& c){return (c[0]==1 || c[0]==6)?7:c[0]==2?16:c[0]==3?3:c[0]==5?2:c[0]==4?13:c[0]==7?10:16;}
 typedef uint64_t MMIO64 __attribute__((__may_alias__));
 inline void uploadCommands(volatile uint32_t* target,const std::vector<Command>& commands){
  const bool aligned=(reinterpret_cast<uintptr_t>(target)&7)==0;
@@ -64,7 +64,7 @@ inline void uploadPackedCommand(volatile uint32_t* target,const PackedCommand& p
  if(wc)std::memcpy(const_cast<uint32_t*>(target),packed.data(),sizeof(packed));
  else {
   const unsigned opcode=packed[0];
-  const unsigned count=(opcode==1 || opcode==6)?7:opcode==3 || opcode==5?2:opcode==4?13:opcode==7?10:16;unsigned i=0;
+  const unsigned count=(opcode==1 || opcode==6)?7:opcode==3?3:opcode==5?2:opcode==4?13:opcode==7?10:16;unsigned i=0;
   for(;i+1<count;i+=2)
    *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(packed[i])|(uint64_t(packed[i+1])<<32);
   if(i<count)target[i]=packed[i];

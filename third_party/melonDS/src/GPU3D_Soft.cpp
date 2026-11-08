@@ -2310,6 +2310,11 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
     if constexpr (EmitFpga)
     {
         const auto clampX = [](s32 x) { return std::clamp(x, 0, 256); };
+        const s32 nativeStart=clampX(xstart),nativeEnd=clampX(xend+1);
+        if(nativeStart<nativeEnd){
+            finalPassMinX[y]=std::min<u16>(finalPassMinX[y],nativeStart);
+            finalPassMaxX[y]=std::max<u16>(finalPassMaxX[y],nativeEnd);
+        }
         s32 begin = clampX(xstart);
         s32 finish = begin;
         const s32 leftEnd = clampX(std::min(xstart + l_edgelen, xend + 1));
@@ -4501,7 +4506,7 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
         else
         {
             std::copy_n(key.begin(),k,c.Key.begin());c.Hash=hash;c.KeyWords=k;
-            c.Commands.clear();c.PackedCommands.clear();c.RowEnds.clear();
+            c.Commands.clear();c.PackedCommands.clear();c.RowEnds.clear();c.RowBounds.clear();
             c.FirstLine=first;c.EndLine=end;c.Ready=false;
             c.Record=first<end;
         }
@@ -4520,6 +4525,11 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
         const auto row=y-c->FirstLine;
         const unsigned begin=row?c->RowEnds[row-1]:0;
         const unsigned end=c->RowEnds[row];
+        const u16 firstX=c->RowBounds[row]&65535,endX=c->RowBounds[row]>>16;
+        if(firstX<endX){
+            finalPassMinX[y]=std::min(finalPassMinX[y],firstX);
+            finalPassMaxX[y]=std::max(finalPassMaxX[y],endX);
+        }
         prevIsShadowMask=false;
         if (FpgaFrame.recyclePublished)
             for (unsigned i=begin;i<end;i++) FpgaFrame.appendPacked(c->PackedCommands[i],c->TextureAddress);
@@ -4538,8 +4548,13 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
     }
     const size_t begin=FpgaFrame.recyclePublished?
         FpgaFrame.packedCommands.size():FpgaFrame.commands.size();
+    const u16 previousFirst=finalPassMinX[y],previousEnd=finalPassMaxX[y];
+    finalPassMinX[y]=256;finalPassMaxX[y]=0;
     RenderPolygonScanlineImpl<true>(rp,y,prevIsShadowMask,stencilBuffer,
         clipStartX,clipEndX,finalPassMinX,finalPassMaxX);
+    const u32 rowBounds=finalPassMinX[y]|(u32(finalPassMaxX[y])<<16);
+    finalPassMinX[y]=std::min(finalPassMinX[y],previousFirst);
+    finalPassMaxX[y]=std::max(finalPassMaxX[y],previousEnd);
     if (c && c->Record)
     {
         if (!FpgaFrame.valid || y!=c->FirstLine+s32(c->RowEnds.size()))
@@ -4547,6 +4562,7 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
             c->Record=c->Ready=false;
             return;
         }
+        c->RowBounds.push_back(rowBounds);
         if (FpgaFrame.recyclePublished)
         {
             c->PackedCommands.insert(c->PackedCommands.end(),FpgaFrame.packedCommands.begin()+begin,
@@ -4638,7 +4654,10 @@ bool SoftRenderer3D::TryFpgaFrame()
             AttrBuffer[offset],GPU3D.RenderDispCnt));
         RenderScanline(y,PolygonList,ActivePolygonMask,PrevIsShadowMask,StencilBuffer,
             0,256,FinalPassMinX,FinalPassMaxX);
-        FpgaFrame.append(fpga3d::flush(y));
+        const bool fogClear=(GPU3D.RenderDispCnt&(1u<<7)) && (GPU3D.RenderClearAttr1&(1u<<15));
+        const unsigned first=fogClear?0:std::min(FinalPassMinX[y],FinalPassMaxX[y]);
+        const unsigned end=fogClear?256:FinalPassMaxX[y];
+        FpgaFrame.append(fpga3d::flush(y,first,end));
         FpgaFrame.publish();
     }
     FpgaEmitting=false;

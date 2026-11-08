@@ -2479,6 +2479,7 @@ private:
         std::vector<fpga3d::Command> Commands;
         std::vector<fpga3d::PackedCommand> PackedCommands;
         std::vector<u16> RowEnds;
+        std::vector<u32> RowBounds;
         s32 FirstLine=0, EndLine=0;
         u32 Hash=0, KeyWords=0, TextureAddress=0;
         bool Ready=false, Hit=false, Record=false;

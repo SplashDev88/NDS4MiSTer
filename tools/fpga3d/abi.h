@@ -52,6 +52,10 @@ inline Command toon(unsigned half,const uint16_t* table){
  return c;
 }
 inline Command flush(uint32_t y) {Command c{};c[0]=3;c[1]=y;return c;}
+inline Command flush(uint32_t y,uint32_t first,uint32_t end){
+ if(first>end || end>256)throw std::invalid_argument("invalid final-pass bounds");
+ auto c=flush(y);c[2]=0x80000000u|first|(end<<16);return c;
+}
 constexpr auto smallReciprocals=[](){std::array<uint32_t,257> a{};for(unsigned d=2;d<=256;d++)a[d]=(uint64_t(1)<<32)/d;return a;}();
 constexpr auto depthReciprocals=[](){std::array<uint32_t,257> a{};for(unsigned d=1;d<=256;d++)a[d]=(1u<<22)/d;return a;}();
 inline int32_t floorDivSmall(int32_t n,int32_t d){

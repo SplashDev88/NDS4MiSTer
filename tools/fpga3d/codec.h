@@ -25,7 +25,7 @@ inline uint32_t signed16(uint32_t x){return uint32_t(int32_t(x<<16)>>16);}
 inline PackedCommand pack(const Command& c){
  PackedCommand p{};
  if(c[0]!=2){
-  unsigned n=(c[0]==1 || c[0]==6)?7:(c[0]==3 || c[0]==5)?2:c[0]==4?13:c[0]==7?10:1;
+  unsigned n=(c[0]==1 || c[0]==6)?7:c[0]==3?3:c[0]==5?2:c[0]==4?13:c[0]==7?10:1;
   std::copy_n(c.begin(),n,p.begin());if(c[0]!=1 && c[0]!=3 && c[0]!=4 && c[0]!=5 && c[0]!=6 && c[0]!=7)p[15]=0x80000000;return p;
  }
  unsigned first=c[1]&65535,end=c[1]>>16,width=c[3]&65535,dx=c[3]>>16;
