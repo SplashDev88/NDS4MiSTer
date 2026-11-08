@@ -1,17 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Exercise the console fabric with a busy-dependent control request (as used
 // by nds_h3d_control_init), cartridge, event and priority scanout read bursts.
-module nds_fpga3d_shared # (parameter POLL_CYCLES=8)(
+module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
  input clk,reset,enable,input [31:0] session,
  output rd,wr,output [7:0] burst,output [28:0] addr,output [63:0] din,output [7:0] be,
  input busy,input [63:0] dout,input dout_ready
 );
  wire ar,aw,ab,av;wire [7:0] an,ae;wire [28:0] aa;wire [63:0] ai,ao;
- nds_fpga3d #(.POLL_CYCLES(POLL_CYCLES)) accelerator(clk,reset,enable,session,ar,aw,an,aa,ai,ae,ab,ao,av);
- wire cr,cw,cb,cv;wire [63:0] co;
+ wire released,control_fault;wire [31:0] control_fault_bits;
+ nds_fpga3d #(.POLL_CYCLES(POLL_CYCLES)) accelerator(clk,reset,enable&&released,session,ar,aw,an,aa,ai,ae,ab,ao,av);
+ wire cr,cw,cb,cv;wire [63:0] co,ci;wire [28:0] cc;wire [7:0] cn,ce;
  wire lr,lb,lv;wire [63:0] lo;
  wire vr,vb,vv;wire [63:0] vo;
- fpga3d_control_peer ctl(clk,reset,cr,cw,cb,ca,co,cv);
+ generate if(REAL_CONTROL)begin: real_ctl
+  nds_h3d_control_init #(.BASE_WORD(29'h07f80000),.PACKET_MODE(1),.DIAGNOSTIC_HOLD_ENABLE(0)) ctl(
+   .clk,.reset,.requested_session(32'd1),.engine_b_pixels_enable(1'b1),.video_quiescent(1'b1),
+   .external_fault_bits(32'd0),.fpga_heartbeat_value(32'd123),.fpga_telemetry_value(32'd0),
+   .telemetry_index(),.diagnostic_hold(),.active(),.initialized(),.console_release(released),.active_session(),
+   .fault(control_fault),.fault_bits(control_fault_bits),
+   .ddram_read(cr),.ddram_write(cw),.ddram_burst_count(cn),.ddram_address(cc),.ddram_write_data(ci),.ddram_byte_enable(ce),
+   .ddram_busy(cb),.ddram_command_accepted(ca),.ddram_read_data(co),.ddram_read_data_ready(cv));
+ end else begin: peer_ctl
+  fpga3d_control_peer ctl(clk,reset,cr,cw,cb,ca,co,cv);
+  assign cn=1;assign cc=29'h07f8008f;assign ci=64'h0123456789abcdef;assign ce=8'hff;
+  assign released=1;assign control_fault=0;assign control_fault_bits=0;
+ end endgenerate
  fpga3d_peer #(.BEATS(4),.PAUSE(31)) cart(clk,reset,lr,lb,lo,lv);
  fpga3d_peer #(.BEATS(8),.PAUSE(59)) video(clk,reset,vr,vb,vo,vv);
  wire mr,mw,mb,mv;wire [7:0] mn,me;wire [28:0] ma;wire [63:0] mi,mo;
@@ -20,7 +33,7 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8)(
  fpga3d_peer #(.BEATS(16),.PAUSE(23)) events(clk,reset,er,eb,eo,ev);
  nds_fpga3d_port_mux inner(
  .clk,.reset,
- .c_rd(cr),.c_wr(cw),.c_burst(8'd1),.c_addr(29'h07f8008f),.c_din(64'h0123456789abcdef),.c_be(8'hff),.c_busy(cb),.c_dout(co),.c_valid(cv),.c_accepted(ca),
+ .c_rd(cr),.c_wr(cw),.c_burst(cn),.c_addr(cc),.c_din(ci),.c_be(ce),.c_busy(cb),.c_dout(co),.c_valid(cv),.c_accepted(ca),
  .a_rd(ar),.a_wr(aw),.a_burst(an),.a_addr(aa),.a_din(ai),.a_be(ae),.a_busy(ab),.a_dout(ao),.a_valid(av),
  .rd(mr),.wr(mw),.burst(mn),.addr(ma),.din(mi),.be(me),.busy(mb),.dout(mo),.valid(mv),.accepted(ma_accept),.protocol_error(e1));
  nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b1111),.VIDEO_PRIORITY_GRANT(1),.VIDEO_PRIORITY_FAIR_CREDIT(1)) outer(
@@ -33,6 +46,7 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8)(
  always @(posedge clk)if(!reset)begin
   if(e1 || e2)$fatal(1,"DDR protocol error");
   if(ca && !ma_accept)$fatal(1,"control acceptance preceded physical acceptance");
+  if(control_fault)$fatal(1,"real control initializer fault %h",control_fault_bits);
  end
 endmodule
 // Separate local enqueue from physical acceptance exactly as the initializer

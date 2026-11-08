@@ -24,6 +24,12 @@ struct Sim {
  bool held=false;uint64_t heldData=0;unsigned heldAddr=0,heldBurst=0,heldBe=0;bool heldRead=false,heldWrite=false;
  uint32_t& word(uint32_t a){require(a>=0x3fc00000 && a<0x40000000,"address out of graphics window");return mem.at((a-0x3fc00000)/4);}
  void tick(){
+#ifdef REAL_CONTROL
+  // Minimal HPS responder for the production packet-mode initializer. Honor
+  // its exact quiesce token, Ready/session pair, and live heartbeat.
+  if(word(0x3fc00000)==0x51443348){word(0x3fc00078)=word(0x3fc00070);word(0x3fc0007c)=0;}
+  if(word(0x3fc00000)==0x31443348){word(0x3fc00028)=2;word(0x3fc0002c)=word(0x3fc00008);word(0x3fc00068)++;}
+#endif
   v.clk=0;v.dout_ready=0;v.busy=remaining!=0 || (stalls && rng()%5==0);
   if(remaining && (!stalls || delay--==0)){
    v.dout_ready=1;v.dout=uint64_t(word(readat))|(uint64_t(word(readat+4))<<32);
@@ -41,6 +47,9 @@ struct Sim {
 #ifdef SHARED_FABRIC
       || (a==0x3fc00478 && v.din==0x0123456789abcdefULL)
 #endif
+#ifdef REAL_CONTROL
+      || (a>=0x3fc00000 && a<0x3fc00080)
+#endif
     ),"write outside owned output/mailbox");
     require(v.be==255,"partial write");word(a)=uint32_t(v.din);word(a+4)=v.din>>32;
    }
@@ -48,7 +57,7 @@ struct Sim {
   v.clk=1;v.eval();cycles++;
  }
  void reset(){for(unsigned a=0x3fc00400;a<0x3fc00480;a+=8){word(a)=0x89abcdef;word(a+4)=0x01234567;}v.reset=1;v.enable=0;v.session=17;remaining=0;for(int i=0;i<8;i++)tick();v.reset=0;v.enable=1;
-  for(int i=0;i<1000 && word(Mailbox+24)!=Magic;i++)tick();require(word(Mailbox+24)==Magic,"startup missing");}
+  for(int i=0;i<10000 && word(Mailbox+24)!=Magic;i++)tick();require(word(Mailbox+24)==Magic,"startup missing");}
  uint64_t run(const std::vector<Command>& cmds,unsigned sequence=1,unsigned expectStatus=0,unsigned sess=17){
   require(cmds.size()<=MaxCommands,"command overflow");
   std::memcpy(&word(Commands),cmds.data(),cmds.size()*sizeof(Command));
