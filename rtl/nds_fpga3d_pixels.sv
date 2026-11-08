@@ -19,10 +19,10 @@ module nds_fpga3d_pixels(
  output wire [63:0] flush_pair
 );
  (* ramstyle="M10K" *) logic [31:0] color0_even[0:127],color0_odd[0:127];
- (* ramstyle="M10K" *) logic [31:0] color1_even[0:127],color1_odd[0:127];
- (* ramstyle="M10K" *) logic [31:0] attr0_even[0:127],attr0_odd[0:127];
+ (* ramstyle="M10K" *) logic [31:0] color1[0:255];
+ (* ramstyle="M10K" *) logic [31:0] attr0[0:255];
  (* ramstyle="M10K" *) logic [31:0] depth0[0:255],depth1[0:255],attr1[0:255];
- logic [31:0] c0e,c0o,c1e,c1o,a0e,a0o,d0,d1,a1;
+ logic [31:0] c0e,c0o,c1,a0,d0,d1,a1;
  logic [7:0] x_q;
  logic [31:0] color_q,depth_q;
  logic [1:0] resolve_q;
@@ -40,8 +40,8 @@ module nds_fpga3d_pixels(
  logic [18:0] left_count,right_count;
  wire [6:0] read_pair=flush_en?flush_index:pixel_x[7:1];
  wire [31:0] old_c0=x_q[0]?c0o:c0e;
- wire [31:0] old_c1=x_q[0]?c1o:c1e;
- wire [31:0] old_a0=x_q[0]?a0o:a0e;
+ wire [31:0] old_c1=c1;
+ wire [31:0] old_a0=a0;
  assign flush_pair={c0o,c0e};
 
  function automatic logic depth_pass(input logic [31:0] z,prior,attr);
@@ -60,51 +60,58 @@ module nds_fpga3d_pixels(
    translucent_attr=value;
   end
  endfunction
+ // A convex blend can use one signed product: dest + ((src-dest)*w >> n).
+ // This is bit-exact for negative deltas and avoids a pair of cascaded DSPs.
+ function automatic [5:0] mix6(input logic [5:0] source,dest,input logic [7:0] weight,input integer shift);
+  logic signed [7:0] delta;
+  logic signed [16:0] product_value;
+  logic signed [17:0] result_value;
+  begin
+   delta=$signed({2'b00,source})-$signed({2'b00,dest});
+   product_value=delta*$signed({1'b0,weight});
+   result_value=$signed({1'b0,dest})+(product_value>>>shift);
+   mix6=result_value[5:0];
+  end
+ endfunction
  function automatic [31:0] blend_color(input logic [31:0] source,dest);
-  logic [5:0] weight,inverse;
-  logic [11:0] r,g,b;
+  logic [7:0] weight;
   logic [4:0] a;
   begin
-   weight={1'b0,source[28:24]}+6'd1;inverse=6'd32-weight;
-   r=12'(source[5:0])*12'(weight)+12'(dest[5:0])*12'(inverse);
-   g=12'(source[13:8])*12'(weight)+12'(dest[13:8])*12'(inverse);
-   b=12'(source[21:16])*12'(weight)+12'(dest[21:16])*12'(inverse);
+   weight={3'd0,source[28:24]}+8'd1;
    a=source[28:24]>dest[28:24]?source[28:24]:dest[28:24];
    if(dest[28:24]==0)blend_color=source;
-   else if(blend_enable)blend_color={3'd0,a,2'd0,b[10:5],2'd0,g[10:5],2'd0,r[10:5]};
+   else if(blend_enable)blend_color={3'd0,a,
+       2'd0,mix6(source[21:16],dest[21:16],weight,5),
+       2'd0,mix6(source[13:8],dest[13:8],weight,5),
+       2'd0,mix6(source[5:0],dest[5:0],weight,5)};
    else blend_color={3'd0,a,source[23:0]};
   end
  endfunction
  // Fog is a separate pipelined scanline pass before antialiasing.  The
  // 32-bit shift deliberately wraps exactly as in the native DS renderer.
  function automatic [31:0] fogged_color(input logic [31:0] source,input logic [7:0] density);
-  logic [8:0] inverse;
-  logic [14:0] r,g,b,a;
+  logic [5:0] a;
   begin
-   inverse=9'd128-{1'b0,density};
-   r=15'(fog_color[5:0])*15'(density)+15'(source[5:0])*15'(inverse);
-   g=15'(fog_color[13:8])*15'(density)+15'(source[13:8])*15'(inverse);
-   b=15'(fog_color[21:16])*15'(density)+15'(source[21:16])*15'(inverse);
-   a=15'(fog_color[28:24])*15'(density)+15'(source[28:24])*15'(inverse);
-   fogged_color=fog_alpha_only?{3'd0,a[11:7],source[23:0]}:
-       {3'd0,a[11:7],2'd0,b[12:7],2'd0,g[12:7],2'd0,r[12:7]};
+   a=mix6({1'b0,fog_color[28:24]},{1'b0,source[28:24]},density,7);
+   fogged_color=fog_alpha_only?{3'd0,a[4:0],source[23:0]}:
+       {3'd0,a[4:0],2'd0,mix6(fog_color[21:16],source[21:16],density,7),
+        2'd0,mix6(fog_color[13:8],source[13:8],density,7),
+        2'd0,mix6(fog_color[5:0],source[5:0],density,7)};
   end
  endfunction
  function automatic [31:0] resolve_color(input logic [31:0] top,bottom,attr);
   logic [4:0] cov;
-  logic [5:0] weight,inverse;
-  logic [11:0] r,g,b;
-  logic [10:0] a;
+  logic [7:0] weight;
+  logic [5:0] a;
   begin
-   cov=attr[12:8];weight={1'b0,cov}+6'd1;inverse=6'd32-weight;
-   r=12'(top[5:0])*12'(weight)+12'(bottom[5:0])*12'(inverse);
-   g=12'(top[13:8])*12'(weight)+12'(bottom[13:8])*12'(inverse);
-   b=12'(top[21:16])*12'(weight)+12'(bottom[21:16])*12'(inverse);
-   a=11'(top[28:24])*11'(weight)+11'(bottom[28:24])*11'(inverse);
+   cov=attr[12:8];weight={3'd0,cov}+8'd1;
+   a=mix6({1'b0,top[28:24]},{1'b0,bottom[28:24]},weight,5);
    if(attr[3:0]==0 || cov==31)resolve_color=top;
    else if(cov==0)resolve_color=bottom;
-   else if(bottom[28:24]==0)resolve_color={3'd0,a[9:5],top[23:0]};
-   else resolve_color={3'd0,a[9:5],2'd0,b[10:5],2'd0,g[10:5],2'd0,r[10:5]};
+   else if(bottom[28:24]==0)resolve_color={3'd0,a[4:0],top[23:0]};
+   else resolve_color={3'd0,a[4:0],2'd0,mix6(top[21:16],bottom[21:16],weight,5),
+        2'd0,mix6(top[13:8],bottom[13:8],weight,5),
+        2'd0,mix6(top[5:0],bottom[5:0],weight,5)};
   end
  endfunction
 
@@ -175,28 +182,27 @@ module nds_fpga3d_pixels(
  always_ff @(posedge clk)begin
   if(flush_en || (ce && (pixel_valid || resolve_valid)))begin
    c0e<=color0_even[read_pair];c0o<=color0_odd[read_pair];
-   c1e<=color1_even[read_pair];c1o<=color1_odd[read_pair];
-   a0e<=attr0_even[read_pair];a0o<=attr0_odd[read_pair];
+   c1<=color1[pixel_x];
+   a0<=attr0[pixel_x];
    d0<=depth0[pixel_x];d1<=depth1[pixel_x];a1<=attr1[pixel_x];
   end
   if(clear_we)begin
    if(clear_x[0])begin
-    color0_odd[clear_x[7:1]]<=clear_color;color1_odd[clear_x[7:1]]<=clear_color;
-    attr0_odd[clear_x[7:1]]<=clear_attr;
+    color0_odd[clear_x[7:1]]<=clear_color;
    end else begin
-    color0_even[clear_x[7:1]]<=clear_color;color1_even[clear_x[7:1]]<=clear_color;
-    attr0_even[clear_x[7:1]]<=clear_attr;
+    color0_even[clear_x[7:1]]<=clear_color;
    end
+   color1[clear_x]<=clear_color;attr0[clear_x]<=clear_attr;
    depth0[clear_x]<=clear_depth;depth1[clear_x]<=clear_depth;attr1[clear_x]<=clear_attr;
   end else begin
    if(color_we0)begin
     if(color_write_x[0])color0_odd[color_write_x[7:1]]<=new_c0;else color0_even[color_write_x[7:1]]<=new_c0;
    end
    if(color_we1)begin
-    if(color_write_x[0])color1_odd[color_write_x[7:1]]<=new_c1;else color1_even[color_write_x[7:1]]<=new_c1;
+    color1[color_write_x]<=new_c1;
    end
    if(attr_we0)begin
-    if(x_q[0])attr0_odd[x_q[7:1]]<=new_a0;else attr0_even[x_q[7:1]]<=new_a0;
+    attr0[x_q]<=new_a0;
    end
    if(attr_we1)attr1[x_q]<=new_a1;
    if(depth_we0)depth0[x_q]<=new_d0;

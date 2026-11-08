@@ -11,12 +11,12 @@ int main(){
   for(auto& w:cmds[i])w=rng();cmds[i][0]=i%5==4?99:i%5+1;
  }
  for(unsigned offset:{32u,33u}){
-  std::vector<uint32_t> buffer((MaxCommands+2)*32,guard);
+  std::vector<uint32_t> buffer((MaxCommands+2)*16,guard);
   uploadCommands(buffer.data()+offset,cmds);barrier();
   for(unsigned i=0;i<buffer.size();i++){
    uint32_t expected=guard;
-   if(i>=offset && (i-offset)/32<cmds.size()){
-    auto& c=cmds[(i-offset)/32];if((i-offset)%32<commandWords(c))expected=c[(i-offset)%32];
+   if(i>=offset && (i-offset)/16<cmds.size()){
+    auto& c=cmds[(i-offset)/16];if((i-offset)%16<commandWords(c))expected=pack(c)[(i-offset)%16];
    }
    check(buffer[i]==expected);
   }

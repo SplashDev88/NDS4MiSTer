@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
-#include "abi.h"
+#include "codec.h"
 #include <chrono>
 #include <cstring>
 #include <cstdio>
@@ -30,18 +30,19 @@ inline bool available(){
  return session && session!=poisonedSession && control[0]==0x31443348 &&
    control[(Mailbox-0x3fc00000+24)/4]==Magic && control[(Mailbox-0x3fc00000+28)/4]==session;
 }
-// Device command pages retain volatile accesses. Only fields read by each
-// opcode are transferred; fixed 128-byte descriptor spacing is unchanged.
-inline unsigned commandWords(const Command& c){return c[0]==1?7:c[0]==2?32:c[0]==3?2:c[0]==4?13:32;}
+// Compact physical descriptors use fixed 64-byte spacing. Logical commands
+// remain 128 bytes so native fixtures retain their independent readable ABI.
+inline unsigned commandWords(const Command& c){return c[0]==1?7:c[0]==2?16:c[0]==3?2:c[0]==4?13:16;}
 typedef uint64_t MMIO64 __attribute__((__may_alias__));
 inline void uploadCommands(volatile uint32_t* target,const std::vector<Command>& commands){
  const bool aligned=(reinterpret_cast<uintptr_t>(target)&7)==0;
  for(const auto& c:commands){
+  const PackedCommand packed=pack(c);
   const unsigned count=commandWords(c);unsigned i=0;
   if(aligned)for(;i+1<count;i+=2)
-   *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(c[i])|(uint64_t(c[i+1])<<32);
-  for(;i<count;i++)target[i]=c[i];
-  target+=32;
+   *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(packed[i])|(uint64_t(packed[i+1])<<32);
+  for(;i<count;i++)target[i]=packed[i];
+  target+=16;
  }
 }
 inline void uploadTextures(volatile uint32_t* target,const std::vector<uint32_t>& data){

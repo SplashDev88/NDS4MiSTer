@@ -17,13 +17,17 @@ module nds_fpga3d #(
  input logic dout_ready,accepted
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
- localparam [31:0] MAGIC=32'h32443346;
+ localparam [31:0] MAGIC=32'h33443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
- HEADER,HEADER_WAIT,FETCH,FETCH_WAIT,DECODE,CLEAR_LINE,
+ HEADER,HEADER_WAIT,FETCH,FETCH_WAIT,UNPACK,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
  FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE,CACHE_CLEAR,PIPE_RUN,RESOLVE_RUN} state_t;
  state_t state;
  logic [31:0] cmd[0:31];
+ wire [511:0] packed_command;
+ generate for(genvar k=0;k<16;k=k+1)begin: pack_bus
+ assign packed_command[32*k+:32]=cmd[k];
+ end endgenerate
  logic [31:0] seq,seen,count,index,status,epoch;
  logic [15:0] poll;
  logic [3:0] beat;
@@ -49,10 +53,11 @@ module nds_fpga3d #(
 
  // Pipelined opaque path; descriptors remain constant until the span drains.
  logic [12:0] p_valid;
- logic [31:0] p_rem[0:9],p_den[0:9];
+ logic [31:0] p_rem[0:9];
+ logic [23:0] p_den[0:9];
  logic [8:0] p_f[0:9],p_x[0:12];
- logic signed [31:0] p_av[0:12][0:4];
- logic [31:0] p_z[0:12];
+ logic signed [15:0] p_av[0:12][0:4];
+ logic [23:0] p_z[0:12];
  logic [28:0] p_addr[11:12];
  logic p_half[11:12],p_pass[11:12];
  logic [15:0] p_ts,p_tt,tex_size_s,tex_size_t,tex_mask_s,tex_mask_t;
@@ -134,8 +139,8 @@ module nds_fpga3d #(
      p_x[k]<=p_x[k-1];p_z[k]<=p_z[k-1];
      p_den[k]<=p_den[k-1];p_rem[k]<=p_rem[k-1];p_f[k]<=p_f[k-1];
      for(integer a=0;a<5;a=a+1)p_av[k][a]<=p_av[k-1][a];
-     if((!cmd[2][0] || cmd[2][1]) && p_den[k-1]!=0 && p_rem[k-1]>=(p_den[k-1]<<(9-k)))begin
-      p_rem[k]<=p_rem[k-1]-(p_den[k-1]<<(9-k));p_f[k]<=p_f[k-1]|(9'd1<<(9-k));
+     if((!cmd[2][0] || cmd[2][1]) && p_den[k-1]!=0 && p_rem[k-1]>=(32'(p_den[k-1])<<(9-k)))begin
+      p_rem[k]<=p_rem[k-1]-(32'(p_den[k-1])<<(9-k));p_f[k]<=p_f[k-1]|(9'd1<<(9-k));
      end
     end
     p_x[10]<=p_x[9];
@@ -156,7 +161,7 @@ module nds_fpga3d #(
    INIT,POLL:begin rd=1;addr=MB;end
    READY:begin wr=1;addr=MB+3;din={epoch,MAGIC};end
    HEADER:begin rd=1;addr=MB+1;end
-   FETCH:begin rd=1;burst=16;addr=CM+(index<<4);end
+   FETCH:begin rd=1;burst=8;addr=CM+(index<<3);end
    TEX_READ:begin rd=1;addr=tex_addr;end
    FLUSH_WRITE:begin wr=1;burst=128;addr=OUT+(line_y<<7);din=flush_pair;end
    COMPLETE:begin wr=1;addr=MB+2;din={status,seq};end
@@ -207,14 +212,58 @@ module nds_fpga3d #(
      status<=0;index<=0;line_y<=0;line_open<=0;p_clear_index<=0;fog_configured<=0;
      count<=dout[31:0];
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
-     else if(dout[31:0]==0 || dout[31:0]>4064)begin status<=1;state<=COMPLETE;end
+     else if(dout[31:0]==0 || dout[31:0]>8128)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
     CACHE_CLEAR:if(p_clear_index==511)state<=FETCH;else p_clear_index<=p_clear_index+1'b1;
     FETCH:if(!busy)begin beat<=0;state<=FETCH_WAIT;end
     FETCH_WAIT:if(dout_ready)begin
      cmd[{beat,1'b0}]<=dout[31:0];cmd[{beat,1'b1}]<=dout[63:32];
-     if(beat==15)state<=DECODE;else beat<=beat+1'b1;
+     if(beat==7)state<=UNPACK;else beat<=beat+1'b1;
+    end
+    UNPACK:begin
+     for(integer k=0;k<32;k=k+1)cmd[k]<=0;
+     state<=DECODE;
+     if(packed_command[511])cmd[0]<=99;
+     else if(packed_command[2:0]==2)begin
+      cmd[0]<=2;
+      cmd[1]<={7'd0,(packed_command[11+:8]==0?9'd256:{1'b0,packed_command[11+:8]}),8'd0,packed_command[3+:8]};
+      cmd[2]<={19'd0,packed_command[41+:5],2'd0,packed_command[35+:6]};
+      cmd[3]<={8'd0,packed_command[27+:8],7'd0,(packed_command[19+:8]==0?9'd256:{1'b0,packed_command[19+:8]})};
+      cmd[4]<=packed_command[102+:32];
+      cmd[5]<={8'd0,packed_command[54+:24]};
+      cmd[6]<={{8{packed_command[101]}},packed_command[78+:24]};
+      cmd[7]<={3'd0,packed_command[482+:13],3'd0,packed_command[469+:13]};
+      cmd[13]<=32'h3fd40000+{12'd0,packed_command[134+:17],3'd0};
+      cmd[14]<={20'd0,packed_command[157+:4],(4'd3+{1'b0,packed_command[154+:3]}),(4'd3+{1'b0,packed_command[151+:3]})};
+      cmd[15]<={8'd0,packed_command[54+:24]};cmd[26]<={8'd0,packed_command[78+:24]};
+      cmd[27]<={2'd0,packed_command[161+:6],8'd0,packed_command[168],10'd0,packed_command[167],4'd0};
+      cmd[28]<={packed_command[189],9'd0,packed_command[179+:10],2'd0,packed_command[169+:10]};
+      cmd[29]<={packed_command[210],9'd0,packed_command[200+:10],2'd0,packed_command[190+:10]};
+      cmd[30]<={7'd0,packed_command[220+:9],7'd0,packed_command[211+:9]};
+      cmd[31]<={22'd0,packed_command[52+:2],2'd0,packed_command[51],packed_command[46+:5]};
+      cmd[8]<=packed_command[35]?{16'd0,packed_command[229+:16]}:packed_command[229+:32];
+      cmd[16]<={{16{packed_command[260]}},packed_command[245+:16]};
+      cmd[21]<={8'd0,packed_command[397+:8],8'd0,packed_command[389+:8]};
+      cmd[9]<=packed_command[35]?{16'd0,packed_command[261+:16]}:packed_command[261+:32];
+      cmd[17]<={{16{packed_command[292]}},packed_command[277+:16]};
+      cmd[22]<={8'd0,packed_command[413+:8],8'd0,packed_command[405+:8]};
+      cmd[10]<=packed_command[35]?{16'd0,packed_command[293+:16]}:packed_command[293+:32];
+      cmd[18]<={{16{packed_command[324]}},packed_command[309+:16]};
+      cmd[23]<={8'd0,packed_command[429+:8],8'd0,packed_command[421+:8]};
+      cmd[11]<=packed_command[35]?{16'd0,packed_command[325+:16]}:packed_command[325+:32];
+      cmd[19]<={{16{packed_command[356]}},packed_command[341+:16]};
+      cmd[24]<={8'd0,packed_command[445+:8],8'd0,packed_command[437+:8]};
+      cmd[12]<=packed_command[35]?{16'd0,packed_command[357+:16]}:packed_command[357+:32];
+      cmd[20]<={{16{packed_command[388]}},packed_command[373+:16]};
+      cmd[25]<={8'd0,packed_command[461+:8],8'd0,packed_command[453+:8]};
+     end else if(packed_command[31:0]==1)begin
+      for(integer k=0;k<7;k=k+1)cmd[k]<=packed_command[32*k+:32];
+     end else if(packed_command[31:0]==3)begin
+      cmd[0]<=3;cmd[1]<=packed_command[32+:32];
+     end else if(packed_command[31:0]==4)begin
+      for(integer k=0;k<13;k=k+1)cmd[k]<=packed_command[32*k+:32];
+     end else cmd[0]<=99;
     end
     DECODE:begin
      if(cmd[0]==4 && index==0 && !line_open && line_y==0 && cmd[3]<=15)begin

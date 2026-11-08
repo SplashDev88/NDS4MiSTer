@@ -7,7 +7,7 @@ using Dut=Vnds_fpga3d_shared;
 using Dut=Vnds_fpga3d;
 #endif
 #include "verilated.h"
-#include "abi.h"
+#include "codec.h"
 #include <cstring>
 #include <iostream>
 #include <random>
@@ -69,7 +69,7 @@ struct Sim {
   for(int i=0;i<10000 && word(Mailbox+24)!=Magic;i++)tick();require(word(Mailbox+24)==Magic,"startup missing");}
  uint64_t run(const std::vector<Command>& cmds,unsigned sequence=1,unsigned expectStatus=0,unsigned sess=17){
   require(cmds.size()<=MaxCommands,"command overflow");
-  std::memcpy(&word(Commands),cmds.data(),cmds.size()*sizeof(Command));
+  for(size_t i=0;i<cmds.size();i++){auto packed=pack(cmds[i]);std::memcpy(&word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
   word(Mailbox+8)=cmds.size();word(Mailbox+12)=sess;word(Mailbox)=Magic;word(Mailbox+4)=sequence;
   uint64_t start=cycles;
 #ifdef SHARED_FABRIC
@@ -157,6 +157,20 @@ int main(int argc,char** argv){try{
   }
   std::cout<<"frame "<<trial<<" PASS cycles="<<clocks<<"\n";
  }
+ // Exercise the entire compact command arena, including more than 4064 spans.
+ std::vector<Command> fullArena;
+ for(unsigned y=0;y<192;y++){
+  fullArena.push_back(clear(y,0x1f102030,0xffffff));
+  for(unsigned k=0;k<40+(y<64);k++){
+   Span s;s.first=0;s.end=1;s.width=1;s.alphaRef=31;s.flags=Linear|(y&1?WBuffer:0);
+   s.z0=0xffffff;s.z1=0;s.left.fill(-32768);s.right.fill(32767);
+   fullArena.push_back(span(s));
+  }
+  fullArena.push_back(flush(y));
+ }
+ require(fullArena.size()==MaxCommands,"compact arena coverage");sim.run(fullArena,++seq);
+ for(unsigned k=0;k<49152;k++)require(sim.word(Output+4*k)==0x1f102030,"compact full arena output");
+ std::cout<<"PASS compact 8128 descriptors, full arena boundary and width-one unused-step extrema\n";
  // Malformed command, count, row ordering, texture bounds and stale session.
  sim.run({flush(0)},++seq,1);
  auto bad=span(Span{});bad[2]|=Textured;bad[13]=0x30000000;
@@ -197,7 +211,7 @@ int main(int argc,char** argv){try{
  // Interrupt in-flight frames at several points, discard the prior request,
  // and prove that partially filled pipeline/cache state cannot leak forward.
  for(unsigned cut:{256u,4096u,32768u}){
-  std::memcpy(&sim.word(Commands),cacheCommands.data(),cacheCommands.size()*sizeof(Command));
+  for(size_t i=0;i<cacheCommands.size();i++){auto packed=pack(cacheCommands[i]);std::memcpy(&sim.word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
   sim.word(Mailbox+8)=cacheCommands.size();sim.word(Mailbox+12)=17;
   sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
   for(unsigned k=0;k<cut;k++)sim.tick();
@@ -210,7 +224,7 @@ int main(int argc,char** argv){try{
  // Dropping the renderer enable must drain an already accepted physical
  // burst even though no completion for that interrupted frame is published.
  for(unsigned cut:{1u,2u,63u,127u}){
-  std::memcpy(&sim.word(Commands),cacheCommands.data(),cacheCommands.size()*sizeof(Command));
+  for(size_t i=0;i<cacheCommands.size();i++){auto packed=pack(cacheCommands[i]);std::memcpy(&sim.word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
   sim.word(Mailbox+8)=cacheCommands.size();sim.word(Mailbox+12)=17;
   sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
   unsigned guard=0;
