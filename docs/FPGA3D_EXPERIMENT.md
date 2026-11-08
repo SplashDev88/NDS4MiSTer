@@ -130,3 +130,33 @@ Reset clears this retry counter after joining the render worker. This changes
 renderer selection only; it does not approximate pixels or drop source frames.
 Simple demos and heavier supported scenes retain FPGA rendering. This policy
 is not a claim that geometry or all game scenes run in FPGA or at full speed.
+
+# Scanout deadline correction (2026-11-08)
+
+Live HDMI capture reproduced stretched, repeated scanlines with both FPGA
+rendering and software rendering on C21. A completed HPS framebuffer alone
+does not verify the displayed picture. C24 changes the two arbitration levels
+that serve scanout; the renderer, video raster, framebuffer layout and clocks
+remain the C21 versions.
+
+The cartridge controller can acknowledge a requested word before its four-word
+read-ahead completes. A subsequent cartridge miss may therefore be queued at
+every idle edge. Pending channel-six display reads now take priority over that
+traffic at transaction boundaries. The outer H3D fabric also receives the
+pending-display hint before the busy-dependent legacy controller can advertise
+its DDR command. Existing read and write bursts always finish before a grant
+changes. Without the hint, saturated visible peers can leave the display
+waiting for the periodic probe of an invisible legacy request.
+
+Run `python3 tools/test_scanout_contention.py --output <directory>` to check
+the real controllers and the full dual-output pixel path. The deadline test
+checks exact read data and event-write ordering; disabling either correction
+reproduces a missed display deadline. The integrated test checks every visible
+pixel across 16 layout/order/analog-screen combinations with simultaneous
+cartridge, accelerator and event traffic, plus the old-arbitration negative
+control. Physical HDMI qualification is recorded separately with the built
+core hash; simulation is not a substitute for that check.
+
+The user authorized functional hardware testing without a static timing gate.
+Timing reports remain diagnostic evidence. Earlier timing-based rejections
+above describe their historical disposition, not the current acceptance rule.

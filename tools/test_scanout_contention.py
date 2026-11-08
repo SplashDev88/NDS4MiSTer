@@ -19,12 +19,13 @@ def run(output):
                'rtl/nds_ddram_arbiter_4client.sv',
                'third_party/Nitro_DarkSide/d2dabe/rtl/ddram.sv']
     reports = []
-    for inner, outer in [(1, 1), (0, 0), (1, 0), (0, 1)]:
-        name = f'inner{inner}-outer{outer}'
+    for inner, outer, events in [(1, 1, 0), (0, 0, 0), (1, 0, 0), (0, 1, 0), (1, 1, 1)]:
+        name = f'inner{inner}-outer{outer}-events{events}'
         with (output / (name + '.compile.log')).open('w') as log:
             subprocess.run(docker + ['verilator', '--binary', '--timing', '--assert',
                 '-Wno-fatal', '--top-module', top, '-j', '2', '--Mdir', '/out/' + name,
                 '-GPRIORITY=' + str(inner), '-GOUTER_PRIORITY=' + str(outer),
+                '-GEVENTS=' + str(events),
                 *['/work/' + s for s in sources]], stdout=log, stderr=log, check=True)
         test = subprocess.run(docker + ['sh', '-c', f'ulimit -c 0; /out/{name}/V{top}'],
                               text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -33,9 +34,32 @@ def run(output):
             assert test.returncode == 0 and 'PASS scanout deadlines:' in test.stdout, test.stdout
         else:
             assert test.returncode != 0 and 'SCANOUT_DEADLINE_MISSED' in test.stdout, test.stdout
-        reports.append(dict(inner=inner, outer=outer, exit_code=test.returncode,
+        reports.append(dict(inner=inner, outer=outer, events=events, exit_code=test.returncode,
                             expected_failure=not (inner and outer), log=name + '.test.log'))
         print(name, 'PASS' if inner and outer else 'deadline regression reproduced', flush=True)
+    (output / 'results.json').write_text(json.dumps(reports, indent=2) + '\n')
+    # The complete pixel path must recover as well, not merely its bus client.
+    # Exercise all 16 layout/order/analog selections under the same pressure.
+    top = 'tb_nds_scanout_integrated'
+    sources[0] = 'rtl/' + top + '.sv'
+    sources += ['rtl/nds_nitro_video_scanout.sv', 'rtl/nds_nitro_fb_ddr3.sv']
+    for priority in (1, 0):
+        name = 'integrated-' + str(priority)
+        with (output / (name + '.compile.log')).open('w') as log:
+            subprocess.run(docker + ['verilator', '--binary', '--timing', '--assert',
+                '-Wno-fatal', '--top-module', top, '-j', '2', '--Mdir', '/out/' + name,
+                '-GPRIORITY=' + str(priority), '-GOUTER_PRIORITY=' + str(priority),
+                *['/work/' + s for s in sources]], stdout=log, stderr=log, check=True)
+        test = subprocess.run(docker + ['sh', '-c', f'ulimit -c 0; /out/{name}/V{top}'],
+                              text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        (output / (name + '.test.log')).write_text(test.stdout)
+        if priority:
+            assert test.returncode == 0 and 'PASS integrated scanout' in test.stdout, test.stdout
+        else:
+            assert test.returncode != 0 and 'pixel c=' in test.stdout, test.stdout
+        reports.append(dict(integrated=True, priority=priority, exit_code=test.returncode,
+                            expected_failure=not priority, log=name + '.test.log'))
+        print(name, 'PASS' if priority else 'pixel corruption reproduced', flush=True)
     (output / 'results.json').write_text(json.dumps(reports, indent=2) + '\n')
 
 

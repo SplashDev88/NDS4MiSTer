@@ -3,7 +3,7 @@
 // accelerator peer. Early cartridge replies immediately request another
 // cache miss, so an idle controller cycle is not an idle cartridge client.
 `timescale 1ns/1ps
-module tb_nds_scanout_contention #(parameter PRIORITY=1, OUTER_PRIORITY=1);
+module tb_nds_scanout_contention #(parameter PRIORITY=1, OUTER_PRIORITY=1, EVENTS=0);
     reg clk=0, reset=1;
     always #8.333 clk=~clk;
     reg cart_req=0, scan_req=0;
@@ -39,6 +39,11 @@ module tb_nds_scanout_contention #(parameter PRIORITY=1, OUTER_PRIORITY=1);
     wire accelerator_busy,accelerator_valid;
     wire [63:0] accelerator_data;
     integer accelerator_beat=0,accelerator_completed=0;
+    reg event_pending=1, event_stream=0;
+    wire event_busy, event_accepted;
+    integer event_completed=0, event_beat=0, event_words=0;
+    wire [63:0] event_data=64'(event_completed*8+event_beat);
+
     wire rd,wr,protocol_error;
     wire [7:0] burst,be;
     wire [28:0] addr;
@@ -55,9 +60,9 @@ module tb_nds_scanout_contention #(parameter PRIORITY=1, OUTER_PRIORITY=1);
         .plane_read(1'b0),.plane_write(1'b0),.plane_burst_count(8'd1),
         .plane_address(29'd0),.plane_write_data(64'd0),.plane_byte_enable(8'd0),
         .plane_busy(),.plane_command_accepted(),.plane_read_data(),.plane_read_data_ready(),
-        .event_read(1'b0),.event_write(1'b0),.event_burst_count(8'd1),
-        .event_address(29'd0),.event_write_data(64'd0),.event_byte_enable(8'd0),
-        .event_busy(),.event_command_accepted(),.event_read_data(),.event_read_data_ready(),
+        .event_read(1'b0),.event_write(EVENTS && (event_pending || event_stream)),.event_burst_count(8'd8),
+        .event_address(29'h07f01000),.event_write_data(event_data),.event_byte_enable(8'hff),
+        .event_busy(event_busy),.event_command_accepted(event_accepted),.event_read_data(),.event_read_data_ready(),
         .control_read(accelerator_pending),.control_write(1'b0),
         .control_burst_count(8'd128),.control_address(29'h07f80000),
         .control_write_data(64'd0),.control_byte_enable(8'hff),
@@ -80,7 +85,20 @@ module tb_nds_scanout_contention #(parameter PRIORITY=1, OUTER_PRIORITY=1);
         busy<=reset || rng[2:0]==0;
         valid<=0;
         if(!reset) begin
-            if(protocol_error || wr) $fatal(1,"fabric protocol error");
+            if(protocol_error) $fatal(1,"fabric protocol error");
+            if(event_pending && !event_busy) begin event_pending<=0;event_stream<=1;end
+            if(event_accepted) begin
+                event_beat<=event_beat+1;
+                if(event_beat==7) begin
+                    event_completed<=event_completed+1;event_beat<=0;
+                    event_pending<=1;event_stream<=0;
+                end
+            end
+            if(wr && !busy) begin
+                if(left || addr!=29'h07f01000 || burst!=8 || be!=8'hff || din!=64'(event_words))
+                    $fatal(1,"event burst ownership/data corrupted");
+                event_words<=event_words+1;
+            end
             if(rd && !busy) begin
                 if(left) $fatal(1,"read response ownership overlap");
                 left<=burst;response_addr<=addr;delay_count<=12+(rng[7:3]);
@@ -139,9 +157,9 @@ module tb_nds_scanout_contention #(parameter PRIORITY=1, OUTER_PRIORITY=1);
             if(cycles-start_cycle>max_latency)max_latency=cycles-start_cycle;
             while(cycles-start_cycle<3840) @(negedge clk);
         end
-        if(cart_completed<48 || accelerator_completed<48)
+        if(cart_completed<4 || accelerator_completed<48 || (EVENTS && event_completed<48))
             $fatal(1,"peer starved cart=%0d accelerator=%0d",cart_completed,accelerator_completed);
-        $display("PASS scanout deadlines: 48 complete lines, max=%0d/3840 clocks, cart=%0d accelerator=%0d",max_latency,cart_completed,accelerator_completed);
+        $display("PASS scanout deadlines: 48 complete lines, max=%0d/3840 clocks, cart=%0d accelerator=%0d events=%0d",max_latency,cart_completed,accelerator_completed,event_completed);
         $finish;
     end
     initial begin #10000000;$fatal(1,"contention timeout");end
