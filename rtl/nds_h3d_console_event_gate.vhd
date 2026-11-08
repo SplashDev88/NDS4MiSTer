@@ -213,10 +213,13 @@ begin
    gpu_queue_pop <= '1' when service_ready = '1' and
                              gpu_pending_count /= to_unsigned(0, gpu_pending_count'length) and
                              gpu_event_ready = '1' else '0';
-   -- A pop may refill a full queue on the same edge with no bubble.
+   -- Source credit depends only on registered occupancy. Reopen a full
+   -- queue on the cycle after a pop: feeding sink-ready through timestamp
+   -- arbitration and this credit back into ARM9 creates a long timing path.
+   -- Preserve the empty bypass so same-edge GPU/frame/VRAM ordering is intact.
    gpu_queue_space <= '1' when
-      gpu_pending_count < to_unsigned(GPU_QUEUE_DEPTH, gpu_pending_count'length) or
-      gpu_queue_pop = '1' else '0';
+      gpu_pending_count < to_unsigned(GPU_QUEUE_DEPTH, gpu_pending_count'length)
+      else '0';
    gpu_pending_move <= gpu_pending and gpu_queue_space;
    gpu_source_take <= '1' when service_ready = '1' and gpu_pending = '0' and
                               gpu_source_valid = '1' and gpu_queue_space = '1'

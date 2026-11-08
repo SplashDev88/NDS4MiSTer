@@ -183,8 +183,8 @@ begin
       assert gpu_source_ready = '1' and gpu_cpu_complete = '1'
          report "CPU GPU write did not complete at durable queue posting"
          severity failure;
+      held_time := timestamp;
       wait until rising_edge(clk);
-      held_time := gpu_event_timestamp;
       wait until falling_edge(clk);
       gpu_source_valid <= '0';
       -- The console request pulse may disappear and the shared bus may move
@@ -251,7 +251,7 @@ begin
 
       -- Fill every posted GPU slot while the sink is blocked. The 33rd
       -- one-cycle CPU pulse must survive in the skid slot without completing;
-      -- the first downstream pop transfers it into the queue, completes the
+      -- the cycle after the first downstream pop transfers it, completes the
       -- CPU exactly once, and preserves all 33 payloads in FIFO order.
       reset <= '1';
       wait until rising_edge(clk);
@@ -291,8 +291,8 @@ begin
       assert gpu_event_valid = '1' and
              gpu_event_address = std_logic_vector(to_unsigned(16#600#, 28)) and
              gpu_event_data = x"00000000" and gpu_source_ready = '0' and
-             gpu_cpu_complete = '1'
-         report "GPU skid did not complete while the full queue popped"
+             gpu_cpu_complete = '0'
+         report "GPU skid completed through a combinational full-queue pop"
          severity failure;
       wait until rising_edge(clk);
 
@@ -302,7 +302,8 @@ begin
                 gpu_event_address = std_logic_vector(
                    to_unsigned(16#600# + i * 4, 28)) and
                 gpu_event_data = std_logic_vector(to_unsigned(i, 32)) and
-                gpu_cpu_complete = '0'
+                ((i = 1 and gpu_cpu_complete = '1') or
+                 (i /= 1 and gpu_cpu_complete = '0'))
             report "posted GPU queue reordered, corrupted, or recompleted a write"
             severity failure;
          wait until rising_edge(clk);
@@ -361,6 +362,18 @@ begin
             severity failure;
       end loop;
 
+      -- Toggling sink ready while full must not combinationally acknowledge
+      -- the held DMA request. Credit becomes visible only after a clock edge.
+      gpu_event_ready <= '1';
+      wait for 1 ns;
+      assert gpu_source_ready = '0'
+         report "full GPU queue leaked downstream ready into source credit"
+         severity failure;
+      gpu_event_ready <= '0';
+      wait for 1 ns;
+      assert gpu_source_ready = '0'
+         report "full GPU queue changed credit without a clock edge"
+         severity failure;
       gpu_event_ready <= '1';
       dma_accepts := 0;
       dma_outputs := 0;
