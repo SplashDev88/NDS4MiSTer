@@ -334,6 +334,28 @@ int main(int argc,char** argv){try{
   checkCache(0x1f090c0f,0x1f302115);
  }
  std::cout<<"PASS enable-loss burst drain at beats 1,2,63,127 and 196608 fresh-frame comparisons\n";
+ // Stencil seeding and publication own additional DDR transactions. Abort
+ // during each boundary and verify a fresh frame receives all 512 seed bytes.
+ for(unsigned phase=0;phase<2;phase++)for(unsigned cut:{1u,32u,63u}){
+  for(unsigned i=0;i<128;i++){sim.word(StencilInput+4*i)=0x03020100;sim.word(StencilOutput+4*i)=0xdeadbeef;}
+  for(size_t i=0;i<cacheCommands.size();i++){auto packed=pack(cacheCommands[i]);std::memcpy(&sim.word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
+  sim.word(Mailbox+60)=Commands;sim.word(Mailbox+8)=0x80000000u|cacheCommands.size();sim.word(Mailbox+12)=17;
+  sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
+  unsigned guard=0;
+  auto reached=[&](){return phase==0?
+    sim.remaining && sim.readat>=StencilInput && sim.readat<StencilInput+512 && sim.remaining<=64-cut:
+    sim.word(StencilOutput+8*(cut-1))!=0xdeadbeef;};
+  while(!reached() && guard++<3000000)sim.tick();
+  require(guard<3000000,"did not reach stencil transaction interruption");
+  require(sim.word(Mailbox+16)!=interrupted,"stencil interruption too late");
+  sim.v.enable=0;for(unsigned k=0;k<10000;k++)sim.tick();
+  require(sim.remaining==0 && sim.writeRemaining==0,"disabled stencil transaction did not drain");
+  require(sim.word(Mailbox+16)!=interrupted,"interrupted stencil frame completed");
+  sim.v.enable=1;for(unsigned k=0;k<1000;k++)sim.tick();
+  checkCache(0x1f091527,0x1f342618);
+  for(unsigned i=0;i<128;i++)require(sim.word(StencilOutput+4*i)==0x03020100,"fresh stencil state after interruption");
+ }
+ std::cout<<"PASS stencil seed/dump enable-loss ownership, 294912 fresh pixels and 3072 stencil bytes\n";
  sim.run({flush(0)},0xffffffff,1);sim.run({flush(0)},1,1);
  auto doneBefore=sim.word(Mailbox+16);sim.word(Mailbox)=0;sim.word(Mailbox+4)=2;
  for(int i=0;i<1000;i++)sim.tick();require(sim.word(Mailbox+16)==doneBefore,"invalid magic consumed");
