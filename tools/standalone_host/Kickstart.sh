@@ -686,7 +686,7 @@ start_service()
         NDS4MISTER_DIRECT_PLANE_PUBLICATION=1 \
         NDS4MISTER_FPGA3D=${NDS4MISTER_FPGA3D:-1} \
         NDS4MISTER_H3D_DISABLE_WC=${NDS4MISTER_H3D_DISABLE_WC:-0} \
-        "$start_stop_daemon" -S -b -m -N -20 \
+        "$start_stop_daemon" -S -b -C -m -N -20 \
             -p "$pidfile" -x "$service" --
     ) >>"$logfile" 2>&1; then
         unload_wc_module
