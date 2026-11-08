@@ -23,6 +23,6 @@ for retirement in (0, 1):
         assert ".gx_geometry_busy(h3d_gx_geometry_busy)" in source
         assert f".SWAP_VBLANK_RETIREMENT(1'b{retirement})" in source
 qsf = (root / "fpga/mister_nitro_console_island/NDS4MiSTer.qsf").read_text()
-assert not re.search(r"^\s*set_global_assignment.*NDS_GX_BUSY_STATUS_EXPERIMENT", qsf, re.M)
-print("PASS: busy status is opt-in and uses the source-clock SWAP retirement state")
+assert re.search(r'^\s*set_global_assignment -name VERILOG_MACRO "NDS_GX_BUSY_STATUS_EXPERIMENT=1"', qsf, re.M)
+print("PASS: shipped RC14 GX busy setting retained; both configurations select the correct source-clock state")
 PY
