@@ -55,7 +55,7 @@ inline void copyOutput(uint32_t* destination,size_t stride){
   else for(unsigned x=0;x<256;x++)destination[y*stride+x]=publication[y*256+x];
  }
 }
-// F3D4 permits an immutable producer prefix. WC command storage follows the
+// F3D5 permits an immutable producer prefix. WC command storage follows the
 // immutable decoded textures in the existing WC mapping; Device storage is
 // retained for batch callers without a WC mapping. No overlapping aliases.
 inline void uploadCommand(volatile uint32_t* target,const Command& c,bool wc){

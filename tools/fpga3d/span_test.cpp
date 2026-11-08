@@ -32,8 +32,11 @@ int main(){
   if(kind==0)s.flags|=WBuffer;if(kind==1)s.first=23;if(kind==2)s.width=129,s.end=154;if(kind==3)s.z0=0,s.z1=0xffffff;
   bool rejected=false;try{span(s);}catch(const std::invalid_argument&){rejected=true;}check(rejected);
  }
+ for(unsigned mode=0;mode<4;mode++){
+  Span s;s.mode=mode;auto encoded=pack(span(s));check(!(encoded[15]>>31));check((unpack(encoded)[31]>>10)==mode);
+ }
  auto bad=span(Span{});bad[13]=Textures+4;bad[2]|=Textured;check(pack(bad)[15]>>31);
- bad=span(Span{});bad[31]|=1u<<10;check(pack(bad)[15]>>31);
+ bad=span(Span{});bad[31]|=1u<<12;check(pack(bad)[15]>>31);
  bad={};bad[0]=10;check(pack(bad)[15]>>31);
  std::printf("PASS %u extrapolated linear pixels, signed reciprocal boundaries and malformed compact descriptors\n",pixels);
 }
