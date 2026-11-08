@@ -118,3 +118,15 @@ rules, and shadow blending preserves both opaque and translucent polygon-ID
 rejection. Whole-frame software fallback restores mask-group state before
 retrying. Synthetic fixtures compare pixels, stencil, and timeout recovery;
 private game captures remain outside distributed artifacts.
+# CPU admission policy experiment (2026-11-08)
+
+The live helper retains streamed command submission. Frames with at least
+32 polygons but fewer than 32,768 estimated bounding-box pixels use the exact
+native renderer before any FPGA ownership or texture upload. Small 3D models
+do not necessarily repay the full-plane clear, resolve, and transfer cost.
+After a late unsupported span or command-capacity failure, 60 subsequent
+eligible render attempts use native rendering before trying the FPGA again.
+Reset clears this retry counter after joining the render worker. This changes
+renderer selection only; it does not approximate pixels or drop source frames.
+Simple demos and heavier supported scenes retain FPGA rendering. This policy
+is not a claim that geometry or all game scenes run in FPGA or at full speed.

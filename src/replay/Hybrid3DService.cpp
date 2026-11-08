@@ -11314,10 +11314,7 @@ try {
             const bool matched_display = memory_path == "/dev/mem" &&
                 matched_requested && std::strcmp(matched_requested, "1") == 0;
             const char* fpga3d_requested=std::getenv("NDS4MISTER_FPGA3D");
-            // Diagnostic batch policy: avoid polling the producer mailbox
-            // throughout CPU command preparation. Pixel/descriptor ABI stays
-            // identical; submit() owns the complete immutable frame.
-            fpga3d::streaming=false;
+            fpga3d::adaptiveAdmission=true;
             fpga3d::bind(mapping.data(),mapping.publication_data(),
                 matched_display && fpga3d_requested && std::strcmp(fpga3d_requested,"1")==0,
                 mapping.write_combined());

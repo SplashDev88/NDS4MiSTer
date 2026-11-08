@@ -2462,6 +2462,7 @@ private:
     u32 UploadTextureMapping[4] {}, UploadPaletteMapping[8] {};
     bool UseTextureCache;
     fpga3d::Frame FpgaFrame;
+    fpga3d::Admission FpgaAdmission;
     bool FpgaEmitting = false;
     bool TryFpgaFrame();
     bool TextureHistoryEnabled=false;

@@ -283,6 +283,7 @@ void SoftRenderer3D::Reset()
     SetupRenderThread();
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
+    FpgaAdmission.reset();
     RasterBalance.Reset();
     RasterBandQueueActive = false;
     RasterBandHeavyFrames = 0;
@@ -4348,6 +4349,17 @@ bool SoftRenderer3D::TryFpgaFrame()
     // closes and drains the producer, then retries the entire frame in software.
     if (!FullFrameCompletion || !CurrentPolygonCount || !fpga3d::available() ||
         (GPU3D.RenderDispCnt & ((1u<<5)|(1u<<14)))) return false;
+    if (fpga3d::adaptiveAdmission)
+    {
+        if (FpgaAdmission.defer()) return false;
+        if (CurrentPolygonCount >= 32)
+        {
+            u32 lineWork[VisibleScanlines] {};
+            if (fpga3d::lightScene(CurrentPolygonCount,
+                    BuildRasterScanlineWork(CurrentPolygonCount,lineWork)))
+                return false;
+        }
+    }
     FpgaFrame.reset();
     FpgaFrame.stencil=StencilBuffer;
     const bool initialShadowMask=PrevIsShadowMask;
@@ -4398,6 +4410,8 @@ bool SoftRenderer3D::TryFpgaFrame()
     }
     // Command preparation advanced edge state. Reconstruct it before taking
     // the original renderer path. No framebuffer was modified on failure.
+    if (fpga3d::adaptiveAdmission && !FpgaFrame.valid && !FpgaFrame.transportError)
+        FpgaAdmission.unsupported();
     PrevIsShadowMask=initialShadowMask;
     SetupRenderPolygons(&GPU3D.RenderPolygonRAM[0],GPU3D.RenderNumPolygons);
     return false;

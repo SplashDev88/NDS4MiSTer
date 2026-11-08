@@ -6,6 +6,10 @@
 using namespace fpga3d;
 void check(bool ok){if(!ok)throw std::runtime_error("transport guard/data mismatch");}
 int main(){
+ check(!lightScene(31,0) && lightScene(32,32767) && !lightScene(32,32768));
+ Admission admission;check(!admission.defer());admission.unsupported();
+ for(unsigned i=0;i<60;i++)check(admission.defer());
+ check(!admission.defer());admission.unsupported();admission.reset();check(!admission.defer());
  std::mt19937 rng(9716);const uint32_t guard=0xa93c51e7;
  std::vector<Command> cmds(MaxCommands);for(unsigned i=0;i<cmds.size();i++){
   for(auto& w:cmds[i])w=rng();cmds[i][0]=i%5==4?99:i%5+1;

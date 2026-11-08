@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 #pragma once
 #include "codec.h"
+#include "admission.h"
 #include <chrono>
 #include <cstring>
 #include <cstdio>
