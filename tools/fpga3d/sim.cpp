@@ -55,7 +55,7 @@ struct Sim {
     if(!writeRemaining){require(v.burst>0,"zero write burst");writeRemaining=v.burst;writeAt=a;writeBase=a;writeBurst=v.burst;}
     else require(a==writeBase && v.burst==writeBurst,"physical write burst command changed");
     a=writeAt;writeAt+=8;writeRemaining--;
-    require((a==Mailbox+16 || a==Mailbox+24 || (a>=Output && a<Output+256*192*4)
+    require((a==Mailbox+16 || a==Mailbox+24 || (a>=Output && a<Output+256*192*4) || (a>=StencilOutput && a<StencilOutput+512)
 #ifdef SHARED_FABRIC
       || (a==0x3fc00478 && v.din==0x0123456789abcdefULL)
       || (a>=0x3fc00500 && a<0x3fc00580)
@@ -87,8 +87,8 @@ struct Sim {
   return cycles-start;
  }
  uint64_t runStreaming(const std::vector<Command>& cmds,unsigned sequence,unsigned textureBytes=0,unsigned expectStatus=0,bool abort=false){
-  uint32_t base=(Textures+textureBytes+63)&~63u;
-  require(base+cmds.size()*64<=0x3fe00000u,"stream arena capacity");
+  uint32_t base=textureBytes<=TextureBytes-MaxCommands*64?((Textures+textureBytes+63)&~63u):Commands;
+  require(cmds.size()<=MaxCommands && (base==Commands || base+cmds.size()*64<=0x3fe00000u),"stream arena capacity");
   guardedBase=base;guardedCount=0;
   for(unsigned i=0;i<cmds.size()*16;i++)word(base+4*i)=0xffffffff;
   word(Mailbox+60)=base;word(Mailbox+8)=0;word(Mailbox+12)=17;word(Mailbox)=Magic;word(Mailbox+4)=sequence;
@@ -141,11 +141,22 @@ int main(int argc,char** argv){try{
    auto commands=load<Command>(prefix+".commands");
    auto textures=load<uint32_t>(prefix+".textures");auto expected=load<uint32_t>(prefix+".expected");
    require(textures.size()*4<=TextureBytes && expected.size()==256*192,"fixture bounds");
+   std::memset(&sim.word(StencilInput),0,512);
+   std::vector<uint8_t> expectedStencil;
+   if(std::ifstream(prefix+".stencil_input").good()){
+    auto seed=load<uint8_t>(prefix+".stencil_input");expectedStencil=load<uint8_t>(prefix+".stencil_expected");
+    require(seed.size()==512 && expectedStencil.size()==512,"stencil fixture bounds");
+    std::memcpy(&sim.word(StencilInput),seed.data(),512);
+   }
    std::memcpy(&sim.word(Textures),textures.data(),textures.size()*4);
    auto reads=sim.textureReads,beats=sim.textureBeats;auto cycles=argc==4?sim.runStreaming(commands,j+1,textures.size()*4):sim.run(commands,j+1);
    for(size_t k=0;k<expected.size();k++)if(sim.word(Output+4*k)!=expected[k]){
     std::cerr<<"fixture="<<j<<" pixel="<<k<<" expected="<<std::hex<<expected[k]<<" got="<<sim.word(Output+4*k)<<std::dec<<"\n";
     throw std::runtime_error("production renderer mismatch");
+   }
+   for(size_t k=0;k<expectedStencil.size();k++)if(reinterpret_cast<uint8_t*>(&sim.word(StencilOutput))[k]!=expectedStencil[k]){
+    std::cerr<<"fixture="<<j<<" stencil="<<k<<" expected="<<unsigned(expectedStencil[k])<<" got="<<unsigned(reinterpret_cast<uint8_t*>(&sim.word(StencilOutput))[k])<<"\n";
+    throw std::runtime_error("production stencil mismatch");
    }
    std::cout<<"PRODUCTION_PASS fixture="<<j<<" cycles="<<cycles<<" texture_reads="<<(sim.textureReads-reads)<<" texture_beats="<<(sim.textureBeats-beats)<<"\n";
   }return 0;

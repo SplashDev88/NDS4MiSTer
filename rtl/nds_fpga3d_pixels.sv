@@ -10,6 +10,10 @@ module nds_fpga3d_pixels(
  input logic [8:0] left_end,right_begin,input logic [3:0] y_edge,
  input logic antialias,blend_enable,translucent_depth_write,
  input logic pixel_valid,resolve_valid,input logic [1:0] resolve_mode,
+ input logic [1:0] shadow_mode,
+ input logic stencil_frame_start,stencil_row,stencil_clear,
+ input logic stencil_seed_we,input logic [8:0] stencil_seed_index,input logic [1:0] stencil_seed_bits,
+ input logic stencil_dump_en,input logic [8:0] stencil_dump_index,output wire [1:0] stencil_dump_value,
  input logic precheck_valid,input logic [7:0] precheck_x,input logic [31:0] precheck_depth,
  output wire precheck_pass,
  input logic [31:0] fog_color,fog_offset,input logic [3:0] fog_shift,
@@ -25,12 +29,35 @@ module nds_fpga3d_pixels(
  (* ramstyle="M10K" *) logic [31:0] attr0[0:255];
  (* ramstyle="M10K" *) logic [31:0] depth0[0:255],depth1[0:255],attr1[0:255];
  logic [31:0] c0e,c0o,c1;
+ // Generation tags make a mask-group clear constant-time. A bounded frame
+ // has at most 8128 commands, so 14-bit generations cannot wrap in one job.
+ (* ramstyle="M10K" *) logic [15:0] stencil_memory[0:511];
+ logic [13:0] stencil_generation[0:1];
+ logic [15:0] stencil_q;
+ logic stencil_read_row;
+ wire stencil_read_en=stencil_dump_en || (ce && pixel_valid);
+ wire [8:0] stencil_read_addr=stencil_dump_en?stencil_dump_index:{stencil_row,pixel_x};
+ wire [1:0] stencil_bits=stencil_q[15:2]==stencil_generation[stencil_read_row]?stencil_q[1:0]:2'd0;
+ assign stencil_dump_value=stencil_bits;
+ wire [1:0] mask_bits=(pass0?stencil_bits:2'd1) | ((old_a0[3:0]!=0 && !pass1)?2'd2:2'd0);
+ wire stencil_we=stencil_seed_we || (!reset && ce && pixel_pending && resolve_q==0 && shadow_mode==2);
+ wire [8:0] stencil_write_addr=stencil_seed_we?stencil_seed_index:{stencil_row,x_q};
+ wire [15:0] stencil_write_data=stencil_seed_we?{14'd1,stencil_seed_bits}:{stencil_generation[stencil_row],mask_bits};
+ always_ff @(posedge clk)begin
+  if(stencil_read_en)begin stencil_q<=stencil_memory[stencil_read_addr];stencil_read_row<=stencil_read_addr[8];end
+  if(stencil_we)stencil_memory[stencil_write_addr]<=stencil_write_data;
+  if(reset || stencil_frame_start)begin stencil_generation[0]<=1;stencil_generation[1]<=1;end
+  else if(stencil_clear)stencil_generation[stencil_row]<=stencil_generation[stencil_row]+1'b1;
+ end
  logic [31:0] a0_mem,a1_mem,d0_mem,d1_mem,precheck_z;
  logic [31:0] a0_delay[0:1],a1_delay[0:1],d0_delay[0:1],d1_delay[0:1];
- wire [31:0] a0=resolve_q==0?a0_delay[1]:a0_mem;
- wire [31:0] a1=resolve_q==0?a1_delay[1]:a1_mem;
- wire [31:0] d0=resolve_q==0?d0_delay[1]:d0_mem;
- wire [31:0] d1=resolve_q==0?d1_delay[1]:d1_mem;
+ // Raster depth tests always consume the aligned precheck pipeline. Resolve
+ // passes use their synchronous RAM outputs directly; avoid putting their
+ // mode selector on every depth-comparison and pixel-store write path.
+ wire [31:0] a0=a0_delay[1];
+ wire [31:0] a1=a1_delay[1];
+ wire [31:0] d0=d0_delay[1];
+ wire [31:0] d1=d1_delay[1];
  wire [7:0] depth_read_x=resolve_valid?pixel_x:precheck_x;
  logic [7:0] x_q;
  logic [31:0] color_q,depth_q;
@@ -44,7 +71,7 @@ module nds_fpga3d_pixels(
  logic [16:0] fog_fraction;
  wire [5:0] fog_index=fog_scaled[31:17]>=32?6'd32:{1'b0,fog_scaled[21:17]};
  wire [25:0] fog_interpolated=26'(fog_table0)*(26'h20000-26'(fog_fraction))+26'(fog_table1)*26'(fog_fraction);
- wire [31:0] fog_z=resolve_q==2?d1:d0;
+ wire [31:0] fog_z=resolve_q==2?d1_mem:d0_mem;
  assign pending=pixel_pending || |fog_valid;
  logic [18:0] left_count,right_count;
  wire [6:0] read_pair=flush_en?flush_index:pixel_x[7:1];
@@ -61,7 +88,7 @@ module nds_fpga3d_pixels(
    end else depth_pass=z<prior || (flags[3] && attr[4] && !attr[22] && z==prior);
   end
  endfunction
- assign precheck_pass=depth_pass(precheck_z,d0_mem,a0_mem) ||
+ assign precheck_pass=shadow_mode[1] || depth_pass(precheck_z,d0_mem,a0_mem) ||
        (a0_mem[3:0]!=0 && depth_pass(precheck_z,d1_mem,a1_mem));
  function automatic [31:0] translucent_attr(input logic [31:0] prior);
   logic [31:0] value;
@@ -139,6 +166,13 @@ module nds_fpga3d_pixels(
   new_c0=old_c0;new_c1=old_c1;new_a0=old_a0;new_a1=a1;new_d0=d0;new_d1=d1;
   pass0=depth_pass(depth_q,d0,old_a0);pass1=depth_pass(depth_q,d1,a1);
   target0=pass0;target1=!pass0 && old_a0[3:0]!=0 && pass1;
+  if(shadow_mode==3)begin
+   target0=stencil_bits[0] && pass0;
+   // Native direct selection of the lower stencil layer retains the top
+   // attribute for its first depth test; a failed-top fallback uses a1.
+   target1=stencil_bits[1] && ((!stencil_bits[0] && depth_pass(depth_q,d1,old_a0)) ||
+             (stencil_bits[0] && !pass0 && old_a0[3:0]!=0 && pass1));
+  end
   edge_bits=y_edge;coverage=31;advance_left=0;advance_right=0;
   if({1'b0,x_q}<left_end)begin
    edge_bits=edge_bits|4'd1;
@@ -152,8 +186,8 @@ module nds_fpga3d_pixels(
   trans_attr0=translucent_attr(old_a0);trans_attr1=translucent_attr(a1);
   if(pixel_pending && ce && !reset && !clear_we)begin
    if(resolve_q==3)begin
-    color_we0=1;new_c0=resolve_color(old_c0,old_c1,old_a0);
-   end else if(resolve_q==0 && (target0 || target1))begin
+    color_we0=1;new_c0=resolve_color(old_c0,old_c1,a0_mem);
+   end else if(resolve_q==0 && shadow_mode!=2 && (target0 || target1))begin
     if(color_q[28:24]==31)begin
      if(antialias && edge_bits!=0)begin
       if({1'b0,x_q}<left_end && left_cov[31])advance_left=1;
@@ -171,13 +205,15 @@ module nds_fpga3d_pixels(
       new_c1=color_q;new_a1=opaque_attr;new_d1=depth_q;
      end
     end else begin
-     if(target0 && old_a0[22:16]!=trans_attr0[22:16])begin
+     if(target0 && (shadow_mode==3 && !old_a0[22]?
+            old_a0[29:24]!=poly_attr[29:24]:old_a0[22:16]!=trans_attr0[22:16]))begin
       color_we0=1;attr_we0=1;depth_we0=translucent_depth_write;
       new_c0=blend_color(color_q,old_c0);new_a0=trans_attr0;new_d0=depth_q;
      end
      // Native DS blending also visits the lower layer below an existing
      // edge, without a second depth test, even if its top ID was rejected.
-     if((target1 || (target0 && old_a0[3:0]!=0)) && a1[22:16]!=trans_attr1[22:16])begin
+     if((target1 || (target0 && old_a0[3:0]!=0 && (shadow_mode!=3 || stencil_bits[1]))) &&
+          (shadow_mode==3 && !a1[22]?a1[29:24]!=poly_attr[29:24]:a1[22:16]!=trans_attr1[22:16]))begin
       color_we1=1;attr_we1=1;depth_we1=translucent_depth_write;
       new_c1=blend_color(color_q,old_c1);new_a1=trans_attr1;new_d1=depth_q;
      end
@@ -233,7 +269,7 @@ module nds_fpga3d_pixels(
    fog_valid<={fog_valid[2:0],pixel_pending && (resolve_q==1 || resolve_q==2)};
    fog_x[0]<=x_q;fog_layer[0]<=resolve_q==2;
    fog_source[0]<=resolve_q==2?old_c1:old_c0;
-   fog_apply[0]<=resolve_q==2?(old_a0[3:0]!=0 && a1[15]):old_a0[15];
+   fog_apply[0]<=resolve_q==2?(a0_mem[3:0]!=0 && a1_mem[15]):a0_mem[15];
    fog_delta<=fog_z<fog_offset?32'd0:fog_z-fog_offset;
    fog_scaled<=(fog_delta>>2)<<fog_shift;
    fog_table0<=fog_table[8*int'(fog_index)+:8];

@@ -23,6 +23,12 @@ int main(int argc,char** argv)try{
  int count=std::stoi(argv[2]);require(count>=1&&count<=256,"fixture count");
  for(int j=0;j<count;j++){
   auto prefix=std::string(argv[1])+"/"+std::to_string(j);
+  frame.reset();std::vector<uint8_t> stencil(512),expectedStencil;
+  if(std::filesystem::exists(prefix+".stencil_input")){
+   stencil=load<uint8_t>(prefix+".stencil_input");expectedStencil=load<uint8_t>(prefix+".stencil_expected");
+   require(stencil.size()==512 && expectedStencil.size()==512,"stencil fixture bounds");
+  }
+  frame.stencil=stencil.data();
   frame.commands=load<Command>(prefix+".commands");frame.textures=load<uint32_t>(prefix+".textures");auto expected=load<uint32_t>(prefix+".expected");
   require(frame.commands.size()<=MaxCommands && frame.textures.size()*4<=TextureBytes && expected.size()==result.size(),"fixture bounds");
   auto start=std::chrono::steady_clock::now();require(frame.submit(result.data(),256),"hardware submission failed");
@@ -31,6 +37,7 @@ int main(int argc,char** argv)try{
    std::cerr<<"MISMATCH fixture="<<j<<" pixel="<<i<<" expected="<<std::hex<<expected[i]<<" actual="<<result[i]<<"\n";
    return 2;
   }
+  if(!expectedStencil.empty())require(stencil==expectedStencil,"hardware stencil mismatch");
   std::cout<<"HARDWARE_PASS fixture="<<j<<" pixels="<<result.size()<<" total_us="<<us<<" fps="<<1000000.0/us
            <<" upload_us="<<frame.uploadUs<<" wait_us="<<frame.waitUs<<" copy_us="<<frame.copyUs<<std::endl;
  }

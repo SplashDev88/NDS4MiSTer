@@ -1272,7 +1272,10 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     const auto fnDepthTest = rp->DepthTest;
 
     if (!prevIsShadowMask)
-        memset(&stencilBuffer[256 * (y&0x1)], 0, 256);
+    {
+        if(FpgaEmitting)FpgaFrame.append(fpga3d::stencilClear(y));
+        else memset(&stencilBuffer[256 * (y&0x1)], 0, 256);
+    }
 
     prevIsShadowMask = true;
 
@@ -1380,6 +1383,26 @@ void SoftRenderer3D::RenderShadowMaskScanline(
 
     if (wireframe) polyalpha = 31;
     if (polyalpha <= GPU3D.RenderAlphaRef) return;
+
+    if(FpgaEmitting)
+    {
+        const auto clampX=[](s32 x){return std::clamp(x,0,256);};
+        const s32 leftEnd=clampX(std::min(xstart+l_edgelen,xend+1));
+        const s32 interiorEnd=clampX(std::min(xend-r_edgelen+1,xend+1));
+        const s32 begin=l_filledge?clampX(xstart):leftEnd;
+        s32 finish=std::max(begin,interiorEnd);
+        if(l_filledge)finish=std::max(finish,leftEnd);
+        if(r_filledge)finish=std::max(finish,clampX(xend+1));
+        if(begin<finish && FpgaFrame.valid){
+            fpga3d::Span sp;sp.first=begin;sp.end=finish;sp.origin=xstart;sp.width=xend+1-xstart;
+            sp.w0=wl;sp.w1=wr;sp.z0=zl;sp.z1=zr;sp.mode=2;sp.polyAlpha=polyalpha;sp.alphaRef=GPU3D.RenderAlphaRef;
+            sp.flags=((wl==wr && !(wl&127))?fpga3d::Linear:0)|(polygon->WBuffer?fpga3d::WBuffer:0)|
+                (rp->DepthTest==DepthTest_LessThan_FrontFacing?fpga3d::Front:0)|((rp->PolyAttr&16)?fpga3d::Back:0)|
+                ((rp->DepthTest==DepthTest_Equal_Z || rp->DepthTest==DepthTest_Equal_W)?fpga3d::Equal:0);
+            try{FpgaFrame.append(fpga3d::span(sp));}catch(const std::invalid_argument&){FpgaFrame.valid=false;}
+        }
+        rp->XL=rp->SlopeL.Step();rp->XR=rp->SlopeR.Step();return;
+    }
 
     // in wireframe mode, there are special rules for equal Z (TODO)
 
@@ -2261,6 +2284,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 ((rp->PolyAttr&16)?fpga3d::Back:0) |
                 ((rp->DepthTest==DepthTest_Equal_Z || rp->DepthTest==DepthTest_Equal_W)?fpga3d::Equal:0);
             sp.alphaRef=GPU3D.RenderAlphaRef;
+            sp.mode=polygon->IsShadow?3:(rp->PixelState.BlendMode&1)?1:0;
             sp.polyAttr=polyattr;sp.polyAlpha=polyalpha;sp.depthWrite=(polygon->Attr&(1u<<11))!=0;
             sp.yEdge=spanYEdge;sp.leftCov=l_edgecov;sp.rightCov=r_edgecov;
             sp.leftEnd=leftEnd;sp.rightBegin=std::max(leftEnd,interiorEnd);
@@ -4325,11 +4349,14 @@ bool SoftRenderer3D::TryFpgaFrame()
     if (!FullFrameCompletion || !CurrentPolygonCount || !fpga3d::available() ||
         (GPU3D.RenderDispCnt & ((1u<<5)|(1u<<14)))) return false;
     FpgaFrame.reset();
+    FpgaFrame.stencil=StencilBuffer;
+    const bool initialShadowMask=PrevIsShadowMask;
     for(int i=0;i<CurrentPolygonCount;i++)
     {
         const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
-        if(rp.PolyData->IsShadow || rp.PolyData->IsShadowMask || ps.Wireframe ||
-           ps.BlendMode!=0 || (ps.TextureEnabled && !ps.CachedModulate)) return false;
+        if(ps.Wireframe || (rp.PolyData->IsShadow && !(ps.BlendMode&1)) ||
+           (!rp.PolyData->IsShadowMask && ps.BlendMode==2) ||
+           (!rp.PolyData->IsShadowMask && ps.TextureEnabled && !ps.TexturePixels)) return false;
     }
     // Reject unsupported frames before copying any decoded textures. Shadow
     // polygons commonly sort after opaque geometry, so a single combined pass
@@ -4337,7 +4364,7 @@ bool SoftRenderer3D::TryFpgaFrame()
     for(int i=0;i<CurrentPolygonCount;i++)
     {
         const auto& ps=PolygonList[i].PixelState;
-        if(ps.TextureEnabled &&
+        if(!PolygonList[i].PolyData->IsShadowMask && ps.TextureEnabled &&
            !FpgaFrame.addTexture(ps.TexturePixels,size_t(ps.TextureWidth)*ps.TextureHeight))return false;
     }
     if(GPU3D.RenderDispCnt & (1u<<7))
@@ -4371,6 +4398,7 @@ bool SoftRenderer3D::TryFpgaFrame()
     }
     // Command preparation advanced edge state. Reconstruct it before taking
     // the original renderer path. No framebuffer was modified on failure.
+    PrevIsShadowMask=initialShadowMask;
     SetupRenderPolygons(&GPU3D.RenderPolygonRAM[0],GPU3D.RenderNumPolygons);
     return false;
 }

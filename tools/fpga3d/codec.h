@@ -20,12 +20,12 @@ inline uint32_t signed16(uint32_t x){return uint32_t(int32_t(x<<16)>>16);}
 inline PackedCommand pack(const Command& c){
  PackedCommand p{};
  if(c[0]!=2){
-  unsigned n=c[0]==1?7:c[0]==3?2:c[0]==4?13:1;
-  std::copy_n(c.begin(),n,p.begin());if(c[0]!=1 && c[0]!=3 && c[0]!=4)p[15]=0x80000000;return p;
+  unsigned n=c[0]==1?7:(c[0]==3 || c[0]==5)?2:c[0]==4?13:1;
+  std::copy_n(c.begin(),n,p.begin());if(c[0]!=1 && c[0]!=3 && c[0]!=4 && c[0]!=5)p[15]=0x80000000;return p;
  }
  unsigned first=c[1]&65535,end=c[1]>>16,width=c[3]&65535,dx=c[3]>>16;
  bool invalid=first>=end || end>256 || !width || width>256 || dx+end-first>width ||
-  (c[2]&~0x1f3fu) || (c[27]&~0x3f008010u) || (c[31]&~0x33fu) ||
+  (c[2]&~0x1f3fu) || (c[27]&~0x3f008010u) || (c[31]&~0xf3fu) ||
   (c[30]&65535)>(c[30]>>16) || (c[30]>>16)>256;
  if(c[2]&Textured)invalid|=c[13]<Textures || c[13]>=Textures+TextureBytes || (c[13]&7) ||
   (c[14]&15)<3 || (c[14]&15)>10 || ((c[14]>>4)&15)<3 || ((c[14]>>4)&15)>10 || (c[14]&~0xfffu);
@@ -64,7 +64,7 @@ inline PackedCommand pack(const Command& c){
  put<357,32>(p,attr);
  invalid|=(c[25]&65535)>255 || (c[25]>>16)>255;
  put<453,8>(p,c[25]);put<461,8>(p,c[25]>>16);}
- put<469,13>(p,c[7]);put<482,13>(p,c[7]>>16);put<511,1>(p,invalid);return p;
+ put<495,2>(p,c[31]>>10);put<469,13>(p,c[7]);put<482,13>(p,c[7]>>16);put<511,1>(p,invalid);return p;
 }
 inline Command unpack(const PackedCommand& p){
  Command c{};
@@ -80,7 +80,7 @@ inline Command unpack(const PackedCommand& p){
  auto cov=[](uint32_t v){return (v&1023)|(((v>>10)&1023)<<12)|((v>>20)<<31);};
  c[28]=cov(get<169,21>(p));c[29]=cov(get<190,21>(p));
  c[30]=get<211,9>(p)|(get<220,9>(p)<<16);
- c[31]=get<46,5>(p)|(get<51,1>(p)<<5)|(get<52,2>(p)<<8);
+ c[31]=get<46,5>(p)|(get<51,1>(p)<<5)|(get<52,2>(p)<<8)|(get<495,2>(p)<<10);
  c[8]=get<229,32>(p);c[16]=signed16(c[8]>>16);
  if(c[2]&Linear)c[8]&=65535;
  c[21]=get<389,8>(p)|(get<397,8>(p)<<16);

@@ -32,7 +32,7 @@ inline bool available(){
 }
 // Compact physical descriptors use fixed 64-byte spacing. Logical commands
 // remain 128 bytes so native fixtures retain their independent readable ABI.
-inline unsigned commandWords(const Command& c){return c[0]==1?7:c[0]==2?16:c[0]==3?2:c[0]==4?13:16;}
+inline unsigned commandWords(const Command& c){return c[0]==1?7:c[0]==2?16:(c[0]==3 || c[0]==5)?2:c[0]==4?13:16;}
 typedef uint64_t MMIO64 __attribute__((__may_alias__));
 inline void uploadCommands(volatile uint32_t* target,const std::vector<Command>& commands){
  const bool aligned=(reinterpret_cast<uintptr_t>(target)&7)==0;
@@ -74,6 +74,7 @@ struct Frame {
  std::map<const uint32_t*,uint32_t> textureOffsets;
  bool valid=true,active=false,transportError=false;
  unsigned deadlineMs=100;
+ uint8_t* stencil=nullptr;
  uint64_t uploadUs=0,waitUs=0,copyUs=0;
  uint32_t frameSession=0,sequence=0,commandBase=Commands;
  size_t published=0,commandCapacity=MaxCommands;
@@ -82,7 +83,7 @@ struct Frame {
  void reset(){
   // An abandoned producer must never reuse bytes still owned by the FPGA.
   if(active){poisonedSession=frameSession;++failedFrames;}
-  commands.clear();textures.clear();textureOffsets.clear();valid=true;active=false;transportError=false;
+  commands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;
   published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;
  }
  void append(const Command& c){if(commands.size()>=commandCapacity)valid=false;else commands.push_back(c);}
@@ -108,6 +109,13 @@ struct Frame {
   sequence=mailbox[1]+1;if(!sequence)sequence=1;
   uploadUs=waitUs=copyUs=0;published=0;transportError=false;
   uploadTextures(publication+(Textures-0x3fd00000)/4,textures);
+  // The fixed mailbox gap has the same Device mapping as control. Preserve
+  // both parity rows across hardware/software transitions, including timeout.
+  for(unsigned i=0;i<128;i++){
+   uint32_t value=0;
+   if(stencil)for(unsigned j=0;j<4;j++)value|=uint32_t(stencil[4*i+j]&3u)<<(8*j);
+   control[(StencilInput-0x3fc00000)/4+i]=value;
+  }
   mailbox[15]=commandBase;mailbox[2]=0;mailbox[3]=frameSession;mailbox[0]=Magic;
   barrier();mailbox[1]=sequence;barrier();active=true;
   uploadUs=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count();
@@ -151,6 +159,10 @@ struct Frame {
   if(!valid && !transportError)return false;
   if(transportError || mailbox[5]){++failedFrames;return false;}
   const auto rendered=std::chrono::steady_clock::now();copyOutput(destination,stride);
+  if(stencil){
+   auto source=publication+(StencilOutput-Output)/4;
+   for(unsigned i=0;i<128;i++){const uint32_t value=source[i];for(unsigned j=0;j<4;j++)stencil[4*i+j]=(value>>(8*j))&3u;}
+  }
   const auto copied=std::chrono::steady_clock::now();
   waitUs=std::chrono::duration_cast<std::chrono::microseconds>(rendered-waiting).count();
   copyUs=std::chrono::duration_cast<std::chrono::microseconds>(copied-rendered).count();

@@ -7,17 +7,19 @@ only a report for its exact bitstream/helper hashes can qualify the beta.
 
 Supported raster work includes opaque and translucent modulated or untextured
 polygons, partial texture alpha, Z/W depth, perspective and linear interpolation,
-two-layer antialiasing, and fog. Shadow polygons, toon/decal modes, wireframe,
+two-layer antialiasing, fog, decal texturing, and shadow masks/polygons. Toon mode, wireframe,
 edge marking, bitmap clear, and work exceeding the memory contract use the
 original software renderer. No approximation or partial image is published.
 
-## F3D4 producer and memory ownership
+## F3D5 producer and memory ownership
 
 | Physical range | Ownership |
 | --- | --- |
-| 0x3FC80000..0x3FC80FFF | Accelerator mailbox |
+| 0x3FC80000..0x3FC80DFF | Accelerator mailbox |
+| 0x3FC80E00..0x3FC80FFF | Immutable 512-byte initial stencil state |
 | 0x3FC81000..0x3FCFFFFF | Device command arena for batch callers |
 | 0x3FD00000..0x3FD2FFFF | Completed 256x192 native-color output |
+| 0x3FD30000..0x3FD301FF | Completed 512-byte stencil state |
 | 0x3FD40000..0x3FDFFFFF | Immutable decoded textures followed by WC commands |
 
 These are reserved matched-display graphics windows. Packet/control storage
@@ -26,7 +28,7 @@ The existing Device and write-combined mappings are reused; no physical page
 receives a conflicting alias. Logical fixture commands remain 128 bytes and
 are packed into 64-byte records for the FPGA.
 
-F3D4 magic prevents mixed helpers and bitstreams from submitting work. Mailbox
+F3D5 magic prevents mixed helpers and bitstreams from submitting work. Mailbox
 word 15 carries the aligned command base. The low 31 bits of word 2 publish
 an immutable command prefix; bit 31 closes the producer. Textures and initial
 metadata are visible before the sequence commit. Each scanline's packed
@@ -100,3 +102,19 @@ C14 synthesis expanded the descriptor prefetch RAM into 8,192 flip-flops and
 failed device capacity. C15 uses one explicitly multiplexed synchronous RAM
 read port, and doubles texture cache capacity to 8 KiB. Both changes require
 fresh synthesis, pixel comparisons, and hardware qualification.
+
+C15 fitted but failed accelerator setup timing by 0.710 ns and was not deployed.
+C16 removes the resolve-mode selector from the raster depth-comparison path;
+fog and antialias resolve read their own synchronous RAM outputs directly.
+It preloads the next published descriptor while rasterizing the current one,
+with one explicit command RAM read port and cancellation at short commands.
+
+F3D5 uploads both stencil parity rows before starting a frame and copies the
+completed stencil back only after successful color output. One additional
+M10K stores two stencil bits and a 14-bit clear-generation tag per pixel.
+Opcode 5 clears the current parity row in constant time; bounded command
+capacity prevents generation wrap. Masks preserve the native two-layer depth
+rules, and shadow blending preserves both opaque and translucent polygon-ID
+rejection. Whole-frame software fallback restores mask-group state before
+retrying. Synthetic fixtures compare pixels, stencil, and timeout recovery;
+private game captures remain outside distributed artifacts.
