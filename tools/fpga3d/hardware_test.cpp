@@ -17,7 +17,7 @@ int main(int argc,char** argv)try{
  std::ifstream ef("/proc/"+std::to_string(pid)+"/environ",std::ios::binary);
  require(bool(ef),"renderer environment inaccessible");std::string env((std::istreambuf_iterator<char>(ef)),{});
  require(env.find(std::string("NDS4MISTER_FPGA3D=0")+char(0))!=std::string::npos,"renderer must explicitly disable FPGA3D before diagnostic");
- nds4mister::h3d::memory::Mapping mapping("/dev/mem");bind(mapping.data(),mapping.publication_data(),true);
+ nds4mister::h3d::memory::Mapping mapping("/dev/mem");bind(mapping.data(),mapping.publication_data(),true,mapping.write_combined());
  require(available(),"accelerator unavailable/session mismatch");
  Frame frame;frame.deadlineMs=5000;std::vector<uint32_t> result(256*192);
  int count=std::stoi(argv[2]);require(count>=1&&count<=100,"fixture count");

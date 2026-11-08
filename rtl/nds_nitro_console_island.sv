@@ -2100,7 +2100,7 @@ ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(H3D_READBACK_BURST)) island_ddram (
 
 `ifdef NDS_HYBRID_3D
 // FPGA3D shares the control client's port; scanout retains outer priority.
-wire f3d_rd,f3d_wr,f3d_busy,f3d_valid,f3d_mux_protocol_error;
+wire f3d_rd,f3d_wr,f3d_busy,f3d_valid,f3d_accepted,f3d_mux_protocol_error;
 wire [7:0] f3d_burst,f3d_be;
 wire [28:0] f3d_addr;
 wire [63:0] f3d_din,f3d_dout;
@@ -2111,7 +2111,7 @@ wire [63:0] ctl_mux_din,ctl_mux_dout;
 nds_fpga3d fpga3d (
  .clk(ddr_clk),.reset(h3d_fabric_reset),.enable(h3d_control_release),.session(h3d_active_session),
  .rd(f3d_rd),.wr(f3d_wr),.burst(f3d_burst),.addr(f3d_addr),.din(f3d_din),.be(f3d_be),
- .busy(f3d_busy),.dout(f3d_dout),.dout_ready(f3d_valid)
+ .busy(f3d_busy),.dout(f3d_dout),.dout_ready(f3d_valid),.accepted(f3d_accepted)
 );
 nds_fpga3d_port_mux fpga3d_control_mux (
  .clk(ddr_clk),.reset(h3d_fabric_reset),
@@ -2120,7 +2120,7 @@ nds_fpga3d_port_mux fpga3d_control_mux (
  .c_busy(h3d_control_busy),.c_dout(h3d_control_dout),.c_valid(h3d_control_dout_ready),
  .c_accepted(h3d_control_command_accepted),
  .a_rd(f3d_rd),.a_wr(f3d_wr),.a_burst(f3d_burst),.a_addr(f3d_addr),
- .a_din(f3d_din),.a_be(f3d_be),.a_busy(f3d_busy),.a_dout(f3d_dout),.a_valid(f3d_valid),
+ .a_din(f3d_din),.a_be(f3d_be),.a_busy(f3d_busy),.a_dout(f3d_dout),.a_valid(f3d_valid),.a_accepted(f3d_accepted),
  .rd(ctl_mux_rd),.wr(ctl_mux_wr),.burst(ctl_mux_burst),.addr(ctl_mux_addr),
  .din(ctl_mux_din),.be(ctl_mux_be),.busy(ctl_mux_busy),.dout(ctl_mux_dout),
  .valid(ctl_mux_valid),.accepted(ctl_mux_accepted),.protocol_error(f3d_mux_protocol_error)

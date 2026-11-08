@@ -6,9 +6,9 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0,FAIR_PROBE_IN
  output rd,wr,output [7:0] burst,output [28:0] addr,output [63:0] din,output [7:0] be,
  input busy,input [63:0] dout,input dout_ready
 );
- wire ar,aw,ab,av;wire [7:0] an,ae;wire [28:0] aa;wire [63:0] ai,ao;
+ wire ar,aw,ab,av,aaccept;wire [7:0] an,ae;wire [28:0] aa;wire [63:0] ai,ao;
  wire released,control_fault;wire [31:0] control_fault_bits;
- nds_fpga3d #(.POLL_CYCLES(POLL_CYCLES)) accelerator(clk,reset,enable&&released,session,ar,aw,an,aa,ai,ae,ab,ao,av);
+ nds_fpga3d #(.POLL_CYCLES(POLL_CYCLES)) accelerator(clk,reset,enable&&released,session,ar,aw,an,aa,ai,ae,ab,ao,av,aaccept);
  wire cr,cw,cb,cv;wire [63:0] co,ci;wire [28:0] cc;wire [7:0] cn,ce;
  wire lr,lb,lv;wire [63:0] lo;
  wire vr,vb,vv;wire [63:0] vo;
@@ -34,7 +34,7 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0,FAIR_PROBE_IN
  nds_fpga3d_port_mux inner(
  .clk,.reset,
  .c_rd(cr),.c_wr(cw),.c_burst(cn),.c_addr(cc),.c_din(ci),.c_be(ce),.c_busy(cb),.c_dout(co),.c_valid(cv),.c_accepted(ca),
- .a_rd(ar),.a_wr(aw),.a_burst(an),.a_addr(aa),.a_din(ai),.a_be(ae),.a_busy(ab),.a_dout(ao),.a_valid(av),
+ .a_rd(ar),.a_wr(aw),.a_burst(an),.a_addr(aa),.a_din(ai),.a_be(ae),.a_busy(ab),.a_dout(ao),.a_valid(av),.a_accepted(aaccept),
  .rd(mr),.wr(mw),.burst(mn),.addr(ma),.din(mi),.be(me),.busy(mb),.dout(mo),.valid(mv),.accepted(ma_accept),.protocol_error(e1));
  nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b1111),.VIDEO_PRIORITY_GRANT(1),.VIDEO_PRIORITY_FAIR_CREDIT(1),.FAIR_PROBE_INTERVAL(FAIR_PROBE_INTERVAL)) outer(
  .clk,.reset,

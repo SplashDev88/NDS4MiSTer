@@ -36,6 +36,9 @@ struct Sim {
    readat+=8;remaining--;delay=stalls?rng()%4:0;
   }
   v.eval();
+#ifndef SHARED_FABRIC
+  v.accepted=!v.busy && (v.rd || v.wr);v.eval();
+#endif
   if(v.reset)writeRemaining=0;
   if(writeRemaining && !v.busy && !v.reset)require(v.wr && !v.rd,"gap in physical Avalon write burst");
   if(held && !v.reset && v.enable)require(v.rd==heldRead && v.wr==heldWrite && v.addr==heldAddr && v.burst==heldBurst && v.din==heldData && v.be==heldBe,"DDR payload changed while stalled");
@@ -198,6 +201,32 @@ int main(int argc,char** argv){try{
   require(sim.word(Mailbox+16)!=interrupted,"interrupted frame completed after reset");
   checkCache(0x1f06090c,0x1f3a2b1c);
  }
+ // Dropping the renderer enable must drain an already accepted physical
+ // burst even though no completion for that interrupted frame is published.
+ for(unsigned cut:{1u,2u,63u,127u}){
+  std::memcpy(&sim.word(Commands),cacheCommands.data(),cacheCommands.size()*sizeof(Command));
+  sim.word(Mailbox+8)=cacheCommands.size();sim.word(Mailbox+12)=17;
+  sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
+  unsigned guard=0;
+  while(!(sim.writeRemaining && sim.writeBase>=Output && sim.writeBase<Output+256*192*4 &&
+          sim.writeBurst==128 && sim.writeRemaining<=128-cut) && guard++<2000000)sim.tick();
+  require(guard<2000000,"did not reach an in-flight output burst");
+  sim.v.enable=0;
+  guard=0;
+  while(sim.writeRemaining && sim.writeBase>=Output && sim.writeBase<Output+256*192*4 && guard++<10000)sim.tick();
+  require(guard<10000,"disabled output burst did not drain");
+  for(unsigned k=0;k<1000;k++){
+   sim.tick();require(!(sim.v.wr && sim.v.addr*8>=Output && sim.v.addr*8<Output+256*192*4),"disabled rasterizer started another output write");
+  }
+  require(sim.word(Mailbox+16)!=interrupted,"disabled frame completed");
+  sim.word(Mailbox+24)=0;sim.v.enable=1;
+  for(unsigned k=0;k<10000 && sim.word(Mailbox+24)!=Magic;k++)sim.tick();
+  require(sim.word(Mailbox+24)==Magic,"re-enabled rasterizer did not restart");
+  for(unsigned k=0;k<1000;k++)sim.tick();
+  require(sim.word(Mailbox+16)!=interrupted,"disabled request replayed");
+  checkCache(0x1f090c0f,0x1f302115);
+ }
+ std::cout<<"PASS enable-loss burst drain at beats 1,2,63,127 and 196608 fresh-frame comparisons\n";
  sim.run({flush(0)},0xffffffff,1);sim.run({flush(0)},1,1);
  auto doneBefore=sim.word(Mailbox+16);sim.word(Mailbox)=0;sim.word(Mailbox+4)=2;
  for(int i=0;i<1000;i++)sim.tick();require(sim.word(Mailbox+16)==doneBefore,"invalid magic consumed");

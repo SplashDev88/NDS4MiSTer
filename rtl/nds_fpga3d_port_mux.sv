@@ -11,7 +11,7 @@ module nds_fpga3d_port_mux (
  output logic c_busy,c_accepted,output logic [63:0] c_dout,output logic c_valid,
  input logic a_rd,a_wr,input logic [7:0] a_burst,input logic [28:0] a_addr,
  input logic [63:0] a_din,input logic [7:0] a_be,
- output logic a_busy,output logic [63:0] a_dout,output logic a_valid,
+ output logic a_busy,output logic [63:0] a_dout,output logic a_valid,output logic a_accepted,
  output logic rd,wr,output logic [7:0] burst,output logic [28:0] addr,
  output logic [63:0] din,output logic [7:0] be,
  input logic busy,accepted,input logic [63:0] dout,input logic valid,
@@ -31,12 +31,16 @@ module nds_fpga3d_port_mux (
  wire enqueued=!locked && !reset && (selected?a_request:c_request);
  always_comb begin
   rd=locked && !issued && read_pending && !reset;
-  wr=locked && !issued && !read_pending && !reset;
-  burst=pending_burst;addr=pending_addr;din=pending_data;be=pending_be;
+  // Retain the first beat until physical acceptance. The accelerator then
+  // supplies each subsequent beat and holds it through DDR waitrequest.
+  wr=locked && !read_pending && (!issued || remaining<pending_burst) && !reset;
+  burst=pending_burst;addr=pending_addr;din=(issued && remaining<pending_burst)?a_din:pending_data;be=pending_be;
   c_busy=1;a_busy=1;
   if(!reset && !locked)begin
    if(selected)a_busy=0;else c_busy=0;
   end
+  if(locked && owner && !read_pending && issued && remaining<pending_burst)a_busy=busy;
+  a_accepted=!reset && locked && owner && accepted;
   c_accepted=!reset && locked && !owner && accepted;
   c_valid=!reset && locked && !owner && read_pending && valid;
   a_valid=!reset && locked && owner && read_pending && valid;
@@ -52,7 +56,7 @@ module nds_fpga3d_port_mux (
     remaining<=selected?a_burst:c_burst;grant_dwell<=0;issued<=0;
     pending_burst<=selected?a_burst:c_burst;pending_addr<=selected?a_addr:c_addr;
     pending_data<=selected?a_din:c_din;pending_be<=selected?a_be:c_be;
-    if(selected ? ((a_wr && a_burst!=1)||(a_rd && a_wr)||a_burst==0) :
+    if(selected ? ((a_wr && a_burst>128)||(a_rd && a_wr)||a_burst==0) :
                   ((c_wr && c_burst!=1)||(c_rd && c_wr)||c_burst==0))protocol_error<=1;
    end else if(!locked)begin
     // Give a registered requester a complete grant cycle to advertise work.
@@ -65,12 +69,16 @@ module nds_fpga3d_port_mux (
    end
    if(locked && !issued && !busy)issued<=1;
    if(accepted && (!locked || !issued))protocol_error<=1;
+   if(locked && owner && !read_pending && issued && remaining<pending_burst && !a_wr)protocol_error<=1;
    if(valid && (!locked || !issued || !read_pending || remaining==0))protocol_error<=1;
    if(locked)begin
     if(read_pending && valid)begin
      remaining<=remaining-1'b1;
      if(remaining==1)begin locked<=0;owner<=!owner && a_request;grant_dwell<=0;end
-    end else if(!read_pending && accepted)begin locked<=0;owner<=!owner && a_request;grant_dwell<=0;end
+    end else if(!read_pending && accepted)begin
+     remaining<=remaining-1'b1;
+     if(remaining==1)begin locked<=0;owner<=!owner && a_request;grant_dwell<=0;end
+    end
    end
   end
  end

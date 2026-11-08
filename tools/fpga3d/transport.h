@@ -11,7 +11,7 @@ namespace fpga3d {
 // existing mappings: no conflicting Device/WC aliases of physical memory.
 inline volatile uint32_t* control=nullptr;
 inline volatile uint32_t* publication=nullptr;
-inline bool permitted=false;
+inline bool permitted=false,writeCombined=false;
 inline uint32_t poisonedSession=0;
 inline uint64_t completedFrames=0,failedFrames=0;
 inline void barrier(){
@@ -21,14 +21,38 @@ inline void barrier(){
  __atomic_thread_fence(__ATOMIC_SEQ_CST);
 #endif
 }
-inline void bind(void* c,void* p,bool allowed){
- control=static_cast<volatile uint32_t*>(c);publication=static_cast<volatile uint32_t*>(p);permitted=allowed;
+inline void bind(void* c,void* p,bool allowed,bool wc=false){
+ control=static_cast<volatile uint32_t*>(c);publication=static_cast<volatile uint32_t*>(p);permitted=allowed;writeCombined=wc;
 }
 inline bool available(){
  if(!permitted || !control || !publication)return false;
  uint32_t session=control[2];
  return session && session!=poisonedSession && control[0]==0x31443348 &&
    control[(Mailbox-0x3fc00000+24)/4]==Magic && control[(Mailbox-0x3fc00000+28)/4]==session;
+}
+// Device command pages retain volatile accesses. Only fields read by each
+// opcode are transferred; fixed 128-byte descriptor spacing is unchanged.
+inline unsigned commandWords(const Command& c){return c[0]==1?5:c[0]==2?27:c[0]==3?2:32;}
+typedef uint64_t MMIO64 __attribute__((__may_alias__));
+inline void uploadCommands(volatile uint32_t* target,const std::vector<Command>& commands){
+ const bool aligned=(reinterpret_cast<uintptr_t>(target)&7)==0;
+ for(const auto& c:commands){
+  const unsigned count=commandWords(c);unsigned i=0;
+  if(aligned)for(;i+1<count;i+=2)
+   *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(c[i])|(uint64_t(c[i+1])<<32);
+  for(;i<count;i++)target[i]=c[i];
+  target+=32;
+ }
+}
+inline void uploadTextures(volatile uint32_t* target,const std::vector<uint32_t>& data){
+ if(writeCombined){if(!data.empty())std::memcpy(const_cast<uint32_t*>(target),data.data(),data.size()*4);}
+ else for(uint32_t w:data)*target++=w;
+}
+inline void copyOutput(uint32_t* destination,size_t stride){
+ for(unsigned y=0;y<192;y++){
+  if(writeCombined)std::memcpy(destination+y*stride,const_cast<const uint32_t*>(publication)+y*256,1024);
+  else for(unsigned x=0;x<256;x++)destination[y*stride+x]=publication[y*256+x];
+ }
 }
 struct Frame {
  std::vector<Command> commands;
@@ -55,9 +79,9 @@ struct Frame {
   // an old request from a previous epoch was discarded by hardware startup.
   uint32_t seq=mailbox[1]+1;if(!seq)seq=1;
   auto* target=control+(Commands-0x3fc00000)/4;
-  for(const auto& c:commands)for(uint32_t w:c)*target++=w;
+  uploadCommands(target,commands);
   auto* tex=publication+(Textures-0x3fd00000)/4;
-  for(uint32_t w:textures)*tex++=w;
+  uploadTextures(tex,textures);
   mailbox[2]=commands.size();mailbox[3]=session;mailbox[0]=Magic;
   barrier();mailbox[1]=seq;barrier();
   const auto uploaded=std::chrono::steady_clock::now();
@@ -73,7 +97,7 @@ struct Frame {
   barrier();
   if(mailbox[5] || control[2]!=session){++failedFrames;return false;}
   const auto rendered=std::chrono::steady_clock::now();
-  for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)destination[y*stride+x]=publication[y*256+x];
+  copyOutput(destination,stride);
   const auto copied=std::chrono::steady_clock::now();
   uploadUs=std::chrono::duration_cast<std::chrono::microseconds>(uploaded-start).count();
   waitUs=std::chrono::duration_cast<std::chrono::microseconds>(rendered-uploaded).count();

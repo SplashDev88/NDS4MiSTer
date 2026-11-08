@@ -50,3 +50,15 @@ advertising work. The packet writer holds each request through physical
 acceptance, including write bursts with waitrequest asserted.
 GPU source credit uses registered queue occupancy; an initially full queue
 reopens on the cycle after a pop to shorten the sink-to-CPU timing path.
+
+Completed rows use 128-beat DDR writes. The adapter retains the first beat,
+then advances the scanline RAM only on physical acceptance. An enable loss
+drains the accepted burst before resetting the renderer; tests interrupt
+beats 1, 2, 63 and 127 and reject a deliberately broken abort implementation.
+
+The ARM transport skips unused descriptor padding and uses aligned volatile
+64-bit stores on the existing Device command mapping. Texture upload and
+output copies use memcpy only when the existing publication mapping is WC;
+the Device fallback retains scalar accesses. No physical pages acquire a
+second mapping or a different owner. The transport test covers alignment,
+maximum command capacity, both mapping paths and surrounding memory guards.

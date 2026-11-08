@@ -11315,7 +11315,8 @@ try {
                 matched_requested && std::strcmp(matched_requested, "1") == 0;
             const char* fpga3d_requested=std::getenv("NDS4MISTER_FPGA3D");
             fpga3d::bind(mapping.data(),mapping.publication_data(),
-                matched_display && fpga3d_requested && std::strcmp(fpga3d_requested,"1")==0);
+                matched_display && fpga3d_requested && std::strcmp(fpga3d_requested,"1")==0,
+                mapping.write_combined());
             const char* full_rate_requested =
                 std::getenv("NDS4MISTER_MATCHED_DISPLAY_FULL_RATE");
             bool matched_full_rate = matched_display && full_rate_requested &&

@@ -14,7 +14,7 @@ module nds_fpga3d #(
  output logic [7:0] be,
  input logic busy,
  input logic [63:0] dout,
- input logic dout_ready
+ input logic dout_ready,accepted
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
  localparam [31:0] MAGIC=32'h31443346;
@@ -29,7 +29,8 @@ module nds_fpga3d #(
  logic [3:0] beat;
  logic [8:0] x,last,dx,line_y,flush_x;
  logic [9:0] span_width;
- logic line_open;
+ logic line_open,flush_inflight;
+ wire [6:0] flush_read=(state==FLUSH_WRITE && accepted)?flush_x[7:1]+7'd1:flush_x[7:1];
  (* ramstyle = "M10K" *) logic [31:0] color_even[0:127],color_odd[0:127];
  (* ramstyle = "M10K" *) logic [32:0] depth_back[0:255];
  logic line_we;
@@ -165,12 +166,13 @@ module nds_fpga3d #(
    HEADER:begin rd=1;addr=MB+1;end
    FETCH:begin rd=1;burst=16;addr=CM+(index<<4);end
    TEX_READ:begin rd=1;addr=tex_addr;end
-   FLUSH_WRITE:begin wr=1;addr=OUT+(line_y<<7)+(flush_x>>1);din=flush_pair;end
+   FLUSH_WRITE:begin wr=1;burst=128;addr=OUT+(line_y<<7);din=flush_pair;end
    COMPLETE:begin wr=1;addr=MB+2;din={status,seq};end
    default:begin end
   endcase
-  // Disabled/reset epochs must not place requests into the shared fabric.
-  if(reset || !enable)begin rd=0;wr=0;end
+  // Finish any physical row burst already accepted by the fabric before
+  // obeying enable loss. Reset also resets the complete shared fabric.
+  if(reset || (!enable && !flush_inflight))begin rd=0;wr=0;end
   for(integer k=0;k<5;k=k+1)sums[k]={1'b0,rems[k]}+{1'b0,rsteps[k]};
   zsum={1'b0,zrem}+{1'b0,zrstep};
   line_we=!reset && enable && ((state==CLEAR_LINE) ||
@@ -189,11 +191,15 @@ module nds_fpga3d #(
    depth_back[write_x[7:0]]<=line_depth;
   end
   // Depth read belongs to pipeline stage zero.
-  flush_pair<={color_odd[flush_x[7:1]],color_even[flush_x[7:1]]};
-  if(reset || !enable)begin
+  // Prime the first pair before WR, then advance only on physical DDR
+  // acceptance. Local queue credit must never skip or duplicate a pixel.
+  if(state!=FLUSH_WRITE || accepted)
+   flush_pair<={color_odd[flush_read],color_even[flush_read]};
+  if(reset || (!enable && !flush_inflight))begin
    state<=INIT;seen<=0;seq<=0;index<=0;status<=0;epoch<=session;poll<=0;
-   line_open<=0;line_y<=0;flush_x<=0;x<=0;
+   line_open<=0;line_y<=0;flush_x<=0;x<=0;flush_inflight<=0;
   end else begin
+   if(state==FLUSH_WRITE && !busy)flush_inflight<=1;
    case(state)
     INIT:if(!busy)begin epoch<=session;state<=INIT_WAIT;end
     INIT_WAIT:if(dout_ready)begin seen<=dout[63:32];state<=READY;end
@@ -260,9 +266,9 @@ module nds_fpga3d #(
     end
     FLUSH_LOAD:state<=FLUSH_WAIT;
     FLUSH_WAIT:state<=FLUSH_WRITE;
-    FLUSH_WRITE:if(!busy)begin
-     if(flush_x==254)begin line_open<=0;line_y<=line_y+1'b1;state<=NEXT_COMMAND;end
-     else begin flush_x<=flush_x+2;state<=FLUSH_LOAD;end
+    FLUSH_WRITE:if(accepted)begin
+     if(flush_x==254)begin flush_inflight<=0;line_open<=0;line_y<=line_y+1'b1;state<=NEXT_COMMAND;end
+     else flush_x<=flush_x+2;
     end
     NEXT_COMMAND:if(index+1==count)begin
      if(line_open || line_y!=192)status<=1;
