@@ -30,7 +30,7 @@ set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
 # with the rc.7 host and split mode disabled. Restore the previous default
 # All Paths repair; use the measured global-reset assignments below to ease
 # routing pressure. Timing reports remain diagnostic; test the image on hardware.
-set_global_assignment -name SEED 7
+set_global_assignment -name SEED 8
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
 # The FPGA console sound engine drives the normal MiSTer audio cone. Keep the
