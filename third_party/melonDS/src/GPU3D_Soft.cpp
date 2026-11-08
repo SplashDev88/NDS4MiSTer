@@ -2391,7 +2391,12 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                     if(sp.first<sp.end)emitSpan(sp);
                 } else emitSpan(sp);
             }
-            catch(const std::invalid_argument&) { FpgaFrame.valid=false;FpgaFrame.failure=fpga3d::Outcome::Span; }
+            catch(const std::invalid_argument& error) {
+                if(fpga3d::profileEnabled && FpgaProfile.counts[unsigned(fpga3d::Outcome::Span)]<8)
+                    std::fprintf(stderr,"FPGA3D_SPAN_REJECT reason=%s first=%d end=%d origin=%d width=%d w0=%d w1=%d z0=%d z1=%d flags=%x\n",
+                        error.what(),sp.first,sp.end,sp.origin,sp.width,sp.w0,sp.w1,sp.z0,sp.z1,sp.flags);
+                FpgaFrame.valid=false;FpgaFrame.failure=fpga3d::Outcome::Span;
+            }
         }
         rp->XL = rp->SlopeL.Step();
         rp->XR = rp->SlopeR.Step();
