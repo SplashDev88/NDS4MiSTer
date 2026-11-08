@@ -91,6 +91,31 @@ int main(int argc,char** argv)try{
  require(!f.submit(dst.data()+8,258) && !f.active && failedFrames==failures,"capacity cancel did not drain cleanly");
  for(auto w:dst)require(w==0xa1b2c3d4,"capacity cancel copied partial frame");
  require(stencil==preservedStencil,"capacity cancel copied stencil");
+ // The live batch policy must leave the mailbox and arenas untouched while
+ // the CPU prepares commands, then preserve the same pixels and stencil.
+ streaming=false;
+ for(const auto& fixture:fixtures){
+  f.reset();f.stencil=stencil.data();f.commands=load<Command>(fixture+".commands");
+  f.textures=load<uint32_t>(fixture+".textures");auto expected=load<uint32_t>(fixture+".expected");
+  auto expectedStencil=stencil;
+  if(std::ifstream(fixture+".stencil_input").good()){
+   auto seed=load<uint8_t>(fixture+".stencil_input"),result=load<uint8_t>(fixture+".stencil_expected");
+   require(seed.size()==512 && result.size()==512,"batch stencil fixture bounds");
+   std::copy(seed.begin(),seed.end(),stencil.begin());std::copy(result.begin(),result.end(),expectedStencil.begin());
+  }
+  auto untouched=sim.mem;f.startStream();f.publish();
+  require(!f.active && untouched==sim.mem,"batch preparation touched shared memory");
+  sim.guardedBase=f.textures.size()*4<=TextureBytes-MaxCommands*64?
+      ((Textures+uint32_t(f.textures.size()*4)+63)&~63u):Commands;
+  sim.guardedCount=0;
+  require(f.submit(dst.data()+8,258),"batch CPU/RTL submission failed");
+  require(stencil==expectedStencil,"batch stencil mismatch");
+  for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)
+   require(dst[8+y*258+x]==expected[y*256+x],"batch pixel mismatch");
+ }
+ f.reset();f.valid=false;auto untouched=sim.mem;
+ require(!f.submit(dst.data()+8,258) && untouched==sim.mem,"rejected batch touched shared memory");
+ streaming=true;
  f.reset();f.stencil=stencil.data();f.deadlineMs=1;f.startStream();f.append(clear(0,0,0xffffff));
  tickEnabled=false;require(!f.submit(dst.data()+8,258),"timeout accepted");tickEnabled=true;
  require(poisonedSession==17 && !available() && failedFrames==failures+1,"timeout did not quarantine ownership");

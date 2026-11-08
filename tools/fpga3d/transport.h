@@ -11,7 +11,7 @@ namespace fpga3d {
 // existing mappings: no conflicting Device/WC aliases of physical memory.
 inline volatile uint32_t* control=nullptr;
 inline volatile uint32_t* publication=nullptr;
-inline bool permitted=false,writeCombined=false;
+inline bool permitted=false,writeCombined=false,streaming=true;
 inline uint32_t poisonedSession=0;
 inline uint64_t completedFrames=0,failedFrames=0;
 inline void barrier(){
@@ -123,7 +123,7 @@ struct Frame {
  }
  // Native fixture generation keeps batch behavior; live WC rendering starts
  // only after feature/texture admission and before scanline command emission.
- void startStream(){if(writeCombined)start();}
+ void startStream(){if(writeCombined && streaming)start();}
  bool ownershipHealthy(){
   if(control[2]==frameSession && control[0]==0x31443348 && std::chrono::steady_clock::now()<=deadline)return true;
   poisonedSession=frameSession;transportError=true;active=false;++failedFrames;return false;
