@@ -49,7 +49,7 @@ module nds_fpga3d_pixels(
    if(flags[5])begin
     if(flags[1])depth_pass=({1'b0,z}+33'd255>={1'b0,prior})&&({1'b0,prior}+33'd255>={1'b0,z});
     else depth_pass=({1'b0,z}+33'd512>={1'b0,prior})&&({1'b0,prior}+33'd512>={1'b0,z});
-   end else depth_pass=z<prior || (flags[3] && attr[4] && z==prior);
+   end else depth_pass=z<prior || (flags[3] && attr[4] && !attr[22] && z==prior);
   end
  endfunction
  function automatic [31:0] translucent_attr(input logic [31:0] prior);

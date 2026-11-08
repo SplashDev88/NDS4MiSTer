@@ -17,13 +17,14 @@ int main(int argc,char** argv)try{
  std::vector<uint32_t> control(0x100000/4),output(0x300000/4);
  unsigned captures=0,fallbacks=0;
  std::ofstream manifest(std::string(argv[1])+"/scenarios.json");manifest<<"[\n";
- for(unsigned scenario=0;scenario<224;scenario++){
+ for(unsigned scenario=0;scenario<240;scenario++){
   currentScenario=scenario;fpga3d::bind(nullptr,nullptr,false);
   auto ref=machine(true),test=machine(true);
   unsigned pattern=scenario<48?scenario:scenario-48;
   unsigned fixture=((pattern&1)?16384:0)|((pattern&2)?8192:0)|((pattern&4)?64:0)|((pattern&8)?16:0)|((pattern&16)?8:0)|((pattern&32)?3:0);
   if(scenario>=112)fixture=(fixture&~3u)|((scenario&1)?1:2);
   if(scenario>=144 && scenario<160)fixture|=16384u|((9u+(scenario&1))<<20);
+  if(scenario>=224)fixture|=16384u|(4u<<17);
   frame(*ref,fixture);frame(*test,fixture);
   bool supported=!(scenario>=40 && scenario<48 && scenario!=40 && scenario!=42 && scenario!=44);
   for(auto* n:{ref.get(),test.get()}){
@@ -66,6 +67,18 @@ int main(int argc,char** argv)try{
     for(unsigned i=0;i<g.RenderNumPolygons;i++){
      auto* p=g.RenderPolygonRAM[i];
      if((f&8) || i%3!=0)p->Attr|=1u<<15;else p->Attr&=~(1u<<15);
+    }
+   }
+   if(scenario>=224){
+    // Equal-depth front faces may pass an opaque back face, but never a
+    // translucent back face. Both layers and fog/AA combinations matter.
+    g.RenderDispCnt&=~1u;
+    for(unsigned i=0;i<g.RenderNumPolygons;i++){
+     auto* p=g.RenderPolygonRAM[i];
+     unsigned alpha=i==0?((scenario&2)?31:15):31;
+     p->Attr=(p->Attr&~((31u<<16)|(1u<<14)|(1u<<11)))|(alpha<<16)|
+         ((scenario&4)?0:1u<<11)|((scenario&8)?1u<<14:0);
+     for(unsigned v=0;v<p->NumVertices;v++)p->FinalZ[v]=i<2?0x100000:0x200000;
     }
    }
   }
