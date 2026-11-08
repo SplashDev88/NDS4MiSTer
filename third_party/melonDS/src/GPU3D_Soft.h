@@ -2470,6 +2470,23 @@ private:
     fpga3d::Admission FpgaAdmission;
     bool FpgaEmitting = false;
     bool TryFpgaFrame();
+    // Only exact, fully generated polygon rows may survive between frames.
+    // Texture data is uploaded afresh; its current physical binding is keyed.
+    struct FpgaPolygonSpans
+    {
+        std::array<u32,128> Key {};
+        std::vector<fpga3d::Command> Commands;
+        std::vector<u16> RowEnds;
+        s32 FirstLine=0, EndLine=0;
+        bool Ready=false, Hit=false, Record=false;
+    };
+    std::vector<FpgaPolygonSpans> FpgaSpanCache;
+    bool FpgaSpanCacheEnabled=true;
+    u32 FpgaSpanCacheHits=0, FpgaSpanCacheCommands=0;
+    void PrepareFpgaSpanCache();
+    void RenderFpgaPolygonScanline(RendererPolygon* rp, s32 y,
+        bool& prevIsShadowMask, u8* stencilBuffer, s32 clipStartX,
+        s32 clipEndX, u16* finalPassMinX, u16* finalPassMaxX);
     bool TextureHistoryEnabled=false;
     u64 TextureHistoryFrames=0;
 

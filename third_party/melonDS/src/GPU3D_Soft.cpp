@@ -2135,7 +2135,7 @@ void SoftRenderer3D::RenderPolygonScanline(
     // Keep the FPGA producer's hot code and stack separate from the software
     // pixel loops, while retaining one source for edge and coverage math.
     if (FpgaEmitting)
-        RenderPolygonScanlineImpl<true>(rp,y,prevIsShadowMask,stencilBuffer,
+        RenderFpgaPolygonScanline(rp,y,prevIsShadowMask,stencilBuffer,
             clipStartX,clipEndX,finalPassMinX,finalPassMaxX);
     else
         RenderPolygonScanlineImpl<false>(rp,y,prevIsShadowMask,stencilBuffer,
@@ -4394,6 +4394,99 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
     return 224;
 }
 
+void SoftRenderer3D::PrepareFpgaSpanCache()
+{
+    FpgaSpanCacheHits=FpgaSpanCacheCommands=0;
+    if (!FpgaSpanCacheEnabled) return;
+    // Bound retained capacities as well as this frame's logical contents.
+    // A changing workload cannot accumulate a large history per polygon slot.
+    size_t capacity=0;
+    for (const auto& c:FpgaSpanCache) capacity+=c.Commands.capacity();
+    if (capacity>2*fpga3d::MaxCommands) FpgaSpanCache.clear();
+    FpgaSpanCache.resize(CurrentPolygonCount);
+    for (int i=0;i<CurrentPolygonCount;i++)
+    {
+        auto& c=FpgaSpanCache[i];
+        const auto& rp=PolygonList[i];
+        const auto& p=*rp.PolyData;
+        const auto& ps=rp.PixelState;
+        c.Hit=c.Record=false;
+        // Shadow-mask grouping has cross-polygon state; keep both shadow
+        // forms on the established producer path.
+        if (p.IsShadowMask || p.IsShadow) { c.Ready=false; continue; }
+        std::array<u32,128> key {};
+        size_t k=0;
+        const auto add=[&](u32 v){key[k++]=v;};
+        add(GPU3D.RenderDispCnt);add(GPU3D.RenderAlphaRef);
+        add(p.NumVertices);add(p.Attr);add(p.TexParam);add(p.TexPalette);
+        add(p.WBuffer);add(p.FacingView);add(p.Type);
+        add(p.VTop);add(p.VBottom);add(p.YTop);add(p.YBottom);
+        add(p.XTop);add(p.XBottom);add(rp.PolyAttr);
+        add(ps.TextureEnabled);add(ps.TextureWidth);add(ps.TextureHeight);
+        add(ps.TextureWidthShift);add(ps.TextureWrapFlags);add(ps.BlendMode);
+        add(ps.PolyAlpha);add(ps.CachedModulate);add(ps.ConstantVertexColor);
+        add(ps.TextureEnabled?FpgaFrame.textureOffsets.at(ps.TexturePixels):0);
+        // Explicit values avoid pointer identity, padding and hash collisions.
+        // These are every vertex input consumed by edge setup/interpolation.
+        for (u32 v=0;v<p.NumVertices;v++)
+        {
+            const auto& vertex=*p.Vertices[v];
+            add(vertex.FinalPosition[0]);add(vertex.FinalPosition[1]);
+            add(vertex.FinalColor[0]);add(vertex.FinalColor[1]);add(vertex.FinalColor[2]);
+            add(vertex.TexCoords[0]);add(vertex.TexCoords[1]);
+            add(p.FinalW[v]);add(p.FinalZ[v]);
+        }
+        const s32 first=std::clamp(p.YTop,0,VisibleScanlines);
+        const s32 end=p.YTop==p.YBottom && p.YTop>=0 && p.YTop<VisibleScanlines?
+            first+1:std::clamp(p.YBottom,0,VisibleScanlines);
+        if (c.Ready && c.Key==key)
+        {
+            c.Hit=true;++FpgaSpanCacheHits;
+        }
+        else
+        {
+            c.Key=key;c.Commands.clear();c.RowEnds.clear();
+            c.FirstLine=first;c.EndLine=end;c.Ready=false;
+            c.Record=first<end;
+        }
+    }
+}
+
+void SoftRenderer3D::RenderFpgaPolygonScanline(
+    RendererPolygon* rp,s32 y,bool& prevIsShadowMask,u8* stencilBuffer,
+    s32 clipStartX,s32 clipEndX,u16* finalPassMinX,u16* finalPassMaxX)
+{
+    FpgaPolygonSpans* c=FpgaSpanCacheEnabled?
+        &FpgaSpanCache[rp-PolygonList]:nullptr;
+    if (c && c->Hit)
+    {
+        const auto row=y-c->FirstLine;
+        const unsigned begin=row?c->RowEnds[row-1]:0;
+        const unsigned end=c->RowEnds[row];
+        prevIsShadowMask=false;
+        for (unsigned i=begin;i<end;i++) FpgaFrame.append(c->Commands[i]);
+        FpgaSpanCacheCommands+=end-begin;
+        return;
+    }
+    const size_t begin=FpgaFrame.commands.size();
+    RenderPolygonScanlineImpl<true>(rp,y,prevIsShadowMask,stencilBuffer,
+        clipStartX,clipEndX,finalPassMinX,finalPassMaxX);
+    if (c && c->Record)
+    {
+        if (!FpgaFrame.valid || y!=c->FirstLine+s32(c->RowEnds.size()))
+        {
+            c->Record=c->Ready=false;
+            return;
+        }
+        c->Commands.insert(c->Commands.end(),FpgaFrame.commands.begin()+begin,
+            FpgaFrame.commands.end());
+        c->RowEnds.push_back(c->Commands.size());
+        // A sealed entry is independent of transport completion. An early
+        // producer stop can never turn a partial polygon into a future hit.
+        c->Ready=y+1==c->EndLine;
+    }
+}
+
 bool SoftRenderer3D::TryFpgaFrame()
 {
     // Feature admission precedes hardware work. A later span/capacity failure
@@ -4437,6 +4530,7 @@ bool SoftRenderer3D::TryFpgaFrame()
             return false;
         }
     }
+    PrepareFpgaSpanCache();
     if(GPU3D.RenderDispCnt & (1u<<7))
     {
         const u32 raw=GPU3D.RenderFogColor;
@@ -4459,6 +4553,9 @@ bool SoftRenderer3D::TryFpgaFrame()
     FpgaEmitting=false;
     if(FpgaFrame.submit(ColorBuffer+FirstPixelOffset,ScanlineWidth))
     {
+        if (fpga3d::completedFrames==1 || fpga3d::completedFrames%600==0)
+            std::fprintf(stderr,"FPGA3D span_cache_hits=%u polygons=%d reused_commands=%u\n",
+                FpgaSpanCacheHits,CurrentPolygonCount,FpgaSpanCacheCommands);
         // Hardware returned a full color plane; the next sparse clear must
         // reset every potentially modified color/depth/attribute location.
         std::fill_n(FinalPassMinX,VisibleScanlines,0);

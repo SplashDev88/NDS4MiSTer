@@ -175,3 +175,29 @@ retains its existing CPU split. The C24 bitstream, scanout priority, rendering
 math, and frame publication rules remain unchanged. ARM tests check affinity
 restoration along with exact fallback pixels. A rebuilt-helper gameplay result
 is required separately; no 60 FPS commercial-game claim follows from this change.
+
+
+## Commercial-game CPU work (2026-11-08)
+
+The compiled scoped-placement helper measured 24.83 completed frames/s in the
+same NSMB World 3 map, versus the average 15.97 baseline. Separating FPGA
+emission from the native pixel loop measured 24.56, with no additional gain.
+Recycling each uploaded CPU command row measured 25.26. Published physical
+FPGA descriptors remain immutable; capacity accounting includes all previously
+published commands. Actual-RTL tests cover capacity exhaustion after many
+publications, cancellation, prefix ownership and 4 KiB boundaries.
+
+The next candidate caches exact complete polygon command rows. The key stores
+explicit rendering flags, texture layout and current physical binding, plus
+all final vertex positions, colors, texture coordinates, W and Z. It compares
+values rather than pointers or hashes. Current texture contents still upload
+every frame. Shadow polygons retain the original producer. Incomplete rows
+never become reusable; software fallback reconstructs all edge state. Retained
+command capacity is bounded and old entries are discarded when that bound is
+reached. CPU command reuse is separate from FPGA descriptor ownership.
+
+The cache test compares warm frames against the cold producer and complete
+native fallback pixels, changes each vertex/render input category, updates
+texture bytes without changing the binding, and interrupts production before
+recovery. Hardware FPS and HDMI checks are required before qualifying this
+candidate. The commercial-game 60 FPS goal is not yet met.
