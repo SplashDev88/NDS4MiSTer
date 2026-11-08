@@ -58,6 +58,27 @@ int main(){
    const auto size=f.textures.size();check(f.addTexture(data[t].data(),data[t].size()) && f.textures.size()==size);
   }
   check(f.textures.size()*4==16*(1024+16384));
+  std::vector<Frame::TextureUse> uses;
+  for(unsigned t=0;t<data.size();t++)uses.push_back({data[t].data(),data[t].size(),t+1});
+  f.preferRawTextures(uses);
+  check(f.textures.size()*4<=TextureBytes);
+  unsigned raw=0,indexed=0;
+  for(unsigned t=0;t<data.size();t++){
+   const auto binding=f.textureOffsets.at(data[t].data());
+   const auto base=((binding&~1u)-Textures)/4;
+   check(!(base&15));
+   if(binding&1){
+    indexed++;
+    for(unsigned i=0;i<data[t].size();i++)check(f.textures[base+((f.textures[base+256+i/4]>>(8*(i%4)))&255)]==data[t][i]);
+   }else{
+    raw++;
+    check(std::equal(data[t].begin(),data[t].end(),f.textures.begin()+base));
+   }
+  }
+  check(raw==10 && indexed==6 && (f.textureOffsets.at(data.front().data())&1) && !(f.textureOffsets.at(data.back().data())&1));
+  const auto savedTextures=f.textures;const auto savedOffsets=f.textureOffsets;
+  f.active=true;f.preferRawTextures(uses);f.active=false;
+  check(f.textures==savedTextures && f.textureOffsets==savedOffsets);
   f.reset();f.allowIndexed=false;
   check(f.addTexture(data[0].data(),data[0].size()) && !(f.textureOffsets.at(data[0].data())&1));
   check(f.textures==data[0]);

@@ -4621,6 +4621,7 @@ bool SoftRenderer3D::TryFpgaFrame()
     }
     const FpgaPreparationAffinity preparationAffinity;
     trace.next(fpga3d::Stage::Textures);
+    std::vector<fpga3d::Frame::TextureUse> textureUses;
     if(fpga3d::adaptiveAdmission)
     {
         // Raw texels avoid per-span palette reloads. Prefer them when every
@@ -4634,8 +4635,10 @@ bool SoftRenderer3D::TryFpgaFrame()
             const auto& rp=PolygonList[i];const auto& ps=rp.PixelState;
             if(rp.PolyData->IsShadowMask || !ps.TextureEnabled)continue;
             const size_t count=size_t(ps.TextureWidth)*ps.TextureHeight;
-            if(!unique.emplace(ps.TexturePixels,count).second)continue;
-            if(count>rawBudget/4 || bytes>rawBudget-count*4){bytes=rawBudget+1;break;}
+            auto entry=unique.emplace(ps.TexturePixels,textureUses.size());
+            const auto rows=unsigned(std::max(0,std::min(192,rp.PolyData->YBottom)-std::max(0,rp.PolyData->YTop)));
+            if(!entry.second){textureUses[entry.first->second].rows+=rows;continue;}
+            textureUses.push_back({ps.TexturePixels,count,rows});
             bytes+=count*4;
         }
         FpgaFrame.allowIndexed=bytes>rawBudget;
@@ -4656,6 +4659,8 @@ bool SoftRenderer3D::TryFpgaFrame()
             return trace.finish(FpgaFrame.failure);
         }
     }
+    if(fpga3d::adaptiveAdmission && FpgaFrame.allowIndexed)
+        FpgaFrame.preferRawTextures(textureUses);
     trace.next(fpga3d::Stage::Emit);
     if(GPU3D.RenderDispCnt & (1u<<7))
     {

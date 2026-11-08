@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <thread>
 #include <map>
+#include <algorithm>
 namespace fpga3d {
 // Bound once by the service before it creates renderer threads. Reuses its
 // existing mappings: no conflicting Device/WC aliases of physical memory.
@@ -74,6 +75,7 @@ inline void uploadCommand(volatile uint32_t* target,const Command& c,bool wc){
  uploadPackedCommand(target,pack(c),wc);
 }
 struct Frame {
+ struct TextureUse {const uint32_t* pixels;size_t count;uint64_t rows;};
  std::vector<Command> commands;
  std::vector<PackedCommand> packedCommands;
  std::vector<uint32_t> textures;
@@ -144,6 +146,42 @@ struct Frame {
   for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return reject(Outcome::TextureAlpha);
   textureOffsets[pixels]=Textures+textures.size()*4;
   textures.insert(textures.end(),pixels,pixels+count);return true;
+ }
+ // Spend spare texture space on the bindings used by the most scanlines per
+ // extra byte. Raw bindings avoid the single FPGA palette cache's reloads.
+ // Rebuild before starting the producer; cached spans subsequently rebind to
+ // these fresh addresses and formats. The dedicated command arena preserves
+ // full descriptor capacity when textures exceed the WC command threshold.
+ void preferRawTextures(const std::vector<TextureUse>& uses,size_t budget=TextureBytes){
+  if(active || !valid || budget>TextureBytes || textures.size()*4>budget)return;
+  struct Binding {TextureUse use;uint32_t old;bool raw;size_t extra;};
+  std::vector<Binding> bindings;bindings.reserve(uses.size());
+  for(const auto& u:uses){
+   auto it=textureOffsets.find(u.pixels);
+   if(it==textureOffsets.end() || !u.count || (u.count&63))return;
+   const bool indexed=it->second&1u;
+   bindings.push_back({u,it->second,!indexed,indexed?u.count*3-1024:0});
+  }
+  if(bindings.size()!=textureOffsets.size())return;
+  std::sort(bindings.begin(),bindings.end(),[](const Binding& a,const Binding& b){
+   if(a.raw!=b.raw)return !a.raw;
+   const auto left=a.use.rows*b.extra,right=b.use.rows*a.extra;
+   return left!=right?left>right:a.old<b.old;
+  });
+  size_t bytes=textures.size()*4;bool changed=false;
+  for(auto& b:bindings)if(!b.raw && b.extra<=budget-bytes){b.raw=true;bytes+=b.extra;changed=true;}
+  if(!changed)return;
+  std::sort(bindings.begin(),bindings.end(),[](const Binding& a,const Binding& b){return a.old<b.old;});
+  std::vector<uint32_t> packed;packed.reserve(bytes/4);
+  for(const auto& b:bindings){
+   textureOffsets[b.use.pixels]=(Textures+uint32_t(packed.size()*4))|(!b.raw);
+   if(b.raw)packed.insert(packed.end(),b.use.pixels,b.use.pixels+b.use.count);
+   else {
+    const auto first=textures.begin()+((b.old&~1u)-Textures)/4;
+    packed.insert(packed.end(),first,first+256+b.use.count/4);
+   }
+  }
+  textures.swap(packed);
  }
  bool start(){
   if(active)return true;
