@@ -25,8 +25,9 @@ module nds_fpga3d #(
  state_t state;
  logic [31:0] cmd[0:31];
  wire [511:0] packed_command;
- generate for(genvar k=0;k<16;k=k+1)begin: pack_bus
- assign packed_command[32*k+:32]=cmd[k];
+ genvar packed_word;
+ generate for(packed_word=0;packed_word<16;packed_word=packed_word+1)begin: pack_bus
+ assign packed_command[32*packed_word+:32]=cmd[packed_word];
  end endgenerate
  logic [31:0] seq,seen,count,index,status,epoch;
  logic [15:0] poll;
