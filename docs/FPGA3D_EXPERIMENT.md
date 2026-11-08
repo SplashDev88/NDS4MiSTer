@@ -160,3 +160,18 @@ core hash; simulation is not a substitute for that check.
 The user authorized functional hardware testing without a static timing gate.
 Timing reports remain diagnostic evidence. Earlier timing-based rejections
 above describe their historical disposition, not the current acceptance rule.
+
+## FPGA preparation CPU placement (2026-11-08)
+
+On C24, the NSMB World 3 map published 15.87 and 16.07 completed frames/s
+in repeated CPU0 controls. Moving only the existing raster thread to CPU1
+raised the same scene to 26.07 frames/s; allowing either CPU measured 25.48.
+These were diagnostic placement trials, not a new qualified release.
+
+FPGA span preparation now temporarily uses CPU1 after feature admission.
+It restores the caller's affinity on every return, including texture rejection,
+timeout, and software fallback. Native two-worker rasterization therefore
+retains its existing CPU split. The C24 bitstream, scanout priority, rendering
+math, and frame publication rules remain unchanged. ARM tests check affinity
+restoration along with exact fallback pixels. A rebuilt-helper gameplay result
+is required separately; no 60 FPS commercial-game claim follows from this change.

@@ -75,6 +75,41 @@ void bindParallelRasterToSecondCpu()
         pthread_self(), sizeof(affinity), &affinity);
 #endif
 }
+
+// FPGA command preparation does not use the parallel software raster worker.
+// Let it use CPU1 while CPU0 services the guest and packet intake. Restore the
+// caller's placement before returning to software rendering or waiting for a
+// new frame; otherwise software fallback would put both raster workers on CPU1.
+class FpgaPreparationAffinity
+{
+public:
+    FpgaPreparationAffinity()
+    {
+#if defined(__linux__) && defined(__arm__)
+        if (pthread_getaffinity_np(pthread_self(), sizeof(previous), &previous))
+            return;
+        cpu_set_t target;
+        CPU_ZERO(&target);
+        CPU_SET(1, &target);
+        changed = !CPU_EQUAL(&previous, &target) &&
+            pthread_setaffinity_np(pthread_self(), sizeof(target), &target) == 0;
+#endif
+    }
+    ~FpgaPreparationAffinity()
+    {
+#if defined(__linux__) && defined(__arm__)
+        if (changed)
+            (void)pthread_setaffinity_np(pthread_self(), sizeof(previous), &previous);
+#endif
+    }
+    FpgaPreparationAffinity(const FpgaPreparationAffinity&) = delete;
+    FpgaPreparationAffinity& operator=(const FpgaPreparationAffinity&) = delete;
+private:
+#if defined(__linux__) && defined(__arm__)
+    cpu_set_t previous;
+    bool changed = false;
+#endif
+};
 }
 
 void RenderThreadFunc();
@@ -4370,6 +4405,7 @@ bool SoftRenderer3D::TryFpgaFrame()
            (!rp.PolyData->IsShadowMask && ps.BlendMode==2) ||
            (!rp.PolyData->IsShadowMask && ps.TextureEnabled && !ps.TexturePixels)) return false;
     }
+    const FpgaPreparationAffinity preparationAffinity;
     // Reject unsupported frames before copying any decoded textures. Shadow
     // polygons commonly sort after opaque geometry, so a single combined pass
     // would copy most of a frame's textures before selecting software fallback.

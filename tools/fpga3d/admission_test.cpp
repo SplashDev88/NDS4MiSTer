@@ -4,6 +4,10 @@
 #undef main
 #include "GPU_Soft.h"
 #include "GPU3D_Soft.h"
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
 int main() try {
  require(!fpga3d::lightScene(31,0) && fpga3d::lightScene(32,32767) &&
      !fpga3d::lightScene(32,32768),"work admission boundary");
@@ -53,9 +57,17 @@ int main() try {
   control[(fpga3d::Mailbox-0x3fc00000+28)/4]=17;
   const auto untouched=control;fpga3d::poisonedSession=0;
   fpga3d::adaptiveAdmission=true;fpga3d::bind(control.data(),output.data(),true,true);
+#if defined(__linux__)
+  cpu_set_t affinityBefore{},affinityAfter{};
+  require(!pthread_getaffinity_np(pthread_self(),sizeof(affinityBefore),&affinityBefore),"read original affinity");
+#endif
   require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==60,"texture rejection did not bound retries");
   for(unsigned i=0;i<60;i++)require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==59-i,"texture retry boundary");
   require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==60,"texture rejection retry failed");
+#if defined(__linux__)
+  require(!pthread_getaffinity_np(pthread_self(),sizeof(affinityAfter),&affinityAfter) &&
+          CPU_EQUAL(&affinityBefore,&affinityAfter),"texture rejection did not restore caller affinity");
+#endif
   require(control==untouched && std::all_of(output.begin(),output.end(),[](auto x){return x==0xa1b2c3d4;}),"texture rejection touched shared memory");
   require(soft.FpgaFrame.textures.empty() && soft.FpgaFrame.commands.empty() && !soft.FpgaFrame.active,"texture rejection acquired ownership");
   fpga3d::bind(nullptr,nullptr,false);fpga3d::adaptiveAdmission=false;

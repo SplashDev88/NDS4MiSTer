@@ -8,6 +8,10 @@
 #include "GPU3D_Soft.h"
 #include <fstream>
 #include <filesystem>
+#if defined(__linux__)
+#include <pthread.h>
+#include <sched.h>
+#endif
 template<class T>void save(const std::string& path,const std::vector<T>& data){
  std::ofstream f(path,std::ios::binary);f.write(reinterpret_cast<const char*>(data.data()),data.size()*sizeof(T));require(bool(f),"fixture write");
 }
@@ -95,7 +99,15 @@ int main(int argc,char** argv)try{
 #else
   fpga3d::bind(control.data(),output.data(),true);
 #endif
+#if defined(__linux__)
+  cpu_set_t affinityBefore{},affinityAfter{};
+  require(!pthread_getaffinity_np(pthread_self(),sizeof(affinityBefore),&affinityBefore),"read original affinity");
+#endif
   render(*test);fpga3d::bind(nullptr,nullptr,false);
+#if defined(__linux__)
+  require(!pthread_getaffinity_np(pthread_self(),sizeof(affinityAfter),&affinityAfter) &&
+          CPU_EQUAL(&affinityBefore,&affinityAfter),"FPGA timeout/fallback did not restore caller affinity");
+#endif
   std::vector<uint32_t> expected;
   for(unsigned y=0;y<192;y++){
    const auto* a=ref->GetRenderer().Get3DScanline(y);const auto* b=test->GetRenderer().Get3DScanline(y);
