@@ -153,7 +153,9 @@ module nds_fpga3d #(
  logic [28:0] p_addr[11:12];
  logic p_half[11:12],p_pass[11:12];
  logic [2:0] p_byte[11:12];
- (* ramstyle="MLAB" *) logic [31:0] palette_even[0:127],palette_odd[0:127];
+ // Palette reads are consumed only after the complete load has drained.
+ // No pixel observes the read-during-write value; permit native MLAB RAMs.
+ (* ramstyle="MLAB, no_rw_check" *) logic [31:0] palette_even[0:127],palette_odd[0:127];
  logic [31:0] palette_base;
  logic palette_valid;
  logic [6:0] palette_word;
