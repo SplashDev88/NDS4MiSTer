@@ -10,8 +10,11 @@ Z/W buffering, perspective and linear interpolation. Unsupported frames must
 fall back in their entirety before submitting hardware work. Geometry, shadows,
 translucency, antialiasing, fog and edge marking are not claimed as FPGA features.
 
-The first implementation uses scanline color/depth RAM and shared DDR, rather
-than an on-chip full framebuffer. The baseline has 35,094/41,910 ALMs and
+The rasterizer uses scanline color/depth RAM and shared DDR. Its nine-stage
+exact perspective divider feeds a pixel pipeline, with one pixel per clock on
+a texture-cache hit. A 512-entry direct-mapped texel-pair cache is invalidated
+for every frame; a miss freezes the pipeline until its DDR response arrives.
+Spans drain before the next descriptor can change interpolation state. The baseline has 35,094/41,910 ALMs and
 538/553 M10Ks. Actual fitting and hardware measurements are required; simulator
 cycle rates alone do not establish full-speed gameplay.
 
@@ -32,3 +35,12 @@ Acceptance: differential RTL tests, malformed-command/address containment,
 backpressure/reset testing, Quartus fit/assembly/timing inspection, hardware
 oracle and throughput tests, and isolated-save game smoke tests. Until those
 finish this directory is source work, not a qualified full-speed beta.
+
+The control-port adapter retains one command independently of the outer grant.
+It forwards physical acceptance separately from local enqueue and locks read
+ownership through the last response. This prevents control requests from
+becoming invisible under event burst-write and display contention. The tests
+include all four clients, burst write/readback sequence checking, and negative
+controls for premature acceptance, combinational grants, and hidden requests.
+GPU source credit uses registered queue occupancy; an initially full queue
+reopens on the cycle after a pop to shorten the sink-to-CPU timing path.

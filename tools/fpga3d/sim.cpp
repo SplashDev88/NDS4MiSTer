@@ -20,7 +20,7 @@ struct Sim {
  Dut v;
  std::vector<uint32_t> mem=std::vector<uint32_t>(0x400000/4);
  std::mt19937 rng{43817};uint64_t cycles=0;
- unsigned remaining=0,readat=0,delay=0;bool stalls=true;
+ unsigned remaining=0,readat=0,delay=0,writeRemaining=0,writeAt=0,writeBase=0,writeBurst=0;bool stalls=true;
  bool held=false;uint64_t heldData=0;unsigned heldAddr=0,heldBurst=0,heldBe=0;bool heldRead=false,heldWrite=false;
  uint32_t& word(uint32_t a){require(a>=0x3fc00000 && a<0x40000000,"address out of graphics window");return mem.at((a-0x3fc00000)/4);}
  void tick(){
@@ -36,16 +36,22 @@ struct Sim {
    readat+=8;remaining--;delay=stalls?rng()%4:0;
   }
   v.eval();
+  if(v.reset)writeRemaining=0;
+  if(writeRemaining && !v.busy && !v.reset)require(v.wr && !v.rd,"gap in physical Avalon write burst");
   if(held && !v.reset && v.enable)require(v.rd==heldRead && v.wr==heldWrite && v.addr==heldAddr && v.burst==heldBurst && v.din==heldData && v.be==heldBe,"DDR payload changed while stalled");
   held=v.busy && (v.rd||v.wr);heldRead=v.rd;heldWrite=v.wr;heldAddr=v.addr;heldBurst=v.burst;heldData=v.din;heldBe=v.be;
   if(!v.busy && (v.rd || v.wr)) {
    require(!(v.rd&&v.wr),"read/write overlap");
    uint32_t a=v.addr*8;
-   if(v.rd){require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?rng()%7:0;}
+   if(v.rd){require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?rng()%7:0;}
    else {
+    if(!writeRemaining){require(v.burst>0,"zero write burst");writeRemaining=v.burst;writeAt=a;writeBase=a;writeBurst=v.burst;}
+    else require(a==writeBase && v.burst==writeBurst,"physical write burst command changed");
+    a=writeAt;writeAt+=8;writeRemaining--;
     require((a==Mailbox+16 || a==Mailbox+24 || (a>=Output && a<Output+256*192*4)
 #ifdef SHARED_FABRIC
       || (a==0x3fc00478 && v.din==0x0123456789abcdefULL)
+      || (a>=0x3fc00500 && a<0x3fc00580)
 #endif
 #ifdef REAL_CONTROL
       || (a>=0x3fc00000 && a<0x3fc00080)

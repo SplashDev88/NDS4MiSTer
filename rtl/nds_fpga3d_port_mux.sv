@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Share the H3D control port without adding a second command queue. The outer
-// fabric owns registration/quarantine. Physical acceptance is forwarded only
-// to the locked owner, never synthesized from local queue acceptance.
+// Share the H3D control port with one retained command. Capture independently
+// of the outer grant so a busy-dependent control request remains visible to
+// arbitration. Forward physical acceptance only to the retained owner.
 // Both clients use single-beat writes; reads may burst. With no accelerator
-// request the control client's queue/acceptance/response timing is unchanged.
+// request the control client still receives physical acceptance unchanged.
 module nds_fpga3d_port_mux (
  input logic clk,reset,
  input logic c_rd,c_wr,input logic [7:0] c_burst,input logic [28:0] c_addr,
@@ -17,7 +17,10 @@ module nds_fpga3d_port_mux (
  input logic busy,accepted,input logic [63:0] dout,input logic valid,
  output logic protocol_error
 );
- logic locked,owner,read_pending,grant_dwell;
+ logic locked,owner,read_pending,grant_dwell,issued;
+ logic [7:0] pending_burst,pending_be;
+ logic [28:0] pending_addr;
+ logic [63:0] pending_data;
  logic [7:0] remaining;
  wire c_request=c_rd||c_wr;
  wire a_request=a_rd||a_wr;
@@ -25,14 +28,14 @@ module nds_fpga3d_port_mux (
  // an owner from that request would feed busy back into itself. Grant state
  // must be registered, including the idle/empty-client handoff.
  wire selected=owner;
- wire enqueued=!locked && (rd||wr) && !busy;
+ wire enqueued=!locked && !reset && (selected?a_request:c_request);
  always_comb begin
-  rd=0;wr=0;burst=selected?a_burst:c_burst;addr=selected?a_addr:c_addr;
-  din=selected?a_din:c_din;be=selected?a_be:c_be;
+  rd=locked && !issued && read_pending && !reset;
+  wr=locked && !issued && !read_pending && !reset;
+  burst=pending_burst;addr=pending_addr;din=pending_data;be=pending_be;
   c_busy=1;a_busy=1;
   if(!reset && !locked)begin
-   rd=selected?a_rd:c_rd;wr=selected?a_wr:c_wr;
-   if(selected)a_busy=busy;else c_busy=busy;
+   if(selected)a_busy=0;else c_busy=0;
   end
   c_accepted=!reset && locked && !owner && accepted;
   c_valid=!reset && locked && !owner && read_pending && valid;
@@ -41,12 +44,17 @@ module nds_fpga3d_port_mux (
  end
  always_ff @(posedge clk)begin
   if(reset)begin
-   locked<=0;owner<=0;read_pending<=0;remaining<=0;grant_dwell<=0;protocol_error<=0;
+   locked<=0;owner<=0;read_pending<=0;remaining<=0;grant_dwell<=0;protocol_error<=0;issued<=0;
+   pending_burst<=0;pending_addr<=0;pending_data<=0;pending_be<=0;
   end else begin
    if(enqueued)begin
-    locked<=1;read_pending<=rd;remaining<=burst;grant_dwell<=0;
-    if((wr && burst!=1) || (rd && wr) || burst==0)protocol_error<=1;
-   end else if(!locked && !busy)begin
+    locked<=1;read_pending<=selected?a_rd:c_rd;
+    remaining<=selected?a_burst:c_burst;grant_dwell<=0;issued<=0;
+    pending_burst<=selected?a_burst:c_burst;pending_addr<=selected?a_addr:c_addr;
+    pending_data<=selected?a_din:c_din;pending_be<=selected?a_be:c_be;
+    if(selected ? ((a_wr && a_burst!=1)||(a_rd && a_wr)||a_burst==0) :
+                  ((c_wr && c_burst!=1)||(c_rd && c_wr)||c_burst==0))protocol_error<=1;
+   end else if(!locked)begin
     // Give a registered requester a complete grant cycle to advertise work.
     // An empty accelerator immediately yields to the ordinary control path.
     if(owner && !a_request)begin owner<=0;grant_dwell<=0;end
@@ -55,8 +63,9 @@ module nds_fpga3d_port_mux (
      else grant_dwell<=1;
     end
    end
-   if(accepted && !locked)protocol_error<=1;
-   if(valid && (!locked || !read_pending || remaining==0))protocol_error<=1;
+   if(locked && !issued && !busy)issued<=1;
+   if(accepted && (!locked || !issued))protocol_error<=1;
+   if(valid && (!locked || !issued || !read_pending || remaining==0))protocol_error<=1;
    if(locked)begin
     if(read_pending && valid)begin
      remaining<=remaining-1'b1;

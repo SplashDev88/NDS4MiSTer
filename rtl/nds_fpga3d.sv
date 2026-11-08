@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Experimental opaque DS scanline rasterizer. See tools/fpga3d/abi.h.
+// Experimental pipelined opaque DS scanline rasterizer. See tools/fpga3d/abi.h.
 // All addresses are physical 64-bit DDR word addresses. Commands and textures
 // are immutable until completion. This block never writes cartridge memory.
 module nds_fpga3d #(
@@ -20,14 +20,14 @@ module nds_fpga3d #(
  localparam [31:0] MAGIC=32'h31443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,FETCH,FETCH_WAIT,DECODE,CLEAR_LINE,
- PIXEL,PIXEL_WAIT,DIVIDE,ATTRS,DEPTH,TEX_ADDR,TEX_CACHE,TEX_READ,TEX_WAIT,SHADE,NEXT_PIXEL,
- FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE} state_t;
+ TEX_READ,TEX_WAIT,
+ FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE,CACHE_CLEAR,PIPE_RUN} state_t;
  state_t state;
  logic [31:0] cmd[0:31];
  logic [31:0] seq,seen,count,index,status,epoch;
  logic [15:0] poll;
  logic [3:0] beat;
- logic [8:0] x,last,width,dx,line_y,flush_x;
+ logic [8:0] x,last,dx,line_y,flush_x;
  logic [9:0] span_width;
  logic line_open;
  (* ramstyle = "M10K" *) logic [31:0] color_even[0:127],color_odd[0:127];
@@ -35,32 +35,39 @@ module nds_fpga3d #(
  logic line_we;
  logic [31:0] line_color;
  logic [32:0] line_depth;
- logic [31:0] old_depth;
- logic old_back;
  logic [63:0] flush_pair;
  logic [15:0] w0,w1;
- logic [31:0] numerator,denominator,remain,trial;
- logic [8:0] f;
- logic [3:0] divbit;
  logic signed [31:0] av[0:4],delta[0:4],steps[0:4];
  logic [15:0] rems[0:4],rsteps[0:4];
  logic [16:0] sums[0:4];
- logic signed [40:0] products[0:4];
- logic [31:0] z;
- logic signed [32:0] zdelta;
- logic signed [42:0] zproduct;
  logic [13:0] zsum;
  logic [12:0] zrem,zrstep;
  logic signed [31:0] zstep,zlinear;
- logic [15:0] ts,tt;
- logic [19:0] tex_index;
- logic [28:0] tex_addr,cache_addr;
- logic tex_half,cache_valid;
- logic [63:0] cache_data;
- logic [31:0] texel,pixel_color;
- logic [12:0] mr,mg,mb;
- logic pass_depth;
+ logic [28:0] tex_addr;
+
+ // Pipelined opaque path; descriptors remain constant until the span drains.
+ logic [12:0] p_valid;
+ logic [31:0] p_rem[0:9],p_den[0:9];
+ logic [8:0] p_f[0:9],p_x[0:12];
+ logic signed [31:0] p_av[0:12][0:4];
+ logic [31:0] p_z[0:12];
+ logic [32:0] p_old[0:10];
+ logic [28:0] p_addr[11:12];
+ logic p_half[11:12],p_pass[11:12];
+ logic [15:0] p_ts,p_tt;
+ logic [19:0] p_index;
+ logic [31:0] p_texel,p_color;
+ logic [12:0] p_mr,p_mg,p_mb;
+ logic p_ce,p_hit,p_miss,p_bad_alpha,p_override;
+ logic [63:0] p_override_data;
+ logic [8:0] p_clear_index;
+ (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:511];
+ (* ramstyle = "M10K" *) logic [20:0] p_cache_tags[0:511];
+ logic [63:0] p_cache_q;
+ logic [20:0] p_tag_q;
+ wire [8:0] write_x=state==CLEAR_LINE?x:p_x[12];
  integer i;
+
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
     input logic [3:0] shift,input logic repeat_mode,input logic flip_mode);
    logic signed [15:0] coord;
@@ -73,6 +80,83 @@ module nds_fpga3d #(
     else texture_coord=coord;
    end
  endfunction
+
+ function automatic signed [31:0] p_interpolate(input signed [31:0] base_value,
+  input signed [31:0] delta_value,input [8:0] factor);
+  logic signed [41:0] product_value;
+  begin product_value=delta_value*$signed({1'b0,factor});
+   p_interpolate=base_value+32'(product_value>>>8);end
+ endfunction
+ function automatic [31:0] p_interpolate_z(input [31:0] base_value,end_value,input [8:0] factor);
+  logic signed [32:0] delta_value;logic signed [42:0] product_value;
+  begin delta_value=$signed({1'b0,end_value})-$signed({1'b0,base_value});
+   product_value=delta_value*$signed({1'b0,factor});
+   p_interpolate_z=base_value+32'(product_value>>>8);end
+ endfunction
+ function automatic p_depth_pass(input [31:0] new_z,input [32:0] prior);
+  begin
+   if(cmd[2][5])begin
+    if(cmd[2][1])p_depth_pass=({1'b0,new_z}+33'd255>={1'b0,prior[31:0]})&&({1'b0,prior[31:0]}+33'd255>={1'b0,new_z});
+    else p_depth_pass=({1'b0,new_z}+33'd512>={1'b0,prior[31:0]})&&({1'b0,prior[31:0]}+33'd512>={1'b0,new_z});
+   end else p_depth_pass=new_z<prior[31:0] || (cmd[2][3] && prior[32] && new_z==prior[31:0]);
+  end
+ endfunction
+ always_comb begin
+  p_ts=texture_coord(p_av[10][3][15:0],cmd[14][3:0],cmd[14][8],cmd[14][10]);
+  p_tt=texture_coord(p_av[10][4][15:0],cmd[14][7:4],cmd[14][9],cmd[14][11]);
+  p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
+  p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:9]};
+  p_texel=p_override ? (p_half[12]?p_override_data[63:32]:p_override_data[31:0]) :
+                       (p_half[12]?p_cache_q[63:32]:p_cache_q[31:0]);
+  p_mr=({1'b0,p_texel[5:0]}+7'd1)*({1'b0,p_av[12][0][8:3]}+7'd1)-13'd1;
+  p_mg=({1'b0,p_texel[13:8]}+7'd1)*({1'b0,p_av[12][1][8:3]}+7'd1)-13'd1;
+  p_mb=({1'b0,p_texel[21:16]}+7'd1)*({1'b0,p_av[12][2][8:3]}+7'd1)-13'd1;
+  p_color=cmd[2][2]?{p_texel[31:24],2'd0,p_mb[11:6],2'd0,p_mg[11:6],2'd0,p_mr[11:6]}:
+             {8'd31,2'd0,p_av[12][2][8:3],2'd0,p_av[12][1][8:3],2'd0,p_av[12][0][8:3]};
+  p_miss=p_valid[12] && p_pass[12] && cmd[2][2] && !p_hit;
+  p_bad_alpha=p_valid[12] && p_pass[12] && cmd[2][2] && p_hit && p_texel[31:24]!=0 && p_texel[31:24]!=31;
+  p_ce=state==PIPE_RUN && !reset && enable && !p_miss && !p_bad_alpha;
+ end
+ always_ff @(posedge clk)begin
+  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index]<=0;
+  else if(state==TEX_WAIT && dout_ready)begin
+   p_cache_tags[tex_addr[8:0]]<={1'b1,tex_addr[28:9]};
+   p_cache_data[tex_addr[8:0]]<=dout;
+  end
+  if(p_ce)begin
+   p_cache_q<=p_cache_data[p_addr[11][8:0]];
+   p_tag_q<=p_cache_tags[p_addr[11][8:0]];
+  end
+  if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
+  else begin
+   if(state==TEX_WAIT && dout_ready)begin p_override<=1;p_override_data<=dout;end
+   if(p_ce)begin
+    p_override<=0;p_valid<={p_valid[11:0],x<last};
+    p_x[0]<=x;p_z[0]<=zlinear;p_old[0]<=depth_back[x[7:0]];
+    p_rem[0]<=32'(dx)*32'(w0)<<8;
+    p_den[0]<=32'(dx)*32'(w0)+(32'(span_width)-32'(dx))*32'(w1);
+    p_f[0]<=0;
+    for(integer a=0;a<5;a=a+1)p_av[0][a]<=av[a];
+    for(integer k=1;k<=9;k=k+1)begin
+     p_x[k]<=p_x[k-1];p_z[k]<=p_z[k-1];p_old[k]<=p_old[k-1];
+     p_den[k]<=p_den[k-1];p_rem[k]<=p_rem[k-1];p_f[k]<=p_f[k-1];
+     for(integer a=0;a<5;a=a+1)p_av[k][a]<=p_av[k-1][a];
+     if((!cmd[2][0] || cmd[2][1]) && p_den[k-1]!=0 && p_rem[k-1]>=(p_den[k-1]<<(9-k)))begin
+      p_rem[k]<=p_rem[k-1]-(p_den[k-1]<<(9-k));p_f[k]<=p_f[k-1]|(9'd1<<(9-k));
+     end
+    end
+    p_x[10]<=p_x[9];p_old[10]<=p_old[9];
+    p_z[10]<=cmd[2][1]?p_interpolate_z(cmd[15],cmd[26],p_f[9]):p_z[9];
+    for(integer a=0;a<5;a=a+1)
+     p_av[10][a]<=cmd[2][0]?p_av[9][a]:p_interpolate($signed({{16{cmd[8+a][15]}},cmd[8+a][15:0]}),delta[a],p_f[9]);
+    p_x[11]<=p_x[10];p_z[11]<=p_z[10];p_pass[11]<=p_depth_pass(p_z[10],p_old[10]);
+    p_addr[11]<=29'(cmd[13]>>3)+29'(p_index>>1);p_half[11]<=p_index[0];
+    p_x[12]<=p_x[11];p_z[12]<=p_z[11];p_pass[12]<=p_pass[11];
+    p_addr[12]<=p_addr[11];p_half[12]<=p_half[11];
+    for(integer a=0;a<3;a=a+1)begin p_av[11][a]<=p_av[10][a];p_av[12][a]<=p_av[11][a];end
+   end
+  end
+ end
  always_comb begin
   rd=0;wr=0;burst=1;addr=MB;din=0;be=8'hff;
   case(state)
@@ -87,45 +171,28 @@ module nds_fpga3d #(
   endcase
   // Disabled/reset epochs must not place requests into the shared fabric.
   if(reset || !enable)begin rd=0;wr=0;end
-  trial=denominator<<divbit;
-  for(integer k=0;k<5;k=k+1)begin
-   sums[k]={1'b0,rems[k]}+{1'b0,rsteps[k]};
-   products[k]=$signed(delta[k])*$signed({1'b0,f});
-  end
-  zdelta=$signed({1'b0,cmd[26]})-$signed({1'b0,cmd[15]});
-  zproduct=zdelta*$signed({1'b0,f});
+  for(integer k=0;k<5;k=k+1)sums[k]={1'b0,rems[k]}+{1'b0,rsteps[k]};
   zsum={1'b0,zrem}+{1'b0,zrstep};
-  ts=texture_coord(av[3][15:0],cmd[14][3:0],cmd[14][8],cmd[14][10]);
-  tt=texture_coord(av[4][15:0],cmd[14][7:4],cmd[14][9],cmd[14][11]);
-  tex_index=(20'(tt)<<cmd[14][3:0])+20'(ts);
-  mr=({1'b0,texel[5:0]}+7'd1)*({1'b0,av[0][8:3]}+7'd1)-13'd1;
-  mg=({1'b0,texel[13:8]}+7'd1)*({1'b0,av[1][8:3]}+7'd1)-13'd1;
-  mb=({1'b0,texel[21:16]}+7'd1)*({1'b0,av[2][8:3]}+7'd1)-13'd1;
-  pixel_color=cmd[2][2]?{texel[31:24],2'd0,mb[11:6],2'd0,mg[11:6],2'd0,mr[11:6]}:
-                  {8'd31,2'd0,av[2][8:3],2'd0,av[1][8:3],2'd0,av[0][8:3]};
-  if(cmd[2][5])begin
-   if(cmd[2][1])pass_depth=({1'b0,z}+33'd255>={1'b0,old_depth})&&({1'b0,old_depth}+33'd255>={1'b0,z});
-   else pass_depth=({1'b0,z}+33'd512>={1'b0,old_depth})&&({1'b0,old_depth}+33'd512>={1'b0,z});
-  end else pass_depth=z<old_depth || (cmd[2][3] && old_back && z==old_depth);
   line_we=!reset && enable && ((state==CLEAR_LINE) ||
-    (state==SHADE && pixel_color[31:24]>cmd[2][12:8] &&
-      (!cmd[2][2] || texel[31:24]==31)));
-  line_color=state==CLEAR_LINE?cmd[1]:pixel_color;
-  line_depth=state==CLEAR_LINE?{cmd[3][0],cmd[2]}:{cmd[2][4],z};
+    (p_ce && p_valid[12] && p_pass[12] && p_color[31:24]>cmd[2][12:8] &&
+      (!cmd[2][2] || p_texel[31:24]==31)));
+  line_color=state==CLEAR_LINE?cmd[1]:p_color;
+  line_depth=state==CLEAR_LINE?{cmd[3][0],cmd[2]}:{cmd[2][4],p_z[12]};
  end
  always_ff @(posedge clk)begin
-  // One write port per inferred RAM. Split even/odd colors so the flush
-  // fetches a pair without demanding a third port or expanding to registers.
+  // One write port per inferred RAM. Depth reads use the input pixel while
+  // writes use the pipeline output; a span drains before any address repeats.
+  // Split even/odd colors let flush read a pair without an extra RAM port.
   if(line_we)begin
-   if(x[0])color_odd[x[7:1]]<=line_color;
-   else color_even[x[7:1]]<=line_color;
-   depth_back[x[7:0]]<=line_depth;
+   if(write_x[0])color_odd[write_x[7:1]]<=line_color;
+   else color_even[write_x[7:1]]<=line_color;
+   depth_back[write_x[7:0]]<=line_depth;
   end
-  {old_back,old_depth}<=depth_back[x[7:0]];
+  // Depth read belongs to pipeline stage zero.
   flush_pair<={color_odd[flush_x[7:1]],color_even[flush_x[7:1]]};
   if(reset || !enable)begin
    state<=INIT;seen<=0;seq<=0;index<=0;status<=0;epoch<=session;poll<=0;
-   cache_valid<=0;line_open<=0;line_y<=0;flush_x<=0;x<=0;
+   line_open<=0;line_y<=0;flush_x<=0;x<=0;
   end else begin
    case(state)
     INIT:if(!busy)begin epoch<=session;state<=INIT_WAIT;end
@@ -140,12 +207,13 @@ module nds_fpga3d #(
     end
     HEADER:if(!busy)state<=HEADER_WAIT;
     HEADER_WAIT:if(dout_ready)begin
-     status<=0;index<=0;line_y<=0;line_open<=0;cache_valid<=0;
+     status<=0;index<=0;line_y<=0;line_open<=0;p_clear_index<=0;
      count<=dout[31:0];
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
      else if(dout[31:0]==0 || dout[31:0]>4064)begin status<=1;state<=COMPLETE;end
-     else state<=FETCH;
+     else state<=CACHE_CLEAR;
     end
+    CACHE_CLEAR:if(p_clear_index==511)state<=FETCH;else p_clear_index<=p_clear_index+1'b1;
     FETCH:if(!busy)begin beat<=0;state<=FETCH_WAIT;end
     FETCH_WAIT:if(dout_ready)begin
      cmd[{beat,1'b0}]<=dout[31:0];cmd[{beat,1'b1}]<=dout[63:32];
@@ -170,59 +238,25 @@ module nds_fpga3d #(
        delta[i]<=$signed({{16{cmd[8+i][31]}},cmd[8+i][31:16]})-$signed({{16{cmd[8+i][15]}},cmd[8+i][15:0]});
        steps[i]<=$signed(cmd[16+i]);rems[i]<=cmd[21+i][15:0];rsteps[i]<=cmd[21+i][31:16];
       end
-      state<=PIXEL;
+      state<=PIPE_RUN;
      end else begin status<=1;state<=COMPLETE;end
     end
     CLEAR_LINE:if(x==255)state<=NEXT_COMMAND;else x<=x+1'b1;
-    PIXEL:begin
-     numerator<=32'(dx)*32'(w0)<<8;
-     denominator<=32'(dx)*32'(w0)+(32'(span_width)-32'(dx))*32'(w1);
-     state<=PIXEL_WAIT;
-    end
-    PIXEL_WAIT:begin
-     remain<=numerator;f<=0;divbit<=8;
-     if((!cmd[2][0] || cmd[2][1]) && denominator!=0)state<=DIVIDE;
-     else state<=ATTRS;
-    end
-    DIVIDE:begin
-     if(remain>=trial)begin remain<=remain-trial;f[divbit]<=1;end
-     if(divbit==0)state<=ATTRS;else divbit<=divbit-1'b1;
-    end
-    ATTRS:begin
-     if(!cmd[2][0])for(i=0;i<5;i=i+1)
-      av[i]<=$signed({{16{cmd[8+i][15]}},cmd[8+i][15:0]})+32'(products[i]>>>8);
-     z<=cmd[2][1]?cmd[15]+32'(zproduct>>>8):zlinear;
-     state<=DEPTH;
-    end
-    DEPTH:if(pass_depth)begin if(cmd[2][2])state<=TEX_ADDR;else state<=SHADE;end else state<=NEXT_PIXEL;
-    TEX_ADDR:begin
-     tex_addr<=29'(cmd[13]>>3)+29'(tex_index>>1);tex_half<=tex_index[0];
-     state<=TEX_CACHE;
-    end
-    TEX_CACHE:begin
-     // Separate wrapped-coordinate/address arithmetic from the cache match
-     // and data mux. This path must meet the shell's 60 MHz clock.
-     if(cache_valid && cache_addr==tex_addr)begin
-      texel<=tex_half?cache_data[63:32]:cache_data[31:0];state<=SHADE;
-     end else state<=TEX_READ;
-    end
     TEX_READ:if(!busy)state<=TEX_WAIT;
-    TEX_WAIT:if(dout_ready)begin
-     cache_valid<=1;cache_addr<=tex_addr;cache_data<=dout;
-     texel<=tex_half?dout[63:32]:dout[31:0];state<=SHADE;
-    end
-    SHADE:begin
-     if(cmd[2][2] && texel[31:24]!=0 && texel[31:24]!=31)begin status<=3;state<=COMPLETE;end
-     else state<=NEXT_PIXEL;
-    end
-    NEXT_PIXEL:begin
-     x<=x+1'b1;dx<=dx+1'b1;
-     zlinear<=zlinear+zstep+32'(zsum>=8192);zrem<=zsum[12:0];
-     if(cmd[2][0])for(i=0;i<5;i=i+1)begin
-      av[i]<=av[i]+steps[i]+32'(sums[i]>={7'd0,span_width});
-      rems[i]<=16'(sums[i]>={7'd0,span_width}?sums[i]-{7'd0,span_width}:sums[i]);
+    TEX_WAIT:if(dout_ready)state<=PIPE_RUN;
+    PIPE_RUN:begin
+     if(p_bad_alpha)begin status<=3;state<=COMPLETE;end
+     else if(p_miss)begin tex_addr<=p_addr[12];state<=TEX_READ;end
+     else if(p_ce)begin
+      if(x<last)begin
+       x<=x+1'b1;dx<=dx+1'b1;
+       zlinear<=zlinear+zstep+32'(zsum>=8192);zrem<=zsum[12:0];
+       if(cmd[2][0])for(i=0;i<5;i=i+1)begin
+        av[i]<=av[i]+steps[i]+32'(sums[i]>={7'd0,span_width});
+        rems[i]<=16'(sums[i]>={7'd0,span_width}?sums[i]-{7'd0,span_width}:sums[i]);
+       end
+      end else if(p_valid==0)state<=NEXT_COMMAND;
      end
-     if(x+1'b1==last)state<=NEXT_COMMAND;else state<=PIXEL;
     end
     FLUSH_LOAD:state<=FLUSH_WAIT;
     FLUSH_WAIT:state<=FLUSH_WRITE;

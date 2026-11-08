@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Exercise the console fabric with a busy-dependent control request (as used
-// by nds_h3d_control_init), cartridge, event and priority scanout read bursts.
+// by nds_h3d_control_init), cartridge and priority scanout reads plus checked event write bursts.
 module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
  input clk,reset,enable,input [31:0] session,
  output rd,wr,output [7:0] burst,output [28:0] addr,output [63:0] din,output [7:0] be,
@@ -29,8 +29,8 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
  fpga3d_peer #(.BEATS(8),.PAUSE(59)) video(clk,reset,vr,vb,vo,vv);
  wire mr,mw,mb,mv;wire [7:0] mn,me;wire [28:0] ma;wire [63:0] mi,mo;
  wire e1,e2,ma_accept,ca;
- wire er,eb,ev;wire [63:0] eo;
- fpga3d_peer #(.BEATS(16),.PAUSE(23)) events(clk,reset,er,eb,eo,ev);
+ wire er,ew,eb,ev,ea;wire [63:0] eo,ei;
+ fpga3d_event_peer events(clk,reset,er,ew,ei,eb,ea,eo,ev);
  nds_fpga3d_port_mux inner(
  .clk,.reset,
  .c_rd(cr),.c_wr(cw),.c_burst(cn),.c_addr(cc),.c_din(ci),.c_be(ce),.c_busy(cb),.c_dout(co),.c_valid(cv),.c_accepted(ca),
@@ -40,7 +40,7 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0)(
  .clk,.reset,
  .cpu_rd(lr),.cpu_we(1'b0),.cpu_burstcnt(8'd4),.cpu_addr(29'h07f80080),.cpu_din(64'd0),.cpu_be(8'hff),.cpu_busy(lb),.cpu_dout(lo),.cpu_dout_ready(lv),.cpu_command_accepted(),
  .video_rd(vr),.video_we(1'b0),.video_burstcnt(8'd8),.video_addr(29'h07f80080),.video_din(64'd0),.video_be(8'hff),.video_busy(vb),.video_dout(vo),.video_dout_ready(vv),.video_command_accepted(),
- .sound_rd(er),.sound_we(1'b0),.sound_burstcnt(8'd16),.sound_addr(29'h07f80080),.sound_din(64'd0),.sound_be(8'hff),.sound_busy(eb),.sound_dout(eo),.sound_dout_ready(ev),.sound_command_accepted(),
+ .sound_rd(er),.sound_we(ew),.sound_burstcnt(8'd16),.sound_addr(29'h07f800a0),.sound_din(ei),.sound_be(8'hff),.sound_busy(eb),.sound_dout(eo),.sound_dout_ready(ev),.sound_command_accepted(ea),
  .credit_rd(mr),.credit_we(mw),.credit_burstcnt(mn),.credit_addr(ma),.credit_din(mi),.credit_be(me),.credit_busy(mb),.credit_dout(mo),.credit_dout_ready(mv),.credit_command_accepted(ma_accept),
  .ddram_rd(rd),.ddram_we(wr),.ddram_burstcnt(burst),.ddram_addr(addr),.ddram_din(din),.ddram_be(be),.ddram_busy(busy),.ddram_dout(dout),.ddram_dout_ready(dout_ready),.epoch_quiescent(),.debug_state(),.protocol_error(e2));
  always @(posedge clk)if(!reset)begin
@@ -95,6 +95,44 @@ module fpga3d_peer #(parameter BEATS=1,PAUSE=40)(input clk,reset,output reg rd,i
     if(remaining==0 || dout!==64'h0123456789abcdef)$fatal(1,"cross-client DDR response");
     remaining<=remaining-1;wait_cycles<=PAUSE;
    end
+  end
+ end
+endmodule
+
+// Retain beat zero through local enqueue and physical acceptance, then stream
+// all 16 beats without gaps. Read back each burst with a sequence/beat oracle.
+module fpga3d_event_peer(input clk,reset,output rd,wr,output [63:0] din,
+ input busy,accepted,input [63:0] dout,input valid);
+ reg [2:0] state;
+ reg [31:0] serial;
+ integer beat,pause_cycles,age;
+ function automatic [63:0] payload(input [31:0] seqno,input integer beatno);
+  payload=64'hca7e000000000000|({32'd0,seqno}<<16)|64'(beatno);
+ endfunction
+ assign rd=state==3;
+ assign wr=state==1;
+ assign din=payload(serial,beat);
+ always @(posedge clk)begin
+  if(reset)begin state<=0;serial<=0;beat<=0;pause_cycles<=23;age<=0;end
+  else begin
+   age<=age+1;
+   if(age>10000)$fatal(1,"event burst client starved");
+   case(state)
+    0:if(pause_cycles==0)begin state<=1;beat<=0;end else pause_cycles<=pause_cycles-1;
+    1:if(accepted)begin
+      if(beat==15)begin state<=2;beat<=0;end else beat<=beat+1;
+     end
+    2:state<=3;
+    3:if(!busy)state<=4;
+    4:if(valid)begin
+      if(dout!==payload(serial,beat))$fatal(1,"event burst data lost/duplicated/reordered: seq=%0d beat=%0d got=%h",serial,beat,dout);
+      if(beat==15)begin state<=0;serial<=serial+1;pause_cycles<=23;age<=0;end
+      else beat<=beat+1;
+     end
+    default:$fatal(1,"bad event peer state");
+   endcase
+   if(valid && state!=4)$fatal(1,"event read response without owner");
+   if(accepted && state!=1 && state!=4)$fatal(1,"event acceptance without transaction");
   end
  end
 endmodule
