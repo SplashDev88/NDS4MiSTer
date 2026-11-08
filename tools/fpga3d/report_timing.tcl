@@ -14,6 +14,9 @@ foreach_in_collection oc [get_available_operating_conditions] {
     report_timing -setup -to $regs -npaths 20 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/accelerator-to-$corner.txt
     report_timing -hold -from $regs -npaths 5 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/accelerator-hold-$corner.txt
     report_timing -setup -npaths 10 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/global-setup-$corner.txt
+    report_timing -hold -npaths 10 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/global-hold-$corner.txt
+    report_timing -recovery -npaths 10 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/global-recovery-$corner.txt
+    report_timing -removal -npaths 10 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/global-removal-$corner.txt
 }
 delete_timing_netlist
 project_close

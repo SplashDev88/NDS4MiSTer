@@ -5,8 +5,19 @@ root=pathlib.Path(__file__).resolve().parents[2]
 out=root/'build-fpga3d/quartus';out.mkdir(parents=True,exist_ok=True)
 stages=sys.argv[1:] or ['map','fit','asm','sta']
 results={}
+if 'map' in stages:
+    # Different fitted revisions must not share derived multi-corner HPS node
+    # caches: Quartus 17 can otherwise retain incompatible physical node IDs.
+    db=root/'fpga/mister_nitro_console_island/db'
+    backup=out/('timing-cache-before-'+datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+    for pattern in ['NDS4MiSTer.tiscmp.*.ddb','NDS4MiSTer.tis_db_list.ddb',
+                    'NDS4MiSTer.sta_cmp.*.tdb','NDS4MiSTer.cyclonev_io_sim_cache.*.hsd']:
+        for path in db.glob(pattern):
+            backup.mkdir(exist_ok=True);path.rename(backup/path.name)
 for stage in stages:
-    args=['NDS4MiSTer']
+    # Use explicit four-corner path reports, including the accelerator's
+    # boundaries, instead of launching a second analyzer against the same DB.
+    args=['-t','../../tools/fpga3d/report_timing.tcl'] if stage=='sta' else ['NDS4MiSTer']
     if stage!='sta':args+=['--write_settings_files=off']
     if stage=='fit':args+=['--parallel=4']
     cmd=['docker','run','--rm','--name','nds-fpga3d-build','--platform','linux/amd64',

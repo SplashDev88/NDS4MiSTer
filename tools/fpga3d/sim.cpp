@@ -158,12 +158,46 @@ int main(int argc,char** argv){try{
  sim.run({},++seq,1);
  auto extent=span(Span{});extent[2]|=Textured;extent[13]=0x3fd40000;extent[14]=10|(10<<4);
  sim.run({clear(0,0,0xffffff),extent},++seq,1);
+ // Unsupported texel alpha must fail without publishing a completed image.
+ Span alpha;alpha.first=0;alpha.end=1;alpha.width=1;alpha.flags=Linear|Textured;
+ sim.word(Textures)=0x0f123456;
+ sim.run({clear(0,0,0xffffff),span(alpha)},++seq,3);
+ // Three spans alias the same direct-mapped cache entry (A, B, A), then
+ // replace the underlying texture bytes in a new immutable frame epoch.
+ std::vector<Command> cacheCommands;
+ for(unsigned y=0;y<192;y++){
+  cacheCommands.push_back(clear(y,0,0xffffff));
+  if(y==0)for(int x=0;x<3;x++){
+   Span s;s.first=x;s.end=x+1;s.origin=x;s.width=1;s.flags=Linear|Textured;
+   s.left={504,504,504,0,0};s.right=s.left;s.texture=Textures+(x==1?4096:0);
+   cacheCommands.push_back(span(s));
+  }
+  cacheCommands.push_back(flush(y));
+ }
+ auto checkCache=[&](uint32_t a,uint32_t b){
+  sim.word(Textures)=a;sim.word(Textures+4096)=b;sim.run(cacheCommands,++seq);
+  for(unsigned i=0;i<256*192;i++)require(sim.word(Output+4*i)==(i==0||i==2?a:i==1?b:0),"texture cache alias/invalidation mismatch");
+ };
+ checkCache(0x1f3f3f3f,0x1f030507);checkCache(0x1f112233,0x1f213223);
+ // Interrupt in-flight frames at several points, discard the prior request,
+ // and prove that partially filled pipeline/cache state cannot leak forward.
+ for(unsigned cut:{256u,4096u,32768u}){
+  std::memcpy(&sim.word(Commands),cacheCommands.data(),cacheCommands.size()*sizeof(Command));
+  sim.word(Mailbox+8)=cacheCommands.size();sim.word(Mailbox+12)=17;
+  sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
+  for(unsigned k=0;k<cut;k++)sim.tick();
+  require(sim.word(Mailbox+16)!=interrupted,"reset cut did not interrupt a frame");
+  sim.word(Mailbox+24)=0;sim.reset();
+  for(unsigned k=0;k<1000;k++)sim.tick();
+  require(sim.word(Mailbox+16)!=interrupted,"interrupted frame completed after reset");
+  checkCache(0x1f06090c,0x1f3a2b1c);
+ }
  sim.run({flush(0)},0xffffffff,1);sim.run({flush(0)},1,1);
  auto doneBefore=sim.word(Mailbox+16);sim.word(Mailbox)=0;sim.word(Mailbox+4)=2;
  for(int i=0;i<1000;i++)sim.tick();require(sim.word(Mailbox+16)==doneBefore,"invalid magic consumed");
  // Reset must discard the previous request, not replay it into reused memory.
  sim.word(Mailbox+24)=0;sim.reset();auto done=sim.word(Mailbox+16);
  for(int i=0;i<1000;i++)sim.tick();require(sim.word(Mailbox+16)==done,"stale request replayed");
- std::cout<<"PASS "<<pixels<<" candidate pixels, 884736 output comparisons, malformed requests, randomized DDR stalls, reset stale-request quarantine\n";
+ std::cout<<"PASS "<<pixels<<" candidate pixels, 884736 random output comparisons plus 245760 cache/reset comparisons, malformed requests/alpha, cache collisions and invalidation, randomized DDR stalls, interrupted-frame reset quarantine\n";
  return 0;
  }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<"\n";return 1;}}
