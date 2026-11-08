@@ -18,14 +18,19 @@ $T-nm -n build/arm7.elf > build/arm7.symbols.txt
 dd if=/dev/zero of=build/logo.bin bs=156 count=1 2>/dev/null
 $N -c build/nds_fpga3d_demo_20261107.nds -9 build/arm9.bin -7 build/arm7.bin -r9 0x02004000 -e9 0x02004000 -r7 0x02003000 -e7 0x02003000 -h 0x200 -o build/logo.bin -g F3DD 00 FPGA3DDEMO -nopass
 $N -i build/nds_fpga3d_demo_20261107.nds > build/header-info.txt
+$T-gcc -mcpu=arm946e-s -marm -Os -ffreestanding -fno-builtin -fno-stack-protector -fno-unwind-tables -fno-asynchronous-unwind-tables -Wall -Wextra -Werror -nostdlib -Tsrc/arm9.ld src/start9.s src/textured.c -o build/texture9.elf
+$T-objcopy -O binary build/texture9.elf build/texture9.bin
+$N -c build/nds_fpga3d_texture_20261107.nds -9 build/texture9.bin -7 build/arm7.bin -r9 0x02004000 -e9 0x02004000 -r7 0x02003000 -e7 0x02003000 -h 0x200 -o build/logo.bin -g F3DT 00 F3DTEXTURE -nopass
+$N -i build/nds_fpga3d_texture_20261107.nds > build/texture-header-info.txt
 '
 python3 - <<'PY'
 from pathlib import Path
 import struct
-p=Path('build/nds_fpga3d_demo_20261107.nds'); b=p.read_bytes()
-end=struct.unpack_from('<I',b,0x80)[0]
-if len(b)>end or end%512: raise RuntimeError('Unexpected ROM end/alignment')
-# ndstool leaves the final empty FAT alignment absent; include its declared
-# end so the direct loader receives a complete, sector-aligned test image.
-p.write_bytes(b+bytes([255])*(end-len(b)))
+for name in ['demo','texture']:
+ p=Path('build/nds_fpga3d_'+name+'_20261107.nds'); b=p.read_bytes()
+ end=struct.unpack_from('<I',b,0x80)[0]
+ if len(b)>end or end%512: raise RuntimeError('Unexpected ROM end/alignment')
+ # Keep a complete sector-aligned, power-of-two cartridge image.
+ capacity=1 << max(16,(end-1).bit_length())
+ p.write_bytes(b+bytes([255])*(capacity-len(b)))
 PY
