@@ -4320,8 +4320,8 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
 
 bool SoftRenderer3D::TryFpgaFrame()
 {
-    // Whole-frame admission occurs before any hardware submission. Software
-    // handles all unsupported effects without approximating or dropping them.
+    // Feature admission precedes hardware work. A later span/capacity failure
+    // closes and drains the producer, then retries the entire frame in software.
     if (!FullFrameCompletion || !CurrentPolygonCount || !fpga3d::available() ||
         (GPU3D.RenderDispCnt & ((1u<<5)|(1u<<14)))) return false;
     FpgaFrame.reset();
@@ -4347,8 +4347,9 @@ bool SoftRenderer3D::TryFpgaFrame()
         const u32 color=expand(raw)|(expand(raw>>5)<<8)|(expand(raw>>10)<<16)|(((raw>>16)&31)<<24);
         FpgaFrame.append(fpga3d::fog(color,GPU3D.RenderFogOffset,GPU3D.RenderFogShift,GPU3D.RenderFogDensityTable));
     }
+    FpgaFrame.startStream();
     FpgaEmitting=true;
-    for(int y=0;y<192 && FpgaFrame.valid;y++)
+    for(int y=0;y<192 && FpgaFrame.valid && !FpgaFrame.transportError;y++)
     {
         const auto offset=FirstPixelOffset+y*ScanlineWidth;
         FpgaFrame.append(fpga3d::clear(y,ColorBuffer[offset],DepthBuffer[offset],(AttrBuffer[offset]&16)!=0,
@@ -4356,9 +4357,10 @@ bool SoftRenderer3D::TryFpgaFrame()
         RenderScanline(y,PolygonList,ActivePolygonMask,PrevIsShadowMask,StencilBuffer,
             0,256,FinalPassMinX,FinalPassMaxX);
         FpgaFrame.append(fpga3d::flush(y));
+        FpgaFrame.publish();
     }
     FpgaEmitting=false;
-    if(FpgaFrame.valid && FpgaFrame.submit(ColorBuffer+FirstPixelOffset,ScanlineWidth))
+    if(FpgaFrame.submit(ColorBuffer+FirstPixelOffset,ScanlineWidth))
     {
         // Hardware returned a full color plane; the next sparse clear must
         // reset every potentially modified color/depth/attribute location.

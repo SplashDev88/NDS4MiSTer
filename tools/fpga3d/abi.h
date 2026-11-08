@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 namespace fpga3d {
-constexpr uint32_t Magic=0x33443346; // F3D3
+constexpr uint32_t Magic=0x34443346; // F3D4
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t TextureBytes=0xc0000, MaxCommands=0x7f000/64;

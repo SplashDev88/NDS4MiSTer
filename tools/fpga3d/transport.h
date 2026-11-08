@@ -55,60 +55,109 @@ inline void copyOutput(uint32_t* destination,size_t stride){
   else for(unsigned x=0;x<256;x++)destination[y*stride+x]=publication[y*256+x];
  }
 }
+// F3D4 permits an immutable producer prefix. WC command storage follows the
+// immutable decoded textures in the existing WC mapping; Device storage is
+// retained for batch callers without a WC mapping. No overlapping aliases.
+inline void uploadCommand(volatile uint32_t* target,const Command& c,bool wc){
+ const auto packed=pack(c);
+ if(wc)std::memcpy(const_cast<uint32_t*>(target),packed.data(),sizeof(packed));
+ else {
+  const unsigned count=commandWords(c);unsigned i=0;
+  for(;i+1<count;i+=2)
+   *reinterpret_cast<volatile MMIO64*>(target+i)=uint64_t(packed[i])|(uint64_t(packed[i+1])<<32);
+  if(i<count)target[i]=packed[i];
+ }
+}
 struct Frame {
  std::vector<Command> commands;
  std::vector<uint32_t> textures;
  std::map<const uint32_t*,uint32_t> textureOffsets;
- bool valid=true;
+ bool valid=true,active=false,transportError=false;
  unsigned deadlineMs=100;
  uint64_t uploadUs=0,waitUs=0,copyUs=0;
- void reset(){commands.clear();textures.clear();textureOffsets.clear();valid=true;}
- void append(const Command& c){if(commands.size()>=MaxCommands)valid=false;else commands.push_back(c);}
+ uint32_t frameSession=0,sequence=0,commandBase=Commands;
+ size_t published=0,commandCapacity=MaxCommands;
+ std::chrono::steady_clock::time_point started,deadline;
+ volatile uint32_t* mailbox=nullptr;
+ void reset(){
+  // An abandoned producer must never reuse bytes still owned by the FPGA.
+  if(active){poisonedSession=frameSession;++failedFrames;}
+  commands.clear();textures.clear();textureOffsets.clear();valid=true;active=false;transportError=false;
+  published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;
+ }
+ void append(const Command& c){if(commands.size()>=commandCapacity)valid=false;else commands.push_back(c);}
  bool addTexture(const uint32_t* pixels,size_t count){
+  if(active)return false;
   if(textureOffsets.count(pixels))return true;
   if(!pixels || count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return false;
   for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return false;
   textureOffsets[pixels]=Textures+textures.size()*4;
   textures.insert(textures.end(),pixels,pixels+count);return true;
  }
+ bool start(){
+  if(active)return true;
+  if(!valid || !available() || textures.size()>TextureBytes/4)return false;
+  // Reserve full descriptor capacity before starting. Texture-heavy frames
+  // keep the Device arena rather than regressing F3D3's admission capacity.
+  const bool useWC=writeCombined && textures.size()*4<=TextureBytes-MaxCommands*64;
+  commandBase=useWC?((Textures+uint32_t(textures.size()*4)+63)&~63u):Commands;
+  commandCapacity=useWC?std::min<size_t>(MaxCommands,(0x3fe00000u-commandBase)/64):MaxCommands;
+  if(commandCapacity<384 || commands.size()>commandCapacity){valid=false;return false;}
+  started=std::chrono::steady_clock::now();deadline=started+std::chrono::milliseconds(deadlineMs);
+  frameSession=control[2];mailbox=control+(Mailbox-0x3fc00000)/4;
+  sequence=mailbox[1]+1;if(!sequence)sequence=1;
+  uploadUs=waitUs=copyUs=0;published=0;transportError=false;
+  uploadTextures(publication+(Textures-0x3fd00000)/4,textures);
+  mailbox[15]=commandBase;mailbox[2]=0;mailbox[3]=frameSession;mailbox[0]=Magic;
+  barrier();mailbox[1]=sequence;barrier();active=true;
+  uploadUs=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count();
+  return true;
+ }
+ // Native fixture generation keeps batch behavior; live WC rendering starts
+ // only after feature/texture admission and before scanline command emission.
+ void startStream(){if(writeCombined)start();}
+ bool ownershipHealthy(){
+  if(control[2]==frameSession && control[0]==0x31443348 && std::chrono::steady_clock::now()<=deadline)return true;
+  poisonedSession=frameSession;transportError=true;active=false;++failedFrames;return false;
+ }
+ void publish(){
+  if(!active || !ownershipHealthy())return;
+  if(mailbox[4]==sequence){transportError=true;return;}
+  const auto t=std::chrono::steady_clock::now();
+  volatile uint32_t* target=commandBase==Commands?control+(commandBase-0x3fc00000)/4:publication+(commandBase-0x3fd00000)/4;
+  for(;published<commands.size();published++)uploadCommand(target+published*16,commands[published],writeCombined && commandBase!=Commands);
+  // The consumer may read only this committed immutable prefix.
+  barrier();mailbox[2]=uint32_t(published);barrier();
+  uploadUs+=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-t).count();
+ }
  bool submit(uint32_t* destination,size_t stride){
-  if(!valid || commands.empty() || !available())return false;
-  const uint32_t session=control[2];
-  const auto start=std::chrono::steady_clock::now();
-  auto* mailbox=control+(Mailbox-0x3fc00000)/4;
-  // Only the primary raster thread submits. A timeout poisons this session;
-  // an old request from a previous epoch was discarded by hardware startup.
-  uint32_t seq=mailbox[1]+1;if(!seq)seq=1;
-  auto* target=control+(Commands-0x3fc00000)/4;
-  uploadCommands(target,commands);
-  auto* tex=publication+(Textures-0x3fd00000)/4;
-  uploadTextures(tex,textures);
-  mailbox[2]=commands.size();mailbox[3]=session;mailbox[0]=Magic;
-  barrier();mailbox[1]=seq;barrier();
-  const auto uploaded=std::chrono::steady_clock::now();
-  const auto deadline=uploaded+std::chrono::milliseconds(deadlineMs);
-  while(mailbox[4]!=seq){
-   if(control[2]!=session || control[0]!=0x31443348 || std::chrono::steady_clock::now()>deadline){
-    // Hardware may still own immutable command/texture data after timeout.
-    // Permanently disable submission in this epoch; never reuse those bytes.
-    poisonedSession=session;++failedFrames;return false;
-   }
+  if(!active && (!valid || commands.empty() || !start()))return false;
+  publish();
+  if(!active)return false;
+  // Always close and drain a started producer, including a late capacity or
+  // span-admission failure. The partial output is never copied on failure.
+  barrier();mailbox[2]=0x80000000u|uint32_t(published);barrier();
+  const auto waiting=std::chrono::steady_clock::now();
+  while(mailbox[4]!=sequence){
+   if(!ownershipHealthy())return false;
+#ifdef FPGA3D_TEST_PROGRESS
+   FPGA3D_TEST_PROGRESS();
+#else
    std::this_thread::sleep_for(std::chrono::microseconds(50));
+#endif
   }
-  barrier();
-  if(mailbox[5] || control[2]!=session){++failedFrames;return false;}
-  const auto rendered=std::chrono::steady_clock::now();
-  copyOutput(destination,stride);
+  barrier();active=false;
+  if(control[2]!=frameSession){++failedFrames;return false;}
+  if(!valid && !transportError)return false;
+  if(transportError || mailbox[5]){++failedFrames;return false;}
+  const auto rendered=std::chrono::steady_clock::now();copyOutput(destination,stride);
   const auto copied=std::chrono::steady_clock::now();
-  uploadUs=std::chrono::duration_cast<std::chrono::microseconds>(uploaded-start).count();
-  waitUs=std::chrono::duration_cast<std::chrono::microseconds>(rendered-uploaded).count();
+  waitUs=std::chrono::duration_cast<std::chrono::microseconds>(rendered-waiting).count();
   copyUs=std::chrono::duration_cast<std::chrono::microseconds>(copied-rendered).count();
   ++completedFrames;
-  // CPU-owned telemetry after the eight-word hardware mailbox. Commit the
-  // sequence last; readers also check the epoch before interpreting samples.
   mailbox[8]=uploadUs;mailbox[9]=waitUs;mailbox[10]=copyUs;
-  mailbox[11]=uint32_t(completedFrames);mailbox[12]=uint32_t(failedFrames);mailbox[13]=session;
-  barrier();mailbox[14]=seq;
+  mailbox[11]=uint32_t(completedFrames);mailbox[12]=uint32_t(failedFrames);mailbox[13]=frameSession;
+  barrier();mailbox[14]=sequence;
   if(completedFrames==1 || completedFrames%600==0)
    std::fprintf(stderr,"FPGA3D completed=%llu failures=%llu commands=%zu texture_bytes=%zu upload_us=%llu wait_us=%llu copy_us=%llu\n",
     (unsigned long long)completedFrames,(unsigned long long)failedFrames,commands.size(),textures.size()*4,

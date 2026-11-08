@@ -17,9 +17,9 @@ module nds_fpga3d #(
  input logic dout_ready,accepted
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
- localparam [31:0] MAGIC=32'h33443346;
+ localparam [31:0] MAGIC=32'h34443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
- HEADER,HEADER_WAIT,FETCH,FETCH_WAIT,UNPACK,DECODE,CLEAR_LINE,
+ HEADER,HEADER_WAIT,PARAM,PARAM_WAIT,AVAILABLE,REFILL_DELAY,REFILL,REFILL_WAIT,FETCH,FETCH_WAIT,CMD_LOAD_FIRST,CMD_LOAD,UNPACK,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
  FLUSH_LOAD,FLUSH_WAIT,FLUSH_WRITE,NEXT_COMMAND,COMPLETE,CACHE_CLEAR,PIPE_RUN,RESOLVE_RUN} state_t;
  state_t state;
@@ -30,8 +30,28 @@ module nds_fpga3d #(
  assign packed_command[32*packed_word+:32]=cmd[packed_word];
  end endgenerate
  logic [31:0] seq,seen,count,index,status,epoch;
+ logic [31:0] command_base,texture_end;
+ logic [13:0] capacity;
+ logic producer_final;
+ wire [31:0] param_base=dout[63:32];
+ wire param_device=param_base==32'h3fc81000;
+ wire param_wc=param_base>=32'h3fd40000 && param_base<32'h3fe00000 && param_base[5:0]==0;
+ wire [31:0] param_space=(32'h3fe00000-param_base)>>6;
+ wire [13:0] param_capacity=param_device?14'd8128:(param_space>8128?14'd8128:14'(param_space));
  logic [15:0] poll;
  logic [3:0] beat;
+ (* ramstyle="M10K" *) logic [63:0] command_cache[0:127];
+ logic [63:0] command_cache_q;
+ logic [4:0] cached_commands;
+ logic [3:0] cache_slot;
+ logic [6:0] cache_fill_beat,cache_last_beat;
+ wire [4:0] fetch_commands=count-index>16?5'd16:5'(count-index);
+ wire [7:0] fetch_words={fetch_commands,3'b0};
+ always_ff @(posedge clk)begin
+  if(state==FETCH_WAIT && dout_ready)command_cache[cache_fill_beat]<=dout;
+  if(state==CMD_LOAD_FIRST)command_cache_q<=command_cache[{cache_slot,3'd0}];
+  else if(state==CMD_LOAD && beat<7)command_cache_q<=command_cache[{cache_slot,3'd0}+7'(beat)+7'd1];
+ end
  logic [8:0] x,last,dx,line_y,flush_x;
  logic [9:0] span_width;
  logic line_open,flush_inflight;
@@ -42,7 +62,7 @@ module nds_fpga3d #(
  logic [271:0] fog_table;
  logic fog_configured;
  logic [1:0] resolve_mode;
- wire pixels_pending;
+ wire pixels_pending,p_depth_pass;
  logic [15:0] w0,w1;
  logic signed [31:0] av[0:4],delta[0:4],steps[0:4];
  logic [15:0] rems[0:4],rsteps[0:4];
@@ -69,8 +89,9 @@ module nds_fpga3d #(
  logic p_ce,p_hit,p_miss,p_bad_alpha,p_override;
  logic [63:0] p_override_data;
  logic [8:0] p_clear_index;
+ logic [2:0] tex_beat;
  (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:511];
- (* ramstyle = "M10K" *) logic [20:0] p_cache_tags[0:511];
+ (* ramstyle = "M10K" *) logic [20:0] p_cache_tags[0:63];
  logic [63:0] p_cache_q;
  logic [20:0] p_tag_q;
  integer i;
@@ -117,18 +138,18 @@ module nds_fpga3d #(
   p_ce=state==PIPE_RUN && !reset && enable && !p_miss && !p_bad_alpha;
  end
  always_ff @(posedge clk)begin
-  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index]<=0;
+  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index[5:0]]<=0;
   else if(state==TEX_WAIT && dout_ready)begin
-   p_cache_tags[tex_addr[8:0]]<={1'b1,tex_addr[28:9]};
-   p_cache_data[tex_addr[8:0]]<=dout;
+   if(tex_beat==7)p_cache_tags[tex_addr[8:3]]<={1'b1,tex_addr[28:9]};
+   p_cache_data[{tex_addr[8:3],tex_beat}]<=dout;
   end
   if(p_ce)begin
    p_cache_q<=p_cache_data[p_addr[11][8:0]];
-   p_tag_q<=p_cache_tags[p_addr[11][8:0]];
+   p_tag_q<=p_cache_tags[p_addr[11][8:3]];
   end
   if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
   else begin
-   if(state==TEX_WAIT && dout_ready)begin p_override<=1;p_override_data<=dout;end
+   if(state==TEX_WAIT && dout_ready)begin if(tex_beat==7)p_override<=1; if(tex_beat==tex_addr[2:0])p_override_data<=dout;end
    if(p_ce)begin
     p_override<=0;p_valid<={p_valid[11:0],x<last};
     p_x[0]<=x;p_z[0]<=zlinear;
@@ -150,7 +171,7 @@ module nds_fpga3d #(
      p_av[10][a]<=cmd[2][0]?p_av[9][a]:p_interpolate($signed({{16{cmd[8+a][15]}},cmd[8+a][15:0]}),delta[a],p_f[9]);
     p_x[11]<=p_x[10];p_z[11]<=p_z[10];p_pass[11]<=1'b1;
     p_addr[11]<=29'(cmd[13]>>3)+29'(p_index>>1);p_half[11]<=p_index[0];
-    p_x[12]<=p_x[11];p_z[12]<=p_z[11];p_pass[12]<=p_pass[11];
+    p_x[12]<=p_x[11];p_z[12]<=p_z[11];p_pass[12]<=p_depth_pass;
     p_addr[12]<=p_addr[11];p_half[12]<=p_half[11];
     for(integer a=0;a<3;a=a+1)begin p_av[11][a]<=p_av[10][a];p_av[12][a]<=p_av[11][a];end
    end
@@ -161,9 +182,10 @@ module nds_fpga3d #(
   case(state)
    INIT,POLL:begin rd=1;addr=MB;end
    READY:begin wr=1;addr=MB+3;din={epoch,MAGIC};end
-   HEADER:begin rd=1;addr=MB+1;end
-   FETCH:begin rd=1;burst=8;addr=CM+(index<<3);end
-   TEX_READ:begin rd=1;addr=tex_addr;end
+   HEADER,REFILL:begin rd=1;addr=MB+1;end
+   PARAM:begin rd=1;addr=MB+7;end
+   FETCH:begin rd=1;burst=fetch_words;addr=29'(command_base>>3)+(index<<3);end
+   TEX_READ:begin rd=1;burst=8;addr={tex_addr[28:3],3'd0};end
    FLUSH_WRITE:begin wr=1;burst=128;addr=OUT+(line_y<<7);din=flush_pair;end
    COMPLETE:begin wr=1;addr=MB+2;din={status,seq};end
    default:begin end
@@ -183,7 +205,8 @@ module nds_fpga3d #(
   .poly_attr(cmd[27]),.left_cov(cmd[28]),.right_cov(cmd[29]),
   .left_end(cmd[30][8:0]),.right_begin(cmd[30][24:16]),.y_edge(cmd[31][9:6]),
   .antialias(line_config[4]),.blend_enable(line_config[3]),.translucent_depth_write(cmd[31][5]),
-  .pixel_valid(p_ce && p_valid[12] && p_color[31:24]>cmd[2][12:8]),
+  .precheck_valid(p_valid[10]),.precheck_x(p_x[10][7:0]),.precheck_depth({8'd0,p_z[10]}),.precheck_pass(p_depth_pass),
+  .pixel_valid(p_ce && p_valid[12] && p_pass[12] && p_color[31:24]>cmd[2][12:8]),
   .resolve_valid(state==RESOLVE_RUN && x<256),.resolve_mode,
   .fog_color,.fog_offset,.fog_shift,.fog_table,.fog_alpha_only(line_config[6]),
   .pixel_x(state==RESOLVE_RUN?x[7:0]:p_x[12][7:0]),.pixel_color(p_color),.pixel_depth(p_z[12]),
@@ -210,16 +233,42 @@ module nds_fpga3d #(
     end
     HEADER:if(!busy)state<=HEADER_WAIT;
     HEADER_WAIT:if(dout_ready)begin
-     status<=0;index<=0;line_y<=0;line_open<=0;p_clear_index<=0;fog_configured<=0;
-     count<=dout[31:0];
+     status<=0;index<=0;cached_commands<=0;cache_slot<=0;line_y<=0;line_open<=0;p_clear_index<=0;fog_configured<=0;
+     count<={1'b0,dout[30:0]};producer_final<=dout[31];
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
-     else if(dout[31:0]==0 || dout[31:0]>8128)begin status<=1;state<=COMPLETE;end
+     else if(dout[30:0]>8128)begin status<=1;state<=COMPLETE;end
+     else state<=PARAM;
+    end
+    PARAM:if(!busy)state<=PARAM_WAIT;
+    PARAM_WAIT:if(dout_ready)begin
+     command_base<=param_base;texture_end<=param_device?32'h3fe00000:param_base;capacity<=param_capacity;
+     if((!param_device && !param_wc) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
-    CACHE_CLEAR:if(p_clear_index==511)state<=FETCH;else p_clear_index<=p_clear_index+1'b1;
-    FETCH:if(!busy)begin beat<=0;state<=FETCH_WAIT;end
+    CACHE_CLEAR:if(p_clear_index==63)state<=AVAILABLE;else p_clear_index<=p_clear_index+1'b1;
+    AVAILABLE:begin
+     if(index<count)state<=cached_commands!=0?CMD_LOAD_FIRST:FETCH;
+     else if(producer_final)begin
+      if(line_open || line_y!=192)status<=1;
+      state<=COMPLETE;
+     end else begin poll<=0;state<=REFILL_DELAY;end
+    end
+    REFILL_DELAY:if(poll==15)state<=REFILL;else poll<=poll+1'b1;
+    REFILL:if(!busy)state<=REFILL_WAIT;
+    REFILL_WAIT:if(dout_ready)begin
+     if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
+     else if(dout[30:0]<count || dout[30:0]>capacity)begin status<=1;state<=COMPLETE;end
+     else begin count<={1'b0,dout[30:0]};producer_final<=dout[31];state<=AVAILABLE;end
+    end
+    FETCH:if(!busy)begin
+     cached_commands<=fetch_commands;cache_slot<=0;cache_fill_beat<=0;cache_last_beat<=fetch_words-1'b1;state<=FETCH_WAIT;
+    end
     FETCH_WAIT:if(dout_ready)begin
-     cmd[{beat,1'b0}]<=dout[31:0];cmd[{beat,1'b1}]<=dout[63:32];
+     if(cache_fill_beat==cache_last_beat)state<=CMD_LOAD_FIRST;else cache_fill_beat<=cache_fill_beat+1'b1;
+    end
+    CMD_LOAD_FIRST:begin beat<=0;state<=CMD_LOAD;end
+    CMD_LOAD:begin
+     cmd[{beat,1'b0}]<=command_cache_q[31:0];cmd[{beat,1'b1}]<=command_cache_q[63:32];
      if(beat==7)state<=UNPACK;else beat<=beat+1'b1;
     end
     UNPACK:begin
@@ -283,7 +332,7 @@ module nds_fpga3d #(
        ({1'b0,cmd[3][31:16]}+{1'b0,cmd[1][31:16]}-{1'b0,cmd[1][15:0]})<={1'b0,cmd[3][15:0]} &&
        (!cmd[2][2] || (cmd[13]>=32'h3fd40000 && cmd[13][2:0]==0 &&
           cmd[14][3:0]>=3 && cmd[14][3:0]<=10 && cmd[14][7:4]>=3 && cmd[14][7:4]<=10 &&
-          ({1'b0,cmd[13]}+(33'd4<<({1'b0,cmd[14][3:0]}+{1'b0,cmd[14][7:4]})))<=33'h03fe00000)))begin
+          ({1'b0,cmd[13]}+(33'd4<<({1'b0,cmd[14][3:0]}+{1'b0,cmd[14][7:4]})))<={1'b0,texture_end})))begin
       x<=cmd[1][8:0];last<=cmd[1][24:16];span_width<=cmd[3][9:0];dx<=cmd[3][24:16];
       w0<=cmd[4][15:0];w1<=cmd[4][31:16];
       tex_size_s<=16'd1<<cmd[14][3:0];tex_mask_s<=(16'd1<<cmd[14][3:0])-16'd1;
@@ -298,8 +347,8 @@ module nds_fpga3d #(
      end else begin status<=1;state<=COMPLETE;end
     end
     CLEAR_LINE:if(x==255)state<=NEXT_COMMAND;else x<=x+1'b1;
-    TEX_READ:if(!busy)state<=TEX_WAIT;
-    TEX_WAIT:if(dout_ready)state<=PIPE_RUN;
+    TEX_READ:if(!busy)begin tex_beat<=0;state<=TEX_WAIT;end
+    TEX_WAIT:if(dout_ready)begin if(tex_beat==7)state<=PIPE_RUN;else tex_beat<=tex_beat+1'b1;end
     PIPE_RUN:begin
      if(p_bad_alpha)begin status<=3;state<=COMPLETE;end
      else if(p_miss)begin tex_addr<=p_addr[12];state<=TEX_READ;end
@@ -328,10 +377,7 @@ module nds_fpga3d #(
      if(flush_x==254)begin flush_inflight<=0;line_open<=0;line_y<=line_y+1'b1;state<=NEXT_COMMAND;end
      else flush_x<=flush_x+2;
     end
-    NEXT_COMMAND:if(index+1==count)begin
-     if(line_open || line_y!=192)status<=1;
-     state<=COMPLETE;
-    end else begin index<=index+1'b1;state<=FETCH;end
+    NEXT_COMMAND:begin index<=index+1'b1;cached_commands<=cached_commands-1'b1;cache_slot<=cache_slot+1'b1;state<=AVAILABLE;end
     COMPLETE:if(!busy)begin poll<=0;state<=POLL_DELAY;end
     default:state<=INIT;
    endcase

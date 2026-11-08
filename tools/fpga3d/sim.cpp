@@ -20,7 +20,10 @@ struct Sim {
  Dut v;
  std::vector<uint32_t> mem=std::vector<uint32_t>(0x400000/4);
  std::mt19937 rng{43817};uint64_t cycles=0;
+ uint64_t textureReads=0,textureBeats=0;
+ unsigned readLatency=std::getenv("READ_LATENCY")?std::atoi(std::getenv("READ_LATENCY")):0;
  unsigned remaining=0,readat=0,delay=0,writeRemaining=0,writeAt=0,writeBase=0,writeBurst=0;bool stalls=true;
+ uint32_t guardedBase=0,guardedCount=0;
  bool held=false;uint64_t heldData=0;unsigned heldAddr=0,heldBurst=0,heldBe=0;bool heldRead=false,heldWrite=false;
  uint32_t& word(uint32_t a){require(a>=0x3fc00000 && a<0x40000000,"address out of graphics window");return mem.at((a-0x3fc00000)/4);}
  void tick(){
@@ -46,7 +49,7 @@ struct Sim {
   if(!v.busy && (v.rd || v.wr)) {
    require(!(v.rd&&v.wr),"read/write overlap");
    uint32_t a=v.addr*8;
-   if(v.rd){require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?rng()%7:0;}
+   if(v.rd){if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}if(guardedBase && a>=guardedBase && a<(guardedBase==Commands?Commands+MaxCommands*64:0x3fe00000))require(uint64_t(a)+v.burst*8<=uint64_t(guardedBase)+guardedCount*64,"read beyond published immutable command prefix");require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?readLatency+rng()%7:0;}
    else {
     if(!writeRemaining){require(v.burst>0,"zero write burst");writeRemaining=v.burst;writeAt=a;writeBase=a;writeBurst=v.burst;}
     else require(a==writeBase && v.burst==writeBurst,"physical write burst command changed");
@@ -70,7 +73,7 @@ struct Sim {
  uint64_t run(const std::vector<Command>& cmds,unsigned sequence=1,unsigned expectStatus=0,unsigned sess=17){
   require(cmds.size()<=MaxCommands,"command overflow");
   for(size_t i=0;i<cmds.size();i++){auto packed=pack(cmds[i]);std::memcpy(&word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
-  word(Mailbox+8)=cmds.size();word(Mailbox+12)=sess;word(Mailbox)=Magic;word(Mailbox+4)=sequence;
+  word(Mailbox+60)=Commands;word(Mailbox+8)=0x80000000u|cmds.size();word(Mailbox+12)=sess;word(Mailbox)=Magic;word(Mailbox+4)=sequence;
   uint64_t start=cycles;
 #ifdef SHARED_FABRIC
   constexpr uint64_t cycleLimit=60000000; // Continuous control writes plus three other peers.
@@ -82,6 +85,29 @@ struct Sim {
   if(word(Mailbox+20)!=expectStatus)throw std::runtime_error("status "+std::to_string(word(Mailbox+20))+" expected "+std::to_string(expectStatus));
   return cycles-start;
  }
+ uint64_t runStreaming(const std::vector<Command>& cmds,unsigned sequence,unsigned textureBytes=0,unsigned expectStatus=0,bool abort=false){
+  uint32_t base=(Textures+textureBytes+63)&~63u;
+  require(base+cmds.size()*64<=0x3fe00000u,"stream arena capacity");
+  guardedBase=base;guardedCount=0;
+  for(unsigned i=0;i<cmds.size()*16;i++)word(base+4*i)=0xffffffff;
+  word(Mailbox+60)=base;word(Mailbox+8)=0;word(Mailbox+12)=17;word(Mailbox)=Magic;word(Mailbox+4)=sequence;
+  uint64_t start=cycles;
+  for(int i=0;i<5000;i++){tick();require(word(Mailbox+16)!=sequence,"empty open producer completed early");}
+  for(unsigned n=0;n<cmds.size();){
+   unsigned end=std::min<unsigned>(cmds.size(),n+1+rng()%29);
+   for(unsigned i=n;i<end;i++){auto packed=pack(cmds[i]);std::memcpy(&word(base)+i*16,packed.data(),sizeof(packed));}
+   guardedCount=end;word(Mailbox+8)=end;n=end;
+   for(unsigned i=0;i<1000+rng()%2000;i++){tick();require(word(Mailbox+16)!=sequence,"open producer completed early");}
+   if(abort && n>=30)break;
+  }
+  for(int i=0;i<5000;i++){tick();require(word(Mailbox+16)!=sequence,"open final prefix completed early");}
+  word(Mailbox+8)=0x80000000u|guardedCount;
+  while(word(Mailbox+16)!=sequence && cycles-start<60000000)tick();
+  require(word(Mailbox+16)==sequence,"stream completion timeout");
+  require(word(Mailbox+20)==expectStatus,"stream completion status");
+  guardedBase=0;return cycles-start;
+ }
+
 };
 static void oracle(const Span& s,const std::vector<uint32_t>& texture,std::array<uint32_t,256>& c,std::array<uint32_t,256>& z,std::array<bool,256>& back){
  for(int x=s.first;x<s.end;x++){
@@ -107,7 +133,7 @@ template<class T>std::vector<T> load(const std::string& path) {
  std::vector<T> v(size_t(bytes)/sizeof(T));f.seekg(0);f.read(reinterpret_cast<char*>(v.data()),bytes);require(bool(f),"fixture read");return v;
 }
 int main(int argc,char** argv){try{
- if(argc==3){
+ if(argc>=3){
   Sim sim;sim.reset();
   for(int j=0;j<std::atoi(argv[2]);j++){
    auto prefix=std::string(argv[1])+"/"+std::to_string(j);
@@ -115,15 +141,45 @@ int main(int argc,char** argv){try{
    auto textures=load<uint32_t>(prefix+".textures");auto expected=load<uint32_t>(prefix+".expected");
    require(textures.size()*4<=TextureBytes && expected.size()==256*192,"fixture bounds");
    std::memcpy(&sim.word(Textures),textures.data(),textures.size()*4);
-   auto cycles=sim.run(commands,j+1);
+   auto reads=sim.textureReads,beats=sim.textureBeats;auto cycles=argc==4?sim.runStreaming(commands,j+1,textures.size()*4):sim.run(commands,j+1);
    for(size_t k=0;k<expected.size();k++)if(sim.word(Output+4*k)!=expected[k]){
     std::cerr<<"fixture="<<j<<" pixel="<<k<<" expected="<<std::hex<<expected[k]<<" got="<<sim.word(Output+4*k)<<std::dec<<"\n";
     throw std::runtime_error("production renderer mismatch");
    }
-   std::cout<<"PRODUCTION_PASS fixture="<<j<<" cycles="<<cycles<<"\n";
+   std::cout<<"PRODUCTION_PASS fixture="<<j<<" cycles="<<cycles<<" texture_reads="<<(sim.textureReads-reads)<<" texture_beats="<<(sim.textureBeats-beats)<<"\n";
   }return 0;
  }
 
+
+ // Incremental producer boundaries, unpublished poison, late finalization,
+ // intentional cancellation, metadata regression and stale epoch.
+ {
+  Sim p;p.reset();std::vector<Command> c;
+  for(unsigned y=0;y<192;y++){c.push_back(clear(y,0x1f010203,0xffffff));c.push_back(flush(y));}
+  for(unsigned seq=101;seq<104;seq++){
+   p.runStreaming(c,seq);
+   for(unsigned i=0;i<49152;i++)require(p.word(Output+4*i)==0x1f010203,"streamed frame output");
+  }
+  p.runStreaming(c,104,0,1,true);
+  for(unsigned mode=0;mode<4;mode++){
+   unsigned seq=105+mode;auto packed=pack(clear(0,0,0xffffff));
+   std::memcpy(&p.word(Commands),packed.data(),sizeof(packed));
+   p.word(Mailbox+60)=Commands;p.word(Mailbox+8)=1;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;p.word(Mailbox+4)=seq;
+   for(int i=0;i<5000;i++)p.tick();require(p.word(Mailbox+16)!=seq,"producer did not wait");
+   if(mode==0)p.word(Mailbox+8)=0; // Prefix cannot shrink.
+   if(mode==1)p.word(Mailbox+8)=8129; // Cannot exceed physical arena.
+   if(mode==2)p.word(Mailbox+12)=16; // Epoch cannot change in flight.
+   if(mode==3)p.word(Mailbox+8)=0x80000001; // Closed incomplete scanline.
+   unsigned limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
+   require(limit<10000 && p.word(Mailbox+20)==(mode==2?2:1),"bad producer metadata accepted");
+  }
+  for(uint32_t base:{0x3fc00000u,0x3fd40004u,0x3fe00000u,0x40000000u}){
+   p.word(Mailbox+60)=base;p.word(Mailbox+8)=0x80000000;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;
+   unsigned seq=++p.word(Mailbox+4),limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
+   require(limit<10000 && p.word(Mailbox+20)==1,"bad command base accepted");
+  }
+  std::cout<<"PASS streamed immutable prefixes, unpublished-read guard, delayed finalization, cancellation, metadata and base bounds\n";
+ }
  Sim sim;sim.reset();std::mt19937 rng(91973);unsigned seq=0;uint64_t pixels=0;
  for(int trial=0;trial<18;trial++){
   std::vector<Command> commands;std::vector<uint32_t> expected;
@@ -212,7 +268,7 @@ int main(int argc,char** argv){try{
  // and prove that partially filled pipeline/cache state cannot leak forward.
  for(unsigned cut:{256u,4096u,32768u}){
   for(size_t i=0;i<cacheCommands.size();i++){auto packed=pack(cacheCommands[i]);std::memcpy(&sim.word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
-  sim.word(Mailbox+8)=cacheCommands.size();sim.word(Mailbox+12)=17;
+  sim.word(Mailbox+60)=Commands;sim.word(Mailbox+8)=0x80000000u|cacheCommands.size();sim.word(Mailbox+12)=17;
   sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
   for(unsigned k=0;k<cut;k++)sim.tick();
   require(sim.word(Mailbox+16)!=interrupted,"reset cut did not interrupt a frame");
@@ -221,11 +277,30 @@ int main(int argc,char** argv){try{
   require(sim.word(Mailbox+16)!=interrupted,"interrupted frame completed after reset");
   checkCache(0x1f06090c,0x1f3a2b1c);
  }
+
+ // A long descriptor read remains owned by the fabric after enable loss.
+ // Drain it before a new epoch and reject all old output publication.
+ for(unsigned cut:{1u,32u,63u,127u}){
+  for(size_t i=0;i<cacheCommands.size();i++){auto packed=pack(cacheCommands[i]);std::memcpy(&sim.word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
+  sim.word(Mailbox+60)=Commands;sim.word(Mailbox+8)=0x80000000u|cacheCommands.size();sim.word(Mailbox+12)=17;
+  sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
+  unsigned guard=0;
+  while(!(sim.remaining && sim.readat>=Commands && sim.readat<Commands+MaxCommands*64 && sim.remaining<=128-cut) && guard++<2000000)sim.tick();
+  require(guard<2000000,"did not reach long descriptor read");
+  sim.v.enable=0;guard=0;
+  while(sim.remaining && guard++<10000){sim.tick();require(!(sim.v.wr && sim.v.addr*8>=Output && sim.v.addr*8<Output+49152*4),"disabled reader wrote output");}
+  require(guard<10000,"disabled descriptor read did not drain");
+  for(unsigned k=0;k<1000;k++)sim.tick();
+  require(sim.word(Mailbox+16)!=interrupted,"disabled descriptor frame completed");
+  sim.v.enable=1;for(unsigned k=0;k<1000;k++)sim.tick();
+  checkCache(0x1f021426,0x1f352719);
+ }
+ std::cout<<"PASS long descriptor read ownership across enable loss and 196608 fresh-frame pixels\n";
  // Dropping the renderer enable must drain an already accepted physical
  // burst even though no completion for that interrupted frame is published.
  for(unsigned cut:{1u,2u,63u,127u}){
   for(size_t i=0;i<cacheCommands.size();i++){auto packed=pack(cacheCommands[i]);std::memcpy(&sim.word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
-  sim.word(Mailbox+8)=cacheCommands.size();sim.word(Mailbox+12)=17;
+  sim.word(Mailbox+60)=Commands;sim.word(Mailbox+8)=0x80000000u|cacheCommands.size();sim.word(Mailbox+12)=17;
   sim.word(Mailbox)=Magic;const unsigned interrupted=++seq;sim.word(Mailbox+4)=interrupted;
   unsigned guard=0;
   while(!(sim.writeRemaining && sim.writeBase>=Output && sim.writeBase<Output+256*192*4 &&

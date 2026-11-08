@@ -10,6 +10,8 @@ module nds_fpga3d_pixels(
  input logic [8:0] left_end,right_begin,input logic [3:0] y_edge,
  input logic antialias,blend_enable,translucent_depth_write,
  input logic pixel_valid,resolve_valid,input logic [1:0] resolve_mode,
+ input logic precheck_valid,input logic [7:0] precheck_x,input logic [31:0] precheck_depth,
+ output wire precheck_pass,
  input logic [31:0] fog_color,fog_offset,input logic [3:0] fog_shift,
  input logic [271:0] fog_table,input logic fog_alpha_only,
  input logic [7:0] pixel_x,
@@ -22,7 +24,14 @@ module nds_fpga3d_pixels(
  (* ramstyle="M10K" *) logic [31:0] color1[0:255];
  (* ramstyle="M10K" *) logic [31:0] attr0[0:255];
  (* ramstyle="M10K" *) logic [31:0] depth0[0:255],depth1[0:255],attr1[0:255];
- logic [31:0] c0e,c0o,c1,a0,d0,d1,a1;
+ logic [31:0] c0e,c0o,c1;
+ logic [31:0] a0_mem,a1_mem,d0_mem,d1_mem,precheck_z;
+ logic [31:0] a0_delay[0:1],a1_delay[0:1],d0_delay[0:1],d1_delay[0:1];
+ wire [31:0] a0=resolve_q==0?a0_delay[1]:a0_mem;
+ wire [31:0] a1=resolve_q==0?a1_delay[1]:a1_mem;
+ wire [31:0] d0=resolve_q==0?d0_delay[1]:d0_mem;
+ wire [31:0] d1=resolve_q==0?d1_delay[1]:d1_mem;
+ wire [7:0] depth_read_x=resolve_valid?pixel_x:precheck_x;
  logic [7:0] x_q;
  logic [31:0] color_q,depth_q;
  logic [1:0] resolve_q;
@@ -52,6 +61,8 @@ module nds_fpga3d_pixels(
    end else depth_pass=z<prior || (flags[3] && attr[4] && !attr[22] && z==prior);
   end
  endfunction
+ assign precheck_pass=depth_pass(precheck_z,d0_mem,a0_mem) ||
+       (a0_mem[3:0]!=0 && depth_pass(precheck_z,d1_mem,a1_mem));
  function automatic [31:0] translucent_attr(input logic [31:0] prior);
   logic [31:0] value;
   begin
@@ -183,8 +194,16 @@ module nds_fpga3d_pixels(
   if(flush_en || (ce && (pixel_valid || resolve_valid)))begin
    c0e<=color0_even[read_pair];c0o<=color0_odd[read_pair];
    c1<=color1[pixel_x];
-   a0<=attr0[pixel_x];
-   d0<=depth0[pixel_x];d1<=depth1[pixel_x];a1<=attr1[pixel_x];
+
+  end
+  if(ce && (precheck_valid || resolve_valid))begin
+   a0_mem<=attr0[depth_read_x];a1_mem<=attr1[depth_read_x];
+   d0_mem<=depth0[depth_read_x];d1_mem<=depth1[depth_read_x];
+   precheck_z<=precheck_depth;
+  end
+  if(ce)begin
+   a0_delay[0]<=a0_mem;a1_delay[0]<=a1_mem;d0_delay[0]<=d0_mem;d1_delay[0]<=d1_mem;
+   a0_delay[1]<=a0_delay[0];a1_delay[1]<=a1_delay[0];d0_delay[1]<=d0_delay[0];d1_delay[1]<=d1_delay[0];
   end
   if(clear_we)begin
    if(clear_x[0])begin

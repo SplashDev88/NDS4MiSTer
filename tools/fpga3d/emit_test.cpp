@@ -88,7 +88,13 @@ int main(int argc,char** argv)try{
   std::fill(control.begin(),control.end(),0);control[0]=0x31443348;control[2]=17;
   control[(fpga3d::Mailbox-0x3fc00000+24)/4]=fpga3d::Magic;
   control[(fpga3d::Mailbox-0x3fc00000+28)/4]=17;
-  fpga3d::poisonedSession=0;fpga3d::bind(control.data(),output.data(),true);
+  fpga3d::poisonedSession=0;
+#ifdef FPGA3D_EARLY_TIMEOUT_TEST
+  fpga3d::bind(control.data(),output.data(),true,true);
+  soft.FpgaFrame.deadlineMs=0;
+#else
+  fpga3d::bind(control.data(),output.data(),true);
+#endif
   render(*test);fpga3d::bind(nullptr,nullptr,false);
   std::vector<uint32_t> expected;
   for(unsigned y=0;y<192;y++){
@@ -96,7 +102,12 @@ int main(int argc,char** argv)try{
    require(!std::memcmp(a,b,1024),"timeout fallback changed software pixels");expected.insert(expected.end(),a,a+256);
   }
   if(!supported){require(soft.FpgaFrame.commands.empty(),"unsupported frame submitted");require(soft.FpgaFrame.textures.empty(),"unsupported frame copied textures before feature preflight");std::printf("FALLBACK_PASS scenario=%u\n",scenario);fallbacks++;continue;}
+#ifdef FPGA3D_EARLY_TIMEOUT_TEST
+  require(soft.FpgaFrame.transportError && !soft.FpgaFrame.active && fpga3d::poisonedSession==17,
+          "first-row producer timeout was not quarantined");
+#else
   require(soft.FpgaFrame.valid && soft.FpgaFrame.commands.size()>384,"fixture not admitted");
+#endif
   auto prefix=std::string(argv[1])+"/"+std::to_string(captures);
   save(prefix+".commands",soft.FpgaFrame.commands);save(prefix+".textures",soft.FpgaFrame.textures);save(prefix+".expected",expected);
   if(captures)manifest<<",\n";
@@ -104,5 +115,10 @@ int main(int argc,char** argv)try{
   std::printf("EMIT_PASS scenario=%u commands=%zu\n",scenario,soft.FpgaFrame.commands.size());captures++;
  }
  manifest<<"\n]\n";
- std::printf("PASS %u production geometry/raster fixtures and exact timeout fallback; %u unsupported cases\n",captures,fallbacks);return 0;
+#ifdef FPGA3D_EARLY_TIMEOUT_TEST
+ std::printf("PASS %u first-row producer timeouts with exact software fallback; %u unsupported cases\n",captures,fallbacks);
+#else
+ std::printf("PASS %u production geometry/raster fixtures and exact timeout fallback; %u unsupported cases\n",captures,fallbacks);
+#endif
+ return 0;
 }catch(const std::exception& e){std::fprintf(stderr,"FAIL scenario=%u %s\n",currentScenario,e.what());return 1;}
