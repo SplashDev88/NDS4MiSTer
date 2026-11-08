@@ -261,3 +261,38 @@ full write-combined command budget fit together. Larger scenes keep lossless
 indexed admission. This avoids palette loads without reducing supported
 features or expanding the physical memory contract. Its performance requires
 a new measured comparison; it uses the already-fitted F3D6 core.
+
+## C32–C35 measured admission policy
+
+C32's raw preference raised the Twinleaf Town comparison to 23.97 completed
+publications/s (+15.3% versus C24), with matching FPGA completions. Indexed
+admission also moved Dawn of Sorrow's first save room onto the FPGA, but its
+18.15 publications/s regressed from the 48.34 native baseline.
+
+C33 uses spare texture space for raw bindings, prioritizing scanline reuse
+per added byte. C34 caches lossless encodings only after comparing every
+current source byte against a retained snapshot, with a 4 MiB data limit and
+512-entry limit. Recycled pointers and palette animation cannot reuse stale
+encodings. Fresh physical texture bindings and ownership fences are retained.
+
+C34 also preserves the native cached shader's unsigned color packing for
+extrapolated narrow spans, including overflow between packed components.
+Thirty-two new production scenes matched actual RTL and physical FPGA output
+for 1,572,864 pixels; the 429 earlier fixture sets remain byte-identical.
+This removes an observed Mario Kart span rejection without clamping colors.
+
+These changes are functionally correct but do not make every hardware path
+faster: C34 measured 26.47 publications/s in Dawn's save room and 19.18 in
+Mario Kart's stationary 50cc Figure-8 race, versus C24's 48.34 and 23.00.
+Both measured scenes ran essentially entirely on FPGA. Texture packing,
+Device-memory command uploads, and FPGA texture traffic remain substantial.
+
+C35 therefore defaults to native rendering when unique decoded texture data
+exceeds 266,240 bytes: the space left after reserving all 8,128 descriptors
+in the existing 768 KiB write-combined arena. Rejection occurs before texture
+copying or hardware ownership. It does not depend on a game name. Smaller
+supported scenes retain the FPGA path. The service-only diagnostic setting
+`NDS4MISTER_FPGA3D_ALL_SUPPORTED=1` disables this performance guard for further
+qualification; normal launchers do not enable it. The encoder, indexed FPGA
+support, and exact software fallback remain available. C35 live measurements
+are required before release; full-speed commercial 3D remains unfinished.

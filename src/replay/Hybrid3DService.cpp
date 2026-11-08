@@ -11317,6 +11317,8 @@ try {
             const char* fpga_profile=std::getenv("NDS4MISTER_FPGA3D_PROFILE");
             fpga3d::profileEnabled=fpga_profile && std::strcmp(fpga_profile,"1")==0;
             fpga3d::adaptiveAdmission=true;
+            const char* unrestricted_fpga=std::getenv("NDS4MISTER_FPGA3D_ALL_SUPPORTED");
+            fpga3d::textureTrafficGuard=!(unrestricted_fpga && std::strcmp(unrestricted_fpga,"1")==0);
             fpga3d::bind(mapping.data(),mapping.publication_data(),
                 matched_display && fpga3d_requested && std::strcmp(fpga3d_requested,"1")==0,
                 mapping.write_combined());

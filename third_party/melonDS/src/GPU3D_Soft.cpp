@@ -4652,6 +4652,8 @@ bool SoftRenderer3D::TryFpgaFrame()
             if(!entry.second){textureUses[entry.first->second].rows+=rows;continue;}
             textureUses.push_back({ps.TexturePixels,count,rows});
             bytes+=count*4;
+            if(fpga3d::textureTrafficGuard && bytes>rawBudget)
+                return trace.finish(Outcome::TextureTraffic);
         }
         FpgaFrame.allowIndexed=bytes>rawBudget;
     }

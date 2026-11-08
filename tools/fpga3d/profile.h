@@ -12,14 +12,14 @@ enum class Outcome : unsigned {
  Accepted, NotFullFrame, Empty, Unavailable, EdgeMark, BitmapClear,
  Cooldown, LightScene, Wireframe, ShadowMode, Toon, TextureMissing,
  TextureCapacity, TextureAlpha, TextureState, Span, CommandCapacity,
- Transport, SubmitFailed, Count
+ Transport, SubmitFailed, TextureTraffic, Count
 };
 enum class Stage : unsigned { Preflight, Textures, Emit, Submit, Count };
 inline constexpr const char* outcomeNames[]={
  "accepted","not_full_frame","empty","unavailable","edge_mark","bitmap_clear",
  "cooldown","light_scene","wireframe","shadow_mode","toon","texture_missing",
  "texture_capacity","texture_alpha","texture_state","span","command_capacity",
- "transport","submit_failed"
+ "transport","submit_failed","texture_traffic"
 };
 struct Profile {
  static constexpr unsigned Reasons=unsigned(Outcome::Count),Stages=unsigned(Stage::Count);

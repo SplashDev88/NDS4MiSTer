@@ -15,7 +15,7 @@ int main() try {
  for(unsigned i=0;i<60;i++)require(policy.defer(),"early admission retry");
  require(!policy.defer(),"unbounded admission backoff");
  policy.unsupported();policy.reset();require(!policy.defer(),"admission reset");
- for(unsigned scenario=0;scenario<16;scenario++){
+ for(unsigned scenario=0;scenario<32;scenario++){
   fpga3d::bind(nullptr,nullptr,false);fpga3d::adaptiveAdmission=false;
   auto ref=machine(true),test=machine(true);
   unsigned fixture=16384u|8192u|64u|((scenario&1)?16u:0)|((scenario&2)?8u:0)|(scenario&3);
@@ -25,6 +25,12 @@ int main() try {
    n->GPU.GPU3D.RenderDispCnt=1|8|((scenario&4)?16:0)|((scenario&8)?128:0);
    for(unsigned i=0;i<512;i++)get(*n).StencilBuffer[i]=(i+scenario)&3;
    get(*n).PrevIsShadowMask=(scenario&1)!=0;
+   if(scenario>=16)for(unsigned i=0;i<n->GPU.GPU3D.RenderNumPolygons;i++){
+    auto& p=*n->GPU.GPU3D.RenderPolygonRAM[i];
+    p.TexParam=(7u<<26)|(6u<<20)|(6u<<23);
+    p.Attr=(p.Attr&~((31u<<16)|48u))|(31u<<16);
+    p.IsShadow=p.IsShadowMask=false;
+   }
   }
   render(*ref);
   std::vector<uint32_t> control(0x100000/4),output(0x300000/4,0xa1b2c3d4);
@@ -32,9 +38,12 @@ int main() try {
   control[(fpga3d::Mailbox-0x3fc00000+24)/4]=fpga3d::Magic;
   control[(fpga3d::Mailbox-0x3fc00000+28)/4]=17;
   const auto untouched=control;auto& soft=get(*test);soft.FullFrameCompletion=true;
-  soft.FpgaAdmission.cooldown=1;fpga3d::poisonedSession=0;
+  soft.FpgaAdmission.cooldown=scenario<16?1:0;fpga3d::poisonedSession=0;
+  fpga3d::textureTrafficGuard=scenario>=16;fpga3d::profileEnabled=true;
   fpga3d::adaptiveAdmission=true;fpga3d::bind(control.data(),output.data(),true,true);
   render(*test);fpga3d::bind(nullptr,nullptr,false);fpga3d::adaptiveAdmission=false;
+  fpga3d::profileEnabled=false;fpga3d::textureTrafficGuard=false;
+  if(scenario>=16)require(soft.FpgaProfile.counts[unsigned(fpga3d::Outcome::TextureTraffic)]==1,"large-texture traffic policy did not select native rendering");
   require(control==untouched && std::all_of(output.begin(),output.end(),[](auto x){return x==0xa1b2c3d4;}),"deferred frame touched shared memory");
   require(soft.FpgaAdmission.cooldown==0 && soft.FpgaFrame.commands.empty() && !soft.FpgaFrame.active,"deferred frame acquired ownership");
   for(unsigned y=0;y<192;y++)require(!std::memcmp(ref->GetRenderer().Get3DScanline(y),test->GetRenderer().Get3DScanline(y),1024),"admission fallback pixels");
@@ -73,6 +82,6 @@ int main() try {
   fpga3d::bind(nullptr,nullptr,false);fpga3d::adaptiveAdmission=false;
   puts("PASS oversized texture admission: bounded retries and untouched mailbox/arenas");
  }
- puts("PASS adaptive admission: 60-frame bounded retry, reset, work boundaries, 786432 exact native fallback pixels and untouched mailbox/arenas");
+ puts("PASS adaptive admission: 60-frame bounded retry, reset, work and texture-traffic boundaries, 1572864 exact native fallback pixels and untouched mailbox/arenas");
  return 0;
 }catch(const std::exception& e){std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}
