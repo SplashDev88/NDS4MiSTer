@@ -19,11 +19,11 @@ static unsigned currentScenario=0;
 int main(int argc,char** argv)try{
  require(argc==2 || argc==3,"output directory and optional first scenario required");std::filesystem::create_directories(argv[1]);
  const unsigned firstScenario=argc==3?std::stoul(argv[2]):0;
- require(firstScenario<432,"invalid first scenario");
+ require(firstScenario<464,"invalid first scenario");
  std::vector<uint32_t> control(0x100000/4),output(0x300000/4);
  unsigned captures=0,fallbacks=0;
  std::ofstream manifest(std::string(argv[1])+"/scenarios.json");manifest<<"[\n";
- for(unsigned scenario=firstScenario;scenario<432;scenario++){
+ for(unsigned scenario=firstScenario;scenario<464;scenario++){
   currentScenario=scenario;fpga3d::bind(nullptr,nullptr,false);
   auto ref=machine(true),test=machine(true);
   unsigned pattern=scenario<48?scenario:scenario-48;
@@ -145,6 +145,11 @@ int main(int argc,char** argv)try{
       p->FinalW[v]=49267-side*264;
       p->FinalZ[v]=0x100000+((scenario&2)?int(v)*4096:0);
       for(unsigned c=0;c<3;c++)p->Vertices[v]->FinalColor[c]=63<<3;
+      if(scenario>=432){
+       p->Vertices[v]->FinalColor[0]=side?504:0;
+       p->Vertices[v]->FinalColor[1]=side?0:504;
+       p->Vertices[v]->FinalColor[2]=side?400:80;
+      }
      }
      p->XTop=p->Vertices[p->VTop]->FinalPosition[0];p->XBottom=p->Vertices[p->VBottom]->FinalPosition[0];
     }
@@ -186,6 +191,8 @@ int main(int argc,char** argv)try{
   if(scenario>=400 && (scenario&7)==3)
    require(std::any_of(soft.FpgaFrame.commands.begin(),soft.FpgaFrame.commands.end(),
        [](const auto& c){return c[0]==2 && (c[31]&(1u<<13));}),"outlier fixture missed literal pixel path");
+  if(scenario>=432 && (scenario&7)==3)
+   require(soft.FpgaFrame.canonicalizedColors>0,"outlier fixture missed cached-color overflow");
 #endif
   auto prefix=std::string(argv[1])+"/"+std::to_string(captures);
   save(prefix+".commands",soft.FpgaFrame.commands);save(prefix+".textures",soft.FpgaFrame.textures);save(prefix+".expected",expected);

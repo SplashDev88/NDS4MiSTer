@@ -83,12 +83,35 @@ int main(){
   check(f.addTexture(data[0].data(),data[0].size()) && !(f.textureOffsets.at(data[0].data())&1));
   check(f.textures==data[0]);
   f.reset();check(f.allowIndexed);
+  const auto previousHits=f.indexedCacheHits;
   check(f.addTexture(data[0].data(),data[0].size()) && (f.textureOffsets.at(data[0].data())&1));
+  check(f.indexedCacheHits==previousHits+1);
+  // Recycled pointers and animated colors must never reuse a stale encoding.
+  f.reset();data[0][937]^=0x00000100;
+  check(f.addTexture(data[0].data(),data[0].size()) && f.indexedCacheHits==previousHits+1);
+  const auto changed=f.textureOffsets.at(data[0].data());
+  const auto changedBase=((changed&~1u)-Textures)/4;
+  for(unsigned i=0;i<data[0].size();i++)check((changed&1?
+   f.textures[changedBase+((f.textures[changedBase+256+i/4]>>(8*(i%4)))&255)]:
+   f.textures[changedBase+i])==data[0][i]);
   f.reset();for(unsigned i=0;i<data[0].size();i++)data[0][i]=0x1f000000|i;
   check(f.addTexture(data[0].data(),data[0].size()) && !(f.textureOffsets.at(data[0].data())&1));
   check(f.textures==data[0]);
   f.reset();data[0].back()=0xff000000;
   check(!f.addTexture(data[0].data(),data[0].size()) && f.textures.empty());
+ }
+ {
+  Frame f;std::vector<std::vector<uint32_t>> data(20,std::vector<uint32_t>(256*256));
+  for(unsigned t=0;t<data.size();t++){
+   std::fill(data[t].begin(),data[t].end(),0x1f000000u|t);f.reset();
+   check(f.addTexture(data[t].data(),data[t].size()));
+   check(f.indexedCacheBytes<=Frame::IndexedCacheBytes);
+  }
+  check(!f.indexedCache.count(data.front().data()));
+  const auto hits=f.indexedCacheHits;f.reset();
+  check(f.addTexture(data.back().data(),data.back().size()) && f.indexedCacheHits==hits+1);
+  f.reset();check(f.addTexture(data.front().data(),data.front().size()) && f.indexedCacheHits==hits+1);
+  check(f.textures.front()==data.front().front() && f.indexedCacheBytes<=Frame::IndexedCacheBytes);
  }
  std::vector<uint32_t> source(256*192),dest(258*192+16,guard),texture(8192),target(8200,guard);
  for(auto& w:source)w=rng();for(auto& w:texture)w=rng();

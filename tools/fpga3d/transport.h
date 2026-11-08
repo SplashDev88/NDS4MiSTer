@@ -76,6 +76,12 @@ inline void uploadCommand(volatile uint32_t* target,const Command& c,bool wc){
 }
 struct Frame {
  struct TextureUse {const uint32_t* pixels;size_t count;uint64_t rows;};
+ struct IndexedTexture {std::vector<uint32_t> source,encoded;uint64_t used=0;};
+ static constexpr size_t IndexedCacheBytes=4*1024*1024;
+ std::map<const uint32_t*,IndexedTexture> indexedCache;
+ size_t indexedCacheBytes=0;
+ uint64_t indexedCacheSerial=0,indexedCacheHits=0;
+ unsigned canonicalizedColors=0;
  std::vector<Command> commands;
  std::vector<PackedCommand> packedCommands;
  std::vector<uint32_t> textures;
@@ -94,6 +100,7 @@ struct Frame {
   if(active){poisonedSession=frameSession;++failedFrames;}
   failure=Outcome::SubmitFailed;commands.clear();packedCommands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
   published=0;commandCapacity=MaxCommands;uploadUs=waitUs=copyUs=0;allowIndexed=true;
+  canonicalizedColors=0;
  }
  size_t commandCount()const{return recyclePublished?published+packedCommands.size():commands.size();}
  void append(const Command& c){
@@ -116,9 +123,22 @@ struct Frame {
   // DS palette formats often contain at most 256 exact decoded RGBA values.
   // Store those without quantization: a 1 KiB palette followed by byte indices.
   // This keeps the fixed, non-overlapping DDR arena while admitting up to
-  // nearly four times the decoded texture data. Every frame is rebuilt from
-  // current pixels, so palette animation and recycled cache pointers are safe.
+  // nearly four times the decoded texture data. Every binding uses current
+  // pixels; cached encodings require a full source-content comparison below.
   if(allowIndexed && count>=2048 && count+1024<=TextureBytes){
+   auto cached=indexedCache.find(pixels);
+   // Pointer identity alone is insufficient: texture palettes animate and
+   // decoded-cache storage can be recycled. Compare every current source byte
+   // before reusing the lossless encoding; all DDR bindings are still fresh.
+   if(cached!=indexedCache.end() && cached->second.source.size()==count &&
+      !std::memcmp(cached->second.source.data(),pixels,count*4)){
+    const auto& encoded=cached->second.encoded;
+    const size_t aligned=(textures.size()+15)&~size_t(15);
+    if(aligned+encoded.size()>TextureBytes/4)return reject(Outcome::TextureCapacity);
+    textures.resize(aligned,0);textureOffsets[pixels]=(Textures+uint32_t(aligned*4))|1u;
+    textures.insert(textures.end(),encoded.begin(),encoded.end());
+    cached->second.used=++indexedCacheSerial;++indexedCacheHits;return true;
+   }
    std::array<uint32_t,256> palette{};
    std::array<uint16_t,1024> slots{};
    std::vector<uint32_t> indices(count/4,0);
@@ -139,7 +159,22 @@ struct Frame {
     textures.resize(aligned,0);
     textureOffsets[pixels]=(Textures+uint32_t(aligned*4))|1u;
     textures.insert(textures.end(),palette.begin(),palette.end());
-    textures.insert(textures.end(),indices.begin(),indices.end());return true;
+    textures.insert(textures.end(),indices.begin(),indices.end());
+    const size_t bytes=(count+palette.size()+indices.size())*4;
+    if(bytes<=IndexedCacheBytes){
+     if(cached!=indexedCache.end()){
+      indexedCacheBytes-=(cached->second.source.size()+cached->second.encoded.size())*4;
+      indexedCache.erase(cached);
+     }
+     while(!indexedCache.empty() && (indexedCacheBytes+bytes>IndexedCacheBytes || indexedCache.size()>=512)){
+      auto oldest=std::min_element(indexedCache.begin(),indexedCache.end(),[](const auto& a,const auto& b){return a.second.used<b.second.used;});
+      indexedCacheBytes-=(oldest->second.source.size()+oldest->second.encoded.size())*4;indexedCache.erase(oldest);
+     }
+     auto& entry=indexedCache[pixels];entry.source.assign(pixels,pixels+count);
+     entry.encoded.assign(textures.begin()+aligned,textures.end());entry.used=++indexedCacheSerial;
+     indexedCacheBytes+=bytes;
+    }
+    return true;
    }
   }
   if(count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return reject(Outcome::TextureCapacity);

@@ -2373,11 +2373,23 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                     {
                         exact.SetX(pixel);
                         std::array<int32_t,5> attributes;
+                        bool colorOutside=false;
                         for(unsigned k=0;k<5;k++){
                             const auto a=exact.Interpolate(value.left[k],value.right[k]);
-                            if(k<3 && (a<0 || a>511))
-                                throw std::invalid_argument("extrapolated vertex color");
+                            colorOutside|=k<3 && (a<0 || a>511);
                             attributes[k]=k<3?a:int16_t(a);
+                        }
+                        if(colorOutside){
+                            if(!rp->PixelState.CachedModulate)
+                                throw std::invalid_argument("extrapolated vertex color");
+                            // The native cached shader packs unsigned shifted
+                            // components with OR, then uses each byte's low
+                            // six bits. Preserve cross-component overflow too;
+                            // independently clamping or masking RGB is wrong.
+                            u32 packed; s16 unusedS,unusedT;
+                            NDS4MiSTerPackCachedSpanValues(attributes.data(),packed,unusedS,unusedT);
+                            for(unsigned k=0;k<3;k++)attributes[k]=((packed>>(8*k))&63u)<<3;
+                            ++FpgaFrame.canonicalizedColors;
                         }
                         FpgaFrame.append(fpga3d::literalPixel(value,pixel,
                             exact.InterpolateZ(value.z0,value.z1),attributes,pixel!=value.first));
