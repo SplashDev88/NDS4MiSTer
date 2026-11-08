@@ -31,7 +31,8 @@ int main(int argc,char** argv)try{
    std::cerr<<"MISMATCH fixture="<<j<<" pixel="<<i<<" expected="<<std::hex<<expected[i]<<" actual="<<result[i]<<"\n";
    return 2;
   }
-  std::cout<<"HARDWARE_PASS fixture="<<j<<" pixels="<<result.size()<<" total_us="<<us<<" fps="<<1000000.0/us<<std::endl;
+  std::cout<<"HARDWARE_PASS fixture="<<j<<" pixels="<<result.size()<<" total_us="<<us<<" fps="<<1000000.0/us
+           <<" upload_us="<<frame.uploadUs<<" wait_us="<<frame.waitUs<<" copy_us="<<frame.copyUs<<std::endl;
  }
  return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<std::endl;return 1;}

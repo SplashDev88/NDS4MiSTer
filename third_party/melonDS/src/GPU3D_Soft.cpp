@@ -4303,7 +4303,7 @@ bool SoftRenderer3D::TryFpgaFrame()
 {
     // Whole-frame admission occurs before any hardware submission. Software
     // handles all unsupported effects without approximating or dropping them.
-    if (!FullFrameCompletion || !fpga3d::available() ||
+    if (!FullFrameCompletion || !CurrentPolygonCount || !fpga3d::available() ||
         (GPU3D.RenderDispCnt & ((1u<<4)|(1u<<5)|(1u<<7)|(1u<<14)))) return false;
     FpgaFrame.reset();
     for(int i=0;i<CurrentPolygonCount;i++)

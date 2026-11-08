@@ -36,6 +36,7 @@ struct Frame {
  std::map<const uint32_t*,uint32_t> textureOffsets;
  bool valid=true;
  unsigned deadlineMs=100;
+ uint64_t uploadUs=0,waitUs=0,copyUs=0;
  void reset(){commands.clear();textures.clear();textureOffsets.clear();valid=true;}
  void append(const Command& c){if(commands.size()>=MaxCommands)valid=false;else commands.push_back(c);}
  bool addTexture(const uint32_t* pixels,size_t count){
@@ -48,6 +49,7 @@ struct Frame {
  bool submit(uint32_t* destination,size_t stride){
   if(!valid || commands.empty() || !available())return false;
   const uint32_t session=control[2];
+  const auto start=std::chrono::steady_clock::now();
   auto* mailbox=control+(Mailbox-0x3fc00000)/4;
   // Only the primary raster thread submits. A timeout poisons this session;
   // an old request from a previous epoch was discarded by hardware startup.
@@ -58,7 +60,8 @@ struct Frame {
   for(uint32_t w:textures)*tex++=w;
   mailbox[2]=commands.size();mailbox[3]=session;mailbox[0]=Magic;
   barrier();mailbox[1]=seq;barrier();
-  const auto deadline=std::chrono::steady_clock::now()+std::chrono::milliseconds(deadlineMs);
+  const auto uploaded=std::chrono::steady_clock::now();
+  const auto deadline=uploaded+std::chrono::milliseconds(deadlineMs);
   while(mailbox[4]!=seq){
    if(control[2]!=session || control[0]!=0x31443348 || std::chrono::steady_clock::now()>deadline){
     // Hardware may still own immutable command/texture data after timeout.
@@ -69,11 +72,22 @@ struct Frame {
   }
   barrier();
   if(mailbox[5] || control[2]!=session){++failedFrames;return false;}
+  const auto rendered=std::chrono::steady_clock::now();
   for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)destination[y*stride+x]=publication[y*256+x];
+  const auto copied=std::chrono::steady_clock::now();
+  uploadUs=std::chrono::duration_cast<std::chrono::microseconds>(uploaded-start).count();
+  waitUs=std::chrono::duration_cast<std::chrono::microseconds>(rendered-uploaded).count();
+  copyUs=std::chrono::duration_cast<std::chrono::microseconds>(copied-rendered).count();
   ++completedFrames;
+  // CPU-owned telemetry after the eight-word hardware mailbox. Commit the
+  // sequence last; readers also check the epoch before interpreting samples.
+  mailbox[8]=uploadUs;mailbox[9]=waitUs;mailbox[10]=copyUs;
+  mailbox[11]=uint32_t(completedFrames);mailbox[12]=uint32_t(failedFrames);mailbox[13]=session;
+  barrier();mailbox[14]=seq;
   if(completedFrames==1 || completedFrames%600==0)
-   std::fprintf(stderr,"FPGA3D completed=%llu failures=%llu commands=%zu texture_bytes=%zu\n",
-    (unsigned long long)completedFrames,(unsigned long long)failedFrames,commands.size(),textures.size()*4);
+   std::fprintf(stderr,"FPGA3D completed=%llu failures=%llu commands=%zu texture_bytes=%zu upload_us=%llu wait_us=%llu copy_us=%llu\n",
+    (unsigned long long)completedFrames,(unsigned long long)failedFrames,commands.size(),textures.size()*4,
+    (unsigned long long)uploadUs,(unsigned long long)waitUs,(unsigned long long)copyUs);
   return true;
  }
 };

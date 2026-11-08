@@ -15,22 +15,25 @@ module nds_fpga3d_shared # (parameter POLL_CYCLES=8)(
  fpga3d_peer #(.BEATS(4),.PAUSE(31)) cart(clk,reset,lr,lb,lo,lv);
  fpga3d_peer #(.BEATS(8),.PAUSE(59)) video(clk,reset,vr,vb,vo,vv);
  wire mr,mw,mb,mv;wire [7:0] mn,me;wire [28:0] ma;wire [63:0] mi,mo;
- wire e1,e2;
- nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b0101)) inner(
+ wire e1,e2,ma_accept,ca;
+ wire er,eb,ev;wire [63:0] eo;
+ fpga3d_peer #(.BEATS(16),.PAUSE(23)) events(clk,reset,er,eb,eo,ev);
+ nds_fpga3d_port_mux inner(
  .clk,.reset,
- .cpu_rd(cr),.cpu_we(1'b0),.cpu_burstcnt(8'd1),.cpu_addr(29'h07f80080),.cpu_din(64'd0),.cpu_be(8'hff),.cpu_busy(cb),.cpu_dout(co),.cpu_dout_ready(cv),.cpu_command_accepted(),
- .sound_rd(ar),.sound_we(aw),.sound_burstcnt(an),.sound_addr(aa),.sound_din(ai),.sound_be(ae),.sound_busy(ab),.sound_dout(ao),.sound_dout_ready(av),.sound_command_accepted(),
- .video_rd(1'b0),.video_we(1'b0),.video_burstcnt(8'd1),.video_addr(29'd0),.video_din(64'd0),.video_be(8'd0),.video_busy(),.video_dout(),.video_dout_ready(),.video_command_accepted(),
- .credit_rd(1'b0),.credit_we(1'b0),.credit_burstcnt(8'd1),.credit_addr(29'd0),.credit_din(64'd0),.credit_be(8'd0),.credit_busy(),.credit_dout(),.credit_dout_ready(),.credit_command_accepted(),
- .ddram_rd(mr),.ddram_we(mw),.ddram_burstcnt(mn),.ddram_addr(ma),.ddram_din(mi),.ddram_be(me),.ddram_busy(mb),.ddram_dout(mo),.ddram_dout_ready(mv),.epoch_quiescent(),.debug_state(),.protocol_error(e1));
- nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b1011),.VIDEO_PRIORITY_GRANT(1),.VIDEO_PRIORITY_FAIR_CREDIT(1)) outer(
+ .c_rd(cr),.c_wr(1'b0),.c_burst(8'd1),.c_addr(29'h07f80080),.c_din(64'd0),.c_be(8'hff),.c_busy(cb),.c_dout(co),.c_valid(cv),.c_accepted(ca),
+ .a_rd(ar),.a_wr(aw),.a_burst(an),.a_addr(aa),.a_din(ai),.a_be(ae),.a_busy(ab),.a_dout(ao),.a_valid(av),
+ .rd(mr),.wr(mw),.burst(mn),.addr(ma),.din(mi),.be(me),.busy(mb),.dout(mo),.valid(mv),.accepted(ma_accept),.protocol_error(e1));
+ nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b1111),.VIDEO_PRIORITY_GRANT(1),.VIDEO_PRIORITY_FAIR_CREDIT(1)) outer(
  .clk,.reset,
  .cpu_rd(lr),.cpu_we(1'b0),.cpu_burstcnt(8'd4),.cpu_addr(29'h07f80080),.cpu_din(64'd0),.cpu_be(8'hff),.cpu_busy(lb),.cpu_dout(lo),.cpu_dout_ready(lv),.cpu_command_accepted(),
  .video_rd(vr),.video_we(1'b0),.video_burstcnt(8'd8),.video_addr(29'h07f80080),.video_din(64'd0),.video_be(8'hff),.video_busy(vb),.video_dout(vo),.video_dout_ready(vv),.video_command_accepted(),
- .sound_rd(1'b0),.sound_we(1'b0),.sound_burstcnt(8'd1),.sound_addr(29'd0),.sound_din(64'd0),.sound_be(8'd0),.sound_busy(),.sound_dout(),.sound_dout_ready(),.sound_command_accepted(),
- .credit_rd(mr),.credit_we(mw),.credit_burstcnt(mn),.credit_addr(ma),.credit_din(mi),.credit_be(me),.credit_busy(mb),.credit_dout(mo),.credit_dout_ready(mv),.credit_command_accepted(),
+ .sound_rd(er),.sound_we(1'b0),.sound_burstcnt(8'd16),.sound_addr(29'h07f80080),.sound_din(64'd0),.sound_be(8'hff),.sound_busy(eb),.sound_dout(eo),.sound_dout_ready(ev),.sound_command_accepted(),
+ .credit_rd(mr),.credit_we(mw),.credit_burstcnt(mn),.credit_addr(ma),.credit_din(mi),.credit_be(me),.credit_busy(mb),.credit_dout(mo),.credit_dout_ready(mv),.credit_command_accepted(ma_accept),
  .ddram_rd(rd),.ddram_we(wr),.ddram_burstcnt(burst),.ddram_addr(addr),.ddram_din(din),.ddram_be(be),.ddram_busy(busy),.ddram_dout(dout),.ddram_dout_ready(dout_ready),.epoch_quiescent(),.debug_state(),.protocol_error(e2));
- always @(posedge clk)if(!reset && (e1 || e2))$fatal(1,"DDR protocol error");
+ always @(posedge clk)if(!reset)begin
+  if(e1 || e2)$fatal(1,"DDR protocol error");
+  if(ca && !ma_accept)$fatal(1,"control acceptance preceded physical acceptance");
+ end
 endmodule
 module fpga3d_peer #(parameter BEATS=1,PAUSE=40)(input clk,reset,output reg rd,input busy,input [63:0] dout,input valid);
  integer wait_cycles,remaining;

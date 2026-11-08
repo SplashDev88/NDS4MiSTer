@@ -1480,7 +1480,7 @@ always_ff @(posedge ddr_clk or posedge bridge_reset_ddr) begin
                 (h3d_packet_fault ?
                     (32'h00000400 |
                      {11'd0, h3d_packet_fault_reason, 16'd0}) : 32'd0) |
-                (h3d_fabric_protocol_error ? 32'h00000800 : 32'd0) |
+                ((h3d_fabric_protocol_error || f3d_mux_protocol_error) ? 32'h00000800 : 32'd0) |
                 // Bits 12..15/16..20 hold record/packet fault reasons;
                 // bit 21 reports readback faults, bits 22/23 identify
                 // console HBlank/frame queue overflow respectively.
@@ -2100,7 +2100,7 @@ ddram #(.CART_WIDE_BANK(1), .CH3_READ_BURST(H3D_READBACK_BURST)) island_ddram (
 
 `ifdef NDS_HYBRID_3D
 // FPGA3D shares the control client's port; scanout retains outer priority.
-wire f3d_rd,f3d_wr,f3d_busy,f3d_valid;
+wire f3d_rd,f3d_wr,f3d_busy,f3d_valid,f3d_mux_protocol_error;
 wire [7:0] f3d_burst,f3d_be;
 wire [28:0] f3d_addr;
 wire [63:0] f3d_din,f3d_dout;
@@ -2113,22 +2113,17 @@ nds_fpga3d fpga3d (
  .rd(f3d_rd),.wr(f3d_wr),.burst(f3d_burst),.addr(f3d_addr),.din(f3d_din),.be(f3d_be),
  .busy(f3d_busy),.dout(f3d_dout),.dout_ready(f3d_valid)
 );
-nds_ddram_arbiter_4client #(.CLIENT_ENABLE_MASK(4'b0101)) fpga3d_control_arbiter (
+nds_fpga3d_port_mux fpga3d_control_mux (
  .clk(ddr_clk),.reset(h3d_fabric_reset),
- .cpu_rd(h3d_control_read),.cpu_we(h3d_control_write),.cpu_burstcnt(h3d_control_burst),
- .cpu_addr(h3d_control_addr),.cpu_din(h3d_control_din),.cpu_be(h3d_control_be),
- .cpu_busy(h3d_control_busy),.cpu_dout(h3d_control_dout),.cpu_dout_ready(h3d_control_dout_ready),
- .cpu_command_accepted(h3d_control_command_accepted),
- .sound_rd(f3d_rd),.sound_we(f3d_wr),.sound_burstcnt(f3d_burst),.sound_addr(f3d_addr),
- .sound_din(f3d_din),.sound_be(f3d_be),.sound_busy(f3d_busy),.sound_dout(f3d_dout),
- .sound_dout_ready(f3d_valid),.sound_command_accepted(),
- .video_rd(1'b0),.video_we(1'b0),.video_burstcnt(8'd1),.video_addr(29'd0),.video_din(64'd0),.video_be(8'd0),
- .video_busy(),.video_dout(),.video_dout_ready(),.video_command_accepted(),
- .credit_rd(1'b0),.credit_we(1'b0),.credit_burstcnt(8'd1),.credit_addr(29'd0),.credit_din(64'd0),.credit_be(8'd0),
- .credit_busy(),.credit_dout(),.credit_dout_ready(),.credit_command_accepted(),
- .ddram_rd(ctl_mux_rd),.ddram_we(ctl_mux_wr),.ddram_burstcnt(ctl_mux_burst),.ddram_addr(ctl_mux_addr),
- .ddram_din(ctl_mux_din),.ddram_be(ctl_mux_be),.ddram_busy(ctl_mux_busy),.ddram_dout(ctl_mux_dout),
- .ddram_dout_ready(ctl_mux_valid),.epoch_quiescent(),.debug_state(),.protocol_error()
+ .c_rd(h3d_control_read),.c_wr(h3d_control_write),.c_burst(h3d_control_burst),
+ .c_addr(h3d_control_addr),.c_din(h3d_control_din),.c_be(h3d_control_be),
+ .c_busy(h3d_control_busy),.c_dout(h3d_control_dout),.c_valid(h3d_control_dout_ready),
+ .c_accepted(h3d_control_command_accepted),
+ .a_rd(f3d_rd),.a_wr(f3d_wr),.a_burst(f3d_burst),.a_addr(f3d_addr),
+ .a_din(f3d_din),.a_be(f3d_be),.a_busy(f3d_busy),.a_dout(f3d_dout),.a_valid(f3d_valid),
+ .rd(ctl_mux_rd),.wr(ctl_mux_wr),.burst(ctl_mux_burst),.addr(ctl_mux_addr),
+ .din(ctl_mux_din),.be(ctl_mux_be),.busy(ctl_mux_busy),.dout(ctl_mux_dout),
+ .valid(ctl_mux_valid),.accepted(ctl_mux_accepted),.protocol_error(f3d_mux_protocol_error)
 );
 
 nds_h3d_ddr_fabric h3d_ddr_fabric (
