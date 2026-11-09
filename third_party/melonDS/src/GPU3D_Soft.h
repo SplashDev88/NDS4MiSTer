@@ -1180,9 +1180,6 @@ public:
 
 private:
     SoftRenderer& Parent;
-    u32 DisabledEffectBits = 0;
-    u32 EffectiveDispCnt = 0;
-    bool DropShadows = false;
     bool PreserveUploadSnapshot = false;
     struct PaletteDiagnostic
     {
@@ -2556,5 +2553,11 @@ private:
     std::atomic<u32> ParallelRasterAdvancedScanlines {0};
     std::atomic<u64> ParallelRasterCompletionNs {0};
     NDS4MiSTerRasterBalanceController RasterBalance;
+
+    // Keep experimental controls after the existing arrays so their cache
+    // alignment and every pre-existing renderer member offset stay unchanged.
+    u32 DisabledEffectBits = 0;
+    u32 EffectiveDispCnt = 0;
+    bool DropShadows = false;
 };
 }
