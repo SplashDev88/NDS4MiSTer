@@ -177,6 +177,17 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
 {
     if(const char* v=std::getenv("NDS4MISTER_TEXTURE_HISTORY"))
         TextureHistoryEnabled=std::strcmp(v,"1")==0;
+    // Opt-in quality experiments affect only the software renderer. Keep the
+    // guest register and latched geometry state intact (including reuse checks).
+    const auto enabled = [](const char* name) {
+        const char* value = std::getenv(name);
+        return value && std::strcmp(value, "1") == 0;
+    };
+    DisabledEffectBits =
+        (enabled("NDS4MISTER_DISABLE_3D_AA") ? (1u << 4) : 0) |
+        (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
+        (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
+    DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
     Sema_ScanlineCount = Platform::Semaphore_Create();
@@ -281,6 +292,7 @@ void SoftRenderer3D::Reset()
     PrevIsShadowMask = false;
 
     SetupRenderThread();
+    EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
     RasterBalance.Reset();
@@ -354,6 +366,7 @@ void SoftRenderer3D::SetThreaded(bool threaded) noexcept
     {
         Threaded = threaded;
         SetupRenderThread();
+        EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
         EnableRenderThread();
     }
 }
@@ -671,7 +684,7 @@ u32 SoftRenderer3D::AlphaBlend(u32 srccolor, u32 dstcolor, u32 alpha) const noex
     u32 srcG = (srccolor >> 8) & 0x3F;
     u32 srcB = (srccolor >> 16) & 0x3F;
 
-    if (GPU3D.RenderDispCnt & (1<<3))
+    if (EffectiveDispCnt & (1<<3))
     {
         u32 dstR = dstcolor & 0x3F;
         u32 dstG = (dstcolor >> 8) & 0x3F;
@@ -1016,7 +1029,7 @@ void SoftRenderer3D::SetupPolygon(
     pixelState.PolyAlpha = static_cast<u8>((polygon->Attr >> 16) & 0x1F);
     pixelState.Alpha0 = (polygon->TexParam & (1<<29)) ? 0 : 31;
     pixelState.TextureEnabled =
-        (GPU3D.RenderDispCnt & (1<<0)) && textureFormat != 0;
+        (EffectiveDispCnt & (1<<0)) && textureFormat != 0;
     pixelState.TexturePixels = nullptr;
     if (pixelState.TextureEnabled && UseTextureCache)
     {
@@ -1048,7 +1061,7 @@ void SoftRenderer3D::SetupPolygon(
         }
     }
     pixelState.Highlight =
-        pixelState.BlendMode == 2 && (GPU3D.RenderDispCnt & (1<<1));
+        pixelState.BlendMode == 2 && (EffectiveDispCnt & (1<<1));
     pixelState.Wireframe = pixelState.PolyAlpha == 0;
     pixelState.CachedModulate = pixelState.TexturePixels &&
         pixelState.BlendMode == 0 && !pixelState.Highlight &&
@@ -1112,11 +1125,11 @@ void SoftRenderer3D::SetupPolygon(
                 visibleScanlines;
         }
         Parent.StageProfile.ThreeDAntiAliasPolygons +=
-            (GPU3D.RenderDispCnt >> 4) & 1;
+            (EffectiveDispCnt >> 4) & 1;
         Parent.StageProfile.ThreeDEdgeMarkingPolygons +=
-            (GPU3D.RenderDispCnt >> 5) & 1;
+            (EffectiveDispCnt >> 5) & 1;
         Parent.StageProfile.ThreeDFogPolygons +=
-            ((GPU3D.RenderDispCnt >> 7) & 1) &&
+            ((EffectiveDispCnt >> 7) & 1) &&
             ((polygon->Attr >> 15) & 1);
     }
 
@@ -1226,7 +1239,7 @@ void SoftRenderer3D::SetupPolygon(
         ytop < ybot && rp->XR - rp->XL > 1 &&
         !pixelState.TextureEnabled && pixelState.BlendMode == 0 &&
         pixelState.PolyAlpha > 0 && pixelState.PolyAlpha < 31 &&
-        (GPU3D.RenderDispCnt & (1 << 3)) &&
+        (EffectiveDispCnt & (1 << 3)) &&
         !polygon->IsShadow && !polygon->IsShadowMask &&
         (rp->DepthTest == DepthTest_LessThan_FrontFacing ||
          rp->DepthTest == DepthTest_LessThan) &&
@@ -1330,7 +1343,7 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         std::swap(zl, zr);
 
         // CHECKME: edge fill rules for swapped opaque shadow mask polygons
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -1358,7 +1371,7 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         rp->SlopeR.EdgeParams<false>(&r_edgelen, &r_edgecov);
 
         // CHECKME: edge fill rules for unswapped opaque shadow mask polygons
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -2156,7 +2169,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         // edges are always filled if antialiasing/edgemarking are enabled,
         // if the pixels are translucent and alpha blending is enabled, or if the polygon is wireframe
         // checkme: do swapped line polygons exist?
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -2191,7 +2204,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         // * edges are filled if both sides are identical and fully overlapping
         // edges are always filled if antialiasing/edgemarking are enabled,
         // if the pixels are translucent and alpha blending is enabled, or if the polygon is wireframe
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -2381,7 +2394,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -2483,7 +2496,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         {
             u32 attr = polyattr | edge;
 
-            if ((GPU3D.RenderDispCnt & (1<<4)) && (attr & 0xF))
+            if ((EffectiveDispCnt & (1<<4)) && (attr & 0xF))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -2574,7 +2587,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -2716,7 +2729,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     const s32 depth = polygon->FinalZ[0];
     const u32 polyattr = rp->PolyAttr;
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
-    const bool antialias = GPU3D.RenderDispCnt & (1 << 4);
+    const bool antialias = EffectiveDispCnt & (1 << 4);
     const bool writeTranslucentDepth = polygon->Attr & (1 << 11);
     const u32 yedge = y == polygon->YTop ? 4 : y == polygon->YBottom - 1 ? 8 : 0;
     s32 x = std::max(xstart, clipStartX);
@@ -2983,7 +2996,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -3090,7 +3103,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         {
             u32 attr = polyattr | edge;
 
-            if ((GPU3D.RenderDispCnt & (1<<4)) && (attr & 0xF))
+            if ((EffectiveDispCnt & (1<<4)) && (attr & 0xF))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -3181,7 +3194,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -3417,8 +3430,8 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
     int xStart = FinalPassMinX[y];
     int xEnd = FinalPassMaxX[y];
-    if ((GPU3D.RenderDispCnt & (1<<7)) &&
-        ((GPU3D.RenderDispCnt & (1<<14)) ||
+    if ((EffectiveDispCnt & (1<<7)) &&
+        ((EffectiveDispCnt & (1<<14)) ||
          (GPU3D.RenderClearAttr1 & (1<<15))))
     {
         xStart = 0;
@@ -3431,7 +3444,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
     if (xStart >= xEnd) return;
 
-    if (GPU3D.RenderDispCnt & (1<<5))
+    if (EffectiveDispCnt & (1<<5))
     {
         // edge marking
         // only applied to topmost pixels
@@ -3464,7 +3477,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
         }
     }
 
-    if (GPU3D.RenderDispCnt & (1<<7))
+    if (EffectiveDispCnt & (1<<7))
     {
         // fog
 
@@ -3477,7 +3490,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
         // TODO: check the 'fog alpha glitch with small Z' GBAtek talks about
 
-        bool fogcolor = !(GPU3D.RenderDispCnt & (1<<6));
+        bool fogcolor = !(EffectiveDispCnt & (1<<6));
 
         u32 fogR = (GPU3D.RenderFogColor << 1) & 0x3E; if (fogR) fogR++;
         u32 fogG = (GPU3D.RenderFogColor >> 4) & 0x3E; if (fogG) fogG++;
@@ -3542,7 +3555,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
         }
     }
 
-    if (GPU3D.RenderDispCnt & (1<<4))
+    if (EffectiveDispCnt & (1<<4))
     {
         // anti-aliasing
 
@@ -3592,6 +3605,10 @@ bool SoftRenderer3D::DumpCompletedInputs(const char* path) const
         << " dual=" << DualCoreRaster
         << " cache=" << UseTextureCache
         << " sparse=" << SparseClearEnabled
+        << " guest_disp=" << GPU3D.RenderDispCnt
+        << " effective_disp=" << EffectiveDispCnt
+        << " disabled_effect_bits=" << DisabledEffectBits
+        << " drop_shadows=" << DropShadows
         << " xpos=" << GPU3D.RenderXPos << '\n';
     out << "viewport=";
     for (auto value : GPU3D.Viewport) out << value << ',';
@@ -3705,7 +3722,7 @@ void SoftRenderer3D::ClearBuffers()
     u32 clearz = ((GPU3D.RenderClearAttr2 & 0x7FFF) * 0x200) + 0x1FF;
     u32 polyid = GPU3D.RenderClearAttr1 & 0x3F000000; // this sets the opaque polygonID
 
-    const bool clearImage = GPU3D.RenderDispCnt & (1<<14);
+    const bool clearImage = EffectiveDispCnt & (1<<14);
     const bool reuseConstantClear = SparseClearEnabled &&
         SparseClearStateValid && !clearImage &&
         SparseClearAttr1 == GPU3D.RenderClearAttr1 &&
@@ -3847,6 +3864,8 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     for (int i = 0; i < npolys; i++)
     {
         if (polygons[i]->Degenerate) continue;
+        if (DropShadows &&
+            (polygons[i]->IsShadowMask || polygons[i]->IsShadow)) continue;
         SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
     }
     CurrentPolygonCount = j;
@@ -4278,7 +4297,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         // fence also protects the next frame, reset and publication.
         Platform::Semaphore_Wait(Sema_ParallelRasterDone);
     const bool antiAliasOnlyFinalPass =
-        NDS4MiSTerUseAntiAliasOnlyFinalPass(GPU3D.RenderDispCnt);
+        NDS4MiSTerUseAntiAliasOnlyFinalPass(EffectiveDispCnt);
     if (CancelRasterIfRequested()) return;
 
     // Keep beta.3's adaptive two-way split for light and transitional work.
@@ -4383,7 +4402,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     // still use disjoint X intervals, and safe band-queue frames are intact.
     const bool xPartitionFrame =
         RasterXPartition && frameHasShadow && !bandQueueFrame &&
-        !(GPU3D.RenderDispCnt & (1u << 4));
+        !(EffectiveDispCnt & (1u << 4));
     const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();
     const s32 SplitLine = bandQueueFrame ? RasterBandBoundaries[1] :
         (xPartitionFrame ? 0 :
@@ -4559,7 +4578,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     if (ParallelFinalPass && threaded && FullFrameCompletion)
     {
         constexpr s32 split = VisibleScanlines / 2;
-        const bool edgeMarking = GPU3D.RenderDispCnt & (1 << 5);
+        const bool edgeMarking = EffectiveDispCnt & (1 << 5);
         // Edge marking reads neighbor attribute words while writing coverage
         // bits in its own word. Two untouched boundary rows prevent a C++
         // read/write race, even though the polygon-ID bits never change.
@@ -4683,6 +4702,7 @@ void SoftRenderer3D::FinishRendering()
 
 void SoftRenderer3D::RenderFrame()
 {
+    EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
     RenderFrameFinished = false;
     RenderCancelRequested.store(false, std::memory_order_relaxed);
     RenderFrameCanceled.store(false, std::memory_order_relaxed);
@@ -4744,6 +4764,7 @@ void SoftRenderer3D::RenderFrame()
 void SoftRenderer3D::RestartFrame()
 {
     SetupRenderThread();
+    EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
     EnableRenderThread();
 }
 

@@ -1180,6 +1180,9 @@ public:
 
 private:
     SoftRenderer& Parent;
+    u32 DisabledEffectBits = 0;
+    u32 EffectiveDispCnt = 0;
+    bool DropShadows = false;
     bool PreserveUploadSnapshot = false;
     struct PaletteDiagnostic
     {
