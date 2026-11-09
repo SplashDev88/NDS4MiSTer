@@ -503,6 +503,19 @@ def stop_previous_renderer():
     subprocess.run(["sh", KICK, "stop"], check=True, stdout=subprocess.DEVNULL, timeout=15)
 
 
+def create_graphics_control():
+    fd, name = tempfile.mkstemp(prefix="nds-graphics-", dir=RUNTIME)
+    try:
+        if os.write(fd, struct.pack("<I", 0x41410001)) != 4:
+            raise OSError("Incomplete graphics control word")
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(fd)
+    return name
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rom")
@@ -592,11 +605,7 @@ def main():
         env["NDS4MISTER_TEXTURE_HISTORY"] = texture_choice
         if os.environ.get("NDS4MISTER_RENDER_CACHE_STATS") == "1":
             env["NDS4MISTER_RENDER_CACHE_STATS"] = "1"
-        control_fd, control_name = tempfile.mkstemp(prefix="nds-graphics-", dir=RUNTIME)
-        try:
-            os.write(control_fd, struct.pack("<I", 0x41410001))
-        finally:
-            os.close(control_fd)
+        control_name = create_graphics_control()
         state["graphics_control"] = control_name
         env["NDS4MISTER_GRAPHICS_CONTROL"] = control_name
         write()
@@ -636,7 +645,7 @@ def main():
         assert sha(Path("/proc/%d/exe" % hp)) == EXPECTED_HELPER
         # Record the shared header before takeover to separate reload failures
         # from frontend failures. This is not proof of visible gameplay.
-        import mmap, struct
+        import mmap
         with open("/dev/mem", "rb", buffering=0) as memory:
             with mmap.mmap(memory.fileno(), 4096, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ, offset=0x3fc00000) as page:
