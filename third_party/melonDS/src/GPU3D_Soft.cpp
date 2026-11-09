@@ -4778,11 +4778,15 @@ void SoftRenderer3D::FinishRendering()
     }
 }
 
-u32 SoftRenderer3D::CurrentEffectMask() const noexcept
+u32 SoftRenderer3D::CurrentEffectMask() noexcept
 {
     if (!GraphicsControl.attached()) return DisabledEffectBits;
+    // One atomic snapshot chooses both options for this frame. The host's
+    // saved/menu setting takes precedence over the legacy experiment variable.
+    const auto settings = GraphicsControl.settings();
+    AlternateRowsRequested = settings.halfRows;
     return (DisabledEffectBits & ~(1u << 4)) |
-        (GraphicsControl.antiAlias() ? 0u : (1u << 4));
+        (settings.antiAlias ? 0u : (1u << 4));
 }
 
 void SoftRenderer3D::RenderFrame()

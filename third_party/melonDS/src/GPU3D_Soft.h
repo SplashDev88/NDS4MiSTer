@@ -2566,6 +2566,6 @@ private:
     void DuplicateAlternateRows(bool attributes);
     bool DropShadows = false;
     nds4mister::GraphicsControl GraphicsControl;
-    u32 CurrentEffectMask() const noexcept;
+    u32 CurrentEffectMask() noexcept;
 };
 }

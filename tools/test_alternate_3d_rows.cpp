@@ -142,6 +142,34 @@ int main() try {
         require(test->GetRenderer().GetExternalRendererStageProfile().ThreeDXPartitionFrames==3,
             "X-partition fixture did not exercise required worker path");
     }
-    std::printf("PASS alternate-row oracle cases=%u schedulers=5 repeated/sparse/empty/AA/shadow/cancel\n",cases);
+    // The actual host control word must switch the same renderer on identical
+    // guest frames, including legacy environment requests and AA transitions.
+    char controlPath[] = "/tmp/nds-resolution-oracle-XXXXXX";
+    const int fd = mkstemp(controlPath);
+    const std::uint32_t initial = nds4mister::GraphicsControl::AAOn;
+    require(fd >= 0 && write(fd, &initial, 4) == 4, "control fixture creation");
+    close(fd);
+    for (unsigned scheduler=0;scheduler<5;++scheduler) {
+        auto ref=make(0,false);
+        setenv("NDS4MISTER_GRAPHICS_CONTROL",controlPath,1);
+        nds4mister::GraphicsControl control(true);
+        auto test=make(scheduler,true);
+        unsetenv("NDS4MISTER_GRAPHICS_CONTROL");
+        for (int mode : {0,1,1,0,2,1,2,0}) {
+            const bool aa=mode==2, half=mode==1;
+            control.set(aa,half);
+            frame(*ref,0);ref->GPU.GPU3D.RenderDispCnt=aa?16:0;
+            frame(*test,0);test->GPU.GPU3D.RenderDispCnt=16;
+            if (half) expected(*ref); else render(*ref);
+            test->GPU.GPU3D.RenderFrameIdentical=true;
+            test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
+            require(soft(*test).AlternateRows==half,"live resolution admission");
+            compare(*ref,*test);
+            require(test->GPU.GPU3D.RenderDispCnt==16,"control changed guest state");
+            ++cases;
+        }
+    }
+    unlink(controlPath);
+    std::printf("PASS alternate-row oracle cases=%u schedulers=5 repeated/sparse/empty/AA/shadow/cancel/live-resolution\n",cases);
     return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
