@@ -106,6 +106,28 @@ int main() try {
             require(!soft(*test).IsFrameIdentical(),"canceled result reused");compare(*ref,*test);++cases;
         }
     }
+    // Force the unsafe shadow ordering that selects disjoint X ownership.
+    for(bool edge:{false,true}) {
+        auto ref=make(0,false),test=make(4,true);
+        for(auto* n:{ref.get(),test.get()}) {
+            push(*n,0x60,0xbfff0000);push(*n,0x10,0);push(*n,0x15,0);
+            push(*n,0x10,1);push(*n,0x15,0);
+            push(*n,0x20,0x3e0);push(*n,0x29,0x011f00c0);push(*n,0x40,1);
+            for(auto xy:{std::array<int,2>{-60,30},{-20,30},{-20,10},{-60,10}})
+                push(*n,0x24,vertex(xy[0],xy[1],-20));
+            push(*n,0x41,0);push(*n,0x20,0x1f);push(*n,0x29,0x021f00c0);push(*n,0x40,0);
+            push(*n,0x24,vertex(-60,20,0));push(*n,0x24,vertex(60,18,0));push(*n,0x24,vertex(-60,16,0));
+            push(*n,0x41,0);push(*n,0x29,0x001f00f0);push(*n,0x40,1);
+            for(auto xy:{std::array<int,2>{-60,60},{60,60},{60,-60},{-60,-60}})
+                push(*n,0x24,vertex(xy[0],xy[1],30));
+            push(*n,0x41,0);push(*n,0x50,0);n->GPU.GPU3D.VBlank();
+            auto& g=n->GPU.GPU3D;g.RenderDispCnt=8|(edge?32:0);
+            g.RenderClearAttr1=0x071f7c00;g.RenderClearAttr2=0x7fff;
+        }
+        for(int i=0;i<3;++i) {expected(*ref);render(*test);compare(*ref,*test);++cases;}
+        require(test->GetRenderer().GetExternalRendererStageProfile().ThreeDXPartitionFrames==3,
+            "X-partition fixture did not exercise required worker path");
+    }
     std::printf("PASS alternate-row oracle cases=%u schedulers=5 repeated/sparse/empty/AA/shadow/cancel\n",cases);
     return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
