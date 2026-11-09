@@ -1,0 +1,276 @@
+{
+  "status": "OPTIONAL_PRIVATE_EXPERIMENT",
+  "runtime_commit": "b77c0335aff9481940fd31e13e87e9055f23d746",
+  "helper_sha256": "5253686bf17856fabc03c6dc91de7fd4f09fb54f8522f97ae2403263f97c5331",
+  "oracle_cases": 515,
+  "scenes": [
+    {
+      "scene": "DAWN",
+      "arms": {
+        "frozen": {
+          "updates_per_second": 31.999957480586442,
+          "windows": 1,
+          "window_rates": [
+            31.999957480586442
+          ]
+        },
+        "native": {
+          "updates_per_second": 31.96376549470434,
+          "windows": 2,
+          "window_rates": [
+            31.96535637477648,
+            31.96217477297696
+          ]
+        },
+        "half": {
+          "updates_per_second": 36.61560707688554,
+          "windows": 2,
+          "window_rates": [
+            36.69996512650761,
+            36.53125374901551
+          ]
+        }
+      },
+      "half_vs_native_percent": 14.55348426627614,
+      "half_vs_frozen_percent": 14.423924153959566,
+      "native_vs_frozen_percent": -0.11310010616125687
+    },
+    {
+      "scene": "MKDS",
+      "arms": {
+        "frozen": {
+          "updates_per_second": 29.030903452996004,
+          "windows": 2,
+          "window_rates": [
+            28.96511153169968,
+            29.09669142593015
+          ]
+        },
+        "native": {
+          "updates_per_second": 28.91998491673184,
+          "windows": 4,
+          "window_rates": [
+            28.859088291215297,
+            28.79665099271184,
+            29.099764821520843,
+            28.924463070178632
+          ]
+        },
+        "half": {
+          "updates_per_second": 38.986863842423894,
+          "windows": 4,
+          "window_rates": [
+            38.865105771505796,
+            38.99172718238837,
+            39.05936141249046,
+            39.03124893199315
+          ]
+        }
+      },
+      "half_vs_native_percent": 34.809419696024115,
+      "half_vs_frozen_percent": 34.29435258722695,
+      "native_vs_frozen_percent": -0.38207056299075504
+    },
+    {
+      "scene": "map",
+      "arms": {
+        "frozen": {
+          "updates_per_second": 16.06623845108105,
+          "windows": 1,
+          "window_rates": [
+            16.06623845108105
+          ]
+        },
+        "native": {
+          "updates_per_second": 16.011052128109213,
+          "windows": 2,
+          "window_rates": [
+            16.02850452030845,
+            15.993601459598132
+          ]
+        },
+        "half": {
+          "updates_per_second": 22.98174382245039,
+          "windows": 2,
+          "window_rates": [
+            22.765557338194785,
+            23.197921471653828
+          ]
+        }
+      },
+      "half_vs_native_percent": 43.53674973116439,
+      "half_vs_frozen_percent": 43.04371177127662,
+      "native_vs_frozen_percent": -0.3434924929059613
+    },
+    {
+      "scene": "level",
+      "arms": {
+        "frozen": {
+          "updates_per_second": 58.279251477292426,
+          "windows": 1,
+          "window_rates": [
+            58.279251477292426
+          ]
+        },
+        "native": {
+          "updates_per_second": 58.15845518228922,
+          "windows": 2,
+          "window_rates": [
+            58.02783904861579,
+            58.28905916885676
+          ]
+        },
+        "half": {
+          "updates_per_second": 55.72882098824007,
+          "windows": 2,
+          "window_rates": [
+            55.8581070131157,
+            55.59951627664156
+          ]
+        }
+      },
+      "half_vs_native_percent": -4.177611297332118,
+      "half_vs_frozen_percent": -4.376223826495251,
+      "native_vs_frozen_percent": -0.2072715279300974
+    }
+  ],
+  "observations": {
+    "F1d": {
+      "before": 562,
+      "after": 591,
+      "game_seconds": 29,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Dawn cave/bat checkpoint, level 2 HP132 MP38; AA off",
+      "publication_fps": 31.999957480586442
+    },
+    "N1da": {
+      "before": 562,
+      "after": 591,
+      "game_seconds": 29,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same Dawn checkpoint, native 3D AA off",
+      "publication_fps": 31.96535637477648
+    },
+    "H1d": {
+      "before": 562,
+      "after": 591,
+      "game_seconds": 29,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same Dawn cave checkpoint",
+      "visual_change": "Native menu/HUD remains crisp; 3D scenery and character visibly coarser in vertical pairs",
+      "publication_fps": 36.69996512650761
+    },
+    "F1m": {
+      "before": 14.831,
+      "after1": 29.781,
+      "after2": 46.728,
+      "game_seconds": 31.897,
+      "native_main_and_touch_reviewed": true,
+      "scene": "50cc Mario/B Dasher Figure-8 Circuit stationary start line lap 1/3; native active and paused frames reviewed"
+    },
+    "N1m": {
+      "before": 14.806,
+      "after1": 29.753,
+      "after2": 46.685,
+      "game_seconds": 31.879,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same 50cc Mario/B Dasher Figure-8 Circuit stationary start line lap 1/3"
+    },
+    "H1m": {
+      "before": 14.811,
+      "after1": 29.779,
+      "after2": 46.732,
+      "game_seconds": 31.921,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same 50cc Mario/B Dasher Figure-8 Circuit stationary lap 1/3",
+      "visual_change": "3D road, fence, buildings and kart have visible doubled vertical rows; 2D HUD and map remain native"
+    },
+    "F1s": {
+      "before": 500,
+      "after": 459,
+      "timer_units": 41,
+      "native_main_and_touch_reviewed": true,
+      "scene": "World 3 tower node map and stationary entrance; active and paused native screens reviewed",
+      "map_game_timer_available": false
+    },
+    "N1s": {
+      "before": 500,
+      "after": 459,
+      "timer_units": 41,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same World 3 map/tower entrance; both native screens reviewed",
+      "map_game_timer_available": false
+    },
+    "H1s": {
+      "before": 500,
+      "after": 460,
+      "timer_units": 40,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same World 3 map/tower entrance; both native screens reviewed",
+      "visual_change": "Map scenery and Mario lose vertical detail; 2D backgrounds/HUD/menu remain native",
+      "map_game_timer_available": false
+    },
+    "H2d": {
+      "before": 561,
+      "after": 591,
+      "game_seconds": 30,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same level 2 cave/bat checkpoint; coarse pause clock began at 9:21 this run",
+      "visual_change": "Same intended doubled-row 3D detail; native HUD/menu",
+      "publication_fps": 36.53125374901551
+    },
+    "N2d": {
+      "before": 562,
+      "after": 592,
+      "game_seconds": 30,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same level 2 cave/bat checkpoint; native main/touch active and paused screens reviewed",
+      "publication_fps": 31.96217477297696
+    },
+    "H2m": {
+      "before": 14.83,
+      "after1": 29.78,
+      "after2": 46.732,
+      "game_seconds": 31.902,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same 50cc Mario/B Dasher Figure-8 Circuit stationary lap 1/3; both timed-window native screenshots reviewed",
+      "visual_change": "Same intended doubled vertical rows in 3D scene, native HUD/map"
+    },
+    "N2m": {
+      "before": 14.802,
+      "after1": 29.754,
+      "after2": 46.706,
+      "game_seconds": 31.904,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same 50cc Mario/B Dasher Figure-8 Circuit stationary lap 1/3; before/mid/after main and touch frames reviewed"
+    },
+    "H2s": {
+      "before": 500,
+      "after": 459,
+      "timer_units": 41,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same World 3 map/tower entrance; native main/touch before, active and after frames reviewed",
+      "visual_change": "Repeated intended half-row 3D detail loss; native HUD and 2D backgrounds",
+      "map_game_timer_available": false
+    },
+    "N2s": {
+      "before": 499,
+      "after": 459,
+      "timer_units": 40,
+      "native_main_and_touch_reviewed": true,
+      "scene": "Same World 3 map/tower entrance; pause landed at timer499 this run; both native screens reviewed",
+      "map_game_timer_available": false
+    }
+  },
+  "sessions": 15,
+  "timed_windows": 25,
+  "all_timed_windows_zero_faults": true,
+  "all_epochs_stable": true,
+  "limitations": [
+    "Fixed scenes, two launches per same-binary arm per game; frozen control one launch per game.",
+    "Completed screen-pair publications are not unique animation FPS.",
+    "No demonstrated game-clock acceleration.",
+    "Visible vertical detail loss; NSMB tower may regress.",
+    "No FPGA/guest CPU optimization is part of this experiment."
+  ]
+}
