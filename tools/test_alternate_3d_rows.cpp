@@ -106,6 +106,20 @@ int main() try {
             require(!soft(*test).IsFrameIdentical(),"canceled result reused");compare(*ref,*test);++cases;
         }
     }
+    // Dawn's integral sprite-like rectangles bypass general edge setup.
+    // Exercise the actual prepared path, not merely quad-shaped polygons.
+    for(unsigned scheduler:{0u,2u}) {
+        auto ref=make(0,false),test=make(scheduler,true);
+        for(auto* n:{ref.get(),test.get()}) {
+            n->GPU.GPU3D.SetSpriteRasterSpansEnabled(true);
+            frame(*n,8192u|16384u|32768u|16u|8u);
+            n->GPU.GPU3D.RenderDispCnt &= ~16u;
+        }
+        for(int i=0;i<3;++i) {expected(*ref);render(*test);compare(*ref,*test);++cases;}
+        auto& t=soft(*test);unsigned rectangles=0;
+        for(int i=0;i<t.CurrentPolygonCount;++i) rectangles+=t.PolygonList[i].PixelState.FlatRectangle;
+        require(rectangles>0,"Dawn rectangle fixture missed optimized path");
+    }
     // Force the unsafe shadow ordering that selects disjoint X ownership.
     for(bool edge:{false,true}) {
         auto ref=make(0,false),test=make(4,true);
