@@ -23,6 +23,7 @@
 #include "GPU3D_Texcache.h"
 #include "NDS4MiSTer_FastDivide.h"
 #include "Platform.h"
+#include "../../../src/common/GraphicsControl.h"
 #include <algorithm>
 #include <thread>
 #include <atomic>
@@ -2559,5 +2560,7 @@ private:
     u32 DisabledEffectBits = 0;
     u32 EffectiveDispCnt = 0;
     bool DropShadows = false;
+    nds4mister::GraphicsControl GraphicsControl;
+    u32 CurrentEffectMask() const noexcept;
 };
 }

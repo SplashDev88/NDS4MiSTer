@@ -45,7 +45,7 @@ struct HostTest {
 
     // Follow visual order in both directions, skip blank separators, wrap,
     // and retain the selected control when CRT mode changes the row order.
-    const std::array<int, 14> crt_order{0, 1, 3, 4, 5, 6, 7, 8, 2, 12, 13, 9, 10, 11};
+    const std::array<int, 15> crt_order{0, 1, Host::TOUCH_RANGE_CURSOR, 3, 4, 5, 6, 7, 8, 2, 12, 13, 9, 10, 11};
     host.cursor = 0;
     for (unsigned i = 1; i <= crt_order.size(); ++i) {
       host.action(1); assert(host.cursor == crt_order[i % crt_order.size()]);
@@ -58,9 +58,9 @@ struct HostTest {
     host.draw();
     assert(host.osd_rows[9] == host.frame.renderRow(9, " CRT Mode:               Off", true, nds_osd::arrow_right));
     host.cursor = 0;
-    const std::array<int,14> standard_order{0,1,2,3,4,5,6,7,8,12,13,9,10,11};
-    for (int i=1;i<=14;++i) { host.action(1); assert(host.cursor==standard_order[i%14]); }
-    for (int i=1;i<=14;++i) { host.action(0); assert(host.cursor==standard_order[(14-i)%14]); }
+    const std::array<int,15> standard_order{0,1,Host::TOUCH_RANGE_CURSOR,2,3,4,5,6,7,8,12,13,9,10,11};
+    for (int i=1;i<=15;++i) { host.action(1); assert(host.cursor==standard_order[i%15]); }
+    for (int i=1;i<=15;++i) { host.action(0); assert(host.cursor==standard_order[(15-i)%15]); }
     host.cursor = 8; host.action(2); host.action(1);
     assert(host.cursor == 2 && (host.status & CRT_TIMING));
     const auto before = host.status;

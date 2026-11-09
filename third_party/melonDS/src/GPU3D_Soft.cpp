@@ -292,7 +292,7 @@ void SoftRenderer3D::Reset()
     PrevIsShadowMask = false;
 
     SetupRenderThread();
-    EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
+    EffectiveDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
     RasterBalance.Reset();
@@ -366,7 +366,9 @@ void SoftRenderer3D::SetThreaded(bool threaded) noexcept
     {
         Threaded = threaded;
         SetupRenderThread();
-        EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
+        const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+        if (next != EffectiveDispCnt) FrameIdentical = false;
+        EffectiveDispCnt = next;
         EnableRenderThread();
     }
 }
@@ -4700,9 +4702,18 @@ void SoftRenderer3D::FinishRendering()
     }
 }
 
+u32 SoftRenderer3D::CurrentEffectMask() const noexcept
+{
+    if (!GraphicsControl.attached()) return DisabledEffectBits;
+    return (DisabledEffectBits & ~(1u << 4)) |
+        (GraphicsControl.antiAlias() ? 0u : (1u << 4));
+}
+
 void SoftRenderer3D::RenderFrame()
 {
-    EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
+    const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    const bool qualityChanged = nextDispCnt != EffectiveDispCnt;
+    EffectiveDispCnt = nextDispCnt;
     RenderFrameFinished = false;
     RenderCancelRequested.store(false, std::memory_order_relaxed);
     RenderFrameCanceled.store(false, std::memory_order_relaxed);
@@ -4739,7 +4750,7 @@ void SoftRenderer3D::RenderFrame()
     const bool forceRecovery =
         RenderForceNextFrame.exchange(false, std::memory_order_relaxed);
     FrameIdentical =
-        !forceRecovery && !textureChanged && GPU3D.RenderFrameIdentical;
+        !qualityChanged && !forceRecovery && !textureChanged && GPU3D.RenderFrameIdentical;
     if (Parent.StageProfileEnabled)
     {
         ++Parent.StageProfile.ThreeDFrames;
@@ -4764,7 +4775,9 @@ void SoftRenderer3D::RenderFrame()
 void SoftRenderer3D::RestartFrame()
 {
     SetupRenderThread();
-    EffectiveDispCnt = GPU3D.RenderDispCnt & ~DisabledEffectBits;
+    const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    if (next != EffectiveDispCnt) FrameIdentical = false;
+    EffectiveDispCnt = next;
     EnableRenderThread();
 }
 

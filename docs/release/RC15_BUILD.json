@@ -1,0 +1,7 @@
+{
+  "helper_sha256": "a8529ae24b1466297d2b36776e73e2702e4288bf8e943d00f73068710f39f64c",
+  "host_sha256": "377ac7ef0d12dc47cfc8ff15a4adf09b3229d9a641de7f40265f38dda3be5c7b",
+  "renderer_tests": "Full ARM self-test and game query tests passed; 14 live-AA oracle cases, 12 effect oracle cases, 2 shadow cases",
+  "profile_files": 79,
+  "recipe_sha256": "dc8d8bc9371de0ba0c6338e3b81cddf6aafe31cdfaf3661d3a0cf5fc8d6e1390"
+}
