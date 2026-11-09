@@ -155,17 +155,31 @@ int main() try {
         nds4mister::GraphicsControl control(true);
         auto test=make(scheduler,true);
         unsetenv("NDS4MISTER_GRAPHICS_CONTROL");
-        for (int mode : {0,1,1,0,2,1,2,0}) {
+        unsigned variation=0;
+        for (int mode : {0,1,1,0,2,1,2,0,3,3,0,3,1,3,2,3,3,0}) {
             const bool aa=mode==2, half=mode==1;
-            control.set(aa,half);
-            frame(*ref,0);ref->GPU.GPU3D.RenderDispCnt=aa?16:0;
-            frame(*test,0);test->GPU.GPU3D.RenderDispCnt=16;
+            control.set(aa,half,mode==3);
+            frame(*ref,variation);ref->GPU.GPU3D.RenderDispCnt=1|(aa?16:0);
+            frame(*test,variation++);test->GPU.GPU3D.RenderDispCnt=17;
             if (half) expected(*ref); else render(*ref);
+            const auto prior=test->GetRenderer().GetExternalRendererStageProfile();
             test->GPU.GPU3D.RenderFrameIdentical=true;
             test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
             require(soft(*test).AlternateRows==half,"live resolution admission");
-            compare(*ref,*test);
-            require(test->GPU.GPU3D.RenderDispCnt==16,"control changed guest state");
+            if (mode==3) {
+                auto& renderer=soft(*test);
+                require(renderer.RenderOff,"off mode not sampled");
+                const auto after=test->GetRenderer().GetExternalRendererStageProfile();
+                require(prior.ThreeDCoherenceNs==after.ThreeDCoherenceNs &&
+                        prior.ThreeDClearNs==after.ThreeDClearNs &&
+                        prior.ThreeDFinalPassNs==after.ThreeDFinalPassNs, "off performed pixel work");
+                require(test->GPU.GPU3D.RenderNumPolygons==10,"off discarded geometry");
+                for(int y=0;y<192;++y) for(int x=0;x<256;++x)
+                    require(renderer.GetLine(y)[x]==0,"off retained visible 3D pixels");
+                require(!renderer.SparseClearStateValid && !renderer.RasterTileHistoryValid,
+                    "off retained raster history");
+            } else compare(*ref,*test);
+            require(test->GPU.GPU3D.RenderDispCnt==17,"control changed guest state");
             ++cases;
         }
     }

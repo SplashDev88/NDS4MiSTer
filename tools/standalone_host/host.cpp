@@ -330,6 +330,7 @@ class Host {
   bool screen_peek = false; // Temporary display override; status keeps the selection.
   bool anti_alias = true;
   bool half_rows = false;
+  bool render_off = false; // Diagnostic only; deliberately not persisted.
   nds4mister::GraphicsControl graphics_control{true};
   bool direct_video_crt = true; // Shared with startup Advanced Options; CRT-safe default.
   bool video_flags_known = false;
@@ -1607,8 +1608,8 @@ class Host {
         rows[mainMenuRow(AA_CURSOR)] = optionLabel(anti_alias ? 1 : 0,
             {0, 1, 2, "3D Anti-aliasing", {"Off", "On"}});
       if (mainMenuRow(RESOLUTION_CURSOR) >= 0)
-        rows[mainMenuRow(RESOLUTION_CURSOR)] = optionLabel(half_rows ? 1 : 0,
-            {0, 1, 2, "3D Resolution", {"Native", "Half Rows"}});
+        rows[mainMenuRow(RESOLUTION_CURSOR)] = optionLabel(render_off ? 2 : half_rows ? 1 : 0,
+            {0, 2, 3, "3D Resolution", {"Native", "Half Rows", "Off (test)"}});
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
         rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
             {0, 1, 2, "Direct Video Target", {"CRT", "Scaler"}});
@@ -1741,7 +1742,8 @@ class Host {
           direct_video_crt = true;
           anti_alias = true;
           half_rows = false;
-          graphics_control.set(anti_alias, half_rows);
+          render_off = false;
+          graphics_control.set(anti_alias, half_rows, render_off);
           saveSettings();
           sendstatus();
           message = "Defaults restored";
@@ -1871,15 +1873,19 @@ class Host {
         message.clear();
       } else if (cursor == AA_CURSOR && (a == 2 || a == 7 || a == 8)) {
         anti_alias = !anti_alias;
-        const bool restored_native = anti_alias && half_rows;
-        if (anti_alias) half_rows = false;
-        graphics_control.set(anti_alias, half_rows);
+        const bool restored_native = anti_alias && (half_rows || render_off);
+        if (anti_alias) { half_rows = false; render_off = false; }
+        graphics_control.set(anti_alias, half_rows, render_off);
         message = restored_native ? " AA uses Native resolution" : " System > Save settings";
       } else if (cursor == RESOLUTION_CURSOR && (a == 2 || a == 7 || a == 8)) {
-        half_rows = !half_rows;
-        if (half_rows) anti_alias = false;
-        graphics_control.set(anti_alias, half_rows);
-        message = half_rows ? " Half Rows uses AA Off" : " System > Save settings";
+        const int current = render_off ? 2 : half_rows ? 1 : 0;
+        const int next = (current + (a == 7 ? 2 : 1)) % 3;
+        half_rows = next == 1;
+        render_off = next == 2;
+        if (half_rows || render_off) anti_alias = false;
+        graphics_control.set(anti_alias, half_rows, render_off);
+        message = render_off ? " Diagnostic: no 3D picture" :
+            half_rows ? " Half Rows uses AA Off" : " System > Save settings";
       } else if (a == 2 && cursor == DISPLAY_CURSOR) {
         display_menu = true;
         cursor = 3;
@@ -2931,7 +2937,7 @@ public:
         graphics_contents != "NDS-Graphics-v2\naa=off\nrows=native\n";
     require(!std::getenv("NDS4MISTER_GRAPHICS_CONTROL") || graphics_control.attached(),
             "graphics control mapping");
-    graphics_control.set(anti_alias, half_rows);
+    graphics_control.set(anti_alias, half_rows, render_off);
     std::ifstream video_config(fs::path(kit) / "NDS_video.cfg", std::ios::binary);
     const std::string video_contents((std::istreambuf_iterator<char>(video_config)),
                                      std::istreambuf_iterator<char>());

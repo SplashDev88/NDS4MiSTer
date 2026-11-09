@@ -4785,21 +4785,52 @@ u32 SoftRenderer3D::CurrentEffectMask() noexcept
     // saved/menu setting takes precedence over the legacy experiment variable.
     const auto settings = GraphicsControl.settings();
     AlternateRowsRequested = settings.halfRows;
+    RenderOff = settings.renderOff;
     return (DisabledEffectBits & ~(1u << 4)) |
         (settings.antiAlias ? 0u : (1u << 4));
 }
 
+void SoftRenderer3D::Blank3DFrame()
+{
+    // Ignore even an opaque guest clear color. The diagnostic exposes only 2D.
+    // Keep the usual completion fences and leave architectural GX state intact.
+    memset(ColorBuffer, 0, sizeof(ColorBuffer));
+    SparseClearStateValid = false;
+    RasterTileHistoryValid = false;
+}
+
 void SoftRenderer3D::RenderFrame()
 {
+    const bool previousRenderOff = RenderOff;
     const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     const bool previousAlternateRows = AlternateRows;
     const bool effectsChanged = nextDispCnt != EffectiveDispCnt;
     EffectiveDispCnt = nextDispCnt;
     UpdateAlternateRows();
-    const bool qualityChanged = effectsChanged || previousAlternateRows != AlternateRows;
+    const bool qualityChanged = effectsChanged || previousAlternateRows != AlternateRows ||
+        previousRenderOff != RenderOff;
+    if (previousRenderOff != RenderOff) {
+        SparseClearStateValid = false;
+        RasterTileHistoryValid = false;
+    }
     RenderFrameFinished = false;
     RenderCancelRequested.store(false, std::memory_order_relaxed);
     RenderFrameCanceled.store(false, std::memory_order_relaxed);
+    if (RenderOff)
+    {
+        // Do not consume VRAM dirty state: normal rendering must catch up when
+        // re-enabled. Geometry commands/queries and the 2D engines still run.
+        const bool recovery = RenderForceNextFrame.exchange(false, std::memory_order_relaxed);
+        FrameIdentical = previousRenderOff && !qualityChanged && !recovery;
+        if (Parent.StageProfileEnabled) {
+            ++Parent.StageProfile.ThreeDFrames;
+            Parent.StageProfile.ThreeDIdenticalFrames += FrameIdentical;
+        }
+        if (RenderThreadRunning.load(std::memory_order_relaxed))
+            Platform::Semaphore_Post(Sema_RenderStart);
+        else if (!FrameIdentical) Blank3DFrame();
+        return;
+    }
     const auto coherenceStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureCache.ContentIdentityEnabled = TextureHistoryEnabled &&
@@ -4858,8 +4889,13 @@ void SoftRenderer3D::RenderFrame()
 void SoftRenderer3D::RestartFrame()
 {
     SetupRenderThread();
+    const bool previousRenderOff = RenderOff;
     const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
-    if (next != EffectiveDispCnt) FrameIdentical = false;
+    if (next != EffectiveDispCnt || previousRenderOff != RenderOff) FrameIdentical = false;
+    if (previousRenderOff != RenderOff) {
+        SparseClearStateValid = false;
+        RasterTileHistoryValid = false;
+    }
     EffectiveDispCnt = next;
     UpdateAlternateRows();
     EnableRenderThread();
@@ -4882,6 +4918,12 @@ void SoftRenderer3D::RenderThreadFunc()
         RenderThreadRendering = true;
         if (FrameIdentical)
         { // If no rendering is needed, just say we're done.
+            if (!FullFrameCompletion)
+                Platform::Semaphore_Post(Sema_ScanlineCount, 192);
+        }
+        else if (RenderOff)
+        {
+            Blank3DFrame();
             if (!FullFrameCompletion)
                 Platform::Semaphore_Post(Sema_ScanlineCount, 192);
         }

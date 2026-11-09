@@ -2567,5 +2567,7 @@ private:
     bool DropShadows = false;
     nds4mister::GraphicsControl GraphicsControl;
     u32 CurrentEffectMask() noexcept;
+    bool RenderOff = false;
+    void Blank3DFrame();
 };
 }

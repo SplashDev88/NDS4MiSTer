@@ -15,8 +15,8 @@ class GraphicsControl {
     bool writable_ = false;
 public:
     static constexpr std::uint32_t AAOn = 0x41410001, AAOff = 0x41410000,
-                                   HalfRows = 0x41410002;
-    struct Settings { bool antiAlias; bool halfRows; };
+                                   HalfRows = 0x41410002, RenderOff = 0x41410004;
+    struct Settings { bool antiAlias; bool halfRows; bool renderOff; };
     explicit GraphicsControl(bool writable = false) noexcept : writable_(writable) {
         const char* path = std::getenv("NDS4MISTER_GRAPHICS_CONTROL");
         if (!path || !*path) return;
@@ -37,16 +37,18 @@ public:
     Settings settings() const noexcept {
         // Unknown or corrupt values retain full quality.
         const auto value = word_ ? __atomic_load_n(word_, __ATOMIC_RELAXED) : AAOn;
-        return {value != AAOff && value != HalfRows, value == HalfRows};
+        return {value != AAOff && value != HalfRows && value != RenderOff,
+                value == HalfRows, value == RenderOff};
     }
     bool antiAlias() const noexcept { return settings().antiAlias; }
-    void set(bool antiAlias, bool halfRows) noexcept {
+    void set(bool antiAlias, bool halfRows, bool renderOff = false) noexcept {
         if (word_ && writable_)
-            __atomic_store_n(word_, antiAlias ? AAOn : halfRows ? HalfRows : AAOff,
+            __atomic_store_n(word_, antiAlias ? AAOn : renderOff ? RenderOff : halfRows ? HalfRows : AAOff,
                              __ATOMIC_RELAXED);
     }
     void setAntiAlias(bool enabled) noexcept {
-        set(enabled, settings().halfRows);
+        const auto current = settings();
+        set(enabled, current.halfRows, current.renderOff);
     }
 };
 static_assert(__atomic_always_lock_free(4, nullptr), "Graphics control requires an atomic word");

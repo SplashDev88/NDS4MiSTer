@@ -39,9 +39,13 @@ struct HostTest {
       h.action(7); // Native, preserving AA Off.
       assert(!h.half_rows && !h.anti_alias && !reader.settings().halfRows);
       h.action(8); // Half Rows again.
+      h.action(8); // Diagnostic Off; no stale Half Rows/AA setting.
+      assert(h.render_off && !h.half_rows && !h.anti_alias && reader.settings().renderOff);
+      h.draw();
+      assert(h.osd_rows[10] == h.frame.renderRow(10, " 3D Resolution:   Off (test)", true, nds_osd::arrow_left));
       h.action(0); assert(h.cursor == Host::AA_CURSOR);
       h.action(2); // AA On restores native resolution.
-      assert(h.anti_alias && !h.half_rows && !reader.settings().halfRows);
+      assert(h.anti_alias && !h.half_rows && !h.render_off && !reader.settings().halfRows && !reader.settings().renderOff);
       h.action(1); h.action(2); // Half Rows turns AA Off.
       assert(h.half_rows && !h.anti_alias && reader.settings().halfRows);
       assert(!fs::exists(kit/"NDS_graphics.cfg"));
