@@ -188,6 +188,7 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
+    AlternateRowsRequested = enabled("NDS4MISTER_ALTERNATE_3D_ROWS");
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
     Sema_ScanlineCount = Platform::Semaphore_Create();
@@ -293,6 +294,7 @@ void SoftRenderer3D::Reset()
 
     SetupRenderThread();
     EffectiveDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    UpdateAlternateRows();
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
     RasterBalance.Reset();
@@ -369,6 +371,7 @@ void SoftRenderer3D::SetThreaded(bool threaded) noexcept
         const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
         if (next != EffectiveDispCnt) FrameIdentical = false;
         EffectiveDispCnt = next;
+        UpdateAlternateRows();
         EnableRenderThread();
     }
 }
@@ -3302,6 +3305,60 @@ u32 SoftRenderer3D::BuildScanlinePolygonLists(int npolys)
     return polygonScanlines;
 }
 
+void SoftRenderer3D::UpdateAlternateRows() noexcept
+{
+    // Publish once per frame, before waking either raster worker. Legacy
+    // scanline consumers and AA retain native resolution.
+    const bool next = AlternateRowsRequested && FullFrameCompletion &&
+        !(EffectiveDispCnt & (1u << 4));
+    if (next != AlternateRows)
+    {
+        FrameIdentical = false;
+        RasterTileHistoryValid = false;
+    }
+    AlternateRows = next;
+}
+
+void SoftRenderer3D::SkipPolygonRow(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask)
+{
+    // Odd stencil storage is never consumed by a sampled even row. The
+    // polygon-order carry flag does cross rows, and must still advance.
+    const auto* polygon = rp->PolyData;
+    prevIsShadowMask = polygon->IsShadowMask;
+    if (!rp->PixelState.FlatRectangle && polygon->YTop != polygon->YBottom)
+    {
+        if (y >= polygon->Vertices[rp->NextVL]->FinalPosition[1] &&
+            rp->CurVL != polygon->VBottom) SetupPolygonLeftEdge(rp, y);
+        if (y >= polygon->Vertices[rp->NextVR]->FinalPosition[1] &&
+            rp->CurVR != polygon->VBottom) SetupPolygonRightEdge(rp, y);
+    }
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
+void SoftRenderer3D::DuplicateAlternateRows(bool attributes)
+{
+    // Called only after both workers join. Copy raw depth/ID neighbors before
+    // edge marking, and final color after fog/edge processing. No odd row is
+    // exposed to 2D composition until the complete-frame fence.
+    for (s32 y = 0; y < VisibleScanlines; y += 2)
+    {
+        const u32 src = FirstPixelOffset + y * ScanlineWidth;
+        const u32 dst = src + ScanlineWidth;
+        std::copy_n(&ColorBuffer[src], 256, &ColorBuffer[dst]);
+        if (attributes)
+        {
+            std::copy_n(&DepthBuffer[src], 256, &DepthBuffer[dst]);
+            std::copy_n(&AttrBuffer[src], 256, &AttrBuffer[dst]);
+        }
+        // Conservative dirty extent also covers cancellation and transitions
+        // back to native rows on the next sparse clear.
+        FinalPassMinX[y + 1] = 0;
+        FinalPassMaxX[y + 1] = 256;
+    }
+}
+
 void SoftRenderer3D::RenderScanline(
     s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
     bool& prevIsShadowMask, u8* stencilBuffer,
@@ -3319,7 +3376,9 @@ void SoftRenderer3D::RenderScanline(
                 (y < polygon->YBottom ||
                  (y == polygon->YTop && polygon->YBottom == polygon->YTop)))
             {
-                if (polygon->IsShadowMask)
+                if (AlternateRows && (y & 1))
+                    SkipPolygonRow(rp, y, prevIsShadowMask);
+                else if (polygon->IsShadowMask)
                     RenderShadowMaskScanline(
                         rp, y, prevIsShadowMask, stencilBuffer,
                         clipStartX, clipEndX);
@@ -3355,7 +3414,9 @@ void SoftRenderer3D::RenderScanline(
             RendererPolygon* rp = &polygonList[polygonIndex];
             Polygon* polygon = rp->PolyData;
 
-            if (polygon->IsShadowMask)
+            if (AlternateRows && (y & 1))
+                SkipPolygonRow(rp, y, prevIsShadowMask);
+            else if (polygon->IsShadowMask)
                 RenderShadowMaskScanline(
                     rp, y, prevIsShadowMask, stencilBuffer,
                     clipStartX, clipEndX);
@@ -3426,6 +3487,7 @@ SoftRenderer3D::ScanlineFinalPassAntiAlias(s32 y)
 
 void SoftRenderer3D::ScanlineFinalPass(s32 y)
 {
+    if (AlternateRows && (y & 1)) return;
     // to consider:
     // clearing all polygon fog flags if the master flag isn't set?
     // merging all final pass loops into one?
@@ -4573,6 +4635,8 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         }
     }
 
+    if (AlternateRows) DuplicateAlternateRows(true);
+
     // Raster is joined before any final processing. Legacy scanline consumers
     // retain canonical row order and their existing completion tokens.
     const auto finalPassStarted =
@@ -4615,6 +4679,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
                 Platform::Semaphore_Post(Sema_ScanlineCount);
         }
     }
+    if (AlternateRows && !CancelRasterIfRequested()) DuplicateAlternateRows(false);
     if (Parent.StageProfileEnabled)
         Parent.StageProfile.ThreeDFinalPassNs +=
             renderer3DProfileElapsedNs(finalPassStarted);
@@ -4646,6 +4711,17 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
     SetupRenderPolygons(polygons, npolys);
 
     if (CancelRasterIfRequested()) return;
+
+    if (AlternateRows)
+    {
+        RenderScanlineBand(0, VisibleScanlines, PolygonList, ActivePolygonMask,
+            PrevIsShadowMask, StencilBuffer, 0, 256, FinalPassMinX, FinalPassMaxX);
+        if (CancelRasterIfRequested()) return;
+        DuplicateAlternateRows(true);
+        FinalPassRows(0, VisibleScanlines, false);
+        if (!CancelRasterIfRequested()) DuplicateAlternateRows(false);
+        return;
+    }
 
     auto stageStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
@@ -4712,8 +4788,11 @@ u32 SoftRenderer3D::CurrentEffectMask() const noexcept
 void SoftRenderer3D::RenderFrame()
 {
     const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
-    const bool qualityChanged = nextDispCnt != EffectiveDispCnt;
+    const bool previousAlternateRows = AlternateRows;
+    const bool effectsChanged = nextDispCnt != EffectiveDispCnt;
     EffectiveDispCnt = nextDispCnt;
+    UpdateAlternateRows();
+    const bool qualityChanged = effectsChanged || previousAlternateRows != AlternateRows;
     RenderFrameFinished = false;
     RenderCancelRequested.store(false, std::memory_order_relaxed);
     RenderFrameCanceled.store(false, std::memory_order_relaxed);
@@ -4778,6 +4857,7 @@ void SoftRenderer3D::RestartFrame()
     const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     if (next != EffectiveDispCnt) FrameIdentical = false;
     EffectiveDispCnt = next;
+    UpdateAlternateRows();
     EnableRenderThread();
 }
 

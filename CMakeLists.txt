@@ -219,6 +219,14 @@ if(NDS4MISTER_USE_MELONDS)
     target_link_libraries(nds_background_palette_bench PRIVATE core ${CMAKE_DL_LIBS})
     set_property(TARGET nds_background_palette_bench PROPERTY
         INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+    add_executable(nds_alternate_rows_test EXCLUDE_FROM_ALL
+        tools/test_alternate_3d_rows.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_alternate_rows_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_alternate_rows_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_alternate_rows_test PRIVATE core ${CMAKE_DL_LIBS})
+    set_property(TARGET nds_alternate_rows_test PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+
     # Focused ROM-free raster oracle/timer; explicitly built when benchmarking.
     add_executable(nds_raster_batch_bench EXCLUDE_FROM_ALL
         tools/benchmark_raster_batch.cpp src/melonds/HeadlessPlatform.cpp)

@@ -2559,6 +2559,11 @@ private:
     // alignment and every pre-existing renderer member offset stay unchanged.
     u32 DisabledEffectBits = 0;
     u32 EffectiveDispCnt = 0;
+    bool AlternateRowsRequested = false;
+    bool AlternateRows = false;
+    void UpdateAlternateRows() noexcept;
+    void SkipPolygonRow(RendererPolygon* rp, s32 y, bool& prevIsShadowMask);
+    void DuplicateAlternateRows(bool attributes);
     bool DropShadows = false;
     nds4mister::GraphicsControl GraphicsControl;
     u32 CurrentEffectMask() const noexcept;
