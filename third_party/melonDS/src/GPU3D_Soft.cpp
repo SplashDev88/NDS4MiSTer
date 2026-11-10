@@ -3395,14 +3395,15 @@ void SoftRenderer3D::DuplicateAlternateRows(bool attributes)
     // exposed to 2D composition until the complete-frame fence.
     for (s32 y = 0; y < VisibleScanlines; y += 2)
     {
-        // Constant clear restores both rows to the same background before
-        // raster. Only the sampled row's damage can differ. Clear images
-        // may differ on every row, so they retain full-width duplication.
+        // Constant clear restores the sampled row. The odd row can still
+        // contain prior damage: copy its union with this frame's damage,
+        // folding that row's clear into the already-required duplication.
+        // Clear images may differ on every row and retain full-width copies.
         // Final processing can enlarge the bounds (background fog), hence
         // read them separately on each invocation.
         const bool clearImage = EffectiveDispCnt & (1u << 14);
-        const s32 first = clearImage ? 0 : FinalPassMinX[y];
-        const s32 end = clearImage ? 256 : FinalPassMaxX[y];
+        const s32 first = clearImage ? 0 : std::min(FinalPassMinX[y], FinalPassMinX[y + 1]);
+        const s32 end = clearImage ? 256 : std::max(FinalPassMaxX[y], FinalPassMaxX[y + 1]);
         if (first >= end) continue;
         const u32 src = FirstPixelOffset + y * ScanlineWidth + first;
         const u32 dst = src + ScanlineWidth;
@@ -3415,8 +3416,11 @@ void SoftRenderer3D::DuplicateAlternateRows(bool attributes)
             std::copy_n(&ColorBuffer[src], end - first, &ColorBuffer[dst]);
         // Track both copies even if cancellation arrives between them. A
         // subsequent sparse clear must restore every modified odd-row word.
-        FinalPassMinX[y + 1] = std::min<u16>(FinalPassMinX[y + 1], first);
-        FinalPassMaxX[y + 1] = std::max<u16>(FinalPassMaxX[y + 1], end);
+        // Keep the union until color is copied too: cancellation between
+        // passes must not lose old color damage. Once complete, only this
+        // frame's sampled damage remains non-clear in the odd row.
+        FinalPassMinX[y + 1] = attributes ? first : clearImage ? 0 : FinalPassMinX[y];
+        FinalPassMaxX[y + 1] = attributes ? end : clearImage ? 256 : FinalPassMaxX[y];
     }
 }
 
@@ -3869,6 +3873,10 @@ void SoftRenderer3D::ClearBuffers()
 
         for (int y = 0; y < VisibleScanlines; y++)
         {
+            // DuplicateAlternateRows will restore these words from the
+            // cleared sampled row. Preserve old bounds until both copies
+            // complete, including a cancellation before either pass.
+            if (AlternateRows && (y & 1)) continue;
             const int start = FinalPassMinX[y];
             const int end = FinalPassMaxX[y];
             if (start < end)
