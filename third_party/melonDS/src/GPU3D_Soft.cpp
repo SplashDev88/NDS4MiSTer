@@ -3344,18 +3344,28 @@ void SoftRenderer3D::DuplicateAlternateRows(bool attributes)
     // exposed to 2D composition until the complete-frame fence.
     for (s32 y = 0; y < VisibleScanlines; y += 2)
     {
-        const u32 src = FirstPixelOffset + y * ScanlineWidth;
+        // Constant clear restores both rows to the same background before
+        // raster. Only the sampled row's damage can differ. Clear images
+        // may differ on every row, so they retain full-width duplication.
+        // Final processing can enlarge the bounds (background fog), hence
+        // read them separately on each invocation.
+        const bool clearImage = EffectiveDispCnt & (1u << 14);
+        const s32 first = clearImage ? 0 : FinalPassMinX[y];
+        const s32 end = clearImage ? 256 : FinalPassMaxX[y];
+        if (first >= end) continue;
+        const u32 src = FirstPixelOffset + y * ScanlineWidth + first;
         const u32 dst = src + ScanlineWidth;
-        std::copy_n(&ColorBuffer[src], 256, &ColorBuffer[dst]);
         if (attributes)
         {
-            std::copy_n(&DepthBuffer[src], 256, &DepthBuffer[dst]);
-            std::copy_n(&AttrBuffer[src], 256, &AttrBuffer[dst]);
+            std::copy_n(&DepthBuffer[src], end - first, &DepthBuffer[dst]);
+            std::copy_n(&AttrBuffer[src], end - first, &AttrBuffer[dst]);
         }
-        // Conservative dirty extent also covers cancellation and transitions
-        // back to native rows on the next sparse clear.
-        FinalPassMinX[y + 1] = 0;
-        FinalPassMaxX[y + 1] = 256;
+        else
+            std::copy_n(&ColorBuffer[src], end - first, &ColorBuffer[dst]);
+        // Track both copies even if cancellation arrives between them. A
+        // subsequent sparse clear must restore every modified odd-row word.
+        FinalPassMinX[y + 1] = std::min<u16>(FinalPassMinX[y + 1], first);
+        FinalPassMaxX[y + 1] = std::max<u16>(FinalPassMaxX[y + 1], end);
     }
 }
 

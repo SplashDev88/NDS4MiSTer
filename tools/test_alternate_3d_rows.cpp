@@ -93,6 +93,29 @@ int main() try {
             test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
             require(soft(*test).AlternateRows==!aa,"AA admission gate");compare(*ref,*test);++cases;
         }
+        // Dirty-span copies must also preserve row-varying clear images,
+        // full-background fog, changing clear values, and empty successors.
+        for(unsigned variant=0;variant<12;++variant) {
+            for(auto* n:{ref.get(),test.get()}) {
+                frame(*n,0);
+                auto& gpu=n->GPU; auto& g=gpu.GPU3D;
+                gpu.MapVRAM_AB(1,0x93); // texture slot 2: clear color
+                gpu.MapVRAM_CD(2,0x9b); // texture slot 3: clear depth
+                for(unsigned i=0;i<0x20000;++i) {
+                    gpu.VRAM_B[i]=u8(i*17+(i>>9)*29+variant);
+                    gpu.VRAM_C[i]=u8(i*31+(i>>9)*13+variant);
+                }
+                std::memset(gpu.VRAMDirty[1].Data,255,sizeof(gpu.VRAMDirty[1].Data));
+                std::memset(gpu.VRAMDirty[2].Data,255,sizeof(gpu.VRAMDirty[2].Data));
+                g.RenderDispCnt=1|((variant%3==0)?(1u<<14):0)|((variant&1)?128:0);
+                g.RenderClearAttr1=0x07128000|((variant/3)*123);
+                g.RenderClearAttr2=0x7fff|((variant%3==0)?0x03070000:0);
+                g.RenderFogColor=0x100c4210;
+                std::fill_n(g.RenderFogDensityTable,34,64);
+                if(variant%3==2) g.RenderNumPolygons=0;
+            }
+            expected(*ref);render(*test);compare(*ref,*test);++cases;
+        }
         // Cancellation joins workers; an identical successor must rerender.
         if(scheduler>=2) {
             frame(*test,0);frame(*ref,0);expected(*ref);
