@@ -3330,6 +3330,15 @@ void SoftRenderer3D::ExpandQuarterColumns()
     // neighbor-dependent edge marking and the existing row expansion.
     for (s32 y = 0; y < VisibleScanlines; y += 2)
     {
+        const bool clearImage = EffectiveDispCnt & (1u << 14);
+        if (!clearImage && FinalPassMinX[y] >= FinalPassMaxX[y]) continue;
+        // Expansion must overwrite the original compact pixels too, or a
+        // ghost of the half-width picture would remain. Starting at half
+        // the dirty minimum makes the expanded destination cover both the
+        // compact damage and its doubled position. Untouched source words
+        // contain the same constant clear value. Bitmap clears need all X.
+        const s32 first = clearImage ? 0 : (FinalPassMinX[y] / 2) & ~3;
+        const s32 end = clearImage ? 128 : (std::min<s32>(128, FinalPassMaxX[y]) + 3) & ~3;
         const u32 row = FirstPixelOffset + y * ScanlineWidth;
         // With AA disabled only the top layer contributes to visible output.
         // Lower-layer raster scratch need not be expanded: the next frame
@@ -3340,7 +3349,7 @@ void SoftRenderer3D::ExpandQuarterColumns()
         {
 #if defined(__arm__) && defined(__ARM_NEON)
             // Descending blocks keep overlapping source words intact.
-            for (s32 x = 124; x >= 0; x -= 4)
+            for (s32 x = end - 4; x >= first; x -= 4)
             {
                 const uint32x4_t source = vld1q_u32(buffer + row + x);
                 const uint32x4x2_t doubled = vzipq_u32(source, source);
@@ -3348,17 +3357,16 @@ void SoftRenderer3D::ExpandQuarterColumns()
                 vst1q_u32(buffer + row + 2 * x + 4, doubled.val[1]);
             }
 #else
-            for (s32 x = 127; x >= 0; --x)
+            for (s32 x = end - 1; x >= first; --x)
             {
                 const u32 value = buffer[row + x];
                 buffer[row + 2 * x] = buffer[row + 2 * x + 1] = value;
             }
 #endif
         }
-        // Expansion also moves clear-image pixels.
-        // Keep subsequent sparse clears conservative in this optional mode.
-        FinalPassMinX[y] = 0;
-        FinalPassMaxX[y] = 256;
+        // Keep every overwritten word visible to later sparse clears.
+        FinalPassMinX[y] = first * 2;
+        FinalPassMaxX[y] = end * 2;
     }
 }
 
