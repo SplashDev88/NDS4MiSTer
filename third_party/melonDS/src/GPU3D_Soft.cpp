@@ -2690,14 +2690,9 @@ template<bool FrontFacing>
             ColorBuffer[address] = color;
             AttrBuffer[address] = attr;
         };
-#if defined(__arm__) && defined(__ARM_NEON)
         for (s32 x = first; x < end; x += 4, gray4.Advance())
-#else
-        for (s32 x = first; x < end; ++x, gray.Advance())
-#endif
         {
             u32 address = rowAddress + x;
-#if defined(__arm__) && defined(__ARM_NEON)
             if (x + 3 < end)
             {
                 const uint32x4_t destinationAttr = vld1q_u32(AttrBuffer + address);
@@ -2744,18 +2739,11 @@ template<bool FrontFacing>
             for (s32 lane = 0; lane < std::min<s32>(4, end - x); ++lane)
             {
                 address = rowAddress + x + lane;
-#else
-            {
-#endif
             if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
                     DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
                 continue;
             const u32 dstattr = AttrBuffer[address];
-#if defined(__arm__) && defined(__ARM_NEON)
             const u32 shade = shades[lane];
-#else
-            const u32 shade = u32(gray.Get()) >> 3;
-#endif
             plotGray(address, dstattr, shade);
             if ((dstattr & 0xF) && address < LowerLayerBufferSize)
                 plotGray(address + BufferSize, AttrBuffer[address + BufferSize], shade);

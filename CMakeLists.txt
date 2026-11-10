@@ -235,6 +235,9 @@ if(NDS4MISTER_USE_MELONDS)
     set_property(TARGET nds_tiny_3d_test PROPERTY
         INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
 
+    add_executable(nds_gray_power_test EXCLUDE_FROM_ALL tools/test_gray_power.cpp)
+    target_include_directories(nds_gray_power_test PRIVATE third_party/melonDS/src)
+
     add_executable(nds_gray_rectangle_test EXCLUDE_FROM_ALL
         tools/test_gray_rectangle_raster.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_gray_rectangle_test PRIVATE src third_party/melonDS/src)
