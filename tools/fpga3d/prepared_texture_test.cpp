@@ -43,7 +43,7 @@ int main(int argc,char** argv)try {
     for(unsigned i=0;i<32768;i++)n->GPU.VRAM_A[i]=uint8_t(i*37+(i>>7)*13);
     std::memset(n->GPU.VRAMDirty[0].Data,255,sizeof(n->GPU.VRAMDirty[0].Data));
     for(unsigned i=0;i<g.RenderNumPolygons;i++) {
-     g.RenderPolygonRAM[i]->TexParam|=(4u<<20)|(4u<<23);
+     g.RenderPolygonRAM[i]->TexParam|=(5u<<20)|(5u<<23);
      g.RenderPolygonRAM[i]->TexPalette=i%5;
     }
    }
@@ -77,7 +77,10 @@ int main(int argc,char** argv)try {
    if(step==4 || step==5 || step==6 || step==7)require(f.preparedHits==hits,"changed texture content/size reused stale preparation");
    if(step==8){require(f.transportError,"early timeout missing");continue;}
    require(f.valid && f.commands.size()>384,"production fixture was not emitted");
-   if(variant&0x10000000u)require(f.allowIndexed,"large fixture missed indexed preparation");
+   if(variant&0x10000000u)require(f.allowIndexed &&
+       std::any_of(f.textureOffsets.begin(),f.textureOffsets.end(),[](const auto& item){return item.second&1u;}) &&
+       std::any_of(f.textureOffsets.begin(),f.textureOffsets.end(),[](const auto& item){return !(item.second&1u);}),
+       "large fixture missed simultaneous raw/indexed bindings");
    std::vector<uint32_t> expected;
    for(unsigned y=0;y<192;y++) {
     const auto* p=ref->GetRenderer().Get3DScanline(y);expected.insert(expected.end(),p,p+256);
