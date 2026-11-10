@@ -43,6 +43,10 @@ struct HostTest {
       assert(h.quarter_3d && !h.half_rows && !h.anti_alias && reader.settings().quarter);
       h.draw();
       assert(h.osd_rows[10] == h.frame.renderRow(10, " 3D Resolution:       128x96", true, nds_osd::arrow_left));
+      h.action(8); // 64x48.
+      assert(h.tiny_3d && !h.quarter_3d && !h.half_rows && !h.anti_alias && reader.settings().tiny);
+      h.draw();
+      assert(h.osd_rows[10] == h.frame.renderRow(10, " 3D Resolution:        64x48", true, nds_osd::arrow_left));
       h.action(8); // Diagnostic Off; no stale Half Rows/AA setting.
       assert(h.render_off && !h.half_rows && !h.anti_alias && reader.settings().renderOff);
       h.draw();
@@ -73,6 +77,16 @@ struct HostTest {
       h.saveSettings();
       h.reset_confirm = true; h.cursor = 0; h.action(2);
       assert(!h.quarter_3d && h.anti_alias && !reader.settings().quarter);
+    }
+    {
+      std::ofstream(kit/"NDS_graphics.cfg") << "NDS-Graphics-v2\naa=off\nrows=tiny\n";
+      Host h(kit.string(), (sd/"games/NDS").string(), sd);
+      assert(h.tiny_3d && !h.quarter_3d && !h.half_rows && !h.anti_alias && reader.settings().tiny);
+      h.saveSettings();
+      Host cold(kit.string(), (sd/"games/NDS").string(), sd);
+      assert(cold.tiny_3d && reader.settings().tiny);
+      h.reset_confirm = true; h.cursor = 0; h.action(2);
+      assert(!h.tiny_3d && h.anti_alias && !reader.settings().tiny);
     }
     for (const char* valid : {"NDS-Graphics-v1\naa=off\n", "NDS-Graphics-v2\naa=off\nrows=native\n"}) {
       std::ofstream(kit/"NDS_graphics.cfg") << valid;

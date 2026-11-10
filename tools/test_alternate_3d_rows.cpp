@@ -98,6 +98,7 @@ static void expectedQuarter(NDS& n) {
     for(int y=0;y<192;y+=2) r.ScanlineFinalPass(y);
     for(int y=1;y<192;y+=2) std::copy_n(r.GetLine(y-1),256,r.GetLine(y));
 }
+#ifndef NDS_ALTERNATE_ORACLE_LIBRARY
 int main() try {
     unsigned layerCases=0, unusedLayerDifferences=0, singleLayerFrames=0;
     for(unsigned scheduler:{0u,1u,3u})
@@ -425,3 +426,5 @@ int main() try {
     std::printf("PASS alternate-row oracle cases=%u schedulers=5 repeated/sparse/empty/AA/shadow/cancel/live-resolution\n",cases);
     return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}
+
+#endif // NDS_ALTERNATE_ORACLE_LIBRARY

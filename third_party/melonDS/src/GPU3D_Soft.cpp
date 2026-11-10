@@ -3359,17 +3359,20 @@ void SoftRenderer3D::UpdateAlternateRows() noexcept
 {
     // Publish once per frame, before waking either raster worker. Legacy
     // scanline consumers and AA retain native resolution.
-    const bool nextQuarter = QuarterRequested && FullFrameCompletion &&
+    const bool nextTiny = TinyRequested && FullFrameCompletion && !(EffectiveDispCnt & (1u << 4));
+    const bool nextQuarter = (QuarterRequested || nextTiny) && FullFrameCompletion &&
         !(EffectiveDispCnt & (1u << 4));
     const bool next = (AlternateRowsRequested || nextQuarter) && FullFrameCompletion &&
         !(EffectiveDispCnt & (1u << 4));
-    if (next != AlternateRows || nextQuarter != Quarter)
+    if (next != AlternateRows || nextQuarter != Quarter || nextTiny != Tiny)
     {
         FrameIdentical = false;
         RasterTileHistoryValid = false;
     }
+    if (nextTiny != Tiny) SparseClearStateValid = false;
     AlternateRows = next;
     Quarter = nextQuarter;
+    Tiny = nextTiny;
 }
 
 void SoftRenderer3D::ExpandQuarterColumns()
@@ -3378,7 +3381,9 @@ void SoftRenderer3D::ExpandQuarterColumns()
     // coordinates only while preparing raster edges and work estimates.
     // Expand after joining both workers, before
     // neighbor-dependent edge marking and the existing row expansion.
-    for (s32 y = 0; y < VisibleScanlines; y += 2)
+    const s32 scale = Tiny ? 4 : 2;
+    const s32 width = 256 / scale;
+    for (s32 y = 0; y < VisibleScanlines; y += RowStep())
     {
         const bool clearImage = EffectiveDispCnt & (1u << 14);
         if (!clearImage && FinalPassMinX[y] >= FinalPassMaxX[y]) continue;
@@ -3387,8 +3392,8 @@ void SoftRenderer3D::ExpandQuarterColumns()
         // the dirty minimum makes the expanded destination cover both the
         // compact damage and its doubled position. Untouched source words
         // contain the same constant clear value. Bitmap clears need all X.
-        const s32 first = clearImage ? 0 : (FinalPassMinX[y] / 2) & ~3;
-        const s32 end = clearImage ? 128 : (std::min<s32>(128, FinalPassMaxX[y]) + 3) & ~3;
+        const s32 first = clearImage ? 0 : (FinalPassMinX[y] / scale) & ~3;
+        const s32 end = clearImage ? width : (std::min<s32>(width, FinalPassMaxX[y]) + 3) & ~3;
         const u32 row = FirstPixelOffset + y * ScanlineWidth;
         // With AA disabled only the top layer contributes to visible output.
         // Lower-layer raster scratch need not be expanded: the next frame
@@ -3402,21 +3407,31 @@ void SoftRenderer3D::ExpandQuarterColumns()
             for (s32 x = end - 4; x >= first; x -= 4)
             {
                 const uint32x4_t source = vld1q_u32(buffer + row + x);
-                const uint32x4x2_t doubled = vzipq_u32(source, source);
-                vst1q_u32(buffer + row + 2 * x, doubled.val[0]);
-                vst1q_u32(buffer + row + 2 * x + 4, doubled.val[1]);
+                if (Tiny)
+                {
+                    vst1q_u32(buffer + row + 4*x, vdupq_n_u32(vgetq_lane_u32(source, 0)));
+                    vst1q_u32(buffer + row + 4*x + 4, vdupq_n_u32(vgetq_lane_u32(source, 1)));
+                    vst1q_u32(buffer + row + 4*x + 8, vdupq_n_u32(vgetq_lane_u32(source, 2)));
+                    vst1q_u32(buffer + row + 4*x + 12, vdupq_n_u32(vgetq_lane_u32(source, 3)));
+                }
+                else
+                {
+                    const uint32x4x2_t doubled = vzipq_u32(source, source);
+                    vst1q_u32(buffer + row + 2*x, doubled.val[0]);
+                    vst1q_u32(buffer + row + 2*x + 4, doubled.val[1]);
+                }
             }
 #else
             for (s32 x = end - 1; x >= first; --x)
             {
                 const u32 value = buffer[row + x];
-                buffer[row + 2 * x] = buffer[row + 2 * x + 1] = value;
+                for (s32 dx = 0; dx < scale; ++dx) buffer[row + scale*x + dx] = value;
             }
 #endif
         }
         // Keep every overwritten word visible to later sparse clears.
-        FinalPassMinX[y] = first * 2;
-        FinalPassMaxX[y] = end * 2;
+        FinalPassMinX[y] = first * scale;
+        FinalPassMaxX[y] = end * scale;
     }
 }
 
@@ -3440,37 +3455,28 @@ void SoftRenderer3D::SkipPolygonRow(
 
 void SoftRenderer3D::DuplicateAlternateRows(bool attributes)
 {
-    // Called only after both workers join. Copy raw depth/ID neighbors before
-    // edge marking, and final color after fog/edge processing. No odd row is
-    // exposed to 2D composition until the complete-frame fence.
-    for (s32 y = 0; y < VisibleScanlines; y += 2)
+    // Workers have joined. Union previous damage in every skipped row so
+    // sparse clears and cancellation recovery cannot leave old pixels behind.
+    const s32 step = RowStep();
+    const bool clearImage = EffectiveDispCnt & (1u << 14);
+    for (s32 y = 0; y < VisibleScanlines; y += step)
     {
-        // Constant clear restores the sampled row. The odd row can still
-        // contain prior damage: copy its union with this frame's damage,
-        // folding that row's clear into the already-required duplication.
-        // Clear images may differ on every row and retain full-width copies.
-        // Final processing can enlarge the bounds (background fog), hence
-        // read them separately on each invocation.
-        const bool clearImage = EffectiveDispCnt & (1u << 14);
-        const s32 first = clearImage ? 0 : std::min(FinalPassMinX[y], FinalPassMinX[y + 1]);
-        const s32 end = clearImage ? 256 : std::max(FinalPassMaxX[y], FinalPassMaxX[y + 1]);
-        if (first >= end) continue;
-        const u32 src = FirstPixelOffset + y * ScanlineWidth + first;
-        const u32 dst = src + ScanlineWidth;
-        if (attributes)
+        for (s32 offset = 1; offset < step; ++offset)
         {
-            std::copy_n(&DepthBuffer[src], end - first, &DepthBuffer[dst]);
-            std::copy_n(&AttrBuffer[src], end - first, &AttrBuffer[dst]);
+            const s32 first = clearImage ? 0 : std::min(FinalPassMinX[y], FinalPassMinX[y+offset]);
+            const s32 end = clearImage ? 256 : std::max(FinalPassMaxX[y], FinalPassMaxX[y+offset]);
+            if (first >= end) continue;
+            const u32 src = FirstPixelOffset + y * ScanlineWidth + first;
+            const u32 dst = src + offset * ScanlineWidth;
+            if (attributes)
+            {
+                std::copy_n(DepthBuffer + src, end - first, DepthBuffer + dst);
+                std::copy_n(AttrBuffer + src, end - first, AttrBuffer + dst);
+            }
+            else std::copy_n(ColorBuffer + src, end - first, ColorBuffer + dst);
+            FinalPassMinX[y+offset] = attributes ? first : clearImage ? 0 : FinalPassMinX[y];
+            FinalPassMaxX[y+offset] = attributes ? end : clearImage ? 256 : FinalPassMaxX[y];
         }
-        else
-            std::copy_n(&ColorBuffer[src], end - first, &ColorBuffer[dst]);
-        // Track both copies even if cancellation arrives between them. A
-        // subsequent sparse clear must restore every modified odd-row word.
-        // Keep the union until color is copied too: cancellation between
-        // passes must not lose old color damage. Once complete, only this
-        // frame's sampled damage remains non-clear in the odd row.
-        FinalPassMinX[y + 1] = attributes ? first : clearImage ? 0 : FinalPassMinX[y];
-        FinalPassMaxX[y + 1] = attributes ? end : clearImage ? 256 : FinalPassMaxX[y];
     }
 }
 
@@ -3491,7 +3497,7 @@ void SoftRenderer3D::RenderScanline(
                 (y < polygon->YBottom ||
                  (y == polygon->YTop && polygon->YBottom == polygon->YTop)))
             {
-                if (AlternateRows && (y & 1))
+                if (AlternateRows && (y & (RowStep() - 1)))
                     SkipPolygonRow(rp, y, prevIsShadowMask);
                 else if (polygon->IsShadowMask)
                     RenderShadowMaskScanline(
@@ -3529,7 +3535,7 @@ void SoftRenderer3D::RenderScanline(
             RendererPolygon* rp = &polygonList[polygonIndex];
             Polygon* polygon = rp->PolyData;
 
-            if (AlternateRows && (y & 1))
+            if (AlternateRows && (y & (RowStep() - 1)))
                 SkipPolygonRow(rp, y, prevIsShadowMask);
             else if (polygon->IsShadowMask)
                 RenderShadowMaskScanline(
@@ -3602,7 +3608,7 @@ SoftRenderer3D::ScanlineFinalPassAntiAlias(s32 y)
 
 void SoftRenderer3D::ScanlineFinalPass(s32 y)
 {
-    if (AlternateRows && (y & 1)) return;
+    if (AlternateRows && (y & (RowStep() - 1))) return;
     // to consider:
     // clearing all polygon fog flags if the master flag isn't set?
     // merging all final pass loops into one?
@@ -3926,7 +3932,7 @@ void SoftRenderer3D::ClearBuffers()
             // DuplicateAlternateRows will restore these words from the
             // cleared sampled row. Preserve old bounds until both copies
             // complete, including a cancellation before either pass.
-            if (AlternateRows && (y & 1)) continue;
+            if (AlternateRows && (y & (RowStep() - 1))) continue;
             const int start = FinalPassMinX[y];
             const int end = FinalPassMaxX[y];
             if (start < end)
@@ -3987,7 +3993,7 @@ void SoftRenderer3D::ClearBuffers()
         {
             for (int x = 0; x < 256; x++)
             {
-                const u8 sampledX = Quarter ? u8(((GPU3D.RenderClearAttr2 >> 16) & 0xff) + 2 * x) : xoff;
+                const u8 sampledX = Quarter ? u8(((GPU3D.RenderClearAttr2 >> 16) & 0xff) + (Tiny ? 4 : 2) * x) : xoff;
                 u16 val2 = GPU.ReadVRAMFlat_Texture<u16>(0x40000 + (yoff << 9) + (sampledX << 1));
                 u16 val3 = GPU.ReadVRAMFlat_Texture<u16>(0x60000 + (yoff << 9) + (sampledX << 1));
 
@@ -4047,7 +4053,7 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     // Keep reduced-resolution modes on their established layer behavior.
     // The isolated hardware gain was in Native mode.
     LowerLayerBufferSize = SingleLayerAAOff && !AlternateRowsRequested &&
-        !QuarterRequested && !(EffectiveDispCnt & (1u << 4))
+        !QuarterRequested && !TinyRequested && !(EffectiveDispCnt & (1u << 4))
         ? 0 : BufferSize;
     int j = 0;
     for (int i = 0; i < npolys; i++)
@@ -4918,6 +4924,7 @@ u32 SoftRenderer3D::CurrentEffectMask() noexcept
     const auto settings = GraphicsControl.settings();
     AlternateRowsRequested = settings.halfRows;
     QuarterRequested = settings.quarter;
+    TinyRequested = settings.tiny;
     RenderOff = settings.renderOff;
     return (DisabledEffectBits & ~(1u << 4)) |
         (settings.antiAlias ? 0u : (1u << 4));
@@ -4938,11 +4945,12 @@ void SoftRenderer3D::RenderFrame()
     const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     const bool previousAlternateRows = AlternateRows;
     const bool previousQuarter = Quarter;
+    const bool previousTiny = Tiny;
     const bool effectsChanged = nextDispCnt != EffectiveDispCnt;
     EffectiveDispCnt = nextDispCnt;
     UpdateAlternateRows();
     const bool qualityChanged = effectsChanged || previousAlternateRows != AlternateRows ||
-        previousRenderOff != RenderOff || previousQuarter != Quarter;
+        previousRenderOff != RenderOff || previousQuarter != Quarter || previousTiny != Tiny;
     if (previousRenderOff != RenderOff) {
         SparseClearStateValid = false;
         RasterTileHistoryValid = false;

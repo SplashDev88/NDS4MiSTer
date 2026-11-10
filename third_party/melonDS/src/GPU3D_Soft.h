@@ -2591,11 +2591,14 @@ private:
     bool AlternateRows = false;
     bool QuarterRequested = false;
     bool Quarter = false;
+    bool TinyRequested = false;
+    bool Tiny = false;
+    s32 RowStep() const noexcept { return Tiny ? 4 : 2; }
     [[gnu::always_inline]] s32 RasterX(const Vertex* vertex) const noexcept
     {
         // One shift selects native or half-width raster coordinates without
         // duplicating guest geometry or widening the working set.
-        return vertex->FinalPosition[0] >> static_cast<unsigned>(Quarter);
+        return vertex->FinalPosition[0] >> (Tiny ? 2u : static_cast<unsigned>(Quarter));
     }
     void ExpandQuarterColumns();
     void UpdateAlternateRows() noexcept;

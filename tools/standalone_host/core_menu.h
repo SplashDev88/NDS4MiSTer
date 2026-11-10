@@ -2,7 +2,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
-struct CoreOption { unsigned shift, width, count; const char *label; std::array<const char *, 4> values; };
+struct CoreOption { unsigned shift, width, count; const char *label; std::array<const char *, 5> values; };
 inline constexpr const char *LOAD_LABEL = "Load *.NDS";
 inline constexpr unsigned LOAD_RECENT_INDEX = 3; // FS3 in CONF_STR
 inline constexpr const char *CORE_VERSION = "NDS4MiSTer v0.9.0-rc15-beta4";
