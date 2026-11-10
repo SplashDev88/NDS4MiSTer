@@ -2207,6 +2207,9 @@ nds_nitro_console_wrap #(
 `ifdef NDS_CACHE_LINE_STREAM_EXPERIMENT
     .CACHE_LINE_STREAM(1'b1),
 `endif
+`ifdef NDS_H3D_GPU_LOCAL_CREDIT_EXPERIMENT
+    .H3D_GPU_LOCAL_CREDIT(1'b1),
+`endif
 `ifdef NDS_ARM_AREA
     .GPU2D_A_ENABLE(0),.HOST_SAVE_PROFILE(1),
 `endif

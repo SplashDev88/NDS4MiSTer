@@ -4,7 +4,7 @@ use IEEE.numeric_std.all;
 use std.env.all;
 
 entity tb_nds_h3d_hblank_run_gate is
-   generic (COMPRESS_TEST : boolean := true);
+   generic (COMPRESS_TEST : boolean := true; LOCAL_GPU_CREDIT : boolean := false);
 end entity;
 
 architecture sim of tb_nds_h3d_hblank_run_gate is
@@ -69,7 +69,7 @@ begin
    clk <= not clk after 5 ns;
 
    dut : entity work.nds_h3d_console_event_gate
-   generic map (COMPRESS_HBLANK => COMPRESS_TEST)
+   generic map (COMPRESS_HBLANK => COMPRESS_TEST, GPU_LOCAL_CREDIT => LOCAL_GPU_CREDIT)
    port map
    (
       clk => clk, reset => reset, service_ready => service_ready,

@@ -4,6 +4,7 @@ use IEEE.numeric_std.all;
 use std.env.all;
 
 entity tb_nds_h3d_console_event_gate is
+   generic (LOCAL_GPU_CREDIT : boolean := false);
 end entity;
 
 architecture sim of tb_nds_h3d_console_event_gate is
@@ -68,6 +69,7 @@ begin
    clk <= not clk after 5 ns;
 
    dut : entity work.nds_h3d_console_event_gate
+   generic map (GPU_LOCAL_CREDIT => LOCAL_GPU_CREDIT)
    port map
    (
       clk => clk, reset => reset, service_ready => service_ready,
@@ -251,8 +253,9 @@ begin
 
       -- Fill every posted GPU slot while the sink is blocked. The 33rd
       -- one-cycle CPU pulse must survive in the skid slot without completing;
-      -- the cycle after the first downstream pop transfers it, completes the
-      -- CPU exactly once, and preserves all 33 payloads in FIFO order.
+      -- the downstream pop frees a slot and the skid completes exactly once,
+      -- on that edge in legacy mode or one edge later with local credit.
+      -- All 33 payloads must remain in FIFO order in both modes.
       reset <= '1';
       wait until rising_edge(clk);
       wait until falling_edge(clk);
@@ -290,10 +293,18 @@ begin
       wait for 1 ns;
       assert gpu_event_valid = '1' and
              gpu_event_address = std_logic_vector(to_unsigned(16#600#, 28)) and
-             gpu_event_data = x"00000000" and gpu_source_ready = '0' and
-             gpu_cpu_complete = '0'
-         report "GPU skid completed through a combinational full-queue pop"
+             gpu_event_data = x"00000000" and gpu_source_ready = '0'
+         report "full GPU queue changed its retained head or admitted a second source"
          severity failure;
+      if LOCAL_GPU_CREDIT then
+         assert gpu_cpu_complete = '0'
+            report "local GPU credit borrowed a combinational full-queue pop"
+            severity failure;
+      else
+         assert gpu_cpu_complete = '1'
+            report "legacy GPU skid did not complete on the full-queue pop"
+            severity failure;
+      end if;
       wait until rising_edge(clk);
 
       for i in 1 to 32 loop
@@ -301,11 +312,17 @@ begin
          assert gpu_event_valid = '1' and
                 gpu_event_address = std_logic_vector(
                    to_unsigned(16#600# + i * 4, 28)) and
-                gpu_event_data = std_logic_vector(to_unsigned(i, 32)) and
-                ((i = 1 and gpu_cpu_complete = '1') or
-                 (i /= 1 and gpu_cpu_complete = '0'))
+                gpu_event_data = std_logic_vector(to_unsigned(i, 32))
             report "posted GPU queue reordered, corrupted, or recompleted a write"
             severity failure;
+         if LOCAL_GPU_CREDIT and i = 1 then
+            assert gpu_cpu_complete = '1'
+               report "local-credit skid did not complete after a slot became free"
+               severity failure;
+         else
+            assert gpu_cpu_complete = '0'
+               report "posted GPU queue recompleted a write" severity failure;
+         end if;
          wait until rising_edge(clk);
       end loop;
       wait until falling_edge(clk);
@@ -377,6 +394,12 @@ begin
       gpu_event_ready <= '1';
       dma_accepts := 0;
       dma_outputs := 0;
+      wait for 1 ns;
+      if LOCAL_GPU_CREDIT then
+         assert gpu_source_ready = '0'
+            report "local DMA credit borrowed a combinational full-queue pop"
+            severity failure;
+      end if;
       for cycle in 0 to GPU_QUEUE_DEPTH * 4 + 16 loop
          wait for 1 ns;
          if (gpu_event_valid = '1') then

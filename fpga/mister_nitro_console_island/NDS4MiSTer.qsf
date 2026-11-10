@@ -457,3 +457,4 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_yc.sv
 
 # Retain FPGA3D C8 synchronization; integrate the qualified RC15 cache stream.
 set_global_assignment -name VERILOG_MACRO "NDS_CACHE_LINE_STREAM_EXPERIMENT=1"
+set_global_assignment -name VERILOG_MACRO "NDS_H3D_GPU_LOCAL_CREDIT_EXPERIMENT=1"

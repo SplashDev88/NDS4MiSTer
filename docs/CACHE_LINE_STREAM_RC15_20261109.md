@@ -22,6 +22,28 @@ The default VHDL generic is false. The experimental QSF enables the feature;
 the matched control QSF does not. No clock, timing exception, host executable,
 renderer, or graphics-quality setting is changed by this port.
 
+## Second physical candidate: local GPU queue credit
+
+The first port (`6fc8430`) passed the focused functional checks, but worst
+setup slack worsened from the exact RC15 control's -15.010 ns to -16.529 ns.
+Its streaming address/control paths met setup and hold. The first candidate
+was archived and was not loaded on hardware.
+
+The detailed failing path traversed the ordered graphics sink and its ready
+feedback into DMA IO acceptance and the ARM9 math unit. The second candidate
+also enables `NDS_H3D_GPU_LOCAL_CREDIT_EXPERIMENT=1`. With that independent
+switch, the source queue grants credit from its registered occupancy alone.
+A full queue can accept a replacement on the clock after a downstream pop,
+instead of borrowing that pop combinationally. Empty-queue bypass, capacity,
+event payloads, timestamps, and ordering are retained. A blocked CPU pulse
+remains in the skid slot; a DMA producer holds valid until acknowledged.
+
+This deliberately adds one acceptance cycle when the queue is full in order
+to shorten the ready-feedback path. Any game comparison of this second build
+measures streaming plus this timing change. It does not isolate streaming's
+contribution. The macro and VHDL generic default to disabled outside this
+experimental QSF.
+
 Run these focused checks from the repository root:
 
 ```sh
@@ -32,6 +54,8 @@ bash tools/test_nds_cache_data_return.sh
 bash tools/test_nds_cache_write_return.sh
 bash tools/test_nds_dma9_mainram_fast.sh
 bash tools/test_nitro_console_vhdl_analyze.sh
+bash tools/test_h3d_console_event_gate.sh
+bash tools/test_hblank_run_queue.sh
 ```
 
 The instruction and swap regressions now exercise both stream settings.
@@ -40,6 +64,11 @@ critical words, two related-clock ratios, and four memory delays. It verifies
 the physical pair order, early response, all warm words, ARM7 arbitration,
 scheduler stalls, and reset recovery. Wrong-wrap and truncated-line mutations
 must fail. Simulation latency is not a game-speed measurement.
+
+The event-gate suite runs both credit policies, checks the full-queue CPU
+completion cycle and the held DMA handshake, and requires a deliberately
+restored combinational pop-credit path to fail the local-credit check. The
+compressed HBlank regression also runs with both credit policies.
 
 The frozen RC15 source also requires its matching scalar GX readback test
 runner. The runner restored here removes newer burst-only parameter overrides

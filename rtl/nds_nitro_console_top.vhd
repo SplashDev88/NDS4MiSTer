@@ -58,6 +58,7 @@ entity nds_nitro_console_top is
    (
       is_simu                  : std_logic := '0';
       CACHE_LINE_STREAM        : boolean := false;
+      H3D_GPU_LOCAL_CREDIT     : boolean := false;
       Softmap_NDS_MAINRAM_ADDR : integer   := 8388608; -- byte offset of the 4 MB window in SDRAM
       -- 1 = run both 2D engines on clkMem (3x clk1x) instead of clk1x, giving
       -- the renderer 6390 cycles per scanline instead of 2130. A rendered line
@@ -1181,6 +1182,7 @@ begin
       -- Preserve beta.11's 32-entry posting window and empty-queue bypass.
       -- Engine B On admits additional writes through the same lossless gate.
       GPU_QUEUE_ADDRESS_BITS => 5,
+      GPU_LOCAL_CREDIT => H3D_GPU_LOCAL_CREDIT,
       COMPRESS_HBLANK => H3D_COMPRESS_HBLANK
    )
    port map

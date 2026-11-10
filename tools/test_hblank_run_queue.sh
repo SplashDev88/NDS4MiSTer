@@ -12,8 +12,10 @@ run_test() {
     nvc --std=2008 -r tb_nds_hblank_run_queue --exit-severity=error
     nvc --std=2008 -e -gBOUNDARY_BITS=9 -gINDEX_BITS=17 -O2 tb_nds_hblank_run_queue
     nvc --std=2008 -r tb_nds_hblank_run_queue --exit-severity=error
-    nvc --std=2008 -e -O2 tb_nds_h3d_hblank_run_gate
-    nvc --std=2008 -r tb_nds_h3d_hblank_run_gate --exit-severity=error
+    for local_credit in false true; do
+        nvc --std=2008 -e -O2 -gLOCAL_GPU_CREDIT="$local_credit" tb_nds_h3d_hblank_run_gate
+        nvc --std=2008 -r tb_nds_h3d_hblank_run_gate --exit-severity=error
+    done
     nvc --std=2008 -e -gCOMPRESS_TEST=false -O2 tb_nds_h3d_hblank_run_gate
     if nvc --std=2008 -r tb_nds_h3d_hblank_run_gate --exit-severity=error > negative.log 2>&1; then
         echo "FAIL: legacy 512-line queue unexpectedly retained the backlog"

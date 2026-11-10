@@ -29,6 +29,7 @@ entity nds_nitro_console_wrap is
       -- build from silently using the 3x phase gate under a 4x PLL.
       CLKMEM_RATIO     : integer := 3;
       CACHE_LINE_STREAM : std_logic := '0';
+      H3D_GPU_LOCAL_CREDIT : std_logic := '0';
       H3D_GX_READBACK_ENABLE : std_logic := '0';
       H3D_COMPRESS_HBLANK : std_logic := '0';
       GPU2D_A_ENABLE : integer := 1;
@@ -381,6 +382,7 @@ begin
    -- against until 1-4 in that document are proved.
    generic map (
       CACHE_LINE_STREAM => CACHE_LINE_STREAM = '1',
+      H3D_GPU_LOCAL_CREDIT => H3D_GPU_LOCAL_CREDIT = '1',
       GPU2D_A_ENABLE => GPU2D_A_ENABLE, HOST_SAVE_PROFILE => HOST_SAVE_PROFILE,
       GPU_FAST => 0, GPU2D_B_ENABLE => 0,
       H3D_MATCHED_DISPLAY_TEST => H3D_MATCHED_DISPLAY_TEST,
