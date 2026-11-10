@@ -2692,6 +2692,54 @@ template<bool FrontFacing>
         for (s32 x = first; x < end; ++x, gray.Advance())
         {
             u32 address = rowAddress + x;
+#if defined(__arm__) && defined(__ARM_NEON)
+            if (x + 3 < end)
+            {
+                const uint32x4_t destinationAttr = vld1q_u32(AttrBuffer + address);
+                const uint32x2_t edgePairs = vorr_u32(vget_low_u32(destinationAttr),
+                                                     vget_high_u32(destinationAttr));
+                // Any edge can need an ordered lower-layer operation. Leave
+                // the entire group on the established scalar path in that case.
+                if (!((vget_lane_u32(edgePairs, 0) | vget_lane_u32(edgePairs, 1)) & 15))
+                {
+                    u32 shades[4];
+                    for (unsigned lane = 0; lane < 4; ++lane)
+                    {
+                        shades[lane] = u32(gray.Get()) >> 3;
+                        if (lane != 3) gray.Advance();
+                    }
+                    const int32x4_t sourceDepth = vdupq_n_s32(depth);
+                    const uint32x4_t destinationDepth = vld1q_u32(DepthBuffer + address);
+                    uint32x4_t passed = vcltq_s32(sourceDepth,
+                        vreinterpretq_s32_u32(destinationDepth));
+                    if constexpr (FrontFacing)
+                        passed = vorrq_u32(passed, vandq_u32(
+                            vceqq_s32(sourceDepth, vreinterpretq_s32_u32(destinationDepth)),
+                            vceqq_u32(vandq_u32(destinationAttr, vdupq_n_u32(0x00400010)),
+                                      vdupq_n_u32(0x10))));
+                    passed = vbicq_u32(passed, vceqq_u32(
+                        vandq_u32(destinationAttr, vdupq_n_u32(0x007F0000)),
+                        vdupq_n_u32(translucentId)));
+                    uint32x4_t attr = veorq_u32(destinationAttr, vandq_u32(
+                        veorq_u32(destinationAttr, vdupq_n_u32(polyattr)),
+                        vdupq_n_u32(0xE0F0)));
+                    attr = vorrq_u32(vandq_u32(attr, vdupq_n_u32(0xFF00FFFF)),
+                        vdupq_n_u32(((polyattr >> 24) << 16) | (1u << 22)));
+                    attr = vandq_u32(attr, vorrq_u32(destinationAttr,
+                                                    vdupq_n_u32(~(1u << 15))));
+                    const uint32x4_t destinationColor = vld1q_u32(ColorBuffer + address);
+                    const uint32x4_t color = NDS4MiSTerBlendGrayPixels4(
+                        vld1q_u32(shades), destinationColor, alpha);
+                    vst1q_u32(ColorBuffer + address, vbslq_u32(passed, color, destinationColor));
+                    vst1q_u32(AttrBuffer + address, vbslq_u32(passed, attr, destinationAttr));
+                    if (writeDepth != u32(-1))
+                        vst1q_u32(DepthBuffer + address, vbslq_u32(passed,
+                            vreinterpretq_u32_s32(sourceDepth), destinationDepth));
+                    x += 3;
+                    continue;
+                }
+            }
+#endif
             if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
                     DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
                 continue;

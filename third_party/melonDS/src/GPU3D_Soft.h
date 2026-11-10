@@ -826,6 +826,30 @@ NDS4MiSTerCachedPixelHasLowerLayer(
         ((green >> 5) << 8) | (resultAlpha << 24);
 }
 
+#if defined(__arm__) && defined(__ARM_NEON)
+// Same independent 6-bit gray blends as the scalar path, four pixels at a
+// time. Packed red/blue products remain below 2^11 in each 16-bit lane.
+[[gnu::always_inline]] inline uint32x4_t NDS4MiSTerBlendGrayPixels4(
+    uint32x4_t gray, uint32x4_t destination, u32 alpha) noexcept
+{
+    const uint32x4_t destinationAlpha = vshrq_n_u32(destination, 24);
+    const uint32x4_t sourceWeight = vmulq_n_u32(gray, alpha + 1);
+    const uint32x4_t redBlue = vaddq_u32(
+        vmulq_n_u32(vandq_u32(destination, vdupq_n_u32(0x003F003F)), 31 - alpha),
+        vmulq_n_u32(sourceWeight, 0x00010001));
+    const uint32x4_t green = vaddq_u32(
+        vmulq_n_u32(vandq_u32(vshrq_n_u32(destination, 8), vdupq_n_u32(63)), 31 - alpha),
+        sourceWeight);
+    const uint32x4_t blended = vorrq_u32(
+        vorrq_u32(vandq_u32(vshrq_n_u32(redBlue, 5), vdupq_n_u32(0x003F003F)),
+                   vshlq_n_u32(vshrq_n_u32(green, 5), 8)),
+        vshlq_n_u32(vmaxq_u32(destinationAlpha, vdupq_n_u32(alpha)), 24));
+    const uint32x4_t source = vorrq_u32(vmulq_n_u32(gray, 0x010101),
+                                       vdupq_n_u32(alpha << 24));
+    return vbslq_u32(vceqq_u32(destinationAlpha, vdupq_n_u32(0)), source, blended);
+}
+#endif
+
 [[gnu::always_inline, gnu::hot]] inline void
 NDS4MiSTerPackCachedSpanValues(
     const s32* values, u32& vertexColor,
