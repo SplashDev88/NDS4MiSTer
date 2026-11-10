@@ -114,6 +114,35 @@ int main(){
   check(f.textures.front()==data.front().front() && f.indexedCacheBytes<=Frame::IndexedCacheBytes);
  }
  std::vector<uint32_t> source(256*192),dest(258*192+16,guard),texture(8192),target(8200,guard);
+ // Prepared bindings survive geometry/use-order changes, but never animated
+ // palettes, recycled decoded pointers, resizing, or an incomplete source set.
+ {
+  Frame f;std::vector<std::vector<uint32_t>> data(12,std::vector<uint32_t>(16384));
+  std::vector<Frame::TextureUse> uses;
+  for(unsigned t=0;t<data.size();t++){
+   for(unsigned i=0;i<data[t].size();i++)data[t][i]=0x1f000000u|((i+t)&255);
+   uses.push_back({data[t].data(),data[t].size(),t+1});
+   check(f.addTexture(data[t].data(),data[t].size()));
+  }
+  f.preferRawTextures(uses);
+  f.preparedTextures.remember(uses,f.textures,f.textureOffsets);
+  check(f.preparedTextures.matches(uses));
+  std::reverse(uses.begin(),uses.end());for(auto& use:uses)use.rows=999;
+  check(f.preparedTextures.matches(uses));
+  for(const auto& use:uses){
+   const uint32_t binding=f.preparedTextures.bindings.at(use.pixels);
+   const size_t base=((binding&~1u)-Textures)/4;const auto& bytes=f.preparedTextures.staged;
+   for(size_t i=0;i<use.count;i++)check((binding&1?
+    bytes[base+((bytes[base+256+i/4]>>(8*(i%4)))&255)]:bytes[base+i])==use.pixels[i]);
+  }
+  data[3][777]^=0x100;check(!f.preparedTextures.matches(uses));data[3][777]^=0x100;
+  check(f.preparedTextures.matches(uses));uses[0].count/=2;check(!f.preparedTextures.matches(uses));uses[0].count*=2;
+  auto replacement=data.back();uses[0].pixels=replacement.data();check(!f.preparedTextures.matches(uses));uses[0].pixels=data.back().data();
+  uses.pop_back();check(!f.preparedTextures.matches(uses));
+  f.preparedTextures.remember(uses,f.textures,f.textureOffsets);check(!f.preparedTextures.ready);
+  uses={{data[0].data(),PreparedTextures::MaxSourceBytes/4+1,1}};
+  f.preparedTextures.remember(uses,{},{{data[0].data(),Textures}});check(!f.preparedTextures.ready);
+ }
  for(auto& w:source)w=rng();for(auto& w:texture)w=rng();
  for(bool wc:{false,true}){
   bind(nullptr,source.data(),false,wc);copyOutput(dest.data()+8,258);

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <vector>
 
 namespace fpga3d {
@@ -33,6 +34,41 @@ struct TextureResidency {
    }
   }
   return uploaded;
+ }
+};
+
+// Reuse an exact prepared texture set even when polygon motion changes the
+// order or frequency of texture use. Raw and indexed bindings are lossless;
+// retaining their previous placement avoids rebuilding and reshuffling DDR.
+// Every current decoded source byte is compared; pointers alone never qualify.
+struct PreparedTextures {
+ static constexpr size_t MaxSourceBytes=4*1024*1024;
+ std::map<const uint32_t*,std::vector<uint32_t>> sources;
+ std::map<const uint32_t*,uint32_t> bindings;
+ std::vector<uint32_t> staged;
+ bool ready=false;
+ template<class Uses> bool matches(const Uses& uses)const{
+  if(!ready || uses.size()!=sources.size())return false;
+  for(const auto& use:uses){
+   auto found=sources.find(use.pixels);
+   if(found==sources.end() || found->second.size()!=use.count ||
+      std::memcmp(found->second.data(),use.pixels,use.count*4))return false;
+  }
+  return true;
+ }
+ template<class Uses> void remember(const Uses& uses,const std::vector<uint32_t>& data,
+                                   const std::map<const uint32_t*,uint32_t>& offsets){
+  ready=false;sources.clear();bindings.clear();staged.clear();
+  if(uses.size()>512 || uses.size()!=offsets.size())return;
+  size_t bytes=0;
+  for(const auto& use:uses){
+   if(!use.pixels || !use.count || use.count>(MaxSourceBytes-bytes)/4 || !offsets.count(use.pixels))return;
+   bytes+=use.count*4;
+  }
+  for(const auto& use:uses){
+   if(!sources.emplace(use.pixels,std::vector<uint32_t>(use.pixels,use.pixels+use.count)).second){sources.clear();return;}
+  }
+  staged=data;bindings=offsets;ready=true;
  }
 };
 }

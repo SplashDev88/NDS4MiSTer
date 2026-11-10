@@ -4660,10 +4660,20 @@ bool SoftRenderer3D::TryFpgaFrame()
     // there until the scheduler moves it, competing with the native worker.
     const FpgaPreparationAffinity preparationAffinity;
     trace.next(fpga3d::Stage::Textures);
+    const bool preparedEligible=fpga3d::preparedTexturesEnabled && fpga3d::adaptiveAdmission;
+    const bool preparedHit=preparedEligible && FpgaFrame.preparedTextures.matches(textureUses);
+    if(preparedHit){
+        FpgaFrame.textures=FpgaFrame.preparedTextures.staged;
+        FpgaFrame.textureOffsets=FpgaFrame.preparedTextures.bindings;
+        ++FpgaFrame.preparedHits;
+    }
+    if(preparedEligible && ++FpgaFrame.preparedAttempts%120==0 && fpga3d::profileEnabled)
+        std::fprintf(stderr,"FPGA3D_PREPARED attempts=%llu hits=%llu\n",
+            (unsigned long long)FpgaFrame.preparedAttempts,(unsigned long long)FpgaFrame.preparedHits);
     // Reject unsupported frames before copying any decoded textures. Shadow
     // polygons commonly sort after opaque geometry, so a single combined pass
     // would copy most of a frame's textures before selecting software fallback.
-    for(int i=0;i<CurrentPolygonCount;i++)
+    if(!preparedHit)for(int i=0;i<CurrentPolygonCount;i++)
     {
         const auto& ps=PolygonList[i].PixelState;
         if(!PolygonList[i].PolyData->IsShadowMask && ps.TextureEnabled &&
@@ -4676,8 +4686,10 @@ bool SoftRenderer3D::TryFpgaFrame()
             return trace.finish(FpgaFrame.failure);
         }
     }
-    if(fpga3d::adaptiveAdmission && FpgaFrame.allowIndexed)
+    if(!preparedHit && fpga3d::adaptiveAdmission && FpgaFrame.allowIndexed)
         FpgaFrame.preferRawTextures(textureUses);
+    if(preparedEligible && !preparedHit)
+        FpgaFrame.preparedTextures.remember(textureUses,FpgaFrame.textures,FpgaFrame.textureOffsets);
     trace.next(fpga3d::Stage::Emit);
     if(GPU3D.RenderDispCnt & (1u<<7))
     {

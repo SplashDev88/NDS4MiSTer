@@ -17,6 +17,7 @@ inline volatile uint32_t* control=nullptr;
 inline volatile uint32_t* publication=nullptr;
 inline bool permitted=false,writeCombined=false,streaming=true;
 inline bool textureResidencyEnabled=false;
+inline bool preparedTexturesEnabled=false;
 inline uint64_t bindingSerial=0,textureWriterSerial=0;
 inline uint32_t poisonedSession=0;
 inline uint64_t completedFrames=0,failedFrames=0;
@@ -90,6 +91,8 @@ struct Frame {
  std::vector<PackedCommand> packedCommands;
  std::vector<uint32_t> textures;
  TextureResidency residentTextures;
+ PreparedTextures preparedTextures;
+ uint64_t preparedAttempts=0,preparedHits=0;
  bool residentValid=false;
  uint32_t residentSession=0,residentSequence=0;
  uint64_t residentBinding=0,residentWriter=0;
