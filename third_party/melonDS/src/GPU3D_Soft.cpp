@@ -1568,7 +1568,7 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
             // attributes. Share the scalar path's exact lazy selection;
             // equal depth and lower-layer fallback still consult them.
             if (!NDS4MiSTerSelectCachedDepthPixel(
-                    DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
             {
                 allFront = false;
                 continue;
@@ -1653,7 +1653,7 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
                     z = -1;
                 PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
-                if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                     PlotTranslucentPixel(
                         pixeladdr + BufferSize, color, z, polyattr, 0);
             }
@@ -1833,7 +1833,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
         }
 
         if (!NDS4MiSTerSelectCachedDepthPixel(
-                DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
             continue;
 
         u32 vertexColor;
@@ -1872,7 +1872,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
             if (NDS4MiSTerCachedPixelHasLowerLayer(
-                    AttrBuffer, BufferSize, pixeladdr))
+                    AttrBuffer, LowerLayerBufferSize, pixeladdr))
                 PlotTranslucentPixel(
                     pixeladdr + BufferSize, color, z, polyattr, 0);
         }
@@ -1927,7 +1927,7 @@ SoftRenderer3D::RenderCachedContiguousTextureSpan(
             u32 pixeladdr = rowAddress + firstX;
             s32 z = constantSpanDepth;
             if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                    DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
                 continue;
             u32 color;
             if (!NDS4MiSTerNeutralOpaqueCachedPixel(*texture, alphaRef, color))
@@ -1943,7 +1943,7 @@ SoftRenderer3D::RenderCachedContiguousTextureSpan(
                 if (!writeTranslucentDepth) z = -1;
                 PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
                 if (NDS4MiSTerCachedPixelHasLowerLayer(
-                        AttrBuffer, BufferSize, pixeladdr))
+                        AttrBuffer, LowerLayerBufferSize, pixeladdr))
                     PlotTranslucentPixel(
                         pixeladdr + BufferSize, color, z, polyattr, 0);
             }
@@ -2012,7 +2012,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
         s32 z = constantSpanDepth;
 
         if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
             continue;
 
         const u32 texel = pixelState.TexturePixels[
@@ -2039,7 +2039,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
             if (NDS4MiSTerCachedPixelHasLowerLayer(
-                    AttrBuffer, BufferSize, pixeladdr))
+                    AttrBuffer, LowerLayerBufferSize, pixeladdr))
                 PlotTranslucentPixel(
                     pixeladdr + BufferSize, color, z, polyattr, 0);
         }
@@ -2374,7 +2374,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -2414,7 +2414,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -2432,7 +2432,7 @@ void SoftRenderer3D::RenderPolygonScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, polygon->IsShadow);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
         }
     }
@@ -2476,7 +2476,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -2509,7 +2509,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 attr |= (0x1F << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -2527,7 +2527,7 @@ void SoftRenderer3D::RenderPolygonScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, polygon->IsShadow);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
         }
     }
@@ -2567,7 +2567,7 @@ void SoftRenderer3D::RenderPolygonScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -2607,7 +2607,7 @@ void SoftRenderer3D::RenderPolygonScanline(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -2625,7 +2625,7 @@ void SoftRenderer3D::RenderPolygonScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, polygon->IsShadow);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
         }
     }
@@ -2693,12 +2693,12 @@ template<bool FrontFacing>
         {
             u32 address = rowAddress + x;
             if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                    DepthBuffer, AttrBuffer, BufferSize, depth, address))
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
                 continue;
             const u32 dstattr = AttrBuffer[address];
             const u32 shade = u32(gray.Get()) >> 3;
             plotGray(address, dstattr, shade);
-            if ((dstattr & 0xF) && address < BufferSize)
+            if ((dstattr & 0xF) && address < LowerLayerBufferSize)
                 plotGray(address + BufferSize, AttrBuffer[address + BufferSize], shade);
         }
     }
@@ -2746,7 +2746,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     {
         u32 address = rowAddress + pixelX;
         if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                DepthBuffer, AttrBuffer, BufferSize, depth, address))
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
             return;
         const u32 dstattr = AttrBuffer[address];
         const s16 s = static_cast<s16>(sl + (pixelX - xstart) * stepS);
@@ -2760,7 +2760,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
             if (antialias)
             {
                 attr |= 31 << 8;
-                if (address < BufferSize)
+                if (address < LowerLayerBufferSize)
                 {
                     ColorBuffer[address + BufferSize] = ColorBuffer[address];
                     DepthBuffer[address + BufferSize] = DepthBuffer[address];
@@ -2775,7 +2775,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
         {
             const s32 z = writeTranslucentDepth ? depth : -1;
             PlotTranslucentPixel(address, color, z, polyattr, false);
-            if ((dstattr & 0xF) && address < BufferSize)
+            if ((dstattr & 0xF) && address < LowerLayerBufferSize)
                 PlotTranslucentPixel(address + BufferSize, color, z, polyattr, false);
         }
     };
@@ -2976,7 +2976,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -3016,7 +3016,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -3034,7 +3034,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
@@ -3083,7 +3083,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -3116,7 +3116,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
                 attr |= (0x1F << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -3134,7 +3134,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
@@ -3174,7 +3174,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -3214,7 +3214,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -3232,7 +3232,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
@@ -3657,7 +3657,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
             // fog for lower pixel
             // TODO: make this code nicer, but avoid using a loop
 
-            if (!(attr & 0xF)) continue;
+            if (!LowerLayerBufferSize || !(attr & 0xF)) continue;
             pixeladdr += BufferSize;
 
             attr = AttrBuffer[pixeladdr];
@@ -3994,12 +3994,19 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureBindingCache textureBinding;
+    LowerLayerBufferSize = SingleLayerAAOff && !(EffectiveDispCnt & (1u << 4))
+        ? 0 : BufferSize;
     int j = 0;
     for (int i = 0; i < npolys; i++)
     {
         if (polygons[i]->Degenerate) continue;
         if (DropShadows &&
             (polygons[i]->IsShadowMask || polygons[i]->IsShadow)) continue;
+        // Keep the established two-layer stencil semantics for every frame
+        // containing shadow geometry. Ordinary AA-off frames have no final
+        // consumer of lower colors, depth or attributes.
+        if (polygons[i]->IsShadowMask || polygons[i]->IsShadow)
+            LowerLayerBufferSize = BufferSize;
         SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
     }
     CurrentPolygonCount = j;

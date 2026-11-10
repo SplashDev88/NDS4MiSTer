@@ -2559,6 +2559,10 @@ private:
     // alignment and every pre-existing renderer member offset stay unchanged.
     u32 DisabledEffectBits = 0;
     u32 EffectiveDispCnt = 0;
+    // Zero prevents access to the invisible AA backing layer. A frame with
+    // AA or shadow geometry retains the original physical layer offset.
+    bool SingleLayerAAOff = true;
+    u32 LowerLayerBufferSize = BufferSize;
     bool AlternateRowsRequested = false;
     bool AlternateRows = false;
     bool QuarterRequested = false;

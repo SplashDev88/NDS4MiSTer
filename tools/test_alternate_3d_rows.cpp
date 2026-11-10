@@ -99,6 +99,50 @@ static void expectedQuarter(NDS& n) {
     for(int y=1;y<192;y+=2) std::copy_n(r.GetLine(y-1),256,r.GetLine(y));
 }
 int main() try {
+    unsigned layerCases=0, unusedLayerDifferences=0, singleLayerFrames=0;
+    for(unsigned scheduler:{0u,1u,3u})
+    for(unsigned resolution=0;resolution<3;++resolution) {
+        auto ref=make(scheduler,resolution!=0),test=make(scheduler,resolution!=0);
+        soft(*ref).SingleLayerAAOff=false;
+        soft(*ref).QuarterRequested=soft(*test).QuarterRequested=resolution==2;
+        for(unsigned scenario=0;scenario<64;++scenario) {
+            for(auto* n:{ref.get(),test.get()}) {
+                frame(*n,scenario|64u|((scenario&4)?16384u:0u));
+                auto& g=n->GPU.GPU3D;
+                if(scenario&2) {
+                    g.RenderDispCnt|=128u;
+                    g.RenderFogColor=0x100c4210;
+                    std::fill_n(g.RenderFogDensityTable,34,64);
+                    for(unsigned i=0;i<g.RenderNumPolygons;++i)
+                        g.RenderPolygonRAM[i]->Attr|=1u<<15;
+                }
+                if(scenario>=48) {
+                    g.RenderPolygonRAM[1]->IsShadowMask=true;
+                    g.RenderPolygonRAM[1]->Attr&=0x00ffffff;
+                    g.RenderPolygonRAM[2]->IsShadow=true;
+                }
+                if(scenario%16==15) g.RenderNumPolygons=0;
+            }
+            for(unsigned repeat=0;repeat<2;++repeat) {
+                render(*ref);render(*test);
+                auto& a=soft(*ref);auto& b=soft(*test);
+                compare(*ref,*test);
+                for(auto pair:{std::pair{a.ColorBuffer,b.ColorBuffer},
+                               std::pair{a.DepthBuffer,b.DepthBuffer},
+                               std::pair{a.AttrBuffer,b.AttrBuffer}})
+                    require(!std::memcmp(pair.first,pair.second,a.BufferSize*4),"single-layer top/border differs");
+                const bool needsLower=(b.EffectiveDispCnt&16u) ||
+                    (scenario>=48 && scenario%16!=15);
+                require((b.LowerLayerBufferSize!=0)==needsLower,"single-layer admission/fallback differs");
+                singleLayerFrames+=!b.LowerLayerBufferSize;
+                unusedLayerDifferences+=!needsLower &&
+                    std::memcmp(a.ColorBuffer+a.BufferSize,b.ColorBuffer+b.BufferSize,a.BufferSize*4)!=0;
+                ++layerCases;
+            }
+        }
+    }
+    require(singleLayerFrames && unusedLayerDifferences,"single-layer oracle is vacuous");
+    std::printf("PASS single-layer visible oracle cases=%u admitted=%u unused_lower_changes=%u\n",layerCases,singleLayerFrames,unusedLayerDifferences);
     unsigned cases=0;
     for(unsigned scheduler=0;scheduler<5;++scheduler) {
         auto ref=make(0,false),test=make(scheduler,true);
