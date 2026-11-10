@@ -235,6 +235,14 @@ if(NDS4MISTER_USE_MELONDS)
     set_property(TARGET nds_tiny_3d_test PROPERTY
         INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
 
+    add_executable(nds_gray_tiny_test EXCLUDE_FROM_ALL
+        tools/test_gray_tiny.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_gray_tiny_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_gray_tiny_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_gray_tiny_test PRIVATE core ${CMAKE_DL_LIBS})
+    set_property(TARGET nds_gray_tiny_test PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+
     add_executable(nds_gray_power_test EXCLUDE_FROM_ALL tools/test_gray_power.cpp)
     target_include_directories(nds_gray_power_test PRIVATE third_party/melonDS/src)
 

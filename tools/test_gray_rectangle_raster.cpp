@@ -67,6 +67,8 @@ static void grayFrame(NDS& n, unsigned scenario)
     }
 }
 
+
+#ifndef NDS_GRAY_ORACLE_LIBRARY
 int main() try
 {
     unsigned paths = 0;
@@ -191,3 +193,5 @@ catch (const std::exception& e)
     std::fprintf(stderr, "FAIL: %s\n", e.what());
     return 1;
 }
+
+#endif
