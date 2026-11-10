@@ -330,6 +330,7 @@ class Host {
   bool screen_peek = false; // Temporary display override; status keeps the selection.
   bool anti_alias = true;
   bool half_rows = false;
+  bool quarter_3d = false;
   bool render_off = false; // Diagnostic only; deliberately not persisted.
   nds4mister::GraphicsControl graphics_control{true};
   bool direct_video_crt = true; // Shared with startup Advanced Options; CRT-safe default.
@@ -524,7 +525,7 @@ class Host {
     atomicFile(fs::path(kit) / "NDS_video.cfg", video_config.data(), video_config.size());
     const std::string graphics_config = std::string("NDS-Graphics-v2\n") +
         (anti_alias ? "aa=on\n" : "aa=off\n") +
-        (half_rows ? "rows=half\n" : "rows=native\n");
+        (quarter_3d ? "rows=quarter\n" : half_rows ? "rows=half\n" : "rows=native\n");
     atomicFile(fs::path(kit) / "NDS_graphics.cfg", graphics_config.data(), graphics_config.size());
     message.clear();
   }
@@ -1608,8 +1609,8 @@ class Host {
         rows[mainMenuRow(AA_CURSOR)] = optionLabel(anti_alias ? 1 : 0,
             {0, 1, 2, "3D Anti-aliasing", {"Off", "On"}});
       if (mainMenuRow(RESOLUTION_CURSOR) >= 0)
-        rows[mainMenuRow(RESOLUTION_CURSOR)] = optionLabel(render_off ? 2 : half_rows ? 1 : 0,
-            {0, 2, 3, "3D Resolution", {"Native", "Half Rows", "Off (test)"}});
+        rows[mainMenuRow(RESOLUTION_CURSOR)] = optionLabel(render_off ? 3 : quarter_3d ? 2 : half_rows ? 1 : 0,
+            {0, 2, 4, "3D Resolution", {"Native", "Half Rows", "128x96", "Off (test)"}});
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
         rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
             {0, 1, 2, "Direct Video Target", {"CRT", "Scaler"}});
@@ -1742,8 +1743,9 @@ class Host {
           direct_video_crt = true;
           anti_alias = true;
           half_rows = false;
+          quarter_3d = false;
           render_off = false;
-          graphics_control.set(anti_alias, half_rows, render_off);
+          graphics_control.set(anti_alias, half_rows, render_off, quarter_3d);
           saveSettings();
           sendstatus();
           message = "Defaults restored";
@@ -1873,18 +1875,20 @@ class Host {
         message.clear();
       } else if (cursor == AA_CURSOR && (a == 2 || a == 7 || a == 8)) {
         anti_alias = !anti_alias;
-        const bool restored_native = anti_alias && (half_rows || render_off);
-        if (anti_alias) { half_rows = false; render_off = false; }
-        graphics_control.set(anti_alias, half_rows, render_off);
+        const bool restored_native = anti_alias && (half_rows || quarter_3d || render_off);
+        if (anti_alias) { half_rows = false; quarter_3d = false; render_off = false; }
+        graphics_control.set(anti_alias, half_rows, render_off, quarter_3d);
         message = restored_native ? " AA uses Native resolution" : " System > Save settings";
       } else if (cursor == RESOLUTION_CURSOR && (a == 2 || a == 7 || a == 8)) {
-        const int current = render_off ? 2 : half_rows ? 1 : 0;
-        const int next = (current + (a == 7 ? 2 : 1)) % 3;
+        const int current = render_off ? 3 : quarter_3d ? 2 : half_rows ? 1 : 0;
+        const int next = (current + (a == 7 ? 3 : 1)) % 4;
         half_rows = next == 1;
-        render_off = next == 2;
-        if (half_rows || render_off) anti_alias = false;
-        graphics_control.set(anti_alias, half_rows, render_off);
+        quarter_3d = next == 2;
+        render_off = next == 3;
+        if (half_rows || quarter_3d || render_off) anti_alias = false;
+        graphics_control.set(anti_alias, half_rows, render_off, quarter_3d);
         message = render_off ? " Diagnostic: no 3D picture" :
+            quarter_3d ? " 128x96 uses AA Off" :
             half_rows ? " Half Rows uses AA Off" : " System > Save settings";
       } else if (a == 2 && cursor == DISPLAY_CURSOR) {
         display_menu = true;
@@ -2933,11 +2937,12 @@ public:
     std::ifstream graphics_config(fs::path(kit) / "NDS_graphics.cfg", std::ios::binary);
     const std::string graphics_contents((std::istreambuf_iterator<char>(graphics_config)), {});
     half_rows = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=half\n";
-    anti_alias = !half_rows && graphics_contents != "NDS-Graphics-v1\naa=off\n" &&
+    quarter_3d = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=quarter\n";
+    anti_alias = !half_rows && !quarter_3d && graphics_contents != "NDS-Graphics-v1\naa=off\n" &&
         graphics_contents != "NDS-Graphics-v2\naa=off\nrows=native\n";
     require(!std::getenv("NDS4MISTER_GRAPHICS_CONTROL") || graphics_control.attached(),
             "graphics control mapping");
-    graphics_control.set(anti_alias, half_rows, render_off);
+    graphics_control.set(anti_alias, half_rows, render_off, quarter_3d);
     std::ifstream video_config(fs::path(kit) / "NDS_video.cfg", std::ios::binary);
     const std::string video_contents((std::istreambuf_iterator<char>(video_config)),
                                      std::istreambuf_iterator<char>());

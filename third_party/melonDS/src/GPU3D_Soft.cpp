@@ -3309,14 +3309,41 @@ void SoftRenderer3D::UpdateAlternateRows() noexcept
 {
     // Publish once per frame, before waking either raster worker. Legacy
     // scanline consumers and AA retain native resolution.
-    const bool next = AlternateRowsRequested && FullFrameCompletion &&
+    const bool nextQuarter = QuarterRequested && FullFrameCompletion &&
         !(EffectiveDispCnt & (1u << 4));
-    if (next != AlternateRows)
+    const bool next = (AlternateRowsRequested || nextQuarter) && FullFrameCompletion &&
+        !(EffectiveDispCnt & (1u << 4));
+    if (next != AlternateRows || nextQuarter != Quarter)
     {
         FrameIdentical = false;
         RasterTileHistoryValid = false;
     }
     AlternateRows = next;
+    Quarter = nextQuarter;
+}
+
+void SoftRenderer3D::ExpandQuarterColumns()
+{
+    // The guest's geometry remains native. Only renderer-owned copies use
+    // half-width coordinates. Expand after joining both workers, before
+    // neighbor-dependent edge marking and the existing row expansion.
+    for (s32 y = 0; y < VisibleScanlines; y += 2)
+    {
+        const u32 row = FirstPixelOffset + y * ScanlineWidth;
+        for (u32 layer : {0u, static_cast<u32>(BufferSize)})
+            for (s32 x = 127; x >= 0; --x)
+            {
+                const u32 src = row + layer + x, dst = row + layer + 2 * x;
+                const u32 color = ColorBuffer[src], depth = DepthBuffer[src], attr = AttrBuffer[src];
+                ColorBuffer[dst] = ColorBuffer[dst + 1] = color;
+                DepthBuffer[dst] = DepthBuffer[dst + 1] = depth;
+                AttrBuffer[dst] = AttrBuffer[dst + 1] = attr;
+            }
+        // Expansion also moves clear-image pixels and lower-layer history.
+        // Keep subsequent sparse clears conservative in this optional mode.
+        FinalPassMinX[y] = 0;
+        FinalPassMaxX[y] = 256;
+    }
 }
 
 void SoftRenderer3D::SkipPolygonRow(
@@ -3878,8 +3905,9 @@ void SoftRenderer3D::ClearBuffers()
         {
             for (int x = 0; x < 256; x++)
             {
-                u16 val2 = GPU.ReadVRAMFlat_Texture<u16>(0x40000 + (yoff << 9) + (xoff << 1));
-                u16 val3 = GPU.ReadVRAMFlat_Texture<u16>(0x60000 + (yoff << 9) + (xoff << 1));
+                const u8 sampledX = Quarter ? u8(((GPU3D.RenderClearAttr2 >> 16) & 0xff) + 2 * x) : xoff;
+                u16 val2 = GPU.ReadVRAMFlat_Texture<u16>(0x40000 + (yoff << 9) + (sampledX << 1));
+                u16 val3 = GPU.ReadVRAMFlat_Texture<u16>(0x60000 + (yoff << 9) + (sampledX << 1));
 
                 // TODO: confirm color conversion
                 u32 r = (val2 << 1) & 0x3E; if (r) r++;
@@ -3934,13 +3962,31 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureBindingCache textureBinding;
+    if (Quarter && !QuarterPolygons)
+        QuarterPolygons = std::make_unique<QuarterPolygon[]>(MaxRendererPolygons);
     int j = 0;
     for (int i = 0; i < npolys; i++)
     {
         if (polygons[i]->Degenerate) continue;
         if (DropShadows &&
             (polygons[i]->IsShadowMask || polygons[i]->IsShadow)) continue;
-        SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
+        Polygon* polygon = polygons[i];
+        if (Quarter)
+        {
+            auto& copy = QuarterPolygons[j];
+            copy.Poly = *polygon;
+            for (u32 v = 0; v < polygon->NumVertices; ++v)
+            {
+                copy.Vertices[v] = *polygon->Vertices[v];
+                copy.Vertices[v].FinalPosition[0] >>= 1;
+                copy.Vertices[v].HiresPosition[0] >>= 1;
+                copy.Poly.Vertices[v] = &copy.Vertices[v];
+            }
+            copy.Poly.XTop >>= 1;
+            copy.Poly.XBottom >>= 1;
+            polygon = &copy.Poly;
+        }
+        SetupPolygon(&PolygonList[j++], polygon, textureBinding);
     }
     CurrentPolygonCount = j;
     UseScanlinePolygonLists = j > ScheduledPolygonThreshold;
@@ -4645,6 +4691,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         }
     }
 
+    if (Quarter) ExpandQuarterColumns();
     if (AlternateRows) DuplicateAlternateRows(true);
 
     // Raster is joined before any final processing. Legacy scanline consumers
@@ -4727,6 +4774,7 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
         RenderScanlineBand(0, VisibleScanlines, PolygonList, ActivePolygonMask,
             PrevIsShadowMask, StencilBuffer, 0, 256, FinalPassMinX, FinalPassMaxX);
         if (CancelRasterIfRequested()) return;
+        if (Quarter) ExpandQuarterColumns();
         DuplicateAlternateRows(true);
         FinalPassRows(0, VisibleScanlines, false);
         if (!CancelRasterIfRequested()) DuplicateAlternateRows(false);
@@ -4795,6 +4843,7 @@ u32 SoftRenderer3D::CurrentEffectMask() noexcept
     // saved/menu setting takes precedence over the legacy experiment variable.
     const auto settings = GraphicsControl.settings();
     AlternateRowsRequested = settings.halfRows;
+    QuarterRequested = settings.quarter;
     RenderOff = settings.renderOff;
     return (DisabledEffectBits & ~(1u << 4)) |
         (settings.antiAlias ? 0u : (1u << 4));
@@ -4814,11 +4863,12 @@ void SoftRenderer3D::RenderFrame()
     const bool previousRenderOff = RenderOff;
     const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     const bool previousAlternateRows = AlternateRows;
+    const bool previousQuarter = Quarter;
     const bool effectsChanged = nextDispCnt != EffectiveDispCnt;
     EffectiveDispCnt = nextDispCnt;
     UpdateAlternateRows();
     const bool qualityChanged = effectsChanged || previousAlternateRows != AlternateRows ||
-        previousRenderOff != RenderOff;
+        previousRenderOff != RenderOff || previousQuarter != Quarter;
     if (previousRenderOff != RenderOff) {
         SparseClearStateValid = false;
         RasterTileHistoryValid = false;

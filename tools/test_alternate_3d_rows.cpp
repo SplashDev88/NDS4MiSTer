@@ -57,6 +57,47 @@ static void compare(NDS& ref,NDS& n) {
         require(!std::memcmp(a.AttrBuffer+address,b.AttrBuffer+address,1024),"sampled attributes mismatch");
     }
 }
+static void expectedQuarter(NDS& n) {
+    // Independent reference: transform the reference machine's geometry,
+    // raster every row with the native renderer, then expand snapshots.
+    render(n);
+    auto& r=soft(n);auto& g=n.GPU.GPU3D;
+    r.ClearBuffers();
+    if(g.RenderDispCnt&(1u<<14))
+        for(int y=0;y<192;++y) for(int x=0;x<128;++x) {
+            const auto row=r.FirstPixelOffset+y*r.ScanlineWidth;
+            r.ColorBuffer[row+x]=r.ColorBuffer[row+2*x];
+            r.DepthBuffer[row+x]=r.DepthBuffer[row+2*x];
+            r.AttrBuffer[row+x]=r.AttrBuffer[row+2*x];
+        }
+    // Fixture vertices are separate per polygon; assert that explicitly.
+    std::vector<Vertex*> seen;
+    for(unsigned i=0;i<g.RenderNumPolygons;++i) {
+        auto* p=g.RenderPolygonRAM[i];p->XTop>>=1;p->XBottom>>=1;
+        for(unsigned v=0;v<p->NumVertices;++v) {
+            auto* a=p->Vertices[v];
+            if(std::find(seen.begin(),seen.end(),a)!=seen.end()) continue;
+            seen.push_back(a);a->FinalPosition[0]>>=1;a->HiresPosition[0]>>=1;
+        }
+    }
+    r.SetupRenderPolygons(g.RenderPolygonRAM.data(),g.RenderNumPolygons);
+    for(int y=0;y<192;++y) r.RenderScanline(y,r.PolygonList,r.ActivePolygonMask,
+        r.PrevIsShadowMask,r.StencilBuffer,0,256,r.FinalPassMinX,r.FinalPassMaxX);
+    for(int y=0;y<192;y+=2) {
+        const auto row=r.FirstPixelOffset+y*r.ScanlineWidth;
+        for(auto* buffer:{r.ColorBuffer,r.DepthBuffer,r.AttrBuffer})
+            for(unsigned layer:{0u,unsigned(r.BufferSize)}) {
+                const std::vector<u32> snapshot(buffer+row+layer,buffer+row+layer+128);
+                for(int x=0;x<256;++x) buffer[row+layer+x]=snapshot[x/2];
+            }
+        for(auto* buffer:{r.ColorBuffer,r.DepthBuffer,r.AttrBuffer})
+            std::copy_n(buffer+row,256,buffer+row+r.ScanlineWidth);
+        r.FinalPassMinX[y]=0;r.FinalPassMaxX[y]=256;
+        r.FinalPassMinX[y+1]=0;r.FinalPassMaxX[y+1]=256;
+    }
+    for(int y=0;y<192;y+=2) r.ScanlineFinalPass(y);
+    for(int y=1;y<192;y+=2) std::copy_n(r.GetLine(y-1),256,r.GetLine(y));
+}
 int main() try {
     unsigned cases=0;
     for(unsigned scheduler=0;scheduler<5;++scheduler) {
@@ -179,16 +220,17 @@ int main() try {
         auto test=make(scheduler,true);
         unsetenv("NDS4MISTER_GRAPHICS_CONTROL");
         unsigned variation=0;
-        for (int mode : {0,1,1,0,2,1,2,0,3,3,0,3,1,3,2,3,3,0}) {
+        for (int mode : {0,1,1,0,2,1,2,0,3,3,0,3,1,3,2,3,3,0,4,4,1,4,2,4,3,4,0}) {
             const bool aa=mode==2, half=mode==1;
-            control.set(aa,half,mode==3);
+            control.set(aa,half,mode==3,mode==4);
             frame(*ref,variation);ref->GPU.GPU3D.RenderDispCnt=1|(aa?16:0);
             frame(*test,variation++);test->GPU.GPU3D.RenderDispCnt=17;
-            if (half) expected(*ref); else render(*ref);
+            if(mode==4) expectedQuarter(*ref); else if (half) expected(*ref); else render(*ref);
             const auto prior=test->GetRenderer().GetExternalRendererStageProfile();
             test->GPU.GPU3D.RenderFrameIdentical=true;
             test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
-            require(soft(*test).AlternateRows==half,"live resolution admission");
+            require(soft(*test).AlternateRows==(half||mode==4),"live resolution admission");
+            require(soft(*test).Quarter==(mode==4),"live quarter admission");
             if (mode==3) {
                 auto& renderer=soft(*test);
                 require(renderer.RenderOff,"off mode not sampled");
@@ -207,6 +249,78 @@ int main() try {
         }
     }
     unlink(controlPath);
+    for(unsigned scheduler=0;scheduler<5;++scheduler) {
+        auto ref=make(0,false),test=make(scheduler,false);
+        for(unsigned scenario=0;scenario<48;++scenario) {
+            for(auto* n:{ref.get(),test.get()}) {
+                n->GPU.GPU3D.SetSpriteRasterSpansEnabled((scenario&4)!=0);
+                frame(*n,scenario|((scenario&4)?(16384u|32768u|8192u):64u));
+                auto& g=n->GPU.GPU3D;g.RenderDispCnt&=~16u;
+                if(scenario&2) {g.RenderDispCnt|=128;g.RenderFogColor=0x100c4210;
+                    g.RenderClearAttr1|=0x8000;std::fill_n(g.RenderFogDensityTable,34,64);}
+                if(scenario&1) {g.RenderDispCnt|=32;std::fill_n(g.RenderEdgeTable,8,0x7c00);}
+                if(scenario>=32) {
+                    for(unsigned i=0;i<g.RenderNumPolygons;++i) {
+                        auto* p=g.RenderPolygonRAM[i];
+                        if(i%3==1) {p->IsShadowMask=true;p->Attr&=0x00ffffff;}
+                        if(i%3==2) p->IsShadow=true;
+                    }
+                }
+                if(scenario%8==6) {
+                    auto& gpu=n->GPU;
+                    gpu.MapVRAM_AB(1,0x93);gpu.MapVRAM_CD(2,0x9b);
+                    for(unsigned i=0;i<0x20000;++i) {
+                        gpu.VRAM_B[i]=u8(i*17+(i>>9)*29+scenario);
+                        gpu.VRAM_C[i]=u8(i*31+(i>>9)*13+scenario);
+                    }
+                    std::memset(gpu.VRAMDirty[1].Data,255,sizeof(gpu.VRAMDirty[1].Data));
+                    std::memset(gpu.VRAMDirty[2].Data,255,sizeof(gpu.VRAMDirty[2].Data));
+                    g.RenderDispCnt|=1u<<14;g.RenderClearAttr2|=0x03070000;
+                }
+                if(scenario%8==7) g.RenderNumPolygons=0;
+            }
+            std::vector<Polygon> original;
+            std::vector<Vertex> vertices;
+            auto& g=test->GPU.GPU3D;
+            for(unsigned i=0;i<g.RenderNumPolygons;++i) {
+                original.push_back(*g.RenderPolygonRAM[i]);
+                for(unsigned v=0;v<g.RenderPolygonRAM[i]->NumVertices;++v)
+                    vertices.push_back(*g.RenderPolygonRAM[i]->Vertices[v]);
+            }
+            soft(*test).QuarterRequested=true;
+            expectedQuarter(*ref);render(*test);compare(*ref,*test);++cases;
+            unsigned vi=0;
+            for(unsigned i=0;i<g.RenderNumPolygons;++i) {
+                require(!std::memcmp(&original[i],g.RenderPolygonRAM[i],sizeof(Polygon)),"quarter altered guest polygon");
+                for(unsigned v=0;v<g.RenderPolygonRAM[i]->NumVertices;++v)
+                    require(!std::memcmp(&vertices[vi++],g.RenderPolygonRAM[i]->Vertices[v],sizeof(Vertex)),"quarter altered guest vertex");
+            }
+            // A same-geometry switch back to native must invalidate reuse.
+            soft(*test).QuarterRequested=false;
+            frame(*ref,0);frame(*test,0);
+            render(*ref);
+            test->GPU.GPU3D.RenderFrameIdentical=true;
+            test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
+            compare(*ref,*test);++cases;
+        }
+        soft(*test).QuarterRequested=true;
+        for(auto* n:{ref.get(),test.get()}) {frame(*n,0);n->GPU.GPU3D.RenderDispCnt|=16;}
+        render(*ref);render(*test);
+        require(!soft(*test).Quarter && !soft(*test).AlternateRows,"quarter AA fallback");
+        compare(*ref,*test);++cases;
+        if(scheduler>=2) {
+            frame(*ref,0);frame(*test,0);expectedQuarter(*ref);
+            test->GPU.GPU3D.RenderFrameIdentical=false;
+            test->GetRenderer().Start3DRendering();
+            require(soft(*test).RequestFrameCancellation(),"quarter cancellation rejected");
+            test->GetRenderer().Finish3DRendering();
+            require(soft(*test).WasFrameCanceled(),"quarter fixture did not cancel");
+            test->GPU.GPU3D.RenderFrameIdentical=true;
+            test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
+            require(!soft(*test).IsFrameIdentical(),"quarter reused cancellation");
+            compare(*ref,*test);++cases;
+        }
+    }
     std::printf("PASS alternate-row oracle cases=%u schedulers=5 repeated/sparse/empty/AA/shadow/cancel/live-resolution\n",cases);
     return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}

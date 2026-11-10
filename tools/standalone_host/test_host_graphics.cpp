@@ -39,6 +39,10 @@ struct HostTest {
       h.action(7); // Native, preserving AA Off.
       assert(!h.half_rows && !h.anti_alias && !reader.settings().halfRows);
       h.action(8); // Half Rows again.
+      h.action(8); // 128x96.
+      assert(h.quarter_3d && !h.half_rows && !h.anti_alias && reader.settings().quarter);
+      h.draw();
+      assert(h.osd_rows[10] == h.frame.renderRow(10, " 3D Resolution:       128x96", true, nds_osd::arrow_left));
       h.action(8); // Diagnostic Off; no stale Half Rows/AA setting.
       assert(h.render_off && !h.half_rows && !h.anti_alias && reader.settings().renderOff);
       h.draw();
@@ -62,13 +66,21 @@ struct HostTest {
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
       assert(h.anti_alias && reader.antiAlias());
     }
+    {
+      std::ofstream(kit/"NDS_graphics.cfg") << "NDS-Graphics-v2\naa=off\nrows=quarter\n";
+      Host h(kit.string(), (sd/"games/NDS").string(), sd);
+      assert(h.quarter_3d && !h.half_rows && !h.anti_alias && reader.settings().quarter);
+      h.saveSettings();
+      h.reset_confirm = true; h.cursor = 0; h.action(2);
+      assert(!h.quarter_3d && h.anti_alias && !reader.settings().quarter);
+    }
     for (const char* valid : {"NDS-Graphics-v1\naa=off\n", "NDS-Graphics-v2\naa=off\nrows=native\n"}) {
       std::ofstream(kit/"NDS_graphics.cfg") << valid;
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
       assert(!h.anti_alias && !h.half_rows && !reader.antiAlias() && !reader.settings().halfRows);
     }
     for (const char* invalid : {"", "NDS-Graphics-v2\naa=off\n", "NDS-Graphics-v1\naa=off\nextra",
-          "NDS-Graphics-v2\naa=on\nrows=half\n", "NDS-Graphics-v2\naa=off\nrows=half\nextra"}) {
+          "NDS-Graphics-v2\naa=on\nrows=half\n", "NDS-Graphics-v2\naa=on\nrows=quarter\n", "NDS-Graphics-v2\naa=off\nrows=half\nextra"}) {
       std::ofstream(kit/"NDS_graphics.cfg") << invalid;
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
       assert(h.anti_alias && reader.antiAlias() && !h.half_rows && !reader.settings().halfRows);

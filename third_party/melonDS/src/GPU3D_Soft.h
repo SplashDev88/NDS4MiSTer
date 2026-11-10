@@ -2561,6 +2561,11 @@ private:
     u32 EffectiveDispCnt = 0;
     bool AlternateRowsRequested = false;
     bool AlternateRows = false;
+    bool QuarterRequested = false;
+    bool Quarter = false;
+    struct QuarterPolygon { Polygon Poly; Vertex Vertices[10]; };
+    std::unique_ptr<QuarterPolygon[]> QuarterPolygons;
+    void ExpandQuarterColumns();
     void UpdateAlternateRows() noexcept;
     void SkipPolygonRow(RendererPolygon* rp, s32 y, bool& prevIsShadowMask);
     void DuplicateAlternateRows(bool attributes);
