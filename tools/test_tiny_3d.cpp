@@ -60,9 +60,9 @@ int main() try {
             expectedTiny(*ref);render(*test);compare(*ref,*test);++cases;
             unsigned vi=0;
             for(unsigned i=0;i<g.RenderNumPolygons;++i) {
-                require(!std::memcmp(&original[i],g.RenderPolygonRAM[i],sizeof(Polygon)),"quarter altered guest polygon");
+                require(!std::memcmp(&original[i],g.RenderPolygonRAM[i],sizeof(Polygon)),"tiny altered guest polygon");
                 for(unsigned v=0;v<g.RenderPolygonRAM[i]->NumVertices;++v)
-                    require(!std::memcmp(&vertices[vi++],g.RenderPolygonRAM[i]->Vertices[v],sizeof(Vertex)),"quarter altered guest vertex");
+                    require(!std::memcmp(&vertices[vi++],g.RenderPolygonRAM[i]->Vertices[v],sizeof(Vertex)),"tiny altered guest vertex");
             }
             // A same-geometry switch back to native must invalidate reuse.
             soft(*test).TinyRequested=false;
@@ -75,22 +75,22 @@ int main() try {
         soft(*test).TinyRequested=true;
         for(auto* n:{ref.get(),test.get()}) {frame(*n,0);n->GPU.GPU3D.RenderDispCnt|=16;}
         render(*ref);render(*test);
-        require(!soft(*test).Tiny && !soft(*test).AlternateRows,"quarter AA fallback");
+        require(!soft(*test).Tiny && !soft(*test).AlternateRows,"tiny AA fallback");
         compare(*ref,*test);++cases;
         if(scheduler>=2) {
             frame(*ref,0);frame(*test,0);expectedTiny(*ref);
             test->GPU.GPU3D.RenderFrameIdentical=false;
             test->GetRenderer().Start3DRendering();
-            require(soft(*test).RequestFrameCancellation(),"quarter cancellation rejected");
+            require(soft(*test).RequestFrameCancellation(),"tiny cancellation rejected");
             test->GetRenderer().Finish3DRendering();
-            require(soft(*test).WasFrameCanceled(),"quarter fixture did not cancel");
+            require(soft(*test).WasFrameCanceled(),"tiny fixture did not cancel");
             test->GPU.GPU3D.RenderFrameIdentical=true;
             test->GetRenderer().Start3DRendering();test->GetRenderer().Finish3DRendering();
-            require(!soft(*test).IsFrameIdentical(),"quarter reused cancellation");
+            require(!soft(*test).IsFrameIdentical(),"tiny reused cancellation");
             compare(*ref,*test);++cases;
         }
     }
-    // Lower-layer history must be rebuilt correctly when quarter rendering
+    // Lower-layer history must be rebuilt correctly when tiny rendering
     // returns to AA, including overlapping opaque/translucent fogged edges.
     for(unsigned scheduler=0;scheduler<5;++scheduler) {
         auto ref=make(0,false),test=make(scheduler,false);
