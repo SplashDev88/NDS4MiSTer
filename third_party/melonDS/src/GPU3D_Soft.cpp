@@ -2639,12 +2639,150 @@ void SoftRenderer3D::RenderPolygonScanline(
 // and retain the existing blend operation and lower-AA-layer ordering.
 // Keep the cartridge-specific body out of the explicitly hot function group.
 // Its larger blend loop otherwise displaces shared span routines on ARM.
+#if defined(__arm__) && defined(__ARM_NEON)
+template<bool FrontFacing>
+[[gnu::noinline]] void SoftRenderer3D::RenderGrayPowerOfTwoScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
+{
+    const auto* polygon = rp->PolyData;
+    prevIsShadowMask = false;
+    const s32 xstart = rp->XL, xend = rp->XR;
+    const s32 visibleStart = std::max<s32>(xstart, 0);
+    const s32 visibleEnd = std::min<s32>(xend, 256);
+    if (visibleStart < visibleEnd)
+    {
+        finalPassMinX[y] = std::min<u16>(finalPassMinX[y], visibleStart);
+        finalPassMaxX[y] = std::max<u16>(finalPassMaxX[y], visibleEnd);
+    }
+    const s32 first = std::max(xstart, clipStartX);
+    const s32 end = std::min(xend, clipEndX);
+    const u32 alpha = rp->PixelState.PolyAlpha;
+    if (first < end && alpha > GPU3D.RenderAlphaRef)
+    {
+        const s32 left = rp->SlopeL.Interp.Interpolate(
+            polygon->Vertices[rp->CurVL]->FinalColor[0],
+            polygon->Vertices[rp->NextVL]->FinalColor[0]);
+        const s32 right = rp->SlopeR.Interp.Interpolate(
+            polygon->Vertices[rp->CurVR]->FinalColor[0],
+            polygon->Vertices[rp->NextVR]->FinalColor[0]);
+        NDS4MiSTerGrayPowerOfTwoSpan gray4(left, right, xend - xstart, first - xstart);
+        const s32 depth = polygon->FinalZ[0];
+        const u32 writeDepth = polygon->Attr & (1 << 11) ? depth : u32(-1);
+        const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+        const u32 polyattr = rp->PolyAttr;
+        const u32 translucentId = ((polyattr >> 8) & 0x003F0000u) | (1u << 22);
+        const auto plotGray = [&](u32 address, u32 dstattr, u32 shade)
+        {
+            // This path's setup proof excludes shadows and disabled blending.
+            // Reuse the already-loaded pre-blend attributes for both the ID
+            // rejection and the caller's lower-AA-layer decision.
+            if ((dstattr & 0x007F0000u) == translucentId)
+                return;
+            u32 attr = NDS4MiSTerComposeTranslucentAttr(polyattr, dstattr);
+            if (!(dstattr & (1u << 15)))
+                attr &= ~(1u << 15);
+            const u32 color = NDS4MiSTerBlendGrayPixel(
+                shade, ColorBuffer[address], alpha);
+            if (writeDepth != u32(-1))
+                DepthBuffer[address] = writeDepth;
+            ColorBuffer[address] = color;
+            AttrBuffer[address] = attr;
+        };
+#if defined(__arm__) && defined(__ARM_NEON)
+        for (s32 x = first; x < end; x += 4, gray4.Advance())
+#else
+        for (s32 x = first; x < end; ++x, gray.Advance())
+#endif
+        {
+            u32 address = rowAddress + x;
+#if defined(__arm__) && defined(__ARM_NEON)
+            if (x + 3 < end)
+            {
+                const uint32x4_t destinationAttr = vld1q_u32(AttrBuffer + address);
+                const uint32x2_t edgePairs = vorr_u32(vget_low_u32(destinationAttr),
+                                                     vget_high_u32(destinationAttr));
+                // Edges need ordered lower-layer work only when the frame
+                // keeps that backing layer. Native AA-off nonshadow frames
+                // consume only the top pixels, so they can stay in SIMD here.
+                if (!LowerLayerBufferSize ||
+                    !((vget_lane_u32(edgePairs, 0) | vget_lane_u32(edgePairs, 1)) & 15))
+                {
+                    const int32x4_t sourceDepth = vdupq_n_s32(depth);
+                    const uint32x4_t destinationDepth = vld1q_u32(DepthBuffer + address);
+                    uint32x4_t passed = vcltq_s32(sourceDepth,
+                        vreinterpretq_s32_u32(destinationDepth));
+                    if constexpr (FrontFacing)
+                        passed = vorrq_u32(passed, vandq_u32(
+                            vceqq_s32(sourceDepth, vreinterpretq_s32_u32(destinationDepth)),
+                            vceqq_u32(vandq_u32(destinationAttr, vdupq_n_u32(0x00400010)),
+                                      vdupq_n_u32(0x10))));
+                    passed = vbicq_u32(passed, vceqq_u32(
+                        vandq_u32(destinationAttr, vdupq_n_u32(0x007F0000)),
+                        vdupq_n_u32(translucentId)));
+                    uint32x4_t attr = veorq_u32(destinationAttr, vandq_u32(
+                        veorq_u32(destinationAttr, vdupq_n_u32(polyattr)),
+                        vdupq_n_u32(0xE0F0)));
+                    attr = vorrq_u32(vandq_u32(attr, vdupq_n_u32(0xFF00FFFF)),
+                        vdupq_n_u32(((polyattr >> 24) << 16) | (1u << 22)));
+                    attr = vandq_u32(attr, vorrq_u32(destinationAttr,
+                                                    vdupq_n_u32(~(1u << 15))));
+                    const uint32x4_t destinationColor = vld1q_u32(ColorBuffer + address);
+                    const uint32x4_t color = NDS4MiSTerBlendGrayPixels4(
+                        gray4.Get(), destinationColor, alpha);
+                    vst1q_u32(ColorBuffer + address, vbslq_u32(passed, color, destinationColor));
+                    vst1q_u32(AttrBuffer + address, vbslq_u32(passed, attr, destinationAttr));
+                    if (writeDepth != u32(-1))
+                        vst1q_u32(DepthBuffer + address, vbslq_u32(passed,
+                            vreinterpretq_u32_s32(sourceDepth), destinationDepth));
+                    continue;
+                }
+            }
+            u32 shades[4];
+            vst1q_u32(shades, gray4.Get());
+            for (s32 lane = 0; lane < std::min<s32>(4, end - x); ++lane)
+            {
+                address = rowAddress + x + lane;
+#else
+            {
+#endif
+            if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
+                continue;
+            const u32 dstattr = AttrBuffer[address];
+#if defined(__arm__) && defined(__ARM_NEON)
+            const u32 shade = shades[lane];
+#else
+            const u32 shade = u32(gray.Get()) >> 3;
+#endif
+            plotGray(address, dstattr, shade);
+            if ((dstattr & 0xF) && address < LowerLayerBufferSize)
+                plotGray(address + BufferSize, AttrBuffer[address + BufferSize], shade);
+            }
+        }
+    }
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
+#endif
+
 template<bool FrontFacing>
 [[gnu::noinline]] void SoftRenderer3D::RenderGrayRectangleScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
     s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
+#if defined(__arm__) && defined(__ARM_NEON)
+    const s32 width = rp->XR - rp->XL;
+    if (width >= 16 && width <= 1024 && !(width & (width - 1)))
+    {
+        RenderGrayPowerOfTwoScanline<FrontFacing>(rp, y, prevIsShadowMask,
+            clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
+        return;
+    }
+#endif
     const auto* polygon = rp->PolyData;
     prevIsShadowMask = false;
     const s32 xstart = rp->XL, xend = rp->XR;

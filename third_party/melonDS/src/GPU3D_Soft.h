@@ -67,6 +67,30 @@ private:
     u32 Width, Remainder, Quotient, StepRemainder;
 };
 
+#if defined(__arm__) && defined(__ARM_NEON)
+// Power-of-two widths permit one exact fixed-point numerator recurrence.
+// For descending shades floor((left*width + delta*x)/width) is exactly the
+// original ceil-subtraction rule. Combining the gray >>3 loses no bits.
+class NDS4MiSTerGrayPowerOfTwoSpan
+{
+public:
+    NDS4MiSTerGrayPowerOfTwoSpan(s32 left, s32 right, u32 width, u32 first) noexcept
+    {
+        assert(width && !(width & (width - 1)));
+        const s32 positions[4] = {s32(first), s32(first+1), s32(first+2), s32(first+3)};
+        Numerator = vmlaq_n_s32(vdupq_n_s32(left * s32(width)), vld1q_s32(positions), right-left);
+        Shift = vdupq_n_s32(-s32(__builtin_ctz(width) + 3));
+        Step = vdupq_n_s32((right-left) * 4);
+    }
+    [[gnu::always_inline]] uint32x4_t Get() const noexcept
+    { return vshlq_u32(vreinterpretq_u32_s32(Numerator), Shift); }
+    [[gnu::always_inline]] void Advance() noexcept
+    { Numerator = vaddq_s32(Numerator, Step); }
+private:
+    int32x4_t Numerator, Shift, Step;
+};
+#endif
+
 // Equal signed vertical deltas preserve the horizontal difference after
 // either direction of DS linear rounding. An integral horizontal difference
 // can therefore be prepared once, even when vertical steps are fractional.
@@ -2410,6 +2434,13 @@ private:
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
+#if defined(__arm__) && defined(__ARM_NEON)
+    template<bool FrontFacing>
+    void RenderGrayPowerOfTwoScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
+#endif
     template<bool FrontFacing>
     void RenderGrayRectangleScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
