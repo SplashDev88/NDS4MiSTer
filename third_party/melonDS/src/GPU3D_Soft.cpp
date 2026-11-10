@@ -3325,21 +3325,37 @@ void SoftRenderer3D::UpdateAlternateRows() noexcept
 void SoftRenderer3D::ExpandQuarterColumns()
 {
     // The guest's geometry remains native. RasterX selects half-width
-    // coordinates only while preparing raster edges and work estimates. Expand after joining both workers, before
+    // coordinates only while preparing raster edges and work estimates.
+    // Expand after joining both workers, before
     // neighbor-dependent edge marking and the existing row expansion.
     for (s32 y = 0; y < VisibleScanlines; y += 2)
     {
         const u32 row = FirstPixelOffset + y * ScanlineWidth;
-        for (u32 layer : {0u, static_cast<u32>(BufferSize)})
+        // With AA disabled only the top layer contributes to visible output.
+        // Lower-layer raster scratch need not be expanded: the next frame
+        // clears top attributes, and an AA edge initializes its lower pixel
+        // before that pixel can contribute to visible output.
+        assert(!(EffectiveDispCnt & (1u << 4)));
+        for (u32* buffer : {ColorBuffer, DepthBuffer, AttrBuffer})
+        {
+#if defined(__arm__) && defined(__ARM_NEON)
+            // Descending blocks keep overlapping source words intact.
+            for (s32 x = 124; x >= 0; x -= 4)
+            {
+                const uint32x4_t source = vld1q_u32(buffer + row + x);
+                const uint32x4x2_t doubled = vzipq_u32(source, source);
+                vst1q_u32(buffer + row + 2 * x, doubled.val[0]);
+                vst1q_u32(buffer + row + 2 * x + 4, doubled.val[1]);
+            }
+#else
             for (s32 x = 127; x >= 0; --x)
             {
-                const u32 src = row + layer + x, dst = row + layer + 2 * x;
-                const u32 color = ColorBuffer[src], depth = DepthBuffer[src], attr = AttrBuffer[src];
-                ColorBuffer[dst] = ColorBuffer[dst + 1] = color;
-                DepthBuffer[dst] = DepthBuffer[dst + 1] = depth;
-                AttrBuffer[dst] = AttrBuffer[dst + 1] = attr;
+                const u32 value = buffer[row + x];
+                buffer[row + 2 * x] = buffer[row + 2 * x + 1] = value;
             }
-        // Expansion also moves clear-image pixels and lower-layer history.
+#endif
+        }
+        // Expansion also moves clear-image pixels.
         // Keep subsequent sparse clears conservative in this optional mode.
         FinalPassMinX[y] = 0;
         FinalPassMaxX[y] = 256;

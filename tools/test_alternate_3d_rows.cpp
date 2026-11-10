@@ -321,6 +321,28 @@ int main() try {
             compare(*ref,*test);++cases;
         }
     }
+    // Lower-layer history must be rebuilt correctly when quarter rendering
+    // returns to AA, including overlapping opaque/translucent fogged edges.
+    for(unsigned scheduler=0;scheduler<5;++scheduler) {
+        auto ref=make(0,false),test=make(scheduler,false);
+        for(unsigned variation=0;variation<4;++variation) {
+            for(auto* n:{ref.get(),test.get()}) {frame(*n,variation|32);n->GPU.GPU3D.RenderDispCnt&=~16u;}
+            soft(*test).QuarterRequested=true;
+            expectedQuarter(*ref);render(*test);compare(*ref,*test);++cases;
+            for(auto* n:{ref.get(),test.get()}) {
+                frame(*n,variation|1);
+                auto& g=n->GPU.GPU3D;
+                g.RenderDispCnt|=16|32|128;
+                g.RenderFogColor=0x100c4210;std::fill_n(g.RenderFogDensityTable,34,64);
+                std::fill_n(g.RenderEdgeTable,8,0x7c00);
+                for(unsigned i=0;i<g.RenderNumPolygons;++i) {
+                    auto* p=g.RenderPolygonRAM[i];
+                    p->Attr=(p->Attr&~(31u<<16))|((i%3?15u:31u)<<16)|(1u<<15);
+                }
+            }
+            render(*ref);render(*test);compare(*ref,*test);++cases;
+        }
+    }
     // Migrate damage between disjoint spans and through empty frames. Also
     // abandon a frame after its depth/attribute copy but before color copy:
     // the successor must still clear every old odd-row color word.
