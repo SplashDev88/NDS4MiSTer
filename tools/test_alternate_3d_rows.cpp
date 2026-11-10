@@ -131,7 +131,8 @@ int main() try {
                                std::pair{a.DepthBuffer,b.DepthBuffer},
                                std::pair{a.AttrBuffer,b.AttrBuffer}})
                     require(!std::memcmp(pair.first,pair.second,a.BufferSize*4),"single-layer top/border differs");
-                const bool needsLower=(b.EffectiveDispCnt&16u) ||
+                const bool needsLower=b.AlternateRowsRequested || b.QuarterRequested ||
+                    (b.EffectiveDispCnt&16u) ||
                     (scenario>=48 && scenario%16!=15);
                 require((b.LowerLayerBufferSize!=0)==needsLower,"single-layer admission/fallback differs");
                 singleLayerFrames+=!b.LowerLayerBufferSize;

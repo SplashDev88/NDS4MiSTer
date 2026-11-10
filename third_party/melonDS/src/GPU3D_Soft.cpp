@@ -3994,7 +3994,10 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureBindingCache textureBinding;
-    LowerLayerBufferSize = SingleLayerAAOff && !(EffectiveDispCnt & (1u << 4))
+    // Keep reduced-resolution modes on their established layer behavior.
+    // The isolated hardware gain was in Native mode.
+    LowerLayerBufferSize = SingleLayerAAOff && !AlternateRowsRequested &&
+        !QuarterRequested && !(EffectiveDispCnt & (1u << 4))
         ? 0 : BufferSize;
     int j = 0;
     for (int i = 0; i < npolys; i++)
