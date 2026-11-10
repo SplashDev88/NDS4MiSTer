@@ -2698,9 +2698,11 @@ template<bool FrontFacing>
                 const uint32x4_t destinationAttr = vld1q_u32(AttrBuffer + address);
                 const uint32x2_t edgePairs = vorr_u32(vget_low_u32(destinationAttr),
                                                      vget_high_u32(destinationAttr));
-                // Any edge can need an ordered lower-layer operation. Leave
-                // the entire group on the established scalar path in that case.
-                if (!((vget_lane_u32(edgePairs, 0) | vget_lane_u32(edgePairs, 1)) & 15))
+                // Edges need ordered lower-layer work only when the frame
+                // keeps that backing layer. Native AA-off nonshadow frames
+                // consume only the top pixels, so they can stay in SIMD here.
+                if (!LowerLayerBufferSize ||
+                    !((vget_lane_u32(edgePairs, 0) | vget_lane_u32(edgePairs, 1)) & 15))
                 {
                     u32 shades[4];
                     for (unsigned lane = 0; lane < 4; ++lane)
