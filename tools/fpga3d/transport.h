@@ -3,6 +3,7 @@
 #include "codec.h"
 #include "admission.h"
 #include "profile.h"
+#include "texture_residency.h"
 #include <chrono>
 #include <cstring>
 #include <cstdio>
@@ -15,6 +16,8 @@ namespace fpga3d {
 inline volatile uint32_t* control=nullptr;
 inline volatile uint32_t* publication=nullptr;
 inline bool permitted=false,writeCombined=false,streaming=true;
+inline bool textureResidencyEnabled=false;
+inline uint64_t bindingSerial=0,textureWriterSerial=0;
 inline uint32_t poisonedSession=0;
 inline uint64_t completedFrames=0,failedFrames=0;
 inline void barrier(){
@@ -25,6 +28,7 @@ inline void barrier(){
 #endif
 }
 inline void bind(void* c,void* p,bool allowed,bool wc=false){
+ ++bindingSerial;
  control=static_cast<volatile uint32_t*>(c);publication=static_cast<volatile uint32_t*>(p);permitted=allowed;writeCombined=wc;
 }
 inline bool available(){
@@ -85,6 +89,11 @@ struct Frame {
  std::vector<Command> commands;
  std::vector<PackedCommand> packedCommands;
  std::vector<uint32_t> textures;
+ TextureResidency residentTextures;
+ bool residentValid=false;
+ uint32_t residentSession=0,residentSequence=0;
+ uint64_t residentBinding=0,residentWriter=0;
+ uint64_t textureUploadedBytes=0,residencyFrames=0,residencyRequested=0,residencyUploaded=0;
  std::map<const uint32_t*,uint32_t> textureOffsets;
  Outcome failure=Outcome::SubmitFailed;
  bool valid=true,active=false,transportError=false,recyclePublished=false,allowIndexed=true;
@@ -231,7 +240,18 @@ struct Frame {
   frameSession=control[2];mailbox=control+(Mailbox-0x3fc00000)/4;
   sequence=mailbox[1]+1;if(!sequence)sequence=1;
   uploadUs=waitUs=copyUs=0;published=0;transportError=false;
-  uploadTextures(publication+(Textures-0x3fd00000)/4,textures);
+  const bool reuse=textureResidencyEnabled && residentValid && residentSession==frameSession &&
+   residentBinding==bindingSerial && residentWriter==textureWriterSerial &&
+   mailbox[1]==residentSequence && mailbox[4]==residentSequence;
+  residentValid=false;residentWriter=++textureWriterSerial;residentBinding=bindingSerial;
+  auto textureTarget=publication+(Textures-0x3fd00000)/4;
+  if(textureResidencyEnabled){
+   textureUploadedBytes=residentTextures.upload(textures,reuse,[&](size_t offset,const uint32_t* source,size_t count){
+    if(writeCombined)std::memcpy(const_cast<uint32_t*>(textureTarget)+offset,source,count*4);
+    else for(size_t i=0;i<count;i++)textureTarget[offset+i]=source[i];
+   });
+  }else{uploadTextures(textureTarget,textures);textureUploadedBytes=textures.size()*4;}
+  ++residencyFrames;residencyRequested+=textures.size()*4;residencyUploaded+=textureUploadedBytes;
   // The fixed mailbox gap has the same Device mapping as control. Preserve
   // both parity rows across hardware/software transitions, including timeout.
   for(unsigned i=0;i<128;i++){
@@ -304,6 +324,11 @@ struct Frame {
   waitUs=std::chrono::duration_cast<std::chrono::microseconds>(rendered-waiting).count();
   copyUs=std::chrono::duration_cast<std::chrono::microseconds>(copied-rendered).count();
   ++completedFrames;
+  residentSession=frameSession;residentSequence=sequence;residentValid=textureResidencyEnabled;
+  if(profileEnabled && residencyFrames%120==0)
+   std::fprintf(stderr,"FPGA3D_RESIDENCY enabled=%u frames=%llu requested_bytes=%llu uploaded_bytes=%llu\n",
+    unsigned(textureResidencyEnabled),(unsigned long long)residencyFrames,
+    (unsigned long long)residencyRequested,(unsigned long long)residencyUploaded);
   mailbox[8]=uploadUs;mailbox[9]=waitUs;mailbox[10]=copyUs;
   mailbox[11]=uint32_t(completedFrames);mailbox[12]=uint32_t(failedFrames);mailbox[13]=frameSession;
   barrier();mailbox[14]=sequence;

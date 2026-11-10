@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: GPL-3.0-only
+#pragma once
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <vector>
+
+namespace fpga3d {
+// CPU shadow of bytes owned by one completed producer. Callers must invalidate
+// reuse after a session, mapping, writer or completion change. Never read WC
+// memory to compare it: compare normal cached memory and write changed runs.
+struct TextureResidency {
+ std::vector<uint32_t> previous;
+ template<class Write> size_t upload(const std::vector<uint32_t>& data,bool reuse,Write write){
+  const size_t oldSize=reuse?previous.size():0;
+  if(reuse && oldSize==data.size() &&
+     (data.empty() || !std::memcmp(previous.data(),data.data(),data.size()*4)))return 0;
+  previous.resize(data.size());
+  size_t uploaded=0;
+  // Coalesce adjacent changed 1 KiB blocks into one WC copy. Growth beyond
+  // the last texture length is always dirty: commands may have occupied it.
+  constexpr size_t BlockWords=256;
+  size_t run=0;bool dirtyRun=false;
+  for(size_t begin=0;begin<data.size();begin+=BlockWords){
+   const size_t end=std::min(begin+BlockWords,data.size());
+   const bool dirty=end>oldSize || std::memcmp(previous.data()+begin,data.data()+begin,(end-begin)*4);
+   if(dirty && !dirtyRun){run=begin;dirtyRun=true;}
+   if(dirtyRun && (!dirty || end==data.size())){
+    const size_t limit=dirty?end:begin;
+    write(run,data.data()+run,limit-run);
+    std::memcpy(previous.data()+run,data.data()+run,(limit-run)*4);
+    uploaded+=(limit-run)*4;dirtyRun=false;
+   }
+  }
+  return uploaded;
+ }
+};
+}

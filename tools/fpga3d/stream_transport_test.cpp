@@ -16,11 +16,14 @@ int main(int argc,char** argv)try{
  Sim sim;sim.reset();activeSim=&sim;
  sim.word(0x3fc00000)=0x31443348;sim.word(0x3fc00008)=17;
  bind(&sim.word(0x3fc00000),&sim.word(Output),true,true);
+ textureResidencyEnabled=true;
  require(available(),"actual RTL unavailable to transport");
  std::array<uint8_t,512> stencil;for(unsigned i=0;i<512;i++)stencil[i]=(i*7>>3)&3;
  Frame f;f.deadlineMs=5000;std::vector<uint32_t> dst(258*192+16,0xa1b2c3d4);
  std::array<uint32_t,64> tex;tex.fill(0x1f123456);
- for(unsigned iteration=0;iteration<3;iteration++){
+ for(unsigned iteration=0;iteration<5;iteration++){
+  if(iteration==2)tex[3]^=1;
+  if(iteration==3)bind(&sim.word(0x3fc00000),&sim.word(Output),true,true);
   f.reset();f.stencil=stencil.data();require(f.addTexture(tex.data(),tex.size()),"texture admission");f.startStream();
   require(f.active && f.commandBase==Textures+256,"WC arena command placement");sim.guardedBase=f.commandBase;sim.guardedCount=0;
   for(unsigned y=0;y<192;y++){
@@ -30,6 +33,7 @@ int main(int argc,char** argv)try{
    require(f.commands.empty() && f.packedCommands.empty() && f.commandCount()==2*(y+1),"CPU row buffer retained history or lost cumulative count");
   }
   require(f.submit(dst.data()+8,258),"streamed transport submission");
+  require(f.textureUploadedBytes==((iteration==1 || iteration==4)?0:256),"residency mutation/mapping invalidation");
   require(!f.active && !f.transportError,"transport ownership remained active");
   for(unsigned i=0;i<dst.size();i++){
    uint32_t expected=i>=8 && i<dst.size()-8 && (i-8)%258<256?0x1f000000+(i-8)/258:0xa1b2c3d4;
@@ -47,7 +51,7 @@ int main(int argc,char** argv)try{
  for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)require(dst[8+y*258+x]==0x1f010203,"unaligned WC batch output");
  // Real emitted packets through the CPU transport and actual RTL together.
  std::vector<std::string> fixtures;
- for(unsigned n:{0u,100u,200u,235u,236u,237u})fixtures.push_back("build-fpga3d/fixtures/"+std::to_string(n));
+ for(unsigned n:{0u,100u,200u,235u,236u,237u})for(unsigned repeat=0;repeat<2;repeat++)fixtures.push_back("build-fpga3d/fixtures/"+std::to_string(n));
  for(int arg=1;arg<argc;arg++)fixtures.push_back(argv[arg]); // Optional private capture stays outside the repository.
  for(const auto& fixture:fixtures){
   f.reset();f.stencil=stencil.data();auto cmds=load<Command>(fixture+".commands");f.textures=load<uint32_t>(fixture+".textures");auto expected=load<uint32_t>(fixture+".expected");

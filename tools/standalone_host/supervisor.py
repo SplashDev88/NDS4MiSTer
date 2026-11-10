@@ -590,6 +590,12 @@ def main():
         fpga3d_choice = os.environ.get("NDS4MISTER_FPGA3D", "1")
         assert fpga3d_choice in ("0", "1"), "Invalid FPGA3D choice"
         env["NDS4MISTER_FPGA3D"] = fpga3d_choice
+        for option in ("NDS4MISTER_FPGA3D_PROFILE",
+                       "NDS4MISTER_FPGA3D_ALL_SUPPORTED",
+                       "NDS4MISTER_FPGA3D_TEXTURE_RESIDENCY"):
+            choice = os.environ.get(option, "0")
+            assert choice in ("0", "1"), "Invalid " + option
+            env[option] = choice
         if os.environ.get("NDS4MISTER_RENDER_CACHE_STATS") == "1":
             env["NDS4MISTER_RENDER_CACHE_STATS"] = "1"
         stage("start verified helper")
