@@ -99,6 +99,42 @@ int main() try
     require(paths == 224, "gray path census");
 #endif
     std::printf("PASS gray raster: 512 independent full-buffer cases; paths=%u\n", paths);
+    unsigned reducedCases = 0;
+    for (unsigned scheduling = 0; scheduling < 2; ++scheduling)
+    for (unsigned resolution = 1; resolution < 3; ++resolution)
+    for (unsigned scenario = 0; scenario < 256; ++scenario)
+    {
+        auto ref = machine(false), test = machine(true);
+        for (NDS* n : {ref.get(), test.get()})
+        {
+            auto& r = *static_cast<SoftRenderer3D*>(
+                static_cast<SoftRenderer&>(n->GetRenderer()).Rend3D.get());
+            r.StopRenderThread();
+            r.DualCoreRaster = scheduling != 0;
+            r.RasterBandQueue = scheduling != 0;
+            r.WeightedRasterBands = scheduling != 0;
+            r.AdaptiveRasterSplit = scheduling != 0;
+            r.ParallelFinalPass = scheduling != 0;
+            r.RasterBandQueueTestDelayWorker = scheduling != 0;
+            r.AlternateRowsRequested = resolution == 1;
+            r.QuarterRequested = resolution == 2;
+            r.SetFullFrameCompletion(true);
+            if (r.DualCoreRaster)
+                r.ParallelPolygonList = std::make_unique<SoftRenderer3D::RendererPolygon[]>(r.MaxRendererPolygons);
+            r.SetupRenderThread();
+            grayFrame(*n, scenario);
+        }
+        render(*ref); render(*test);
+        auto& a = ref->GetRenderer(); auto& b = test->GetRenderer();
+        for (unsigned y = 0; y < 192; ++y)
+            require(!std::memcmp(a.Get3DScanline(y), b.Get3DScanline(y), 1024),
+                    "reduced gray visible mismatch");
+        u64 ha[3]{}, hb[3]{};
+        require(a.Get3DNativeBufferHashes(ha) && b.Get3DNativeBufferHashes(hb), "reduced gray hashes");
+        require(!std::memcmp(ha, hb, sizeof(ha)), "reduced gray full-buffer mismatch");
+        ++reducedCases;
+    }
+    std::printf("PASS gray reduced/scheduled raster: %u independent full-buffer cases\n", reducedCases);
     return 0;
 }
 catch (const std::exception& e)
