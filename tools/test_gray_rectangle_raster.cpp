@@ -135,6 +135,55 @@ int main() try
         ++reducedCases;
     }
     std::printf("PASS gray reduced/scheduled raster: %u independent full-buffer cases\n", reducedCases);
+    // Compare the combined fast path against a generic renderer that keeps
+    // both AA backing layers. Lower storage may differ only when it has no
+    // consumer; visible pixels and every top/border value must stay exact.
+    unsigned combinedCases = 0, admittedLayers = 0;
+    for (unsigned scheduling = 0; scheduling < 2; ++scheduling)
+    for (unsigned resolution = 0; resolution < 3; ++resolution)
+    for (unsigned scenario = 0; scenario < 256; ++scenario)
+    {
+        auto ref = machine(false), test = machine(true);
+        auto soft = [](NDS& n) -> SoftRenderer3D& {
+            return *static_cast<SoftRenderer3D*>(
+                static_cast<SoftRenderer&>(n.GetRenderer()).Rend3D.get());
+        };
+        soft(*ref).SingleLayerAAOff = false;
+        for (NDS* n : {ref.get(), test.get()})
+        {
+            auto& r = soft(*n);
+            r.StopRenderThread();
+            r.DualCoreRaster = scheduling != 0;
+            r.RasterBandQueue = scheduling != 0;
+            r.WeightedRasterBands = scheduling != 0;
+            r.AdaptiveRasterSplit = scheduling != 0;
+            r.ParallelFinalPass = scheduling != 0;
+            r.RasterBandQueueTestDelayWorker = scheduling != 0;
+            r.AlternateRowsRequested = resolution == 1;
+            r.QuarterRequested = resolution == 2;
+            r.SetFullFrameCompletion(true);
+            if (r.DualCoreRaster)
+                r.ParallelPolygonList = std::make_unique<SoftRenderer3D::RendererPolygon[]>(r.MaxRendererPolygons);
+            r.SetupRenderThread();
+            grayFrame(*n, scenario);
+        }
+        render(*ref); render(*test);
+        auto& a = soft(*ref); auto& b = soft(*test);
+        for (unsigned y = 0; y < 192; ++y)
+            require(!std::memcmp(ref->GetRenderer().Get3DScanline(y),
+                                 test->GetRenderer().Get3DScanline(y), 1024),
+                    "combined gray visible mismatch");
+        const auto checkedBytes = a.BufferSize * 4 * (b.LowerLayerBufferSize ? 2 : 1);
+        for (auto pair : {std::pair{a.ColorBuffer, b.ColorBuffer},
+                          std::pair{a.DepthBuffer, b.DepthBuffer},
+                          std::pair{a.AttrBuffer, b.AttrBuffer}})
+            require(!std::memcmp(pair.first, pair.second, checkedBytes),
+                    "combined gray consumed buffer mismatch");
+        admittedLayers += !b.LowerLayerBufferSize;
+        ++combinedCases;
+    }
+    require(admittedLayers > 0, "combined gray layer oracle is vacuous");
+    std::printf("PASS combined gray/layer oracle: %u cases; admitted=%u\n", combinedCases, admittedLayers);
     return 0;
 }
 catch (const std::exception& e)
