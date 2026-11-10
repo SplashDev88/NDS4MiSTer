@@ -2204,6 +2204,9 @@ nds_nitro_arm9_math_unit #(.COMBINATIONAL_READ(1'b1)) arm9_math (
 );
 
 nds_nitro_console_wrap #(
+`ifdef NDS_CACHE_LINE_STREAM_EXPERIMENT
+    .CACHE_LINE_STREAM(1'b1),
+`endif
 `ifdef NDS_ARM_AREA
     .GPU2D_A_ENABLE(0),.HOST_SAVE_PROFILE(1),
 `endif

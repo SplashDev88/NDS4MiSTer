@@ -53,6 +53,11 @@ entity nds_mainram is
       -- back with the halves swapped. An ARM9 cache line is 32-byte aligned, so
       -- its four pairs are aligned by construction.
       mem9_pair        : in  std_logic := '0';
+      -- Four aligned pairs, critical pair first, wrapping inside 32 bytes.
+      -- Each pair produces mem9_done; the last releases the logical request.
+      -- Only unlocked paired reads may stream. Arbitration still runs between
+      -- pairs, including ARM7 priority and the external scheduler allowance.
+      mem9_line        : in  std_logic := '0';
       mem9_done        : out std_logic := '0';
       mem9_readdata    : out std_logic_vector(31 downto 0) := (others => '0');
       mem9_readdata_hi : out std_logic_vector(31 downto 0) := (others => '0');
@@ -106,6 +111,8 @@ architecture arch of nds_mainram is
 
    signal req9_pending  : std_logic := '0';
    signal req9_pair     : std_logic := '0';
+   signal req9_line_left : unsigned(1 downto 0) := (others => '0');
+   signal req9_line_next : std_logic := '0';
    signal serving_pair  : std_logic := '0';  -- the op in flight is a 64-bit read
    -- done64 for THIS op, not a straggler from the last one. done64 trails
    -- done32 by two clkMem cycles, and the controller can grant a new op inside
@@ -133,7 +140,7 @@ architecture arch of nds_mainram is
 
 begin
 
-   mainram_active <= req9_pending or req7_pending or lock_pair;
+   mainram_active <= req9_pending or req9_line_next or req7_pending or lock_pair;
    mainram_busy   <= '1' when (state /= MR_IDLE) else '0';
 
    dbg_mr <= mainram_allow & lock_pair & serving7 & req7_pending & req9_pending &
@@ -154,6 +161,8 @@ begin
             req7_pending <= '0';
             req9_lock    <= '0';
             req7_lock    <= '0';
+            req9_line_left <= (others => '0');
+            req9_line_next <= '0';
          else
 
             if (mem9_ena = '1') then
@@ -164,12 +173,30 @@ begin
                req9_be      <= mem9_be;
                req9_din     <= mem9_writedata;
                req9_pair    <= mem9_pair and mem9_rnw;   -- reads only
+               req9_line_next <= '0';
+               if (mem9_line = '1' and mem9_pair = '1' and
+                   mem9_rnw = '1' and mem9_lock = '0') then
+                  req9_line_left <= "11";
+               else
+                  req9_line_left <= "00";
+               end if;
             elsif (req9_pending = '1' and done9_6x = '1') then
                req9_pending  <= '0';
                mem9_done     <= '1';
                mem9_readdata <= readdata_6x;
                -- always retired, ignored by a non-pair caller
                mem9_readdata_hi <= readdata_hi_6x;
+               if (req9_line_left /= 0) then
+                  req9_line_left <= req9_line_left - 1;
+                  req9_addr(4 downto 3) <= std_logic_vector(unsigned(req9_addr(4 downto 3)) + 1);
+                  req9_line_next <= '1';
+               end if;
+            elsif (req9_line_next = '1' and done9_6x = '0') then
+               -- Retain the existing four-phase completion handshake. Waiting
+               -- for done to clear prevents replaying the previous pair and
+               -- keeps each return stable across the related-clock bridge.
+               req9_pending <= '1';
+               req9_line_next <= '0';
             end if;
 
             if (mem7_ena = '1') then

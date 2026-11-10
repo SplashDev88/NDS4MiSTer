@@ -42,8 +42,10 @@ for model in old-data poison; do
             nvc --std=2008 -L . -e -gmemory_delay="$delay" -gearly="$posted" tb_nds_cache_write_return
             nvc --std=2008 -L . -r tb_nds_cache_write_return --ieee-warnings=off --exit-severity=error
         done
-        nvc --std=2008 -L . -e -gmemory_delay="$delay" tb_nds_cache_data_return
-        nvc --std=2008 -L . -r tb_nds_cache_data_return --ieee-warnings=off --exit-severity=error
+        for stream in false true; do
+            nvc --std=2008 -L . -e -gmemory_delay="$delay" -gline_stream="$stream" tb_nds_cache_data_return
+            nvc --std=2008 -L . -r tb_nds_cache_data_return --ieee-warnings=off --exit-severity=error
+        done
     done
 done
 python3 - <<'PY'

@@ -57,6 +57,7 @@ entity nds_nitro_console_top is
    generic
    (
       is_simu                  : std_logic := '0';
+      CACHE_LINE_STREAM        : boolean := false;
       Softmap_NDS_MAINRAM_ADDR : integer   := 8388608; -- byte offset of the 4 MB window in SDRAM
       -- 1 = run both 2D engines on clkMem (3x clk1x) instead of clk1x, giving
       -- the renderer 6390 cycles per scanline instead of 2130. A rendered line
@@ -802,6 +803,7 @@ architecture arch of nds_nitro_console_top is
    -- crosses the island/clk1x boundary exactly as mr9_readdata does - stable
    -- for the whole transaction, qualified by the same mr9_done.
    signal mr9_pair : std_logic;
+   signal mr9_line, mem9_line_s : std_logic;
    signal mr9_readdata_hi : std_logic_vector(31 downto 0);
 
    signal io_bus9 : proc_bus_gb_type;
@@ -1621,6 +1623,8 @@ begin
    -- wait on a done64 that its 32-bit op will never produce.
    mem9_pair_s    <= '0'         when (ld_busy = '1' or dbg_pk_sel = '1') else
                      dma_mr_pair when dma_mr_sel = '1' else mr9_pair;
+   -- Only the cache understands multiple completions for one request.
+   mem9_line_s <= '0' when (ld_busy = '1' or dbg_pk_sel = '1' or dma_mr_sel = '1') else mr9_line;
    mr9_done       <= mem9_done and not ld_busy and not dbg_pk_sel and not dma_mr_act;
    mr9_readdata   <= mem9_readdata;
    mr9_readdata_hi <= mem9_readdata_hi_s;
@@ -2135,7 +2139,7 @@ begin
    );
 
    imembus9 : entity work.nds_membus9
-   generic map ( is_simu => is_simu )
+   generic map ( is_simu => is_simu, cache_line_stream => CACHE_LINE_STREAM )
    port map
    (
       clk => clk2x, reset => resetCpu, native_mode => fw_boot,
@@ -2172,6 +2176,7 @@ begin
       mr_ena => i9_mr_ena, mr_rnw => mr9_rnw, mr_addr => mr9_addr, mr_be => mr9_be,
       mr_writedata => mr9_writedata, mr_done => i9_mr_done, mr_readdata => mr9_readdata,
       mr_pair => mr9_pair, mr_readdata_hi => mr9_readdata_hi,
+      mr_line => mr9_line,
       mr_lock => i9_mr_lock,
       io_ce_next => '1',
       io_bus => i9_io_bus, io_wired_out => io_wired_out9, io_wired_done => i9_io_done,
@@ -2823,6 +2828,7 @@ begin
       sdram_Dout => sdram_Dout, sdram_done32 => sdram_done32,
       sdram_Dout_hi => sdram_Dout_hi, sdram_done64 => sdram_done64,
       mem9_pair => mem9_pair_s, mem9_readdata_hi => mem9_readdata_hi_s,
+      mem9_line => mem9_line_s,
       dbg_mr => dbg_mr_s
    );
 

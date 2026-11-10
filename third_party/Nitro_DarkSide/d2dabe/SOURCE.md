@@ -158,3 +158,17 @@ constants are based on the GPL melonDS source already vendored in this tree.
 See `docs/NAND_SAVES.md` at the repository root for scope and validation gaps.
 The existing upstream inventory is provenance, not a claim that these locally
 adapted files still match upstream hashes.
+
+## Cache-line stream experiment (November 2026)
+
+This branch additionally adapts `rtl/nds_cache9.vhd` and `rtl/nds_mainram.vhd`.
+The optional cache-line request returns four aligned pairs in critical-pair-first
+order. Main RAM generates the remaining pair requests locally, preserving its
+existing SDRAM operations and arbitration between pairs. The cache's existing
+critical-word response and line-valid commit point are retained.
+
+The design was motivated by the block-transaction technique reviewed in
+GuardianSoul/openfpga-NintendoDS commit
+`e973fc810663443e67f3efd7e920b3a7df74cf92`. No implementation code from that
+repository was copied. See `docs/CACHE_LINE_STREAM_RC15_20261109.md`
+for the RC15 port, opt-in switch, test scope, and validation limits.

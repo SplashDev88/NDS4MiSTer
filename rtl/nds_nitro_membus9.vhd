@@ -31,7 +31,8 @@ use work.pProc_bus_gba.all;
 entity nds_membus9 is
    generic
    (
-      is_simu : std_logic := '0'
+      is_simu : std_logic := '0';
+      cache_line_stream : boolean := false
    );
    port
    (
@@ -147,6 +148,7 @@ entity nds_membus9 is
       -- cache line fills ask for an aligned 8-byte pair per request; the second
       -- word arrives beside mr_readdata on the same mr_done
       mr_pair        : out std_logic := '0';
+      mr_line        : out std_logic := '0';
       mr_lock        : out std_logic := '0';
       mr_readdata_hi : in  std_logic_vector(31 downto 0) := (others => '0');
 
@@ -304,7 +306,8 @@ begin
    icache : entity work.nds_cache9
    generic map
    (
-      is_simu => is_simu
+      is_simu => is_simu,
+      cache_line_stream => cache_line_stream
    )
    port map
    (
@@ -333,6 +336,7 @@ begin
       mem_done      => mr_done,
       mem_rdata     => mr_readdata,
       mem_pair      => mr_pair,
+      mem_line      => mr_line,
       mem_lock      => mr_lock,
       mem_rdata_hi  => mr_readdata_hi,
       op_ena        => cache_op_ena,

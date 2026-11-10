@@ -40,7 +40,8 @@ entity nds_cache9 is
    generic
    (
       is_simu : std_logic := '0';
-      posted_write_misses : boolean := true
+      posted_write_misses : boolean := true;
+      cache_line_stream : boolean := false
    );
    port
    (
@@ -86,6 +87,10 @@ entity nds_cache9 is
       -- which costs far more than the burst does. mem_addr is always even in
       -- pair mode: a line is 32-byte aligned, so its four pairs are too.
       mem_pair      : out std_logic := '0';
+      -- Opt-in: one request returns four pairs on four mem_done pulses,
+      -- starting at mem_addr and wrapping within the same 32-byte line.
+      -- The mainram endpoint must support this contract. Payload stays held.
+      mem_line      : out std_logic := '0';
       -- Only an uncached SWP bypass owns the external memory lock. Background
       -- fills/writebacks must not inherit the CPU's later, live SWP state.
       mem_lock      : out std_logic := '0';
@@ -563,6 +568,7 @@ begin
             req_pending <= '0';
             r_posted <= '0';
             mem_lock    <= '0';
+            mem_line    <= '0';
          else
 
             -- park an op that arrives while the FSM is busy
@@ -850,6 +856,7 @@ begin
                   state <= IDLE;
 
                when BYPASS_ISSUE =>
+                  mem_line  <= '0';
                   mem_ena   <= '1';
                   mem_pair  <= '0';
                   mem_lock  <= r_lock;
@@ -875,6 +882,7 @@ begin
                   state <= WB_BEAT;
 
                when WB_BEAT =>
+                  mem_line  <= '0';
                   mem_ena   <= '1';
                   mem_lock  <= '0';
                   -- writes never pair (nds_mainram masks it anyway), and this
@@ -921,6 +929,8 @@ begin
                when FILL_BEAT =>
                   mem_ena  <= '1';
                   mem_pair <= '1';
+                  if cache_line_stream then mem_line <= '1';
+                  else mem_line <= '0'; end if;
                   mem_lock <= '0';
                   mem_rnw  <= '1';
                   mem_addr <= r_addr(21 downto 5) & std_logic_vector(beat);
@@ -973,7 +983,13 @@ begin
                      -- 3-bit beat wraps 6 -> 0, which is the wrap fetch
                      beat     <= beat + 2;
                      fill_cnt <= fill_cnt + 1;
-                     state    <= FILL_BEAT;
+                     if cache_line_stream then
+                        -- mainram advances the remaining pairs locally; do
+                        -- not send another request across the clock bridge.
+                        state <= FILL_WAIT;
+                     else
+                        state <= FILL_BEAT;
+                     end if;
                   end if;
 
                when OP_FINISH =>

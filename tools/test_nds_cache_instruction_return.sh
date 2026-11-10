@@ -17,9 +17,11 @@ p="$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl"
 nvc --std=2008 --work=MEM -a "$repo_dir/rtl/tb_mem_sync_ram_dual_byte_enable.vhd"
 nvc --std=2008 -L . -a "$p/proc_bus_gba.vhd" "$p/nds_cache9.vhd" "$p/nds_mainram.vhd" \
     "$repo_dir/rtl/nds_nitro_membus9.vhd" "$repo_dir/rtl/tb_nds_cache_instruction_return.vhd"
-for delay in 0 2 17 31; do
-    nvc --std=2008 -L . -e -gmemory_delay="$delay" tb_nds_cache_instruction_return
+for stream in false true; do
+  for delay in 0 2 17 31; do
+    nvc --std=2008 -L . -e -gmemory_delay="$delay" -gline_stream="$stream" tb_nds_cache_instruction_return
     nvc --std=2008 -L . -r tb_nds_cache_instruction_return --ieee-warnings=off --exit-severity=error
+  done
 done
 
 # Fault injection verifies the data scoreboard and same-cycle invalidation
@@ -40,7 +42,8 @@ PY
 for fault in wrong-instruction missing-invalidation-gate; do
     nvc --std=2008 -L . -a "$fault.vhd" "$repo_dir/rtl/nds_nitro_membus9.vhd" \
         "$repo_dir/rtl/tb_nds_cache_instruction_return.vhd"
-    nvc --std=2008 -L . -e tb_nds_cache_instruction_return
+  for stream in false true; do
+    nvc --std=2008 -L . -e -gline_stream="$stream" tb_nds_cache_instruction_return
     if nvc --std=2008 -L . -r tb_nds_cache_instruction_return --ieee-warnings=off --exit-severity=error > "$fault.log" 2>&1; then
         cat "$fault.log"
         echo "FAIL: $fault negative control unexpectedly passed" >&2
@@ -51,5 +54,6 @@ for fault in wrong-instruction missing-invalidation-gate; do
     else
         grep -F 'I invalidation did not suppress speculative response' "$fault.log"
     fi
+  done
 done
 echo "PASS: cache instruction return, streaming, ordering and both detecting negative controls"

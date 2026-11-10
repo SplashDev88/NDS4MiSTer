@@ -11,9 +11,11 @@ run_test() {
         "$1/third_party/Nitro_DarkSide/d2dabe/rtl/nds_mainram.vhd" \
         "$1/rtl/nds_nitro_membus9.vhd" \
         "$1/rtl/tb_nds_cache_swp_lock.vhd"
-    for delay in 0 1 2 7 31; do
-        nvc --std=2008 -L . -e -gmemory_delay="$delay" tb_nds_cache_swp_lock
+    for stream in false true; do
+      for delay in 0 1 2 7 31; do
+        nvc --std=2008 -L . -e -gmemory_delay="$delay" -gline_stream="$stream" tb_nds_cache_swp_lock
         nvc --std=2008 -L . -r tb_nds_cache_swp_lock --ieee-warnings=off --exit-severity=error
+      done
     done
     nvc --std=2008 -L . -e -glegacy_live_lock=true tb_nds_cache_swp_lock
     if nvc --std=2008 -L . -r tb_nds_cache_swp_lock --ieee-warnings=off --exit-severity=error > legacy.log 2>&1; then

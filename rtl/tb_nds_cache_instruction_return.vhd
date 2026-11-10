@@ -13,7 +13,7 @@ use ieee.numeric_std.all;
 use work.pProc_bus_gba.all;
 entity tb_nds_cache_instruction_return is
    generic (legacy_live_lock : boolean := false; memory_delay : natural := 2;
-            expect_single_cycle : boolean := true);
+            expect_single_cycle : boolean := true; line_stream : boolean := false);
 end entity;
 architecture test of tb_nds_cache_instruction_return is
    signal clk : std_logic := '0';
@@ -24,6 +24,7 @@ architecture test of tb_nds_cache_instruction_return is
    signal rnw : std_logic := '1';
    signal acc : std_logic_vector(1 downto 0) := ACCESS_32BIT;
    signal mem_ena, mem_rnw, mem_pair, mem_lock, applied_lock, mem_done : std_logic;
+   signal mem_line : std_logic;
    signal mem_addr : std_logic_vector(21 downto 2);
    signal mem_be : std_logic_vector(3 downto 0);
    signal mem_wdata, mem_rdata, mem_rdata_hi : std_logic_vector(31 downto 0);
@@ -52,7 +53,7 @@ begin
    clk <= not clk after 5 ns;
    applied_lock <= cpu_lock and not cached when legacy_live_lock else mem_lock;
    dut : entity work.nds_membus9
-      generic map (is_simu => '1')
+      generic map (is_simu => '1', cache_line_stream => line_stream)
       port map (
          clk => clk, reset => reset,
          itcm_ena => '0', itcm_load => '0', itcm_size => "00000",
@@ -75,6 +76,7 @@ begin
          oam_we => open, oam_addr => open, oam_din => open, oam_be => open,
          mr_ena => mem_ena, mr_rnw => mem_rnw, mr_addr => mem_addr, mr_be => mem_be, mr_writedata => mem_wdata,
          mr_done => mem_done, mr_readdata => mem_rdata, mr_pair => mem_pair,
+         mr_line => mem_line,
          mr_readdata_hi => mem_rdata_hi, mr_lock => mem_lock,
          dbg_cache => cache_debug, io_ce_next => '1', io_bus => open, io_wired_out => x"00000000", io_wired_done => '0');
 
@@ -87,6 +89,7 @@ begin
          mem9_ena => mem_ena, mem9_lock => applied_lock, mem9_rnw => mem_rnw,
          mem9_addr => mem_addr, mem9_be => mem_be, mem9_writedata => mem_wdata,
          mem9_pair => mem_pair, mem9_done => mem_done, mem9_readdata => mem_rdata,
+         mem9_line => mem_line,
          mem9_readdata_hi => mem_rdata_hi,
          mem7_ena => '0', mem7_rnw => '1', mem7_addr => (others => '0'),
          mem7_be => "1111", mem7_writedata => (others => '0'),
@@ -127,8 +130,13 @@ begin
             end if;
             countdown := countdown - 1;
          end if;
+         -- Count physical memory work even when a line has one logical request.
+         if sd_ena = '1' and mem_pair = '1' then pair_count <= pair_count + 1; end if;
          if mem_ena = '1' then
-            if mem_pair = '1' then pair_count <= pair_count + 1; end if;
+            if mem_line = '1' then
+               assert mem_pair='1' and mem_rnw='1' and mem_lock='0'
+                  report "stream flag escaped onto bypass/writeback/locked request" severity failure;
+            end if;
             if mem_rnw = '0' then writes <= writes + 1; end if;
             if applied_lock = '1' then
                if mem_rnw = '1' then locked_reads <= locked_reads + 1;

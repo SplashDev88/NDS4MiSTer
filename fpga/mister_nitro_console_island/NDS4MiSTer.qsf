@@ -455,4 +455,5 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_osd_raster.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_rotate_read.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_dv1_yc.sv
 
-# FPGA3D C15 uses C8 synchronization settings; visual hardware qualification required.
+# Retain FPGA3D C8 synchronization; integrate the qualified RC15 cache stream.
+set_global_assignment -name VERILOG_MACRO "NDS_CACHE_LINE_STREAM_EXPERIMENT=1"
