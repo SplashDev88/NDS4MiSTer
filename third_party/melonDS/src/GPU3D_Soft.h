@@ -2563,8 +2563,12 @@ private:
     bool AlternateRows = false;
     bool QuarterRequested = false;
     bool Quarter = false;
-    struct QuarterPolygon { Polygon Poly; Vertex Vertices[10]; };
-    std::unique_ptr<QuarterPolygon[]> QuarterPolygons;
+    [[gnu::always_inline]] s32 RasterX(const Vertex* vertex) const noexcept
+    {
+        // One shift selects native or half-width raster coordinates without
+        // duplicating guest geometry or widening the working set.
+        return vertex->FinalPosition[0] >> static_cast<unsigned>(Quarter);
+    }
     void ExpandQuarterColumns();
     void UpdateAlternateRows() noexcept;
     void SkipPolygonRow(RendererPolygon* rp, s32 y, bool& prevIsShadowMask);

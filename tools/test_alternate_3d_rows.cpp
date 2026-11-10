@@ -321,6 +321,40 @@ int main() try {
             compare(*ref,*test);++cases;
         }
     }
+    // Migrate damage between disjoint spans and through empty frames. Also
+    // abandon a frame after its depth/attribute copy but before color copy:
+    // the successor must still clear every old odd-row color word.
+    for(unsigned scheduler=0;scheduler<5;++scheduler) for(bool quarter:{false,true}) {
+        auto ref=make(0,false),test=make(scheduler,true);
+        soft(*test).QuarterRequested=quarter;
+        for(int offset:{0,80,-80,999,-80,80,0}) {
+            for(auto* n:{ref.get(),test.get()}) {
+                frame(*n,0);
+                auto& g=n->GPU.GPU3D;
+                if(offset==999) {g.RenderNumPolygons=0;continue;}
+                std::vector<Vertex*> moved;
+                for(unsigned i=0;i<g.RenderNumPolygons;++i) {
+                    auto* p=g.RenderPolygonRAM[i];p->XTop+=offset;p->XBottom+=offset;
+                    for(unsigned v=0;v<p->NumVertices;++v) {
+                        auto* a=p->Vertices[v];
+                        if(std::find(moved.begin(),moved.end(),a)!=moved.end()) continue;
+                        moved.push_back(a);a->FinalPosition[0]+=offset;a->HiresPosition[0]+=offset*16;
+                    }
+                }
+            }
+            if(quarter) expectedQuarter(*ref); else expected(*ref);
+            auto& r=soft(*test);
+            // Establish mode before manually producing the interrupted frame.
+            r.UpdateAlternateRows();r.ClearBuffers();
+            auto& g=test->GPU.GPU3D;
+            r.SetupRenderPolygons(g.RenderPolygonRAM.data(),g.RenderNumPolygons);
+            for(int y=0;y<192;++y) r.RenderScanline(y,r.PolygonList,r.ActivePolygonMask,
+                r.PrevIsShadowMask,r.StencilBuffer,0,256,r.FinalPassMinX,r.FinalPassMaxX);
+            if(quarter) r.ExpandQuarterColumns();
+            r.DuplicateAlternateRows(true);
+            render(*test);compare(*ref,*test);++cases;
+        }
+    }
     std::printf("PASS alternate-row oracle cases=%u schedulers=5 repeated/sparse/empty/AA/shadow/cancel/live-resolution\n",cases);
     return 0;
 } catch(const std::exception& e) {std::fprintf(stderr,"FAIL: %s\n",e.what());return 1;}

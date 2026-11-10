@@ -973,7 +973,7 @@ void SoftRenderer3D::SetupPolygonLeftEdge(SoftRenderer3D::RendererPolygon* rp, s
         }
     }
 
-    rp->XL = rp->SlopeL.Setup(polygon->Vertices[rp->CurVL]->FinalPosition[0], polygon->Vertices[rp->NextVL]->FinalPosition[0],
+    rp->XL = rp->SlopeL.Setup(RasterX(polygon->Vertices[rp->CurVL]), RasterX(polygon->Vertices[rp->NextVL]),
                               polygon->Vertices[rp->CurVL]->FinalPosition[1], polygon->Vertices[rp->NextVL]->FinalPosition[1],
                               polygon->FinalW[rp->CurVL], polygon->FinalW[rp->NextVL], y, polygon->WBuffer);
 }
@@ -1000,7 +1000,7 @@ void SoftRenderer3D::SetupPolygonRightEdge(SoftRenderer3D::RendererPolygon* rp, 
         }
     }
 
-    rp->XR = rp->SlopeR.Setup(polygon->Vertices[rp->CurVR]->FinalPosition[0], polygon->Vertices[rp->NextVR]->FinalPosition[0],
+    rp->XR = rp->SlopeR.Setup(RasterX(polygon->Vertices[rp->CurVR]), RasterX(polygon->Vertices[rp->NextVR]),
                               polygon->Vertices[rp->CurVR]->FinalPosition[1], polygon->Vertices[rp->NextVR]->FinalPosition[1],
                               polygon->FinalW[rp->CurVR], polygon->FinalW[rp->NextVR], y, polygon->WBuffer);
 }
@@ -1162,18 +1162,18 @@ void SoftRenderer3D::SetupPolygon(
         int i;
 
         i = 1;
-        if (polygon->Vertices[i]->FinalPosition[0] < polygon->Vertices[vtop]->FinalPosition[0]) vtop = i;
-        if (polygon->Vertices[i]->FinalPosition[0] > polygon->Vertices[vbot]->FinalPosition[0]) vbot = i;
+        if (RasterX(polygon->Vertices[i]) < RasterX(polygon->Vertices[vtop])) vtop = i;
+        if (RasterX(polygon->Vertices[i]) > RasterX(polygon->Vertices[vbot])) vbot = i;
 
         i = nverts - 1;
-        if (polygon->Vertices[i]->FinalPosition[0] < polygon->Vertices[vtop]->FinalPosition[0]) vtop = i;
-        if (polygon->Vertices[i]->FinalPosition[0] > polygon->Vertices[vbot]->FinalPosition[0]) vbot = i;
+        if (RasterX(polygon->Vertices[i]) < RasterX(polygon->Vertices[vtop])) vtop = i;
+        if (RasterX(polygon->Vertices[i]) > RasterX(polygon->Vertices[vbot])) vbot = i;
 
         rp->CurVL = vtop; rp->NextVL = vtop;
         rp->CurVR = vbot; rp->NextVR = vbot;
 
-        rp->XL = rp->SlopeL.SetupDummy(polygon->Vertices[rp->CurVL]->FinalPosition[0], polygon->WBuffer);
-        rp->XR = rp->SlopeR.SetupDummy(polygon->Vertices[rp->CurVR]->FinalPosition[0], polygon->WBuffer);
+        rp->XL = rp->SlopeL.SetupDummy(RasterX(polygon->Vertices[rp->CurVL]), polygon->WBuffer);
+        rp->XR = rp->SlopeR.SetupDummy(RasterX(polygon->Vertices[rp->CurVR]), polygon->WBuffer);
     }
     else
     {
@@ -1204,9 +1204,9 @@ void SoftRenderer3D::SetupPolygon(
         {
             const auto* v = polygon->Vertices[i];
             const auto* next = polygon->Vertices[(i + 1) & 3];
-            const s32 x = v->FinalPosition[0], y = v->FinalPosition[1];
+            const s32 x = RasterX(v), y = v->FinalPosition[1];
             rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
-            rectangle &= (x == next->FinalPosition[0]) != (y == next->FinalPosition[1]);
+            rectangle &= (x == RasterX(next)) != (y == next->FinalPosition[1]);
             rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
                          polygon->FinalZ[i] == polygon->FinalZ[0];
             corners |= 1u << ((x == rp->XR ? 1 : 0) | (y == ybot ? 2 : 0));
@@ -1257,9 +1257,9 @@ void SoftRenderer3D::SetupPolygon(
         {
             const auto* v = polygon->Vertices[i];
             const auto* next = polygon->Vertices[(i + 1) & 3];
-            const s32 x = v->FinalPosition[0], y = v->FinalPosition[1];
+            const s32 x = RasterX(v), y = v->FinalPosition[1];
             rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
-            rectangle &= (x == next->FinalPosition[0]) != (y == next->FinalPosition[1]);
+            rectangle &= (x == RasterX(next)) != (y == next->FinalPosition[1]);
             rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
                          polygon->FinalZ[i] == polygon->FinalZ[0];
             rectangle &= v->FinalColor[0] >= 0 && v->FinalColor[0] <= 511 &&
@@ -1356,10 +1356,10 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         else
         {
             l_filledge = (rp->SlopeR.Negative || !rp->SlopeR.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
             r_filledge = (!rp->SlopeL.Negative && rp->SlopeL.XMajor)
                 || (!(rp->SlopeL.Negative && rp->SlopeL.XMajor) && rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
     else
@@ -1384,10 +1384,10 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         else
         {
             l_filledge = ((rp->SlopeL.Negative || !rp->SlopeL.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]))
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext)))
                 || (rp->SlopeL.Increment == rp->SlopeR.Increment) && (xstart+l_edgelen == xend+1);
             r_filledge = (!rp->SlopeR.Negative && rp->SlopeR.XMajor) || (rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
 
@@ -2182,10 +2182,10 @@ void SoftRenderer3D::RenderPolygonScanline(
         else
         {
             l_filledge = (rp->SlopeR.Negative || !rp->SlopeR.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
             r_filledge = (!rp->SlopeL.Negative && rp->SlopeL.XMajor)
                 || (!(rp->SlopeL.Negative && rp->SlopeL.XMajor) && rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
     else
@@ -2217,10 +2217,10 @@ void SoftRenderer3D::RenderPolygonScanline(
         else
         {
             l_filledge = ((rp->SlopeL.Negative || !rp->SlopeL.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]))
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext)))
                 || (rp->SlopeL.Increment == rp->SlopeR.Increment) && (xstart+l_edgelen == xend+1);
             r_filledge = (!rp->SlopeR.Negative && rp->SlopeR.XMajor) || (rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
 
@@ -3324,8 +3324,8 @@ void SoftRenderer3D::UpdateAlternateRows() noexcept
 
 void SoftRenderer3D::ExpandQuarterColumns()
 {
-    // The guest's geometry remains native. Only renderer-owned copies use
-    // half-width coordinates. Expand after joining both workers, before
+    // The guest's geometry remains native. RasterX selects half-width
+    // coordinates only while preparing raster edges and work estimates. Expand after joining both workers, before
     // neighbor-dependent edge marking and the existing row expansion.
     for (s32 y = 0; y < VisibleScanlines; y += 2)
     {
@@ -3962,31 +3962,13 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureBindingCache textureBinding;
-    if (Quarter && !QuarterPolygons)
-        QuarterPolygons = std::make_unique<QuarterPolygon[]>(MaxRendererPolygons);
     int j = 0;
     for (int i = 0; i < npolys; i++)
     {
         if (polygons[i]->Degenerate) continue;
         if (DropShadows &&
             (polygons[i]->IsShadowMask || polygons[i]->IsShadow)) continue;
-        Polygon* polygon = polygons[i];
-        if (Quarter)
-        {
-            auto& copy = QuarterPolygons[j];
-            copy.Poly = *polygon;
-            for (u32 v = 0; v < polygon->NumVertices; ++v)
-            {
-                copy.Vertices[v] = *polygon->Vertices[v];
-                copy.Vertices[v].FinalPosition[0] >>= 1;
-                copy.Vertices[v].HiresPosition[0] >>= 1;
-                copy.Poly.Vertices[v] = &copy.Vertices[v];
-            }
-            copy.Poly.XTop >>= 1;
-            copy.Poly.XBottom >>= 1;
-            polygon = &copy.Poly;
-        }
-        SetupPolygon(&PolygonList[j++], polygon, textureBinding);
+        SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
     }
     CurrentPolygonCount = j;
     UseScanlinePolygonLists = j > ScheduledPolygonThreshold;
@@ -4296,7 +4278,7 @@ u32 SoftRenderer3D::BuildRasterScanlineWork(int npolys, u32* lineWork) const
         s32 right = -1;
         for (u32 vertex = 0; vertex < polygon->NumVertices; vertex++)
         {
-            const s32 x = polygon->Vertices[vertex]->FinalPosition[0];
+            const s32 x = RasterX(polygon->Vertices[vertex]);
             left = std::min(left, x);
             right = std::max(right, x);
         }
@@ -4353,7 +4335,7 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
         s32 right = -1;
         for (u32 vertex = 0; vertex < polygon->NumVertices; ++vertex)
         {
-            const s32 x = polygon->Vertices[vertex]->FinalPosition[0];
+            const s32 x = RasterX(polygon->Vertices[vertex]);
             left = std::min(left, x);
             right = std::max(right, x);
         }
