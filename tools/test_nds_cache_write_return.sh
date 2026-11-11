@@ -33,7 +33,7 @@ for model in old-data poison; do
     model_file="$repo_dir/rtl/tb_mem_sync_ram_dual_byte_enable.vhd"
     if [[ "$model" == poison ]]; then model_file=poison-ram.vhd; fi
     nvc --std=2008 --work=MEM -a "$model_file"
-    nvc --std=2008 -L . -a "$p/proc_bus_gba.vhd" cache.vhd "$p/nds_mainram.vhd" \
+    nvc --std=2008 -L . -a "$repo_dir/rtl/tb_lcell.vhd" "$p/proc_bus_gba.vhd" cache.vhd "$p/nds_mainram.vhd" \
         "$repo_dir/rtl/nds_nitro_membus9.vhd" "$repo_dir/rtl/tb_nds_cache_write_return.vhd" \
         "$repo_dir/rtl/tb_nds_cache_data_return.vhd"
     for delay in 0 31; do

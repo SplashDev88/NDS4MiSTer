@@ -25,10 +25,9 @@ set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
 # restructuring and pre-mapping resynthesis were tested together and rejected
 # because they enlarged this design.
 set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
-# The integrated accelerator meets setup/hold, but the normal router leaves
-# a 66 ps main-RAM hold violation. Increase routing effort; retain all timing
-# constraints and all-path hold repair.
-set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM
+# Retain normal routing effort: maximum effort regressed accelerator setup.
+# Main-RAM short paths use explicit buffers, with unchanged timing constraints.
+set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
 # The hold-repair-disabled experiment routed, but NSMB remained black even
 # with the rc.7 host and split mode disabled. Restore the previous default
 # All Paths repair; use the measured global-reset assignments below to ease

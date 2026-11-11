@@ -15,7 +15,7 @@ if [[ "${1:-}" != --inside ]]; then
 fi
 p="$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl"
 nvc --std=2008 --work=MEM -a "$repo_dir/rtl/tb_mem_sync_ram_dual_byte_enable.vhd"
-nvc --std=2008 -L . -a "$p/proc_bus_gba.vhd" "$p/nds_cache9.vhd" "$p/nds_mainram.vhd" \
+nvc --std=2008 -L . -a "$repo_dir/rtl/tb_lcell.vhd" "$p/proc_bus_gba.vhd" "$p/nds_cache9.vhd" "$p/nds_mainram.vhd" \
     "$repo_dir/rtl/nds_nitro_membus9.vhd" "$repo_dir/rtl/tb_nds_cache_data_return.vhd"
 for stream in false true; do
   for delay in 0 2 17 31; do

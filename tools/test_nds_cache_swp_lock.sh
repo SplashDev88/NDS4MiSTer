@@ -6,6 +6,7 @@ trap 'rm -rf "$test_tmp"' EXIT
 run_test() {
     nvc --std=2008 --work=mem -a "$1/rtl/tb_mem_sync_ram_dual_byte_enable.vhd"
     nvc --std=2008 -L . -a \
+        "$1/rtl/tb_lcell.vhd" \
         "$1/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd" \
         "$1/third_party/Nitro_DarkSide/d2dabe/rtl/nds_cache9.vhd" \
         "$1/third_party/Nitro_DarkSide/d2dabe/rtl/nds_mainram.vhd" \

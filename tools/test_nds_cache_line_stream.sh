@@ -15,7 +15,7 @@ if [[ "${1:-}" != --inside ]]; then
 fi
 p="$repo_dir/third_party/Nitro_DarkSide/d2dabe/rtl"
 nvc --std=2008 --work=MEM -a "$repo_dir/rtl/tb_mem_sync_ram_dual_byte_enable.vhd"
-nvc --std=2008 -L . -a "$p/nds_cache9.vhd" "$p/nds_mainram.vhd" "$repo_dir/rtl/tb_nds_cache_line_stream.vhd"
+nvc --std=2008 -L . -a "$repo_dir/rtl/tb_lcell.vhd" "$p/nds_cache9.vhd" "$p/nds_mainram.vhd" "$repo_dir/rtl/tb_nds_cache_line_stream.vhd"
 : > metrics.log
 for ratio in 3 4; do
   for delay in 0 2 17 31; do

@@ -97,6 +97,10 @@ end entity;
 
 architecture arch of nds_mainram is
 
+   component lcell is
+      port (a_in : in std_logic; a_out : out std_logic);
+   end component;
+
    type tState is
    (
       MR_IDLE,
@@ -133,12 +137,31 @@ architecture arch of nds_mainram is
    signal req7_be       : std_logic_vector(3 downto 0)  := (others => '0');
    signal req7_din      : std_logic_vector(31 downto 0) := (others => '0');
 
+   -- All-path router hold repair leaves these same-edge clk1x -> clkMem
+   -- payload paths short in the integrated core (up to 66 ps). LCELLs keep
+   -- their logical value and cycle unchanged while giving the fitter real
+   -- buffer cells. Verify both setup and hold at every operating corner;
+   -- do not infer a guaranteed physical delay from the functional model.
+   signal hold_req9_din5, hold_req7_addr2, hold_req9_addr7 : std_logic_vector(1 downto 0);
+   signal req9_din_timed : std_logic_vector(31 downto 0);
+   signal req7_addr_timed, req9_addr_timed : std_logic_vector(21 downto 2);
+
    signal done9_6x      : std_logic := '0';  -- op completed, clk1x side must retire
    signal done7_6x      : std_logic := '0';
    signal readdata_6x   : std_logic_vector(31 downto 0) := (others => '0');
    signal readdata_hi_6x : std_logic_vector(31 downto 0) := (others => '0');
 
 begin
+
+   hold_din5_first : lcell port map(req9_din(5), hold_req9_din5(0));
+   hold_din5_second : lcell port map(hold_req9_din5(0), hold_req9_din5(1));
+   hold_addr2_first : lcell port map(req7_addr(2), hold_req7_addr2(0));
+   hold_addr2_second : lcell port map(hold_req7_addr2(0), hold_req7_addr2(1));
+   hold_addr7_first : lcell port map(req9_addr(7), hold_req9_addr7(0));
+   hold_addr7_second : lcell port map(hold_req9_addr7(0), hold_req9_addr7(1));
+   req9_din_timed <= req9_din(31 downto 6) & hold_req9_din5(1) & req9_din(4 downto 0);
+   req7_addr_timed <= req7_addr(21 downto 3) & hold_req7_addr2(1);
+   req9_addr_timed <= req9_addr(21 downto 8) & hold_req9_addr7(1) & req9_addr(6 downto 2);
 
    mainram_active <= req9_pending or req9_line_next or req7_pending or lock_pair;
    mainram_busy   <= '1' when (state /= MR_IDLE) else '0';
@@ -254,13 +277,13 @@ begin
                   mr_sdram_ena <= '1';
                   if (pick7 = '1') then
                      mr_sdram_rnw <= req7_rnw;
-                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req7_addr) & "00"));
+                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req7_addr_timed) & "00"));
                      mr_sdram_Din <= req7_din;
                      mr_sdram_be  <= req7_be;
                   else
                      mr_sdram_rnw <= req9_rnw;
-                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req9_addr) & "00"));
-                     mr_sdram_Din <= req9_din;
+                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req9_addr_timed) & "00"));
+                     mr_sdram_Din <= req9_din_timed;
                      mr_sdram_be  <= req9_be;
                   end if;
                   state <= MR_WAIT;
@@ -280,13 +303,13 @@ begin
                   mr_sdram_ena <= '1';
                   if (serving7 = '1') then
                      mr_sdram_rnw <= req7_rnw;
-                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req7_addr) & "00"));
+                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req7_addr_timed) & "00"));
                      mr_sdram_Din <= req7_din;
                      mr_sdram_be  <= req7_be;
                   else
                      mr_sdram_rnw <= req9_rnw;
-                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req9_addr) & "00"));
-                     mr_sdram_Din <= req9_din;
+                     mr_sdram_Adr <= std_logic_vector(to_unsigned(Softmap_NDS_MAINRAM_ADDR, 27) + (unsigned(req9_addr_timed) & "00"));
+                     mr_sdram_Din <= req9_din_timed;
                      mr_sdram_be  <= req9_be;
                   end if;
                   state <= MR_WAIT;
