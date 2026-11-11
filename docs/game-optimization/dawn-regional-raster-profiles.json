@@ -1,0 +1,58 @@
+{
+  "renderer_source": "e207637695172cc544966be873b43002780fc298",
+  "profiles": [
+    {
+      "code": "ACVP",
+      "revision": 0,
+      "header_crc32": "6396d24c"
+    },
+    {
+      "code": "ACVJ",
+      "revision": 1,
+      "header_crc32": "65777634"
+    }
+  ],
+  "selection": "raster_only_sprite_spans",
+  "unchanged": [
+    "USA ACVE r0 profile",
+    "Regional fast GX query policy",
+    "VRAM replay policy",
+    "Integral texture policy",
+    "Movie/guest patch catalogs",
+    "FPGA bitstream"
+  ],
+  "unavailable": [
+    "Japan revision0"
+  ],
+  "excluded": [
+    "Kiosk demo A59E",
+    "Unknown revisions and altered headers"
+  ],
+  "results": [
+    {
+      "region": "Europe r0",
+      "baseline": 15.86475729602054,
+      "candidate": 23.494620035123766,
+      "change_percent": 48.09315766221695,
+      "baseline_window": "EUBase",
+      "candidate_window": "EUCand"
+    },
+    {
+      "region": "Japan r1",
+      "baseline": 16.099970017029317,
+      "candidate": 23.633036967198944,
+      "change_percent": 46.78932285092286,
+      "baseline_window": "JPBase",
+      "candidate_window": "JPCand"
+    }
+  ],
+  "method": "Single30-second native AA-Off cave windows, exact same core/host/clock; completed paired-screen publications, not unique animation FPS",
+  "checks": {
+    "renderer_oracle_cases": 3072,
+    "identity_mutations": 2614,
+    "real_header_mutations": 704,
+    "ARM_service_self_test": "passed",
+    "EU_live_AA": "passed"
+  },
+  "limits": "Bounded stationary cave checks; no full-game/all-language/full-playthrough or game-clock acceleration claim. Final private package smoke is recorded separately."
+}
