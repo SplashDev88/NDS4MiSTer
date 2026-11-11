@@ -29,9 +29,10 @@ set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
 # otherwise removes these functionally redundant LCELLs before placement.
 set_instance_assignment -name IGNORE_LCELL_BUFFERS OFF -to "*|nds_mainram:imainram|hold_*"
 set_instance_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS OFF -to "*|nds_mainram:imainram|hold_*"
-# Retain normal routing effort: maximum effort regressed accelerator setup.
+# Use greater timing effort on the pipelined renderer and 93%-utilization fit.
+# The earlier maximum-effort trial used a congested, unpipelined design.
 # Main-RAM short paths use explicit buffers, with unchanged timing constraints.
-set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
+set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL MAXIMUM
 # The hold-repair-disabled experiment routed, but NSMB remained black even
 # with the rc.7 host and split mode disabled. Restore the previous default
 # All Paths repair; use the measured global-reset assignments below to ease
