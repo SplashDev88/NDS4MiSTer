@@ -454,3 +454,12 @@ fixture logs (33,816,576 pixels, including 192 shadow/stencil fixtures), protoco
 and randomized fault output remain identical to the preceding implementation.
 A deliberately delayed incoming-depth operand is detected as a pixel mismatch.
 This revision still needs a physical build and hardware qualification.
+The late-comparison implementation at 6a44d77 passed synthesis and placement,
+but its route remained incomplete after the recorded 30-minute fitter budget.
+That attempt is preserved as incomplete, not as proof of an unroutable design.
+The next implementation reuses the depth comparisons at the existing early
+precheck stage and delays only their three decision bits alongside metadata.
+It avoids duplicating those comparisons at the last metadata stage. All 688
+production fixture logs and the protocol/random output remain byte-identical;
+a decision advanced by one stage is detected as a pixel mismatch. Physical
+resources, timing and game speed remain unqualified pending the next build.
