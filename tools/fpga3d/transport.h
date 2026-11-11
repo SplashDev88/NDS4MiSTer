@@ -192,7 +192,9 @@ struct Frame {
     return true;
    }
   }
-  if(packedTexturesEnabled && allowIndexed) {
+  // The raw-fit path skips palette encoding, but exact binary texels can
+  // still halve its traffic. Failed conversion leaves the raw path intact.
+  if(packedTexturesEnabled) {
    std::vector<uint32_t> packed;
    if(packTexture16(pixels,count,packed)) {
     if(textures.size()+packed.size()>TextureBytes/4)return reject(Outcome::TextureCapacity);

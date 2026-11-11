@@ -27,6 +27,23 @@ int main(){
  }
  Span bad;bad.flags|=Textured;bad.texture=Textures|3;check(pack(span(bad))[15]>>31);
  packedTexturesEnabled=true;
+ // Raw-fit admission disables palettes, not exact binary storage. Exercise
+ // every 16-bit value through that production branch and its fallbacks.
+ for(unsigned v=0;v<65536;v++)source[v]=unpackTexture16(v);
+ Frame rawFit;rawFit.allowIndexed=false;
+ check(rawFit.addTexture(source.data(),source.size()));
+ check((rawFit.textureOffsets.at(source.data())&3)==2 && rawFit.textures.size()*4==source.size()*2);
+ for(unsigned v=0;v<65536;v++)check(uint16_t(rawFit.textures[v/2]>>(16*(v%2)))==v);
+ rawFit.reset();rawFit.allowIndexed=false;packedTexturesEnabled=false;
+ check(rawFit.addTexture(source.data(),source.size()));
+ check((rawFit.textureOffsets.at(source.data())&3)==0 && rawFit.textures==source);
+ packedTexturesEnabled=true;rawFit.reset();rawFit.allowIndexed=false;
+ source[3]=0x0f112233;
+ check(rawFit.addTexture(source.data(),source.size()));
+ check((rawFit.textureOffsets.at(source.data())&3)==0 && rawFit.textures==source);
+ rawFit.reset();rawFit.allowIndexed=false;source[3]=0x20030303;
+ check(!rawFit.addTexture(source.data(),source.size()) && rawFit.textures.empty() && rawFit.textureOffsets.empty());
+ check(rawFit.failure==Outcome::TextureAlpha);
  // Start compact, then choose palette-free encodings under the same capacity.
  Frame f;std::vector<std::vector<uint32_t>> textures(16,std::vector<uint32_t>(16384));
  std::vector<Frame::TextureUse> uses;
