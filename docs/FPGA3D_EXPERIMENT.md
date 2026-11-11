@@ -427,3 +427,10 @@ counts with apparently valid low bits are explicit rejection fixtures. Full
 capacity, prefix ownership, native pixels and 192 regenerated shadow/stencil
 fixtures pass with the compact counters. This is an area correction, not a
 measured frame-rate gain.
+The second fit remained four LABs over capacity (4195/4191). The next area
+correction stores only the variable bits of already validated command bases
+and limits valid WC capacity arithmetic to its maximum 12288 slots. Incoming
+addresses and producer counts still undergo full-width validation. Exhaustive
+address arithmetic covers 12288 WC bases and 66848736 in-bounds descriptors;
+all native/shadow oracles pass, and deliberately truncating the initial count
+check is detected before the mutant can read any frame data.

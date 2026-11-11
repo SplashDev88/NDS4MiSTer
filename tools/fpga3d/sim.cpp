@@ -24,6 +24,7 @@ struct Sim {
  unsigned readLatency=std::getenv("READ_LATENCY")?std::atoi(std::getenv("READ_LATENCY")):0;
  unsigned remaining=0,readat=0,delay=0,writeRemaining=0,writeAt=0,writeBase=0,writeBurst=0;bool stalls=true;
  uint32_t guardedBase=0,guardedCount=0;
+ bool rejectFrameReads=false;
  bool held=false;uint64_t heldData=0;unsigned heldAddr=0,heldBurst=0,heldBe=0;bool heldRead=false,heldWrite=false;
  uint32_t& word(uint32_t a){require(a>=0x3fc00000 && a<0x40000000,"address out of graphics window");return mem.at((a-0x3fc00000)/4);}
  void tick(){
@@ -51,6 +52,7 @@ struct Sim {
    uint32_t a=v.addr*8;
    if(v.rd)require((a&4095)+v.burst*8<=4096,"physical read crossed a 4 KiB page");
    if(v.rd){
+    if(rejectFrameReads)require(a<Commands && a!=StencilInput,"oversized initial count acquired frame data");
     if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}
     if(guardedBase==PaddedCommands && a>=0x3fe00000){
      const uint32_t plane=(a-0x3fe00000)>>18,offset=a&0x3ffff;
@@ -197,12 +199,14 @@ int main(int argc,char** argv){try{
    unsigned limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
    require(limit<10000 && p.word(Mailbox+20)==(mode==2?2:1),"bad producer metadata accepted");
   }
+  p.rejectFrameReads=true;
   for(uint32_t count:{8129u,8192u,8193u,0x40000001u,0x7fffffffu}){
    p.word(Mailbox+60)=Commands;p.word(Mailbox+8)=0x80000000u|count;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;
    unsigned seq=++p.word(Mailbox+4),limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
    require(limit<10000 && p.word(Mailbox+20)==1,"oversized initial producer count accepted after truncation");
   }
-  for(uint32_t base:{0x3fc00000u,0x3fd40004u,0x3fe00000u,0x3fe30000u,0x3fe31040u,0x3fff0000u,0x40000000u}){
+  p.rejectFrameReads=false;
+  for(uint32_t base:{0x3fc81004u,0x3fe31001u,0xbfe31000u,0x3fc00000u,0x3fd40004u,0x3fe00000u,0x3fe30000u,0x3fe31040u,0x3fff0000u,0x40000000u}){
    p.word(Mailbox+60)=base;p.word(Mailbox+8)=0x80000000;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;
    unsigned seq=++p.word(Mailbox+4),limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
    require(limit<10000 && p.word(Mailbox+20)==1,"bad command base accepted");

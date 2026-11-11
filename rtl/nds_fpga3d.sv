@@ -46,7 +46,10 @@ module nds_fpga3d #(
  wire param_device=param_base==32'h3fc81000;
  wire param_padded=param_base==32'h3fe31000;
  wire param_wc=param_base>=32'h3fd40000 && param_base<32'h3fe00000 && param_base[5:0]==0;
- wire [31:0] param_space=(32'h3fe00000-param_base)>>6;
+ // A valid WC range contains at most 768 KiB / 64 = 12288 slots.
+ // Reject using the full original address before using these bounded fields.
+ wire [13:0] param_space=14'((32'h3fe00000-param_base)>>6);
+ wire [31:0] canonical_base={10'h0ff,param_base[21:6],6'd0};
  wire [13:0] param_capacity=(param_device || param_padded)?14'd8128:(param_space>8128?14'd8128:14'(param_space));
  // The first 64 slots belong to telemetry. Every following group of 1024
  // slots is in the next plane's padding, never its 192 visible rows.
@@ -397,7 +400,7 @@ module nds_fpga3d #(
     end
     PARAM:if(!busy)state<=PARAM_WAIT;
     PARAM_WAIT:if(dout_ready)begin
-     command_base<=param_base;texture_end<=(param_device || param_padded)?32'h3fe00000:param_base;capacity<=param_capacity;
+     command_base<=canonical_base;texture_end<=(param_device || param_padded)?32'h3fe00000:canonical_base;capacity<=param_capacity;
      if((!param_device && !param_wc && !param_padded) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
