@@ -72,6 +72,20 @@ module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
  wire [31:0] a1=a1_delay[RASTER_DELAY-1];
  wire [31:0] d0=d0_delay[RASTER_DELAY-1];
  wire [31:0] d1=d1_delay[RASTER_DELAY-1];
+ // Register the exact raster depth decisions alongside depth_q. Their
+ // operands are the preceding metadata stage and the incoming pixel depth,
+ // so the write stage sees the same comparison without a long comparator
+ // followed by all target/attribute/color muxes in one cycle. Stalls retain
+ // both the decision and its pixel; resolve and precheck timing are unchanged.
+ wire [31:0] compare_a0,compare_a1,compare_d0,compare_d1;
+ generate if(RASTER_DELAY==1)begin: direct_comparison
+  assign compare_a0=a0_mem;assign compare_a1=a1_mem;
+  assign compare_d0=d0_mem;assign compare_d1=d1_mem;
+ end else begin: delayed_comparison
+  assign compare_a0=a0_delay[RASTER_DELAY-2];assign compare_a1=a1_delay[RASTER_DELAY-2];
+  assign compare_d0=d0_delay[RASTER_DELAY-2];assign compare_d1=d1_delay[RASTER_DELAY-2];
+ end endgenerate
+ logic raster_pass0_q,raster_pass1_q,raster_shadow1_q;
  wire [7:0] depth_read_x=resolve_valid?pixel_x:precheck_x;
  logic [7:0] x_q;
  logic [31:0] color_q,depth_q;
@@ -181,13 +195,13 @@ module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
   color_write_x=x_q;
   color_we0=0;color_we1=0;attr_we0=0;attr_we1=0;depth_we0=0;depth_we1=0;
   new_c0=old_c0;new_c1=old_c1;new_a0=old_a0;new_a1=a1;new_d0=d0;new_d1=d1;
-  pass0=depth_pass(depth_q,d0,old_a0);pass1=depth_pass(depth_q,d1,a1);
+  pass0=raster_pass0_q;pass1=raster_pass1_q;
   target0=pass0;target1=!pass0 && old_a0[3:0]!=0 && pass1;
   if(shadow_mode==3)begin
    target0=stencil_bits[0] && pass0;
    // Native direct selection of the lower stencil layer retains the top
    // attribute for its first depth test; a failed-top fallback uses a1.
-   target1=stencil_bits[1] && ((!stencil_bits[0] && depth_pass(depth_q,d1,old_a0)) ||
+   target1=stencil_bits[1] && ((!stencil_bits[0] && raster_shadow1_q) ||
              (stencil_bits[0] && !pass0 && old_a0[3:0]!=0 && pass1));
   end
   edge_bits=y_edge;coverage=31;advance_left=0;advance_right=0;
@@ -305,6 +319,9 @@ module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
     fog_x[f]<=fog_x[f-1];fog_source[f]<=fog_source[f-1];
     fog_layer[f]<=fog_layer[f-1];fog_apply[f]<=fog_apply[f-1];
    end
+   raster_pass0_q<=depth_pass(pixel_depth,compare_d0,compare_a0);
+   raster_pass1_q<=depth_pass(pixel_depth,compare_d1,compare_a1);
+   raster_shadow1_q<=depth_pass(pixel_depth,compare_d1,compare_a0);
    x_q<=pixel_x;color_q<=pixel_color;depth_q<=pixel_depth;
   end
   if(reset)begin left_count<=0;right_count<=0;end

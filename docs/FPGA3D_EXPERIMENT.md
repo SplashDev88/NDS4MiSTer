@@ -442,3 +442,15 @@ are unchanged. Omitting the last initial-load word is detected as a pixel
 mismatch. Invalid texel alpha is now checked from the stage-13 texel register,
 removing the baseline palette-to-global-enable path while retaining whole-frame
 error handling. Full native, shadow/stencil, transport and fault tests pass.
+
+The routed 33b2a22 core preserves six explicit main-RAM hold buffers and passes
+all hold corners, but is not admitted: accelerator setup is -0.925 ns and the
+inherited reset-recovery limit is missed by 0.011 ns. The critical renderer path
+runs from delayed lower-layer depth through the depth test and pixel-write muxes.
+Raster depth decisions now register alongside the incoming pixel metadata,
+using the preceding metadata stage. The following write stage consumes those
+aligned decisions; this adds no cycle or approximation. All 688 production
+fixture logs (33,816,576 pixels, including 192 shadow/stencil fixtures), protocol
+and randomized fault output remain identical to the preceding implementation.
+A deliberately delayed incoming-depth operand is detected as a pixel mismatch.
+This revision still needs a physical build and hardware qualification.
