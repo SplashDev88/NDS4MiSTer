@@ -26,6 +26,46 @@ int main(int argc, char** argv)
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
     const GameQueryIdentity portrait {{{'A','C','B','E'}}, 0, 0xa9935ea4u};
+    const GameQueryIdentity dawn_regions[] = {
+        {{{'A','C','V','P'}}, 0, 0x6396d24cu},
+        {{{'A','C','V','J'}}, 1, 0x65777634u},
+    };
+    for (const auto& identity : dawn_regions) {
+        const GameQuerySelection selected {select_game_query_profile(identity), identity, true};
+        check(dawn_regional_raster_only_profile(selected), "regional Dawn raster enabled");
+        check(game_query_prefix_mode(selected.profile) == 2 &&
+              !castlevania_integral_texture_profile(selected) &&
+              !portrait_sprite_raster_profile(selected) &&
+              !ecclesia_sprite_raster_profile(selected) &&
+              !ffta2_raster_only_profile(selected) &&
+              !automatic_movie_receiver_profile(selected),
+              "regional Dawn must retain independent query, replay and movie policies");
+        check(!dawn_regional_raster_only_profile({selected.profile, identity, false}),
+              "Dawn raster requires identified header");
+        for (unsigned bit = 0; bit < 32; ++bit) {
+            auto changed = identity; changed.header_crc32 ^= 1u << bit;
+            check(!dawn_regional_raster_only_profile({selected.profile, changed, true}),
+                  "modified Dawn fingerprint falls back");
+        }
+        for (unsigned byte = 0; byte < 4; ++byte)
+            for (unsigned value = 0; value < 256; ++value) {
+                if (value == identity.code[byte]) continue;
+                auto changed = identity; changed.code[byte] = value;
+                check(!dawn_regional_raster_only_profile({selected.profile, changed, true}),
+                      "wrong Dawn code/fingerprint falls back");
+            }
+        for (unsigned revision = 0; revision < 256; ++revision) {
+            if (revision == identity.revision) continue;
+            auto changed = identity; changed.revision = revision;
+            check(!dawn_regional_raster_only_profile({selected.profile, changed, true}),
+                  "unknown Dawn revision falls back");
+        }
+    }
+    const GameQueryIdentity demo {{{'A','5','9','E'}}, 0, 0xa228cd45u};
+    for (const auto& identity : {known, portrait, demo})
+        check(!dawn_regional_raster_only_profile({GameQueryProfile::Fast, identity, true}),
+              "USA Dawn, unrelated games and kiosk demo retain existing policy");
+    std::cout << "DAWN_REGIONAL_RASTER_PROFILE_PASS regions=2 mutations=2614 other_policies_unchanged=1\n";
     const GameQueryIdentity ffta2_regions[] = {
         {{{'A','6','F','E'}}, 0, 0x8c766dbbu},
         {{{'A','6','F','P'}}, 0, 0x7a72b5f0u},
@@ -150,11 +190,13 @@ int main(int argc, char** argv)
     check(!raced.identified && raced.profile == GameQueryProfile::Fast, "changing header default");
     check(!castlevania_integral_texture_profile(raced), "changing header disables raster shortcut");
     check(!ffta2_raster_only_profile(raced), "changing header disables FFTA2 raster choice");
+    check(!dawn_regional_raster_only_profile(raced), "changing header disables Dawn regional raster");
     calls = 0;
     auto short_second = read_game_query_profile([&](GameQueryHeader&) { return ++calls == 1; });
     check(!short_second.identified && short_second.profile == GameQueryProfile::Fast, "second read failure");
     check(!castlevania_integral_texture_profile(short_second), "failed second read disables raster shortcut");
     check(!ffta2_raster_only_profile(short_second), "failed second read disables FFTA2 raster choice");
+    check(!dawn_regional_raster_only_profile(short_second), "failed second read disables Dawn regional raster");
     check(!automatic_movie_receiver_profile(raced) &&
           !automatic_movie_receiver_profile(short_second), "unstable identity disables movie receiver");
     check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, known, true}),
@@ -203,7 +245,7 @@ int main(int argc, char** argv)
     std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=17 unknown_off=1 reset_default_off=1\n";
 
     // Optional private fixtures stay outside the source tree and release.
-    if (argc == 3) {
+    if (argc == 3 || argc == 5) {
         const auto cast = load_header(argv[1]);
         const auto nsmb = load_header(argv[2]);
         const GameQueryHeader unknown {};
@@ -222,6 +264,27 @@ int main(int argc, char** argv)
         auto switched = read_game_query_profile([&](GameQueryHeader& out) { out = ++calls == 1 ? cast : nsmb; return true; });
         check(!switched.identified && switched.profile == GameQueryProfile::Fast, "ROM changed during identification");
         std::cout << "GAME_QUERY_PROFILE_FIXTURES_PASS reload_reset_sequence=6 changed_bytes=352 cast=ordered nsmb=fast\n";
-    } else check(argc == 1, "usage: test [castlevania-header nsmb-header]");
+        if (argc == 5) {
+            const auto europe = load_header(argv[3]), japan = load_header(argv[4]);
+            for (const auto* header : {&europe, &japan, &cast, &nsmb, &europe, &unknown, &japan}) {
+                const auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = *header; return true; });
+                check(dawn_regional_raster_only_profile(selected) == (header == &europe || header == &japan),
+                      "real Dawn headers select regional raster across reloads");
+                check(game_query_prefix_mode(selected.profile) == (header == &cast ? 0u : 2u),
+                      "regional raster must not change real-header query policy");
+            }
+            for (const auto* header : {&europe, &japan})
+                for (std::size_t byte = 0; byte < header->size(); ++byte) {
+                    auto changed = *header; changed[byte] ^= 1;
+                    const auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = changed; return true; });
+                    check(!dawn_regional_raster_only_profile(selected), "changed real Dawn header falls back");
+                }
+            calls = 0;
+            auto changed = read_game_query_profile([&](GameQueryHeader& out) { out = ++calls == 1 ? europe : japan; return true; });
+            check(!changed.identified && !dawn_regional_raster_only_profile(changed),
+                  "regional ROM switch during identification falls back");
+            std::cout << "DAWN_REGIONAL_HEADER_FIXTURES_PASS reloads=7 changed_bytes=704 torn_read=1\n";
+        }
+    } else check(argc == 1, "usage: test [castlevania-header nsmb-header [dawn-europe-header dawn-japan-header]]");
     std::cout << "GAME_QUERY_PROFILE_PASS exact_identity=1 unknown_fast=1 read_fail_fast=1 torn_fast=1\n";
 }

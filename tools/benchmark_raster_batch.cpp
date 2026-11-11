@@ -29,7 +29,11 @@ static std::unique_ptr<NDS> machine(bool cached)
     nds->GPU.GPU3D.SetEnabled(true, true);
     nds->GPU.GPU3D.SetExternalCommandReplay(true);
     nds->GPU.GPU3D.SetHighResolutionCoordinatesEnabled(false);
+#ifdef NDS_TEST_RASTER_ONLY_PROFILE
+    nds->GPU.GPU3D.SetSpriteRasterSpansEnabled(cached);
+#else
     nds->GPU.GPU3D.SetIntegralTextureSpansEnabled(cached);
+#endif
     RendererSettings settings {1, true, false, false, false, false, false, true, true};
     auto& r = nds->GPU.GetRenderer();
     r.SetRenderSettings(settings);

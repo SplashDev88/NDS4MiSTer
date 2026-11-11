@@ -91,6 +91,24 @@ inline bool castlevania_integral_texture_profile(const GameQuerySelection& selec
             GameQueryProfile::CastlevaniaDosUsRevision0;
 }
 
+// Regional Dawn cartridges opt into the exact rectangle/gray raster paths
+// independently of the USA query, VRAM replay and integral-texture policies.
+// Only these locally verified retail headers are admitted; demos and unknown
+// revisions retain the general renderer.
+inline bool dawn_regional_raster_only_profile(const GameQuerySelection& selected)
+{
+    if (!selected.identified) return false;
+    static constexpr GameQueryIdentity identities[] = {
+        {{{'A','C','V','P'}}, 0, 0x6396d24cu},
+        {{{'A','C','V','J'}}, 1, 0x65777634u},
+    };
+    for (const auto& identity : identities)
+        if (selected.identity.code == identity.code &&
+            selected.identity.revision == identity.revision &&
+            selected.identity.header_crc32 == identity.header_crc32) return true;
+    return false;
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&

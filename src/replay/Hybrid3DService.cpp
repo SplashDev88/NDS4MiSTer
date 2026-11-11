@@ -11525,7 +11525,8 @@ try {
                     nds4mister::replay::ecclesia_sprite_raster_profile(selected);
                 sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected) ||
                     nds4mister::replay::ecclesia_sprite_raster_profile(selected);
-                raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected);
+                raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected) ||
+                    nds4mister::replay::dawn_regional_raster_only_profile(selected);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                 fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
 #endif

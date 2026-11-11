@@ -248,6 +248,14 @@ if(NDS4MISTER_USE_MELONDS)
 
     add_executable(nds_gray_rectangle_test EXCLUDE_FROM_ALL
         tools/test_gray_rectangle_raster.cpp src/melonds/HeadlessPlatform.cpp)
+
+    add_executable(nds_gray_regional_test EXCLUDE_FROM_ALL
+        tools/test_gray_rectangle_raster.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_gray_regional_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_gray_regional_test PRIVATE -fno-access-control)
+    target_compile_definitions(nds_gray_regional_test PRIVATE
+        NDS_TEST_GRAY_PATH=1 NDS_TEST_RASTER_ONLY_PROFILE=1)
+    target_link_libraries(nds_gray_regional_test PRIVATE core ${CMAKE_DL_LIBS})
     target_include_directories(nds_gray_rectangle_test PRIVATE src third_party/melonDS/src)
     target_compile_options(nds_gray_rectangle_test PRIVATE -fno-access-control)
     target_compile_definitions(nds_gray_rectangle_test PRIVATE NDS_TEST_GRAY_PATH=1)
