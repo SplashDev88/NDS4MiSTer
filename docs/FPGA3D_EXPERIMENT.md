@@ -418,3 +418,12 @@ cache-stream, credit, publication and renderer oracles remain required.
 Exact build hashes, timing gates and results belong to
 `evidence/rc15-fpga-command-20261110` in the enclosing workspace. Source or
 simulation success alone is not FPS evidence or permission to replace Beta5.
+
+The first physical fit exceeded the device by seven LABs (4198/4191).
+Accepted command counts and indices now use 13 bits, matching the 8128-entry
+physical bound. Both initial and streamed producer counts retain full-width
+validation before any truncated value can reach command fetching. Oversized
+counts with apparently valid low bits are explicit rejection fixtures. Full
+capacity, prefix ownership, native pixels and 192 regenerated shadow/stencil
+fixtures pass with the compact counters. This is an area correction, not a
+measured frame-rate gain.
