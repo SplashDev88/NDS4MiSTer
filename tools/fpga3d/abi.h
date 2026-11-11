@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <vector>
 namespace fpga3d {
-constexpr uint32_t Magic=0x37443346; // F3D7: separate WC command storage in screen padding
+constexpr uint32_t Magic=0x38443346; // F3D8: exact binary-alpha RGB555 texture storage
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t StencilInput=0x3fc80e00, StencilOutput=0x3fd30000;
@@ -106,7 +106,7 @@ inline Command spanRegular(const Span& s) {
  }
  // Texture bindings use bit zero for lossless indexed storage. Physical
  // bases remain 64-byte aligned for indexed palette/texel bursts.
- c[13]=s.texture&~1u;c[14]=s.shiftS|(s.shiftT<<4)|(s.wrap<<8)|((s.texture&1u)<<12);
+ c[13]=s.texture&~3u;c[14]=s.shiftS|(s.shiftT<<4)|(s.wrap<<8)|((s.texture&3u)<<12);
  c[15]=s.z0;c[26]=s.z1;
  c[27]=s.polyAttr|((s.flags&Back)?16:0);c[28]=s.leftCov;c[29]=s.rightCov;
  c[30]=s.leftEnd|(s.rightBegin<<16);c[31]=s.polyAlpha|(s.depthWrite?32:0)|(s.yEdge<<6)|(s.mode<<10);

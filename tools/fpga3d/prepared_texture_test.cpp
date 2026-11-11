@@ -18,7 +18,8 @@ template<class T> static void save(const std::string& path,const std::vector<T>&
 }
 static unsigned currentVariant=0,currentStep=0;
 int main(int argc,char** argv)try {
- require(argc==2,"fixture directory required");std::filesystem::create_directories(argv[1]);
+ require(argc==2 || argc==3,"fixture directory required");
+ fpga3d::packedTexturesEnabled=argc==3;std::filesystem::create_directories(argv[1]);
  std::vector<uint32_t> control(0x100000/4),output(0x300000/4);
  unsigned captures=0;
  std::ofstream manifest(std::string(argv[1])+"/scenarios.json");manifest<<"[\n";
@@ -77,10 +78,13 @@ int main(int argc,char** argv)try {
    if(step==4 || step==5 || step==6 || step==7)require(f.preparedHits==hits,"changed texture content/size reused stale preparation");
    if(step==8){require(f.transportError,"early timeout missing");continue;}
    require(f.valid && f.commands.size()>384,"production fixture was not emitted");
-   if(variant&0x10000000u)require(f.allowIndexed &&
+   if(variant&0x10000000u && !fpga3d::packedTexturesEnabled)require(f.allowIndexed &&
        std::any_of(f.textureOffsets.begin(),f.textureOffsets.end(),[](const auto& item){return item.second&1u;}) &&
        std::any_of(f.textureOffsets.begin(),f.textureOffsets.end(),[](const auto& item){return !(item.second&1u);}),
        "large fixture missed simultaneous raw/indexed bindings");
+   if(variant&0x10000000u && fpga3d::packedTexturesEnabled)require(
+       std::any_of(f.textureOffsets.begin(),f.textureOffsets.end(),[](const auto& item){return item.second&2u;}),
+       "large fixture missed packed RGB555A1 binding");
    std::vector<uint32_t> expected;
    for(unsigned y=0;y<192;y++) {
     const auto* p=ref->GetRenderer().Get3DScanline(y);expected.insert(expected.end(),p,p+256);

@@ -17,7 +17,7 @@ module nds_fpga3d #(
  input logic dout_ready,accepted
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
- localparam [31:0] MAGIC=32'h37443346;
+ localparam [31:0] MAGIC=32'h38443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,PARAM,PARAM_WAIT,AVAILABLE,REFILL_DELAY,REFILL,REFILL_WAIT,FETCH,FETCH_WAIT,CMD_LOAD_FIRST,CMD_LOAD,UNPACK,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
@@ -182,6 +182,7 @@ module nds_fpga3d #(
  logic [6:0] palette_word;
  wire [63:0] texture_word=p_override?p_override_data:p_cache_q;
  wire [7:0] palette_index=texture_word[8*int'(p_byte[12])+:8];
+ wire [15:0] binary_texel=texture_word[16*int'(p_byte[12][1:0])+:16];
  logic [15:0] p_ts,p_tt,tex_size_s,tex_size_t,tex_mask_s,tex_mask_t;
  logic [19:0] p_index;
  // Cut the indexed-cache -> palette -> color arithmetic path. The extra
@@ -248,7 +249,9 @@ module nds_fpga3d #(
   p_tt=texture_coord(p_av[10][4][15:0],tex_size_t,tex_mask_t,cmd[14][9],cmd[14][11]);
   p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
   p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:8]};
-  p_texel=cmd[14][12]?(palette_index[0]?palette_odd[palette_index[7:1]]:palette_even[palette_index[7:1]]):
+  p_texel=cmd[14][13]?{3'd0,{5{binary_texel[15]}},2'd0,expand5(binary_texel[14:10]),
+                         2'd0,expand5(binary_texel[9:5]),2'd0,expand5(binary_texel[4:0])}:
+          cmd[14][12]?(palette_index[0]?palette_odd[palette_index[7:1]]:palette_even[palette_index[7:1]]):
                        (p_half[12]?texture_word[63:32]:texture_word[31:0]);
   p_vr=p_av[13][0][8:3];p_vg=p_av[13][1][8:3];p_vb=p_av[13][2][8:3];
   if(cmd[31][12])begin
@@ -311,7 +314,8 @@ module nds_fpga3d #(
     for(integer a=0;a<5;a=a+1)
      p_av[10][a]<=cmd[2][0]?p_av[9][a]:p_interpolate($signed({{16{cmd[8+a][15]}},cmd[8+a][15:0]}),delta[a],p_f[9]);
     p_x[11]<=p_x[10];p_z[11]<=p_z[10];p_pass[11]<=1'b1;
-    p_addr[11]<=29'(cmd[13]>>3)+(cmd[14][12]?29'd128+29'(p_index>>3):29'(p_index>>1));
+    p_addr[11]<=29'(cmd[13]>>3)+(cmd[14][13]?29'(p_index>>2):
+                              cmd[14][12]?29'd128+29'(p_index>>3):29'(p_index>>1));
     p_half[11]<=p_index[0];p_byte[11]<=p_index[2:0];
     p_x[12]<=p_x[11];p_z[12]<=p_z[11];p_pass[12]<=p_depth_pass;
     p_addr[12]<=p_addr[11];p_half[12]<=p_half[11];p_byte[12]<=p_byte[11];
@@ -465,7 +469,7 @@ module nds_fpga3d #(
       cmd[6]<={{8{packed_command[101]}},packed_command[78+:24]};
       cmd[7]<={3'd0,packed_command[482+:13],3'd0,packed_command[469+:13]};
       cmd[13]<=32'h3fd40000+{12'd0,packed_command[134+:17],3'd0};
-      cmd[14]<={19'd0,packed_command[497],packed_command[157+:4],(4'd3+{1'b0,packed_command[154+:3]}),(4'd3+{1'b0,packed_command[151+:3]})};
+      cmd[14]<={18'd0,packed_command[509],packed_command[497],packed_command[157+:4],(4'd3+{1'b0,packed_command[154+:3]}),(4'd3+{1'b0,packed_command[151+:3]})};
       cmd[15]<={8'd0,packed_command[54+:24]};cmd[26]<={8'd0,packed_command[78+:24]};
       cmd[27]<={2'd0,packed_command[161+:6],8'd0,packed_command[168],10'd0,packed_command[167],4'd0};
       cmd[28]<={packed_command[189],9'd0,packed_command[179+:10],2'd0,packed_command[169+:10]};
@@ -538,10 +542,10 @@ module nds_fpga3d #(
        ({1'b0,cmd[3][31:16]}+{1'b0,cmd[1][31:16]}-{1'b0,cmd[1][15:0]})<={1'b0,cmd[3][15:0]} &&
        (!cmd[2][2] || (cmd[13]>=32'h3fd40000 && cmd[13][2:0]==0 &&
           cmd[14][3:0]>=3 && cmd[14][3:0]<=10 && cmd[14][7:4]>=3 && cmd[14][7:4]<=10 &&
-          (!cmd[14][12] || cmd[13][5:0]==0) &&
+          (cmd[14][13:12]!=2'b11) && (!cmd[14][12] || cmd[13][5:0]==0) &&
           ({1'b0,cmd[13]}+(cmd[14][12]?
              33'd1024+(33'd1<<({1'b0,cmd[14][3:0]}+{1'b0,cmd[14][7:4]})):
-             (33'd4<<({1'b0,cmd[14][3:0]}+{1'b0,cmd[14][7:4]}))))<={1'b0,texture_end})))begin
+             ((cmd[14][13]?33'd2:33'd4)<<({1'b0,cmd[14][3:0]}+{1'b0,cmd[14][7:4]}))))<={1'b0,texture_end})))begin
       x<=cmd[1][8:0];last<=cmd[1][24:16];span_width<=cmd[3][9:0];dx<=cmd[3][24:16];
       coverage_valid<=1;
       w0<=cmd[4][15:0];w1<=cmd[4][31:16];

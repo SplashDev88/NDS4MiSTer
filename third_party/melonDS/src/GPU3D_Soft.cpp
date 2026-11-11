@@ -4933,8 +4933,8 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
             {
                 auto command=c->Commands[i];
                 if (c->TextureAddress) {
-                    command[13]=c->TextureAddress&~1u;
-                    command[14]=(command[14]&~0x1000u)|((c->TextureAddress&1u)<<12);
+                    command[13]=c->TextureAddress&~3u;
+                    command[14]=(command[14]&~0x3000u)|((c->TextureAddress&3u)<<12);
                 }
                 FpgaFrame.append(command);
             }

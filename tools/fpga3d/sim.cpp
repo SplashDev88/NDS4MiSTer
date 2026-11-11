@@ -8,6 +8,7 @@ using Dut=Vnds_fpga3d;
 #endif
 #include "verilated.h"
 #include "codec.h"
+#include "packed_texels.h"
 #include <cstring>
 #include <iostream>
 #include <random>
@@ -174,6 +175,44 @@ int main(int argc,char** argv){try{
   }return 0;
  }
 
+
+
+ // Exact RGB555A1 fetches across all word lanes, wrapping/mirroring, DDR
+ // stalls, interpolants, and cache refills. Compare both storage formats
+ // against the same independent pixel oracle.
+ {
+  Sim p;p.reset();std::mt19937 r(7331);unsigned seq=600;
+  for(unsigned trial=0;trial<16;trial++){
+   std::vector<uint32_t> tex(128*64),packed;
+   for(auto& pixel:tex)pixel=unpackTexture16(uint16_t(r()));
+   require(packTexture16(tex.data(),tex.size(),packed),"canonical pack failed");
+   std::vector<Command> commands;std::vector<uint32_t> expected;
+   for(unsigned y=0;y<192;y++){
+    std::array<uint32_t,256> colors{},z{};std::array<bool,256> back{};
+    colors.fill(0x1f030507);z.fill(0xffffff);commands.push_back(clear(y,colors[0],z[0]));
+    for(unsigned k=0;k<2;k++){
+     Span spanData;spanData.flags=Textured|Front|(trial&1?Linear:0);
+     spanData.w0=128;spanData.w1=256;spanData.shiftS=7;spanData.shiftT=6;spanData.wrap=trial;
+     spanData.z0=spanData.z1=2000-k;spanData.left={504,400,328,-4096+int(k)*3072,int(y)*16-1024};
+     spanData.right={256,504,176,6144-int(k)*2048,int(y)*16+3072};
+     commands.push_back(span(spanData));oracle(spanData,tex,colors,z,back);
+    }
+    commands.push_back(flush(y));expected.insert(expected.end(),colors.begin(),colors.end());
+   }
+   for(unsigned format=0;format<2;format++){
+    const auto& bytes=format?packed:tex;
+    std::memcpy(&p.word(Textures),bytes.data(),bytes.size()*4);
+    for(auto& c:commands)if(c[0]==2)c[14]=(c[14]&~0x3000u)|(format?0x2000u:0);
+    auto cycles=p.run(commands,++seq);
+    for(unsigned i=0;i<expected.size();i++)require(p.word(Output+i*4)==expected[i],"RGB555A1 oracle mismatch");
+    std::cout<<"PACKED16_PASS trial="<<trial<<" format="<<format<<" cycles="<<cycles<<"\n";
+   }
+  }
+  Span bad;bad.flags|=Textured;bad.texture=(Textures+TextureBytes-64)|2;
+  p.run({clear(0,0,0xffffff),span(bad)},++seq,1);
+  bad.texture=Textures|3;p.run({clear(0,0,0xffffff),span(bad)},++seq,1);
+  std::cout<<"PASS 1572864 packed/raw oracle pixels and packed texture bounds\n";
+ }
 
  // Incremental producer boundaries, unpublished poison, late finalization,
  // intentional cancellation, metadata regression and stale epoch.

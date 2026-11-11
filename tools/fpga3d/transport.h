@@ -4,6 +4,7 @@
 #include "admission.h"
 #include "profile.h"
 #include "texture_residency.h"
+#include "packed_texels.h"
 #include <chrono>
 #include <cstring>
 #include <cstdio>
@@ -19,6 +20,7 @@ inline bool permitted=false,writeCombined=false,streaming=true;
 inline bool textureResidencyEnabled=false;
 inline bool preparedTexturesEnabled=false;
 inline bool fastCommandsEnabled=false;
+inline bool packedTexturesEnabled=false;
 inline uint64_t bindingSerial=0,textureWriterSerial=0;
 inline uint32_t poisonedSession=0;
 inline uint64_t completedFrames=0,failedFrames=0;
@@ -190,6 +192,15 @@ struct Frame {
     return true;
    }
   }
+  if(packedTexturesEnabled && allowIndexed) {
+   std::vector<uint32_t> packed;
+   if(packTexture16(pixels,count,packed)) {
+    if(textures.size()+packed.size()>TextureBytes/4)return reject(Outcome::TextureCapacity);
+    textureOffsets[pixels]=(Textures+uint32_t(textures.size()*4))|2u;
+    textures.insert(textures.end(),packed.begin(),packed.end());
+    return true;
+   }
+  }
   if(count>TextureBytes/4 || textures.size()+count>TextureBytes/4)return reject(Outcome::TextureCapacity);
   for(size_t i=0;i<count;i++)if((pixels[i]>>24)>31)return reject(Outcome::TextureAlpha);
   textureOffsets[pixels]=Textures+textures.size()*4;
@@ -202,13 +213,16 @@ struct Frame {
  // full descriptor capacity when textures exceed the WC command threshold.
  void preferRawTextures(const std::vector<TextureUse>& uses,size_t budget=TextureBytes){
   if(active || !valid || budget>TextureBytes || textures.size()*4>budget)return;
-  struct Binding {TextureUse use;uint32_t old;bool raw;size_t extra;};
+  struct Binding {TextureUse use;uint32_t old;bool raw;size_t extra;std::vector<uint32_t> binary;};
   std::vector<Binding> bindings;bindings.reserve(uses.size());
   for(const auto& u:uses){
    auto it=textureOffsets.find(u.pixels);
    if(it==textureOffsets.end() || !u.count || (u.count&63))return;
    const bool indexed=it->second&1u;
-   bindings.push_back({u,it->second,!indexed,indexed?u.count*3-1024:0});
+   Binding b{u,it->second,!indexed,indexed?u.count*3-1024:0,{}};
+   if(indexed && packedTexturesEnabled && packTexture16(u.pixels,u.count,b.binary))
+    b.extra=u.count-1024;
+   bindings.push_back(std::move(b));
   }
   if(bindings.size()!=textureOffsets.size())return;
   std::sort(bindings.begin(),bindings.end(),[](const Binding& a,const Binding& b){
@@ -222,8 +236,14 @@ struct Frame {
   std::sort(bindings.begin(),bindings.end(),[](const Binding& a,const Binding& b){return a.old<b.old;});
   std::vector<uint32_t> packed;packed.reserve(bytes/4);
   for(const auto& b:bindings){
-   textureOffsets[b.use.pixels]=(Textures+uint32_t(packed.size()*4))|(!b.raw);
-   if(b.raw)packed.insert(packed.end(),b.use.pixels,b.use.pixels+b.use.count);
+   const bool binary=(b.old&2u) || (b.raw && !b.binary.empty());
+   textureOffsets[b.use.pixels]=(Textures+uint32_t(packed.size()*4))|(binary?2u:!b.raw);
+   if(binary && !b.binary.empty())packed.insert(packed.end(),b.binary.begin(),b.binary.end());
+   else if(binary) {
+    const auto first=textures.begin()+((b.old&~3u)-Textures)/4;
+    packed.insert(packed.end(),first,first+b.use.count/2);
+   }
+   else if(b.raw)packed.insert(packed.end(),b.use.pixels,b.use.pixels+b.use.count);
    else {
     const auto first=textures.begin()+((b.old&~1u)-Textures)/4;
     packed.insert(packed.end(),first,first+256+b.use.count/4);

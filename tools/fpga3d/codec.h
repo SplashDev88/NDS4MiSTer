@@ -5,8 +5,8 @@ namespace fpga3d {
 using PackedCommand=std::array<uint32_t,16>;
 inline void rebindTexture(PackedCommand& p,uint32_t address){
  // Rebind both the immutable storage base and its lossless format flag.
- p[4]=(p[4]&~(0x1ffffu<<6))|((((address&~1u)-Textures)>>3)<<6);
- p[15]=(p[15]&~(1u<<17))|((address&1u)<<17);
+ p[4]=(p[4]&~(0x1ffffu<<6))|((((address&~3u)-Textures)>>3)<<6);
+ p[15]=(p[15]&~((1u<<17)|(1u<<29)))|((address&1u)<<17)|((address&2u)<<28);
 }
 template<unsigned Bit,unsigned Width> inline void put(PackedCommand& p,uint32_t x){
  static_assert(Width<=32 && Bit+Width<=512);
@@ -33,7 +33,7 @@ inline PackedCommand pack(const Command& c){
   (c[2]&~0x1f3fu) || (c[27]&~0x3f008010u) || (c[31]&~0x7f3fu) || ((c[31]>>10)&7)>4 ||
   (c[30]&65535)>(c[30]>>16) || (c[30]>>16)>256;
  if(c[2]&Textured)invalid|=c[13]<Textures || c[13]>=Textures+TextureBytes || (c[13]&7) ||
-  (c[14]&15)<3 || (c[14]&15)>10 || ((c[14]>>4)&15)<3 || ((c[14]>>4)&15)>10 || (c[14]&~0x1fffu) ||
+  (c[14]&15)<3 || (c[14]&15)>10 || ((c[14]>>4)&15)<3 || ((c[14]>>4)&15)>10 || (c[14]&~0x3fffu) || (c[14]&0x3000u)==0x3000u ||
   ((c[14]&0x1000u) && (c[13]&63));
  const bool literal=c[31]&(1u<<13);
  invalid|=literal && (width!=1 || end!=first+1 || dx!=0 || !(c[2]&Linear));
@@ -74,6 +74,7 @@ inline PackedCommand pack(const Command& c){
  put<453,8>(p,c[25]);put<461,8>(p,c[25]>>16);}
  put<495,2>(p,c[31]>>10);put<498,1>(p,c[31]>>12);put<497,1>(p,c[14]>>12);
  put<499,1>(p,c[31]>>14);put<500,1>(p,literal);if(literal)put<501,8>(p,a>>24);
+ put<509,1>(p,c[14]>>13);
  put<469,13>(p,c[7]);put<482,13>(p,c[7]>>16);put<511,1>(p,invalid);return p;
 }
 inline Command unpack(const PackedCommand& p){
@@ -86,7 +87,7 @@ inline Command unpack(const PackedCommand& p){
  c[5]=get<54,24>(p);c[6]=signed24(get<78,24>(p));c[15]=get<54,24>(p);c[26]=get<78,24>(p);
  if(get<500,1>(p))c[5]=c[15]=c[26]=c[5]|(get<501,8>(p)<<24);
  c[7]=get<469,13>(p)|(get<482,13>(p)<<16);
- c[13]=Textures+(get<134,17>(p)<<3);c[14]=(get<151,3>(p)+3)|((get<154,3>(p)+3)<<4)|(get<157,4>(p)<<8)|(get<497,1>(p)<<12);
+ c[13]=Textures+(get<134,17>(p)<<3);c[14]=(get<151,3>(p)+3)|((get<154,3>(p)+3)<<4)|(get<157,4>(p)<<8)|(get<497,1>(p)<<12)|(get<509,1>(p)<<13);
  c[27]=(get<161,6>(p)<<24)|(get<167,1>(p)<<4)|(get<168,1>(p)<<15);
  auto cov=[](uint32_t v){return (v&1023)|(((v>>10)&1023)<<12)|((v>>20)<<31);};
  c[28]=cov(get<169,21>(p));c[29]=cov(get<190,21>(p));

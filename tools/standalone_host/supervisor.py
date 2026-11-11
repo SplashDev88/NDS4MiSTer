@@ -610,6 +610,7 @@ def main():
                        "NDS4MISTER_FPGA3D_ALL_SUPPORTED",
                        "NDS4MISTER_FPGA3D_FAST_COMMANDS",
                        "NDS4MISTER_FPGA3D_PREPARED_TEXTURES",
+                       "NDS4MISTER_FPGA3D_PACKED_TEXTURES",
                        "NDS4MISTER_FPGA3D_TEXTURE_RESIDENCY"):
             choice = os.environ.get(option, "0")
             assert choice in ("0", "1"), "Invalid " + option
