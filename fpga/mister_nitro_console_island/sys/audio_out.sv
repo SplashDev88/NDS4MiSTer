@@ -317,8 +317,11 @@ localparam  [1:0][2:0] boost_a = '{$clog2(boost_a2), $clog2(boost_a1)};
 localparam [1:0][15:0] boost_x = '{boost_x2[15:0], boost_x1[15:0]};
 localparam [1:0][15:0] boost_b = '{boost_b2[15:0], boost_b1[15:0]};
 
-reg signed [15:0] a1;
-reg signed [16:0] a2, a3, a4;
+// These short delay stages share MLAB storage when mixing/ALSA are disabled.
+// Keep the large command cache in the M10Ks they otherwise occupy.
+(* ramstyle="MLAB" *) reg signed [15:0] a1;
+(* ramstyle="MLAB" *) reg signed [16:0] a2, a3;
+reg signed [16:0] a4;
 reg [15:0] v0, v1;
 reg s0,s1;
 always @(posedge clk) if (ce) begin

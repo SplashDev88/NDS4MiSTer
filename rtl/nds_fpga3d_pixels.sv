@@ -64,14 +64,13 @@ module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
  assign edge_attr=a0_mem;
  assign edge_depth=d0_mem;
  assign edge_color=edge_read_odd?c0o:c0e;
- logic [31:0] a0_delay[0:RASTER_DELAY-1],a1_delay[0:RASTER_DELAY-1],d0_delay[0:RASTER_DELAY-1],d1_delay[0:RASTER_DELAY-1];
+ logic [31:0] a0_delay[0:RASTER_DELAY-1],a1_delay[0:RASTER_DELAY-1],d0_delay[0:RASTER_DELAY-1];
  // Raster depth tests always consume the aligned precheck pipeline. Resolve
  // passes use their synchronous RAM outputs directly; avoid putting their
  // mode selector on every depth-comparison and pixel-store write path.
  wire [31:0] a0=a0_delay[RASTER_DELAY-1];
  wire [31:0] a1=a1_delay[RASTER_DELAY-1];
  wire [31:0] d0=d0_delay[RASTER_DELAY-1];
- wire [31:0] d1=d1_delay[RASTER_DELAY-1];
  wire [7:0] depth_read_x=resolve_valid?pixel_x:precheck_x;
  logic [7:0] x_q;
  logic [31:0] color_q,depth_q;
@@ -187,7 +186,9 @@ module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
  always_comb begin
   color_write_x=x_q;
   color_we0=0;color_we1=0;attr_we0=0;attr_we1=0;depth_we0=0;depth_we1=0;
-  new_c0=old_c0;new_c1=old_c1;new_a0=old_a0;new_a1=a1;new_d0=d0;new_d1=d1;
+  // Every enabled write supplies its data below. Constant inactive values
+  // avoid feedback muxes and the otherwise unused lower-depth delay RAM.
+  new_c0=0;new_c1=0;new_a0=0;new_a1=0;new_d0=0;new_d1=0;
   pass0=raster_pass0[RASTER_DELAY-1];pass1=raster_pass1[RASTER_DELAY-1];
   target0=pass0;target1=!pass0 && old_a0[3:0]!=0 && pass1;
   if(shadow_mode==3)begin
@@ -268,10 +269,10 @@ module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
     raster_pass0[stage]<=raster_pass0[stage-1];raster_pass1[stage]<=raster_pass1[stage-1];
     raster_shadow1[stage]<=raster_shadow1[stage-1];
    end
-   a0_delay[0]<=a0_mem;a1_delay[0]<=a1_mem;d0_delay[0]<=d0_mem;d1_delay[0]<=d1_mem;
+   a0_delay[0]<=a0_mem;a1_delay[0]<=a1_mem;d0_delay[0]<=d0_mem;
    for(integer stage=1;stage<RASTER_DELAY;stage=stage+1)begin
     a0_delay[stage]<=a0_delay[stage-1];a1_delay[stage]<=a1_delay[stage-1];
-    d0_delay[stage]<=d0_delay[stage-1];d1_delay[stage]<=d1_delay[stage-1];
+    d0_delay[stage]<=d0_delay[stage-1];
    end
   end
   if(clear_we)begin

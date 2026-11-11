@@ -62,7 +62,9 @@ module nds_fpga3d #(
       29'(command_base>>3)+(29'(index)<<3);
  logic [15:0] poll;
  logic [3:0] beat;
- (* ramstyle="MLAB" *) logic [63:0] command_cache[0:127];
+ // Use the two M10Ks released by the short scaler/audio delay chains.
+ // The existing enabled synchronous read retains its one-cycle latency.
+ (* ramstyle="M10K" *) logic [63:0] command_cache[0:127];
  logic [63:0] command_cache_q;
  logic [4:0] cached_commands;
  logic [3:0] cache_slot;

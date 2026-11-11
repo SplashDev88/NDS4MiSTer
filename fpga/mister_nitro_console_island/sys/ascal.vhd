@@ -550,6 +550,8 @@ ARCHITECTURE rtl OF ascal IS
 	SIGNAL o_vpixq, o_vpixq_pre : arr_pix(0 TO 3);
 	SIGNAL o_vpix_outer : arr_pix(0 TO 2);
 	SIGNAL o_vpix_inner : arr_pix(0 TO 6);
+	-- Keep this short delay in MLAB storage; reserve M10Ks for the command cache.
+	ATTRIBUTE ramstyle OF o_vpix_inner : SIGNAL IS "MLAB";
 
 	SIGNAL o_vpe : std_logic;
 	SIGNAL o_div : arr_div(0 TO 2); --uint12;
