@@ -25,6 +25,10 @@ set_global_assignment -name FITTER_AGGRESSIVE_ROUTABILITY_OPTIMIZATION ALWAYS
 # restructuring and pre-mapping resynthesis were tested together and rejected
 # because they enlarged this design.
 set_global_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS ON
+# Preserve only the measured main-RAM hold buffers. Global area cleanup
+# otherwise removes these functionally redundant LCELLs before placement.
+set_instance_assignment -name IGNORE_LCELL_BUFFERS OFF -to "*|nds_mainram:imainram|hold_*"
+set_instance_assignment -name REMOVE_REDUNDANT_LOGIC_CELLS OFF -to "*|nds_mainram:imainram|hold_*"
 # Retain normal routing effort: maximum effort regressed accelerator setup.
 # Main-RAM short paths use explicit buffers, with unchanged timing constraints.
 set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
