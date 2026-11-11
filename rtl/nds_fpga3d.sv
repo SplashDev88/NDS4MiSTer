@@ -35,7 +35,10 @@ module nds_fpga3d #(
  generate for(packed_word=0;packed_word<16;packed_word=packed_word+1)begin: pack_bus
  assign packed_command[32*packed_word+:32]=cmd[packed_word];
  end endgenerate
- logic [31:0] seq,seen,count,index,status,epoch;
+ logic [31:0] seq,seen,status,epoch;
+ // Full-width producer counts are validated before use. The physical arena
+ // holds at most 8128 commands, so accepted counts and indices fit 13 bits.
+ logic [12:0] count,index;
  logic [31:0] command_base,texture_end;
  logic [13:0] capacity;
  logic producer_final;
@@ -50,7 +53,7 @@ module nds_fpga3d #(
  wire [13:0] padded_slot=14'(index)+14'd64;
  wire [28:0] padded_address={11'h1ff,padded_slot[12:10],2'b11,padded_slot[9:0],3'd0};
  wire [28:0] command_address=command_base==32'h3fe31000 ? padded_address :
-      29'(command_base>>3)+(index<<3);
+      29'(command_base>>3)+(29'(index)<<3);
  logic [15:0] poll;
  logic [3:0] beat;
  (* ramstyle="MLAB" *) logic [63:0] command_cache[0:127];
@@ -387,7 +390,7 @@ module nds_fpga3d #(
      edge_configured<=0;render_bank<=0;
      palette_valid<=0;
      toon_configured<=0;
-     count<={1'b0,dout[30:0]};producer_final<=dout[31];
+     count<=dout[12:0];producer_final<=dout[31];
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
      else if(dout[30:0]>8128)begin status<=1;state<=COMPLETE;end
      else state<=PARAM;
@@ -427,7 +430,7 @@ module nds_fpga3d #(
     REFILL_WAIT:if(dout_ready)begin
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
      else if(dout[30:0]<count || dout[30:0]>capacity)begin status<=1;state<=COMPLETE;end
-     else begin count<={1'b0,dout[30:0]};producer_final<=dout[31];state<=AVAILABLE;end
+     else begin count<=dout[12:0];producer_final<=dout[31];state<=AVAILABLE;end
     end
     FETCH:if(!busy)begin
      cached_commands<=fetch_commands;cache_slot<=0;cache_fill_beat<=0;cache_last_beat<=fetch_words-1'b1;state<=FETCH_WAIT;

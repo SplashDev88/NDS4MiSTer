@@ -183,7 +183,7 @@ int main(int argc,char** argv){try{
    for(unsigned i=0;i<49152;i++)require(p.word(Output+4*i)==0x1f010203,"streamed frame output");
   }
   p.runStreaming(c,104,0,1,true);
-  for(unsigned mode=0;mode<4;mode++){
+  for(unsigned mode=0;mode<6;mode++){
    unsigned seq=105+mode;auto packed=pack(clear(0,0,0xffffff));
    std::memcpy(&p.word(Commands),packed.data(),sizeof(packed));
    p.word(Mailbox+60)=Commands;p.word(Mailbox+8)=1;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;p.word(Mailbox+4)=seq;
@@ -192,8 +192,15 @@ int main(int argc,char** argv){try{
    if(mode==1)p.word(Mailbox+8)=8129; // Cannot exceed physical arena.
    if(mode==2)p.word(Mailbox+12)=16; // Epoch cannot change in flight.
    if(mode==3)p.word(Mailbox+8)=0x80000001; // Closed incomplete scanline.
+   if(mode==4)p.word(Mailbox+8)=8193; // Low 13 bits are a valid prefix: reject before truncation.
+   if(mode==5)p.word(Mailbox+8)=0x40000001; // Likewise for a high producer count bit.
    unsigned limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
    require(limit<10000 && p.word(Mailbox+20)==(mode==2?2:1),"bad producer metadata accepted");
+  }
+  for(uint32_t count:{8129u,8192u,8193u,0x40000001u,0x7fffffffu}){
+   p.word(Mailbox+60)=Commands;p.word(Mailbox+8)=0x80000000u|count;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;
+   unsigned seq=++p.word(Mailbox+4),limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
+   require(limit<10000 && p.word(Mailbox+20)==1,"oversized initial producer count accepted after truncation");
   }
   for(uint32_t base:{0x3fc00000u,0x3fd40004u,0x3fe00000u,0x3fe30000u,0x3fe31040u,0x3fff0000u,0x40000000u}){
    p.word(Mailbox+60)=base;p.word(Mailbox+8)=0x80000000;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;
