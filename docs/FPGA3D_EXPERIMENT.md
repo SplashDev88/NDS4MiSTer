@@ -303,3 +303,61 @@ affinity: a rejected frame must stay on its original CPU instead of competing
 with the native raster worker after restoring an unrestricted affinity mask.
 Eligible FPGA frames still use scoped CPU1 preparation. C36 needs its own
 live comparison before this scheduling correction is qualified.
+
+## November 10: native-resolution texture residency experiments
+
+Two default-off experiments retain native pixels and guest graphics effects:
+`NDS4MISTER_FPGA3D_TEXTURE_RESIDENCY=1` compares an exact CPU shadow and
+uploads only changed texture runs after validating session, mapping, writer,
+and completed-mailbox ownership. `NDS4MISTER_FPGA3D_PREPARED_TEXTURES=1`
+reuses a prepared texture set only when every current source byte and source
+size matches. Polygon order and row-use counts may change without rebuilding
+the lossless raw/indexed bindings. Source snapshots are bounded to 4 MiB.
+
+The prepared helper is built from
+`2a7c3ce68a7c0c5243e13cb42aa4ee627a9a3c34`; its SHA-256 is
+`67a820ba852e38536484442aa1e1828cf16bc1ce30ec535aee9a00328d65eb11`.
+The unchanged F3D6 core is
+`1b107bee976bfb893e72c4b5518f846c27c3e91b426f3f88799fca58f39cd680`.
+Neither experiment changes FPGA clocks, geometry, resolution, or guest effects.
+
+Each admitted scene has one 30-second window per arm, at 1 GHz, with frozen
+private saves and before/active/after screenshots. These are completed display
+publications per second, not unique-animation counts or RC15 Beta5 AA-Off
+measurements. Small differences remain provisional; no repeat rounds were run.
+
+| Scene | Software | Existing FPGA | Residency + prepared cache |
+| --- | ---: | ---: | ---: |
+| Mario Kart, stationary 50cc Figure-8 race | 25.83 | 19.26 | 21.10 |
+| Dawn of Sorrow, save room | 46.03 | 27.30 | 24.16 |
+| NSMB, World 3 map at the tower | 14.43 | 22.10 | 21.16 |
+
+Residency alone measured 18.80 in Mario Kart, despite avoiding 99.86% of texture
+writes. Adding prepared-set reuse reduces its texture preparation from 8.99
+to 3.98 ms per accepted frame and raises the FPGA rate by 9.53%, but software
+remains faster. Dawn's prepared-cache hit rate is only 25.33%; preparation grows
+from 5.67 to 8.57 ms and FPS regresses 11.49%. NSMB's candidate loses 4.24%
+against the existing FPGA path, even though both beat the software control.
+No new variant beats the fastest existing path, so neither is enabled in the
+current beta. RC15 Beta5 and its installed payload remain unchanged.
+
+The transfer counts expose another lead: NSMB stages 215,808 texture bytes and
+fits commands in the write-combined arena. Mario Kart and Dawn stage roughly
+784,384 and 773,120 bytes respectively, forcing Device command
+storage. Their upload timings include command writes and must not be treated
+as texture-only transfer time. A dedicated fast command path for texture-heavy
+scenes and workload-aware renderer selection warrant further experiments.
+
+Validation includes the residency ownership/transition oracle, ARM admission
+and helper self-tests, 36 production renderer fixtures, and both batch and
+streamed RTL playback: 3,538,944 exact native-pixel comparisons. Texture/palette
+mutation, resizing, reordered/moving geometry, mixed raw/indexed bindings,
+native timeout fallback, and early-timeout recovery are covered. All accepted
+hardware windows have zero protocol faults and stable session epochs. No new
+FPGA timing-closure claim is made for the inherited F3D6 core.
+
+Evidence and exact per-run fingerprints are retained in
+`evidence/native-fpga-residency-20261110`. The cave profile is a separate
+command-capacity fallback case. An incorrectly admitted menu window and a
+startup image with zero publication sequence were excluded. Scene admission
+now checks current-session publication before recognizing retained DDR pixels.
