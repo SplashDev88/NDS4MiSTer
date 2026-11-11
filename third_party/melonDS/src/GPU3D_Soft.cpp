@@ -212,6 +212,18 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
 {
     if(const char* v=std::getenv("NDS4MISTER_TEXTURE_HISTORY"))
         TextureHistoryEnabled=std::strcmp(v,"1")==0;
+    // Opt-in quality experiments affect only the software renderer. Keep the
+    // guest register and latched geometry state intact (including reuse checks).
+    const auto enabled = [](const char* name) {
+        const char* value = std::getenv(name);
+        return value && std::strcmp(value, "1") == 0;
+    };
+    DisabledEffectBits =
+        (enabled("NDS4MISTER_DISABLE_3D_AA") ? (1u << 4) : 0) |
+        (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
+        (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
+    DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
+    AlternateRowsRequested = enabled("NDS4MISTER_ALTERNATE_3D_ROWS");
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
     Sema_ScanlineCount = Platform::Semaphore_Create();
@@ -316,6 +328,8 @@ void SoftRenderer3D::Reset()
     PrevIsShadowMask = false;
 
     SetupRenderThread();
+    EffectiveDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    UpdateAlternateRows();
     // SetupRenderThread joins any prior job before controller state is
     // rewritten, keeping reset free of a worker-thread data race.
     FpgaAdmission.reset();
@@ -391,6 +405,10 @@ void SoftRenderer3D::SetThreaded(bool threaded) noexcept
     {
         Threaded = threaded;
         SetupRenderThread();
+        const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+        if (next != EffectiveDispCnt) FrameIdentical = false;
+        EffectiveDispCnt = next;
+        UpdateAlternateRows();
         EnableRenderThread();
     }
 }
@@ -708,7 +726,7 @@ u32 SoftRenderer3D::AlphaBlend(u32 srccolor, u32 dstcolor, u32 alpha) const noex
     u32 srcG = (srccolor >> 8) & 0x3F;
     u32 srcB = (srccolor >> 16) & 0x3F;
 
-    if (GPU3D.RenderDispCnt & (1<<3))
+    if (EffectiveDispCnt & (1<<3))
     {
         u32 dstR = dstcolor & 0x3F;
         u32 dstG = (dstcolor >> 8) & 0x3F;
@@ -992,7 +1010,7 @@ void SoftRenderer3D::SetupPolygonLeftEdge(SoftRenderer3D::RendererPolygon* rp, s
         }
     }
 
-    rp->XL = rp->SlopeL.Setup(polygon->Vertices[rp->CurVL]->FinalPosition[0], polygon->Vertices[rp->NextVL]->FinalPosition[0],
+    rp->XL = rp->SlopeL.Setup(RasterX(polygon->Vertices[rp->CurVL]), RasterX(polygon->Vertices[rp->NextVL]),
                               polygon->Vertices[rp->CurVL]->FinalPosition[1], polygon->Vertices[rp->NextVL]->FinalPosition[1],
                               polygon->FinalW[rp->CurVL], polygon->FinalW[rp->NextVL], y, polygon->WBuffer);
 }
@@ -1019,7 +1037,7 @@ void SoftRenderer3D::SetupPolygonRightEdge(SoftRenderer3D::RendererPolygon* rp, 
         }
     }
 
-    rp->XR = rp->SlopeR.Setup(polygon->Vertices[rp->CurVR]->FinalPosition[0], polygon->Vertices[rp->NextVR]->FinalPosition[0],
+    rp->XR = rp->SlopeR.Setup(RasterX(polygon->Vertices[rp->CurVR]), RasterX(polygon->Vertices[rp->NextVR]),
                               polygon->Vertices[rp->CurVR]->FinalPosition[1], polygon->Vertices[rp->NextVR]->FinalPosition[1],
                               polygon->FinalW[rp->CurVR], polygon->FinalW[rp->NextVR], y, polygon->WBuffer);
 }
@@ -1053,7 +1071,7 @@ void SoftRenderer3D::SetupPolygon(
     pixelState.PolyAlpha = static_cast<u8>((polygon->Attr >> 16) & 0x1F);
     pixelState.Alpha0 = (polygon->TexParam & (1<<29)) ? 0 : 31;
     pixelState.TextureEnabled =
-        (GPU3D.RenderDispCnt & (1<<0)) && textureFormat != 0;
+        (EffectiveDispCnt & (1<<0)) && textureFormat != 0;
     pixelState.TexturePixels = nullptr;
     if (pixelState.TextureEnabled && UseTextureCache)
     {
@@ -1085,7 +1103,7 @@ void SoftRenderer3D::SetupPolygon(
         }
     }
     pixelState.Highlight =
-        pixelState.BlendMode == 2 && (GPU3D.RenderDispCnt & (1<<1));
+        pixelState.BlendMode == 2 && (EffectiveDispCnt & (1<<1));
     pixelState.Wireframe = pixelState.PolyAlpha == 0;
     pixelState.CachedModulate = pixelState.TexturePixels &&
         pixelState.BlendMode == 0 && !pixelState.Highlight &&
@@ -1149,11 +1167,11 @@ void SoftRenderer3D::SetupPolygon(
                 visibleScanlines;
         }
         Parent.StageProfile.ThreeDAntiAliasPolygons +=
-            (GPU3D.RenderDispCnt >> 4) & 1;
+            (EffectiveDispCnt >> 4) & 1;
         Parent.StageProfile.ThreeDEdgeMarkingPolygons +=
-            (GPU3D.RenderDispCnt >> 5) & 1;
+            (EffectiveDispCnt >> 5) & 1;
         Parent.StageProfile.ThreeDFogPolygons +=
-            ((GPU3D.RenderDispCnt >> 7) & 1) &&
+            ((EffectiveDispCnt >> 7) & 1) &&
             ((polygon->Attr >> 15) & 1);
     }
 
@@ -1181,18 +1199,18 @@ void SoftRenderer3D::SetupPolygon(
         int i;
 
         i = 1;
-        if (polygon->Vertices[i]->FinalPosition[0] < polygon->Vertices[vtop]->FinalPosition[0]) vtop = i;
-        if (polygon->Vertices[i]->FinalPosition[0] > polygon->Vertices[vbot]->FinalPosition[0]) vbot = i;
+        if (RasterX(polygon->Vertices[i]) < RasterX(polygon->Vertices[vtop])) vtop = i;
+        if (RasterX(polygon->Vertices[i]) > RasterX(polygon->Vertices[vbot])) vbot = i;
 
         i = nverts - 1;
-        if (polygon->Vertices[i]->FinalPosition[0] < polygon->Vertices[vtop]->FinalPosition[0]) vtop = i;
-        if (polygon->Vertices[i]->FinalPosition[0] > polygon->Vertices[vbot]->FinalPosition[0]) vbot = i;
+        if (RasterX(polygon->Vertices[i]) < RasterX(polygon->Vertices[vtop])) vtop = i;
+        if (RasterX(polygon->Vertices[i]) > RasterX(polygon->Vertices[vbot])) vbot = i;
 
         rp->CurVL = vtop; rp->NextVL = vtop;
         rp->CurVR = vbot; rp->NextVR = vbot;
 
-        rp->XL = rp->SlopeL.SetupDummy(polygon->Vertices[rp->CurVL]->FinalPosition[0], polygon->WBuffer);
-        rp->XR = rp->SlopeR.SetupDummy(polygon->Vertices[rp->CurVR]->FinalPosition[0], polygon->WBuffer);
+        rp->XL = rp->SlopeL.SetupDummy(RasterX(polygon->Vertices[rp->CurVL]), polygon->WBuffer);
+        rp->XR = rp->SlopeR.SetupDummy(RasterX(polygon->Vertices[rp->CurVR]), polygon->WBuffer);
     }
     else
     {
@@ -1223,9 +1241,9 @@ void SoftRenderer3D::SetupPolygon(
         {
             const auto* v = polygon->Vertices[i];
             const auto* next = polygon->Vertices[(i + 1) & 3];
-            const s32 x = v->FinalPosition[0], y = v->FinalPosition[1];
+            const s32 x = RasterX(v), y = v->FinalPosition[1];
             rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
-            rectangle &= (x == next->FinalPosition[0]) != (y == next->FinalPosition[1]);
+            rectangle &= (x == RasterX(next)) != (y == next->FinalPosition[1]);
             rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
                          polygon->FinalZ[i] == polygon->FinalZ[0];
             corners |= 1u << ((x == rp->XR ? 1 : 0) | (y == ybot ? 2 : 0));
@@ -1263,7 +1281,7 @@ void SoftRenderer3D::SetupPolygon(
         ytop < ybot && rp->XR - rp->XL > 1 &&
         !pixelState.TextureEnabled && pixelState.BlendMode == 0 &&
         pixelState.PolyAlpha > 0 && pixelState.PolyAlpha < 31 &&
-        (GPU3D.RenderDispCnt & (1 << 3)) &&
+        (EffectiveDispCnt & (1 << 3)) &&
         !polygon->IsShadow && !polygon->IsShadowMask &&
         (rp->DepthTest == DepthTest_LessThan_FrontFacing ||
          rp->DepthTest == DepthTest_LessThan) &&
@@ -1276,9 +1294,9 @@ void SoftRenderer3D::SetupPolygon(
         {
             const auto* v = polygon->Vertices[i];
             const auto* next = polygon->Vertices[(i + 1) & 3];
-            const s32 x = v->FinalPosition[0], y = v->FinalPosition[1];
+            const s32 x = RasterX(v), y = v->FinalPosition[1];
             rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
-            rectangle &= (x == next->FinalPosition[0]) != (y == next->FinalPosition[1]);
+            rectangle &= (x == RasterX(next)) != (y == next->FinalPosition[1]);
             rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
                          polygon->FinalZ[i] == polygon->FinalZ[0];
             rectangle &= v->FinalColor[0] >= 0 && v->FinalColor[0] <= 511 &&
@@ -1370,7 +1388,7 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         std::swap(zl, zr);
 
         // CHECKME: edge fill rules for swapped opaque shadow mask polygons
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -1378,10 +1396,10 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         else
         {
             l_filledge = (rp->SlopeR.Negative || !rp->SlopeR.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
             r_filledge = (!rp->SlopeL.Negative && rp->SlopeL.XMajor)
                 || (!(rp->SlopeL.Negative && rp->SlopeL.XMajor) && rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
     else
@@ -1398,7 +1416,7 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         rp->SlopeR.EdgeParams<false>(&r_edgelen, &r_edgecov);
 
         // CHECKME: edge fill rules for unswapped opaque shadow mask polygons
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -1406,10 +1424,10 @@ void SoftRenderer3D::RenderShadowMaskScanline(
         else
         {
             l_filledge = ((rp->SlopeL.Negative || !rp->SlopeL.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]))
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext)))
                 || (rp->SlopeL.Increment == rp->SlopeR.Increment) && (xstart+l_edgelen == xend+1);
             r_filledge = (!rp->SlopeR.Negative && rp->SlopeR.XMajor) || (rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
 
@@ -1610,7 +1628,7 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
             // attributes. Share the scalar path's exact lazy selection;
             // equal depth and lower-layer fallback still consult them.
             if (!NDS4MiSTerSelectCachedDepthPixel(
-                    DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
             {
                 allFront = false;
                 continue;
@@ -1695,7 +1713,7 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
                     z = -1;
                 PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
-                if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+                if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                     PlotTranslucentPixel(
                         pixeladdr + BufferSize, color, z, polyattr, 0);
             }
@@ -1875,7 +1893,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
         }
 
         if (!NDS4MiSTerSelectCachedDepthPixel(
-                DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
             continue;
 
         u32 vertexColor;
@@ -1914,7 +1932,7 @@ SoftRenderer3D::RenderCachedModulateInteriorSpanMode(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
             if (NDS4MiSTerCachedPixelHasLowerLayer(
-                    AttrBuffer, BufferSize, pixeladdr))
+                    AttrBuffer, LowerLayerBufferSize, pixeladdr))
                 PlotTranslucentPixel(
                     pixeladdr + BufferSize, color, z, polyattr, 0);
         }
@@ -1969,7 +1987,7 @@ SoftRenderer3D::RenderCachedContiguousTextureSpan(
             u32 pixeladdr = rowAddress + firstX;
             s32 z = constantSpanDepth;
             if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                    DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
                 continue;
             u32 color;
             if (!NDS4MiSTerNeutralOpaqueCachedPixel(*texture, alphaRef, color))
@@ -1985,7 +2003,7 @@ SoftRenderer3D::RenderCachedContiguousTextureSpan(
                 if (!writeTranslucentDepth) z = -1;
                 PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
                 if (NDS4MiSTerCachedPixelHasLowerLayer(
-                        AttrBuffer, BufferSize, pixeladdr))
+                        AttrBuffer, LowerLayerBufferSize, pixeladdr))
                     PlotTranslucentPixel(
                         pixeladdr + BufferSize, color, z, polyattr, 0);
             }
@@ -2054,7 +2072,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
         s32 z = constantSpanDepth;
 
         if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                DepthBuffer, AttrBuffer, BufferSize, z, pixeladdr))
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
             continue;
 
         const u32 texel = pixelState.TexturePixels[
@@ -2081,7 +2099,7 @@ SoftRenderer3D::RenderCachedModulateIntegralTextureSpan(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
 
             if (NDS4MiSTerCachedPixelHasLowerLayer(
-                    AttrBuffer, BufferSize, pixeladdr))
+                    AttrBuffer, LowerLayerBufferSize, pixeladdr))
                 PlotTranslucentPixel(
                     pixeladdr + BufferSize, color, z, polyattr, 0);
         }
@@ -2232,7 +2250,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         // edges are always filled if antialiasing/edgemarking are enabled,
         // if the pixels are translucent and alpha blending is enabled, or if the polygon is wireframe
         // checkme: do swapped line polygons exist?
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -2240,10 +2258,10 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         else
         {
             l_filledge = (rp->SlopeR.Negative || !rp->SlopeR.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
             r_filledge = (!rp->SlopeL.Negative && rp->SlopeL.XMajor)
                 || (!(rp->SlopeL.Negative && rp->SlopeL.XMajor) && rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
     else
@@ -2267,7 +2285,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         // * edges are filled if both sides are identical and fully overlapping
         // edges are always filled if antialiasing/edgemarking are enabled,
         // if the pixels are translucent and alpha blending is enabled, or if the polygon is wireframe
-        if ((GPU3D.RenderDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (GPU3D.RenderDispCnt & (1<<3))) || wireframe)
+        if ((EffectiveDispCnt & ((1<<4)|(1<<5))) || ((polyalpha < 31) && (EffectiveDispCnt & (1<<3))) || wireframe)
         {
             l_filledge = true;
             r_filledge = true;
@@ -2275,10 +2293,10 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         else
         {
             l_filledge = ((rp->SlopeL.Negative || !rp->SlopeL.XMajor)
-                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]))
+                || (y == polygon->YBottom-1) && rp->SlopeL.XMajor && (RasterX(vlnext) != RasterX(vrnext)))
                 || (rp->SlopeL.Increment == rp->SlopeR.Increment) && (xstart+l_edgelen == xend+1);
             r_filledge = (!rp->SlopeR.Negative && rp->SlopeR.XMajor) || (rp->SlopeR.Increment==0)
-                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (vlnext->FinalPosition[0] != vrnext->FinalPosition[0]);
+                || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
         }
     }
 
@@ -2540,7 +2558,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -2565,7 +2583,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -2580,7 +2598,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -2598,7 +2616,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, polygon->IsShadow);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
         }
     }
@@ -2642,7 +2660,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -2667,7 +2685,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         {
             u32 attr = polyattr | edge;
 
-            if ((GPU3D.RenderDispCnt & (1<<4)) && (attr & 0xF))
+            if ((EffectiveDispCnt & (1<<4)) && (attr & 0xF))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -2675,7 +2693,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                 attr |= (0x1F << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -2693,7 +2711,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, polygon->IsShadow);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
         }
     }
@@ -2733,7 +2751,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -2758,7 +2776,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -2773,7 +2791,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -2791,7 +2809,7 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, polygon->IsShadow);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, polygon->IsShadow);
         }
     }
@@ -2805,12 +2823,138 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
 // and retain the existing blend operation and lower-AA-layer ordering.
 // Keep the cartridge-specific body out of the explicitly hot function group.
 // Its larger blend loop otherwise displaces shared span routines on ARM.
+#if defined(__arm__) && defined(__ARM_NEON)
+template<bool FrontFacing>
+[[gnu::noinline]] void SoftRenderer3D::RenderGrayPowerOfTwoScanline(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+    s32 clipStartX, s32 clipEndX,
+    u16* finalPassMinX, u16* finalPassMaxX)
+{
+    const auto* polygon = rp->PolyData;
+    prevIsShadowMask = false;
+    const s32 xstart = rp->XL, xend = rp->XR;
+    const s32 visibleStart = std::max<s32>(xstart, 0);
+    const s32 visibleEnd = std::min<s32>(xend, 256);
+    if (visibleStart < visibleEnd)
+    {
+        finalPassMinX[y] = std::min<u16>(finalPassMinX[y], visibleStart);
+        finalPassMaxX[y] = std::max<u16>(finalPassMaxX[y], visibleEnd);
+    }
+    const s32 first = std::max(xstart, clipStartX);
+    const s32 end = std::min(xend, clipEndX);
+    const u32 alpha = rp->PixelState.PolyAlpha;
+    if (first < end && alpha > GPU3D.RenderAlphaRef)
+    {
+        const s32 left = rp->SlopeL.Interp.Interpolate(
+            polygon->Vertices[rp->CurVL]->FinalColor[0],
+            polygon->Vertices[rp->NextVL]->FinalColor[0]);
+        const s32 right = rp->SlopeR.Interp.Interpolate(
+            polygon->Vertices[rp->CurVR]->FinalColor[0],
+            polygon->Vertices[rp->NextVR]->FinalColor[0]);
+        NDS4MiSTerGrayPowerOfTwoSpan gray4(left, right, xend - xstart, first - xstart);
+        const s32 depth = polygon->FinalZ[0];
+        const u32 writeDepth = polygon->Attr & (1 << 11) ? depth : u32(-1);
+        const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+        const u32 polyattr = rp->PolyAttr;
+        const u32 translucentId = ((polyattr >> 8) & 0x003F0000u) | (1u << 22);
+        const auto plotGray = [&](u32 address, u32 dstattr, u32 shade)
+        {
+            // This path's setup proof excludes shadows and disabled blending.
+            // Reuse the already-loaded pre-blend attributes for both the ID
+            // rejection and the caller's lower-AA-layer decision.
+            if ((dstattr & 0x007F0000u) == translucentId)
+                return;
+            u32 attr = NDS4MiSTerComposeTranslucentAttr(polyattr, dstattr);
+            if (!(dstattr & (1u << 15)))
+                attr &= ~(1u << 15);
+            const u32 color = NDS4MiSTerBlendGrayPixel(
+                shade, ColorBuffer[address], alpha);
+            if (writeDepth != u32(-1))
+                DepthBuffer[address] = writeDepth;
+            ColorBuffer[address] = color;
+            AttrBuffer[address] = attr;
+        };
+        for (s32 x = first; x < end; x += 4, gray4.Advance())
+        {
+            u32 address = rowAddress + x;
+            if (x + 3 < end)
+            {
+                const uint32x4_t destinationAttr = vld1q_u32(AttrBuffer + address);
+                const uint32x2_t edgePairs = vorr_u32(vget_low_u32(destinationAttr),
+                                                     vget_high_u32(destinationAttr));
+                // Edges need ordered lower-layer work only when the frame
+                // keeps that backing layer. Native AA-off nonshadow frames
+                // consume only the top pixels, so they can stay in SIMD here.
+                if (!LowerLayerBufferSize ||
+                    !((vget_lane_u32(edgePairs, 0) | vget_lane_u32(edgePairs, 1)) & 15))
+                {
+                    const int32x4_t sourceDepth = vdupq_n_s32(depth);
+                    const uint32x4_t destinationDepth = vld1q_u32(DepthBuffer + address);
+                    uint32x4_t passed = vcltq_s32(sourceDepth,
+                        vreinterpretq_s32_u32(destinationDepth));
+                    if constexpr (FrontFacing)
+                        passed = vorrq_u32(passed, vandq_u32(
+                            vceqq_s32(sourceDepth, vreinterpretq_s32_u32(destinationDepth)),
+                            vceqq_u32(vandq_u32(destinationAttr, vdupq_n_u32(0x00400010)),
+                                      vdupq_n_u32(0x10))));
+                    passed = vbicq_u32(passed, vceqq_u32(
+                        vandq_u32(destinationAttr, vdupq_n_u32(0x007F0000)),
+                        vdupq_n_u32(translucentId)));
+                    uint32x4_t attr = veorq_u32(destinationAttr, vandq_u32(
+                        veorq_u32(destinationAttr, vdupq_n_u32(polyattr)),
+                        vdupq_n_u32(0xE0F0)));
+                    attr = vorrq_u32(vandq_u32(attr, vdupq_n_u32(0xFF00FFFF)),
+                        vdupq_n_u32(((polyattr >> 24) << 16) | (1u << 22)));
+                    attr = vandq_u32(attr, vorrq_u32(destinationAttr,
+                                                    vdupq_n_u32(~(1u << 15))));
+                    const uint32x4_t destinationColor = vld1q_u32(ColorBuffer + address);
+                    const uint32x4_t color = NDS4MiSTerBlendGrayPixels4(
+                        gray4.Get(), destinationColor, alpha);
+                    vst1q_u32(ColorBuffer + address, vbslq_u32(passed, color, destinationColor));
+                    vst1q_u32(AttrBuffer + address, vbslq_u32(passed, attr, destinationAttr));
+                    if (writeDepth != u32(-1))
+                        vst1q_u32(DepthBuffer + address, vbslq_u32(passed,
+                            vreinterpretq_u32_s32(sourceDepth), destinationDepth));
+                    continue;
+                }
+            }
+            u32 shades[4];
+            vst1q_u32(shades, gray4.Get());
+            for (s32 lane = 0; lane < std::min<s32>(4, end - x); ++lane)
+            {
+                address = rowAddress + x + lane;
+            if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
+                continue;
+            const u32 dstattr = AttrBuffer[address];
+            const u32 shade = shades[lane];
+            plotGray(address, dstattr, shade);
+            if ((dstattr & 0xF) && address < LowerLayerBufferSize)
+                plotGray(address + BufferSize, AttrBuffer[address + BufferSize], shade);
+            }
+        }
+    }
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
+#endif
+
 template<bool FrontFacing>
 [[gnu::noinline]] void SoftRenderer3D::RenderGrayRectangleScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
     s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
+#if defined(__arm__) && defined(__ARM_NEON)
+    const s32 width = rp->XR - rp->XL;
+    if (width >= 16 && width <= 1024 && !(width & (width - 1)))
+    {
+        RenderGrayPowerOfTwoScanline<FrontFacing>(rp, y, prevIsShadowMask,
+            clipStartX, clipEndX, finalPassMinX, finalPassMaxX);
+        return;
+    }
+#endif
     const auto* polygon = rp->PolyData;
     prevIsShadowMask = false;
     const s32 xstart = rp->XL, xend = rp->XR;
@@ -2858,13 +3002,63 @@ template<bool FrontFacing>
         for (s32 x = first; x < end; ++x, gray.Advance())
         {
             u32 address = rowAddress + x;
+#if defined(__arm__) && defined(__ARM_NEON)
+            if (x + 3 < end)
+            {
+                const uint32x4_t destinationAttr = vld1q_u32(AttrBuffer + address);
+                const uint32x2_t edgePairs = vorr_u32(vget_low_u32(destinationAttr),
+                                                     vget_high_u32(destinationAttr));
+                // Edges need ordered lower-layer work only when the frame
+                // keeps that backing layer. Native AA-off nonshadow frames
+                // consume only the top pixels, so they can stay in SIMD here.
+                if (!LowerLayerBufferSize ||
+                    !((vget_lane_u32(edgePairs, 0) | vget_lane_u32(edgePairs, 1)) & 15))
+                {
+                    u32 shades[4];
+                    for (unsigned lane = 0; lane < 4; ++lane)
+                    {
+                        shades[lane] = u32(gray.Get()) >> 3;
+                        if (lane != 3) gray.Advance();
+                    }
+                    const int32x4_t sourceDepth = vdupq_n_s32(depth);
+                    const uint32x4_t destinationDepth = vld1q_u32(DepthBuffer + address);
+                    uint32x4_t passed = vcltq_s32(sourceDepth,
+                        vreinterpretq_s32_u32(destinationDepth));
+                    if constexpr (FrontFacing)
+                        passed = vorrq_u32(passed, vandq_u32(
+                            vceqq_s32(sourceDepth, vreinterpretq_s32_u32(destinationDepth)),
+                            vceqq_u32(vandq_u32(destinationAttr, vdupq_n_u32(0x00400010)),
+                                      vdupq_n_u32(0x10))));
+                    passed = vbicq_u32(passed, vceqq_u32(
+                        vandq_u32(destinationAttr, vdupq_n_u32(0x007F0000)),
+                        vdupq_n_u32(translucentId)));
+                    uint32x4_t attr = veorq_u32(destinationAttr, vandq_u32(
+                        veorq_u32(destinationAttr, vdupq_n_u32(polyattr)),
+                        vdupq_n_u32(0xE0F0)));
+                    attr = vorrq_u32(vandq_u32(attr, vdupq_n_u32(0xFF00FFFF)),
+                        vdupq_n_u32(((polyattr >> 24) << 16) | (1u << 22)));
+                    attr = vandq_u32(attr, vorrq_u32(destinationAttr,
+                                                    vdupq_n_u32(~(1u << 15))));
+                    const uint32x4_t destinationColor = vld1q_u32(ColorBuffer + address);
+                    const uint32x4_t color = NDS4MiSTerBlendGrayPixels4(
+                        vld1q_u32(shades), destinationColor, alpha);
+                    vst1q_u32(ColorBuffer + address, vbslq_u32(passed, color, destinationColor));
+                    vst1q_u32(AttrBuffer + address, vbslq_u32(passed, attr, destinationAttr));
+                    if (writeDepth != u32(-1))
+                        vst1q_u32(DepthBuffer + address, vbslq_u32(passed,
+                            vreinterpretq_u32_s32(sourceDepth), destinationDepth));
+                    x += 3;
+                    continue;
+                }
+            }
+#endif
             if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                    DepthBuffer, AttrBuffer, BufferSize, depth, address))
+                    DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
                 continue;
             const u32 dstattr = AttrBuffer[address];
             const u32 shade = u32(gray.Get()) >> 3;
             plotGray(address, dstattr, shade);
-            if ((dstattr & 0xF) && address < BufferSize)
+            if ((dstattr & 0xF) && address < LowerLayerBufferSize)
                 plotGray(address + BufferSize, AttrBuffer[address + BufferSize], shade);
         }
     }
@@ -2900,7 +3094,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     const s32 depth = polygon->FinalZ[0];
     const u32 polyattr = rp->PolyAttr;
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
-    const bool antialias = GPU3D.RenderDispCnt & (1 << 4);
+    const bool antialias = EffectiveDispCnt & (1 << 4);
     const bool writeTranslucentDepth = polygon->Attr & (1 << 11);
     const u32 yedge = y == polygon->YTop ? 4 : y == polygon->YBottom - 1 ? 8 : 0;
     s32 x = std::max(xstart, clipStartX);
@@ -2912,7 +3106,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     {
         u32 address = rowAddress + pixelX;
         if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
-                DepthBuffer, AttrBuffer, BufferSize, depth, address))
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, depth, address))
             return;
         const u32 dstattr = AttrBuffer[address];
         const s16 s = static_cast<s16>(sl + (pixelX - xstart) * stepS);
@@ -2926,7 +3120,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
             if (antialias)
             {
                 attr |= 31 << 8;
-                if (address < BufferSize)
+                if (address < LowerLayerBufferSize)
                 {
                     ColorBuffer[address + BufferSize] = ColorBuffer[address];
                     DepthBuffer[address + BufferSize] = DepthBuffer[address];
@@ -2941,7 +3135,7 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
         {
             const s32 z = writeTranslucentDepth ? depth : -1;
             PlotTranslucentPixel(address, color, z, polyattr, false);
-            if ((dstattr & 0xF) && address < BufferSize)
+            if ((dstattr & 0xF) && address < LowerLayerBufferSize)
                 PlotTranslucentPixel(address + BufferSize, color, z, polyattr, false);
         }
     };
@@ -3142,7 +3336,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -3167,7 +3361,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -3182,7 +3376,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -3200,7 +3394,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
@@ -3249,7 +3443,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -3274,7 +3468,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         {
             u32 attr = polyattr | edge;
 
-            if ((GPU3D.RenderDispCnt & (1<<4)) && (attr & 0xF))
+            if ((EffectiveDispCnt & (1<<4)) && (attr & 0xF))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -3282,7 +3476,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
                 attr |= (0x1F << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -3300,7 +3494,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
@@ -3340,7 +3534,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         // against the pixel underneath
         if (!RunDepthTest(fnDepthTest, DepthBuffer[pixeladdr], z, dstattr))
         {
-            if (!(dstattr & 0xF) || pixeladdr >= BufferSize) continue;
+            if (!(dstattr & 0xF) || pixeladdr >= LowerLayerBufferSize) continue;
 
             pixeladdr += BufferSize;
             dstattr = AttrBuffer[pixeladdr];
@@ -3365,7 +3559,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
         {
             u32 attr = polyattr | edge;
 
-            if (GPU3D.RenderDispCnt & (1<<4))
+            if (EffectiveDispCnt & (1<<4))
             {
                 // anti-aliasing: all edges are rendered
 
@@ -3380,7 +3574,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
                 attr |= (cov << 8);
 
                 // push old pixel down if needed
-                if (pixeladdr < BufferSize)
+                if (pixeladdr < LowerLayerBufferSize)
                 {
                     ColorBuffer[pixeladdr+BufferSize] = ColorBuffer[pixeladdr];
                     DepthBuffer[pixeladdr+BufferSize] = DepthBuffer[pixeladdr];
@@ -3398,7 +3592,7 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
             PlotTranslucentPixel(pixeladdr, color, z, polyattr, false);
 
             // blend with bottom pixel too, if needed
-            if ((dstattr & 0xF) && (pixeladdr < BufferSize))
+            if ((dstattr & 0xF) && (pixeladdr < LowerLayerBufferSize))
                 PlotTranslucentPixel(pixeladdr+BufferSize, color, z, polyattr, false);
         }
     }
@@ -3471,6 +3665,131 @@ u32 SoftRenderer3D::BuildScanlinePolygonLists(int npolys)
     return polygonScanlines;
 }
 
+void SoftRenderer3D::UpdateAlternateRows() noexcept
+{
+    // Publish once per frame, before waking either raster worker. Legacy
+    // scanline consumers and AA retain native resolution.
+    const bool nextTiny = TinyRequested && FullFrameCompletion && !(EffectiveDispCnt & (1u << 4));
+    const bool nextQuarter = (QuarterRequested || nextTiny) && FullFrameCompletion &&
+        !(EffectiveDispCnt & (1u << 4));
+    const bool next = (AlternateRowsRequested || nextQuarter) && FullFrameCompletion &&
+        !(EffectiveDispCnt & (1u << 4));
+    if (next != AlternateRows || nextQuarter != Quarter || nextTiny != Tiny)
+    {
+        FrameIdentical = false;
+        RasterTileHistoryValid = false;
+    }
+    if (nextTiny != Tiny) SparseClearStateValid = false;
+    AlternateRows = next;
+    Quarter = nextQuarter;
+    Tiny = nextTiny;
+}
+
+void SoftRenderer3D::ExpandQuarterColumns()
+{
+    // The guest's geometry remains native. RasterX selects half-width
+    // coordinates only while preparing raster edges and work estimates.
+    // Expand after joining both workers, before
+    // neighbor-dependent edge marking and the existing row expansion.
+    const s32 scale = Tiny ? 4 : 2;
+    const s32 width = 256 / scale;
+    for (s32 y = 0; y < VisibleScanlines; y += RowStep())
+    {
+        const bool clearImage = EffectiveDispCnt & (1u << 14);
+        if (!clearImage && FinalPassMinX[y] >= FinalPassMaxX[y]) continue;
+        // Expansion must overwrite the original compact pixels too, or a
+        // ghost of the half-width picture would remain. Starting at half
+        // the dirty minimum makes the expanded destination cover both the
+        // compact damage and its doubled position. Untouched source words
+        // contain the same constant clear value. Bitmap clears need all X.
+        const s32 first = clearImage ? 0 : (FinalPassMinX[y] / scale) & ~3;
+        const s32 end = clearImage ? width : (std::min<s32>(width, FinalPassMaxX[y]) + 3) & ~3;
+        const u32 row = FirstPixelOffset + y * ScanlineWidth;
+        // With AA disabled only the top layer contributes to visible output.
+        // Lower-layer raster scratch need not be expanded: the next frame
+        // clears top attributes, and an AA edge initializes its lower pixel
+        // before that pixel can contribute to visible output.
+        assert(!(EffectiveDispCnt & (1u << 4)));
+        for (u32* buffer : {ColorBuffer, DepthBuffer, AttrBuffer})
+        {
+#if defined(__arm__) && defined(__ARM_NEON)
+            // Descending blocks keep overlapping source words intact.
+            for (s32 x = end - 4; x >= first; x -= 4)
+            {
+                const uint32x4_t source = vld1q_u32(buffer + row + x);
+                if (Tiny)
+                {
+                    vst1q_u32(buffer + row + 4*x, vdupq_n_u32(vgetq_lane_u32(source, 0)));
+                    vst1q_u32(buffer + row + 4*x + 4, vdupq_n_u32(vgetq_lane_u32(source, 1)));
+                    vst1q_u32(buffer + row + 4*x + 8, vdupq_n_u32(vgetq_lane_u32(source, 2)));
+                    vst1q_u32(buffer + row + 4*x + 12, vdupq_n_u32(vgetq_lane_u32(source, 3)));
+                }
+                else
+                {
+                    const uint32x4x2_t doubled = vzipq_u32(source, source);
+                    vst1q_u32(buffer + row + 2*x, doubled.val[0]);
+                    vst1q_u32(buffer + row + 2*x + 4, doubled.val[1]);
+                }
+            }
+#else
+            for (s32 x = end - 1; x >= first; --x)
+            {
+                const u32 value = buffer[row + x];
+                for (s32 dx = 0; dx < scale; ++dx) buffer[row + scale*x + dx] = value;
+            }
+#endif
+        }
+        // Keep every overwritten word visible to later sparse clears.
+        FinalPassMinX[y] = first * scale;
+        FinalPassMaxX[y] = end * scale;
+    }
+}
+
+void SoftRenderer3D::SkipPolygonRow(
+    RendererPolygon* rp, s32 y, bool& prevIsShadowMask)
+{
+    // Odd stencil storage is never consumed by a sampled even row. The
+    // polygon-order carry flag does cross rows, and must still advance.
+    const auto* polygon = rp->PolyData;
+    prevIsShadowMask = polygon->IsShadowMask;
+    if (!rp->PixelState.FlatRectangle && polygon->YTop != polygon->YBottom)
+    {
+        if (y >= polygon->Vertices[rp->NextVL]->FinalPosition[1] &&
+            rp->CurVL != polygon->VBottom) SetupPolygonLeftEdge(rp, y);
+        if (y >= polygon->Vertices[rp->NextVR]->FinalPosition[1] &&
+            rp->CurVR != polygon->VBottom) SetupPolygonRightEdge(rp, y);
+    }
+    rp->XL = rp->SlopeL.Step();
+    rp->XR = rp->SlopeR.Step();
+}
+
+void SoftRenderer3D::DuplicateAlternateRows(bool attributes)
+{
+    // Workers have joined. Union previous damage in every skipped row so
+    // sparse clears and cancellation recovery cannot leave old pixels behind.
+    const s32 step = RowStep();
+    const bool clearImage = EffectiveDispCnt & (1u << 14);
+    for (s32 y = 0; y < VisibleScanlines; y += step)
+    {
+        for (s32 offset = 1; offset < step; ++offset)
+        {
+            const s32 first = clearImage ? 0 : std::min(FinalPassMinX[y], FinalPassMinX[y+offset]);
+            const s32 end = clearImage ? 256 : std::max(FinalPassMaxX[y], FinalPassMaxX[y+offset]);
+            if (first >= end) continue;
+            const u32 src = FirstPixelOffset + y * ScanlineWidth + first;
+            const u32 dst = src + offset * ScanlineWidth;
+            if (attributes)
+            {
+                std::copy_n(DepthBuffer + src, end - first, DepthBuffer + dst);
+                std::copy_n(AttrBuffer + src, end - first, AttrBuffer + dst);
+            }
+            else std::copy_n(ColorBuffer + src, end - first, ColorBuffer + dst);
+            FinalPassMinX[y+offset] = attributes ? first : clearImage ? 0 : FinalPassMinX[y];
+            FinalPassMaxX[y+offset] = attributes ? end : clearImage ? 256 : FinalPassMaxX[y];
+        }
+    }
+}
+
 void SoftRenderer3D::RenderScanline(
     s32 y, RendererPolygon* polygonList, u32* activePolygonMask,
     bool& prevIsShadowMask, u8* stencilBuffer,
@@ -3488,7 +3807,9 @@ void SoftRenderer3D::RenderScanline(
                 (y < polygon->YBottom ||
                  (y == polygon->YTop && polygon->YBottom == polygon->YTop)))
             {
-                if (polygon->IsShadowMask)
+                if (AlternateRows && (y & (RowStep() - 1)))
+                    SkipPolygonRow(rp, y, prevIsShadowMask);
+                else if (polygon->IsShadowMask)
                     RenderShadowMaskScanline(
                         rp, y, prevIsShadowMask, stencilBuffer,
                         clipStartX, clipEndX);
@@ -3524,7 +3845,9 @@ void SoftRenderer3D::RenderScanline(
             RendererPolygon* rp = &polygonList[polygonIndex];
             Polygon* polygon = rp->PolyData;
 
-            if (polygon->IsShadowMask)
+            if (AlternateRows && (y & (RowStep() - 1)))
+                SkipPolygonRow(rp, y, prevIsShadowMask);
+            else if (polygon->IsShadowMask)
                 RenderShadowMaskScanline(
                     rp, y, prevIsShadowMask, stencilBuffer,
                     clipStartX, clipEndX);
@@ -3595,14 +3918,15 @@ SoftRenderer3D::ScanlineFinalPassAntiAlias(s32 y)
 
 void SoftRenderer3D::ScanlineFinalPass(s32 y)
 {
+    if (AlternateRows && (y & (RowStep() - 1))) return;
     // to consider:
     // clearing all polygon fog flags if the master flag isn't set?
     // merging all final pass loops into one?
 
     int xStart = FinalPassMinX[y];
     int xEnd = FinalPassMaxX[y];
-    if ((GPU3D.RenderDispCnt & (1<<7)) &&
-        ((GPU3D.RenderDispCnt & (1<<14)) ||
+    if ((EffectiveDispCnt & (1<<7)) &&
+        ((EffectiveDispCnt & (1<<14)) ||
          (GPU3D.RenderClearAttr1 & (1<<15))))
     {
         xStart = 0;
@@ -3615,7 +3939,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
     if (xStart >= xEnd) return;
 
-    if (GPU3D.RenderDispCnt & (1<<5))
+    if (EffectiveDispCnt & (1<<5))
     {
         // edge marking
         // only applied to topmost pixels
@@ -3648,7 +3972,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
         }
     }
 
-    if (GPU3D.RenderDispCnt & (1<<7))
+    if (EffectiveDispCnt & (1<<7))
     {
         // fog
 
@@ -3661,7 +3985,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
         // TODO: check the 'fog alpha glitch with small Z' GBAtek talks about
 
-        bool fogcolor = !(GPU3D.RenderDispCnt & (1<<6));
+        bool fogcolor = !(EffectiveDispCnt & (1<<6));
 
         u32 fogR = (GPU3D.RenderFogColor << 1) & 0x3E; if (fogR) fogR++;
         u32 fogG = (GPU3D.RenderFogColor >> 4) & 0x3E; if (fogG) fogG++;
@@ -3699,7 +4023,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
             // fog for lower pixel
             // TODO: make this code nicer, but avoid using a loop
 
-            if (!(attr & 0xF)) continue;
+            if (!LowerLayerBufferSize || !(attr & 0xF)) continue;
             pixeladdr += BufferSize;
 
             attr = AttrBuffer[pixeladdr];
@@ -3726,7 +4050,7 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
         }
     }
 
-    if (GPU3D.RenderDispCnt & (1<<4))
+    if (EffectiveDispCnt & (1<<4))
     {
         // anti-aliasing
 
@@ -3776,6 +4100,10 @@ bool SoftRenderer3D::DumpCompletedInputs(const char* path) const
         << " dual=" << DualCoreRaster
         << " cache=" << UseTextureCache
         << " sparse=" << SparseClearEnabled
+        << " guest_disp=" << GPU3D.RenderDispCnt
+        << " effective_disp=" << EffectiveDispCnt
+        << " disabled_effect_bits=" << DisabledEffectBits
+        << " drop_shadows=" << DropShadows
         << " xpos=" << GPU3D.RenderXPos << '\n';
     out << "viewport=";
     for (auto value : GPU3D.Viewport) out << value << ',';
@@ -3889,7 +4217,7 @@ void SoftRenderer3D::ClearBuffers()
     u32 clearz = ((GPU3D.RenderClearAttr2 & 0x7FFF) * 0x200) + 0x1FF;
     u32 polyid = GPU3D.RenderClearAttr1 & 0x3F000000; // this sets the opaque polygonID
 
-    const bool clearImage = GPU3D.RenderDispCnt & (1<<14);
+    const bool clearImage = EffectiveDispCnt & (1<<14);
     const bool reuseConstantClear = SparseClearEnabled &&
         SparseClearStateValid && !clearImage &&
         SparseClearAttr1 == GPU3D.RenderClearAttr1 &&
@@ -3911,6 +4239,10 @@ void SoftRenderer3D::ClearBuffers()
 
         for (int y = 0; y < VisibleScanlines; y++)
         {
+            // DuplicateAlternateRows will restore these words from the
+            // cleared sampled row. Preserve old bounds until both copies
+            // complete, including a cancellation before either pass.
+            if (AlternateRows && (y & (RowStep() - 1))) continue;
             const int start = FinalPassMinX[y];
             const int end = FinalPassMaxX[y];
             if (start < end)
@@ -3971,8 +4303,9 @@ void SoftRenderer3D::ClearBuffers()
         {
             for (int x = 0; x < 256; x++)
             {
-                u16 val2 = GPU.ReadVRAMFlat_Texture<u16>(0x40000 + (yoff << 9) + (xoff << 1));
-                u16 val3 = GPU.ReadVRAMFlat_Texture<u16>(0x60000 + (yoff << 9) + (xoff << 1));
+                const u8 sampledX = Quarter ? u8(((GPU3D.RenderClearAttr2 >> 16) & 0xff) + (Tiny ? 4 : 2) * x) : xoff;
+                u16 val2 = GPU.ReadVRAMFlat_Texture<u16>(0x40000 + (yoff << 9) + (sampledX << 1));
+                u16 val3 = GPU.ReadVRAMFlat_Texture<u16>(0x60000 + (yoff << 9) + (sampledX << 1));
 
                 // TODO: confirm color conversion
                 u32 r = (val2 << 1) & 0x3E; if (r) r++;
@@ -4027,10 +4360,22 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     const auto setupStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureBindingCache textureBinding;
+    // Keep reduced-resolution modes on their established layer behavior.
+    // The isolated hardware gain was in Native mode.
+    LowerLayerBufferSize = SingleLayerAAOff && !AlternateRowsRequested &&
+        !QuarterRequested && !TinyRequested && !(EffectiveDispCnt & (1u << 4))
+        ? 0 : BufferSize;
     int j = 0;
     for (int i = 0; i < npolys; i++)
     {
         if (polygons[i]->Degenerate) continue;
+        if (DropShadows &&
+            (polygons[i]->IsShadowMask || polygons[i]->IsShadow)) continue;
+        // Keep the established two-layer stencil semantics for every frame
+        // containing shadow geometry. Ordinary AA-off frames have no final
+        // consumer of lower colors, depth or attributes.
+        if (polygons[i]->IsShadowMask || polygons[i]->IsShadow)
+            LowerLayerBufferSize = BufferSize;
         SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
     }
     CurrentPolygonCount = j;
@@ -4341,7 +4686,7 @@ u32 SoftRenderer3D::BuildRasterScanlineWork(int npolys, u32* lineWork) const
         s32 right = -1;
         for (u32 vertex = 0; vertex < polygon->NumVertices; vertex++)
         {
-            const s32 x = polygon->Vertices[vertex]->FinalPosition[0];
+            const s32 x = RasterX(polygon->Vertices[vertex]);
             left = std::min(left, x);
             right = std::max(right, x);
         }
@@ -4398,7 +4743,7 @@ s32 SoftRenderer3D::ChooseParallelRasterSplitX(int npolys) const
         s32 right = -1;
         for (u32 vertex = 0; vertex < polygon->NumVertices; ++vertex)
         {
-            const s32 x = polygon->Vertices[vertex]->FinalPosition[0];
+            const s32 x = RasterX(polygon->Vertices[vertex]);
             left = std::min(left, x);
             right = std::max(right, x);
         }
@@ -4484,7 +4829,7 @@ void SoftRenderer3D::PrepareFpgaSpanCache()
         size_t k=0;
         const auto add=[&](u32 v){key[k++]=v;};
         add(FpgaFrame.recyclePublished);
-        add(GPU3D.RenderDispCnt);add(GPU3D.RenderAlphaRef);
+        add(EffectiveDispCnt);add(GPU3D.RenderAlphaRef);
         add(p.NumVertices);add(p.Attr);
         add(p.WBuffer);add(p.FacingView);add(p.Type);
         add(p.VTop);add(p.VBottom);add(p.YTop);add(p.YBottom);
@@ -4600,14 +4945,15 @@ void SoftRenderer3D::RenderFpgaPolygonScanline(
 
 bool SoftRenderer3D::TryFpgaFrame()
 {
-    fpga3d::Attempt trace(FpgaProfile,CurrentPolygonCount,GPU3D.RenderDispCnt);
+    fpga3d::Attempt trace(FpgaProfile,CurrentPolygonCount,EffectiveDispCnt);
     using Outcome=fpga3d::Outcome;
     // Feature admission precedes hardware work. A later span/capacity failure
     // closes and drains the producer, then retries the entire frame in software.
-    if (!FullFrameCompletion) return trace.finish(Outcome::NotFullFrame);
+    if (!FullFrameCompletion || AlternateRows || Quarter || Tiny)
+        return trace.finish(Outcome::NotFullFrame);
     if (!CurrentPolygonCount) return trace.finish(Outcome::Empty);
     if (!fpga3d::available()) return trace.finish(Outcome::Unavailable);
-    if (GPU3D.RenderDispCnt & (1u<<14)) return trace.finish(Outcome::BitmapClear);
+    if (EffectiveDispCnt & (1u<<14)) return trace.finish(Outcome::BitmapClear);
     if (fpga3d::adaptiveAdmission)
     {
         if (FpgaAdmission.defer()) return trace.finish(Outcome::Cooldown);
@@ -4691,14 +5037,14 @@ bool SoftRenderer3D::TryFpgaFrame()
     if(preparedEligible && !preparedHit)
         FpgaFrame.preparedTextures.remember(textureUses,FpgaFrame.textures,FpgaFrame.textureOffsets);
     trace.next(fpga3d::Stage::Emit);
-    if(GPU3D.RenderDispCnt & (1u<<7))
+    if(EffectiveDispCnt & (1u<<7))
     {
         const u32 raw=GPU3D.RenderFogColor;
         auto expand=[](u32 v){v&=31;return (v<<1)|(v!=0);};
         const u32 color=expand(raw)|(expand(raw>>5)<<8)|(expand(raw>>10)<<16)|(((raw>>16)&31)<<24);
         FpgaFrame.append(fpga3d::fog(color,GPU3D.RenderFogOffset,GPU3D.RenderFogShift,GPU3D.RenderFogDensityTable));
     }
-    if(GPU3D.RenderDispCnt & (1u<<5))
+    if(EffectiveDispCnt & (1u<<5))
         FpgaFrame.append(fpga3d::edge(DepthBuffer[0],AttrBuffer[0],GPU3D.RenderEdgeTable));
     if(needsToon)for(unsigned half=0;half<2;half++)
         FpgaFrame.append(fpga3d::toon(half,GPU3D.RenderToonTable));
@@ -4709,10 +5055,10 @@ bool SoftRenderer3D::TryFpgaFrame()
     {
         const auto offset=FirstPixelOffset+y*ScanlineWidth;
         FpgaFrame.append(fpga3d::clear(y,ColorBuffer[offset],DepthBuffer[offset],(AttrBuffer[offset]&16)!=0,
-            AttrBuffer[offset],GPU3D.RenderDispCnt));
+            AttrBuffer[offset],EffectiveDispCnt));
         RenderScanline(y,PolygonList,ActivePolygonMask,PrevIsShadowMask,StencilBuffer,
             0,256,FinalPassMinX,FinalPassMaxX);
-        const bool fogClear=(GPU3D.RenderDispCnt&(1u<<7)) && (GPU3D.RenderClearAttr1&(1u<<15));
+        const bool fogClear=(EffectiveDispCnt&(1u<<7)) && (GPU3D.RenderClearAttr1&(1u<<15));
         const unsigned first=fogClear?0:std::min(FinalPassMinX[y],FinalPassMaxX[y]);
         const unsigned end=fogClear?256:FinalPassMaxX[y];
         FpgaFrame.append(fpga3d::flush(y,first,end));
@@ -4760,7 +5106,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     if (TryFpgaFrame()) return;
 
     const bool antiAliasOnlyFinalPass =
-        NDS4MiSTerUseAntiAliasOnlyFinalPass(GPU3D.RenderDispCnt);
+        NDS4MiSTerUseAntiAliasOnlyFinalPass(EffectiveDispCnt);
     if (CancelRasterIfRequested()) return;
 
     // Keep beta.3's adaptive two-way split for light and transitional work.
@@ -4865,7 +5211,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     // still use disjoint X intervals, and safe band-queue frames are intact.
     const bool xPartitionFrame =
         RasterXPartition && frameHasShadow && !bandQueueFrame &&
-        !(GPU3D.RenderDispCnt & (1u << 4));
+        !(EffectiveDispCnt & (1u << 4));
     const u32 appliedPrimaryPermille = RasterBalance.PrimaryPermille();
     const s32 SplitLine = bandQueueFrame ? RasterBandBoundaries[1] :
         (xPartitionFrame ? 0 :
@@ -5034,6 +5380,9 @@ void SoftRenderer3D::RenderPolygonsDualCore(
         }
     }
 
+    if (Quarter) ExpandQuarterColumns();
+    if (AlternateRows) DuplicateAlternateRows(true);
+
     // Raster is joined before any final processing. Legacy scanline consumers
     // retain canonical row order and their existing completion tokens.
     const auto finalPassStarted =
@@ -5041,7 +5390,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
     if (ParallelFinalPass && threaded && FullFrameCompletion)
     {
         constexpr s32 split = VisibleScanlines / 2;
-        const bool edgeMarking = GPU3D.RenderDispCnt & (1 << 5);
+        const bool edgeMarking = EffectiveDispCnt & (1 << 5);
         // Edge marking reads neighbor attribute words while writing coverage
         // bits in its own word. Two untouched boundary rows prevent a C++
         // read/write race, even though the polygon-ID bits never change.
@@ -5076,6 +5425,7 @@ void SoftRenderer3D::RenderPolygonsDualCore(
                 Platform::Semaphore_Post(Sema_ScanlineCount);
         }
     }
+    if (AlternateRows && !CancelRasterIfRequested()) DuplicateAlternateRows(false);
     if (Parent.StageProfileEnabled)
         Parent.StageProfile.ThreeDFinalPassNs +=
             renderer3DProfileElapsedNs(finalPassStarted);
@@ -5108,6 +5458,18 @@ void SoftRenderer3D::RenderPolygons(bool threaded, Polygon** polygons, int npoly
     if (TryFpgaFrame()) return;
 
     if (CancelRasterIfRequested()) return;
+
+    if (AlternateRows)
+    {
+        RenderScanlineBand(0, VisibleScanlines, PolygonList, ActivePolygonMask,
+            PrevIsShadowMask, StencilBuffer, 0, 256, FinalPassMinX, FinalPassMaxX);
+        if (CancelRasterIfRequested()) return;
+        if (Quarter) ExpandQuarterColumns();
+        DuplicateAlternateRows(true);
+        FinalPassRows(0, VisibleScanlines, false);
+        if (!CancelRasterIfRequested()) DuplicateAlternateRows(false);
+        return;
+    }
 
     auto stageStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
@@ -5164,11 +5526,63 @@ void SoftRenderer3D::FinishRendering()
     }
 }
 
+u32 SoftRenderer3D::CurrentEffectMask() noexcept
+{
+    if (!GraphicsControl.attached()) return DisabledEffectBits;
+    // One atomic snapshot chooses both options for this frame. The host's
+    // saved/menu setting takes precedence over the legacy experiment variable.
+    const auto settings = GraphicsControl.settings();
+    AlternateRowsRequested = settings.halfRows;
+    QuarterRequested = settings.quarter;
+    TinyRequested = settings.tiny;
+    RenderOff = settings.renderOff;
+    return (DisabledEffectBits & ~(1u << 4)) |
+        (settings.antiAlias ? 0u : (1u << 4));
+}
+
+void SoftRenderer3D::Blank3DFrame()
+{
+    // Ignore even an opaque guest clear color. The diagnostic exposes only 2D.
+    // Keep the usual completion fences and leave architectural GX state intact.
+    memset(ColorBuffer, 0, sizeof(ColorBuffer));
+    SparseClearStateValid = false;
+    RasterTileHistoryValid = false;
+}
+
 void SoftRenderer3D::RenderFrame()
 {
+    const bool previousRenderOff = RenderOff;
+    const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    const bool previousAlternateRows = AlternateRows;
+    const bool previousQuarter = Quarter;
+    const bool previousTiny = Tiny;
+    const bool effectsChanged = nextDispCnt != EffectiveDispCnt;
+    EffectiveDispCnt = nextDispCnt;
+    UpdateAlternateRows();
+    const bool qualityChanged = effectsChanged || previousAlternateRows != AlternateRows ||
+        previousRenderOff != RenderOff || previousQuarter != Quarter || previousTiny != Tiny;
+    if (previousRenderOff != RenderOff) {
+        SparseClearStateValid = false;
+        RasterTileHistoryValid = false;
+    }
     RenderFrameFinished = false;
     RenderCancelRequested.store(false, std::memory_order_relaxed);
     RenderFrameCanceled.store(false, std::memory_order_relaxed);
+    if (RenderOff)
+    {
+        // Do not consume VRAM dirty state: normal rendering must catch up when
+        // re-enabled. Geometry commands/queries and the 2D engines still run.
+        const bool recovery = RenderForceNextFrame.exchange(false, std::memory_order_relaxed);
+        FrameIdentical = previousRenderOff && !qualityChanged && !recovery;
+        if (Parent.StageProfileEnabled) {
+            ++Parent.StageProfile.ThreeDFrames;
+            Parent.StageProfile.ThreeDIdenticalFrames += FrameIdentical;
+        }
+        if (RenderThreadRunning.load(std::memory_order_relaxed))
+            Platform::Semaphore_Post(Sema_RenderStart);
+        else if (!FrameIdentical) Blank3DFrame();
+        return;
+    }
     const auto coherenceStarted =
         renderer3DProfileStarted(Parent.StageProfileEnabled);
     TextureCache.ContentIdentityEnabled = TextureHistoryEnabled &&
@@ -5202,7 +5616,7 @@ void SoftRenderer3D::RenderFrame()
     const bool forceRecovery =
         RenderForceNextFrame.exchange(false, std::memory_order_relaxed);
     FrameIdentical =
-        !forceRecovery && !textureChanged && GPU3D.RenderFrameIdentical;
+        !qualityChanged && !forceRecovery && !textureChanged && GPU3D.RenderFrameIdentical;
     if (Parent.StageProfileEnabled)
     {
         ++Parent.StageProfile.ThreeDFrames;
@@ -5227,6 +5641,15 @@ void SoftRenderer3D::RenderFrame()
 void SoftRenderer3D::RestartFrame()
 {
     SetupRenderThread();
+    const bool previousRenderOff = RenderOff;
+    const u32 next = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    if (next != EffectiveDispCnt || previousRenderOff != RenderOff) FrameIdentical = false;
+    if (previousRenderOff != RenderOff) {
+        SparseClearStateValid = false;
+        RasterTileHistoryValid = false;
+    }
+    EffectiveDispCnt = next;
+    UpdateAlternateRows();
     EnableRenderThread();
 }
 
@@ -5247,6 +5670,12 @@ void SoftRenderer3D::RenderThreadFunc()
         RenderThreadRendering = true;
         if (FrameIdentical)
         { // If no rendering is needed, just say we're done.
+            if (!FullFrameCompletion)
+                Platform::Semaphore_Post(Sema_ScanlineCount, 192);
+        }
+        else if (RenderOff)
+        {
+            Blank3DFrame();
             if (!FullFrameCompletion)
                 Platform::Semaphore_Post(Sema_ScanlineCount, 192);
         }

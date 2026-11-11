@@ -26,6 +26,7 @@
 #include "touch_rotation.h"
 #include "touch_range.h"
 #include "direct_video.h"
+#include "../../src/common/GraphicsControl.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -327,6 +328,12 @@ class Host {
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
   bool screen_peek = false; // Temporary display override; status keeps the selection.
+  bool anti_alias = true;
+  bool half_rows = false;
+  bool quarter_3d = false;
+  bool tiny_3d = false;
+  bool render_off = false; // Diagnostic only; deliberately not persisted.
+  nds4mister::GraphicsControl graphics_control{true};
   bool direct_video_crt = true; // Shared with startup Advanced Options; CRT-safe default.
   bool video_flags_known = false;
   int yc_target_sent = -2; // -2 unprobed, -1 unsupported, 0 Scaler, 1 CRT.
@@ -340,18 +347,19 @@ class Host {
                        RESET_CURSOR = 10, EXIT_CURSOR = 11,
                        SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, DV_TARGET_CURSOR = 14,
                        DISPLAY_CURSOR = 15, TOUCH_RANGE_CURSOR = 16,
-                       LAST_MAIN_CURSOR = TOUCH_RANGE_CURSOR;
+                       AA_CURSOR = 17, RESOLUTION_CURSOR = 18,
+                       LAST_MAIN_CURSOR = RESOLUTION_CURSOR;
   int mainMenuRow(int item) const {
     // Stable option identities keep status bits and saved settings unchanged.
     // Only the visible rows differ between the main and Display options pages.
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1, -1, 2};
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1, -1, 2, -1, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
-        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1, 2};
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1, 2, -1, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, -1, -1, -1, -1, -1, -1, 8, 10, 15, -1, 4, -1, 5, 7};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 8, 10, 15, -1, 4, -1, 5, 7, -1, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
-        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1};
+        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, 9, 10};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
     if (independent_outputs_supported) {
@@ -516,6 +524,10 @@ class Host {
     const std::string video_config = std::string("NDS-DirectVideo-v1\n") +
         (direct_video_crt ? "crt\n" : "retrotink\n");
     atomicFile(fs::path(kit) / "NDS_video.cfg", video_config.data(), video_config.size());
+    const std::string graphics_config = std::string("NDS-Graphics-v2\n") +
+        (anti_alias ? "aa=on\n" : "aa=off\n") +
+        (tiny_3d ? "rows=tiny\n" : quarter_3d ? "rows=quarter\n" : half_rows ? "rows=half\n" : "rows=native\n");
+    atomicFile(fs::path(kit) / "NDS_graphics.cfg", graphics_config.data(), graphics_config.size());
     message.clear();
   }
   void serviceFramebufferMetadataRequest() {
@@ -1594,6 +1606,12 @@ class Host {
         }
         rows[mainMenuRow(optionCursor(i))] = optionLabel(i == 0 ? selectedDisplayStatus() : status, option);
       }
+      if (mainMenuRow(AA_CURSOR) >= 0)
+        rows[mainMenuRow(AA_CURSOR)] = optionLabel(anti_alias ? 1 : 0,
+            {0, 1, 2, "3D Anti-aliasing", {"Off", "On"}});
+      if (mainMenuRow(RESOLUTION_CURSOR) >= 0)
+        rows[mainMenuRow(RESOLUTION_CURSOR)] = optionLabel(render_off ? 4 : tiny_3d ? 3 : quarter_3d ? 2 : half_rows ? 1 : 0,
+            {0, 3, 5, "3D Resolution", {"Native", "Half Rows", "128x96", "64x48", "Off (test)"}});
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
         rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
             {0, 1, 2, "Direct Video Target", {"CRT", "Scaler"}});
@@ -1724,6 +1742,12 @@ class Host {
           touch_range = 0;
           speed_hacks = 0;
           direct_video_crt = true;
+          anti_alias = true;
+          half_rows = false;
+          quarter_3d = false;
+          tiny_3d = false;
+          render_off = false;
+          graphics_control.set(anti_alias, half_rows, render_off, quarter_3d, tiny_3d);
           saveSettings();
           sendstatus();
           message = "Defaults restored";
@@ -1851,6 +1875,25 @@ class Host {
                  (a == 2 || a == 7 || a == 8)) {
         touch_range = (touch_range + TOUCH_RANGE_PERCENT.size() + (a == 7 ? -1 : 1)) % TOUCH_RANGE_PERCENT.size();
         message.clear();
+      } else if (cursor == AA_CURSOR && (a == 2 || a == 7 || a == 8)) {
+        anti_alias = !anti_alias;
+        const bool restored_native = anti_alias && (half_rows || quarter_3d || tiny_3d || render_off);
+        if (anti_alias) { half_rows = false; quarter_3d = false; tiny_3d = false; render_off = false; }
+        graphics_control.set(anti_alias, half_rows, render_off, quarter_3d, tiny_3d);
+        message = restored_native ? " AA uses Native resolution" : " System > Save settings";
+      } else if (cursor == RESOLUTION_CURSOR && (a == 2 || a == 7 || a == 8)) {
+        const int current = render_off ? 4 : tiny_3d ? 3 : quarter_3d ? 2 : half_rows ? 1 : 0;
+        const int next = (current + (a == 7 ? 4 : 1)) % 5;
+        half_rows = next == 1;
+        quarter_3d = next == 2;
+        tiny_3d = next == 3;
+        render_off = next == 4;
+        if (half_rows || quarter_3d || tiny_3d || render_off) anti_alias = false;
+        graphics_control.set(anti_alias, half_rows, render_off, quarter_3d, tiny_3d);
+        message = render_off ? " Diagnostic: no 3D picture" :
+            tiny_3d ? " 64x48 uses AA Off" :
+            quarter_3d ? " 128x96 uses AA Off" :
+            half_rows ? " Half Rows uses AA Off" : " System > Save settings";
       } else if (a == 2 && cursor == DISPLAY_CURSOR) {
         display_menu = true;
         cursor = 3;
@@ -2895,6 +2938,16 @@ public:
     std::ifstream cfg(cfgpath, std::ios::binary);
     cfg.read((char *)full_status.data(), sizeof(full_status));
     status = cleanStatus(full_status[0]);
+    std::ifstream graphics_config(fs::path(kit) / "NDS_graphics.cfg", std::ios::binary);
+    const std::string graphics_contents((std::istreambuf_iterator<char>(graphics_config)), {});
+    half_rows = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=half\n";
+    quarter_3d = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=quarter\n";
+    tiny_3d = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=tiny\n";
+    anti_alias = !half_rows && !quarter_3d && !tiny_3d && graphics_contents != "NDS-Graphics-v1\naa=off\n" &&
+        graphics_contents != "NDS-Graphics-v2\naa=off\nrows=native\n";
+    require(!std::getenv("NDS4MISTER_GRAPHICS_CONTROL") || graphics_control.attached(),
+            "graphics control mapping");
+    graphics_control.set(anti_alias, half_rows, render_off, quarter_3d, tiny_3d);
     std::ifstream video_config(fs::path(kit) / "NDS_video.cfg", std::ios::binary);
     const std::string video_contents((std::istreambuf_iterator<char>(video_config)),
                                      std::istreambuf_iterator<char>());

@@ -1,3 +1,4 @@
+#include "../common/GraphicsControl.h"
 #include "Args.h"
 #include "GPU.h"
 #include "GPU3D_Texcache.h"
@@ -9661,11 +9662,11 @@ void run_self_test()
         };
         const auto render_and_compare = [](
             melonDS::NDS& reference, melonDS::NDS& candidate,
-            const char* failure) {
+            const char* failure, bool identical_hint = false) {
             auto& reference_renderer = reference.GPU.GetRenderer();
             auto& candidate_renderer = candidate.GPU.GetRenderer();
             reference.GPU.GPU3D.RenderFrameIdentical = false;
-            candidate.GPU.GPU3D.RenderFrameIdentical = false;
+            candidate.GPU.GPU3D.RenderFrameIdentical = identical_hint;
             reference_renderer.Start3DRendering();
             candidate_renderer.Start3DRendering();
             reference_renderer.Finish3DRendering();
@@ -9693,6 +9694,109 @@ void run_self_test()
                     sizeof(reference_hashes)) != 0)
                 self_test_fail(failure);
         };
+        // Quality controls must match an effect-disabled reference renderer,
+        // without rewriting guest registers or the geometry submission lists.
+        const char* quality_names[] = {
+            "NDS4MISTER_DISABLE_3D_AA", "NDS4MISTER_DISABLE_3D_EDGE",
+            "NDS4MISTER_DISABLE_3D_FOG", "NDS4MISTER_DISABLE_3D_SHADOWS"};
+        std::array<std::optional<std::string>, 4> saved_quality;
+        for (unsigned i = 0; i < 4; ++i) {
+            saved_quality[i] = saved_environment(quality_names[i]);
+            unsetenv(quality_names[i]);
+        }
+        constexpr unsigned quality_bits[] = {1u << 4, 1u << 5, 1u << 7};
+        for (bool dual : {false, true})
+        for (unsigned disabled : {0u, 16u, 32u, 128u, 144u, 176u})
+        {
+            auto reference = make_renderer_nds(false, false);
+            auto full = make_renderer_nds(false, false);
+            for (unsigned i = 0; i < 3; ++i)
+                setenv(quality_names[i], (disabled & quality_bits[i]) ? "1" : "0", 1);
+            auto reduced = make_renderer_nds(dual, true);
+            for (const char* name : quality_names) unsetenv(name);
+            for (auto* nds : {reference.get(), full.get(), reduced.get()}) {
+                build_sparse_frame(*nds);
+                auto& g = nds->GPU.GPU3D;
+                g.DispCnt = g.RenderDispCnt = 176;
+                g.RenderClearAttr1 = 0x1f00801fu;
+                g.RenderClearAttr2 = 0x7fff;
+                g.RenderFogColor = 0x100c4210;
+                g.RenderFogOffset = g.RenderFogShift = 0;
+                std::fill_n(g.RenderFogDensityTable, 34, 0x40);
+                std::fill_n(g.RenderEdgeTable, 8, 0x7c00);
+                for (unsigned i = 0; i < g.RenderNumPolygons; ++i)
+                    g.RenderPolygonRAM[i]->Attr |= 0x01008000u;
+            }
+            reference->GPU.GPU3D.RenderDispCnt &= ~disabled;
+            const auto guest_count = reduced->GPU.GPU3D.RenderNumPolygons;
+            const auto guest_polygon = *reduced->GPU.GPU3D.RenderPolygonRAM[0];
+            render_and_compare(*reference, *reduced,
+                "quality reduction diverged from effect-disabled reference");
+            // Repeated frames also exercise sparse-clear reuse.
+            render_and_compare(*reference, *reduced,
+                "repeated quality reduction diverged from reference");
+            auto& full_renderer = full->GPU.GetRenderer();
+            full_renderer.Start3DRendering(); full_renderer.Finish3DRendering();
+            for (unsigned y = 0; y < PlaneHeight; ++y) full_renderer.Get3DScanline(y);
+            melonDS::u64 full_hashes[3] {}, reduced_hashes[3] {};
+            full_renderer.Get3DNativeBufferHashes(full_hashes);
+            reduced->GPU.GetRenderer().Get3DNativeBufferHashes(reduced_hashes);
+            if ((std::memcmp(full_hashes, reduced_hashes, sizeof(full_hashes)) != 0) !=
+                    (disabled != 0))
+                self_test_fail("quality fixture lacks positive effect control");
+            auto& g = reduced->GPU.GPU3D;
+            if (g.DispCnt != 176 || g.RenderDispCnt != 176 ||
+                g.RenderNumPolygons != guest_count ||
+                std::memcmp(&guest_polygon, g.RenderPolygonRAM[0], sizeof(guest_polygon)))
+                self_test_fail("quality reduction modified guest geometry state");
+            // Runtime guest state changes must refresh the renderer snapshot.
+            reference->GPU.GPU3D.RenderDispCnt = g.RenderDispCnt = 0;
+            render_and_compare(*reference, *reduced,
+                "quality state transition diverged from reference");
+        }
+        std::cout << "H3D_GRAPHICS_QUALITY_EFFECT_ORACLE_PASS cases=12\n";
+
+        // Toggle the same mapped word used by the host, including frames whose
+        // guest geometry is identical. Compare all native buffers and pixels.
+        const auto saved_control = saved_environment("NDS4MISTER_GRAPHICS_CONTROL");
+        unsetenv("NDS4MISTER_GRAPHICS_CONTROL");
+        char control_path[] = "/tmp/nds-aa-oracle-XXXXXX";
+        const int control_fd = mkstemp(control_path);
+        const std::uint32_t initial_control = nds4mister::GraphicsControl::AAOn;
+        if (control_fd < 0 || write(control_fd, &initial_control, 4) != 4)
+            self_test_fail("AA control fixture creation failed");
+        close(control_fd);
+        for (bool dual : {false, true}) {
+            auto reference = make_renderer_nds(false, false);
+            setenv("NDS4MISTER_GRAPHICS_CONTROL", control_path, 1);
+            nds4mister::GraphicsControl control(true);
+            auto candidate = make_renderer_nds(dual, true);
+            unsetenv("NDS4MISTER_GRAPHICS_CONTROL");
+            if (!control.attached()) self_test_fail("AA control fixture mapping failed");
+            for (auto* nds : {reference.get(), candidate.get()}) {
+                build_sparse_frame(*nds);
+                nds->GPU.GPU3D.DispCnt = nds->GPU.GPU3D.RenderDispCnt = 16;
+                nds->GPU.GPU3D.RenderClearAttr1 = 0x1f00001f;
+                nds->GPU.GPU3D.RenderClearAttr2 = 0x7fff;
+            }
+            melonDS::u64 on_hashes[3] {}, off_hashes[3] {};
+            for (bool on : {true, false, false, true, true, false, true}) {
+                control.setAntiAlias(on);
+                reference->GPU.GPU3D.RenderDispCnt = on ? 16 : 0;
+                render_and_compare(*reference, *candidate,
+                    "live AA change reused stale pixels", true);
+                candidate->GPU.GetRenderer().Get3DNativeBufferHashes(on ? on_hashes : off_hashes);
+                if (candidate->GPU.GPU3D.DispCnt != 16 ||
+                    candidate->GPU.GPU3D.RenderDispCnt != 16)
+                    self_test_fail("live AA changed guest registers");
+            }
+            if (!std::memcmp(on_hashes, off_hashes, sizeof(on_hashes)))
+                self_test_fail("live AA fixture is vacuous");
+        }
+        unlink(control_path);
+        restore_environment("NDS4MISTER_GRAPHICS_CONTROL", saved_control);
+        std::cout << "H3D_GRAPHICS_LIVE_AA_ORACLE_PASS cases=14\n";
+
         build_frame(*oracle);
         build_frame(*queued);
         if (oracle->GPU.GPU3D.RenderNumPolygons <= 8 ||
@@ -10210,6 +10314,63 @@ void run_self_test()
             self_test_fail("unsafe shadow ordering did not exercise raster queue");
         std::cout << "H3D_RASTER_SHADOW_BAND_ORACLE_PASS jobs="
                   << shadow_profile.ThreeDBandQueueJobs << '\n';
+
+        for (bool dual : {false, true}) {
+            auto reference = make_renderer_nds(false, false);
+            auto full = make_renderer_nds(false, false);
+            setenv("NDS4MISTER_DISABLE_3D_SHADOWS", "1", 1);
+            auto reduced = make_renderer_nds(dual, true);
+            unsetenv("NDS4MISTER_DISABLE_3D_SHADOWS");
+            for (auto* nds : {reference.get(), reduced.get(), full.get()}) {
+                build_frame(*nds);
+                auto& g = nds->GPU.GPU3D;
+                g.RenderNumPolygons = 3;
+                g.RenderDispCnt = 1u << 3;
+                for (unsigned i = 0; i < g.RenderNumPolygons; ++i) {
+                    auto* p = g.RenderPolygonRAM[i];
+                    const auto* source = shadow_oracle->GPU.GPU3D.RenderPolygonRAM[i];
+                    p->Attr = source->Attr;
+                    p->IsShadow = source->IsShadow;
+                    p->IsShadowMask = source->IsShadowMask;
+                    std::copy_n(source->FinalZ, p->NumVertices, p->FinalZ);
+                    if (p->IsShadow) {
+                        p->Attr = (p->Attr & ~0x3f1f0000u) | 0x02100000u;
+                        p->Translucent = true;
+                        for (unsigned v = 0; v < p->NumVertices; ++v) {
+                            p->FinalZ[v] = 0x00080000;
+                            std::fill_n(p->Vertices[v]->FinalColor, 3, 0);
+                        }
+                    }
+                }
+            }
+            auto& ref = reference->GPU.GPU3D;
+            unsigned kept = 0;
+            for (unsigned i = 0; i < ref.RenderNumPolygons; ++i)
+                if (!ref.RenderPolygonRAM[i]->IsShadow && !ref.RenderPolygonRAM[i]->IsShadowMask)
+                    ref.RenderPolygonRAM[kept++] = ref.RenderPolygonRAM[i];
+            ref.RenderNumPolygons = kept;
+            const auto original_count = reduced->GPU.GPU3D.RenderNumPolygons;
+            render_and_compare(*reference, *reduced,
+                "shadow reduction diverged from filtered reference");
+            render_and_compare(*reference, *reduced,
+                "repeated shadow reduction diverged from filtered reference");
+            melonDS::u64 hashes[3] {};
+            reduced->GPU.GetRenderer().Get3DNativeBufferHashes(hashes);
+            auto& full_renderer = full->GPU.GetRenderer();
+            full_renderer.Start3DRendering(); full_renderer.Finish3DRendering();
+            for (unsigned y = 0; y < PlaneHeight; ++y) full_renderer.Get3DScanline(y);
+            melonDS::u64 full_hashes[3] {};
+            full_renderer.Get3DNativeBufferHashes(full_hashes);
+            if (hashes[0] == full_hashes[0])
+                self_test_fail("shadow reduction fixture had no effect");
+            auto& g = reduced->GPU.GPU3D;
+            if (g.RenderNumPolygons != original_count ||
+                !g.RenderPolygonRAM[1]->IsShadowMask || !g.RenderPolygonRAM[2]->IsShadow)
+                self_test_fail("shadow reduction modified guest polygon list");
+        }
+        for (unsigned i = 0; i < 4; ++i)
+            restore_environment(quality_names[i], saved_quality[i]);
+        std::cout << "H3D_GRAPHICS_QUALITY_SHADOW_ORACLE_PASS cases=2\n";
 
         // A mask-only ordering can carry PrevIsShadowMask and parity-stencil
         // contents across a band boundary. It must remain on the established

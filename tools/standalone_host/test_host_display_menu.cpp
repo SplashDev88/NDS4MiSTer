@@ -39,7 +39,7 @@ struct HostTest {
         // Reach the submenu only using the real public navigation path.
         while(h.cursor!=Host::DISPLAY_CURSOR)h.action(1);
         h.action(2);assert(h.display_menu && !h.system_menu && h.cursor==3);
-        std::vector<int> sub{3,4,5,6,7};if(flags&(1<<10))sub.push_back(Host::DV_TARGET_CURSOR);sub.push_back(Host::EXIT_CURSOR);
+        std::vector<int> sub{3,4,5,6,7};if(flags&(1<<10))sub.push_back(Host::DV_TARGET_CURSOR);sub.push_back(Host::AA_CURSOR);sub.push_back(Host::RESOLUTION_CURSOR);sub.push_back(Host::EXIT_CURSOR);
         cycle(h,sub);
         h.action(6);assert(h.display_menu && !h.system_menu && h.cursor==3);
         h.action(9);assert(!h.browser); // Recent shortcut cannot open from submenu.

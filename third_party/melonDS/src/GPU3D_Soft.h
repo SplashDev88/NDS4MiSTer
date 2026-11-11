@@ -24,6 +24,7 @@
 #include "NDS4MiSTer_FastDivide.h"
 #include "Platform.h"
 #include "../../../tools/fpga3d/transport.h"
+#include "../../../src/common/GraphicsControl.h"
 #include <algorithm>
 #include <thread>
 #include <atomic>
@@ -66,6 +67,30 @@ private:
     s32 Value, Sign;
     u32 Width, Remainder, Quotient, StepRemainder;
 };
+
+#if defined(__arm__) && defined(__ARM_NEON)
+// Power-of-two widths permit one exact fixed-point numerator recurrence.
+// For descending shades floor((left*width + delta*x)/width) is exactly the
+// original ceil-subtraction rule. Combining the gray >>3 loses no bits.
+class NDS4MiSTerGrayPowerOfTwoSpan
+{
+public:
+    NDS4MiSTerGrayPowerOfTwoSpan(s32 left, s32 right, u32 width, u32 first) noexcept
+    {
+        assert(width && !(width & (width - 1)));
+        const s32 positions[4] = {s32(first), s32(first+1), s32(first+2), s32(first+3)};
+        Numerator = vmlaq_n_s32(vdupq_n_s32(left * s32(width)), vld1q_s32(positions), right-left);
+        Shift = vdupq_n_s32(-s32(__builtin_ctz(width) + 3));
+        Step = vdupq_n_s32((right-left) * 4);
+    }
+    [[gnu::always_inline]] uint32x4_t Get() const noexcept
+    { return vshlq_u32(vreinterpretq_u32_s32(Numerator), Shift); }
+    [[gnu::always_inline]] void Advance() noexcept
+    { Numerator = vaddq_s32(Numerator, Step); }
+private:
+    int32x4_t Numerator, Shift, Step;
+};
+#endif
 
 // Equal signed vertical deltas preserve the horizontal difference after
 // either direction of DS linear rounding. An integral horizontal difference
@@ -825,6 +850,30 @@ NDS4MiSTerCachedPixelHasLowerLayer(
     return ((redBlue >> 5) & 0x003F003Fu) |
         ((green >> 5) << 8) | (resultAlpha << 24);
 }
+
+#if defined(__arm__) && defined(__ARM_NEON)
+// Same independent 6-bit gray blends as the scalar path, four pixels at a
+// time. Packed red/blue products remain below 2^11 in each 16-bit lane.
+[[gnu::always_inline]] inline uint32x4_t NDS4MiSTerBlendGrayPixels4(
+    uint32x4_t gray, uint32x4_t destination, u32 alpha) noexcept
+{
+    const uint32x4_t destinationAlpha = vshrq_n_u32(destination, 24);
+    const uint32x4_t sourceWeight = vmulq_n_u32(gray, alpha + 1);
+    const uint32x4_t redBlue = vaddq_u32(
+        vmulq_n_u32(vandq_u32(destination, vdupq_n_u32(0x003F003F)), 31 - alpha),
+        vmulq_n_u32(sourceWeight, 0x00010001));
+    const uint32x4_t green = vaddq_u32(
+        vmulq_n_u32(vandq_u32(vshrq_n_u32(destination, 8), vdupq_n_u32(63)), 31 - alpha),
+        sourceWeight);
+    const uint32x4_t blended = vorrq_u32(
+        vorrq_u32(vandq_u32(vshrq_n_u32(redBlue, 5), vdupq_n_u32(0x003F003F)),
+                   vshlq_n_u32(vshrq_n_u32(green, 5), 8)),
+        vshlq_n_u32(vmaxq_u32(destinationAlpha, vdupq_n_u32(alpha)), 24));
+    const uint32x4_t source = vorrq_u32(vmulq_n_u32(gray, 0x010101),
+                                       vdupq_n_u32(alpha << 24));
+    return vbslq_u32(vceqq_u32(destinationAlpha, vdupq_n_u32(0)), source, blended);
+}
+#endif
 
 [[gnu::always_inline, gnu::hot]] inline void
 NDS4MiSTerPackCachedSpanValues(
@@ -2386,6 +2435,13 @@ private:
     void RenderShadowMaskScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
         u8* stencilBuffer, s32 clipStartX, s32 clipEndX);
+#if defined(__arm__) && defined(__ARM_NEON)
+    template<bool FrontFacing>
+    void RenderGrayPowerOfTwoScanline(
+        RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
+        s32 clipStartX, s32 clipEndX,
+        u16* finalPassMinX, u16* finalPassMaxX);
+#endif
     template<bool FrontFacing>
     void RenderGrayRectangleScanline(
         RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
@@ -2585,5 +2641,36 @@ private:
     std::atomic<u32> ParallelRasterAdvancedScanlines {0};
     std::atomic<u64> ParallelRasterCompletionNs {0};
     NDS4MiSTerRasterBalanceController RasterBalance;
+
+    // Keep experimental controls after the existing arrays so their cache
+    // alignment and every pre-existing renderer member offset stay unchanged.
+    u32 DisabledEffectBits = 0;
+    u32 EffectiveDispCnt = 0;
+    // Zero prevents access to the invisible AA backing layer. A frame with
+    // AA or shadow geometry retains the original physical layer offset.
+    bool SingleLayerAAOff = true;
+    u32 LowerLayerBufferSize = BufferSize;
+    bool AlternateRowsRequested = false;
+    bool AlternateRows = false;
+    bool QuarterRequested = false;
+    bool Quarter = false;
+    bool TinyRequested = false;
+    bool Tiny = false;
+    s32 RowStep() const noexcept { return Tiny ? 4 : 2; }
+    [[gnu::always_inline]] s32 RasterX(const Vertex* vertex) const noexcept
+    {
+        // One shift selects native or half-width raster coordinates without
+        // duplicating guest geometry or widening the working set.
+        return vertex->FinalPosition[0] >> (Tiny ? 2u : static_cast<unsigned>(Quarter));
+    }
+    void ExpandQuarterColumns();
+    void UpdateAlternateRows() noexcept;
+    void SkipPolygonRow(RendererPolygon* rp, s32 y, bool& prevIsShadowMask);
+    void DuplicateAlternateRows(bool attributes);
+    bool DropShadows = false;
+    nds4mister::GraphicsControl GraphicsControl;
+    u32 CurrentEffectMask() noexcept;
+    bool RenderOff = false;
+    void Blank3DFrame();
 };
 }

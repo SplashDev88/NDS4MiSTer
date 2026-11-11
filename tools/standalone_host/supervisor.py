@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.14 standalone launcher and recovery supervisor.
+"""NDS4MiSTer v0.9.0-rc.15 standalone launcher and recovery supervisor.
 No system binary/init changes. Bootstrap display settings are journaled/restored.
 """
 from pathlib import Path
-import argparse, fcntl, hashlib, json, os, signal, subprocess, sys, time, shutil
+import argparse, fcntl, hashlib, json, os, signal, subprocess, sys, time, shutil, tempfile, struct
 from video_target import restore_bootstrap, stage_bootstrap, startup_menu, save_target
 
 KIT = Path(__file__).resolve().parent
@@ -33,7 +33,7 @@ MAIN_PATHS = (
     "degauss/MiSTer_RA_Degauss",
     "ConsoleMode/MiSTer_ConsoleMode",
 )
-EXPECTED_HELPER = "9090782e550b963ed752f60da2a449803c5912a73e0f8ded5caebe8695c18fca"
+EXPECTED_HELPER = "a8529ae24b1466297d2b36776e73e2702e4288bf8e943d00f73068710f39f64c"
 EXPECTED_CORE = "e297b21a877b41128f7762e54907ba460c49e43d294ece5a32e550784651f5da"
 EXPECTED_KICKSTART = "0b567af3cd088a9d7ff720fc7f8249ef20cea05a69e9d7dc8d1200ba1899dda8"
 EXPECTED_SPEED_ENV = {
@@ -234,6 +234,9 @@ def recover(state):
             stderr=subprocess.DEVNULL,
             timeout=15,
         )
+        control = Path(state.get("graphics_control", ""))
+        if control.parent == RUNTIME and control.name.startswith("nds-graphics-"):
+            control.unlink(missing_ok=True)
         restore_bootstrap(KIT, SD_ROOT)
         started_main = not mains()
         if started_main:
@@ -500,6 +503,19 @@ def stop_previous_renderer():
     subprocess.run(["sh", KICK, "stop"], check=True, stdout=subprocess.DEVNULL, timeout=15)
 
 
+def create_graphics_control():
+    fd, name = tempfile.mkstemp(prefix="nds-graphics-", dir=RUNTIME)
+    try:
+        if os.write(fd, struct.pack("<I", 0x41410001)) != 4:
+            raise OSError("Incomplete graphics control word")
+    except BaseException:
+        Path(name).unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(fd)
+    return name
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--rom")
@@ -599,6 +615,10 @@ def main():
             env[option] = choice
         if os.environ.get("NDS4MISTER_RENDER_CACHE_STATS") == "1":
             env["NDS4MISTER_RENDER_CACHE_STATS"] = "1"
+        control_name = create_graphics_control()
+        state["graphics_control"] = control_name
+        env["NDS4MISTER_GRAPHICS_CONTROL"] = control_name
+        write()
         stage("start verified helper")
         subprocess.run(
             ["sh", KICK, "start"],
@@ -621,7 +641,7 @@ def main():
         assert actual_env.get("NDS4MISTER_TEXTURE_HISTORY") == texture_choice
         assert actual_env.get("NDS4MISTER_FPGA3D") == fpga3d_choice
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.14"
+        state["release"] = "v0.9.0-rc.15"
         write()
         stage("load standalone core")
         stage_bootstrap(KIT, SD_ROOT, validate_settings().read_bytes())
@@ -636,7 +656,7 @@ def main():
         assert sha(Path("/proc/%d/exe" % hp)) == EXPECTED_HELPER
         # Record the shared header before takeover to separate reload failures
         # from frontend failures. This is not proof of visible gameplay.
-        import mmap, struct
+        import mmap
         with open("/dev/mem", "rb", buffering=0) as memory:
             with mmap.mmap(memory.fileno(), 4096, flags=mmap.MAP_SHARED,
                            prot=mmap.PROT_READ, offset=0x3fc00000) as page:
@@ -669,6 +689,7 @@ def main():
             except OSError:
                 pass
         host_env = os.environ.copy()
+        host_env["NDS4MISTER_GRAPHICS_CONTROL"] = control_name
         host_env.pop("NDS_VIDEO_I2C_BUS", None)
         if len(i2c_buses) == 1:
             host_env["NDS_VIDEO_I2C_BUS"] = next(iter(i2c_buses))
@@ -718,6 +739,8 @@ def main():
         state["done"] = True
         write()
         g.wait(timeout=90)
+        if state.get("graphics_control"):
+            Path(state["graphics_control"]).unlink(missing_ok=True)
         if (RUNTIME / "recovery-failed.txt").exists():
             raise RuntimeError((RUNTIME / "recovery-failed.txt").read_text())
 

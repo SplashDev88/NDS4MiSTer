@@ -10,6 +10,15 @@ class RecoveryTests(unittest.TestCase):
  def setUp(self):
   self.runtime=tempfile.TemporaryDirectory();self.addCleanup(self.runtime.cleanup)
   self.runtime_patch=patch.object(s,'RUNTIME',Path(self.runtime.name));self.runtime_patch.start();self.addCleanup(self.runtime_patch.stop)
+ def test_graphics_control_initializes_private_word_and_cleans_partial_write(self):
+  p=Path(s.create_graphics_control())
+  self.assertEqual(p.parent,s.RUNTIME)
+  self.assertEqual(p.read_bytes(),bytes.fromhex('01004141'))
+  self.assertEqual(p.stat().st_mode & 0o777,0o600)
+  p.unlink()
+  with patch.object(s.os,'write',return_value=2):
+   with self.assertRaisesRegex(OSError,'Incomplete'):s.create_graphics_control()
+  self.assertEqual(list(s.RUNTIME.glob('nds-graphics-*')),[])
  def test_core_request_only_accepts_clean_exit_and_valid_sd_targets(self):
   with tempfile.TemporaryDirectory() as d, patch.object(s,'KIT',Path(d)), patch.object(s,'SD_ROOT',Path(d)):
    p=Path(d).resolve()/'Core with spaces.RBF';p.write_bytes(b'core')

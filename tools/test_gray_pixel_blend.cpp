@@ -5,6 +5,10 @@
 
 using namespace melonDS;
 static u64 checks = 0;
+#if defined(__arm__) && defined(__ARM_NEON)
+static u32 grayBatch[4], destinationBatch[4], expectedBatch[4];
+static u64 vectorChecks = 0;
+#endif
 
 static void check(u32 gray, u32 destination, u32 alpha)
 {
@@ -28,6 +32,28 @@ static void check(u32 gray, u32 destination, u32 alpha)
             gray, destination, alpha, actual, expected);
         std::abort();
     }
+#if defined(__arm__) && defined(__ARM_NEON)
+    const unsigned lane = unsigned(checks - 1) & 3;
+    grayBatch[lane] = gray;
+    destinationBatch[lane] = destination;
+    expectedBatch[lane] = expected;
+    if (lane == 3)
+    {
+        u32 output[4];
+        vst1q_u32(output, NDS4MiSTerBlendGrayPixels4(
+            vld1q_u32(grayBatch), vld1q_u32(destinationBatch), alpha));
+        for (unsigned i = 0; i < 4; ++i)
+        {
+            ++vectorChecks;
+            if (output[i] != expectedBatch[i])
+            {
+                std::fprintf(stderr, "vector gray mismatch lane=%u actual=%08x expected=%08x\n",
+                    i, output[i], expectedBatch[i]);
+                std::abort();
+            }
+        }
+    }
+#endif
 }
 
 int main()
@@ -55,4 +81,8 @@ int main()
                 check(gray, channel * 0x010101u | 0x1FC0C0C0u, alpha);
     std::printf("PASS gray pixel blend: %llu independent checks\n",
         static_cast<unsigned long long>(checks));
+#if defined(__arm__) && defined(__ARM_NEON)
+    std::printf("PASS gray vector blend: %llu independent lane checks\n",
+        static_cast<unsigned long long>(vectorChecks));
+#endif
 }
