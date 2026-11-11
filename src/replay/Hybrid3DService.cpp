@@ -745,7 +745,8 @@ public:
         bool integral_texture_spans = false,
         bool sprite_raster_spans = false,
         bool raster_only_sprite_spans = false,
-        bool raster_only_integral_texture_spans = false)
+        bool raster_only_integral_texture_spans = false,
+        bool regional_vram_replay = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -779,6 +780,7 @@ public:
           sprite_raster_spans_(matched_display_test && sprite_raster_spans),
           raster_only_sprite_spans_(matched_display_test && raster_only_sprite_spans),
           raster_only_integral_texture_spans_(matched_display_test && raster_only_integral_texture_spans),
+          regional_vram_replay_(matched_display_test && regional_vram_replay),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -1932,7 +1934,7 @@ private:
                         packet.records.data() + index, run_end - index,
                         geometry_command_count))
                     return false;
-            } else if ((integral_texture_spans_ || sprite_raster_spans_) &&
+            } else if ((integral_texture_spans_ || sprite_raster_spans_ || regional_vram_replay_) &&
                        kind == frame_packet::RecordKind::VramWritePair) {
                 for (std::size_t record_index = index;
                      record_index < run_end; ++record_index)
@@ -2552,7 +2554,7 @@ private:
             // The exact Castlevania profile repeats large unchanged BG
             // uploads. Retain normal capture synchronization and all other
             // profiles; invalidate only physical banks whose bytes changed.
-            if ((integral_texture_spans_ || sprite_raster_spans_) && !arm_video_engine_b_only_ &&
+            if ((integral_texture_spans_ || sprite_raster_spans_ || regional_vram_replay_) && !arm_video_engine_b_only_ &&
                 region == 0x00200000u) {
                 bank_mask = access->bytes == 2
                     ? nds_->GPU.WriteVRAM_BBGChanged<melonDS::u16>(
@@ -5643,6 +5645,7 @@ private:
     bool raster_only_sprite_spans_ = false;
     // Private regional experiment: no service VRAM or prepared-2D policy.
     bool raster_only_integral_texture_spans_ = false;
+    bool regional_vram_replay_ = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
     bool fmv_receiver_enabled_ = false;
 #endif
@@ -7904,7 +7907,7 @@ void run_self_test()
             oracle_fixture.bytes.data(), oracle_fixture.bytes.size());
         if (!candidate->initialize() || !oracle->initialize())
             self_test_fail("VRAM pair initialization");
-        candidate->integral_texture_spans_ = true;
+        candidate->regional_vram_replay_ = true;
         const std::size_t sizes[] = {
             131072, 131072, 131072, 131072, 65536, 16384, 16384, 32768, 16384};
         std::uint64_t pairs = 0;
@@ -11544,6 +11547,7 @@ try {
             bool sprite_raster_spans = false;
             bool raster_only_sprite_spans = false;
             bool raster_only_integral_texture_spans = false;
+            bool regional_vram_replay = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11568,6 +11572,10 @@ try {
                     nds4mister::replay::dawn_regional_raster_only_profile(selected);
 #ifdef NDS4MISTER_DAWN_REGIONAL_INTEGRAL
                 raster_only_integral_texture_spans =
+                    nds4mister::replay::dawn_regional_raster_only_profile(selected);
+#endif
+#ifdef NDS4MISTER_DAWN_REGIONAL_VRAM
+                regional_vram_replay =
                     nds4mister::replay::dawn_regional_raster_only_profile(selected);
 #endif
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
@@ -11595,6 +11603,7 @@ try {
                     << " sprite_raster_spans=" << sprite_raster_spans
                     << " raster_only_sprite_spans=" << raster_only_sprite_spans
                     << " raster_only_integral_texture_spans=" << raster_only_integral_texture_spans
+                    << " regional_vram_replay=" << regional_vram_replay
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11633,7 +11642,8 @@ try {
                 integral_texture_spans,
                 sprite_raster_spans,
                 raster_only_sprite_spans,
-                raster_only_integral_texture_spans);
+                raster_only_integral_texture_spans,
+                regional_vram_replay);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif
