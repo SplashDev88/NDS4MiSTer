@@ -172,7 +172,14 @@ class PackageSource(unittest.TestCase):
         after=(ROOT/'Kickstart.sh').read_text()
         # Pin Performance RC1 r2 / rc.10, including its unchanged frame policy.
         launch=after[after.index('        NDS4MISTER_GX_MATRIX_PREFIX='):after.index('    ) >>"$logfile"')]
-        self.assertEqual(hashlib.sha256(launch.encode()).hexdigest(),"df84c6ca6bf0f579da7500425bf029ea2de495f4f6ee18079a4cdd89aaef87e4")
+        # The FPGA branch adds one renderer selector and closes inherited
+        # descriptors in the daemon. All accepted renderer/pacing options
+        # must still match after removing only those explicit additions.
+        fpga_line = "        NDS4MISTER_FPGA3D=${NDS4MISTER_FPGA3D:-1} " + chr(92) + "\n"
+        self.assertEqual(launch.count(fpga_line), 1)
+        self.assertEqual(launch.count("-S -b -C -m -N -20"), 1)
+        accepted_launch = launch.replace(fpga_line, "").replace("-S -b -C -m -N -20", "-S -b -m -N -20")
+        self.assertEqual(hashlib.sha256(accepted_launch.encode()).hexdigest(),"df84c6ca6bf0f579da7500425bf029ea2de495f4f6ee18079a4cdd89aaef87e4")
         self.assertEqual(accepted['shell_environment_checked'],s.EXPECTED_SPEED_ENV)
     def test_kickstart_hash_matches_public_bytes(self):
         self.assertEqual(s.sha(ROOT/'Kickstart.sh'),s.EXPECTED_KICKSTART)
