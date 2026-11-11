@@ -4708,6 +4708,39 @@ u32 SoftRenderer3D::BuildRasterScanlineWork(int npolys, u32* lineWork) const
     return totalWork;
 }
 
+bool SoftRenderer3D::IsFpgaLightScene(int npolys) const
+{
+    if (npolys < 32) return false;
+    // The sum of the scanline estimate is the sum of clipped rectangle areas.
+    // Admission only needs the threshold, so stop as soon as it is reached.
+    u32 totalWork = 0;
+    for (int i = 0; i < npolys; i++)
+    {
+        const Polygon* polygon = PolygonList[i].PolyData;
+        int first = std::clamp(polygon->YTop, 0, VisibleScanlines);
+        int end = std::clamp(polygon->YBottom, 0, VisibleScanlines);
+        if (polygon->YBottom == polygon->YTop &&
+            polygon->YTop >= 0 && polygon->YTop < VisibleScanlines)
+            end = first + 1;
+        if (first >= end) continue;
+
+        s32 left = 256;
+        s32 right = -1;
+        for (u32 vertex = 0; vertex < polygon->NumVertices; vertex++)
+        {
+            const s32 x = RasterX(polygon->Vertices[vertex]);
+            left = std::min(left, x);
+            right = std::max(right, x);
+        }
+        left = std::clamp(left, 0, 255);
+        right = std::clamp(right, 0, 255);
+        const s32 projectedWidth = std::max(1, right - left + 1);
+        totalWork += u32(projectedWidth) * u32(end - first);
+        if (totalWork >= 32768) return false;
+    }
+    return true;
+}
+
 s32 SoftRenderer3D::ChooseParallelRasterSplitLine(int npolys) const
 {
     u32 lineWork[VisibleScanlines] {};
@@ -4957,13 +4990,8 @@ bool SoftRenderer3D::TryFpgaFrame()
     if (fpga3d::adaptiveAdmission)
     {
         if (FpgaAdmission.defer()) return trace.finish(Outcome::Cooldown);
-        if (CurrentPolygonCount >= 32)
-        {
-            u32 lineWork[VisibleScanlines] {};
-            if (fpga3d::lightScene(CurrentPolygonCount,
-                    BuildRasterScanlineWork(CurrentPolygonCount,lineWork)))
-                return trace.finish(Outcome::LightScene);
-        }
+        if (IsFpgaLightScene(CurrentPolygonCount))
+            return trace.finish(Outcome::LightScene);
     }
     FpgaFrame.reset();
     FpgaFrame.stencil=StencilBuffer;
@@ -4997,7 +5025,12 @@ bool SoftRenderer3D::TryFpgaFrame()
             textureUses.push_back({ps.TexturePixels,count,rows});
             bytes+=count*4;
             if(fpga3d::textureTrafficGuard && bytes>rawBudget)
+            {
+                // Rechecking an unchanged large texture set every frame costs
+                // native rendering time. Retry after the existing bounded delay.
+                FpgaAdmission.unsupported();
                 return trace.finish(Outcome::TextureTraffic);
+            }
         }
         FpgaFrame.allowIndexed=bytes>rawBudget;
     }

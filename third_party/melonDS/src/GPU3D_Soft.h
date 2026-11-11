@@ -2498,6 +2498,7 @@ private:
     void PrepareParallelRasterBand(
         int npolys, s32 firstLine, bool preserveShadowState);
     u32 BuildRasterScanlineWork(int npolys, u32* lineWork) const;
+    bool IsFpgaLightScene(int npolys) const;
     s32 ChooseParallelRasterSplitLine(int npolys) const;
     s32 ChooseParallelRasterSplitX(int npolys) const;
 

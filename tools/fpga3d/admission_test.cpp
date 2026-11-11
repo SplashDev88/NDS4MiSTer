@@ -45,9 +45,18 @@ int main() try {
   fpga3d::profileEnabled=false;fpga3d::textureTrafficGuard=false;
   if(scenario>=16)require(soft.FpgaProfile.counts[unsigned(fpga3d::Outcome::TextureTraffic)]==1,"large-texture traffic policy did not select native rendering");
   require(control==untouched && std::all_of(output.begin(),output.end(),[](auto x){return x==0xa1b2c3d4;}),"deferred frame touched shared memory");
-  require(soft.FpgaAdmission.cooldown==0 && soft.FpgaFrame.commands.empty() && !soft.FpgaFrame.active,"deferred frame acquired ownership");
+  require(soft.FpgaAdmission.cooldown==(scenario<16?0:60) && soft.FpgaFrame.commands.empty() && !soft.FpgaFrame.active,"deferred frame acquired ownership");
   for(unsigned y=0;y<192;y++)require(!std::memcmp(ref->GetRenderer().Get3DScanline(y),test->GetRenderer().Get3DScanline(y),1024),"admission fallback pixels");
   require(!std::memcmp(get(*ref).StencilBuffer,soft.StencilBuffer,512) && get(*ref).PrevIsShadowMask==soft.PrevIsShadowMask,"admission fallback stencil state");
+  if(scenario>=16){
+   fpga3d::adaptiveAdmission=true;fpga3d::textureTrafficGuard=true;
+   fpga3d::bind(control.data(),output.data(),true,true);
+   for(unsigned i=0;i<60;i++)require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==59-i,"traffic retry boundary");
+   require(!soft.TryFpgaFrame() && soft.FpgaAdmission.cooldown==60,"traffic rejection retry failed");
+   soft.FpgaAdmission.reset();require(soft.FpgaAdmission.cooldown==0,"traffic admission reset");
+   require(control==untouched && std::all_of(output.begin(),output.end(),[](auto x){return x==0xa1b2c3d4;}),"traffic retry touched shared memory");
+   fpga3d::bind(nullptr,nullptr,false);fpga3d::adaptiveAdmission=false;fpga3d::textureTrafficGuard=false;
+  }
  }
  {
   auto test=machine(true);frame(*test,0);
