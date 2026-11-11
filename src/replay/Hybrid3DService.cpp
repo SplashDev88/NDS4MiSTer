@@ -21,6 +21,9 @@
 #include "replay/ReplaySpscState.h"
 #include "replay/ScopedQueryPriority.h"
 #include "replay/ScopedTimerSlack.h"
+#ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
+#include "replay/GeometrySubmissionObserver.h"
+#endif
 
 #include <array>
 #include <atomic>
@@ -831,6 +834,9 @@ public:
     {
         stop_replay_worker();
         stop_publication_worker();
+#ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
+        dump_geometry_observer();
+#endif
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
         if (nds_) {
             std::ofstream output("/tmp/nds-fmv-packed-probe.txt");
@@ -1264,6 +1270,9 @@ private:
 
     bool reset_machine()
     {
+#ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
+        geometry_observer_.reset();
+#endif
         // A session reset is a hard boundary. Release every resource from the
         // prior emulation instance before a replacement can become visible.
         nds_.reset();
@@ -1703,6 +1712,9 @@ private:
     void enqueue_trusted_replay_geometry_command(
         std::uint8_t command, std::uint32_t data)
     {
+#ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
+        observe_geometry_command(command, data);
+#endif
         // poll_replay_input() validated this immutable private packet before
         // acknowledging its shared H3B slot. Rechecking every command here
         // made the replay worker validate the same high-volume GX stream two
@@ -1782,6 +1794,11 @@ private:
             const auto tag0 = frame_packet::packed_gx_tag(record, 0);
             const auto tag1 = frame_packet::packed_gx_tag(record, 1);
             const auto tag2 = frame_packet::packed_gx_tag(record, 2);
+#ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
+            for (std::size_t i = 0; i < 3; ++i)
+                observe_geometry_command(frame_packet::packed_gx_tag(record, i),
+                    frame_packet::packed_gx_data(record, i));
+#endif
             if (tag0 == 0x50 || tag1 == 0x50 || tag2 == 0x50)
                 packet_saw_swap_ = true;
             const std::uint32_t packed_commands =
@@ -5602,6 +5619,22 @@ private:
     bool matched_full_rate_ = false;
     bool matched_recovery_skip_enabled_ = false;
     bool integral_texture_spans_ = false;
+#ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
+    nds4mister::replay::GeometrySubmissionObserver geometry_observer_;
+    void dump_geometry_observer() const {
+        const auto& c = geometry_observer_.counts;
+        if (c.submissions == 0) return;
+        std::fprintf(stderr, "H3D_GEOMETRY_REPEAT submissions=%llu compared=%llu identical=%llu commands=%llu identical_commands=%llu overflow=%llu\n",
+            (unsigned long long)c.submissions, (unsigned long long)c.compared,
+            (unsigned long long)c.identical, (unsigned long long)c.commands,
+            (unsigned long long)c.identical_commands, (unsigned long long)c.overflow);
+    }
+    void observe_geometry_command(std::uint8_t command, std::uint32_t data) {
+        if (geometry_observer_.command(command, data) &&
+            geometry_observer_.counts.submissions % 64 == 0)
+            dump_geometry_observer();
+    }
+#endif
     bool sprite_raster_spans_ = false;
     // Does not select the service's Castlevania VRAM-write specializations.
     bool raster_only_sprite_spans_ = false;
