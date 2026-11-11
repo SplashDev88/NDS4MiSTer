@@ -5095,9 +5095,9 @@ bool SoftRenderer3D::TryFpgaFrame()
         const unsigned first=fogClear?0:std::min(FinalPassMinX[y],FinalPassMaxX[y]);
         const unsigned end=fogClear?256:FinalPassMaxX[y];
         FpgaFrame.append(fpga3d::flush(y,first,end));
-        // Publish two complete rows per prefix to amortize transport barriers.
+        // Publish four complete rows per prefix to amortize transport barriers.
         // submit() still publishes any final partial group before closing.
-        if ((y & 1) != 0) FpgaFrame.publish();
+        if ((y & 3) == 3) FpgaFrame.publish();
     }
     FpgaEmitting=false;
     trace.next(fpga3d::Stage::Submit);
