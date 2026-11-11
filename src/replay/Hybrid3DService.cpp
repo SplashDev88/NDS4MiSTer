@@ -11481,6 +11481,8 @@ try {
             fpga3d::textureResidencyEnabled=fpga_residency && std::strcmp(fpga_residency,"1")==0;
             const char* fpga_prepared=std::getenv("NDS4MISTER_FPGA3D_PREPARED_TEXTURES");
             fpga3d::preparedTexturesEnabled=fpga_prepared && std::strcmp(fpga_prepared,"1")==0;
+            const char* fpga_fast_commands=std::getenv("NDS4MISTER_FPGA3D_FAST_COMMANDS");
+            fpga3d::fastCommandsEnabled=fpga_fast_commands && std::strcmp(fpga_fast_commands,"1")==0;
             fpga3d::adaptiveAdmission=true;
             const char* unrestricted_fpga=std::getenv("NDS4MISTER_FPGA3D_ALL_SUPPORTED");
             fpga3d::textureTrafficGuard=!(unrestricted_fpga && std::strcmp(unrestricted_fpga,"1")==0);

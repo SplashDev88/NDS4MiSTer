@@ -6,11 +6,22 @@
 #include <stdexcept>
 #include <vector>
 namespace fpga3d {
-constexpr uint32_t Magic=0x36443346; // F3D6: edge marking and lossless indexed textures
+constexpr uint32_t Magic=0x37443346; // F3D7: separate WC command storage in screen padding
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t StencilInput=0x3fc80e00, StencilOutput=0x3fd30000;
 constexpr uint32_t TextureBytes=0xc0000, MaxCommands=0x7f000/64;
+// Eight display planes each leave 64 KiB after their 192 visible rows.
+// Reserve the first 4 KiB for existing debug telemetry. The remaining bytes
+// hold exactly 8128 descriptors without sharing texture or visible pixels.
+constexpr uint32_t PaddedCommands=0x3fe31000;
+constexpr uint32_t commandAddress(uint32_t base,size_t index) {
+ if(base!=PaddedCommands)return base+uint32_t(index)*64;
+ const uint32_t slot=uint32_t(index)+64;
+ return 0x3fe30000u+(slot>>10)*0x40000u+(slot&1023)*64;
+}
+static_assert(commandAddress(PaddedCommands,0)==PaddedCommands);
+static_assert(commandAddress(PaddedCommands,MaxCommands-1)+64==0x40000000u);
 using Command=std::array<uint32_t,32>;
 enum Flags:uint32_t { Linear=1, WBuffer=2, Textured=4, Front=8, Back=16, Equal=32 };
 struct Span {

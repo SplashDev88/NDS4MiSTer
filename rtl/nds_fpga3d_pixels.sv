@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Two-layer DS pixel store. Scanline commands retain their attributes until
 // the input pipeline and this synchronous RAM stage have both drained.
-module nds_fpga3d_pixels(
+module nds_fpga3d_pixels #(parameter integer RASTER_DELAY=2)(
  input logic clk,reset,ce,
  input logic [1:0] bank,
  input logic color_bank,
@@ -64,14 +64,14 @@ module nds_fpga3d_pixels(
  assign edge_attr=a0_mem;
  assign edge_depth=d0_mem;
  assign edge_color=edge_read_odd?c0o:c0e;
- logic [31:0] a0_delay[0:1],a1_delay[0:1],d0_delay[0:1],d1_delay[0:1];
+ logic [31:0] a0_delay[0:RASTER_DELAY-1],a1_delay[0:RASTER_DELAY-1],d0_delay[0:RASTER_DELAY-1],d1_delay[0:RASTER_DELAY-1];
  // Raster depth tests always consume the aligned precheck pipeline. Resolve
  // passes use their synchronous RAM outputs directly; avoid putting their
  // mode selector on every depth-comparison and pixel-store write path.
- wire [31:0] a0=a0_delay[1];
- wire [31:0] a1=a1_delay[1];
- wire [31:0] d0=d0_delay[1];
- wire [31:0] d1=d1_delay[1];
+ wire [31:0] a0=a0_delay[RASTER_DELAY-1];
+ wire [31:0] a1=a1_delay[RASTER_DELAY-1];
+ wire [31:0] d0=d0_delay[RASTER_DELAY-1];
+ wire [31:0] d1=d1_delay[RASTER_DELAY-1];
  wire [7:0] depth_read_x=resolve_valid?pixel_x:precheck_x;
  logic [7:0] x_q;
  logic [31:0] color_q,depth_q;
@@ -257,7 +257,10 @@ module nds_fpga3d_pixels(
   end
   if(ce)begin
    a0_delay[0]<=a0_mem;a1_delay[0]<=a1_mem;d0_delay[0]<=d0_mem;d1_delay[0]<=d1_mem;
-   a0_delay[1]<=a0_delay[0];a1_delay[1]<=a1_delay[0];d0_delay[1]<=d0_delay[0];d1_delay[1]<=d1_delay[0];
+   for(integer stage=1;stage<RASTER_DELAY;stage=stage+1)begin
+    a0_delay[stage]<=a0_delay[stage-1];a1_delay[stage]<=a1_delay[stage-1];
+    d0_delay[stage]<=d0_delay[stage-1];d1_delay[stage]<=d1_delay[stage-1];
+   end
   end
   if(clear_we)begin
    if(clear_x[0])begin

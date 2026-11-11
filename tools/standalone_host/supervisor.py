@@ -608,6 +608,7 @@ def main():
         env["NDS4MISTER_FPGA3D"] = fpga3d_choice
         for option in ("NDS4MISTER_FPGA3D_PROFILE",
                        "NDS4MISTER_FPGA3D_ALL_SUPPORTED",
+                       "NDS4MISTER_FPGA3D_FAST_COMMANDS",
                        "NDS4MISTER_FPGA3D_PREPARED_TEXTURES",
                        "NDS4MISTER_FPGA3D_TEXTURE_RESIDENCY"):
             choice = os.environ.get(option, "0")

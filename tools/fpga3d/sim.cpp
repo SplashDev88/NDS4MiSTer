@@ -50,7 +50,17 @@ struct Sim {
    require(!(v.rd&&v.wr),"read/write overlap");
    uint32_t a=v.addr*8;
    if(v.rd)require((a&4095)+v.burst*8<=4096,"physical read crossed a 4 KiB page");
-   if(v.rd){if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}if(guardedBase && a>=guardedBase && a<(guardedBase==Commands?Commands+MaxCommands*64:0x3fe00000))require(uint64_t(a)+v.burst*8<=uint64_t(guardedBase)+guardedCount*64,"read beyond published immutable command prefix");require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?readLatency+rng()%7:0;}
+   if(v.rd){
+    if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}
+    if(guardedBase==PaddedCommands && a>=0x3fe00000){
+     const uint32_t plane=(a-0x3fe00000)>>18,offset=a&0x3ffff;
+     require(offset>=0x30000 && offset+v.burst*8<=0x40000,"command read entered visible display pixels");
+     const uint32_t logical=plane*0x10000+offset-0x30000;
+     require(logical>=4096 && uint64_t(logical-4096)+v.burst*8<=uint64_t(guardedCount)*64,"read beyond published immutable command prefix");
+    }else if(guardedBase && a>=guardedBase && a<(guardedBase==Commands?Commands+MaxCommands*64:0x3fe00000))
+     require(uint64_t(a)+v.burst*8<=uint64_t(guardedBase)+guardedCount*64,"read beyond published immutable command prefix");
+    require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?readLatency+rng()%7:0;
+   }
    else {
     if(!writeRemaining){require(v.burst>0,"zero write burst");writeRemaining=v.burst;writeAt=a;writeBase=a;writeBurst=v.burst;}
     else require(a==writeBase && v.burst==writeBurst,"physical write burst command changed");
@@ -185,7 +195,7 @@ int main(int argc,char** argv){try{
    unsigned limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
    require(limit<10000 && p.word(Mailbox+20)==(mode==2?2:1),"bad producer metadata accepted");
   }
-  for(uint32_t base:{0x3fc00000u,0x3fd40004u,0x3fe00000u,0x40000000u}){
+  for(uint32_t base:{0x3fc00000u,0x3fd40004u,0x3fe00000u,0x3fe30000u,0x3fe31040u,0x3fff0000u,0x40000000u}){
    p.word(Mailbox+60)=base;p.word(Mailbox+8)=0x80000000;p.word(Mailbox+12)=17;p.word(Mailbox)=Magic;
    unsigned seq=++p.word(Mailbox+4),limit=0;while(p.word(Mailbox+16)!=seq && ++limit<10000)p.tick();
    require(limit<10000 && p.word(Mailbox+20)==1,"bad command base accepted");

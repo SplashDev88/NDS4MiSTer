@@ -4,7 +4,7 @@ set_global_assignment -name TOP_LEVEL_ENTITY sys_top
 set_global_assignment -name VERILOG_MACRO "NDS_MATCHED_DISPLAY_TEST=1"
 set_global_assignment -name LAST_QUARTUS_VERSION "17.0.2 Lite Edition"
 set_global_assignment -name GENERATE_RBF_FILE ON
-set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY ../../build-fpga3d/rc15-command-output
 # Quartus 17's parallel RTL helper can deadlock under the Apple/Rosetta build
 # host.  One mapper worker is deterministic and avoids producing a silently
 # stale RBF; fitter effort and the synthesized hardware are unchanged.

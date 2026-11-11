@@ -383,14 +383,23 @@ begin
       -- the held DMA request. Credit becomes visible only after a clock edge.
       gpu_event_ready <= '1';
       wait for 1 ns;
-      assert gpu_source_ready = '0'
-         report "full GPU queue leaked downstream ready into source credit"
-         severity failure;
+      if LOCAL_GPU_CREDIT then
+         assert gpu_source_ready = '0'
+            report "full GPU queue leaked downstream ready into source credit"
+            severity failure;
+      else
+         assert gpu_source_ready = '1'
+            report "legacy GPU queue did not borrow downstream ready"
+            severity failure;
+      end if;
       gpu_event_ready <= '0';
       wait for 1 ns;
       assert gpu_source_ready = '0'
          report "full GPU queue changed credit without a clock edge"
          severity failure;
+      -- Restart on a falling edge after the combinational probes so their
+      -- delays cannot cross the acceptance edge before the scoreboard.
+      wait until falling_edge(clk);
       gpu_event_ready <= '1';
       dma_accepts := 0;
       dma_outputs := 0;

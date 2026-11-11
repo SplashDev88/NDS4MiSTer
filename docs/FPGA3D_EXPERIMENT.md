@@ -361,3 +361,60 @@ Evidence and exact per-run fingerprints are retained in
 command-capacity fallback case. An incorrectly admitted menu window and a
 startup image with zero publication sequence were excluded. Scene admission
 now checks current-session publication before recognizing retained DDR pixels.
+
+
+## RC15 integration and separate WC commands, November 10
+
+The `experiment/rc15-fpga-command-20261110` branch merges RC15 Beta5's
+renderer and display controls. FPGA command emission and polygon-cache keys
+use `EffectiveDispCnt`, so the saved AA switch has the same meaning on both
+renderers. Half Rows, quarter, tiny and disabled 3D retain the software path.
+Cache-line streaming and registered GPU queue credit are integrated; the
+working C36 HBlank/SWAP/busy synchronization configuration remains in place.
+This combination still requires a new physical build and game qualification.
+
+F3D7 adds a separate write-combined command arena. The flag
+`NDS4MISTER_FPGA3D_FAST_COMMANDS=1` selects it only when textures are too large
+to leave room for the complete command budget in the existing texture arena.
+It is off by default pending measurement. Small frames keep their existing WC
+command layout; Device mapping fallback keeps the Device arena. Conservative
+FPGA admission and both experimental texture caches keep their prior defaults.
+
+Every full-frame screen occupies 0x30000 bytes within its 0x40000-byte stride.
+Across four paired banks, eight 64 KiB padding segments remain. Reserve the
+first 4 KiB at 0x3FE30000 for existing optional telemetry. The other 520192
+bytes hold all 8128 immutable 64-byte commands. For command index `i`, let
+`slot=i+64`; its physical address is:
+
+```
+0x3FE30000 + (slot / 1024) * 0x40000 + (slot % 1024) * 64
+```
+
+Mailbox word 15 selects this layout only with the exact value `0x3FE31000`.
+The final record ends at `0x40000000`. No descriptor touches visible pixels,
+textures, or the telemetry reservation. Both mappings remain unchanged, so
+there are no Device/WC aliases. The existing prefix fence, 4 KiB fetch boundary,
+capacity limit, session check, cancellation drain and timeout quarantine apply.
+The matched-display core disables ordinary FPGA framebuffer drains from reset;
+the HPS publisher writes exactly 192 rows. The optional runtime telemetry
+writer is confined to the reserved first page even if separately enabled.
+
+The new physical candidate also registers the decoded texel and toon color
+between cache/palette lookup and color arithmetic. Position, depth, validity,
+early-depth result and attributes advance with that extra stage, using the
+same stall enable. Pixel-store depth metadata receives the matching delay.
+This addresses the C36 cache-to-color setup path; it does not approximate
+colors or alter the command ABI. Physical timing must establish the benefit.
+
+Validation includes full-capacity CPU/RTL streaming and batch submission while
+the actual two-screen publisher writes all four banks, preservation of texture
+and telemetry bytes, independent command-address checking, and deliberately
+broken telemetry, segment-stride and unpublished-prefix implementations.
+Eighteen live-AA fixtures use the production control mapping, unchanged-guest
+AA transitions, an independent native renderer and timeout recovery. Reduced
+and disabled modes have 24 checks that acquire no FPGA ownership. Existing
+cache-stream, credit, publication and renderer oracles remain required.
+
+Exact build hashes, timing gates and results belong to
+`evidence/rc15-fpga-command-20261110` in the enclosing workspace. Source or
+simulation success alone is not FPS evidence or permission to replace Beta5.

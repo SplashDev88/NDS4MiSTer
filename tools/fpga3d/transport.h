@@ -18,6 +18,7 @@ inline volatile uint32_t* publication=nullptr;
 inline bool permitted=false,writeCombined=false,streaming=true;
 inline bool textureResidencyEnabled=false;
 inline bool preparedTexturesEnabled=false;
+inline bool fastCommandsEnabled=false;
 inline uint64_t bindingSerial=0,textureWriterSerial=0;
 inline uint32_t poisonedSession=0;
 inline uint64_t completedFrames=0,failedFrames=0;
@@ -236,7 +237,8 @@ struct Frame {
   // Reserve full descriptor capacity before starting. Texture-heavy frames
   // keep the Device arena rather than regressing F3D3's admission capacity.
   const bool useWC=writeCombined && textures.size()*4<=TextureBytes-MaxCommands*64;
-  commandBase=useWC?((Textures+uint32_t(textures.size()*4)+63)&~63u):Commands;
+  commandBase=useWC?((Textures+uint32_t(textures.size()*4)+63)&~63u):
+      writeCombined && fastCommandsEnabled?PaddedCommands:Commands;
   commandCapacity=useWC?std::min<size_t>(MaxCommands,(0x3fe00000u-commandBase)/64):MaxCommands;
   if(commandCapacity<384 || commands.size()>commandCapacity){valid=false;return false;}
   started=std::chrono::steady_clock::now();deadline=started+std::chrono::milliseconds(deadlineMs);
@@ -284,15 +286,18 @@ struct Frame {
   if(!active || !ownershipHealthy())return;
   if(mailbox[4]==sequence){transportError=true;return;}
   const auto t=std::chrono::steady_clock::now();
-  volatile uint32_t* target=commandBase==Commands?control+(commandBase-0x3fc00000)/4:publication+(commandBase-0x3fd00000)/4;
+  const auto target=[&](size_t index){
+   const uint32_t address=commandAddress(commandBase,index);
+   return commandBase==Commands?control+(address-0x3fc00000)/4:publication+(address-0x3fd00000)/4;
+  };
   if(recyclePublished){
    // Published descriptors already have immutable FPGA-owned storage. Reuse
    // the small CPU row buffer instead of carrying a 1 MiB logical command
    // history through the shared Cortex-A9 cache on every frame.
-   for(size_t i=0;i<packedCommands.size();i++)uploadPackedCommand(target+(published+i)*16,packedCommands[i],writeCombined && commandBase!=Commands);
+   for(size_t i=0;i<packedCommands.size();i++)uploadPackedCommand(target(published+i),packedCommands[i],writeCombined && commandBase!=Commands);
    published+=packedCommands.size();packedCommands.clear();
   }else{
-   for(;published<commands.size();published++)uploadCommand(target+published*16,commands[published],writeCombined && commandBase!=Commands);
+   for(;published<commands.size();published++)uploadCommand(target(published),commands[published],writeCombined && commandBase!=Commands);
   }
   // The consumer may read only this committed immutable prefix.
   barrier();mailbox[2]=uint32_t(published);barrier();

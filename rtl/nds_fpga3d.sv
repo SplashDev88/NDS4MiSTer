@@ -17,7 +17,7 @@ module nds_fpga3d #(
  input logic dout_ready,accepted
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
- localparam [31:0] MAGIC=32'h36443346;
+ localparam [31:0] MAGIC=32'h37443346;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,PARAM,PARAM_WAIT,AVAILABLE,REFILL_DELAY,REFILL,REFILL_WAIT,FETCH,FETCH_WAIT,CMD_LOAD_FIRST,CMD_LOAD,UNPACK,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
@@ -41,9 +41,16 @@ module nds_fpga3d #(
  logic producer_final;
  wire [31:0] param_base=dout[63:32];
  wire param_device=param_base==32'h3fc81000;
+ wire param_padded=param_base==32'h3fe31000;
  wire param_wc=param_base>=32'h3fd40000 && param_base<32'h3fe00000 && param_base[5:0]==0;
  wire [31:0] param_space=(32'h3fe00000-param_base)>>6;
- wire [13:0] param_capacity=param_device?14'd8128:(param_space>8128?14'd8128:14'(param_space));
+ wire [13:0] param_capacity=(param_device || param_padded)?14'd8128:(param_space>8128?14'd8128:14'(param_space));
+ // The first 64 slots belong to telemetry. Every following group of 1024
+ // slots is in the next plane's padding, never its 192 visible rows.
+ wire [13:0] padded_slot=14'(index)+14'd64;
+ wire [28:0] padded_address={11'h1ff,padded_slot[12:10],2'b11,padded_slot[9:0],3'd0};
+ wire [28:0] command_address=command_base==32'h3fe31000 ? padded_address :
+      29'(command_base>>3)+(index<<3);
  logic [15:0] poll;
  logic [3:0] beat;
  (* ramstyle="MLAB" *) logic [63:0] command_cache[0:127];
@@ -144,14 +151,14 @@ module nds_fpga3d #(
  logic [28:0] tex_addr;
 
  // Pipelined opaque path; descriptors remain constant until the span drains.
- logic [12:0] p_valid;
+ logic [13:0] p_valid;
  logic [31:0] p_rem[0:9];
  logic [23:0] p_den[0:9];
- logic [8:0] p_f[0:9],p_x[0:12];
- logic signed [15:0] p_av[0:12][0:4];
- logic [31:0] p_z[0:12];
+ logic [8:0] p_f[0:9],p_x[0:13];
+ logic signed [15:0] p_av[0:13][0:4];
+ logic [31:0] p_z[0:13];
  logic [28:0] p_addr[11:12];
- logic p_half[11:12],p_pass[11:12];
+ logic p_half[11:12],p_pass[11:13];
  logic [2:0] p_byte[11:12];
  // Palette reads are consumed only after the complete load has drained.
  // No pixel observes the read-during-write value; permit native MLAB RAMs.
@@ -163,7 +170,10 @@ module nds_fpga3d #(
  wire [7:0] palette_index=texture_word[8*int'(p_byte[12])+:8];
  logic [15:0] p_ts,p_tt,tex_size_s,tex_size_t,tex_mask_s,tex_mask_t;
  logic [19:0] p_index;
- logic [31:0] p_texel,p_color;
+ // Cut the indexed-cache -> palette -> color arithmetic path. The extra
+ // stage advances with the same global stall enable as its metadata.
+ logic [31:0] p_texel,p_texel_q,p_color;
+ logic [15:0] toon_rgb555_q;
  logic [12:0] p_mr,p_mg,p_mb;
  logic [5:0] p_vr,p_vg,p_vb;
  wire [15:0] toon_rgb555=toon_table[16*int'(p_av[12][0][8:4])+:16];
@@ -226,25 +236,25 @@ module nds_fpga3d #(
   p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:8]};
   p_texel=cmd[14][12]?(palette_index[0]?palette_odd[palette_index[7:1]]:palette_even[palette_index[7:1]]):
                        (p_half[12]?texture_word[63:32]:texture_word[31:0]);
-  p_vr=p_av[12][0][8:3];p_vg=p_av[12][1][8:3];p_vb=p_av[12][2][8:3];
+  p_vr=p_av[13][0][8:3];p_vg=p_av[13][1][8:3];p_vb=p_av[13][2][8:3];
   if(cmd[31][12])begin
    if(line_config[1])begin p_vg=p_vr;p_vb=p_vr;end
-   else begin p_vr=expand5(toon_rgb555[4:0]);p_vg=expand5(toon_rgb555[9:5]);p_vb=expand5(toon_rgb555[14:10]);end
+   else begin p_vr=expand5(toon_rgb555_q[4:0]);p_vg=expand5(toon_rgb555_q[9:5]);p_vb=expand5(toon_rgb555_q[14:10]);end
   end
-  p_mr=({1'b0,p_texel[5:0]}+7'd1)*({1'b0,p_vr}+7'd1)-13'd1;
-  p_mg=({1'b0,p_texel[13:8]}+7'd1)*({1'b0,p_vg}+7'd1)-13'd1;
-  p_mb=({1'b0,p_texel[21:16]}+7'd1)*({1'b0,p_vb}+7'd1)-13'd1;
-  p_ma=({1'b0,p_texel[28:24]}+6'd1)*({1'b0,cmd[31][4:0]}+6'd1)-12'd1;
+  p_mr=({1'b0,p_texel_q[5:0]}+7'd1)*({1'b0,p_vr}+7'd1)-13'd1;
+  p_mg=({1'b0,p_texel_q[13:8]}+7'd1)*({1'b0,p_vg}+7'd1)-13'd1;
+  p_mb=({1'b0,p_texel_q[21:16]}+7'd1)*({1'b0,p_vb}+7'd1)-13'd1;
+  p_ma=({1'b0,p_texel_q[28:24]}+6'd1)*({1'b0,cmd[31][4:0]}+6'd1)-12'd1;
   p_color=cmd[2][2]?{3'd0,p_ma[9:5],2'd0,p_mb[11:6],2'd0,p_mg[11:6],2'd0,p_mr[11:6]}:
              {3'd0,cmd[31][4:0],2'd0,p_vb,2'd0,p_vg,2'd0,p_vr};
   if(cmd[2][2] && cmd[31][10])p_color={3'd0,cmd[31][4:0],
-      2'd0,decal_channel(p_texel[21:16],p_av[12][2][8:3],p_texel[28:24]),
-      2'd0,decal_channel(p_texel[13:8],p_av[12][1][8:3],p_texel[28:24]),
-      2'd0,decal_channel(p_texel[5:0],p_av[12][0][8:3],p_texel[28:24])};
+      2'd0,decal_channel(p_texel_q[21:16],p_av[13][2][8:3],p_texel_q[28:24]),
+      2'd0,decal_channel(p_texel_q[13:8],p_av[13][1][8:3],p_texel_q[28:24]),
+      2'd0,decal_channel(p_texel_q[5:0],p_av[13][0][8:3],p_texel_q[28:24])};
   if(cmd[31][12] && line_config[1])p_color={p_color[31:24],
-      2'd0,add_saturate6(p_color[21:16],expand5(toon_rgb555[14:10])),
-      2'd0,add_saturate6(p_color[13:8],expand5(toon_rgb555[9:5])),
-      2'd0,add_saturate6(p_color[5:0],expand5(toon_rgb555[4:0]))};
+      2'd0,add_saturate6(p_color[21:16],expand5(toon_rgb555_q[14:10])),
+      2'd0,add_saturate6(p_color[13:8],expand5(toon_rgb555_q[9:5])),
+      2'd0,add_saturate6(p_color[5:0],expand5(toon_rgb555_q[4:0]))};
   p_miss=p_valid[12] && p_pass[12] && cmd[2][2] && !p_hit;
   p_bad_alpha=p_valid[12] && p_pass[12] && cmd[2][2] && p_hit && p_texel[31:24]>31;
   p_ce=state==PIPE_RUN && !reset && enable && !p_miss && !p_bad_alpha;
@@ -266,7 +276,7 @@ module nds_fpga3d #(
   else begin
    if(state==TEX_WAIT && dout_ready)begin if(tex_beat==7)p_override<=1; if(tex_beat==tex_addr[2:0])p_override_data<=dout;end
    if(p_ce)begin
-    p_override<=0;p_valid<={p_valid[11:0],x<last};
+    p_override<=0;p_valid<={p_valid[12:0],x<last};
     p_x[0]<=x;p_z[0]<=zlinear;
     p_rem[0]<=32'(dx)*32'(w0)<<8;
     p_den[0]<=32'(dx)*32'(w0)+(32'(span_width)-32'(dx))*32'(w1);
@@ -289,6 +299,9 @@ module nds_fpga3d #(
     p_half[11]<=p_index[0];p_byte[11]<=p_index[2:0];
     p_x[12]<=p_x[11];p_z[12]<=p_z[11];p_pass[12]<=p_depth_pass;
     p_addr[12]<=p_addr[11];p_half[12]<=p_half[11];p_byte[12]<=p_byte[11];
+    p_x[13]<=p_x[12];p_z[13]<=p_z[12];p_pass[13]<=p_pass[12];
+    p_texel_q<=p_texel;toon_rgb555_q<=toon_rgb555;
+    for(integer a=0;a<3;a=a+1)p_av[13][a]<=p_av[12][a];
     for(integer a=0;a<3;a=a+1)begin p_av[11][a]<=p_av[10][a];p_av[12][a]<=p_av[11][a];end
    end
   end
@@ -300,7 +313,7 @@ module nds_fpga3d #(
    READY:begin wr=1;addr=MB+3;din={epoch,MAGIC};end
    HEADER,REFILL:begin rd=1;addr=MB+1;end
    PARAM:begin rd=1;addr=MB+7;end
-   FETCH:begin rd=1;burst=fetch_words;addr=29'(command_base>>3)+(index<<3);end
+   FETCH:begin rd=1;burst=fetch_words;addr=command_address;end
    STENCIL_READ:begin rd=1;burst=64;addr=29'h07f901c0;end
    DUMP_WRITE:begin wr=1;addr=OUT+29'h6000+29'(stencil_index[8:3]);din=stencil_output_word;end
    TEX_READ:begin rd=1;burst=8;addr={tex_addr[28:3],3'd0};end
@@ -315,7 +328,7 @@ module nds_fpga3d #(
   for(integer k=0;k<5;k=k+1)sums[k]={1'b0,rems[k]}+{1'b0,rsteps[k]};
   zsum={1'b0,zrem}+{1'b0,zrstep};
  end
- nds_fpga3d_pixels pixels(
+ nds_fpga3d_pixels #(.RASTER_DELAY(3)) pixels(
   .clk,.reset(reset || (!enable && !flush_inflight)),
   .bank(output_active?output_bank:render_bank),
   .color_bank(output_active?output_y[0]:line_y[0]),
@@ -332,7 +345,7 @@ module nds_fpga3d #(
   .left_end(cmd[30][8:0]),.right_begin(cmd[30][24:16]),.y_edge(cmd[31][9:6]),
   .antialias(pixel_config[4]),.blend_enable(pixel_config[3]),.translucent_depth_write(cmd[31][5]),
   .precheck_valid(p_valid[10]),.precheck_x(p_x[10][7:0]),.precheck_depth(p_z[10]),.precheck_pass(p_depth_pass),
-  .pixel_valid(p_ce && p_valid[12] && p_pass[12] && p_color[31:24]>cmd[2][12:8]),
+  .pixel_valid(p_ce && p_valid[13] && p_pass[13] && p_color[31:24]>cmd[2][12:8]),
   .resolve_valid(state==RESOLVE_RUN && x<output_end),.resolve_mode,
   .shadow_mode(cmd[31][11:10]),.stencil_row(line_y[0]),
   .stencil_frame_start(state==CACHE_CLEAR && p_clear_index==0),
@@ -341,7 +354,7 @@ module nds_fpga3d #(
   .stencil_seed_bits(command_cache_q[8*int'(stencil_index[2:0])+:2]),
   .stencil_dump_en(state==DUMP_READ),.stencil_dump_index(stencil_index),.stencil_dump_value,
   .fog_color,.fog_offset,.fog_shift,.fog_table,.fog_alpha_only(pixel_config[6]),
-  .pixel_x(state==RESOLVE_RUN?x[7:0]:p_x[12][7:0]),.pixel_color(p_color),.pixel_depth(p_z[12]),
+  .pixel_x(state==RESOLVE_RUN?x[7:0]:p_x[13][7:0]),.pixel_color(p_color),.pixel_depth(p_z[13]),
   .pending(pixels_pending),
   .flush_en(state==FLUSH_LOAD || state==FLUSH_WAIT || (state==FLUSH_WRITE && accepted)),
   .flush_index(flush_read),.flush_pair
@@ -381,8 +394,8 @@ module nds_fpga3d #(
     end
     PARAM:if(!busy)state<=PARAM_WAIT;
     PARAM_WAIT:if(dout_ready)begin
-     command_base<=param_base;texture_end<=param_device?32'h3fe00000:param_base;capacity<=param_capacity;
-     if((!param_device && !param_wc) || count>param_capacity)begin status<=1;state<=COMPLETE;end
+     command_base<=param_base;texture_end<=(param_device || param_padded)?32'h3fe00000:param_base;capacity<=param_capacity;
+     if((!param_device && !param_wc && !param_padded) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
     CACHE_CLEAR:if(p_clear_index==31)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;

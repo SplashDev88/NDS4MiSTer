@@ -12,6 +12,7 @@ static void progress(){
 }
 #define FPGA3D_TEST_PROGRESS progress
 #include "transport.h"
+#include "../../src/replay/Hybrid3DAbi.h"
 int main(int argc,char** argv)try{
  Sim sim;sim.reset();activeSim=&sim;
  sim.word(0x3fc00000)=0x31443348;sim.word(0x3fc00008)=17;
@@ -84,6 +85,47 @@ int main(int argc,char** argv)try{
  require(f.submit(dst.data()+8,258),"texture-heavy Device stream failed");
  for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)require(dst[8+y*258+x]==(y==0&&x==0?largeTexture[largeTexture.size()-64]:0x1f000001u),"texture-heavy Device stream output");
  for(unsigned i=0;i<largeTexture.size();i++)require(sim.word(Textures+i*4)==largeTexture[i],"Device stream overwrote texture arena");
+ // All eight padding segments with full texture residency and all 8128
+ // descriptors. Use the production two-screen publisher while the FPGA owns
+ // the command prefix; telemetry's complete first page must remain separate.
+ fastCommandsEnabled=true;
+ for(bool streamMode:{true,false}){
+  streaming=streamMode;f.reset();f.deadlineMs=30000;f.stencil=stencil.data();f.textures=largeTexture;
+  auto& header=*reinterpret_cast<nds4mister::h3d::Header*>(&sim.word(0x3fc00000));
+  header.accepted_session=17;
+  header.frame_ack_sequence=header.frame_publish_sequence;
+  nds4mister::h3d::FullFramePublisher publisher(header,&sim.word(0x3fe00000),true);
+  std::vector<uint32_t> screen(256*192,0xffac1020);
+  for(unsigned i=0;i<4096;i+=4)sim.word(0x3fe30000+i)=0x12340000+i;
+  f.startStream();sim.guardedBase=PaddedCommands;sim.guardedCount=0;
+  std::vector<Command> expectedCommands;
+  auto add=[&](const Command& c){f.append(c);expectedCommands.push_back(c);};
+  for(unsigned y=0;y<192;y++){
+   add(clear(y,0x1f000000+y,0xffffff));
+   Span paddingSpan;paddingSpan.first=0;paddingSpan.end=1;paddingSpan.width=1;paddingSpan.alphaRef=31;
+   for(unsigned repeat=1;repeat<(y==0?296:40);repeat++)add(span(paddingSpan));
+   add(flush(y));f.publish();
+   if(y%16==0){
+    require(publisher.publish(17,y,screen.data(),screen.data()),"display publication blocked during padded commands");
+    header.frame_ack_sequence=header.frame_publish_sequence;
+   }
+   for(int i=0;i<1000;i++)progress();
+  }
+  require(f.commandCount()==MaxCommands,"padding full-capacity fixture");
+  require(f.submit(dst.data()+8,258),"padded CPU/RTL submission failed");
+  require(f.commandBase==PaddedCommands && f.commandCapacity==MaxCommands,"padding command selection/capacity");
+  for(unsigned y=0;y<192;y++)for(unsigned x=0;x<256;x++)require(dst[8+y*258+x]==0x1f000000+y,"padded commands produced incorrect pixels");
+  // Independent address oracle, deliberately not commandAddress().
+  for(size_t n=0;n<expectedCommands.size();n++){
+   const size_t offset=4096+n*64;
+   const uint32_t address=0x3fe30000+uint32_t(offset/65536)*262144+uint32_t(offset%65536);
+   const auto c=pack(expectedCommands[n]);
+   require(!std::memcmp(&sim.word(address),c.data(),64),"display publication or command mapping changed an owned descriptor");
+  }
+  for(unsigned i=0;i<4096;i+=4)require(sim.word(0x3fe30000+i)==0x12340000+i,"padding commands overwrote telemetry reservation");
+  for(unsigned i=0;i<largeTexture.size();i++)require(sim.word(Textures+i*4)==largeTexture[i],"padding stream overwrote texture arena");
+ }
+ fastCommandsEnabled=false;streaming=true;f.deadlineMs=5000;
  std::fill(dst.begin(),dst.end(),0xa1b2c3d4);
  const auto preservedStencil=stencil;
  uint64_t failures=failedFrames;
