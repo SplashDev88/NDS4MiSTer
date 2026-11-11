@@ -30,10 +30,13 @@ module nds_fpga3d #(
  logic [8:0] stencil_index;
  logic [63:0] stencil_output_word;
  wire [1:0] stencil_dump_value;
+ // The descriptor buffer holds both an initial cache load and a prefetched
+ // command. Decode it directly so expanded cmd fields never store raw bits.
+ logic [63:0] next_descriptor[0:7];
  wire [511:0] packed_command;
  genvar packed_word;
- generate for(packed_word=0;packed_word<16;packed_word=packed_word+1)begin: pack_bus
- assign packed_command[32*packed_word+:32]=cmd[packed_word];
+ generate for(packed_word=0;packed_word<8;packed_word=packed_word+1)begin: pack_bus
+ assign packed_command[64*packed_word+:64]=next_descriptor[packed_word];
  end endgenerate
  logic [31:0] seq,seen,status,epoch;
  // Full-width producer counts are validated before use. The physical arena
@@ -71,7 +74,7 @@ module nds_fpga3d #(
  wire [4:0] fetch_limit=page_commands>16?5'd16:page_commands[4:0];
  wire [4:0] fetch_commands=count-index>fetch_limit?fetch_limit:5'(count-index);
  wire [7:0] fetch_words={fetch_commands,3'b0};
- logic [63:0] next_descriptor[0:7];
+
  logic next_active,next_ready;
  logic [3:0] next_step;
  wire next_start=state==DECODE && cached_commands>1;
@@ -88,12 +91,15 @@ module nds_fpga3d #(
   if(reset || !enable || state==UNPACK || state==FETCH ||
      (state==NEXT_COMMAND && !next_ready))begin
    next_active<=0;next_ready<=0;next_step<=0;
-  end else if(next_start)begin
-   next_active<=1;next_step<=1;
-  end else if(next_active)begin
-   next_descriptor[next_step-1'b1]<=command_cache_q;
-   if(next_step==8)begin next_active<=0;next_ready<=1;end
-   else next_step<=next_step+1'b1;
+  end else begin
+   if(state==CMD_LOAD || (next_active && !next_start))
+    next_descriptor[state==CMD_LOAD?beat[2:0]:3'(next_step-1'b1)]<=command_cache_q;
+   if(next_start)begin
+    next_active<=1;next_step<=1;
+   end else if(next_active)begin
+    if(next_step==8)begin next_active<=0;next_ready<=1;end
+    else next_step<=next_step+1'b1;
+   end
   end
  end
  logic [8:0] x,last,dx,line_y,flush_x;
@@ -262,7 +268,9 @@ module nds_fpga3d #(
       2'd0,add_saturate6(p_color[13:8],expand5(toon_rgb555_q[9:5])),
       2'd0,add_saturate6(p_color[5:0],expand5(toon_rgb555_q[4:0]))};
   p_miss=p_valid[12] && p_pass[12] && cmd[2][2] && !p_hit;
-  p_bad_alpha=p_valid[12] && p_pass[12] && cmd[2][2] && p_hit && p_texel[31:24]>31;
+  // A stage-13 texel was accepted only after its cache hit. Validate its
+  // alpha here to keep palette decode out of the global stall-enable path.
+  p_bad_alpha=p_valid[13] && p_pass[13] && cmd[2][2] && p_texel_q[31:24]>31;
   p_ce=state==PIPE_RUN && !reset && enable && !p_miss && !p_bad_alpha;
  end
  always_ff @(posedge clk)begin
@@ -416,12 +424,8 @@ module nds_fpga3d #(
     end
     AVAILABLE:begin
      if(index<count)begin
-      if(cached_commands!=0 && next_ready)begin
-       for(integer j=0;j<8;j=j+1)begin
-        cmd[2*j]<=next_descriptor[j][31:0];cmd[2*j+1]<=next_descriptor[j][63:32];
-       end
-       state<=UNPACK;
-      end else state<=cached_commands!=0?CMD_LOAD_FIRST:FETCH;
+      if(cached_commands!=0 && next_ready)state<=UNPACK;
+      else state<=cached_commands!=0?CMD_LOAD_FIRST:FETCH;
      end
      else if(producer_final)begin
       if(line_open || line_y!=192)begin status<=1;state<=COMPLETE;end
@@ -443,7 +447,6 @@ module nds_fpga3d #(
     end
     CMD_LOAD_FIRST:begin beat<=0;state<=CMD_LOAD;end
     CMD_LOAD:begin
-     cmd[{beat,1'b0}]<=command_cache_q[31:0];cmd[{beat,1'b1}]<=command_cache_q[63:32];
      if(beat==7)state<=UNPACK;else beat<=beat+1'b1;
     end
     UNPACK:begin

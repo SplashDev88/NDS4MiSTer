@@ -434,3 +434,11 @@ addresses and producer counts still undergo full-width validation. Exhaustive
 address arithmetic covers 12288 WC bases and 66848736 in-bounds descriptors;
 all native/shadow oracles pass, and deliberately truncating the initial count
 check is detected before the mutant can read any frame data.
+The third attempt placed at 41203 ALMs but could not route because of congestion.
+Initial and prefetched descriptors now share next_descriptor, and UNPACK reads
+that buffer directly. Expanded cmd registers no longer carry arbitrary raw
+command bits; opcode behavior, prefetch ordering and valid-frame cycle counts
+are unchanged. Omitting the last initial-load word is detected as a pixel
+mismatch. Invalid texel alpha is now checked from the stage-13 texel register,
+removing the baseline palette-to-global-enable path while retaining whole-frame
+error handling. Full native, shadow/stencil, transport and fault tests pass.
