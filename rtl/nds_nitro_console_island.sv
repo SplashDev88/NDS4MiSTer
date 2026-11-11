@@ -244,8 +244,8 @@ wire h3d_fatal_reset = 1'b0;
 wire h3d_boundary_fatal = 1'b0;
 `endif
 wire save_ready;
-// Keep the local reset conditions together so the shell reset reaches the
-// domain synchronizers through the final OR, without an intermediate LUT.
+// Keep the local reset conditions explicit for timing-focused synthesis.
+// Physical timing still depends on the fitted reset and clock routes.
 (* keep = "true" *) wire console_reset_conditions = ~island_locked | ~enable |
     cart_download_raw | ~boot_ready_ddr | ~h3d_console_release |
     h3d_fatal_reset | (~firmware_native & ~save_ready);

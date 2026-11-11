@@ -143,6 +143,9 @@ architecture arch of nds_mainram is
    -- buffer cells. Verify both setup and hold at every operating corner;
    -- do not infer a guaranteed physical delay from the functional model.
    signal hold_req9_din5, hold_req7_addr2, hold_req9_addr7 : std_logic_vector(1 downto 0);
+   -- Explicit buffers also avoid long routing-only hold repairs on these
+   -- two payload bits, which otherwise consumed their setup margin.
+   signal hold_req9_din1, hold_req9_addr17 : std_logic_vector(1 downto 0);
    signal req9_din_timed : std_logic_vector(31 downto 0);
    signal req7_addr_timed, req9_addr_timed : std_logic_vector(21 downto 2);
 
@@ -159,9 +162,13 @@ begin
    hold_addr2_second : lcell port map(hold_req7_addr2(0), hold_req7_addr2(1));
    hold_addr7_first : lcell port map(req9_addr(7), hold_req9_addr7(0));
    hold_addr7_second : lcell port map(hold_req9_addr7(0), hold_req9_addr7(1));
-   req9_din_timed <= req9_din(31 downto 6) & hold_req9_din5(1) & req9_din(4 downto 0);
+   hold_din1_first : lcell port map(req9_din(1), hold_req9_din1(0));
+   hold_din1_second : lcell port map(hold_req9_din1(0), hold_req9_din1(1));
+   hold_addr17_first : lcell port map(req9_addr(17), hold_req9_addr17(0));
+   hold_addr17_second : lcell port map(hold_req9_addr17(0), hold_req9_addr17(1));
+   req9_din_timed <= req9_din(31 downto 6) & hold_req9_din5(1) & req9_din(4 downto 2) & hold_req9_din1(1) & req9_din(0);
    req7_addr_timed <= req7_addr(21 downto 3) & hold_req7_addr2(1);
-   req9_addr_timed <= req9_addr(21 downto 8) & hold_req9_addr7(1) & req9_addr(6 downto 2);
+   req9_addr_timed <= req9_addr(21 downto 18) & hold_req9_addr17(1) & req9_addr(16 downto 8) & hold_req9_addr7(1) & req9_addr(6 downto 2);
 
    mainram_active <= req9_pending or req9_line_next or req7_pending or lock_pair;
    mainram_busy   <= '1' when (state /= MR_IDLE) else '0';

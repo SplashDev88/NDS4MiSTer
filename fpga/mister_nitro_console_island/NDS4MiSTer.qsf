@@ -37,6 +37,9 @@ set_global_assignment -name ROUTER_TIMING_OPTIMIZATION_LEVEL NORMAL
 # All Paths repair; use the measured global-reset assignments below to ease
 # routing pressure. Timing reports remain diagnostic; test the image on hardware.
 set_global_assignment -name SEED 8
+# Retain the short dedicated route from the passing reset timing result.
+# GCLK11 previously added about 4.8 ns to the shell reset launch clock path.
+set_location_assignment CLKCTRL_G0 -to FPGA_CLK2_50~inputCLKENA0
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
 # The FPGA console sound engine drives the normal MiSTer audio cone. Keep the
