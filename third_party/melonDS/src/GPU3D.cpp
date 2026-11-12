@@ -30,6 +30,7 @@
 #include "NDS4MiSTer_2DTrace.h"
 #include "NDS4MiSTer_GXClipMath.h"
 #include "NDS4MiSTer_GXVertexTransform.h"
+#include "NDS4MiSTer_GXMatrixNeon.h"
 
 namespace melonDS
 {
@@ -619,6 +620,15 @@ void MatrixLoad4x3(s32* m, s32* s)
 
 void MatrixMult4x4(s32* m, s32* s)
 {
+#if defined(NDS4MISTER_EXACT_NEON_MATRICES) && NDS4MISTER_EXACT_NEON_MATRICES && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+    // Preserve the scalar function's sequential reads for overlapping inputs.
+    if (!matrix_neon::overlaps(m, s, 16))
+    {
+        matrix_neon::mult4x4(m, s);
+        return;
+    }
+#endif
+
     s32 tmp[16];
     memcpy(tmp, m, 16*4);
 
@@ -646,6 +656,15 @@ void MatrixMult4x4(s32* m, s32* s)
 
 void MatrixMult4x3(s32* m, s32* s)
 {
+#if defined(NDS4MISTER_EXACT_NEON_MATRICES) && NDS4MISTER_EXACT_NEON_MATRICES && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+    // Preserve the scalar function's sequential reads for overlapping inputs.
+    if (!matrix_neon::overlaps(m, s, 12))
+    {
+        matrix_neon::mult4x3(m, s);
+        return;
+    }
+#endif
+
     s32 tmp[16];
     memcpy(tmp, m, 16*4);
 
@@ -673,6 +692,15 @@ void MatrixMult4x3(s32* m, s32* s)
 
 void MatrixMult3x3(s32* m, s32* s)
 {
+#if defined(NDS4MISTER_EXACT_NEON_MATRICES) && NDS4MISTER_EXACT_NEON_MATRICES && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+    // Preserve the scalar function's sequential reads for overlapping inputs.
+    if (!matrix_neon::overlaps(m, s, 9))
+    {
+        matrix_neon::mult3x3(m, s);
+        return;
+    }
+#endif
+
     s32 tmp[12];
     memcpy(tmp, m, 12*4);
 
@@ -695,6 +723,15 @@ void MatrixMult3x3(s32* m, s32* s)
 
 void MatrixScale(s32* m, s32* s)
 {
+#if defined(NDS4MISTER_EXACT_NEON_MATRICES) && NDS4MISTER_EXACT_NEON_MATRICES && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+    // Preserve the scalar function's sequential reads for overlapping inputs.
+    if (!matrix_neon::overlaps(m, s, 3))
+    {
+        matrix_neon::scale(m, s);
+        return;
+    }
+#endif
+
     m[0] = ((s64)s[0]*m[0]) >> 12;
     m[1] = ((s64)s[0]*m[1]) >> 12;
     m[2] = ((s64)s[0]*m[2]) >> 12;
@@ -713,6 +750,15 @@ void MatrixScale(s32* m, s32* s)
 
 void MatrixTranslate(s32* m, s32* s)
 {
+#if defined(NDS4MISTER_EXACT_NEON_MATRICES) && NDS4MISTER_EXACT_NEON_MATRICES && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+    // Preserve the scalar function's sequential reads for overlapping inputs.
+    if (!matrix_neon::overlaps(m, s, 3))
+    {
+        matrix_neon::translate(m, s);
+        return;
+    }
+#endif
+
     m[12] += ((s64)s[0]*m[0] + (s64)s[1]*m[4] + (s64)s[2]*m[8]) >> 12;
     m[13] += ((s64)s[0]*m[1] + (s64)s[1]*m[5] + (s64)s[2]*m[9]) >> 12;
     m[14] += ((s64)s[0]*m[2] + (s64)s[1]*m[6] + (s64)s[2]*m[10]) >> 12;
@@ -2816,13 +2862,8 @@ void GPU3D::Run() noexcept
     {
         while (CycleCount <= 0 && !commandsEmpty())
         {
-            // Most replay commands leave both status flags clear. Avoid
-            // writing GXStat again unless one can actually change.
-            if (GXStat & 0x4001u)
-            {
-                if (NumPushPopCommands == 0) GXStat &= ~(1<<14);
-                if (NumTestCommands == 0)    GXStat &= ~(1<<0);
-            }
+            if (NumPushPopCommands == 0) GXStat &= ~(1<<14);
+            if (NumTestCommands == 0)    GXStat &= ~(1<<0);
 
             ExecuteCommand();
         }
