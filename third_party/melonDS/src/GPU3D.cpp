@@ -2816,8 +2816,13 @@ void GPU3D::Run() noexcept
     {
         while (CycleCount <= 0 && !commandsEmpty())
         {
-            if (NumPushPopCommands == 0) GXStat &= ~(1<<14);
-            if (NumTestCommands == 0)    GXStat &= ~(1<<0);
+            // Most replay commands leave both status flags clear. Avoid
+            // writing GXStat again unless one can actually change.
+            if (GXStat & 0x4001u)
+            {
+                if (NumPushPopCommands == 0) GXStat &= ~(1<<14);
+                if (NumTestCommands == 0)    GXStat &= ~(1<<0);
+            }
 
             ExecuteCommand();
         }
