@@ -423,6 +423,17 @@ if(NDS4MISTER_USE_MELONDS)
         add_test(NAME nds_gx_matrix_arithmetic COMMAND nds_gx_matrix_arithmetic_test)
     endif()
 
+    add_executable(nds_gx_unlit_lighting_test
+        src/replay/GXUnlitLightingTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_gx_unlit_lighting_test PRIVATE
+        src third_party/melonDS/src)
+    target_compile_options(nds_gx_unlit_lighting_test PRIVATE
+        -Wall -Wextra -Wpedantic -fno-access-control)
+    target_link_libraries(nds_gx_unlit_lighting_test PRIVATE core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_gx_unlit_lighting COMMAND nds_gx_unlit_lighting_test)
+    endif()
+
     add_executable(nds_gx_matrix_prefix_test
         src/replay/GxMatrixPrefixTest.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_gx_matrix_prefix_test PRIVATE

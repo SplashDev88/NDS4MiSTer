@@ -1696,6 +1696,19 @@ void GPU3D::CalculateLighting() noexcept
         TexCoords[1] = RawTexCoords[1] + (((s64)Normal[0]*TexMatrix[1] + (s64)Normal[1]*TexMatrix[5] + (s64)Normal[2]*TexMatrix[9]) >> 21);
     }
 
+    // With no enabled lights the final color is emission alone. Normal-based
+    // texture coordinates above still apply, and the pipeline consumes the
+    // same minimum cycle as the ordinary four-light loop.
+    if ((CurPolygonAttr & 0xF) == 0)
+    {
+        VertexColor[0] = std::min<u32>(MatEmission[0], 31);
+        VertexColor[1] = std::min<u32>(MatEmission[1], 31);
+        VertexColor[2] = std::min<u32>(MatEmission[2], 31);
+        NormalPipeline = 7;
+        AddCycles(1);
+        return;
+    }
+
     s32 normaltrans[3]; // should be 1 bit sign 10 bits frac
     normaltrans[0] = ((Normal[0]*VecMatrix[0] + Normal[1]*VecMatrix[4] + Normal[2]*VecMatrix[8]) << 9) >> 21;
     normaltrans[1] = ((Normal[0]*VecMatrix[1] + Normal[1]*VecMatrix[5] + Normal[2]*VecMatrix[9]) << 9) >> 21;
