@@ -907,7 +907,9 @@ void ClipSegment(Vertex* outbuf, Vertex* vin, Vertex* vout)
     const s64 factor_num = factors.Numerator;
     const s32 factor_den = static_cast<s32>(factors.Denominator);
     const NDS4MiSTerGXClipDivider divider(factor_den);
+#ifndef NDS4MISTER_DISABLE_GEOMETRY_WORK_COUNTERS
     NDS4MiSTerClipInterp++;
+#endif
     if (factor_den == 0) NDS4MiSTerClipZeroDen++;
 
 #define INTERPOLATE(var) \
@@ -2047,7 +2049,12 @@ void GPU3D::ExecuteCommand() noexcept
     // commands (presumably) run when all the needed parameters have been read
     // which is where we add the remaining cycles if any
 
+    // Offline replay tools consume this total, but the production hybrid
+    // helper does not. Keep diagnostic builds unchanged while testing the
+    // cost of the unconditional 64-bit update on its external command path.
+#ifndef NDS4MISTER_DISABLE_GEOMETRY_WORK_COUNTERS
     NDS4MiSTerGXExecuted++;
+#endif
     const u8 c = entry.Command;
 
     // The H3B owner has already validated and normalized every external GX
