@@ -64,8 +64,10 @@ int main() try
     unsigned prior=0;
     for (unsigned y=0;y<256;++y)
     for (unsigned size=0;size<16;++size)
-    for (unsigned type=0;type<4;++type)
-    for (int x : {-128,-1,0,255}) {
+    for (unsigned type=0;type<4;++type) {
+    static constexpr unsigned widths[]={8,16,8,8,16,32,8,8,32,32,16,8,64,64,32,8};
+    const int boundWidth=int(widths[size]) << (type==3);
+    for (int x : {-boundWidth-1,-boundWidth,-boundWidth+1,-1,0,255}) {
         const unsigned number=membershipCases%128;
         for (auto* n : {old.get(),indexed.get()}) {
             n->GPU.WriteOAM<u16>(prior*8,0x200);
@@ -74,6 +76,7 @@ int main() try
         }
         membership(*old,*indexed,0);
         prior=number; ++membershipCases;
+    }
     }
     for (unsigned count : {0u,1u,31u,32u,33u,63u,64u,65u,95u,96u,97u,127u,128u}) {
         for (auto* n : {old.get(),indexed.get()}) {
