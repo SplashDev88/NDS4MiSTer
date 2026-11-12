@@ -469,6 +469,17 @@ if(NDS4MISTER_USE_MELONDS)
         add_test(NAME nds_sprite_setup_cache COMMAND nds_sprite_setup_cache_test)
     endif()
 
+    add_executable(nds_sprite_row_index_test
+        src/replay/SpriteRowIndexTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_sprite_row_index_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_sprite_row_index_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_sprite_row_index_test PRIVATE core ${CMAKE_DL_LIBS})
+
+    add_executable(nds_sprite_row_pixel_test
+        src/replay/SpriteRowPixelTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_sprite_row_pixel_test PRIVATE src third_party/melonDS/src)
+    target_link_libraries(nds_sprite_row_pixel_test PRIVATE core ${CMAKE_DL_LIBS})
+
     add_executable(nds_engine_a_only_test
         src/replay/EngineAOnlyTest.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_engine_a_only_test PRIVATE src third_party/melonDS/src)

@@ -57,6 +57,8 @@ SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
     const char* setup = std::getenv("NDS_GPU_SPRITE_SETUP_CACHE");
     if (!setup || std::strcmp(setup, "0") != 0)
         SpriteSetup = std::make_unique<SpriteSetupCache>();
+    const char* rowIndex = std::getenv("NDS_GPU_SPRITE_ROW_INDEX");
+    SpriteRowIndex = !rowIndex || std::strcmp(rowIndex, "0") != 0;
     // mosaic table is initialized at compile-time
 }
 
@@ -1568,6 +1570,19 @@ void SoftRenderer2D::UpdateSpriteSetup()
             static_cast<u8>(a0), static_cast<u8>(width), static_cast<u8>(height),
             static_cast<u8>(bw), static_cast<u8>(bh)};
     }
+    if (SpriteRowIndex && cache.Count)
+    {
+        // Only membership is cached. OAM priority, mosaic adjustment, affine
+        // coefficients and texels retain their original drawing phase.
+        std::memset(cache.Rows.data(), 0, sizeof(cache.Rows));
+        for (unsigned n = 0; n < cache.Count; ++n)
+        {
+            const auto& spr = cache.Sprites[n];
+            const u32 bit = 1u << (n & 31);
+            for (unsigned y = 0; y < spr.BoundHeight; ++y)
+                cache.Rows[(spr.Y + y) & 255][n >> 5] |= bit;
+        }
+    }
     cache.Valid = true;
 }
 
@@ -1662,7 +1677,34 @@ void SoftRenderer2D::DrawSprites(u32 line)
     if (SpriteSetup)
     {
         UpdateSpriteSetup();
-        for (unsigned n = 0; n < SpriteSetup->Count; ++n)
+        if (SpriteRowIndex)
+        {
+            const auto& row = SpriteSetup->Rows[line & 255];
+            for (unsigned word = 0; word < (SpriteSetup->Count + 31) / 32; ++word)
+            {
+                u32 pending = row[word];
+                while (pending)
+                {
+                    const unsigned n = word * 32 + __builtin_ctz(pending);
+                    pending &= pending - 1;
+                    const auto& spr = SpriteSetup->Sprites[n];
+                    s32 ypos = (line - spr.Y) & 0xFF;
+                    const bool iswin = ((spr.Attr0 >> 10) & 3) == 2;
+                    if ((spr.Attr0 & (1 << 12)) && !iswin)
+                    {
+                        ypos = (GPU2D.OBJMosaicLine - spr.Y) & 0xFF;
+                        if (ypos >= spr.BoundHeight) ypos = 0;
+                    }
+                    if (spr.Attr0 & (1 << 8))
+                        DoDrawSprite(Rotscale, spr.Number, spr.BoundWidth, spr.BoundHeight,
+                                     spr.Width, spr.Height, spr.X, ypos);
+                    else
+                        DoDrawSprite(Normal, spr.Number, spr.Width, spr.Height, spr.X, ypos);
+                    ++NumSprites;
+                }
+            }
+        }
+        else for (unsigned n = 0; n < SpriteSetup->Count; ++n)
         {
             const auto& spr = SpriteSetup->Sprites[n];
             s32 ypos = (line - spr.Y) & 0xFF;

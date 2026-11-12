@@ -94,10 +94,12 @@ private:
         u64 ObservedWriteEpoch = 0;
         unsigned Count = 0;
         bool Valid = false;
+        std::array<std::array<u32, 4>, 256> Rows;
     };
     std::unique_ptr<SpriteSetupCache> SpriteSetup;
     void UpdateSpriteSetup();
     bool SpriteBatch = true;
+    bool SpriteRowIndex = true;
     bool SpritePriorityIndex = true;
     bool AffineTileCache = true;
     bool AffinePackedRows = false;
