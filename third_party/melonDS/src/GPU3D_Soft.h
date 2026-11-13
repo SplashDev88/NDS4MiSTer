@@ -2673,5 +2673,6 @@ private:
     u32 CurrentEffectMask() noexcept;
     bool RenderOff = false;
     void Blank3DFrame();
+    bool SolidSpans = false;
 };
 }

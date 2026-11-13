@@ -18,6 +18,7 @@
 
 #include "GPU3D_Soft.h"
 #include "GPU3D_Diagnostic.h"
+#include "NDS4MiSTerSolidSpan.h"
 #include <ctime>
 
 #include <algorithm>
@@ -223,6 +224,7 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
+    SolidSpans = enabled("NDS4MISTER_SOLID_SPANS");
     AlternateRowsRequested = enabled("NDS4MISTER_ALTERNATE_3D_ROWS");
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
@@ -2518,6 +2520,44 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
 
     if (x < clipStartX) x = clipStartX;
     s32 xlimit;
+
+    // Opaque untextured gradient rectangles are constant along each row.
+    // Reuse the original Y interpolation and edge limits, but broadcast the
+    // row's exact color/depth rather than shading every pixel separately.
+    if (SolidSpans && !LowerLayerBufferSize &&
+        !(EffectiveDispCnt & (1u << 4)) && !wireframe &&
+        !polygon->IsShadow && !polygon->IsShadowMask &&
+        NDS4MiSTerUsePlainUntexturedPixel(
+            rp->PixelState.TextureEnabled, rp->PixelState.BlendMode) &&
+        polyalpha == 31 && constantSpanColor && constantLinearDepth &&
+        fnDepthTest == DepthTest_LessThan_FrontFacing)
+    {
+        const u32 color = renderSpanPixel(rl, gl, bl, 0, 0);
+        const u32 row = FirstPixelOffset + y * ScanlineWidth;
+        const auto draw = [&](s32 end, u32 edgeBits)
+        {
+            if (x < end)
+            {
+                if ((color >> 24) > GPU3D.RenderAlphaRef)
+                    NDS4MiSTerDrawSolidSpan(ColorBuffer + row + x,
+                        DepthBuffer + row + x, AttrBuffer + row + x,
+                        end - x, constantDepth, color, polyattr | edgeBits);
+                x = end;
+            }
+        };
+        xlimit = std::clamp(std::min(xstart + l_edgelen, xend + 1),
+                            clipStartX, clipEndX);
+        if (l_filledge) draw(xlimit, yedge | 1u);
+        else x = xlimit;
+        xlimit = std::clamp(std::min(xend - r_edgelen + 1, xend + 1),
+                            clipStartX, clipEndX);
+        draw(xlimit, yedge);
+        xlimit = std::clamp(xend + 1, clipStartX, clipEndX);
+        if (r_filledge) draw(xlimit, yedge | 2u);
+        rp->XL = rp->SlopeL.Step();
+        rp->XR = rp->SlopeR.Step();
+        return;
+    }
 
     s32 xcov = 0;
 
