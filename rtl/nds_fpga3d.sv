@@ -5,7 +5,8 @@
 module nds_fpga3d #(
  parameter integer POLL_CYCLES=16384,
  parameter bit ENABLE_SEGMENTED_EXPERIMENT=0,
- parameter integer TEX_CACHE_INDEX_BITS=8
+ parameter integer TEX_CACHE_INDEX_BITS=8,
+ parameter bit TEX_CACHE_XOR_INDEX=0
 )(
  input logic clk, reset, enable,
  input logic [31:0] session,
@@ -226,10 +227,26 @@ module nds_fpga3d #(
  logic [TEX_CACHE_INDEX_BITS-1:0] p_clear_index;
  logic [2:0] tex_beat;
  logic tex_short;
+ // Optional conflict experiment: fold upper line bits into the set index.
+ // Keep all three word-offset bits unchanged so both16-byte sectors and
+ //64-byte bursts retain the existing refill/validity contract. The original
+ // upper address tag remains stored: equal tag+index still identifies one
+ // exact texture word. No additional pipeline or arbitration state.
+ function automatic [TEX_CACHE_INDEX_BITS-1:0] texture_cache_index(
+     input logic [28:0] word_address);
+  begin
+   texture_cache_index=word_address[TEX_CACHE_INDEX_BITS-1:0];
+   if(TEX_CACHE_XOR_INDEX)
+    texture_cache_index[TEX_CACHE_INDEX_BITS-1:3]=
+        word_address[TEX_CACHE_INDEX_BITS-1:3] ^
+        (TEX_CACHE_INDEX_BITS-3)'(word_address[16:3] >> (TEX_CACHE_INDEX_BITS-3));
+  end
+ endfunction
+ wire [TEX_CACHE_INDEX_BITS-1:0] tex_line_index=texture_cache_index(tex_addr);
  wire tex_last = tex_beat == (tex_short ? 3'd1 : 3'd7);
  wire [TEX_CACHE_INDEX_BITS-1:0] tex_fill_index = tex_short ?
-     {tex_addr[TEX_CACHE_INDEX_BITS-1:1],tex_beat[0]} :
-     {tex_addr[TEX_CACHE_INDEX_BITS-1:3],tex_beat};
+     {tex_line_index[TEX_CACHE_INDEX_BITS-1:1],tex_beat[0]} :
+     {tex_line_index[TEX_CACHE_INDEX_BITS-1:3],tex_beat};
  // Default to2 KiB; larger experimental capacities use the same independently valid16-byte sectors. Sparse
  // perspective sampling fetches one sector only when the next staged pixel
  // is absent or addresses a different64-byte line. Linear/local accesses
@@ -322,7 +339,7 @@ module nds_fpga3d #(
   if(state==CACHE_CLEAR)p_cache_words[p_clear_index]<=0;
   else if(state==TEX_WAIT && dout_ready)
    p_cache_words[tex_fill_index]<={1'b1,tex_addr[16:TEX_CACHE_INDEX_BITS],dout};
-  if(p_ce)p_cache_storage_q<=p_cache_words[p_addr[11][TEX_CACHE_INDEX_BITS-1:0]];
+  if(p_ce)p_cache_storage_q<=p_cache_words[texture_cache_index(p_addr[11])];
   if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
   else begin
    if(state==TEX_WAIT && dout_ready)begin
