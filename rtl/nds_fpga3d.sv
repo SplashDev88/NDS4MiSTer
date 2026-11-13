@@ -47,7 +47,9 @@ module nds_fpga3d #(
  // All producer counts and addresses are validated before truncation.
  logic [13:0] count,index;
  logic segmented_frame;
- logic [31:0] command_base,texture_end;
+ logic [31:0] texture_end;
+ logic [15:0] command_slot_base;
+ logic command_padded;
  logic [13:0] capacity;
  logic producer_final;
  wire [31:0] param_base=dout[63:32];
@@ -64,12 +66,15 @@ module nds_fpga3d #(
       (param_device || param_padded)?14'd8128:(param_space>8128?14'd8128:14'(param_space));
  // The first 64 slots belong to telemetry. Every following group of 1024
  // slots is in the next plane's padding, never its 192 visible rows.
- wire [13:0] padded_slot=14'(index)+14'd64;
+ // All accepted command storage lies in the same 4 MiB physical window.
+ // Bias the linear tail base once per frame, keeping only 64-byte slot bits.
+ // This shares one bounded 16-bit adder between legacy and segmented fetches
+ // instead of selecting between two full address adders on every request.
+ wire [12:0] padded_slot=index[12:0]+13'd64;
  wire [28:0] padded_address={11'h1ff,padded_slot[12:10],2'b11,padded_slot[9:0],3'd0};
- wire [13:0] tail_index=index-14'd8128;
- wire [28:0] command_address=segmented_frame?
-      (index<8128?padded_address:29'(command_base>>3)+(29'(tail_index)<<3)):
-      command_base==32'h3fe31000 ? padded_address:29'(command_base>>3)+(29'(index)<<3);
+ wire [15:0] linear_slot=command_slot_base+{2'b0,index};
+ wire command_is_padded=command_padded && (!segmented_frame || index<14'd8128);
+ wire [28:0] command_address=command_is_padded?padded_address:{10'h0ff,linear_slot,3'd0};
  logic [15:0] poll;
  logic [3:0] beat;
  // Use the two M10Ks released by the short scaler/audio delay chains.
@@ -83,7 +88,7 @@ module nds_fpga3d #(
  // an arbitrary 64-byte boundary. Never prefetch an unpublished record.
  // Derive the page from the selected physical segment, including an arbitrary
  // 64-byte texture-tail offset. The 8128 seam is itself a page boundary.
- wire [5:0] command_page_index=command_address[8:3];
+ wire [5:0] command_page_index=command_is_padded?index[5:0]:linear_slot[5:0];
  wire [6:0] page_commands=7'd64-{1'b0,command_page_index};
  wire [4:0] fetch_limit=page_commands>16?5'd16:page_commands[4:0];
  wire [4:0] fetch_commands=count-index>fetch_limit?fetch_limit:5'(count-index);
@@ -438,7 +443,9 @@ module nds_fpga3d #(
     end
     PARAM:if(!busy)state<=PARAM_WAIT;
     PARAM_WAIT:if(dout_ready)begin
-     command_base<=canonical_base;texture_end<=segmented_frame?canonical_base:(param_device || param_padded)?32'h3fe00000:canonical_base;capacity<=param_capacity;
+     command_slot_base<=param_base[21:6]-(segmented_frame?16'd8128:16'd0);
+     command_padded<=param_padded || segmented_frame;
+     texture_end<=segmented_frame?canonical_base:(param_device || param_padded)?32'h3fe00000:canonical_base;capacity<=param_capacity;
      if((segmented_frame?!param_segmented:(!param_device && !param_wc && !param_padded)) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
