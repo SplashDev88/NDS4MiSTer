@@ -16,15 +16,22 @@ using Dut=Vnds_fpga3d;
 #include <cstdlib>
 #include <fstream>
 using namespace fpga3d;
+#ifdef SEGMENTED_TRANSPORT_EXPERIMENT
+constexpr uint32_t TestReadyMagic=SegmentedMagic;
+#else
+constexpr uint32_t TestReadyMagic=Magic;
+#endif
 static void require(bool b,const char* m){if(!b)throw std::runtime_error(m);}
 struct Sim {
  Dut v;
  std::vector<uint32_t> mem=std::vector<uint32_t>(0x400000/4);
  std::mt19937 rng{43817};uint64_t cycles=0;
  uint64_t textureReads=0,textureBeats=0;
+ uint64_t descriptorReads=0,descriptorBeats=0;
  unsigned readLatency=std::getenv("READ_LATENCY")?std::atoi(std::getenv("READ_LATENCY")):0;
  unsigned remaining=0,readat=0,delay=0,writeRemaining=0,writeAt=0,writeBase=0,writeBurst=0;bool stalls=true;
  uint32_t guardedBase=0,guardedCount=0;
+ bool guardedSegmented=false;
  bool rejectFrameReads=false;
  bool held=false;uint64_t heldData=0;unsigned heldAddr=0,heldBurst=0,heldBe=0;bool heldRead=false,heldWrite=false;
  uint32_t& word(uint32_t a){require(a>=0x3fc00000 && a<0x40000000,"address out of graphics window");return mem.at((a-0x3fc00000)/4);}
@@ -58,13 +65,18 @@ struct Sim {
 #endif
     if(rejectFrameReads)require(a<Commands && a!=StencilInput,"oversized initial count acquired frame data");
     if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}
-    if(guardedBase==PaddedCommands && a>=0x3fe00000){
+    if((guardedSegmented || guardedBase==PaddedCommands) && a>=0x3fe00000){
      const uint32_t plane=(a-0x3fe00000)>>18,offset=a&0x3ffff;
      require(offset>=0x30000 && offset+v.burst*8<=0x40000,"command read entered visible display pixels");
      const uint32_t logical=plane*0x10000+offset-0x30000;
-     require(logical>=4096 && uint64_t(logical-4096)+v.burst*8<=uint64_t(guardedCount)*64,"read beyond published immutable command prefix");
-    }else if(guardedBase && a>=guardedBase && a<(guardedBase==Commands?Commands+MaxCommands*64:0x3fe00000))
-     require(uint64_t(a)+v.burst*8<=uint64_t(guardedBase)+guardedCount*64,"read beyond published immutable command prefix");
+     const uint32_t committed=guardedSegmented?std::min<uint32_t>(guardedCount,MaxCommands):guardedCount;
+     require(logical>=4096 && uint64_t(logical-4096)+v.burst*8<=uint64_t(committed)*64,"read beyond published immutable command prefix");
+     descriptorReads++;descriptorBeats+=v.burst;
+    }else if(guardedBase && a>=guardedBase && a<(guardedBase==Commands?Commands+MaxCommands*64:0x3fe00000)){
+     const uint32_t committed=guardedSegmented?(guardedCount>MaxCommands?guardedCount-MaxCommands:0):guardedCount;
+     require(uint64_t(a)+v.burst*8<=uint64_t(guardedBase)+uint64_t(committed)*64,"read beyond published immutable command prefix");
+     descriptorReads++;descriptorBeats+=v.burst;
+    }
     require(!writeRemaining,"read interrupted write burst");require(!remaining,"overlapping read");remaining=v.burst;readat=a;delay=stalls?readLatency+rng()%7:0;
    }
    else {
@@ -86,7 +98,7 @@ struct Sim {
   v.clk=1;v.eval();cycles++;
  }
  void reset(){for(unsigned a=0x3fc00400;a<0x3fc00480;a+=8){word(a)=0x89abcdef;word(a+4)=0x01234567;}v.reset=1;v.enable=0;v.session=17;remaining=0;for(int i=0;i<8;i++)tick();v.reset=0;v.enable=1;
-  for(int i=0;i<10000 && word(Mailbox+24)!=Magic;i++)tick();require(word(Mailbox+24)==Magic,"startup missing");}
+  for(int i=0;i<10000 && word(Mailbox+24)!=TestReadyMagic;i++)tick();require(word(Mailbox+24)==TestReadyMagic,"startup missing");}
  uint64_t run(const std::vector<Command>& cmds,unsigned sequence=1,unsigned expectStatus=0,unsigned sess=17){
   require(cmds.size()<=MaxCommands,"command overflow");
   for(size_t i=0;i<cmds.size();i++){auto packed=pack(cmds[i]);std::memcpy(&word(Commands)+i*16,packed.data(),sizeof(PackedCommand));}
@@ -390,8 +402,8 @@ int main(int argc,char** argv){try{
   }
   require(sim.word(Mailbox+16)!=interrupted,"disabled frame completed");
   sim.word(Mailbox+24)=0;sim.v.enable=1;
-  for(unsigned k=0;k<10000 && sim.word(Mailbox+24)!=Magic;k++)sim.tick();
-  require(sim.word(Mailbox+24)==Magic,"re-enabled rasterizer did not restart");
+  for(unsigned k=0;k<10000 && sim.word(Mailbox+24)!=TestReadyMagic;k++)sim.tick();
+  require(sim.word(Mailbox+24)==TestReadyMagic,"re-enabled rasterizer did not restart");
   for(unsigned k=0;k<1000;k++)sim.tick();
   require(sim.word(Mailbox+16)!=interrupted,"disabled request replayed");
   checkCache(0x1f090c0f,0x1f302115);

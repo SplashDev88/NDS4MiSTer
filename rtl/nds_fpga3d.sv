@@ -3,7 +3,8 @@
 // All addresses are physical 64-bit DDR word addresses. Commands and textures
 // are immutable until completion. This block never writes cartridge memory.
 module nds_fpga3d #(
- parameter integer POLL_CYCLES=16384
+ parameter integer POLL_CYCLES=16384,
+ parameter bit ENABLE_SEGMENTED_EXPERIMENT=0
 )(
  input logic clk, reset, enable,
  input logic [31:0] session,
@@ -18,6 +19,8 @@ module nds_fpga3d #(
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
  localparam [31:0] MAGIC=32'h38443346;
+ localparam [31:0] SEGMENTED_MAGIC=32'h41443346;
+ localparam [31:0] READY_MAGIC=ENABLE_SEGMENTED_EXPERIMENT?SEGMENTED_MAGIC:MAGIC;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,PARAM,PARAM_WAIT,AVAILABLE,REFILL_DELAY,REFILL,REFILL_WAIT,FETCH,FETCH_WAIT,CMD_LOAD_FIRST,CMD_LOAD,UNPACK,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
@@ -39,9 +42,11 @@ module nds_fpga3d #(
  assign packed_command[64*packed_word+:64]=next_descriptor[packed_word];
  end endgenerate
  logic [31:0] seq,seen,status,epoch;
- // Full-width producer counts are validated before use. The physical arena
- // holds at most 8128 commands, so accepted counts and indices fit 13 bits.
- logic [12:0] count,index;
+ // F3D8 retains its 8128-command limit. Experimental F3DA concatenates the
+ // existing padded arena with an aligned free texture tail (at most 16383).
+ // All producer counts and addresses are validated before truncation.
+ logic [13:0] count,index;
+ logic segmented_frame;
  logic [31:0] command_base,texture_end;
  logic [13:0] capacity;
  logic producer_final;
@@ -49,17 +54,22 @@ module nds_fpga3d #(
  wire param_device=param_base==32'h3fc81000;
  wire param_padded=param_base==32'h3fe31000;
  wire param_wc=param_base>=32'h3fd40000 && param_base<32'h3fe00000 && param_base[5:0]==0;
+ wire param_segmented=param_base>=32'h3fd40000 && param_base<=32'h3fe00000 && param_base[5:0]==0;
  // A valid WC range contains at most 768 KiB / 64 = 12288 slots.
  // Reject using the full original address before using these bounded fields.
  wire [13:0] param_space=14'((32'h3fe00000-param_base)>>6);
  wire [31:0] canonical_base={10'h0ff,param_base[21:6],6'd0};
- wire [13:0] param_capacity=(param_device || param_padded)?14'd8128:(param_space>8128?14'd8128:14'(param_space));
+ wire [14:0] segment_space={1'b0,param_space}+15'd8128;
+ wire [13:0] param_capacity=segmented_frame?(segment_space>16383?14'd16383:segment_space[13:0]):
+      (param_device || param_padded)?14'd8128:(param_space>8128?14'd8128:14'(param_space));
  // The first 64 slots belong to telemetry. Every following group of 1024
  // slots is in the next plane's padding, never its 192 visible rows.
  wire [13:0] padded_slot=14'(index)+14'd64;
  wire [28:0] padded_address={11'h1ff,padded_slot[12:10],2'b11,padded_slot[9:0],3'd0};
- wire [28:0] command_address=command_base==32'h3fe31000 ? padded_address :
-      29'(command_base>>3)+(29'(index)<<3);
+ wire [13:0] tail_index=index-14'd8128;
+ wire [28:0] command_address=segmented_frame?
+      (index<8128?padded_address:29'(command_base>>3)+(29'(tail_index)<<3)):
+      command_base==32'h3fe31000 ? padded_address:29'(command_base>>3)+(29'(index)<<3);
  logic [15:0] poll;
  logic [3:0] beat;
  // Use the two M10Ks released by the short scaler/audio delay chains.
@@ -71,7 +81,9 @@ module nds_fpga3d #(
  logic [6:0] cache_fill_beat,cache_last_beat;
  // Keep each read inside one 4 KiB page even when the WC arena begins at
  // an arbitrary 64-byte boundary. Never prefetch an unpublished record.
- wire [5:0] command_page_index=command_base[11:6]+index[5:0];
+ // Derive the page from the selected physical segment, including an arbitrary
+ // 64-byte texture-tail offset. The 8128 seam is itself a page boundary.
+ wire [5:0] command_page_index=command_address[8:3];
  wire [6:0] page_commands=7'd64-{1'b0,command_page_index};
  wire [4:0] fetch_limit=page_commands>16?5'd16:page_commands[4:0];
  wire [4:0] fetch_commands=count-index>fetch_limit?fetch_limit:5'(count-index);
@@ -339,7 +351,7 @@ module nds_fpga3d #(
   rd=0;wr=0;burst=1;addr=MB;din=0;be=8'hff;
   case(state)
    INIT,POLL:begin rd=1;addr=MB;end
-   READY:begin wr=1;addr=MB+3;din={epoch,MAGIC};end
+   READY:begin wr=1;addr=MB+3;din={epoch,READY_MAGIC};end
    HEADER,REFILL:begin rd=1;addr=MB+1;end
    PARAM:begin rd=1;addr=MB+7;end
    FETCH:begin rd=1;burst=fetch_words;addr=command_address;end
@@ -398,6 +410,7 @@ module nds_fpga3d #(
    toon_configured<=0;
    coverage_valid<=0;
    output_first<=0;output_end<=256;
+   segmented_frame<=0;
   end else begin
    if((state==FLUSH_WRITE || state==DUMP_WRITE) && !busy)flush_inflight<=1;
    case(state)
@@ -407,7 +420,8 @@ module nds_fpga3d #(
     POLL_DELAY:if(poll==POLL_CYCLES-1)state<=POLL;else poll<=poll+1'b1;
     POLL:if(!busy)state<=POLL_WAIT;
     POLL_WAIT:if(dout_ready)begin
-     if(dout[31:0]==MAGIC && dout[63:32]!=0 && dout[63:32]!=seen)begin
+     if((dout[31:0]==MAGIC || (ENABLE_SEGMENTED_EXPERIMENT && dout[31:0]==SEGMENTED_MAGIC)) && dout[63:32]!=0 && dout[63:32]!=seen)begin
+      segmented_frame<=ENABLE_SEGMENTED_EXPERIMENT && dout[31:0]==SEGMENTED_MAGIC;
       seq<=dout[63:32];seen<=dout[63:32];state<=HEADER;
      end else begin poll<=0;state<=POLL_DELAY;end
     end
@@ -417,15 +431,15 @@ module nds_fpga3d #(
      edge_configured<=0;render_bank<=0;
      palette_valid<=0;
      toon_configured<=0;
-     count<=dout[12:0];producer_final<=dout[31];
+     count<=dout[13:0];producer_final<=dout[31];
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
-     else if(dout[30:0]>8128)begin status<=1;state<=COMPLETE;end
+     else if(dout[30:0]>(segmented_frame?31'd16383:31'd8128))begin status<=1;state<=COMPLETE;end
      else state<=PARAM;
     end
     PARAM:if(!busy)state<=PARAM_WAIT;
     PARAM_WAIT:if(dout_ready)begin
-     command_base<=canonical_base;texture_end<=(param_device || param_padded)?32'h3fe00000:canonical_base;capacity<=param_capacity;
-     if((!param_device && !param_wc && !param_padded) || count>param_capacity)begin status<=1;state<=COMPLETE;end
+     command_base<=canonical_base;texture_end<=segmented_frame?canonical_base:(param_device || param_padded)?32'h3fe00000:canonical_base;capacity<=param_capacity;
+     if((segmented_frame?!param_segmented:(!param_device && !param_wc && !param_padded)) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
     CACHE_CLEAR:if(p_clear_index==255)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
@@ -453,7 +467,7 @@ module nds_fpga3d #(
     REFILL_WAIT:if(dout_ready)begin
      if(dout[63:32]!=epoch || epoch!=session)begin status<=2;state<=COMPLETE;end
      else if(dout[30:0]<count || dout[30:0]>capacity)begin status<=1;state<=COMPLETE;end
-     else begin count<=dout[12:0];producer_final<=dout[31];state<=AVAILABLE;end
+     else begin count<=dout[13:0];producer_final<=dout[31];state<=AVAILABLE;end
     end
     FETCH:if(!busy)begin
      cached_commands<=fetch_commands;cache_slot<=0;cache_fill_beat<=0;cache_last_beat<=fetch_words-1'b1;state<=FETCH_WAIT;

@@ -7,6 +7,7 @@
 #include <vector>
 namespace fpga3d {
 constexpr uint32_t Magic=0x38443346; // F3D8: exact binary-alpha RGB555 texture storage
+constexpr uint32_t SegmentedMagic=0x41443346; // Experimental F3DA: padding + free texture tail
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t StencilInput=0x3fc80e00, StencilOutput=0x3fd30000;
@@ -22,6 +23,17 @@ constexpr uint32_t commandAddress(uint32_t base,size_t index) {
 }
 static_assert(commandAddress(PaddedCommands,0)==PaddedCommands);
 static_assert(commandAddress(PaddedCommands,MaxCommands-1)+64==0x40000000u);
+constexpr size_t MaxSegmentedCommands=16383;
+constexpr size_t segmentedCapacity(uint32_t tail) {
+ if(tail<Textures || tail>0x3fe00000u || (tail&63))return 0;
+ return std::min<size_t>(MaxSegmentedCommands,MaxCommands+(0x3fe00000u-tail)/64);
+}
+constexpr uint32_t segmentedCommandAddress(uint32_t tail,size_t index) {
+ return index<MaxCommands?commandAddress(PaddedCommands,index):tail+uint32_t(index-MaxCommands)*64;
+}
+static_assert(segmentedCommandAddress(Textures,MaxCommands-1)+64==0x40000000u);
+static_assert(segmentedCommandAddress(Textures,MaxCommands)==Textures);
+static_assert(segmentedCapacity(0x3fe00000u)==MaxCommands);
 using Command=std::array<uint32_t,32>;
 enum Flags:uint32_t { Linear=1, WBuffer=2, Textured=4, Front=8, Back=16, Equal=32 };
 struct Span {
