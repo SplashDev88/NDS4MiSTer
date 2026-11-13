@@ -1795,7 +1795,7 @@ nds_h3d_frame_record_cdc #(
 
 // Fold consecutive ARM9 VRAM writes (halfwords into words, words into pairs)
 // before the DDR writer; see the module header for why.
-nds_h3d_vram_record_packer #(.RECONSTRUCT_FRAME(1'b1)) h3d_vram_packer (
+nds_h3d_vram_record_packer #(.RECONSTRUCT_FRAME(1'b1), .BANKED_RAM(1'b1)) h3d_vram_packer (
     .clk(ddr_clk), .reset(bridge_reset_ddr | ~h3d_control_release),
     .in_record_valid(h3d_raw_record_valid),
     .in_record_ready(h3d_raw_record_ready),
@@ -2115,7 +2115,7 @@ wire [7:0] ctl_mux_burst,ctl_mux_be;
 wire [28:0] ctl_mux_addr;
 wire [63:0] ctl_mux_din,ctl_mux_dout;
 // Private experiment: recovered record metadata RAM funds a16 KiB texture cache.
-nds_fpga3d #(.ENABLE_SEGMENTED_EXPERIMENT(1), .TEX_CACHE_INDEX_BITS(10),
+nds_fpga3d #(.ENABLE_SEGMENTED_EXPERIMENT(1), .TEX_CACHE_INDEX_BITS(11),
               .ENABLE_TEXTURE_HASH_EXPERIMENT(1)) fpga3d (
  .clk(ddr_clk),.reset(h3d_fabric_reset),.enable(h3d_control_release),.session(h3d_active_session),
  .rd(f3d_rd),.wr(f3d_wr),.burst(f3d_burst),.addr(f3d_addr),.din(f3d_din),.be(f3d_be),

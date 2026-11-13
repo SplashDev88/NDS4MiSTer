@@ -267,7 +267,8 @@ endmodule
 // in_ready depends only on registers, and every output is a register.
 module nds_h3d_record_fifo #(
     parameter integer LGDEPTH = 11,
-    parameter bit RECONSTRUCT_FRAME = 0
+    parameter bit RECONSTRUCT_FRAME = 0,
+    parameter bit BANKED_RAM = 0
 ) (
     input  logic         clk,
     input  logic         reset,
@@ -298,7 +299,6 @@ module nds_h3d_record_fifo #(
     // stages. Generic callers keep the original unrestricted format.
     localparam integer ENTRY_BITS = RECONSTRUCT_FRAME ? 130 : 162;
     typedef logic [ENTRY_BITS-1:0] entry_t;
-    (* ramstyle = "M10K, no_rw_check" *) entry_t mem [0:DEPTH-1];
 
     logic [LGDEPTH:0] wptr, rptr;     // rptr: next entry to fetch from the RAM
     logic [LGDEPTH:0] wptr_n, rptr_n, stored_n;
@@ -378,13 +378,34 @@ module nds_h3d_record_fifo #(
         stored_n = wptr_n - rptr_n;
     end
 
-    // RAM: plain write port, registered read that holds when not fetching
-    always_ff @(posedge clk) begin
-        if (in_fire)
-            mem[wptr[LGDEPTH-1:0]] <= in_entry;
-        if (fetch)
-            ram_q <= mem[rptr[LGDEPTH-1:0]];
-    end
+    // Two half-depth banks use the M10K's 2K x 5 geometry for the 4K x 130
+    // compact queue. Both bank outputs and the selector hold between reads;
+    // the mux replaces the original registered RAM result without adding a
+    // pipeline stage or changing capacity, acceptance, or output cadence.
+    generate if (BANKED_RAM && LGDEPTH >= 2) begin : g_banked_ram
+        logic selected_bank;
+        entry_t bank_q [0:1];
+        for (genvar bank = 0; bank < 2; bank = bank + 1) begin : g_bank
+            (* ramstyle = "M10K, no_rw_check" *) entry_t mem [0:(DEPTH/2)-1];
+            always_ff @(posedge clk) begin
+                if (in_fire && wptr[LGDEPTH-1] == (bank != 0))
+                    mem[wptr[LGDEPTH-2:0]] <= in_entry;
+                if (fetch && rptr[LGDEPTH-1] == (bank != 0))
+                    bank_q[bank] <= mem[rptr[LGDEPTH-2:0]];
+            end
+        end
+        always_ff @(posedge clk)
+            if (fetch) selected_bank <= rptr[LGDEPTH-1];
+        assign ram_q = bank_q[selected_bank];
+    end else begin : g_linear_ram
+        (* ramstyle = "M10K, no_rw_check" *) entry_t mem [0:DEPTH-1];
+        always_ff @(posedge clk) begin
+            if (in_fire)
+                mem[wptr[LGDEPTH-1:0]] <= in_entry;
+            if (fetch)
+                ram_q <= mem[rptr[LGDEPTH-1:0]];
+        end
+    end endgenerate
 
     always_ff @(posedge clk) begin
         if (reset) begin
@@ -419,7 +440,8 @@ endmodule
 module nds_h3d_vram_record_packer #(
     parameter integer LINGER_CYCLES = 16,
     parameter integer FIFO_LGDEPTH = 12,
-    parameter bit RECONSTRUCT_FRAME = 0
+    parameter bit RECONSTRUCT_FRAME = 0,
+    parameter bit BANKED_RAM = 0
 ) (
     input  logic         clk,
     input  logic         reset,
@@ -470,7 +492,7 @@ module nds_h3d_vram_record_packer #(
 
     // the registered output stage is also the queue the VBlank burst waits in
     nds_h3d_record_fifo #(.LGDEPTH(FIFO_LGDEPTH),
-        .RECONSTRUCT_FRAME(RECONSTRUCT_FRAME)) out_stage (
+        .RECONSTRUCT_FRAME(RECONSTRUCT_FRAME), .BANKED_RAM(BANKED_RAM)) out_stage (
         .clk, .reset,
         .in_record_valid(b_rv), .in_record_ready(b_rr), .in_record(b_r),
         .in_record_frame(b_rf), .in_record_frame_end(b_fe),
