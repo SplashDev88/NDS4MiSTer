@@ -59,6 +59,8 @@ SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
         SpriteSetup = std::make_unique<SpriteSetupCache>();
     const char* rowIndex = std::getenv("NDS_GPU_SPRITE_ROW_INDEX");
     SpriteRowIndex = !rowIndex || std::strcmp(rowIndex, "0") != 0;
+    const char* opaqueSeed = std::getenv("NDS4MISTER_OPAQUE3D_SEED");
+    Opaque3DSeed = opaqueSeed && std::strcmp(opaqueSeed, "1") == 0;
     // mosaic table is initialized at compile-time
 }
 
@@ -357,26 +359,88 @@ void SoftRenderer2D::DrawScanlineBGMode7(u32 line)
     }
 }
 
+// With no ordinary color effects, a fully opaque 3D row makes every lower
+// layer irrelevant to the final pixels. Keep the normal window, mosaic,
+// coherence and sprite preparation; bypass only covered drawing. Diagnostic
+// layer consumers require the original second-layer metadata and stay normal.
+bool SoftRenderer2D::SeedOpaque3DLine()
+{
+    if (GPU2D.Num || !(GPU2D.DispCnt & 8) || !(GPU2D.LayerEnable & 1) ||
+        (GPU2D.DispCnt & 0xE000) || GPU.CaptureEnable ||
+        ((GPU2D.BlendCnt & 0xC0) && (GPU2D.BlendCnt & 0x3F)) ||
+        NDS4MiSTer::Trace2DEnabled() || NDS4MiSTer::CompositeLineEnabled())
+        return false;
+    for (unsigned x = 0; x < 256; x += 2)
+    {
+        const u32 a = Parent.Output3D[x], b = Parent.Output3D[x+1];
+        if (((a ^ 0x1F000000u) | (b ^ 0x1F000000u)) & 0xFF000000u)
+            return false; // The normal path reinitializes both buffers.
+        BGOBJLine[x] = a | 0x40000000u;
+        BGOBJLine[x+1] = b | 0x40000000u;
+        BGOBJLine[x+256] = BGOBJLine[x+257] = 0;
+    }
+#ifdef NDS4MISTER_OPAQUE3D_SEED_TEST
+    ++Opaque3DSeedHits;
+#endif
+    return true;
+}
+
+void SoftRenderer2D::DrawAboveOpaque3D(u32 line)
+{
+    const u16* bgCnt = GPU2D.BGCnt;
+    const unsigned mode = GPU2D.DispCnt & 7;
+    const int opaquePriority = bgCnt[0] & 3;
+    for (int priority = opaquePriority; priority >= 0; --priority)
+    {
+        // BG0 wins ties with all other backgrounds. OBJ wins its tie with
+        // BG0, so its matching priority must still be interleaved below.
+        if (priority < opaquePriority)
+        {
+            if (mode <= 5 && (GPU2D.LayerEnable & 8) && (bgCnt[3] & 3) == priority)
+            {
+                if (mode >= 3) DoDrawBG(Extended, line, 3);
+                else if (mode >= 1) DoDrawBG(Affine, line, 3);
+                else DoDrawBG(Text, line, 3);
+            }
+            if (mode != 7 && (GPU2D.LayerEnable & 4) && (bgCnt[2] & 3) == priority)
+            {
+                if (mode == 6) DoDrawBG_Large(line);
+                else if (mode == 5) DoDrawBG(Extended, line, 2);
+                else if (mode == 4 || mode == 2) DoDrawBG(Affine, line, 2);
+                else DoDrawBG(Text, line, 2);
+            }
+            if (mode != 6 && (GPU2D.LayerEnable & 2) && (bgCnt[1] & 3) == priority)
+                DoDrawBG(Text, line, 1);
+        }
+        if ((GPU2D.LayerEnable & 16) && NumSprites) InterleaveSprites(priority);
+    }
+}
+
 void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
 {
-    u64 backdrop;
-    if (GPU2D.Num)
-        backdrop = *(u16*)&GPU.Palette[0x400];
-    else
-        backdrop = *(u16*)&GPU.Palette[0];
-
+    const bool opaqueSeeded = Opaque3DSeed && SeedOpaque3DLine();
+    if (!opaqueSeeded)
     {
-        u8 r = (backdrop & 0x001F) << 1;
-        u8 g = ((backdrop & 0x03E0) >> 4) | ((backdrop & 0x8000) >> 15);
-        u8 b = (backdrop & 0x7C00) >> 9;
+        u64 backdrop;
+        if (GPU2D.Num)
+            backdrop = *(u16*)&GPU.Palette[0x400];
+        else
+            backdrop = *(u16*)&GPU.Palette[0];
 
-        backdrop = r | (g << 8) | (b << 16) | 0x20000000;
-        backdrop |= (backdrop << 32);
+        {
+            u8 r = (backdrop & 0x001F) << 1;
+            u8 g = ((backdrop & 0x03E0) >> 4) | ((backdrop & 0x8000) >> 15);
+            u8 b = (backdrop & 0x7C00) >> 9;
 
-        for (int i = 0; i < 256; i+=2)
-            *(u64*)&BGOBJLine[i] = backdrop;
-        for (int i = 256; i < 512; i+=2)
-            *(u64*)&BGOBJLine[i] = 0;
+            backdrop = r | (g << 8) | (b << 16) | 0x20000000;
+            backdrop |= (backdrop << 32);
+
+            for (int i = 0; i < 256; i+=2)
+                *(u64*)&BGOBJLine[i] = backdrop;
+            for (int i = 256; i < 512; i+=2)
+                *(u64*)&BGOBJLine[i] = 0;
+        }
+
     }
 
     if (GPU2D.DispCnt & 0xE000)
@@ -390,7 +454,8 @@ void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
     if (SpritePriorityIndex && (GPU2D.LayerEnable & (1<<4)) && NumSprites)
         IndexSpritePriorities();
 
-    switch (GPU2D.DispCnt & 0x7)
+    if (opaqueSeeded) DrawAboveOpaque3D(line);
+    else switch (GPU2D.DispCnt & 0x7)
     {
         case 0: DrawScanlineBGMode<0>(line); break;
         case 1: DrawScanlineBGMode<1>(line); break;

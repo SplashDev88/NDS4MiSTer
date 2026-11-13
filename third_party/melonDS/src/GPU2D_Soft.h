@@ -104,6 +104,12 @@ private:
     bool AffineTileCache = true;
     bool AffinePackedRows = false;
     bool StandardPaletteCache = true;
+    bool Opaque3DSeed = false;
+#ifdef NDS4MISTER_OPAQUE3D_SEED_TEST
+    u64 Opaque3DSeedHits = 0;
+#endif
+    bool SeedOpaque3DLine();
+    void DrawAboveOpaque3D(u32 line);
     bool StandardPaletteValid = false, StandardPaletteChecked = false;
     alignas(16) u16 StandardPaletteRaw[256] {};
     alignas(16) u32 StandardPaletteColors[256] {};

@@ -243,6 +243,15 @@ target_compile_options(nds_bench PRIVATE
 )
 
 if(NDS4MISTER_USE_MELONDS)
+    # Opt-in CPU renderer differential. Set NDS4MISTER_OPAQUE3D_SEED_TEST
+    # consistently for core and this executable in the dedicated test build.
+    add_executable(nds_opaque3d_seed_test EXCLUDE_FROM_ALL
+        tools/test_opaque3d_seed.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_opaque3d_seed_test PRIVATE src third_party/melonDS/src)
+    target_link_libraries(nds_opaque3d_seed_test PRIVATE core ${CMAKE_DL_LIBS})
+    set_property(TARGET nds_opaque3d_seed_test PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+
     # Focused ROM-free background oracle/timer; built explicitly.
     add_executable(nds_background_palette_test EXCLUDE_FROM_ALL
         tools/test_background_palette_cache.cpp src/melonds/HeadlessPlatform.cpp)
