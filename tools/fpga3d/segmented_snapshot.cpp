@@ -2,6 +2,7 @@
 // Production saved-GPU command producer and CPU transport through actual RTL.
 // Native analysis only; memory is ordinary vectors, with no hardware access.
 #define SEGMENTED_TRANSPORT_EXPERIMENT 1
+#define HASHED_TRANSPORT_EXPERIMENT 1
 #define main original_simulation_main
 #include "sim.cpp"
 #undef main
@@ -39,11 +40,11 @@ int main(int argc,char** argv)try{
  fpga3d::bind(nullptr,nullptr,false);auto reference=loadSnapshot();render(*reference);std::vector<u32> expected;
  for(unsigned y=0;y<192;++y){auto p=reference->GetRenderer().Get3DScanline(y);expected.insert(expected.end(),p,p+256);}
  unsigned acceptedFrames=0,fallbackFrames=0;
- for(unsigned format=0;format<2;++format){
+ for(unsigned format=0;format<2;++format)for(unsigned hashed=0;hashed<2;++hashed){
   auto candidate=loadSnapshot();auto& soft=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(candidate->GetRenderer()).Rend3D.get());
   Sim sim;sim.reset();sim.word(0x3fc00000)=0x31443348;sim.word(0x3fc00008)=17;
-  fpga3d::poisonedSession=0;fpga3d::segmentedCommandsEnabled=true;fpga3d::packedTexturesEnabled=format;
-  fpga3d::adaptiveAdmission=true;fpga3d::textureTrafficGuard=false;
+  fpga3d::poisonedSession=0;fpga3d::segmentedCommandsEnabled=false;fpga3d::hashedTexturesEnabled=hashed;fpga3d::profileEnabled=true;fpga3d::packedTexturesEnabled=format;
+  fpga3d::adaptiveAdmission=true;fpga3d::textureTrafficGuard=true;
   soft.FullFrameCompletion=true;soft.FpgaFrame.deadlineMs=30000;
   activeSimulation=&sim;activeFrame=&soft.FpgaFrame;fpga3d::segmentedTestProgress=advance;
   const auto completedBefore=fpga3d::completedFrames;
@@ -52,8 +53,16 @@ int main(int argc,char** argv)try{
   if(accepted)++acceptedFrames;else ++fallbackFrames;
   for(unsigned y=0;y<192;++y)require(!std::memcmp(expected.data()+256*y,candidate->GetRenderer().Get3DScanline(y),1024),"production producer/RTL pixels differ from native");
   const auto& f=soft.FpgaFrame;require(!f.active,"snapshot producer remained active");
-  std::cout<<"SEGMENT_SNAPSHOT format="<<format<<" accepted="<<accepted<<" valid="<<f.valid<<" commands="<<f.commandCount()<<" textures="<<f.textures.size()*4<<" capacity="<<f.commandCapacity<<" transport_error="<<f.transportError<<" failure="<<fpga3d::outcomeNames[unsigned(f.failure)]<<" cycles="<<sim.cycles<<'\n';
+  require(!f.transportError,"unexpected transport error");
+  const auto& profile=soft.FpgaProfile;require(profile.attempts==1,"one production admission attempt required");
+  unsigned outcome=unsigned(fpga3d::Outcome::Count);
+  for(unsigned r=0;r<profile.counts.size();++r)if(profile.counts[r]){require(profile.counts[r]==1,"one admission result required");outcome=r;}
+  require(outcome<unsigned(fpga3d::Outcome::Count),"missing admission result");
+  require(accepted==(outcome==unsigned(fpga3d::Outcome::Accepted)),"admission disagrees with completion");
+  if(accepted){require(f.hashed==bool(hashed) && !f.segmented,"wrong production mode");require(sim.word(Mailbox)==(hashed?HashedMagic:Magic),"wrong submitted magic");}
+
+  std::cout<<"HASH_PRODUCER format="<<format<<" hashed="<<hashed<<" reason="<<fpga3d::outcomeNames[outcome]<<" texture_reads="<<sim.textureReads<<" texture_beats="<<sim.textureBeats<<" accepted="<<accepted<<" valid="<<f.valid<<" commands="<<f.commandCount()<<" textures="<<f.textures.size()*4<<" capacity="<<f.commandCapacity<<" transport_error="<<f.transportError<<" failure="<<fpga3d::outcomeNames[unsigned(f.failure)]<<" cycles="<<sim.cycles<<'\n';
   fpga3d::segmentedTestProgress=nullptr;activeSimulation=nullptr;activeFrame=nullptr;
  }
- std::cout<<"SEGMENT_SNAPSHOT_PASS accepted="<<acceptedFrames<<" fallback="<<fallbackFrames<<" exact_pixels=98304\n";return 0;
+ std::cout<<"HASH_PRODUCER_PASS accepted="<<acceptedFrames<<" fallback="<<fallbackFrames<<" exact_pixels=196608\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL "<<e.what()<<'\n';return 1;}
