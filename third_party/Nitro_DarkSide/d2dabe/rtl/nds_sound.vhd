@@ -573,8 +573,13 @@ begin
       variable v_nib  : unsigned(3 downto 0);
       variable v_step : integer range 0 to 32767;
       variable v_diff : integer range 0 to 65535;
-      variable v_smp  : integer;
-      variable v_i    : integer;
+      -- Maximum ADPCM delta is 32767/8 + 32767/4 + 32767/2 +
+      -- 32767 = 61436. Include the unclamped sum and the header's -32768.
+      -- Explicit bounds avoid requiring full 32-bit intermediate variables
+      -- in each of the sixteen parallel decoders; arithmetic stays unchanged.
+      variable v_smp  : integer range -94204 to 94203;
+      -- Header index is seven bits; decoded index is 0..88 plus -1..8.
+      variable v_i    : integer range -1 to 127;
    begin
       if rising_edge(clk) then
 
