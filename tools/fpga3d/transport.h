@@ -12,6 +12,12 @@
 #include <map>
 #include <algorithm>
 namespace fpga3d {
+#ifdef NDS4MISTER_SEGMENTED_SNAPSHOT_TEST
+#ifndef __APPLE__
+#error Segmented snapshot bridge is a native Apple analysis target, never firmware.
+#endif
+inline void (*segmentedTestProgress)()=nullptr;
+#endif
 // Bound once by the service before it creates renderer threads. Reuses its
 // existing mappings: no conflicting Device/WC aliases of physical memory.
 inline volatile uint32_t* control=nullptr;
@@ -342,6 +348,8 @@ struct Frame {
    if(!ownershipHealthy())return false;
 #ifdef FPGA3D_TEST_PROGRESS
    FPGA3D_TEST_PROGRESS();
+#elif defined(NDS4MISTER_SEGMENTED_SNAPSHOT_TEST)
+   if(segmentedTestProgress)segmentedTestProgress();
 #else
    std::this_thread::sleep_for(std::chrono::microseconds(50));
 #endif

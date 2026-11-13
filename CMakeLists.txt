@@ -38,6 +38,16 @@ if(BUILD_TESTING)
     add_test(NAME nds_game_query_profile COMMAND nds_game_query_profile_test)
 endif()
 
+if(NDS4MISTER_USE_MELONDS AND APPLE AND NDS_SEGMENTED_MODEL_DIR)
+    add_executable(nds_segmented_snapshot EXCLUDE_FROM_ALL
+        tools/fpga3d/segmented_snapshot.cpp src/melonds/HeadlessPlatform.cpp
+        ${NDS_VERILATOR_INCLUDE}/verilated.cpp ${NDS_VERILATOR_INCLUDE}/verilated_threads.cpp)
+    target_link_libraries(nds_segmented_snapshot PRIVATE core ${NDS_SEGMENTED_MODEL_DIR}/Vnds_fpga3d__ALL.a)
+    target_include_directories(nds_segmented_snapshot PRIVATE src third_party/melonDS/src
+        ${NDS_SEGMENTED_MODEL_DIR} ${NDS_VERILATOR_INCLUDE} ${NDS_VERILATOR_INCLUDE}/vltstd)
+    target_compile_options(nds_segmented_snapshot PRIVATE -fno-access-control)
+endif()
+
 add_executable(nds_matched_recovery_test src/replay/MatchedDisplayRecoveryTest.cpp)
 target_include_directories(nds_matched_recovery_test PRIVATE src)
 target_compile_options(nds_matched_recovery_test PRIVATE -Wall -Wextra -Wpedantic)
