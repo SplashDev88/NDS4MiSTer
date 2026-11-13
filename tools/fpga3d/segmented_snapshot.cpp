@@ -14,6 +14,7 @@
 using namespace melonDS;
 static Sim* activeSimulation=nullptr;
 static fpga3d::Frame* activeFrame=nullptr;
+double sc_time_stamp(){return activeSimulation?double(activeSimulation->cycles):0.0;}
 static void advance(){
  require(activeSimulation && activeFrame,"missing simulated transport owner");
  auto& sim=*activeSimulation;
