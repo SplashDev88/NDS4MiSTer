@@ -108,6 +108,12 @@ public:
     void DoSavestate(Savestate* file) noexcept;
 
     void SetEnabled(bool geometry, bool rendering) noexcept;
+    // Host policy, selected once for the identified cartridge/session.
+    void SetLightingResultReuseEnabled(bool enabled) noexcept
+    {
+        UseLightingResultReuse = enabled;
+        LightingCacheValid = 0;
+    }
     // An external replay owner supplies the authoritative GX command stream;
     // no emulated CPU or DMA channel consumes FIFO IRQ/DMA side effects.
     void SetExternalCommandReplay(bool enabled) noexcept
@@ -221,6 +227,8 @@ private:
     void SubmitPolygon() noexcept;
     void SubmitVertex() noexcept;
     void CalculateLighting() noexcept;
+    void CalculateLighting(u32 normalKey) noexcept;
+    void CalculateLightingUncached() noexcept;
     void BoxTest(const u32* params) noexcept;
     void PosTest() noexcept;
     void VecTest(u32 param) noexcept;
@@ -402,6 +410,14 @@ public:
     u8 MatAmbient[3] {};
     u8 MatSpecular[3] {};
     u8 MatEmission[3] {};
+
+    // Derived only: never serialized. A hash chooses a slot; exact keys and
+    // state invalidation determine hits. COLOR cannot overwrite this RGB.
+    struct LightingResult { u32 NormalKey; u32 ColorAndCycles; };
+    LightingResult LightingCache[16] {};
+    u32 LightingCacheValid = 0;
+    u32 LightingCacheMask = 0;
+    bool UseLightingResultReuse = false;
 
     bool UseShininessTable = false;
     u8 ShininessTable[128] {};

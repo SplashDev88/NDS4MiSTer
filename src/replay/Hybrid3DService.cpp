@@ -746,7 +746,8 @@ public:
         bool sprite_raster_spans = false,
         bool raster_only_sprite_spans = false,
         bool raster_only_integral_texture_spans = false,
-        bool regional_vram_replay = false)
+        bool regional_vram_replay = false,
+        bool lighting_result_reuse = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -781,6 +782,7 @@ public:
           raster_only_sprite_spans_(matched_display_test && raster_only_sprite_spans),
           raster_only_integral_texture_spans_(matched_display_test && raster_only_integral_texture_spans),
           regional_vram_replay_(matched_display_test && regional_vram_replay),
+          lighting_result_reuse_(matched_display_test && lighting_result_reuse),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -1297,6 +1299,7 @@ private:
             (phase && std::strcmp(phase, "1") == 0));
         nds_->GPU.GPU3D.SetEnabled(true, true);
         nds_->GPU.GPU3D.SetExternalCommandReplay(true);
+        nds_->GPU.GPU3D.SetLightingResultReuseEnabled(lighting_result_reuse_);
         // This service always publishes melonDS's native software output.
         // HiresPosition is only read by its OpenGL/compute renderers, while
         // calculating it costs two 64-bit divisions for every accepted
@@ -5646,6 +5649,7 @@ private:
     // Private regional experiment: no service VRAM or prepared-2D policy.
     bool raster_only_integral_texture_spans_ = false;
     bool regional_vram_replay_ = false;
+    bool lighting_result_reuse_ = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
     bool fmv_receiver_enabled_ = false;
 #endif
@@ -11550,6 +11554,7 @@ try {
             bool raster_only_sprite_spans = false;
             bool raster_only_integral_texture_spans = false;
             bool regional_vram_replay = false;
+            bool lighting_result_reuse = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11566,6 +11571,8 @@ try {
                     load_acquire(&header.fpga_session) != selected_session)
                     continue;
                 profile_session = selected_session;
+                lighting_result_reuse =
+                    nds4mister::replay::dawn_lighting_result_reuse_profile(selected);
                 integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected) ||
                     nds4mister::replay::ecclesia_sprite_raster_profile(selected);
                 sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected) ||
@@ -11606,6 +11613,7 @@ try {
                     << " raster_only_sprite_spans=" << raster_only_sprite_spans
                     << " raster_only_integral_texture_spans=" << raster_only_integral_texture_spans
                     << " regional_vram_replay=" << regional_vram_replay
+                    << " lighting_result_reuse=" << lighting_result_reuse
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11645,7 +11653,8 @@ try {
                 sprite_raster_spans,
                 raster_only_sprite_spans,
                 raster_only_integral_texture_spans,
-                regional_vram_replay);
+                regional_vram_replay,
+                lighting_result_reuse);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif

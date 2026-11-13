@@ -212,6 +212,7 @@ void GPU3D::ResetRenderingState() noexcept
 
 void GPU3D::Reset() noexcept
 {
+    LightingCacheValid = 0;
     CmdFIFO.Clear();
     CmdPIPE.Clear();
 
@@ -342,6 +343,7 @@ void GPU3D::Reset() noexcept
 
 void GPU3D::DoSavestate(Savestate* file) noexcept
 {
+    if (!file->Saving) LightingCacheValid = 0;
     file->Section("GP3D");
 
     CmdFIFO.DoSavestate(file);
@@ -1688,7 +1690,8 @@ void GPU3D::SubmitVertex() noexcept
     AddCycles(3);
 }
 
-void GPU3D::CalculateLighting() noexcept
+// Preserve the qualified Beta12 arithmetic as the path for other games.
+void GPU3D::CalculateLightingUncached() noexcept
 {
     if ((TexParam >> 30) == 2)
     {
@@ -1780,6 +1783,136 @@ void GPU3D::CalculateLighting() noexcept
     VertexColor[2] = (vtxbuff[2] >> 14 > 31) ? 31 : (vtxbuff[2] >> 14);
 
     if (c < 1) c = 1;
+    NormalPipeline = 7;
+    AddCycles(c);
+}
+
+
+void GPU3D::CalculateLighting() noexcept
+{
+    CalculateLighting((u32(Normal[0]) & 1023) |
+        ((u32(Normal[1]) & 1023) << 10) | ((u32(Normal[2]) & 1023) << 20));
+}
+
+void GPU3D::CalculateLighting(u32 normalKey) noexcept
+{
+    if ((TexParam >> 30) == 2)
+    {
+        TexCoords[0] = RawTexCoords[0] + (((s64)Normal[0]*TexMatrix[0] + (s64)Normal[1]*TexMatrix[4] + (s64)Normal[2]*TexMatrix[8]) >> 21);
+        TexCoords[1] = RawTexCoords[1] + (((s64)Normal[0]*TexMatrix[1] + (s64)Normal[1]*TexMatrix[5] + (s64)Normal[2]*TexMatrix[9]) >> 21);
+    }
+
+    // Texture-mode2 above is per-command work even when the lighting RGB
+    // repeats. The FIFO caller already supplies the packed normal operand.
+    normalKey &= 0x3FFFFFFF;
+    const u32 lightMask = CurPolygonAttr & 15;
+    if (LightingCacheMask != lightMask)
+    {
+        LightingCacheValid = 0;
+        LightingCacheMask = lightMask;
+    }
+    const u32 slot = (normalKey * 0x9E3779B1u) >> 28;
+    const u32 slotBit = 1u << slot;
+    auto& cached = LightingCache[slot];
+    if ((LightingCacheValid & slotBit) && cached.NormalKey == normalKey)
+    {
+        const u32 result = cached.ColorAndCycles;
+        VertexColor[0] = result & 31;
+        VertexColor[1] = (result >> 5) & 31;
+        VertexColor[2] = (result >> 10) & 31;
+        NormalPipeline = 7;
+        AddCycles(result >> 24);
+        return;
+    }
+
+    s32 normaltrans[3]; // should be 1 bit sign 10 bits frac
+    normaltrans[0] = ((Normal[0]*VecMatrix[0] + Normal[1]*VecMatrix[4] + Normal[2]*VecMatrix[8]) << 9) >> 21;
+    normaltrans[1] = ((Normal[0]*VecMatrix[1] + Normal[1]*VecMatrix[5] + Normal[2]*VecMatrix[9]) << 9) >> 21;
+    normaltrans[2] = ((Normal[0]*VecMatrix[2] + Normal[1]*VecMatrix[6] + Normal[2]*VecMatrix[10]) << 9) >> 21;
+
+    s32 c = 0;
+    u32 vtxbuff[3] =
+    {
+        (u32)MatEmission[0] << 14,
+        (u32)MatEmission[1] << 14,
+        (u32)MatEmission[2] << 14
+    };
+    // Only visit enabled lights, retaining the original ascending order and
+    // every per-light truncation. c still supplies the same pipeline cost.
+    u32 enabledLights = CurPolygonAttr & 0xF;
+    while (enabledLights)
+    {
+        const int i = __builtin_ctz(enabledLights);
+        enabledLights &= enabledLights - 1;
+
+        // (credit to azusa for working out most of the details of the diff. algorithm, and essentially the entire spec. algorithm)
+        
+        // calculate dot product
+        // bottom 9 bits are discarded after multiplying and before adding
+        s32 dot = ((LightDirection[i][0]*normaltrans[0]) >> 9) +
+                  ((LightDirection[i][1]*normaltrans[1]) >> 9) +
+                  ((LightDirection[i][2]*normaltrans[2]) >> 9);
+
+        s32 shinelevel;
+        if (dot > 0) 
+        {
+            // -- diffuse lighting --
+            
+            // convert dot to signed 11 bit int
+            // then we truncate the result of the multiplications to an unsigned 20 bits before adding to the vtx color
+            s32 diffdot = (dot << 21) >> 21;
+            vtxbuff[0] += (MatDiffuse[0] * LightColor[i][0] * diffdot) & 0xFFFFF;
+            vtxbuff[1] += (MatDiffuse[1] * LightColor[i][1] * diffdot) & 0xFFFFF;
+            vtxbuff[2] += (MatDiffuse[2] * LightColor[i][2] * diffdot) & 0xFFFFF;
+
+            // -- specular lighting --
+        
+            // reuse the dot product from diffuse lighting
+            dot += normaltrans[2];
+
+            // convert to s11, then square it, and truncate to 10 bits
+            dot = (dot << 21) >> 21;
+            dot = ((dot * dot) >> 10) & 0x3FF;
+
+            // multiply dot and reciprocal, the subtract '1'
+            shinelevel = ((dot * SpecRecip[i]) >> 8) - (1<<9);
+
+            if (shinelevel < 0) shinelevel = 0;
+            else
+            {
+                // sign extend to convert to signed 14 bit integer
+                shinelevel = (shinelevel << 18) >> 18;
+                if (shinelevel < 0) shinelevel = 0; // for some reason there seems to be a redundant check for <0?
+                else if (shinelevel > 0x1FF) shinelevel = 0x1FF;
+            }
+        }
+        else shinelevel = 0;
+
+        // convert shinelevel to use for lookup in the shininess table if enabled.
+        if (UseShininessTable)
+        {
+            shinelevel >>= 2;
+            shinelevel = ShininessTable[shinelevel];
+            shinelevel <<= 1;
+        }
+
+        // Note: ambient seems to be a plain bitshift
+        vtxbuff[0] += ((MatSpecular[0] * shinelevel) + (MatAmbient[0] << 9)) * LightColor[i][0];
+        vtxbuff[1] += ((MatSpecular[1] * shinelevel) + (MatAmbient[1] << 9)) * LightColor[i][1];
+        vtxbuff[2] += ((MatSpecular[2] * shinelevel) + (MatAmbient[2] << 9)) * LightColor[i][2];
+
+        c++;
+    }
+
+    VertexColor[0] = (vtxbuff[0] >> 14 > 31) ? 31 : (vtxbuff[0] >> 14);
+    VertexColor[1] = (vtxbuff[1] >> 14 > 31) ? 31 : (vtxbuff[1] >> 14);
+    VertexColor[2] = (vtxbuff[2] >> 14 > 31) ? 31 : (vtxbuff[2] >> 14);
+
+    if (c < 1) c = 1;
+    cached.NormalKey = normalKey;
+    cached.ColorAndCycles = u32(VertexColor[0]) | (u32(VertexColor[1]) << 5) |
+        (u32(VertexColor[2]) << 10) | (u32(c) << 24);
+    LightingCacheValid |= slotBit;
     NormalPipeline = 7;
     AddCycles(c);
 }
@@ -2132,7 +2265,8 @@ void GPU3D::ExecuteCommand() noexcept
             Normal[0] = (s16)((entry.Param & 0x000003FF) << 6) >> 6;
             Normal[1] = (s16)((entry.Param & 0x000FFC00) >> 4) >> 6;
             Normal[2] = (s16)((entry.Param & 0x3FF00000) >> 14) >> 6;
-            CalculateLighting();
+            if (UseLightingResultReuse) CalculateLighting(entry.Param);
+            else CalculateLightingUncached();
             return;
 
         case 0x22: // texcoord
@@ -2295,6 +2429,7 @@ void GPU3D::ExecuteCommand() noexcept
                 if (PosMatrixStackPointer > 30) GXStat |= (1<<15);
 
                 memcpy(PosMatrix, PosMatrixStack[PosMatrixStackPointer & 0x1F], 16*4);
+                LightingCacheValid = 0;
                 memcpy(VecMatrix, VecMatrixStack[PosMatrixStackPointer & 0x1F], 16*4);
                 ClipMatrixDirty = true;
                 AddCycles(35);
@@ -2341,6 +2476,7 @@ void GPU3D::ExecuteCommand() noexcept
                 if (addr > 30) GXStat |= (1<<15);
 
                 memcpy(PosMatrix, PosMatrixStack[addr], 16*4);
+                LightingCacheValid = 0;
                 memcpy(VecMatrix, VecMatrixStack[addr], 16*4);
                 ClipMatrixDirty = true;
                 AddCycles(35);
@@ -2361,7 +2497,10 @@ void GPU3D::ExecuteCommand() noexcept
             {
                 MatrixLoadIdentity(PosMatrix);
                 if (MatrixMode == 2)
+                {
+                    LightingCacheValid = 0;
                     MatrixLoadIdentity(VecMatrix);
+                }
                 ClipMatrixDirty = true;
                 AddCycles(18);
             }
@@ -2385,7 +2524,8 @@ void GPU3D::ExecuteCommand() noexcept
             Normal[0] = (s16)((entry.Param & 0x000003FF) << 6) >> 6;
             Normal[1] = (s16)((entry.Param & 0x000FFC00) >> 4) >> 6;
             Normal[2] = (s16)((entry.Param & 0x3FF00000) >> 14) >> 6;
-            CalculateLighting();
+            if (UseLightingResultReuse) CalculateLighting(entry.Param);
+            else CalculateLightingUncached();
             break;
 
         case 0x22: // texcoord
@@ -2457,6 +2597,7 @@ void GPU3D::ExecuteCommand() noexcept
             break;
 
         case 0x30: // diffuse/ambient material
+            LightingCacheValid = 0;
             VertexPipelineCmdDelayed6();
             MatDiffuse[0] = entry.Param & 0x1F;
             MatDiffuse[1] = (entry.Param >> 5) & 0x1F;
@@ -2474,6 +2615,7 @@ void GPU3D::ExecuteCommand() noexcept
             break;
 
         case 0x31: // specular/emission material
+            LightingCacheValid = 0;
             VertexPipelineCmdDelayed6();
             MatSpecular[0] = entry.Param & 0x1F;
             MatSpecular[1] = (entry.Param >> 5) & 0x1F;
@@ -2486,6 +2628,7 @@ void GPU3D::ExecuteCommand() noexcept
             break;
 
         case 0x32: // light direction
+            LightingCacheValid = 0;
             StallPolygonPipeline(8 + 1,  2); // 0x32 can run 6 cycles after a vertex
             {
                 u32 l = entry.Param >> 30;
@@ -2507,6 +2650,7 @@ void GPU3D::ExecuteCommand() noexcept
             break;
 
         case 0x33: // light color
+            LightingCacheValid = 0;
             VertexPipelineCmdDelayed8();
             {
                 u32 l = entry.Param >> 30;
@@ -2635,7 +2779,10 @@ void GPU3D::ExecuteCommand() noexcept
                     {
                         MatrixLoad4x4(PosMatrix, (s32*)ExecParams);
                         if (MatrixMode == 2)
+                        {
+                            LightingCacheValid = 0;
                             MatrixLoad4x4(VecMatrix, (s32*)ExecParams);
+                        }
                         ClipMatrixDirty = true;
                         AddCycles(18);
                     }
@@ -2657,7 +2804,10 @@ void GPU3D::ExecuteCommand() noexcept
                     {
                         MatrixLoad4x3(PosMatrix, (s32*)ExecParams);
                         if (MatrixMode == 2)
+                        {
+                            LightingCacheValid = 0;
                             MatrixLoad4x3(VecMatrix, (s32*)ExecParams);
+                        }
                         ClipMatrixDirty = true;
                         AddCycles(18);
                     }
@@ -2680,6 +2830,7 @@ void GPU3D::ExecuteCommand() noexcept
                         MatrixMult4x4(PosMatrix, (s32*)ExecParams);
                         if (MatrixMode == 2)
                         {
+                            LightingCacheValid = 0;
                             MatrixMult4x4(VecMatrix, (s32*)ExecParams);
                             AddCycles(35 + 30 - 16);
                         }
@@ -2705,6 +2856,7 @@ void GPU3D::ExecuteCommand() noexcept
                         MatrixMult4x3(PosMatrix, (s32*)ExecParams);
                         if (MatrixMode == 2)
                         {
+                            LightingCacheValid = 0;
                             MatrixMult4x3(VecMatrix, (s32*)ExecParams);
                             AddCycles(35 + 30 - 12);
                         }
@@ -2730,6 +2882,7 @@ void GPU3D::ExecuteCommand() noexcept
                         MatrixMult3x3(PosMatrix, (s32*)ExecParams);
                         if (MatrixMode == 2)
                         {
+                            LightingCacheValid = 0;
                             MatrixMult3x3(VecMatrix, (s32*)ExecParams);
                             AddCycles(35 + 30 - 9);
                         }
@@ -2775,6 +2928,7 @@ void GPU3D::ExecuteCommand() noexcept
                         MatrixTranslate(PosMatrix, (s32*)ExecParams);
                         if (MatrixMode == 2)
                         {
+                            LightingCacheValid = 0;
                             MatrixTranslate(VecMatrix, (s32*)ExecParams);
                             AddCycles(35 + 30 - 3);
                         }
@@ -2792,6 +2946,7 @@ void GPU3D::ExecuteCommand() noexcept
 
                 case 0x34: // shininess table
                     {
+                        LightingCacheValid = 0;
                         for (int i = 0; i < 128; i += 4)
                         {
                             u32 val = ExecParams[i >> 2];

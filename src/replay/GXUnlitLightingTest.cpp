@@ -25,6 +25,7 @@ std::unique_ptr<NDS> make_nds() {
     auto nds=std::make_unique<NDS>(std::move(args)); nds->Reset(); return nds;
 }
 void setup(GPU3D& g,unsigned mask,unsigned mode) {
+    g.LightingCacheValid=0;
     g.TexParam=(random_word()&0x3fffffff)|(mode<<30);
     g.CurPolygonAttr=(random_word()&~15u)|mask;
     for(auto& v:g.Normal)v=s16(random_word()%1024)-512;
@@ -47,6 +48,7 @@ void setup(GPU3D& g,unsigned mask,unsigned mode) {
     g.VertexSlotsFree=random_word()&255; g.CycleCount=random_word()%10000;
 }
 void copy_state(const GPU3D& a,GPU3D& b) {
+    b.LightingCacheValid=0; // this test injects raw state directly
 #define COPY(f) std::memcpy(&b.f,&a.f,sizeof(a.f));
     COPY(TexParam); COPY(CurPolygonAttr); COPY(Normal); COPY(TexCoords);
     COPY(RawTexCoords); COPY(VertexColor); COPY(TexMatrix); COPY(VecMatrix);

@@ -25,6 +25,31 @@ int main(int argc, char** argv)
     const std::uint8_t crc_example[] = {'1','2','3','4','5','6','7','8','9'};
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
+    const GameQueryIdentity lighting_regions[] = {
+        known,
+        {{{'A','C','V','P'}}, 0, 0x6396d24cu},
+        {{{'A','C','V','J'}}, 1, 0x65777634u},
+    };
+    for(const auto& id:lighting_regions) {
+        check(dawn_lighting_result_reuse_profile({GameQueryProfile::Fast,id,true}), "Dawn lighting exact retail identity on");
+        check(!dawn_lighting_result_reuse_profile({GameQueryProfile::CastlevaniaDosUsRevision0,id,false}), "Dawn lighting unidentified off");
+        for(unsigned bit=0;bit<32;++bit) {
+            auto changed=id;changed.header_crc32^=1u<<bit;
+            check(!dawn_lighting_result_reuse_profile({GameQueryProfile::CastlevaniaDosUsRevision0,changed,true}), "Dawn lighting changed CRC off");
+        }
+        for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
+            if(value==id.code[byte])continue;
+            auto changed=id;changed.code[byte]=value;
+            check(!dawn_lighting_result_reuse_profile({GameQueryProfile::CastlevaniaDosUsRevision0,changed,true}), "Dawn lighting changed code off");
+        }
+        for(unsigned rev=0;rev<256;++rev) {
+            if(rev==id.revision)continue;
+            auto changed=id;changed.revision=rev;
+            check(!dawn_lighting_result_reuse_profile({GameQueryProfile::CastlevaniaDosUsRevision0,changed,true}), "Dawn lighting changed revision off");
+        }
+    }
+    check(!dawn_lighting_result_reuse_profile({GameQueryProfile::Fast,{{{'A','5','9','E'}},0,0xa228cd45u},true}), "Dawn kiosk demo excluded");
+    std::cout << "DAWN_LIGHTING_REUSE_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 demo_off=1\n";
     const GameQueryIdentity portrait {{{'A','C','B','E'}}, 0, 0xa9935ea4u};
     const GameQueryIdentity dawn_regions[] = {
         {{{'A','C','V','P'}}, 0, 0x6396d24cu},
@@ -268,6 +293,8 @@ int main(int argc, char** argv)
             const auto europe = load_header(argv[3]), japan = load_header(argv[4]);
             for (const auto* header : {&europe, &japan, &cast, &nsmb, &europe, &unknown, &japan}) {
                 const auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = *header; return true; });
+                check(dawn_lighting_result_reuse_profile(selected) == (header == &cast || header == &europe || header == &japan),
+                      "real Dawn lighting selection across reloads");
                 check(dawn_regional_raster_only_profile(selected) == (header == &europe || header == &japan),
                       "real Dawn headers select regional raster across reloads");
                 check(game_query_prefix_mode(selected.profile) == (header == &cast ? 0u : 2u),
@@ -278,10 +305,11 @@ int main(int argc, char** argv)
                     auto changed = *header; changed[byte] ^= 1;
                     const auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = changed; return true; });
                     check(!dawn_regional_raster_only_profile(selected), "changed real Dawn header falls back");
+                    check(!dawn_lighting_result_reuse_profile(selected), "changed Dawn header lighting falls back");
                 }
             calls = 0;
             auto changed = read_game_query_profile([&](GameQueryHeader& out) { out = ++calls == 1 ? europe : japan; return true; });
-            check(!changed.identified && !dawn_regional_raster_only_profile(changed),
+            check(!changed.identified && !dawn_regional_raster_only_profile(changed) && !dawn_lighting_result_reuse_profile(changed),
                   "regional ROM switch during identification falls back");
             std::cout << "DAWN_REGIONAL_HEADER_FIXTURES_PASS reloads=7 changed_bytes=704 torn_read=1\n";
         }

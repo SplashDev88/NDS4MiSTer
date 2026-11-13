@@ -109,6 +109,15 @@ inline bool dawn_regional_raster_only_profile(const GameQuerySelection& selected
     return false;
 }
 
+// Exact lighting-result reuse is independent of the cartridge-specific
+// query, raster and VRAM policies. Admit the three verified retail headers;
+// unknown revisions, altered headers and the kiosk demo keep the old path.
+inline bool dawn_lighting_result_reuse_profile(const GameQuerySelection& selected)
+{
+    return castlevania_integral_texture_profile(selected) ||
+        dawn_regional_raster_only_profile(selected);
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&
