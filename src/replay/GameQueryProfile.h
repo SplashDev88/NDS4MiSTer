@@ -118,6 +118,14 @@ inline bool dawn_lighting_result_reuse_profile(const GameQuerySelection& selecte
         dawn_regional_raster_only_profile(selected);
 }
 
+// Opaque3D seeding was measured on Dawn. Admit only the verified retail
+// USA, Europe and Japan-revision1 identities; no cartridge-address patch.
+inline bool dawn_opaque_3d_seed_profile(const GameQuerySelection& selected)
+{
+    return castlevania_integral_texture_profile(selected) ||
+        dawn_regional_raster_only_profile(selected);
+}
+
 // Bounded approximate interpolation was measured on this owned Mario Kart
 // cartridge. Other games and unqualified revisions keep exact factors.
 inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)

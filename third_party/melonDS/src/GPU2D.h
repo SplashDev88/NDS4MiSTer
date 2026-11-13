@@ -41,6 +41,9 @@ public:
     void DoSavestate(Savestate* file);
 
     void SetEnabled(bool enable) { Enabled = enable; }
+    // Session renderer policy, independent of emulated registers/savestates.
+    void SetOpaque3DSeedEnabled(bool enabled) noexcept { UseOpaque3DSeed = enabled; }
+    bool Opaque3DSeedEnabled() const noexcept { return UseOpaque3DSeed; }
 
     u8 Read8(u32 addr);
     u16 Read16(u32 addr);
@@ -111,6 +114,7 @@ public:
 private:
     friend class Renderer2D;
 
+    bool UseOpaque3DSeed = false;
     melonDS::GPU& GPU;
 };
 

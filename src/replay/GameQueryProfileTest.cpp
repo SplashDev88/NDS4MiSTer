@@ -68,6 +68,26 @@ int main(int argc, char** argv)
     }
     check(!dawn_lighting_result_reuse_profile({GameQueryProfile::Fast,{{{'A','5','9','E'}},0,0xa228cd45u},true}), "Dawn kiosk demo excluded");
     std::cout << "DAWN_LIGHTING_REUSE_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 demo_off=1\n";
+    for(const auto& id:lighting_regions) {
+        check(dawn_opaque_3d_seed_profile({GameQueryProfile::Fast,id,true}), "Dawn opaque seed exact retail identity on");
+        check(!dawn_opaque_3d_seed_profile({GameQueryProfile::CastlevaniaDosUsRevision0,id,false}), "Dawn opaque seed unidentified off");
+        for(unsigned bit=0;bit<32;++bit) {
+            auto changed=id;changed.header_crc32^=1u<<bit;
+            check(!dawn_opaque_3d_seed_profile({GameQueryProfile::CastlevaniaDosUsRevision0,changed,true}), "Dawn opaque seed changed CRC off");
+        }
+        for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
+            if(value==id.code[byte])continue;
+            auto changed=id;changed.code[byte]=value;
+            check(!dawn_opaque_3d_seed_profile({GameQueryProfile::CastlevaniaDosUsRevision0,changed,true}), "Dawn opaque seed changed code off");
+        }
+        for(unsigned rev=0;rev<256;++rev) {
+            if(rev==id.revision)continue;
+            auto changed=id;changed.revision=rev;
+            check(!dawn_opaque_3d_seed_profile({GameQueryProfile::CastlevaniaDosUsRevision0,changed,true}), "Dawn opaque seed changed revision off");
+        }
+    }
+    check(!dawn_opaque_3d_seed_profile({GameQueryProfile::Fast,{{{'A','5','9','E'}},0,0xa228cd45u},true}), "Dawn kiosk demo excluded");
+    std::cout << "DAWN_OPAQUE_SEED_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 demo_off=1\n";
     const GameQueryIdentity portrait {{{'A','C','B','E'}}, 0, 0xa9935ea4u};
     const GameQueryIdentity dawn_regions[] = {
         {{{'A','C','V','P'}}, 0, 0x6396d24cu},
@@ -315,6 +335,8 @@ int main(int argc, char** argv)
                 const auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = *header; return true; });
                 check(dawn_lighting_result_reuse_profile(selected) == (header == &cast || header == &europe || header == &japan),
                       "real Dawn lighting selection across reloads");
+                check(dawn_opaque_3d_seed_profile(selected) == (header == &cast || header == &europe || header == &japan),
+                      "real Dawn opaque seed selection across reloads");
                 check(dawn_regional_raster_only_profile(selected) == (header == &europe || header == &japan),
                       "real Dawn headers select regional raster across reloads");
                 check(game_query_prefix_mode(selected.profile) == (header == &cast ? 0u : 2u),

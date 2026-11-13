@@ -60,7 +60,9 @@ SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
     const char* rowIndex = std::getenv("NDS_GPU_SPRITE_ROW_INDEX");
     SpriteRowIndex = !rowIndex || std::strcmp(rowIndex, "0") != 0;
     const char* opaqueSeed = std::getenv("NDS4MISTER_OPAQUE3D_SEED");
-    Opaque3DSeed = opaqueSeed && std::strcmp(opaqueSeed, "1") == 0;
+    if (opaqueSeed)
+        Opaque3DSeed = std::strcmp(opaqueSeed, "auto") == 0 ? -1 :
+            (std::strcmp(opaqueSeed, "1") == 0 ? 1 : 0);
     // mosaic table is initialized at compile-time
 }
 
@@ -418,7 +420,9 @@ void SoftRenderer2D::DrawAboveOpaque3D(u32 line)
 
 void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
 {
-    const bool opaqueSeeded = Opaque3DSeed && SeedOpaque3DLine();
+    const bool seedEnabled = Opaque3DSeed < 0 ?
+        GPU2D.Opaque3DSeedEnabled() : Opaque3DSeed != 0;
+    const bool opaqueSeeded = seedEnabled && SeedOpaque3DLine();
     if (!opaqueSeeded)
     {
         u64 backdrop;

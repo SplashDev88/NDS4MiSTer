@@ -32,6 +32,17 @@ static void setupEnv(){
  setenv("NDS4MISTER_DISABLE_3D_AA","1",1);setenv("NDS4MISTER_TEXTURE_HISTORY","1",1);
 }
 static std::unique_ptr<NDS> makeNDS(){NDSArgs a;a.JIT=std::nullopt;auto n=std::make_unique<NDS>(std::move(a));n->Reset();return n;}
+static void scopeSelection(){
+ auto n=makeNDS();auto& g=n->GPU;auto& p=static_cast<SoftRenderer&>(n->GetRenderer());auto& a=g.GPU2D_A;
+ std::array<u32,256> three{},output{};three.fill(0x1f123456);p.Output3D=three.data();a.DispCnt=0x10008;a.LayerEnable=1;a.BlendCnt=0;
+ struct Choice{const char* value;bool profile,expected;};
+ for(const auto& c:std::array<Choice,7>{{{nullptr,false,false},{nullptr,true,true},{"auto",false,false},{"auto",true,true},{"0",true,false},{"1",false,true},{"invalid",true,false}}}){
+  if(c.value)setenv("NDS4MISTER_OPAQUE3D_SEED",c.value,1);else unsetenv("NDS4MISTER_OPAQUE3D_SEED");
+  a.SetOpaque3DSeedEnabled(c.profile);SoftRenderer2D renderer(a,p);renderer.Reset();renderer.DrawScanline_BGOBJ(0,output.data());
+  if((renderer.Opaque3DSeedHits!=0)!=c.expected)throw std::runtime_error("opaque seed policy/override selection");
+ }
+ unsetenv("NDS4MISTER_OPAQUE3D_SEED");std::cout<<"OPAQUE_SEED_POLICY_PASS choices=7\n";
+}
 static void synthetic(){
  auto n=makeNDS();auto& g=n->GPU;auto& p=static_cast<SoftRenderer&>(n->GetRenderer());
  alignas(16) std::array<u32,256> three{},out0{},out1{};p.Output3D=three.data();
@@ -68,6 +79,8 @@ static void synthetic(){
     if(x%7==0)obj=0;else if(variant&4)obj|=SoftRenderer2D::OBJ_Mosaic;
     ref.OBJLine[x]=opt.OBJLine[x]=obj;ref.OBJWindow[x]=opt.OBJWindow[x]=x%7==0;
    }
+   a.SetOpaque3DSeedEnabled(test%7!=0);
+   opt.Opaque3DSeed=test%3==0 ? -1 : (test%11==0 ? 0 : 1);
    ref.StandardPaletteChecked=opt.StandardPaletteChecked=false;
    const auto win0=a.Win0Active,win1=a.Win1Active;
    ref.DrawScanline_BGOBJ(test%192,out0.data());const auto after0=a.Win0Active,after1=a.Win1Active;
@@ -75,6 +88,7 @@ static void synthetic(){
    if(a.Win0Active!=after0||a.Win1Active!=after1)throw std::runtime_error("window state differs");
    bool expect=!engine&&(a.DispCnt&8)&&(a.LayerEnable&1)&&!(a.DispCnt&0xe000)&&!g.CaptureEnable&&!((a.BlendCnt&0xc0)&&(a.BlendCnt&63));
    for(auto c:three)expect=expect&&((c>>24)==31);
+   expect=expect&&(opt.Opaque3DSeed<0?a.Opaque3DSeedEnabled():opt.Opaque3DSeed!=0);
    if((opt.Opaque3DSeedHits!=before)!=expect)throw std::runtime_error("eligibility mismatch case="+std::to_string(test));
    hits+=expect;compare(out0.data(),out1.data(),"synthetic engine="+std::to_string(engine)+" case="+std::to_string(test));
    if(std::memcmp(ref.OBJLine,opt.OBJLine,sizeof(ref.OBJLine)))throw std::runtime_error("sprite mosaic state differs");
@@ -109,4 +123,4 @@ static void saved(const char* path,int integral,int sprite,unsigned benchFrames=
  }
  std::cout<<"OPAQUE_SEED_SAVED_PASS cases="<<cases<<" pixels="<<checks<<" hits_a="<<engineHits[0]<<" hits_b="<<engineHits[1]<<" hash="<<hash<<'\n';
 }
-int main(int argc,char** argv)try{setupEnv();if(argc==1)synthetic();else if(argc==4||argc==5)saved(argv[1],std::stoi(argv[2]),std::stoi(argv[3]),argc==5?std::stoul(argv[4]):0);else return 2;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
+int main(int argc,char** argv)try{setupEnv();if(argc==1){scopeSelection();synthetic();}else if(argc==4||argc==5)saved(argv[1],std::stoi(argv[2]),std::stoi(argv[3]),argc==5?std::stoul(argv[4]):0);else return 2;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
