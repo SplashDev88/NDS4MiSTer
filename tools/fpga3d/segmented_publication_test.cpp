@@ -36,9 +36,9 @@ int main()try{
   // Overflow must remain invalid and never start a batch transaction.
   f.reset();f.textures.resize(textureBytes/4);f.commands.resize(capacity+1);const auto sequence=mailbox[1];
   require(!f.start() && !f.active && mailbox[1]==sequence,"oversized batch published");
-  for(uint32_t ready:{Magic,0x39443346u,SegmentedMagic})for(bool optin:{false,true})for(bool wc:{false,true}){
+  for(uint32_t ready:{Magic,0x39443346u,SegmentedMagic,HashedMagic})for(bool optin:{false,true})for(bool wc:{false,true}){
    mailbox[6]=ready;segmentedCommandsEnabled=optin;writeCombined=wc;
-   require(segmentedAvailable()==(ready==SegmentedMagic && optin && wc),"capability negotiation");
+   require(segmentedAvailable()==((ready==SegmentedMagic || ready==HashedMagic) && optin && wc),"capability negotiation");
   }
  }
  std::cout<<"SEGMENT_PUBLICATION_PASS checks="<<checks<<'\n';return 0;

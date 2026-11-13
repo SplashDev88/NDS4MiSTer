@@ -16,7 +16,9 @@ using Dut=Vnds_fpga3d;
 #include <cstdlib>
 #include <fstream>
 using namespace fpga3d;
-#ifdef SEGMENTED_TRANSPORT_EXPERIMENT
+#ifdef HASHED_TRANSPORT_EXPERIMENT
+constexpr uint32_t TestReadyMagic=HashedMagic;
+#elif defined(SEGMENTED_TRANSPORT_EXPERIMENT)
 constexpr uint32_t TestReadyMagic=SegmentedMagic;
 #else
 constexpr uint32_t TestReadyMagic=Magic;

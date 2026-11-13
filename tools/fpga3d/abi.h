@@ -8,6 +8,7 @@
 namespace fpga3d {
 constexpr uint32_t Magic=0x38443346; // F3D8: exact binary-alpha RGB555 texture storage
 constexpr uint32_t SegmentedMagic=0x41443346; // Experimental F3DA: padding + free texture tail
+constexpr uint32_t HashedMagic=0x42443346; // Experimental F3DB: F3D8 arena with hashed texture cache
 constexpr uint32_t Mailbox=0x3fc80000, Commands=0x3fc81000;
 constexpr uint32_t Output=0x3fd00000, Textures=0x3fd40000;
 constexpr uint32_t StencilInput=0x3fc80e00, StencilOutput=0x3fd30000;

@@ -11530,6 +11530,8 @@ try {
             fpga3d::fastCommandsEnabled=fpga_fast_commands && std::strcmp(fpga_fast_commands,"1")==0;
             const char* fpga_segmented=std::getenv("NDS4MISTER_FPGA3D_SEGMENTED");
             fpga3d::segmentedCommandsEnabled=fpga_segmented && std::strcmp(fpga_segmented,"1")==0;
+            const char* fpga_hash=std::getenv("NDS4MISTER_FPGA3D_HASH_TEXTURES");
+            fpga3d::hashedTexturesEnabled=fpga_hash && std::strcmp(fpga_hash,"1")==0;
             const char* fpga_packed=std::getenv("NDS4MISTER_FPGA3D_PACKED_TEXTURES");
             fpga3d::packedTexturesEnabled=fpga_packed && std::strcmp(fpga_packed,"1")==0;
             fpga3d::adaptiveAdmission=true;

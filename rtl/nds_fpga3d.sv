@@ -6,7 +6,8 @@ module nds_fpga3d #(
  parameter integer POLL_CYCLES=16384,
  parameter bit ENABLE_SEGMENTED_EXPERIMENT=0,
  parameter integer TEX_CACHE_INDEX_BITS=8,
- parameter bit TEX_CACHE_XOR_INDEX=0
+ parameter bit TEX_CACHE_XOR_INDEX=0,
+ parameter bit ENABLE_TEXTURE_HASH_EXPERIMENT=0
 )(
  input logic clk, reset, enable,
  input logic [31:0] session,
@@ -26,9 +27,15 @@ module nds_fpga3d #(
  initial begin
   if(TEX_CACHE_INDEX_BITS<8 || TEX_CACHE_INDEX_BITS>11)
    $error("Texture cache index width must be8..11");
+  if(ENABLE_TEXTURE_HASH_EXPERIMENT && !ENABLE_SEGMENTED_EXPERIMENT)
+   $error("Hash capability includes segmented transport support");
  end
  localparam [31:0] SEGMENTED_MAGIC=32'h41443346;
- localparam [31:0] READY_MAGIC=ENABLE_SEGMENTED_EXPERIMENT?SEGMENTED_MAGIC:MAGIC;
+ // F3DB requests retain the F3D8 arena/count contract and select hashing
+ // for this job only. F3DB readiness also guarantees F3D8 and F3DA support.
+ localparam [31:0] HASHED_MAGIC=32'h42443346;
+ localparam [31:0] READY_MAGIC=ENABLE_TEXTURE_HASH_EXPERIMENT?HASHED_MAGIC:
+     ENABLE_SEGMENTED_EXPERIMENT?SEGMENTED_MAGIC:MAGIC;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
  HEADER,HEADER_WAIT,PARAM,PARAM_WAIT,AVAILABLE,REFILL_DELAY,REFILL,REFILL_WAIT,FETCH,FETCH_WAIT,CMD_LOAD_FIRST,CMD_LOAD,UNPACK,DECODE,CLEAR_LINE,
  TEX_READ,TEX_WAIT,
@@ -55,6 +62,7 @@ module nds_fpga3d #(
  // All producer counts and addresses are validated before truncation.
  logic [13:0] count,index;
  logic segmented_frame;
+ logic hashed_frame;
  logic [31:0] texture_end;
  logic [15:0] command_slot_base;
  logic command_padded;
@@ -236,7 +244,7 @@ module nds_fpga3d #(
      input logic [28:0] word_address);
   begin
    texture_cache_index=word_address[TEX_CACHE_INDEX_BITS-1:0];
-   if(TEX_CACHE_XOR_INDEX)
+   if(TEX_CACHE_XOR_INDEX || (ENABLE_TEXTURE_HASH_EXPERIMENT && hashed_frame))
     texture_cache_index[TEX_CACHE_INDEX_BITS-1:3]=
         word_address[TEX_CACHE_INDEX_BITS-1:3] ^
         (TEX_CACHE_INDEX_BITS-3)'(word_address[16:3] >> (TEX_CACHE_INDEX_BITS-3));
@@ -442,6 +450,7 @@ module nds_fpga3d #(
    coverage_valid<=0;
    output_first<=0;output_end<=256;
    segmented_frame<=0;
+   hashed_frame<=0;
   end else begin
    if((state==FLUSH_WRITE || state==DUMP_WRITE) && !busy)flush_inflight<=1;
    case(state)
@@ -451,8 +460,10 @@ module nds_fpga3d #(
     POLL_DELAY:if(poll==POLL_CYCLES-1)state<=POLL;else poll<=poll+1'b1;
     POLL:if(!busy)state<=POLL_WAIT;
     POLL_WAIT:if(dout_ready)begin
-     if((dout[31:0]==MAGIC || (ENABLE_SEGMENTED_EXPERIMENT && dout[31:0]==SEGMENTED_MAGIC)) && dout[63:32]!=0 && dout[63:32]!=seen)begin
+     if((dout[31:0]==MAGIC || (ENABLE_SEGMENTED_EXPERIMENT && dout[31:0]==SEGMENTED_MAGIC) ||
+         (ENABLE_TEXTURE_HASH_EXPERIMENT && dout[31:0]==HASHED_MAGIC)) && dout[63:32]!=0 && dout[63:32]!=seen)begin
       segmented_frame<=ENABLE_SEGMENTED_EXPERIMENT && dout[31:0]==SEGMENTED_MAGIC;
+      hashed_frame<=ENABLE_TEXTURE_HASH_EXPERIMENT && dout[31:0]==HASHED_MAGIC;
       seq<=dout[63:32];seen<=dout[63:32];state<=HEADER;
      end else begin poll<=0;state<=POLL_DELAY;end
     end

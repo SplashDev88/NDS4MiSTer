@@ -27,6 +27,7 @@ inline bool textureResidencyEnabled=false;
 inline bool preparedTexturesEnabled=false;
 inline bool fastCommandsEnabled=false;
 inline bool segmentedCommandsEnabled=false;
+inline bool hashedTexturesEnabled=false;
 inline bool packedTexturesEnabled=false;
 inline uint64_t bindingSerial=0,textureWriterSerial=0;
 inline uint32_t poisonedSession=0;
@@ -46,10 +47,12 @@ inline bool available(){
  if(!permitted || !control || !publication)return false;
  uint32_t session=control[2];
  return session && session!=poisonedSession && control[0]==0x31443348 &&
-   (control[(Mailbox-0x3fc00000+24)/4]==Magic || control[(Mailbox-0x3fc00000+24)/4]==SegmentedMagic) &&
+   (control[(Mailbox-0x3fc00000+24)/4]==Magic || control[(Mailbox-0x3fc00000+24)/4]==SegmentedMagic || control[(Mailbox-0x3fc00000+24)/4]==HashedMagic) &&
    control[(Mailbox-0x3fc00000+28)/4]==session;
 }
-inline bool segmentedAvailable(){return segmentedCommandsEnabled && writeCombined && available() && control[(Mailbox-0x3fc00000+24)/4]==SegmentedMagic;}
+inline bool segmentedAvailable(){return segmentedCommandsEnabled && writeCombined && available() &&
+ (control[(Mailbox-0x3fc00000+24)/4]==SegmentedMagic || control[(Mailbox-0x3fc00000+24)/4]==HashedMagic);}
+inline bool hashingAvailable(){return hashedTexturesEnabled && writeCombined && available() && control[(Mailbox-0x3fc00000+24)/4]==HashedMagic;}
 // Compact physical descriptors use fixed 64-byte spacing. Logical commands
 // remain 128 bytes so native fixtures retain their independent readable ABI.
 inline unsigned commandWords(const Command& c){return (c[0]==1 || c[0]==6)?7:c[0]==2?16:c[0]==3?3:c[0]==5?2:c[0]==4?13:c[0]==7?10:16;}
@@ -112,7 +115,7 @@ struct Frame {
  std::map<const uint32_t*,uint32_t> textureOffsets;
  Outcome failure=Outcome::SubmitFailed;
  bool valid=true,active=false,transportError=false,recyclePublished=false,allowIndexed=true;
- bool segmented=false;
+ bool segmented=false,hashed=false;
  unsigned deadlineMs=100;
  uint8_t* stencil=nullptr;
  uint64_t uploadUs=0,waitUs=0,copyUs=0;
@@ -124,7 +127,7 @@ struct Frame {
   // An abandoned producer must never reuse bytes still owned by the FPGA.
   if(active){poisonedSession=frameSession;++failedFrames;}
   failure=Outcome::SubmitFailed;commands.clear();packedCommands.clear();textures.clear();textureOffsets.clear();stencil=nullptr;valid=true;active=false;transportError=false;recyclePublished=false;
-  published=0;segmented=false;commandCapacity=segmentedAvailable()?MaxSegmentedCommands:MaxCommands;uploadUs=waitUs=copyUs=0;allowIndexed=true;
+  published=0;segmented=false;hashed=false;commandCapacity=segmentedAvailable()?MaxSegmentedCommands:MaxCommands;uploadUs=waitUs=copyUs=0;allowIndexed=true;
   canonicalizedColors=0;
  }
  size_t commandCount()const{return recyclePublished?published+packedCommands.size():commands.size();}
@@ -270,6 +273,9 @@ struct Frame {
   // keep the Device arena rather than regressing F3D3's admission capacity.
   const bool useWC=writeCombined && textures.size()*4<=TextureBytes-MaxCommands*64;
   segmented=segmentedAvailable();
+  // F3DB preserves the ordinary arena contract. Explicit segmented mode
+  // takes precedence when both opt-ins are set, and retains direct indexing.
+  hashed=!segmented && hashingAvailable();
   commandBase=(segmented || useWC)?((Textures+uint32_t(textures.size()*4)+63)&~63u):
       writeCombined && fastCommandsEnabled?PaddedCommands:Commands;
   commandCapacity=segmented?segmentedCapacity(commandBase):useWC?std::min<size_t>(MaxCommands,(0x3fe00000u-commandBase)/64):MaxCommands;
@@ -297,7 +303,7 @@ struct Frame {
    if(stencil)for(unsigned j=0;j<4;j++)value|=uint32_t(stencil[4*i+j]&3u)<<(8*j);
    control[(StencilInput-0x3fc00000)/4+i]=value;
   }
-  mailbox[15]=commandBase;mailbox[2]=0;mailbox[3]=frameSession;mailbox[0]=segmented?SegmentedMagic:Magic;
+  mailbox[15]=commandBase;mailbox[2]=0;mailbox[3]=frameSession;mailbox[0]=segmented?SegmentedMagic:hashed?HashedMagic:Magic;
   barrier();mailbox[1]=sequence;barrier();active=true;
   uploadUs=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-started).count();
   return true;

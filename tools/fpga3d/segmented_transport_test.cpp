@@ -9,11 +9,12 @@ static void progress(){if(activeSim){activeSim->guardedCount=activeSim->word(Mai
 static constexpr uint32_t Canary=0x6b725118;
 static uint64_t pixelsChecked=0;
 static unsigned completed=0,rejected=0;
-static void setup(Sim& sim,bool segmented){
+static void setup(Sim& sim,bool segmented,bool hashed=false){
  std::fill(sim.mem.begin(),sim.mem.end(),Canary);sim.reset();activeSim=&sim;
  sim.word(0x3fc00000)=0x31443348;sim.word(0x3fc00008)=17;
  poisonedSession=0;bind(&sim.word(0x3fc00000),&sim.word(Output),true,true);
  segmentedCommandsEnabled=segmented;textureResidencyEnabled=false;fastCommandsEnabled=false;
+ hashedTexturesEnabled=hashed;
 }
 static uint32_t addressOracle(uint32_t tail,size_t index){
  if(index>=8128)return tail+uint32_t(index-8128)*64;
@@ -40,13 +41,15 @@ static void checkOwnership(Sim& sim,const Frame& frame,const std::vector<Command
 }
 struct Cost{uint64_t cycles,reads,beats,textureReads,textureBeats;};
 static Cost execute(const std::vector<Command>& commands,const std::vector<uint32_t>& textures,
-                    const std::vector<uint32_t>& expected,bool segmented,bool streamed,unsigned latency=0){
- Sim sim;sim.readLatency=latency;setup(sim,segmented);
+                    const std::vector<uint32_t>& expected,bool segmented,bool streamed,unsigned latency=0,bool hashed=false){
+ Sim sim;sim.readLatency=latency;setup(sim,segmented,hashed);
  Frame f;f.deadlineMs=30000;f.reset();f.textures=textures;
  std::vector<uint32_t> destination(258*192+16,Canary);
  const uint64_t start=sim.cycles;
  if(streamed)f.startStream();else {f.commands=commands;require(f.start(),"batch admission");}
  require(f.active && f.segmented==segmented,"requested protocol unavailable");
+ require(f.hashed==(hashed && !segmented),"requested hash mode unavailable");
+ require(sim.word(Mailbox)==(segmented?SegmentedMagic:hashed?HashedMagic:Magic),"request magic mismatch");
  sim.guardedBase=f.commandBase;sim.guardedSegmented=f.segmented;sim.guardedCount=0;
  if(streamed){
   for(unsigned i=0;i<2000;++i)progress();
@@ -130,7 +133,7 @@ static void negativeAndAbort(){
   require(std::all_of(destination.begin(),destination.end(),[](auto v){return v==Canary;}),"late overflow copied partial output");++rejected;
  }
 }
-int main(int argc,char** argv)try{
+static int segmentedSimulationMain(int argc,char** argv)try{
  if(argc==2 && std::string(argv[1])=="--legacy-selftest")return original_simulation_main(1,argv);
  require((argc-1)%3==0,"arguments: commands textures expected groups");
  const auto expected=syntheticExpected();
@@ -153,3 +156,6 @@ int main(int argc,char** argv)try{
  std::cout<<"SEGMENT_TRANSPORT_PASS fixtures="<<fixtures<<" unfitted="<<unfitted<<" completed="<<completed<<" rejected="<<rejected<<" exact_pixels="<<pixelsChecked<<'\n';
  return 0;
 }catch(const std::exception& error){std::cerr<<"FAIL "<<error.what()<<'\n';return 1;}
+#ifndef FPGA3D_SEGMENTED_TEST_NO_MAIN
+int main(int argc,char** argv){return segmentedSimulationMain(argc,argv);}
+#endif
