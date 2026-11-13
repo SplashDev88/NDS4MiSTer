@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Exercise the console fabric with a busy-dependent control request (as used
 // by nds_h3d_control_init), cartridge and priority scanout reads plus checked event write bursts.
-module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0,FAIR_PROBE_INTERVAL=8,parameter bit ENABLE_SEGMENTED_EXPERIMENT=0)(
+module nds_fpga3d_shared # (parameter POLL_CYCLES=8,REAL_CONTROL=0,FAIR_PROBE_INTERVAL=8,parameter bit ENABLE_SEGMENTED_EXPERIMENT=0, parameter integer TEX_CACHE_INDEX_BITS=8)(
  input clk,reset,enable,input [31:0] session,
  output rd,wr,output [7:0] burst,output [28:0] addr,output [63:0] din,output [7:0] be,
  input busy,input [63:0] dout,input dout_ready
 );
  wire ar,aw,ab,av,aaccept;wire [7:0] an,ae;wire [28:0] aa;wire [63:0] ai,ao;
  wire released,control_fault;wire [31:0] control_fault_bits;
- nds_fpga3d #(.POLL_CYCLES(POLL_CYCLES),.ENABLE_SEGMENTED_EXPERIMENT(ENABLE_SEGMENTED_EXPERIMENT)) accelerator(clk,reset,enable&&released,session,ar,aw,an,aa,ai,ae,ab,ao,av,aaccept);
+ nds_fpga3d #(.POLL_CYCLES(POLL_CYCLES),.ENABLE_SEGMENTED_EXPERIMENT(ENABLE_SEGMENTED_EXPERIMENT),.TEX_CACHE_INDEX_BITS(TEX_CACHE_INDEX_BITS)) accelerator(clk,reset,enable&&released,session,ar,aw,an,aa,ai,ae,ab,ao,av,aaccept);
  wire cr,cw,cb,cv;wire [63:0] co,ci;wire [28:0] cc;wire [7:0] cn,ce;
  wire lr,lb,lv;wire [63:0] lo;
  wire vr,vb,vv;wire [63:0] vo;

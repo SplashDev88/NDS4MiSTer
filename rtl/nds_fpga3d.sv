@@ -4,7 +4,8 @@
 // are immutable until completion. This block never writes cartridge memory.
 module nds_fpga3d #(
  parameter integer POLL_CYCLES=16384,
- parameter bit ENABLE_SEGMENTED_EXPERIMENT=0
+ parameter bit ENABLE_SEGMENTED_EXPERIMENT=0,
+ parameter integer TEX_CACHE_INDEX_BITS=8
 )(
  input logic clk, reset, enable,
  input logic [31:0] session,
@@ -19,6 +20,12 @@ module nds_fpga3d #(
 );
  localparam [28:0] MB=29'h07f90000,CM=29'h07f90200,OUT=29'h07fa0000;
  localparam [31:0] MAGIC=32'h38443346;
+ localparam integer TEX_CACHE_WORDS=1<<TEX_CACHE_INDEX_BITS;
+ localparam integer TEX_CACHE_ENTRY_BITS=82-TEX_CACHE_INDEX_BITS;
+ initial begin
+  if(TEX_CACHE_INDEX_BITS<8 || TEX_CACHE_INDEX_BITS>11)
+   $error("Texture cache index width must be8..11");
+ end
  localparam [31:0] SEGMENTED_MAGIC=32'h41443346;
  localparam [31:0] READY_MAGIC=ENABLE_SEGMENTED_EXPERIMENT?SEGMENTED_MAGIC:MAGIC;
  typedef enum logic[5:0] {INIT,INIT_WAIT,READY,POLL_DELAY,POLL,POLL_WAIT,
@@ -216,26 +223,28 @@ module nds_fpga3d #(
  logic [11:0] p_ma;
  logic p_ce,p_hit,p_miss,p_bad_alpha,p_override;
  logic [63:0] p_override_data;
- logic [7:0] p_clear_index;
+ logic [TEX_CACHE_INDEX_BITS-1:0] p_clear_index;
  logic [2:0] tex_beat;
  logic tex_short;
  wire tex_last = tex_beat == (tex_short ? 3'd1 : 3'd7);
- wire [7:0] tex_fill_index = tex_short ?
-     {tex_addr[7:1],tex_beat[0]} : {tex_addr[7:3],tex_beat};
- // Retain 2 KiB of data, with independently valid 16-byte sectors. Sparse
+ wire [TEX_CACHE_INDEX_BITS-1:0] tex_fill_index = tex_short ?
+     {tex_addr[TEX_CACHE_INDEX_BITS-1:1],tex_beat[0]} :
+     {tex_addr[TEX_CACHE_INDEX_BITS-1:3],tex_beat};
+ // Default to2 KiB; larger experimental capacities use the same independently valid16-byte sectors. Sparse
  // perspective sampling fetches one sector only when the next staged pixel
  // is absent or addresses a different64-byte line. Linear/local accesses
  // retain the full burst and publish each completed sector. Nothing reads a partial
  // refill: the stalled pixel resumes only after the entire burst drains.
  // Every accepted texture lies in byte addresses 3fd40000..3fdfffff.
  // The full descriptor bounds check below precedes every textured lookup;
- // only the nine varying tag bits need storage. Duplicate the sector tag
- // beside each word so data and metadata share two 256x40 M10Ks. Partial
- // refills remain inaccessible until the stalled pipeline resumes.
- (* ramstyle = "M10K" *) logic [73:0] p_cache_words[0:255];
- logic [73:0] p_cache_storage_q;
+ // only the varying tag bits above the configured word index need storage.
+ // Duplicate the sector tag beside each word. Default256x74 storage shares
+ // two M10Ks; larger capacities require separate physical qualification.
+ // Partial refills remain inaccessible until the stalled pipeline resumes.
+ (* ramstyle = "M10K" *) logic [TEX_CACHE_ENTRY_BITS-1:0] p_cache_words[0:TEX_CACHE_WORDS-1];
+ logic [TEX_CACHE_ENTRY_BITS-1:0] p_cache_storage_q;
  wire [63:0] p_cache_q=p_cache_storage_q[63:0];
- wire [9:0] p_tag_q=p_cache_storage_q[73:64];
+ wire [17-TEX_CACHE_INDEX_BITS:0] p_tag_q=p_cache_storage_q[TEX_CACHE_ENTRY_BITS-1:64];
  integer i;
 
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
@@ -276,7 +285,7 @@ module nds_fpga3d #(
   p_ts=texture_coord(p_av[10][3][15:0],tex_size_s,tex_mask_s,cmd[14][8],cmd[14][10]);
   p_tt=texture_coord(p_av[10][4][15:0],tex_size_t,tex_mask_t,cmd[14][9],cmd[14][11]);
   p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
-  p_hit=p_override || (p_addr[12][28:17]==12'h3fd && p_tag_q=={1'b1,p_addr[12][16:8]});
+  p_hit=p_override || (p_addr[12][28:17]==12'h3fd && p_tag_q=={1'b1,p_addr[12][16:TEX_CACHE_INDEX_BITS]});
   p_texel=cmd[14][13]?{3'd0,{5{binary_texel[15]}},2'd0,expand5(binary_texel[14:10]),
                          2'd0,expand5(binary_texel[9:5]),2'd0,expand5(binary_texel[4:0])}:
           cmd[14][12]?(palette_index[0]?palette_odd[palette_index[7:1]]:palette_even[palette_index[7:1]]):
@@ -312,8 +321,8 @@ module nds_fpga3d #(
   end
   if(state==CACHE_CLEAR)p_cache_words[p_clear_index]<=0;
   else if(state==TEX_WAIT && dout_ready)
-   p_cache_words[tex_fill_index]<={1'b1,tex_addr[16:8],dout};
-  if(p_ce)p_cache_storage_q<=p_cache_words[p_addr[11][7:0]];
+   p_cache_words[tex_fill_index]<={1'b1,tex_addr[16:TEX_CACHE_INDEX_BITS],dout};
+  if(p_ce)p_cache_storage_q<=p_cache_words[p_addr[11][TEX_CACHE_INDEX_BITS-1:0]];
   if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
   else begin
    if(state==TEX_WAIT && dout_ready)begin
@@ -449,7 +458,7 @@ module nds_fpga3d #(
      if((segmented_frame?!param_segmented:(!param_device && !param_wc && !param_padded)) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
-    CACHE_CLEAR:if(p_clear_index==255)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
+    CACHE_CLEAR:if(p_clear_index==TEX_CACHE_WORDS-1)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
     STENCIL_READ:if(!busy)begin cache_fill_beat<=0;stencil_index<=0;state<=STENCIL_WAIT;end
     STENCIL_WAIT:if(dout_ready)begin
      if(cache_fill_beat==63)state<=SEED_READ;else cache_fill_beat<=cache_fill_beat+1'b1;
