@@ -2685,5 +2685,6 @@ private:
     int SolidSpansOverride = -1;
     bool SolidSpans = false;
     bool ApproximateFactors = false;
+    int ApproximateFactorsOverride = -1;
 };
 }

@@ -118,6 +118,15 @@ inline bool dawn_lighting_result_reuse_profile(const GameQuerySelection& selecte
         dawn_regional_raster_only_profile(selected);
 }
 
+// Bounded approximate interpolation was measured on this owned Mario Kart
+// cartridge. Other games and unqualified revisions keep exact factors.
+inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'A','M','C','E'}} &&
+        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&

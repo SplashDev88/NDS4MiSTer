@@ -41,13 +41,14 @@ int main(int argc,char** argv)try{
  for(unsigned dual=0;dual<2;++dual)for(unsigned aa=0;aa<2;++aa){
   if(dual)setenv("NDS4MISTER_DUAL_CORE_3D","1",1);else unsetenv("NDS4MISTER_DUAL_CORE_3D");
   auto load=[&](bool enabled){
-   setenv("NDS4MISTER_APPROX_FACTORS",enabled?"1":"0",1);
+   setenv("NDS4MISTER_APPROX_FACTORS",enabled?"auto":"0",1);
    NDSArgs args;args.JIT=std::nullopt;auto n=std::make_unique<NDS>(std::move(args));n->Reset();
    RendererSettings settings{};settings.Threaded=false;settings.ScaleFactor=1;settings.FullFrame3D=true;settings.PackedOutput=true;n->GetRenderer().SetRenderSettings(settings);
    Savestate in(data.data(),data.size(),false);n->GPU.DoSavestate(&in);require(!in.Error,"snapshot decode");n->GetRenderer().Finish3DRendering();auto& g=n->GPU.GPU3D;
    g.SetEnabled(true,true);g.SetExternalCommandReplay(true);g.SetIntegralTextureSpansEnabled(std::stoi(argv[2]));g.SetSpriteRasterSpansEnabled(std::stoi(argv[3]));g.SetSolidSpansEnabled(std::string(argv[1]).find("ffta2")!=std::string::npos);g.RenderFrameIdentical=false;
+   g.SetApproximateFactorsEnabled(std::string(argv[1]).find("kart")!=std::string::npos);
    if(aa)g.RenderDispCnt|=16;else g.RenderDispCnt&=~16u;
-   auto& s=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n->GetRenderer()).Rend3D.get());require(s.ApproximateFactors==enabled,"runtime override");require(s.DualCoreRaster==bool(dual),"worker mode");return n;
+   auto& s=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n->GetRenderer()).Rend3D.get());require(s.ApproximateFactorsOverride==(enabled?-1:0),"runtime override");require(s.DualCoreRaster==bool(dual),"worker mode");return n;
   };
   auto a=load(false),b=load(true);fpga3d::bind(nullptr,nullptr,false);a->GetRenderer().Start3DRendering();a->GetRenderer().Finish3DRendering();
   const auto before=ApproxFactorTestPixels.load();b->GetRenderer().Start3DRendering();b->GetRenderer().Finish3DRendering();const auto admitted=ApproxFactorTestPixels.load()-before;
@@ -56,6 +57,7 @@ int main(int argc,char** argv)try{
   for(unsigned y=0;y<192;++y){auto* x=a->GetRenderer().Get3DScanline(y);auto* z=b->GetRenderer().Get3DScanline(y);for(unsigned i=0;i<256;++i){changed+=x[i]!=z[i];alpha+=((x[i]^z[i])&0x1f000000)!=0;rgb+=((x[i]^z[i])&0x003f3f3f)!=0;for(unsigned c=0;c<3;++c){unsigned error=std::abs(int((x[i]>>(c*8))&63)-int((z[i]>>(c*8))&63));totalError+=error;maxError=std::max(maxError,error);}}}
   const auto colors=countDiff(sa.ColorBuffer,sb.ColorBuffer,sizeof(sa.ColorBuffer)/4),depths=countDiff(sa.DepthBuffer,sb.DepthBuffer,sizeof(sa.DepthBuffer)/4),attrs=countDiff(sa.AttrBuffer,sb.AttrBuffer,sizeof(sa.AttrBuffer)/4);
   if(aa)require(!admitted&&!colors&&!depths&&!attrs&&!changed,"AA-on fallback differs");
+  if(std::string(argv[1]).find("kart")==std::string::npos)require(!admitted&&!colors&&!depths&&!attrs&&!changed,"non-Kart automatic fallback differs");
   std::string prefix=std::string(argv[4])+"-d"+std::to_string(dual)+"-aa"+std::to_string(aa);dump(*a,prefix+"-baseline.rgba6");dump(*b,prefix+"-candidate.rgba6");
   std::cout<<"APPROX_SNAPSHOT dual="<<dual<<" aa="<<aa<<" admitted_pixels="<<admitted<<" visible_changed="<<changed<<" rgb_changed="<<rgb<<" alpha_changed="<<alpha<<" channel_error_sum="<<totalError<<" max_channel_error="<<maxError<<" color_plane_changed="<<colors<<" depth_plane_changed="<<depths<<" attr_plane_changed="<<attrs<<"\n";
  }

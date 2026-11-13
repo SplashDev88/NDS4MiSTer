@@ -25,6 +25,24 @@ int main(int argc, char** argv)
     const std::uint8_t crc_example[] = {'1','2','3','4','5','6','7','8','9'};
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
+    const GameQueryIdentity kart {{{'A','M','C','E'}}, 0, 0x388c990cu};
+    check(mkds_approximate_factors_profile({GameQueryProfile::Fast,kart,true}), "tested Kart factors on");
+    check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,kart,false}), "unidentified Kart factors off");
+    check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,known,true}), "Dawn factors off");
+    for(unsigned bit=0;bit<32;++bit) {
+        auto changed=kart;changed.header_crc32^=1u<<bit;
+        check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,changed,true}), "changed Kart CRC off");
+    }
+    for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
+        if(value==kart.code[byte])continue;
+        auto changed=kart;changed.code[byte]=value;
+        check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,changed,true}), "changed Kart code off");
+    }
+    for(unsigned revision=1;revision<256;++revision) {
+        auto changed=kart;changed.revision=revision;
+        check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,changed,true}), "unqualified Kart revision off");
+    }
+    std::cout << "MKDS_APPROX_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
     const GameQueryIdentity lighting_regions[] = {
         known,
         {{{'A','C','V','P'}}, 0, 0x6396d24cu},
@@ -216,12 +234,14 @@ int main(int argc, char** argv)
     check(!castlevania_integral_texture_profile(raced), "changing header disables raster shortcut");
     check(!ffta2_raster_only_profile(raced), "changing header disables FFTA2 raster choice");
     check(!dawn_regional_raster_only_profile(raced), "changing header disables Dawn regional raster");
+    check(!mkds_approximate_factors_profile(raced), "changing header disables approximate factors");
     calls = 0;
     auto short_second = read_game_query_profile([&](GameQueryHeader&) { return ++calls == 1; });
     check(!short_second.identified && short_second.profile == GameQueryProfile::Fast, "second read failure");
     check(!castlevania_integral_texture_profile(short_second), "failed second read disables raster shortcut");
     check(!ffta2_raster_only_profile(short_second), "failed second read disables FFTA2 raster choice");
     check(!dawn_regional_raster_only_profile(short_second), "failed second read disables Dawn regional raster");
+    check(!mkds_approximate_factors_profile(short_second), "failed second read disables approximate factors");
     check(!automatic_movie_receiver_profile(raced) &&
           !automatic_movie_receiver_profile(short_second), "unstable identity disables movie receiver");
     check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, known, true}),
@@ -270,7 +290,7 @@ int main(int argc, char** argv)
     std::cout << "MOVIE_RECEIVER_PROFILE_PASS qualified_headers=17 unknown_off=1 reset_default_off=1\n";
 
     // Optional private fixtures stay outside the source tree and release.
-    if (argc == 3 || argc == 5) {
+    if (argc == 3 || argc == 5 || argc == 6) {
         const auto cast = load_header(argv[1]);
         const auto nsmb = load_header(argv[2]);
         const GameQueryHeader unknown {};
@@ -289,7 +309,7 @@ int main(int argc, char** argv)
         auto switched = read_game_query_profile([&](GameQueryHeader& out) { out = ++calls == 1 ? cast : nsmb; return true; });
         check(!switched.identified && switched.profile == GameQueryProfile::Fast, "ROM changed during identification");
         std::cout << "GAME_QUERY_PROFILE_FIXTURES_PASS reload_reset_sequence=6 changed_bytes=352 cast=ordered nsmb=fast\n";
-        if (argc == 5) {
+        if (argc >= 5) {
             const auto europe = load_header(argv[3]), japan = load_header(argv[4]);
             for (const auto* header : {&europe, &japan, &cast, &nsmb, &europe, &unknown, &japan}) {
                 const auto selected = read_game_query_profile([&](GameQueryHeader& out) { out = *header; return true; });
@@ -313,6 +333,22 @@ int main(int argc, char** argv)
                   "regional ROM switch during identification falls back");
             std::cout << "DAWN_REGIONAL_HEADER_FIXTURES_PASS reloads=7 changed_bytes=704 torn_read=1\n";
         }
-    } else check(argc == 1, "usage: test [castlevania-header nsmb-header [dawn-europe-header dawn-japan-header]]");
+        if (argc == 6) {
+            const auto mkds=load_header(argv[5]);
+            for(const auto* header : {&mkds,&nsmb,&cast,&unknown,&mkds,&nsmb}) {
+                const auto selected=read_game_query_profile([&](GameQueryHeader& out){out=*header;return true;});
+                check(mkds_approximate_factors_profile(selected)==(header==&mkds), "real Kart header reload/reset choice");
+            }
+            for(std::size_t byte=0;byte<mkds.size();++byte) {
+                auto changed=mkds;changed[byte]^=1;
+                const auto selected=read_game_query_profile([&](GameQueryHeader& out){out=changed;return true;});
+                check(!mkds_approximate_factors_profile(selected), "changed real Kart header falls back");
+            }
+            calls=0;
+            const auto torn=read_game_query_profile([&](GameQueryHeader& out){out=++calls==1?mkds:nsmb;return true;});
+            check(!mkds_approximate_factors_profile(torn), "torn Kart header falls back");
+            std::cout << "MKDS_APPROX_HEADER_FIXTURES_PASS reloads=6 changed_bytes=352 torn_read=1\n";
+        }
+    } else check(argc == 1, "usage: test [castlevania-header nsmb-header [dawn-europe-header dawn-japan-header [mkds-header]]]");
     std::cout << "GAME_QUERY_PROFILE_PASS exact_identity=1 unknown_fast=1 read_fail_fast=1 torn_fast=1\n";
 }

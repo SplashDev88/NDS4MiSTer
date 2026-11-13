@@ -160,6 +160,8 @@ public:
     // Session profile set before rendering starts; defaults off for unknown games.
     void SetSolidSpansEnabled(bool enabled) noexcept { UseSolidSpans = enabled; }
     bool SolidSpansEnabled() const noexcept { return UseSolidSpans; }
+    void SetApproximateFactorsEnabled(bool enabled) noexcept { UseApproximateFactors = enabled; }
+    bool ApproximateFactorsEnabled() const noexcept { return UseApproximateFactors; }
 
     // Keep Portrait's admitted raster and scheduling choices separate from
     // Dawn's texture history and other replay policies.
@@ -360,6 +362,7 @@ public:
     bool UseIntegralTextureSpans = false;
     bool UseSpriteRasterSpans = false;
     bool UseSolidSpans = false;
+    bool UseApproximateFactors = false;
 
     u32 DispCnt = 0;
     u8 AlphaRefVal = 0;

@@ -225,7 +225,9 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
-    ApproximateFactors = enabled("NDS4MISTER_APPROX_FACTORS");
+    if (const char* choice = std::getenv("NDS4MISTER_APPROX_FACTORS"))
+        ApproximateFactorsOverride = std::strcmp(choice, "auto") == 0 ? -1 :
+            (std::strcmp(choice, "1") == 0 ? 1 : 0);
     // Read the diagnostic override once; cartridge policy follows each session.
     if (const char* choice = std::getenv("NDS4MISTER_SOLID_SPANS"))
         SolidSpansOverride = std::strcmp(choice, "auto") == 0 ? -1 :
@@ -5657,6 +5659,8 @@ void SoftRenderer3D::Blank3DFrame()
 
 void SoftRenderer3D::RenderFrame()
 {
+    ApproximateFactors = ApproximateFactorsOverride < 0 ? GPU3D.ApproximateFactorsEnabled() :
+        ApproximateFactorsOverride != 0;
     SolidSpans = SolidSpansOverride < 0 ? GPU3D.SolidSpansEnabled() :
         SolidSpansOverride != 0;
     const bool previousRenderOff = RenderOff;
