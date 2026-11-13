@@ -20,6 +20,7 @@
 #include "GPU3D_Diagnostic.h"
 #include "NDS4MiSTerSolidSpan.h"
 #include "NDS4MiSTerApproxFactor.h"
+#include "NDS4MiSTerNeutralWhite.h"
 #include <ctime>
 
 #include <algorithm>
@@ -225,6 +226,7 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
+    NeutralWhite = enabled("NDS4MISTER_NEUTRAL_WHITE");
     if (const char* choice = std::getenv("NDS4MISTER_APPROX_FACTORS"))
         ApproximateFactorsOverride = std::strcmp(choice, "auto") == 0 ? -1 :
             (std::strcmp(choice, "1") == 0 ? 1 : 0);
@@ -1606,6 +1608,8 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
     u32 packedSpanColor = 0;
     const bool constantColor =
         spanAttributes.GetConstantColor(packedSpanColor);
+    const bool neutralColor = OpaquePolygon && NeutralWhite && constantColor &&
+        packedSpanColor == 0x003f3f3fu;
     const auto coefficients = spanAttributes.PreparePerspectiveBatch();
     const s32 initialX = firstX;
     static_assert(!Approximate || (BatchWDepth && OpaquePolygon));
@@ -1687,8 +1691,17 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
                 LookupCachedTexels4(pixelState, textureS, textureT);
             uint32x4_t colorVector;
             if constexpr (OpaquePolygon)
-                colorVector = NDS4MiSTerModulateCachedOpaqueVector4(
-                    sourceVector, vld1q_u32(vertexColors));
+            {
+#ifdef NDS4MISTER_NEUTRAL_WHITE_TEST
+                NeutralWhiteConsideredPixels.fetch_add(4, std::memory_order_relaxed);
+                if (neutralColor)
+                    NeutralWhiteBypassedPixels.fetch_add(4, std::memory_order_relaxed);
+#endif
+                colorVector = neutralColor ?
+                    NDS4MiSTerNeutralWhiteModulate4(sourceVector) :
+                    NDS4MiSTerModulateCachedOpaqueVector4(
+                        sourceVector, vld1q_u32(vertexColors));
+            }
             else
                 colorVector = NDS4MiSTerModulateCachedTranslucentVector4(
                     sourceVector, vld1q_u32(vertexColors), pixelState.PolyAlpha);
