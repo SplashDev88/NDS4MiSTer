@@ -299,6 +299,7 @@ module nds_h3d_record_fifo #(
     // stages. Generic callers keep the original unrestricted format.
     localparam integer ENTRY_BITS = RECONSTRUCT_FRAME ? 130 : 162;
     typedef logic [ENTRY_BITS-1:0] entry_t;
+    genvar bank;
 
     logic [LGDEPTH:0] wptr, rptr;     // rptr: next entry to fetch from the RAM
     logic [LGDEPTH:0] wptr_n, rptr_n, stored_n;
@@ -385,7 +386,7 @@ module nds_h3d_record_fifo #(
     generate if (BANKED_RAM && LGDEPTH >= 2) begin : g_banked_ram
         logic selected_bank;
         entry_t bank_q [0:1];
-        for (genvar bank = 0; bank < 2; bank = bank + 1) begin : g_bank
+        for (bank = 0; bank < 2; bank = bank + 1) begin : g_bank
             (* ramstyle = "M10K, no_rw_check" *) entry_t mem [0:(DEPTH/2)-1];
             always_ff @(posedge clk) begin
                 if (in_fire && wptr[LGDEPTH-1] == (bank != 0))
