@@ -2114,7 +2114,8 @@ wire ctl_mux_rd,ctl_mux_wr,ctl_mux_busy,ctl_mux_valid,ctl_mux_accepted;
 wire [7:0] ctl_mux_burst,ctl_mux_be;
 wire [28:0] ctl_mux_addr;
 wire [63:0] ctl_mux_din,ctl_mux_dout;
-nds_fpga3d #(.ENABLE_SEGMENTED_EXPERIMENT(1)) fpga3d (
+// Private experiment: recovered record metadata RAM funds a16 KiB texture cache.
+nds_fpga3d #(.ENABLE_SEGMENTED_EXPERIMENT(1), .TEX_CACHE_INDEX_BITS(11)) fpga3d (
  .clk(ddr_clk),.reset(h3d_fabric_reset),.enable(h3d_control_release),.session(h3d_active_session),
  .rd(f3d_rd),.wr(f3d_wr),.burst(f3d_burst),.addr(f3d_addr),.din(f3d_din),.be(f3d_be),
  .busy(f3d_busy),.dout(f3d_dout),.dout_ready(f3d_valid),.accepted(f3d_accepted)
