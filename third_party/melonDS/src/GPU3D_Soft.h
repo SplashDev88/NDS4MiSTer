@@ -1486,6 +1486,15 @@ private:
             NDS4MiSTerPerspectiveFactors4(firstX - x0, xdiff, w0n, w1d, factors);
         }
 
+        [[gnu::always_inline]] inline void
+        GetApproximateFactors4(s32 firstX, u32* factors) const noexcept;
+
+        inline void RestoreExactPerspectiveX(s32 absoluteX) noexcept
+        {
+            this->x = absoluteX - x0;
+            SetPerspectiveXResync(this->x);
+        }
+
         [[gnu::always_inline, gnu::hot]] inline void
         SetPerspectiveBatchX(s32 x, u32 factor) noexcept
         {
@@ -2395,7 +2404,7 @@ private:
         Interpolator<0>::SpanInterpolator& spanAttributes,
         u32 packedSpanColor = 0, s32 constantSpanDepth = 0);
 #if defined(__arm__) && defined(__ARM_NEON)
-    template<bool BatchWDepth, bool OpaquePolygon = true>
+    template<bool BatchWDepth, bool OpaquePolygon = true, bool Approximate = false>
     [[gnu::hot, gnu::noinline]] s32
     RenderCachedModulatePerspectiveInteriorBatch4(
         RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -2675,5 +2684,6 @@ private:
     void Blank3DFrame();
     int SolidSpansOverride = -1;
     bool SolidSpans = false;
+    bool ApproximateFactors = false;
 };
 }

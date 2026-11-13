@@ -97,6 +97,11 @@ if(NDS4MISTER_USE_MELONDS)
     set(ENABLE_JIT ${NDS4MISTER_ENABLE_JIT} CACHE BOOL "" FORCE)
     set(ENABLE_LTO_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE} CACHE BOOL "" FORCE)
     add_subdirectory(third_party/melonDS EXCLUDE_FROM_ALL)
+    add_executable(nds_approx_factor_snapshot_test EXCLUDE_FROM_ALL
+        tools/test_approx_factor_snapshot.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_approx_factor_snapshot_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_approx_factor_snapshot_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_approx_factor_snapshot_test PRIVATE core ${CMAKE_DL_LIBS})
     add_executable(nds_solid_span_test EXCLUDE_FROM_ALL tools/test_solid_span.cpp)
     target_include_directories(nds_solid_span_test PRIVATE third_party/melonDS/src)
     add_executable(nds_solid_span_raster_test EXCLUDE_FROM_ALL

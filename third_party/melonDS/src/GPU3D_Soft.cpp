@@ -19,6 +19,7 @@
 #include "GPU3D_Soft.h"
 #include "GPU3D_Diagnostic.h"
 #include "NDS4MiSTerSolidSpan.h"
+#include "NDS4MiSTerApproxFactor.h"
 #include <ctime>
 
 #include <algorithm>
@@ -224,6 +225,7 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
+    ApproximateFactors = enabled("NDS4MISTER_APPROX_FACTORS");
     // Read the diagnostic override once; cartridge policy follows each session.
     if (const char* choice = std::getenv("NDS4MISTER_SOLID_SPANS"))
         SolidSpansOverride = std::strcmp(choice, "auto") == 0 ? -1 :
@@ -1568,11 +1570,20 @@ void SoftRenderer3D::RenderShadowMaskScanline(
 }
 
 #if defined(__arm__) && defined(__ARM_NEON)
-// Perspective factors remain scalar and exact. W-depth and attributes can
+// Default perspective factors remain scalar and exact. W-depth and attributes can
 // batch four pixels. Select W-depth specialization once per span so Z-buffer
 // pixels retain the original loop without a runtime batching-mode branch.
 // Rendering and writes remain in X order.
-template<bool BatchWDepth, bool OpaquePolygon>
+template<int dir>
+[[gnu::always_inline]] inline void
+SoftRenderer3D::Interpolator<dir>::GetApproximateFactors4(
+    s32 firstX, u32* factors) const noexcept
+{
+    static_assert(dir == 0);
+    NDS4MiSTerApproximateFactors4(firstX - x0, xdiff, w0n, w1d, factors);
+}
+
+template<bool BatchWDepth, bool OpaquePolygon, bool Approximate>
 [[gnu::hot, gnu::noinline]] s32
 SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
     RendererPolygon* rp, s32 y, s32 firstX, s32 endX,
@@ -1594,6 +1605,8 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
     const bool constantColor =
         spanAttributes.GetConstantColor(packedSpanColor);
     const auto coefficients = spanAttributes.PreparePerspectiveBatch();
+    const s32 initialX = firstX;
+    static_assert(!Approximate || (BatchWDepth && OpaquePolygon));
 
     for (; firstX + 3 < endX; firstX += 4)
     {
@@ -1605,11 +1618,19 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
 
         if constexpr (BatchWDepth)
         {
-            for (unsigned lane = 0; lane < 4; ++lane)
+            if constexpr (Approximate)
             {
-                interpX.SetXFast<true>(firstX + lane);
-                factors[lane] = interpX.PerspectiveFactor();
+                interpX.GetApproximateFactors4(firstX, factors);
+#ifdef NDS4MISTER_APPROX_FACTOR_TEST
+                ApproxFactorTestPixels.fetch_add(4, std::memory_order_relaxed);
+#endif
             }
+            else
+                for (unsigned lane = 0; lane < 4; ++lane)
+                {
+                    interpX.SetXFast<true>(firstX + lane);
+                    factors[lane] = interpX.PerspectiveFactor();
+                }
             spanDepth.InterpolatePerspectiveDepthBatch4(factors, depths);
         }
 
@@ -1725,6 +1746,9 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
         }
     }
 
+    if constexpr (Approximate)
+        if (firstX != initialX)
+            interpX.RestoreExactPerspectiveX(firstX - 1);
     return firstX;
 }
 #endif
@@ -1760,7 +1784,13 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     // blending still run in the same X order, including lower-layer writes.
     if (rp->PixelState.PolyAlpha == 31 && spanAttributes.IsPerspective())
     {
-        if (spanDepth.CanBatchPerspectiveDepth4())
+        if (ApproximateFactors && !(EffectiveDispCnt & 16) && !AlternateRows &&
+            !Quarter && !Tiny && !rp->PolyData->IsShadow && !rp->PolyData->IsShadowMask &&
+            spanDepth.CanBatchPerspectiveDepth4() &&
+            interpX.CanBatchPerspectiveFactors(firstX, endX))
+            firstX = RenderCachedModulatePerspectiveInteriorBatch4<true, true, true>(
+                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        else if (spanDepth.CanBatchPerspectiveDepth4())
             firstX = RenderCachedModulatePerspectiveInteriorBatch4<true>(
                 rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
         else
