@@ -199,15 +199,26 @@ module nds_fpga3d #(
  logic [11:0] p_ma;
  logic p_ce,p_hit,p_miss,p_bad_alpha,p_override;
  logic [63:0] p_override_data;
- logic [4:0] p_clear_index;
+ logic [7:0] p_clear_index;
  logic [2:0] tex_beat;
- // Indexed texels need one quarter of the old RGBA cache footprint. Use
- // 32 complete 64-byte lines; the six freed M10Ks hold pixel attributes
- // instead of consuming scarce logic blocks as distributed memory.
- (* ramstyle = "M10K" *) logic [63:0] p_cache_data[0:255];
- (* ramstyle = "M10K" *) logic [21:0] p_cache_tags[0:31];
- logic [63:0] p_cache_q;
- logic [21:0] p_tag_q;
+ logic tex_short;
+ wire tex_last = tex_beat == (tex_short ? 3'd1 : 3'd7);
+ wire [7:0] tex_fill_index = tex_short ?
+     {tex_addr[7:1],tex_beat[0]} : {tex_addr[7:3],tex_beat};
+ // Retain 2 KiB of data, with independently valid 16-byte sectors. Sparse
+ // perspective sampling fetches one sector only when the next staged pixel
+ // is absent or addresses a different64-byte line. Linear/local accesses
+ // retain the full burst and publish each completed sector. Nothing reads a partial
+ // refill: the stalled pixel resumes only after the entire burst drains.
+ // Every accepted texture lies in byte addresses 3fd40000..3fdfffff.
+ // The full descriptor bounds check below precedes every textured lookup;
+ // only the nine varying tag bits need storage. Duplicate the sector tag
+ // beside each word so data and metadata share two 256x40 M10Ks. Partial
+ // refills remain inaccessible until the stalled pipeline resumes.
+ (* ramstyle = "M10K" *) logic [73:0] p_cache_words[0:255];
+ logic [73:0] p_cache_storage_q;
+ wire [63:0] p_cache_q=p_cache_storage_q[63:0];
+ wire [9:0] p_tag_q=p_cache_storage_q[73:64];
  integer i;
 
  function automatic [15:0] texture_coord(input logic signed [15:0] value,
@@ -248,7 +259,7 @@ module nds_fpga3d #(
   p_ts=texture_coord(p_av[10][3][15:0],tex_size_s,tex_mask_s,cmd[14][8],cmd[14][10]);
   p_tt=texture_coord(p_av[10][4][15:0],tex_size_t,tex_mask_t,cmd[14][9],cmd[14][11]);
   p_index=(20'(p_tt)<<cmd[14][3:0])+20'(p_ts);
-  p_hit=p_override || p_tag_q=={1'b1,p_addr[12][28:8]};
+  p_hit=p_override || (p_addr[12][28:17]==12'h3fd && p_tag_q=={1'b1,p_addr[12][16:8]});
   p_texel=cmd[14][13]?{3'd0,{5{binary_texel[15]}},2'd0,expand5(binary_texel[14:10]),
                          2'd0,expand5(binary_texel[9:5]),2'd0,expand5(binary_texel[4:0])}:
           cmd[14][12]?(palette_index[0]?palette_odd[palette_index[7:1]]:palette_even[palette_index[7:1]]):
@@ -282,18 +293,16 @@ module nds_fpga3d #(
   if(state==PALETTE_WAIT && dout_ready)begin
    palette_even[palette_word]<=dout[31:0];palette_odd[palette_word]<=dout[63:32];
   end
-  if(state==CACHE_CLEAR)p_cache_tags[p_clear_index]<=0;
-  else if(state==TEX_WAIT && dout_ready)begin
-   if(tex_beat==7)p_cache_tags[tex_addr[7:3]]<={1'b1,tex_addr[28:8]};
-   p_cache_data[{tex_addr[7:3],tex_beat}]<=dout;
-  end
-  if(p_ce)begin
-   p_cache_q<=p_cache_data[p_addr[11][7:0]];
-   p_tag_q<=p_cache_tags[p_addr[11][7:3]];
-  end
+  if(state==CACHE_CLEAR)p_cache_words[p_clear_index]<=0;
+  else if(state==TEX_WAIT && dout_ready)
+   p_cache_words[tex_fill_index]<={1'b1,tex_addr[16:8],dout};
+  if(p_ce)p_cache_storage_q<=p_cache_words[p_addr[11][7:0]];
   if(reset || !enable || state==DECODE)begin p_valid<=0;p_override<=0;end
   else begin
-   if(state==TEX_WAIT && dout_ready)begin if(tex_beat==7)p_override<=1; if(tex_beat==tex_addr[2:0])p_override_data<=dout;end
+   if(state==TEX_WAIT && dout_ready)begin
+    if(tex_last)p_override<=1;
+    if(tex_beat==(tex_short?{2'd0,tex_addr[0]}:tex_addr[2:0]))p_override_data<=dout;
+   end
    if(p_ce)begin
     p_override<=0;p_valid<={p_valid[12:0],x<last};
     p_x[0]<=x;p_z[0]<=zlinear;
@@ -336,7 +345,8 @@ module nds_fpga3d #(
    FETCH:begin rd=1;burst=fetch_words;addr=command_address;end
    STENCIL_READ:begin rd=1;burst=64;addr=29'h07f901c0;end
    DUMP_WRITE:begin wr=1;addr=OUT+29'h6000+29'(stencil_index[8:3]);din=stencil_output_word;end
-   TEX_READ:begin rd=1;burst=8;addr={tex_addr[28:3],3'd0};end
+   TEX_READ:begin rd=1;burst=tex_short?8'd2:8'd8;
+    addr=tex_short?{tex_addr[28:1],1'b0}:{tex_addr[28:3],3'd0};end
    PALETTE_READ:begin rd=1;burst=8;addr=29'(cmd[13]>>3)+29'(palette_word);end
    FLUSH_WRITE:begin wr=1;burst=128;addr=OUT+(output_y<<7);din=flush_pair;end
    COMPLETE:begin wr=1;addr=MB+2;din={status,seq};end
@@ -418,7 +428,7 @@ module nds_fpga3d #(
      if((!param_device && !param_wc && !param_padded) || count>param_capacity)begin status<=1;state<=COMPLETE;end
      else state<=CACHE_CLEAR;
     end
-    CACHE_CLEAR:if(p_clear_index==31)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
+    CACHE_CLEAR:if(p_clear_index==255)state<=STENCIL_READ;else p_clear_index<=p_clear_index+1'b1;
     STENCIL_READ:if(!busy)begin cache_fill_beat<=0;stencil_index<=0;state<=STENCIL_WAIT;end
     STENCIL_WAIT:if(dout_ready)begin
      if(cache_fill_beat==63)state<=SEED_READ;else cache_fill_beat<=cache_fill_beat+1'b1;
@@ -564,7 +574,7 @@ module nds_fpga3d #(
     end
     CLEAR_LINE:if(x==255)state<=NEXT_COMMAND;else x<=x+1'b1;
     TEX_READ:if(!busy)begin tex_beat<=0;state<=TEX_WAIT;end
-    TEX_WAIT:if(dout_ready)begin if(tex_beat==7)state<=PIPE_RUN;else tex_beat<=tex_beat+1'b1;end
+    TEX_WAIT:if(dout_ready)begin if(tex_last)state<=PIPE_RUN;else tex_beat<=tex_beat+1'b1;end
     PALETTE_READ:if(!busy)state<=PALETTE_WAIT;
     PALETTE_WAIT:if(dout_ready)begin
      palette_word<=palette_word+1'b1;
@@ -573,7 +583,8 @@ module nds_fpga3d #(
     end
     PIPE_RUN:begin
      if(p_bad_alpha)begin status<=3;state<=COMPLETE;end
-     else if(p_miss)begin tex_addr<=p_addr[12];state<=TEX_READ;end
+     else if(p_miss)begin tex_addr<=p_addr[12];tex_short<=!cmd[2][0] &&
+         (!p_valid[11] || p_addr[11][28:3]!=p_addr[12][28:3]);state<=TEX_READ;end
      else if(p_ce)begin
       if(x<last)begin
        x<=x+1'b1;dx<=dx+1'b1;

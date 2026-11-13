@@ -53,6 +53,9 @@ struct Sim {
    uint32_t a=v.addr*8;
    if(v.rd)require((a&4095)+v.burst*8<=4096,"physical read crossed a 4 KiB page");
    if(v.rd){
+#ifdef FPGA3D_READ_OBSERVER
+    FPGA3D_READ_OBSERVER(a,v.burst);
+#endif
     if(rejectFrameReads)require(a<Commands && a!=StencilInput,"oversized initial count acquired frame data");
     if(a>=Textures && a<0x3fe00000 && (!guardedBase || guardedBase==Commands || a<guardedBase)){textureReads++;textureBeats+=v.burst;}
     if(guardedBase==PaddedCommands && a>=0x3fe00000){
