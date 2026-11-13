@@ -226,7 +226,9 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
-    NeutralWhite = enabled("NDS4MISTER_NEUTRAL_WHITE");
+    if (const char* choice = std::getenv("NDS4MISTER_NEUTRAL_WHITE"))
+        NeutralWhiteOverride = std::strcmp(choice, "auto") == 0 ? -1 :
+            (std::strcmp(choice, "1") == 0 ? 1 : 0);
     if (const char* choice = std::getenv("NDS4MISTER_APPROX_FACTORS"))
         ApproximateFactorsOverride = std::strcmp(choice, "auto") == 0 ? -1 :
             (std::strcmp(choice, "1") == 0 ? 1 : 0);
@@ -5678,6 +5680,11 @@ void SoftRenderer3D::RenderFrame()
         SolidSpansOverride != 0;
     const bool previousRenderOff = RenderOff;
     const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
+    // Reuse the verified MKDS USA cartridge allowlist, independently of the
+    // approximate-factor diagnostic override. Only AA Off has a live gain.
+    NeutralWhite = NeutralWhiteOverride < 0 ?
+        GPU3D.ApproximateFactorsEnabled() && !(nextDispCnt & 16) :
+        NeutralWhiteOverride != 0;
     const bool previousAlternateRows = AlternateRows;
     const bool previousQuarter = Quarter;
     const bool previousTiny = Tiny;
