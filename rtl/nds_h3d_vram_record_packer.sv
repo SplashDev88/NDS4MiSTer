@@ -266,7 +266,8 @@ endmodule
 // cycles from an empty queue to the output, one entry per cycle after that.
 // in_ready depends only on registers, and every output is a register.
 module nds_h3d_record_fifo #(
-    parameter integer LGDEPTH = 11
+    parameter integer LGDEPTH = 11,
+    parameter bit RECONSTRUCT_FRAME = 0
 ) (
     input  logic         clk,
     input  logic         reset,
@@ -289,7 +290,14 @@ module nds_h3d_record_fifo #(
 );
     localparam integer DEPTH = 1 << LGDEPTH;
     // {is_boundary, frame, frame_end, record}
-    typedef logic [161:0] entry_t;
+    // The normalized CDC stream starts at frame1. Frame-end records advance
+    // by one; explicit boundary tokens carry a full new frame number.
+    // For this producer, normal-record frame fields are redundant. Store a
+    // boundary's full frame in its otherwise unused record payload. The
+    // queue retains all entries, its registered ready and its two pipeline
+    // stages. Generic callers keep the original unrestricted format.
+    localparam integer ENTRY_BITS = RECONSTRUCT_FRAME ? 130 : 162;
+    typedef logic [ENTRY_BITS-1:0] entry_t;
     (* ramstyle = "M10K, no_rw_check" *) entry_t mem [0:DEPTH-1];
 
     logic [LGDEPTH:0] wptr, rptr;     // rptr: next entry to fetch from the RAM
@@ -302,11 +310,18 @@ module nds_h3d_record_fifo #(
     wire in_valid = in_record_valid || in_boundary_valid;
     wire in_fire = in_valid && not_full;
     entry_t in_entry;
-    assign in_entry = in_boundary_valid && !in_record_valid ?
-        {1'b1, in_boundary_frame, 1'b0, 128'd0} :
-        {1'b0, in_record_frame, in_record_frame_end, in_record};
+    wire in_is_bnd = in_boundary_valid && !in_record_valid;
+    generate if (RECONSTRUCT_FRAME) begin : g_compact_input
+        assign in_entry = in_is_bnd ?
+            {1'b1, 1'b0, 96'd0, in_boundary_frame} :
+            {1'b0, in_record_frame_end, in_record};
+    end else begin : g_full_input
+        assign in_entry = in_is_bnd ?
+            {1'b1, in_boundary_frame, 1'b0, 128'd0} :
+            {1'b0, in_record_frame, in_record_frame_end, in_record};
+    end endgenerate
 
-    wire out_is_bnd = out_q[161];
+    wire out_is_bnd = out_q[ENTRY_BITS-1];
     wire out_fire = out_v && (out_is_bnd ? out_boundary_ready : out_record_ready);
     wire move = ram_v && (!out_v || out_fire);
     wire fetch = (stored != 0) && (!ram_v || move);
@@ -315,10 +330,47 @@ module nds_h3d_record_fifo #(
     assign in_boundary_ready = not_full && !in_record_valid;
     assign out_record_valid = out_v && !out_is_bnd;
     assign out_boundary_valid = out_v && out_is_bnd;
-    assign out_record = out_q[127:0];
-    assign out_record_frame = out_q[160:129];
+    assign out_record = {out_q[127:32],
+        (RECONSTRUCT_FRAME && out_is_bnd) ? 32'd0 : out_q[31:0]};
     assign out_record_frame_end = out_q[128];
-    assign out_boundary_frame = out_q[160:129];
+    generate if (RECONSTRUCT_FRAME) begin : g_frame_reconstruction
+        logic [31:0] next_frame, output_frame;
+        assign out_record_frame = output_frame;
+        assign out_boundary_frame = output_frame;
+        always_ff @(posedge clk) begin
+            if (reset) begin
+                next_frame <= 32'd1;
+                output_frame <= 32'd0;
+            end else if (move) begin
+                if (ram_q[ENTRY_BITS-1]) begin
+                    output_frame <= ram_q[31:0];
+                    next_frame <= ram_q[31:0] + 1'b1;
+                end else begin
+                    output_frame <= next_frame;
+                    if (ram_q[128]) next_frame <= next_frame + 1'b1;
+                end
+            end
+        end
+        // Fail simulation if a future producer violates the specialized
+        // stream contract, instead of silently weakening frame ownership.
+        // synthesis translate_off
+        logic [31:0] expected_input_frame;
+        always_ff @(posedge clk) begin
+            if (reset) expected_input_frame <= 32'd1;
+            else if (in_fire) begin
+                if (in_is_bnd) expected_input_frame <= in_boundary_frame + 1'b1;
+                else begin
+                    assert(in_record_frame == expected_input_frame)
+                        else $fatal(1, "Compact record FIFO frame contract violated");
+                    if (in_record_frame_end) expected_input_frame <= expected_input_frame + 1'b1;
+                end
+            end
+        end
+        // synthesis translate_on
+    end else begin : g_full_frame
+        assign out_record_frame = out_q[160:129];
+        assign out_boundary_frame = out_q[160:129];
+    end endgenerate
 
     always_comb begin
         wptr_n = wptr + (in_fire ? 1'b1 : 1'b0);
@@ -366,7 +418,8 @@ endmodule
 // own: chained combinationally they missed the 60 MHz DDR clock by 4.4 ns.
 module nds_h3d_vram_record_packer #(
     parameter integer LINGER_CYCLES = 16,
-    parameter integer FIFO_LGDEPTH = 12
+    parameter integer FIFO_LGDEPTH = 12,
+    parameter bit RECONSTRUCT_FRAME = 0
 ) (
     input  logic         clk,
     input  logic         reset,
@@ -416,7 +469,8 @@ module nds_h3d_vram_record_packer #(
         .out_boundary_frame(b_bf));
 
     // the registered output stage is also the queue the VBlank burst waits in
-    nds_h3d_record_fifo #(.LGDEPTH(FIFO_LGDEPTH)) out_stage (
+    nds_h3d_record_fifo #(.LGDEPTH(FIFO_LGDEPTH),
+        .RECONSTRUCT_FRAME(RECONSTRUCT_FRAME)) out_stage (
         .clk, .reset,
         .in_record_valid(b_rv), .in_record_ready(b_rr), .in_record(b_r),
         .in_record_frame(b_rf), .in_record_frame_end(b_fe),

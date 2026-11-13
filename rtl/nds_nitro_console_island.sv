@@ -1795,7 +1795,7 @@ nds_h3d_frame_record_cdc #(
 
 // Fold consecutive ARM9 VRAM writes (halfwords into words, words into pairs)
 // before the DDR writer; see the module header for why.
-nds_h3d_vram_record_packer h3d_vram_packer (
+nds_h3d_vram_record_packer #(.RECONSTRUCT_FRAME(1'b1)) h3d_vram_packer (
     .clk(ddr_clk), .reset(bridge_reset_ddr | ~h3d_control_release),
     .in_record_valid(h3d_raw_record_valid),
     .in_record_ready(h3d_raw_record_ready),
