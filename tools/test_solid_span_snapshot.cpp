@@ -31,7 +31,7 @@ int main(int argc,char** argv)try{
    Savestate in(data.data(),data.size(),false);n->GPU.DoSavestate(&in);require(!in.Error,"snapshot decode");n->GetRenderer().Finish3DRendering();auto& g=n->GPU.GPU3D;
    g.SetEnabled(true,true);g.SetExternalCommandReplay(true);g.SetIntegralTextureSpansEnabled(std::stoi(argv[2]));g.SetSpriteRasterSpansEnabled(std::stoi(argv[3]));g.RenderFrameIdentical=false;
    if(aa)g.RenderDispCnt|=16;else g.RenderDispCnt&=~16u;
-   auto& s=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n->GetRenderer()).Rend3D.get());require(s.SolidSpans==enabled,"runtime experiment flag not applied");
+   auto& s=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n->GetRenderer()).Rend3D.get());require(s.SolidSpansOverride==int(enabled),"runtime experiment override not applied");
    require(s.DualCoreRaster==bool(dual),"worker mode not applied");return n;
   };
   auto a=load(false),b=load(true);auto draw=[](NDS& n){n.GetRenderer().Start3DRendering();n.GetRenderer().Finish3DRendering();};

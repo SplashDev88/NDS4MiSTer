@@ -224,7 +224,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         (enabled("NDS4MISTER_DISABLE_3D_EDGE") ? (1u << 5) : 0) |
         (enabled("NDS4MISTER_DISABLE_3D_FOG") ? (1u << 7) : 0);
     DropShadows = enabled("NDS4MISTER_DISABLE_3D_SHADOWS");
-    SolidSpans = enabled("NDS4MISTER_SOLID_SPANS");
+    // Read the diagnostic override once; cartridge policy follows each session.
+    if (const char* choice = std::getenv("NDS4MISTER_SOLID_SPANS"))
+        SolidSpansOverride = std::strcmp(choice, "auto") == 0 ? -1 :
+            (std::strcmp(choice, "1") == 0 ? 1 : 0);
     AlternateRowsRequested = enabled("NDS4MISTER_ALTERNATE_3D_ROWS");
     Sema_RenderStart = Platform::Semaphore_Create();
     Sema_RenderDone = Platform::Semaphore_Create();
@@ -5624,6 +5627,8 @@ void SoftRenderer3D::Blank3DFrame()
 
 void SoftRenderer3D::RenderFrame()
 {
+    SolidSpans = SolidSpansOverride < 0 ? GPU3D.SolidSpansEnabled() :
+        SolidSpansOverride != 0;
     const bool previousRenderOff = RenderOff;
     const u32 nextDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     const bool previousAlternateRows = AlternateRows;

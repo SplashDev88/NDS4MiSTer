@@ -37,12 +37,28 @@ static void solidFrame(NDS& n,unsigned scenario){
  }
 }
 int main()try{
+ // Exercise profile changes on one renderer, plus fresh-session defaults and
+ // diagnostic overrides. No environment writes happen while a worker runs.
+ unsigned policyCases=0;
+ for(const char* setting : {static_cast<const char*>(nullptr), "auto", "0", "1", "invalid"}) {
+  if(setting)setenv("NDS4MISTER_SOLID_SPANS",setting,1);else unsetenv("NDS4MISTER_SOLID_SPANS");
+  auto n=machine(true);auto& g=n->GPU.GPU3D;
+  require(!g.SolidSpansEnabled(),"new GPU session inherited solid profile");
+  auto& s=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n->GetRenderer()).Rend3D.get());
+  for(bool profile : {false,true,false,true,false}) {
+   g.SetSolidSpansEnabled(profile);solidFrame(*n,0);render(*n);
+   const bool expected=!setting || !std::strcmp(setting,"auto") ? profile : !std::strcmp(setting,"1");
+   require(s.SolidSpans==expected,"solid profile/override transition mismatch");++policyCases;
+  }
+ }
+ unsetenv("NDS4MISTER_SOLID_SPANS");
+ std::printf("SOLID_PROFILE_PASS transitions=%u fresh_session_default_off=1\n",policyCases);
  uint64_t compared=0;
  for(unsigned scenario=0;scenario<384;++scenario){
   auto a=machine(true),b=machine(true);solidFrame(*a,scenario);solidFrame(*b,scenario);
   auto& sa=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(a->GetRenderer()).Rend3D.get());
   auto& sb=*static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(b->GetRenderer()).Rend3D.get());
-  sa.SolidSpans=false;sb.SolidSpans=true;render(*a);render(*b);
+  sa.SolidSpansOverride=0;sb.SolidSpansOverride=1;render(*a);render(*b);
   for(unsigned y=0;y<192;++y){require(!std::memcmp(a->GetRenderer().Get3DScanline(y),b->GetRenderer().Get3DScanline(y),1024),"solid raster visible mismatch");compared+=256;}
   require(!std::memcmp(sa.ColorBuffer,sb.ColorBuffer,sizeof(sa.ColorBuffer)),"solid color plane mismatch");
   require(!std::memcmp(sa.DepthBuffer,sb.DepthBuffer,sizeof(sa.DepthBuffer)),"solid depth plane mismatch");

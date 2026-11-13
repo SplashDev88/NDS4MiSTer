@@ -157,6 +157,10 @@ public:
     {
         return UseIntegralTextureSpans;
     }
+    // Session profile set before rendering starts; defaults off for unknown games.
+    void SetSolidSpansEnabled(bool enabled) noexcept { UseSolidSpans = enabled; }
+    bool SolidSpansEnabled() const noexcept { return UseSolidSpans; }
+
     // Keep Portrait's admitted raster and scheduling choices separate from
     // Dawn's texture history and other replay policies.
     void SetSpriteRasterSpansEnabled(bool enabled) noexcept
@@ -355,6 +359,7 @@ public:
     bool HighResolutionCoordinatesEnabled = true;
     bool UseIntegralTextureSpans = false;
     bool UseSpriteRasterSpans = false;
+    bool UseSolidSpans = false;
 
     u32 DispCnt = 0;
     u8 AlphaRefVal = 0;
