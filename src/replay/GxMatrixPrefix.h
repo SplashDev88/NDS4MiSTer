@@ -157,8 +157,8 @@ private:
     // initialize all 32 matrix-stack entries behind SWAP, exceeding 512 words
     // without approaching one query's 32768 geometry-clock allowance.
     // Allow 16 cycles for simple state/attribute commands, 64 for a complete
-    // vertex command, 128 for other ordinary commands, 256 for multiword
-    // matrices, and 512 for SWAP/BOX_TEST.
+    // vertex command or single-word matrix/stack command, 80 for multiword
+    // matrices, 128 for other ordinary commands, and 512 for SWAP/BOX_TEST.
     // These exceed the vendored command/pipeline costs; treating every
     // texcoord as a vertex falsely rejects FFT A2's startup draw bursts.
     // Reserve 2768 cycles
@@ -199,8 +199,14 @@ private:
         // complete vertex, including both VTX_16 words. Keep 64 cycles of
         // allowance. An incomplete two-word VTX_16 remains busy and cannot
         // publish a fast snapshot; only complete command work is eligible.
+        // All matrix modes and pipeline delays take at most 43 cycles for
+        // stack/identity commands and 72 for a complete matrix transform.
+        // Keep 64/80 cycles respectively. Dividing among parameter words
+        // is conservative for complete commands; partial commands remain
+        // busy and cannot publish a fast snapshot.
         const auto cycles = tag == 0x50 || tag == 0x70 ? 512u :
-            tag >= 0x16 && tag <= 0x1c ? 256u :
+            tag >= 0x11 && tag <= 0x15 ? 64u :
+            tag >= 0x16 && tag <= 0x1c ? 80u :
             tag >= 0x23 && tag <= 0x28 ? 64u : 128u;
         return (cycles + count - 1u) / count;
     }

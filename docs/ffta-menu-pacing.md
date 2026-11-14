@@ -105,3 +105,36 @@ Near-boundary VTX_16 partial-busy and genuine cost-overflow rejection are
 also tested. Existing matrix, stack, power, BOX and deferred-storage checks
 remain in the test suite. Hardware validation and battle-speed qualification
 are still pending; this is not yet a released or qualified improvement.
+
+
+## Battle matrix-cost candidate (2026-11-13)
+
+The vertex64 candidate still disabled fast queries in a distinct battle
+session: peak pending depth increased from 597 to 896 words, but the same
+cost rejection remained. It is not selected as a standalone speed improvement.
+A subsequent diagnostic captured the first rejected tail during battle loading.
+Stored and recomputed cost both equal 29,980, so this rejection is not caused
+by stale accounting. The 896-word tail includes matrix/stack work and has no
+additional SWAP inside it. The next VTX_16 word would exceed 30,000.
+
+This candidate retains vertex64 and reduces the allowance for single-word
+matrix/stack operations from 128 to 64, and complete matrix transforms from
+256 to 80. The actual replay engine's 1,934,336-case audit covers every matrix
+mode, all vertex/normal and polygon delays, stack boundary states, and all
+stack pointers and signed six-bit pop offsets at maximum pipeline delay.
+Observed maxima are 43 cycles for stack/identity and 72 for transforms.
+The 30,000 total cap, 4,096-word storage cap, other command costs, ordering,
+and incomplete-command busy protections are unchanged.
+
+Four matrix-heavy streams (all matrix modes, 420 operations each) reproduce
+fallback under the old costs and settle with matching matrices/status under
+the candidate after one ordinary query step. Near-cap partial translations
+remain busy, and genuine over-budget work still rejects. The captured tail,
+plus the rejected word and a synthetic closing VTX_16 parameter, also passes
+from synthetic identity matrices. This fixture verifies that command sequence,
+not the unrecorded preceding game state or the remainder of the game's burst.
+
+Native validation passes, including the earlier vertex, matrix, stack, BOX,
+power, storage and ordering regressions. ARM production validation and actual
+battle-speed qualification remain pending. These bounds are query eligibility
+estimates, not changes to game timing, and are not evidence of full-speed play.

@@ -53,7 +53,140 @@ struct Probe {
     }
 };
 }
+namespace {
+void audit_matrix_costs()
+{
+    Probe timing;
+    auto& gpu = timing.nds->GPU.GPU3D;
+    unsigned total_cases = 0;
+    for (unsigned tag=0x11;tag<=0x1c;++tag) {
+        const unsigned count = tag==0x16 || tag==0x18 ? 16 :
+            tag==0x17 || tag==0x19 ? 12 : tag==0x1a ? 9 :
+            tag==0x1b || tag==0x1c ? 3 : 1;
+        const unsigned bound = tag<=0x15 ? 64 : 80;
+        unsigned cases = 0, maximum = 0;
+        auto test = [&](unsigned mode, int polygon, int vertex, int normal,
+                        unsigned stack, unsigned value) {
+            gpu.Timestamp = timing.nds->ARM9Timestamp = 0;
+            gpu.CycleCount = 0;
+            gpu.VertexPipeline = vertex; gpu.NormalPipeline = normal;
+            gpu.PolygonPipeline = polygon;
+            gpu.VertexSlotCounter = 0; gpu.VertexSlotsFree = 1;
+            gpu.ExecParamCount = 0; gpu.MatrixMode = mode;
+            gpu.ProjMatrixStackPointer = gpu.TexMatrixStackPointer = stack & 1;
+            gpu.PosMatrixStackPointer = stack;
+            for (auto* m : {gpu.ProjMatrix,gpu.PosMatrix,gpu.VecMatrix,gpu.TexMatrix})
+                melonDS::MatrixLoadIdentity(m);
+            unsigned cycles = 0;
+            for (unsigned word=0;word<count;++word) {
+                const std::uint32_t parameter = count==1 ? value :
+                    value==0 ? 0u : value==1 ? 4096u :
+                    word&1 ? 4096u : std::uint32_t(-4096);
+                gpu.CycleCount = 0;
+                gpu.WriteExternalNormalizedCommand(tag,parameter);
+                gpu.Run();
+                if (gpu.CycleCount<=0)
+                    throw std::runtime_error("matrix audit command did not execute");
+                cycles += gpu.CycleCount;
+            }
+            if (cycles>bound || gpu.ExecParamCount)
+                throw std::runtime_error("matrix total cost bound exceeded or partial command left");
+            maximum = std::max(maximum,cycles); ++cases;
+        };
+        for (unsigned mode=0;mode<4;++mode)
+            for (int polygon=0;polygon<=35;++polygon)
+                for (int vertex=0;vertex<=7;++vertex)
+                    for (int normal=0;normal<=7;++normal)
+                        if (count==1) {
+                            for (unsigned stack : {0u,1u,30u,31u,32u,63u})
+                                for (unsigned value : {0u,1u,31u,32u,63u,0xffffffffu})
+                                    test(mode,polygon,vertex,normal,stack,value);
+                        } else for (unsigned value=0;value<3;++value)
+                            test(mode,polygon,vertex,normal,0,value);
+        // All stack slots and signed six-bit pop offsets, including the
+        // overflow/underflow transitions, with maximum pipeline delays.
+        if (count==1)
+            for (unsigned mode=0;mode<4;++mode)
+                for (unsigned stack=0;stack<64;++stack)
+                    for (unsigned value=0;value<64;++value)
+                        test(mode,35,7,7,stack,value);
+        if (gpu.GXCommandDrops) throw std::runtime_error("matrix audit lost commands");
+        std::printf("GX_MATRIX_PREFIX_MATRIX_COST_TAG_PASS tag=%02x cases=%u max_total_cycles=%u bound=%u\n",tag,cases,maximum,bound);
+        total_cases += cases;
+    }
+    std::printf("GX_MATRIX_PREFIX_MATRIX_COST_PASS cases=%u stack_bound=64 matrix_bound=80\n",total_cases);
+}
+
+void matrix_stream_regression()
+{
+    unsigned streams=0;
+    for (unsigned mode=0;mode<4;++mode) {
+        Probe stream;
+        stream.command(0x10,mode); stream.command(0x15,0);
+        stream.command(0x50,0);
+        for (unsigned n=0;n<140;++n) {
+            stream.command(0x11,0); stream.command(0x12,1);
+            stream.command(0x1c,n+1); stream.command(0x1c,2);
+            stream.command(0x1c,3);
+        }
+        if (!stream.prefix.valid())
+            throw std::runtime_error("matrix-heavy eligible stream permanently fell back");
+        stream.compare(); stream.vblank(); stream.compare();
+        if ((stream.prefix.status() | stream.nds->GPU.GPU3D.Read32(0x04000600)) & 0x08000001u)
+            throw std::runtime_error("matrix-heavy stream did not settle in one query step");
+        ++streams;
+    }
+    // 370 complete translations consume 29970 of the 30000-cycle bound.
+    // One extra parameter is still admitted, but must remain busy.
+    Probe partial;
+    partial.command(0x50,0);
+    for (unsigned n=0;n<1111;++n) partial.command(0x1c,0);
+    if (!partial.prefix.valid()) throw std::runtime_error("partial translation rejected early");
+    partial.vblank();partial.compare();
+    if (!(partial.prefix.status() & 0x08000000u))
+        throw std::runtime_error("partial translation lost busy protection");
+    nds4mister::replay::GxMatrixPrefix cap;
+    cap.command(0x50,0);
+    for (unsigned n=0;n<1112;++n) cap.command(0x1c,0);
+    if (cap.valid() || cap.invalid_reason()!=3)
+        throw std::runtime_error("matrix cost cap no longer enforced");
+    std::printf("GX_MATRIX_PREFIX_MATRIX_STREAM_PASS streams=%u operations_per_stream=420 partial_busy=1 real_cost_overflow=1\n",streams);
+}
+
+void captured_burst_regression(const char* filename)
+{
+    // Captured pending words from the diagnostic, replayed from synthetic
+    // identity matrices. This tests command ordering and one-query settling;
+    // it does not reconstruct all of the game's prior geometry state.
+    auto* input=std::fopen(filename,"r");
+    if (!input) throw std::runtime_error("captured burst file missing");
+    Probe stream;
+    stream.command(0x10,1); stream.command(0x15,0); stream.command(0x50,0);
+    unsigned tag=0,value=0,words=0;
+    while (std::fscanf(input,"%x %x",&tag,&value)==2) {
+        stream.command(tag,value); ++words;
+        if (!stream.prefix.valid()) {
+            std::fclose(input);
+            throw std::runtime_error("captured burst still rejected");
+        }
+    }
+    if (!std::feof(input)) { std::fclose(input); throw std::runtime_error("bad captured burst"); }
+    std::fclose(input);
+    stream.compare();stream.vblank();stream.compare();
+    if ((stream.prefix.status() | stream.nds->GPU.GPU3D.Read32(0x04000600)) & 0x08000001u)
+        throw std::runtime_error("captured burst did not settle in one query step");
+    std::printf("GX_MATRIX_PREFIX_CAPTURED_BURST_PASS words=%u synthetic_initial_state=1\n",words);
+}
+}
+
 int main(int argc, char** argv) try {
+    if (argc==3 && std::strcmp(argv[1],"--captured-burst")==0) {
+        captured_burst_regression(argv[2]); return 0;
+    }
+    if (argc==1 || (argc==2 && std::strcmp(argv[1],"--matrix-cost-audit")==0)) {
+        audit_matrix_costs(); matrix_stream_regression();
+        if (argc==2) return 0;
+    }
     // VTX_16's first word may wait for a polygon slot, while its second
     // word completes the vertex. Audit total command work, including slot
     // patterns broader than the reachable geometry states. A zero-length
