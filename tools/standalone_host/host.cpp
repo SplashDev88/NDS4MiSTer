@@ -259,6 +259,7 @@ struct Pad {
   int right_x = ABS_RX, right_y = ABS_RY;
   std::array<input_absinfo, ABS_CNT> abs{};
   std::array<int, ABS_CNT> mapping_rest{};
+  std::array<bool, ABS_CNT> mapping_axis_ready{};
   bool mapping_pointer = false;
   bool disconnected = false;
   int x = 0, y = 0;
@@ -431,6 +432,8 @@ class Host {
   int mapping_step = -1;
   int board_press_mapping_step = -1;
   std::string mapping_pad;
+  std::string mapping_path, mapping_release_pad, mapping_release_path;
+  int mapping_release_axis = -1;
   bool mapping_pending = false, mapping_ready = true;
   std::array<uint32_t, 32> new_map{};
   bool board_buttons_initialized = false, board_press_menu = false,
@@ -1843,8 +1846,15 @@ class Host {
           case 1:
             mapping_step = 0;
             mapping_pad.clear();
+            mapping_path.clear();
+            mapping_release_pad.clear();
+            mapping_release_path.clear();
+            mapping_release_axis = -1;
             new_map.fill(0);
             mapping_pending = false;
+            for (auto &pad : pads)
+              for (unsigned axis = 0; axis < ABS_CNT; ++axis)
+                pad.mapping_axis_ready[axis] = mappingAxisNeutral(pad, axis);
             mapping_ready = mappingNeutral();
             repeat_action = -1;
             break;
@@ -2415,7 +2425,10 @@ class Host {
     nextscan = ms() + 1500;
     for (auto it = pads.begin(); it != pads.end();)
       if (it->disconnected || !fs::exists(it->path)) {
-        if (mapping_step >= 0 && it->id == mapping_pad) {
+        if (mapping_step >= 0 &&
+            ((it->id == mapping_pad && it->path == mapping_path) ||
+             (mapping_pending && it->id == mapping_release_pad &&
+              it->path == mapping_release_path))) {
           mapping_step = -1;
           mapping_pending = false;
           message = "Controller disconnected";
@@ -2532,29 +2545,47 @@ class Host {
             !centered && int64_t(info.value) * 4 >=
                 int64_t(info.maximum) * 4 - range ? info.maximum :
             int(int64_t(info.minimum) + range / 2);
+        // Xbox One/Elite USB and dongle drivers expose unsigned 10-bit
+        // triggers with zero released. A pull during discovery is not a
+        // calibration sample: choosing its midpoint/maximum traps the wizard
+        // even after the user has fully released the trigger.
+        if (id.vendor == 0x045e && (a == ABS_Z || a == ABS_RZ) &&
+            info.minimum == 0 && info.maximum == 1023)
+          p.mapping_rest[a] = 0;
+        p.mapping_axis_ready[a] = mappingAxisNeutral(p, a);
       }
       p.pad = p.abs[ABS_X].maximum > p.abs[ABS_X].minimum;
       log(std::string("input ") + path + " " + name);
       pads.push_back(p);
     }
   }
-  bool mappingNeutral() const {
-    for (const auto &p : pads) {
-      if (p.disconnected) continue;
-      if (std::any_of(p.pressed.begin(), p.pressed.begin() + KEY_CNT,
-                      [](bool held) { return held; })) return false;
-      if (p.mapping_pointer) continue;
-      for (unsigned axis = 0; axis < ABS_CNT; ++axis) {
-        const auto &a = p.abs[axis];
-        const int64_t range = int64_t(a.maximum) - a.minimum;
-        // The release band is deliberately narrower than the press band.
-        // Resting noise is harmless, but a half-released trigger cannot arm
-        // the following prompt. Integer math also handles two-state hats.
-        if (range > 0 && std::abs(int64_t(a.value) - p.mapping_rest[axis]) * 10 >
-                            range) return false;
-      }
-    }
+  static bool mappingAxisNeutral(const Pad &p, unsigned axis) {
+    const auto &a = p.abs[axis];
+    const int64_t range = int64_t(a.maximum) - a.minimum;
+    // Retain the narrow release band for the axis actually being mapped.
+    // Unrelated stick drift must not prevent a fresh button/hat press.
+    return range <= 0 || std::abs(int64_t(a.value) - p.mapping_rest[axis]) * 10 <= range;
+  }
+  static bool mappingKeysReleased(const Pad &p, int except = -1) {
+    for (unsigned code = 0; code < KEY_CNT; ++code)
+      if (int(code) != except && p.pressed[code]) return false;
     return true;
+  }
+  bool mappingNeutral() const {
+    if (mapping_pending) {
+      if (mapping_release_pad.empty()) return true; // Completed USER skip.
+      for (const auto &p : pads)
+        if (!p.disconnected && p.id == mapping_release_pad &&
+            p.path == mapping_release_path)
+          return mappingKeysReleased(p) &&
+              (mapping_release_axis < 0 || mappingAxisNeutral(p, mapping_release_axis));
+      return false;
+    }
+    // Before a gesture, devices arm independently. A keyboard, second pad or
+    // idle analog axis cannot hold every controller's mapping hostage.
+    return pads.empty() || std::any_of(pads.begin(), pads.end(), [](const Pad &p) {
+      return !p.disconnected && mappingKeysReleased(p);
+    });
   }
   void finishMappingReport() {
     if (mapping_step < 0 || mapping_ready || !mappingNeutral()) return;
@@ -2572,8 +2603,8 @@ class Host {
         }
         mapping_step = -1;
         message.clear();
-        // No physical control is held at this boundary. Do not carry a
-        // pre-wizard menu/game button state into the newly saved mapping.
+        // The chosen gesture is released. Do not carry cached pre-wizard
+        // menu/game button state into the newly saved mapping.
         for (auto &pad : pads) pad.joy = pad.menujoy = pad.combo = 0;
       }
     }
@@ -2586,11 +2617,11 @@ class Host {
       dirty = true;
       return;
     }
-    if (!mapping_ready) {
+    if (mapping_pending) {
       // If the same trigger supplies a digital alias after its axis, retain
       // the button binding used by previous versions. Do not require a driver
       // to advertise or deliver that alias: an axis-only pull is sufficient.
-      if (mapping_pending && mapping_pad == p.id) {
+      if (mapping_release_pad == p.id && mapping_release_path == p.path) {
         auto &chosen = new_map[button_slots[mapping_step]];
         if ((code == BTN_TL2 && (chosen == 0x300 + ABS_Z * 2 ||
                                 chosen == 0x301 + ABS_Z * 2)) ||
@@ -2600,9 +2631,19 @@ class Host {
       }
       return;
     }
-    if (code != KEY_SPACE && mapping_pad.empty()) mapping_pad = p.id;
-    if (code == KEY_SPACE || mapping_pad == p.id) {
+    // key() supplies fresh digital edges, and inputs() arms each analog axis
+    // after release. Ignore aliases of a button held while entering the wizard.
+    if (!mappingKeysReleased(p, code)) return;
+    if (code != KEY_SPACE && mapping_pad.empty()) {
+      mapping_pad = p.id;
+      mapping_path = p.path;
+    }
+    if (code == KEY_SPACE || (mapping_pad == p.id && mapping_path == p.path)) {
       new_map[button_slots[mapping_step]] = code == KEY_SPACE ? 0 : code;
+      mapping_release_pad = p.id;
+      mapping_release_path = p.path;
+      mapping_release_axis = code >= 0x300 && code < 0x300 + ABS_CNT * 2 ?
+          (code - 0x300) / 2 : code == BTN_TL2 ? ABS_Z : code == BTN_TR2 ? ABS_RZ : -1;
       mapping_pending = true;
       mapping_ready = false;
       dirty = true;
@@ -2611,6 +2652,9 @@ class Host {
   void mappingSkip() {
     if (mapping_step < 0 || !mapping_ready || !mappingNeutral()) return;
     new_map[button_slots[mapping_step]] = 0;
+    mapping_release_pad.clear();
+    mapping_release_path.clear();
+    mapping_release_axis = -1;
     mapping_pending = true;
     mapping_ready = false;
     finishMappingReport(); // USER already completed its press/release gesture.
@@ -2840,6 +2884,11 @@ class Host {
             const int rest = p.mapping_rest[e.code];
             const int64_t delta = int64_t(e.value) - rest;
             const bool endpoint = rest == a.minimum || rest == a.maximum;
+            const bool armed = p.mapping_axis_ready[e.code];
+            const bool pressed = range > 0 &&
+                std::abs(delta) * 4 > range * (endpoint ? 3 : 1);
+            if (mappingAxisNeutral(p, e.code)) p.mapping_axis_ready[e.code] = true;
+            else if (pressed) p.mapping_axis_ready[e.code] = false;
             if (range > 0) {
               // Keep normal gameplay's synthesized key state current without
               // feeding its resting trigger direction into the wizard.
@@ -2850,8 +2899,7 @@ class Host {
             }
             // Analog-only triggers map the pull direction, never their
             // resting endpoint. All further events wait for full release.
-            if (!p.mapping_pointer && range > 0 &&
-                std::abs(delta) * 4 > range * (endpoint ? 3 : 1))
+            if (!p.mapping_pointer && armed && pressed)
               mappingPress(p, 0x300 + e.code * 2 + (delta > 0));
             continue;
           }

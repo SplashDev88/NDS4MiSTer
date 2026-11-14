@@ -151,6 +151,129 @@ static int motion_test_ioctl(int fd, unsigned long request, void *argument) {
 }
 
 struct HostTest {
+  static void xboxReport(const fs::path &root) {
+    unsigned count = 0;
+    for (unsigned product : {0x02e3, 0x0b00})
+      for (int scenario = 0; scenario < 6; ++scenario) {
+        const auto dir = root / std::to_string(count++), input = dir / "input";
+        const auto kit = dir / "kit", sd = dir / "sd";
+        fs::create_directories(input); fs::create_directories(kit);
+        auto d = gamepad();
+        d.name = "Microsoft Xbox Elite diagnostic fixture";
+        d.id = {BUS_USB, 0x045e, uint16_t(product), 1};
+        for (int axis : {ABS_X, ABS_Y, ABS_RX, ABS_RY})
+          d.axes[axis] = {0, -32768, 32767, 16, 128, 0};
+        for (int axis : {ABS_Z, ABS_RZ}) d.axes[axis] = {0, 0, 1023, 0, 0, 0};
+        d.setKey(BTN_TL2, false); d.setKey(BTN_TR2, false);
+        if (scenario == 1) d.axes[ABS_RX].value = 9000;
+        if (scenario == 3) d.axes[ABS_Z].value = 600;
+        if (scenario == 4) d.axes[ABS_RZ].value = 1023;
+        const auto node = input / "event0"; createNode(node, d);
+        const auto second = input / "event1";
+        if (scenario == 2 || scenario == 5) {
+          auto other = gamepad(); other.axes[ABS_X].value = 255;
+          other.held[BTN_NORTH / Device::word_bits] |= 1ul << (BTN_NORTH % Device::word_bits);
+          if (scenario == 5) other.id = d.id; // Same model, different evdev node.
+          createNode(second, other);
+        }
+        Host host(kit.string(), (sd / "games/NDS").string(), sd);
+        host.scan(input);
+        if (scenario == 3 || scenario == 4) {
+          emit(node, {{EV_ABS, ABS_Z, 0}, {EV_ABS, ABS_RZ, 0}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+        }
+        host.menu = host.system_menu = true; host.cursor = 1; host.action(2);
+        for (unsigned step = 0; step < Host::button_names.size(); ++step) {
+          const int axis = step < 2 ? ABS_HAT0X : step < 4 ? ABS_HAT0Y : -1;
+          const int value = step == 0 || step == 2 ? 1 : -1;
+          unsigned expected;
+          if (axis >= 0) {
+            expected = 0x300 + 2 * axis + (value > 0);
+            emit(node, {{EV_ABS, axis, value}, {EV_SYN, SYN_REPORT, 0}});
+          } else if (step == 8 || step == 9) {
+            const int trigger = step == 8 ? ABS_Z : ABS_RZ;
+            expected = 0x301 + 2 * trigger;
+            emit(node, {{EV_ABS, trigger, 1023}, {EV_SYN, SYN_REPORT, 0}});
+          } else {
+            expected = BTN_SOUTH;
+            emit(node, {{EV_KEY, BTN_SOUTH, 1}, {EV_SYN, SYN_REPORT, 0}});
+          }
+          poll(host);
+          assert(host.mapping_pending && host.mapping_step == int(step));
+          assert(host.new_map[Host::button_slots[step]] == expected);
+          if (axis >= 0)
+            emit(node, {{EV_ABS, axis, 0}, {EV_SYN, SYN_REPORT, 0}});
+          else if (step == 8 || step == 9)
+            emit(node, {{EV_ABS, step == 8 ? ABS_Z : ABS_RZ, 512}, {EV_SYN, SYN_REPORT, 0}});
+          else
+            emit(node, {{EV_KEY, BTN_SOUTH, 0}, {EV_SYN, SYN_REPORT, 0}});
+          poll(host);
+          if (step == 8 || step == 9) {
+            assert(host.mapping_pending && host.mapping_step == int(step));
+            emit(node, {{EV_ABS, step == 8 ? ABS_Z : ABS_RZ, 0}, {EV_SYN, SYN_REPORT, 0}});
+            poll(host);
+          }
+          assert(host.mapping_step == (step + 1 == Host::button_names.size() ? -1 : int(step + 1)));
+        }
+        char filename[64];
+        std::snprintf(filename, sizeof(filename), "NDS_input_045e_%04x_v3.map", product);
+        assert(fs::file_size(kit / "inputs" / filename) == 128);
+        std::array<uint32_t, 32> saved{};
+        assert(Host::readmap(kit / "inputs" / filename, saved));
+        assert(saved[0] == 0x321 && saved[1] == 0x320 && saved[8] == 0x305 && saved[9] == 0x30b);
+      }
+    std::cout << "PASS Xbox Elite/Series 2 mapping: " << count
+              << " normal/drifting/second-pad/same-model-pad/held-startup-trigger cases; "
+                 "all prompts, analog-only triggers, half-release rejection and saved mappings\n";
+  }
+  static void mappingIsolation(const fs::path &root) {
+    const auto input = root / "input", kit = root / "kit", sd = root / "sd";
+    fs::create_directories(input); fs::create_directories(kit);
+    auto d = gamepad();
+    d.axes[ABS_X].value = 255; // Held across wizard entry, never a fresh gesture.
+    const auto chosen = input / "event0", other = input / "event1", keyboard = input / "event2";
+    createNode(chosen, d); createNode(other, gamepad());
+    Device keys;keys.name = "Keyboard";keys.id = {BUS_USB, 0x1234, 1, 1};
+    createNode(keyboard, keys);
+    Host h(kit.string(), (sd / "games/NDS").string(), sd);h.scan(input);
+    h.menu = h.system_menu = true;h.cursor = 1;
+    emit(keyboard, {{EV_KEY, KEY_ENTER, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == 0);
+    emit(chosen, {{EV_ABS, ABS_X, 250}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(!h.mapping_pending);
+    emit(chosen, {{EV_KEY, BTN_SOUTH, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_pending && h.new_map[0] == BTN_SOUTH);
+    // Held entry key and held unchosen stick cannot block this button release.
+    emit(chosen, {{EV_KEY, BTN_SOUTH, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == 1);
+    emit(other, {{EV_KEY, BTN_EAST, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(!h.mapping_pending && h.mapping_step == 1);
+    // A second identical controller is not the selected evdev node.
+    fs::remove(other);h.scan(input);assert(h.mapping_step == 1);
+    emit(chosen, {{EV_ABS, ABS_X, 255}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(!h.mapping_pending);
+    emit(chosen, {{EV_ABS, ABS_X, 128}, {EV_SYN, SYN_REPORT, 0},
+                  {EV_ABS, ABS_X, 255}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_pending && h.new_map[1] == 0x301);
+    emit(chosen, {{EV_ABS, ABS_X, 170}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == 1);
+    emit(chosen, {{EV_ABS, ABS_X, 128}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == 2);
+    emit(keyboard, {{EV_KEY, KEY_ENTER, 0}, {EV_SYN, SYN_REPORT, 0},
+                    {EV_KEY, KEY_SPACE, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_pending && h.mapping_step == 2);
+    // Releasing the gamepad does not finish a keyboard Skip that is still held.
+    emit(chosen, {{EV_ABS, ABS_X, 128}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == 2);
+    emit(keyboard, {{EV_KEY, KEY_SPACE, 0}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == 3 && h.new_map[2] == 0);
+    emit(chosen, {{EV_KEY, BTN_SOUTH, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_pending);
+    emit(keyboard, {{EV_KEY, KEY_ESC, 1}, {EV_SYN, SYN_REPORT, 0}});
+    poll(h);assert(h.mapping_step == -1 && !fs::exists(kit / "inputs"));
+    std::cout << "PASS mapping isolation: held keyboard entry/stick, fresh-axis rearm, "
+                 "same-model input/disconnect, selected-axis full release, keyboard Skip and Cancel\n";
+  }
   static void mappingCycles(const fs::path &root) {
     struct Range { int lo, hi, rest, pull, halfway; unsigned axis; };
     const std::array<Range, 5> ranges{{
@@ -646,6 +769,8 @@ struct HostTest {
 int main() {
   char directory[] = "/tmp/nds-motion-input-XXXXXX";
   assert(mkdtemp(directory));
+  HostTest::xboxReport(fs::path(directory) / "xbox-report");
+  HostTest::mappingIsolation(fs::path(directory) / "mapping-isolation");
   HostTest::mappingCycles(fs::path(directory) / "mapping-cycles");
   HostTest::run(directory);
   HostTest::triggerMappings(fs::path(directory) / "triggers");
