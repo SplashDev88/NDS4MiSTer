@@ -235,6 +235,8 @@ See [GitHub issues](https://github.com/SplashDev88/NDS4MiSTer/issues) for report
 
 **Report a bug:** open a [GitHub issue](https://github.com/SplashDev88/NDS4MiSTer/issues) or post in the [NDS4MiSTer Discord thread](https://discord.com/channels/647909397477195803/1315734482317344860). Include your **core version, game name and region, ROM serial/game code, video output and layout**, plus what happened and how to reproduce it.
 
+[Join the MiSTer FPGA Discord](https://discord.gg/misterfpga).
+
 ---
 
 ## Optional: real DS firmware boot
