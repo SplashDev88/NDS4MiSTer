@@ -245,6 +245,13 @@ target_compile_options(nds_bench PRIVATE
 if(NDS4MISTER_USE_MELONDS)
     # Opt-in CPU renderer differential. Set NDS4MISTER_OPAQUE3D_SEED_TEST
     # consistently for core and this executable in the dedicated test build.
+    add_executable(nds_zero_brightness_test EXCLUDE_FROM_ALL
+        tools/test_zero_brightness.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_zero_brightness_test PRIVATE src third_party/melonDS/src)
+    target_link_libraries(nds_zero_brightness_test PRIVATE core ${CMAKE_DL_LIBS})
+    set_property(TARGET nds_zero_brightness_test PROPERTY
+        INTERPROCEDURAL_OPTIMIZATION_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE})
+
     add_executable(nds_opaque3d_seed_test EXCLUDE_FROM_ALL
         tools/test_opaque3d_seed.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_opaque3d_seed_test PRIVATE src third_party/melonDS/src)

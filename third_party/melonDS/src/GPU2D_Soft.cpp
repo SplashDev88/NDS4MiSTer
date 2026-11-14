@@ -63,6 +63,10 @@ SoftRenderer2D::SoftRenderer2D(melonDS::GPU2D& gpu2D, SoftRenderer& parent)
     if (opaqueSeed)
         Opaque3DSeed = std::strcmp(opaqueSeed, "auto") == 0 ? -1 :
             (std::strcmp(opaqueSeed, "1") == 0 ? 1 : 0);
+    const char* zeroBrightness = std::getenv("NDS4MISTER_ZERO_BRIGHTNESS");
+    if (zeroBrightness)
+        ZeroBrightness = std::strcmp(zeroBrightness, "auto") == 0 ? -1 :
+            (std::strcmp(zeroBrightness, "1") == 0 ? 1 : 0);
     // mosaic table is initialized at compile-time
 }
 
@@ -515,7 +519,24 @@ void SoftRenderer2D::DrawScanline_BGOBJ(u32 line, u32* dst)
         }
     }
 
-    if (compositePassthrough)
+    // With every first target selected and no second targets, zero-strength
+    // brightness changes no RGB6 components. It still normalizes metadata to
+    // FF, unlike the ordinary passthrough path. Windows must allow effects.
+    const bool zeroBrightnessEnabled = ZeroBrightness < 0 ?
+        GPU2D.ZeroBrightnessEnabled() : ZeroBrightness != 0;
+    if (zeroBrightnessEnabled && !compositePassthrough &&
+        !(GPU2D.DispCnt & 0xE000) && GPU2D.EVY == 0 &&
+        (GPU2D.BlendCnt & 0x3FBF) == 0x00BF)
+    {
+        for (int i = 0; i < 256; i++)
+            dst[i] = (BGOBJLine[i] & 0x003F3F3Fu) | 0xFF000000u;
+#ifdef NDS4MISTER_ZERO_BRIGHTNESS_TEST
+        ++ZeroBrightnessHits;
+#endif
+        if (Parent.StageProfileEnabled)
+            ++Parent.StageProfile.CompositeFastLines[GPU2D.Num];
+    }
+    else if (compositePassthrough)
     {
         memcpy(dst, BGOBJLine, 256*sizeof(u32));
         if (Parent.StageProfileEnabled)

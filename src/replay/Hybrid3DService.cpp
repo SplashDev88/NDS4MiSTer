@@ -750,7 +750,8 @@ public:
         bool lighting_result_reuse = false,
         bool solid_spans = false,
         bool approximate_factors = false,
-        bool opaque_3d_seed = false)
+        bool opaque_3d_seed = false,
+        bool zero_brightness = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -789,6 +790,7 @@ public:
           solid_spans_(matched_display_test && solid_spans),
           approximate_factors_(matched_display_test && approximate_factors),
           opaque_3d_seed_(matched_display_test && opaque_3d_seed),
+          zero_brightness_(matched_display_test && zero_brightness),
           asynchronous_arm_video_replay_(asynchronous_arm_video_replay),
           pipeline_profile_enabled_(pipeline_profile_enabled),
           timing_profile_only_(timing_profile_only),
@@ -1309,6 +1311,8 @@ private:
         nds_->GPU.GPU3D.SetSolidSpansEnabled(solid_spans_);
         nds_->GPU.GPU3D.SetApproximateFactorsEnabled(approximate_factors_);
         nds_->GPU.GPU2D_A.SetOpaque3DSeedEnabled(opaque_3d_seed_);
+        nds_->GPU.GPU2D_A.SetZeroBrightnessEnabled(zero_brightness_);
+        nds_->GPU.GPU2D_B.SetZeroBrightnessEnabled(zero_brightness_);
         // This service always publishes melonDS's native software output.
         // HiresPosition is only read by its OpenGL/compute renderers, while
         // calculating it costs two 64-bit divisions for every accepted
@@ -5662,6 +5666,7 @@ private:
     bool solid_spans_ = false;
     bool approximate_factors_ = false;
     bool opaque_3d_seed_ = false;
+    bool zero_brightness_ = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
     bool fmv_receiver_enabled_ = false;
 #endif
@@ -11574,6 +11579,7 @@ try {
             bool solid_spans = false;
             bool approximate_factors = false;
             bool opaque_3d_seed = false;
+            bool zero_brightness = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11597,6 +11603,7 @@ try {
                 sprite_raster_spans = nds4mister::replay::portrait_sprite_raster_profile(selected) ||
                     nds4mister::replay::ecclesia_sprite_raster_profile(selected);
                 solid_spans = nds4mister::replay::ffta2_raster_only_profile(selected);
+                zero_brightness = nds4mister::replay::ffta2_raster_only_profile(selected);
                 approximate_factors = nds4mister::replay::mkds_approximate_factors_profile(selected);
                 opaque_3d_seed = nds4mister::replay::dawn_opaque_3d_seed_profile(selected);
                 raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected) ||
@@ -11639,6 +11646,7 @@ try {
                     << " solid_spans=" << solid_spans
                     << " approximate_factors=" << approximate_factors
                     << " opaque_3d_seed=" << opaque_3d_seed
+                    << " zero_brightness=" << zero_brightness
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11682,7 +11690,8 @@ try {
                 lighting_result_reuse,
                 solid_spans,
                 approximate_factors,
-                opaque_3d_seed);
+                opaque_3d_seed,
+                zero_brightness);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif

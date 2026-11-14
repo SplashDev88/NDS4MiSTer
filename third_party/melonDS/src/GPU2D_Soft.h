@@ -104,6 +104,10 @@ private:
     bool AffineTileCache = true;
     bool AffinePackedRows = false;
     bool StandardPaletteCache = true;
+    int ZeroBrightness = -1; // -1: cartridge policy; 0/1: diagnostic override
+#ifdef NDS4MISTER_ZERO_BRIGHTNESS_TEST
+    u64 ZeroBrightnessHits = 0;
+#endif
     int Opaque3DSeed = -1; // -1: cartridge policy; 0/1: diagnostic override
 #ifdef NDS4MISTER_OPAQUE3D_SEED_TEST
     u64 Opaque3DSeedHits = 0;

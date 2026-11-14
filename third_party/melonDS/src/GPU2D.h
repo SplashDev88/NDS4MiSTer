@@ -44,6 +44,8 @@ public:
     // Session renderer policy, independent of emulated registers/savestates.
     void SetOpaque3DSeedEnabled(bool enabled) noexcept { UseOpaque3DSeed = enabled; }
     bool Opaque3DSeedEnabled() const noexcept { return UseOpaque3DSeed; }
+    void SetZeroBrightnessEnabled(bool enabled) noexcept { UseZeroBrightness = enabled; }
+    bool ZeroBrightnessEnabled() const noexcept { return UseZeroBrightness; }
 
     u8 Read8(u32 addr);
     u16 Read16(u32 addr);
@@ -115,6 +117,7 @@ private:
     friend class Renderer2D;
 
     bool UseOpaque3DSeed = false;
+    bool UseZeroBrightness = false;
     melonDS::GPU& GPU;
 };
 
