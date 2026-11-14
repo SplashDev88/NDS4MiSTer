@@ -3,6 +3,7 @@
 #include "NDS.h"
 #include "Args.h"
 #include <cstdio>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <random>
@@ -52,7 +53,101 @@ struct Probe {
     }
 };
 }
-int main() try {
+int main(int argc, char** argv) try {
+    // VTX_16's first word may wait for a polygon slot, while its second
+    // word completes the vertex. Audit total command work, including slot
+    // patterns broader than the reachable geometry states. A zero-length
+    // polygon pipeline with no free slot is not a valid state.
+    if (!(argc==2 && std::strcmp(argv[1],"--vertex-stream-regression")==0)) {
+        Probe timing;
+        auto& gpu = timing.nds->GPU.GPU3D;
+        unsigned cases = 0, maximum = 0, first_word_maximum = 0;
+        for (unsigned tag=0x23;tag<=0x28;++tag)
+            for (int polygon=0;polygon<=35;++polygon)
+                for (int counter=0;counter<=9;++counter)
+                    for (unsigned slots=0;slots<32;++slots)
+                        for (int vertex=0;vertex<=7;++vertex)
+                            for (int normal=0;normal<=7;++normal) {
+                                if (polygon==0 && !(slots&1)) continue;
+                                gpu.Timestamp = timing.nds->ARM9Timestamp = 0;
+                                gpu.CycleCount = 0;
+                                gpu.VertexPipeline = vertex;
+                                gpu.NormalPipeline = normal;
+                                gpu.PolygonPipeline = polygon;
+                                gpu.VertexSlotCounter = counter;
+                                gpu.VertexSlotsFree = slots;
+                                gpu.ExecParamCount = 0;
+                                gpu.NumVertices = gpu.NumPolygons = 0;
+                                gpu.VertexNum = gpu.VertexNumInPoly = 0;
+                                gpu.NumConsecutivePolygons = 0;
+                                gpu.PolygonMode = 0;
+                                gpu.LastStripPolygon = nullptr;
+                                gpu.WriteExternalNormalizedCommand(tag,0);
+                                gpu.Run();
+                                unsigned cycles = gpu.CycleCount;
+                                first_word_maximum = std::max(first_word_maximum,cycles);
+                                if (tag==0x23) {
+                                    gpu.CycleCount = 0;
+                                    gpu.WriteExternalNormalizedCommand(tag,0);
+                                    gpu.Run();
+                                    cycles += gpu.CycleCount;
+                                }
+                                if (cycles==0 || cycles>64 || gpu.ExecParamCount!=0)
+                                    throw std::runtime_error("vertex total cost bound exceeded or partial command left");
+                                maximum = std::max(maximum,cycles);
+                                ++cases;
+                            }
+        if (gpu.GXCommandDrops) throw std::runtime_error("vertex audit lost commands");
+        std::printf("GX_MATRIX_PREFIX_VERTEX_COST_PASS cases=%u max_total_cycles=%u max_first_word_cycles=%u total_bound=64\n",cases,maximum,first_word_maximum);
+        if (argc==2 && std::strcmp(argv[1],"--vertex-cost-audit")==0) return 0;
+    }
+
+    // A vertex-heavy tail behind SWAP previously consumed the entire
+    // eligibility budget although the real renderer drains it within one
+    // query clock step. Exercise every vertex format and primitive mode,
+    // then change the matrix so equality proves the whole tail executed.
+    {
+        unsigned streams=0;
+        for (unsigned tag=0x23;tag<=0x28;++tag)
+            for (unsigned mode=0;mode<4;++mode) {
+                Probe stream;
+                stream.command(0x10,0);stream.command(0x15,0);
+                stream.command(0x10,2);stream.command(0x15,0);
+                stream.command(0x29,0x001f00c0);stream.command(0x40,mode);
+                stream.command(0x50,0);
+                for (unsigned v=0;v<360;++v) {
+                    stream.command(0x22,v*0x10001u);
+                    stream.command(tag,(v*977u)^0x08000800u);
+                    if (tag==0x23) stream.command(tag,v*133u);
+                }
+                stream.command(0x10,2);stream.command(0x15,0);
+                stream.command(0x1c,1234+tag);stream.command(0x1c,5678+mode);
+                stream.command(0x1c,9012);
+                if (!stream.prefix.valid())
+                    throw std::runtime_error("vertex-heavy eligible stream permanently fell back");
+                stream.compare();stream.vblank();stream.compare();
+                if ((stream.prefix.status() | stream.nds->GPU.GPU3D.Read32(0x04000600)) & 0x08000001u)
+                    throw std::runtime_error("vertex-heavy stream did not settle in one query step");
+                ++streams;
+            }
+        Probe partial;
+        partial.command(0x50,0);
+        for(unsigned n=0;n<468;++n) {
+            partial.command(0x23,0);partial.command(0x23,0);
+        }
+        partial.command(0x23,0);
+        if (!partial.prefix.valid()) throw std::runtime_error("near-budget partial vertex rejected early");
+        partial.vblank();partial.compare();
+        if (!(partial.prefix.status() & 0x08000000u))
+            throw std::runtime_error("partial VTX_16 lost busy protection");
+        auto cap=nds4mister::replay::GxMatrixPrefix{};
+        cap.command(0x50,0);
+        for(unsigned n=0;n<938;++n) cap.command(0x23,0);
+        if(cap.valid() || cap.invalid_reason()!=3)
+            throw std::runtime_error("VTX_16 cost cap no longer enforced");
+        std::printf("GX_MATRIX_PREFIX_VERTEX_STREAM_PASS streams=%u vertices_per_stream=360 partial_busy=1 real_cost_overflow=1\n",streams);
+        if (argc==2 && std::strcmp(argv[1],"--vertex-stream-regression")==0) return 0;
+    }
     // The settled no-op shortcut must agree with actual geometry readback,
     // including after deferred work and around partial-command boundaries.
     {

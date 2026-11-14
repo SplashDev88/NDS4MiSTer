@@ -156,8 +156,9 @@ private:
     // Count execution work separately from parameter words. DS startup may
     // initialize all 32 matrix-stack entries behind SWAP, exceeding 512 words
     // without approaching one query's 32768 geometry-clock allowance.
-    // Allow 16 cycles for simple state/attribute commands, 128 for other
-    // ordinary commands, 256 for multiword matrices, and 512 for SWAP/BOX_TEST.
+    // Allow 16 cycles for simple state/attribute commands, 64 for a complete
+    // vertex command, 128 for other ordinary commands, 256 for multiword
+    // matrices, and 512 for SWAP/BOX_TEST.
     // These exceed the vendored command/pipeline costs; treating every
     // texcoord as a vertex falsely rejects FFT A2's startup draw bursts.
     // Reserve 2768 cycles
@@ -192,8 +193,15 @@ private:
         default: break;
         }
         const auto count = parameters(tag);
+        // Vertex slots are bounded by the 35-cycle polygon pipeline and
+        // nine-cycle slot advances. The exhaustive replay timing audit
+        // covers all pipeline delays and slot masks: at most 47 cycles per
+        // complete vertex, including both VTX_16 words. Keep 64 cycles of
+        // allowance. An incomplete two-word VTX_16 remains busy and cannot
+        // publish a fast snapshot; only complete command work is eligible.
         const auto cycles = tag == 0x50 || tag == 0x70 ? 512u :
-            tag >= 0x16 && tag <= 0x1c ? 256u : 128u;
+            tag >= 0x16 && tag <= 0x1c ? 256u :
+            tag >= 0x23 && tag <= 0x28 ? 64u : 128u;
         return (cycles + count - 1u) / count;
     }
     void drain()

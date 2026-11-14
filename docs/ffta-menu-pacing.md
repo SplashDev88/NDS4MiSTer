@@ -80,3 +80,28 @@ installed test beta. The earlier global 500 us polling
 candidate improved FFT subjectively but slowed Mario and Castlevania. A brief
 adaptive-polling trial was also rejected as slow. Neither setting change is
 part of this candidate. The separate black-startup problem is not claimed fixed.
+
+## Battle vertex-cost candidate (2026-11-13)
+
+An isolated Beta22 timing diagnostic reached the forest battle, moved Pina,
+and completed Kevyn's Fire action. The prefix became invalid with reason 3
+(cost), command 0x23 (VTX_16), and peak 597 pending words. It supplied 6,530
+fast replies before fallback; 200,114 ordered replies accumulated a mean
+4.96 ms of queue time. These whole-session counters include startup and idle
+menus and are not a gameplay-speed or FPS measurement.
+
+This candidate lowers the conservative total vertex allowance from 128 to
+64 modeled cycles. It does not change the renderer's command execution,
+geometry timing, storage limit, matrix/BOX bounds, or partial-command ordering.
+The two VTX_16 words share that total; incomplete commands remain busy and
+cannot publish fast query snapshots.
+
+The timing oracle covers 4,362,240 pipeline/slot combinations and observes a
+maximum of 47 cycles for a complete vertex. Twenty-four new vertex-heavy
+SWAP-tail streams cover all six vertex formats and four primitive modes;
+the old bound rejects them, while the candidate's resulting matrices and
+status agree with ordered replay after one ordinary query clock step.
+Near-boundary VTX_16 partial-busy and genuine cost-overflow rejection are
+also tested. Existing matrix, stack, power, BOX and deferred-storage checks
+remain in the test suite. Hardware validation and battle-speed qualification
+are still pending; this is not yet a released or qualified improvement.
