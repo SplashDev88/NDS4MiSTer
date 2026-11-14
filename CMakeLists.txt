@@ -38,6 +38,12 @@ if(BUILD_TESTING)
     add_test(NAME nds_game_query_profile COMMAND nds_game_query_profile_test)
 endif()
 
+# Requires user-provided retail/No Touch ROM fixtures; never bundles game data.
+add_executable(nds_dawn_no_touch_compatibility_test EXCLUDE_FROM_ALL
+    tools/test_dawn_no_touch_compatibility.cpp)
+target_include_directories(nds_dawn_no_touch_compatibility_test PRIVATE src tools)
+target_compile_options(nds_dawn_no_touch_compatibility_test PRIVATE -Wall -Wextra -Wpedantic)
+
 if(NDS4MISTER_USE_MELONDS AND APPLE AND NDS_SEGMENTED_MODEL_DIR)
     add_executable(nds_segmented_snapshot EXCLUDE_FROM_ALL
         tools/fpga3d/segmented_snapshot.cpp src/melonds/HeadlessPlatform.cpp

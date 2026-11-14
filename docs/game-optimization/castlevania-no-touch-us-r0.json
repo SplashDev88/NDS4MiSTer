@@ -1,0 +1,32 @@
+{
+  "title": "Castlevania: Dawn of Sorrow (USA) No Touch Hack",
+  "retail_source_sha256": "3ddc8b0eac841b6005ff4c38a184b517fa8225ac905aad951b0572850358d8b0",
+  "rom_sha256": "5f56a00151665c33387e6309aec443fb06c16cc7726e002ebb8995aec6103915",
+  "rom_bytes": 67108864,
+  "game_code": "ACVE",
+  "revision": 0,
+  "header_0x160_crc32": "c51a7d99",
+  "header_0x200_crc32": "6594b975",
+  "different_bytes_from_retail": 105,
+  "compatibility_basis": "Both existing Dawn header identities are unchanged. The existing guarded movie patch accepts the original movie routines and leaves every No Touch modification intact. No runtime identity widening or global forced flag is needed.",
+  "dawn_policies": [
+    "USA ordered query replies",
+    "Integral texture and rectangle raster specialization",
+    "VRAM replay and prepared sprite-line reuse selected by the USA integral policy",
+    "Lighting-result reuse",
+    "Opaque 3D background seeding",
+    "Guarded staged movie decoder/color/audio acceleration"
+  ],
+  "general_speedups": "All general renderer, texture-history, matrix, palette, scheduling, publication and FPGA improvements in the selected beta apply unchanged. Preserve its normal auto settings.",
+  "not_enabled": "Mario Kart/FFTA2-specific shortcuts, rejected experiments and unqualified ROM variants.",
+  "validation": "Verify both input SHA256 values, then run nds_dawn_no_touch_compatibility_test retail.nds no-touch.nds. Game files are read-only fixtures supplied separately.",
+  "scope": "This exact USA No Touch image. Other No Seals/Definitive Edition variants are not implied by the filename or this record. Compatibility does not establish a new FPS gain.",
+  "validated_runtime": {
+    "version": "v0.9.0-rc15-beta23",
+    "renderer_source": "e39559cc2f396ef67343b826752dc05d5fa9f559",
+    "helper_sha256": "3834859ec6550b005d2f98c5e5255154a86aad0354669e30ad4895d09d2f4af9",
+    "host_sha256": "28ec4d1dab794420be59f3cb874ba1ed9254e22acf0d7de4543c89f6ee07d27c",
+    "policy_and_movie_application": "verified on MiSTer using the normal launcher, auto flags, native rows and AA off",
+    "runtime_changes_required": false
+  }
+}
