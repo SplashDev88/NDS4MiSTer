@@ -13,7 +13,6 @@ Play Nintendo DS games on MiSTer FPGA.
 ## What you need
 
 - MiSTer (DE10-Nano) with **SDRAM**
-- Linux kernel **5.15.1-MiSTer** or **6.18.38-MiSTer** (current stock MiSTer setups)
 - **Uncompressed `.nds`** files. ZIPs are not supported.
 - A controller or keyboard. A mouse helps with touch-heavy games.
 
