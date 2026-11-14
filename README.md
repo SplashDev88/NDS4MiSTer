@@ -1,4 +1,4 @@
-# NDS4MiSTer — v1.0 (Beta)
+# NDS4MiSTer — v1.0
 
 Experimental Nintendo DS core for the MiSTer FPGA.
 
