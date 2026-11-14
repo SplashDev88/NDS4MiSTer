@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Launch the paired private RC with automatic, read-only movie preparation."""
+"""Validate the NDS installation and launch automatic movie preparation."""
 import argparse
 import hashlib
 import json
@@ -29,7 +29,8 @@ def main():
     checks=manifest['automatic_movie_files']
     required={'nds_standalone_host','support/nds_hybrid_3d_service','NDS_Standalone.rbf',
               'supervisor.py','Kickstart.sh','auto_movies.py','fmv/stream.py','fmv/prepare.py','fmv/profiles.json',
-              'fmv/stream_load.py','fmv/prepared_cache.py','fmv/load_progress.py'}
+              'fmv/stream_load.py','fmv/prepared_cache.py','fmv/load_progress.py',
+              'install_layout.py','defaults/NDS_speed.cfg'}
     if not required <= set(checks):raise ValueError('Incomplete automatic-movie package')
     for name,expected in checks.items():
         relative=Path(name)

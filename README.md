@@ -1,8 +1,8 @@
-# NDS4MiSTer — v0.9.0-rc.15 (Beta)
+# NDS4MiSTer — v1.0 (Beta)
 
 Play Nintendo DS games on MiSTer FPGA.
 
-[**Download RC15**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.15/NDS4MiSTer_v0.9.0-rc.15_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
+[**Download 1.0**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0/NDS4MiSTer_v1.0_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
 
 > **Beta:** compatibility, speed and sound vary by game. Full speed is not guaranteed, and graphics-heavy scenes can slow down even in games that otherwise run well.
 
@@ -23,24 +23,24 @@ Play Nintendo DS games on MiSTer FPGA.
 
 ## Install
 
-1. Download the [RC15 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.15/NDS4MiSTer_v0.9.0-rc.15_Standalone.zip).
-2. Extract **everything** to the SD card root, merging folders. Include the hidden `Scripts/.NDS_RC15/` folder, because the core won't start without it.
+1. Download the [1.0 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0/NDS4MiSTer_v1.0_Standalone.zip).
+2. Extract **everything** to the SD card root, merging folders. Include the hidden `Scripts/.NDS/` folder, because the core won't start without it.
 3. Put your games in `games/NDS/`.
 4. Add an `[NDS]` section to `MiSTer.ini` for your display (see [Video setup](#video-setup)). On HDMI you can skip this step.
-5. Run **Scripts → NDS_RC15**.
+5. Run **Scripts → NDS**.
 
 Do not move the `.rbf` to `_Console`. Installing through `update_all` is not supported yet.
 
-**Upgrading from RC14:** first back up `saves/NDS`. Saves carry over to RC15. Settings do not carry over automatically: to keep them, copy the `NDS_*.cfg` files and `inputs/` from `Scripts/.NDS_Standalone/` into `Scripts/.NDS_RC15/`.
+**Upgrading:** exit NDS with **System → Reboot**, then extract the full ZIP over the existing installation. The launcher stays **Scripts → NDS**, and settings stay in `Scripts/.NDS/`. The first launch imports settings, controller mappings and the clock from older RC14/RC15 installations automatically. Existing `.NDS` settings take priority. The version is shown in the core menu.
 
 ---
 
 ## First run
 
-1. Launch **Scripts → NDS_RC15** and press Enter.
+1. Launch **Scripts → NDS** and press Enter.
 2. If your controller needs mapping, go to **System → Define NDS buttons**.
 3. Choose **Load \*.NDS** and pick a game. Some games take longer the first time they load while a cache is built.
-4. **For better speed:** set **Display options → 3D Anti-aliasing → Off**, then **System → Save settings**.
+4. **3D Anti-aliasing defaults to Off** for better speed. You can turn it on in **Display options**, then use **System → Save settings**.
 5. When you're done, choose **System → Reboot** to return to MiSTer. Do this before powering off.
 
 ---
@@ -160,7 +160,7 @@ Set **Direct Video Target → Scaler**. This unlocks both-screen layouts.
 
 The RetroTINK-4K is tested. Morph is untested over Direct Video but should work fine.
 
-**RetroTINK-4K profiles:** Mr. Moro's [profile pack](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.15/NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip) includes **NDS Default** and **NDS Rotate**. Copy the contents of its inner `NDS4MiSTER` folder to the root of the RetroTINK-4K's SD card.
+**RetroTINK-4K profiles:** Mr. Moro's [profile pack](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0/NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip) includes **NDS Default** and **NDS Rotate**. Copy the contents of its inner `NDS4MiSTER` folder to the root of the RetroTINK-4K's SD card.
 
 ### Layouts and rotation
 
@@ -172,7 +172,7 @@ Find these under **Display options**:
 | Screen Order / Gap | Swap screens; 0–24 px gap |
 | Video Rotation | Off, 90 CW, 90 CCW |
 | Touch Rotation | Usually leave Normal |
-| 3D Anti-aliasing | Off = faster |
+| 3D Anti-aliasing | Off (default) = faster |
 
 **Vertical (TATE) monitor:** start with Top/bottom and rotate the picture opposite to the way you turned the monitor. For a monitor turned clockwise, use **90 CCW**. Leave Touch Rotation on Normal.
 
@@ -193,7 +193,7 @@ Saves are written automatically to `saves/NDS/<ROM name>.sav`. They are standard
 - **Import a save:** use a raw `.sav` of the correct size, renamed to match your ROM's filename. `.dsv` and save-state files won't work.
 - **Before powering off:** wait for the game to finish saving, then choose **System → Reboot**.
 - Two ROMs with the same filename share one save, even if they're in different folders.
-- **Back up** `saves/NDS/` and `Scripts/.NDS_RC15/NDS_rtc.cfg` (your in-game clock).
+- **Back up** `saves/NDS/` and `Scripts/.NDS/NDS_rtc.cfg` (your in-game clock).
 
 ---
 
@@ -207,8 +207,7 @@ Saves are written automatically to `saves/NDS/<ROM name>.sav`. They are standard
 
 | Problem | Fix |
 |---|---|
-| Black screen or nothing starts | Re-extract the full ZIP, including `.NDS_RC15`. Launch from Scripts. |
-| `Mismatched package file: NDS_speed.cfg` | Restore that file from the RC15 ZIP (caused by the Reset settings bug). |
+| Black screen or nothing starts | Re-extract the full ZIP, including `.NDS`. Launch from Scripts. |
 | BIOS error | Use **Load \*.NDS**, not Boot DS firmware. |
 | A game won't boot | Use an unmodified, uncompressed ROM on the SD card. Check the compatibility list. |
 | Stuck loading | The first load can take minutes. Network or USB storage is slower than SD. |

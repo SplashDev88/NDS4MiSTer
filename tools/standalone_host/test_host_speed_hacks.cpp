@@ -13,6 +13,13 @@ struct HostTest {
     {Host absent(kit.string(),(sd/"games/NDS").string(),sd);
      assert(!absent.speed_hacks_available && absent.speed_hacks==0);}
     std::ofstream(kit/"fmv/nsmb_hooks.json")<<"{}";
+    fs::create_directories(kit/"defaults");
+    std::ofstream(kit/"defaults/NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n5\n";
+    {Host defaults(kit.string(),(sd/"games/NDS").string(),sd);
+     assert(defaults.speed_hacks==5 && !fs::exists(kit/"NDS_speed.cfg"));}
+    std::ofstream(kit/"NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n0\n";
+    {Host saved(kit.string(),(sd/"games/NDS").string(),sd);
+     assert(saved.speed_hacks==0);}
     std::ofstream(kit/"NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n5\n";
     Host h(kit.string(),(sd/"games/NDS").string(),sd);
     assert(h.speed_hacks_available && h.speed_hacks==5);
@@ -44,6 +51,9 @@ struct HostTest {
     }
     std::ofstream(kit/"NDS_speed.cfg")<<"NDS-SpeedHacks-v1\n99\n";
     {Host malformed(kit.string(),(sd/"games/NDS").string(),sd);assert(malformed.speed_hacks==0);}
+    h.reset_confirm=true;h.cursor=0;h.action(2);
+    assert(h.speed_hacks==5);
+    {Host reset(kit.string(),(sd/"games/NDS").string(),sd);assert(reset.speed_hacks==5);}
     std::cout<<"PASS: no speed submenu with hooks enabled; navigation, preset, save/reload and overrides preserved\n";
   }
 };

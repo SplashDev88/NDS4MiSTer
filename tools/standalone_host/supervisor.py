@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-"""NDS4MiSTer v0.9.0-rc.15 standalone launcher and recovery supervisor.
+"""NDS4MiSTer standalone launcher and recovery supervisor.
 No system binary/init changes. Bootstrap display settings are journaled/restored.
 """
 from pathlib import Path
@@ -506,7 +506,7 @@ def stop_previous_renderer():
 def create_graphics_control():
     fd, name = tempfile.mkstemp(prefix="nds-graphics-", dir=RUNTIME)
     try:
-        if os.write(fd, struct.pack("<I", 0x41410001)) != 4:
+        if os.write(fd, struct.pack("<I", 0x41410000)) != 4:
             raise OSError("Incomplete graphics control word")
     except BaseException:
         Path(name).unlink(missing_ok=True)
@@ -531,6 +531,8 @@ def main():
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     preflight()
     restore_bootstrap(KIT, SD_ROOT)
+    from install_layout import migrate_legacy_settings
+    migrate_legacy_settings(KIT, SD_ROOT)
     initialize_settings()
     if a.direct_video_target:
         save_target(KIT, a.direct_video_target)
@@ -650,7 +652,7 @@ def main():
         assert actual_env.get("NDS4MISTER_TEXTURE_HISTORY") == texture_choice
         assert actual_env.get("NDS4MISTER_FPGA3D") == fpga3d_choice
         state["renderer_environment"] = actual_env
-        state["release"] = "v0.9.0-rc.15"
+        state["release"] = json.loads((KIT / "manifest.json").read_text())["version"]
         write()
         stage("load standalone core")
         stage_bootstrap(KIT, SD_ROOT, validate_settings().read_bytes())

@@ -1,3 +1,5 @@
+> **1.0 follow-up:** The audit below records RC15 as published. The 1.0 update fixes settings migration and the NSMB reset-preset/checksum bug, and uses permanent `Scripts/NDS.sh` and `Scripts/.NDS/` paths. See [1.0 release notes](docs/RELEASE_NOTES_V10.md). Other findings below retain their original scope.
+
 # RC15 source and release audit
 
 Audited **2026-11-14**, before rewriting README.md. Scope: the packaged **v0.9.0-rc.15** selected by the maintainer. This is a source/package audit, not a new hardware qualification or full-game compatibility test.

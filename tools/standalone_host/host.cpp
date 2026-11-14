@@ -328,7 +328,7 @@ class Host {
   bool reset_confirm = false;
   bool lid_closed = false; // Session state, deliberately never saved to NDS_v1.CFG.
   bool screen_peek = false; // Temporary display override; status keeps the selection.
-  bool anti_alias = true;
+  bool anti_alias = false;
   bool half_rows = false;
   bool quarter_3d = false;
   bool tiny_3d = false;
@@ -504,6 +504,13 @@ class Host {
     ok = fsync(directory) == 0;
     close(directory);
     require(ok, "sync config directory");
+  }
+  static unsigned readSpeedHacks(const fs::path &path) {
+    std::ifstream config(path);
+    const std::string text((std::istreambuf_iterator<char>(config)), {});
+    for (unsigned i = 0; i < SPEED_MODES.size(); ++i)
+      if (text == "NDS-SpeedHacks-v1\n" + std::to_string(i) + "\n") return i;
+    return 0;
   }
   void saveSettings() {
     if (independent_outputs_supported) status = independentDisplayStatus(status);
@@ -1740,9 +1747,10 @@ class Host {
           full_status.fill(0);
           touch_rotation = TouchRotation::Normal;
           touch_range = 0;
-          speed_hacks = 0;
+          speed_hacks = speed_hacks_available ?
+              readSpeedHacks(fs::path(kit) / "defaults/NDS_speed.cfg") : 0;
           direct_video_crt = true;
-          anti_alias = true;
+          anti_alias = false;
           half_rows = false;
           quarter_3d = false;
           tiny_3d = false;
@@ -2913,10 +2921,10 @@ public:
     firmware_diagnostics = diagnostics && std::strcmp(diagnostics, "1") == 0;
     speed_hacks_available = fs::is_regular_file(fs::path(kit) / "fmv/nsmb_hooks.json");
     if (speed_hacks_available) {
-      std::ifstream config(fs::path(kit) / "NDS_speed.cfg");
-      const std::string text((std::istreambuf_iterator<char>(config)), {});
-      for (unsigned i=0;i<SPEED_MODES.size();++i)
-        if (text == "NDS-SpeedHacks-v1\n" + std::to_string(i) + "\n") speed_hacks = i;
+      auto speed_config = fs::path(kit) / "NDS_speed.cfg";
+      if (!fs::exists(speed_config))
+        speed_config = fs::path(kit) / "defaults/NDS_speed.cfg";
+      speed_hacks = readSpeedHacks(speed_config);
       if (const char *mode = std::getenv("NDS_NSMB_PATCH")) {
         speed_hacks = 0;
         for (unsigned i=0;i<SPEED_MODES.size();++i) if (std::strcmp(mode,SPEED_MODES[i]) == 0) speed_hacks=i;
@@ -2943,8 +2951,8 @@ public:
     half_rows = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=half\n";
     quarter_3d = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=quarter\n";
     tiny_3d = graphics_contents == "NDS-Graphics-v2\naa=off\nrows=tiny\n";
-    anti_alias = !half_rows && !quarter_3d && !tiny_3d && graphics_contents != "NDS-Graphics-v1\naa=off\n" &&
-        graphics_contents != "NDS-Graphics-v2\naa=off\nrows=native\n";
+    anti_alias = graphics_contents == "NDS-Graphics-v1\naa=on\n" ||
+        graphics_contents == "NDS-Graphics-v2\naa=on\nrows=native\n";
     require(!std::getenv("NDS4MISTER_GRAPHICS_CONTROL") || graphics_control.attached(),
             "graphics control mapping");
     graphics_control.set(anti_alias, half_rows, render_off, quarter_3d, tiny_3d);

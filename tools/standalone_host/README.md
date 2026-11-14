@@ -1,12 +1,10 @@
 # NDS4MiSTer standalone frontend
 
-See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V090_RC8.md).
+See the [project README](../../README.md), [quick start](../../docs/STANDALONE_QUICK_START.txt), and [release notes](../../docs/RELEASE_NOTES_V10.md).
 
-The later [private performance freeze](../../docs/PRIVATE_BETA_20261017.md) retains
-this host with offline RTC fallback; its helper/core pins and separate launcher
-are recorded per package. The public rc.8 download remains a different artifact.
+Public installations use `Scripts/NDS.sh` and `Scripts/.NDS/` across releases. `install_layout.py` imports legacy settings once after the supervisor validates the package and obtains ownership. The package never overwrites saved preferences.
 
-Build this frontend using `build.sh`. Its menu options are generated from the included FPGA CONF_STR; the release label comes from `VERSION`. The accepted FPGA and renderer are separate components. `supervisor.py`, `Kickstart.sh` and `NDS4MiSTer.sh` supply the matching launch and recovery behavior. See [THIRD_PARTY.md](THIRD_PARTY.md) for font and MiSTer menu attribution.
+Build this frontend using `build.sh`. Its menu options are generated from the included FPGA CONF_STR; the release label comes from `VERSION`. The accepted FPGA and renderer are separate components. `supervisor.py`, `Kickstart.sh` and `NDS.sh` supply the matching launch and recovery behavior. See [THIRD_PARTY.md](THIRD_PARTY.md) for font and MiSTer menu attribution.
 
 Offline checks: `python3 -m unittest discover -s tools/standalone_host -p "test_*.py"` from the repository root, plus the C++ test programs in this directory (including `test_storage.cpp` and `test_host_storage.cpp`). These tests use a fake SPI bus; they do not operate hardware.
 

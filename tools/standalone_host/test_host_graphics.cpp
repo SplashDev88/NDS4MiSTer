@@ -15,13 +15,15 @@ struct HostTest {
     nds4mister::GraphicsControl reader;
     {
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
-      assert(h.anti_alias && reader.antiAlias());
+      assert(!h.anti_alias && !reader.antiAlias());
       h.independent_outputs_supported = true;
       h.cursor = Host::DISPLAY_CURSOR; h.action(2);
       while (h.cursor != Host::AA_CURSOR) h.action(1);
       h.draw();
-      assert(h.osd_rows[9] == h.frame.renderRow(9, " 3D Anti-aliasing:        On", true, nds_osd::arrow_left));
+      assert(h.osd_rows[9] == h.frame.renderRow(9, " 3D Anti-aliasing:       Off", true, nds_osd::arrow_left));
       const auto status = h.full_status;
+      h.action(2);
+      assert(h.anti_alias && reader.antiAlias() && h.full_status == status);
       h.action(2);
       assert(!h.anti_alias && !reader.antiAlias() && h.full_status == status);
       h.action(1);
@@ -64,11 +66,11 @@ struct HostTest {
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
       assert(!h.anti_alias && !reader.antiAlias() && h.half_rows && reader.settings().halfRows);
       h.reset_confirm = true; h.cursor = 0; h.action(2);
-      assert(h.anti_alias && reader.antiAlias() && !h.half_rows && !reader.settings().halfRows);
+      assert(!h.anti_alias && !reader.antiAlias() && !h.half_rows && !reader.settings().halfRows);
     }
     {
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
-      assert(h.anti_alias && reader.antiAlias());
+      assert(!h.anti_alias && !reader.antiAlias());
     }
     {
       std::ofstream(kit/"NDS_graphics.cfg") << "NDS-Graphics-v2\naa=off\nrows=quarter\n";
@@ -76,7 +78,7 @@ struct HostTest {
       assert(h.quarter_3d && !h.half_rows && !h.anti_alias && reader.settings().quarter);
       h.saveSettings();
       h.reset_confirm = true; h.cursor = 0; h.action(2);
-      assert(!h.quarter_3d && h.anti_alias && !reader.settings().quarter);
+      assert(!h.quarter_3d && !h.anti_alias && !reader.settings().quarter);
     }
     {
       std::ofstream(kit/"NDS_graphics.cfg") << "NDS-Graphics-v2\naa=off\nrows=tiny\n";
@@ -86,20 +88,29 @@ struct HostTest {
       Host cold(kit.string(), (sd/"games/NDS").string(), sd);
       assert(cold.tiny_3d && reader.settings().tiny);
       h.reset_confirm = true; h.cursor = 0; h.action(2);
-      assert(!h.tiny_3d && h.anti_alias && !reader.settings().tiny);
+      assert(!h.tiny_3d && !h.anti_alias && !reader.settings().tiny);
     }
     for (const char* valid : {"NDS-Graphics-v1\naa=off\n", "NDS-Graphics-v2\naa=off\nrows=native\n"}) {
       std::ofstream(kit/"NDS_graphics.cfg") << valid;
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
       assert(!h.anti_alias && !h.half_rows && !reader.antiAlias() && !reader.settings().halfRows);
     }
+    for (const char* valid : {"NDS-Graphics-v1\naa=on\n", "NDS-Graphics-v2\naa=on\nrows=native\n"}) {
+      std::ofstream(kit/"NDS_graphics.cfg") << valid;
+      Host h(kit.string(), (sd/"games/NDS").string(), sd);
+      assert(h.anti_alias && reader.antiAlias());
+      h.saveSettings();
+      Host cold(kit.string(), (sd/"games/NDS").string(), sd);
+      assert(cold.anti_alias && reader.antiAlias());
+    }
     for (const char* invalid : {"", "NDS-Graphics-v2\naa=off\n", "NDS-Graphics-v1\naa=off\nextra",
           "NDS-Graphics-v2\naa=on\nrows=half\n", "NDS-Graphics-v2\naa=on\nrows=quarter\n", "NDS-Graphics-v2\naa=off\nrows=half\nextra"}) {
       std::ofstream(kit/"NDS_graphics.cfg") << invalid;
       Host h(kit.string(), (sd/"games/NDS").string(), sd);
-      assert(h.anti_alias && reader.antiAlias() && !h.half_rows && !reader.settings().halfRows);
+      assert(!h.anti_alias && !reader.antiAlias() && !h.half_rows && !reader.settings().halfRows);
     }
     // A renderer mapping cannot mutate settings; invalid words fail to native/AA On.
+    std::ofstream(control, std::ios::binary).write((const char*)&value, 4);
     reader.set(false, true);
     assert(reader.antiAlias() && !reader.settings().halfRows);
     for (std::uint32_t invalid : {0u, 0x41410003u, 0xffffffffu}) {

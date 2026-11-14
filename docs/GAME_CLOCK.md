@@ -1,4 +1,4 @@
-# Game clock — rc.9 / Beta12
+# Game clock
 
 Games and the DS firmware menu use the same RTC calendar. At the first game
 or firmware boot, it starts from the MiSTer's local date and time. Set the
@@ -15,13 +15,13 @@ session, so those actions preserve edits made inside DS firmware or a game.
 ## Keeping clock edits
 
 The host saves completed DS date/time writes automatically to `NDS_rtc.cfg`
-inside its kit directory. It stores an offset from MiSTer local time and a
+at `Scripts/.NDS/NDS_rtc.cfg`. The path stays the same across upgrades. It stores an offset from MiSTer local time and a
 weekday adjustment. Relaunching adds time elapsed while the core was off.
 All games in that kit share the clock. No MiSTer system-time setting is changed.
 The host does not write this file on each tick, or when no guest edit occurred.
 An edited offline clock also gets a checkpoint on clean exit or game switching.
 
-To return to MiSTer local time, exit the core, remove that kit's `NDS_rtc.cfg`,
+To return to MiSTer local time, exit the core, remove `Scripts/.NDS/NDS_rtc.cfg`,
 and relaunch. Keep this file when updating the kit. Resetting display/input
 settings does not reset the clock. A malformed file is reported rather than
 silently overwriting its saved clock setting.
