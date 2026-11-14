@@ -1,21 +1,16 @@
-# NDS4MiSTer 1.0
-
-1.0 keeps RC15's performance improvements and fixes installation upgrades and Reset settings.
+# NDS4MiSTer v1.0
 
 ## What's new
 
-- One launcher for every release: **Scripts → NDS**.
-- Settings, controller mappings and the in-game clock stay in **Scripts/.NDS/**. Existing RC14 and RC15 settings import automatically on first launch.
-- Original RC14/RC15 launchers are backed up and removed from the Scripts menu. Custom launchers and private betas are left alone.
-- Fixed Reset settings disabling the New Super Mario Bros. speed preset and preventing the next launch.
-- Anti-aliasing defaults to Off on fresh installs and after Reset settings. Saved preferences are preserved when upgrading.
-- The installed version appears in the core menu.
-- Mr. Moro's RetroTINK-4K profile pack is available separately.
+- Settings, controller mappings and the clock now live in permanent locations (Scripts/NDS.sh and Scripts/.NDS/) and move over automatically from RC14/RC15.
+- Fixed a bug where resetting settings disabled certain speed optimizations.
+- On fresh installs, anti-aliasing now starts Off for improved speed.
+- Fixed a controller-mapping bug that could leave Define buttons stuck on "Release all controls".
 
 ## Known issues
 
 - You may still see slowdowns, stutter, audio hitches or graphical glitches, and a steady 60 FPS isn't guaranteed.
-- Save states, wireless multiplayer, DSi mode and PAL 50 Hz aren't supported yet.
+- Save states, wireless multiplayer and DSi mode aren't supported yet.
 
 ## Install
 

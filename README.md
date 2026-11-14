@@ -13,6 +13,7 @@ Experimental Nintendo DS core for the MiSTer FPGA.
 - Settings, controller mappings and the clock now live in permanent locations (`Scripts/NDS.sh` and `Scripts/.NDS/`) and move over automatically from RC14/RC15.
 - Fixed a bug where resetting settings disabled certain speed optimizations.
 - On fresh installs, anti-aliasing now starts Off for improved speed.
+- Fixed a controller-mapping bug that could leave Define buttons stuck on "Release all controls".
 
 ---
 
