@@ -33,8 +33,8 @@ MAIN_PATHS = (
     "degauss/MiSTer_RA_Degauss",
     "ConsoleMode/MiSTer_ConsoleMode",
 )
-EXPECTED_HELPER = "9e7a91a2d4a59cf563b28bc2ed6747762a94e8cc5b38a870a37132ce5c60fe53"
-EXPECTED_CORE = "7e8645de571bb801c35aa709a7ae6e43aa2b0ce06d9eac2b338d71eb5d9bed41"
+EXPECTED_HELPER = "3834859ec6550b005d2f98c5e5255154a86aad0354669e30ad4895d09d2f4af9"
+EXPECTED_CORE = "80ab55ba6bcb7fa32d8f5aae3e2348c19eed9b4713fee521b59e0176a5954e92"
 EXPECTED_KICKSTART = "f034ccdf9fa70d01f0cc0c43c23fe60d488c6483e2908500b0b55c725046d18e"
 EXPECTED_SPEED_ENV = {
     "NDS4MISTER_PARALLEL_CLEAR": "0",
@@ -606,16 +606,21 @@ def main():
         fpga3d_choice = os.environ.get("NDS4MISTER_FPGA3D", "1")
         assert fpga3d_choice in ("0", "1"), "Invalid FPGA3D choice"
         env["NDS4MISTER_FPGA3D"] = fpga3d_choice
-        for option in ("NDS4MISTER_FPGA3D_PROFILE",
+        for option in ("NDS4MISTER_SOLID_SPANS",
+                       "NDS4MISTER_APPROX_FACTORS",
+                       "NDS4MISTER_NEUTRAL_WHITE", "NDS4MISTER_OPAQUE3D_SEED", "NDS4MISTER_ZERO_BRIGHTNESS",
+                       "NDS4MISTER_FPGA3D_HASH_TEXTURES",
+                       "NDS4MISTER_FPGA3D_SEGMENTED",
+                       "NDS4MISTER_FPGA3D_PROFILE",
                        "NDS4MISTER_FPGA3D_ALL_SUPPORTED",
                        "NDS4MISTER_FPGA3D_FAST_COMMANDS",
                        "NDS4MISTER_FPGA3D_PREPARED_TEXTURES",
                        "NDS4MISTER_FPGA3D_PACKED_TEXTURES",
                        "NDS4MISTER_FPGA3D_TEXTURE_RESIDENCY"):
             # Prepared reuse stays opt-in after a combined-mode Dawn startup failure.
-            default = "1" if option == "NDS4MISTER_FPGA3D_PACKED_TEXTURES" else "0"
+            default = "auto" if option in ("NDS4MISTER_SOLID_SPANS", "NDS4MISTER_APPROX_FACTORS", "NDS4MISTER_NEUTRAL_WHITE", "NDS4MISTER_OPAQUE3D_SEED", "NDS4MISTER_ZERO_BRIGHTNESS") else ("1" if option == "NDS4MISTER_FPGA3D_PACKED_TEXTURES" else "0")
             choice = os.environ.get(option, default)
-            assert choice in ("0", "1"), "Invalid " + option
+            assert choice in (("0", "1", "auto") if option in ("NDS4MISTER_SOLID_SPANS", "NDS4MISTER_APPROX_FACTORS", "NDS4MISTER_NEUTRAL_WHITE", "NDS4MISTER_OPAQUE3D_SEED", "NDS4MISTER_ZERO_BRIGHTNESS") else ("0", "1")), "Invalid " + option
             env[option] = choice
         if os.environ.get("NDS4MISTER_RENDER_CACHE_STATS") == "1":
             env["NDS4MISTER_RENDER_CACHE_STATS"] = "1"
