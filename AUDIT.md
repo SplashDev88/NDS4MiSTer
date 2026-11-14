@@ -1,4 +1,4 @@
-> **1.0 follow-up:** The audit below records RC15 as published. The 1.0 update fixes settings migration and the NSMB reset-preset/checksum bug, and uses permanent `Scripts/NDS.sh` and `Scripts/.NDS/` paths. See [1.0 release notes](docs/RELEASE_NOTES_V10.md). Other findings below retain their original scope.
+> **1.0 follow-up:** The audit below records RC15 as published. The 1.0 update fixes settings migration and the NSMB reset-preset/checksum bug, uses permanent `Scripts/NDS.sh` and `Scripts/.NDS/` paths, and defaults anti-aliasing to Off on fresh installs and Reset while preserving saved preferences. See [1.0 release notes](docs/RELEASE_NOTES_V10.md). Other findings below retain their original scope.
 
 # RC15 source and release audit
 
@@ -75,7 +75,7 @@ Both 2D engines are always enabled; there is no Engine B toggle or Speed hacks m
 
 ## ARM loading, paths and configuration
 
-[Launcher](tools/standalone_host/NDS_RC15.sh) → [auto_movies.py](tools/standalone_host/auto_movies.py) → [supervisor.py](tools/standalone_host/supervisor.py) validates the matching kit, selects a kernel module, loads the RBF, starts the renderer and native host, and restores normal Main on exit. [clock_control.py](tools/standalone_host/clock_control.py) requests 1 GHz and restores the previous clock policy. Preflight requires root, Python ≥3.8, `/dev/mem`, `/dev/MiSTer_cmd`, normal Main/menu and matching module vermagic. Packaged kernels are exactly 5.15.1-MiSTer and 6.18.38-MiSTer; no minimum Main version is encoded.
+[Launcher](https://github.com/SplashDev88/NDS4MiSTer/blob/bf87d812860eeb32d72c78f5563bd39a14defaef/tools/standalone_host/NDS_RC15.sh) → [auto_movies.py](tools/standalone_host/auto_movies.py) → [supervisor.py](tools/standalone_host/supervisor.py) validates the matching kit, selects a kernel module, loads the RBF, starts the renderer and native host, and restores normal Main on exit. [clock_control.py](tools/standalone_host/clock_control.py) requests 1 GHz and restores the previous clock policy. Preflight requires root, Python ≥3.8, `/dev/mem`, `/dev/MiSTer_cmd`, normal Main/menu and matching module vermagic. Packaged kernels are exactly 5.15.1-MiSTer and 6.18.38-MiSTer; no minimum Main version is encoded.
 
 Runtime root: `/media/fat/Scripts/.NDS_RC15`. Default ROM root: `/media/fat/games/NDS`; [host storage browsing](tools/standalone_host/host.cpp#L607) supports already-mounted SD/USB/network locations. Save root: `/media/fat/saves/NDS`, independent of ROM storage. [ROM layout checks](tools/standalone_host/rom_layout.h) accept up to 512 MiB with reserved all-FF tails beyond 252 MiB for ≤256 MiB files, or 464 MiB for larger files; [rom_reader.h](tools/standalone_host/rom_reader.h) validates padding and read-progress timeouts.
 
@@ -150,7 +150,7 @@ The public GitHub tag provides the 2,404-file source tree; the publication recei
 
 ## Open questions
 
-- What external SDRAM module size/speed and alternative boards are actually qualified? The mapped footprint fits 32 MiB; that is not a hardware-tested minimum. What is the oldest supported Main/menu build?
+- **SDRAM size clarified by the maintainer on 2026-11-14:** require 128 MB; other sizes may work but are untested. The mapped footprint fitting 32 MiB does not establish support for a smaller module. Which module speeds and alternative boards are qualified, and what is the oldest supported Main/menu build?
 - Should the release's intended default be AA Off, as the manifest says, or On, as the executable implements? Fix the inconsistent declaration/initialization and qualify performance with matching settings.
 - Should CRT target reject rotation, or provide a separate verified 15 kHz TATE implementation? Which exact DACs, encoder revisions, RGB/component/Y/C CRTs and OSSC/Morph models/firmware are qualified?
 - Which RT4K firmware versions and layouts were tested with each contributed profile? What exact capture/input configuration produced the profile bytes?
