@@ -1,28 +1,31 @@
-# NDS4MiSTer v0.9.0-rc.14
+# NDS4MiSTer RC15
 
-[Download ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.14/NDS4MiSTer_v0.9.0-rc.14_Standalone.zip) · [Release page](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.14)
+[Download ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.15/NDS4MiSTer_v0.9.0-rc.15_Standalone.zip) · [Release page](https://github.com/SplashDev88/NDS4MiSTer/releases/tag/v0.9.0-rc.15) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [Mr. Moro’s optional RetroTINK-4K pack](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v0.9.0-rc.15/NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip)
 
-Fixes Y/C output over CRT-targeted Direct Video 1 and adds optional RetroTINK-4K profiles courtesy of Mr. Moro.
+RC15 is a moderate performance update over RC14. It adds several new display settings, including the option to turn off anti-aliasing for more speed.
 
-Fixes the reported black-and-white output when using a compatible Direct Video DAC with the MiSTer Addons YC Active Encoder Board for S-Video or composite.
-Existing RGB configurations remain unchanged.
+## What's new
 
-A separate optional download, courtesy of Mr. Moro, includes NDS Default and NDS Rotate RetroTINK-4K profiles and a custom background. The Rotate profile is for a physically rotated display: choose the core’s Scaler target and 90 CW/CCW rotation, with RT4K Pro RoTATE off.
+- Faster overall, for example:
+  - Castlevania: Dawn of Sorrow: 30 → 39 FPS
+  - New Super Mario Bros.: 15 → 30 FPS on the overworld map, and about 60 FPS in level 1-1
+  - Mario Kart DS: game pacing went from half speed to full speed (though the framerate dropped slightly)
+- FPGA-accelerated rendering where it helps, falling back to ARM where it doesn't
+- Faster texture handling and a larger texture cache
+- Game-specific speedups for several titles, including Castlevania: Dawn of Sorrow, Pokémon Platinum, Final Fantasy Tactics A2, New Super Mario Bros., Mario Kart DS, Ultimate Mortal Kombat 3 and more
 
-To install or update:
+## Known issues
 
-1. Exit via **System → Reboot**.
-2. Back up `Scripts/NDS4MiSTer.sh`, `Scripts/.NDS_Standalone`, `saves/NDS` and `config/NDS_storage.cfg`.
-3. Extract the **Standalone ZIP** at the SD-card root, including hidden files, and merge/overwrite the program files.
-4. Run **Scripts → NDS4MiSTer → Load *.NDS**.
+- You may still see slowdowns, stutter, audio hitches or graphical glitches, and a steady 60 FPS isn't guaranteed
+- Save states, wireless multiplayer, DSi mode and PAL 50 Hz aren't supported yet
 
-Use the complete matching package. Saves and existing display/controller settings carry over. The install ZIP contains runtime files and license notices; corresponding sources and build records are a separate optional download for developers.
+## Install
 
-Known issues:
+1. Exit NDS with System → Reboot, then back up saves/NDS.
+2. Extract the full ZIP to the root of your SD card, including hidden files.
+3. Run Scripts → NDS_RC15.
+4. Choose your display settings on first launch, then use System → Save settings to keep your preferences.
 
-- Slowdown, audio hitches and graphical glitches remain possible. Full-speed gameplay and full-playthrough coverage are not guaranteed.
-- Save states, wireless multiplayer, DSi mode and PAL 50 Hz output are not supported. FPGA static timing remains unresolved.
+Saves stay in the standard NDS folder.
 
-Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend, Corn, skmp, apeekaboo and everyone testing these builds.
-
-No ROMs, BIOS files, saves or personal configuration are included.
+Thanks to the MiSTer community, FPGAzumSpass, Nitro_DarkSide, melonDS, heni, InsaneFriend, Corn, skmp, apeekaboo and everyone who tested.
