@@ -572,6 +572,10 @@ begin
       variable v_half : unsigned(15 downto 0);
       variable v_nib  : unsigned(3 downto 0);
       variable v_step : integer range 0 to 32767;
+      variable v_product : unsigned(15 downto 0);
+      variable v_fraction : integer range 0 to 11;
+      attribute multstyle : string;
+      attribute multstyle of v_product : variable is "dsp";
       variable v_diff : integer range 0 to 65535;
       -- Maximum ADPCM delta is 32767/8 + 32767/4 + 32767/2 +
       -- 32767 = 61436. Include the unclamped sum and the header's -32768.
@@ -804,10 +808,18 @@ begin
                                     else
                                        v_step := ADPCM_STEP_INIT(chan(i).adidx);
                                     end if;
-                                    v_diff := v_step / 8;
-                                    if (v_nib(0) = '1') then v_diff := v_diff + v_step/4; end if;
-                                    if (v_nib(1) = '1') then v_diff := v_diff + v_step/2; end if;
-                                    if (v_nib(2) = '1') then v_diff := v_diff + v_step;   end if;
+                                    -- For step=8*q+r, factor the wide adds into
+                                    -- q*(1+2*b0+4*b1+8*b2). Retain each original
+                                    -- integer truncation in the small remainder.
+                                    -- The result is exact for all 15-bit steps,
+                                    -- with no extra state or sample-clock delay.
+                                    v_product := to_unsigned(v_step / 8, 12) *
+                                                 (v_nib(2 downto 0) & '1');
+                                    v_fraction := 0;
+                                    if (v_nib(0) = '1') then v_fraction := v_fraction + (v_step mod 8)/4; end if;
+                                    if (v_nib(1) = '1') then v_fraction := v_fraction + (v_step mod 8)/2; end if;
+                                    if (v_nib(2) = '1') then v_fraction := v_fraction + (v_step mod 8);   end if;
+                                    v_diff := to_integer(v_product) + v_fraction;
                                     v_smp := to_integer(chan(i).adval);
                                     if (v_nib(3) = '1') then
                                        v_smp := v_smp - v_diff;
