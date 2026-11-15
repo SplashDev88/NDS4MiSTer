@@ -25,10 +25,11 @@ struct HostTest {
     Host host((root / "kit").string(), (root / "games/NDS").string(), root);
     nds_osd::Frame normal("", charfont), compact("", charfont);
     compact.setHalfWidthGlyphs(true);
-    const std::string text = "firmware Main *.NDS oOa 100%";
+    const std::string text = "B firmware Main *.NDS oOa 100%";
     const auto ordinary = normal.renderRow(1, text);
     const auto corrected = compact.renderRow(1, text);
     assert(ordinary != corrected);
+    checkGlyph(compact, 'B', {"##..","#.#.","#.#.","##..","#.#.","#.#.","##..","...."});
     checkGlyph(compact, 'D', {"##..","#.#.","#.#.","#.#.","#.#.","#.#.","##..","...."});
     checkGlyph(compact, 'M', {"#.#.","###.","###.","#.#.","#.#.","#.#.","#.#.","...."});
     checkGlyph(compact, 'm', {"....","....","#.#.","###.","###.","#.#.","#.#.","...."});
@@ -49,7 +50,7 @@ struct HostTest {
       assert(different);
     }
     for (unsigned ch = 32; ch < 127; ++ch)
-      if (ch != 'D' && ch != 'M' && ch != 'm' && ch != 'N' && ch != 'w' && ch != 'S' && ch != '*' && ch != 'o' && ch != 'O' && ch != '0' && ch != '%')
+      if (ch != 'B' && ch != 'D' && ch != 'M' && ch != 'm' && ch != 'N' && ch != 'w' && ch != 'S' && ch != '*' && ch != 'o' && ch != 'O' && ch != '0' && ch != '%')
         assert(compact.renderRow(1, std::string(1, char(ch))) ==
                normal.renderRow(1, std::string(1, char(ch))));
 
@@ -57,20 +58,21 @@ struct HostTest {
     // scrolling, rather than testing only a direct glyph lookup.
     nds_osd::Font expected_font;
     std::memcpy(expected_font, charfont, sizeof(expected_font));
-    for (char ch : {'D', 'M', 'm', 'w', 'S', '*', 'o', 'O', '0', '%'}) {
+    for (char ch : {'B', 'D', 'M', 'm', 'w', 'S', '*', 'o', 'O', '0', '%'}) {
       const auto row = compact.renderRow(1, std::string(1, ch));
       std::copy_n(row.begin() + 22, 8, expected_font[unsigned(ch)]);
     }
-    // Vertical N, D, S and 0 use stock Main columns: rotating the paired row
+    // Vertical B/N/D/S/0 use stock Main columns: rotating the paired row
     // glyphs would preserve both copies and distort their stock proportions.
     // Other title glyphs retain the existing compact corrections.
     nds_osd::Font expected_title_font;
     std::memcpy(expected_title_font, expected_font, sizeof(expected_title_font));
+    std::copy_n(charfont['B'], 8, expected_title_font['B']);
     std::copy_n(charfont['S'], 8, expected_title_font['S']);
     std::copy_n(charfont['D'], 8, expected_title_font['D']);
     std::copy_n(charfont['0'], 8, expected_title_font['0']);
     nds_osd::Frame title_expected("", expected_title_font);
-    for (const auto *title : {"N", "D", "S", "0", "NDS", "Oo%", "100%", "System", "Firmware", "Recent Files",
+    for (const auto *title : {"B", "N", "D", "S", "0", "NDS", "Oo%", "100%", "System", "Firmware", "Recent Files",
                               "Display options", "Loading", "Select"})
       for (unsigned rows : {8u, 16u}) {
         title_expected.setTitle(title, rows);
@@ -85,7 +87,7 @@ struct HostTest {
       }
     nds_osd::Frame expected("Oo%", expected_font);
     compact.setTitle("Oo%");
-    const std::string fixed_width_text = "firmware Main *.DS oOa 100%";
+    const std::string fixed_width_text = "B firmware Main *.DS oOa 100%";
     for (unsigned row = 0; row < 16; ++row)
       for (bool inverse : {false, true}) {
         const auto marked = std::string(1, char(0x0b)) + fixed_width_text;
@@ -154,7 +156,7 @@ struct HostTest {
     host.draw();
     normal.setTitle("NDS");
     assert(host.osd_rows[0] == normal.renderRow(0, " Load *.NDS", true));
-    std::cout << "PASS: D/M/m/N/w/S/*/o/O/0/% at both sample phases, other glyphs unchanged, stock vertical NDS/0, titles, styles, scrolling, "
+    std::cout << "PASS: B/D/M/m/N/w/S/*/o/O/0/% at both sample phases, other glyphs unchanged, stock vertical B/NDS/0, titles, styles, scrolling, "
               << cases << " output/layout/rotation cases, loading and live mode changes\n";
   }
 };

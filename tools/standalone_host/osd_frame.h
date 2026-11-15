@@ -47,6 +47,7 @@ class Frame {
     // Rotated Top/Bottom DV1 can retain only one column of each pair.
     // Keep the letter curves, symbol strokes and trailing gap in either
     // sample phase.
+    static constexpr unsigned char upper_b[8] = {0x7f,0x7f,0x49,0x49,0x36,0x36,0,0};
     static constexpr unsigned char upper_d[8] = {0x7f,0x7f,0x41,0x41,0x3e,0x3e,0,0};
     static constexpr unsigned char upper_m[8] = {0x7f,0x7f,0x06,0x06,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_m[8] = {0x7c,0x7c,0x18,0x18,0x7c,0x7c,0,0};
@@ -61,6 +62,7 @@ class Frame {
     static constexpr unsigned char upper_o[8] = {0x3e,0x3e,0x41,0x41,0x3e,0x3e,0,0};
     static constexpr unsigned char percent[8] = {0x71,0x71,0x08,0x08,0x47,0x47,0,0};
     if (half_width_glyphs_) {
+      if (ch == 'B') return upper_b;
       if (ch == 'D') return upper_d;
       if (ch == 'M') return upper_m;
       if (ch == 'm') return lower_m;
@@ -80,7 +82,7 @@ public:
     setTitle(title);
   }
 
-  // Select before setTitle; the vertical NDS letters and zero stay stock.
+  // Select before setTitle; vertical B/N/D/S and zero stay stock.
   void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
   std::size_t textWidth(std::string_view text) const {
@@ -97,11 +99,11 @@ public:
     std::size_t used = 0;
     unsigned zeros = 0;
     for (unsigned char ch : title) {
-      // Title columns become vertical pixels after rotation. Keep N, D, S and 0
+      // Title columns become vertical pixels after rotation. Keep B/N/D/S/0
       // stock: paired row glyphs survive here at full width and distort them.
       constexpr unsigned width = 8;
       if (!ch || used >= height - width) break;
-      const auto *columns = (ch == 'N' || ch == 'D' || ch == 'S' || ch == '0') ? font_[ch] : glyph(ch);
+      const auto *columns = (ch == 'B' || ch == 'N' || ch == 'D' || ch == 'S' || ch == '0') ? font_[ch] : glyph(ch);
       for (unsigned x = 0; x < width; ++x) {
         const auto column = columns[x];
         if (column) {
