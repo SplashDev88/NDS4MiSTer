@@ -69,7 +69,7 @@ class Frame {
       if (ch == 'S') return upper_s;
       if (ch == '*') return asterisk;
       if (ch == 'o') return lower_o;
-      if (ch == 'O') return upper_o;
+      if (ch == 'O' || ch == '0') return upper_o;
       if (ch == '%') return percent;
     }
     return font_[ch];
@@ -80,7 +80,7 @@ public:
     setTitle(title);
   }
 
-  // Select before setTitle; the vertical NDS letters stay stock.
+  // Select before setTitle; the vertical NDS letters and zero stay stock.
   void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
   std::size_t textWidth(std::string_view text) const {
@@ -97,11 +97,11 @@ public:
     std::size_t used = 0;
     unsigned zeros = 0;
     for (unsigned char ch : title) {
-      // Title columns become vertical pixels after rotation. Keep N, D and S
+      // Title columns become vertical pixels after rotation. Keep N, D, S and 0
       // stock: paired row glyphs survive here at full width and distort them.
       constexpr unsigned width = 8;
       if (!ch || used >= height - width) break;
-      const auto *columns = (ch == 'N' || ch == 'D' || ch == 'S') ? font_[ch] : glyph(ch);
+      const auto *columns = (ch == 'N' || ch == 'D' || ch == 'S' || ch == '0') ? font_[ch] : glyph(ch);
       for (unsigned x = 0; x < width; ++x) {
         const auto column = columns[x];
         if (column) {

@@ -38,6 +38,7 @@ struct HostTest {
     checkGlyph(compact, '*', {"....","#.#.",".#..","###.",".#..","#.#.","....","...."});
     checkGlyph(compact, 'o', {"....","....",".#..","#.#.","#.#.","#.#.",".#..","...."});
     checkGlyph(compact, 'O', {".#..","#.#.","#.#.","#.#.","#.#.","#.#.",".#..","...."});
+    checkGlyph(compact, '0', {".#..","#.#.","#.#.","#.#.","#.#.","#.#.",".#..","...."});
     checkGlyph(compact, '%', {"#.#.","..#.","..#.",".#..","#...","#...","#.#.","...."});
     // Confirm that both horizontal sample phases distinguish o from a.
     const auto a = compact.renderRow(1, "a"), o = compact.renderRow(1, "o");
@@ -48,7 +49,7 @@ struct HostTest {
       assert(different);
     }
     for (unsigned ch = 32; ch < 127; ++ch)
-      if (ch != 'D' && ch != 'M' && ch != 'm' && ch != 'N' && ch != 'w' && ch != 'S' && ch != '*' && ch != 'o' && ch != 'O' && ch != '%')
+      if (ch != 'D' && ch != 'M' && ch != 'm' && ch != 'N' && ch != 'w' && ch != 'S' && ch != '*' && ch != 'o' && ch != 'O' && ch != '0' && ch != '%')
         assert(compact.renderRow(1, std::string(1, char(ch))) ==
                normal.renderRow(1, std::string(1, char(ch))));
 
@@ -56,19 +57,20 @@ struct HostTest {
     // scrolling, rather than testing only a direct glyph lookup.
     nds_osd::Font expected_font;
     std::memcpy(expected_font, charfont, sizeof(expected_font));
-    for (char ch : {'D', 'M', 'm', 'w', 'S', '*', 'o', 'O', '%'}) {
+    for (char ch : {'D', 'M', 'm', 'w', 'S', '*', 'o', 'O', '0', '%'}) {
       const auto row = compact.renderRow(1, std::string(1, ch));
       std::copy_n(row.begin() + 22, 8, expected_font[unsigned(ch)]);
     }
-    // Vertical N, D and S use stock Main columns: rotating the paired row
+    // Vertical N, D, S and 0 use stock Main columns: rotating the paired row
     // glyphs would preserve both copies and distort their stock proportions.
     // Other title glyphs retain the existing compact corrections.
     nds_osd::Font expected_title_font;
     std::memcpy(expected_title_font, expected_font, sizeof(expected_title_font));
     std::copy_n(charfont['S'], 8, expected_title_font['S']);
     std::copy_n(charfont['D'], 8, expected_title_font['D']);
+    std::copy_n(charfont['0'], 8, expected_title_font['0']);
     nds_osd::Frame title_expected("", expected_title_font);
-    for (const auto *title : {"N", "D", "S", "NDS", "Oo%", "System", "Firmware", "Recent Files",
+    for (const auto *title : {"N", "D", "S", "0", "NDS", "Oo%", "100%", "System", "Firmware", "Recent Files",
                               "Display options", "Loading", "Select"})
       for (unsigned rows : {8u, 16u}) {
         title_expected.setTitle(title, rows);
@@ -152,7 +154,7 @@ struct HostTest {
     host.draw();
     normal.setTitle("NDS");
     assert(host.osd_rows[0] == normal.renderRow(0, " Load *.NDS", true));
-    std::cout << "PASS: D/M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, stock vertical NDS, titles, styles, scrolling, "
+    std::cout << "PASS: D/M/m/N/w/S/*/o/O/0/% at both sample phases, other glyphs unchanged, stock vertical NDS/0, titles, styles, scrolling, "
               << cases << " output/layout/rotation cases, loading and live mode changes\n";
   }
 };
