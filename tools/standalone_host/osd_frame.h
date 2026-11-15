@@ -47,6 +47,7 @@ class Frame {
     // Rotated Top/Bottom DV1 can retain only one column of each pair.
     // Keep the letter curves, symbol strokes and trailing gap in either
     // sample phase.
+    static constexpr unsigned char upper_d[8] = {0x7f,0x7f,0x41,0x41,0x3e,0x3e,0,0};
     static constexpr unsigned char upper_m[8] = {0x7f,0x7f,0x06,0x06,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_m[8] = {0x7c,0x7c,0x18,0x18,0x7c,0x7c,0,0};
     // Keep Main's seven-row stems and a steep, connected diagonal. Its two
@@ -60,6 +61,7 @@ class Frame {
     static constexpr unsigned char upper_o[8] = {0x3e,0x3e,0x41,0x41,0x3e,0x3e,0,0};
     static constexpr unsigned char percent[8] = {0x71,0x71,0x08,0x08,0x47,0x47,0,0};
     if (half_width_glyphs_) {
+      if (ch == 'D') return upper_d;
       if (ch == 'M') return upper_m;
       if (ch == 'm') return lower_m;
       if (ch == 'N') return upper_n;
@@ -78,7 +80,7 @@ public:
     setTitle(title);
   }
 
-  // Select before setTitle; vertical N/S stay stock and D gets rounder corners.
+  // Select before setTitle; the vertical NDS letters stay stock.
   void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
   std::size_t textWidth(std::string_view text) const {
@@ -94,15 +96,12 @@ public:
     std::array<uint8_t, row_count * 8> condensed{}, centered{};
     std::size_t used = 0;
     unsigned zeros = 0;
-    // Remove only the top-right and bottom-right ink pixels from Main's D.
-    static constexpr unsigned char title_d[8] = {0x7f,0x7f,0x41,0x41,0x3e,0x3e,0,0};
     for (unsigned char ch : title) {
-      // Title columns become vertical pixels after rotation. Keep N and S
+      // Title columns become vertical pixels after rotation. Keep N, D and S
       // stock: paired row glyphs survive here at full width and distort them.
       constexpr unsigned width = 8;
       if (!ch || used >= height - width) break;
-      const auto *columns = half_width_glyphs_ && ch == 'D' ? title_d :
-                            (ch == 'N' || ch == 'S') ? font_[ch] : glyph(ch);
+      const auto *columns = (ch == 'N' || ch == 'D' || ch == 'S') ? font_[ch] : glyph(ch);
       for (unsigned x = 0; x < width; ++x) {
         const auto column = columns[x];
         if (column) {
