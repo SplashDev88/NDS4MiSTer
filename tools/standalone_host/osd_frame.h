@@ -37,11 +37,29 @@ class Frame {
   const Font &font_;
   std::array<uint8_t, row_count * 8> title_{};
   std::size_t rows_ = row_count;
+  bool half_width_glyphs_ = false;
+
+  const unsigned char *glyph(unsigned char ch) const {
+    // Rotated Top/Bottom DV1 can retain only one column of each pair.
+    // Keep the round counters and percent diagonal in either sample phase.
+    static constexpr unsigned char lower_o[8] = {0x38,0x38,0x44,0x44,0x38,0x38,0,0};
+    static constexpr unsigned char upper_o[8] = {0x3e,0x3e,0x41,0x41,0x3e,0x3e,0,0};
+    static constexpr unsigned char percent[8] = {0x71,0x71,0x08,0x08,0x47,0x47,0,0};
+    if (half_width_glyphs_) {
+      if (ch == 'o') return lower_o;
+      if (ch == 'O') return upper_o;
+      if (ch == '%') return percent;
+    }
+    return font_[ch];
+  }
 
 public:
   Frame(std::string_view title, const Font &font) : font_(font) {
     setTitle(title);
   }
+
+  // Select before setTitle so the vertical title uses the same glyphs.
+  void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
   void setTitle(std::string_view title, std::size_t rows = row_count) {
     rows_ = rows == 8 ? 8 : row_count;
@@ -51,7 +69,8 @@ public:
     unsigned zeros = 0;
     for (unsigned char ch : title) {
       if (!ch || used >= height - 8) break;
-      for (auto column : font_[ch]) {
+      for (unsigned x = 0; x < 8; ++x) {
+        const auto column = glyph(ch)[x];
         if (column) {
           zeros = 0;
           condensed[used++] = column;
@@ -118,7 +137,8 @@ public:
         glyph_invert ^= 0xff;
       } else {
         if (column >= limit - 8) break;
-        for (auto bits : font_[ch]) {
+        for (unsigned x = 0; x < 8; ++x) {
+          const auto bits = glyph(ch)[x];
           result[column++] = (bits & stipple_mask) ^ invert ^ glyph_invert;
           stipple_mask ^= stipple;
         }
@@ -144,7 +164,7 @@ public:
     for (unsigned x = 0; x < width; ++x) {
       const auto pixel = (offset + x) % period;
       const unsigned char ch = pixel / 8 < text.size() ? text[pixel / 8] : ' ';
-      result[title_width + x] = font_[ch][pixel % 8] ^ (inverse ? 0xff : 0);
+      result[title_width + x] = glyph(ch)[pixel % 8] ^ (inverse ? 0xff : 0);
     }
     return result;
   }

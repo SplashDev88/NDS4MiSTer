@@ -1505,6 +1505,7 @@ class Host {
     // picker. Write ONLY rows 0..7 before enabling Main's message mode.
     osd(false);
     osd_row_valid.fill(false);
+    configureMenuGlyphs();
     frame.setTitle("Loading", 8);
     const auto rows = loadingRows(name, 0);
     for (int row = 0; row < 8; ++row) line(row, rows[row]);
@@ -1529,9 +1530,18 @@ class Host {
     osd(true);
     dirty = false;
   }
+  void configureMenuGlyphs() {
+    const unsigned rotation = (status >> 11) & 3;
+    const bool native_dv1 = video_flags_known && independent_outputs_supported &&
+        (video_flags & (1u << 10)) &&
+        !(video_flags & ((1u << 7) | (1u << 12) | (1u << 13)));
+    frame.setHalfWidthGlyphs(native_dv1 && ((status >> 5) & 3) == 1 &&
+                            (rotation == 1 || rotation == 2));
+  }
   void draw() {
     if (!menu)
       return;
+    configureMenuGlyphs();
     if (storage_job || storage_choices) {
       if (storage_job && storage_quiet) {
         // Known firmware goes straight from the current menu to its normal
