@@ -49,9 +49,10 @@ class Frame {
     // sample phase.
     static constexpr unsigned char upper_m[8] = {0x7f,0x7f,0x06,0x06,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_m[8] = {0x7c,0x7c,0x18,0x18,0x7c,0x7c,0,0};
-    // N needs four ink columns for its two stems and single-pixel diagonal,
-    // followed by a blank column to keep the next letter separate.
-    static constexpr unsigned char upper_n[10] = {0x7f,0x7f,0x08,0x08,0x10,0x10,0x7f,0x7f,0,0};
+    // Keep Main's seven-row stems and a steep, connected diagonal. Its two
+    // inner columns occupy separate rows, so the diagonal stays one pixel
+    // wide after sampling. A blank column keeps the next letter separate.
+    static constexpr unsigned char upper_n[10] = {0x7f,0x7f,0x0e,0x0e,0x30,0x30,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_w[8] = {0x7c,0x7c,0x30,0x30,0x7c,0x7c,0,0};
     static constexpr unsigned char upper_s[8] = {0x46,0x46,0x49,0x49,0x31,0x31,0,0};
     static constexpr unsigned char asterisk[8] = {0x2a,0x2a,0x1c,0x1c,0x2a,0x2a,0,0};
