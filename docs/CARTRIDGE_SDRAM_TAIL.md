@@ -38,7 +38,8 @@ Validation entry points:
 - `bash tools/test_cart_sdram_tail.sh`: complete-image gating, exact tail
   readback, malformed offsets, delayed responses, replacement, cache behavior,
   actual MiSTer FIO addressing/chunk boundaries and delayed write pulses,
-  and actual SDRAM pins at the 16/32/64 MiB boundaries with both DQ settings.
+  and actual SDRAM pins at the 16/32/64 MiB boundaries with both DQ settings,
+  concurrent channel-1/channel-2 reads and refresh requests.
 - `python3 tools/test_nds_cart_large_rom.py`: actual cartridge bridge and DDR
   cache, including full backing boundaries and pending-tail reset/replacement.
 - `test_host_full_cartridge.cpp`: old-core rejection, failed tail preserving
