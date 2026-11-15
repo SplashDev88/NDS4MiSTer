@@ -36,9 +36,13 @@ struct HostTest {
     h.spi.history.clear();h.spi.default_firmware_flags|=0x2000;
     h.load(path.string());
     assert(h.game==path && !h.menu && fs::exists(sd/"saves/NDS/full.sav"));
-    uint16_t index=0;uint64_t uploaded=0;unsigned releases=0;
+    uint16_t index=0;uint64_t uploaded=0;unsigned releases=0,tail_starts=0;
     for(const auto&t:h.spi.history){
       if(t.select==Spi::FIO && t.command==0x55)index=t.words.at(0);
+      if(t.select==Spi::FIO && t.command==0x53 && index==0xf03 && t.words.at(0)==255){
+        // These words are the hps_io write address, not the file length.
+        assert((t.words==std::vector<uint16_t>{255,0,0}));++tail_starts;
+      }
       if(t.select==Spi::FIO && t.command==0x54 && index==0xf03){
         for(const auto word:t.words){
           const auto expected=uploaded==0?0xff5a:uploaded==36?0xff81:0xffff;
@@ -47,7 +51,7 @@ struct HostTest {
       }
       if(t.select==Spi::IO && t.command==0x45 && !t.words.empty() && t.words[0]==3)++releases;
     }
-    assert(uploaded==48*RomLayout::mib && releases==1 && RomMapping::test_live_mappings==0);
+    assert(uploaded==48*RomLayout::mib && releases==1 && tail_starts==1 && RomMapping::test_live_mappings==0);
     assert(fs::file_size(path)==tail+37);
     // A normal large padded ROM on the new core retains the existing DDR
     // protocol and sends no cartridge bytes over the slow SPI path.

@@ -3145,7 +3145,11 @@ public:
     seedGameClock();
     spi.cmd(Spi::FIO, 0x55, {uint16_t(RomLayout::index(file_size) | (reader.fullCartridge() ? 0x400 : 0))});
     spi.cmd(Spi::FIO, 0x56, {0x2e4e, 0x4453});
-    spi.cmd(Spi::FIO, 0x53, {255, uint16_t(file_size), uint16_t(file_size >> 16)});
+    // hps_io interprets the optional words as a starting upload address.
+    // Full backing streams only the SDRAM tail, beginning at tail offset zero;
+    // using a trimmed file's size here would start at a nonzero/odd address.
+    const auto fio_start = reader.fullCartridge() ? 0 : file_size;
+    spi.cmd(Spi::FIO, 0x53, {255, uint16_t(fio_start), uint16_t(fio_start >> 16)});
     // Download's rising edge asks the save bridge to flush the outgoing cart.
     drain(100);
     size_t off = 0;
