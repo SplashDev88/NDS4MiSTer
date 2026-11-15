@@ -39,15 +39,19 @@ class Frame {
   std::size_t rows_ = row_count;
   bool half_width_glyphs_ = false;
 
+  unsigned glyphWidth(unsigned char ch) const {
+    return half_width_glyphs_ && ch == 'N' ? 10 : 8;
+  }
+
   const unsigned char *glyph(unsigned char ch) const {
     // Rotated Top/Bottom DV1 can retain only one column of each pair.
     // Keep the letter curves, symbol strokes and trailing gap in either
     // sample phase.
     static constexpr unsigned char upper_m[8] = {0x7f,0x7f,0x06,0x06,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_m[8] = {0x7c,0x7c,0x18,0x18,0x7c,0x7c,0,0};
-    // Open the opposite stem pixels beside N's diagonal so it reads as N
-    // rather than H when only three ink columns survive the downsampling.
-    static constexpr unsigned char upper_n[8] = {0x6f,0x6f,0x1c,0x1c,0x7b,0x7b,0,0};
+    // N needs four ink columns for its two stems and descending diagonal,
+    // followed by a blank column to keep the next letter separate.
+    static constexpr unsigned char upper_n[10] = {0x7f,0x7f,0x0c,0x0c,0x30,0x30,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_w[8] = {0x7c,0x7c,0x30,0x30,0x7c,0x7c,0,0};
     static constexpr unsigned char upper_s[8] = {0x46,0x46,0x49,0x49,0x31,0x31,0,0};
     static constexpr unsigned char asterisk[8] = {0x2a,0x2a,0x1c,0x1c,0x2a,0x2a,0,0};
@@ -76,6 +80,13 @@ public:
   // Select before setTitle so the vertical title uses the same glyphs.
   void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
+  std::size_t textWidth(std::string_view text) const {
+    std::size_t width = 0;
+    for (unsigned char ch : text) width += glyphWidth(ch);
+    return width;
+  }
+  std::size_t scrollPeriod(std::string_view text) const { return textWidth(text) + 80; }
+
   void setTitle(std::string_view title, std::size_t rows = row_count) {
     rows_ = rows == 8 ? 8 : row_count;
     const auto height = rows_ * 8;
@@ -83,8 +94,9 @@ public:
     std::size_t used = 0;
     unsigned zeros = 0;
     for (unsigned char ch : title) {
-      if (!ch || used >= height - 8) break;
-      for (unsigned x = 0; x < 8; ++x) {
+      const auto width = glyphWidth(ch);
+      if (!ch || used >= height - width) break;
+      for (unsigned x = 0; x < width; ++x) {
         const auto column = glyph(ch)[x];
         if (column) {
           zeros = 0;
@@ -151,8 +163,9 @@ public:
       } else if (ch == 0x0c) {
         glyph_invert ^= 0xff;
       } else {
-        if (column >= limit - 8) break;
-        for (unsigned x = 0; x < 8; ++x) {
+        const auto width = glyphWidth(ch);
+        if (column >= limit - width) break;
+        for (unsigned x = 0; x < width; ++x) {
           const auto bits = glyph(ch)[x];
           result[column++] = (bits & stipple_mask) ^ invert ^ glyph_invert;
           stipple_mask ^= stipple;
@@ -175,11 +188,21 @@ public:
     const auto stripe = renderRow(row);
     std::copy_n(stripe.begin(), title_width, result.begin());
     width = std::min<unsigned>(width, row_bytes - title_width);
-    const auto period = (text.size() + 10) * 8;
+    const auto period = scrollPeriod(text);
+    auto column = offset % period;
+    std::size_t index = 0;
+    while (index < text.size() && column >= glyphWidth(text[index])) {
+      column -= glyphWidth(text[index]);
+      ++index;
+    }
     for (unsigned x = 0; x < width; ++x) {
-      const auto pixel = (offset + x) % period;
-      const unsigned char ch = pixel / 8 < text.size() ? text[pixel / 8] : ' ';
-      result[title_width + x] = glyph(ch)[pixel % 8] ^ (inverse ? 0xff : 0);
+      const bool gap = index == text.size();
+      const unsigned char ch = gap ? ' ' : text[index];
+      result[title_width + x] = glyph(ch)[gap ? column % 8 : column] ^ (inverse ? 0xff : 0);
+      if (++column == (gap ? 80 : glyphWidth(ch))) {
+        column = 0;
+        index = gap ? 0 : index + 1;
+      }
     }
     return result;
   }

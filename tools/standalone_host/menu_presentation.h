@@ -133,7 +133,7 @@ public:
     } else {
       if (now < next_) return std::nullopt;
       const auto text = std::string(32, ' ') + version;
-      offset_ = (offset_ + 1) % ((text.size() + 10) * 8);
+      offset_ = (offset_ + 1) % frame.scrollPeriod(text);
       row_ = frame.scrollRow(15, row_, text, offset_);
       next_ = now + 10;
     }

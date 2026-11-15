@@ -1482,16 +1482,17 @@ class Host {
       if (roms.empty() || browser_selected_row < 0 || now < next_scroll) return;
       if (recent_view) {
         const auto name = " " + recent_entries[cursor].label;
-        if (!recent_available[cursor] || name.size() <= 28) return;
-        scroll_offset = (scroll_offset + 1) % ((name.size() + 10) * 8);
+        if (!recent_available[cursor] || frame.textWidth(name) <= 28 * 8) return;
+        scroll_offset = (scroll_offset + 1) % frame.scrollPeriod(name);
         next_scroll = now + 10;
         writeRow(cursor, frame.scrollRow(cursor, browser_base, name, scroll_offset, 232, true));
         return;
       }
       const auto &entry = roms[cursor];
       const auto name = browserName(entry, core_browser);
-      if (entry.directory ? name.size() <= 21 : name.size() <= 28 || (browse_expand && name.size() < 55)) return;
-      scroll_offset = (scroll_offset + 1) % ((name.size() + 10) * 8);
+      const auto width = frame.textWidth(name);
+      if (entry.directory ? width <= 21 * 8 : width <= 28 * 8 || (browse_expand && width < 55 * 8)) return;
+      scroll_offset = (scroll_offset + 1) % frame.scrollPeriod(name);
       next_scroll = now + 10;
       writeRow(browser_selected_row, frame.scrollRow(browser_selected_row, browser_base,
                name, scroll_offset, entry.directory ? 176 : 232, true));
