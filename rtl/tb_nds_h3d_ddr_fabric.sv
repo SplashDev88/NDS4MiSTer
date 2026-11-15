@@ -354,6 +354,9 @@ module tb_nds_h3d_ddr_fabric;
         legacy_address = 29'h01123456;
         legacy_read = 1'b1;
         @(posedge clk);
+        // The empty port can progress locally without owning the DDR grant.
+        // Like the real registered controller, hold RD until an active grant.
+        while (legacy_busy) @(posedge clk);
         @(negedge clk);
         legacy_read = 1'b0;
         if (!ddram_read || ddram_write ||

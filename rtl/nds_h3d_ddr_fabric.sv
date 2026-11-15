@@ -7,6 +7,9 @@
 // contract as the standalone H3D blocks:
 //
 //   * a requester presents RD/WE and holds its payload until busy is low;
+//     legacy_busy may also be low while RD/WE are both low, to let the
+//     legacy controller retire local work or prepare its registered command.
+//     That idle indication is not a reservation for a future command.
 //   * this fabric copies that command into a one-entry physical-port queue;
 //   * command_accepted pulses only when MiSTer's DDR port accepts the command;
 //   * read data, including every beat of a burst, returns only to its owner.
@@ -87,6 +90,15 @@ module nds_h3d_ddr_fabric #(
     output logic        protocol_error,
     output logic [31:0] debug_state
 );
+    // The legacy controller also retires local cartridge-cache hits behind
+    // its busy input. No outer grant is needed while it presents no DDR
+    // command. Let it progress locally or prepare one registered command;
+    // once RD/WE rises, preserve the arbiter's complete backpressure until
+    // that command is accepted. Keep reset/response quarantine unchanged.
+    wire legacy_port_busy;
+    assign legacy_busy = legacy_port_busy &&
+                         (legacy_read || legacy_write || !epoch_quiescent);
+
     nds_ddram_arbiter_4client #(
         .RESET_QUIET_CYCLES(RESET_QUIET_CYCLES),
         .STICKY_GRANT_LIMIT(STICKY_GRANT_LIMIT),
@@ -106,7 +118,7 @@ module nds_h3d_ddr_fabric #(
         .cpu_addr(legacy_address),
         .cpu_din(legacy_write_data),
         .cpu_be(legacy_byte_enable),
-        .cpu_busy(legacy_busy),
+        .cpu_busy(legacy_port_busy),
         .cpu_dout(legacy_read_data),
         .cpu_dout_ready(legacy_read_data_ready),
         .cpu_command_accepted(legacy_command_accepted),
