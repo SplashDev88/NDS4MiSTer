@@ -25,11 +25,13 @@ struct HostTest {
     Host host((root / "kit").string(), (root / "games/NDS").string(), root);
     nds_osd::Frame normal("", charfont), compact("", charfont);
     compact.setHalfWidthGlyphs(true);
-    const std::string text = "Main *.NDS w oOa 100%";
+    const std::string text = "firmware Main *.NDS oOa 100%";
     const auto ordinary = normal.renderRow(1, text);
     const auto corrected = compact.renderRow(1, text);
     assert(ordinary != corrected);
     checkGlyph(compact, 'M', {"#.#.","###.","###.","#.#.","#.#.","#.#.","#.#.","...."});
+    checkGlyph(compact, 'm', {"....","....","#.#.","###.","###.","#.#.","#.#.","...."});
+    checkGlyph(compact, 'N', {"#.#.","#.#.","##..","###.",".##.","#.#.","#.#.","...."});
     checkGlyph(compact, 'w', {"....","....","#.#.","#.#.","###.","###.","#.#.","...."});
     checkGlyph(compact, 'S', {".##.","#...","#...",".#..","..#.","..#.","##..","...."});
     checkGlyph(compact, '*', {"....","#.#.",".#..","###.",".#..","#.#.","....","...."});
@@ -45,7 +47,7 @@ struct HostTest {
       assert(different);
     }
     for (unsigned ch = 32; ch < 127; ++ch)
-      if (ch != 'M' && ch != 'w' && ch != 'S' && ch != '*' && ch != 'o' && ch != 'O' && ch != '%')
+      if (ch != 'M' && ch != 'm' && ch != 'N' && ch != 'w' && ch != 'S' && ch != '*' && ch != 'o' && ch != 'O' && ch != '%')
         assert(compact.renderRow(1, std::string(1, char(ch))) ==
                normal.renderRow(1, std::string(1, char(ch))));
 
@@ -53,7 +55,7 @@ struct HostTest {
     // scrolling, rather than testing only a direct glyph lookup.
     nds_osd::Font expected_font;
     std::memcpy(expected_font, charfont, sizeof(expected_font));
-    for (char ch : {'M', 'w', 'S', '*', 'o', 'O', '%'}) {
+    for (char ch : {'M', 'm', 'N', 'w', 'S', '*', 'o', 'O', '%'}) {
       const auto row = compact.renderRow(1, std::string(1, ch));
       std::copy_n(row.begin() + 22, 8, expected_font[unsigned(ch)]);
     }
@@ -104,7 +106,7 @@ struct HostTest {
     host.draw();
     normal.setTitle("NDS");
     assert(host.osd_rows[0] == normal.renderRow(0, " Load *.NDS", true));
-    std::cout << "PASS: M/w/S/*/o/O/% at both sample phases, other glyphs unchanged, titles, styles, scrolling, "
+    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, titles, styles, scrolling, "
               << cases << " output/layout/rotation cases, loading and live mode changes\n";
   }
 };

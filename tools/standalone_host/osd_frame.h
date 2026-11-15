@@ -44,6 +44,10 @@ class Frame {
     // Keep the letter curves, symbol strokes and trailing gap in either
     // sample phase.
     static constexpr unsigned char upper_m[8] = {0x7f,0x7f,0x06,0x06,0x7f,0x7f,0,0};
+    static constexpr unsigned char lower_m[8] = {0x7c,0x7c,0x18,0x18,0x7c,0x7c,0,0};
+    // Open the opposite stem pixels beside N's diagonal so it reads as N
+    // rather than H when only three ink columns survive the downsampling.
+    static constexpr unsigned char upper_n[8] = {0x6f,0x6f,0x1c,0x1c,0x7b,0x7b,0,0};
     static constexpr unsigned char lower_w[8] = {0x7c,0x7c,0x30,0x30,0x7c,0x7c,0,0};
     static constexpr unsigned char upper_s[8] = {0x46,0x46,0x49,0x49,0x31,0x31,0,0};
     static constexpr unsigned char asterisk[8] = {0x2a,0x2a,0x1c,0x1c,0x2a,0x2a,0,0};
@@ -52,6 +56,8 @@ class Frame {
     static constexpr unsigned char percent[8] = {0x71,0x71,0x08,0x08,0x47,0x47,0,0};
     if (half_width_glyphs_) {
       if (ch == 'M') return upper_m;
+      if (ch == 'm') return lower_m;
+      if (ch == 'N') return upper_n;
       if (ch == 'w') return lower_w;
       if (ch == 'S') return upper_s;
       if (ch == '*') return asterisk;
