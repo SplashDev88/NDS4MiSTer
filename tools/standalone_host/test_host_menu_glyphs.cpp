@@ -31,7 +31,7 @@ struct HostTest {
     assert(ordinary != corrected);
     checkGlyph(compact, 'M', {"#.#.","###.","###.","#.#.","#.#.","#.#.","#.#.","...."});
     checkGlyph(compact, 'm', {"....","....","#.#.","###.","###.","#.#.","#.#.","...."});
-    checkGlyph(compact, 'N', {"#..#.","#..#.","##.#.","##.#.","#.##.","#.##.","#..#.","....."});
+    checkGlyph(compact, 'N', {"#..#.","#..#.","#..#.","##.#.","#.##.","#..#.","#..#.","....."});
     checkGlyph(compact, 'w', {"....","....","#.#.","#.#.","###.","###.","#.#.","...."});
     checkGlyph(compact, 'S', {".##.","#...","#...",".#..","..#.","..#.","##..","...."});
     checkGlyph(compact, '*', {"....","#.#.",".#..","###.",".#..","#.#.","....","...."});
@@ -75,7 +75,7 @@ struct HostTest {
     // Independent pixel stream: four-column N plus its gap, D and S.
     // Exercise wrapping and every boundary where the wider cell meets the
     // ordinary cells, including windows wider than the physical OSD row.
-    std::vector<unsigned char> pixels{0x7f,0x7f,0x0c,0x0c,0x30,0x30,0x7f,0x7f,0,0};
+    std::vector<unsigned char> pixels{0x7f,0x7f,0x08,0x08,0x10,0x10,0x7f,0x7f,0,0};
     pixels.insert(pixels.end(), charfont['D'], charfont['D'] + 8);
     pixels.insert(pixels.end(), expected_font['S'], expected_font['S'] + 8);
     assert(compact.textWidth("NDS") == 26 && normal.textWidth("NDS") == 24);
