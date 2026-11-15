@@ -78,7 +78,7 @@ public:
     setTitle(title);
   }
 
-  // Select before setTitle; the vertical N keeps its stock columns.
+  // Select before setTitle; vertical N and S keep their stock columns.
   void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
   std::size_t textWidth(std::string_view text) const {
@@ -95,12 +95,12 @@ public:
     std::size_t used = 0;
     unsigned zeros = 0;
     for (unsigned char ch : title) {
-      // Title columns become vertical pixels after rotation. Keep N's stock
-      // columns: the paired row N survives here at full width and looks bold.
+      // Title columns become vertical pixels after rotation. Keep N and S
+      // stock: paired row glyphs survive here at full width and distort them.
       constexpr unsigned width = 8;
       if (!ch || used >= height - width) break;
       for (unsigned x = 0; x < width; ++x) {
-        const auto column = ch == 'N' ? font_[ch][x] : glyph(ch)[x];
+        const auto column = (ch == 'N' || ch == 'S') ? font_[ch][x] : glyph(ch)[x];
         if (column) {
           zeros = 0;
           condensed[used++] = column;

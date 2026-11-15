@@ -59,11 +59,14 @@ struct HostTest {
       const auto row = compact.renderRow(1, std::string(1, ch));
       std::copy_n(row.begin() + 22, 8, expected_font[unsigned(ch)]);
     }
-    // The vertical N uses stock Main columns: rotating the paired row N
-    // would preserve both copies and make its stems and diagonal too bold.
+    // Vertical N and S use stock Main columns: rotating the paired row
+    // glyphs would preserve both copies and distort their stock proportions.
     // Other title glyphs retain the existing compact corrections.
-    nds_osd::Frame title_expected("", expected_font);
-    for (const auto *title : {"N", "NDS", "Oo%", "System", "Firmware", "Recent Files",
+    nds_osd::Font expected_title_font;
+    std::memcpy(expected_title_font, expected_font, sizeof(expected_title_font));
+    std::copy_n(charfont['S'], 8, expected_title_font['S']);
+    nds_osd::Frame title_expected("", expected_title_font);
+    for (const auto *title : {"N", "S", "NDS", "Oo%", "System", "Firmware", "Recent Files",
                               "Display options", "Loading", "Select"})
       for (unsigned rows : {8u, 16u}) {
         title_expected.setTitle(title, rows);
@@ -147,7 +150,7 @@ struct HostTest {
     host.draw();
     normal.setTitle("NDS");
     assert(host.osd_rows[0] == normal.renderRow(0, " Load *.NDS", true));
-    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, stock vertical N, titles, styles, scrolling, "
+    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, stock vertical N/S, titles, styles, scrolling, "
               << cases << " output/layout/rotation cases, loading and live mode changes\n";
   }
 };
