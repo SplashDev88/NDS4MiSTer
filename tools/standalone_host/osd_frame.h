@@ -41,11 +41,14 @@ class Frame {
 
   const unsigned char *glyph(unsigned char ch) const {
     // Rotated Top/Bottom DV1 can retain only one column of each pair.
-    // Keep the round counters and percent diagonal in either sample phase.
+    // Keep the round counters, percent diagonal and M's trailing gap in
+    // either sample phase.
+    static constexpr unsigned char upper_m[8] = {0x7f,0x7f,0x06,0x06,0x7f,0x7f,0,0};
     static constexpr unsigned char lower_o[8] = {0x38,0x38,0x44,0x44,0x38,0x38,0,0};
     static constexpr unsigned char upper_o[8] = {0x3e,0x3e,0x41,0x41,0x3e,0x3e,0,0};
     static constexpr unsigned char percent[8] = {0x71,0x71,0x08,0x08,0x47,0x47,0,0};
     if (half_width_glyphs_) {
+      if (ch == 'M') return upper_m;
       if (ch == 'o') return lower_o;
       if (ch == 'O') return upper_o;
       if (ch == '%') return percent;
