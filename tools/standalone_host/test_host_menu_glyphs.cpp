@@ -59,6 +59,23 @@ struct HostTest {
       const auto row = compact.renderRow(1, std::string(1, ch));
       std::copy_n(row.begin() + 22, 8, expected_font[unsigned(ch)]);
     }
+    // The vertical N uses stock Main columns: rotating the paired row N
+    // would preserve both copies and make its stems and diagonal too bold.
+    // Other title glyphs retain the existing compact corrections.
+    nds_osd::Frame title_expected("", expected_font);
+    for (const auto *title : {"N", "NDS", "Oo%", "System", "Firmware", "Recent Files",
+                              "Display options", "Loading", "Select"})
+      for (unsigned rows : {8u, 16u}) {
+        title_expected.setTitle(title, rows);
+        compact.setTitle(title, rows);
+        for (unsigned row = 0; row < rows; ++row)
+          for (bool inverse : {false, true}) {
+            const auto wanted = title_expected.renderRow(row, "NDS", inverse);
+            const auto actual = compact.renderRow(row, "NDS", inverse);
+            assert(std::equal(wanted.begin(), wanted.begin() + nds_osd::title_width,
+                              actual.begin()));
+          }
+      }
     nds_osd::Frame expected("Oo%", expected_font);
     compact.setTitle("Oo%");
     const std::string fixed_width_text = "firmware Main *.DS oOa 100%";
@@ -92,7 +109,7 @@ struct HostTest {
             assert(row[22 + x] == (pixels[(offset + x) % pixels.size()] ^ (inverse ? 0xff : 0)));
         }
     }
-    compact.setTitle(std::string(128, 'N'), 8); // bounded variable-width title
+    compact.setTitle(std::string(128, 'N'), 8); // bounded title
     compact.setTitle("");
 
     unsigned cases = 0;
@@ -130,7 +147,7 @@ struct HostTest {
     host.draw();
     normal.setTitle("NDS");
     assert(host.osd_rows[0] == normal.renderRow(0, " Load *.NDS", true));
-    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, titles, styles, scrolling, "
+    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, stock vertical N, titles, styles, scrolling, "
               << cases << " output/layout/rotation cases, loading and live mode changes\n";
   }
 };
