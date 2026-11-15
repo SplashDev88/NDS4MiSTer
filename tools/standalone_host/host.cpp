@@ -1565,6 +1565,7 @@ class Host {
     }
     std::array<std::string, 16> rows{};
     int selected = -1;
+    int lid_gap_row = -1;
     if (firmware_error_dialog) {
       frame.setTitle("Firmware");
       rows[1] = " " + firmware_error_title;
@@ -1651,12 +1652,29 @@ class Host {
       rows[14] = message.empty() ? personal_settings_notice : message;
       rows[15] = (display_menu) ? "            back" : "            exit";
       selected = mainMenuRow(cursor);
+      if (independent_outputs_supported && !display_menu)
+        lid_gap_row = mainMenuRow(LID_CURSOR);
     }
     const unsigned arrows = browser || mapping_step >= 0 || reset_confirm || recent_clear_confirm || firmware_error_dialog ? 0
                             : (system_menu || display_menu) ? nds_osd::arrow_left
                                           : nds_osd::arrow_right;
-    for (int i = 0; i < 16; i++)
-      line(i, rows[i], i == selected, arrows);
+    nds_osd::Row lid_carry{};
+    for (int i = 0; i < 16; i++) {
+      auto bytes = frame.renderRow(i, rows[i], i == selected, arrows);
+      // Right's g occupies the last pixel of its row. Inset the following
+      // Lid row by one pixel, carrying descenders and selection into the
+      // existing empty row below. The vertical title stays aligned.
+      if (i == lid_gap_row) {
+        for (size_t x = nds_osd::title_width; x < bytes.size(); ++x) {
+          lid_carry[x] = bytes[x] >> 7;
+          bytes[x] <<= 1;
+        }
+      } else if (lid_gap_row >= 0 && i == lid_gap_row + 1) {
+        for (size_t x = nds_osd::title_width; x < bytes.size(); ++x)
+          bytes[x] |= lid_carry[x];
+      }
+      writeRow(i, bytes);
+    }
     footer_base = frame.renderRow(15, rows[15], selected == 15, arrows);
     osd(true);
     dirty = false;

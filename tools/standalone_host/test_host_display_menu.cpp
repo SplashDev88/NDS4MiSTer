@@ -32,6 +32,22 @@ struct HostTest {
       h.cursor=0;h.draw();
       assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
       assert(h.osd_rows[5]==h.frame.renderRow(5," Display options            " + std::string(1,char(0x16)),false,nds_osd::arrow_right));
+      // A single empty pixel separates Right's descender from Lid. Preserve
+      // every Lid pixel and its selection bar across the OSD row boundary.
+      for (int selected : {Host::TOUCH_RANGE_CURSOR, Host::LID_CURSOR}) {
+        h.cursor=selected;h.draw();
+        const auto lid=h.frame.renderRow(8," Lid: Open (Close)",selected==Host::LID_CURSOR);
+        for (size_t x=nds_osd::title_width;x<lid.size();++x) {
+          assert(!(h.osd_rows[8][x]&1));
+          const unsigned pixels=h.osd_rows[8][x] | (unsigned(h.osd_rows[9][x])<<8);
+          assert((pixels>>1)==lid[x]);
+        }
+        for (unsigned row : {8u,9u}) {
+          const auto title=h.frame.renderRow(row);
+          assert(std::equal(title.begin(),title.begin()+nds_osd::title_width,h.osd_rows[row].begin()));
+        }
+      }
+      h.cursor=0;
       std::vector<int> order{0,1,2};if(!(flags&(1<<2)))order.push_back(Host::ANALOG_CURSOR);
       order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::TOUCH_RANGE_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
       cycle(h,order);
