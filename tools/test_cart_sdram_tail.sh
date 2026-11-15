@@ -5,6 +5,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 iverilog -g2012 -s tb_nds_cart_sdram_tail -o "$tmp/tail" "$repo/rtl/nds_cart_sdram_tail.sv" "$repo/rtl/tb_nds_cart_sdram_tail.sv"
 vvp "$tmp/tail"
+iverilog -g2012 -s tb_nds_cart_fio -o "$tmp/fio" "$repo/rtl/tb_nds_cart_fio.sv" "$repo/rtl/nds_cart_sdram_tail.sv" "$repo/fpga/mister_nitro_console_island/sys/hps_io.sv"
+vvp "$tmp/fio"
 python3 - "$repo" "$tmp" <<'PY'
 from pathlib import Path
 import sys
