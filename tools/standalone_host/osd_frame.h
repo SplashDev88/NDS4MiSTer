@@ -78,7 +78,7 @@ public:
     setTitle(title);
   }
 
-  // Select before setTitle; vertical N and S keep their stock columns.
+  // Select before setTitle; vertical N/S stay stock and D gets rounder corners.
   void setHalfWidthGlyphs(bool enabled) { half_width_glyphs_ = enabled; }
 
   std::size_t textWidth(std::string_view text) const {
@@ -94,13 +94,17 @@ public:
     std::array<uint8_t, row_count * 8> condensed{}, centered{};
     std::size_t used = 0;
     unsigned zeros = 0;
+    // Remove only the top-right and bottom-right ink pixels from Main's D.
+    static constexpr unsigned char title_d[8] = {0x7f,0x7f,0x41,0x41,0x3e,0x3e,0,0};
     for (unsigned char ch : title) {
       // Title columns become vertical pixels after rotation. Keep N and S
       // stock: paired row glyphs survive here at full width and distort them.
       constexpr unsigned width = 8;
       if (!ch || used >= height - width) break;
+      const auto *columns = half_width_glyphs_ && ch == 'D' ? title_d :
+                            (ch == 'N' || ch == 'S') ? font_[ch] : glyph(ch);
       for (unsigned x = 0; x < width; ++x) {
-        const auto column = (ch == 'N' || ch == 'S') ? font_[ch][x] : glyph(ch)[x];
+        const auto column = columns[x];
         if (column) {
           zeros = 0;
           condensed[used++] = column;

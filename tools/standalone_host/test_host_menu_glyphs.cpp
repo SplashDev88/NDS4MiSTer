@@ -65,8 +65,10 @@ struct HostTest {
     nds_osd::Font expected_title_font;
     std::memcpy(expected_title_font, expected_font, sizeof(expected_title_font));
     std::copy_n(charfont['S'], 8, expected_title_font['S']);
+    // Trim exactly the two rightmost pixels in D's top and bottom ink rows.
+    expected_title_font['D'][4] &= ~0x41;
     nds_osd::Frame title_expected("", expected_title_font);
-    for (const auto *title : {"N", "S", "NDS", "Oo%", "System", "Firmware", "Recent Files",
+    for (const auto *title : {"N", "D", "S", "NDS", "Oo%", "System", "Firmware", "Recent Files",
                               "Display options", "Loading", "Select"})
       for (unsigned rows : {8u, 16u}) {
         title_expected.setTitle(title, rows);
@@ -150,7 +152,7 @@ struct HostTest {
     host.draw();
     normal.setTitle("NDS");
     assert(host.osd_rows[0] == normal.renderRow(0, " Load *.NDS", true));
-    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, stock vertical N/S, titles, styles, scrolling, "
+    std::cout << "PASS: M/m/N/w/S/*/o/O/% at both sample phases, other glyphs unchanged, rounded vertical D/stock N/S, titles, styles, scrolling, "
               << cases << " output/layout/rotation cases, loading and live mode changes\n";
   }
 };
