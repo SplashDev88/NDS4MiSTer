@@ -11630,7 +11630,8 @@ try {
                 zero_brightness = nds4mister::replay::ffta2_raster_only_profile(selected);
                 texture_range_hash_reuse = nds4mister::replay::umk3_texture_range_hash_profile(selected);
                 ncolor8_palette_expansion = nds4mister::replay::umk3_palette_decode_profile(selected);
-                rectangle_texture_x = nds4mister::replay::umk3_rectangle_x_profile(selected);
+                rectangle_texture_x = nds4mister::replay::umk3_rectangle_x_profile(selected) ||
+                    nds4mister::replay::resident_evil_background_profile(selected);
                 paired_a_cache = nds4mister::replay::paired_a_cache_enabled(
                     nds4mister::replay::resident_evil_paired_a_profile(selected),
                     std::getenv("NDS4MISTER_PAIRED_A_CACHE"));
@@ -11638,7 +11639,8 @@ try {
                 opaque_3d_seed = nds4mister::replay::dawn_opaque_3d_seed_profile(selected);
                 raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected) ||
                     nds4mister::replay::dawn_regional_raster_only_profile(selected) ||
-                    nds4mister::replay::umk3_sprite_raster_profile(selected);
+                    nds4mister::replay::umk3_sprite_raster_profile(selected) ||
+                    nds4mister::replay::resident_evil_background_profile(selected);
 #ifdef NDS4MISTER_DAWN_REGIONAL_INTEGRAL
                 raster_only_integral_texture_spans =
                     nds4mister::replay::dawn_regional_raster_only_profile(selected);

@@ -145,6 +145,14 @@ inline bool resident_evil_paired_a_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0xc7e5cdf1u;
 }
 
+// Resident Evil's room backgrounds contain flat textured quads. Qualify the
+// existing exact rectangle raster and horizontal sampling paths separately
+// from geometry, guest-query and approximate-interpolation policies.
+inline bool resident_evil_background_profile(const GameQuerySelection& selected)
+{
+    return resident_evil_paired_a_profile(selected);
+}
+
 inline bool paired_a_cache_enabled(bool qualified, const char* requested)
 {
     if (requested && requested[0] == '0' && requested[1] == '\0') return false;
