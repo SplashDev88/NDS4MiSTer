@@ -24,12 +24,12 @@ static void configure(NDS& n,bool enabled,bool dual=false) {
     if(dual)s.ParallelPolygonList=std::make_unique<SoftRenderer3D::RendererPolygon[]>(s.MaxRendererPolygons);
     s.SetupRenderThread();
 }
-static void fixture(NDS& n,unsigned scenario,unsigned height=64,unsigned count=10) {
+static void fixture(NDS& n,unsigned scenario,unsigned height=64,unsigned count=10,s32 forcedWidth=0) {
     frame(n,16384u|8192u|16u);auto& gpu=n.GPU;auto& g=gpu.GPU3D;
     require(count<=10,"fixture polygon limit");g.RenderNumPolygons=count;
     const u32 fmt=std::array<u32,4>{4,1,6,7}[scenario&3];
     const unsigned wrap=std::array<unsigned,4>{0,3,15,9}[(scenario>>2)&3];
-    const s32 width=std::array<s32,4>{160,127,63,255}[(scenario>>4)&3];
+    const s32 width=forcedWidth?forcedWidth:std::array<s32,4>{160,127,63,255}[(scenario>>4)&3];
     const s32 left=(scenario&64)?-17:3,top=0;
     for(unsigned i=0;i<131072;++i)gpu.VRAM_A[i]=u8(i*37+(i>>8));
     for(unsigned i=0;i<65536;++i)gpu.VRAM_E[i]=u8(i*11+(i>>7));
@@ -79,6 +79,19 @@ static void equal(NDS& a,NDS& b) {
     require(!std::memcmp(sa.DepthBuffer,sb.DepthBuffer,sizeof(sa.DepthBuffer)),"depth differs");
     require(!std::memcmp(sa.AttrBuffer,sb.AttrBuffer,sizeof(sa.AttrBuffer)),"attributes differ");
 }
+static int boundaries() {
+    unsigned frames=0,admitted=0;
+    for(bool dual:{false,true}) {
+        auto a=machine(true),b=machine(true);configure(*a,false,dual);configure(*b,true,dual);
+        for(s32 width:{1,2,3,4,255,256})for(unsigned scenario:{64u,2048u|4096u,512u|16384u}) {
+            fixture(*a,scenario,64,10,width);fixture(*b,scenario,64,10,width);
+            render(*a);render(*b);equal(*a,*b);++frames;admitted+=soft(*b).RectangleTextureXCount;
+            if(width==1)require(soft(*b).RectangleTextureXCount==0,"single-column proof");
+        }
+    }
+    require(admitted>0,"boundary path unused");
+    std::printf("RECTANGLE_X_BOUNDARIES_PASS frames=%u admitted=%u native_color_depth_attributes_equal=1\n",frames,admitted);return 0;
+}
 static int kernel() {
     auto a=machine(true),b=machine(true);configure(*a,false);configure(*b,true);
     for(unsigned height:{16u,64u,128u})for(unsigned count:{1u,10u}) {
@@ -100,6 +113,7 @@ static int kernel() {
 }
 int main(int argc,char** argv) try {
     if(argc==2 && !std::strcmp(argv[1],"--kernel"))return kernel();
+    if(argc==2 && !std::strcmp(argv[1],"--boundaries"))return boundaries();
     require(argc==1,"expected no arguments or --kernel");
     using namespace nds4mister::replay;
     const GameQuerySelection qualified{GameQueryProfile::Fast,{{{'Y','U','T','E'}},0,0x6c631035u},true};
@@ -167,5 +181,5 @@ int main(int argc,char** argv) try {
     }
     require(admitted>0,"optimized path untested");
     std::printf("RECTANGLE_X_PASS coordinate_checks=%u render_frames=%u admitted_rectangles=%u rejected_cases=%u policy_transitions=%u budget_bytes=65536 native_color_depth_attributes_equal=1 dual_workers_and_reduced_fallback=1\n",coordinates,frames,admitted,rejected,transitions);
-    return 0;
+    return boundaries();
 }catch(const std::exception& e){std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}
