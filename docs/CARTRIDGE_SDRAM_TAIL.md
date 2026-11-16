@@ -1,6 +1,6 @@
 # Full 512 MiB cartridge backing
 
-Private compatibility work. Hardware qualification is pending.
+Private compatibility beta, qualified on a DE10-Nano with 128 MB SDRAM.
 
 The existing extended layout backs cartridge bytes 0..464 MiB in three DDR
 windows. Some 512 MiB cartridges have meaningful data above that boundary.
@@ -48,6 +48,30 @@ Validation entry points:
   paths against every original byte of a supplied full cartridge.
 - Existing SDRAM, firmware, host-load and host-save regressions remain required.
 
-This adds cartridge storage, not a rendering speedup. Boot time, gameplay,
-audio, saves and any contention with the other SDRAM clients must be qualified
-on hardware before promotion.
+This adds cartridge storage, not a rendering speedup. The combined beta core
+(2ac8ff1bd9df5fe2bd397604f46ea74075e24057e25f0062e18a2a0b9ef904c2)
+passes an authored full-cartridge readback ROM on hardware, including the
+464 MiB boundary and the final sector. Both host readers compare every byte
+of the supplied 512 MiB cartridge in their regression test.
+
+The original Tokimeki Memorial Girl's Side - 3rd Story Japan B3SJ rev 0 ROM
+boots, accepts touch input through new-game setup, plays the prologue and
+reaches the daily activity screen. Title and story observations are about
+59.6 published FPS with native resolution and AA Off. An in-game slot save
+was written to a private 64 KiB file and successfully reloaded after a full
+host/core restart using the normal launcher's catalog/fallback environment.
+The observed CIFS loading time was 109 seconds in the first native-reader
+run and 74 seconds in the later normal-loader run; these are not controlled
+throughput comparisons. The additional 48 MiB upload took about 31–33 seconds.
+
+This is not a full playthrough or an all-cartridge certification. Build and
+hardware evidence is retained outside the source tree in
+evidence/tokimeki-gs3-resume-20261116. Static timing limitations remain in the
+Quartus reports; successful fitting is not a timing-closure claim.
+
+Regression smoke checks on this same core include ordinary NSMB gameplay,
+Dawn's padded-save loading and gameplay, and a driven Mario Kart Grand Prix
+race. Full-cartridge Tokimeki -> small NSMB -> Dawn -> Mario Kart switching
+kept the same host PID/epoch, exercising tail invalidation without a core
+reload. These checks supplement, rather than replace, the boundary and
+all-channel SDRAM contention simulations.
