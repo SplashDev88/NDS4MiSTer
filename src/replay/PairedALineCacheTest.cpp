@@ -17,7 +17,7 @@ using namespace melonDS;
 struct Guarded3D final : SoftRenderer3D {
     std::array<std::array<u32,256>,192> rows{};
     unsigned allowedLine=999, calls=0;
-    Guarded3D(GPU3D& gpu,SoftRenderer& parent):SoftRenderer3D(gpu,parent){}
+    Guarded3D(melonDS::GPU3D& gpu,SoftRenderer& parent):SoftRenderer3D(gpu,parent){}
     void RenderFrame() override {}
     void RestartFrame() override {}
     void FinishRendering() override {}
@@ -156,7 +156,8 @@ int main(int argc,char** argv)try{
                 bool hitA=false,hitB=false;b->GetRenderer().GetExternalLineCacheResult(hitA,hitB);if(hitA)++hits;else ++misses;
                 if(y==191){equalState(*a,*b);if(direct){
                     for(auto& plane:(*out)[f&1])require(plane[0]==0xdeadbeef && plane[1]==0xdeadbeef && plane[plane.size()-1]==0xdeadbeef && plane[plane.size()-2]==0xdeadbeef,"plane guard overwritten");
-                    if(f)require((*out)[(f^1)&1]==completed,"completed frame overwritten");completed=(*out)[f&1];b->GetRenderer().SetExternalFramebuffers(nullptr,nullptr);
+                    if(f)require((*out)[(f^1)&1]==completed,"completed frame overwritten");
+                    completed=(*out)[f&1];b->GetRenderer().SetExternalFramebuffers(nullptr,nullptr);
                 }}
             }
         }
