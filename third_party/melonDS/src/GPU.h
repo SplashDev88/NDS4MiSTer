@@ -781,7 +781,8 @@ public:
     melonDS::GPU3D GPU3D;
 
     NonStupidBitField<128*1024/VRAMDirtyGranularity> VRAMDirty[9] {};
-    // Changes whenever the coherent B OBJ bytes may have changed.
+    // Changes whenever the coherent OBJ bytes may have changed.
+    u64 AOBJCoherencyEpoch = 0;
     u64 BOBJCoherencyEpoch = 0;
     // Off for arbitrary external users that can mutate the public OAM array.
     // Opt in only when every writer uses WriteOAM or marks its direct writes.
@@ -1045,6 +1046,10 @@ struct RendererSettings
     // Opt-in paired composition reuse based on exact prepared sprite pixels.
     // Sprite preparation still runs at its original phase.
     bool PreparedSpriteLineReuse = false;
+
+    // Composition-only A reuse. Sprite preparation stays at its ordinary
+    // phase; 3D rows are compared only after the normal GetLine fence.
+    bool PairedACache = false;
 };
 
 struct ExternalRendererStageProfile

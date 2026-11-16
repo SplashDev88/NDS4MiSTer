@@ -1364,6 +1364,11 @@ private:
                 arm_video_engine_b_only_, engine_b_pixels_enabled_,
                 matched_display_test_, matched_engine_a_only_};
             settings.PreparedSpriteLineReuse = integral_texture_spans_;
+            // Private opt-in while Resident Evil cache correctness and speed
+            // are qualified. Keep legacy lookahead disabled in matched mode.
+            const char* paired_a = std::getenv("NDS4MISTER_PAIRED_A_CACHE");
+            settings.PairedACache = matched_display_test_ && paired_a &&
+                std::strcmp(paired_a, "1") == 0;
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {

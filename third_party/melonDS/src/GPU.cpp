@@ -99,6 +99,7 @@ GPU::~GPU() noexcept
 
 void GPU::ResetVRAMCache() noexcept
 {
+    ++AOBJCoherencyEpoch;
     ++BOBJCoherencyEpoch;
     for (int i = 0; i < 9; i++)
         VRAMDirty[i] = NonStupidBitField<128*1024/VRAMDirtyGranularity>();
@@ -142,7 +143,7 @@ void GPU::Reset() noexcept
     FmvPackedColor.CachedConversions = 0;
 #endif
 #endif
-    BOBJCoherencyEpoch = 0;
+    AOBJCoherencyEpoch = BOBJCoherencyEpoch = 0;
     ExternalRenderMemorySequence = 0;
     memset(ExternalRenderVRAMRevision, 0,
            sizeof(ExternalRenderVRAMRevision));
@@ -1661,7 +1662,9 @@ bool GPU::MakeVRAMFlat_AOBJCoherent(NonStupidBitField<256*1024/VRAMDirtyGranular
 {
     if (NDS4MiSTer::Trace2DEnabled())
         for (u32 i=0;i<dirty.DataLength;i++) NDS4MiSTerTraceDirtyFlatAOBJ.Data[i]|=dirty.Data[i];
-    return CopyLinearVRAM<16*1024>(VRAMFlat_AOBJ, VRAMMap_AOBJ, dirty, &GPU::ReadVRAM_AOBJ<u64>);
+    const bool copied = CopyLinearVRAM<16*1024>(VRAMFlat_AOBJ, VRAMMap_AOBJ, dirty, &GPU::ReadVRAM_AOBJ<u64>);
+    if (copied) ++AOBJCoherencyEpoch;
+    return copied;
 }
 bool GPU::MakeVRAMFlat_BOBJCoherent(NonStupidBitField<128*1024/VRAMDirtyGranularity>& dirty) noexcept
 {

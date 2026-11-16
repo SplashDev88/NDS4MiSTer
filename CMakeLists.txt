@@ -579,6 +579,15 @@ if(NDS4MISTER_USE_MELONDS)
         add_test(NAME nds_engine_a_only COMMAND nds_engine_a_only_test)
     endif()
 
+    add_executable(nds_paired_a_line_cache_test
+        src/replay/PairedALineCacheTest.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_paired_a_line_cache_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_paired_a_line_cache_test PRIVATE -Wall -Wextra -Wpedantic -fno-access-control)
+    target_link_libraries(nds_paired_a_line_cache_test PRIVATE core ${CMAKE_DL_LIBS})
+    if(BUILD_TESTING)
+        add_test(NAME nds_paired_a_line_cache COMMAND nds_paired_a_line_cache_test)
+    endif()
+
     add_executable(nds_engine_b_line_cache_test
         src/replay/EngineBLineCacheTest.cpp
         src/melonds/HeadlessPlatform.cpp)

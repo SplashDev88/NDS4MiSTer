@@ -134,6 +134,7 @@ private:
     bool PackedOutput = false;
     bool LineCache = false;
     bool PairedBCache = false;
+    bool PairedACache = false;
     bool PreparedSpriteLineReuse = false;
     bool EngineBOnly = false;
     bool EngineAOnly = false;
@@ -194,7 +195,7 @@ private:
 
     // OBJ pixels are prepared before the composition phase. Current OAM,
     // VRAM and registers alone cannot identify those already-prepared pixels.
-    struct PreparedBSpriteKey
+    struct PreparedSpriteKey
     {
         u64 OAMRevision = 0;
         u64 VRAMEpoch = 0;
@@ -203,9 +204,12 @@ private:
         u32 Line = 0;
         u32 OBJEnable = 0;
     };
-    static_assert(sizeof(PreparedBSpriteKey) == 32);
-    PreparedBSpriteKey PreparedBSprites {};
-    PreparedBSpriteKey CachedBSprites[192] {};
+    static_assert(sizeof(PreparedSpriteKey) == 32);
+    PreparedSpriteKey PreparedASprites {};
+    PreparedSpriteKey CachedASprites[192] {};
+    bool PreparedASpritesValid = false;
+    PreparedSpriteKey PreparedBSprites {};
+    PreparedSpriteKey CachedBSprites[192] {};
     bool PreparedBSpritesValid = false;
 
     struct PreparedSpriteIdentity
