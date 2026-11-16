@@ -278,6 +278,8 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     if (DualCoreRaster)
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
+    const char* rangeHashReuse = std::getenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
+    TextureCache.RangeHashReuseEnabled = rangeHashReuse && strcmp(rangeHashReuse, "1") == 0;
     UseTextureCache = std::getenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE") == nullptr;
     const char* uploadSnapshot = std::getenv("NDS4MISTER_H3D_UPLOAD_SNAPSHOT");
     PreserveUploadSnapshot = uploadSnapshot && strcmp(uploadSnapshot, "1") == 0;

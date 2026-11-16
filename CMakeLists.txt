@@ -103,6 +103,11 @@ if(NDS4MISTER_USE_MELONDS)
     set(ENABLE_JIT ${NDS4MISTER_ENABLE_JIT} CACHE BOOL "" FORCE)
     set(ENABLE_LTO_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE} CACHE BOOL "" FORCE)
     add_subdirectory(third_party/melonDS EXCLUDE_FROM_ALL)
+    add_executable(nds_texture_range_hash_test EXCLUDE_FROM_ALL
+        tools/test_texture_range_hash.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_texture_range_hash_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_texture_range_hash_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_texture_range_hash_test PRIVATE core ${CMAKE_DL_LIBS})
     add_executable(nds_neutral_white_snapshot_test EXCLUDE_FROM_ALL
         tools/test_neutral_white_snapshot.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_neutral_white_snapshot_test PRIVATE src third_party/melonDS/src)

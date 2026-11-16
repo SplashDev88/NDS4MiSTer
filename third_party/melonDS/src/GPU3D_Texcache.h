@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "GPU.h"
+#include "NDS4MiSTer_TextureRangeHash.h"
 
 #include <assert.h>
 #include <unordered_map>
@@ -71,6 +72,7 @@ public:
         : GPU(gpu), TexLoader(texloader) // probably better if this would be a move constructor???
     {}
 
+    bool RangeHashReuseEnabled = false;
     bool ContentIdentityEnabled = false;
     u64 ContentHistoryHits = 0, ContentHistoryMisses = 0;
 
@@ -99,7 +101,8 @@ public:
         return hash;
     }
 
-    bool CheckInvalid(u32 start, u32 size, u64 oldHash, u64* dirty, u8* vram, u32 vramSize)
+    bool CheckInvalid(u32 start, u32 size, u64 oldHash, u64* dirty, u8* vram, u32 vramSize,
+                      NDS4MiSTerTextureRangeHashes* hashes = nullptr)
     {
         u32 startBit = start / VRAMDirtyGranularity;
         u32 bitsCount = ((start + size + VRAMDirtyGranularity - 1) / VRAMDirtyGranularity) - startBit;
@@ -112,7 +115,10 @@ public:
             {
                 // One dirty block is enough to check the entire input range.
                 // Later dirty blocks cannot change that same comparison.
-                return MaskedHash(vram, vramSize, start, size) != oldHash;
+                const auto calculate = [&] { return MaskedHash(vram, vramSize, start, size); };
+                const auto hash = hashes ? hashes->Get(vram, vramSize, start, size, calculate)
+                                         : calculate();
+                return hash != oldHash;
             }
         }
 
@@ -171,6 +177,9 @@ public:
                 }
             }
 
+            NDS4MiSTerTextureRangeHashes rangeHashes;
+            auto* hashes = RangeHashReuseEnabled ? &rangeHashes : nullptr;
+
             //printf("check invalidation %d\n", TexCache.size());
             for (auto it = Cache.begin(); it != Cache.end();)
             {
@@ -182,7 +191,7 @@ public:
                         if (CheckInvalid(entry.TextureRAMStart[i], entry.TextureRAMSize[i],
                                 entry.TextureHash[i],
                                 textureDirty.Data,
-                                GPU.VRAMFlat_Texture, sizeof(GPU.VRAMFlat_Texture)))
+                                GPU.VRAMFlat_Texture, sizeof(GPU.VRAMFlat_Texture), hashes))
                             goto invalidate;
                     }
                 }
@@ -192,7 +201,7 @@ public:
                     if (CheckInvalid(entry.TexPalStart, entry.TexPalSize,
                             entry.TexPalHash,
                             texPalDirty.Data,
-                            GPU.VRAMFlat_TexPal, sizeof(GPU.VRAMFlat_TexPal)))
+                            GPU.VRAMFlat_TexPal, sizeof(GPU.VRAMFlat_TexPal), hashes))
                         goto invalidate;
                 }
 
