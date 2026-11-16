@@ -50,6 +50,11 @@ replacements = [
     ('wire cd_ready;', 'wire cd_ready = response_ready;'),
     ('wire [31:0] cd_dout;', 'wire [31:0] cd_dout = response_data;'),
 ]
+if 'wire tail_ready;' in bridge:
+    replacements += [
+        ('wire tail_ready;', 'wire tail_ready = tail_response_ready;'),
+        ('wire [31:0] tail_data;', 'wire [31:0] tail_data = tail_response_data;'),
+    ]
 for old, new in replacements:
     assert old in bridge
     bridge = bridge.replace(old, new)
@@ -61,6 +66,8 @@ wrapper = '''module cart_bridge_under_test(
  input [15:0] ioctl_index,
  input source_request,input [26:0] source_address,
  input response_ready,input [31:0] response_data,
+ input tail_response_ready,input [31:0] tail_response_data,
+ output tail_request,output [25:0] tail_address,
  output request,output [25:0] address,output [27:1] ddr_address,output altbank,
  output done,output [31:0] data,output logic flush_complete
 );
@@ -68,6 +75,9 @@ localparam [1:0] CART_EMPTY=0,CART_DOWNLOAD=1,CART_FLUSH=2,CART_READY=3;
 ''' + bridge + '''
 assign request=cd_req;assign address=cd_addr;assign done=card_done;assign data=card_din;
 assign altbank=''' + ddr_bank_expr + ''';
+''' + ('''assign tail_request=tail_req;assign tail_address=tail_addr;
+''' if 'logic tail_req;' in bridge else '''assign tail_request=0;assign tail_address=0;
+''') + '''
 assign ddr_address=''' + ddr_address_expr + ''';
 endmodule
 '''

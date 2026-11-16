@@ -43,7 +43,7 @@ module tb_nds_firmware_control #(parameter bit RAM_SIMULATE=1);
     logic [31:0] ram7[0:4095],ram9[0:1023];
     integer writes7=0,writes9=0,flushes=0,commits=0;
     reg [15:0] last_commit=0;
-    nds_firmware_control #(.SIMULATE(RAM_SIMULATE)) dut(.*);
+    nds_firmware_control #(.SIMULATE(RAM_SIMULATE)) dut(.cart_extra_ready(1'b1),.*);
 
     // Match the generated SPI RAM's registered config-write stage.
     always @(posedge clk7) begin

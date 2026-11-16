@@ -3116,9 +3116,11 @@ public:
     };
     const char* automatic_movies = std::getenv("NDS_FMV_AUTO");
     const bool prepare_movies = automatic_movies && std::strcmp(automatic_movies, "1") == 0;
+    const bool sdram_cartridge_available = (firmwareControl().flags & 0x8000) != 0;
     RomReader reader(path, (prepare_movies || RomReader::guestPatchRequested() ||
                            (speed_hacks_available && speed_hacks)) ?
-        (fs::path(kit) / "fmv").string() : std::string(), SPEED_MODES[speed_hacks], prepare_movies);
+        (fs::path(kit) / "fmv").string() : std::string(), SPEED_MODES[speed_hacks], prepare_movies,
+        sdram_cartridge_available);
     active_reader = &reader;
     // File validation and all CIFS reads run outside the SPI/heartbeat owner.
     const auto file_size = reader.size(service);
@@ -3127,8 +3129,10 @@ public:
         std::to_string(ms() - loading_started) + " ms");
     service();
     const auto transfer_start = std::clamp(reader.workProgress(), 0, 9800);
-    const auto transfer_size = RomReader::transferSize(file_size);
+    const auto transfer_size = reader.transferBytes(file_size);
+    const auto ddr_transfer_size = RomReader::transferSize(file_size);
     const auto storage_size = RomLayout::storageSize(file_size);
+    const auto progress_size = reader.fullCartridge() ? RomReader::max_file_size : storage_size;
     // Reserve every destination before touching FIO. Large files use the
     // expanded windows; Linux console and graphics/control retain their owners.
     requireHostSaveProfile();
@@ -3139,7 +3143,7 @@ public:
     flushFirmware();
     uploadDirectGameAssets();
     seedGameClock();
-    spi.cmd(Spi::FIO, 0x55, {RomLayout::index(file_size)});
+    spi.cmd(Spi::FIO, 0x55, {uint16_t(RomLayout::index(file_size) | (reader.fullCartridge() ? 0x400 : 0))});
     spi.cmd(Spi::FIO, 0x56, {0x2e4e, 0x4453});
     spi.cmd(Spi::FIO, 0x53, {255, uint16_t(file_size), uint16_t(file_size >> 16)});
     // Download's rising edge asks the save bridge to flush the outgoing cart.
@@ -3171,10 +3175,30 @@ public:
       updateLoading(9900, 10000);
       log("ROM streamed verification and preparation completed");
     } else {
-    while (off < transfer_size) {
+    while (off < ddr_transfer_size) {
       const auto chunk = mapping.at(off);
-      off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, transfer_size - off)), service);
-      updateLoading(transfer_start + (9800 - transfer_start) * uint64_t(off) / storage_size, 10000);
+      off += reader.read(chunk.data, std::min<size_t>(262144, std::min<uint64_t>(chunk.size, ddr_transfer_size - off)), service);
+      updateLoading(transfer_start + (9800 - transfer_start) * uint64_t(off) / progress_size, 10000);
+    }
+    if (reader.fullCartridge()) {
+      log("Uploading exact cartridge tail to SDRAM");
+      std::array<unsigned char, 4096> tail;
+      // Every byte of the 48 MiB aperture is initialized under reset. The
+      // original file stays read-only; trimmed images get an erased FF tail.
+      for (uint64_t at = storage_size; at < RomReader::max_file_size; at += tail.size()) {
+        tail.fill(0xff);
+        const auto count = at < transfer_size ? std::min<uint64_t>(tail.size(), transfer_size-at) : 0;
+        size_t got = 0;
+        while (got < count) got += reader.read(tail.data()+got, count-got, service);
+        service();
+        spi.begin(Spi::FIO, 0x54);
+        try {
+          for (size_t i=0; i<tail.size(); i+=2)
+            spi.word(uint16_t(tail[i]) | uint16_t(tail[i+1])<<8);
+        } catch (...) { spi.end(); throw; }
+        spi.end();
+        updateLoading(transfer_start + (9800-transfer_start)*(at+tail.size())/RomReader::max_file_size, 10000);
+      }
     }
     reader.finish(file_size, service);
     }
@@ -3215,8 +3239,12 @@ public:
       if (!nand_base || uint64_t(nand_base) + nds_nand::bytes(save_type) > 0x08000000)
         throw std::runtime_error("Unsupported NAND cartridge save-region header; save preserved");
     }
+    if (reader.fullCartridge()) {
+      spi.cmd(Spi::FIO, 0x53, {0});
+      require((firmwareControl().flags & 0x2000) != 0, "Cartridge SDRAM upload incomplete; game remains held");
+    }
     mount(path, save_type);
-    spi.cmd(Spi::FIO, 0x53, {0});
+    if (!reader.fullCartridge()) spi.cmd(Spi::FIO, 0x53, {0});
     uploadSaveProfile(game_code);
     firmwareControl(3);
     waitFirmware(3, 0, 3000, "direct game boot release");

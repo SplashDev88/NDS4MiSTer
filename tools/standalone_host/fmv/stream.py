@@ -98,8 +98,13 @@ def main():
     limit = (464 if image.size > 256*1024*1024 else 252)*1024*1024
     transfer = min(limit,image.size)
     done = limit
+    full_cartridge = False
     for block in image.blocks(transfer, image.size):
         if block != b'\xff'*len(block):
+            if os.environ.get('NDS_CART_SDRAM') == '1' and image.size > 464*1024*1024:
+                full_cartridge = True
+                transfer = image.size
+                break
             send(output_fd,struct.pack('<Qii',image.size,errno.EINVAL,5))
             return 1
         done += len(block)
@@ -108,7 +113,7 @@ def main():
     # Keep the progress actually earned above. Unknown/unpatched cartridges
     # can skip preparation entirely; reserving 50% for that absent stage made
     # their bar jump from empty to half full before the first transfer byte.
-    send(output_fd,struct.pack('<Qii',image.size,0,0))
+    send(output_fd,struct.pack('<Qii',image.size,0,14 if full_cartridge else 0))
     for block in image.blocks(0,transfer):
         send(output_fd,block)
     source.unchanged()

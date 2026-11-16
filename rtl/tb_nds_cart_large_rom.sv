@@ -13,6 +13,11 @@ module tb_nds_cart_large_rom;
     reg source_request=0;
     reg [15:0] ioctl_index=16'h0003;
     reg expect_large=0,expect_512=0,expect_464=0;
+    reg expect_sdram=0;
+    wire tail_request;wire [25:0] tail_address;
+    reg tail_response_ready=0;reg [31:0] tail_response_data=0;
+    integer tail_delay=0,tail_commands=0;
+    reg [25:0] tail_saved_addr;
     reg [26:0] source_address=0;
     wire response_ready,request,done,flush_complete,altbank;
     wire [31:0] response_data,data;
@@ -47,6 +52,15 @@ module tb_nds_cart_large_rom;
         word_at=32'ha5000000 ^ {3'd0,byte_address} ^ epoch;
     endfunction
     always @(posedge ddr_clk) begin
+        tail_response_ready<=0;
+        if(tail_request)begin
+            if(tail_delay || !expect_sdram || tail_address>=26'h3000000)$fatal(1,"invalid SDRAM tail request");
+            tail_saved_addr<=tail_address;tail_delay<=next_delay+4;tail_commands<=tail_commands+1;
+        end else if(tail_delay>1)tail_delay<=tail_delay-1;
+        else if(tail_delay==1)begin
+            tail_delay<=0;tail_response_ready<=1;
+            tail_response_data<=word_at(29'h1d000000+tail_saved_addr);
+        end
         cycles<=cycles+1;
         physical_ready<=0;
         if(physical_write) $fatal(1,"cartridge path wrote DDR");
@@ -87,7 +101,8 @@ module tb_nds_cart_large_rom;
         integer t;
         reg [31:0] expected;
         begin
-            if(expect_464) expected=byte_address>=29'h1d000000 ? 32'hffffffff : word_at({byte_address[28:2],2'b00});
+            if(expect_sdram) expected=word_at({byte_address[28:2],2'b00});
+            else if(expect_464) expected=byte_address>=29'h1d000000 ? 32'hffffffff : word_at({byte_address[28:2],2'b00});
             else if(expect_512) expected=byte_address>=29'h13c00000 ? 32'hffffffff : word_at({byte_address[28:2],2'b00});
             else expected=expect_large && byte_address[27:0]>=28'hfc00000 ? 32'hffffffff :
                 word_at({1'b0,byte_address[27] & expect_large,byte_address[26:2],2'b00});
@@ -113,8 +128,9 @@ module tb_nds_cart_large_rom;
         expect_large=download_index[8] && download_index[5:0]==6'h03;
         expect_512=(&download_index[9:8]) && download_index[5:0]==6'h03;
         expect_464=(download_index[11] && (&download_index[9:8])) && download_index[5:0]==6'h03;
+        expect_sdram=(&download_index[11:8]) && download_index[5:0]==6'h03;
     endtask
-    integer before_commands,before_beats,before_cycles,before_replies;
+    integer before_commands,before_beats,before_cycles,before_replies,before_tail;
     initial begin
         repeat(5) @(negedge clk1x);
         h3d_fabric_boot_reset=0;bridge_reset_ddr=0;
@@ -262,6 +278,27 @@ module tb_nds_cart_large_rom;
         // Only FS3 receives extended mode; the old C0 loader remains small.
         replace_image(16'h0103);read_word(28'h8008000);
         replace_image(16'h00c0);read_word(28'h8008000);read_word(28'hfc00000);
+        // Full cartridges keep the exact DDR path below 464 MiB; the upper
+        // 48 MiB is a distinct SDRAM request with a byte offset starting at 0.
+        replace_image(16'h0f03);read_word(29'h1cfffffc);
+        before_commands=commands;before_tail=tail_commands;
+        read_word(29'h1d000000);read_word(29'h1d000004);
+        read_word(29'h1dfffffc);read_word(29'h1e000000);
+        read_word(29'h1f000000);read_word(29'h1ffffffc);
+        if(commands!=before_commands || tail_commands!=before_tail+6)$fatal(1,"tail/DDR routing overlap");
+        next_delay=60;before_replies=replies;before_tail=tail_commands;
+        submit(29'h1e010000);wait(tail_commands==before_tail+1);
+        console_reset_1x=1;console_reset_ddr=1;
+        repeat(100)@(negedge ddr_clk);
+        console_reset_1x=0;console_reset_ddr=0;
+        repeat(10)@(negedge ddr_clk);
+        if(replies!=before_replies)$fatal(1,"stale SDRAM response escaped guest reset");
+        next_delay=0;read_word(29'h1d040000);
+        next_delay=50;before_replies=replies;before_tail=tail_commands;
+        submit(29'h1e020000);wait(tail_commands==before_tail+1);
+        epoch=32'h40000000;replace_image(16'h0b03);
+        if(replies!=before_replies)$fatal(1,"stale SDRAM response escaped replacement");
+        next_delay=0;read_word(29'h1e020000);
 `endif
         $display("PASS: actual cartridge bridge/cache ROM boundaries, protected FF padding, and reset/replacement epochs");
         $finish;

@@ -182,6 +182,8 @@ wire boot_ready_ddr=!firmware_hold && !firmware_fault &&
     (firmware_native ? (firmware_bios7_ready && firmware_bios9_ready &&
                        firmware_profile_ready && firmware_mounted) : cart_loaded_ddr);
 wire host_save_ready;
+wire cart_tail_loaded, cart_tail_fault, cart_tail_wait, firmware_upload_wait;
+assign ioctl_wait=firmware_upload_wait | cart_tail_wait;
 wire [31:0] host_save_code;
 wire [3:0] host_save_type;
 wire [55:0] rtc_datetime;
@@ -199,7 +201,7 @@ always_ff @(posedge clk1x) host_save_ready_sync <= {host_save_ready_sync[1:0],ho
 // The bundled code/type are immutable from profile commit until the next ROM
 // download, with CPUs held through both edges and a three-clock valid delay.
 nds_firmware_control #(
-    .CART_464(1),
+    .CART_464(1), .CART_SDRAM(1),
 `ifdef NDS_ARM_AREA
     .HOST_SAVE_PROFILE(1), .NAND_SAVES(1)
 `else
@@ -208,10 +210,11 @@ nds_firmware_control #(
 ) firmware_control (
     .clk(ddr_clk),.clk7(clk1x),.clk9(clk2x),.reset(media_reset),
     .cart_download(cart_download_raw),.cart_profile_ready(host_save_ready),
+    .cart_extra_ready(cart_tail_loaded),
     .cart_profile_code(host_save_code),.cart_profile_type(host_save_type),
     .io_enable(firmware_io_enable),.io_strobe(firmware_io_strobe),
     .io_din(firmware_io_din),.io_override(lifecycle_io_override),.io_dout(lifecycle_io_dout),
-    .ioctl_download,.ioctl_wr,.ioctl_index,.ioctl_dout,.ioctl_addr,.ioctl_wait,
+    .ioctl_download,.ioctl_wr,.ioctl_index,.ioctl_dout,.ioctl_addr,.ioctl_wait(firmware_upload_wait),
     .mounted(firmware_mounted),.clean(firmware_clean),.cache_fault(firmware_cache_fault),
     .persist_pending(firmware_persist_pending),.persist_sequence(firmware_persist_sequence),
     .hold_console(firmware_hold),.native_mode(firmware_native),
@@ -623,11 +626,13 @@ wire card_ena;
 logic cart_large_rom = 1'b0;
 logic cart_512_rom = 1'b0;
 logic cart_464_rom = 1'b0;
+logic cart_sdram_rom = 1'b0;
 always_ff @(posedge ddr_clk) begin
     if (cart_download_raw) begin
         cart_large_rom <= (ioctl_index[5:0] == 6'h03) && ioctl_index[8];
         cart_512_rom <= (ioctl_index[5:0] == 6'h03) && (&ioctl_index[9:8]);
         cart_464_rom <= (ioctl_index[5:0] == 6'h03) && (ioctl_index[11] && (&ioctl_index[9:8]));
+        cart_sdram_rom <= (ioctl_index[5:0] == 6'h03) && (&ioctl_index[11:8]);
     end
 end
 wire [26:0] card_addr;
@@ -672,8 +677,15 @@ logic cd_req;
 logic [25:0] cd_addr;
 logic cd_padding;
 logic cd_altbank;
+logic cd_sdram;
+logic tail_req;
+logic [25:0] tail_addr;
+wire tail_ready;
+wire [31:0] tail_data;
+wire card_in_sdram = cart_sdram_rom && card_addr_effective >= 27'h7400000;
 wire card_upper_bank = cart_512_rom && (card_addr_effective >= 27'h3f00000);
-wire card_padding = cart_464_rom ? (card_addr_effective >= 27'h7400000)
+wire card_padding = cart_sdram_rom ? 1'b0
+                   : cart_464_rom ? (card_addr_effective >= 27'h7400000)
                    : cart_512_rom ? (card_addr_effective >= 27'h4f00000)
                                     : (&card_addr_effective[25:20]);
 // ddram ch2 retains one aligned four-beat cartridge read-ahead line. Probe
@@ -705,11 +717,13 @@ always_ff @(posedge ddr_clk or posedge card_bridge_boot_reset) begin
         cd_addr <= '0;
         cd_padding <= 1'b0;
         cd_altbank <= 1'b0;
+        cd_sdram <= 1'b0; tail_req <= 1'b0; tail_addr <= '0;
         flush_probe_count <= 2'd0;
         flush_complete <= 1'b0;
     end else begin
         card_req_sync <= {card_req_sync[1:0], card_req_toggle};
         cd_req <= 1'b0;
+        tail_req <= 1'b0;
         flush_complete <= 1'b0;
 
         // A CPU/HPS reset also clears the source toggle, even with the same
@@ -742,6 +756,7 @@ always_ff @(posedge ddr_clk or posedge card_bridge_boot_reset) begin
                 cd_addr <= (flush_probe_count == 2'd0)
                     ? FLUSH_PROBE0_WORD : FLUSH_PROBE1_WORD;
                 cd_altbank <= 1'b0;
+                cd_sdram <= 1'b0;
                 cd_flush <= 1'b1;
                 cd_padding <= 1'b0;
                 cd_cancel <= 1'b0;
@@ -771,10 +786,13 @@ always_ff @(posedge ddr_clk or posedge card_bridge_boot_reset) begin
                 // All boundaries are 32-byte aligned, so a four-beat refill
                 // below them cannot cross into graphics or omitted padding.
                 cd_padding <= card_padding;
-                cd_req <= !card_padding;
+                cd_req <= !card_padding && !card_in_sdram;
+                cd_sdram <= card_in_sdram;
+                tail_req <= card_in_sdram;
+                tail_addr <= {card_addr_effective[23:0],2'b00} - 26'h1000000;
                 cd_busy <= 1'b1;
             end
-        end else if (cd_ready || cd_padding) begin
+        end else if ((cd_sdram ? tail_ready : cd_ready) || cd_padding) begin
             cd_busy <= 1'b0;
             if (cd_flush) begin
                 if (!bridge_reset_ddr && (flush_probe_count == 2'd2) &&
@@ -783,7 +801,7 @@ always_ff @(posedge ddr_clk or posedge card_bridge_boot_reset) begin
             end else if (!console_reset_ddr && !cd_cancel &&
                          (cart_state == CART_READY) &&
                          !cart_download_raw && !cart_download_ddr) begin
-                card_rsp_data <= cd_padding ? 32'hffffffff : cd_dout;
+                card_rsp_data <= cd_padding ? 32'hffffffff : cd_sdram ? tail_data : cd_dout;
                 card_rsp_toggle <= ~card_rsp_toggle;
             end
         end
@@ -895,6 +913,20 @@ wire        sd_ch2_ready64;
 wire        sd_ch1_ready;
 wire [63:0] sd_ch1_dout;
 wire        sd_ch1_accept;
+wire [26:1] tail_ram_addr;
+wire [15:0] tail_ram_data;
+wire tail_ram_req, tail_ram_rnw, tail_ram_ready;
+wire [63:0] tail_ram_result;
+nds_cart_sdram_tail cartridge_tail (
+    .clk(ddr_clk), .mem_clk(clk_mem), .reset(~island_locked),
+    .cart_download(cart_download_raw),
+    .full_download(cart_download_raw && ioctl_index[5:0]==6'h03 && (&ioctl_index[11:8])),
+    .ioctl_wr, .ioctl_addr, .ioctl_data(ioctl_dout), .ioctl_wait(cart_tail_wait),
+    .loaded(cart_tail_loaded), .fault(cart_tail_fault),
+    .read_req(tail_req), .read_addr(tail_addr), .read_ready(tail_ready), .read_data(tail_data),
+    .ram_addr(tail_ram_addr), .ram_data(tail_ram_data), .ram_req(tail_ram_req),
+    .ram_rnw(tail_ram_rnw), .ram_ready(tail_ram_ready), .ram_result(tail_ram_result)
+);
 
 // ---- vsrv arbiter: park main RAM, run one ch2 op, hand ch2 back ----
 // A_HOLD keeps main RAM parked for a few cycles after an op when nds_vram says
@@ -1156,7 +1188,8 @@ end
 sdram #(
 	.DQ_PIPE    (CLKMEM_RATIO >= 4 ? 1 : 0),
 	.CAS_LATENCY(CLKMEM_RATIO >= 4 ? 3 : 2),
-	.TRCD_WAIT  (CLKMEM_RATIO >= 4 ? 2 : 1)
+	.TRCD_WAIT  (CLKMEM_RATIO >= 4 ? 2 : 1),
+	.CH3_LINEAR(1)
 ) sdram
 (
 	.*,
@@ -1190,12 +1223,13 @@ sdram #(
 	.ch2_dout_hi(sd_ch2_dout_hi),
 	.ch2_ready64(sd_ch2_ready64),
 
-	.ch3_addr(24'd0),
-	.ch3_din(16'd0),
+	.ch3_addr(tail_ram_addr),
+	.ch3_din(tail_ram_data),
 	.ch3_dout(),
-	.ch3_req(1'b0),
-	.ch3_rnw(1'b1),
-	.ch3_ready()
+	.ch3_dout64(tail_ram_result),
+	.ch3_req(tail_ram_req),
+	.ch3_rnw(tail_ram_rnw),
+	.ch3_ready(tail_ram_ready)
 );
 
 

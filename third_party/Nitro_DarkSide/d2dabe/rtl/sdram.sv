@@ -42,7 +42,10 @@ module sdram
 	// TRCD_WAIT: clk cycles inserted between ACTIVE and READ/WRITE. 1 gives the
 	// original's fixed 2-clock gap - 19.9ns at 100.5MHz, but only 14.9ns at
 	// 134.1MHz, which is under the tRCD of every SDR part MiSTer ships with.
-	parameter integer TRCD_WAIT = 1
+	parameter integer TRCD_WAIT = 1,
+	// Optional ordinary 16-bit writes/64-bit reads for the cartridge tail.
+	// Default retains the donor's interleaved 8-bit channel-3 layout.
+	parameter integer CH3_LINEAR = 0
 )
 (
 	input             init,        // reset to initialize RAM
@@ -109,8 +112,9 @@ module sdram
 	output reg [31:0] ch2_dout_hi,
 	output reg        ch2_ready64,
 
-	input      [24:1] ch3_addr,
+	input      [26:1] ch3_addr,
 	output reg [15:0] ch3_dout,
+	output reg [63:0] ch3_dout64,
 	input      [15:0] ch3_din,
 	input             ch3_req,
 	input             ch3_rnw,
@@ -317,9 +321,15 @@ always @(posedge clk) begin
 		end
 	end
 	else begin
-		{pre_cas[12:9], pre_ba, pre_a, pre_cas[8:0]} <= {2'b00, ch3_rnw, ch3_addr[23:1], 2'b00};
-		pre_chip <= ch3_addr[24];
-		pre_data <= {8'hFF, ch3_din[15:8], 8'hFF, ch3_din[7:0]};
+		if (CH3_LINEAR) begin
+			{pre_cas[12:9], pre_ba, pre_a, pre_cas[8:0]} <= {2'b00, 1'b1, ch3_addr[25:1]};
+			pre_chip <= ch3_addr[26];
+			pre_data <= {16'd0,ch3_din};
+		end else begin
+			{pre_cas[12:9], pre_ba, pre_a, pre_cas[8:0]} <= {2'b00, ch3_rnw, ch3_addr[23:1], 2'b00};
+			pre_chip <= ch3_addr[24];
+			pre_data <= {8'hFF, ch3_din[15:8], 8'hFF, ch3_din[7:0]};
+		end
 		pre_be   <= 4'b1111;
 		pre_wr   <= ~ch3_rnw;
 		pre_wide <= 0;
@@ -377,9 +387,17 @@ always @(posedge clk) begin
 	if(data_ready_delay2[0]) ch2_dout_hi[31:16] <= dqu2;
 	if(data_ready_delay2[0]) ch2_ready64 <= 1;
 
-	if(data_ready_delay3[3]) ch3_dout[07:00] <= dqu3[7:0];
-	if(data_ready_delay3[1]) ch3_dout[15:08] <= dqu3[7:0];
-	if(data_ready_delay3[1]) ch3_ready <= 1;
+	if (CH3_LINEAR) begin
+		if(data_ready_delay3[3]) ch3_dout64[15:00] <= dqu3;
+		if(data_ready_delay3[2]) ch3_dout64[31:16] <= dqu3;
+		if(data_ready_delay3[1]) ch3_dout64[47:32] <= dqu3;
+		if(data_ready_delay3[0]) ch3_dout64[63:48] <= dqu3;
+		if(data_ready_delay3[0]) ch3_ready <= 1;
+	end else begin
+		if(data_ready_delay3[3]) ch3_dout[07:00] <= dqu3[7:0];
+		if(data_ready_delay3[1]) ch3_dout[15:08] <= dqu3[7:0];
+		if(data_ready_delay3[1]) ch3_ready <= 1;
+	end
 
 	dq_oe  <= 0;
 	dq_out <= dq_pre;   // unconditional: the enable lives on dq_oe, not on a mux
@@ -490,7 +508,11 @@ always @(posedge clk) begin
 				dq_pre   <= saved_data[31:16];  // due with the second
 				dq_oe    <= 1;
 				SDRAM_A[12:11] <= ~saved_be[1:0]; // DQM byte masks for the low word
-				if(!ch) begin
+				if (CH3_LINEAR && ch==2) begin
+					ch3_ready<=1;
+					// Full read-sized slot preserves tRC/tWR during bulk upload.
+					state<=STATE_IDLE_5;
+				end else if(!ch) begin
 					ch1_ready  <= 1;
 					state <= STATE_IDLE_2;
 				end

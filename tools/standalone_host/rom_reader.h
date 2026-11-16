@@ -46,6 +46,8 @@ private:
   int input = -1;
   pid_t child = -1;
   bool framed_stream = false;
+  bool full_cartridge = false;
+  bool allow_full_cartridge = false;
   bool cache_preparing = false;
   int work_progress = -1;
   void workProgress(const Header &h) {
@@ -71,7 +73,8 @@ private:
     return true;
   }
   [[noreturn]] static void worker(int output, pid_t parent, const std::string &path,
-                                const std::string &movie_directory, bool allow_movies) {
+                                const std::string &movie_directory, bool allow_movies,
+                                bool allow_full) {
     // Never inherit the host's graceful SIGTERM handler: this child has no
     // state to save and must also stop if the host disappears during CIFS I/O.
     signal(SIGTERM, SIG_DFL);
@@ -144,6 +147,7 @@ private:
       }
     }
     std::array<unsigned char, 262144> buffer;
+    bool use_full = false;
     // Validate all omitted bytes before telling the host it may start a
     // download. The ROM header's used-size field is not evidence of padding.
     uint64_t off = RomLayout::transferLimit(h.size);
@@ -156,6 +160,7 @@ private:
       if (n <= 0) { h.operation = 6; h.error = n < 0 ? errno : EIO; break; }
       if (std::any_of(buffer.begin(), buffer.begin() + n,
                       [](unsigned char byte) { return byte != 0xff; })) {
+        if (allow_full && RomLayout::extended(h.size)) { use_full = true; break; }
         h.operation = 5; h.error = EINVAL; break;
       }
       off += uint64_t(n);
@@ -164,9 +169,10 @@ private:
       const Header progress{off, 0, padding_progress};
       if (!send(output, &progress, sizeof(progress))) _exit(1);
     }
-    if (!send(output, &h, sizeof(h)) || h.operation) _exit(1);
+    if (use_full) h.operation = 14;
+    if (!send(output, &h, sizeof(h)) || (h.operation && h.operation != 14)) _exit(1);
     off = 0;
-    const auto transfer_size = transferSize(h.size);
+    const auto transfer_size = use_full ? h.size : transferSize(h.size);
     while (off < transfer_size) {
 #ifdef STANDALONE_TEST
       if (test_hook) test_hook(rom, off);
@@ -186,12 +192,15 @@ private:
 public:
   static constexpr unsigned no_progress_ms = 120000;
   bool framed() const { return framed_stream; }
+  bool fullCartridge() const { return full_cartridge; }
+  uint64_t transferBytes(uint64_t size) const { return full_cartridge ? size : transferSize(size); }
 #ifdef STANDALONE_TEST
   inline static void (*test_hook)(int, uint64_t) = nullptr;
   pid_t testPid() const { return child; }
 #endif
   explicit RomReader(const std::string &path, const std::string &movie_directory = {},
-                     const std::string &nsmb_mode = {}, bool allow_movies = true) {
+                     const std::string &nsmb_mode = {}, bool allow_movies = true,
+                     bool allow_full = false) : allow_full_cartridge(allow_full) {
     reap();
     int fds[2];
     if (pipe2(fds, O_CLOEXEC)) throw std::runtime_error("ROM reader pipe");
@@ -205,7 +214,9 @@ public:
       // Only the disposable reader inherits the menu selection. Never mutate
       // the SPI owner's environment when another game is loaded later.
       if (!nsmb_mode.empty() && setenv("NDS_NSMB_PATCH", nsmb_mode.c_str(), 1)) _exit(1);
-      worker(fds[1], parent, path, movie_directory, allow_movies);
+      if (allow_full) { if (setenv("NDS_CART_SDRAM", "1", 1)) _exit(1); }
+      else if (unsetenv("NDS_CART_SDRAM")) _exit(1);
+      worker(fds[1], parent, path, movie_directory, allow_movies, allow_full);
     }
     close(fds[1]);
     input = fds[0];
@@ -241,7 +252,7 @@ public:
     size_t off = 0;
     while (off < sizeof(h))
       off += read(reinterpret_cast<char *>(&h) + off, sizeof(h) - off, service, timeout_ms);
-    if (h.operation != 8 || h.error || h.size != transferSize(size))
+    if (h.operation != 8 || h.error || h.size != transferBytes(size))
       throw std::runtime_error("ROM stream did not complete validation");
   }
   // Framed loads remain held in reset until a validated completion record.
@@ -323,6 +334,12 @@ public:
     if (h.operation == 9) {
       if (h.error || !validSize(h.size)) throw std::runtime_error("Invalid framed ROM metadata");
       framed_stream = true;
+      return h.size;
+    }
+    if (h.operation == 14) {
+      if (!allow_full_cartridge || h.error || !validSize(h.size) || h.size <= max_transfer_size)
+        throw std::runtime_error("Invalid full-cartridge ROM metadata");
+      full_cartridge = true;
       return h.size;
     }
     if (h.operation) {
