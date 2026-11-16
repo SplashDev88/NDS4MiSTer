@@ -108,6 +108,11 @@ if(NDS4MISTER_USE_MELONDS)
     target_include_directories(nds_texture_range_hash_test PRIVATE src third_party/melonDS/src)
     target_compile_options(nds_texture_range_hash_test PRIVATE -fno-access-control)
     target_link_libraries(nds_texture_range_hash_test PRIVATE core ${CMAKE_DL_LIBS})
+    add_executable(nds_umk3_sprite_profile_test EXCLUDE_FROM_ALL
+        tools/test_umk3_sprite_profile.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_umk3_sprite_profile_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_umk3_sprite_profile_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_umk3_sprite_profile_test PRIVATE core ${CMAKE_DL_LIBS})
     add_executable(nds_neutral_white_snapshot_test EXCLUDE_FROM_ALL
         tools/test_neutral_white_snapshot.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_neutral_white_snapshot_test PRIVATE src third_party/melonDS/src)

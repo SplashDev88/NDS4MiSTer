@@ -145,6 +145,13 @@ inline bool umk3_texture_range_hash_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x6c631035u;
 }
 
+// Private qualification of the existing exact sprite raster paths. Keep it
+// separate from geometry/query and changed-byte VRAM replay policies.
+inline bool umk3_sprite_raster_profile(const GameQuerySelection& selected)
+{
+    return umk3_texture_range_hash_profile(selected);
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&

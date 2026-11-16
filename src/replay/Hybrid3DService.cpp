@@ -11613,7 +11613,8 @@ try {
                 approximate_factors = nds4mister::replay::mkds_approximate_factors_profile(selected);
                 opaque_3d_seed = nds4mister::replay::dawn_opaque_3d_seed_profile(selected);
                 raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected) ||
-                    nds4mister::replay::dawn_regional_raster_only_profile(selected);
+                    nds4mister::replay::dawn_regional_raster_only_profile(selected) ||
+                    nds4mister::replay::umk3_sprite_raster_profile(selected);
 #ifdef NDS4MISTER_DAWN_REGIONAL_INTEGRAL
                 raster_only_integral_texture_spans =
                     nds4mister::replay::dawn_regional_raster_only_profile(selected);
