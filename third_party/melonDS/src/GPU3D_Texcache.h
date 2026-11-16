@@ -61,7 +61,7 @@ void ConvertAXIYTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAdd
 template <int outputFmt, int colorBits>
 void ConvertNColorsTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, bool color0Transparent, GPU& gpu);
 
-// Provisional crossover; the private ARM kernel test selects the final value.
+// Cortex-A9 crossover: <=256 texels retain the cheaper legacy decoder.
 inline constexpr u32 NDS4MiSTerNColor8PaletteMinTexels = 512;
 void NDS4MiSTerConvertNColors8TextureRGB6A5(
     u32 width, u32 height, u32* output, u32 addr, u32 palAddr,
