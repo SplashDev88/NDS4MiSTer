@@ -103,6 +103,11 @@ if(NDS4MISTER_USE_MELONDS)
     set(ENABLE_JIT ${NDS4MISTER_ENABLE_JIT} CACHE BOOL "" FORCE)
     set(ENABLE_LTO_RELEASE ${NDS4MISTER_ENABLE_LTO_RELEASE} CACHE BOOL "" FORCE)
     add_subdirectory(third_party/melonDS EXCLUDE_FROM_ALL)
+    add_executable(nds_rectangle_x_test EXCLUDE_FROM_ALL
+        tools/test_rectangle_x.cpp src/melonds/HeadlessPlatform.cpp)
+    target_include_directories(nds_rectangle_x_test PRIVATE src third_party/melonDS/src)
+    target_compile_options(nds_rectangle_x_test PRIVATE -fno-access-control)
+    target_link_libraries(nds_rectangle_x_test PRIVATE core ${CMAKE_DL_LIBS})
     add_executable(nds_ncolor8_palette_test EXCLUDE_FROM_ALL
         tools/test_ncolor8_palette.cpp src/melonds/HeadlessPlatform.cpp)
     target_include_directories(nds_ncolor8_palette_test PRIVATE src third_party/melonDS/src)

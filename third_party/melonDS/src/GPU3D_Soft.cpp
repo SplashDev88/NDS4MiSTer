@@ -278,6 +278,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     if (DualCoreRaster)
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
+    const char* rectangleX = getenv("NDS4MISTER_RECTANGLE_TEXTURE_X");
+    if (rectangleX)
+        RectangleTextureXOverride = strcmp(rectangleX, "auto") == 0 ? -1 :
+            strcmp(rectangleX, "1") == 0 ? 1 : 0;
     const char* paletteExpansion = getenv("NDS4MISTER_NCOLOR8_PALETTE");
     if (paletteExpansion)
         NColor8PaletteOverride = strcmp(paletteExpansion, "auto") == 0 ? -1 :
@@ -1241,6 +1245,7 @@ void SoftRenderer3D::SetupPolygon(
     // Prove all corners and their order: a quad bounding box alone also
     // accepts crossed or degenerate polygons. The session policy limits
     // this specialization to the qualified Castlevania cartridge.
+    pixelState.RectangleTextureX = nullptr;
     pixelState.FlatRectangle = false;
     pixelState.PreparedRectangle = false;
     pixelState.GrayRectangle = false;
@@ -3287,6 +3292,84 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
 // output tests but regressed NSMB by about 5% on the stock Cortex-A9.
 // Changes to these loops require the cross-build full-buffer oracle and the
 // live-scene/other-game controls; a synthetic visible-only check is insufficient.
+// Scaled axis-aligned sprites repeat the same horizontal sampling on every
+// row. Precompute only the native X indices, once per polygon and frame.
+// Vertical sampling and both boundary scanlines retain the original code.
+void SoftRenderer3D::PrepareRectangleTextureX(RendererPolygon* rp)
+{
+    auto& state = rp->PixelState;
+    const auto* polygon = rp->PolyData;
+    if (!state.FlatRectangle || state.PreparedRectangle || state.GrayRectangle ||
+        polygon->YBottom - polygon->YTop < 16 || rp->XR - rp->XL <= 1 ||
+        RectangleTextureXCount == MaxRectangleTextureXRows)
+        return;
+    const auto* tl = polygon->Vertices[rp->CurVL]->TexCoords;
+    const auto* bl = polygon->Vertices[rp->NextVL]->TexCoords;
+    const auto* tr = polygon->Vertices[rp->CurVR]->TexCoords;
+    const auto* br = polygon->Vertices[rp->NextVR]->TexCoords;
+    // No shear/rotation: S is invariant vertically and T horizontally.
+    if (tl[0] != bl[0] || tr[0] != br[0] || tl[1] != tr[1] || bl[1] != br[1])
+        return;
+    const s32 first = std::max<s32>(0, rp->XL);
+    const s32 end = std::min<s32>(256, rp->XR);
+    if (first >= end) return;
+    auto& indices = RectangleTextureXRows[RectangleTextureXCount++];
+    NDS4MiSTerGraySpan coordinate(tl[0], tr[0], rp->XR - rp->XL, first - rp->XL);
+    for (s32 x = first; x < end; ++x, coordinate.Advance())
+        indices[x] = NDS4MiSTerCachedTextureIndex(
+            static_cast<s16>(coordinate.Get()), 0,
+            state.TextureWidth, state.TextureHeight,
+            state.TextureWidthMask, state.TextureHeightMask,
+            state.TextureWrapFlags, state.TextureWidthShift) & state.TextureWidthMask;
+    state.RectangleTextureX = indices.data();
+}
+
+template<bool FrontFacing>
+[[gnu::hot, gnu::noinline]] void
+SoftRenderer3D::RenderRectangleTextureXSpan(
+    RendererPolygon* rp, s32 y, s32 firstX, s32 endX, s16 textureT)
+{
+    const auto& state = rp->PixelState;
+    const u32 row = NDS4MiSTerCachedTextureIndex(0, textureT,
+        state.TextureWidth, state.TextureHeight,
+        state.TextureWidthMask, state.TextureHeightMask,
+        state.TextureWrapFlags, state.TextureWidthShift) >> state.TextureWidthShift;
+    const u32 alphaRef = GPU3D.RenderAlphaRef;
+    if (state.TexturePixels[state.TextureWidth * state.TextureHeight + row] <= alphaRef)
+        return;
+    const u32* texels = state.TexturePixels + (row << state.TextureWidthShift);
+    const u16* indices = state.RectangleTextureX;
+    const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
+    const u32 polyattr = rp->PolyAttr;
+    const s32 depth = rp->PolyData->FinalZ[0];
+    const bool writeTranslucentDepth = rp->PolyData->Attr & (1u << 11);
+    for (s32 x = firstX; x < endX; ++x)
+    {
+        u32 pixeladdr = rowAddress + x;
+        s32 z = depth;
+        if (!NDS4MiSTerSelectIntegralDepthPixel<FrontFacing>(
+                DepthBuffer, AttrBuffer, LowerLayerBufferSize, z, pixeladdr))
+            continue;
+        u32 color;
+        if (!NDS4MiSTerNeutralOpaqueCachedPixel(texels[indices[x]], alphaRef, color))
+            continue;
+        if ((color >> 24) == 31)
+        {
+            DepthBuffer[pixeladdr] = z;
+            ColorBuffer[pixeladdr] = color;
+            AttrBuffer[pixeladdr] = polyattr;
+        }
+        else
+        {
+            if (!writeTranslucentDepth) z = -1;
+            PlotTranslucentPixel(pixeladdr, color, z, polyattr, 0);
+            if (NDS4MiSTerCachedPixelHasLowerLayer(
+                    AttrBuffer, LowerLayerBufferSize, pixeladdr))
+                PlotTranslucentPixel(pixeladdr + BufferSize, color, z, polyattr, 0);
+        }
+    }
+}
+
 template<bool FrontFacing>
 void SoftRenderer3D::RenderFlatRectangleScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
@@ -3505,6 +3588,11 @@ void SoftRenderer3D::RenderFlatRectangleScanline(
     if (xlimit > clipEndX) xlimit = clipEndX;
 
     if (wireframe && !edge) x = std::max(x, xlimit);
+    else if (yedge == 0 && rp->PixelState.RectangleTextureX)
+    {
+        RenderRectangleTextureXSpan<FrontFacing>(rp, y, x, xlimit, static_cast<s16>(tl));
+        x = xlimit;
+    }
     else if (cachedModulateInterior)
     {
         RenderCachedModulateInteriorSpan(
@@ -4463,6 +4551,12 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
     LowerLayerBufferSize = SingleLayerAAOff && !AlternateRowsRequested &&
         !QuarterRequested && !TinyRequested && !(EffectiveDispCnt & (1u << 4))
         ? 0 : BufferSize;
+    RectangleTextureXCount = 0;
+    const bool prepareTextureX = UseRectangleTextureX && !FpgaEmitting &&
+        !AlternateRows && !Quarter && !Tiny;
+    if (prepareTextureX && !RectangleTextureXRows)
+        RectangleTextureXRows = std::make_unique<std::array<u16, 256>[]>(
+            MaxRectangleTextureXRows);
     int j = 0;
     for (int i = 0; i < npolys; i++)
     {
@@ -4474,7 +4568,9 @@ int SoftRenderer3D::SetupRenderPolygons(Polygon** polygons, int npolys)
         // consumer of lower colors, depth or attributes.
         if (polygons[i]->IsShadowMask || polygons[i]->IsShadow)
             LowerLayerBufferSize = BufferSize;
-        SetupPolygon(&PolygonList[j++], polygons[i], textureBinding);
+        SetupPolygon(&PolygonList[j], polygons[i], textureBinding);
+        if (prepareTextureX) PrepareRectangleTextureX(&PolygonList[j]);
+        ++j;
     }
     CurrentPolygonCount = j;
     UseScanlinePolygonLists = j > ScheduledPolygonThreshold;
@@ -5682,6 +5778,8 @@ void SoftRenderer3D::Blank3DFrame()
 
 void SoftRenderer3D::RenderFrame()
 {
+    UseRectangleTextureX = RectangleTextureXOverride < 0 ?
+        GPU3D.RectangleTextureXEnabled() : RectangleTextureXOverride != 0;
     TextureCache.NColor8PaletteExpansionEnabled = NColor8PaletteOverride < 0 ?
         GPU3D.NColor8PaletteExpansionEnabled() : NColor8PaletteOverride != 0;
     TextureCache.RangeHashReuseEnabled = TextureRangeHashOverride < 0 ?

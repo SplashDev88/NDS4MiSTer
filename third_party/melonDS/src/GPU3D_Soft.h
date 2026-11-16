@@ -2276,6 +2276,7 @@ private:
             bool Wireframe;
             bool CachedModulate;
             bool ConstantVertexColor;
+            const u16* RectangleTextureX;
             bool FlatRectangle;
             bool PreparedRectangle;
             bool GrayRectangle;
@@ -2331,6 +2332,16 @@ private:
         u32 Jobs = 0;
         u32 AdvancedScanlines = 0;
     };
+
+    // Bounded per-frame coordinate tables; overflow keeps the old raster path.
+    // Worker polygon copies share immutable tables until both workers finish.
+    static constexpr unsigned MaxRectangleTextureXRows = 128;
+    std::unique_ptr<std::array<u16, 256>[]> RectangleTextureXRows;
+    unsigned RectangleTextureXCount = 0;
+    void PrepareRectangleTextureX(RendererPolygon* rp);
+    template<bool FrontFacing>
+    void RenderRectangleTextureXSpan(RendererPolygon* rp, s32 y,
+        s32 firstX, s32 endX, s16 textureT);
 
     RendererPolygon PolygonList[MaxRendererPolygons];
     u8 PolygonFirstScanline[MaxRendererPolygons];
@@ -2684,6 +2695,8 @@ private:
     void Blank3DFrame();
     int TextureRangeHashOverride = -1;
     int NColor8PaletteOverride = -1;
+    int RectangleTextureXOverride = -1;
+    bool UseRectangleTextureX = false;
     int SolidSpansOverride = -1;
     bool SolidSpans = false;
     bool ApproximateFactors = false;

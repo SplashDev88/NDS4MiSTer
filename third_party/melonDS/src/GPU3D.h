@@ -157,6 +157,8 @@ public:
     {
         return UseIntegralTextureSpans;
     }
+    void SetRectangleTextureXEnabled(bool enabled) noexcept { UseRectangleTextureX = enabled; }
+    bool RectangleTextureXEnabled() const noexcept { return UseRectangleTextureX; }
     void SetNColor8PaletteExpansionEnabled(bool enabled) noexcept { UseNColor8PaletteExpansion = enabled; }
     bool NColor8PaletteExpansionEnabled() const noexcept { return UseNColor8PaletteExpansion; }
     void SetTextureRangeHashReuseEnabled(bool enabled) noexcept { UseTextureRangeHashReuse = enabled; }
@@ -367,6 +369,7 @@ public:
     bool UseSpriteRasterSpans = false;
     bool UseTextureRangeHashReuse = false;
     bool UseNColor8PaletteExpansion = false;
+    bool UseRectangleTextureX = false;
     bool UseSolidSpans = false;
     bool UseApproximateFactors = false;
 
