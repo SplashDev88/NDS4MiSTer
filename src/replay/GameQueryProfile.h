@@ -135,6 +135,23 @@ inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
 }
 
+// Composition-only row reuse is qualified on this Resident Evil cartridge.
+// It compares the current completed 3D row and every 2D input, without the
+// legacy cache's future-row lookahead. Other cartridges keep their old path.
+inline bool resident_evil_paired_a_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'A','B','H','E'}} &&
+        selected.identity.revision == 0 && selected.identity.header_crc32 == 0xc7e5cdf1u;
+}
+
+inline bool paired_a_cache_enabled(bool qualified, const char* requested)
+{
+    if (requested && requested[0] == '0' && requested[1] == '\0') return false;
+    if (requested && requested[0] == '1' && requested[1] == '\0') return true;
+    return qualified;
+}
+
 // USA and Europe are the two catalogued retail UMK cartridges, both revision
 // zero. Share their exact renderer/cache policies, independently of query or
 // guest-code patches. Unknown or altered headers retain the general path.

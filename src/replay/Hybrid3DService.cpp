@@ -754,7 +754,8 @@ public:
         bool zero_brightness = false,
         bool texture_range_hash_reuse = false,
         bool ncolor8_palette_expansion = false,
-        bool rectangle_texture_x = false)
+        bool rectangle_texture_x = false,
+        bool paired_a_cache = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -793,6 +794,7 @@ public:
           texture_range_hash_reuse_(matched_display_test && texture_range_hash_reuse),
           ncolor8_palette_expansion_(matched_display_test && ncolor8_palette_expansion),
           rectangle_texture_x_(matched_display_test && rectangle_texture_x),
+          paired_a_cache_(matched_display_test && paired_a_cache),
           solid_spans_(matched_display_test && solid_spans),
           approximate_factors_(matched_display_test && approximate_factors),
           opaque_3d_seed_(matched_display_test && opaque_3d_seed),
@@ -1364,11 +1366,11 @@ private:
                 arm_video_engine_b_only_, engine_b_pixels_enabled_,
                 matched_display_test_, matched_engine_a_only_};
             settings.PreparedSpriteLineReuse = integral_texture_spans_;
-            // Private opt-in while Resident Evil cache correctness and speed
-            // are qualified. Keep legacy lookahead disabled in matched mode.
-            const char* paired_a = std::getenv("NDS4MISTER_PAIRED_A_CACHE");
-            settings.PairedACache = matched_display_test_ && paired_a &&
-                std::strcmp(paired_a, "1") == 0;
+            // Only reuse the already completed current 3D row. The legacy
+            // full-video lookahead remains disabled in matched mode.
+            settings.PairedACache = matched_display_test_ &&
+                nds4mister::replay::paired_a_cache_enabled(paired_a_cache_,
+                    std::getenv("NDS4MISTER_PAIRED_A_CACHE"));
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
@@ -5680,6 +5682,7 @@ private:
     bool texture_range_hash_reuse_ = false;
     bool ncolor8_palette_expansion_ = false;
     bool rectangle_texture_x_ = false;
+    bool paired_a_cache_ = false;
     bool solid_spans_ = false;
     bool approximate_factors_ = false;
     bool opaque_3d_seed_ = false;
@@ -11600,6 +11603,7 @@ try {
             bool texture_range_hash_reuse = false;
             bool ncolor8_palette_expansion = false;
             bool rectangle_texture_x = false;
+            bool paired_a_cache = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11627,6 +11631,9 @@ try {
                 texture_range_hash_reuse = nds4mister::replay::umk3_texture_range_hash_profile(selected);
                 ncolor8_palette_expansion = nds4mister::replay::umk3_palette_decode_profile(selected);
                 rectangle_texture_x = nds4mister::replay::umk3_rectangle_x_profile(selected);
+                paired_a_cache = nds4mister::replay::paired_a_cache_enabled(
+                    nds4mister::replay::resident_evil_paired_a_profile(selected),
+                    std::getenv("NDS4MISTER_PAIRED_A_CACHE"));
                 approximate_factors = nds4mister::replay::mkds_approximate_factors_profile(selected);
                 opaque_3d_seed = nds4mister::replay::dawn_opaque_3d_seed_profile(selected);
                 raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected) ||
@@ -11674,6 +11681,7 @@ try {
                     << " texture_range_hash_reuse=" << texture_range_hash_reuse
                     << " ncolor8_palette_expansion=" << ncolor8_palette_expansion
                     << " rectangle_texture_x=" << rectangle_texture_x
+                    << " paired_a_cache=" << paired_a_cache
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11721,7 +11729,8 @@ try {
                 zero_brightness,
                 texture_range_hash_reuse,
                 ncolor8_palette_expansion,
-                rectangle_texture_x);
+                rectangle_texture_x,
+                paired_a_cache);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif
