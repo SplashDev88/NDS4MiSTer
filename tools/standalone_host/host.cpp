@@ -8,6 +8,7 @@
 #include "firmware_media.h"
 #include "game_clock.h"
 #include "save_profiles.h"
+#include "cartridge_save.h"
 #include "nand_save.h"
 #include "font.h"
 #include "framebuffer_metadata.h"
@@ -2331,17 +2332,31 @@ class Host {
     const int incoming = open(dest.c_str(), O_RDWR | O_CREAT | O_DSYNC | O_CLOEXEC, 0644);
     require(incoming >= 0, "open shared save");
     struct stat st;
-    if (fstat(incoming, &st) != 0 || st.st_size < 0 ||
+    if (fstat(incoming, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size < 0 ||
         (nand_bytes ? st.st_size != nand_bytes : st.st_size > 1048576)) {
       close(incoming); throw std::runtime_error("save size");
+    }
+    uint64_t n;
+    try {
+      n = nds_cartridge_save::mountedSize(incoming, uint64_t(st.st_size), save_type, [&] {
+        if (!running) throw std::runtime_error("Save validation interrupted");
+        beat();
+      });
+    } catch (...) {
+      close(incoming);
+      throw;
     }
     if (save >= 0) {
       if (fdatasync(save) != 0) { close(incoming); throw std::runtime_error("sync outgoing save"); }
       close(save);
     }
     save = incoming;
-    save_sector_limit = nand_bytes ? nand_bytes / 512 : 2048;
-    uint64_t n = st.st_size;
+    const auto capacity = nds_cartridge_save::capacity(save_type);
+    save_sector_limit = capacity ? capacity / 512 : 2048;
+    if (n != uint64_t(st.st_size))
+      log("Save padding accepted: " + std::to_string(st.st_size) +
+          " file bytes, " + std::to_string(n) +
+          " cartridge bytes; original file retained");
     spi.begin(Spi::IO, 0x1d);
     for (int i = 0; i < 4; i++)
       spi.word(n >> (16 * i));

@@ -18,6 +18,7 @@ struct HostTest {
   std::ofstream(rom,std::ios::binary).write(header.data(),header.size());
   h.mount("ordinary.nds",3);
   const int previous=h.save;
+  assert(ftruncate(previous,65536)==0); // Model the FPGA's empty-save initialization.
   const uint8_t sentinel=0x6b;
   assert(pwrite(previous,&sentinel,1,0)==1);
   const auto saves=root/"saves/NDS";
@@ -76,7 +77,7 @@ struct HostTest {
   lba=32768;rejected=false;try{h.sector();}catch(const std::exception&){rejected=true;}assert(rejected);
   h.spi.response={};h.mount("wario.nds",9); // cold file reopen preserves the last sector
   uint16_t word=0;assert(pread(h.save,&word,2,16777216-2)==2 && word==0x5aff);
-  h.mount("ordinary.nds",3);assert(h.save_sector_limit==2048);
+  h.mount("ordinary.nds",3);assert(h.save_sector_limit==128);
   assert(pread(h.save,&word,1,0)==1 && (word&255)==sentinel);
   // Interrupted initialization leaves the destination absent (or empty), not
   // a wrong-size file that a later launch might mistake for saved progress.
