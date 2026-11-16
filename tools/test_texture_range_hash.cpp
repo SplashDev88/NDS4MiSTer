@@ -4,10 +4,31 @@
 #undef main
 #include "GPU_Soft.h"
 #include "GPU3D_Soft.h"
+#include "replay/GameQueryProfile.h"
 static SoftRenderer3D& soft(NDS& n) {
     return *static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n.GetRenderer()).Rend3D.get());
 }
 int main() try {
+    using namespace nds4mister::replay;
+    const GameQuerySelection qualified {GameQueryProfile::Fast, {{{'Y','U','T','E'}},0,0x6c631035u},true};
+    require(umk3_texture_range_hash_profile(qualified), "qualified profile");
+    auto changed=qualified; changed.identified=false; require(!umk3_texture_range_hash_profile(changed),"unidentified profile");
+    changed=qualified; changed.identity.revision=1; require(!umk3_texture_range_hash_profile(changed),"unqualified revision");
+    changed=qualified; changed.identity.code[3]='P'; require(!umk3_texture_range_hash_profile(changed),"unqualified region");
+    changed=qualified; changed.identity.header_crc32^=1; require(!umk3_texture_range_hash_profile(changed),"altered header");
+    unsigned transitions=0;
+    for(const char* setting : {static_cast<const char*>(nullptr),"auto","0","1","invalid"}) {
+        if(setting)setenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE",setting,1);else unsetenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
+        auto n=machine(true);auto& g=n->GPU.GPU3D;
+        require(!g.TextureRangeHashReuseEnabled(),"fresh session inherited range policy");
+        for(bool policy : {false,true,false,true,false}) {
+            g.SetTextureRangeHashReuseEnabled(policy);frame(*n,0);render(*n);
+            const bool expected=!setting || !std::strcmp(setting,"auto") ? policy : !std::strcmp(setting,"1");
+            require(soft(*n).TextureCache.RangeHashReuseEnabled==expected,"range policy transition");++transitions;
+        }
+    }
+    unsetenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
+    std::printf("TEXTURE_RANGE_POLICY_PASS transitions=%u fresh_session_default_off=1 qualified_header_only=1\n",transitions);
     auto ref=machine(true), test=machine(true);
     auto& cache=soft(*ref).TextureCache;
     // Collision saturation, zero-length ranges, overlapping ranges and same
@@ -49,8 +70,8 @@ int main() try {
     unsigned frames=0;
     for(unsigned format:{0u,1u,2u,3u,4096u}) {
         ref=machine(true);test=machine(true);
-        soft(*ref).TextureCache.RangeHashReuseEnabled=false;
-        soft(*test).TextureCache.RangeHashReuseEnabled=true;
+        ref->GPU.GPU3D.SetTextureRangeHashReuseEnabled(false);
+        test->GPU.GPU3D.SetTextureRangeHashReuseEnabled(true);
         for(auto* n:{ref.get(),test.get()}) {
             frame(*n,format);auto& gpu=n->GPU;
             for(unsigned i=0;i<32768;++i)gpu.VRAM_E[i]=u8(i*7+(i>>6));

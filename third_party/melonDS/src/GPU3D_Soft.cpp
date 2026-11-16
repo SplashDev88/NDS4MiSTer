@@ -279,7 +279,9 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
     const char* rangeHashReuse = std::getenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
-    TextureCache.RangeHashReuseEnabled = rangeHashReuse && strcmp(rangeHashReuse, "1") == 0;
+    if (rangeHashReuse)
+        TextureRangeHashOverride = strcmp(rangeHashReuse, "auto") == 0 ? -1 :
+            strcmp(rangeHashReuse, "1") == 0 ? 1 : 0;
     UseTextureCache = std::getenv("NDS4MISTER_DISABLE_SOFT_TEXTURE_CACHE") == nullptr;
     const char* uploadSnapshot = std::getenv("NDS4MISTER_H3D_UPLOAD_SNAPSHOT");
     PreserveUploadSnapshot = uploadSnapshot && strcmp(uploadSnapshot, "1") == 0;
@@ -5676,6 +5678,8 @@ void SoftRenderer3D::Blank3DFrame()
 
 void SoftRenderer3D::RenderFrame()
 {
+    TextureCache.RangeHashReuseEnabled = TextureRangeHashOverride < 0 ?
+        GPU3D.TextureRangeHashReuseEnabled() : TextureRangeHashOverride != 0;
     ApproximateFactors = ApproximateFactorsOverride < 0 ? GPU3D.ApproximateFactorsEnabled() :
         ApproximateFactorsOverride != 0;
     SolidSpans = SolidSpansOverride < 0 ? GPU3D.SolidSpansEnabled() :

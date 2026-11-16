@@ -157,6 +157,8 @@ public:
     {
         return UseIntegralTextureSpans;
     }
+    void SetTextureRangeHashReuseEnabled(bool enabled) noexcept { UseTextureRangeHashReuse = enabled; }
+    bool TextureRangeHashReuseEnabled() const noexcept { return UseTextureRangeHashReuse; }
     // Session profile set before rendering starts; defaults off for unknown games.
     void SetSolidSpansEnabled(bool enabled) noexcept { UseSolidSpans = enabled; }
     bool SolidSpansEnabled() const noexcept { return UseSolidSpans; }
@@ -361,6 +363,7 @@ public:
     bool HighResolutionCoordinatesEnabled = true;
     bool UseIntegralTextureSpans = false;
     bool UseSpriteRasterSpans = false;
+    bool UseTextureRangeHashReuse = false;
     bool UseSolidSpans = false;
     bool UseApproximateFactors = false;
 

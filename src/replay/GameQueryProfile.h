@@ -135,6 +135,16 @@ inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
 }
 
+// Exact source hashes can be shared within one flattened VRAM update.
+// Enable automatically for the measured retail UMK3 cartridge; other games
+// remain candidates for separate performance qualification.
+inline bool umk3_texture_range_hash_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','U','T','E'}} &&
+        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x6c631035u;
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&
