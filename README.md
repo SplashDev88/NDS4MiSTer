@@ -1,19 +1,19 @@
-# NDS4MiSTer — v1.0
+# NDS4MiSTer — v1.0.1
 
 Experimental Nintendo DS core for the MiSTer FPGA.
 
-[**Download 1.0**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0/NDS4MiSTer_v1.0_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
+[**Download 1.0.1**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.1/NDS4MiSTer_v1.0.1_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
 
-> **Beta:** compatibility, speed and sound vary by game. Full speed is not guaranteed, and graphics-heavy scenes can slow down even in games that otherwise run well.
+Compatibility, speed and sound vary by game. Full speed is not guaranteed, and graphics-heavy scenes can slow down even in games that otherwise run well.
 
 **How it differs from other cores:** NDS4MiSTer is a hybrid core, similar to [DreamSTer](https://github.com/skmp/DreamSTer), and is launched from **Scripts** rather than a typical `.rbf` in the `_Console` directory. While you play, it temporarily takes over from the normal MiSTer menu, and it hands control back when you exit.
 
-## What's new in 1.0
+## What's new in 1.0.1
 
-- Settings, controller mappings and the clock now live in permanent locations (`Scripts/NDS.sh` and `Scripts/.NDS/`) and move over automatically from RC14/RC15.
-- Fixed a bug where resetting settings disabled certain speed optimizations.
-- On fresh installs, anti-aliasing now starts Off for improved speed.
-- Fixed a controller-mapping bug that could leave Define buttons stuck on "Release all controls".
+- Improved FMV playback, including native-speed openings in Castlevania: Dawn of Sorrow and Portrait of Ruin.
+- Switching games stays in NDS, without returning to the MiSTer menu or reloading the core.
+- Updated menu fonts and spacing for better readability.
+- Fixed Dawn of Sorrow's "Save failed" error with certain existing save files.
 
 ---
 
@@ -30,7 +30,7 @@ Experimental Nintendo DS core for the MiSTer FPGA.
 
 ## Install
 
-1. Download the [1.0 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0/NDS4MiSTer_v1.0_Standalone.zip).
+1. Download the [1.0.1 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.1/NDS4MiSTer_v1.0.1_Standalone.zip).
 2. Extract **everything** to the SD card root, merging folders. Include the hidden `Scripts/.NDS/` folder, because the core won't start without it.
 3. Put your games in `games/NDS/`.
 4. For CRTs or scalers, add an `[NDS]` section to `MiSTer.ini` at the **SD card root** (see [Video setup](#video-setup)). HDMI usually needs no changes; use the HDMI block below if you need to override global settings.
@@ -40,7 +40,7 @@ Experimental Nintendo DS core for the MiSTer FPGA.
 
 Do not move the `.rbf` to `_Console`.
 
-**Upgrading to 1.0 from RC14 or RC15:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
+**Upgrading:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0.1 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
 
 On first launch, settings, controller mappings and the clock are imported automatically into **`Scripts/.NDS/`**, checking `.NDS_RC15` first, then `.NDS_Standalone`. Existing `.NDS` settings take priority; no manual copying is needed. Saves stay in `saves/NDS/`. Recognized old public launchers are backed up under `.NDS/legacy-launchers/` and removed from the Scripts menu; original settings folders are kept. Future updates use the same `NDS.sh` and `.NDS/` paths and preserve your saved preferences.
 
@@ -206,6 +206,7 @@ Set volume in the normal MiSTer menu **before** launching. The core otherwise ha
 Saves are written automatically to `saves/NDS/<ROM name>.sav`. They are standard raw `.sav` files.
 
 - **Import a save:** use a raw `.sav` of the correct size, renamed to match your ROM's filename. `.dsv` and save-state files won't work.
+- Oversized saves with verified empty padding are supported without trimming the original file. Incompatible extra data produces an error before the game starts.
 - **Before powering off:** wait for the game to finish saving, then choose **System → Reboot**.
 - Two ROMs with the same filename share one save, even if they're in different folders.
 - **Back up** `saves/NDS/` and `Scripts/.NDS/NDS_rtc.cfg` (your in-game clock).
@@ -214,6 +215,7 @@ Saves are written automatically to `saves/NDS/<ROM name>.sav`. They are standard
 
 ## Known issues
 
+- New Super Mario Bros. can show background tearing near level endings, including World 1-2.
 - Slowdown, stutter, graphics glitches and audio hitches still happen.
 
 See [GitHub issues](https://github.com/SplashDev88/NDS4MiSTer/issues) for reported problems and updates.
