@@ -135,31 +135,44 @@ inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
 }
 
+// USA and Europe are the two catalogued retail UMK cartridges, both revision
+// zero. Share their exact renderer/cache policies, independently of query or
+// guest-code patches. Unknown or altered headers retain the general path.
+inline bool umk3_retail_render_profile(const GameQuerySelection& selected)
+{
+    if (!selected.identified) return false;
+    static constexpr GameQueryIdentity identities[] = {
+        {{{'Y','U','T','E'}}, 0, 0x6c631035u},
+        {{{'Y','U','T','P'}}, 0, 0x1b8dde13u},
+    };
+    for (const auto& identity : identities)
+        if (selected.identity.code == identity.code &&
+            selected.identity.revision == identity.revision &&
+            selected.identity.header_crc32 == identity.header_crc32) return true;
+    return false;
+}
+
 // Exact source hashes can be shared within one flattened VRAM update.
-// Enable automatically for the measured retail UMK3 cartridge; other games
-// remain candidates for separate performance qualification.
 inline bool umk3_texture_range_hash_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','U','T','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x6c631035u;
+    return umk3_retail_render_profile(selected);
 }
 
 // Private qualification of the existing exact sprite raster paths. Keep it
 // separate from geometry/query and changed-byte VRAM replay policies.
 inline bool umk3_sprite_raster_profile(const GameQuerySelection& selected)
 {
-    return umk3_texture_range_hash_profile(selected);
+    return umk3_retail_render_profile(selected);
 }
 
 inline bool umk3_rectangle_x_profile(const GameQuerySelection& selected)
 {
-    return umk3_texture_range_hash_profile(selected);
+    return umk3_retail_render_profile(selected);
 }
 
 inline bool umk3_palette_decode_profile(const GameQuerySelection& selected)
 {
-    return umk3_texture_range_hash_profile(selected);
+    return umk3_retail_render_profile(selected);
 }
 
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)

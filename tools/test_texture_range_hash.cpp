@@ -5,17 +5,13 @@
 #include "GPU_Soft.h"
 #include "GPU3D_Soft.h"
 #include "replay/GameQueryProfile.h"
+#include "umk3_profile_test.h"
 static SoftRenderer3D& soft(NDS& n) {
     return *static_cast<SoftRenderer3D*>(static_cast<SoftRenderer&>(n.GetRenderer()).Rend3D.get());
 }
 int main() try {
     using namespace nds4mister::replay;
-    const GameQuerySelection qualified {GameQueryProfile::Fast, {{{'Y','U','T','E'}},0,0x6c631035u},true};
-    require(umk3_texture_range_hash_profile(qualified), "qualified profile");
-    auto changed=qualified; changed.identified=false; require(!umk3_texture_range_hash_profile(changed),"unidentified profile");
-    changed=qualified; changed.identity.revision=1; require(!umk3_texture_range_hash_profile(changed),"unqualified revision");
-    changed=qualified; changed.identity.code[3]='P'; require(!umk3_texture_range_hash_profile(changed),"unqualified region");
-    changed=qualified; changed.identity.header_crc32^=1; require(!umk3_texture_range_hash_profile(changed),"altered header");
+    verify_umk3_regions(umk3_texture_range_hash_profile);
     unsigned transitions=0;
     for(const char* setting : {static_cast<const char*>(nullptr),"auto","0","1","invalid"}) {
         if(setting)setenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE",setting,1);else unsetenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
@@ -28,7 +24,7 @@ int main() try {
         }
     }
     unsetenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
-    std::printf("TEXTURE_RANGE_POLICY_PASS transitions=%u fresh_session_default_off=1 qualified_header_only=1\n",transitions);
+    std::printf("TEXTURE_RANGE_POLICY_PASS transitions=%u fresh_session_default_off=1 retail_regions=2 unknown_headers_rejected=1\n",transitions);
     auto ref=machine(true), test=machine(true);
     auto& cache=soft(*ref).TextureCache;
     // Collision saturation, zero-length ranges, overlapping ranges and same

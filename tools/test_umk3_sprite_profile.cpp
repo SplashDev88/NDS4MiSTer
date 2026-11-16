@@ -5,15 +5,11 @@
 #include "GPU_Soft.h"
 #include "GPU3D_Soft.h"
 #include "replay/GameQueryProfile.h"
+#include "umk3_profile_test.h"
 
 int main() try {
     using namespace nds4mister::replay;
-    const GameQuerySelection qualified {GameQueryProfile::Fast, {{{'Y','U','T','E'}},0,0x6c631035u},true};
-    require(umk3_sprite_raster_profile(qualified),"qualified UMK3 header rejected");
-    auto bad=qualified;bad.identified=false;require(!umk3_sprite_raster_profile(bad),"unidentified admitted");
-    bad=qualified;bad.identity.revision=1;require(!umk3_sprite_raster_profile(bad),"unknown revision admitted");
-    bad=qualified;bad.identity.code[3]='P';require(!umk3_sprite_raster_profile(bad),"unknown region admitted");
-    bad=qualified;bad.identity.header_crc32^=1;require(!umk3_sprite_raster_profile(bad),"changed header admitted");
+    verify_umk3_regions(umk3_sprite_raster_profile);
     auto a=machine(true),b=machine(true);
     for(auto* n:{a.get(),b.get()}) {
         n->GPU.GPU3D.SetIntegralTextureSpansEnabled(false);
@@ -37,6 +33,6 @@ int main() try {
         ++frames;
     }
     require(prepared>0,"prepared rectangles not exercised");
-    std::printf("UMK3_SPRITE_PROFILE_PASS frames=%u prepared_rectangles=%u native_color_depth_attributes_equal=1 qualified_header_only=1\n",frames,prepared);
+    std::printf("UMK3_SPRITE_PROFILE_PASS frames=%u prepared_rectangles=%u native_color_depth_attributes_equal=1 retail_regions=2 unknown_headers_rejected=1\n",frames,prepared);
     return 0;
 }catch(const std::exception& e){std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}

@@ -6,6 +6,7 @@
 #include "GPU_Soft.h"
 #include "GPU3D_Soft.h"
 #include "replay/GameQueryProfile.h"
+#include "umk3_profile_test.h"
 #include <array>
 #include <vector>
 
@@ -68,12 +69,7 @@ int main(int argc,char** argv) try {
     if(argc==2 && !std::strcmp(argv[1],"--kernel"))return kernel();
     require(argc==1,"expected no arguments or --kernel");
     using namespace nds4mister::replay;
-    const GameQuerySelection qualified {GameQueryProfile::Fast, {{{'Y','U','T','E'}},0,0x6c631035u},true};
-    require(umk3_palette_decode_profile(qualified),"qualified palette profile");
-    auto bad=qualified;bad.identified=false;require(!umk3_palette_decode_profile(bad),"unidentified palette profile");
-    bad=qualified;bad.identity.revision=1;require(!umk3_palette_decode_profile(bad),"unknown revision");
-    bad=qualified;bad.identity.code[3]='P';require(!umk3_palette_decode_profile(bad),"unknown region");
-    bad=qualified;bad.identity.header_crc32^=1;require(!umk3_palette_decode_profile(bad),"changed header");
+    verify_umk3_regions(umk3_palette_decode_profile);
     unsigned transitions=0;
     for(const char* setting:{static_cast<const char*>(nullptr),"auto","0","1","invalid"}) {
         if(setting)setenv("NDS4MISTER_NCOLOR8_PALETTE",setting,1);else unsetenv("NDS4MISTER_NCOLOR8_PALETTE");
