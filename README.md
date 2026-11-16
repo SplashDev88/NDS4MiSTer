@@ -10,10 +10,9 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 ## What's new in 1.0.1
 
-- Improved FMV playback, including native-speed openings in Castlevania: Dawn of Sorrow and Portrait of Ruin.
-- Switching games stays in NDS, without returning to the MiSTer menu or reloading the core.
-- Updated menu fonts and spacing for better readability.
-- Fixed Dawn of Sorrow's "Save failed" error with certain existing save files.
+* Improved FMV playback, including native-speed openings in Castlevania: Dawn of Sorrow and Portrait of Ruin.
+* Updated menu fonts and spacing for better readability in DV1 Top/Bottom view (TATE mode)
+* Fixed Castlevania Dawn of Sorrow bug that could cause “Save failed” error.
 
 ---
 
