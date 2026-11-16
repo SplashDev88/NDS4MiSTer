@@ -11,7 +11,7 @@ architecture sim of tb_nds_dma9_gx_overlap is
  signal clk:std_logic:='0'; signal reset:std_logic:='1';
  signal regs:proc_bus_gb_type:=((others=>'0'),(others=>'0'),'1','0',ACCESS_32BIT,"0000",'0');
  signal cpu_read,cpu_wait,cpu_idle,cpu_complete,gx_busy,gx_complete,fence,query,reply,selected:std_logic:='0';
- signal loader,peek:std_logic:='0';
+ signal loader,peek,gx_trigger:std_logic:='0';
  signal query_ready:std_logic:='1';
  signal token:std_logic_vector(31 downto 0);signal reply_id:std_logic_vector(31 downto 0):=(others=>'0');
  signal gx_data:std_logic_vector(31 downto 0);signal cache_index:std_logic_vector(4 downto 0);
@@ -36,7 +36,7 @@ begin
   response_valid=>reply,response_id=>reply_id,response_status=>x"00000000",cache_index=>cache_index,cache_data=>x"CAFEBABE");
  completion:entity work.nds_h3d_gx_dma_completion port map(clk=>clk,reset=>reset,gx_complete=>gx_complete,dma_bus_on=>grant,cpu_complete=>cpu_complete);
  dut:entity work.nds_dma9 port map(clk=>clk,reset=>reset,gb_bus=>regs,wired_out=>open,wired_done=>open,
-  trig_vblank=>vblank,trig_hblank=>hblank,trig_card=>'0',gx_supported=>'1',trig_gx=>'0',cpu_bus_idle=>cpu_idle,io_read_wait_grant=>allow_overlap,
+  trig_vblank=>vblank,trig_hblank=>hblank,trig_card=>'0',gx_supported=>'1',trig_gx=>gx_trigger,cpu_bus_idle=>cpu_idle,io_read_wait_grant=>allow_overlap,
   dma_on=>dma_on,dma_bus_on=>grant,gx_write_valid=>io_valid,gx_write_ready=>io_ready,io_write_capture=>'1',
   mb_ena=>mb_ena,mb_rnw=>open,mb_adr=>open,mb_acc=>open,mb_lowbits=>open,mb_dout=>open,mb_din=>x"DEADDEAD",mb_done=>'0',
   io_fast_ena=>io_ena,io_fast_rnw=>io_rnw,io_fast_adr=>io_addr,io_fast_acc=>open,io_fast_be=>io_be,io_fast_dout=>io_data,io_fast_din=>x"DEADDEAD",
@@ -96,7 +96,7 @@ begin
   procedure reg(a:natural;d:std_logic_vector(31 downto 0)) is
   begin cycles(1);regs.Adr<=std_logic_vector(to_unsigned(a,28));regs.Din<=d;regs.ena<='1';regs.rnw<='0';regs.bEna<="1111";cycles(1);regs.ena<='0';regs.rnw<='1';end;
   procedure init is
-  begin reset<='1';cpu_read<='0';reply<='0';hblank<='0';vblank<='0';loader<='0';peek<='0';query_ready<='1';cache_idle<='1';locked<='0';io_ready<='1';ram_enabled<='1';cycles(3);reset<='0';cycles(2);end;
+  begin reset<='1';gx_trigger<='0';cpu_read<='0';reply<='0';hblank<='0';vblank<='0';loader<='0';peek<='0';query_ready<='1';cache_idle<='1';locked<='0';io_ready<='1';ram_enabled<='1';cycles(3);reset<='0';cycles(2);end;
   procedure read_and_trigger is
   begin cpu_read<='1';cycles(1);cpu_read<='0';if query/='1' then wait until query='1' for 1 us;end if;assert query='1' report "GX query missing" severity failure;cycles(3);hblank<='1';vblank<='1';cycles(1);hblank<='0';vblank<='0';end;
   procedure respond is
@@ -142,6 +142,23 @@ begin
    if repeat_index<8 then hblank<='1';cycles(1);hblank<='0';end if;
   end loop;
   respond;cycles(10);assert completions=1 report "late reply after repeated HBlanks lost" severity failure;
+  -- A lower-priority GX request may be waiting for CPU ownership when a
+  -- high-priority HBlank arrives. Re-arbitrate before ownership is granted;
+  -- otherwise the safe HBlank overlap is blocked by an unrelated request.
+  init;expect_fast<=true;word32<=false;src<=16#02001002#;dst<=16#04000014#;cycles(1);
+  reg(16#B0#,std_logic_vector(to_unsigned(src,32)));reg(16#B4#,std_logic_vector(to_unsigned(dst,32)));reg(16#B8#,x"D3400001");
+  reg(16#D4#,x"02002000");reg(16#D8#,x"04000400");reg(16#DC#,x"BC400010");
+  cpu_read<='1';cycles(1);cpu_read<='0';cycles(8);
+  gx_trigger<='1';cycles(1);gx_trigger<='0';cycles(12);
+  assert dma_on='1' and grant='0' report "GX request did not park at CPU grant" severity failure;
+  for repeat_index in 1 to 8 loop
+   hblank<='1';cycles(1);hblank<='0';cycles(100);
+   assert writes=repeat_index and reads=repeat_index and completions=0 and cpu_wait='1'
+    report "pending lower-priority GX DMA blocked HBlank during CPU reply wait" severity failure;
+  end loop;
+  -- Reset while the original GX request is still pending. Its normal
+  -- transfer path has separate coverage; this checks the parked grant.
+  init;
   -- Non-HBlank, multi-unit, non-RAM, non-2D and reload-from-unsupported source
   -- transfers must not borrow the parked CPU bus. Reset instead of granting
   -- normal fallback, which is covered by the standalone transfer matrix.

@@ -21,17 +21,21 @@ PYCODE
 if ! command -v nvc >/dev/null; then
  docker run --rm --network none -v "$repo:/workspace:ro" -v "$test_tmp:/test" -w /test nds4mister-nvc-arm64:1.22.1 bash -lc '
  set -eu
- nvc --std=2008 -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd /workspace/rtl/nds_h3d_gx_readback_owner.vhd /workspace/rtl/nds_h3d_gx_dma_completion.vhd /test/actual_gx_overlap.vhd /workspace/rtl/tb_nds_dma9_mainram_fast.vhd
+ nvc --std=2008 -a /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd /workspace/third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd /workspace/rtl/nds_h3d_gx_readback_owner.vhd /workspace/rtl/nds_h3d_gx_dma_completion.vhd /test/actual_gx_overlap.vhd /workspace/rtl/tb_nds_dma9_mainram_fast.vhd /workspace/rtl/tb_nds_dma9_hblank_pair.vhd
  nvc --std=2008 -e tb_nds_dma9_gx_overlap
  nvc --std=2008 -r tb_nds_dma9_gx_overlap --ieee-warnings=off --exit-severity=error
+ nvc --std=2008 -e tb_nds_dma9_hblank_pair
+ nvc --std=2008 -r tb_nds_dma9_hblank_pair --ieee-warnings=off --exit-severity=error
  nvc --std=2008 -e tb_nds_dma9_mainram_fast
  nvc --std=2008 -r tb_nds_dma9_mainram_fast --ieee-warnings=off --exit-severity=error
  '
 else
  cd "$test_tmp"
- nvc --std=2008 -a "$repo/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd" "$repo/third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd" "$repo/rtl/nds_h3d_gx_readback_owner.vhd" "$repo/rtl/nds_h3d_gx_dma_completion.vhd" "$test_tmp/actual_gx_overlap.vhd" "$repo/rtl/tb_nds_dma9_mainram_fast.vhd"
+ nvc --std=2008 -a "$repo/third_party/Nitro_DarkSide/d2dabe/rtl/proc_bus_gba.vhd" "$repo/third_party/Nitro_DarkSide/d2dabe/rtl/nds_dma9.vhd" "$repo/rtl/nds_h3d_gx_readback_owner.vhd" "$repo/rtl/nds_h3d_gx_dma_completion.vhd" "$test_tmp/actual_gx_overlap.vhd" "$repo/rtl/tb_nds_dma9_mainram_fast.vhd" "$repo/rtl/tb_nds_dma9_hblank_pair.vhd"
  nvc --std=2008 -e tb_nds_dma9_gx_overlap
  nvc --std=2008 -r tb_nds_dma9_gx_overlap --ieee-warnings=off --exit-severity=error
+ nvc --std=2008 -e tb_nds_dma9_hblank_pair
+ nvc --std=2008 -r tb_nds_dma9_hblank_pair --ieee-warnings=off --exit-severity=error
  nvc --std=2008 -e tb_nds_dma9_mainram_fast
  nvc --std=2008 -r tb_nds_dma9_mainram_fast --ieee-warnings=off --exit-severity=error
 fi

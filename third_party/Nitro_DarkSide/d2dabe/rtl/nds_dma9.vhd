@@ -343,6 +343,27 @@ architecture arch of nds_dma9 is
              (a >= 16#04001000# and a < 16#04001060#);
    end function;
 
+   -- One register may be sent as one 32-bit unit or two 16-bit units.
+   -- The latter is used by NSMB's higher-priority BG3X HBlank channel.
+   -- Keep a pair inside one aligned RAM word and one aligned 2D register;
+   -- neither unit can cross into a lane that needs the parked CPU membus.
+   function small_2d_overlap(c : t_chan) return boolean is
+   begin
+      if c.timing /= "010" or c.srcctl = "11" or
+         not is_main(c.cur_src) or not is_2d_register(c.cur_dst) or
+         (c.dstctl = "11" and not is_2d_register(unsigned(c.dad))) then
+         return false;
+      end if;
+      if unsigned(c.count) = 1 and c.remain <= 1 then
+         return true;
+      end if;
+      return unsigned(c.count) = 2 and c.remain <= 2 and c.word32 = '0' and
+         c.srcctl = "00" and (c.dstctl = "00" or c.dstctl = "11") and
+         (c.remain = 1 or (c.cur_src(1 downto 0) = "00" and
+          c.cur_dst(1 downto 0) = "00" and
+          (c.dstctl /= "11" or c.dad(1 downto 0) = "00")));
+   end function;
+
 begin
 
    -- ================= per-access cost census (sim only) =================
@@ -706,19 +727,25 @@ begin
                  end if;
 
                when GRANT =>
-                  if (cpu_bus_idle = '1') then
+                  -- The CPU may hold its bus through a long GX reply wait.
+                  -- No transfer owns the bus yet, so reconsider newly pending
+                  -- higher-priority channels before accepting this grant. In
+                  -- particular, a queued GX DMA must not block a small
+                  -- HBlank DMA that can use the independent RAM/IO lanes.
+                  v_pick := active;
+                  for i in 3 downto 0 loop
+                     if (i < active and ch(i).pend = '1' and ch(i).enable = '1') then
+                        v_pick := i;
+                     end if;
+                  end loop;
+                  if (v_pick /= active) then
+                     active <= v_pick;
+                  elsif (cpu_bus_idle = '1') then
                      io_read_overlap <= '0';
                      dma_bus_on <= '1';
                      state      <= LATCH;
                   elsif (io_read_wait_grant = '1' and
-                         ch(active).timing = "010" and
-                         unsigned(ch(active).count) = 1 and
-                         ch(active).remain <= 1 and
-                         ch(active).srcctl /= "11" and
-                         is_main(ch(active).cur_src) and
-                         is_2d_register(ch(active).cur_dst) and
-                         (ch(active).dstctl /= "11" or
-                          is_2d_register(unsigned(ch(active).dad)))) then
+                         small_2d_overlap(ch(active))) then
                      -- The CPU keeps its accepted I/O transaction. This DMA
                      -- is confined to the separate RAM and IO fast lanes.
                      io_read_overlap <= '1';
