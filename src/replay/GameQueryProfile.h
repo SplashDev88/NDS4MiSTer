@@ -152,6 +152,11 @@ inline bool umk3_sprite_raster_profile(const GameQuerySelection& selected)
     return umk3_texture_range_hash_profile(selected);
 }
 
+inline bool umk3_palette_decode_profile(const GameQuerySelection& selected)
+{
+    return umk3_texture_range_hash_profile(selected);
+}
+
 inline bool nsmb_recovery_profile(const GameQuerySelection& selected)
 {
     return selected.identified &&

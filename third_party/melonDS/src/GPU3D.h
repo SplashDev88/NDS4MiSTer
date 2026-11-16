@@ -157,6 +157,8 @@ public:
     {
         return UseIntegralTextureSpans;
     }
+    void SetNColor8PaletteExpansionEnabled(bool enabled) noexcept { UseNColor8PaletteExpansion = enabled; }
+    bool NColor8PaletteExpansionEnabled() const noexcept { return UseNColor8PaletteExpansion; }
     void SetTextureRangeHashReuseEnabled(bool enabled) noexcept { UseTextureRangeHashReuse = enabled; }
     bool TextureRangeHashReuseEnabled() const noexcept { return UseTextureRangeHashReuse; }
     // Session profile set before rendering starts; defaults off for unknown games.
@@ -364,6 +366,7 @@ public:
     bool UseIntegralTextureSpans = false;
     bool UseSpriteRasterSpans = false;
     bool UseTextureRangeHashReuse = false;
+    bool UseNColor8PaletteExpansion = false;
     bool UseSolidSpans = false;
     bool UseApproximateFactors = false;
 

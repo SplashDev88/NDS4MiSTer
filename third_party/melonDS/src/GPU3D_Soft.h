@@ -2683,6 +2683,7 @@ private:
     bool RenderOff = false;
     void Blank3DFrame();
     int TextureRangeHashOverride = -1;
+    int NColor8PaletteOverride = -1;
     int SolidSpansOverride = -1;
     bool SolidSpans = false;
     bool ApproximateFactors = false;

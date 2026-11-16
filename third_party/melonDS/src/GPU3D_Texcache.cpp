@@ -268,6 +268,27 @@ NDS4MiSTerConvertNColors4TextureRGB6A5(
     }
 }
 
+[[gnu::hot, gnu::noinline]] void NDS4MiSTerConvertNColors8TextureRGB6A5(
+    u32 width, u32 height, u32* output, u32 addr, u32 palAddr,
+    bool color0Transparent, GPU& gpu)
+{
+    // Rebuild for every cache miss. Palette writes and remaps retain the
+    // existing cache invalidation rules; no palette survives between calls.
+    alignas(32) u32 expandedPalette[256];
+    for (u32 index = 0; index < 256; ++index)
+    {
+        const u16 color = gpu.ReadVRAMFlat_TexPal<u16>(palAddr + index * 2);
+        expandedPalette[index] = ConvertRGB5ToRGB6(color) |
+            ((color0Transparent && index == 0) ? 0 : 0x1F000000);
+    }
+    const u32 pixels = width * height;
+    for (u32 i = 0; i < pixels; i += 2)
+    {
+        const u16 packed = gpu.ReadVRAMFlat_Texture<u16>(addr + i);
+        NDS4MiSTerDecodeNColorWordRGB6A5<8>(packed, expandedPalette, output + i);
+    }
+}
+
 template <int outputFmt, int colorBits>
 void ConvertNColorsTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, bool color0Transparent, GPU& gpu)
 {

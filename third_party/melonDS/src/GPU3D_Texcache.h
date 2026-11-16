@@ -61,6 +61,12 @@ void ConvertAXIYTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAdd
 template <int outputFmt, int colorBits>
 void ConvertNColorsTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, bool color0Transparent, GPU& gpu);
 
+// Provisional crossover; the private ARM kernel test selects the final value.
+inline constexpr u32 NDS4MiSTerNColor8PaletteMinTexels = 512;
+void NDS4MiSTerConvertNColors8TextureRGB6A5(
+    u32 width, u32 height, u32* output, u32 addr, u32 palAddr,
+    bool color0Transparent, GPU& gpu);
+
 void NDS4MiSTerConvertNColors4TextureRGB6A5(
     u32 texParam, u32* output, u32 palAddr, GPU& gpu);
 
@@ -73,6 +79,7 @@ public:
     {}
 
     bool RangeHashReuseEnabled = false;
+    bool NColor8PaletteExpansionEnabled = false;
     bool ContentIdentityEnabled = false;
     u64 ContentHistoryHits = 0, ContentHistoryMisses = 0;
 
@@ -338,7 +345,15 @@ public:
             case 2: ConvertNColorsTexture<outputFmt_RGB6A5, 2>(width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU); break;
             case 3: NDS4MiSTerConvertNColors4TextureRGB6A5(
                 texParam, DecodingBuffer, palAddr, GPU); break;
-            case 4: ConvertNColorsTexture<outputFmt_RGB6A5, 8>(width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU); break;
+            case 4:
+                if (NColor8PaletteExpansionEnabled &&
+                    width * height >= NDS4MiSTerNColor8PaletteMinTexels)
+                    NDS4MiSTerConvertNColors8TextureRGB6A5(
+                        width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU);
+                else
+                    ConvertNColorsTexture<outputFmt_RGB6A5, 8>(
+                        width, height, DecodingBuffer, addr, palAddr, color0Transparent, GPU);
+                break;
             }
         }
 

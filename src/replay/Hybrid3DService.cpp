@@ -752,7 +752,8 @@ public:
         bool approximate_factors = false,
         bool opaque_3d_seed = false,
         bool zero_brightness = false,
-        bool texture_range_hash_reuse = false)
+        bool texture_range_hash_reuse = false,
+        bool ncolor8_palette_expansion = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -789,6 +790,7 @@ public:
           regional_vram_replay_(matched_display_test && regional_vram_replay),
           lighting_result_reuse_(matched_display_test && lighting_result_reuse),
           texture_range_hash_reuse_(matched_display_test && texture_range_hash_reuse),
+          ncolor8_palette_expansion_(matched_display_test && ncolor8_palette_expansion),
           solid_spans_(matched_display_test && solid_spans),
           approximate_factors_(matched_display_test && approximate_factors),
           opaque_3d_seed_(matched_display_test && opaque_3d_seed),
@@ -1312,6 +1314,7 @@ private:
         nds_->GPU.GPU3D.SetLightingResultReuseEnabled(lighting_result_reuse_);
         nds_->GPU.GPU3D.SetSolidSpansEnabled(solid_spans_);
         nds_->GPU.GPU3D.SetTextureRangeHashReuseEnabled(texture_range_hash_reuse_);
+        nds_->GPU.GPU3D.SetNColor8PaletteExpansionEnabled(ncolor8_palette_expansion_);
         nds_->GPU.GPU3D.SetApproximateFactorsEnabled(approximate_factors_);
         nds_->GPU.GPU2D_A.SetOpaque3DSeedEnabled(opaque_3d_seed_);
         nds_->GPU.GPU2D_A.SetZeroBrightnessEnabled(zero_brightness_);
@@ -5667,6 +5670,7 @@ private:
     bool regional_vram_replay_ = false;
     bool lighting_result_reuse_ = false;
     bool texture_range_hash_reuse_ = false;
+    bool ncolor8_palette_expansion_ = false;
     bool solid_spans_ = false;
     bool approximate_factors_ = false;
     bool opaque_3d_seed_ = false;
@@ -11585,6 +11589,7 @@ try {
             bool opaque_3d_seed = false;
             bool zero_brightness = false;
             bool texture_range_hash_reuse = false;
+            bool ncolor8_palette_expansion = false;
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
@@ -11610,6 +11615,7 @@ try {
                 solid_spans = nds4mister::replay::ffta2_raster_only_profile(selected);
                 zero_brightness = nds4mister::replay::ffta2_raster_only_profile(selected);
                 texture_range_hash_reuse = nds4mister::replay::umk3_texture_range_hash_profile(selected);
+                ncolor8_palette_expansion = nds4mister::replay::umk3_palette_decode_profile(selected);
                 approximate_factors = nds4mister::replay::mkds_approximate_factors_profile(selected);
                 opaque_3d_seed = nds4mister::replay::dawn_opaque_3d_seed_profile(selected);
                 raster_only_sprite_spans = nds4mister::replay::ffta2_raster_only_profile(selected) ||
@@ -11655,6 +11661,7 @@ try {
                     << " opaque_3d_seed=" << opaque_3d_seed
                     << " zero_brightness=" << zero_brightness
                     << " texture_range_hash_reuse=" << texture_range_hash_reuse
+                    << " ncolor8_palette_expansion=" << ncolor8_palette_expansion
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
 #endif
@@ -11700,7 +11707,8 @@ try {
                 approximate_factors,
                 opaque_3d_seed,
                 zero_brightness,
-                texture_range_hash_reuse);
+                texture_range_hash_reuse,
+                ncolor8_palette_expansion);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif

@@ -278,6 +278,10 @@ SoftRenderer3D::SoftRenderer3D(melonDS::GPU3D& gpu3D, SoftRenderer& parent) noex
     if (DualCoreRaster)
         ParallelPolygonList = std::make_unique<RendererPolygon[]>(
             MaxRendererPolygons);
+    const char* paletteExpansion = getenv("NDS4MISTER_NCOLOR8_PALETTE");
+    if (paletteExpansion)
+        NColor8PaletteOverride = strcmp(paletteExpansion, "auto") == 0 ? -1 :
+            strcmp(paletteExpansion, "1") == 0 ? 1 : 0;
     const char* rangeHashReuse = std::getenv("NDS4MISTER_TEXTURE_RANGE_HASH_REUSE");
     if (rangeHashReuse)
         TextureRangeHashOverride = strcmp(rangeHashReuse, "auto") == 0 ? -1 :
@@ -5678,6 +5682,8 @@ void SoftRenderer3D::Blank3DFrame()
 
 void SoftRenderer3D::RenderFrame()
 {
+    TextureCache.NColor8PaletteExpansionEnabled = NColor8PaletteOverride < 0 ?
+        GPU3D.NColor8PaletteExpansionEnabled() : NColor8PaletteOverride != 0;
     TextureCache.RangeHashReuseEnabled = TextureRangeHashOverride < 0 ?
         GPU3D.TextureRangeHashReuseEnabled() : TextureRangeHashOverride != 0;
     ApproximateFactors = ApproximateFactorsOverride < 0 ? GPU3D.ApproximateFactorsEnabled() :
