@@ -1664,6 +1664,7 @@ assign h3d_full_frame_screen = 1'b0;
 // -------------------------------------------------------------------------
 `ifdef NDS_ARM9_PC_PROFILE
 wire [31:0] profile_pc9, profile_cpsr9, profile_control9;
+wire [31:0] profile_scroll_diag;
 wire [31:0] profile_pc_ddr, profile_metadata_ddr;
 // Synchronize reset release into the source domain. This observer does not
 // participate in any console hold, execution, bus or publication handshake.
@@ -1671,7 +1672,7 @@ wire [31:0] profile_pc_ddr, profile_metadata_ddr;
 always_ff @(posedge clk2x) profile_reset_sync <= {profile_reset_sync[0], bridge_reset_ddr};
 nds_arm9_pc_sampler profile_sampler (
     .cpu_clk(clk2x), .cpu_reset(profile_reset_sync[1]),
-    .architectural_pc(profile_pc9), .thumb(profile_cpsr9[5]),
+    .architectural_pc(profile_scroll_diag), .thumb(profile_control9[7]),
     .halted(profile_control9[8]), .dma_hold(profile_control9[6]),
     .guest_reset(profile_control9[13]), .vblank_async(h3d_lcd_vblank),
     .ddr_clk(ddr_clk), .ddr_reset(bridge_reset_ddr),
@@ -2322,7 +2323,11 @@ nds_nitro_console_wrap #(
     .h3d_merge_pixel_x(h3d_core_merge_x),
     .h3d_merge_pixel_y(h3d_core_merge_y),
     .h3d_line_drop(h3d_core_line_drop),
+`ifdef NDS_ARM9_PC_PROFILE
+    .h3d_bg1_scroll_triplet(profile_scroll_diag),
+`else
     .h3d_bg1_scroll_triplet(),
+`endif
     .h3d_query_sample_toggle(),
     .h3d_service_ready(h3d_console_release),
     .h3d_readback_request(h3d_readback_request),

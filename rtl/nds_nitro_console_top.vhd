@@ -3076,7 +3076,18 @@ begin
    end generate;
 
    -- Temporary query observation is absent; retain the wrapper port ABI.
-   dbg_bg1_scroll_triplet <= (others => '0');
+   -- Private passive scroll-stall observation, sampled into the existing H3D
+   -- heartbeat. No bus, hold, timing, completion or DMA decision depends on it.
+   -- [31:20] accepted CPU address, [19:16] DMA state, [15:12] pending,
+   -- [11:10] active channel, [9:7] timing, [6] GX busy, [5] fence,
+   -- [4] query issue, [3] GPU credit, [2] RAM idle, [1] CPU accepted,
+   -- [0] DMA owns bus. The accepted address matters: live CPU pins can already
+   -- show the next transaction while membus is finishing an older request.
+   dbg_bg1_scroll_triplet <= cpu_access_addr & dma9_dbg_state &
+      dma9_dbg_pending & dma9_dbg_active_channel & dma9_dbg_active_timing &
+      gx_readback_busy & gx_readback_fence & h3d_readback_request &
+      h3d_gpu_source_ready & (dma_mr_idle1 and dma_mr_idle2) &
+      cpu_access_active & dma_bus_on;
    dbg_query_sample_toggle <= '0';
 
    -- ================= engine B =================

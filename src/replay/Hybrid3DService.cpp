@@ -27,7 +27,7 @@
 
 #include <array>
 #include <atomic>
-#if defined(NDS4MISTER_FMV_DIAGNOSTIC) || defined(NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR)
+#if defined(NDS4MISTER_FMV_DIAGNOSTIC) || defined(NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR) || defined(NDS4MISTER_SCROLL_OBSERVER)
 #include <fstream>
 #endif
 #include <cerrno>
@@ -800,6 +800,9 @@ public:
           runtime_telemetry_(runtime_telemetry),
           texture_trace_path_(std::move(texture_trace_path))
     {
+#ifdef NDS4MISTER_SCROLL_OBSERVER
+        scroll_rows_.resize(131072);
+#endif
         timeline_ = matched_display_test_ && runtime_telemetry_ ?
             runtime_telemetry_->timeline.get() : nullptr;
         consumer_.enable_acquisition_timing(timeline_ != nullptr);
@@ -848,6 +851,18 @@ public:
     {
         stop_replay_worker();
         stop_publication_worker();
+#ifdef NDS4MISTER_SCROLL_OBSERVER
+        if (scroll_count_) {
+            std::ofstream out("/tmp/nds-scroll-observer.csv");
+            out << "sequence,packet,lcd,line,kind,address,value,bg1x,bg1y,blank_hold\n";
+            const auto first = scroll_count_ > scroll_rows_.size() ? scroll_count_ - scroll_rows_.size() : 0;
+            for (auto i = first; i < scroll_count_; ++i) {
+                const auto& row = scroll_rows_[i % scroll_rows_.size()];
+                for (unsigned j = 0; j < row.size(); ++j) out << (j ? "," : "") << row[j];
+                out << '\n';
+            }
+        }
+#endif
 #ifdef NDS4MISTER_GEOMETRY_REPEAT_OBSERVER
         dump_geometry_observer();
 #endif
@@ -2732,9 +2747,31 @@ private:
             (record.data >> 32) == 0;
     }
 
+#ifdef NDS4MISTER_SCROLL_OBSERVER
+    // Private bounded in-memory observer; flushed only after replay has stopped.
+    std::vector<std::array<std::uint32_t, 10>> scroll_rows_;
+    std::uint64_t scroll_count_ = 0;
+    void observe_scroll(const frame_packet::Record& record, unsigned kind)
+    {
+        if (!matched_display_test_ || scroll_rows_.empty()) return;
+        const auto line = kind == 0 ? record.address_or_aux :
+            (frame_packet::record_has_scanline(record) ? frame_packet::record_scanline(record) : 511u);
+        scroll_rows_[scroll_count_ % scroll_rows_.size()] = {{
+            static_cast<std::uint32_t>(scroll_count_), replay_packet_frame_,
+            kind == 0 ? static_cast<std::uint32_t>(record.data) : timeline_replay_lcd_,
+            line, kind, record.address_or_aux, static_cast<std::uint32_t>(record.data),
+            nds_->GPU.GPU2D_A.BGXPos[1], nds_->GPU.GPU2D_A.BGYPos[1],
+            static_cast<unsigned>(late_blank_hold_)}};
+        ++scroll_count_;
+    }
+#endif
+
     bool apply_arm_video_write(const frame_packet::Record& record)
     {
         const auto kind = frame_packet::record_kind(record);
+#ifdef NDS4MISTER_SCROLL_OBSERVER
+        if (kind == frame_packet::RecordKind::HBlank) observe_scroll(record, 0);
+#endif
         // The packet consumer has already validated every compact record. In
         // production the shadow is diagnostic-only and otherwise duplicates
         // every register/palette/OAM mutation that melonDS applies below.
@@ -2834,6 +2871,10 @@ private:
                 access->address, static_cast<melonDS::u16>(access->value));
         else
             nds_->ARM9Write32(access->address, access->value);
+#ifdef NDS4MISTER_SCROLL_OBSERVER
+        if (access->address >= 0x04000000u && access->address < 0x04000020u)
+            observe_scroll(record, 1);
+#endif
         if (access->address <= EngineBDispCnt + 3u &&
             access_last >= EngineBDispCnt) {
             const auto effective = nds_->GPU.GPU2D_B.DispCnt;
