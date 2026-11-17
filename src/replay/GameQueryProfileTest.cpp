@@ -43,31 +43,37 @@ int main(int argc, char** argv)
         check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,changed,true}), "unqualified Kart revision off");
     }
     std::cout << "MKDS_APPROX_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
-    const GameQueryIdentity gta {{{'Y','G','X','E'}}, 0, 0x1be14a3eu};
-    for (auto profile : {gta_approximate_factors_profile, gta_compressed_palette_range_profile, gta_texture_opacity_profile}) {
-        check(profile({GameQueryProfile::Fast,gta,true}), "GTA factors on");
-        check(!profile({GameQueryProfile::Fast,gta,false}), "unidentified GTA off");
-        check(!profile({GameQueryProfile::Fast,known,true}) &&
-              !profile({GameQueryProfile::Fast,kart,true}), "GTA policy excludes other games");
-        check(!dawn_lighting_result_reuse_profile({GameQueryProfile::Fast,gta,true}), "GTA lighting cache stays off");
-        check(game_query_prefix_mode(select_game_query_profile(gta)) == 2u, "GTA query timing unchanged");
-        for(unsigned bit=0;bit<32;++bit) {
-            auto changed=gta;changed.header_crc32^=1u<<bit;
-            check(!profile({GameQueryProfile::Fast,changed,true}), "changed GTA CRC off");
-        }
-        for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
-            if(value==gta.code[byte])continue;
-            auto changed=gta;changed.code[byte]=value;
-            check(!profile({GameQueryProfile::Fast,changed,true}), "changed GTA code off");
-        }
-        for(unsigned revision=1;revision<256;++revision) {
-            auto changed=gta;changed.revision=revision;
-            check(!profile({GameQueryProfile::Fast,changed,true}), "unqualified GTA revision off");
+    const GameQueryIdentity gta_regions[] = {
+        {{{'Y','G','X','E'}}, 0, 0x1be14a3eu},
+        {{{'Y','G','X','P'}}, 0, 0x05635a2bu},
+        {{{'Y','G','X','J'}}, 0, 0x63c7d103u},
+    };
+    for (const auto& gta : gta_regions) {
+        for (auto profile : {gta_approximate_factors_profile, gta_compressed_palette_range_profile, gta_texture_opacity_profile}) {
+            check(profile({GameQueryProfile::Fast,gta,true}), "GTA factors on");
+            check(!profile({GameQueryProfile::Fast,gta,false}), "unidentified GTA off");
+            check(!profile({GameQueryProfile::Fast,known,true}) &&
+                  !profile({GameQueryProfile::Fast,kart,true}), "GTA policy excludes other games");
+            check(!dawn_lighting_result_reuse_profile({GameQueryProfile::Fast,gta,true}), "GTA lighting cache stays off");
+            check(game_query_prefix_mode(select_game_query_profile(gta)) == 2u, "GTA query timing unchanged");
+            for(unsigned bit=0;bit<32;++bit) {
+                auto changed=gta;changed.header_crc32^=1u<<bit;
+                check(!profile({GameQueryProfile::Fast,changed,true}), "changed GTA CRC off");
+            }
+            for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
+                if(value==gta.code[byte])continue;
+                auto changed=gta;changed.code[byte]=value;
+                check(!profile({GameQueryProfile::Fast,changed,true}), "changed GTA code off");
+            }
+            for(unsigned revision=1;revision<256;++revision) {
+                auto changed=gta;changed.revision=revision;
+                check(!profile({GameQueryProfile::Fast,changed,true}), "unqualified GTA revision off");
+            }
         }
     }
-    std::cout << "GTA_APPROX_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 lighting_cache_off=1 query_timing_unchanged=1\n";
-    std::cout << "GTA_OPACITY_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
-    std::cout << "GTA_PALETTE_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
+    std::cout << "GTA_APPROX_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 lighting_cache_off=1 query_timing_unchanged=1\n";
+    std::cout << "GTA_OPACITY_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 other_games_off=1\n";
+    std::cout << "GTA_PALETTE_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 other_games_off=1\n";
     const GameQueryIdentity resident_evil_regions[] = {
         {{{'A','B','H','E'}}, 0, 0xc7e5cdf1u},
         {{{'A','B','H','P'}}, 0, 0x34b87b43u},

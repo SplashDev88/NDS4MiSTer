@@ -135,32 +135,41 @@ inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
 }
 
-// Qualified on GTA USA driving snapshots with Native resolution and AA Off.
-// This renderer policy also selects the existing exact neutral-white shader.
-// Other headers and revisions keep exact perspective factors.
+// The three catalogued retail GTA cartridges, all revision zero. Renderer
+// policies use exact header identities independently of guest-query timing.
+// Unknown revisions and altered headers retain their existing paths.
+inline bool gta_retail_render_profile(const GameQuerySelection& selected)
+{
+    if (!selected.identified) return false;
+    constexpr GameQueryIdentity identities[] = {
+        {{{'Y','G','X','E'}}, 0, 0x1be14a3eu}, // USA
+        {{{'Y','G','X','P'}}, 0, 0x05635a2bu}, // Europe
+        {{{'Y','G','X','J'}}, 0, 0x63c7d103u}, // Japan
+    };
+    for (const auto& identity : identities)
+        if (selected.identity.code == identity.code &&
+            selected.identity.revision == identity.revision &&
+            selected.identity.header_crc32 == identity.header_crc32) return true;
+    return false;
+}
+
+// Existing bounded perspective shortcut and exact neutral-white shader.
+// AA and span eligibility checks remain in the renderer, with exact fallback.
 inline bool gta_approximate_factors_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','G','X','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x1be14a3eu;
+    return gta_retail_render_profile(selected);
 }
 
-// Exact compressed-palette dependency bounds, qualified independently of
-// the perspective approximation on this GTA cartridge.
+// Exact compressed-palette dependency bounds remain independently selectable.
 inline bool gta_compressed_palette_range_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','G','X','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x1be14a3eu;
+    return gta_retail_render_profile(selected);
 }
 
-// Exact full-texture opacity metadata, qualified independently of the
-// palette and perspective policies on this GTA cartridge.
+// Exact full-texture opacity metadata remains independently selectable.
 inline bool gta_texture_opacity_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','G','X','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x1be14a3eu;
+    return gta_retail_render_profile(selected);
 }
 
 // Composition-only row reuse is qualified on these Resident Evil cartridges.
