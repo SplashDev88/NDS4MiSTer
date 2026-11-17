@@ -98,8 +98,9 @@ void ConvertBitmapTexture(u32 width, u32 height, u32* output, u32 addr, GPU& gpu
 
 template void ConvertBitmapTexture<outputFmt_RGB6A5>(u32 width, u32 height, u32* output, u32 addr, GPU& gpu);
 
-template <int outputFmt>
-void ConvertCompressedTexture(u32 width, u32 height, u32* output, u32 addr, u32 addrAux, u32 palAddr, GPU& gpu)
+template <int outputFmt, bool TrackPaletteBounds>
+void ConvertCompressedTexture(u32 width, u32 height, u32* output, u32 addr, u32 addrAux, u32 palAddr, GPU& gpu,
+                              CompressedPaletteBounds* bounds)
 {
     // we process a whole block at the time
     for (int y = 0; y < height / 4; y++)
@@ -108,6 +109,8 @@ void ConvertCompressedTexture(u32 width, u32 height, u32* output, u32 addr, u32 
         {
             u32 data = gpu.ReadVRAMFlat_Texture<u32>(addr + (x + y * (width / 4))*4);
             u16 auxData = gpu.ReadVRAMFlat_Texture<u16>(addrAux + (x + y * (width / 4))*2);
+            if constexpr (TrackPaletteBounds)
+                bounds->Include(auxData);
 
             u32 paletteOffset = palAddr + (auxData & 0x3FFF) * 4;
             u16 color0 = gpu.ReadVRAMFlat_TexPal<u16>(paletteOffset) | 0x8000;
@@ -196,7 +199,8 @@ void ConvertCompressedTexture(u32 width, u32 height, u32* output, u32 addr, u32 
     }
 }
 
-template void ConvertCompressedTexture<outputFmt_RGB6A5>(u32, u32, u32*, u32, u32, u32, GPU&);
+template void ConvertCompressedTexture<outputFmt_RGB6A5, false>(u32, u32, u32*, u32, u32, u32, GPU&, CompressedPaletteBounds*);
+template void ConvertCompressedTexture<outputFmt_RGB6A5, true>(u32, u32, u32*, u32, u32, u32, GPU&, CompressedPaletteBounds*);
 
 template <int outputFmt, int X, int Y>
 void ConvertAXIYTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, GPU& gpu)

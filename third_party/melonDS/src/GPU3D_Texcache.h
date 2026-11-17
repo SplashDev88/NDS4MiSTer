@@ -54,8 +54,21 @@ NDS4MiSTerDecodeNColorWordRGB6A5(
 
 template <int outputFmt>
 void ConvertBitmapTexture(u32 width, u32 height, u32* output, u32 addr, GPU& gpu);
-template <int outputFmt>
-void ConvertCompressedTexture(u32 width, u32 height, u32* output, u32 addr, u32 addrAux, u32 palAddr, GPU& gpu);
+struct CompressedPaletteBounds
+{
+    u32 Begin = 0x10000, End = 0;
+    void Include(u16 auxiliary)
+    {
+        const u32 offset = (auxiliary & 0x3FFF) * 4;
+        Begin = std::min(Begin, offset);
+        // Include all four colors read by the decoder, including modes that
+        // replace some of them with interpolation or transparency.
+        End = std::max(End, offset + 8);
+    }
+};
+template <int outputFmt, bool TrackPaletteBounds = false>
+void ConvertCompressedTexture(u32 width, u32 height, u32* output, u32 addr, u32 addrAux, u32 palAddr, GPU& gpu,
+                              CompressedPaletteBounds* bounds = nullptr);
 template <int outputFmt, int X, int Y>
 void ConvertAXIYTexture(u32 width, u32 height, u32* output, u32 addr, u32 palAddr, GPU& gpu);
 template <int outputFmt, int colorBits>
@@ -79,6 +92,7 @@ public:
     {}
 
     bool RangeHashReuseEnabled = false;
+    bool CompressedPaletteRangeEnabled = false;
     bool NColor8PaletteExpansionEnabled = false;
     bool ContentIdentityEnabled = false;
     u64 ContentHistoryHits = 0, ContentHistoryMisses = 0;
@@ -311,7 +325,19 @@ public:
             entry.TexPalStart = palBase*16;
             entry.TexPalSize = 0x10000;
 
-            ConvertCompressedTexture<outputFmt_RGB6A5>(width, height, DecodingBuffer, addr, slot1addr, entry.TexPalStart, GPU);
+            if (CompressedPaletteRangeEnabled)
+            {
+                CompressedPaletteBounds bounds;
+                ConvertCompressedTexture<outputFmt_RGB6A5, true>(width, height, DecodingBuffer,
+                    addr, slot1addr, entry.TexPalStart, GPU, &bounds);
+                // Auxiliary selectors remain a separate hashed dependency.
+                // A changed selector invalidates this entry before these
+                // palette bounds can be reused. Palette addresses wrap at128KiB.
+                entry.TexPalStart = (entry.TexPalStart + bounds.Begin) & 0x1FFFF;
+                entry.TexPalSize = bounds.End - bounds.Begin;
+            }
+            else
+                ConvertCompressedTexture<outputFmt_RGB6A5>(width, height, DecodingBuffer, addr, slot1addr, entry.TexPalStart, GPU);
         }
         else
         {
