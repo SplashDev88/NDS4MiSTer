@@ -167,6 +167,8 @@ public:
     bool TextureRangeHashReuseEnabled() const noexcept { return UseTextureRangeHashReuse; }
     void SetCompressedPaletteRangeEnabled(bool enabled) noexcept { UseCompressedPaletteRange = enabled; }
     bool CompressedPaletteRangeEnabled() const noexcept { return UseCompressedPaletteRange; }
+    void SetTextureOpacityEnabled(bool enabled) noexcept { UseTextureOpacity = enabled; }
+    bool TextureOpacityEnabled() const noexcept { return UseTextureOpacity; }
     // Session profile set before rendering starts; defaults off for unknown games.
     void SetSolidSpansEnabled(bool enabled) noexcept { UseSolidSpans = enabled; }
     bool SolidSpansEnabled() const noexcept { return UseSolidSpans; }
@@ -373,6 +375,7 @@ public:
     bool UseSpriteRasterSpans = false;
     bool UseTextureRangeHashReuse = false;
     bool UseCompressedPaletteRange = false;
+    bool UseTextureOpacity = false;
     bool UseNColor8PaletteExpansion = false;
     bool UseRectangleTextureX = false;
     bool UseBackgroundRowReuse = false;

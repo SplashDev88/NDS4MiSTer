@@ -91,6 +91,8 @@ public:
         : GPU(gpu), TexLoader(texloader) // probably better if this would be a move constructor???
     {}
 
+    TexLoaderT& Loader() noexcept { return TexLoader; }
+
     bool RangeHashReuseEnabled = false;
     bool CompressedPaletteRangeEnabled = false;
     bool NColor8PaletteExpansionEnabled = false;

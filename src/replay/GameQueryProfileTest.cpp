@@ -44,7 +44,7 @@ int main(int argc, char** argv)
     }
     std::cout << "MKDS_APPROX_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
     const GameQueryIdentity gta {{{'Y','G','X','E'}}, 0, 0x1be14a3eu};
-    for (auto profile : {gta_approximate_factors_profile, gta_compressed_palette_range_profile}) {
+    for (auto profile : {gta_approximate_factors_profile, gta_compressed_palette_range_profile, gta_texture_opacity_profile}) {
         check(profile({GameQueryProfile::Fast,gta,true}), "GTA factors on");
         check(!profile({GameQueryProfile::Fast,gta,false}), "unidentified GTA off");
         check(!profile({GameQueryProfile::Fast,known,true}) &&
@@ -66,6 +66,7 @@ int main(int argc, char** argv)
         }
     }
     std::cout << "GTA_APPROX_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 lighting_cache_off=1 query_timing_unchanged=1\n";
+    std::cout << "GTA_OPACITY_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
     std::cout << "GTA_PALETTE_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
     const GameQueryIdentity resident_evil_regions[] = {
         {{{'A','B','H','E'}}, 0, 0xc7e5cdf1u},

@@ -1182,6 +1182,7 @@ class SoftRenderer;
 class SoftTexcacheLoader
 {
 public:
+    bool TrackOpacity = false;
     u32* GenerateTexture(u32 width, u32 height, u32 layers);
     void UploadTexture(
         u32* handle, u32 width, u32 height, u32 layer, void* data);

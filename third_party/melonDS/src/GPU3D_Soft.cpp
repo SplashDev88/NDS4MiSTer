@@ -411,22 +411,44 @@ u32* SoftTexcacheLoader::GenerateTexture(
     u32 width, u32 height, u32 layers)
 {
     // Each decoded layer owns one maximum-alpha word per texture row.
+    // Qualified opacity metadata appends one additional word per layer.
     // It is refreshed with the pixels by the existing cache invalidation.
-    return new u32[(static_cast<size_t>(width) * height + height) * layers];
+    return new u32[(static_cast<size_t>(width) * height + height +
+                    unsigned(TrackOpacity)) * layers];
 }
 
 void SoftTexcacheLoader::UploadTexture(
     u32* handle, u32 width, u32 height, u32 layer, void* data)
 {
     const size_t pixels = static_cast<size_t>(width) * height;
-    u32* destination = handle + (pixels + height) * layer;
+    u32* destination = handle + (pixels + height + unsigned(TrackOpacity)) * layer;
     memcpy(destination, data, pixels * sizeof(u32));
-    for (u32 y = 0; y < height; ++y)
+    if (TrackOpacity)
     {
-        u32 maximum = 0;
-        for (u32 x = 0; x < width; ++x)
-            maximum = std::max(maximum, destination[y * width + x] >> 24);
-        destination[pixels + y] = maximum;
+        u32 combinedAlpha = 31;
+        for (u32 y = 0; y < height; ++y)
+        {
+            u32 maximum = 0;
+            for (u32 x = 0; x < width; ++x)
+            {
+                const u32 alpha = destination[y * width + x] >> 24;
+                maximum = std::max(maximum, alpha);
+                combinedAlpha &= alpha;
+            }
+            destination[pixels + y] = maximum;
+        }
+        // Decoded alpha is 0..31: AND stays 31 only for fully opaque textures.
+        destination[pixels + height] = combinedAlpha == 31;
+    }
+    else
+    {
+        for (u32 y = 0; y < height; ++y)
+        {
+            u32 maximum = 0;
+            for (u32 x = 0; x < width; ++x)
+                maximum = std::max(maximum, destination[y * width + x] >> 24);
+            destination[pixels + y] = maximum;
+        }
     }
 }
 
@@ -1132,7 +1154,8 @@ void SoftRenderer3D::SetupPolygon(
             pixelState.TexturePixels = textureArray +
                 static_cast<size_t>(textureLayer) *
                     (pixelState.TextureWidth * pixelState.TextureHeight +
-                     pixelState.TextureHeight);
+                     pixelState.TextureHeight +
+                     unsigned(TextureCache.Loader().TrackOpacity));
             textureBinding.Pixels = pixelState.TexturePixels;
             textureBinding.TexParam = polygon->TexParam;
             textureBinding.TexPalette = polygon->TexPalette;
@@ -1627,6 +1650,10 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
     const auto& pixelState = rp->PixelState;
     const u32 polyattr = rp->PolyAttr;
     const u32 alphaRef = GPU3D.RenderAlphaRef;
+    const bool textureFullyOpaque = OpaquePolygon &&
+        TextureCache.Loader().TrackOpacity && pixelState.TexturePixels[
+            pixelState.TextureWidth * pixelState.TextureHeight +
+            pixelState.TextureHeight];
     const bool writeTranslucentDepth = polygon->Attr & (1<<11);
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
     // Classify and pack once per span, not once per lane. Only S/T need
@@ -1735,7 +1762,7 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
             // dependencies. Preserve exactly the scalar color/depth/attr
             // writes, but commit each plane as one unaligned-safe vector.
             if (OpaquePolygon && allFront && alphaRef < 31 &&
-                NDS4MiSTerAllCachedTexelsOpaque4(colorVector))
+                (textureFullyOpaque || NDS4MiSTerAllCachedTexelsOpaque4(colorVector)))
             {
                 const u32 address = rowAddress + firstX;
                 vst1q_u32(DepthBuffer + address,
@@ -5929,6 +5956,15 @@ void SoftRenderer3D::FinishBackgroundRows() noexcept
 
 void SoftRenderer3D::RenderFrame()
 {
+    // A policy transition changes each cached layer's metadata stride.
+    // Discard the previous layout before any new lookup or worker starts.
+    const bool trackOpacity = GPU3D.TextureOpacityEnabled();
+    if (TextureCache.Loader().TrackOpacity != trackOpacity)
+    {
+        TextureCache.Reset();
+        TextureCache.Loader().TrackOpacity = trackOpacity;
+        GPU3D.RenderFrameIdentical = false;
+    }
     UseRectangleTextureX = RectangleTextureXOverride < 0 ?
         GPU3D.RectangleTextureXEnabled() : RectangleTextureXOverride != 0;
     TextureCache.NColor8PaletteExpansionEnabled = NColor8PaletteOverride < 0 ?
