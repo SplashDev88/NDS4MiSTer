@@ -1190,6 +1190,8 @@ public:
 
 using SoftTexcache = Texcache<SoftTexcacheLoader, u32*>;
 
+class NDS4MiSTerBackgroundRowCache;
+
 class SoftRenderer3D : public Renderer3D
 {
 public:
@@ -2697,6 +2699,17 @@ private:
     int NColor8PaletteOverride = -1;
     int RectangleTextureXOverride = -1;
     bool UseRectangleTextureX = false;
+    std::unique_ptr<NDS4MiSTerBackgroundRowCache> BackgroundRows;
+    bool BackgroundReuse[192] {};
+    bool BackgroundRowsPrepared = false;
+    bool BackgroundSoftwareFrame = false;
+    u64 BackgroundRowFrames = 0;
+    u64 BackgroundCachedRows = 0;
+    void InvalidateBackgroundRows() noexcept;
+    void PrepareBackgroundRows(bool textureChanged, bool forceRecovery);
+    void FinishBackgroundRows() noexcept;
+    bool IsFpgaLightFrameGeometry() const;
+
     int SolidSpansOverride = -1;
     bool SolidSpans = false;
     bool ApproximateFactors = false;

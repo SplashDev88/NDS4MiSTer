@@ -17,6 +17,7 @@
 */
 
 #include "GPU3D_Soft.h"
+#include "NDS4MiSTerBackgroundRows.h"
 #include "GPU3D_Diagnostic.h"
 #include "NDS4MiSTerSolidSpan.h"
 #include "NDS4MiSTerApproxFactor.h"
@@ -202,6 +203,9 @@ void SoftRenderer3D::SetupRenderThread()
 
 void SoftRenderer3D::EnableRenderThread()
 {
+    // Restart/load/settings callers have joined the preceding job. They did
+    // not pass through RenderFrame, so never inherit its reuse mask.
+    InvalidateBackgroundRows();
     if (Threaded && Sema_RenderStart)
     {
         RenderFrameFinished = false;
@@ -318,6 +322,10 @@ void SoftRenderer3D::GetNativeBufferHashes(u64 hashes[3]) const noexcept
 SoftRenderer3D::~SoftRenderer3D()
 {
     StopRenderThread();
+    if (BackgroundRowFrames)
+        std::fprintf(stderr, "H3D_BACKGROUND_ROWS frames=%llu reused_rows=%llu\n",
+            (unsigned long long)BackgroundRowFrames,
+            (unsigned long long)BackgroundCachedRows);
     const char* report=std::getenv("NDS4MISTER_RENDER_CACHE_STATS");
     if(report && std::strcmp(report,"1")==0 && TextureHistoryFrames)
         if(FILE* f=std::fopen("/tmp/nds-render-cache-stats.jsonl","a"))
@@ -3993,7 +4001,7 @@ void SoftRenderer3D::RenderScanline(
                 (y < polygon->YBottom ||
                  (y == polygon->YTop && polygon->YBottom == polygon->YTop)))
             {
-                if (AlternateRows && (y & (RowStep() - 1)))
+                if (BackgroundReuse[y] || (AlternateRows && (y & (RowStep() - 1))))
                     SkipPolygonRow(rp, y, prevIsShadowMask);
                 else if (polygon->IsShadowMask)
                     RenderShadowMaskScanline(
@@ -4031,7 +4039,7 @@ void SoftRenderer3D::RenderScanline(
             RendererPolygon* rp = &polygonList[polygonIndex];
             Polygon* polygon = rp->PolyData;
 
-            if (AlternateRows && (y & (RowStep() - 1)))
+            if (BackgroundReuse[y] || (AlternateRows && (y & (RowStep() - 1))))
                 SkipPolygonRow(rp, y, prevIsShadowMask);
             else if (polygon->IsShadowMask)
                 RenderShadowMaskScanline(
@@ -4428,7 +4436,7 @@ void SoftRenderer3D::ClearBuffers()
             // DuplicateAlternateRows will restore these words from the
             // cleared sampled row. Preserve old bounds until both copies
             // complete, including a cancellation before either pass.
-            if (AlternateRows && (y & (RowStep() - 1))) continue;
+            if (BackgroundReuse[y] || (AlternateRows && (y & (RowStep() - 1)))) continue;
             const int start = FinalPassMinX[y];
             const int end = FinalPassMaxX[y];
             if (start < end)
@@ -4448,6 +4456,7 @@ void SoftRenderer3D::ClearBuffers()
 
     for (int y = 0; y < VisibleScanlines; y++)
     {
+        if (BackgroundReuse[y]) continue;
         FinalPassMinX[y] = 256;
         FinalPassMaxX[y] = 0;
     }
@@ -4527,6 +4536,7 @@ void SoftRenderer3D::ClearBuffers()
 
         for (int y = 0; y < ScanlineWidth*192; y+=ScanlineWidth)
         {
+            if (BackgroundReuse[y/ScanlineWidth]) continue;
             for (int x = 0; x < 256; x++)
             {
                 u32 pixeladdr = FirstPixelOffset + y + x;
@@ -5181,6 +5191,14 @@ bool SoftRenderer3D::TryFpgaFrame()
     if (!CurrentPolygonCount) return trace.finish(Outcome::Empty);
     if (!fpga3d::available()) return trace.finish(Outcome::Unavailable);
     if (EffectiveDispCnt & (1u<<14)) return trace.finish(Outcome::BitmapClear);
+    // Row reuse was admitted only when this same frame was already destined
+    // for software. Keep cached rows away from FPGA clear/command encoding.
+    if (BackgroundSoftwareFrame)
+    {
+        if (fpga3d::adaptiveAdmission && FpgaAdmission.defer())
+            return trace.finish(Outcome::Cooldown);
+        return trace.finish(Outcome::LightScene);
+    }
     if (fpga3d::adaptiveAdmission)
     {
         if (FpgaAdmission.defer()) return trace.finish(Outcome::Cooldown);
@@ -5769,11 +5787,100 @@ u32 SoftRenderer3D::CurrentEffectMask() noexcept
 
 void SoftRenderer3D::Blank3DFrame()
 {
+    InvalidateBackgroundRows();
     // Ignore even an opaque guest clear color. The diagnostic exposes only 2D.
     // Keep the usual completion fences and leave architectural GX state intact.
     memset(ColorBuffer, 0, sizeof(ColorBuffer));
     SparseClearStateValid = false;
     RasterTileHistoryValid = false;
+}
+
+void SoftRenderer3D::InvalidateBackgroundRows() noexcept
+{
+    std::fill_n(BackgroundReuse, 192, false);
+    BackgroundRowsPrepared = false;
+    BackgroundSoftwareFrame = false;
+    if (BackgroundRows) BackgroundRows->invalidate();
+}
+
+bool SoftRenderer3D::IsFpgaLightFrameGeometry() const
+{
+    // Same admission estimate as IsFpgaLightScene, before polygon setup.
+    // This lets software row reuse preserve the existing FPGA decision.
+    unsigned count = 0;
+    u32 work = 0;
+    for (unsigned i = 0; i < GPU3D.RenderNumPolygons; ++i)
+    {
+        const Polygon* polygon = GPU3D.RenderPolygonRAM[i];
+        if (polygon->Degenerate) continue;
+        ++count;
+        int first = std::clamp(polygon->YTop, 0, VisibleScanlines);
+        int end = std::clamp(polygon->YBottom, 0, VisibleScanlines);
+        if (polygon->YTop == polygon->YBottom &&
+            polygon->YTop >= 0 && polygon->YTop < VisibleScanlines)
+            end = first + 1;
+        if (first >= end) continue;
+        s32 left = 256, right = -1;
+        for (u32 vertex = 0; vertex < polygon->NumVertices; ++vertex)
+        {
+            const s32 x = RasterX(polygon->Vertices[vertex]);
+            left = std::min(left, x);
+            right = std::max(right, x);
+        }
+        left = std::clamp(left, 0, 255);
+        right = std::clamp(right, 0, 255);
+        work += u32(std::max(1, right - left + 1)) * u32(end - first);
+        if (work >= 32768) return false;
+    }
+    return count >= 32;
+}
+
+void SoftRenderer3D::PrepareBackgroundRows(bool textureChanged, bool forceRecovery)
+{
+    std::fill_n(BackgroundReuse, 192, false);
+    BackgroundRowsPrepared = false;
+    BackgroundSoftwareFrame = false;
+    const bool eligible = GPU3D.BackgroundRowReuseEnabled() &&
+        FullFrameCompletion && UseTextureCache && !RenderOff &&
+        !AlternateRows && !Quarter && !Tiny && !DropShadows &&
+        !ApproximateFactors && !NeutralWhite &&
+        !(EffectiveDispCnt & ((1u << 4) | (1u << 5) | (1u << 7) | (1u << 14))) &&
+        GPU3D.RenderNumPolygons <= 2048;
+    if (!eligible)
+    {
+        if (BackgroundRows) BackgroundRows->invalidate();
+        return;
+    }
+    const bool software = !fpga3d::available() ||
+        (fpga3d::adaptiveAdmission &&
+         (FpgaAdmission.cooldown || IsFpgaLightFrameGeometry()));
+    if (!software)
+    {
+        if (BackgroundRows) BackgroundRows->invalidate();
+        return;
+    }
+    if (!BackgroundRows)
+        BackgroundRows = std::make_unique<NDS4MiSTerBackgroundRowCache>();
+    if (forceRecovery) BackgroundRows->invalidate();
+    BackgroundRows->prepare(GPU3D, EffectiveDispCnt, !textureChanged);
+    std::copy(BackgroundRows->reusable.begin(), BackgroundRows->reusable.end(),
+        BackgroundReuse);
+    BackgroundRowsPrepared = true;
+    BackgroundSoftwareFrame = true;
+}
+
+void SoftRenderer3D::FinishBackgroundRows() noexcept
+{
+    if (!BackgroundRowsPrepared) return;
+    BackgroundRowsPrepared = false;
+    if (RenderFrameCanceled.load(std::memory_order_relaxed) || GPU3D.AbortFrame)
+    {
+        InvalidateBackgroundRows();
+        return;
+    }
+    BackgroundRows->commit();
+    ++BackgroundRowFrames;
+    BackgroundCachedRows += BackgroundRows->hitRows;
 }
 
 void SoftRenderer3D::RenderFrame()
@@ -5859,6 +5966,9 @@ void SoftRenderer3D::RenderFrame()
         RenderForceNextFrame.exchange(false, std::memory_order_relaxed);
     FrameIdentical =
         !qualityChanged && !forceRecovery && !textureChanged && GPU3D.RenderFrameIdentical;
+    if (!FrameIdentical)
+        PrepareBackgroundRows(textureChanged, qualityChanged || forceRecovery);
+
     if (Parent.StageProfileEnabled)
     {
         ++Parent.StageProfile.ThreeDFrames;
@@ -5877,6 +5987,7 @@ void SoftRenderer3D::RenderFrame()
     {
         ClearBuffers();
         RenderPolygons(false, &GPU3D.RenderPolygonRAM[0], GPU3D.RenderNumPolygons);
+        FinishBackgroundRows();
     }
 }
 
@@ -5951,6 +6062,8 @@ void SoftRenderer3D::RenderThreadFunc()
         if (Parent.StageProfileEnabled &&
             RenderFrameCanceled.load(std::memory_order_relaxed))
             ++Parent.StageProfile.ThreeDRasterCanceledFrames;
+
+        FinishBackgroundRows();
 
         // Clear the in-flight state before publishing completion. The main
         // thread may consume Sema_RenderDone and immediately prepare the next
