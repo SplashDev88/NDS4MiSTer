@@ -361,6 +361,8 @@ void SoftRenderer3D::Reset()
     PrevIsShadowMask = false;
 
     SetupRenderThread();
+    // Reset cleared the output; no previous-frame reuse hint remains valid.
+    FrameIdentical = false;
     EffectiveDispCnt = GPU3D.RenderDispCnt & ~CurrentEffectMask();
     UpdateAlternateRows();
     // SetupRenderThread joins any prior job before controller state is

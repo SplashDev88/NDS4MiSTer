@@ -2592,7 +2592,7 @@ private:
 
     bool Enabled;
 
-    bool FrameIdentical;
+    bool FrameIdentical = false;
 
     u32 ScrolledLine[256];
 
