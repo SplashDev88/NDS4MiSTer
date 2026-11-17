@@ -135,6 +135,16 @@ inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
 }
 
+// Qualified on GTA USA driving snapshots with Native resolution and AA Off.
+// This renderer policy also selects the existing exact neutral-white shader.
+// Other headers and revisions keep exact perspective factors.
+inline bool gta_approximate_factors_profile(const GameQuerySelection& selected)
+{
+    return selected.identified &&
+        selected.identity.code == std::array<std::uint8_t, 4>{{'Y','G','X','E'}} &&
+        selected.identity.revision == 0 && selected.identity.header_crc32 == 0x1be14a3eu;
+}
+
 // Composition-only row reuse is qualified on these Resident Evil cartridges.
 // It compares the current completed 3D row and every 2D input, without the
 // legacy cache's future-row lookahead. Other cartridges keep their old path.
