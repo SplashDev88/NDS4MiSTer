@@ -965,6 +965,35 @@ NDS4MiSTerCachedTextureIndex(
         wrapFlags, widthShift);
 }
 
+#if defined(__arm__) && defined(__ARM_NEON)
+// Prepare repeat-both, no-flip texture coordinates once per span. The
+// signed 12.4 coordinates keep their original shift and mask semantics.
+struct NDS4MiSTerRepeatTextureCoordinates4 {
+    uint16x4_t maskS, maskT;
+    int32x4_t widthShift;
+    const u32* texture;
+};
+[[gnu::always_inline]] static inline NDS4MiSTerRepeatTextureCoordinates4
+NDS4MiSTerPrepareRepeatTextureCoordinates4(const u32* texture, u32 maskS, u32 maskT, u32 shift)
+{
+    return {vdup_n_u16(u16(maskS)),vdup_n_u16(u16(maskT)),
+        vdupq_n_s32(s32(shift)),texture};
+}
+[[gnu::always_inline]] static inline void NDS4MiSTerRepeatTextureIndices4(
+    const NDS4MiSTerRepeatTextureCoordinates4& p, const s16* s, const s16* t, u32* indices)
+{
+    const auto ss=vand_u16(vreinterpret_u16_s16(vshr_n_s16(vld1_s16(s),4)),p.maskS);
+    const auto tt=vand_u16(vreinterpret_u16_s16(vshr_n_s16(vld1_s16(t),4)),p.maskT);
+    vst1q_u32(indices,vaddq_u32(vmovl_u16(ss),vshlq_u32(vmovl_u16(tt),p.widthShift)));
+}
+[[gnu::always_inline]] static inline uint32x4_t NDS4MiSTerRepeatTextureLookup4(
+    const NDS4MiSTerRepeatTextureCoordinates4& p, const s16* s, const s16* t)
+{
+    alignas(16) u32 indices[4];NDS4MiSTerRepeatTextureIndices4(p,s,t,indices);
+    return NDS4MiSTerGatherCachedTexels4(p.texture,indices);
+}
+#endif
+
 // Normalize four interpolated texture coordinates with one branch decision
 // per polygon dimension rather than one per pixel. Texture fetches remain
 // scalar because Cortex-A9 NEON has no gather operation.

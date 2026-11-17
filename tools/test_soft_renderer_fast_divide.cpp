@@ -82,6 +82,17 @@ static bool testTextureIndices4()
                     width, height, wrapFlags))
                 return false;
 
+#if defined(__arm__) && defined(__ARM_NEON)
+        const auto prepared = melonDS::NDS4MiSTerPrepareRepeatTextureCoordinates4(
+            nullptr, width - 1, height - 1, __builtin_ctz(width));
+        melonDS::NDS4MiSTerRepeatTextureIndices4(
+            prepared, textureS, textureT, actual);
+        for (unsigned lane = 0; lane < 4; ++lane)
+            if (actual[lane] != referenceTextureIndex(
+                    textureS[lane], textureT[lane], width, height, 3))
+                return false;
+#endif
+
     }
     return true;
 }

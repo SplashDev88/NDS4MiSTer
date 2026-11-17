@@ -1622,6 +1622,8 @@ void SoftRenderer3D::RenderShadowMaskScanline(
     rp->XR = rp->SlopeR.Step();
 }
 
+
+
 #if defined(__arm__) && defined(__ARM_NEON)
 // Default perspective factors remain scalar and exact. W-depth and attributes can
 // batch four pixels. Select W-depth specialization once per span so Z-buffer
@@ -1666,6 +1668,13 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
     const auto coefficients = spanAttributes.PreparePerspectiveBatch();
     const s32 initialX = firstX;
     static_assert(!Approximate || (BatchWDepth && OpaquePolygon));
+    const bool plainRepeat = Approximate && pixelState.TextureWrapFlags == 3;
+    NDS4MiSTerRepeatTextureCoordinates4 preparedRepeat;
+    if constexpr (Approximate)
+        preparedRepeat = NDS4MiSTerPrepareRepeatTextureCoordinates4(
+            pixelState.TexturePixels,pixelState.TextureWidthMask,
+            pixelState.TextureHeightMask,pixelState.TextureWidthShift);
+
 
     for (; firstX + 3 < endX; firstX += 4)
     {
@@ -1740,8 +1749,12 @@ SoftRenderer3D::RenderCachedModulatePerspectiveInteriorBatch4(
         alignas(16) u32 texels[4];
         if (fullDepthPass)
         {
-            const uint32x4_t sourceVector =
-                LookupCachedTexels4(pixelState, textureS, textureT);
+            uint32x4_t sourceVector;
+            if constexpr (Approximate)
+                sourceVector = plainRepeat ? NDS4MiSTerRepeatTextureLookup4(preparedRepeat, textureS, textureT) :
+                    LookupCachedTexels4(pixelState, textureS, textureT);
+            else
+                sourceVector = LookupCachedTexels4(pixelState, textureS, textureT);
             uint32x4_t colorVector;
             if constexpr (OpaquePolygon)
             {
