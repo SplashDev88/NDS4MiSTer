@@ -43,28 +43,34 @@ int main(int argc, char** argv)
         check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,changed,true}), "unqualified Kart revision off");
     }
     std::cout << "MKDS_APPROX_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1\n";
-    const GameQueryIdentity resident_evil {{{'A','B','H','E'}}, 0, 0xc7e5cdf1u};
-    for (auto profile : {resident_evil_paired_a_profile, resident_evil_background_profile}) {
-        check(profile({GameQueryProfile::Fast,resident_evil,true}), "Resident Evil render profile on");
-        check(!profile({GameQueryProfile::Fast,resident_evil,false}), "unidentified Resident Evil off");
-        check(!profile({GameQueryProfile::Fast,known,true}) &&
-              !profile({GameQueryProfile::Fast,kart,true}), "other game render profile off");
-        for(unsigned bit=0;bit<32;++bit) {
-            auto changed=resident_evil;changed.header_crc32^=1u<<bit;
-            check(!profile({GameQueryProfile::Fast,changed,true}), "changed Resident Evil CRC off");
+    const GameQueryIdentity resident_evil_regions[] = {
+        {{{'A','B','H','E'}}, 0, 0xc7e5cdf1u},
+        {{{'A','B','H','P'}}, 0, 0x34b87b43u},
+        {{{'A','B','H','J'}}, 0, 0x244cb079u},
+    };
+    for (const auto& resident_evil : resident_evil_regions) {
+        for (auto profile : {resident_evil_paired_a_profile, resident_evil_background_profile}) {
+            check(profile({GameQueryProfile::Fast,resident_evil,true}), "Resident Evil render profile on");
+            check(!profile({GameQueryProfile::Fast,resident_evil,false}), "unidentified Resident Evil off");
+            check(!profile({GameQueryProfile::Fast,known,true}) &&
+                  !profile({GameQueryProfile::Fast,kart,true}), "other game render profile off");
+            for(unsigned bit=0;bit<32;++bit) {
+                auto changed=resident_evil;changed.header_crc32^=1u<<bit;
+                check(!profile({GameQueryProfile::Fast,changed,true}), "changed Resident Evil CRC off");
+            }
+            for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
+                if(value==resident_evil.code[byte])continue;
+                auto changed=resident_evil;changed.code[byte]=value;
+                check(!profile({GameQueryProfile::Fast,changed,true}), "changed Resident Evil code off");
+            }
+            for(unsigned revision=1;revision<256;++revision) {
+                auto changed=resident_evil;changed.revision=revision;
+                check(!profile({GameQueryProfile::Fast,changed,true}), "unqualified Resident Evil revision off");
+            }
         }
-        for(unsigned byte=0;byte<4;++byte)for(unsigned value=0;value<256;++value) {
-            if(value==resident_evil.code[byte])continue;
-            auto changed=resident_evil;changed.code[byte]=value;
-            check(!profile({GameQueryProfile::Fast,changed,true}), "changed Resident Evil code off");
-        }
-        for(unsigned revision=1;revision<256;++revision) {
-            auto changed=resident_evil;changed.revision=revision;
-            check(!profile({GameQueryProfile::Fast,changed,true}), "unqualified Resident Evil revision off");
-        }
+        check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,resident_evil,true}), "Resident Evil keeps exact perspective factors");
     }
-    check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,resident_evil,true}), "Resident Evil keeps exact perspective factors");
-    std::cout << "RE_BACKGROUND_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1 exact_factors=1\n";
+    std::cout << "RE_BACKGROUND_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 other_games_off=1 exact_factors=1\n";
     for(bool qualified : {false,true}) {
         check(paired_a_cache_enabled(qualified,nullptr)==qualified &&
               paired_a_cache_enabled(qualified,"auto")==qualified &&
@@ -72,7 +78,7 @@ int main(int argc, char** argv)
               paired_a_cache_enabled(qualified,"")==qualified, "paired A default selection");
         check(!paired_a_cache_enabled(qualified,"0") && paired_a_cache_enabled(qualified,"1"), "paired A explicit overrides");
     }
-    std::cout << "RE_PAIRED_A_PROFILE_PASS retail_profiles=1 mutations=1307 unidentified_off=1 other_games_off=1 overrides=1\n";
+    std::cout << "RE_PAIRED_A_PROFILE_PASS retail_profiles=3 mutations=3921 unidentified_off=1 other_games_off=1 overrides=1\n";
     const GameQueryIdentity lighting_regions[] = {
         known,
         {{{'A','C','V','P'}}, 0, 0x6396d24cu},

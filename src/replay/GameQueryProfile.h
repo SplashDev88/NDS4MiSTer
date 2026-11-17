@@ -135,14 +135,22 @@ inline bool mkds_approximate_factors_profile(const GameQuerySelection& selected)
         selected.identity.revision == 0 && selected.identity.header_crc32 == 0x388c990cu;
 }
 
-// Composition-only row reuse is qualified on this Resident Evil cartridge.
+// Composition-only row reuse is qualified on these Resident Evil cartridges.
 // It compares the current completed 3D row and every 2D input, without the
 // legacy cache's future-row lookahead. Other cartridges keep their old path.
 inline bool resident_evil_paired_a_profile(const GameQuerySelection& selected)
 {
-    return selected.identified &&
-        selected.identity.code == std::array<std::uint8_t, 4>{{'A','B','H','E'}} &&
-        selected.identity.revision == 0 && selected.identity.header_crc32 == 0xc7e5cdf1u;
+    if (!selected.identified) return false;
+    constexpr GameQueryIdentity identities[] = {
+        {{{'A','B','H','E'}}, 0, 0xc7e5cdf1u}, // USA
+        {{{'A','B','H','P'}}, 0, 0x34b87b43u}, // Europe
+        {{{'A','B','H','J'}}, 0, 0x244cb079u}, // Japan (Biohazard)
+    };
+    for (const auto& identity : identities)
+        if (selected.identity.code == identity.code &&
+            selected.identity.revision == identity.revision &&
+            selected.identity.header_crc32 == identity.header_crc32) return true;
+    return false;
 }
 
 // Resident Evil's room backgrounds contain flat textured quads. Qualify the
