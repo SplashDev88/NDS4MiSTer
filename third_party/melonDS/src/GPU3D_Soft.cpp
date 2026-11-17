@@ -5935,6 +5935,7 @@ void SoftRenderer3D::RenderFrame()
         GPU3D.NColor8PaletteExpansionEnabled() : NColor8PaletteOverride != 0;
     TextureCache.RangeHashReuseEnabled = TextureRangeHashOverride < 0 ?
         GPU3D.TextureRangeHashReuseEnabled() : TextureRangeHashOverride != 0;
+    TextureCache.CompressedPaletteRangeEnabled = GPU3D.CompressedPaletteRangeEnabled();
     ApproximateFactors = ApproximateFactorsOverride < 0 ? GPU3D.ApproximateFactorsEnabled() :
         ApproximateFactorsOverride != 0;
     SolidSpans = SolidSpansOverride < 0 ? GPU3D.SolidSpansEnabled() :

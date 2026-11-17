@@ -756,7 +756,8 @@ public:
         bool ncolor8_palette_expansion = false,
         bool rectangle_texture_x = false,
         bool paired_a_cache = false,
-        bool background_row_reuse = false)
+        bool background_row_reuse = false,
+        bool compressed_palette_range = false)
         : mapping_(static_cast<std::byte*>(mapping)),
           publication_mapping_(publication_mapping ?
               static_cast<std::byte*>(publication_mapping) : mapping_),
@@ -793,6 +794,7 @@ public:
           regional_vram_replay_(matched_display_test && regional_vram_replay),
           lighting_result_reuse_(matched_display_test && lighting_result_reuse),
           texture_range_hash_reuse_(matched_display_test && texture_range_hash_reuse),
+          compressed_palette_range_(matched_display_test && compressed_palette_range),
           ncolor8_palette_expansion_(matched_display_test && ncolor8_palette_expansion),
           rectangle_texture_x_(matched_display_test && rectangle_texture_x),
           background_row_reuse_(matched_display_test && background_row_reuse),
@@ -1320,6 +1322,7 @@ private:
         nds_->GPU.GPU3D.SetLightingResultReuseEnabled(lighting_result_reuse_);
         nds_->GPU.GPU3D.SetSolidSpansEnabled(solid_spans_);
         nds_->GPU.GPU3D.SetTextureRangeHashReuseEnabled(texture_range_hash_reuse_);
+        nds_->GPU.GPU3D.SetCompressedPaletteRangeEnabled(compressed_palette_range_);
         nds_->GPU.GPU3D.SetNColor8PaletteExpansionEnabled(ncolor8_palette_expansion_);
         nds_->GPU.GPU3D.SetRectangleTextureXEnabled(rectangle_texture_x_);
         nds_->GPU.GPU3D.SetBackgroundRowReuseEnabled(background_row_reuse_);
@@ -5683,6 +5686,7 @@ private:
     bool regional_vram_replay_ = false;
     bool lighting_result_reuse_ = false;
     bool texture_range_hash_reuse_ = false;
+    bool compressed_palette_range_ = false;
     bool ncolor8_palette_expansion_ = false;
     bool rectangle_texture_x_ = false;
     bool background_row_reuse_ = false;
@@ -11605,6 +11609,7 @@ try {
             bool opaque_3d_seed = false;
             bool zero_brightness = false;
             bool texture_range_hash_reuse = false;
+            bool compressed_palette_range = false;
             bool ncolor8_palette_expansion = false;
             bool rectangle_texture_x = false;
             bool paired_a_cache = false;
@@ -11634,6 +11639,7 @@ try {
                 solid_spans = nds4mister::replay::ffta2_raster_only_profile(selected);
                 zero_brightness = nds4mister::replay::ffta2_raster_only_profile(selected);
                 texture_range_hash_reuse = nds4mister::replay::umk3_texture_range_hash_profile(selected);
+                compressed_palette_range = nds4mister::replay::gta_compressed_palette_range_profile(selected);
                 ncolor8_palette_expansion = nds4mister::replay::umk3_palette_decode_profile(selected);
                 rectangle_texture_x = nds4mister::replay::umk3_rectangle_x_profile(selected) ||
                     nds4mister::replay::resident_evil_background_profile(selected);
@@ -11688,6 +11694,7 @@ try {
                     << " opaque_3d_seed=" << opaque_3d_seed
                     << " zero_brightness=" << zero_brightness
                     << " texture_range_hash_reuse=" << texture_range_hash_reuse
+                    << " compressed_palette_range=" << compressed_palette_range
                     << " ncolor8_palette_expansion=" << ncolor8_palette_expansion
                     << " rectangle_texture_x=" << rectangle_texture_x
                     << " background_row_reuse=" << background_row_reuse
@@ -11742,7 +11749,8 @@ try {
                 ncolor8_palette_expansion,
                 rectangle_texture_x,
                 paired_a_cache,
-                background_row_reuse);
+                background_row_reuse,
+                compressed_palette_range);
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif
