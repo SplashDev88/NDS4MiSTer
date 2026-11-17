@@ -4222,32 +4222,69 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
     if (EffectiveDispCnt & (1<<7))
     {
-        // fog
-
-        // hardware testing shows that the fog step is 0x80000>>SHIFT
-        // basically, the depth values used in GBAtek need to be
-        // multiplied by 0x200 to match Z-buffer values
-
-        // fog is applied to the topmost two pixels, which is required for
-        // proper antialiasing
-
-        // TODO: check the 'fog alpha glitch with small Z' GBAtek talks about
-
-        bool fogcolor = !(EffectiveDispCnt & (1<<6));
-
-        u32 fogR = (GPU3D.RenderFogColor << 1) & 0x3E; if (fogR) fogR++;
-        u32 fogG = (GPU3D.RenderFogColor >> 4) & 0x3E; if (fogG) fogG++;
-        u32 fogB = (GPU3D.RenderFogColor >> 9) & 0x3E; if (fogB) fogB++;
-        u32 fogA = (GPU3D.RenderFogColor >> 16) & 0x1F;
-
-        for (int x = xStart; x < xEnd; x++)
+        if (NDS4MiSTerFogDensityTableIsZero(GPU3D.RenderFogDensityTable))
         {
-            u32 pixeladdr = FirstPixelOffset + (y*ScanlineWidth) + x;
-            u32 density, srccolor, srcR, srcG, srcB, srcA;
+            const u32 first = FirstPixelOffset + y * ScanlineWidth + xStart;
+            NDS4MiSTerApplyZeroFogScanline(ColorBuffer + first, AttrBuffer + first,
+                BufferSize, LowerLayerBufferSize != 0, xEnd - xStart);
+        }
+        else
+        {
+            // fog
 
-            u32 attr = AttrBuffer[pixeladdr];
-            if (attr & (1<<15))
+            // hardware testing shows that the fog step is 0x80000>>SHIFT
+            // basically, the depth values used in GBAtek need to be
+            // multiplied by 0x200 to match Z-buffer values
+
+            // fog is applied to the topmost two pixels, which is required for
+            // proper antialiasing
+
+            // TODO: check the 'fog alpha glitch with small Z' GBAtek talks about
+
+            bool fogcolor = !(EffectiveDispCnt & (1<<6));
+
+            u32 fogR = (GPU3D.RenderFogColor << 1) & 0x3E; if (fogR) fogR++;
+            u32 fogG = (GPU3D.RenderFogColor >> 4) & 0x3E; if (fogG) fogG++;
+            u32 fogB = (GPU3D.RenderFogColor >> 9) & 0x3E; if (fogB) fogB++;
+            u32 fogA = (GPU3D.RenderFogColor >> 16) & 0x1F;
+
+            for (int x = xStart; x < xEnd; x++)
             {
+                u32 pixeladdr = FirstPixelOffset + (y*ScanlineWidth) + x;
+                u32 density, srccolor, srcR, srcG, srcB, srcA;
+
+                u32 attr = AttrBuffer[pixeladdr];
+                if (attr & (1<<15))
+                {
+                    density = CalculateFogDensity(pixeladdr);
+
+                    srccolor = ColorBuffer[pixeladdr];
+                    srcR = srccolor & 0x3F;
+                    srcG = (srccolor >> 8) & 0x3F;
+                    srcB = (srccolor >> 16) & 0x3F;
+                    srcA = (srccolor >> 24) & 0x1F;
+
+                    if (fogcolor)
+                    {
+                        srcR = ((fogR * density) + (srcR * (128-density))) >> 7;
+                        srcG = ((fogG * density) + (srcG * (128-density))) >> 7;
+                        srcB = ((fogB * density) + (srcB * (128-density))) >> 7;
+                    }
+
+                    srcA = ((fogA * density) + (srcA * (128-density))) >> 7;
+
+                    ColorBuffer[pixeladdr] = srcR | (srcG << 8) | (srcB << 16) | (srcA << 24);
+                }
+
+                // fog for lower pixel
+                // TODO: make this code nicer, but avoid using a loop
+
+                if (!LowerLayerBufferSize || !(attr & 0xF)) continue;
+                pixeladdr += BufferSize;
+
+                attr = AttrBuffer[pixeladdr];
+                if (!(attr & (1<<15))) continue;
+
                 density = CalculateFogDensity(pixeladdr);
 
                 srccolor = ColorBuffer[pixeladdr];
@@ -4267,34 +4304,6 @@ void SoftRenderer3D::ScanlineFinalPass(s32 y)
 
                 ColorBuffer[pixeladdr] = srcR | (srcG << 8) | (srcB << 16) | (srcA << 24);
             }
-
-            // fog for lower pixel
-            // TODO: make this code nicer, but avoid using a loop
-
-            if (!LowerLayerBufferSize || !(attr & 0xF)) continue;
-            pixeladdr += BufferSize;
-
-            attr = AttrBuffer[pixeladdr];
-            if (!(attr & (1<<15))) continue;
-
-            density = CalculateFogDensity(pixeladdr);
-
-            srccolor = ColorBuffer[pixeladdr];
-            srcR = srccolor & 0x3F;
-            srcG = (srccolor >> 8) & 0x3F;
-            srcB = (srccolor >> 16) & 0x3F;
-            srcA = (srccolor >> 24) & 0x1F;
-
-            if (fogcolor)
-            {
-                srcR = ((fogR * density) + (srcR * (128-density))) >> 7;
-                srcG = ((fogG * density) + (srcG * (128-density))) >> 7;
-                srcB = ((fogB * density) + (srcB * (128-density))) >> 7;
-            }
-
-            srcA = ((fogA * density) + (srcA * (128-density))) >> 7;
-
-            ColorBuffer[pixeladdr] = srcR | (srcG << 8) | (srcB << 16) | (srcA << 24);
         }
     }
 

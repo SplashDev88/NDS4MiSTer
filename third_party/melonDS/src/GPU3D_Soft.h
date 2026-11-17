@@ -35,6 +35,59 @@
 namespace melonDS
 {
 
+// All zero entries guarantee zero fog density for every depth and shift.
+[[gnu::always_inline, gnu::hot]] inline bool NDS4MiSTerFogDensityTableIsZero(const u8* table)
+{
+#if defined(__arm__) && defined(__ARM_NEON)
+    const auto bits = vreinterpretq_u32_u8(vorrq_u8(
+        vld1q_u8(table), vld1q_u8(table + 16)));
+    const auto pair = vorr_u32(vget_low_u32(bits), vget_high_u32(bits));
+    return (vget_lane_u32(pair, 0) | vget_lane_u32(pair, 1) |
+            table[32] | table[33]) == 0;
+#else
+    return std::all_of(table, table + 34, [](u8 value) { return value == 0; });
+#endif
+}
+
+[[gnu::always_inline, gnu::hot]] inline void NDS4MiSTerApplyZeroFogScanline(
+    u32* colors, const u32* attributes, u32 layerOffset,
+    bool lowerLayer, u32 count)
+{
+    // Density zero leaves channel values unchanged, but the ordinary fog
+    // equations still discard unused bits in every fog-enabled pixel.
+    constexpr u32 ChannelMask = 0x1f3f3f3fu;
+    u32 x = 0;
+#if defined(__arm__) && defined(__ARM_NEON)
+    const auto fog = vdupq_n_u32(1u << 15);
+    const auto edge = vdupq_n_u32(0xFu);
+    const auto invalid = vdupq_n_u32(~ChannelMask);
+    for (; x + 4 <= count; x += 4)
+    {
+        const auto attrs = vld1q_u32(attributes + x);
+        const auto clear = vandq_u32(vtstq_u32(attrs, fog), invalid);
+        vst1q_u32(colors + x, vbicq_u32(vld1q_u32(colors + x), clear));
+        if (lowerLayer)
+        {
+            const auto bottomAttrs = vld1q_u32(attributes + layerOffset + x);
+            const auto selected = vandq_u32(vtstq_u32(attrs, edge),
+                vtstq_u32(bottomAttrs, fog));
+            u32* bottom = colors + layerOffset + x;
+            vst1q_u32(bottom, vbicq_u32(vld1q_u32(bottom),
+                vandq_u32(selected, invalid)));
+        }
+    }
+#endif
+    for (; x < count; ++x)
+    {
+        const u32 attr = attributes[x];
+        if (attr & (1u << 15)) colors[x] &= ChannelMask;
+        if (lowerLayer && (attr & 0xFu) &&
+            (attributes[layerOffset + x] & (1u << 15)))
+            colors[layerOffset + x] &= ChannelMask;
+    }
+}
+
+
 // One exact DS linear color recurrence. A descending span rounds toward its
 // lower endpoint, so its initial numerator includes width-1. Advancing every
 // pixel also keeps clipped or depth-rejected pixels in the same sequence.
