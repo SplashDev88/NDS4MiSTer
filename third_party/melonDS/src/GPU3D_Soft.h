@@ -1191,6 +1191,7 @@ public:
 using SoftTexcache = Texcache<SoftTexcacheLoader, u32*>;
 
 class NDS4MiSTerBackgroundRowCache;
+class NDS4MiSTerBackgroundSpanCache;
 
 class SoftRenderer3D : public Renderer3D
 {
@@ -2700,6 +2701,12 @@ private:
     int RectangleTextureXOverride = -1;
     bool UseRectangleTextureX = false;
     std::unique_ptr<NDS4MiSTerBackgroundRowCache> BackgroundRows;
+    std::unique_ptr<NDS4MiSTerBackgroundSpanCache> BackgroundSpans;
+    bool UseBackgroundSpans = true; // The existing exact-header background policy scopes this path.
+    bool BackgroundSpanFrame = false;
+    bool BackgroundSpansActive = false;
+    s16 BackgroundDirtyStart[192] {};
+    s16 BackgroundDirtyEnd[192] {};
     bool BackgroundReuse[192] {};
     bool BackgroundRowsPrepared = false;
     bool BackgroundSoftwareFrame = false;

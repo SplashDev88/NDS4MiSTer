@@ -18,6 +18,7 @@
 
 #include "GPU3D_Soft.h"
 #include "NDS4MiSTerBackgroundRows.h"
+#include "NDS4MiSTerBackgroundSpans.h"
 #include "GPU3D_Diagnostic.h"
 #include "NDS4MiSTerSolidSpan.h"
 #include "NDS4MiSTerApproxFactor.h"
@@ -3992,6 +3993,12 @@ void SoftRenderer3D::RenderScanline(
     s32 clipStartX, s32 clipEndX,
     u16* finalPassMinX, u16* finalPassMaxX)
 {
+    if (BackgroundSpansActive)
+    {
+        clipStartX = std::max<s32>(clipStartX, BackgroundDirtyStart[y]);
+        clipEndX = std::min<s32>(clipEndX, BackgroundDirtyEnd[y]);
+    }
+    const bool noDirtyPixels = clipStartX >= clipEndX;
     if (!UseScanlinePolygonLists)
     {
         for (int i = 0; i < CurrentPolygonCount; i++)
@@ -4003,7 +4010,7 @@ void SoftRenderer3D::RenderScanline(
                 (y < polygon->YBottom ||
                  (y == polygon->YTop && polygon->YBottom == polygon->YTop)))
             {
-                if (BackgroundReuse[y] || (AlternateRows && (y & (RowStep() - 1))))
+                if (BackgroundReuse[y] || noDirtyPixels || (AlternateRows && (y & (RowStep() - 1))))
                     SkipPolygonRow(rp, y, prevIsShadowMask);
                 else if (polygon->IsShadowMask)
                     RenderShadowMaskScanline(
@@ -4041,7 +4048,7 @@ void SoftRenderer3D::RenderScanline(
             RendererPolygon* rp = &polygonList[polygonIndex];
             Polygon* polygon = rp->PolyData;
 
-            if (BackgroundReuse[y] || (AlternateRows && (y & (RowStep() - 1))))
+            if (BackgroundReuse[y] || noDirtyPixels || (AlternateRows && (y & (RowStep() - 1))))
                 SkipPolygonRow(rp, y, prevIsShadowMask);
             else if (polygon->IsShadowMask)
                 RenderShadowMaskScanline(
@@ -4439,8 +4446,10 @@ void SoftRenderer3D::ClearBuffers()
             // cleared sampled row. Preserve old bounds until both copies
             // complete, including a cancellation before either pass.
             if (BackgroundReuse[y] || (AlternateRows && (y & (RowStep() - 1)))) continue;
-            const int start = FinalPassMinX[y];
-            const int end = FinalPassMaxX[y];
+            const int start = BackgroundSpansActive ?
+                std::max<int>(FinalPassMinX[y], BackgroundDirtyStart[y]) : FinalPassMinX[y];
+            const int end = BackgroundSpansActive ?
+                std::min<int>(FinalPassMaxX[y], BackgroundDirtyEnd[y]) : FinalPassMaxX[y];
             if (start < end)
             {
                 const u32 pixeladdr = FirstPixelOffset +
@@ -4450,15 +4459,20 @@ void SoftRenderer3D::ClearBuffers()
                 std::fill_n(&DepthBuffer[pixeladdr], count, clearz);
                 std::fill_n(&AttrBuffer[pixeladdr], count, polyid);
             }
-            FinalPassMinX[y] = 256;
-            FinalPassMaxX[y] = 0;
+            // Cached pixels still carry old damage. Keep that coverage for a
+            // later miss, including when sparse clearing is enabled.
+            if (!BackgroundSpansActive)
+            {
+                FinalPassMinX[y] = 256;
+                FinalPassMaxX[y] = 0;
+            }
         }
         return;
     }
 
     for (int y = 0; y < VisibleScanlines; y++)
     {
-        if (BackgroundReuse[y]) continue;
+        if (BackgroundReuse[y] || BackgroundSpansActive) continue;
         FinalPassMinX[y] = 256;
         FinalPassMaxX[y] = 0;
     }
@@ -4538,8 +4552,11 @@ void SoftRenderer3D::ClearBuffers()
 
         for (int y = 0; y < ScanlineWidth*192; y+=ScanlineWidth)
         {
-            if (BackgroundReuse[y/ScanlineWidth]) continue;
-            for (int x = 0; x < 256; x++)
+            const int line = y / ScanlineWidth;
+            if (BackgroundReuse[line]) continue;
+            const int first = BackgroundSpansActive ? BackgroundDirtyStart[line] : 0;
+            const int end = BackgroundSpansActive ? BackgroundDirtyEnd[line] : 256;
+            for (int x = first; x < end; x++)
             {
                 u32 pixeladdr = FirstPixelOffset + y + x;
                 ColorBuffer[pixeladdr] = color;
@@ -5802,7 +5819,9 @@ void SoftRenderer3D::InvalidateBackgroundRows() noexcept
     std::fill_n(BackgroundReuse, 192, false);
     BackgroundRowsPrepared = false;
     BackgroundSoftwareFrame = false;
+    BackgroundSpanFrame = BackgroundSpansActive = false;
     if (BackgroundRows) BackgroundRows->invalidate();
+    if (BackgroundSpans) BackgroundSpans->invalidate();
 }
 
 bool SoftRenderer3D::IsFpgaLightFrameGeometry() const
@@ -5842,6 +5861,7 @@ void SoftRenderer3D::PrepareBackgroundRows(bool textureChanged, bool forceRecove
     std::fill_n(BackgroundReuse, 192, false);
     BackgroundRowsPrepared = false;
     BackgroundSoftwareFrame = false;
+    BackgroundSpanFrame = BackgroundSpansActive = false;
     const bool eligible = GPU3D.BackgroundRowReuseEnabled() &&
         FullFrameCompletion && UseTextureCache && !RenderOff &&
         !AlternateRows && !Quarter && !Tiny && !DropShadows &&
@@ -5851,6 +5871,7 @@ void SoftRenderer3D::PrepareBackgroundRows(bool textureChanged, bool forceRecove
     if (!eligible)
     {
         if (BackgroundRows) BackgroundRows->invalidate();
+        if (BackgroundSpans) BackgroundSpans->invalidate();
         return;
     }
     const bool software = !fpga3d::available() ||
@@ -5859,8 +5880,23 @@ void SoftRenderer3D::PrepareBackgroundRows(bool textureChanged, bool forceRecove
     if (!software)
     {
         if (BackgroundRows) BackgroundRows->invalidate();
+        if (BackgroundSpans) BackgroundSpans->invalidate();
         return;
     }
+    if (UseBackgroundSpans)
+    {
+        if (BackgroundRows) BackgroundRows->invalidate();
+        if (!BackgroundSpans) BackgroundSpans = std::make_unique<NDS4MiSTerBackgroundSpanCache>();
+        if (forceRecovery) BackgroundSpans->invalidate();
+        BackgroundSpans->prepare(GPU3D, EffectiveDispCnt, !textureChanged);
+        std::copy(BackgroundSpans->reusable.begin(), BackgroundSpans->reusable.end(), BackgroundReuse);
+        std::copy(BackgroundSpans->dirtyStart.begin(), BackgroundSpans->dirtyStart.end(), BackgroundDirtyStart);
+        std::copy(BackgroundSpans->dirtyEnd.begin(), BackgroundSpans->dirtyEnd.end(), BackgroundDirtyEnd);
+        BackgroundSpansActive = BackgroundSpans->reusedPixels != 0;
+        BackgroundSpanFrame = BackgroundRowsPrepared = BackgroundSoftwareFrame = true;
+        return;
+    }
+    if (BackgroundSpans) BackgroundSpans->invalidate();
     if (!BackgroundRows)
         BackgroundRows = std::make_unique<NDS4MiSTerBackgroundRowCache>();
     if (forceRecovery) BackgroundRows->invalidate();
@@ -5880,9 +5916,10 @@ void SoftRenderer3D::FinishBackgroundRows() noexcept
         InvalidateBackgroundRows();
         return;
     }
-    BackgroundRows->commit();
+    if (BackgroundSpanFrame) BackgroundSpans->commit();
+    else BackgroundRows->commit();
     ++BackgroundRowFrames;
-    BackgroundCachedRows += BackgroundRows->hitRows;
+    BackgroundCachedRows += BackgroundSpanFrame ? BackgroundSpans->hitRows : BackgroundRows->hitRows;
 }
 
 void SoftRenderer3D::RenderFrame()

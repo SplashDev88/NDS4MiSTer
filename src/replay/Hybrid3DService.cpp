@@ -11690,6 +11690,7 @@ try {
                     << " ncolor8_palette_expansion=" << ncolor8_palette_expansion
                     << " rectangle_texture_x=" << rectangle_texture_x
                     << " background_row_reuse=" << background_row_reuse
+                    << " background_span_reuse=" << background_row_reuse
                     << " paired_a_cache=" << paired_a_cache
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
