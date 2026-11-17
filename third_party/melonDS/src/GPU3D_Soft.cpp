@@ -1823,29 +1823,34 @@ SoftRenderer3D::RenderCachedModulateInteriorSpan(
     // Batch independent depth/attributes and shade work. Translucent polygons
     // use the exact polygon*texture alpha kernel; alpha test and framebuffer
     // blending still run in the same X order, including lower-layer writes.
-    if (rp->PixelState.PolyAlpha == 31 && spanAttributes.IsPerspective())
+    // Four-pixel kernels leave all interpolation state untouched when their
+    // loop is empty. Let the existing scalar tail handle shorter spans.
+    if (!AvoidEmptyPerspectiveBatches || firstX + 3 < endX)
     {
-        if (ApproximateFactors && !(EffectiveDispCnt & 16) && !AlternateRows &&
-            !Quarter && !Tiny && !rp->PolyData->IsShadow && !rp->PolyData->IsShadowMask &&
-            spanDepth.CanBatchPerspectiveDepth4() &&
-            interpX.CanBatchPerspectiveFactors(firstX, endX))
-            firstX = RenderCachedModulatePerspectiveInteriorBatch4<true, true, true>(
-                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
-        else if (spanDepth.CanBatchPerspectiveDepth4())
-            firstX = RenderCachedModulatePerspectiveInteriorBatch4<true>(
-                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
-        else
-            firstX = RenderCachedModulatePerspectiveInteriorBatch4<false>(
-                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
-    }
-    else if (spanAttributes.IsPerspective())
-    {
-        if (spanDepth.CanBatchPerspectiveDepth4())
-            firstX = RenderCachedModulatePerspectiveInteriorBatch4<true, false>(
-                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
-        else
-            firstX = RenderCachedModulatePerspectiveInteriorBatch4<false, false>(
-                rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        if (rp->PixelState.PolyAlpha == 31 && spanAttributes.IsPerspective())
+        {
+            if (ApproximateFactors && !(EffectiveDispCnt & 16) && !AlternateRows &&
+                !Quarter && !Tiny && !rp->PolyData->IsShadow && !rp->PolyData->IsShadowMask &&
+                spanDepth.CanBatchPerspectiveDepth4() &&
+                interpX.CanBatchPerspectiveFactors(firstX, endX))
+                firstX = RenderCachedModulatePerspectiveInteriorBatch4<true, true, true>(
+                    rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+            else if (spanDepth.CanBatchPerspectiveDepth4())
+                firstX = RenderCachedModulatePerspectiveInteriorBatch4<true>(
+                    rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+            else
+                firstX = RenderCachedModulatePerspectiveInteriorBatch4<false>(
+                    rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        }
+        else if (spanAttributes.IsPerspective())
+        {
+            if (spanDepth.CanBatchPerspectiveDepth4())
+                firstX = RenderCachedModulatePerspectiveInteriorBatch4<true, false>(
+                    rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+            else
+                firstX = RenderCachedModulatePerspectiveInteriorBatch4<false, false>(
+                    rp, y, firstX, endX, interpX, spanDepth, spanAttributes);
+        }
     }
 #endif
 

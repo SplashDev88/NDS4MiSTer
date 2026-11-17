@@ -2702,6 +2702,7 @@ private:
     bool UseRectangleTextureX = false;
     std::unique_ptr<NDS4MiSTerBackgroundRowCache> BackgroundRows;
     std::unique_ptr<NDS4MiSTerBackgroundSpanCache> BackgroundSpans;
+    bool AvoidEmptyPerspectiveBatches = true; // Scalar tails need no empty SIMD batch.
     bool UseBackgroundSpans = true; // The existing exact-header background policy scopes this path.
     bool BackgroundSpanFrame = false;
     bool BackgroundSpansActive = false;
