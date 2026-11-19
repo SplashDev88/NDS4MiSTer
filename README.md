@@ -1,18 +1,20 @@
-# NDS4MiSTer — v1.0.1
+# NDS4MiSTer — v1.0.2
 
 Experimental Nintendo DS core for the MiSTer FPGA.
 
-[**Download 1.0.1**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.1/NDS4MiSTer_v1.0.1_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
+[**Download 1.0.2**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.2/NDS4MiSTer_v1.0.2_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
 
 Compatibility, speed and sound vary by game. Full speed is not guaranteed, and graphics-heavy scenes can slow down even in games that otherwise run well.
 
 **How it differs from other cores:** NDS4MiSTer is a hybrid core, similar to [DreamSTer](https://github.com/skmp/DreamSTer), and is launched from **Scripts** rather than a typical `.rbf` in the `_Console` directory. While you play, it temporarily takes over from the normal MiSTer menu, and it hands control back when you exit.
 
-## What's new in 1.0.1
+## What's new in 1.0.2
 
-* Improved FMV playback, including native-speed openings in Castlevania: Dawn of Sorrow and Portrait of Ruin.
-* Updated menu fonts and spacing for better readability in DV1 Top/Bottom view (TATE mode)
-* Fixed Castlevania Dawn of Sorrow bug that could cause “Save failed” error.
+* Modest speed improvements and bug fixes.
+* **Ultimate Mortal Kombat 3** and **Resident Evil: Deadly Silence** now run at or near full speed.
+* **GTA: Chinatown Wars** runs 20% faster.
+* **Tokimeki Memorial Girl's Side: 3rd Story** now boots.
+* Fixed background tearing in **New Super Mario Bros.** World 1-2.
 
 ---
 
@@ -29,7 +31,7 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 ## Install
 
-1. Download the [1.0.1 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.1/NDS4MiSTer_v1.0.1_Standalone.zip).
+1. Download the [1.0.2 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.2/NDS4MiSTer_v1.0.2_Standalone.zip).
 2. Extract **everything** to the SD card root, merging folders. Include the hidden `Scripts/.NDS/` folder, because the core won't start without it.
 3. Put your games in `games/NDS/`.
 4. For CRTs or scalers, add an `[NDS]` section to `MiSTer.ini` at the **SD card root** (see [Video setup](#video-setup)). HDMI usually needs no changes; use the HDMI block below if you need to override global settings.
@@ -39,7 +41,7 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 Do not move the `.rbf` to `_Console`.
 
-**Upgrading:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0.1 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
+**Upgrading:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0.2 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
 
 On first launch, settings, controller mappings and the clock are imported automatically into **`Scripts/.NDS/`**, checking `.NDS_RC15` first, then `.NDS_Standalone`. Existing `.NDS` settings take priority; no manual copying is needed. Saves stay in `saves/NDS/`. Recognized old public launchers are backed up under `.NDS/legacy-launchers/` and removed from the Scripts menu; original settings folders are kept. Future updates use the same `NDS.sh` and `.NDS/` paths and preserve your saved preferences.
 
@@ -106,6 +108,9 @@ These games have targeted speed optimizations:
 - Final Fantasy Tactics A2
 - Mario Kart DS
 - Pokémon Platinum, HeartGold and SoulSilver
+- Ultimate Mortal Kombat 3
+- Resident Evil: Deadly Silence
+- Grand Theft Auto: Chinatown Wars
 
 The speedups only work with unmodified retail ROMs. ROM hacks may run without them.
 
@@ -214,7 +219,6 @@ Saves are written automatically to `saves/NDS/<ROM name>.sav`. They are standard
 
 ## Known issues
 
-- New Super Mario Bros. can show background tearing near level endings, including World 1-2.
 - Slowdown, stutter, graphics glitches and audio hitches still happen.
 
 See [GitHub issues](https://github.com/SplashDev88/NDS4MiSTer/issues) for reported problems and updates.
