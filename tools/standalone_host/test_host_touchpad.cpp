@@ -248,6 +248,66 @@ struct HostTest {
   Host h(kit.string(),(root/"sd/games/NDS").string(),root/"sd");h.scan(input);
   assert(h.pads.size()==3);for(const auto &p:h.pads)assert(!p.touchpad.enabled);
  }
+ static void sensitivity(const fs::path &root) {
+  auto input=root/"input",kit=root/"kit",sd=root/"sd";
+  fs::create_directories(input);fs::create_directories(kit);
+  const auto node=input/"event0",config=kit/"NDS_touchpad.cfg";
+  createNode(node,pointer());Host h(kit.string(),(sd/"games/NDS").string(),sd);h.scan(input);
+  assert(h.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY && !fs::exists(config));
+  const auto status=h.status;const auto full_status=h.full_status;
+  h.action(6);h.action(1);assert(h.cursor==1);h.action(1);
+  assert(h.cursor==SYSTEM_TOUCHPAD_SENSITIVITY && h.system_menu);
+  const std::vector<int> order{6,2,3,4,5,0,1};
+  for(int expected:order){assert(h.cursor==expected);h.action(1);}
+  assert(h.cursor==SYSTEM_TOUCHPAD_SENSITIVITY);
+  for(int n=0;n<3;++n)h.action(7);
+  assert(h.touchpad_sensitivity==0);
+  h.action(7);assert(h.touchpad_sensitivity==8);h.action(8);assert(h.touchpad_sensitivity==0);
+  for(unsigned i=0;i<nds_touchpad::SENSITIVITY_PERCENT.size();++i) {
+   if(!h.menu){h.togglemenu();h.action(6);h.cursor=SYSTEM_TOUCHPAD_SENSITIVITY;}
+   while(h.touchpad_sensitivity!=i)h.action(2);
+   h.draw();
+   assert(h.osd_rows[3]==h.frame.renderRow(3,
+     systemTouchpadSensitivity(nds_touchpad::SENSITIVITY_PERCENT[i]),true));
+   assert(h.status==status && h.full_status==full_status && !fs::exists(config));
+   h.togglemenu();mouse(h);contact(h,node,10+i,800,400);assert(mouse(h).empty());
+   // Even at 25%, single sensor-unit reports eventually move one pixel.
+   int total_x=0,total_y=0;
+   for(int step=1;step<=24;++step) {
+    packet(h,node,{{EV_ABS,ABS_X,800+step},{EV_ABS,ABS_Y,400-step}});
+    for(const auto &m:mouse(h)){total_x+=int8_t(m[1]);total_y+=int8_t(m[2]);}
+   }
+   assert(total_x==int(nds_touchpad::SENSITIVITY_PERCENT[i]/25) && total_y==total_x);
+   packet(h,node,{{EV_KEY,BTN_LEFT,1}});assert(mouse(h)==std::vector<std::vector<uint16_t>>({{9,0,0}}));
+   total_x=total_y=0;
+   for(int step=1;step<=24;++step) {
+    packet(h,node,{{EV_ABS,ABS_X,824-step},{EV_ABS,ABS_Y,376+step}});
+    for(const auto &m:mouse(h)){assert((m[0]&1)==1);total_x+=int8_t(m[1]);total_y+=int8_t(m[2]);}
+   }
+   assert(total_x==-int(nds_touchpad::SENSITIVITY_PERCENT[i]/25) && total_y==total_x);
+   packet(h,node,{{EV_KEY,BTN_LEFT,0}});assert(mouse(h)==std::vector<std::vector<uint16_t>>({{8,0,0}}));
+  }
+  // A separate relative mouse retains its speed at maximum touchpad gain.
+  Device ordinary;ordinary.name="Ordinary mouse";const auto mouse_node=input/"event1";
+  createNode(mouse_node,ordinary);h.scan(input);mouse(h);
+  packet(h,mouse_node,{{EV_REL,REL_X,6},{EV_REL,REL_Y,-3}});
+  assert(mouse(h)==std::vector<std::vector<uint16_t>>({{8,6,3}}));
+  h.togglemenu();h.action(6);h.cursor=3;h.action(2);
+  {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.touchpad_sensitivity==8);}
+  assert(std::ifstream(config).good());
+  h.action(6);h.cursor=2;h.action(2);h.action(0);h.action(2);
+  assert(h.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY);
+  {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY);}
+  for(const char *bad:{"","NDS-Touchpad-v1\n0\n","NDS-Touchpad-v1\n-100\n",
+   "NDS-Touchpad-v1\n999999999\n","NDS-Touchpad-v2\n200\n","NDS-Touchpad-v1\n200\nextra"}) {
+   std::ofstream(config)<<bad;Host invalid(kit.string(),(sd/"games/NDS").string(),sd);
+   assert(invalid.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY);
+  }
+  // Optional lock rows still navigate in visual order, in both directions.
+  const auto locked=systemMenuRows({true,false,{}});int cursor=6;
+  for(int expected:{1,0,5,4,3,2,6}){cursor=nextSystemMenuAction(locked,cursor,-1);assert(cursor==expected);}
+  std::cout<<"PASS touchpad sensitivity: all nine speeds, slow fractional motion, reverse/drag, ordinary mouse isolation, menu/order/wrap, save/reload/reset/invalid config\n";
+ }
  static void replay(const fs::path &root,const char *path) {
   auto input=root/"input",kit=root/"kit";fs::create_directories(input);fs::create_directories(kit);
   auto node=input/"event0";createNode(node,pointer(0x0ce6,BUS_BLUETOOTH));
@@ -266,6 +326,7 @@ int main(int argc,char **argv){
  for(unsigned id:{0x05c4u,0x09ccu,0x0ce6u,0x0df2u})for(unsigned bus:{BUS_USB,BUS_BLUETOOTH})
   HostTest::check(fs::path(root)/(std::to_string(id)+"-"+std::to_string(bus)),id,bus);
  HostTest::classification(fs::path(root)/"classification");
+ HostTest::sensitivity(fs::path(root)/"sensitivity");
  if(argc>1)HostTest::replay(fs::path(root)/"replay",argv[1]);
  fs::remove_all(root);
  std::cout<<"PASS Sony touchpad: 8 USB/Bluetooth device profiles, motion/precision/click/drag, lift/handover/multifinger, rotation, menu/reset/drop/reconnect, mapping and classification\n";

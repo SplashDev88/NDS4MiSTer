@@ -55,6 +55,12 @@ struct SystemMenuRow {
   bool disabled = false;
   unsigned arrows = 0;
 };
+inline constexpr int SYSTEM_TOUCHPAD_SENSITIVITY = 6;
+inline std::string systemTouchpadSensitivity(unsigned percent) {
+  const std::string label = " Touchpad Sensitivity:";
+  const std::string value = std::to_string(percent) + "%";
+  return label + std::string(28 - label.size() - value.size(), ' ') + value;
+}
 inline std::vector<SystemMenuRow> systemMenuRows(const SystemMenuOptions &options) {
   std::vector<SystemMenuRow> rows;
   auto add = [&](std::string text = "", int action = -1, bool disabled = false,
@@ -68,13 +74,13 @@ inline std::vector<SystemMenuRow> systemMenuRows(const SystemMenuOptions &option
   auto define = std::string(" Define NDS buttons");
   define.resize(27, ' ');
   add(define + char(22), 1);
+  add(systemTouchpadSensitivity(100), SYSTEM_TOUCHPAD_SENSITIVITY);
   add(" Button/Key remap          \x16", -1, true);
   add(" Reset player assignment", -1, true);
   // This NDS FPGA exposes no UART flags/speeds, so Main has no UART row.
   add();
   add(" Video processing          \x16", -1, true);
   // sys_top advertises UIO_SET_AFILTER support on the accepted NDS FPGA.
-  add();
   add(std::string(" Audio filter - ") + (options.custom_filter ? "Custom" : "Internal"), -1, true);
   auto filter = options.filter_name.empty() ? std::string(" < none >")
                                            : " " + options.filter_name.substr(0, 25);
@@ -90,6 +96,18 @@ inline std::vector<SystemMenuRow> systemMenuRows(const SystemMenuOptions &option
   while (rows.size() < 15) add();
   add("            exit", 5, false, nds_osd::arrow_left);
   return rows;
+}
+
+inline int nextSystemMenuAction(const std::vector<SystemMenuRow> &rows,
+                                int cursor, int direction) {
+  std::vector<int> actions;
+  for (const auto &row : rows)
+    if (row.action >= 0 && !row.disabled) actions.push_back(row.action);
+  if (actions.empty()) return cursor;
+  const auto selected = std::find(actions.begin(), actions.end(), cursor);
+  if (selected == actions.end()) return actions.front();
+  const int count = int(actions.size());
+  return actions[(int(selected - actions.begin()) + count + direction) % count];
 }
 
 struct SystemMenuView {

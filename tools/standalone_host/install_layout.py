@@ -8,7 +8,7 @@ import stat
 import tempfile
 
 LEGACY_KITS = ('.NDS_RC15', '.NDS_Standalone')
-SETTINGS = ('NDS_v1.CFG', 'NDS_touch.cfg', 'NDS_stick.cfg', 'NDS_speed.cfg',
+SETTINGS = ('NDS_v1.CFG', 'NDS_touch.cfg', 'NDS_stick.cfg', 'NDS_touchpad.cfg', 'NDS_speed.cfg',
             'NDS_video.cfg', 'NDS_graphics.cfg', 'NDS_rtc.cfg')
 LEGACY_LAUNCHERS = {
     'NDS_RC15.sh': '13a70273d2418a597209344054e603a9190a4c8b9c144b55668c9dce757bb040',

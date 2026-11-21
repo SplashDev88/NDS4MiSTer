@@ -6,6 +6,8 @@
 #include <utility>
 
 namespace nds_touchpad {
+inline constexpr std::array<unsigned, 9> SENSITIVITY_PERCENT{25, 50, 75, 100, 125, 150, 200, 300, 400};
+inline constexpr unsigned DEFAULT_SENSITIVITY = 3;
 // Linux's Sony driver supplies ABS_X/Y for the primary contact alongside MT
 // slots. Use that pointer emulation once per report, never both coordinate
 // streams. Only one-finger motion moves the mouse; no gestures or tap-to-click.
@@ -46,19 +48,19 @@ struct Mouse {
         // contact's position into a jump, including a second finger lifting.
         else if (code == ABS_MT_TRACKING_ID) rebase();
     }
-    std::pair<int, int> report(bool gameplay) {
+    std::pair<int, int> report(bool gameplay, unsigned sensitivity = 100) {
         if (!gameplay || !touching || !single) {
             rebase();
             return {0, 0};
         }
         int dx = 0, dy = 0;
         if (baseline) {
-            // Six sensor units per DS mouse pixel. Retain fractions so slow
-            // movement is not lost at the controller's high report rate.
-            const auto total_x = int64_t(x) - previous_x + remainder_x;
-            const auto total_y = int64_t(y) - previous_y + remainder_y;
-            dx = int(total_x / 6); dy = int(total_y / 6);
-            remainder_x = int(total_x % 6); remainder_y = int(total_y % 6);
+            // At 100%, six sensor units make one DS mouse pixel. Apply gain
+            // before division and retain fractions, even at slow settings.
+            const auto total_x = (int64_t(x) - previous_x) * sensitivity + remainder_x;
+            const auto total_y = (int64_t(y) - previous_y) * sensitivity + remainder_y;
+            dx = int(total_x / 600); dy = int(total_y / 600);
+            remainder_x = int(total_x % 600); remainder_y = int(total_y % 600);
         }
         previous_x = x; previous_y = y; baseline = true;
         return {dx, dy};

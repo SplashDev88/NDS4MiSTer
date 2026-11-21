@@ -78,6 +78,13 @@ Two-finger motion is ignored; tap-to-click and scrolling are not implemented.
 The separate gamepad and motion-sensor interfaces retain their existing roles.
 Touchpad motion does not navigate the menu or enter controller mappings.
 
+**System → Touchpad Sensitivity** sets cursor speed to **25%, 50%, 75%, 100%,
+125%, 150%, 200%, 300% or 400%**. Select cycles forward; minus/plus moves backward
+or forward. **100%** is the original touchpad speed. The setting applies when
+you return to the game. **System → Save settings** retains it in the kit's
+`NDS_touchpad.cfg`; **Reset settings** restores 100%. Slow motion retains its
+fractional movement at every speed. This setting affects Sony touchpads only.
+
 `test_host_touchpad.cpp` covers USB/Bluetooth profiles, dragging, fractional
 movement, contact changes, rotation, menu/reset, dropped reports, reconnects,
 and optional replay of a captured DualSense event stream.

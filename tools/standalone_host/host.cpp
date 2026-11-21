@@ -343,6 +343,7 @@ class Host {
   int yc_target_sent = -2; // -2 unprobed, -1 unsupported, 0 Scaler, 1 CRT.
   TouchRotation touch_rotation = TouchRotation::Normal;
   unsigned touch_range = 0; // 100%, stored separately from FPGA status/mappings.
+  unsigned touchpad_sensitivity = nds_touchpad::DEFAULT_SENSITIVITY;
   bool speed_hacks_available = false;
   unsigned speed_hacks = 0; // Internal configuration flags; applied on ROM load.
   static constexpr std::array<const char *, 8> SPEED_MODES{{"off", "lookup", "skip", "both",
@@ -530,6 +531,9 @@ class Host {
     const std::string stick_config = "NDS-StickRange-v1\n" +
         std::to_string(TOUCH_RANGE_PERCENT[touch_range]) + "\n";
     atomicFile(fs::path(kit) / "NDS_stick.cfg", stick_config.data(), stick_config.size());
+    const std::string touchpad_config = "NDS-Touchpad-v1\n" +
+        std::to_string(nds_touchpad::SENSITIVITY_PERCENT[touchpad_sensitivity]) + "\n";
+    atomicFile(fs::path(kit) / "NDS_touchpad.cfg", touchpad_config.data(), touchpad_config.size());
     if (speed_hacks_available) {
       const std::string config = "NDS-SpeedHacks-v1\n" + std::to_string(speed_hacks) + "\n";
       atomicFile(fs::path(kit) / "NDS_speed.cfg", config.data(), config.size());
@@ -1524,6 +1528,9 @@ class Host {
   }
   void drawSystem() {
     frame.setTitle("System");
+    for (auto &row : system_rows)
+      if (row.action == SYSTEM_TOUCHPAD_SENSITIVITY)
+        row.text = systemTouchpadSensitivity(nds_touchpad::SENSITIVITY_PERCENT[touchpad_sensitivity]);
     const auto view = systemMenuView(system_rows, cursor, system_first);
     system_first = view.first;
     for (int y = 0; y < 16; ++y) {
@@ -1787,6 +1794,7 @@ class Host {
           full_status.fill(0);
           touch_rotation = TouchRotation::Normal;
           touch_range = 0;
+          touchpad_sensitivity = nds_touchpad::DEFAULT_SENSITIVITY;
           speed_hacks = speed_hacks_available ?
               readSpeedHacks(fs::path(kit) / "defaults/NDS_speed.cfg") : 0;
           direct_video_crt = true;
@@ -1820,6 +1828,8 @@ class Host {
     if ((a == 0 || a == 1) && count) {
       if (!browser && !system_menu)
         cursor = nextMainMenuItem(a == 0 ? -1 : 1);
+      else if (system_menu)
+        cursor = nextSystemMenuAction(system_rows, cursor, a == 0 ? -1 : 1);
       else
         cursor = (cursor + count + (a == 0 ? -1 : 1)) % count;
     }
@@ -1875,7 +1885,11 @@ class Host {
             cursor = std::clamp(cursor + (a == 5 ? -16 : 16), 0, count - 1);
         }
       } else if (system_menu) {
-        if (a == 2)
+        if (cursor == SYSTEM_TOUCHPAD_SENSITIVITY && (a == 2 || a == 7 || a == 8)) {
+          touchpad_sensitivity = (touchpad_sensitivity + nds_touchpad::SENSITIVITY_PERCENT.size() +
+                                 (a == 7 ? -1 : 1)) % nds_touchpad::SENSITIVITY_PERCENT.size();
+          for (auto &p : pads) if (p.touchpad.enabled) p.touchpad.rebase();
+        } else if (a == 2)
           switch (cursor) {
           case 0:
             openCoreBrowser();
@@ -2940,7 +2954,7 @@ class Host {
       if (e.code == BTN_LEFT) p.mouse = e.value ? 1 : 0;
       else p.touchpad.key(e.code, e.value != 0);
     } else if (e.type == EV_SYN && e.code == SYN_REPORT) {
-      const auto [dx, dy] = p.touchpad.report(!menu);
+      const auto [dx, dy] = p.touchpad.report(!menu, nds_touchpad::SENSITIVITY_PERCENT[touchpad_sensitivity]);
       p.x = dx; p.y = -dy;
       mouseReport(p);
     }
@@ -3126,6 +3140,12 @@ public:
     for (unsigned i = 0; i < TOUCH_RANGE_PERCENT.size(); ++i)
       if (stick_contents == "NDS-StickRange-v1\n" + std::to_string(TOUCH_RANGE_PERCENT[i]) + "\n")
         touch_range = i;
+    std::ifstream touchpad_config(fs::path(kit) / "NDS_touchpad.cfg");
+    const std::string touchpad_contents((std::istreambuf_iterator<char>(touchpad_config)), {});
+    for (unsigned i = 0; i < nds_touchpad::SENSITIVITY_PERCENT.size(); ++i)
+      if (touchpad_contents == "NDS-Touchpad-v1\n" +
+          std::to_string(nds_touchpad::SENSITIVITY_PERCENT[i]) + "\n")
+        touchpad_sensitivity = i;
     std::ifstream ini(sd_root / "MiSTer.ini");
     std::string text((std::istreambuf_iterator<char>(ini)),
                      std::istreambuf_iterator<char>());
