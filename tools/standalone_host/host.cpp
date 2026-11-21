@@ -26,6 +26,7 @@
 #include "system_menu.h"
 #include "touch_rotation.h"
 #include "touch_range.h"
+#include "touchpad_mouse.h"
 #include "direct_video.h"
 #include "../../src/common/GraphicsControl.h"
 #include <algorithm>
@@ -267,6 +268,7 @@ struct Pad {
   uint16_t analog = 0;
   unsigned mouse = 0, lastmouse = 0;
   bool pad = false, touch_analog_valid = false;
+  nds_touchpad::Mouse touchpad;
 };
 class Host {
   friend struct HostTest;
@@ -1700,6 +1702,11 @@ class Host {
     spi.cmd(Spi::IO, 0x3d, {0, analog});
   }
   void neutralInput() {
+    for (auto &p : pads) if (p.touchpad.enabled) {
+      p.touchpad.rebase();
+      p.mouse = p.lastmouse = 0;
+      p.x = p.y = 0;
+    }
     touch_button_mouse = 0;
     spi.cmd(Spi::IO, 4, {8, 0, 0});
     joy(0);
@@ -2598,8 +2605,14 @@ class Host {
           p.mapping_rest[a] = 0;
         p.mapping_axis_ready[a] = mappingAxisNeutral(p, a);
       }
-      p.pad = p.abs[ABS_X].maximum > p.abs[ABS_X].minimum;
-      log(std::string("input ") + path + " " + name);
+      p.touchpad.enabled = nds_touchpad::Mouse::supported(id, properties[0], p.abs);
+      if (p.touchpad.enabled) {
+        resyncTouchpad(p);
+        p.pressed.fill(false); // This node must never participate in mapping.
+      }
+      p.pad = !p.touchpad.enabled && p.abs[ABS_X].maximum > p.abs[ABS_X].minimum;
+      log(std::string("input ") + path + " " + name +
+          (p.touchpad.enabled ? " [touchpad mouse]" : ""));
       pads.push_back(p);
     }
   }
@@ -2874,11 +2887,73 @@ class Host {
     else if (code == KEY_EQUAL || code == KEY_KPPLUS)
       action(8);
   }
+  void resyncTouchpad(Pad &p) {
+    p.touchpad.touching = p.touchpad.single = false;
+    std::array<unsigned char, (KEY_CNT + 7) / 8> keys{};
+    if (ioctl(p.fd, EVIOCGKEY(sizeof(keys)), keys.data()) >= 0) {
+      for (const auto code : {BTN_TOUCH, BTN_TOOL_FINGER})
+        p.touchpad.key(code, keys[code / 8] & (1u << (code % 8)));
+    }
+    for (const auto code : {ABS_X, ABS_Y}) {
+      input_absinfo axis{};
+      if (ioctl(p.fd, EVIOCGABS(code), &axis) >= 0)
+        p.touchpad.absolute(code, axis.value);
+    }
+    p.touchpad.rebase();
+    // A button held across a lost report or discovery must be released before
+    // it can press again. Never resurrect a touch without a fresh click.
+    p.mouse = p.lastmouse = 0;
+    p.x = p.y = 0;
+  }
+  void mouseReport(Pad &p) {
+    if (!menu && (p.x || p.y || p.mouse != p.lastmouse)) {
+      touch_mouse_owner = true;
+      // PS/2 Y points upward. Rotate in screen coordinates, then convert back.
+      auto [dx, dy] = rotateTouch(std::clamp(p.x, -127, 127),
+                                -std::clamp(p.y, -127, 127), touch_rotation);
+      int x = dx, y = -dy;
+      spi.cmd(Spi::IO, 4,
+              {uint16_t(8 | mouseButtons() | touch_button_mouse |
+                        (x < 0 ? 16 : 0) | (y < 0 ? 32 : 0)),
+               uint16_t(uint8_t(x)), uint16_t(uint8_t(y))});
+    }
+    p.lastmouse = p.mouse;
+    p.x = p.y = 0;
+  }
+  void touchpadInput(Pad &p, const input_event &e) {
+    if (e.type == EV_SYN && e.code == SYN_DROPPED) {
+      p.touchpad.dropped = true;
+      p.touchpad.rebase();
+      p.mouse = p.lastmouse = 0;
+      p.x = p.y = 0;
+      spi.cmd(Spi::IO, 4, {uint16_t(8 | mouseButtons() | touch_button_mouse), 0, 0});
+    } else if (p.touchpad.dropped) {
+      // Kernel contract: discard through the next SYN_REPORT, then query the
+      // current state. Do not apply partial coordinates or buffered clicks.
+      if (e.type == EV_SYN && e.code == SYN_REPORT) {
+        resyncTouchpad(p);
+        p.touchpad.dropped = false;
+      }
+    } else if (e.type == EV_ABS) {
+      p.touchpad.absolute(e.code, e.value);
+    } else if (e.type == EV_KEY && e.value != 2) {
+      if (e.code == BTN_LEFT) p.mouse = e.value ? 1 : 0;
+      else p.touchpad.key(e.code, e.value != 0);
+    } else if (e.type == EV_SYN && e.code == SYN_REPORT) {
+      const auto [dx, dy] = p.touchpad.report(!menu);
+      p.x = dx; p.y = -dy;
+      mouseReport(p);
+    }
+  }
   void inputs() {
     uint32_t j = 0;
     for (auto &p : pads) {
       input_event e;
       while (read(p.fd, &e, sizeof(e)) == sizeof(e)) {
+        if (p.touchpad.enabled) {
+          touchpadInput(p, e);
+          continue;
+        }
         if (e.type == EV_SYN && e.code == SYN_DROPPED) {
           if (mapping_step >= 0) {
             mapping_step = -1;
@@ -2964,20 +3039,7 @@ class Host {
           // Finish only at a complete evdev report, after both the digital
           // and analog halves of a physical control have been released.
           finishMappingReport();
-          if (!menu && (p.x || p.y || p.mouse != p.lastmouse)) {
-            touch_mouse_owner = true;
-            // PS/2 Y points upward; rotate in screen coordinates, then convert
-            // back for the core's mouse protocol. Buttons remain unchanged.
-            auto [dx, dy] = rotateTouch(std::clamp(p.x, -127, 127),
-                                      -std::clamp(p.y, -127, 127), touch_rotation);
-            int x = dx, y = -dy;
-            spi.cmd(
-                Spi::IO, 4,
-                {uint16_t(8 | mouseButtons() | touch_button_mouse | (x < 0 ? 16 : 0) | (y < 0 ? 32 : 0)),
-                 uint16_t(uint8_t(x)), uint16_t(uint8_t(y))});
-          }
-          p.lastmouse = p.mouse;
-          p.x = p.y = 0;
+          mouseReport(p);
         }
       }
       if (errno == ENODEV) {
@@ -2985,7 +3047,7 @@ class Host {
         p.joy = 0;
         p.pressed.fill(false);
         p.analog = 0;
-        touchAnalog(0);
+        if (!p.touchpad.enabled) touchAnalog(0);
         if (repeat_pad == p.id)
           repeat_action = -1;
         if (p.lastmouse)

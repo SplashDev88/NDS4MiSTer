@@ -71,6 +71,17 @@ menu behavior, persistence and the reported sideways-game directions.
 
 ## Controller motion sensors
 
+DualShock 4 and DualSense touchpads work as relative mice in the standalone
+frontend. Slide one finger to move the stylus; press the pad to touch, or hold
+the press while sliding to drag. Finger lifts and changes reanchor the cursor.
+Two-finger motion is ignored; tap-to-click and scrolling are not implemented.
+The separate gamepad and motion-sensor interfaces retain their existing roles.
+Touchpad motion does not navigate the menu or enter controller mappings.
+
+`test_host_touchpad.cpp` covers USB/Bluetooth profiles, dragging, fractional
+movement, contact changes, rotation, menu/reset, dropped reports, reconnects,
+and optional replay of a captured DualSense event stream.
+
 A controller or keyboard button mapped to **Touch** presses at the current
 mouse/trackball cursor after using that pointer. Hold Touch while rolling the
 trackball to drag. Moving the right stick takes over; its centered noise does
