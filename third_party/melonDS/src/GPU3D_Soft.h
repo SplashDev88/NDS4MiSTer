@@ -1610,6 +1610,11 @@ private:
         [[gnu::always_inline, gnu::hot]] constexpr inline s32
         Interpolate(s32 y0, s32 y1) const
         {
+            // A perspective Y edge uses nine fractional bits. The floor of a
+            // signed delta gives the DS descending-endpoint rounding directly.
+            if constexpr (dir == 1)
+                if (!linear && xdiff && yfactor <= 512)
+                    return y0 + (((y1 - y0) * static_cast<s32>(yfactor)) >> 9);
             if (xdiff == 0 || y0 == y1) return y0;
 
             if (!linear)
