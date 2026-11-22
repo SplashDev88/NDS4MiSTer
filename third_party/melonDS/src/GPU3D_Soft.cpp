@@ -5274,6 +5274,20 @@ bool SoftRenderer3D::TryFpgaFrame()
     if (!FullFrameCompletion || AlternateRows || Quarter || Tiny)
         return trace.finish(Outcome::NotFullFrame);
     if (!CurrentPolygonCount) return trace.finish(Outcome::Empty);
+    if (GPU3D.RowDepthRectanglesEnabled() && CurrentPolygonCount >= 128)
+    {
+        // These rectangles cost less to draw on the ARM than to encode as
+        // one FPGA command per row. Keep mixed 3D scenes on normal admission.
+        int remainingOtherPolygons = CurrentPolygonCount / 8;
+        int i = 0;
+        for (; i < CurrentPolygonCount; ++i)
+        {
+            if (!PolygonList[i].PixelState.PreparedRectangle && --remainingOtherPolygons < 0)
+                break;
+        }
+        if (i == CurrentPolygonCount)
+            return trace.finish(Outcome::LightScene);
+    }
     if (!fpga3d::available()) return trace.finish(Outcome::Unavailable);
     if (EffectiveDispCnt & (1u<<14)) return trace.finish(Outcome::BitmapClear);
     // Row reuse was admitted only when this same frame was already destined
