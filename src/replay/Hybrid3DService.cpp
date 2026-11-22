@@ -1314,6 +1314,10 @@ private:
         // A session reset is a hard boundary. Release every resource from the
         // prior emulation instance before a replacement can become visible.
         nds_.reset();
+        golden_sun_dual_settings_.reset();
+        golden_sun_capture_only_ = false;
+        golden_sun_capture_scene_ = 0;
+        golden_sun_hud_.reset();
         melonDS::NDSArgs args;
         args.JIT = std::nullopt;
         nds_ = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
@@ -1391,6 +1395,8 @@ private:
             settings.PairedACache = matched_display_test_ &&
                 nds4mister::replay::paired_a_cache_enabled(paired_a_cache_,
                     std::getenv("NDS4MISTER_PAIRED_A_CACHE"));
+            if (golden_sun_display_ && !settings.EngineBOnly && !settings.EngineAOnly)
+                golden_sun_dual_settings_ = settings;
             auto& renderer = nds_->GPU.GetRenderer();
             renderer.SetRenderSettings(settings);
             if (Threaded3D) {
@@ -1428,7 +1434,7 @@ private:
         matched_recovery_pacer_.reset();
         matched_3d_revision_valid_ = false;
         arm_video_frame_ready_ = false;
-        golden_sun_marker_valid_ = false;
+        golden_sun_scene_marker_ = 0;
         golden_sun_valid_.fill(false);
         arm_video_frame_ = 0;
         arm_video_completed_index_ = -1;
@@ -2698,8 +2704,6 @@ private:
         return true;
     }
 
-    // The qualified title DMA routine writes its own row address once per LCD.
-    // Other scenes use the cartridge's original row transfers.
     bool golden_sun_hud_mode() const
     {
         const auto& gpu = nds_->GPU;
@@ -2735,7 +2739,7 @@ private:
     void apply_golden_sun_hud_line(unsigned line)
     {
         if (!golden_sun_hud_ || !golden_sun_hud_->ready ||
-            timeline_replay_lcd_ - golden_sun_hud_->last_frame > 8 || !golden_sun_hud_mode()) return;
+            timeline_replay_lcd_ - golden_sun_hud_->last_frame > 24 || !golden_sun_hud_mode()) return;
         auto& gpu = nds_->GPU;
         const auto& image = golden_sun_hud_->images[golden_sun_hud_->active];
         std::uint32_t changed = 0;
@@ -2751,16 +2755,34 @@ private:
             observe_golden_sun_hud_word(record.address_or_aux, static_cast<std::uint32_t>(record.data));
         }
         if (golden_sun_display_ && record.address_or_aux == 0x06204000u &&
-            static_cast<std::uint32_t>(record.data) == 0x06204000u &&
+            (static_cast<std::uint32_t>(record.data) == 0x06204001u ||
+             static_cast<std::uint32_t>(record.data) == 0x06204002u) &&
             frame_packet::record_byte_enable(record) == 15u) {
             golden_sun_marker_frame_ = timeline_replay_lcd_;
-            golden_sun_marker_valid_ = true;
+            golden_sun_scene_marker_ = static_cast<std::uint32_t>(record.data) - 0x06204000u;
         }
     }
 
     bool golden_sun_title_active(std::uint32_t frame) const
     {
-        return golden_sun_marker_valid_ && frame - golden_sun_marker_frame_ <= 2;
+        return golden_sun_scene_marker_ == 1 && frame - golden_sun_marker_frame_ <= 2;
+    }
+
+    bool golden_sun_prologue_active(std::uint32_t frame) const
+    {
+        return golden_sun_scene_marker_ == 2 && frame - golden_sun_marker_frame_ <= 2;
+    }
+
+    void select_golden_sun_capture_output(std::uint32_t frame)
+    {
+        if (!golden_sun_dual_settings_) return;
+        const bool capture_only = golden_sun_valid_[0] && golden_sun_valid_[1] &&
+            (golden_sun_title_active(frame) || golden_sun_prologue_active(frame)) && golden_sun_capture_mode();
+        if (capture_only == golden_sun_capture_only_) return;
+        auto settings = *golden_sun_dual_settings_;
+        settings.EngineAOnly = capture_only;
+        nds_->GPU.GetRenderer().SetRenderSettings(settings);
+        golden_sun_capture_only_ = capture_only;
     }
 
     bool golden_sun_capture_mode() const
@@ -2785,10 +2807,12 @@ private:
     {
         const auto& gpu = nds_->GPU;
         const bool title = golden_sun_title_active(frame) && golden_sun_capture_mode();
+        const bool prologue = golden_sun_prologue_active(frame) && golden_sun_capture_mode();
         const bool lower_only = !title && golden_sun_lower_camera();
-        if (lower_only != golden_sun_lower_only_) golden_sun_valid_.fill(false);
-        golden_sun_lower_only_ = lower_only;
-        if (!title && !lower_only) {
+        const unsigned scene = title ? 1u : prologue ? 2u : lower_only ? 3u : 0u;
+        if (scene != golden_sun_capture_scene_) golden_sun_valid_.fill(false);
+        golden_sun_capture_scene_ = scene;
+        if (!scene) {
             golden_sun_valid_.fill(false);
             return;
         }
@@ -2798,8 +2822,11 @@ private:
         if (gpu.CaptureEnable) {
             const unsigned polys = gpu.GPU3D.RenderNumPolygons;
             const bool landscape = polys >= 1200 && polys <= 1400;
-            if (lower_only ? polys > 0 : (polys == 9 || landscape)) {
-                const unsigned view = (lower_only || landscape) ? 1 : 0;
+            if ((prologue || lower_only) ? polys > 0 : (polys == 9 || landscape)) {
+                // At capture end BG1 supplies the text for the lower camera.
+                // Its other landscape pass becomes the upper screen on the next swap.
+                const unsigned view = lower_only ? 1u : prologue ?
+                    ((gpu.GPU2D_A.DispCnt >> 9) & 1u) : unsigned(landscape);
                 const auto* pixels = reinterpret_cast<const std::uint16_t*>(gpu.VRAM[3]);
                 auto& captured = (*golden_sun_screens_)[view];
                 for (std::size_t i = 0; i < captured.size(); ++i) {
@@ -3230,6 +3257,7 @@ private:
         }
 
         if (line == 0) {
+            if (golden_sun_display_) select_golden_sun_capture_output(display_frame);
             // A copied packet can outlive its H3B slot. Advance every melonDS
             // state transition, but derive the first complete frame and then
             // exactly one frame per cadence. Publication swaps only completed
@@ -3263,7 +3291,10 @@ private:
                     display_frame - golden_sun_last_capture_[0] >= 6;
                 const bool capture_camera = complete_camera && queued < ReplayQueueCapacity - 48 &&
                     (g3d.RenderNumPolygons != 9 || logo_due || !landscape_due);
-                const bool allowed = golden_title ? capture_camera :
+                const bool prologue_camera = golden_sun_prologue_active(display_frame) &&
+                    g3d.RenderNumPolygons && queued < 96 &&
+                    (landscape_due || logo_due);
+                const bool allowed = golden_title ? capture_camera : prologue_camera ||
                     !repeat_geometry && (ffiii_fresh || (matched_recovery_skip_enabled_ ?
                         matched_recovery_pacer_.can_draw(near_head) : near_head));
                 if (pacing_trace_enabled_) {
@@ -5831,10 +5862,12 @@ private:
         bool ready = false;
     };
     std::unique_ptr<GoldenSunHud> golden_sun_hud_;
-    bool golden_sun_lower_only_ = false;
-    bool golden_sun_marker_valid_ = false;
+    unsigned golden_sun_capture_scene_ = 0;
+    unsigned golden_sun_scene_marker_ = 0;
     std::uint32_t golden_sun_marker_frame_ = 0;
     bool ffiii_display_ = false;
+    std::optional<melonDS::RendererSettings> golden_sun_dual_settings_;
+    bool golden_sun_capture_only_ = false;
     bool golden_sun_display_ = false;
     std::unique_ptr<FullVideoBuffer> golden_sun_screens_;
     std::array<bool, 2> golden_sun_valid_ {};

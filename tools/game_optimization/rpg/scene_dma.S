@@ -8,8 +8,7 @@
 .arm
 .global primary
 primary:
-    push {r3,r4,r5,r6,r7,r8,lr}
-    sub sp,sp,#4
+    push {r1,r2,r3,r4,r5,r6,r7,lr}
     add ip,pc,#1
     bx ip
 .thumb
@@ -73,8 +72,9 @@ primary_dma:
     bl title_active
     cmp r0,#0
     beq transmit
-    ldr r0,=0x06204000
-    str r0,[r0]
+    ldr r1,=0x06204000
+    adds r0,r1,r0
+    str r0,[r1]
     @ The title uses both scratch images only for DMA to the sub display.
     @ The HPS already owns the actual bank-D image and retains both views.
     b done
@@ -104,8 +104,7 @@ capture:
     movs r0,#3
     armcall 0x020523cc
 done:
-    ldr r3,=return_arm
-    bx r3
+    pop {r1,r2,r3,r4,r5,r6,r7,pc}
 .thumb_func
 stream_pair:
     push {r3,r4,r5,r6,r7,lr}
@@ -150,9 +149,15 @@ title_active:
     @ Title archive FAT window; the prologue reuses the same VRAM and heap.
     ldr r0,=0x0207f780
     ldr r1,[r0]
+    movs r2,#1
     ldr r0,=0x033e9e00
     cmp r1,r0
+    beq check_display
+    ldr r0,=0x00506400
+    cmp r1,r0
     bne inactive
+    movs r2,#2
+check_display:
     ldr r0,=0x04001000
     ldr r1,[r0]
     ldr r0,=0x10555
@@ -165,7 +170,7 @@ title_active:
     lsrs r1,r1,#28
     cmp r1,#14
     bne inactive
-    movs r0,#1
+    movs r0,r2
     bx lr
 inactive:
     movs r0,#0
@@ -175,8 +180,8 @@ inactive:
 can_send_shape:
     push {r0,r1,r2,lr}
     bl title_active
-    cmp r0,#0
-    beq send
+    cmp r0,#1
+    bne send
     @ Only the tagged title model has an alternate list after its original.
     ldr r0,[sp]
     ldr r1,[sp,#4]
@@ -202,7 +207,18 @@ can_send_shape:
     bls send
     b omit_shape
 landscape_camera:
-    @ Retain each complete camera submission after pruning invisible primitives.
+    @ Latch one decision for the whole landscape pass. The first shape is seven.
+    adr r3,landscape_phase
+    ldrb r2,[r3]
+    cmp r1,#7
+    bne use_phase
+    movs r1,#1
+    eors r2,r1
+    strb r2,[r3]
+use_phase:
+    cmp r2,#0
+    beq omit_shape
+    ldr r2,[r0,#4]
     lsls r1,r2,#8
     beq omit_shape
     bmi send
@@ -213,9 +229,7 @@ landscape_camera:
     b send
 omit_shape:
     pop {r0,r1,r2,pc}
-.ltorg
 .align 2
-.arm
-return_arm:
-    add sp,sp,#4
-    pop {r3,r4,r5,r6,r7,r8,pc}
+landscape_phase:
+    .word 0
+.ltorg

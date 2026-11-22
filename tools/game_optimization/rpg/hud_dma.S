@@ -43,8 +43,11 @@ hud_check:
     @ The game's initial transfer used row zero, HBlank starts at row one.
     subs r6,#255
     subs r6,#1
-    ldr r7,=0x06840000
-    ldr r0,=0x0684c000
+    armcall 0x02031a10
+    cmp r0,#0
+    beq done
+    ldr r7,hud_destination
+    ldr r0,hud_marker
     ldr r1,hud_magic
     str r1,[r0]
     ldr r3,hud_flags
@@ -104,3 +107,5 @@ done:
 .align 2
 hud_magic: .word 0x31445548
 hud_flags: .word 0x84003000
+hud_destination: .word 0x06840000
+hud_marker: .word 0x0684c000

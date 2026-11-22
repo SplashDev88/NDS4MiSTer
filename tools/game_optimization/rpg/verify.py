@@ -46,7 +46,7 @@ def main():
         symbols = {label: int(value, 16) for value, kind, label in
                    (line.split() for line in tool("nm", "-n", elf).decode().splitlines())}
         recipe = manifests["BO5E"]["patches"][0]
-        body, hook, hud = recipe["edits"]
+        body, hook, hud, reuse = recipe["edits"]
         binary = work / "display"
         tool("objcopy", "-O", "binary", elf, binary)
         assert symbols["primary"] == 0x02000000 + body["offset"]
@@ -64,6 +64,12 @@ def main():
         assert binary.read_bytes().ljust(len(expected), b"\0") == expected
         symbols = tool("nm", "-n", elf).decode()
         assert "020528e8 T word_entry" in symbols and "0205295c T half_entry" in symbols
+        elf = assemble("hud_reuse")
+        tool("objcopy", "-O", "binary", elf, binary)
+        assert reuse["offset"] == 0x31A0C
+        assert binary.read_bytes().ljust(0x6C, b"\0") == bytes.fromhex(reuse["after"])
+        symbols = tool("nm", "-n", elf).decode()
+        assert "02031a0c T sdk_seek" in symbols and "02031a10 T hud_needs_upload" in symbols
         if "title_model" in recipe:
             assert len(recipe["title_model"]["hidden"]) == 82
     print("Both RPG instruction profiles match the runtime catalog.")
