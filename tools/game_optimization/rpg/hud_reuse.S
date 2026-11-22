@@ -24,9 +24,11 @@ hud_needs_upload:
     cmp r1,r4
     cmpeq r2,r5
     movne ip,#0
-    tst ip,#7
-    moveq r0,#1
-    movne r0,#0
+    @ A new image needs a full transfer. Otherwise refresh its six 8 KiB
+    @ pages over eight calls, preserving the original refresh period.
+    subs r0,ip,#1
+    andcs r0,r0,#7
+    addcs r6,r6,r0,lsl #13
     add ip,ip,#1
     stmia r3,{r1,r2,ip}
     pop {r4,r5,r7,pc}

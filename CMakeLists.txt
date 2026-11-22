@@ -36,6 +36,8 @@ target_include_directories(nds_game_query_profile_test PRIVATE src)
 target_compile_options(nds_game_query_profile_test PRIVATE -Wall -Wextra -Wpedantic)
 if(BUILD_TESTING)
     add_test(NAME nds_game_query_profile COMMAND nds_game_query_profile_test)
+    add_executable(nds_golden_sun_hud_test src/replay/GoldenSunHudTest.cpp)
+    add_test(NAME nds_golden_sun_hud COMMAND nds_golden_sun_hud_test)
 endif()
 
 # Requires user-provided retail/No Touch ROM fixtures; never bundles game data.

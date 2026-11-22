@@ -14,6 +14,7 @@
 #include "replay/Hybrid3DGxReadback.h"
 #include "replay/GxMatrixPrefix.h"
 #include "replay/GameQueryProfile.h"
+#include "replay/GoldenSunHud.h"
 #include "replay/Hybrid3DMemoryMapping.h"
 #include "../../tools/fpga3d/transport.h"
 #include "replay/Hybrid3DSessionPolicy.h"
@@ -2816,26 +2817,11 @@ private:
 
     void observe_golden_sun_hud_word(std::uint32_t address, std::uint32_t value)
     {
-        constexpr std::uint32_t begin = 0x06840000u;
-        constexpr std::uint32_t marker = begin + 256 * 192;
-        if (address == marker && value == 0x31445548u) {
-            if (!golden_sun_hud_)
-                golden_sun_hud_ = std::make_unique<GoldenSunHud>();
-            golden_sun_hud_->received = 0;
-            return;
+        if (!golden_sun_hud_) {
+            if (address != GoldenSunHud::Marker || !GoldenSunHud::is_marker(value)) return;
+            golden_sun_hud_ = std::make_unique<GoldenSunHud>();
         }
-        if (!golden_sun_hud_ || address < begin || address >= marker) return;
-        auto& hud = *golden_sun_hud_;
-        if (address != begin + hud.received * 4) {
-            hud.received = hud.images[0].size();
-            return;
-        }
-        hud.images[1 - hud.active][hud.received++] = value;
-        if (hud.received == hud.images[0].size()) {
-            hud.active = 1 - hud.active;
-            hud.ready = true;
-            hud.last_frame = timeline_replay_lcd_;
-        }
+        golden_sun_hud_->write(address, value, timeline_replay_lcd_);
     }
 
     void apply_golden_sun_hud_line(unsigned line)
@@ -6002,13 +5988,7 @@ private:
     std::unique_ptr<GoldenSunBitmap> golden_sun_backdrop_;
     std::deque<int> golden_sun_swap_cameras_;
     int golden_sun_render_camera_ = -1;
-    struct GoldenSunHud {
-        std::array<std::array<std::uint32_t, 256 * 192 / 4>, 2> images {};
-        std::size_t received = 256 * 192 / 4;
-        unsigned active = 0;
-        std::uint32_t last_frame = 0;
-        bool ready = false;
-    };
+    using GoldenSunHud = nds4mister::replay::GoldenSunHud;
     std::unique_ptr<GoldenSunHud> golden_sun_hud_;
     unsigned golden_sun_capture_scene_ = 0;
     unsigned golden_sun_scene_marker_ = 0;
@@ -12143,6 +12123,7 @@ try {
 #endif
             candidate->configure_golden_sun_display(golden_sun_display);
             fpga3d::ffiiiIndexedTextures = ffiii_display;
+            if (ffiii_display) fpga3d::preparedTexturesEnabled = true;
             candidate->configure_ffiii_display(ffiii_display);
             candidate->configure_pinball_2d(pinball_2d);
             const bool initialized = candidate->initialize(profile_session);

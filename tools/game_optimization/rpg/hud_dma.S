@@ -9,9 +9,10 @@
 .global word_entry
 word_entry:
     push {r2,r3,r4,r5,r6,r7,ip,lr}
-    add ip,pc,#1
-    bx ip
+    blx word_thumb
 .thumb
+.thumb_func
+word_thumb:
     movs r4,#2
     b setup
 hud_check:
@@ -46,13 +47,19 @@ hud_check:
     lsls r0,r0,#8
     subs r6,r6,r0
     armcall (cart_seek+4)
-    cmp r0,#0
-    beq done
-    ldr r7,hud_destination
-    ldr r0,hud_marker
-    ldr r1,hud_magic
-    str r1,[r0]
+    cmp r0,#6
+    blo refresh_page
+    bpl done
     ldr r3,hud_flags
+    b mark_hud
+refresh_page:
+    ldr r3,hud_page_flags
+mark_hud:
+    ldr r1,hud_page_magic
+    adds r1,r1,r0
+    ldr r0,hud_marker
+    str r1,[r0]
+    ldr r7,hud_destination
     b issue
 .ltorg
 .org 0x74
@@ -60,9 +67,10 @@ hud_check:
 .global half_entry
 half_entry:
     push {r2,r3,r4,r5,r6,r7,ip,lr}
-    add ip,pc,#1
-    bx ip
+    blx half_thumb
 .thumb
+.thumb_func
+half_thumb:
     movs r4,#1
 setup:
     movs r5,r0
@@ -107,7 +115,8 @@ done:
 .ltorg
 
 .align 2
-hud_magic: .word 0x31445548
+hud_page_magic: .word 0x31445549
+hud_page_flags: .word 0x84000800
 hud_flags: .word 0x84003000
 hud_destination: .word 0x06840000
 hud_marker: .word 0x0684c000
