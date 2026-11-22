@@ -2707,8 +2707,9 @@ private:
     bool golden_sun_hud_mode() const
     {
         const auto& gpu = nds_->GPU;
-        return !gpu.ScreenSwap && gpu.GPU2D_A.DispCnt == 0x1175cu &&
-            gpu.GPU2D_B.DispCnt == 0x11b55u && gpu.GPU2D_B.BGCnt[3] == 0x6082u &&
+        // The status panel belongs to engine B. Engine A selects a different
+        // 3D/background layout inside the cabin and on the command screen.
+        return !gpu.ScreenSwap && gpu.GPU2D_B.DispCnt == 0x11b55u && gpu.GPU2D_B.BGCnt[3] == 0x6082u &&
             gpu.VRAMCNT[2] == 0x93u;
     }
 
@@ -3299,9 +3300,16 @@ private:
                     (g3d.RenderNumPolygons >= 1200 && g3d.RenderNumPolygons <= 1400);
                 const bool ffiii_scene = ffiii_display_ && g3d.RenderNumPolygons > 0;
                 const bool new_geometry = !matched_3d_revision_valid_ || matched_3d_revision_ != g3d.RenderStateRevision;
-                const bool ffiii_fresh = ffiii_scene && new_geometry && queued < 48 &&
+                // The field uses 3D on the touch screen and a 2D status panel above.
+                // Redrawing an unchanged cabin can delay the game's ordered geometry reads.
+                // Keep a regular refresh for the HUD and field controls between new scenes.
+                const auto main_display = nds_->GPU.GPU2D_A.DispCnt;
+                const bool golden_field = golden_sun_display_ && golden_sun_hud_mode() &&
+                    (main_display == 0x1175cu || main_display == 0x1135du);
+                const bool fresh_scene = (ffiii_scene || golden_field) && new_geometry && queued < 48 &&
                     std::uint32_t(latest - replay_packet_frame_) <= 2;
-                const bool repeat_geometry = ffiii_scene && !new_geometry && arm_video_skipped_frames_ < 4;
+                const bool repeat_geometry = (ffiii_scene || golden_field) && !new_geometry &&
+                    arm_video_skipped_frames_ < 4;
                 const bool landscape_due = !golden_sun_valid_[1] ||
                     display_frame - golden_sun_last_capture_[1] >= 6;
                 const bool logo_due = !golden_sun_valid_[0] ||
@@ -3312,7 +3320,7 @@ private:
                     g3d.RenderNumPolygons && queued < 96 &&
                     (landscape_due || logo_due);
                 const bool allowed = golden_title ? capture_camera : prologue_camera ||
-                    !repeat_geometry && (ffiii_fresh || (matched_recovery_skip_enabled_ ?
+                    !repeat_geometry && (fresh_scene || (matched_recovery_skip_enabled_ ?
                         matched_recovery_pacer_.can_draw(near_head) : near_head));
                 if (pacing_trace_enabled_) {
                     using M = nds4mister::crash::PacingMetric;
@@ -11909,14 +11917,7 @@ try {
 #endif
                 golden_sun_display = selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'B','O','5','E'}} &&
                     selected.identity.revision == 0 && selected.identity.header_crc32 == 0xda061ea1u;
-                if (golden_sun_display) {
-                    regional_vram_replay = true;
-                    sprite_raster_spans = true;
-                    approximate_factors = true;
-                    compressed_palette_range = true;
-                    texture_opacity = true;
-                    lighting_result_reuse = true;
-                }
+                if (golden_sun_display) regional_vram_replay = true;
                 // FFIII US uses textured models over largely static 2D layers.
                 if (selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'A','F','F','E'}} &&
                     selected.identity.revision == 0 && selected.identity.header_crc32 == 0x70de0241u) {
@@ -11926,7 +11927,6 @@ try {
                     matrix_prefix_mode = (nds4mister::replay::portrait_sprite_raster_profile(selected) ||
                         nds4mister::replay::ecclesia_sprite_raster_profile(selected)) ?
                         0u : nds4mister::replay::game_query_prefix_mode(selected.profile);
-                if (golden_sun_display) matrix_prefix_mode = 0;
                 // Controlled NSMB-only comparison: reuse the existing tested
                 // paired-picture cadence while leaving all query/state work
                 // active. Other games and normal launchers keep full rate.
