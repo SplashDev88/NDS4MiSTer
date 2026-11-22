@@ -288,9 +288,9 @@ public:
         return false;
     }
 
-    void GetTexture(u32 texParam, u32 palBase, TexHandleT& textureHandle, u32& layer, u32*& helper)
+    static u64 TextureKey(u32 texParam, u32 palBase)
     {
-        // remove sampling and texcoord gen params
+        // Sampling and coordinate generation do not affect decoded texels.
         texParam &= ~0xC00F0000;
 
         u32 fmt = (texParam >> 26) & 0x7;
@@ -301,6 +301,19 @@ public:
             if (fmt == 5)
                 key &= ~((u64)1 << 29);
         }
+        return key;
+    }
+
+    bool HasDecodedTexture(u32 texParam, u32 palBase) const
+    {
+        return Cache.find(TextureKey(texParam, palBase)) != Cache.end();
+    }
+
+    void GetTexture(u32 texParam, u32 palBase, TexHandleT& textureHandle, u32& layer, u32*& helper)
+    {
+        const u64 key = TextureKey(texParam, palBase);
+        texParam &= ~0xC00F0000u;
+        const u32 fmt = (texParam >> 26) & 7;
         //printf("%" PRIx64 " %" PRIx32 " %" PRIx32 "\n", key, texParam, palBase);
 
         assert(fmt != 0 && "no texture is not a texture format!");

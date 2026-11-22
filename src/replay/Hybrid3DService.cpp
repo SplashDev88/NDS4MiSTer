@@ -856,6 +856,8 @@ public:
     void configure_row_depth_rectangles(bool enabled) { row_depth_rectangles_ = enabled; }
     void configure_pinball_2d(bool enabled) { pinball_2d_ = enabled; }
 
+    void configure_draw_position_reuse(bool enabled) { draw_position_reuse_ = enabled; }
+
     void configure_ffiii_display(bool enabled) { ffiii_display_ = enabled; }
 
     void configure_golden_sun_display(bool enabled)
@@ -1351,6 +1353,7 @@ private:
         nds_->GPU.GPU3D.SetNColor8PaletteExpansionEnabled(ncolor8_palette_expansion_);
         nds_->GPU.GPU3D.SetRectangleTextureXEnabled(rectangle_texture_x_);
         nds_->GPU.GPU3D.SetBackgroundRowReuseEnabled(background_row_reuse_);
+        if (draw_position_reuse_) nds_->GPU.GPU3D.SetDrawPositionReuseEnabled();
         nds_->GPU.GPU3D.SetOccludedSpanCullingEnabled(golden_sun_display_);
         nds_->GPU.GPU3D.SetApproximateFactorsEnabled(approximate_factors_);
         nds_->GPU.GPU2D_A.SetOpaque3DSeedEnabled(opaque_3d_seed_);
@@ -5997,6 +6000,7 @@ private:
     unsigned golden_sun_scene_marker_ = 0;
     std::uint32_t golden_sun_marker_frame_ = 0;
     bool ffiii_display_ = false;
+    bool draw_position_reuse_ = false;
     bool pinball_2d_ = false;
     bool row_depth_rectangles_ = false;
     std::optional<melonDS::RendererSettings> golden_sun_dual_settings_;
@@ -11974,6 +11978,7 @@ try {
 #endif
             bool golden_sun_display = false;
             bool ffiii_display = false;
+            bool draw_position_reuse = false;
             bool pinball_2d = false;
             bool row_depth_rectangles = false;
             unsigned matrix_prefix_mode = !prefix_requested ? 0u :
@@ -12032,6 +12037,8 @@ try {
                 pinball_2d = nds4mister::replay::matches_game_cartridge(
                     selected, nds4mister::replay::PinballTableCartridges);
                 if (golden_sun_display || pinball_2d) regional_vram_replay = true;
+                draw_position_reuse = nds4mister::replay::matches_game_cartridge(
+                    selected, nds4mister::replay::RadiantHistoriaDrawCartridges);
                 ffiii_display = nds4mister::replay::matches_game_cartridge(
                     selected, nds4mister::replay::FinalFantasyIIICartridges);
                 if (automatic_query_profile)
@@ -12070,6 +12077,7 @@ try {
                     << " background_row_reuse=" << background_row_reuse
                     << " background_span_reuse=" << background_row_reuse
                     << " golden_sun_display=" << golden_sun_display
+                    << " draw_position_reuse=" << draw_position_reuse
                     << " ffiii_display=" << ffiii_display
                     << " row_depth_rectangles=" << row_depth_rectangles
                     << " pinball_2d=" << pinball_2d
@@ -12133,6 +12141,7 @@ try {
             fpga3d::ffiiiIndexedTextures = ffiii_display;
             if (ffiii_display) fpga3d::preparedTexturesEnabled = true;
             candidate->configure_ffiii_display(ffiii_display);
+            candidate->configure_draw_position_reuse(draw_position_reuse);
             candidate->configure_pinball_2d(pinball_2d);
             candidate->configure_row_depth_rectangles(row_depth_rectangles);
             const bool initialized = candidate->initialize(profile_session);

@@ -6067,7 +6067,8 @@ void SoftRenderer3D::PrepareBackgroundRows(bool textureChanged, bool forceRecove
     BackgroundRowsPrepared = false;
     BackgroundSoftwareFrame = false;
     BackgroundSpanFrame = BackgroundSpansActive = false;
-    const bool eligible = GPU3D.BackgroundRowReuseEnabled() &&
+    const bool positional = GPU3D.DrawPositionReuseEnabled();
+    const bool eligible = (positional || GPU3D.BackgroundRowReuseEnabled()) &&
         FullFrameCompletion && UseTextureCache && !RenderOff &&
         !AlternateRows && !Quarter && !Tiny && !DropShadows &&
         !ApproximateFactors && !NeutralWhite &&
@@ -6093,7 +6094,12 @@ void SoftRenderer3D::PrepareBackgroundRows(bool textureChanged, bool forceRecove
         if (BackgroundRows) BackgroundRows->invalidate();
         if (!BackgroundSpans) BackgroundSpans = std::make_unique<NDS4MiSTerBackgroundSpanCache>();
         if (forceRecovery) BackgroundSpans->invalidate();
-        BackgroundSpans->prepare(GPU3D, EffectiveDispCnt, !textureChanged);
+        if (positional)
+            BackgroundSpans->preparePositions(GPU3D, EffectiveDispCnt, [&](const Polygon& p) {
+                return !textureChanged || TextureCache.HasDecodedTexture(p.TexParam, p.TexPalette);
+            });
+        else
+            BackgroundSpans->prepare(GPU3D, EffectiveDispCnt, !textureChanged);
         std::copy(BackgroundSpans->reusable.begin(), BackgroundSpans->reusable.end(), BackgroundReuse);
         std::copy(BackgroundSpans->dirtyStart.begin(), BackgroundSpans->dirtyStart.end(), BackgroundDirtyStart);
         std::copy(BackgroundSpans->dirtyEnd.begin(), BackgroundSpans->dirtyEnd.end(), BackgroundDirtyEnd);

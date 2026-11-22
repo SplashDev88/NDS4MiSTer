@@ -159,8 +159,14 @@ public:
     }
     void SetRectangleTextureXEnabled(bool enabled) noexcept { UseRectangleTextureX = enabled; }
     bool RectangleTextureXEnabled() const noexcept { return UseRectangleTextureX; }
-    void SetBackgroundRowReuseEnabled(bool enabled) noexcept { UseBackgroundRowReuse = enabled; }
-    bool BackgroundRowReuseEnabled() const noexcept { return UseBackgroundRowReuse; }
+    enum class BackgroundReuseMode : u8 { Off, Rows, DrawPositions };
+    void SetBackgroundRowReuseEnabled(bool enabled) noexcept
+    {
+        BackgroundMode = enabled ? BackgroundReuseMode::Rows : BackgroundReuseMode::Off;
+    }
+    void SetDrawPositionReuseEnabled() noexcept { BackgroundMode = BackgroundReuseMode::DrawPositions; }
+    bool BackgroundRowReuseEnabled() const noexcept { return BackgroundMode == BackgroundReuseMode::Rows; }
+    bool DrawPositionReuseEnabled() const noexcept { return BackgroundMode == BackgroundReuseMode::DrawPositions; }
     void SetNColor8PaletteExpansionEnabled(bool enabled) noexcept { UseNColor8PaletteExpansion = enabled; }
     bool NColor8PaletteExpansionEnabled() const noexcept { return UseNColor8PaletteExpansion; }
     void SetTextureRangeHashReuseEnabled(bool enabled) noexcept { UseTextureRangeHashReuse = enabled; }
@@ -382,7 +388,7 @@ public:
     bool UseTextureOpacity = false;
     bool UseNColor8PaletteExpansion = false;
     bool UseRectangleTextureX = false;
-    bool UseBackgroundRowReuse = false;
+    BackgroundReuseMode BackgroundMode = BackgroundReuseMode::Off;
     bool UseSolidSpans = false;
     bool UseApproximateFactors = false;
     bool UseRowDepthRectangles = false;

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <vector>
 namespace melonDS {
 class NDS4MiSTerBackgroundSpanCache {
     static constexpr unsigned Max=256;
@@ -16,7 +17,7 @@ class NDS4MiSTerBackgroundSpanCache {
         u32 hash=2166136261u;
         void add(u32 value) { words[size++]=value; }
         template<class T,size_t N> void add(const T(&a)[N]) {for(auto v:a)add(u32(v));}
-        void build(const Polygon& p) {
+        template<bool Hash = true> void build(const Polygon& p) {
             size=0;hash=2166136261u;
             add(p.NumVertices);add(p.WBuffer);add(p.Attr);add(p.TexParam);add(p.TexPalette);
             add(p.Degenerate);add(p.FacingView);add(p.Translucent);add(p.IsShadowMask);add(p.IsShadow);
@@ -26,7 +27,7 @@ class NDS4MiSTerBackgroundSpanCache {
                 add(v.FinalPosition);add(v.FinalColor);add(v.TexCoords);
             }
             // Small lookup hash; the complete key is always compared below.
-            for(unsigned i=0;i<std::min(size,30u);++i)hash=(hash^words[i])*16777619u;
+            if constexpr (Hash) for(unsigned i=0;i<std::min(size,30u);++i)hash=(hash^words[i])*16777619u;
         }
         bool equal(const Key& other)const {return size==other.size&&!std::memcmp(words,other.words,size*sizeof(u32));}
     };
@@ -63,13 +64,71 @@ class NDS4MiSTerBackgroundSpanCache {
         for(auto v:g.RenderFogDensityTable)r[i++]=v;
         return r;
     }
+    struct PositionalDraw {
+        std::array<u32,128> words;
+        Bounds extent;
+    };
+    std::vector<PositionalDraw> previousDraws;
+    bool usedPositions = false;
 public:
     std::array<bool,192> reusable{};
     std::array<s16,192> dirtyStart{},dirtyEnd{};
     unsigned hitRows=0,reusedPixels=0;
     void invalidate(){valid=pendingValid=false;reusable.fill(false);dirtyStart.fill(0);dirtyEnd.fill(256);hitRows=reusedPixels=0;}
     void commit(){valid=pendingValid;}
+    template<typename IsRetained>
+    void preparePositions(const GPU3D& g, u32 effective, IsRetained retained)
+    {
+        reusable.fill(false);
+        dirtyStart.fill(0);
+        dirtyEnd.fill(256);
+        hitRows = reusedPixels = 0;
+        pendingValid = false;
+        const auto currentRegs = registers(g, effective);
+        const bool canReuse = valid && usedPositions && regs == currentRegs;
+        usedPositions = true;
+        valid = false;
+        const unsigned count = g.RenderNumPolygons;
+        if (count > 2048) return;
+        const auto oldCount = previousDraws.size();
+        if (oldCount < count) previousDraws.resize(count);
+        Spans dirty{};
+        for (unsigned i = 0; i < count; ++i) {
+            const auto* p = g.RenderPolygonRAM[i];
+            if (!p || p->Degenerate || p->NumVertices < 3 || p->NumVertices > 10 || p->IsShadow || p->IsShadowMask)
+                return;
+            std::array<u32,128> current;
+            Key key;
+            key.words = current.data();
+            key.build<false>(*p);
+            for (unsigned v = 0; v < p->NumVertices; ++v) key.add(p->Vertices[v]->HiresPosition);
+            auto& last = previousDraws[i];
+            bool equal = canReuse && i < oldCount && std::memcmp(last.words.data(), current.data(), key.size * sizeof(u32)) == 0;
+            if (equal && (!(effective & 1u) || ((p->TexParam >> 26) & 7u) == 0u || retained(*p)))
+                continue;
+            if (canReuse && i < oldCount) mark(dirty,last.extent);
+            const Bounds b = extent(*p);
+            if (canReuse) mark(dirty,b);
+            last.extent = b;
+            std::memcpy(last.words.data(), current.data(), key.size * sizeof(u32));
+        }
+        if (canReuse) {
+            for (unsigned i = count; i < oldCount; ++i) mark(dirty,previousDraws[i].extent);
+            for (unsigned y=0; y<192; ++y) {
+                dirtyStart[y]=dirty[y].left; dirtyEnd[y]=dirty[y].right;
+                reusable[y]=dirtyStart[y]>=dirtyEnd[y];
+                hitRows+=reusable[y];
+                reusedPixels+=256-std::max(0,int(dirtyEnd[y]-dirtyStart[y]));
+            }
+        }
+        previousDraws.resize(count);
+        regs = currentRegs;
+        pendingValid = true;
+    }
+
     void prepare(const GPU3D& g,u32 effectiveDispCnt,bool textureUnchanged) {
+        if (usedPositions) invalidate();
+        usedPositions = false;
         pendingValid=false;reusable.fill(false);dirtyStart.fill(0);dirtyEnd.fill(256);hitRows=reusedPixels=0;
         if((effectiveDispCnt&((1u<<4)|(1u<<5)|(1u<<7)|(1u<<14)))||g.RenderNumPolygons>2048){invalidate();return;}
         for(unsigned i=0;i<g.RenderNumPolygons;++i){const auto* p=g.RenderPolygonRAM[i];if(!p||p->NumVertices>10||p->IsShadow||p->IsShadowMask){invalidate();return;}}
