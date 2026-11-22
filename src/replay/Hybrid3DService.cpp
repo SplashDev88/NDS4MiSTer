@@ -853,6 +853,7 @@ public:
         }
     }
 
+    void configure_row_depth_rectangles(bool enabled) { row_depth_rectangles_ = enabled; }
     void configure_pinball_2d(bool enabled) { pinball_2d_ = enabled; }
 
     void configure_ffiii_display(bool enabled) { ffiii_display_ = enabled; }
@@ -1362,7 +1363,8 @@ private:
         nds_->GPU.GPU3D.SetIntegralTextureSpansEnabled(
             integral_texture_spans_ || raster_only_integral_texture_spans_);
         nds_->GPU.GPU3D.SetSpriteRasterSpansEnabled(
-            sprite_raster_spans_ || raster_only_sprite_spans_);
+            sprite_raster_spans_ || raster_only_sprite_spans_ || row_depth_rectangles_);
+        nds_->GPU.GPU3D.SetRowDepthRectanglesEnabled(row_depth_rectangles_);
         matrix_prefix_.reset();
 
         active_prefix_snapshot_ = nullptr;
@@ -5995,6 +5997,7 @@ private:
     std::uint32_t golden_sun_marker_frame_ = 0;
     bool ffiii_display_ = false;
     bool pinball_2d_ = false;
+    bool row_depth_rectangles_ = false;
     std::optional<melonDS::RendererSettings> golden_sun_dual_settings_;
     bool golden_sun_capture_only_ = false;
     bool golden_sun_display_ = false;
@@ -11971,6 +11974,7 @@ try {
             bool golden_sun_display = false;
             bool ffiii_display = false;
             bool pinball_2d = false;
+            bool row_depth_rectangles = false;
             unsigned matrix_prefix_mode = !prefix_requested ? 0u :
                 std::strcmp(prefix_requested, "verify") == 0 ? 1u :
                 std::strcmp(prefix_requested, "fast") == 0 || automatic_query_profile ? 2u : 0u;
@@ -11984,6 +11988,8 @@ try {
                     load_acquire(&header.fpga_session) != selected_session)
                     continue;
                 profile_session = selected_session;
+                row_depth_rectangles = nds4mister::replay::matches_game_cartridge(
+                    selected, nds4mister::replay::BowserRectangleCartridges);
                 lighting_result_reuse =
                     nds4mister::replay::dawn_lighting_result_reuse_profile(selected);
                 integral_texture_spans = nds4mister::replay::castlevania_integral_texture_profile(selected) ||
@@ -12064,6 +12070,7 @@ try {
                     << " background_span_reuse=" << background_row_reuse
                     << " golden_sun_display=" << golden_sun_display
                     << " ffiii_display=" << ffiii_display
+                    << " row_depth_rectangles=" << row_depth_rectangles
                     << " pinball_2d=" << pinball_2d
                     << " paired_a_cache=" << paired_a_cache
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
@@ -12126,6 +12133,7 @@ try {
             if (ffiii_display) fpga3d::preparedTexturesEnabled = true;
             candidate->configure_ffiii_display(ffiii_display);
             candidate->configure_pinball_2d(pinball_2d);
+            candidate->configure_row_depth_rectangles(row_depth_rectangles);
             const bool initialized = candidate->initialize(profile_session);
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.

@@ -61,6 +61,10 @@ struct GameQuerySelection {
     bool identified = false;
 };
 
+inline constexpr GameQueryIdentity BowserRectangleCartridges[] = {
+    {{{'C','L','J','E'}}, 0, 0xfbfb7d89u},
+};
+
 inline constexpr GameQueryIdentity PinballTableCartridges[] = {
     {{{'A','P','2','E'}}, 0, 0xb04a7abfu},
     {{{'A','P','2','P'}}, 0, 0x5963dd25u},

@@ -25,6 +25,19 @@ int main(int argc, char** argv)
     const std::uint8_t crc_example[] = {'1','2','3','4','5','6','7','8','9'};
     check(game_query_crc32(crc_example, sizeof(crc_example)) == 0xcbf43926u, "CRC32 vector");
     const GameQueryIdentity known {{{'A','C','V','E'}}, 0, 0xc51a7d99u};
+    const GameQueryIdentity bowser {{{'C','L','J','E'}}, 0, 0xfbfb7d89u};
+    check(matches_game_cartridge({GameQueryProfile::Fast, bowser, true}, BowserRectangleCartridges),
+          "Bowser USA revision 0 row-depth rectangles");
+    check(!matches_game_cartridge({GameQueryProfile::Fast, bowser, false}, BowserRectangleCartridges),
+          "unidentified Bowser header");
+    auto otherBowser = bowser;
+    otherBowser.revision = 1;
+    check(!matches_game_cartridge({GameQueryProfile::Fast, otherBowser, true}, BowserRectangleCartridges),
+          "unqualified Bowser revision");
+    otherBowser = bowser;
+    otherBowser.header_crc32 ^= 1u;
+    check(!matches_game_cartridge({GameQueryProfile::Fast, otherBowser, true}, BowserRectangleCartridges),
+          "different Bowser header");
     const GameQueryIdentity kart {{{'A','M','C','E'}}, 0, 0x388c990cu};
     check(mkds_approximate_factors_profile({GameQueryProfile::Fast,kart,true}), "tested Kart factors on");
     check(!mkds_approximate_factors_profile({GameQueryProfile::Fast,kart,false}), "unidentified Kart factors off");

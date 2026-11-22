@@ -172,6 +172,8 @@ public:
     // Session profile set before rendering starts; defaults off for unknown games.
     void SetSolidSpansEnabled(bool enabled) noexcept { UseSolidSpans = enabled; }
     bool SolidSpansEnabled() const noexcept { return UseSolidSpans; }
+    void SetRowDepthRectanglesEnabled(bool enabled) noexcept { UseRowDepthRectangles = enabled; }
+    bool RowDepthRectanglesEnabled() const noexcept { return UseRowDepthRectangles; }
     void SetApproximateFactorsEnabled(bool enabled) noexcept { UseApproximateFactors = enabled; }
     bool ApproximateFactorsEnabled() const noexcept { return UseApproximateFactors; }
 
@@ -381,6 +383,7 @@ public:
     bool UseBackgroundRowReuse = false;
     bool UseSolidSpans = false;
     bool UseApproximateFactors = false;
+    bool UseRowDepthRectangles = false;
 
     u32 DispCnt = 0;
     u8 AlphaRefVal = 0;

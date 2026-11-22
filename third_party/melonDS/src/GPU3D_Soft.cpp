@@ -1296,6 +1296,7 @@ void SoftRenderer3D::SetupPolygon(
         rp->SlopeL.Increment == 0 && rp->SlopeR.Increment == 0)
     {
         bool rectangle = true;
+        bool constantDepth = true;
         unsigned corners = 0;
         for (u32 i = 0; i < 4; ++i)
         {
@@ -1304,16 +1305,19 @@ void SoftRenderer3D::SetupPolygon(
             const s32 x = RasterX(v), y = v->FinalPosition[1];
             rectangle &= (x == rp->XL || x == rp->XR) && (y == ytop || y == ybot);
             rectangle &= (x == RasterX(next)) != (y == next->FinalPosition[1]);
-            rectangle &= polygon->FinalW[i] == polygon->FinalW[0] &&
-                         polygon->FinalZ[i] == polygon->FinalZ[0];
+            rectangle &= polygon->FinalW[i] == polygon->FinalW[0];
+            constantDepth &= polygon->FinalZ[i] == polygon->FinalZ[0];
             corners |= 1u << ((x == rp->XR ? 1 : 0) | (y == ybot ? 2 : 0));
         }
         rectangle &= polygon->Vertices[rp->CurVL]->FinalPosition[1] == ytop &&
                      polygon->Vertices[rp->CurVR]->FinalPosition[1] == ytop &&
                      polygon->Vertices[rp->NextVL]->FinalPosition[1] == ybot &&
                      polygon->Vertices[rp->NextVR]->FinalPosition[1] == ybot;
-        pixelState.FlatRectangle = rectangle && corners == 15;
-        if (pixelState.FlatRectangle)
+        const bool equalRowDepth =
+            polygon->FinalZ[rp->CurVL] == polygon->FinalZ[rp->CurVR] &&
+            polygon->FinalZ[rp->NextVL] == polygon->FinalZ[rp->NextVR];
+        if (rectangle && corners == 15 &&
+            (constantDepth || (GPU3D.RowDepthRectanglesEnabled() && equalRowDepth)))
         {
             const auto* tl = polygon->Vertices[rp->CurVL]->TexCoords;
             const auto* bl = polygon->Vertices[rp->NextVL]->TexCoords;
@@ -1331,6 +1335,9 @@ void SoftRenderer3D::SetupPolygon(
                 NDS4MiSTerPrepareRectangleTextureStep(
                     tl[1], bl[1], tr[1], br[1], rp->XR - rp->XL,
                     rp->RectangleStepT);
+            // The general rectangle shortcut assumes one depth for the whole
+            // polygon. Only the prepared scanline path supports a changing Z.
+            pixelState.FlatRectangle = constantDepth || pixelState.PreparedRectangle;
         }
     }
     // Dawn of Sorrow's full-screen gray gradient is untextured and
@@ -3250,7 +3257,12 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     const s32 sl = rp->SlopeL.Interp.Interpolate(top[0], bottom[0]);
     const s32 tl = rp->SlopeL.Interp.Interpolate(top[1], bottom[1]);
     const s32 stepS = rp->RectangleStepS, stepT = rp->RectangleStepT;
-    const s32 depth = polygon->FinalZ[0];
+    // Both vertical edges start and end at the same respective depths.
+    // The native edge interpolator supplies the common Z for this row.
+    const s32 topDepth = polygon->FinalZ[rp->CurVL];
+    const s32 bottomDepth = polygon->FinalZ[rp->NextVL];
+    const s32 depth = topDepth == bottomDepth ? topDepth :
+        rp->SlopeL.Interp.InterpolateZ(topDepth, bottomDepth);
     const u32 polyattr = rp->PolyAttr;
     const u32 rowAddress = FirstPixelOffset + y * ScanlineWidth;
     const bool antialias = EffectiveDispCnt & (1 << 4);
