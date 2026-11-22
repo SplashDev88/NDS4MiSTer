@@ -26,6 +26,9 @@
 #include <ctime>
 
 #include <algorithm>
+#if defined(__ARM_NEON)
+#include <arm_neon.h>
+#endif
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
@@ -3232,6 +3235,52 @@ template<bool FrontFacing>
     rp->XR = rp->SlopeR.Step();
 }
 
+#if defined(__ARM_NEON)
+// Stamp eight adjacent paletted texels, including the two DS polygon edges.
+// The caller has proved one-layer depth, binary texture alpha and full clipping.
+template<bool FrontFacing>
+static inline void DrawEightTilePixels(
+    const u32* texture, bool reverse, s32 depth, u32 rowAttr,
+    u32* colors, u32* depths, u32* attrs)
+{
+    uint32x4_t left = vld1q_u32(texture);
+    uint32x4_t right = vld1q_u32(texture + 4);
+    if (reverse)
+    {
+        const auto reverseFour = [](uint32x4_t values)
+        {
+            values = vrev64q_u32(values);
+            return vcombine_u32(vget_high_u32(values), vget_low_u32(values));
+        };
+        const uint32x4_t temp = reverseFour(right);
+        right = reverseFour(left);
+        left = temp;
+    }
+    const auto drawFour = [&](unsigned offset, uint32x4_t texels, uint32x4_t edgeAttrs)
+    {
+        const uint32x4_t oldDepth = vld1q_u32(depths + offset);
+        const uint32x4_t oldAttr = vld1q_u32(attrs + offset);
+        const int32x4_t sourceZ = vdupq_n_s32(depth);
+        uint32x4_t pass = vcgtq_s32(vreinterpretq_s32_u32(oldDepth), sourceZ);
+        if constexpr (FrontFacing)
+        {
+            const uint32x4_t back = vceqq_u32(
+                vandq_u32(oldAttr, vdupq_n_u32(0x00400010u)), vdupq_n_u32(0x10u));
+            pass = vorrq_u32(pass, vandq_u32(back,
+                vceqq_s32(vreinterpretq_s32_u32(oldDepth), sourceZ)));
+        }
+        pass = vandq_u32(pass, vceqq_u32(vshrq_n_u32(texels, 24), vdupq_n_u32(31)));
+        const uint32x4_t color = vandq_u32(texels, vdupq_n_u32(0xff3f3f3fu));
+        vst1q_u32(colors + offset, vbslq_u32(pass, color, vld1q_u32(colors + offset)));
+        vst1q_u32(depths + offset, vbslq_u32(pass, vreinterpretq_u32_s32(sourceZ), oldDepth));
+        vst1q_u32(attrs + offset, vbslq_u32(pass, edgeAttrs, oldAttr));
+    };
+    const uint32x4_t attr = vdupq_n_u32(rowAttr);
+    drawFour(0, left, vsetq_lane_u32(rowAttr | 1u, attr, 0));
+    drawFour(4, right, vsetq_lane_u32(rowAttr | 2u, attr, 3));
+}
+#endif
+
 // The setup proof fixes both horizontal texture steps for the whole polygon.
 // Keep the original vertical interpolator and its signed rounding, but avoid
 // rebuilding five attribute recurrences and depth/X interpolators per row.
@@ -3271,6 +3320,26 @@ void SoftRenderer3D::RenderPreparedRectangleScanline(
     s32 x = std::max(xstart, clipStartX);
     const s32 end = std::min(xend, clipEndX);
 
+#if defined(__ARM_NEON)
+    if (GPU3D.RowDepthRectanglesEnabled() && xend - xstart == 8 &&
+        x == xstart && end == xend && !antialias && !LowerLayerBufferSize &&
+        !state.TextureWrapFlags && (state.TextureFormat == 3 || state.TextureFormat == 4) &&
+        GPU3D.RenderAlphaRef < 31 && stepT == 0 && (stepS == 16 || stepS == -16))
+    {
+        const s32 textureX = (static_cast<s16>(sl) >> 4) - (stepS < 0 ? 7 : 0);
+        if (textureX >= 0 && textureX + 8 <= state.TextureWidth)
+        {
+            const s32 textureY = std::clamp<s32>(static_cast<s16>(tl) >> 4, 0, state.TextureHeight - 1);
+            const u32* texels = state.TexturePixels + textureY * state.TextureWidth + textureX;
+            const u32 address = rowAddress + xstart;
+            DrawEightTilePixels<FrontFacing>(texels, stepS < 0, depth, polyattr | yedge,
+                ColorBuffer + address, DepthBuffer + address, AttrBuffer + address);
+            rp->XL = rp->SlopeL.Step();
+            rp->XR = rp->SlopeR.Step();
+            return;
+        }
+    }
+#endif
     // This is the same full-coverage boundary rule as the rectangle fallback,
     // including the lower layer and translucent polygon-ID/depth semantics.
     const auto edgePixel = [&](s32 pixelX, u32 edge)
