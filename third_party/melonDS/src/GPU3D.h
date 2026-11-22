@@ -174,6 +174,8 @@ public:
     bool SolidSpansEnabled() const noexcept { return UseSolidSpans; }
     void SetRowDepthRectanglesEnabled(bool enabled) noexcept { UseRowDepthRectangles = enabled; }
     bool RowDepthRectanglesEnabled() const noexcept { return UseRowDepthRectangles; }
+    void SetOccludedSpanCullingEnabled(bool enabled) noexcept { CullOccludedSpans = enabled; }
+    bool OccludedSpanCullingEnabled() const noexcept { return CullOccludedSpans; }
     void SetApproximateFactorsEnabled(bool enabled) noexcept { UseApproximateFactors = enabled; }
     bool ApproximateFactorsEnabled() const noexcept { return UseApproximateFactors; }
 
@@ -384,6 +386,7 @@ public:
     bool UseSolidSpans = false;
     bool UseApproximateFactors = false;
     bool UseRowDepthRectangles = false;
+    bool CullOccludedSpans = false;
 
     u32 DispCnt = 0;
     u8 AlphaRefVal = 0;

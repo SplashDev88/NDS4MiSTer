@@ -2277,6 +2277,19 @@ SoftRenderer3D::TryRenderBackfaceRectangleInterior(
     return true;
 }
 
+// An incoming pixel cannot pass either less-than depth test if its
+// nearest possible depth is strictly behind every destination it could use.
+static bool SpanBehindExistingDepth(const u32* depth, const u32* attr,
+                                    const u32* lower, int count, u32 nearest)
+{
+    for (int i = 0; i < count; ++i)
+    {
+        if (depth[i] >= nearest || (lower && (attr[i] & 15u) && lower[i] >= nearest))
+            return false;
+    }
+    return true;
+}
+
 void SoftRenderer3D::RenderPolygonScanline(
     RendererPolygon* rp, s32 y, bool& prevIsShadowMask,
     u8* stencilBuffer, s32 clipStartX, s32 clipEndX,
@@ -2428,6 +2441,33 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                 || (rp->SlopeL.Increment == rp->SlopeR.Increment) && (xstart+l_edgelen == xend+1);
             r_filledge = (!rp->SlopeR.Negative && rp->SlopeR.XMajor) || (rp->SlopeR.Increment==0)
                 || (y == polygon->YBottom-1) && rp->SlopeR.XMajor && (RasterX(vlnext) != RasterX(vrnext));
+        }
+    }
+
+    if constexpr (!EmitFpga)
+    {
+        const s32 begin = std::max(xstart, clipStartX);
+        const s32 end = std::min(xend + 1, clipEndX);
+        // Narrow cached interiors can revisit the right edge to the left of
+        // the original interval. Leave these and extrapolated factors alone.
+        if (GPU3D.OccludedSpanCullingEnabled() && begin < end && xend - r_edgelen + 1 >= xstart &&
+            xend - xstart < 256 && u32(wl) <= 65535 && u32(wr) <= 65535 &&
+            !ApproximateFactors && !polygon->IsShadow && !polygon->IsShadowMask &&
+            (fnDepthTest == DepthTest_LessThan_FrontFacing || fnDepthTest == DepthTest_LessThan))
+        {
+            const u32 nearest = static_cast<u32>(std::min(zl, zr));
+            const int at = FirstPixelOffset + y * ScanlineWidth + begin;
+            if (DepthBuffer[at] < nearest && std::min(zl, zr) >= 0 &&
+                SpanBehindExistingDepth(DepthBuffer + at, AttrBuffer + at,
+                    LowerLayerBufferSize ? DepthBuffer + at + BufferSize : nullptr,
+                    end - begin, nearest))
+            {
+                finalPassMinX[y] = std::min<u16>(finalPassMinX[y], std::max(0, xstart));
+                finalPassMaxX[y] = std::max<u16>(finalPassMaxX[y], std::min(256, xend + 1));
+                rp->XL = rp->SlopeL.Step();
+                rp->XR = rp->SlopeR.Step();
+                return;
+            }
         }
     }
 

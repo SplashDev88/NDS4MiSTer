@@ -1351,6 +1351,7 @@ private:
         nds_->GPU.GPU3D.SetNColor8PaletteExpansionEnabled(ncolor8_palette_expansion_);
         nds_->GPU.GPU3D.SetRectangleTextureXEnabled(rectangle_texture_x_);
         nds_->GPU.GPU3D.SetBackgroundRowReuseEnabled(background_row_reuse_);
+        nds_->GPU.GPU3D.SetOccludedSpanCullingEnabled(golden_sun_display_);
         nds_->GPU.GPU3D.SetApproximateFactorsEnabled(approximate_factors_);
         nds_->GPU.GPU2D_A.SetOpaque3DSeedEnabled(opaque_3d_seed_);
         nds_->GPU.GPU2D_A.SetZeroBrightnessEnabled(zero_brightness_);
