@@ -2793,6 +2793,15 @@ private:
             (gpu.CaptureCnt & 0x7fffffffu) == 0x00330010u;
     }
 
+    bool golden_sun_single_screen_capture() const
+    {
+        const auto& gpu = nds_->GPU;
+        return gpu.ScreensEnabled && !gpu.ScreenSwap &&
+            gpu.GPU2D_A.DispCnt == 0xe135du && gpu.GPU2D_B.DispCnt == 0x10055u &&
+            gpu.MasterBrightnessA == 0 && gpu.MasterBrightnessB == 0x8010u &&
+            (gpu.CaptureCnt & 0x7fffffffu) == 0x40330010u;
+    }
+
     bool golden_sun_lower_camera() const
     {
         if (!golden_sun_display_ || !golden_sun_capture_mode()) return false;
@@ -3268,6 +3277,14 @@ private:
                 arm_video_skipped_frames_ >=
                     (matched_display_test_ ? (matched_full_rate_ ? 1u : 2u) :
                         ReplayRenderCadence) - 1;
+            // The opening book displays capture bank D on the lower LCD while
+            // the upper LCD is black. Recompose when the game arms a capture.
+            // Give direct writes a periodic refresh if captures stop. Skipped
+            // pictures still replay every display and geometry event.
+            if (matched_display_test_ && asynchronous_arm_video_replay_ &&
+                golden_sun_display_ && arm_video_frame_ready_ && golden_sun_single_screen_capture())
+                arm_video_render_this_frame_ = (nds_->GPU.CaptureCnt & (1u << 31)) != 0 ||
+                    arm_video_skipped_frames_ >= 3;
             if (matched_display_test_ && asynchronous_arm_video_replay_ &&
                 arm_video_render_this_frame_) {
                 const auto latest = replay_state_.latest_input_frame();
