@@ -280,6 +280,59 @@ void SoftRenderer2D::DrawBaseTextRow(u32 line)
     std::memcpy(row.Layers, BGOBJLine, sizeof(row.Layers));
 }
 
+void SoftRenderer2D::DrawForegroundTextRow(u32 line)
+{
+    auto& row = TableCache->Foreground[line];
+    const auto& engine = GPU2D;
+    if (row.Epoch == TableCache->BackgroundEpoch && row.Display == engine.DispCnt &&
+        row.Control == engine.BGCnt[1] && row.X == engine.BGXPos[1] &&
+        row.Y == engine.BGYPos[1] && std::memcmp(row.Window, WindowMask, sizeof(row.Window)) == 0)
+    {
+        // Preserve the current underlying layer for blending wherever BG1 is opaque.
+        for (unsigned group = 0; group < 32; ++group)
+        {
+            unsigned bits = row.Coverage[group];
+            if (!bits) continue;
+            const unsigned x = group * 8;
+            if (bits == 0xff)
+            {
+                std::memcpy(BGOBJLine + 256 + x, BGOBJLine + x, 8 * sizeof(u32));
+                std::memcpy(BGOBJLine + x, row.Pixels + x, 8 * sizeof(u32));
+            }
+            else
+            {
+                while (bits)
+                {
+                    const auto pos = x + __builtin_ctz(bits);
+                    bits &= bits - 1;
+                    BGOBJLine[256 + pos] = BGOBJLine[pos];
+                    BGOBJLine[pos] = row.Pixels[pos];
+                }
+            }
+        }
+        return;
+    }
+    DrawBG_Text<false>(line, 1);
+    row.Epoch = TableCache->BackgroundEpoch;
+    row.Display = engine.DispCnt;
+    row.Control = engine.BGCnt[1];
+    row.X = engine.BGXPos[1];
+    row.Y = engine.BGYPos[1];
+    std::memcpy(row.Window, WindowMask, sizeof(row.Window));
+    std::memcpy(row.Pixels, BGOBJLine, sizeof(row.Pixels));
+    for (unsigned group = 0; group < 32; ++group)
+    {
+        unsigned bits = 0;
+        for (unsigned pixel = 0; pixel < 8; ++pixel)
+        {
+            // Only entries tagged by the BG1 draw belong to this cached layer.
+            if ((row.Pixels[group * 8 + pixel] >> 24) == (1u << 1))
+                bits |= 1u << pixel;
+        }
+        row.Coverage[group] = bits;
+    }
+}
+
 template<u32 bgmode>
 void SoftRenderer2D::DrawScanlineBGMode(u32 line)
 {
@@ -320,7 +373,11 @@ void SoftRenderer2D::DrawScanlineBGMode(u32 line)
         {
             if (GPU2D.LayerEnable & (1<<1))
             {
-                DoDrawBG(Text, line, 1);
+                if (bgmode == 0 && TableCache && line < 192 &&
+                    (dispCnt & (1u << 30)) && (bgCnt[1] & 0xc0u) == 0x80u)
+                    DrawForegroundTextRow(line);
+                else
+                    DoDrawBG(Text, line, 1);
             }
         }
         if ((bgCnt[0] & 0x3) == i)

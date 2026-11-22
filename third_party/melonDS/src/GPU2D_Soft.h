@@ -61,6 +61,17 @@ private:
         };
         std::array<BaseRow, 192> Rows {};
         u64 BackgroundEpoch = 1;
+
+        struct ForegroundRow
+        {
+            u64 Epoch = 0;
+            u32 Display = 0;
+            u16 Control = 0, X = 0, Y = 0;
+            u8 Window[256], Coverage[32];
+            u32 Pixels[256];
+        };
+        std::array<ForegroundRow, 192> Foreground {};
+
         void BackgroundWrites(bool tilesChanged, u64 paletteMask)
         {
             ValidPalettes &= ~paletteMask;
@@ -70,6 +81,7 @@ private:
     };
     std::unique_ptr<TableRenderCache> TableCache;
     void DrawBaseTextRow(u32 line);
+    void DrawForegroundTextRow(u32 line);
     const u32* GetTextPalette(u32 slot, u32 palette);
     SoftRenderer& Parent;
 
