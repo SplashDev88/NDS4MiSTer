@@ -198,26 +198,25 @@ static void preview(const char *path) {
 static void system_menu_test(const char *preview_dir) {
   const std::array<std::string, 16> main_rows{
     " Core                      \x16", "", " Define NDS buttons        \x16",
-    " Touchpad Sensitivity:  100%",
     " Button/Key remap          \x16", " Reset player assignment", "",
-    " Video processing          \x16", " Audio filter - Internal",
+    " Video processing          \x16", "", " Audio filter - Internal",
     " < none >                  \x16 ", "", " Reset settings", " Save settings",
     "", " Reboot", "            exit"}; // User exceptions: no Help/About/hold hint.
-  const int selected_rows[] = {0, 2, 11, 12, 14, 15, 3};
-  const int first_rows[] = {0, 0, 0, 0, 0, 0, 0};
+  const int selected_rows[] = {0, 2, 11, 12, 14, 15};
+  const int first_rows[] = {0, 0, 0, 0, 0, 0};
   const auto rows = systemMenuRows({});
   assert(rows.size() == main_rows.size());
   for (int i = 0; i < 16; ++i) {
     auto plain = rows[i].text;
     plain.erase(std::remove(plain.begin(), plain.end(), char(0x0b)), plain.end());
     assert(plain == main_rows[i]);
-    const bool disabled = i == 4 || i == 5 || i == 7 || i == 8 || i == 9;
+    const bool disabled = i == 3 || i == 4 || i == 6 || i == 8 || i == 9;
     assert(rows[i].disabled == disabled);
   }
   nds_osd::Frame frame("System", charfont);
   reference::OsdSetTitle("System");
   int first = 0;
-  for (int cursor = 0; cursor < 7; ++cursor) {
+  for (int cursor = 0; cursor < 6; ++cursor) {
     auto view = systemMenuView(rows, cursor, first);
     first = view.first;
     assert(first == first_rows[cursor]);

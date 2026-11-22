@@ -78,7 +78,7 @@ Two-finger motion is ignored; tap-to-click and scrolling are not implemented.
 The separate gamepad and motion-sensor interfaces retain their existing roles.
 Touchpad motion does not navigate the menu or enter controller mappings.
 
-**System → Touchpad Sensitivity** sets cursor speed to **100%, 125%, 150%, 200%,
+**Touchpad Sensitivity** on the first NDS menu sets cursor speed to **100%, 125%, 150%, 200%,
 300% or 400%**. Select cycles forward; minus/plus moves backward
 or forward. **100%** is the original touchpad speed. The setting applies when
 you return to the game. **System → Save settings** retains it in the kit's

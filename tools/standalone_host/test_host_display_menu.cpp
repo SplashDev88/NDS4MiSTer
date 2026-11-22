@@ -49,7 +49,7 @@ struct HostTest {
       }
       h.cursor=0;
       std::vector<int> order{0,1,2};if(!(flags&(1<<2)))order.push_back(Host::ANALOG_CURSOR);
-      order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::TOUCH_RANGE_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
+      order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::TOUCHPAD_SENSITIVITY_CURSOR,Host::TOUCH_RANGE_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
       cycle(h,order);
       for(int back : {2,3,5,4}) {
         // Reach the submenu only using the real public navigation path.

@@ -687,11 +687,10 @@ R"({
     // Unavailable System rows cannot become cursor stops. Navigation is
     // OSD-only, fits Reboot/Exit on the same page, and wraps to Core.
     host.action(6);
-    const int actions[] = {0, 1, SYSTEM_TOUCHPAD_SENSITIVITY, 2, 3, 4, 5};
-    const int main_rows[] = {0, 2, 3, 11, 12, 14, 15};
-    const int scroll_down[] = {0, 0, 0, 0, 0, 0, 0};
-    for (int i = 0; i < 7; ++i) {
-      assert(host.cursor == actions[i] && host.system_menu);
+    const int main_rows[] = {0, 2, 11, 12, 14, 15};
+    const int scroll_down[] = {0, 0, 0, 0, 0, 0};
+    for (int i = 0; i < 6; ++i) {
+      assert(host.cursor == i && host.system_menu);
       host.spi.history.clear();
       host.draw();
       assert(host.system_first == scroll_down[i]);
@@ -735,7 +734,7 @@ R"({
       else if (row == 5) text = " Touch Rotation:      Normal";
       else if (row >= 3 && row <= 8) text = optionLabel(0, CORE_OPTIONS[row-3-(row>5)]);
       else if (row == 9) text = " CRT Mode:               Off";
-      else if (row == 10) text = optionLabel(0, CORE_OPTIONS[6]);
+      else if (row == 10) text = " Touchpad Sensitivity:  100%";
       else if (row == 11) text = optionLabel(0, CORE_OPTIONS[7]);
       else if (row == 12) text = " Lid: Open (Close)";
       else if (row == 13) text = " Reset";

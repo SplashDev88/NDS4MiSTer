@@ -55,6 +55,11 @@ inline std::string optionLabel(uint16_t status, const CoreOption &o) {
   label += ':';
   return label + std::string(28 - value.size() - label.size(), ' ') + value;
 }
+inline std::string touchpadSensitivityLabel(unsigned percent) {
+  const std::string label = " Touchpad Sensitivity:";
+  const std::string value = std::to_string(percent) + "%";
+  return label + std::string(28 - label.size() - value.size(), ' ') + value;
+}
 inline bool mappedButton(uint32_t mapping, unsigned code) {
   return code != 0 && (code == (mapping & 65535u) || code == (mapping >> 16));
 }

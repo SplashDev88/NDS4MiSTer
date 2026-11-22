@@ -353,18 +353,21 @@ class Host {
                        SPLIT_CURSOR = 12, ANALOG_CURSOR = 13, DV_TARGET_CURSOR = 14,
                        DISPLAY_CURSOR = 15, TOUCH_RANGE_CURSOR = 16,
                        AA_CURSOR = 17, RESOLUTION_CURSOR = 18,
-                       LAST_MAIN_CURSOR = RESOLUTION_CURSOR;
+                       TOUCHPAD_SENSITIVITY_CURSOR = 19,
+                       LAST_MAIN_CURSOR = TOUCHPAD_SENSITIVITY_CURSOR;
   int mainMenuRow(int item) const {
     // Stable option identities keep status bits and saved settings unchanged.
     // Only the visible rows differ between the main and Display options pages.
+    // Legacy cores cannot enable split outputs. Reuse that inactive row so
+    // the input setting and the notification/footer rows remain accessible.
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, 10, 11, -1, -1, 2, -1, -1};
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
-        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, 10, 11, -1, -1, 2, -1, -1};
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, -1, -1, -1, -1, -1, -1, 8, 10, 15, -1, 4, -1, 5, 7, -1, -1};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 8, 10, 15, -1, 4, -1, 5, 7, -1, -1, 6};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
-        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, 9, 10};
+        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, 9, 10, -1};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
     if (independent_outputs_supported) {
@@ -1528,9 +1531,6 @@ class Host {
   }
   void drawSystem() {
     frame.setTitle("System");
-    for (auto &row : system_rows)
-      if (row.action == SYSTEM_TOUCHPAD_SENSITIVITY)
-        row.text = systemTouchpadSensitivity(nds_touchpad::SENSITIVITY_PERCENT[touchpad_sensitivity]);
     const auto view = systemMenuView(system_rows, cursor, system_first);
     system_first = view.first;
     for (int y = 0; y < 16; ++y) {
@@ -1655,6 +1655,9 @@ class Host {
       if (mainMenuRow(TOUCH_RANGE_CURSOR) >= 0)
         rows[mainMenuRow(TOUCH_RANGE_CURSOR)] = " Right Stick Range:     " +
             std::to_string(TOUCH_RANGE_PERCENT[touch_range]) + "%";
+      if (mainMenuRow(TOUCHPAD_SENSITIVITY_CURSOR) >= 0)
+        rows[mainMenuRow(TOUCHPAD_SENSITIVITY_CURSOR)] =
+            touchpadSensitivityLabel(nds_touchpad::SENSITIVITY_PERCENT[touchpad_sensitivity]);
       if (mainMenuRow(LID_CURSOR) >= 0)
         rows[mainMenuRow(LID_CURSOR)] = lid_closed ? " Lid: Closed (Open)" : " Lid: Open (Close)";
       if (mainMenuRow(RESET_CURSOR) >= 0)
@@ -1828,8 +1831,6 @@ class Host {
     if ((a == 0 || a == 1) && count) {
       if (!browser && !system_menu)
         cursor = nextMainMenuItem(a == 0 ? -1 : 1);
-      else if (system_menu)
-        cursor = nextSystemMenuAction(system_rows, cursor, a == 0 ? -1 : 1);
       else
         cursor = (cursor + count + (a == 0 ? -1 : 1)) % count;
     }
@@ -1885,11 +1886,7 @@ class Host {
             cursor = std::clamp(cursor + (a == 5 ? -16 : 16), 0, count - 1);
         }
       } else if (system_menu) {
-        if (cursor == SYSTEM_TOUCHPAD_SENSITIVITY && (a == 2 || a == 7 || a == 8)) {
-          touchpad_sensitivity = (touchpad_sensitivity + nds_touchpad::SENSITIVITY_PERCENT.size() +
-                                 (a == 7 ? -1 : 1)) % nds_touchpad::SENSITIVITY_PERCENT.size();
-          for (auto &p : pads) if (p.touchpad.enabled) p.touchpad.rebase();
-        } else if (a == 2)
+        if (a == 2)
           switch (cursor) {
           case 0:
             openCoreBrowser();
@@ -1940,6 +1937,11 @@ class Host {
         cursor = 0;
       } else if (independent_outputs_supported && mainMenuRow(cursor) < 0) {
         return;
+      } else if (cursor == TOUCHPAD_SENSITIVITY_CURSOR && (a == 2 || a == 7 || a == 8)) {
+        touchpad_sensitivity = (touchpad_sensitivity + nds_touchpad::SENSITIVITY_PERCENT.size() +
+                               (a == 7 ? -1 : 1)) % nds_touchpad::SENSITIVITY_PERCENT.size();
+        for (auto &p : pads) if (p.touchpad.enabled) p.touchpad.rebase();
+        message.clear();
       } else if (cursor == TOUCH_RANGE_CURSOR &&
                  (a == 2 || a == 7 || a == 8)) {
         touch_range = (touch_range + TOUCH_RANGE_PERCENT.size() + (a == 7 ? -1 : 1)) % TOUCH_RANGE_PERCENT.size();
