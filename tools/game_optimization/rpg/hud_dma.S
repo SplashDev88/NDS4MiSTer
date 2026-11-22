@@ -2,8 +2,8 @@
 .section .text
 .macro armcall target
 1:
-    .hword 0xf000 | (((\target-((0x020528e8+(1b-word_entry)+4)&~3))>>12)&0x7ff)
-    .hword 0xe800 | (((\target-((0x020528e8+(1b-word_entry)+4)&~3))>>1)&0x7fe)
+    .hword 0xf000 | (((\target-((cart_hblank_dma+(1b-word_entry)+4)&~3))>>12)&0x7ff)
+    .hword 0xe800 | (((\target-((cart_hblank_dma+(1b-word_entry)+4)&~3))>>1)&0x7fe)
 .endm
 .arm
 .global word_entry
@@ -20,7 +20,7 @@ hud_check:
     cmp r5,#2
     bne normal
     ldr r0,[sp,#28]
-    ldr r1,=0x021c05c0
+    ldr r1,=cart_hud_return
     cmp r0,r1
     bne normal
     ldr r0,=0x06200f00
@@ -45,7 +45,7 @@ hud_check:
     ldr r0,[sp,#20]
     lsls r0,r0,#8
     subs r6,r6,r0
-    armcall 0x02031a10
+    armcall (cart_seek+4)
     cmp r0,#0
     beq done
     ldr r7,hud_destination
@@ -71,17 +71,17 @@ setup:
     str r3,[sp]
     movs r1,#1
     lsls r1,r1,#28
-    armcall 0x02052808
+    armcall cart_check_timing
     movs r0,r5
     movs r1,r6
     ldr r2,[sp]
     movs r3,#0
-    armcall 0x02052894
+    armcall cart_check_source
     ldr r3,[sp]
     cmp r3,#0
     beq done
     movs r0,r5
-    armcall 0x0205271c
+    armcall cart_wait_dma
     b hud_check
 normal:
     ldr r3,[sp]

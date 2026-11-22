@@ -67,6 +67,12 @@ inline constexpr GameQueryIdentity PinballTableCartridges[] = {
     {{{'A','P','2','J'}}, 0, 0xd08f11c4u},
 };
 
+inline constexpr GameQueryIdentity GoldenSunCartridges[] = {
+    {{{'B','O','5','E'}}, 0, 0xda061ea1u},
+    {{{'B','O','5','P'}}, 0, 0x70878a14u},
+    {{{'B','O','5','J'}}, 0, 0x61c3ac55u},
+};
+
 inline constexpr GameQueryIdentity FinalFantasyIIICartridges[] = {
     {{{'A','F','F','E'}}, 0, 0x70de0241u},
     {{{'A','F','F','P'}}, 0, 0xcd3e0d01u},

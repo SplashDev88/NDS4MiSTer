@@ -1,8 +1,8 @@
 .syntax unified
 .macro armcall target
 1:
-    .hword 0xf000 | (((\target-((0x0200a328+(1b-primary)+4)&~3))>>12)&0x7ff)
-    .hword 0xe800 | (((\target-((0x0200a328+(1b-primary)+4)&~3))>>1)&0x7fe)
+    .hword 0xf000 | (((\target-((cart_scene+(1b-primary)+4)&~3))>>12)&0x7ff)
+    .hword 0xe800 | (((\target-((cart_scene+(1b-primary)+4)&~3))>>1)&0x7fe)
 .endm
 .section .text
 .arm
@@ -21,7 +21,7 @@ primary:
     movs r0,#0
     strb r0,[r1]
     movs r0,r7
-    armcall 0x020026f4
+    armcall cart_scene_reset
     b done
 update:
     subs r1,#2
@@ -51,7 +51,7 @@ capture_arm:
     bhi capture_ready
     movs r0,#0xc4
     lsls r0,r0,#1
-    armcall 0x02055a4c
+    armcall cart_wait_capture
 capture_ready:
     ldr r0,=0x04000600
     ldr r0,[r0]
@@ -64,7 +64,7 @@ capture_ready:
     str r1,[r0]
 primary_dma:
     movs r0,#1
-    armcall 0x02052778
+    armcall cart_stop_dma
     bl title_active
     cmp r0,#0
     beq transmit
@@ -75,7 +75,7 @@ primary_dma:
     @ The HPS already owns the actual bank-D image and retains both views.
     b done
 transmit:
-    armcall 0x0204fe8c
+    armcall cart_sub_dst
     movs r2,r0
     ldr r0,[r7,#20]
     movs r1,#1
@@ -97,7 +97,7 @@ capture:
     ldr r1,=0x06860000
     movs r0,#3
     lsls r3,r0,#15
-    armcall 0x020523cc
+    armcall cart_copy_dma
 done:
     pop {r1,r2,r3,r4,r5,r6,r7,pc}
 .thumb_func
@@ -109,13 +109,13 @@ stream_pair:
     movs r3,#1
     str r3,[sp]
     lsls r3,r3,#9
-    armcall 0x020523cc
+    armcall cart_copy_dma
     movs r0,r4
     movs r3,#2
     lsls r3,r3,#8
     adds r1,r5,r3
     movs r2,r6
-    armcall 0x020528e8
+    armcall cart_hblank_dma
     pop {r3,r4,r5,r6,r7,pc}
 send:
     pop {r0,r1,r2,r3}
@@ -125,15 +125,15 @@ send:
 .ltorg
 alternate:
     movs r0,#2
-    armcall 0x02052778
-    armcall 0x0204ff00
+    armcall cart_stop_dma
+    armcall cart_main_dst
     movs r2,r0
     ldr r1,[r7,#24]
     movs r0,#2
     bl stream_pair
     movs r0,#1
-    armcall 0x02052778
-    armcall 0x0204fe8c
+    armcall cart_stop_dma
+    armcall cart_sub_dst
     movs r2,r0
     ldr r1,[r7,#28]
     movs r0,#1
@@ -142,13 +142,13 @@ alternate:
 .thumb_func
 title_active:
     @ Title archive FAT window; the prologue reuses the same VRAM and heap.
-    ldr r0,=0x0207f780
+    ldr r0,=cart_fat_cache
     ldr r1,[r0]
     movs r2,#1
-    ldr r0,=0x033e9e00
+    ldr r0,=cart_title_file
     cmp r1,r0
     beq check_display
-    ldr r0,=0x00506400
+    ldr r0,=cart_prologue_file
     cmp r1,r0
     bne inactive
     movs r2,#2
@@ -190,7 +190,7 @@ can_send_shape:
     bne send
     ldr r2,[r0,#4]
     lsrs r1,r2,#24
-    ldr r3,=0x02083f4c
+    ldr r3,=cart_display_state
     ldr r3,[r3]
     cmp r3,#0
     beq send

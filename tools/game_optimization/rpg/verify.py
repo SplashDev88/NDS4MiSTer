@@ -6,6 +6,8 @@ import re
 import subprocess
 import tempfile
 
+from golden_sun import LAYOUTS, build_edits
+
 ROOT = Path(__file__).resolve().parent
 CATALOG = ROOT.parents[1] / "standalone_host/fmv/guest_catalog.json"
 
@@ -20,7 +22,6 @@ def main():
                         help="GNU binutils executable prefix")
     args = parser.parse_args()
     entries = json.loads(CATALOG.read_text())["entries"]
-    manifests = {item["manifest"]["game_code"]: item["manifest"] for item in entries}
 
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
@@ -51,43 +52,13 @@ def main():
                 tool("objcopy", "-j", section, "-O", "binary", elf, binary)
                 assert binary.read_bytes() == bytes.fromhex(patch["replace"])
 
-        elf = assemble("scene_dma")
-        symbols = {label: int(value, 16) for value, kind, label in
-                   (line.split() for line in tool("nm", "-n", elf).decode().splitlines())}
-        recipe = manifests["BO5E"]["patches"][0]
-        body, hook, hud, reuse, tag, submit = recipe["edits"]
-        binary = work / "display"
-        tool("objcopy", "-O", "binary", elf, binary)
-        assert symbols["primary"] == 0x02000000 + body["offset"]
-        expected = bytes.fromhex(body["after"])
-        assert binary.read_bytes().ljust(len(expected), b"\0") == expected
-        delta = symbols["can_send_shape"] - 0x01FFA440 - 8
-        assert delta % 2 == 0 and -(1 << 25) <= delta < (1 << 25)
-        instruction = 0xFA000000 | ((delta & 2) << 23) | ((delta >> 2) & 0xFFFFFF)
-        assert instruction.to_bytes(4, "little") == bytes.fromhex(hook["after"])
-
-        assert tag["offset"] == 0xA71C and tag["after"] == "122082e3"
-        assert submit["offset"] == 0xA724
-        delta = symbols["submit_camera"] - (0x02000000 + submit["offset"] + 8)
-        assert delta % 4 == 0 and -(1 << 25) <= delta < (1 << 25)
-        branch = 0xEB000000 | ((delta // 4) & 0xFFFFFF)
-        assert branch.to_bytes(4, "little") == bytes.fromhex(submit["after"])
-
-        elf = assemble("hud_dma")
-        tool("objcopy", "-O", "binary", elf, binary)
-        expected = bytes.fromhex(hud["after"])
-        assert hud["offset"] == 0x528E8 and len(expected) == 0xE8
-        assert binary.read_bytes().ljust(len(expected), b"\0") == expected
-        symbols = tool("nm", "-n", elf).decode()
-        assert "020528e8 T word_entry" in symbols and "0205295c T half_entry" in symbols
-        elf = assemble("hud_reuse")
-        tool("objcopy", "-O", "binary", elf, binary)
-        assert reuse["offset"] == 0x31A0C
-        assert binary.read_bytes().ljust(0x6C, b"\0") == bytes.fromhex(reuse["after"])
-        symbols = tool("nm", "-n", elf).decode()
-        assert "02031a0c T sdk_seek" in symbols and "02031a10 T hud_needs_upload" in symbols
-        if "title_model" in recipe:
-            assert len(recipe["title_model"]["hidden"]) == 82
+        for code in LAYOUTS:
+            manifest, = [item["manifest"] for item in entries if item["manifest"]["game_code"] == code
+                         and item["manifest"]["revision"] == 0]
+            recipe, = manifest["patches"]
+            assert recipe["id"] == "opening-display" and len(recipe["title_model"]["hidden"]) == 82
+            expected = [(edit["offset"], bytes.fromhex(edit["after"])) for edit in recipe["edits"]]
+            assert build_edits(code, work / code, args.prefix) == expected
     print("Both RPG instruction profiles match the runtime catalog.")
 
 

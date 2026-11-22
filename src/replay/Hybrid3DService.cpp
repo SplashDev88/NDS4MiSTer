@@ -12040,8 +12040,8 @@ try {
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                 fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
 #endif
-                golden_sun_display = selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'B','O','5','E'}} &&
-                    selected.identity.revision == 0 && selected.identity.header_crc32 == 0xda061ea1u;
+                golden_sun_display = nds4mister::replay::matches_game_cartridge(
+                    selected, nds4mister::replay::GoldenSunCartridges);
                 pinball_2d = nds4mister::replay::matches_game_cartridge(
                     selected, nds4mister::replay::PinballTableCartridges);
                 if (golden_sun_display || pinball_2d) regional_vram_replay = true;
@@ -12082,6 +12082,7 @@ try {
                     << " rectangle_texture_x=" << rectangle_texture_x
                     << " background_row_reuse=" << background_row_reuse
                     << " background_span_reuse=" << background_row_reuse
+                    << " golden_sun_display=" << golden_sun_display
                     << " ffiii_display=" << ffiii_display
                     << " pinball_2d=" << pinball_2d
                     << " paired_a_cache=" << paired_a_cache

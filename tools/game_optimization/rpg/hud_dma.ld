@@ -1,1 +1,1 @@
-SECTIONS { . = 0x020528e8; .text : { *(.text) } }
+SECTIONS { .text cart_hblank_dma : { *(.text) } }
