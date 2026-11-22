@@ -54,7 +54,7 @@ numerator_smaller:
 .section .sound,"ax"
 .global decode_pairs
 decode_pairs:
-    // The two original pointer literals remain at 0x02069364 and 0x02069368.
+    // The original step and index table pointers have the same PC-relative offsets in all three cartridges.
     ldr     ip, [pc, #0x3c4]
     ldr     lr, [pc, #0x3c4]
     // The original loop stores each sample and predictor before it reads the

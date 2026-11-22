@@ -10,6 +10,10 @@ ROOT = Path(__file__).resolve().parent
 CATALOG = ROOT.parents[1] / "standalone_host/fmv/guest_catalog.json"
 
 
+# Offsets from the US build for the joint routine and its SDK calls.
+FFIII_OFFSETS = {"AFFE": (0, 0), "AFFP": (0x9D0, 0x958), "AFFJ": (-0x338, -0x224)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", default="arm-linux-gnueabihf-",
@@ -23,24 +27,29 @@ def main():
         def tool(name, *arguments):
             return subprocess.check_output([args.prefix + name, *map(str, arguments)])
 
-        def assemble(name):
+        def assemble(name, *link_options):
             obj, elf = work / (name + ".o"), work / name
             tool("as", "-march=armv5te", ROOT / (name + ".S"), "-o", obj)
-            tool("ld", "-T", ROOT / (name + ".ld"), obj, "-o", elf)
+            tool("ld", *link_options, "-T", ROOT / (name + ".ld"), obj, "-o", elf)
             return elf
 
-        elf = assemble("ff_skin")
-        ff = manifests["AFFE"]
-        assert ff["atomic_selection"]
-        section_headers = tool("objdump", "-h", elf).decode()
-        for patch in ff["patches"]:
-            section = "." + patch["id"].removeprefix("joint-")
-            row = re.search(r"^\s*\d+\s+" + re.escape(section) +
-                            r"\s+\w+\s+(\w+)\s+", section_headers, re.MULTILINE)
-            assert row and int(row[1], 16) == int(patch["addr"], 0)
-            binary = work / "fragment"
-            tool("objcopy", "-j", section, "-O", "binary", elf, binary)
-            assert binary.read_bytes() == bytes.fromhex(patch["replace"])
+        for code, (joint_delta, sdk_delta) in FFIII_OFFSETS.items():
+            elf = assemble("ff_skin", "--defsym", f"joint_delta={joint_delta}",
+                           "--defsym", f"sdk_delta={sdk_delta}")
+            ff, = [e["manifest"] for e in entries if e["manifest"]["game_code"] == code and
+                   e["manifest"]["revision"] == 0]
+            assert {p["id"] for p in ff["patches"]} == {
+                "joint-mix", "joint-request", "joint-weight", "joint-finish", "joint-final"}
+            assert ff["atomic_selection"]
+            section_headers = tool("objdump", "-h", elf).decode()
+            for patch in ff["patches"]:
+                section = "." + patch["id"].removeprefix("joint-")
+                row = re.search(r"^\s*\d+\s+" + re.escape(section) +
+                                r"\s+\w+\s+(\w+)\s+", section_headers, re.MULTILINE)
+                assert row and int(row[1], 16) == int(patch["addr"], 0)
+                binary = work / "fragment"
+                tool("objcopy", "-j", section, "-O", "binary", elf, binary)
+                assert binary.read_bytes() == bytes.fromhex(patch["replace"])
 
         elf = assemble("scene_dma")
         symbols = {label: int(value, 16) for value, kind, label in

@@ -61,6 +61,30 @@ struct GameQuerySelection {
     bool identified = false;
 };
 
+inline constexpr GameQueryIdentity PinballTableCartridges[] = {
+    {{{'A','P','2','E'}}, 0, 0xb04a7abfu},
+    {{{'A','P','2','P'}}, 0, 0x5963dd25u},
+    {{{'A','P','2','J'}}, 0, 0xd08f11c4u},
+};
+
+inline constexpr GameQueryIdentity FinalFantasyIIICartridges[] = {
+    {{{'A','F','F','E'}}, 0, 0x70de0241u},
+    {{{'A','F','F','P'}}, 0, 0xcd3e0d01u},
+    {{{'A','F','F','J'}}, 0, 0xffea23e9u},
+};
+
+template<std::size_t N>
+inline bool matches_game_cartridge(const GameQuerySelection& selected,
+                                   const GameQueryIdentity (&cartridges)[N])
+{
+    if (!selected.identified) return false;
+    for (const auto& id : cartridges) {
+        if (id.code == selected.identity.code && id.revision == selected.identity.revision &&
+            id.header_crc32 == selected.identity.header_crc32) return true;
+    }
+    return false;
+}
+
 // Fingerprints of the qualified virtual cartridge headers, after the loader
 // has verified the full original ROM and assembled its guarded movie hooks.
 // This only enables the receiver; it does not select or patch a guest player.

@@ -12042,15 +12042,11 @@ try {
 #endif
                 golden_sun_display = selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'B','O','5','E'}} &&
                     selected.identity.revision == 0 && selected.identity.header_crc32 == 0xda061ea1u;
-                pinball_2d = selected.identified &&
-                    selected.identity.code == std::array<std::uint8_t, 4>{{'A', 'P', '2', 'E'}} &&
-                    selected.identity.revision == 0 && selected.identity.header_crc32 == 0xb04a7abfu;
+                pinball_2d = nds4mister::replay::matches_game_cartridge(
+                    selected, nds4mister::replay::PinballTableCartridges);
                 if (golden_sun_display || pinball_2d) regional_vram_replay = true;
-                // FFIII US uses textured models over largely static 2D layers.
-                if (selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'A','F','F','E'}} &&
-                    selected.identity.revision == 0 && selected.identity.header_crc32 == 0x70de0241u) {
-                    ffiii_display = true;
-                }
+                ffiii_display = nds4mister::replay::matches_game_cartridge(
+                    selected, nds4mister::replay::FinalFantasyIIICartridges);
                 if (automatic_query_profile)
                     matrix_prefix_mode = (nds4mister::replay::portrait_sprite_raster_profile(selected) ||
                         nds4mister::replay::ecclesia_sprite_raster_profile(selected)) ?
@@ -12086,6 +12082,7 @@ try {
                     << " rectangle_texture_x=" << rectangle_texture_x
                     << " background_row_reuse=" << background_row_reuse
                     << " background_span_reuse=" << background_row_reuse
+                    << " ffiii_display=" << ffiii_display
                     << " pinball_2d=" << pinball_2d
                     << " paired_a_cache=" << paired_a_cache
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
