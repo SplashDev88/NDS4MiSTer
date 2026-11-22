@@ -365,7 +365,7 @@ class Host {
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
         0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, -1, -1, -1, -1, -1, -1, 9, 11, 15, -1, 4, -1, 5, 8, -1, -1, 7};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 9, 11, 15, -1, 4, -1, 5, 7, -1, -1, 8};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
         -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, 9, 10, -1};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
@@ -1674,7 +1674,7 @@ class Host {
     nds_osd::Row lid_carry{};
     for (int i = 0; i < 16; i++) {
       auto bytes = frame.renderRow(i, rows[i], i == selected, arrows);
-      // Right's g occupies the last pixel of its row. Inset the following
+      // Sensitivity's y occupies the last pixel of its row. Inset the following
       // Lid row by one pixel, carrying descenders and selection into the
       // existing empty row below. The vertical title stays aligned.
       if (i == lid_gap_row) {

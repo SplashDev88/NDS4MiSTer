@@ -27,13 +27,13 @@ struct HostTest {
     // Installed hooks and enabled defaults must not add another menu page.
     h.independent_outputs_supported=true;
     const std::vector<int> order{0,1,2,Host::ANALOG_CURSOR,Host::DISPLAY_CURSOR,
-      Host::TOUCHPAD_SENSITIVITY_CURSOR,Host::TOUCH_RANGE_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR};
+      Host::TOUCH_RANGE_CURSOR,Host::TOUCHPAD_SENSITIVITY_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR};
     h.cursor=0;
     for(unsigned i=1;i<=order.size();++i){h.action(1);assert(h.cursor==order[i%order.size()]);}
     for(unsigned i=1;i<=order.size();++i){h.action(0);assert(h.cursor==order[(order.size()-i)%order.size()]);}
     h.draw();
     assert(h.osd_rows[6]==h.frame.renderRow(6,"",false,nds_osd::arrow_right));
-    assert(h.osd_rows[7]==h.frame.renderRow(7,touchpadSensitivityLabel(100),false,nds_osd::arrow_right));
+    assert(h.osd_rows[8]==h.frame.renderRow(8,touchpadSensitivityLabel(100),false,nds_osd::arrow_right));
     assert(h.mainMenuRow(17)==-1);
     h.cursor=Host::DISPLAY_CURSOR;h.action(2);
     assert(h.display_menu && !h.system_menu);h.action(3);

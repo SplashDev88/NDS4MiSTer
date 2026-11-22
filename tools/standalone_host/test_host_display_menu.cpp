@@ -33,9 +33,9 @@ struct HostTest {
       assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
       assert(h.osd_rows[5]==h.frame.renderRow(5," Display options            " + std::string(1,char(0x16)),false,nds_osd::arrow_right));
       assert(h.osd_rows[6]==h.frame.renderRow(6,"",false,nds_osd::arrow_right));
-      // A single empty pixel separates Right's descender from Lid. Preserve
+      // A single empty pixel separates Sensitivity's descender from Lid. Preserve
       // every Lid pixel and its selection bar across the OSD row boundary.
-      for (int selected : {Host::TOUCH_RANGE_CURSOR, Host::LID_CURSOR}) {
+      for (int selected : {Host::TOUCHPAD_SENSITIVITY_CURSOR, Host::LID_CURSOR}) {
         h.cursor=selected;h.draw();
         const auto lid=h.frame.renderRow(9," Lid: Open (Close)",selected==Host::LID_CURSOR);
         for (size_t x=nds_osd::title_width;x<lid.size();++x) {
@@ -50,7 +50,7 @@ struct HostTest {
       }
       h.cursor=0;
       std::vector<int> order{0,1,2};if(!(flags&(1<<2)))order.push_back(Host::ANALOG_CURSOR);
-      order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::TOUCHPAD_SENSITIVITY_CURSOR,Host::TOUCH_RANGE_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
+      order.insert(order.end(),{Host::DISPLAY_CURSOR,Host::TOUCH_RANGE_CURSOR,Host::TOUCHPAD_SENSITIVITY_CURSOR,Host::LID_CURSOR,Host::RESET_CURSOR,Host::EXIT_CURSOR});
       cycle(h,order);
       for(int back : {2,3,5,4}) {
         // Reach the submenu only using the real public navigation path.

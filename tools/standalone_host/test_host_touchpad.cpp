@@ -261,7 +261,7 @@ struct HostTest {
    h.status=status|(mode==1?CRT_TIMING:0);h.cursor=0;
    for(int n=0;n<20 && h.cursor!=Host::TOUCHPAD_SENSITIVITY_CURSOR;++n)h.action(1);
    assert(h.cursor==Host::TOUCHPAD_SENSITIVITY_CURSOR && !h.system_menu && !h.display_menu);
-   h.draw();const int row=mode==2?7:10;
+   h.draw();const int row=mode==2?8:10;
    if(mode==2)assert(h.osd_rows[6]==h.frame.renderRow(6,"",false,nds_osd::arrow_right));
    assert(h.osd_rows[row]==h.frame.renderRow(row,touchpadSensitivityLabel(100),true,nds_osd::arrow_right));
    h.action(6);assert(h.system_menu && h.cursor==0);
