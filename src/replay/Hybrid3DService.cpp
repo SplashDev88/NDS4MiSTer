@@ -1,6 +1,7 @@
 #include "../common/GraphicsControl.h"
 #include "Args.h"
 #include "GPU.h"
+#include "GPU_ColorOp.h"
 #include "GPU3D_Texcache.h"
 #include "NDS.h"
 #include "replay/AdaptiveCatchup.h"
@@ -850,6 +851,14 @@ public:
         }
     }
 
+    void configure_ffiii_display(bool enabled) { ffiii_display_ = enabled; }
+
+    void configure_golden_sun_display(bool enabled)
+    {
+        golden_sun_display_ = enabled;
+        if (enabled) golden_sun_screens_ = std::make_unique<FullVideoBuffer>();
+    }
+
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
     void configure_movie_receiver_before_initialize(bool enabled)
     {
@@ -1123,6 +1132,7 @@ public:
     }
 
     const std::string& error() const { return error_; }
+    bool ffiii_display_active() const { return ffiii_display_; }
     bool fast_matrix_replies_active() const
     {
         return matrix_prefix_mode_ == 2 && matrix_prefix_.valid() &&
@@ -1343,6 +1353,7 @@ private:
         nds_->GPU.GPU3D.SetSpriteRasterSpansEnabled(
             sprite_raster_spans_ || raster_only_sprite_spans_);
         matrix_prefix_.reset();
+
         active_prefix_snapshot_ = nullptr;
         active_prefix_published_ = false;
         arm_video_shadow_ = nds4mister::ArmVideoShadow {};
@@ -1417,6 +1428,8 @@ private:
         matched_recovery_pacer_.reset();
         matched_3d_revision_valid_ = false;
         arm_video_frame_ready_ = false;
+        golden_sun_marker_valid_ = false;
+        golden_sun_valid_.fill(false);
         arm_video_frame_ = 0;
         arm_video_completed_index_ = -1;
         arm_video_sparse_frame_ = 0;
@@ -1567,6 +1580,7 @@ private:
         packet.header = packet_header_;
         packet.prefix_snapshot[0] = 0;
         packet.prefix_published = false;
+
         if (pipeline_profile_enabled_ || pacing_trace_enabled_)
             packet.readback_received = !packet.records.empty() &&
                 frame_packet::record_kind(packet.records.back()) ==
@@ -2684,6 +2698,132 @@ private:
         return true;
     }
 
+    // The qualified title DMA routine writes its own row address once per LCD.
+    // Other scenes use the cartridge's original row transfers.
+    bool golden_sun_hud_mode() const
+    {
+        const auto& gpu = nds_->GPU;
+        return !gpu.ScreenSwap && gpu.GPU2D_A.DispCnt == 0x1175cu &&
+            gpu.GPU2D_B.DispCnt == 0x11b55u && gpu.GPU2D_B.BGCnt[3] == 0x6082u &&
+            gpu.VRAMCNT[2] == 0x93u;
+    }
+
+    void observe_golden_sun_hud_word(std::uint32_t address, std::uint32_t value)
+    {
+        constexpr std::uint32_t begin = 0x06840000u;
+        constexpr std::uint32_t marker = begin + 256 * 192;
+        if (address == marker && value == 0x31445548u) {
+            if (!golden_sun_hud_)
+                golden_sun_hud_ = std::make_unique<GoldenSunHud>();
+            golden_sun_hud_->received = 0;
+            return;
+        }
+        if (!golden_sun_hud_ || address < begin || address >= marker) return;
+        auto& hud = *golden_sun_hud_;
+        if (address != begin + hud.received * 4) {
+            hud.received = hud.images[0].size();
+            return;
+        }
+        hud.images[1 - hud.active][hud.received++] = value;
+        if (hud.received == hud.images[0].size()) {
+            hud.active = 1 - hud.active;
+            hud.ready = true;
+            hud.last_frame = timeline_replay_lcd_;
+        }
+    }
+
+    void apply_golden_sun_hud_line(unsigned line)
+    {
+        if (!golden_sun_hud_ || !golden_sun_hud_->ready ||
+            timeline_replay_lcd_ - golden_sun_hud_->last_frame > 8 || !golden_sun_hud_mode()) return;
+        auto& gpu = nds_->GPU;
+        const auto& image = golden_sun_hud_->images[golden_sun_hud_->active];
+        std::uint32_t changed = 0;
+        for (unsigned x = 0; x < 64; ++x)
+            changed |= gpu.WriteVRAM_BBGChanged(0x06200f00u + x * 4, image[line * 64 + x]);
+        if (changed) gpu.MarkExternalRenderVRAMMask(changed);
+    }
+
+    void observe_golden_sun_marker(const frame_packet::Record& record)
+    {
+        if (golden_sun_display_ && record.address_or_aux >= 0x06840000u &&
+            record.address_or_aux <= 0x0684c000u && frame_packet::record_byte_enable(record) == 15u) {
+            observe_golden_sun_hud_word(record.address_or_aux, static_cast<std::uint32_t>(record.data));
+        }
+        if (golden_sun_display_ && record.address_or_aux == 0x06204000u &&
+            static_cast<std::uint32_t>(record.data) == 0x06204000u &&
+            frame_packet::record_byte_enable(record) == 15u) {
+            golden_sun_marker_frame_ = timeline_replay_lcd_;
+            golden_sun_marker_valid_ = true;
+        }
+    }
+
+    bool golden_sun_title_active(std::uint32_t frame) const
+    {
+        return golden_sun_marker_valid_ && frame - golden_sun_marker_frame_ <= 2;
+    }
+
+    bool golden_sun_capture_mode() const
+    {
+        const auto& gpu = nds_->GPU;
+        return gpu.ScreensEnabled && (gpu.GPU2D_A.DispCnt & 0xf0000u) == 0xe0000u &&
+            (gpu.GPU2D_B.DispCnt & 0x1ffffu) == 0x10555u &&
+            (gpu.CaptureCnt & 0x7fffffffu) == 0x00330010u;
+    }
+
+    bool golden_sun_lower_camera() const
+    {
+        if (!golden_sun_display_ || !golden_sun_capture_mode()) return false;
+        const auto& gpu = nds_->GPU;
+        const unsigned top = gpu.ScreenSwap ? gpu.MasterBrightnessA : gpu.MasterBrightnessB;
+        const unsigned bottom = gpu.ScreenSwap ? gpu.MasterBrightnessB : gpu.MasterBrightnessA;
+        const auto dark = [](unsigned r) { return (r >> 14) == 2 && (r & 31) >= 16; };
+        return dark(top) && !dark(bottom);
+    }
+
+    void restore_golden_sun_screens(std::uint32_t frame, FullVideoBuffer& screens)
+    {
+        const auto& gpu = nds_->GPU;
+        const bool title = golden_sun_title_active(frame) && golden_sun_capture_mode();
+        const bool lower_only = !title && golden_sun_lower_camera();
+        if (lower_only != golden_sun_lower_only_) golden_sun_valid_.fill(false);
+        golden_sun_lower_only_ = lower_only;
+        if (!title && !lower_only) {
+            golden_sun_valid_.fill(false);
+            return;
+        }
+
+        // Both cameras capture into bank D. The original HBlank transfer
+        // reads a CPU copy of the other view, invisible to the FPGA.
+        if (gpu.CaptureEnable) {
+            const unsigned polys = gpu.GPU3D.RenderNumPolygons;
+            const bool landscape = polys >= 1200 && polys <= 1400;
+            if (lower_only ? polys > 0 : (polys == 9 || landscape)) {
+                const unsigned view = (lower_only || landscape) ? 1 : 0;
+                const auto* pixels = reinterpret_cast<const std::uint16_t*>(gpu.VRAM[3]);
+                auto& captured = (*golden_sun_screens_)[view];
+                for (std::size_t i = 0; i < captured.size(); ++i) {
+                    const unsigned color = pixels[i];
+                    captured[i] = ((color & 31u) << 1) | ((color & 0x03e0u) << 4) |
+                        ((color & 0x7c00u) << 7);
+                }
+                golden_sun_valid_[view] = true;
+                golden_sun_last_capture_[view] = frame;
+            }
+        }
+        const unsigned engine_a_screen = gpu.ScreenSwap ? 0 : 1;
+        for (unsigned screen = 0; screen < 2; ++screen) {
+            if (!golden_sun_valid_[screen]) continue;
+            screens[screen] = (*golden_sun_screens_)[screen];
+            const unsigned brightness = screen == engine_a_screen ? gpu.MasterBrightnessA : gpu.MasterBrightnessB;
+            const unsigned factor = std::min(brightness & 31u, 16u);
+            if ((brightness >> 14) == 1)
+                for (auto& pixel : screens[screen]) pixel = melonDS::ColorBrightnessUp(pixel, factor, 0);
+            else if ((brightness >> 14) == 2)
+                for (auto& pixel : screens[screen]) pixel = melonDS::ColorBrightnessDown(pixel, factor, 15);
+        }
+    }
+
     bool apply_castlevania_vram_pair(const frame_packet::Record& record)
     {
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
@@ -2704,6 +2844,10 @@ private:
             if (packet_saw_swap_)
                 return fail(FaultBadEvent,
                     "record followed SWAP_BUFFERS in one frame packet");
+            observe_golden_sun_marker(record);
+            if (golden_sun_display_ && record.address_or_aux >= 0x06840000u &&
+                record.address_or_aux < 0x0684c000u)
+                observe_golden_sun_hud_word(record.address_or_aux + 4, record.data >> 32);
             return apply_same_block_vram_pair(record);
         }
 #endif
@@ -3102,8 +3246,26 @@ private:
                 const auto queued = replay_queue_count();
                 const bool near_head = nds4mister::replay::matched_display_can_draw(
                     replay_packet_frame_, latest, queued, matched_packet_limit_);
-                const bool allowed = matched_recovery_skip_enabled_ ?
-                    matched_recovery_pacer_.can_draw(near_head) : near_head;
+                const auto& g3d = nds_->GPU.GPU3D;
+                const bool golden_title = golden_sun_title_active(display_frame);
+                // The title submits two filler polygons when its 3D lists are omitted.
+                // Draw complete camera submissions before their shared capture bank is reused.
+                const bool complete_camera = g3d.RenderNumPolygons == 9 ||
+                    (g3d.RenderNumPolygons >= 1200 && g3d.RenderNumPolygons <= 1400);
+                const bool ffiii_scene = ffiii_display_ && g3d.RenderNumPolygons > 0;
+                const bool new_geometry = !matched_3d_revision_valid_ || matched_3d_revision_ != g3d.RenderStateRevision;
+                const bool ffiii_fresh = ffiii_scene && new_geometry && queued < 48 &&
+                    std::uint32_t(latest - replay_packet_frame_) <= 2;
+                const bool repeat_geometry = ffiii_scene && !new_geometry && arm_video_skipped_frames_ < 4;
+                const bool landscape_due = !golden_sun_valid_[1] ||
+                    display_frame - golden_sun_last_capture_[1] >= 6;
+                const bool logo_due = !golden_sun_valid_[0] ||
+                    display_frame - golden_sun_last_capture_[0] >= 6;
+                const bool capture_camera = complete_camera && queued < ReplayQueueCapacity - 48 &&
+                    (g3d.RenderNumPolygons != 9 || logo_due || !landscape_due);
+                const bool allowed = golden_title ? capture_camera :
+                    !repeat_geometry && (ffiii_fresh || (matched_recovery_skip_enabled_ ?
+                        matched_recovery_pacer_.can_draw(near_head) : near_head));
                 if (pacing_trace_enabled_) {
                     using M = nds4mister::crash::PacingMetric;
                     const bool old = std::uint32_t(latest - replay_packet_frame_) > 1u;
@@ -3233,6 +3395,8 @@ private:
             arm_video_render_in_flight_ = true;
         if (line == 0 && arm_video_render_this_frame_)
             arm_video_renderer_started_ = true;
+        if (golden_sun_display_ && arm_video_render_this_frame_ && line < 192)
+            apply_golden_sun_hud_line(line);
         if (!nds_->GPU.ApplyExternalRendererPhase(
                 1, line, line, vblank | 2u, vblank | 2u,
                 display_frame, render_phase, false,
@@ -3378,6 +3542,8 @@ private:
                     fmv_rows_.push_back(row);
                 }
 #endif
+                if (golden_sun_display_)
+                    restore_golden_sun_screens(display_frame, arm_video_frames_[destination_index]);
                 // Detach before the publication owner can see this slot. A
                 // skipped/partial next frame must never overwrite queued data.
                 nds_->GPU.GetRenderer().SetExternalFramebuffers(nullptr, nullptr);
@@ -3511,6 +3677,7 @@ private:
             if (!valid_packet_write(record))
                 return fail(FaultBadEvent, "invalid VRAM write record");
             const bool arm7 = packet_is_arm7(record);
+            if (!arm7) observe_golden_sun_marker(record);
             const auto event = packet_write_event(
                 record,
                 arm7 ? EventType::Arm7VramWrite
@@ -3529,6 +3696,7 @@ private:
                 const auto word = frame_packet::unpack_vram_pair(record, index);
                 if (!valid_packet_write(word) || packet_is_arm7(word))
                     return fail(FaultBadEvent, "invalid VRAM pair record");
+                observe_golden_sun_marker(word);
                 if (!apply_vram(packet_write_event(
                         word, EventType::Arm9VramWrite, timestamp), false))
                     return false;
@@ -5654,6 +5822,22 @@ private:
     nds4mister::replay::NearBlackEventGate black_event_gate_;
     bool arm_video_render_shadow_ = false;
     bool matched_display_test_ = false;
+    std::array<std::uint32_t, 2> golden_sun_last_capture_ {};
+    struct GoldenSunHud {
+        std::array<std::array<std::uint32_t, 256 * 192 / 4>, 2> images {};
+        std::size_t received = 256 * 192 / 4;
+        unsigned active = 0;
+        std::uint32_t last_frame = 0;
+        bool ready = false;
+    };
+    std::unique_ptr<GoldenSunHud> golden_sun_hud_;
+    bool golden_sun_lower_only_ = false;
+    bool golden_sun_marker_valid_ = false;
+    std::uint32_t golden_sun_marker_frame_ = 0;
+    bool ffiii_display_ = false;
+    bool golden_sun_display_ = false;
+    std::unique_ptr<FullVideoBuffer> golden_sun_screens_;
+    std::array<bool, 2> golden_sun_valid_ {};
     std::uint32_t matched_packet_limit_ = 4;
     bool matched_upload_cpu0_ = false;
     bool matched_reuse_3d_ = false;
@@ -11504,7 +11688,7 @@ try {
                 service.reset();
             }
             if (service) {
-                if (query_burst && result == PollResult::Empty &&
+                if ((query_burst || service->ffiii_display_active()) && result == PollResult::Empty &&
                     service->fast_matrix_replies_active() &&
                     idle_burst.retry(std::chrono::steady_clock::now())) {
                     if (pacing_enabled()) pacing_add(Pacing::IntakeBurstRetries, 1);
@@ -11523,7 +11707,7 @@ try {
                     // work. Only an empty intake may use the private shorter
                     // interval; publication/ack waits retain their old delay.
                     std::chrono::microseconds(query_short_idle &&
-                        result == PollResult::Empty ? 25 : 100) : HpsQueuePollInterval);
+                        result == PollResult::Empty ? (service->ffiii_display_active() ? 10 : 25) : 100) : HpsQueuePollInterval);
                 if (trace_sleep) {
                     const auto us = static_cast<std::uint64_t>(
                         std::chrono::duration_cast<std::chrono::microseconds>(
@@ -11622,6 +11806,8 @@ try {
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             bool fmv_receiver = false;
 #endif
+            bool golden_sun_display = false;
+            bool ffiii_display = false;
             unsigned matrix_prefix_mode = !prefix_requested ? 0u :
                 std::strcmp(prefix_requested, "verify") == 0 ? 1u :
                 std::strcmp(prefix_requested, "fast") == 0 || automatic_query_profile ? 2u : 0u;
@@ -11671,10 +11857,26 @@ try {
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                 fmv_receiver = nds4mister::replay::automatic_movie_receiver_profile(selected);
 #endif
+                golden_sun_display = selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'B','O','5','E'}} &&
+                    selected.identity.revision == 0 && selected.identity.header_crc32 == 0xda061ea1u;
+                if (golden_sun_display) {
+                    regional_vram_replay = true;
+                    sprite_raster_spans = true;
+                    approximate_factors = true;
+                    compressed_palette_range = true;
+                    texture_opacity = true;
+                    lighting_result_reuse = true;
+                }
+                // FFIII US uses textured models over largely static 2D layers.
+                if (selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'A','F','F','E'}} &&
+                    selected.identity.revision == 0 && selected.identity.header_crc32 == 0x70de0241u) {
+                    ffiii_display = true;
+                }
                 if (automatic_query_profile)
                     matrix_prefix_mode = (nds4mister::replay::portrait_sprite_raster_profile(selected) ||
                         nds4mister::replay::ecclesia_sprite_raster_profile(selected)) ?
                         0u : nds4mister::replay::game_query_prefix_mode(selected.profile);
+                if (golden_sun_display) matrix_prefix_mode = 0;
                 // Controlled NSMB-only comparison: reuse the existing tested
                 // paired-picture cadence while leaving all query/state work
                 // active. Other games and normal launchers keep full rate.
@@ -11762,6 +11964,8 @@ try {
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif
+            candidate->configure_golden_sun_display(golden_sun_display);
+            candidate->configure_ffiii_display(ffiii_display);
             const bool initialized = candidate->initialize(profile_session);
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.

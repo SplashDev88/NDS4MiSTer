@@ -13,8 +13,42 @@ import unittest
 from unittest.mock import patch
 import zlib
 
-from guest_byte_patch import assemble, from_environment, SELECTION_KEYS
+from guest_byte_patch import assemble, from_environment, replace_blz_windows, SELECTION_KEYS
 from prepare import Source, VirtualRom, read_overlay
+
+
+class TitleModelTests(unittest.TestCase):
+    def test_type40_roundtrip(self):
+        from guest_byte_patch import pack_lz40, unpack_lz40
+        for data in (b'x', bytes(range(256)), b'xy' * 50000, bytes(range(33)) * 777):
+            self.assertEqual(unpack_lz40(pack_lz40(data)), data)
+
+    def test_pruned_group_restores_coordinates(self):
+        from guest_byte_patch import prune_model_groups, model_commands
+        # A removed vertex sets (10, 20, 30). The following group uses a delta of +1 X.
+        data = struct.pack('<12I', 0x40412340, 0, 10 | 20 << 16, 30, 0,
+                           0x00004128, 1, 0, 0, 0, 0, 0)
+        commands = list(model_commands(prune_model_groups(data, {0})))
+        self.assertEqual(commands, [(0x40, (0,)), (0x23, (11 | 20 << 16, 30)), (0x41, ())])
+        self.assertEqual(prune_model_groups(data, {0, 1}), b'')
+
+
+class BlzWindowTests(unittest.TestCase):
+    def test_literals_are_read_from_the_edited_image(self):
+        # A synthetic literal group plus header padding. The eight bytes
+        # retain the original backwards decoding order.
+        import base64
+        prefix = b'HEADER!!'
+        stored = b'abcdefgh'[::-1] + b'\x00'
+        raw = prefix + stored + b'\xff' * 3 + struct.pack('<II', (11 << 24) | 20, 8)
+        decoded = prefix + b'x' * 20 + b'12345678'
+        window = dict(start=0, end=9, decoded_start=0, decoded_end=8,
+                      controls=base64.b64encode(b'\x00').decode())
+        encoded = replace_blz_windows(raw, decoded, [window])
+        self.assertEqual(encoded[:8], prefix)
+        self.assertEqual(encoded[8:17], b'12345678' + b'\x00')
+        with self.assertRaises(ValueError):
+            replace_blz_windows(raw, decoded, [window, window])
 
 
 class GuestPatchTests(unittest.TestCase):
@@ -90,6 +124,15 @@ class GuestPatchTests(unittest.TestCase):
             got, report = self.result(self.environment(m))
             self.assertEqual(got, self.raw)
             self.assertEqual(report['state'], 'skipped')
+
+    def test_interdependent_instructions_require_all_patches(self):
+        profile = copy.deepcopy(self.manifest)
+        more = dict(profile['patches'][0], id='two', addr='0x02000040')
+        profile['patches'].append(more)
+        profile['atomic_selection'] = True
+        image, report = assemble(self.source, profile, ['one'])
+        self.assertEqual(report['state'], 'skipped')
+        self.assertFalse(image.patches)
 
     def test_multiple_selection_and_overlap_fall_back_as_one_transaction(self):
         m = copy.deepcopy(self.manifest)

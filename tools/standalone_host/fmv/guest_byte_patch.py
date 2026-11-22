@@ -8,6 +8,7 @@ Bytes follow the normal load path; lifecycle
 qualification remains per-game. A mismatch falls back atomically to the original stream.
 Game identities, addresses and bytes belong in the supplied manifest.
 """
+import base64
 import hashlib
 import json
 from pathlib import Path
@@ -168,6 +169,247 @@ def read_arm7_autoload(source, header, manifest, target):
                 prefix_bytes=payload, table_offset=begin, settings_offset=settings)
 
 
+def replace_blz_windows(raw, decoded, windows):
+    """Keep retail compression outside the edited windows. Read literal bytes from the verified image."""
+    value, extra = struct.unpack_from('<II', raw, len(raw) - 8)
+    header_size = value >> 24
+    prefix_size = len(raw) - (value & 0xffffff)
+    require(8 <= header_size <= 11 and 0 <= prefix_size <= len(raw) - header_size
+            and len(raw) + extra == len(decoded), 'Unexpected BLZ layout')
+    packed = raw[prefix_size:len(raw) - header_size][::-1]
+    output = decoded[::-1]
+    rebuilt = bytearray()
+    previous = 0
+    for window in windows:
+        start, end = window['start'], window['end']
+        position, limit = window['decoded_start'], window['decoded_end']
+        require(previous <= start < end <= len(packed) and 0 <= position < limit <= len(output),
+                'Invalid BLZ window')
+        rebuilt.extend(packed[previous:start])
+        previous = end
+        commands = base64.b64decode(window['controls'], validate=True)
+        cursor = 0
+        while cursor < len(commands):
+            flags = commands[cursor]
+            cursor += 1
+            rebuilt.append(flags)
+            for bit in range(7, -1, -1):
+                require(position < limit, 'BLZ window exceeds decoded extent')
+                if flags & (1 << bit):
+                    require(cursor + 2 <= len(commands), 'Truncated BLZ copy')
+                    rebuilt.extend(commands[cursor:cursor + 2])
+                    position += (commands[cursor] >> 4) + 3
+                    cursor += 2
+                else:
+                    rebuilt.append(output[position])
+                    position += 1
+        require(position == limit, 'Incomplete BLZ window')
+    rebuilt.extend(packed[previous:])
+    encoded = bytearray(raw[:prefix_size]) + rebuilt[::-1]
+    padding = (-len(encoded)) % 4
+    size = len(encoded) + padding + 8
+    encoded.extend(b'\xff' * padding)
+    encoded.extend(struct.pack('<II', ((8 + padding) << 24) | (size - prefix_size), len(decoded) - size))
+    return encoded
+
+
+def unpack_lz40(data):
+    """Decode a Nintendo type-40 stream, including overlapping references."""
+    require(len(data) >= 4 and data[0] == 0x40, 'Unexpected model compression')
+    size = int.from_bytes(data[1:4], 'little')
+    require(0 < size <= 1024 * 1024, 'Unexpected model size')
+    result = bytearray()
+    cursor = 4
+    while len(result) < size:
+        flags = -data[cursor] & 255
+        cursor += 1
+        for bit in range(7, -1, -1):
+            if len(result) == size:
+                break
+            if not flags & (1 << bit):
+                result.append(data[cursor])
+                cursor += 1
+                continue
+            word = struct.unpack_from('<H', data, cursor)[0]
+            cursor += 2
+            distance, length = divmod(word, 16)
+            if length == 0:
+                length = 16 + data[cursor]
+                cursor += 1
+            elif length == 1:
+                length = 272 + struct.unpack_from('<H', data, cursor)[0]
+                cursor += 2
+            require(0 < distance <= len(result) and length <= size - len(result), 'Invalid model reference')
+            pattern = result[-distance:] if length > distance else result[len(result)-distance:len(result)-distance+length]
+            result.extend((pattern * ((length + len(pattern) - 1) // len(pattern)))[:length])
+    return result
+
+
+def pack_lz40(data):
+    """Emit literal or back-reference tokens and the game's end-of-stream token."""
+    src = bytes(data)
+    result = bytearray(struct.pack('<I', len(src) << 8 | 0x40))
+    pos = 0
+    while True:
+        control = len(result)
+        result.append(0)
+        flags = 0
+        for bit in range(7, -1, -1):
+            if pos == len(src):
+                result[control] = -(flags | 1 << bit) & 255
+                result.extend(b'\0\0')
+                return result
+            key = src[pos:pos+3]
+            older = src.rfind(key, max(0, pos-4095), pos+2) if len(key) == 3 else -1
+            if older < 0:
+                result.append(src[pos])
+                pos += 1
+                continue
+            distance = pos - older
+            limit = min(65807, len(src) - pos)
+            length = 3
+            step = 4
+            while length + step <= limit and src[older+length:older+length+step] == src[pos+length:pos+length+step]:
+                length += step
+                step *= 2
+            while length < limit and src[older+length] == src[pos+length]:
+                length += 1
+            flags |= 1 << bit
+            kind = length if length < 16 else int(length >= 272)
+            result.extend(struct.pack('<H', distance << 4 | kind))
+            if length >= 272:
+                result.extend(struct.pack('<H', length - 272))
+            elif length >= 16:
+                result.append(length - 16)
+            pos += length
+        result[control] = -flags & 255
+
+
+def model_commands(source):
+    words = struct.unpack('<%dI' % (len(source) // 4), source)
+    pos = 0
+    while pos < len(words):
+        commands = words[pos].to_bytes(4, 'little')
+        pos += 1
+        for command in commands:
+            if command == 0:
+                continue
+            require(command in (0x40, 0x41) or 0x20 <= command <= 0x28, 'Unexpected title model command')
+            count = 0 if command == 0x41 else 2 if command == 0x23 else 1
+            require(pos + count <= len(words), 'Incomplete title model command')
+            yield command, words[pos:pos+count]
+            pos += count
+
+
+def prune_model_groups(source, hidden):
+    """Preserve vertex coordinates and state when whole invisible primitives are removed."""
+    output = []
+    group = -1
+    keep = True
+    coords = [None, None, None]
+    state = {}
+    dirty = set()
+    restore_position = False
+    for cmd, args in model_commands(source):
+        if cmd == 0x40:
+            group += 1
+            keep = group not in hidden
+        elif cmd == 0x41:
+            if keep:
+                output.append((cmd, args))
+            keep = True
+            continue
+        elif cmd in (0x20, 0x21, 0x22):
+            state[cmd] = args
+            if keep:
+                dirty.discard(cmd)
+            else:
+                dirty.add(cmd)
+        else:
+            word = args[0]
+            if cmd == 0x23:
+                coords = [word & 65535, word >> 16, args[1] & 65535]
+            elif cmd == 0x24:
+                coords = [((word >> (10*i)) & 1023) << 6 for i in range(3)]
+            elif cmd == 0x28:
+                for i in range(3):
+                    delta = (word >> (10*i)) & 1023
+                    if coords[i] is not None:
+                        coords[i] = (coords[i] + (delta if delta < 512 else delta-1024)) & 65535
+            else:
+                i, j = {0x25: (0, 1), 0x26: (0, 2), 0x27: (1, 2)}[cmd]
+                coords[i], coords[j] = word & 65535, word >> 16
+            if not keep:
+                restore_position = True
+            elif restore_position:
+                output.extend((reg, state[reg]) for reg in sorted(dirty))
+                dirty.clear()
+                require(None not in coords, 'Missing initial model coordinates')
+                cmd, args = 0x23, (coords[0] | coords[1] << 16, coords[2])
+                restore_position = False
+        if keep:
+            output.append((cmd, args))
+    require(all(i <= group for i in hidden), 'Invalid primitive selection')
+    if len(hidden) == group + 1:
+        return b''
+    output.extend((reg, state[reg]) for reg in sorted(dirty))
+    blob = bytearray()
+    for i in range(0, len(output), 4):
+        block = output[i:i+4]
+        blob.extend(bytes(cmd for cmd, _ in block).ljust(4, b'\0'))
+        for _, args in block:
+            for word in args:
+                blob.extend(struct.pack('<I', word))
+    return blob
+
+
+def install_title_model(image, source, header, profile):
+    """Keep every original list and attach the title camera's shorter version to it."""
+    fat, fat_size = struct.unpack_from('<II', header, 0x48)
+    entry = profile['fat_index'] * 8
+    require(0 <= entry <= fat_size - 8, 'Invalid model file index')
+    start, end = struct.unpack('<II', source.read(fat + entry, 8))
+    require(0 < end - start <= 1024 * 1024, 'Unexpected stored model size')
+    asset = source.read(start, end - start)
+    require(hashlib.sha256(asset).hexdigest() == profile['input_sha256'], 'Original title model differs')
+    model = unpack_lz40(asset)
+    # This one BMD contains a contiguous array of 82 shape lists up to the texture section.
+    table, first, last = 0x257c, 0x2a9c, 0x48778
+    rebuilt = bytearray(model[:first])
+    cursor = first
+    for i, encoded in enumerate(profile['hidden']):
+        at = table + i * 16
+        offset, size = struct.unpack_from('<II', model, at + 8)
+        require(at + offset == cursor and cursor + size <= last, 'Original shape layout differs')
+        original = model[cursor:cursor+size]
+        cursor += size
+        mask = bytes.fromhex(encoded)
+        hidden = {8*j+k for j, value in enumerate(mask) for k in range(8) if value & (1 << k)}
+        alternate = prune_model_groups(original, hidden) if hidden else original
+        struct.pack_into('<I', rebuilt, at + 8, len(rebuilt) - at)
+        rebuilt.extend(original)
+        amount = len(alternate) if len(alternate) < size else 0x800000
+        rebuilt.extend(struct.pack('<II', 0x31534347, i << 24 | amount))
+        if 0 < amount < 0x800000:
+            rebuilt.extend(alternate)
+    require(cursor == last, 'Incomplete title model')
+    delta = len(rebuilt) - last
+    # File/block/model sizes and offsets to the following subresources.
+    fields = (0x28, 0x34, 0x3c, 0x68, 0x78, 8, 12, 16, 20, 24, 28)
+    for at in fields:
+        value = struct.unpack_from('<I', rebuilt, at)[0]
+        struct.pack_into('<I', rebuilt, at, value + delta)
+    rebuilt.extend(model[last:])
+    packed = pack_lz40(rebuilt)
+    require(hashlib.sha256(packed).hexdigest() == profile['output_sha256'], 'Rebuilt title model differs')
+    dest = profile['padding_offset']
+    used = struct.unpack_from('<I', header, 0x80)[0]
+    require(used <= dest <= source.size - len(packed) and
+            source.read(dest, len(packed)) == b'\xff' * len(packed), 'Cartridge padding differs')
+    image.add(fat + entry, struct.pack('<II', dest, dest + len(packed)))
+    image.add(dest, bytes(packed))
+
+
 def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
     requested = set(patch_ids)
     report = {'state': 'unchanged', 'requested': sorted(requested), 'applied': [], 'reason': None}
@@ -180,6 +422,9 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         return original('No patch enabled')
     try:
         require(manifest['schema_version'] == 1, 'Unknown manifest schema')
+        if manifest.get('atomic_selection', False):
+            require(requested == {patch['id'] for patch in manifest['patches']},
+                    'This profile requires its complete patch set')
         header = source.read(0, 512)
         require(manifest['header_bytes'] == 352, 'Unsupported identity header extent')
         require(hashlib.sha1(header[:352]).hexdigest() == manifest['header_sha1'], 'Header identity differs')
@@ -190,6 +435,32 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         registry = {'version': 1, 'profiles': [{'game_code': manifest['game_code'],
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
+        if manifest.get('delivery') == 'qualified_arm9_blz':
+            recipe = manifest['patches'][0]
+            require(len(manifest['patches']) == 1 and requested == {recipe['id']}, 'Incomplete BLZ profile')
+            decoded = bytearray(codeCompression.decompress(raw))
+            for edit in recipe['edits']:
+                at = edit['offset']
+                old, new = bytes.fromhex(edit['before']), bytes.fromhex(edit['after'])
+                require(len(old) == len(new) and 0 <= at <= len(decoded)-len(old)
+                        and decoded[at:at+len(old)] == old, 'Original decoded instructions differ')
+                decoded[at:at+len(old)] = new
+            encoded = replace_blz_windows(raw, decoded, recipe['windows'])
+            require(8 <= len(encoded) <= length and len(encoded) == recipe['stored_size'], 'Rebuilt ARM9 does not fit')
+            settings = recipe['settings_word']
+            require(struct.unpack_from('<I',decoded,settings)[0] == address+length, 'Module settings differ')
+            struct.pack_into('<I',encoded,settings,address+len(encoded))
+            struct.pack_into('<I',decoded,settings,address+len(encoded))
+            require(codeCompression.decompress(bytes(encoded)) == decoded, 'Unexpected decoded instruction changes')
+            changed = bytes(encoded).ljust(length, b'\0')
+            require(hashlib.sha256(changed).hexdigest() == recipe['output_sha256'], 'Rebuilt ARM9 differs')
+            image = VirtualRom(source, source.size)
+            image.add(offset, changed)
+            if 'title_model' in recipe:
+                install_title_model(image, source, header, recipe['title_model'])
+            image.finish()
+            report.update(state='applied_to_virtual_image',applied=[dict(id=recipe['id'],bytes=length)])
+            return image, report
         if manifest.get('delivery') is not None:
             return append_decoded_overlays(source, header, manifest, requested, report)
         require(codeCompression.decompress(raw) == raw, 'Compressed ARM9 is unsupported by this byte-patch path')
