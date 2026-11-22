@@ -6,8 +6,8 @@
 #include <utility>
 
 namespace nds_touchpad {
-inline constexpr std::array<unsigned, 9> SENSITIVITY_PERCENT{25, 50, 75, 100, 125, 150, 200, 300, 400};
-inline constexpr unsigned DEFAULT_SENSITIVITY = 3;
+inline constexpr std::array<unsigned, 6> SENSITIVITY_PERCENT{100, 125, 150, 200, 300, 400};
+inline constexpr unsigned DEFAULT_SENSITIVITY = 0;
 // Linux's Sony driver supplies ABS_X/Y for the primary contact alongside MT
 // slots. Use that pointer emulation once per report, never both coordinate
 // streams. Only one-finger motion moves the mouse; no gestures or tap-to-click.

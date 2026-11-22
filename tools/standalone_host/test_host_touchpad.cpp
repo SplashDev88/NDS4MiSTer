@@ -260,9 +260,8 @@ struct HostTest {
   const std::vector<int> order{6,2,3,4,5,0,1};
   for(int expected:order){assert(h.cursor==expected);h.action(1);}
   assert(h.cursor==SYSTEM_TOUCHPAD_SENSITIVITY);
-  for(int n=0;n<3;++n)h.action(7);
   assert(h.touchpad_sensitivity==0);
-  h.action(7);assert(h.touchpad_sensitivity==8);h.action(8);assert(h.touchpad_sensitivity==0);
+  h.action(7);assert(h.touchpad_sensitivity==5);h.action(8);assert(h.touchpad_sensitivity==0);
   for(unsigned i=0;i<nds_touchpad::SENSITIVITY_PERCENT.size();++i) {
    if(!h.menu){h.togglemenu();h.action(6);h.cursor=SYSTEM_TOUCHPAD_SENSITIVITY;}
    while(h.touchpad_sensitivity!=i)h.action(2);
@@ -271,7 +270,7 @@ struct HostTest {
      systemTouchpadSensitivity(nds_touchpad::SENSITIVITY_PERCENT[i]),true));
    assert(h.status==status && h.full_status==full_status && !fs::exists(config));
    h.togglemenu();mouse(h);contact(h,node,10+i,800,400);assert(mouse(h).empty());
-   // Even at 25%, single sensor-unit reports eventually move one pixel.
+   // Single sensor-unit reports retain fractional movement at every speed.
    int total_x=0,total_y=0;
    for(int step=1;step<=24;++step) {
     packet(h,node,{{EV_ABS,ABS_X,800+step},{EV_ABS,ABS_Y,400-step}});
@@ -293,12 +292,13 @@ struct HostTest {
   packet(h,mouse_node,{{EV_REL,REL_X,6},{EV_REL,REL_Y,-3}});
   assert(mouse(h)==std::vector<std::vector<uint16_t>>({{8,6,3}}));
   h.togglemenu();h.action(6);h.cursor=3;h.action(2);
-  {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.touchpad_sensitivity==8);}
+  {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.touchpad_sensitivity==5);}
   assert(std::ifstream(config).good());
   h.action(6);h.cursor=2;h.action(2);h.action(0);h.action(2);
   assert(h.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY);
   {Host restored(kit.string(),(sd/"games/NDS").string(),sd);assert(restored.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY);}
   for(const char *bad:{"","NDS-Touchpad-v1\n0\n","NDS-Touchpad-v1\n-100\n",
+   "NDS-Touchpad-v1\n25\n","NDS-Touchpad-v1\n50\n","NDS-Touchpad-v1\n75\n",
    "NDS-Touchpad-v1\n999999999\n","NDS-Touchpad-v2\n200\n","NDS-Touchpad-v1\n200\nextra"}) {
    std::ofstream(config)<<bad;Host invalid(kit.string(),(sd/"games/NDS").string(),sd);
    assert(invalid.touchpad_sensitivity==nds_touchpad::DEFAULT_SENSITIVITY);
@@ -306,7 +306,7 @@ struct HostTest {
   // Optional lock rows still navigate in visual order, in both directions.
   const auto locked=systemMenuRows({true,false,{}});int cursor=6;
   for(int expected:{1,0,5,4,3,2,6}){cursor=nextSystemMenuAction(locked,cursor,-1);assert(cursor==expected);}
-  std::cout<<"PASS touchpad sensitivity: all nine speeds, slow fractional motion, reverse/drag, ordinary mouse isolation, menu/order/wrap, save/reload/reset/invalid config\n";
+  std::cout<<"PASS touchpad sensitivity: all six speeds, fractional motion, reverse/drag, ordinary mouse isolation, menu/order/wrap, save/reload/reset/removed and invalid values\n";
  }
  static void replay(const fs::path &root,const char *path) {
   auto input=root/"input",kit=root/"kit";fs::create_directories(input);fs::create_directories(kit);
