@@ -32,17 +32,18 @@ struct HostTest {
       h.cursor=0;h.draw();
       assert(h.osd_rows[2]==h.frame.renderRow(2,"",false,nds_osd::arrow_right));
       assert(h.osd_rows[5]==h.frame.renderRow(5," Display options            " + std::string(1,char(0x16)),false,nds_osd::arrow_right));
+      assert(h.osd_rows[6]==h.frame.renderRow(6,"",false,nds_osd::arrow_right));
       // A single empty pixel separates Right's descender from Lid. Preserve
       // every Lid pixel and its selection bar across the OSD row boundary.
       for (int selected : {Host::TOUCH_RANGE_CURSOR, Host::LID_CURSOR}) {
         h.cursor=selected;h.draw();
-        const auto lid=h.frame.renderRow(8," Lid: Open (Close)",selected==Host::LID_CURSOR);
+        const auto lid=h.frame.renderRow(9," Lid: Open (Close)",selected==Host::LID_CURSOR);
         for (size_t x=nds_osd::title_width;x<lid.size();++x) {
-          assert(!(h.osd_rows[8][x]&1));
-          const unsigned pixels=h.osd_rows[8][x] | (unsigned(h.osd_rows[9][x])<<8);
+          assert(!(h.osd_rows[9][x]&1));
+          const unsigned pixels=h.osd_rows[9][x] | (unsigned(h.osd_rows[10][x])<<8);
           assert((pixels>>1)==lid[x]);
         }
-        for (unsigned row : {8u,9u}) {
+        for (unsigned row : {9u,10u}) {
           const auto title=h.frame.renderRow(row);
           assert(std::equal(title.begin(),title.begin()+nds_osd::title_width,h.osd_rows[row].begin()));
         }
