@@ -40,9 +40,11 @@ hud_check:
     ldr r1,=0x00011b55
     cmp r0,r1
     bne normal
-    @ The game's initial transfer used row zero, HBlank starts at row one.
-    subs r6,#255
-    subs r6,#1
+    @ The caller advances the source by its sampled VCOUNT (r7) times 256.
+    @ Recover the image base even when it schedules HBlank during visible rows.
+    ldr r0,[sp,#20]
+    lsls r0,r0,#8
+    subs r6,r6,r0
     armcall 0x02031a10
     cmp r0,#0
     beq done
