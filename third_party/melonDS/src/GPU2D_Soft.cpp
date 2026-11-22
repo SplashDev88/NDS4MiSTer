@@ -77,6 +77,7 @@ SoftRenderer2D::~SoftRenderer2D()
 void SoftRenderer2D::Reset()
 {
     StandardPaletteValid = StandardPaletteChecked = false;
+    if (TableCache) TableCache->Invalidate();
     if (SpriteCache) SpriteCache->Invalidate();
     if (SpriteSetup) SpriteSetup->Valid = false;
     memset(BGOBJLine, 0, sizeof(BGOBJLine));
@@ -195,18 +196,24 @@ void SoftRenderer2D::PrepareScanline()
     if (GPU2D.Num == 0)
     {
         auto bgDirty = GPU.VRAMDirty_ABG.DeriveState(GPU.VRAMMap_ABG, GPU);
-        GPU.MakeVRAMFlat_ABGCoherent(bgDirty);
+        const bool bgChanged = GPU.MakeVRAMFlat_ABGCoherent(bgDirty);
         auto bgExtPalDirty = GPU.VRAMDirty_ABGExtPal.DeriveState(GPU.VRAMMap_ABGExtPal, GPU);
         GPU.MakeVRAMFlat_ABGExtPalCoherent(bgExtPalDirty);
+        // One dirty block is precisely one 256-color extended palette.
+        static_assert(VRAMDirtyGranularity == 256 * sizeof(u16));
+        if (TableCache) TableCache->BackgroundWrites(bgChanged, bgExtPalDirty.Data[0]);
         auto objExtPalDirty = GPU.VRAMDirty_AOBJExtPal.DeriveState(&GPU.VRAMMap_AOBJExtPal, GPU);
         GPU.MakeVRAMFlat_AOBJExtPalCoherent(objExtPalDirty);
     }
     else
     {
         auto bgDirty = GPU.VRAMDirty_BBG.DeriveState(GPU.VRAMMap_BBG, GPU);
-        GPU.MakeVRAMFlat_BBGCoherent(bgDirty);
+        const bool bgChanged = GPU.MakeVRAMFlat_BBGCoherent(bgDirty);
         auto bgExtPalDirty = GPU.VRAMDirty_BBGExtPal.DeriveState(GPU.VRAMMap_BBGExtPal, GPU);
         GPU.MakeVRAMFlat_BBGExtPalCoherent(bgExtPalDirty);
+        // One dirty block is precisely one 256-color extended palette.
+        static_assert(VRAMDirtyGranularity == 256 * sizeof(u16));
+        if (TableCache) TableCache->BackgroundWrites(bgChanged, bgExtPalDirty.Data[0]);
         auto objExtPalDirty = GPU.VRAMDirty_BOBJExtPal.DeriveState(&GPU.VRAMMap_BOBJExtPal, GPU);
         GPU.MakeVRAMFlat_BOBJExtPalCoherent(objExtPalDirty);
     }
@@ -249,6 +256,30 @@ void SoftRenderer2D::AdvanceLineCacheState()
         } \
     } while (false)
 
+void SoftRenderer2D::DrawBaseTextRow(u32 line)
+{
+    auto& row = TableCache->Rows[line];
+    const auto& engine = GPU2D;
+    const u32 backdrop = BGOBJLine[0];
+    if (row.Epoch == TableCache->BackgroundEpoch && row.Backdrop == backdrop &&
+        row.Display == engine.DispCnt && row.Control == engine.BGCnt[2] &&
+        row.X == engine.BGXPos[2] && row.Y == engine.BGYPos[2] &&
+        std::memcmp(row.Window, WindowMask, sizeof(row.Window)) == 0)
+    {
+        std::memcpy(BGOBJLine, row.Layers, sizeof(row.Layers));
+        return;
+    }
+    DrawBG_Text<false>(line, 2);
+    row.Epoch = TableCache->BackgroundEpoch;
+    row.Control = engine.BGCnt[2];
+    row.Display = engine.DispCnt;
+    row.X = engine.BGXPos[2];
+    row.Y = engine.BGYPos[2];
+    row.Backdrop = backdrop;
+    std::memcpy(row.Window, WindowMask, sizeof(row.Window));
+    std::memcpy(row.Layers, BGOBJLine, sizeof(row.Layers));
+}
+
 template<u32 bgmode>
 void SoftRenderer2D::DrawScanlineBGMode(u32 line)
 {
@@ -276,6 +307,11 @@ void SoftRenderer2D::DrawScanlineBGMode(u32 line)
                     DoDrawBG(Extended, line, 2);
                 else if (bgmode == 4 || bgmode == 2)
                     DoDrawBG(Affine, line, 2);
+                // BG2 is the first layer composed at priority 3 when BG3 is off.
+                else if (bgmode == 0 && TableCache && line < 192 && i == 3 &&
+                         !(GPU2D.LayerEnable & 8) && (dispCnt & (1u << 30)) &&
+                         (bgCnt[2] & 0xc0u) == 0x80u)
+                    DrawBaseTextRow(line);
                 else
                     DoDrawBG(Text, line, 2);
             }
@@ -632,13 +668,31 @@ void SoftRenderer2D::DrawPalettePixel(u32* dst, u32 color, u32 flag)
     else DrawPixel(dst, static_cast<u16>(color), flag);
 }
 
+const u32* SoftRenderer2D::GetTextPalette(u32 slot, u32 palette)
+{
+    const unsigned index = slot * 16 + palette;
+    const u64 bit = u64(1) << index;
+    auto& colors = TableCache->Colors[index];
+    if (!(TableCache->ValidPalettes & bit))
+    {
+        const u16* raw = GPU2D.GetBGExtPal(slot, palette);
+        for (unsigned i = 0; i < colors.size(); ++i)
+        {
+            const u32 c = raw[i];
+            colors[i] = ((c & 31u) << 1) | ((((c & 0x3e0u) >> 4) | (c >> 15)) << 8) |
+                ((c & 0x7c00u) << 7);
+        }
+        TableCache->ValidPalettes |= bit;
+    }
+    return colors.data();
+}
+
 template<bool mosaic>
 void SoftRenderer2D::DrawBG_Text(u32 line, u32 bgnum)
 {
-    // Converted standard colors also serve 8bpp tile rows. Extended palettes
-    // have separate banks; keep those and the 8bpp mosaic path unchanged.
+    // Extended 8bpp tiles use a separately tracked palette for each VRAM slot.
     const bool eligible = !(GPU2D.BGCnt[bgnum] & (1u << 7)) ||
-        (!mosaic && !(GPU2D.DispCnt & (1u << 30)));
+        (!mosaic && (TableCache || !(GPU2D.DispCnt & (1u << 30))));
     if (StandardPaletteCache && eligible) DrawBG_TextImpl<mosaic, true>(line, bgnum);
     else DrawBG_TextImpl<mosaic, false>(line, bgnum);
 }
@@ -695,7 +749,9 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
 
     const u32* converted = nullptr;
     if constexpr (cached)
-        converted = GetStandardBGColors(pal);
+    {
+        if (!(bgcnt & (1u << 7)) || !extpal) converted = GetStandardBGColors(pal);
+    }
 
     // adjust Y position in tilemap
     if (bgcnt & (1<<15))
@@ -728,7 +784,7 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
             if (bgcnt & (1<<7))
             {
                 const auto* curpal = [&]() {
-                    if constexpr (cached) return converted;
+                    if constexpr (cached) return extpal ? GetTextPalette(extpalslot, curtile >> 12) : converted;
                     else return extpal ? GPU2D.GetBGExtPal(extpalslot, curtile >> 12) : pal;
                 }();
                 const u32 pixelsaddr =
@@ -756,6 +812,28 @@ void SoftRenderer2D::DrawBG_TextImpl(u32 line, u32 bgnum)
                     std::memcpy(&packed, &bgvram[pixelsaddr & bgvrammask],
                                 sizeof(packed));
                     const u32 layerFlag = 0x01000000u << bgnum;
+                    if constexpr (cached) {
+                        if (TableCache && extpal) {
+                            if (packed == 0) {
+                                screenX += 8; xoff = static_cast<u16>(xoff + 8);
+                                continue;
+                            }
+                            const auto enabled = windowBit * 0x01010101u;
+                            const bool visible = ((windowWords[0] & windowWords[1]) & enabled) == enabled;
+                            const bool solid = !((packed - 0x0101010101010101ULL) &
+                                                 ~packed & 0x8080808080808080ULL);
+                            if (visible && solid) {
+                                auto* dst = &BGOBJLine[screenX];
+                                std::memcpy(dst + 256, dst, 8 * sizeof(*dst));
+                                const unsigned flip = (curtile & (1u << 10)) ? 7u : 0u;
+                                const u8* indices = &bgvram[pixelsaddr & bgvrammask];
+                                for (unsigned j = 0; j < 8; ++j)
+                                    dst[j] = curpal[indices[j ^ flip]] | layerFlag;
+                                screenX += 8; xoff = static_cast<u16>(xoff + 8);
+                                continue;
+                            }
+                        }
+                    }
                     auto draw = [&](u32 outputOffset, u32 shift)
 #if defined(__GNUC__) || defined(__clang__)
                         __attribute__((always_inline))

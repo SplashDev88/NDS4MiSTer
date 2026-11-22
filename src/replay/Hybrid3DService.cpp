@@ -40,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <fcntl.h>
 #include <iostream>
 #include <limits>
@@ -851,6 +852,8 @@ public:
         }
     }
 
+    void configure_pinball_2d(bool enabled) { pinball_2d_ = enabled; }
+
     void configure_ffiii_display(bool enabled) { ffiii_display_ = enabled; }
 
     void configure_golden_sun_display(bool enabled)
@@ -1318,6 +1321,9 @@ private:
         golden_sun_capture_only_ = false;
         golden_sun_capture_scene_ = 0;
         golden_sun_hud_.reset();
+        golden_sun_backdrop_.reset();
+        golden_sun_swap_cameras_.clear();
+        golden_sun_render_camera_ = -1;
         melonDS::NDSArgs args;
         args.JIT = std::nullopt;
         nds_ = std::make_unique<melonDS::NDS>(std::move(args), nullptr);
@@ -1390,6 +1396,7 @@ private:
                 arm_video_engine_b_only_, engine_b_pixels_enabled_,
                 matched_display_test_, matched_engine_a_only_};
             settings.PreparedSpriteLineReuse = integral_texture_spans_;
+            settings.Pinball2DCache = pinball_2d_;
             // Only reuse the already completed current 3D row. The legacy
             // full-video lookahead remains disabled in matched mode.
             settings.PairedACache = matched_display_test_ &&
@@ -1785,7 +1792,10 @@ private:
         // acknowledging its shared H3B slot. Rechecking every command here
         // made the replay worker validate the same high-volume GX stream two
         // more times after ownership had already transferred.
-        if (command == 0x50) packet_saw_swap_ = true;
+        if (command == 0x50) {
+            packet_saw_swap_ = true;
+            if (golden_sun_display_) observe_golden_sun_swap(data);
+        }
         nds_->GPU.GPU3D.WriteExternalNormalizedCommand(command, data);
     }
 
@@ -1865,8 +1875,13 @@ private:
                 observe_geometry_command(frame_packet::packed_gx_tag(record, i),
                     frame_packet::packed_gx_data(record, i));
 #endif
-            if (tag0 == 0x50 || tag1 == 0x50 || tag2 == 0x50)
+            if (tag0 == 0x50 || tag1 == 0x50 || tag2 == 0x50) {
                 packet_saw_swap_ = true;
+                if (golden_sun_display_) {
+                    const unsigned index = tag0 == 0x50 ? 0 : tag1 == 0x50 ? 1 : 2;
+                    observe_golden_sun_swap(frame_packet::packed_gx_data(record, index));
+                }
+            }
             const std::uint32_t packed_commands =
                 static_cast<std::uint32_t>(tag0) |
                 (static_cast<std::uint32_t>(tag1) << 8) |
@@ -2704,6 +2719,92 @@ private:
         return true;
     }
 
+    void observe_golden_sun_swap(std::uint32_t data)
+    {
+        if (nds_->GPU.GPU3D.GeometryEnabled)
+            golden_sun_swap_cameras_.push_back((data & ~0x103u) == 0x10u ? int((data >> 8) & 1u) : -1);
+    }
+
+    void latch_golden_sun_camera()
+    {
+        auto& gpu = nds_->GPU.GPU3D;
+        if (!gpu.GeometryEnabled) {
+            golden_sun_swap_cameras_.clear();
+            golden_sun_render_camera_ = -1;
+        } else if (gpu.FlushRequest) {
+            golden_sun_render_camera_ = -1;
+            if (!golden_sun_swap_cameras_.empty()) {
+                golden_sun_render_camera_ = golden_sun_swap_cameras_.front();
+                golden_sun_swap_cameras_.pop_front();
+            }
+        }
+    }
+
+    bool golden_sun_backdrop_capture() const
+    {
+        const auto& gpu = nds_->GPU;
+        // The cabin captures only BG0. Outdoor maps retain their affine BG2
+        // underneath the 3D scene; both captures feed the same menu filter.
+        const auto display = gpu.GPU2D_A.DispCnt;
+        return golden_sun_hud_mode() && (display == 0x1015du || display == 0x1055cu) &&
+            gpu.VRAMCNT[3] == 0x80u && (gpu.CaptureCnt & 0x7fffffffu) == 0x00370010u;
+    }
+
+    void capture_golden_sun_backdrop()
+    {
+        // The ARM9 filters three copies of its capture in place. The FPGA
+        // cannot read the ARM renderer's capture, so reproduce the same RGB555
+        // arithmetic before the game remaps bank D as engine A's BG2.
+        auto source = std::make_unique<GoldenSunBitmap>();
+        auto target = std::make_unique<GoldenSunBitmap>();
+        std::memcpy(source->data(), nds_->GPU.VRAM[3] + 0x8000, sizeof(*source));
+        for (unsigned pass = 0; pass < 3; ++pass) {
+            for (unsigned y = 0; y < PlaneHeight; ++y) {
+                const unsigned row = y * PlaneWidth;
+                const unsigned above = pass == 1 || y == 0 ? row : row - PlaneWidth;
+                const unsigned below = pass == 0 || y + 1 == PlaneHeight ? row : row + PlaneWidth;
+                for (unsigned x = 0; x < PlaneWidth; ++x) {
+                    const auto left = (*source)[row + (x ? x - 1 : 0)];
+                    const auto right = (*source)[row + std::min(x + 1, PlaneWidth - 1u)];
+                    const auto up = (*source)[above + x];
+                    const auto down = (*source)[below + x];
+                    unsigned pixel = 0x8000u;
+                    for (unsigned shift : {0u, 5u, 10u}) {
+                        const auto sum = ((left >> shift) & 31u) + ((right >> shift) & 31u) +
+                            ((up >> shift) & 31u) + ((down >> shift) & 31u);
+                        pixel |= std::min(31u, (sum >> 2) + 1u) << shift;
+                    }
+                    (*target)[row + x] = pixel;
+                }
+            }
+            source.swap(target);
+        }
+        golden_sun_backdrop_ = std::move(source);
+    }
+
+    void restore_golden_sun_backdrop()
+    {
+        if (!golden_sun_backdrop_) return;
+        auto& gpu = nds_->GPU;
+        if (!golden_sun_hud_mode()) {
+            golden_sun_backdrop_.reset();
+            return;
+        }
+        const auto disp = gpu.GPU2D_A.DispCnt;
+        if ((disp == 0x1045du || disp == 0x1175du) &&
+            gpu.VRAMCNT[3] == 0x81u && gpu.GPU2D_A.BGCnt[2] == 0x4287u) {
+            // The ARM9 continues writing its filtered FPGA copy after BG2
+            // becomes visible. Preserve the renderer's capture throughout the
+            // menu and invalidate the flat view only when a write replaced it.
+            auto* bank = gpu.VRAM[3] + 0x8000;
+            if (std::memcmp(bank, golden_sun_backdrop_->data(), sizeof(GoldenSunBitmap)) == 0) return;
+            std::memcpy(bank, golden_sun_backdrop_->data(), sizeof(GoldenSunBitmap));
+            gpu.VRAMDirty[3].SetRange(0x8000 / melonDS::VRAMDirtyGranularity,
+                sizeof(GoldenSunBitmap) / melonDS::VRAMDirtyGranularity);
+            gpu.MarkExternalRenderVRAMMask(1u << 3);
+        } else if (!golden_sun_backdrop_capture()) golden_sun_backdrop_.reset();
+    }
+
     bool golden_sun_hud_mode() const
     {
         const auto& gpu = nds_->GPU;
@@ -2818,7 +2919,8 @@ private:
         const auto& gpu = nds_->GPU;
         const bool title = golden_sun_title_active(frame) && golden_sun_capture_mode();
         const bool prologue = golden_sun_prologue_active(frame) && golden_sun_capture_mode();
-        const bool lower_only = !title && golden_sun_lower_camera();
+        if (gpu.CaptureEnable && golden_sun_backdrop_capture()) capture_golden_sun_backdrop();
+        const bool lower_only = !title && !prologue && golden_sun_lower_camera();
         const unsigned scene = title ? 1u : prologue ? 2u : lower_only ? 3u : 0u;
         if (scene != golden_sun_capture_scene_) golden_sun_valid_.fill(false);
         golden_sun_capture_scene_ = scene;
@@ -2832,11 +2934,12 @@ private:
         if (gpu.CaptureEnable) {
             const unsigned polys = gpu.GPU3D.RenderNumPolygons;
             const bool landscape = polys >= 1200 && polys <= 1400;
-            if ((prologue || lower_only) ? polys > 0 : (polys == 9 || landscape)) {
-                // At capture end BG1 supplies the text for the lower camera.
-                // Its other landscape pass becomes the upper screen on the next swap.
+            if ((prologue || lower_only) ? polys > 0 && (!prologue || golden_sun_render_camera_ >= 0)
+                                         : (polys == 9 || landscape)) {
+                // A missed swap can put the display registers one camera ahead
+                // of the polygons. The tag follows the polygon bank to VBlank.
                 const unsigned view = lower_only ? 1u : prologue ?
-                    ((gpu.GPU2D_A.DispCnt >> 9) & 1u) : unsigned(landscape);
+                    unsigned(golden_sun_render_camera_) : unsigned(landscape);
                 const auto* pixels = reinterpret_cast<const std::uint16_t*>(gpu.VRAM[3]);
                 auto& captured = (*golden_sun_screens_)[view];
                 for (std::size_t i = 0; i < captured.size(); ++i) {
@@ -3267,7 +3370,10 @@ private:
         }
 
         if (line == 0) {
-            if (golden_sun_display_) select_golden_sun_capture_output(display_frame);
+            if (golden_sun_display_) {
+                restore_golden_sun_backdrop();
+                select_golden_sun_capture_output(display_frame);
+            }
             // A copied packet can outlive its H3B slot. Advance every melonDS
             // state transition, but derive the first complete frame and then
             // exactly one frame per cadence. Publication swaps only completed
@@ -3319,7 +3425,9 @@ private:
                 const bool prologue_camera = golden_sun_prologue_active(display_frame) &&
                     g3d.RenderNumPolygons && queued < 96 &&
                     (landscape_due || logo_due);
-                const bool allowed = golden_title ? capture_camera : prologue_camera ||
+                const bool menu_capture = golden_sun_display_ && golden_sun_backdrop_capture() &&
+                    (nds_->GPU.CaptureCnt & (1u << 31));
+                const bool allowed = golden_title ? capture_camera : menu_capture || prologue_camera ||
                     !repeat_geometry && (fresh_scene || (matched_recovery_skip_enabled_ ?
                         matched_recovery_pacer_.can_draw(near_head) : near_head));
                 if (pacing_trace_enabled_) {
@@ -3442,6 +3550,7 @@ private:
         auto phase_started = std::chrono::steady_clock::time_point {};
         if (pipeline_profile_enabled_)
             phase_started = std::chrono::steady_clock::now();
+        if (golden_sun_display_ && line == 192) latch_golden_sun_camera();
         if (!nds_->GPU.ApplyExternalRendererPhase(
                 start_kind, line, line, vblank, vblank,
                 display_frame, render_phase,
@@ -3453,10 +3562,19 @@ private:
             arm_video_renderer_started_ = true;
         if (golden_sun_display_ && arm_video_render_this_frame_ && line < 192)
             apply_golden_sun_hud_line(line);
-        if (!nds_->GPU.ApplyExternalRendererPhase(
-                1, line, line, vblank | 2u, vblank | 2u,
-                display_frame, render_phase, false,
-                phase_2d_only))
+        auto& main = nds_->GPU.GPU2D_A;
+        const bool camera_caption = golden_sun_display_ && arm_video_render_this_frame_ &&
+            line < PlaneHeight && golden_sun_render_camera_ >= 0 &&
+            golden_sun_prologue_active(display_frame) && golden_sun_capture_mode();
+        // HBlank derives LayerEnable from DISPCNT immediately before drawing.
+        // Feed BG1 to the lower camera's capture through that same latch.
+        const auto display = main.DispCnt;
+        if (camera_caption)
+            main.DispCnt = (display & ~(1u << 9)) | (unsigned(golden_sun_render_camera_) << 9);
+        const bool hblank_ok = nds_->GPU.ApplyExternalRendererPhase(
+            1, line, line, vblank | 2u, vblank | 2u, display_frame, render_phase, false, phase_2d_only);
+        if (camera_caption) main.DispCnt = display;
+        if (!hblank_ok)
             return fail(FaultBadFrame, "melonDS rejected LCD HBlank phase");
         if (line == 192)
             trace(TimelineLane::Replay, TimelineKind::VBlankEnd,
@@ -4073,6 +4191,7 @@ private:
         nds_->ARM9Target = nds_->ARM9Timestamp;
         nds_->ARM7Target = packet_timestamp_;
         nds_->GPU.GPU3D.Run();
+        if (golden_sun_display_) latch_golden_sun_camera();
         nds_->GPU.GPU3D.VBlank();
         return true;
     }
@@ -5879,6 +5998,10 @@ private:
     bool arm_video_render_shadow_ = false;
     bool matched_display_test_ = false;
     std::array<std::uint32_t, 2> golden_sun_last_capture_ {};
+    using GoldenSunBitmap = std::array<std::uint16_t, PlanePixels>;
+    std::unique_ptr<GoldenSunBitmap> golden_sun_backdrop_;
+    std::deque<int> golden_sun_swap_cameras_;
+    int golden_sun_render_camera_ = -1;
     struct GoldenSunHud {
         std::array<std::array<std::uint32_t, 256 * 192 / 4>, 2> images {};
         std::size_t received = 256 * 192 / 4;
@@ -5891,6 +6014,7 @@ private:
     unsigned golden_sun_scene_marker_ = 0;
     std::uint32_t golden_sun_marker_frame_ = 0;
     bool ffiii_display_ = false;
+    bool pinball_2d_ = false;
     std::optional<melonDS::RendererSettings> golden_sun_dual_settings_;
     bool golden_sun_capture_only_ = false;
     bool golden_sun_display_ = false;
@@ -11866,6 +11990,7 @@ try {
 #endif
             bool golden_sun_display = false;
             bool ffiii_display = false;
+            bool pinball_2d = false;
             unsigned matrix_prefix_mode = !prefix_requested ? 0u :
                 std::strcmp(prefix_requested, "verify") == 0 ? 1u :
                 std::strcmp(prefix_requested, "fast") == 0 || automatic_query_profile ? 2u : 0u;
@@ -11917,7 +12042,10 @@ try {
 #endif
                 golden_sun_display = selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'B','O','5','E'}} &&
                     selected.identity.revision == 0 && selected.identity.header_crc32 == 0xda061ea1u;
-                if (golden_sun_display) regional_vram_replay = true;
+                pinball_2d = selected.identified &&
+                    selected.identity.code == std::array<std::uint8_t, 4>{{'A', 'P', '2', 'E'}} &&
+                    selected.identity.revision == 0 && selected.identity.header_crc32 == 0xb04a7abfu;
+                if (golden_sun_display || pinball_2d) regional_vram_replay = true;
                 // FFIII US uses textured models over largely static 2D layers.
                 if (selected.identified && selected.identity.code == std::array<std::uint8_t, 4>{{'A','F','F','E'}} &&
                     selected.identity.revision == 0 && selected.identity.header_crc32 == 0x70de0241u) {
@@ -11958,6 +12086,7 @@ try {
                     << " rectangle_texture_x=" << rectangle_texture_x
                     << " background_row_reuse=" << background_row_reuse
                     << " background_span_reuse=" << background_row_reuse
+                    << " pinball_2d=" << pinball_2d
                     << " paired_a_cache=" << paired_a_cache
 #ifdef NDS4MISTER_EXPERIMENTAL_FMV_PACKED_COLOR
                     << " fmv_receiver=" << fmv_receiver
@@ -12016,6 +12145,7 @@ try {
 #endif
             candidate->configure_golden_sun_display(golden_sun_display);
             candidate->configure_ffiii_display(ffiii_display);
+            candidate->configure_pinball_2d(pinball_2d);
             const bool initialized = candidate->initialize(profile_session);
             if (memory_path == "/dev/mem") {
                 // Keep ordered intake/readbacks off replay's busy CPU1 queue.

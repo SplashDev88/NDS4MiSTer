@@ -1050,6 +1050,7 @@ struct RendererSettings
     // Composition-only A reuse. Sprite preparation stays at its ordinary
     // phase; 3D rows are compared only after the normal GetLine fence.
     bool PairedACache = false;
+    bool Pinball2DCache = false;
 };
 
 struct ExternalRendererStageProfile

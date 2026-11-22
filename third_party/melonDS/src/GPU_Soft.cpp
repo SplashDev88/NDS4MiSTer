@@ -126,6 +126,10 @@ void SoftRenderer::PreSavestate()
 void SoftRenderer::PostSavestate()
 {
     InvalidateBSpriteIdentity();
+    for (auto* renderer : {Rend2D_A.get(), Rend2D_B.get()}) {
+        auto& cache = static_cast<SoftRenderer2D*>(renderer)->TableCache;
+        if (cache) cache->Invalidate();
+    }
     if (PairedACache)
     {
         memset(LineCacheStateValid[0], 0, sizeof(LineCacheStateValid[0]));
@@ -142,6 +146,14 @@ void SoftRenderer::PostSavestate()
 
 void SoftRenderer::SetRenderSettings(RendererSettings& settings)
 {
+    for (auto* renderer : {Rend2D_A.get(), Rend2D_B.get()})
+    {
+        auto& cache = static_cast<SoftRenderer2D*>(renderer)->TableCache;
+        if (settings.Pinball2DCache && !cache)
+            cache = std::make_unique<SoftRenderer2D::TableRenderCache>();
+        else if (!settings.Pinball2DCache)
+            cache.reset();
+    }
     PreparedASpritesValid = false;
     PreparedBSpritesValid = false;
     PackedOutput = settings.PackedOutput;

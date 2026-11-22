@@ -46,7 +46,7 @@ def main():
         symbols = {label: int(value, 16) for value, kind, label in
                    (line.split() for line in tool("nm", "-n", elf).decode().splitlines())}
         recipe = manifests["BO5E"]["patches"][0]
-        body, hook, hud, reuse = recipe["edits"]
+        body, hook, hud, reuse, tag, submit = recipe["edits"]
         binary = work / "display"
         tool("objcopy", "-O", "binary", elf, binary)
         assert symbols["primary"] == 0x02000000 + body["offset"]
@@ -56,6 +56,13 @@ def main():
         assert delta % 2 == 0 and -(1 << 25) <= delta < (1 << 25)
         instruction = 0xFA000000 | ((delta & 2) << 23) | ((delta >> 2) & 0xFFFFFF)
         assert instruction.to_bytes(4, "little") == bytes.fromhex(hook["after"])
+
+        assert tag["offset"] == 0xA71C and tag["after"] == "122082e3"
+        assert submit["offset"] == 0xA724
+        delta = symbols["submit_camera"] - (0x02000000 + submit["offset"] + 8)
+        assert delta % 4 == 0 and -(1 << 25) <= delta < (1 << 25)
+        branch = 0xEB000000 | ((delta // 4) & 0xFFFFFF)
+        assert branch.to_bytes(4, "little") == bytes.fromhex(submit["after"])
 
         elf = assemble("hud_dma")
         tool("objcopy", "-O", "binary", elf, binary)

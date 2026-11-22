@@ -44,6 +44,33 @@ private:
     // The paired output cache compares these buffers before X mosaic changes
     // them, after sprite preparation and any parallel worker have completed.
     friend class SoftRenderer;
+    // Metroid Prime Pinball builds its tables from two extended-color text layers.
+    struct TableRenderCache
+    {
+        std::array<std::array<u32, 256>, 64> Colors;
+        u64 ValidPalettes = 0;
+        // Below BG1 and all objects, BG2 starts with only the backdrop.
+
+        struct BaseRow
+        {
+            u64 Epoch = 0;
+            u32 Display = 0, Backdrop = 0;
+            u16 Control = 0, X = 0, Y = 0;
+            u8 Window[256];
+            u32 Layers[512];
+        };
+        std::array<BaseRow, 192> Rows {};
+        u64 BackgroundEpoch = 1;
+        void BackgroundWrites(bool tilesChanged, u64 paletteMask)
+        {
+            ValidPalettes &= ~paletteMask;
+            if (tilesChanged || paletteMask) ++BackgroundEpoch;
+        }
+        void Invalidate() { ValidPalettes = 0; ++BackgroundEpoch; }
+    };
+    std::unique_ptr<TableRenderCache> TableCache;
+    void DrawBaseTextRow(u32 line);
+    const u32* GetTextPalette(u32 slot, u32 palette);
     SoftRenderer& Parent;
 
     // Experimental, opt-in B-only cache of the pre-mosaic sprite result.

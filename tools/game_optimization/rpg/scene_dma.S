@@ -26,16 +26,12 @@ primary:
 update:
     subs r1,#2
     ldrb r0,[r1]
-    movs r6,#1
     cmp r0,#0
     bne alternate
     ldr r2,[r7,#16]
     ldr r0,[r7,#20]
-    cmp r0,r2
-    bne swap_screen
-    movs r6,#0
-    b capture_arm
-swap_screen:
+    subs r6,r2,r0
+    beq capture_arm
     str r2,[r7,#20]
     ldr r1,=0x04000304
     ldrh r0,[r1]
@@ -99,9 +95,8 @@ capture:
     adds r0,r7,r0
     ldr r2,[r0,#24]
     ldr r1,=0x06860000
-    movs r3,#3
-    lsls r3,r3,#15
     movs r0,#3
+    lsls r3,r0,#15
     armcall 0x020523cc
 done:
     pop {r1,r2,r3,r4,r5,r6,r7,pc}
@@ -233,3 +228,13 @@ omit_shape:
 landscape_phase:
     .word 0
 .ltorg
+
+@ SWAP bits 0 and 1 retain the game's sort and depth modes. The replay
+@ worker reads the camera tag from reserved bits when this polygon bank latches.
+.arm
+.global submit_camera
+submit_camera:
+    ldr ip,[r4,#16]
+    orr r2,r2,ip,lsl #8
+    str r2,[r1,#0x540]
+    bx lr
