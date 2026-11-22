@@ -12142,6 +12142,7 @@ try {
             candidate->configure_movie_receiver_before_initialize(fmv_receiver);
 #endif
             candidate->configure_golden_sun_display(golden_sun_display);
+            fpga3d::ffiiiIndexedTextures = ffiii_display;
             candidate->configure_ffiii_display(ffiii_display);
             candidate->configure_pinball_2d(pinball_2d);
             const bool initialized = candidate->initialize(profile_session);

@@ -5290,13 +5290,16 @@ bool SoftRenderer3D::TryFpgaFrame()
         if(rp.PolyData->IsShadow && !(ps.BlendMode&1)) return trace.finish(Outcome::ShadowMode);
         if(!rp.PolyData->IsShadowMask && ps.TextureEnabled && !ps.TexturePixels) return trace.finish(Outcome::TextureMissing);
     }
+    constexpr size_t rawBudget=fpga3d::TextureBytes-fpga3d::MaxCommands*64;
     std::vector<fpga3d::Frame::TextureUse> textureUses;
     if(fpga3d::adaptiveAdmission)
     {
         // Raw texels avoid per-span palette reloads. Prefer them when every
         // unique texture and the full WC command budget already fit. Larger
         // scenes retain lossless indexed admission; no feature is disabled.
-        constexpr size_t rawBudget=fpga3d::TextureBytes-fpga3d::MaxCommands*64;
+        // FFIII battles reuse a small set of textures that fit after lossless
+        // packing. Cap the decoded size before spending time preparing it.
+        const size_t preflightBudget=fpga3d::ffiiiIndexedTextures ? 2*rawBudget : rawBudget;
         std::map<const u32*,size_t> unique;
         size_t bytes=0;
         for(int i=0;i<CurrentPolygonCount;i++)
@@ -5309,7 +5312,7 @@ bool SoftRenderer3D::TryFpgaFrame()
             if(!entry.second){textureUses[entry.first->second].rows+=rows;continue;}
             textureUses.push_back({ps.TexturePixels,count,rows});
             bytes+=count*4;
-            if(fpga3d::textureTrafficGuard && bytes>rawBudget)
+            if(fpga3d::textureTrafficGuard && bytes>preflightBudget)
             {
                 // Rechecking an unchanged large texture set every frame costs
                 // native rendering time. Retry after the existing bounded delay.
@@ -5352,6 +5355,12 @@ bool SoftRenderer3D::TryFpgaFrame()
     }
     if(!preparedHit && fpga3d::adaptiveAdmission && FpgaFrame.allowIndexed)
         FpgaFrame.preferRawTextures(textureUses);
+    if(fpga3d::ffiiiIndexedTextures && fpga3d::textureTrafficGuard &&
+       FpgaFrame.allowIndexed && FpgaFrame.textures.size()*sizeof(u32)>rawBudget)
+    {
+        FpgaAdmission.unsupported();
+        return trace.finish(Outcome::TextureTraffic);
+    }
     if(preparedEligible && !preparedHit)
         FpgaFrame.preparedTextures.remember(textureUses,FpgaFrame.textures,FpgaFrame.textureOffsets);
     trace.next(fpga3d::Stage::Emit);

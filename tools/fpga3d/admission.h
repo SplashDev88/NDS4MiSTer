@@ -9,6 +9,7 @@ inline bool adaptiveAdmission=false;
 // decoded sets require palette reloads or slow Device descriptor uploads.
 // Keep the unrestricted encoder available for qualification and future tuning.
 inline bool textureTrafficGuard=false;
+inline bool ffiiiIndexedTextures=false;
 inline bool lightScene(unsigned polygons,unsigned projectedPixels){
  return polygons>=32 && projectedPixels<32768;
 }
