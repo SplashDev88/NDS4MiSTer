@@ -155,8 +155,46 @@ public:
         std::array<u8, 8> PaletteAge {};
     };
 
+    // A remapped VRAM bank can dirty every block while retaining almost all
+    // of its bytes. Compare only uniquely mapped memory. Overlapping banks
+    // still need the normal OR read in GPU::CopyLinearVRAM.
+    template<u32 MappingBytes, u32 Blocks>
+    void FilterUnchangedBlocks(NonStupidBitField<Blocks>& dirty,
+                               const u32* mappings, const u8* flat)
+    {
+        constexpr u32 groupBytes = 16 * 1024; // smallest texture or palette bank
+        constexpr u32 groupBlocks = groupBytes / VRAMDirtyGranularity;
+        static_assert(groupBlocks == 32 && Blocks % 64 == 0 && MappingBytes % groupBytes == 0);
+        for (u32 first = 0; first < Blocks; first += groupBlocks)
+        {
+            u64& word = dirty.Data[first / 64];
+            const u32 shift = first % 64;
+            u32 pending = static_cast<u32>(word >> shift);
+            if (!pending) continue;
+            const u32 offset = first * VRAMDirtyGranularity;
+            const u8* source = GPU.GetUniqueBankPtr(mappings[offset / MappingBytes], offset);
+            if (!source) continue;
+            u32 changed = pending;
+            if (pending == UINT32_MAX && std::memcmp(flat + offset, source, groupBytes) == 0)
+                changed = 0;
+            else
+            {
+                while (pending)
+                {
+                    const u32 bit = __builtin_ctz(pending);
+                    const u32 local = bit * VRAMDirtyGranularity;
+                    if (std::memcmp(flat + offset + local, source + local, VRAMDirtyGranularity) == 0)
+                        changed &= ~(1u << bit);
+                    pending &= pending - 1;
+                }
+            }
+            const u64 groupMask = u64(UINT32_MAX) << shift;
+            word = (word & ~groupMask) | (u64(changed) << shift);
+        }
+    }
+
     bool Update(u8& clrBitmapDirty, bool preserveUploadSnapshot = false,
-                UploadTrace* trace = nullptr)
+                UploadTrace* trace = nullptr, bool filterUnchanged = false)
     {
         if (trace) *trace = {};
         auto textureDirty = GPU.VRAMDirty_Texture.DeriveState(GPU.VRAMMap_Texture, GPU);
@@ -173,6 +211,12 @@ public:
                 trace->TextureAge = TextureSnapshotAge;
                 trace->PaletteAge = PaletteSnapshotAge;
             }
+        }
+
+        if (filterUnchanged)
+        {
+            FilterUnchangedBlocks<128*1024>(textureDirty, GPU.VRAMMap_Texture, GPU.VRAMFlat_Texture);
+            FilterUnchangedBlocks<16*1024>(texPalDirty, GPU.VRAMMap_TexPal, GPU.VRAMFlat_TexPal);
         }
 
         bool textureChanged = GPU.MakeVRAMFlat_TextureCoherent(textureDirty);

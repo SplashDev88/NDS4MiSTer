@@ -6149,7 +6149,7 @@ void SoftRenderer3D::RenderFrame()
     {
         u8 clearBitmapDirty = 0;
         textureChanged = TextureCache.Update(clearBitmapDirty, PreserveUploadSnapshot,
-            UploadTraceEnabled ? &UploadAtStart : nullptr);
+            UploadTraceEnabled ? &UploadAtStart : nullptr, GPU3D.RowDepthRectanglesEnabled());
         if (UploadTraceEnabled)
         {
             std::copy_n(GPU.VRAMCNT, 9, UploadBanksAtStart);
