@@ -1640,7 +1640,8 @@ void GPU3D::SubmitVertex() noexcept
         if (VertexNumInPoly == 4)
         {
             VertexNumInPoly = 0;
-            SubmitPolygon();
+            if (!RowDepthRectanglesEnabled() || !TrySubmitOrthographicQuad())
+                SubmitPolygon();
             NumConsecutivePolygons++;
         }
         break;
@@ -3706,6 +3707,85 @@ void GPU3D::Write32(u32 addr, u32 val) noexcept
     }
 
     Log(LogLevel::Debug, "unknown GPU3D write32 %08X %08X\n", addr, val);
+}
+
+// The US castle renderer submits opaque, white quads in column order.
+// A full-screen viewport and equal W make their projected corners separable.
+bool GPU3D::TrySubmitOrthographicQuad() noexcept
+{
+    constexpr s32 w = 1 << 22;
+    constexpr s32 white = 0x1FFFF;
+    const u32 format = (TexParam >> 26) & 7;
+    if (HighResolutionCoordinatesEnabled || (FlushAttributes & 2) ||
+        (CurPolygonAttr & ~0x1000u) != 0x001F00C0u ||
+        (format != 3 && format != 4) || NumPolygons >= 2048 || NumVertices + 4 > 6144 ||
+        Viewport[0] != 0 || Viewport[3] != 0 || Viewport[4] != 256 || Viewport[5] != 192)
+        return false;
+
+    const Vertex* v = TempVertexBuffer;
+    const s32 left = v[0].Position[0], right = v[2].Position[0];
+    const s32 top = v[0].Position[1], bottom = v[1].Position[1];
+    if (left != v[1].Position[0] || right != v[3].Position[0] ||
+        top != v[3].Position[1] || bottom != v[2].Position[1] ||
+        left < -w || right > w || left >= right ||
+        bottom < -w || top > w || bottom >= top)
+        return false;
+
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        if (v[i].Position[3] != w || v[i].Position[2] < -w || v[i].Position[2] > w ||
+            v[i].Clipped || v[i].Color[0] != white ||
+            v[i].Color[1] != white || v[i].Color[2] != white)
+            return false;
+    }
+
+    const s32 x0 = (left + w) >> 15, x1 = (right + w) >> 15;
+    const s32 y0 = (((w - top) >> 1) * 3) >> 16;
+    const s32 y1 = (((w - bottom) >> 1) * 3) >> 16;
+    if (x0 == x1 || y0 == y1)
+        return false;
+
+    Polygon& poly = CurPolygonRAM[NumPolygons++];
+    poly.NumVertices = 4;
+    poly.Attr = CurPolygonAttr;
+    poly.TexParam = TexParam;
+    poly.TexPalette = TexPalette;
+    poly.Degenerate = false;
+    poly.Type = 0;
+    poly.FacingView = true;
+    poly.Translucent = false;
+    poly.IsShadowMask = false;
+    poly.IsShadow = false;
+    poly.WBuffer = false;
+    poly.VTop = 0;
+    poly.VBottom = 2;
+    poly.XTop = x0;
+    poly.XBottom = x1;
+    poly.YTop = y0;
+    poly.YBottom = y1;
+    poly.SortKey = (y1 << 8) | y0;
+    ++NumOpaquePolygons;
+
+    for (unsigned i = 0; i < 4; ++i)
+    {
+        Vertex& out = CurVertexRAM[NumVertices++];
+        out = v[i];
+        const s32 x = i < 2 ? x0 : x1;
+        const s32 y = i == 1 || i == 2 ? y1 : y0;
+        out.FinalPosition[0] = x;
+        out.FinalPosition[1] = y;
+        out.HiresPosition[0] = x << 4;
+        out.HiresPosition[1] = y << 4;
+        std::fill_n(out.FinalColor, 3, 0x1FF);
+        poly.Vertices[i] = &out;
+        poly.FinalW[i] = w >> 8;
+        poly.FinalZ[i] = std::clamp((out.Position[2] / 256 + 0x3FFF) * 0x200, 0, 0xFFFFFF);
+    }
+    PolygonPipeline = 35;
+    VertexSlotCounter = 1;
+    VertexSlotsFree = 0b11110;
+    LastStripPolygon = nullptr;
+    return true;
 }
 
 }

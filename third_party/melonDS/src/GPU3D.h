@@ -253,6 +253,7 @@ private:
     void NextVertexSlot() noexcept;
     void StallPolygonPipeline(s32 delay, s32 nonstalldelay) noexcept;
     void SubmitPolygon() noexcept;
+    bool TrySubmitOrthographicQuad() noexcept;
     void SubmitVertex() noexcept;
     void CalculateLighting() noexcept;
     void CalculateLighting(u32 normalKey) noexcept;
