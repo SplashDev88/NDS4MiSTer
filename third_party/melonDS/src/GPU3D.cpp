@@ -2475,10 +2475,15 @@ void GPU3D::ExecuteCommand() noexcept
                 u32 addr = entry.Param & 0x1F;
                 if (addr > 30) GXStat |= (1<<15);
 
-                memcpy(PosMatrix, PosMatrixStack[addr], 16*4);
+                // Restoring the current position matrix preserves the clip
+                // product, including an outstanding projection change.
+                if (ClipMatrixDirty || memcmp(PosMatrix, PosMatrixStack[addr], sizeof(PosMatrix)) != 0)
+                {
+                    memcpy(PosMatrix, PosMatrixStack[addr], sizeof(PosMatrix));
+                    ClipMatrixDirty = true;
+                }
                 LightingCacheValid = 0;
-                memcpy(VecMatrix, VecMatrixStack[addr], 16*4);
-                ClipMatrixDirty = true;
+                memcpy(VecMatrix, VecMatrixStack[addr], sizeof(VecMatrix));
                 AddCycles(35);
             }
             break;
