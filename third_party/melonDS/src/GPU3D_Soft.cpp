@@ -17,6 +17,7 @@
 */
 
 #include "GPU3D_Soft.h"
+#include "../../../tools/fpga3d/packed_perspective.h"
 #include "NDS4MiSTerBackgroundRows.h"
 #include "NDS4MiSTerBackgroundSpans.h"
 #include "GPU3D_Diagnostic.h"
@@ -2554,7 +2555,11 @@ void SoftRenderer3D::RenderPolygonScanlineImpl(
                 const auto emitSpan=[&](const fpga3d::Span& value){
                     if(value.first>=value.origin && value.end<=value.origin+value.width)
                     {
-                        FpgaFrame.append(fpga3d::span(value));return;
+                        if (FpgaFrame.recyclePublished && GPU3D.CompressedPaletteRangeEnabled())
+                            FpgaFrame.appendPacked(fpga3d::packedPerspectiveW(value));
+                        else
+                            FpgaFrame.append(fpga3d::span(value));
+                        return;
                     }
                     // Narrow cached interiors can revisit pixels outside the
                     // perspective denominator. Preserve the native unsigned

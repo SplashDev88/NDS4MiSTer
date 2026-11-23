@@ -1,11 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-only
-#include "codec.h"
+#include "packed_perspective.h"
 #include <cstdio>
 #include <stdexcept>
 using namespace fpga3d;
 static int64_t quotient(int64_t n,int64_t d){auto q=n/d;return q-(n%d<0);}
 static void check(bool b){if(!b)throw std::runtime_error("span recurrence mismatch");}
+static void checkPackedPerspectiveW()
+{
+    // Exercise the packed field boundaries, including end/width 256 encoded as zero.
+    for (unsigned flags = 0; flags < 64; ++flags) {
+        for (unsigned mode = 0; mode <= 4; ++mode) {
+            for (unsigned format = 0; format < 4; ++format) {
+                Span s;
+                s.flags = flags;
+                s.first = 13;
+                s.end = s.width = 256;
+                s.w0 = 65535;
+                s.w1 = 128;
+                s.z0 = 0xffffff;
+                s.z1 = 1;
+                s.left = {-32768, 0, 504, 43, -27};
+                s.right = {32767, 47, 0, -19, 654};
+                s.texture = Textures + 64 + format;
+                s.shiftS = 10;
+                s.wrap = 15;
+                s.leftCov = 0x803ab169;
+                s.rightCov = 0x000ff3ff;
+                s.leftEnd = 13;
+                s.rightBegin = 256;
+                s.polyAttr = 0x2b008010;
+                s.depthWrite = true;
+                s.alphaRef = 21;
+                s.polyAlpha = 17;
+                s.yEdge = 8;
+                s.mode = mode;
+                check(packedPerspectiveW(s) == pack(span(s)));
+            }
+        }
+    }
+
+    Span s;
+    s.flags = WBuffer | Textured;
+    s.end = s.width = 1;
+    check(packedPerspectiveW(s) == pack(span(s)));
+    s.texture = Textures + 8 + 1; // An indexed texture needs 64-byte alignment.
+    check(packedPerspectiveW(s) == pack(span(s)) && (packedPerspectiveW(s)[15] >> 31));
+    s.left[2] = 32768;
+    bool rejected = false;
+    try { packedPerspectiveW(s); }
+    catch (const std::invalid_argument&) { rejected = true; }
+    check(rejected);
+}
+
 int main(){
+ checkPackedPerspectiveW();
  unsigned pixels=0;
  for(int width=1;width<=128;width++)for(int delta:{-127,-64,-1,0,1,64,127})for(bool descending:{false,true}){
   Span s;s.first=24;s.origin=25;s.end=25+width;s.width=width;s.flags=Linear|Front;
