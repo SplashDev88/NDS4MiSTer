@@ -3805,6 +3805,42 @@
       "patch_ids": [
         "opening-display"
       ]
+    },
+    {
+      "manifest": {
+        "schema_version": 1,
+        "game_code": "CLJE",
+        "revision": 0,
+        "title": "Mario & Luigi: Bowser's Inside Story (USA)",
+        "header_sha1": "a6614bc6aa5742bae5751a33d795006dcdfdf4a9",
+        "header_bytes": 352,
+        "rom_sha256": "951a73ebd6d57d132c9aaf9abab27fc69ef3669a6636d5ab2670877646f84fd3",
+        "arm9_sha256": "1bea8605f34e106513ad55dd58f3da7ec51a79a53c846425b9ac06a247bdc05a",
+        "arm9_crc32": "f7ad4d9e",
+        "delivery": "repack-compressed-overlays-v1",
+        "repacked_overlay_sha256": {
+          "6": "0ed9efcd408c5fbf393ea0233fe681f2f588c36413c7675604c38868cec1e15a"
+        },
+        "patches": [
+          {
+            "id": "bowser-trim-empty-gx-tail",
+            "cpu": "arm9",
+            "target": "arm9.overlay",
+            "overlay": 6,
+            "overlay_ram": "0x210fdc0",
+            "overlay_file_id": 6,
+            "overlay_sha256": "c17f121d159cf417419b9763c7f4f8f18a1f9da5e5857adcb2c0579216521c9b",
+            "overlay_stored_sha256": "f6d3b005beabbc71cc8235d3a2448b6053fa183219f17e53d2d1371e53214733",
+            "mode": "arm",
+            "addr": "0x2122b34",
+            "expect": "f8432de90070a0e1084a97e5040a97e50160a0e10250a0e1000054e10b00002a0090a0e33c80a0e3b200d4e0003097e50910a0e1000260e00820a0e1000183e0ab55fbeb040a97e5000054e1f5ffff3a010056e30400000a020056e30a00000a030056e31500000af883bde8000097e57c109fe5365afceb001097e570209fe50500a0e1da59fbebf883bde80a0c87e20110a0e3bc10c0e1000097e550109fe52b5afceb00708de5001097e540209fe540309fe50500a0e1695efcebf883bde80a0c87e20110a0e3bc10c0e1000097e51c109fe51e5afceb00708de5001097e50c209fe50c309fe50500a0e1",
+            "replace": "01c08fe21cff2fe1f0b583b007000e0015000a231b02fb1801939c68019b586884420bd2208802340101081a80003968401800213c22d5f65eebefe7701e022844d80097274c012e28d001219981032e24d1386802190c3a116841291ed1516812291bd19168012918d11300834204d0043b19680029f9d00433802189005b18103a93420ad8412119601221596001219960df6000931c1a0c3404263868210016f758ec280039682200012e0cd00e4b022e06d0042e01d105a3013317f7d4ed04e017f7d0ec01e0d6f694eb03b0f0bdc3680021016041608160c1601800024b1847c0460c2c0100242b1202"
+          }
+        ]
+      },
+      "patch_ids": [
+        "bowser-trim-empty-gx-tail"
+      ]
     }
   ]
 }

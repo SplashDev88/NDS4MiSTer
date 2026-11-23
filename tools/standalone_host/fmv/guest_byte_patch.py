@@ -24,12 +24,13 @@ def append_decoded_overlays(source, header, manifest, requested, report):
     """Reuse the FMV overlay relocation path, leaving both CPU images intact.
 
     This explicit delivery mode accepts only pinned compressed overlay files.
-    It changes their FAT extents and compression words, then appends decoded
-    bodies to the virtual stream. There is no main-code reconstruction, scratch
+    It either appends decoded bodies or repacks them inside their original
+    cartridge sectors, according to the qualified delivery mode. There is no main-code reconstruction, scratch
     allocation, persistent ROM output or runtime service. Even identical-byte
     controls change load timing/metadata and require separate qualification.
     """
-    require(manifest['delivery'] == 'append-decoded-overlays-v1', 'Unknown delivery mode')
+    require(manifest['delivery'] in ('append-decoded-overlays-v1', 'repack-compressed-overlays-v1'),
+            'Unknown delivery mode')
     patches = {p['id']: p for p in manifest['patches']}
     require(len(patches) == len(manifest['patches']) and requested <= patches.keys(),
             'Duplicate or unknown patch IDs')
@@ -78,10 +79,13 @@ def append_decoded_overlays(source, header, manifest, requested, report):
             item['guards'].append((start, value))
         item['applied'].append(dict(id=ident, address=at, relative_offset=first, bytes=len(after),
             original_sha256=hashlib.sha256(before).hexdigest(), replacement_sha256=hashlib.sha256(after).hexdigest()))
-    end = (source.size+511) & ~511
     for item in overlays.values():
         require(all(item['output'][at:at+len(value)] == value for at, value in item['guards']),
                 'Selected patch changes a protected data invariant')
+    if manifest['delivery'] == 'repack-compressed-overlays-v1':
+        return repack_compressed_overlays(source, header, manifest, overlays, report)
+    end = (source.size+511) & ~511
+    for item in overlays.values():
         item['offset'] = end; end = (end+len(item['output'])+511) & ~511
     require(end <= LIMIT, 'Appended overlays exceed cartridge memory')
     image = VirtualRom(source, end)
@@ -114,6 +118,40 @@ def append_decoded_overlays(source, header, manifest, requested, report):
                 'Overlay metadata overlaps a CPU image')
     report.update(state='applied_to_virtual_image', delivery=manifest['delivery'], virtual_bytes=end,
                   header_sha256=hashlib.sha256(changed_header).hexdigest())
+    return image, report
+
+
+def repack_compressed_overlays(source, header, manifest, overlays, report):
+    """Fit a qualified compressed replacement in its original cartridge sector."""
+    fat, fat_size = struct.unpack_from('<II', header, 0x48)
+    extents = list(struct.iter_unpack('<II', source.read(fat, fat_size)))
+    image = VirtualRom(source, source.size)
+    details = []
+    for overlay_id, item in overlays.items():
+        loaded = item['loaded']
+        file_id = loaded['info'][6]
+        first, old_end = extents[file_id]
+        encoded = codeCompression.compress(bytes(item['output']), False)
+        expected = manifest['repacked_overlay_sha256'][str(overlay_id)]
+        require(hashlib.sha256(encoded).hexdigest() == expected and
+                codeCompression.decompress(encoded) == item['output'], 'Repacked overlay differs')
+        end = first + len(encoded)
+        require(512 <= first < end <= min(source.size, (old_end + 511) & ~511),
+                'Repacked overlay exceeds its allocated sector')
+        if end > old_end:
+            require(source.read(old_end, end-old_end) == b'\xff' * (end-old_end),
+                    'Repacked overlay would overwrite cartridge data')
+        require(all(i == file_id or lo == hi or end <= lo or first >= hi
+                    for i, (lo, hi) in enumerate(extents)), 'Repacked overlay overlaps another file')
+        image.add(first, encoded)
+        image.add(fat + file_id*8 + 4, struct.pack('<I', end))
+        image.add(loaded['row'] + 28, struct.pack('<I', len(encoded) | 0x01000000))
+        details.append(dict(id=overlay_id, file_id=file_id, cartridge_offset=first,
+                            stored_bytes=len(encoded), stored_sha256=expected))
+    image.finish()
+    report.update(state='applied_to_virtual_image', delivery=manifest['delivery'],
+                  virtual_bytes=image.size, overlays=details,
+                  applied=[patch for item in overlays.values() for patch in item['applied']])
     return image, report
 
 

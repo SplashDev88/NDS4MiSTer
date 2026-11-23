@@ -433,6 +433,22 @@ class OverlayPatchTests(GuestPatchTests):
             overlay_stored_sha256=hashlib.sha256(compressed).hexdigest())
         return decoded
 
+    def test_repacked_overlay_preserves_cartridge_layout_and_checks_output_digest(self):
+        from ndspy import codeCompression
+        decoded = self.compressed_append_fixture()
+        patch = self.manifest['patches'][1]
+        patch['replace'] = patch['expect']
+        expected = codeCompression.compress(decoded, isArm9=False)
+        self.manifest.update(delivery='repack-compressed-overlays-v1',
+                             repacked_overlay_sha256={'1': hashlib.sha256(expected).hexdigest()})
+        image, report = assemble(self.source, self.manifest, ['overlay-one'])
+        self.assertEqual(report['state'], 'applied_to_virtual_image')
+        self.assertEqual(b''.join(image.blocks()), self.raw)
+        self.manifest['repacked_overlay_sha256']['1'] = '0' * 64
+        image, report = assemble(self.source, self.manifest, ['overlay-one'])
+        self.assertEqual(report['state'], 'skipped')
+        self.assertFalse(image.patches)
+
     def test_appended_compressed_overlay_changes_only_declared_metadata_and_body(self):
         from ndspy import _common
         decoded = self.compressed_append_fixture()

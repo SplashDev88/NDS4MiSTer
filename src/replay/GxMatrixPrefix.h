@@ -53,16 +53,31 @@ public:
     [[gnu::always_inline]] inline void command(std::uint8_t tag, std::uint32_t value)
     {
         if (!valid_ || !enabled_) return;
-        // COLOR/NORMAL/TEXCOORD and the single-word vertex commands do not
-        // affect this matrix/status shadow. The renderer still replays them.
-        // Skip only a fully settled command: pending matrix parameters must
-        // still reject a different tag, and work behind SWAP retains its
-        // ordered execution and bounded deferred-cost accounting. VTX_16
-        // (0x23) has two parameters and must retain its partial/busy state.
-        if (tag >= 0x20 && tag <= 0x28 && tag != 0x23 &&
-            !swapped_ && partial_count_ == 0 &&
-            deferred_head_ == deferred_.size())
-            return;
+        if (!swapped_ && deferred_head_ == deferred_.size()) {
+            // VTX_16 has two words. Its only visible effect in the matrix
+            // shadow is the busy state between them. A different pending
+            // command must still reach the ordered invalidation path.
+            if (tag == 0x23 && (!partial_count_ || partial_tag_ == tag)) {
+                partial_tag_ = tag;
+                params_[partial_count_] = static_cast<melonDS::s32>(value);
+                partial_count_ ^= 1u;
+                return;
+            }
+            if (partial_count_ && partial_tag_ == tag &&
+                partial_count_ + 1 < parameters(tag)) {
+                params_[partial_count_++] = static_cast<melonDS::s32>(value);
+                return;
+            }
+            if (!partial_count_) {
+                switch (tag) {
+                case 0x00: case 0x20: case 0x21: case 0x22:
+                case 0x24: case 0x25: case 0x26: case 0x27: case 0x28:
+                case 0x2a: case 0x2b: case 0x30: case 0x31: case 0x32:
+                case 0x33: case 0x41: case 0x60: case 0x72:
+                    return;
+                }
+            }
+        }
         command_ordered(tag, value);
     }
 
