@@ -1713,6 +1713,7 @@ void GPU3D::CalculateLightingUncached() noexcept
     };
     // Only visit enabled lights, retaining the original ascending order and
     // every per-light truncation. c still supplies the same pipeline cost.
+    const bool hasSpecular = (MatSpecular[0] | MatSpecular[1] | MatSpecular[2]) != 0;
     u32 enabledLights = CurPolygonAttr & 0xF;
     while (enabledLights)
     {
@@ -1739,6 +1740,20 @@ void GPU3D::CalculateLightingUncached() noexcept
             vtxbuff[1] += (MatDiffuse[1] * LightColor[i][1] * diffdot) & 0xFFFFF;
             vtxbuff[2] += (MatDiffuse[2] * LightColor[i][2] * diffdot) & 0xFFFFF;
 
+        }
+
+        // With zero specular color the shininess table and reciprocal
+        // cannot affect the result. Each enabled light still takes a cycle.
+        if (!hasSpecular)
+        {
+            for (int channel = 0; channel < 3; ++channel)
+                vtxbuff[channel] += (MatAmbient[channel] << 9) * LightColor[i][channel];
+            ++c;
+            continue;
+        }
+
+        if (dot > 0)
+        {
             // -- specular lighting --
         
             // reuse the dot product from diffuse lighting
