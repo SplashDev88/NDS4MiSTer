@@ -199,7 +199,9 @@ stack/cache iterations; 212,992 FIFO words with 212,480 ARM9 IRQs; 60 and 120
 cartridge-DMA blocks across 2 MiB and 64 MiB fixtures; and ten read-only 8 KiB
 EEPROM rounds including wraparound and random offsets. The EEPROM fixture
 hash is unchanged afterward. Both CPUs also exceed 200 VBlank and timer
-interrupts. These results narrow the investigation but do not qualify the
+interrupts. A separate instruction-TCM ROM completes 100 ARM/Thumb code rounds
+on both the released core and Test 2, after validating its linker layout and
+MPU permissions against the control core. These results narrow the investigation but do not qualify the
 candidate or establish the root cause. Exact ROM hashes and screenshots are
 recorded in `../../evidence/pixel-grid-v103-20261123/hardware-20261124/TEST2_SUBSYSTEM_DIAGNOSTICS.json`.
 
