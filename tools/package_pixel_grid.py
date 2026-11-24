@@ -107,6 +107,7 @@ def main():
                     acceptance_criterion='Actual game startup, gameplay and grid behavior; static timing diagnostic',
                     pixel_grid={'values': ['Off', 'Light', 'Medium', 'Strong'], 'default': 'Off',
                                 'modes': ['1280x720', '1920x1080'], 'pipeline_cycles': 4,
+                                'integer_scales': [3, 4, 5], 'bypass_scales': [1, 2],
                                 'dsp_blocks': validation['fit']['grid_dsp_blocks']})
     manifest['automatic_movie_files'] = {n: sha(files[prefix + n]) for n in base['automatic_movie_files']}
     files[prefix + 'manifest.json'] = js(manifest)
@@ -143,8 +144,9 @@ is retained. A durable backup supports recovery after interrupted startup.
 Display options > Pixel Grid: Off / Light / Medium / Strong. Default Off.
 System > Save settings persists the choice; Reset restores Off.
 Use standard scaled HDMI at 720p or 1080p (direct_video=0). Direct Video,
-1440p, noninteger scaling and 1x bypass the grid. At 720p, an unrotated
-Top/Bottom layout can be 1x; choose a larger layout to see the grid.
+1440p, noninteger scaling, 1x and 2x bypass the grid. The grid applies at
+3x through 5x. Your selected strength is retained while bypassed and applies
+again when the layout reaches a supported scale. 720p video remains supported.
 At 1080p, Side by Side gives 3x; Top/Bottom with 90-degree rotation gives 4x.
 Main Only/Touch Only may use a 320x240 canvas and bypass at noninteger scales.
 Menu text is drawn afterward. Disable an external scaler's own grid during
