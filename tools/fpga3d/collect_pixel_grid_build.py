@@ -50,6 +50,13 @@ def main():
                      grid_alms=number(1), grid_placed_alms=number(2),
                      grid_aluts=int(number(6)), grid_registers=int(number(7)),
                      grid_ram_blocks=int(number(10)), grid_dsp_blocks=int(number(11)))
+    top_rows = [line for line in fit.splitlines()
+                if re.search(r'^;\s*\|sys_top\s*;', line)]
+    assert len(top_rows) == 1, 'Top-level resource hierarchy missing or ambiguous'
+    top = [cell.strip() for cell in top_rows[0].split(';')[1:-1]]
+    resources.update(total_placed_alms=float(top[2].split()[0]),
+                     estimated_dense_pack_recoverable_alms=float(top[3].split()[0]),
+                     estimated_unavailable_alms=float(top[4].split()[0]))
     assert resources['grid_ram_blocks'] == 0
     assert 0 < resources['grid_dsp_blocks'] <= 3, resources
     slacks, global_slacks = {}, {}

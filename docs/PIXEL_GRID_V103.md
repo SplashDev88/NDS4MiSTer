@@ -46,6 +46,14 @@ whole-core resources; isolated grid results cannot establish routability.
 Hardware startup, gameplay and grid behavior determine acceptance. Static
 timing remains diagnostic, as requested, and is retained with build results.
 
+The fitter's estimated **ALMs needed** must not be confused with physical
+placement occupancy. The released core reports 39,074.8 needed but 40,949.4
+used in final placement; Test 2 reports 40,909.8 needed and 40,916.4 placed.
+Most of that increase in the estimate comes from a lower estimate of logic
+recoverable by dense packing (2,840.1 versus 935.6 ALMs). Both placements are
+already dense. The grid's isolated area reduction is real, but whole-core
+estimated utilization alone does not measure routing headroom.
+
 ## Reproduce the checks
 
 From the experiment root:
