@@ -88,6 +88,7 @@ set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_spi.vhd
 
 # Product top and mixed-language shim replace (do not accompany) donor top.
 set_global_assignment -name VHDL_FILE ../../rtl/nds_host_save_profile.vhd
+set_global_assignment -name VHDL_FILE ../../rtl/nds_related_clock_event.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
 

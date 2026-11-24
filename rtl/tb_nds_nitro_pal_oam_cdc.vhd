@@ -37,7 +37,7 @@ architecture sim of tb_nds_nitro_pal_oam_cdc is
    signal cdc_req_io, cdc_req_pal, cdc_req_oam : std_logic := '0';
    signal cdc_req_io_d, cdc_req_pal_d, cdc_req_oam_d : std_logic := '0';
    signal io9_ena, pal_we_1x, oam_we_1x : std_logic := '0';
-   signal cdc_cpl, cdc_cpl_d : std_logic := '0';
+   signal cdc_cpl : std_logic := '0';
    signal io_done_i9 : std_logic;
 
    signal sink_count : integer range 0 to WRITE_COUNT := 0;
@@ -175,17 +175,9 @@ begin
       end if;
    end process;
 
-   process (clk2x)
-   begin
-      if rising_edge(clk2x) then
-         if (reset = '1') then
-            cdc_cpl_d <= '0';
-         else
-            cdc_cpl_d <= cdc_cpl;
-         end if;
-      end if;
-   end process;
-   io_done_i9 <= cdc_cpl xor cdc_cpl_d;
+   return_bridge : entity work.nds_related_clock_event
+      generic map(TOGGLE_EVENT=>true)
+      port map(clk=>clk2x, reset=>reset, event_in(0)=>cdc_cpl, pulse_out(0)=>io_done_i9);
 
    process
       variable wait_cycles : integer;

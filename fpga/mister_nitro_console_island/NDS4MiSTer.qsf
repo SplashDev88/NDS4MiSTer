@@ -402,6 +402,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_control.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_cache.sv
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios7.mif
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios9.mif
+set_global_assignment -name VHDL_FILE ../../rtl/nds_related_clock_event.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv

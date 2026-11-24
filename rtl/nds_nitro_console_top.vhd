@@ -651,8 +651,6 @@ architecture arch of nds_nitro_console_top is
    signal cdc_req_io,  cdc_req_pal,  cdc_req_oam  : std_logic := '0';
    signal cdc_req_wsh_d, cdc_req_vram_d, cdc_req_mr_d  : std_logic := '0';
    signal cdc_req_io_d,  cdc_req_pal_d,  cdc_req_oam_d : std_logic := '0';
-   signal cdc_wsh_done_d, cdc_vram_done_d         : std_logic := '0';
-   signal cdc_mr_done_d                           : std_logic := '0';
    -- island side (clk2x): membus9's raw request pulses / narrowed dones
    signal i9_wsh_ena, i9_vram_ena, i9_mr_ena, i9_io_ena : std_logic;
    signal i9_pal_we,  i9_oam_we                         : std_logic;
@@ -668,10 +666,10 @@ architecture arch of nds_nitro_console_top is
    signal mr9_lock  : std_logic := '0';
    signal i9_mr_lock : std_logic := '0';
    signal io9_ena   : std_logic := '0';   -- stretched io_bus9.ena, clk1x domain
-   signal cdc_dmab_ena_d, dmab_ena_i9   : std_logic := '0';
+   signal dmab_ena_i9   : std_logic := '0';
    signal cdc_cpudone_tgl, cdc_cpudone_tgl_d, cpu9_done_1x : std_logic := '0';
    -- per-transaction IO completion, clk1x -> island (see i9_io_done below)
-   signal cdc_io_cpl, cdc_io_cpl_d : std_logic := '0';
+   signal cdc_io_cpl : std_logic := '0';
    signal dbg_mb9, dbg_cache9, dbg_mr_s      : std_logic_vector(7 downto 0);
    signal dbg_probe                          : std_logic_vector(31 downto 0);
    signal dbg_pk_addr_s        : std_logic_vector(31 downto 0);
@@ -1776,28 +1774,19 @@ begin
       end if;
    end process;
 
-   -- Done narrow, clk1x -> clk2x. A 1-clk1x done is high for two clk2x cycles;
-   -- edge-detect so the island's FSM sees exactly one.
-   process (clk2x)
-   begin
-      if rising_edge(clk2x) then
-         cdc_wsh_done_d  <= wsh9_done;
-         cdc_vram_done_d <= vram9_done;
-         cdc_mr_done_d   <= mr9_done;
-      end if;
-   end process;
-   -- DMA9 masters the ARM9 membus while dma_bus_on, but nds_dma9 is a clk1x unit
-   -- talking to a clk2x membus, so its request pulse is two island cycles wide
-   -- (membus9 would accept it twice) and membus9's one-island-cycle done is only
-   -- half a clk1x period (nds_dma9 would miss it). Narrow one, stretch the other.
-   -- The CPU's own path needs neither: cpu9 is inside the island.
-   process (clk2x)
-   begin
-      if rising_edge(clk2x) then
-         cdc_dmab_ena_d <= dmab_ena;
-      end if;
-   end process;
-   dmab_ena_i9 <= dmab_ena and not cdc_dmab_ena_d;
+   -- Receive completions and DMA requests entirely in clk2x. The old raw
+   -- source AND delayed-history detector could produce a short or missed
+   -- pulse when physical clock/data skew changed with a new FPGA placement.
+   -- The producers hold their payload through retirement; streamed main-RAM
+   -- pairs remain held until the next returned beat (covered by regression).
+   wsh_return : entity work.nds_related_clock_event
+      port map(clk=>clk2x, reset=>resetCpu, event_in(0)=>wsh9_done, pulse_out(0)=>i9_wsh_done);
+   vram_return : entity work.nds_related_clock_event
+      port map(clk=>clk2x, reset=>resetCpu, event_in(0)=>vram9_done, pulse_out(0)=>i9_vram_done);
+   mr_return : entity work.nds_related_clock_event
+      port map(clk=>clk2x, reset=>resetCpu, event_in(0)=>mr9_done, pulse_out(0)=>i9_mr_done);
+   dma_request : entity work.nds_related_clock_event
+      port map(clk=>clk2x, reset=>resetCpu, event_in(0)=>dmab_ena, pulse_out(0)=>dmab_ena_i9);
 
    -- membus9's cpu_done is one ISLAND cycle - half a clk1x period - so a clk1x
    -- process sampling it directly would miss it half the time (the same defect
@@ -1817,9 +1806,6 @@ begin
       end if;
    end process;
 
-   i9_wsh_done  <= wsh9_done       and not cdc_wsh_done_d;
-   i9_vram_done <= vram9_done      and not cdc_vram_done_d;
-   i9_mr_done   <= mr9_done        and not cdc_mr_done_d;
 
    -- IO/palette/OAM completion, clk1x -> island. io_wired_done9 is a pure address decode
    -- ("some peripheral claims this address"), not a per-transaction event, so
@@ -1869,14 +1855,9 @@ begin
       end if;
    end process;
 
-   process (clk2x)
-   begin
-      if rising_edge(clk2x) then
-         cdc_io_cpl_d <= cdc_io_cpl;
-      end if;
-   end process;
-
-   i9_io_done   <= cdc_io_cpl xor cdc_io_cpl_d;
+   io_return : entity work.nds_related_clock_event
+      generic map(TOGGLE_EVENT=>true)
+      port map(clk=>clk2x, reset=>resetCpu, event_in(0)=>cdc_io_cpl, pulse_out(0)=>i9_io_done);
 
    -- Track the transaction the ARM9 membus actually accepts. Beta 67 proved
    -- that the live 0x04000600 CPU address seen on missed HBlank updates had not
