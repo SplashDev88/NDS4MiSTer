@@ -28,7 +28,7 @@ const key=r=>[r.game,r.resolution,r.layout,r.scene||'Gameplay'].join(' · ');
 function option(select,value,label){const el=document.createElement('option');el.value=value;el.textContent=label;select.append(el)}
 [...new Set(captures.map(key))].forEach(k=>option(scene,k,k));
 function render(keepCenter=true){if(!current)return;const oldW=stage.offsetWidth||1,oldH=stage.offsetHeight||1;
-const cx=oldW<=viewport.clientWidth?.5:Math.min(1,Math.max(0,(viewport.scrollLeft+viewport.clientWidth/2)/oldW)),cy=oldH<=viewport.clientHeight?.5:Math.min(1,Math.max(0,(viewport.scrollTop+viewport.clientHeight/2)/oldH));
+const cx=oldW <= viewport.clientWidth ? 0.5 : Math.min(1,Math.max(0,(viewport.scrollLeft+viewport.clientWidth/2)/oldW)),cy=oldH <= viewport.clientHeight ? 0.5 : Math.min(1,Math.max(0,(viewport.scrollTop+viewport.clientHeight/2)/oldH));
 const w=current.width*zoom,h=current.height*zoom;stage.style.width=(rotation%180?h:w)+'px';stage.style.height=(rotation%180?w:h)+'px';picture.style.width=w+'px';picture.style.height=h+'px';
 const translate=rotation===90?`translate(${h}px,0)`:rotation===180?`translate(${w}px,${h}px)`:rotation===270?`translate(0,${w}px)`:'translate(0,0)';picture.style.transform=translate+` rotate(${rotation}deg)`;
 if(keepCenter){viewport.scrollLeft=cx*stage.offsetWidth-viewport.clientWidth/2;viewport.scrollTop=cy*stage.offsetHeight-viewport.clientHeight/2}else{viewport.scrollTop=0;viewport.scrollLeft=0}
