@@ -34,7 +34,7 @@ struct HostTest {
       h.cursor=Host::DISPLAY_CURSOR;h.action(2);
       while(h.cursor!=Host::PIXEL_GRID_CURSOR)h.action(1);
       h.draw();
-      assert(h.osd_rows[11]==h.frame.renderRow(11," Pixel Grid:             Off",true,nds_osd::arrow_left));
+      assert(h.osd_rows[9]==h.frame.renderRow(9," Pixel Grid:             Off",true,nds_osd::arrow_left));
       h.action(1);assert(h.cursor==Host::EXIT_CURSOR);
       h.action(0);assert(h.cursor==Host::PIXEL_GRID_CURSOR);
       for(unsigned i=1;i<=4;++i) {

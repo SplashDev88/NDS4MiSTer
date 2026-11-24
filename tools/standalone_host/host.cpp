@@ -375,7 +375,12 @@ class Host {
     if (item == PIXEL_GRID_CURSOR && !pixel_grid_available) return -1;
     if (independent_outputs_supported) {
       if (item == ANALOG_CURSOR && (video_flags & (1u << 2))) return -1;
-      return (display_menu ? display : independent)[item];
+      const int row = (display_menu ? display : independent)[item];
+      // Collapse the hidden Direct Video group, leaving one blank row after FPS.
+      if (display_menu && !(video_flags & (1u << 10)) &&
+          (item == AA_CURSOR || item == RESOLUTION_CURSOR || item == PIXEL_GRID_CURSOR))
+        return row - 2;
+      return row;
     }
     return ((status & CRT_TIMING) && !(status & INDEPENDENT_OUTPUTS) ? crt : standard)[item];
   }
