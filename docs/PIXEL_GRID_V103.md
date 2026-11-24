@@ -100,7 +100,29 @@ interrupted scale searches, reset and mid-frame changes. Real-scaler tests
 passed 2x/3x/4x/5x. Seven host C++ suites and nine settings-migration tests
 passed, and the ARM host binary built successfully. Final grid/OSD integration
 passed 1,843,200 pixels, including 196,608 letter pixels and 196,608 menu
-background pixels, and all 24 command/mode gates. Full-core synthesis/fitting
-is in progress.
+background pixels, and all 24 command/mode gates.
+
+The first v1.0.3 full build passed synthesis, fitting/routing and assembly.
+FPGA source: `2346c18acadc39e2e6ab0c93a3de960431a188c2`.
+RBF SHA-256: `a84668c634299f3d5156af85fdfae59a350a925aba946f801a5131d662e1d24d`.
+The later report-selector change is recorded separately in BUILD_INPUTS.json;
+it does not change HDL or fitting constraints.
+
+| Full-core fitted resource | Used | Available |
+| --- | ---: | ---: |
+| ALMs needed | 40,840 | 41,910 |
+| RAM blocks | 540 | 553 |
+| DSP blocks | 83 | 112 |
+
+The grid hierarchy uses 152.6 ALMs needed (156.3 placed), 259 combinational
+ALUTs, 235 dedicated logic registers, three DSP blocks and no RAM. The whole
+core remains at 97% logic utilization: smaller module logic does not guarantee
+equally dense packing elsewhere. Final average interconnect use is 62.5%;
+peak total use is 88.5%, with peak vertical use 95.9%. These final report values
+supersede the router's lower preliminary estimates.
+
+Timing diagnostics and private packaging are completing. Hardware testing is
+pending: the current SSH connection works, but the board is running a separate
+`v1.0.3-ffiii-fmv.beta2` session. This task has made no hardware changes.
 
 No new FPGA image has been qualified for hardware or public release.
