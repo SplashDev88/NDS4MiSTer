@@ -650,7 +650,7 @@ architecture arch of nds_nitro_console_top is
    signal cdc_req_wsh, cdc_req_vram, cdc_req_mr   : std_logic := '0';
    signal cdc_req_io,  cdc_req_pal,  cdc_req_oam  : std_logic := '0';
    signal cdc_req_wsh_d, cdc_req_vram_d, cdc_req_mr_d  : std_logic := '0';
-   signal cdc_req_io_d,  cdc_req_pal_d,  cdc_req_oam_d : std_logic := '0';
+   signal cdc_req_pal_d, cdc_req_oam_d : std_logic := '0';
    -- island side (clk2x): membus9's raw request pulses / narrowed dones
    signal i9_wsh_ena, i9_vram_ena, i9_mr_ena, i9_io_ena : std_logic;
    signal i9_pal_we,  i9_oam_we                         : std_logic;
@@ -1634,8 +1634,8 @@ begin
 
    -- ================= ARM9 67 MHz island: clk1x <-> clk2x bridge =================
    -- clk2x is exactly 2x clk1x from one VCO at 0 ps, so this is a *related*-clock
-   -- crossing, not an asynchronous one - no metastability, but the pulse widths
-   -- still have to be reconciled: a 1-clk2x pulse is half a clk1x period and
+   -- crossing. Physical clock/data skew still matters, and pulse widths
+   -- must also be reconciled: a 1-clk2x pulse is half a clk1x period and
    -- clk1x would miss it, and a 1-clk1x pulse is two clk2x cycles and the island
    -- would count it twice.
    --
@@ -1677,17 +1677,22 @@ begin
          cdc_req_wsh_d  <= cdc_req_wsh;
          cdc_req_vram_d <= cdc_req_vram;
          cdc_req_mr_d   <= cdc_req_mr;
-         cdc_req_io_d   <= cdc_req_io;
          cdc_req_pal_d  <= cdc_req_pal;
          cdc_req_oam_d  <= cdc_req_oam;
          wsh9_ena  <= cdc_req_wsh  xor cdc_req_wsh_d;
          vram9_ena <= cdc_req_vram xor cdc_req_vram_d;
          mr9_ena   <= cdc_req_mr   xor cdc_req_mr_d;
-         io9_ena   <= cdc_req_io   xor cdc_req_io_d;
          pal_we    <= cdc_req_pal  xor cdc_req_pal_d;
          oam_we    <= cdc_req_oam  xor cdc_req_oam_d;
       end if;
    end process;
+
+   -- The IO payload has its own clk1x register. Delay its request detector
+   -- until that register has captured the new payload, even if the toggle's
+   -- short route reaches a near-coincident 1x edge before the wider bus.
+   io_request : entity work.nds_related_clock_event
+      generic map(TOGGLE_EVENT=>true)
+      port map(clk=>clk1x, reset=>resetCpu, event_in(0)=>cdc_req_io, pulse_out(0)=>io9_ena);
 
    -- everything except .ena is a stable level for the whole transaction
    -- IO payload latch, island -> clk1x. Only `ena` was synchronised across the
@@ -1720,13 +1725,11 @@ begin
    -- mem9_lock was fixed - `io9_lat.Adr[5] -> nds_card|delay_cnt[*]` at
    -- -1.959 ns, the card's cycle-count decode hanging off the bridge.
    --
-   -- Unconditional, and it costs no latency. io9_lat is written on the island
-   -- edge that toggles cdc_req_io, and io9_ena cannot rise before the clk1x
-   -- edge that first sees that toggle - the same edge this captures on - so the
-   -- payload is already valid in the cycle the enable is asserted. It also
-   -- cannot move underneath the access: membus9 has one IO transaction in
-   -- flight at a time and waits in W_IO_RESP for cdc_io_cpl, which is not
-   -- toggled until the end of the enable cycle.
+   -- The settled request detector above gives this register time to capture
+   -- the new payload before a peripheral consumes io9_ena. A raw-toggle
+   -- detector could see the request one cycle before this wider bus settled.
+   -- The membus holds one IO transaction through W_IO_RESP until cdc_io_cpl,
+   -- so the payload cannot be replaced while either capture stage is pending.
    process (clk1x)
    begin
       if rising_edge(clk1x) then

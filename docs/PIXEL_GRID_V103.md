@@ -163,3 +163,12 @@ can use the core's 320x240 canvas and therefore bypass the grid at noninteger
 DS pixel scaling. This is intentional bypass behavior, not a stronger setting.
 
 No new FPGA image has yet been qualified for hardware or public release.
+
+Attempt 2 routed but still failed NSMB startup after more than a minute, with
+both published screens black. Return-event settling alone was insufficient.
+Attempt 3 additionally receives the ARM9 IO request through the settled
+peripheral-clock detector. This ensures `io9_lat_1x` has captured the payload
+before `io9_ena` enables a peripheral. Other memory request paths are unchanged.
+The real-membus regression passes 20 relative clock phases with modeled payload
+routing delay; the previous raw-toggle request detector fails its payload
+scoreboard. This remains a modeled hazard pending the third hardware build.
