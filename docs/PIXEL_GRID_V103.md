@@ -147,9 +147,14 @@ The production receiver passed 160 pulse/toggle payload checks, 40 reset
 arrival phases, eight real-membus IO/palette/OAM phase tests, and the complete
 cache/main-RAM line-stream suite (128 matched streamed/nonstreamed misses,
 ARM7 arbitration, warm hits and reset recovery, with detecting negative
-controls). Full console VHDL analysis also passed. Reproduce the added tests
+controls). A real DMA producer also passed 108 transfer cases through the
+new receiver, covering 16/32-bit transfers, fixed/incrementing/decrementing
+addresses and three endpoint delays. Restoring the former detector makes
+that scoreboard fail when payload routing delay is modeled. Full console
+VHDL analysis also passed. Reproduce the added tests
 with `bash tools/test_nds_related_clock_event.sh` and
-`bash tools/test_nds_cache_line_stream.sh`.
+`bash tools/test_nds_cache_line_stream.sh`, and
+`bash tools/test_nds_dma9_request_bridge.sh`.
 
 Hardware capture uses an isolated kit and save copies. The RetroTINK's LCD
 function is disabled for comparison. At 1080p, Side by Side is a useful 3x
