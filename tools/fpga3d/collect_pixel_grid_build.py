@@ -52,7 +52,7 @@ def main():
                      grid_ram_blocks=int(number(10)), grid_dsp_blocks=int(number(11)))
     assert resources['grid_ram_blocks'] == 0
     assert 0 < resources['grid_dsp_blocks'] <= 3, resources
-    slacks = {}
+    slacks, global_slacks = {}, {}
     if status.get('sta') == 0:
         reports = sorted(REPORTS.glob('pixel-grid-*.txt'))
         assert len(reports) == 16, 'Grid timing reports incomplete'
@@ -61,10 +61,18 @@ def main():
             m = re.search(r'Worst case slack is (-?[\d.]+)', report.read_text())
             assert m, report.name
             slacks[report.name] = float(m[1])
+        for report in sorted(REPORTS.glob('global-*.txt')):
+            assert report.stat().st_mtime >= started, 'Stale timing report'
+            m = re.search(r'Worst case slack is (-?[\d.]+)', report.read_text())
+            assert m, report.name
+            global_slacks[report.name] = float(m[1])
+        assert len(global_slacks) == 16, 'Global timing reports incomplete'
     validation.update(status='fpga_built_hardware_pending', hardware_qualified=False,
                       core_sha256=sha(core), fpga_source_revision=inputs['source_revision'],
                       fit=resources, stages=status, grid_timing_slacks_ns=slacks,
+                      global_timing_slacks_ns=global_slacks,
                       timing_reports_complete=status.get('sta') == 0,
+                      timing_interpretation='Stage exit codes describe tool completion, not timing closure; negative slack remains diagnostic',
                       acceptance_criterion='Hardware startup, gameplay and grid behavior; timing diagnostic',
                       updated=datetime.datetime.now(datetime.timezone.utc).isoformat())
     (BUILD / 'VALIDATION.json').write_text(json.dumps(validation, indent=2) + '\n')

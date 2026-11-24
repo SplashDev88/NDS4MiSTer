@@ -121,8 +121,15 @@ equally dense packing elsewhere. Final average interconnect use is 62.5%;
 peak total use is 88.5%, with peak vertical use 95.9%. These final report values
 supersede the router's lower preliminary estimates.
 
-Timing diagnostics and private packaging are completing. Hardware testing is
-pending: the current SSH connection works, but the board is running a separate
+All four timing corners were reported. The grid's worst setup slack is
+-0.022 ns in the slow 1100 mV, -40 C model, from gain_q[1] to the blue-channel
+DSP product register. Its worst hold slack is +0.122 ns. The full core also
+has timing violations (worst reported setup -14.897 ns, hold -0.763 ns and
+recovery -9.936 ns). Successful timing-tool execution does not mean timing
+closure. Reports and slacks are retained as diagnostics; this candidate is
+ready for the requested hardware acceptance tests.
+
+Hardware testing is pending: the current SSH connection works, but the board is running a separate
 `v1.0.3-ffiii-fmv.beta2` session. This task has made no hardware changes.
 
 No new FPGA image has been qualified for hardware or public release.
