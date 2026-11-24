@@ -54,12 +54,11 @@ def run(out):
                 for _ in range(9):sample(hs=1)
                 for _ in range(4):sample()
         sample(reset=1)
-        # Exhaust all RGB component levels at every phase/strength and scale,
-        # including exact bypass at 2x even when a strength is selected.
+        # Exhaust all RGB component levels at every phase/strength and scale.
         for s in range(2,6):
             for strength in range(4):
                 config[:]=[1,strength,256,192,256*s,192*s,1920,1080]
-                for value in range(256):start();patch(s,strength,value,enabled=s>=3)
+                for value in range(256):start();patch(s,strength,value)
         # Actual beta18 canvas sizes: both layouts, gaps, FPS, both rotations,
         # plus single-screen source dimensions. Output grid is display-oriented.
         cases=0
@@ -73,14 +72,7 @@ def run(out):
                             sw,sh=(w,h) if rotation==0 else (h,w)
                             s=min(rw//sw,rh//sh)
                             config[:]=[1,2,sw,sh,sw*s,sh*s,rw,rh]
-                            start();patch(s,2,91,enabled=s>=3);cases+=1
-        # The cutoff is scale-based, not resolution-based: all strengths at
-        # 2x bypass in both output modes, with rotated and unrotated canvases.
-        for rw,rh in [(1280,720),(1920,1080)]:
-            for sw,sh in [(392,256),(256,392)]:
-                for strength in range(4):
-                    config[:]=[1,strength,sw,sh,sw*2,sh*2,rw,rh]
-                    start();patch(2,strength,117,enabled=False)
+                            start();patch(s,2,91,enabled=s>=2);cases+=1
         # Unsupported modes (including repeated 1440p), native/direct-video
         # enable gate, 1x, noninteger and differently scaled axes: exact bypass.
         for config_values in [
@@ -106,12 +98,6 @@ def run(out):
         patch(4,0,157);start();patch(4,2,157)
         config[4:6]=[768,576]
         patch(3,2,53,enabled=False);start();patch(3,2,53)
-        # Entering 2x immediately bypasses old geometry; leaving it restores
-        # the retained strength only after the new frame boundary.
-        config[4:6]=[512,384]
-        patch(2,2,71,enabled=False);start();patch(2,2,71,enabled=False)
-        config[4:6]=[1024,768]
-        patch(4,2,71,enabled=False);start();patch(4,2,71)
         # Search progresses only on enabled clocks and uses the geometry
         # captured at VS. Changes during the search must not apply a mask to
         # the new rectangle before its own frame boundary.

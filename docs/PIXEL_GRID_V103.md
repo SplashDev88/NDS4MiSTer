@@ -18,18 +18,11 @@ Scale detection reuses one adder and comparator per axis over at most four
 enabled clocks after the start of vertical sync. The existing 720p/1080p
 blanking interval provides this time before the first picture pixel.
 No framebuffer or additional block RAM is used. The grid remains after the
-HDMI scaler and before OSD, and supports 3x through 5x integer scales at 720p
-and 1080p. Off, 1x, 2x, noninteger scaling, unsupported modes and borders bypass
+HDMI scaler and before OSD, and supports 2x through 5x integer scales at 720p
+and 1080p. Off, 1x, noninteger scaling, unsupported modes and borders bypass
 the effect with the same pipeline delay. Controls latch at frame boundaries;
 pixels bypass the effect whenever live geometry differs from the geometry
 captured at the last frame boundary.
-
-After reviewing native 720p title captures, the user chose to disable the
-grid at 2x. The three 2x gain entries are removed and a detected 2x rectangle
-resolves to bypass. Video output remains available at 720p, including the
-grid for layouts that reach 3x. The chosen strength remains selected and
-automatically applies again at 3x–5x. Test 3 captures and results below
-describe the earlier image, which still applied the grid at 2x.
 
 The option appears in Display options only when the FPGA advertises support
 for the current output mode. System > Save settings persists the choice;

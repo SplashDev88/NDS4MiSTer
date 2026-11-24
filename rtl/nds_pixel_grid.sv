@@ -31,19 +31,21 @@ module nds_pixel_grid (
     // Search 2x..5x in four enabled clocks after VS starts, during vertical
     // blanking. Share one adder/comparator per axis instead of evaluating
     // every scale in parallel. The captured geometry is the only input to
-    // the search; 2x resolves to bypass because its cell is too small for a
-    // useful grid. A mid-frame change still triggers the pixel bypass below.
+    // the search; a mid-frame change still triggers the pixel bypass below.
     // Fifteen bits hold 5*4095 without wrapping malformed geometry.
     reg [14:0] scaled_w=0, scaled_h=0;
     reg [2:0] scale_step=0;
 
     // Q4 gains. 4x is measured from the saved 1080p Grid 2 reference.
-    // 3x/5x area-average the same cell. 1x, 2x and noninteger rectangles are
-    // bypassed; supported 720p layouts can still use the grid at 3x or above.
+    // 2x/3x/5x area-average the same cell, avoiding a disproportionately dark
+    // one-pixel seam at low scales. 1x and noninteger rectangles are bypassed.
     function automatic [4:0] cell_gain(input [2:0] s,x,y);
         begin
             cell_gain=16;
             case({s,y,x})
+                {3'd2,3'd0,3'd0}:cell_gain=9;
+                {3'd2,3'd1,3'd0}:cell_gain=11;
+                {3'd2,3'd1,3'd1}:cell_gain=19;
                 {3'd3,3'd0,3'd0}:cell_gain=6;
                 {3'd3,3'd1,3'd0}:cell_gain=7;
                 {3'd3,3'd1,3'd1}:cell_gain=20;
@@ -136,7 +138,7 @@ module nds_pixel_grid (
             end else if(scale_step!=0) begin
                 if(scaled_w=={3'd0,geometry_frame[47:36]} &&
                    scaled_h=={3'd0,geometry_frame[35:24]}) begin
-                    scale<=scale_step==2 ? 3'd0 : scale_step;
+                    scale<=scale_step;
                     scale_step<=0;
                 end else if(scale_step==5) scale_step<=0;
                 else begin
