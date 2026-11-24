@@ -5,11 +5,19 @@ create_timing_netlist
 read_sdc
 set regs [get_registers {*|fpga3d|* *|fpga3d_control_mux|*}]
 puts "FPGA3D_REGISTERS [get_collection_size $regs]"
+set grid_regs [get_registers {*|hdmi_pixel_grid|*}]
+puts "PIXEL_GRID_REGISTERS [get_collection_size $grid_regs]"
 set corner 0
 foreach_in_collection oc [get_available_operating_conditions] {
     incr corner
     set_operating_conditions $oc
     update_timing_netlist
+    if {[get_collection_size $grid_regs] > 0} {
+        report_timing -setup -from $grid_regs -npaths 5 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/pixel-grid-from-$corner.txt
+        report_timing -setup -to $grid_regs -npaths 5 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/pixel-grid-to-$corner.txt
+        report_timing -hold -from $grid_regs -npaths 5 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/pixel-grid-hold-from-$corner.txt
+        report_timing -hold -to $grid_regs -npaths 5 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/pixel-grid-hold-to-$corner.txt
+    }
     report_timing -setup -from $regs -npaths 20 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/accelerator-from-$corner.txt
     report_timing -setup -to $regs -npaths 20 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/accelerator-to-$corner.txt
     report_timing -hold -from $regs -npaths 5 -nworst 1 -detail full_path -file ../../build-fpga3d/quartus/accelerator-hold-$corner.txt

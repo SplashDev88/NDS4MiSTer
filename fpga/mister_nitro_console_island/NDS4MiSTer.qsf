@@ -51,6 +51,8 @@ set_global_assignment -name VERILOG_MACRO "NDS_NO_AUDIO_FILTER=1"
 # Standard HDMI continues through the scaler. The experimental native path
 # is for analog displays and Direct Video receivers such as RetroTINK-4K.
 set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_SHADOWMASK=1"
+set_global_assignment -name VERILOG_MACRO "NDS_PIXEL_GRID=1"
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_pixel_grid.sv
 # Experimental native analog and Direct Video paths. The standard scaler
 # remains available for ordinary HDMI and VGA monitors (vga_scaler=1).
 set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_OUTPUTS=1"

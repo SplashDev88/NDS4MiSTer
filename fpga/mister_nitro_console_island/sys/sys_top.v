@@ -390,6 +390,11 @@ reg [12:0] arc1y = 0;
 reg [12:0] arc2x = 0;
 reg [12:0] arc2y = 0;
 reg [15:0] io_dout_sys;
+`ifdef NDS_PIXEL_GRID
+reg [1:0] nds_pixel_grid_strength = 0;
+wire nds_pixel_grid_mode = !direct_video && !HDMI_PR &&
+    ((WIDTH == 1280 && HEIGHT == 720) || (WIDTH == 1920 && HEIGHT == 1080));
+`endif
 
 always@(posedge clk_sys) begin
 	reg  [7:0] cmd;
@@ -450,6 +455,9 @@ always@(posedge clk_sys) begin
 `endif
 			if(io_din[7:0] == 'h42) io_dout_sys <= {1'b1, frame_cnt};
 			if(io_din[7:0] == 'h44) io_dout_sys <= 1;
+`ifdef NDS_PIXEL_GRID
+            if(io_din[7:0] == 'h4A) io_dout_sys <= 16'h5047; // Pixel Grid ABI v1
+`endif
 `ifdef NDS_NATIVE_OUTPUTS
 			// Read-only standalone display handoff: use the actual Main-loaded
 			// flags, including alternate INI selection and per-core overrides.
@@ -531,6 +539,13 @@ always@(posedge clk_sys) begin
             if(cmd == 'h46 && cnt == 2) io_dout_sys <= nds_dv1_side_native_menu ? 16'h4e51 : 16'h4e50;
 `endif
 			if(cmd == 'h25) {led_overtake, led_state} <= io_din;
+`ifdef NDS_PIXEL_GRID
+            if(cmd == 'h4A && cnt == 0) begin
+                io_dout_sys <= {15'h0080,nds_pixel_grid_mode};
+                if(io_din[15:2] == 14'h1410)
+                    nds_pixel_grid_strength <= io_din[1:0]; // 0x5040..0x5043
+            end
+`endif
 			if(cmd == 'h26) vol_att <= io_din[4:0];
 			if(cmd == 'h27) VSET <= io_din[11:0];
 			if(cmd == 'h2A) begin
@@ -879,6 +894,9 @@ assign {nds_dv1_ce,nds_dv1_de,nds_dv1_hs,nds_dv1_vs,nds_dv1_rgb,nds_dv1_rotation
 
 `ifndef MISTER_DEBUG_NOHDMI
 	wire clk_hdmi  = hdmi_clk_out;
+    wire [11:0] nds_grid_source_w, nds_grid_source_h;
+    wire [11:0] nds_grid_image_w, nds_grid_image_h;
+    wire [11:0] nds_grid_raster_w, nds_grid_raster_h;
 
 	ascal 
 	#(
@@ -953,6 +971,9 @@ assign {nds_dv1_ce,nds_dv1_de,nds_dv1_hs,nds_dv1_vs,nds_dv1_rgb,nds_dv1_rotation
 		.o_de     (hdmi_de),
 		.o_vbl    (hdmi_vbl),
 		.o_brd    (hdmi_brd),
+        .o_source_width(nds_grid_source_w), .o_source_height(nds_grid_source_h),
+        .o_image_width(nds_grid_image_w), .o_image_height(nds_grid_image_h),
+        .o_raster_width(nds_grid_raster_w), .o_raster_height(nds_grid_raster_h),
 		.o_lltune (lltune),
 		.htotal   (WIDTH + HFP + HBP + HS[11:0]),
 		.hsstart  (WIDTH + HFP),
@@ -1376,10 +1397,25 @@ cyclonev_hps_interface_peripheral_i2c hdmi_i2c
 	wire        hdmi_de_mask, hdmi_vs_mask, hdmi_hs_mask;
 
 	`ifdef MISTER_DISABLE_SHADOWMASK
+    `ifdef NDS_PIXEL_GRID
+        nds_pixel_grid hdmi_pixel_grid (
+            .clk(clk_hdmi), .reset(reset_req), .ce(scaler_out),
+            .enable_async(nds_pixel_grid_mode && !LFB_EN && !dis_output),
+            .strength_async(nds_pixel_grid_strength),
+            .source_width(nds_grid_source_w), .source_height(nds_grid_source_h),
+            .image_width(nds_grid_image_w), .image_height(nds_grid_image_h),
+            .raster_width(nds_grid_raster_w), .raster_height(nds_grid_raster_h),
+            .din(dis_output ? 24'd0 : hdmi_data),
+            .hs_in(hdmi_hs), .vs_in(hdmi_vs), .de_in(hdmi_de), .brd_in(hdmi_brd),
+            .dout(hdmi_data_mask), .hs_out(hdmi_hs_mask),
+            .vs_out(hdmi_vs_mask), .de_out(hdmi_de_mask)
+        );
+    `else
 		assign hdmi_data_mask = dis_output ? 24'd0 : hdmi_data;
 		assign hdmi_hs_mask   = hdmi_hs;
 		assign hdmi_vs_mask   = hdmi_vs;
 		assign hdmi_de_mask   = hdmi_de;
+    `endif
 	`else
 	reg [15:0] shadowmask_data;
 	reg        shadowmask_wr = 0;

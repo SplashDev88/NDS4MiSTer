@@ -340,6 +340,8 @@ class Host {
   nds4mister::GraphicsControl graphics_control{true};
   bool direct_video_crt = true; // Shared with startup Advanced Options; CRT-safe default.
   bool video_flags_known = false;
+  unsigned pixel_grid = 0;
+  bool pixel_grid_supported = false, pixel_grid_available = false;
   int yc_target_sent = -2; // -2 unprobed, -1 unsupported, 0 Scaler, 1 CRT.
   TouchRotation touch_rotation = TouchRotation::Normal;
   unsigned touch_range = 0; // 100%, stored separately from FPGA status/mappings.
@@ -354,22 +356,23 @@ class Host {
                        DISPLAY_CURSOR = 15, TOUCH_RANGE_CURSOR = 16,
                        AA_CURSOR = 17, RESOLUTION_CURSOR = 18,
                        TOUCHPAD_SENSITIVITY_CURSOR = 19,
-                       LAST_MAIN_CURSOR = TOUCHPAD_SENSITIVITY_CURSOR;
+                       PIXEL_GRID_CURSOR = 20, LAST_MAIN_CURSOR = PIXEL_GRID_CURSOR;
   int mainMenuRow(int item) const {
     // Stable option identities keep status bits and saved settings unchanged.
     // Only the visible rows differ between the main and Display options pages.
     // Legacy cores cannot enable split outputs. Reuse that inactive row so
     // the input setting and the notification/footer rows remain accessible.
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> standard{
-        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10};
+        0, 1, 3, 4, 5, 6, 7, 8, 9, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> crt{
-        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10};
+        0, 1, 9, 3, 4, 5, 6, 7, 8, 12, 13, 15, -1, 11, -1, -1, 2, -1, -1, 10, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> independent{
-        0, 1, 3, -1, -1, -1, -1, -1, -1, 9, 11, 15, -1, 4, -1, 5, 7, -1, -1, 8};
+        0, 1, 3, -1, -1, -1, -1, -1, -1, 9, 11, 15, -1, 4, -1, 5, 7, -1, -1, 8, -1};
     static constexpr std::array<int, LAST_MAIN_CURSOR + 1> display{
-        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, 9, 10, -1};
+        -1, -1, -1, 1, 2, 3, 4, 5, -1, -1, -1, 15, -1, -1, 7, -1, -1, 9, 10, -1, 11};
     if (item < 0 || item > LAST_MAIN_CURSOR) return -1;
     if (item == DV_TARGET_CURSOR && !(video_flags & (1u << 10))) return -1;
+    if (item == PIXEL_GRID_CURSOR && !pixel_grid_available) return -1;
     if (independent_outputs_supported) {
       if (item == ANALOG_CURSOR && (video_flags & (1u << 2))) return -1;
       return (display_menu ? display : independent)[item];
@@ -396,6 +399,18 @@ class Host {
   bool video_write_failed = false;
   uint16_t video_flags = 0;
   bool independent_outputs_supported = false;
+  void sendPixelGrid() {
+    if (pixel_grid_supported)
+      spi.cmd(Spi::IO, 0x4a, {uint16_t(0x5040 | pixel_grid)});
+  }
+  void initializePixelGrid() {
+    const auto signature = spi.begin(Spi::IO, 0x4a);
+    const auto capability = spi.word(0); // Read only: no 0x504x write token.
+    spi.end();
+    pixel_grid_supported = signature == 0x5047 && (capability & 0xff00) == 0x0100;
+    pixel_grid_available = pixel_grid_supported && (capability & 1);
+    sendPixelGrid();
+  }
   void initializeVideoMetadata() {
     const auto signature = spi.begin(Spi::IO, 0x46);
     const auto flags = spi.word(0);
@@ -404,6 +419,7 @@ class Host {
     independent_outputs_supported = signature == 0x4456 && capability == 0x5350;
     video_flags = signature == 0x4456 ? flags : 0;
     video_flags_known = true;
+    initializePixelGrid();
     // The initial status write masks split output until capability is known.
     // Select independent native analog immediately, including old CRT-Off
     // settings and non-DV1 sessions, without waiting for a menu change.
@@ -544,6 +560,8 @@ class Host {
     const std::string video_config = std::string("NDS-DirectVideo-v1\n") +
         (direct_video_crt ? "crt\n" : "retrotink\n");
     atomicFile(fs::path(kit) / "NDS_video.cfg", video_config.data(), video_config.size());
+    const std::string grid_config = "NDS-PixelGrid-v1\n" + std::to_string(pixel_grid) + "\n";
+    atomicFile(fs::path(kit) / "NDS_pixel_grid.cfg", grid_config.data(), grid_config.size());
     const std::string graphics_config = std::string("NDS-Graphics-v2\n") +
         (anti_alias ? "aa=on\n" : "aa=off\n") +
         (tiny_3d ? "rows=tiny\n" : quarter_3d ? "rows=quarter\n" : half_rows ? "rows=half\n" : "rows=native\n");
@@ -1644,6 +1662,9 @@ class Host {
       if (mainMenuRow(RESOLUTION_CURSOR) >= 0)
         rows[mainMenuRow(RESOLUTION_CURSOR)] = optionLabel(render_off ? 4 : tiny_3d ? 3 : quarter_3d ? 2 : half_rows ? 1 : 0,
             {0, 3, 5, "3D Resolution", {"Native", "Half Rows", "128x96", "64x48", "Off (test)"}});
+      if (mainMenuRow(PIXEL_GRID_CURSOR) >= 0)
+        rows[mainMenuRow(PIXEL_GRID_CURSOR)] = optionLabel(uint16_t(pixel_grid),
+            {0, 2, 4, "Pixel Grid", {"Off", "Light", "Medium", "Strong"}});
       if (mainMenuRow(DV_TARGET_CURSOR) >= 0)
         rows[mainMenuRow(DV_TARGET_CURSOR)] = optionLabel(direct_video_crt ? 0 : 1,
             {0, 1, 2, "Direct Video Target", {"CRT", "Scaler"}});
@@ -1801,6 +1822,8 @@ class Host {
           speed_hacks = speed_hacks_available ?
               readSpeedHacks(fs::path(kit) / "defaults/NDS_speed.cfg") : 0;
           direct_video_crt = true;
+          pixel_grid = 0;
+          sendPixelGrid();
           anti_alias = false;
           half_rows = false;
           quarter_3d = false;
@@ -1946,6 +1969,11 @@ class Host {
                  (a == 2 || a == 7 || a == 8)) {
         touch_range = (touch_range + TOUCH_RANGE_PERCENT.size() + (a == 7 ? -1 : 1)) % TOUCH_RANGE_PERCENT.size();
         message.clear();
+      } else if (cursor == PIXEL_GRID_CURSOR && (a == 2 || a == 7 || a == 8)) {
+        if (!pixel_grid_available) return;
+        pixel_grid = (pixel_grid + (a == 7 ? 3 : 1)) % 4;
+        sendPixelGrid();
+        message = " System > Save settings";
       } else if (cursor == AA_CURSOR && (a == 2 || a == 7 || a == 8)) {
         anti_alias = !anti_alias;
         const bool restored_native = anti_alias && (half_rows || quarter_3d || tiny_3d || render_off);
@@ -3130,6 +3158,10 @@ public:
     const std::string video_contents((std::istreambuf_iterator<char>(video_config)),
                                      std::istreambuf_iterator<char>());
     direct_video_crt = video_contents != "NDS-DirectVideo-v1\nretrotink\n";
+    std::ifstream grid_config(fs::path(kit) / "NDS_pixel_grid.cfg", std::ios::binary);
+    const std::string grid_contents((std::istreambuf_iterator<char>(grid_config)), {});
+    for (unsigned i = 0; i < 4; ++i)
+      if (grid_contents == "NDS-PixelGrid-v1\n" + std::to_string(i) + "\n") pixel_grid = i;
     std::ifstream touch_config(fs::path(kit) / "NDS_touch.cfg");
     std::string touch_header, touch_value;
     if (std::getline(touch_config, touch_header) && touch_header == "NDS-TouchRotation-v1" &&
