@@ -1,11 +1,17 @@
-# Pixel Grid experiment on v1.0.3
+# Pixel Grid beta on v1.0.3
+
+Test 3 routes and has passed short gameplay checks in New Super Mario Bros.,
+Tetris DS and GTA: Chinatown Wars. It includes original 1080p commercial-game
+captures at all four strengths and a zoomable offline viewer. Medium is a
+useful starting point. This is a private hardware beta with the timing and
+coverage limits recorded below.
 
 Base: release tag `v1.0.3`, commit `6eadde791669feef6cdbbcfb1be36403519ab23c`.
 This experiment carries forward the beta18 LCD Grid 2 approximation and host
 controls while preserving the v1.0.3 runtime, touchpad support and HBlank queue.
 
 The user approved using DSP resources and allowing visual simplification if
-needed. The first candidate preserves all existing gains, rounding and
+needed. The selected implementation preserves all existing gains, rounding and
 saturation. Three unsigned 8-by-7 DSP multiplications replace the shift/add
 trees. RGB and sync both take four enabled clock cycles rather than six.
 Scale detection reuses one adder and comparator per axis over at most four
@@ -40,8 +46,9 @@ describe the released core, before adding the grid.
 
 This candidate uses v1.0.3 placement and timing settings. It does not inherit
 the experimental beta18 register-location locks or added transfer constraints.
-Only the grid, scaler geometry outputs, host control and diagnostic timing
-reports are added. Synthesis and fitting must verify DSP inference and report
+The grid, scaler geometry outputs, host control and diagnostic timing
+reports are added. The final candidate also settles ARM9 IO request and
+completion events in their receiving clock domains, as described below. Synthesis and fitting must verify DSP inference and report
 whole-core resources; isolated grid results cannot establish routability.
 Hardware startup, gameplay and grid behavior determine acceptance. Static
 timing remains diagnostic, as requested, and is retained with build results.
@@ -82,7 +89,9 @@ binds the fresh RBF to source hashes and offline validation. Timing reports
 are collected when ready and do not gate packaging. `tools/package_pixel_grid.py`
 uses the SHA-verified v1.0.3 release archive to produce a separate launcher
 and private kit, preserving the release renderer and guest patches. It verifies
-every package checksum and marks hardware qualification pending.
+every package checksum. Without hardware evidence the package remains
+pending; `--hardware-evidence` binds a qualified private beta to exact game
+results.
 
 ## Status
 
@@ -134,8 +143,8 @@ All four timing corners were reported. The grid's worst setup slack is
 DSP product register. Its worst hold slack is +0.122 ns. The full core also
 has timing violations (worst reported setup -14.897 ns, hold -0.763 ns and
 recovery -9.936 ns). Successful timing-tool execution does not mean timing
-closure. Reports and slacks are retained as diagnostics; this candidate is
-ready for the requested hardware acceptance tests.
+closure. Reports and slacks are retained as diagnostics; these first-candidate diagnostics
+do not qualify it for gameplay.
 
 Hardware Test 1 failed NSMB startup with the grid Off. A core-only swap to the
 released v1.0.3 RBF, retaining the candidate host, renderer, ROM and isolated
@@ -149,7 +158,8 @@ two receiver-clock capture stages plus history. Both inputs to each edge
 detector are now receiver-clock registers. The held payload has extra time
 to settle before the consumer observes completion. This addresses a hazard
 reproduced in the earlier clock-skew model; hardware causation remains
-unproven until the new FPGA image passes the same commercial-game tests.
+unproven by this model alone. Test 2 subsequently failed startup; Test 3
+adds the IO request correction described below.
 
 The production receiver passed 160 pulse/toggle payload checks, 40 reset
 arrival phases, eight real-membus IO/palette/OAM phase tests, and the complete
@@ -170,7 +180,9 @@ layout; Top/Bottom with 90-degree rotation gives 4x. A single unrotated screen
 can use the core's 320x240 canvas and therefore bypass the grid at noninteger
 DS pixel scaling. This is intentional bypass behavior, not a stronger setting.
 
-No new FPGA image has yet been qualified for hardware or public release.
+Test 3 has now passed NSMB, Tetris DS and GTA startup and gameplay on the rig.
+Final package evidence records the complete qualification scope. This remains
+a private beta, not a qualified public release.
 
 The private package opts into a recoverable scaled-HDMI bootstrap. It appends
 a temporary final `[NDS]` section while Main initializes the FPGA, then restores
@@ -190,10 +202,12 @@ peripheral-clock detector. This ensures `io9_lat_1x` has captured the payload
 before `io9_ena` enables a peripheral. Other memory request paths are unchanged.
 The real-membus regression passes 20 relative clock phases with modeled payload
 routing delay; the previous raw-toggle request detector fails its payload
-scoreboard. This remains a modeled hazard pending the third hardware build.
+scoreboard. The third image now starts and plays NSMB, Tetris DS and GTA. This is evidence
+that the complete new build works; changed placement means it does not
+independently prove the physical cause of the earlier startup failure.
 
 
-While attempt 3 routes, the failed Test 2 image passes authored hardware
+During the investigation, the failed Test 2 image passed authored hardware
 subsystem diagnostics: 77 RAM/cache iterations; 94 ARM and 65 Thumb DTCM
 stack/cache iterations; 212,992 FIFO words with 212,480 ARM9 IRQs; 60 and 120
 cartridge-DMA blocks across 2 MiB and 64 MiB fixtures; and ten read-only 8 KiB
@@ -211,3 +225,54 @@ zero crop and no LCD/scanline/mask effects. A fresh released-core NSMB control
 shows clear 1080p gameplay. Failed-candidate game frames were also examined
 before HDMI processing and remain black, so that capture-chain correction
 alone does not resolve the FPGA startup regression.
+
+
+## Test 3 build and hardware results (2026-11-24)
+
+The selected FPGA source is `098030083e1ae8dab7c5fe110d4328325a1fd276`.
+RBF SHA-256: `0a6909e73f96d5f8503edc18f397019dd8e8fce4c93bf70738552a3d768983fa`.
+The ARM host SHA-256 is
+`aceb83bb346338882588ffa4f30d1cf5edb19fc03207233aa168eb190fbbd7ea`;
+the renderer and guest catalog remain byte-for-byte from v1.0.3.
+
+Synthesis, fitting/routing, assembly and timing analysis all completed with
+exit code zero. Fitting took 1 hour 12 minutes 37 seconds, including a late
+congestion-resolution pass. Final resource use is 40,890 ALMs needed,
+40,880.9 ALMs placed, 47,615 registers, 540 RAM blocks and 83 DSP blocks.
+The integrated grid uses 160.1 ALMs needed, 159.3 placed, 235 registers,
+three DSP blocks and no RAM. Average interconnect use is 60.3%; peak total
+use is 87.3%, with peak vertical use 96.5%. The device remains densely packed.
+
+Across all reported corners, the grid's worst setup slack is +0.134 ns and
+worst hold slack is +0.129 ns. The whole core still has violations: worst
+setup -13.118 ns, hold -0.521 ns and recovery -9.204 ns; worst removal is
++0.273 ns. The beta is accepted using the requested hardware criteria, not
+as a timing-closed design. The reports remain in the build evidence.
+
+NSMB entered World 1-3, moved and jumped, and paused successfully. Tetris DS
+entered Marathon, accepted piece movement, rotation and hard drop, updated
+the score and paused. GTA loaded the isolated safehouse save, responded to
+touch input at the exit door, and rendered the outdoor 3D world while walking
+changed the player position and camera. Tetris also played at 720p, where Off
+and Medium visibly differ at 2x; the RetroTINK confirmed 1280x720 input. Those
+720p images are functional evidence only, since the capture chain upscales
+them to 1080p. The comparison gallery uses native 1080p input and output.
+
+The rig reloaded Medium after System > Save settings
+and a fresh core launch. Off/Light/Medium/Strong have original 1080p HDMI
+captures in commercial games; NSMB also has the rotated 4x layout. In a
+static gray area, Off has no periodic grid modulation and the three enabled
+strengths increase it in order. This checks the capture chain as well as the
+FPGA control; capture color conversion prevents using it as a bit-exact
+arithmetic test.
+
+The private launcher selects scaled HDMI temporarily during initialization.
+The original MiSTer.ini is restored byte-for-byte before gameplay. Test saves
+are separate copies/aliases; normal interactive launches still use the normal
+selected game's save. Capture files are original OBS PNGs, with no sharpening,
+resampling or reconstructed pixels. The offline viewer provides pixelated
+zoom and rotation; it does not modify those PNGs.
+
+See the qualified archive's `PIXEL_GRID_HARDWARE.json` for exact games,
+screenshots, settings checks and protected-file hashes. These are startup and
+short gameplay checks, not full-game or long-duration reliability certification.
