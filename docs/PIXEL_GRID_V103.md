@@ -191,3 +191,21 @@ before `io9_ena` enables a peripheral. Other memory request paths are unchanged.
 The real-membus regression passes 20 relative clock phases with modeled payload
 routing delay; the previous raw-toggle request detector fails its payload
 scoreboard. This remains a modeled hazard pending the third hardware build.
+
+
+While attempt 3 routes, the failed Test 2 image passes authored hardware
+subsystem diagnostics: 77 RAM/cache iterations; 94 ARM and 65 Thumb DTCM
+stack/cache iterations; 212,992 FIFO words with 212,480 ARM9 IRQs; 60 and 120
+cartridge-DMA blocks across 2 MiB and 64 MiB fixtures; and ten read-only 8 KiB
+EEPROM rounds including wraparound and random offsets. The EEPROM fixture
+hash is unchanged afterward. Both CPUs also exceed 200 VBlank and timer
+interrupts. These results narrow the investigation but do not qualify the
+candidate or establish the root cause. Exact ROM hashes and screenshots are
+recorded in `../../evidence/pixel-grid-v103-20261123/hardware-20261124/TEST2_SUBSYSTEM_DIAGNOSTICS.json`.
+
+The RetroTINK was separately retaining 10:1 input decimation after a Direct
+Video test. Its unsaved HDMI input settings now use 1:1 sampling, 16:9 aspect,
+zero crop and no LCD/scanline/mask effects. A fresh released-core NSMB control
+shows clear 1080p gameplay. Failed-candidate game frames were also examined
+before HDMI processing and remain black, so that capture-chain correction
+alone does not resolve the FPGA startup regression.
