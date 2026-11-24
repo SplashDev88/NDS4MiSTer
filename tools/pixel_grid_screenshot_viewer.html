@@ -34,10 +34,10 @@ const translate=rotation===90?`translate(${h}px,0)`:rotation===180?`translate(${
 if(keepCenter){viewport.scrollLeft=cx*stage.offsetWidth-viewport.clientWidth/2;viewport.scrollTop=cy*stage.offsetHeight-viewport.clientHeight/2}else{viewport.scrollTop=0;viewport.scrollLeft=0}
 slider.value=zoom;document.getElementById('zoomLabel').textContent=Math.round(zoom*100)+'%';}
 function fit(){if(!current)return;const w=rotation%180?current.height:current.width,h=rotation%180?current.width:current.height;zoom=Math.min(1,(viewport.clientWidth-4)/w,(viewport.clientHeight-4)/h);render(false)}
-function load(){current=captures.find(r=>key(r)===scene.value&&r.strength===strength.value);if(!current)return;
+function load(){current=captures.find(r=>key(r)===scene.value&&r.strength===strength.value);if(!current)return;document.getElementById('error').hidden=true;
 picture.alt=current.game+' — '+current.strength+' grid, '+current.layout;picture.src=current.file;document.getElementById('original').href=current.file;document.getElementById('caption').textContent=current.caption||picture.alt;
 picture.onload=()=>{if(initial){fit();initial=false}else render()};picture.onerror=()=>{const e=document.getElementById('error');e.hidden=false;e.textContent='The PNG could not be loaded. Keep index.html beside all the included PNG files.'};}
 function chooseScene(){const previous=strength.value;strength.replaceChildren();captures.filter(r=>key(r)===scene.value).forEach(r=>option(strength,r.strength,r.strength));if([...strength.options].some(o=>o.value===previous))strength.value=previous;else if([...strength.options].some(o=>o.value==='Medium'))strength.value='Medium';load()}
-scene.onchange=chooseScene;strength.onchange=load;slider.oninput=()=>{zoom=Number(slider.value);render()};document.getElementById('fit').onclick=fit;document.getElementById('actual').onclick=()=>{zoom=1;render()};document.getElementById('rotate').onclick=()=>{rotation=(rotation+90)%360;render(false)};chooseScene();
+scene.onchange=chooseScene;strength.onchange=load;slider.oninput=()=>{zoom=Number(slider.value);render()};document.getElementById('fit').onclick=fit;document.getElementById('actual').onclick=()=>{zoom=1;render()};document.getElementById('rotate').onclick=()=>{rotation=(rotation+90)%360;render()};chooseScene();
 </script>
 </html>
