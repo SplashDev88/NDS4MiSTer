@@ -129,7 +129,32 @@ recovery -9.936 ns). Successful timing-tool execution does not mean timing
 closure. Reports and slacks are retained as diagnostics; this candidate is
 ready for the requested hardware acceptance tests.
 
-Hardware testing is pending: the current SSH connection works, but the board is running a separate
-`v1.0.3-ffiii-fmv.beta2` session. This task has made no hardware changes.
+Hardware Test 1 failed NSMB startup with the grid Off. A core-only swap to the
+released v1.0.3 RBF, retaining the candidate host, renderer, ROM and isolated
+save, restored the title screen and gameplay. The diagnostic ROM does run on
+Test 1 and shows all four strengths at 3x and 4x, so visible grid operation is
+not sufficient evidence of a working beta. Test 1 is not qualified.
 
-No new FPGA image has been qualified for hardware or public release.
+Attempt 2 replaces raw-source/delayed-history edge detectors on the ARM9
+WRAM, VRAM, main-RAM and IO completion paths, and the DMA request path, with
+two receiver-clock capture stages plus history. Both inputs to each edge
+detector are now receiver-clock registers. The held payload has extra time
+to settle before the consumer observes completion. This addresses a hazard
+reproduced in the earlier clock-skew model; hardware causation remains
+unproven until the new FPGA image passes the same commercial-game tests.
+
+The production receiver passed 160 pulse/toggle payload checks, 40 reset
+arrival phases, eight real-membus IO/palette/OAM phase tests, and the complete
+cache/main-RAM line-stream suite (128 matched streamed/nonstreamed misses,
+ARM7 arbitration, warm hits and reset recovery, with detecting negative
+controls). Full console VHDL analysis also passed. Reproduce the added tests
+with `bash tools/test_nds_related_clock_event.sh` and
+`bash tools/test_nds_cache_line_stream.sh`.
+
+Hardware capture uses an isolated kit and save copies. The RetroTINK's LCD
+function is disabled for comparison. At 1080p, Side by Side is a useful 3x
+layout; Top/Bottom with 90-degree rotation gives 4x. A single unrotated screen
+can use the core's 320x240 canvas and therefore bypass the grid at noninteger
+DS pixel scaling. This is intentional bypass behavior, not a stronger setting.
+
+No new FPGA image has yet been qualified for hardware or public release.
