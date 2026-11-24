@@ -5,7 +5,7 @@ create_timing_netlist
 read_sdc
 set regs [get_registers {*|fpga3d|* *|fpga3d_control_mux|*}]
 puts "FPGA3D_REGISTERS [get_collection_size $regs]"
-set grid_regs [get_registers {*|hdmi_pixel_grid|*}]
+set grid_regs [get_registers {*|hdmi_pixel_grid|* hdmi_pixel_grid|*}]
 puts "PIXEL_GRID_REGISTERS [get_collection_size $grid_regs]"
 set corner 0
 foreach_in_collection oc [get_available_operating_conditions] {

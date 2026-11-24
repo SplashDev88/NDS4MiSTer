@@ -31,6 +31,12 @@ ALMs and 394 registers. Earlier fitted images failed game startup, including
 with the grid Off; a core-only swap to original beta18 restored gameplay.
 The physical cause of that regression is not established.
 
+The actual v1.0.3 release build (`df7d7097...735be8c`) is a better baseline:
+39,075/41,910 ALMs (93%), 540/553 RAM blocks and 80/112 DSP blocks, with
+58.5% average interconnect use. Its build receipt is
+`../../evidence/golden-cabin-idle-fault-20261122/build.json`. These numbers
+describe the released core, before adding the grid.
+
 This candidate uses v1.0.3 placement and timing settings. It does not inherit
 the experimental beta18 register-location locks or added transfer constraints.
 Only the grid, scaler geometry outputs, host control and diagnostic timing
@@ -62,6 +68,13 @@ stage exit codes, fit summaries and timing reports. Full-core compilation
 uses `tools/fpga3d/build_fpga.py map fit asm sta` and the existing Quartus 17
 compatibility library at `build-fpga3d/quartus/quartus_udev_compat.so`.
 
+After map, fit and assembly pass, `tools/fpga3d/collect_pixel_grid_build.py`
+binds the fresh RBF to source hashes and offline validation. Timing reports
+are collected when ready and do not gate packaging. `tools/package_pixel_grid.py`
+uses the SHA-verified v1.0.3 release archive to produce a separate launcher
+and private kit, preserving the release renderer and guest patches. It verifies
+every package checksum and marks hardware qualification pending.
+
 ## Status
 
 Matched isolated Quartus 17 area measurements on the same Cyclone V device:
@@ -85,6 +98,8 @@ every supported scale/strength, malformed geometry, clock-enable stalls,
 interrupted scale searches, reset and mid-frame changes. Real-scaler tests
 passed 2x/3x/4x/5x. Seven host C++ suites and nine settings-migration tests
 passed, and the ARM host binary built successfully. Final grid/OSD integration
-and full-core synthesis/fitting are in progress.
+passed 1,843,200 pixels, including 196,608 letter pixels and 196,608 menu
+background pixels, and all 24 command/mode gates. Full-core synthesis/fitting
+is in progress.
 
 No new FPGA image has been qualified for hardware or public release.
