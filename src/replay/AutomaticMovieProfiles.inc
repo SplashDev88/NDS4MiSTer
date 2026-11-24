@@ -21,3 +21,6 @@
         {{{'Y','R','9','P'}}, 0, 0xa1ec237au}, // Ecclesia Europe Rev 0.
         {{{'Y','R','9','J'}}, 0, 0x2858119fu}, // Ecclesia Japan Rev 0.
         {{{'Y','R','9','K'}}, 0, 0x445983c3u}, // Ecclesia Korea Rev 0.
+        {{{'A','F','F','E'}}, 0, 0x83d5740du}, // Final Fantasy III USA, native movie color.
+        {{{'A','F','F','P'}}, 0, 0x08e22670u}, // Final Fantasy III Europe, native movie color.
+        {{{'A','F','F','J'}}, 0, 0xdecdd0b6u}, // Final Fantasy III Japan, native movie color.

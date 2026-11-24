@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 SPECS = {
+ 'packed_vx_ffiii_color': (0x1fff600, ['-DOLD_COLOR_TABLE=0x027e0b40', '-DCOLOR_ONLY']),
  'packed_video_color': (0x1fff600, []),
  'packed_chrono_video_color': (0x1fff600, []),
  'packed_nino_video_color': (0x1fff600, []),

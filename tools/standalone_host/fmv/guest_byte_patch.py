@@ -17,6 +17,7 @@ import zlib
 
 from ndspy import code, codeCompression, _common
 from hook_guard import select_profile, verify_target
+from prepare import assemble as assemble_movie
 from prepare import VirtualRom, read_overlay, require, LIMIT
 
 
@@ -473,6 +474,24 @@ def assemble(source, manifest, patch_ids=(), progress=lambda n: None):
         registry = {'version': 1, 'profiles': [{'game_code': manifest['game_code'],
                     'revision': manifest['revision'], 'arm9_crc32': manifest['arm9_crc32']}]}
         require(select_profile(registry, header, raw) is not None, 'Game/revision/ARM9 profile differs')
+        if manifest.get('delivery') == 'native_movie_color':
+            # Relocating ARM9 for the converter must carry the qualified gameplay
+            # edits into that same image. The original movie streams stay intact.
+            specs = manifest['patches']
+            require(requested == {p['id'] for p in specs} and all(
+                p['target'] == 'arm9.bin/main_loaded' and p['mode'] == 'arm' and
+                p['cpu'] == 'arm9' and not p.get('hook') and not p.get('scratch_bytes')
+                for p in specs), 'Expected the complete ARM9 gameplay patch set')
+            edits = [dict(pc=int(p['addr'], 16), overlay=None, before=p['expect'],
+                          after=p['replace']) for p in specs]
+            movie = manifest['movie_color']
+            profile = dict(movie, source_sha256=manifest['rom_sha256'], output_size=source.size,
+                           movies=[], overlays=[], code_patches=edits + [movie['converter_branch']])
+            image = assemble_movie(source, profile, progress=progress)
+            report.update(state='applied_to_virtual_image', movie_color=True, applied=[
+                dict(id=p['id'], address=e['pc'], bytes=len(e['after']) // 2)
+                for p, e in zip(specs, edits)])
+            return image, report
         if manifest.get('delivery') == 'qualified_arm9_blz':
             recipe = manifest['patches'][0]
             require(len(manifest['patches']) == 1 and requested == {recipe['id']}, 'Incomplete BLZ profile')

@@ -10,6 +10,7 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 ## What's new in 1.0.4
 
+* Fixed slow **Final Fantasy III opening-movie playback and music timing** for USA, Europe, and Japan, retaining the original movies and existing gameplay optimizations.
 * Added **Pixel Grid** under **Display options**, with Off, Light, Medium, and Strong settings.
 * Supports **720p and 1080p HDMI** at **2× through 5× integer scale**, including the 2× option for people to try.
 * Defaults to Off. **System → Save settings** remembers your choice.

@@ -346,6 +346,19 @@ int main(int argc, char** argv)
           !automatic_movie_receiver_profile(short_second), "unstable identity disables movie receiver");
     check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, known, true}),
           "Castlevania guest-only optimization does not enable movie receiver");
+    const GameQueryIdentity ffiii_prepared[] = {
+        {{{'A','F','F','E'}}, 0, 0x83d5740du},
+        {{{'A','F','F','P'}}, 0, 0x08e22670u},
+        {{{'A','F','F','J'}}, 0, 0xdecdd0b6u},
+    };
+    for (auto id : ffiii_prepared) {
+        const GameQuerySelection prepared {GameQueryProfile::Fast, id, true};
+        check(matches_game_cartridge(prepared, FinalFantasyIIICartridges) &&
+              automatic_movie_receiver_profile(prepared), "FFIII retains gameplay and movie policies");
+        id.header_crc32 ^= 1;
+        check(!automatic_movie_receiver_profile({GameQueryProfile::Fast, id, true}),
+              "unqualified FFIII header uses the original movie path");
+    }
     const GameQueryIdentity movies[] = {
         {{{'B','2','K','J'}}, 0, 0x56588d29u},
         {{{'B','2','K','J'}}, 0, 0xf2d6c66fu},

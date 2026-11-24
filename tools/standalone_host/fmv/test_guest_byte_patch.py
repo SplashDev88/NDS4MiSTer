@@ -134,6 +134,27 @@ class GuestPatchTests(unittest.TestCase):
         self.assertEqual(report['state'], 'skipped')
         self.assertFalse(image.patches)
 
+    def test_native_color_prepares_gameplay_and_converter_together(self):
+        manifest = copy.deepcopy(self.manifest)
+        manifest.update(delivery='native_movie_color', atomic_selection=True,
+                        movie_color={'converter_branch': {'pc': 0x01ffdcf0}})
+        manifest['patches'] = [p for p in manifest['patches'] if p['id'] == 'one']
+        with patch('guest_byte_patch.assemble_movie') as prepare:
+            image, report = assemble(self.source, manifest, ['one'])
+            self.assertIs(image, prepare.return_value)
+            self.assertTrue(report['movie_color'])
+            prepared = prepare.call_args.args[1]
+            self.assertEqual(prepared['source_sha256'], manifest['rom_sha256'])
+            self.assertEqual(prepared['movies'], [])
+            self.assertEqual(prepared['overlays'], [])
+            self.assertEqual([p['pc'] for p in prepared['code_patches']],
+                             [0x02000020, 0x01ffdcf0])
+            prepare.side_effect = ValueError('converter identity differs')
+            unchanged, report = assemble(self.source, manifest, ['one'])
+            self.assertEqual(report['state'], 'skipped')
+            self.assertEqual(report['applied'], [])
+            self.assertEqual(b''.join(unchanged.blocks()), self.raw)
+
     def test_multiple_selection_and_overlap_fall_back_as_one_transaction(self):
         m = copy.deepcopy(self.manifest)
         second = dict(m['patches'][0], id='two', addr='0x02000040')

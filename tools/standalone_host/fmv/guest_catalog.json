@@ -3144,7 +3144,34 @@
             "scratch_bytes": 0,
             "enabled": true
           }
-        ]
+        ],
+        "delivery": "native_movie_color",
+        "movie_color": {
+          "converter": {
+            "pc": 33545456,
+            "overlay": null,
+            "bytes": 1376,
+            "sha256": "2fa1ddbab654f515b1eee581e359a2d7bda37d67ae6e3cb9a6eb225ac2ce1119"
+          },
+          "converter_branch": {
+            "pc": 33545456,
+            "before": "f05f2de9",
+            "after": "420600ea",
+            "overlay": null
+          },
+          "stubs": [
+            {
+              "file": "packed_vx_ffiii_color.bin",
+              "offset": 1536,
+              "sha256": "72ceac338238b479c3db11b9883a2468aade2dfd0523e4c9b2071c9575cfae74"
+            }
+          ],
+          "arm9_bytes": 656964,
+          "arm9_offset": 102690816,
+          "arm9_sha256": "d1e3e9f771736f877285ffbb3aa9e0048c81ba98abc1e8ec75f6faf5b90acdd6",
+          "capacity": 10,
+          "used": 103348224
+        }
       },
       "patch_ids": [
         "joint-mix",
@@ -3359,7 +3386,34 @@
             "scratch_bytes": 0,
             "enabled": true
           }
-        ]
+        ],
+        "delivery": "native_movie_color",
+        "movie_color": {
+          "converter": {
+            "pc": 33545456,
+            "overlay": null,
+            "bytes": 1376,
+            "sha256": "2fa1ddbab654f515b1eee581e359a2d7bda37d67ae6e3cb9a6eb225ac2ce1119"
+          },
+          "converter_branch": {
+            "pc": 33545456,
+            "before": "f05f2de9",
+            "after": "420600ea",
+            "overlay": null
+          },
+          "stubs": [
+            {
+              "file": "packed_vx_ffiii_color.bin",
+              "offset": 1536,
+              "sha256": "72ceac338238b479c3db11b9883a2468aade2dfd0523e4c9b2071c9575cfae74"
+            }
+          ],
+          "arm9_bytes": 660100,
+          "arm9_offset": 95621120,
+          "arm9_sha256": "84df01241a7011f5e684894cc6715b984f77dcd3259dbcff6e1fb57168ba3599",
+          "capacity": 10,
+          "used": 96281600
+        }
       },
       "patch_ids": [
         "joint-mix",
@@ -3442,7 +3496,34 @@
             "scratch_bytes": 0,
             "enabled": true
           }
-        ]
+        ],
+        "delivery": "native_movie_color",
+        "movie_color": {
+          "converter": {
+            "pc": 33545456,
+            "overlay": null,
+            "bytes": 1376,
+            "sha256": "2fa1ddbab654f515b1eee581e359a2d7bda37d67ae6e3cb9a6eb225ac2ce1119"
+          },
+          "converter_branch": {
+            "pc": 33545456,
+            "before": "f05f2de9",
+            "after": "420600ea",
+            "overlay": null
+          },
+          "stubs": [
+            {
+              "file": "packed_vx_ffiii_color.bin",
+              "offset": 1536,
+              "sha256": "72ceac338238b479c3db11b9883a2468aade2dfd0523e4c9b2071c9575cfae74"
+            }
+          ],
+          "arm9_bytes": 656164,
+          "arm9_offset": 102658048,
+          "arm9_sha256": "cd4c9209c6dc644ea76d714ff67ee91da3831e090e2ea276ae797c753bde0023",
+          "capacity": 10,
+          "used": 103314432
+        }
       },
       "patch_ids": [
         "joint-mix",
