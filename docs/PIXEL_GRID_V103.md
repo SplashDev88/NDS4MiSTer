@@ -15,7 +15,8 @@ No framebuffer or additional block RAM is used. The grid remains after the
 HDMI scaler and before OSD, and supports 2x through 5x integer scales at 720p
 and 1080p. Off, 1x, noninteger scaling, unsupported modes and borders bypass
 the effect with the same pipeline delay. Controls latch at frame boundaries;
-geometry changes immediately bypass affected pixels until the next frame.
+pixels bypass the effect whenever live geometry differs from the geometry
+captured at the last frame boundary.
 
 The option appears in Display options only when the FPGA advertises support
 for the current output mode. System > Save settings persists the choice;
