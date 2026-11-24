@@ -74,6 +74,8 @@ def main():
     if prefix + 'nds_standalone_host.sha256' in files:
         files[prefix + 'nds_standalone_host.sha256'] = (sha(host) + '  nds_standalone_host\n').encode()
     files[prefix + 'install_layout.py'] = (ROOT / 'tools/standalone_host/install_layout.py').read_bytes()
+    files[prefix + 'video_target.py'] = (ROOT / 'tools/standalone_host/video_target.py').read_bytes()
+    files[prefix + 'NDS_scaled_hdmi.cfg'] = b'NDS-ScaledHDMI-v1\n1080p\n'
     supervisor = files[prefix + 'supervisor.py']
     old_pin = ('EXPECTED_CORE = "' + base['core_sha256'] + '"').encode()
     assert supervisor.count(old_pin) == 1
@@ -86,6 +88,7 @@ def main():
                     release_channel='private pixel-grid test',
                     remote_kit='/media/fat/' + prefix.rstrip('/'), private_test_ready=True,
                     installation_scope='Separate launcher and preferences; interactive launches use normal game saves',
+                    output_bootstrap='1080p scaled HDMI using a journaled temporary NDS INI override, restored before gameplay',
                     source_revision=revision, packaging_source_revision=revision,
                     host_source_revision=validation.get('host_source_revision', inputs['source_revision']),
                     fpga_source_revision=inputs['source_revision'], core_source_revision=inputs['source_revision'],
@@ -127,6 +130,9 @@ def main():
 {'Private beta tested on commercial games; see PIXEL_GRID_HARDWARE.json.' if qualified else 'Private hardware-test candidate; gameplay has not yet been qualified.'}
 Extract to the SD root, including hidden files. Run {launcher}.
 The normal NDS launcher and preferences remain separate.
+This private launcher selects 1080p HDMI for the session and restores the
+original MiSTer.ini before gameplay. Your normal Direct Video configuration
+is retained. A durable backup supports recovery after interrupted startup.
 
 Display options > Pixel Grid: Off / Light / Medium / Strong. Default Off.
 System > Save settings persists the choice; Reset restores Off.
@@ -137,6 +143,8 @@ At 1080p, Side by Side gives 3x; Top/Bottom with 90-degree rotation gives 4x.
 Main Only/Touch Only may use a 320x240 canvas and bypass at noninteger scales.
 Menu text is drawn afterward. Disable an external scaler's own grid during
 comparison. The implementation preserves the approved LCD Grid 2 approximation.
+For a 720p test, change only 1080p to 720p in the private kit's
+NDS_scaled_hdmi.cfg. Remove that opt-in file to use normal output settings.
 
 Normal interactive launches use normal game saves. Automated qualification
 must use isolated game/save copies. See PIXEL_GRID_VALIDATION.json for the

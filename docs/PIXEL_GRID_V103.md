@@ -172,6 +172,17 @@ DS pixel scaling. This is intentional bypass behavior, not a stronger setting.
 
 No new FPGA image has yet been qualified for hardware or public release.
 
+The private package opts into a recoverable scaled-HDMI bootstrap. It appends
+a temporary final `[NDS]` section while Main initializes the FPGA, then restores
+the exact original `MiSTer.ini` before the standalone host starts. The existing
+supervisor recovery path also restores the file after an interrupted launch.
+The normal kit, which has no `NDS_scaled_hdmi.cfg`, does not use this path.
+Eight focused recovery tests cover both output modes, all eight before/after
+write interruptions, already-restored state, external edits, missing INI,
+invalid input and symlinks; the eleven existing video-target tests also pass.
+The final-section behavior follows the sequential parser in
+[Main_MiSTer cfg.cpp](https://github.com/MiSTer-devel/Main_MiSTer/blob/master/cfg.cpp).
+
 Attempt 2 routed but still failed NSMB startup after more than a minute, with
 both published screens black. Return-event settling alone was insufficient.
 Attempt 3 additionally receives the ARM9 IO request through the settled
