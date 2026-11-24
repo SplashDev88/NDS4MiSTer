@@ -111,7 +111,12 @@ def main():
     files[prefix + 'manifest.json'] = js(manifest)
     files[prefix + 'SHA256SUMS'] = ''.join(h + '  ' + n + '\n' for n, h in sorted(manifest['automatic_movie_files'].items())).encode()
     files['BASELINE_MANIFEST.json'] = original[OLD + 'manifest.json']
-    files['PIXEL_GRID_VALIDATION.json'] = js(validation)
+    packaged_validation = dict(validation)
+    if hardware:
+        packaged_validation.update(status='hardware_qualified_private_beta', hardware_qualified=True,
+                                   hardware_evidence_sha256=sha(js(hardware)),
+                                   hardware_evidence_file='PIXEL_GRID_HARDWARE.json')
+    files['PIXEL_GRID_VALIDATION.json'] = js(packaged_validation)
     if hardware:
         files['PIXEL_GRID_HARDWARE.json'] = js(hardware)
     files['PIXEL_GRID_BUILD_INPUTS.json'] = js(inputs)
