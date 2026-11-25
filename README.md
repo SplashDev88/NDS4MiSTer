@@ -138,10 +138,6 @@ Use **Display options → Pixel Grid** to choose **Off, Light, Medium, or Strong
 
 The grid works with standard **720p or 1080p HDMI** and **2×–5× integer scaling**. For 720p60, use `video_mode=0` in the HDMI block above; for 1080p60, use `video_mode=8`. Return to MiSTer and relaunch after changing the output mode.
 
-At 1080p, Side by Side gives 3×, and Top/Bottom with 90-degree rotation gives 4×. The rotated Top/Bottom layout gives 2× at 720p. At 1× or noninteger scales, the effect is bypassed. Some single-screen layouts use a 320×240 canvas and may bypass it. The option is unavailable in Direct Video and unsupported HDMI modes; native analog output is unaffected.
-
-For comparison through a RetroTINK or another external scaler, use standard HDMI from MiSTer and turn off the external scaler's own LCD/scanline and mask effects. Use 1:1 or integer scaling to preserve the grid pattern. Menu text is drawn after the grid.
-
 ### CRT (15 kHz, via Direct Video)
 
 **Direct Video (DV1)** sends the core's native video timing through HDMI. Use this with an HDMI-to-VGA DAC driving an **RGBS (RGB + composite sync)**/SCART CRT:
