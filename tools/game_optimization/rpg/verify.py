@@ -1,4 +1,4 @@
-"""Reassemble the guest instructions and verify their installed catalog entries."""
+"""Reassemble guest instructions and verify their installed runtime profiles."""
 import argparse
 import json
 from pathlib import Path
@@ -24,6 +24,7 @@ def main():
                         help="GNU binutils executable prefix")
     args = parser.parse_args()
     entries = json.loads(CATALOG.read_text())["entries"]
+    movies = json.loads(CATALOG.with_name("profiles.json").read_text())["profiles"]
 
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
@@ -39,14 +40,19 @@ def main():
         for code, (joint_delta, sdk_delta) in FFIII_OFFSETS.items():
             elf = assemble("ff_skin", "--defsym", f"joint_delta={joint_delta}",
                            "--defsym", f"sdk_delta={sdk_delta}")
-            ff, = [e["manifest"] for e in entries if e["manifest"]["game_code"] == code and
-                   e["manifest"]["revision"] == 0]
-            assert {p["id"] for p in ff["patches"]} == {
+            # FFIII's complete movie profile includes the gameplay edits in
+            # the same guarded, hash-qualified virtual image.
+            ff, = [p for p in movies if p["key"] == code + "0"]
+            assert not any(e["manifest"]["game_code"] == code for e in entries)
+            patches = [dict(id=p["id"], addr=hex(p["pc"]),
+                            expect=p["before"], replace=p["after"])
+                       for p in ff["code_patches"]
+                       if p["id"].startswith("joint-") or p["id"].startswith("movie-audio-")]
+            assert {p["id"] for p in patches} == {
                 "joint-mix", "joint-request", "joint-weight", "joint-finish", "joint-final",
                 "movie-audio-buffer-wait", "movie-audio-headroom"}
-            assert ff["atomic_selection"]
             section_headers = tool("objdump", "-h", elf).decode()
-            for patch in ff["patches"]:
+            for patch in patches:
                 if patch["id"] == "movie-audio-buffer-wait":
                     assert int(patch["addr"], 0) == FFIII_MOVIE_WAIT[code]
                     assert patch["expect"] == "fbffff0a" and patch["replace"] == "f4ffff0a"
@@ -73,7 +79,7 @@ def main():
             assert recipe["id"] == "opening-display" and len(recipe["title_model"]["hidden"]) == 82
             expected = [(edit["offset"], bytes.fromhex(edit["after"])) for edit in recipe["edits"]]
             assert build_edits(code, work / code, args.prefix) == expected
-    print("Both RPG instruction profiles match the runtime catalog.")
+    print("Both RPG instruction profiles match the runtime registries.")
 
 
 if __name__ == "__main__":

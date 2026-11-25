@@ -47,6 +47,12 @@ ALIASES = {'packed_sj_jp_color':'packed_video_color',
            'ff12_eu_wait_before_header':'ff12_wait_before_header',
            'ff12_jp_wait_before_header':'ff12_wait_before_header'}
 
+# FFIII uses the same asynchronous reader as the Japanese FF12 player.
+for region, resume in [('us', 0x020cd57c), ('eu', 0x020ce1bc), ('jp', 0x020cd25c)]:
+ name='ffiii_'+region+'_wait_before_header'
+ SPECS[name]=(0x1fffcc0,['-DWAIT_RESUME='+hex(resume), '-DJAPANESE_PLAYER=1'])
+ ALIASES[name]='ff12_wait_before_header'
+
 # Complete the existing asynchronous file read before inspecting its packet
 # header. Faster decoding otherwise exposes a stale ping-pong buffer header.
 for region,resume,reload in [('us',0x02089914,True),('eu',0x0208a68c,True),

@@ -16,7 +16,7 @@ from unicorn.arm_const import UC_ARM_REG_R10, UC_ARM_REG_PC
 
 
 ADDRESSES = {'AFFE': 0x0206E828, 'AFFP': 0x0206F2EC, 'AFFJ': 0x0206E5F8}
-CATALOG = json.loads((Path(__file__).parent / 'guest_catalog.json').read_text())
+PROFILES = json.loads((Path(__file__).parent / 'profiles.json').read_text())['profiles']
 # ARM fixture: load produced/consumed/capacity from the player object,
 # compute free space with the game's 64-bit comparison, then retry if zero.
 PREFIX = [0xE59A20C4, 0xE59A10C8, 0xE59A00CC, 0xE0422001,
@@ -57,12 +57,12 @@ class AudioWaitTests(unittest.TestCase):
 
     def test_all_regional_patches_wait_for_space_and_handle_counter_wrap(self):
         for code, address in ADDRESSES.items():
-            entry, = [e for e in CATALOG['entries'] if e['manifest']['game_code'] == code]
-            patch, = [p for p in entry['manifest']['patches'] if p['id'] == 'movie-audio-buffer-wait']
-            self.assertIn(patch['id'], entry['patch_ids'])
-            self.assertEqual(int(patch['addr'], 16), address)
-            self.assertEqual(patch['expect'], 'fbffff0a')
-            branch = bytes.fromhex(patch['replace'])
+            profile, = [p for p in PROFILES if p['key'] == code + '0']
+            patch, = [p for p in profile['code_patches'] if p['id'] == 'movie-audio-buffer-wait']
+            self.assertIsNone(patch['overlay'])
+            self.assertEqual(patch['pc'], address)
+            self.assertEqual(patch['before'], 'fbffff0a')
+            branch = bytes.fromhex(patch['after'])
             for produced, consumed in [(8, 0), (2, 0xFFFFFFFA)]:
                 with self.subTest(region=code, produced=produced, consumed=consumed):
                     exited, counts = execute(branch, address, produced, consumed, 50)

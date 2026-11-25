@@ -10,7 +10,7 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 ## What's new in 1.0.4
 
-* Fixed Final Fantasy III FMV playback and music timing for the USA, Europe, and Japan releases.
+* Fixed Final Fantasy III FMV playback and music timing, with smoother accelerated movie decoding for the USA, Europe, and Japan releases.
 * Added Display options → Pixel Grid with Off, Light, Medium, and Strong settings. Supports standard 720p and 1080p.
 
 See [Pixel Grid](#pixel-grid) for setup and [release notes](docs/RELEASE_NOTES_V104.md) for details.
