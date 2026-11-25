@@ -114,7 +114,7 @@ These games have targeted speed optimizations:
 - Resident Evil: Deadly Silence
 - Grand Theft Auto: Chinatown Wars
 
-Support varies by region and revision. Use unmodified retail ROMs; ROM hacks may run without these speedups.
+The speedups only work with unmodified retail ROMs. ROM hacks may run without them.
 
 ---
 
