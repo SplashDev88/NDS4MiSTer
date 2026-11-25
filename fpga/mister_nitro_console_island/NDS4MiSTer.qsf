@@ -51,6 +51,8 @@ set_global_assignment -name VERILOG_MACRO "NDS_NO_AUDIO_FILTER=1"
 # Standard HDMI continues through the scaler. The experimental native path
 # is for analog displays and Direct Video receivers such as RetroTINK-4K.
 set_global_assignment -name VERILOG_MACRO "MISTER_DISABLE_SHADOWMASK=1"
+set_global_assignment -name VERILOG_MACRO "NDS_PIXEL_GRID=1"
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_pixel_grid.sv
 # Experimental native analog and Direct Video paths. The standard scaler
 # remains available for ordinary HDMI and VGA monitors (vga_scaler=1).
 set_global_assignment -name VERILOG_MACRO "NDS_NATIVE_OUTPUTS=1"
@@ -400,6 +402,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_control.sv
 set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/nds_firmware_cache.sv
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios7.mif
 set_global_assignment -name MIF_FILE ../../rtl/nds_nitro_freebios9.mif
+set_global_assignment -name VHDL_FILE ../../rtl/nds_related_clock_event.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_top.vhd
 set_global_assignment -name VHDL_FILE ../../rtl/nds_nitro_console_wrap.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE ../../third_party/Nitro_DarkSide/d2dabe/rtl/sdram.sv

@@ -162,6 +162,12 @@ ENTITY ascal IS
 		o_ce  : IN  std_logic; -- Clock Enable
 		o_clk : IN  std_logic; -- Output clock
 
+		-- Geometry actually consumed by the scaler, in o_clk. The optional
+		-- NDS grid follows this canvas even during rotated framebuffer use.
+		o_source_width, o_source_height : OUT unsigned(11 DOWNTO 0);
+		o_image_width, o_image_height : OUT unsigned(11 DOWNTO 0);
+		o_raster_width, o_raster_height : OUT unsigned(11 DOWNTO 0);
+
 		-- Border colour R G B
 		o_border   : IN unsigned(23 DOWNTO 0) := x"000000";
 
@@ -1178,6 +1184,12 @@ ARCHITECTURE rtl OF ascal IS
 		RETURN v;
 	END FUNCTION;
 BEGIN
+	o_source_width <= to_unsigned(o_ihsize,12);
+	o_source_height <= to_unsigned(o_ivsize,12);
+	o_image_width <= to_unsigned(o_hsize,12);
+	o_image_height <= to_unsigned(o_vsize,12);
+	o_raster_width <= to_unsigned(o_hdisp,12);
+	o_raster_height <= to_unsigned(o_vdisp,12);
 
 	-----------------------------------------------------------------------------
 	i_reset_na<='0'   WHEN reset_na='0' ELSE '1' WHEN rising_edge(i_clk);

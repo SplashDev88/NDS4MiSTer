@@ -20,7 +20,7 @@ for stage in stages:
     args=['-t','../../tools/fpga3d/report_timing.tcl'] if stage=='sta' else ['NDS4MiSTer']
     if stage!='sta':args+=['--write_settings_files=off']
     if stage=='fit':args+=['--parallel=4']
-    cmd=['docker','run','--rm','--name','nds-fpga3d-build','--platform','linux/amd64',
+    cmd=['docker','run','--rm','--name','nds-fpga3d-'+root.name,'--platform','linux/amd64',
          '-v',str(root)+':/workspace','-v','nds4mister_quartus17_native:/quartus-runtime:ro',
          '-v',str(out/'quartus_udev_compat.so')+':/usr/lib/x86_64-linux-gnu/libudev.so.1:ro',
          '-e','LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libudev.so.1',

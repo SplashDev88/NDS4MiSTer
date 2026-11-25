@@ -1,19 +1,19 @@
-# NDS4MiSTer — v1.0.3
+# NDS4MiSTer — v1.0.4
 
 Experimental Nintendo DS core for the MiSTer FPGA.
 
-[**Download 1.0.3**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.3/NDS4MiSTer_v1.0.3_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
+[**Download 1.0.4**](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.4/NDS4MiSTer_v1.0.4_Standalone.zip) · [Compatibility list](https://docs.google.com/spreadsheets/d/1HNx41BC4jj3XQ-pzT3D9oJNnD20f9ZzkurHLMI3L-Is/htmlview) · [All releases](https://github.com/SplashDev88/NDS4MiSTer/releases)
 
 Compatibility, speed and sound vary by game. Full speed is not guaranteed, and graphics-heavy scenes can slow down even in games that otherwise run well.
 
 **How it differs from other cores:** NDS4MiSTer is a hybrid core, similar to [DreamSTer](https://github.com/skmp/DreamSTer), and is launched from **Scripts** rather than a typical `.rbf` in the `_Console` directory. While you play, it temporarily takes over from the normal MiSTer menu, and it hands control back when you exit.
 
-## What's new in 1.0.3
+## What's new in 1.0.4
 
-* Modest speed improvements in numerous games including Final Fantasy III (17->29 FPS), Mario & Luigi: Bowser’s Inside Story (11->18 FPS), Golden Sun: Dark Dawn (14->19 FPS), Radiant Historia (22->24 FPS), GTA: Chinatown Wars (17->19 FPS), and Metroid Prime Pinball (40->58 FPS).
-* Final Fantasy III and Metroid Prime Pinball are both at or near native speed.
-* Bug fixes in Golden Sun: Dark Dawn
-* Fixed stylus movement on DS4/DS5 controller touchpads. Added adjustable touchpad sensitivity in the NDS menu from 100% to 400%.
+* Fixed Final Fantasy III FMV playback and music timing for the USA, Europe, and Japan releases.
+* Added Display options → Pixel Grid with Off, Light, Medium, and Strong settings. Supports standard 720p and 1080p.
+
+See [Pixel Grid](#pixel-grid) for setup and [release notes](docs/RELEASE_NOTES_V104.md) for details.
 
 ---
 
@@ -30,7 +30,7 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 ## Install
 
-1. Download the [1.0.3 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.3/NDS4MiSTer_v1.0.3_Standalone.zip).
+1. Download the [1.0.4 ZIP](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.4/NDS4MiSTer_v1.0.4_Standalone.zip).
 2. Extract **everything** to the SD card root, merging folders. Include the hidden `Scripts/.NDS/` folder, because the core won't start without it.
 3. Put your games in `games/NDS/`.
 4. For CRTs or scalers, add an `[NDS]` section to `MiSTer.ini` at the **SD card root** (see [Video setup](#video-setup)). HDMI usually needs no changes; use the HDMI block below if you need to override global settings.
@@ -40,9 +40,7 @@ Compatibility, speed and sound vary by game. Full speed is not guaranteed, and g
 
 Do not move the `.rbf` to `_Console`.
 
-**Upgrading:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0.3 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
-
-On first launch, settings, controller mappings and the clock are imported automatically into **`Scripts/.NDS/`**, checking `.NDS_RC15` first, then `.NDS_Standalone`. Existing `.NDS` settings take priority; no manual copying is needed. Saves stay in `saves/NDS/`. Recognized old public launchers are backed up under `.NDS/legacy-launchers/` and removed from the Scripts menu; original settings folders are kept. Future updates use the same `NDS.sh` and `.NDS/` paths and preserve your saved preferences.
+**Upgrading:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0.4 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
 
 ---
 
@@ -104,9 +102,14 @@ These games have targeted speed optimizations:
 
 - New Super Mario Bros.
 - Castlevania: Dawn of Sorrow, Portrait of Ruin and Order of Ecclesia
+- Final Fantasy III
 - Final Fantasy Tactics A2
+- Golden Sun: Dark Dawn
+- Mario & Luigi: Bowser's Inside Story
 - Mario Kart DS
+- Metroid Prime Pinball
 - Pokémon Platinum, HeartGold and SoulSilver
+- Radiant Historia
 - Ultimate Mortal Kombat 3
 - Resident Evil: Deadly Silence
 - Grand Theft Auto: Chinatown Wars
@@ -131,6 +134,12 @@ video_mode=8        ; 1080p60 — delete this line to keep your current mode
 vsync_adjust=0
 vga_scaler=0
 ```
+
+### Pixel Grid
+
+Use **Display options → Pixel Grid** to choose **Off, Light, Medium, or Strong**. Save your choice with **System → Save settings**. The default is Off.
+
+The grid works with standard **720p or 1080p HDMI** and **2×–5× integer scaling**. For 720p60, use `video_mode=0` in the HDMI block above; for 1080p60, use `video_mode=8`. Return to MiSTer and relaunch after changing the output mode.
 
 ### CRT (15 kHz, via Direct Video)
 
@@ -178,7 +187,7 @@ Set **Direct Video Target → Scaler**. This unlocks both-screen layouts.
 
 The RetroTINK-4K is tested. Morph is untested over Direct Video but should work fine.
 
-**RetroTINK-4K profiles:** Mr. Moro's [profile pack](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.3/NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip) includes **NDS Default** and **NDS Rotate**. Copy the contents of its inner `NDS4MiSTER` folder to the root of the RetroTINK-4K's SD card.
+**RetroTINK-4K profiles:** Mr. Moro's [profile pack](https://github.com/SplashDev88/NDS4MiSTer/releases/download/v1.0.4/NDS4MiSTer_RetroTINK4K_MrMoro_Profiles.zip) includes **NDS Default** and **NDS Rotate**. Copy the contents of its inner `NDS4MiSTER` folder to the root of the RetroTINK-4K's SD card.
 
 ### Layouts and rotation
 

@@ -47,11 +47,17 @@ _start:
  cmp r9,#0
  bne fallback
 valid_destination:
+#ifdef COLOR_ONLY
+ // The native decoder always supplies Y and UV planes, including when the
+ // first four luma samples happen to equal the packed-frame signature.
+ mov r10,#0
+#else
  ldr r0,[r4]
  ldr r1,=0x58564d46
  cmp r0,r1
  moveq r10,#1
  movne r10,#0
+#endif
  sub r12,r6,r9,lsl#6
  add r12,r12,#0x1f000
  ldr r1,=0x31564d46

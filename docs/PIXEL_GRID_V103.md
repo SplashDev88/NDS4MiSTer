@@ -1,0 +1,278 @@
+# Pixel Grid beta on v1.0.3
+
+Test 3 routes and has passed short gameplay checks in New Super Mario Bros.,
+Tetris DS and GTA: Chinatown Wars. It includes original 1080p commercial-game
+captures at all four strengths and a zoomable offline viewer. Medium is a
+useful starting point. This is a private hardware beta with the timing and
+coverage limits recorded below.
+
+Base: release tag `v1.0.3`, commit `6eadde791669feef6cdbbcfb1be36403519ab23c`.
+This experiment carries forward the beta18 LCD Grid 2 approximation and host
+controls while preserving the v1.0.3 runtime, touchpad support and HBlank queue.
+
+The user approved using DSP resources and allowing visual simplification if
+needed. The selected implementation preserves all existing gains, rounding and
+saturation. Three unsigned 8-by-7 DSP multiplications replace the shift/add
+trees. RGB and sync both take four enabled clock cycles rather than six.
+Scale detection reuses one adder and comparator per axis over at most four
+enabled clocks after the start of vertical sync. The existing 720p/1080p
+blanking interval provides this time before the first picture pixel.
+No framebuffer or additional block RAM is used. The grid remains after the
+HDMI scaler and before OSD, and supports 2x through 5x integer scales at 720p
+and 1080p. Off, 1x, noninteger scaling, unsupported modes and borders bypass
+the effect with the same pipeline delay. Controls latch at frame boundaries;
+pixels bypass the effect whenever live geometry differs from the geometry
+captured at the last frame boundary.
+
+The option appears in Display options only when the FPGA advertises support
+for the current output mode. System > Save settings persists the choice;
+Reset settings restores Off. The setting is separate from existing FPGA
+status bits and touchpad settings. Old cores never receive grid writes.
+
+## Routing approach
+
+The beta18 attempt 13 finished with routing congestion, despite the old handoff
+still describing it as running. Its fit report used 41,296/41,910 ALMs,
+539/553 RAM blocks and 80/112 DSP blocks. The grid accounted for about 247
+ALMs and 394 registers. Earlier fitted images failed game startup, including
+with the grid Off; a core-only swap to original beta18 restored gameplay.
+The physical cause of that regression is not established.
+
+The actual v1.0.3 release build (`df7d7097...735be8c`) is a better baseline:
+39,075/41,910 ALMs (93%), 540/553 RAM blocks and 80/112 DSP blocks, with
+58.5% average interconnect use. Its build receipt is
+`../../evidence/golden-cabin-idle-fault-20261122/build.json`. These numbers
+describe the released core, before adding the grid.
+
+This candidate uses v1.0.3 placement and timing settings. It does not inherit
+the experimental beta18 register-location locks or added transfer constraints.
+The grid, scaler geometry outputs, host control and diagnostic timing
+reports are added. The final candidate also settles ARM9 IO request and
+completion events in their receiving clock domains, as described below. Synthesis and fitting must verify DSP inference and report
+whole-core resources; isolated grid results cannot establish routability.
+Hardware startup, gameplay and grid behavior determine acceptance. Static
+timing remains diagnostic, as requested, and is retained with build results.
+
+The fitter's estimated **ALMs needed** must not be confused with physical
+placement occupancy. The released core reports 39,074.8 needed but 40,949.4
+used in final placement; Test 2 reports 40,909.8 needed and 40,916.4 placed.
+Most of that increase in the estimate comes from a lower estimate of logic
+recoverable by dense packing (2,840.1 versus 935.6 ALMs). Both placements are
+already dense. The grid's isolated area reduction is real, but whole-core
+estimated utilization alone does not measure routing headroom.
+
+## Reproduce the checks
+
+From the experiment root:
+
+```sh
+python3 tools/test_pixel_grid.py --output build-pixel-grid/pixel
+python3 tools/test_pixel_grid_scaler.py --output build-pixel-grid/scaler
+python3 tools/test_pixel_grid_integration.py --output build-pixel-grid/integration
+python3 -m unittest discover -s tools/standalone_host -p test_install_layout.py
+```
+
+The C++ tests `test_host_pixel_grid`, `test_host_touchpad`,
+`test_host_display_menu`, `test_host_display`, `test_host_split_output`,
+`test_host_dv_target` and `test_host` are built with C++17, optimization and
+warnings treated as errors in the existing Linux host toolchain container.
+
+`tools/fpga3d/measure_pixel_grid.py --reference OLD_RTL --shim COMPAT_LIBRARY
+--output build-pixel-grid/area-v1` compares isolated virtual-pin fits under
+identical device, area, seed and 148.5 MHz constraints. It saves source hashes,
+stage exit codes, fit summaries and timing reports. Full-core compilation
+uses `tools/fpga3d/build_fpga.py map fit asm sta` and the existing Quartus 17
+compatibility library at `build-fpga3d/quartus/quartus_udev_compat.so`.
+
+After map, fit and assembly pass, `tools/fpga3d/collect_pixel_grid_build.py`
+binds the fresh RBF to source hashes and offline validation. Timing reports
+are collected when ready and do not gate packaging. `tools/package_pixel_grid.py`
+uses the SHA-verified v1.0.3 release archive to produce a separate launcher
+and private kit, preserving the release renderer and guest patches. It verifies
+every package checksum. Without hardware evidence the package remains
+pending; `--hardware-evidence` binds a qualified private beta to exact game
+results.
+
+## Status
+
+Matched isolated Quartus 17 area measurements on the same Cyclone V device:
+
+| Implementation | ALMs needed | Registers | DSP blocks | RAM blocks |
+| --- | ---: | ---: | ---: | ---: |
+| Original beta18 shift/add | 324 | 406 | 0 | 0 |
+| DSP, parallel scale detection | 267 | 215 | 3 | 0 |
+| DSP, shared scale detection (selected) | 231 | 263 | 3 | 0 |
+
+The selected implementation reduces ALMs needed by 28.7% and registers by
+35.2% relative to the original in this harness. Raw reports are in
+`build-pixel-grid/area-v1` and `area-v2`. These are virtual-pin area probes,
+including a virtual clock; their timing results are not representative of the
+integrated HDMI path. Do not compare their absolute ALM counts directly with
+the historical full-core grid hierarchy numbers.
+
+The selected RTL passed 1,215,978 pixel/sync checks and 192 layout, gap, FPS,
+rotation and resolution combinations. Tests cover all 256 channel values,
+every supported scale/strength, malformed geometry, clock-enable stalls,
+interrupted scale searches, reset and mid-frame changes. Real-scaler tests
+passed 2x/3x/4x/5x. Seven host C++ suites and nine settings-migration tests
+passed, and the ARM host binary built successfully. Final grid/OSD integration
+passed 1,843,200 pixels, including 196,608 letter pixels and 196,608 menu
+background pixels, and all 24 command/mode gates.
+
+The first v1.0.3 full build passed synthesis, fitting/routing and assembly.
+FPGA source: `2346c18acadc39e2e6ab0c93a3de960431a188c2`.
+RBF SHA-256: `a84668c634299f3d5156af85fdfae59a350a925aba946f801a5131d662e1d24d`.
+The later report-selector change is recorded separately in BUILD_INPUTS.json;
+it does not change HDL or fitting constraints.
+
+| Full-core fitted resource | Used | Available |
+| --- | ---: | ---: |
+| ALMs needed | 40,840 | 41,910 |
+| RAM blocks | 540 | 553 |
+| DSP blocks | 83 | 112 |
+
+The grid hierarchy uses 152.6 ALMs needed (156.3 placed), 259 combinational
+ALUTs, 235 dedicated logic registers, three DSP blocks and no RAM. The whole
+core remains at 97% logic utilization: smaller module logic does not guarantee
+equally dense packing elsewhere. Final average interconnect use is 62.5%;
+peak total use is 88.5%, with peak vertical use 95.9%. These final report values
+supersede the router's lower preliminary estimates.
+
+All four timing corners were reported. The grid's worst setup slack is
+-0.022 ns in the slow 1100 mV, -40 C model, from gain_q[1] to the blue-channel
+DSP product register. Its worst hold slack is +0.122 ns. The full core also
+has timing violations (worst reported setup -14.897 ns, hold -0.763 ns and
+recovery -9.936 ns). Successful timing-tool execution does not mean timing
+closure. Reports and slacks are retained as diagnostics; these first-candidate diagnostics
+do not qualify it for gameplay.
+
+Hardware Test 1 failed NSMB startup with the grid Off. A core-only swap to the
+released v1.0.3 RBF, retaining the candidate host, renderer, ROM and isolated
+save, restored the title screen and gameplay. The diagnostic ROM does run on
+Test 1 and shows all four strengths at 3x and 4x, so visible grid operation is
+not sufficient evidence of a working beta. Test 1 is not qualified.
+
+Attempt 2 replaces raw-source/delayed-history edge detectors on the ARM9
+WRAM, VRAM, main-RAM and IO completion paths, and the DMA request path, with
+two receiver-clock capture stages plus history. Both inputs to each edge
+detector are now receiver-clock registers. The held payload has extra time
+to settle before the consumer observes completion. This addresses a hazard
+reproduced in the earlier clock-skew model; hardware causation remains
+unproven by this model alone. Test 2 subsequently failed startup; Test 3
+adds the IO request correction described below.
+
+The production receiver passed 160 pulse/toggle payload checks, 40 reset
+arrival phases, eight real-membus IO/palette/OAM phase tests, and the complete
+cache/main-RAM line-stream suite (128 matched streamed/nonstreamed misses,
+ARM7 arbitration, warm hits and reset recovery, with detecting negative
+controls). A real DMA producer also passed 108 transfer cases through the
+new receiver, covering 16/32-bit transfers, fixed/incrementing/decrementing
+addresses and three endpoint delays. Restoring the former detector makes
+that scoreboard fail when payload routing delay is modeled. Full console
+VHDL analysis also passed. Reproduce the added tests
+with `bash tools/test_nds_related_clock_event.sh` and
+`bash tools/test_nds_cache_line_stream.sh`, and
+`bash tools/test_nds_dma9_request_bridge.sh`.
+
+Hardware capture uses an isolated kit and save copies. The RetroTINK's LCD
+function is disabled for comparison. At 1080p, Side by Side is a useful 3x
+layout; Top/Bottom with 90-degree rotation gives 4x. A single unrotated screen
+can use the core's 320x240 canvas and therefore bypass the grid at noninteger
+DS pixel scaling. This is intentional bypass behavior, not a stronger setting.
+
+Test 3 has now passed NSMB, Tetris DS and GTA startup and gameplay on the rig.
+Final package evidence records the complete qualification scope. This remains
+a private beta, not a qualified public release.
+
+The private package opts into a recoverable scaled-HDMI bootstrap. It appends
+a temporary final `[NDS]` section while Main initializes the FPGA, then restores
+the exact original `MiSTer.ini` before the standalone host starts. The existing
+supervisor recovery path also restores the file after an interrupted launch.
+The normal kit, which has no `NDS_scaled_hdmi.cfg`, does not use this path.
+Eight focused recovery tests cover both output modes, all eight before/after
+write interruptions, already-restored state, external edits, missing INI,
+invalid input and symlinks; the eleven existing video-target tests also pass.
+The final-section behavior follows the sequential parser in
+[Main_MiSTer cfg.cpp](https://github.com/MiSTer-devel/Main_MiSTer/blob/master/cfg.cpp).
+
+Attempt 2 routed but still failed NSMB startup after more than a minute, with
+both published screens black. Return-event settling alone was insufficient.
+Attempt 3 additionally receives the ARM9 IO request through the settled
+peripheral-clock detector. This ensures `io9_lat_1x` has captured the payload
+before `io9_ena` enables a peripheral. Other memory request paths are unchanged.
+The real-membus regression passes 20 relative clock phases with modeled payload
+routing delay; the previous raw-toggle request detector fails its payload
+scoreboard. The third image now starts and plays NSMB, Tetris DS and GTA. This is evidence
+that the complete new build works; changed placement means it does not
+independently prove the physical cause of the earlier startup failure.
+
+
+During the investigation, the failed Test 2 image passed authored hardware
+subsystem diagnostics: 77 RAM/cache iterations; 94 ARM and 65 Thumb DTCM
+stack/cache iterations; 212,992 FIFO words with 212,480 ARM9 IRQs; 60 and 120
+cartridge-DMA blocks across 2 MiB and 64 MiB fixtures; and ten read-only 8 KiB
+EEPROM rounds including wraparound and random offsets. The EEPROM fixture
+hash is unchanged afterward. Both CPUs also exceed 200 VBlank and timer
+interrupts. A separate instruction-TCM ROM completes 100 ARM/Thumb code rounds
+on both the released core and Test 2, after validating its linker layout and
+MPU permissions against the control core. These results narrow the investigation but do not qualify the
+candidate or establish the root cause. Exact ROM hashes and screenshots are
+recorded in `../../evidence/pixel-grid-v103-20261123/hardware-20261124/TEST2_SUBSYSTEM_DIAGNOSTICS.json`.
+
+The RetroTINK was separately retaining 10:1 input decimation after a Direct
+Video test. Its unsaved HDMI input settings now use 1:1 sampling, 16:9 aspect,
+zero crop and no LCD/scanline/mask effects. A fresh released-core NSMB control
+shows clear 1080p gameplay. Failed-candidate game frames were also examined
+before HDMI processing and remain black, so that capture-chain correction
+alone does not resolve the FPGA startup regression.
+
+
+## Test 3 build and hardware results (2026-11-24)
+
+The selected FPGA source is `098030083e1ae8dab7c5fe110d4328325a1fd276`.
+RBF SHA-256: `0a6909e73f96d5f8503edc18f397019dd8e8fce4c93bf70738552a3d768983fa`.
+The ARM host SHA-256 is
+`aceb83bb346338882588ffa4f30d1cf5edb19fc03207233aa168eb190fbbd7ea`;
+the renderer and guest catalog remain byte-for-byte from v1.0.3.
+
+Synthesis, fitting/routing, assembly and timing analysis all completed with
+exit code zero. Fitting took 1 hour 12 minutes 37 seconds, including a late
+congestion-resolution pass. Final resource use is 40,890 ALMs needed,
+40,880.9 ALMs placed, 47,615 registers, 540 RAM blocks and 83 DSP blocks.
+The integrated grid uses 160.1 ALMs needed, 159.3 placed, 235 registers,
+three DSP blocks and no RAM. Average interconnect use is 60.3%; peak total
+use is 87.3%, with peak vertical use 96.5%. The device remains densely packed.
+
+Across all reported corners, the grid's worst setup slack is +0.134 ns and
+worst hold slack is +0.129 ns. The whole core still has violations: worst
+setup -13.118 ns, hold -0.521 ns and recovery -9.204 ns; worst removal is
++0.273 ns. The beta is accepted using the requested hardware criteria, not
+as a timing-closed design. The reports remain in the build evidence.
+
+NSMB entered World 1-3, moved and jumped, and paused successfully. Tetris DS
+entered Marathon, accepted piece movement, rotation and hard drop, updated
+the score and paused. GTA loaded the isolated safehouse save, responded to
+touch input at the exit door, and rendered the outdoor 3D world while walking
+changed the player position and camera. Tetris also played at 720p, where Off
+and Medium visibly differ at 2x; the RetroTINK confirmed 1280x720 input. Those
+720p images are functional evidence only, since the capture chain upscales
+them to 1080p. The comparison gallery uses native 1080p input and output.
+
+The rig reloaded Medium after System > Save settings
+and a fresh core launch. Off/Light/Medium/Strong have original 1080p HDMI
+captures in commercial games; NSMB also has the rotated 4x layout. In a
+static gray area, Off has no periodic grid modulation and the three enabled
+strengths increase it in order. This checks the capture chain as well as the
+FPGA control; capture color conversion prevents using it as a bit-exact
+arithmetic test.
+
+The private launcher selects scaled HDMI temporarily during initialization.
+The original MiSTer.ini is restored byte-for-byte before gameplay. Test saves
+are separate copies/aliases; normal interactive launches still use the normal
+selected game's save. Capture files are original OBS PNGs, with no sharpening,
+resampling or reconstructed pixels. The offline viewer provides pixelated
+zoom and rotation; it does not modify those PNGs.
+
+See the qualified archive's `PIXEL_GRID_HARDWARE.json` for exact games,
+screenshots, settings checks and protected-file hashes. These are startup and
+short gameplay checks, not full-game or long-duration reliability certification.

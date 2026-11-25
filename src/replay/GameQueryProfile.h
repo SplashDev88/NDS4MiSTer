@@ -83,8 +83,14 @@ inline constexpr GameQueryIdentity GoldenSunCartridges[] = {
 
 inline constexpr GameQueryIdentity FinalFantasyIIICartridges[] = {
     {{{'A','F','F','E'}}, 0, 0x70de0241u},
+    {{{'A','F','F','E'}}, 0, 0x3238c6aeu},
     {{{'A','F','F','P'}}, 0, 0xcd3e0d01u},
+    {{{'A','F','F','P'}}, 0, 0xa3c3019bu},
     {{{'A','F','F','J'}}, 0, 0xffea23e9u},
+    {{{'A','F','F','J'}}, 0, 0x9c9e5ef1u},
+    {{{'A','F','F','E'}}, 0, 0x83d5740du},
+    {{{'A','F','F','P'}}, 0, 0x08e22670u},
+    {{{'A','F','F','J'}}, 0, 0xdecdd0b6u},
 };
 
 template<std::size_t N>

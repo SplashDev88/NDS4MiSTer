@@ -20,7 +20,7 @@ architecture test of tb_nds_cache_line_stream is
    signal cb : std_logic_vector(3 downto 0);
    signal cw, rd, rdhi : std_logic_vector(31 downto 0);
    signal debug : std_logic_vector(7 downto 0);
-   signal toggle, seen, request1x, done_seen : std_logic := '0';
+   signal toggle, seen, request1x : std_logic := '0';
    signal ena7, done7 : std_logic := '0';
    signal rd7 : std_logic_vector(31 downto 0);
    constant ADDR7 : natural := 16#3F0000#;
@@ -54,7 +54,7 @@ begin
    begin
       if rising_edge(clk2x) then
          cycles <= cycles+1;
-         done_seen <= done1x;
+         -- Completion is received by the production bridge below.
          if reset='1' then toggle<='0';
          elsif ce='1' then toggle<=not toggle; end if;
          if ce='1' and reset='0' then logical_requests<=logical_requests+1; end if;
@@ -71,7 +71,8 @@ begin
          end if;
       end if;
    end process;
-   done2x <= done1x and not done_seen;
+   return_bridge : entity work.nds_related_clock_event
+      port map(clk=>clk2x, reset=>reset, event_in(0)=>done1x, pulse_out(0)=>done2x);
    cache : entity work.nds_cache9
       generic map(is_simu=>'1', cache_line_stream=>line_stream)
       port map(clk=>clk2x, reset=>reset, req_ena=>ena, req_rnw=>'1',

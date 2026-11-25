@@ -16,6 +16,9 @@ PREFERENCE = "NDS_video.cfg"
 JOURNAL = "bootstrap-video-restore.json"
 HEADER = "NDS-DirectVideo-v1\n"
 TARGETS = ("crt", "retrotink")
+SCALED_PREFERENCE = "NDS_scaled_hdmi.cfg"
+SCALED_JOURNAL = "bootstrap-hdmi-restore.json"
+SCALED_MODES = {"NDS-ScaledHDMI-v1\n720p\n": "0", "NDS-ScaledHDMI-v1\n1080p\n": "8"}
 
 
 def sync_directory(path):
@@ -73,10 +76,76 @@ def bootstrap_settings(payload):
     return status.to_bytes(2, "little") + payload[2:]
 
 
-def restore_bootstrap(kit, sd_root):
-    journal = Path(kit) / JOURNAL
+def stage_scaled_hdmi(kit, sd_root):
+    """Opt-in private kit: Main reads scaled HDMI, then its INI is restored.
+
+    Main parses matching INI sections in order, so a final NDS section wins
+    without rewriting any original line. See Main_MiSTer/cfg.cpp:ini_parse.
+    The ordinary kit has no preference file and does not enter this path.
+    """
+    preference = Path(kit) / SCALED_PREFERENCE
+    if not preference.exists():
+        return False
+    value = preference.read_bytes().decode("ascii")
+    if value not in SCALED_MODES:
+        raise RuntimeError("Invalid private scaled HDMI preference; INI unchanged")
+    journal = Path(kit) / SCALED_JOURNAL
+    if journal.exists() or journal.is_symlink():
+        raise RuntimeError("Previous scaled HDMI backup needs recovery")
+    path = Path(sd_root) / "MiSTer.ini"
+    if path.is_symlink():
+        raise RuntimeError("MiSTer.ini is a symbolic link; nothing overwritten")
+    original = path.read_bytes() if path.exists() else None
+    if original is not None and (len(original) > 1024 * 1024 or b"\0" in original):
+        raise RuntimeError("Unrecognized MiSTer.ini; nothing overwritten")
+    mode = path.stat().st_mode & 0o777 if original is not None else 0o644
+    newline = b"\r\n" if original and b"\r\n" in original else b"\n"
+    video = SCALED_MODES[value].encode()
+    suffix = newline.join([b"", b"; Temporary Pixel Grid bootstrap", b"[NDS]",
+                           b"direct_video=0", b"video_mode=" + video,
+                           b"video_mode_ntsc=" + video, b"video_mode_pal=" + video, b""])
+    applied = (original or b"") + suffix
+    atomic_bytes(journal, (json.dumps(dict(version=1, original=original.hex() if original is not None else None,
+                                         applied=applied.hex(), mode=mode)) + "\n").encode())
+    atomic_bytes(path, applied, mode)
+    return True
+
+
+def restore_scaled_hdmi(kit, sd_root):
+    journal = Path(kit) / SCALED_JOURNAL
     if not journal.exists():
         return False
+    if journal.is_symlink():
+        raise RuntimeError("Scaled HDMI backup is a symbolic link; recovery retained")
+    record = json.loads(journal.read_text())
+    if record.get("version") != 1:
+        raise RuntimeError("Unrecognized scaled HDMI backup; recovery retained")
+    original = bytes.fromhex(record["original"]) if record["original"] is not None else None
+    applied = bytes.fromhex(record["applied"])
+    if len(applied) > 1024 * 1024 + 256 or (original is not None and not applied.startswith(original)):
+        raise RuntimeError("Invalid scaled HDMI backup; recovery retained")
+    path = Path(sd_root) / "MiSTer.ini"
+    if path.is_symlink():
+        raise RuntimeError("MiSTer.ini is a symbolic link; backup retained")
+    current = path.read_bytes() if path.exists() else None
+    if current != original:
+        if current != applied:
+            raise RuntimeError("MiSTer.ini changed during bootstrap; backup retained at " + str(journal))
+        if original is None:
+            path.unlink()
+            sync_directory(path.parent)
+        else:
+            atomic_bytes(path, original, record.get("mode", 0o644))
+    journal.unlink()
+    sync_directory(journal.parent)
+    return True
+
+
+def restore_bootstrap(kit, sd_root):
+    restored_hdmi = restore_scaled_hdmi(kit, sd_root)
+    journal = Path(kit) / JOURNAL
+    if not journal.exists():
+        return restored_hdmi
     record = json.loads(journal.read_text())
     if record.get("version") != 1:
         raise RuntimeError("Unrecognized bootstrap settings backup; recovery retained")
@@ -113,6 +182,7 @@ def stage_bootstrap(kit, sd_root, payload):
     if original is not None and len(original) != 16:
         raise RuntimeError("Invalid normal NDS settings; nothing overwritten")
     applied = bootstrap_settings(payload)
+    stage_scaled_hdmi(kit, sd_root)
     # Journal is durable before touching normal settings. Recovery is idempotent
     # after interruption at any write/rename; power loss leaves this on the SD.
     atomic_bytes(journal, (json.dumps(dict(version=1, original=original.hex() if original is not None else None,
