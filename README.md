@@ -42,8 +42,6 @@ Do not move the `.rbf` to `_Console`.
 
 **Upgrading:** exit via **System → Reboot**, then back up `saves/NDS/` and your existing NDS settings folder. Extract the complete **1.0.4 ZIP** to the SD card root, including hidden files, merging folders and replacing package files. Run **Scripts → NDS.sh**.
 
-On first launch, settings, controller mappings and the clock are imported automatically into **`Scripts/.NDS/`**, checking `.NDS_RC15` first, then `.NDS_Standalone`. Existing `.NDS` settings take priority; no manual copying is needed. Saves stay in `saves/NDS/`. Recognized old public launchers are backed up under `.NDS/legacy-launchers/` and removed from the Scripts menu; original settings folders are kept. Future updates use the same `NDS.sh` and `.NDS/` paths and preserve your saved preferences.
-
 ---
 
 ## First run
