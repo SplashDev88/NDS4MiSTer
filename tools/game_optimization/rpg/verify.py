@@ -15,6 +15,7 @@ CATALOG = ROOT.parents[1] / "standalone_host/fmv/guest_catalog.json"
 # Offsets from the US build for the joint routine and its SDK calls.
 FFIII_OFFSETS = {"AFFE": (0, 0), "AFFP": (0x9D0, 0x958), "AFFJ": (-0x338, -0x224)}
 FFIII_MOVIE_WAIT = {"AFFE": 0x0206E828, "AFFP": 0x0206F2EC, "AFFJ": 0x0206E5F8}
+FFIII_MOVIE_HEADROOM = {"AFFE": 0x0206E964, "AFFP": 0x0206F428, "AFFJ": 0x0206E734}
 
 
 def main():
@@ -42,13 +43,20 @@ def main():
                    e["manifest"]["revision"] == 0]
             assert {p["id"] for p in ff["patches"]} == {
                 "joint-mix", "joint-request", "joint-weight", "joint-finish", "joint-final",
-                "movie-audio-buffer-wait"}
+                "movie-audio-buffer-wait", "movie-audio-headroom"}
             assert ff["atomic_selection"]
             section_headers = tool("objdump", "-h", elf).decode()
             for patch in ff["patches"]:
                 if patch["id"] == "movie-audio-buffer-wait":
                     assert int(patch["addr"], 0) == FFIII_MOVIE_WAIT[code]
                     assert patch["expect"] == "fbffff0a" and patch["replace"] == "f4ffff0a"
+                    continue
+                if patch["id"] == "movie-audio-headroom":
+                    # Retain six frames of queued audio before taking the
+                    # existing video-decode path. Heavy frames can exhaust the
+                    # original three-frame reserve on the current FPGA build.
+                    assert int(patch["addr"], 0) == FFIII_MOVIE_HEADROOM[code]
+                    assert patch["expect"] == "0300a0e3" and patch["replace"] == "0600a0e3"
                     continue
                 section = "." + patch["id"].removeprefix("joint-")
                 row = re.search(r"^\s*\d+\s+" + re.escape(section) +

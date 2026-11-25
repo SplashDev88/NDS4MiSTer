@@ -3155,6 +3155,18 @@
             "hook": null,
             "scratch_bytes": 0,
             "enabled": true
+          },
+          {
+            "id": "movie-audio-headroom",
+            "cpu": "arm9",
+            "target": "arm9.bin/main_loaded",
+            "addr": "0x206e964",
+            "mode": "arm",
+            "expect": "0300a0e3",
+            "replace": "0600a0e3",
+            "hook": null,
+            "scratch_bytes": 0,
+            "enabled": true
           }
         ],
         "delivery": "native_movie_color",
@@ -3180,7 +3192,7 @@
           ],
           "arm9_bytes": 656964,
           "arm9_offset": 102690816,
-          "arm9_sha256": "b285765f46306179ed120d6991c67c733bd3dbc903c6515de264576116f1e61d",
+          "arm9_sha256": "6c46362679cea7395ff724554f839261b6f1b8ef50303088735dbbbe5f55a9da",
           "capacity": 10,
           "used": 103348224
         }
@@ -3191,7 +3203,8 @@
         "joint-finish",
         "joint-weight",
         "joint-final",
-        "movie-audio-buffer-wait"
+        "movie-audio-buffer-wait",
+        "movie-audio-headroom"
       ]
     },
     {
@@ -3410,6 +3423,18 @@
             "hook": null,
             "scratch_bytes": 0,
             "enabled": true
+          },
+          {
+            "id": "movie-audio-headroom",
+            "cpu": "arm9",
+            "target": "arm9.bin/main_loaded",
+            "addr": "0x206f428",
+            "mode": "arm",
+            "expect": "0300a0e3",
+            "replace": "0600a0e3",
+            "hook": null,
+            "scratch_bytes": 0,
+            "enabled": true
           }
         ],
         "delivery": "native_movie_color",
@@ -3435,7 +3460,7 @@
           ],
           "arm9_bytes": 660100,
           "arm9_offset": 95621120,
-          "arm9_sha256": "238e830311fcdca2905213ee361c294a153cfdfb0f4faf971e4557f480bbf000",
+          "arm9_sha256": "17e8350e19797f9717451dcdf91940b4216bfe2891a21aba4c0610760d5333ed",
           "capacity": 10,
           "used": 96281600
         }
@@ -3446,7 +3471,8 @@
         "joint-finish",
         "joint-weight",
         "joint-final",
-        "movie-audio-buffer-wait"
+        "movie-audio-buffer-wait",
+        "movie-audio-headroom"
       ]
     },
     {
@@ -3533,6 +3559,18 @@
             "hook": null,
             "scratch_bytes": 0,
             "enabled": true
+          },
+          {
+            "id": "movie-audio-headroom",
+            "cpu": "arm9",
+            "target": "arm9.bin/main_loaded",
+            "addr": "0x206e734",
+            "mode": "arm",
+            "expect": "0300a0e3",
+            "replace": "0600a0e3",
+            "hook": null,
+            "scratch_bytes": 0,
+            "enabled": true
           }
         ],
         "delivery": "native_movie_color",
@@ -3558,7 +3596,7 @@
           ],
           "arm9_bytes": 656164,
           "arm9_offset": 102658048,
-          "arm9_sha256": "a638bf1de64174c00cab5c3a2d90b06e2c008657b29ccb820c33ff8242355bad",
+          "arm9_sha256": "bb17f785023d973e4f7a242932500661ad1f41cf0ff8625bea1d088d393700ea",
           "capacity": 10,
           "used": 103314432
         }
@@ -3569,7 +3607,8 @@
         "joint-finish",
         "joint-weight",
         "joint-final",
-        "movie-audio-buffer-wait"
+        "movie-audio-buffer-wait",
+        "movie-audio-headroom"
       ]
     },
     {
