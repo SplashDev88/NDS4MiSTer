@@ -102,14 +102,19 @@ These games have targeted speed optimizations:
 
 - New Super Mario Bros.
 - Castlevania: Dawn of Sorrow, Portrait of Ruin and Order of Ecclesia
+- Final Fantasy III
 - Final Fantasy Tactics A2
+- Golden Sun: Dark Dawn
+- Mario & Luigi: Bowser's Inside Story
 - Mario Kart DS
+- Metroid Prime Pinball
 - Pokémon Platinum, HeartGold and SoulSilver
+- Radiant Historia
 - Ultimate Mortal Kombat 3
 - Resident Evil: Deadly Silence
 - Grand Theft Auto: Chinatown Wars
 
-The speedups only work with unmodified retail ROMs. ROM hacks may run without them.
+Support varies by region and revision. Use unmodified retail ROMs; ROM hacks may run without these speedups.
 
 ---
 
